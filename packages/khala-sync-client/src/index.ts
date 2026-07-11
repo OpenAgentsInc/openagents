@@ -129,6 +129,16 @@ export {
 } from "./live-agent-graph.js"
 
 export {
+  newestLiveAgentGraph,
+  projectLiveAgentGraphPresentation,
+  resolveLiveAgentGraphSelection,
+  type LiveAgentGraphAuthority,
+  type LiveAgentGraphPresentation,
+  type LiveAgentGraphPresentationRow,
+  type LiveAgentGraphTone,
+} from "./live-agent-graph-presentation.js"
+
+export {
   buildAppendUserMessageIntent,
   buildInterruptTurnIntent,
   buildStartTurnIntent,

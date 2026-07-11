@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-11.1` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -586,3 +586,14 @@ Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `codex_disconnect_removes_from_list.unit` (bun-test, unit): A disconnect round-trip through the mobile bearer routes removes the account from a subsequent list refetch (server soft-deletes + filters it), and the client bundle parser hides any dead rows a legacy server still returns. — `clients/khala-mobile/tests/khala-mobile-codex-accounts-api.test.ts`
 - **Verification:** bun test tests/khala-mobile-codex-accounts-core.test.ts tests/khala-mobile-codex-accounts-api.test.ts inside clients/khala-mobile (mobile-core projection filter + disconnect round-trip); server side bun run --cwd apps/openagents.com/workers/api test -- src/provider-accounts.test.ts src/provider-account-mobile-routes.test.ts (disconnect soft-deletes the row so listProviderAccountsForUser no longer returns it, and filterMobileVisibleProviderAccountBundle drops dead residue). All run in the package/repo test sweeps before pushes to main.
 - **Authority boundary:** Binds the Settings → Codex accounts list projection and the disconnect action's removal semantics (client + server). It does not change how an account is connected in the first place, nor the underlying token-custody/grant-revocation authority (CX-2's audited custody deletion and grant revocation remain authoritative). "Removed from the visible list" means the account no longer appears in GET /api/mobile/codex-accounts and is not rendered by the Settings screen; a disconnected account is terminal (reconnecting is a fresh device login), not a paused row.
+
+### `khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v1` — ENFORCED
+
+- **Surface:** khala-mobile (agent-supervision)
+- **Stated by:** owner via khala-code-session on 2026-07-11
+- **Statement:** Khala Mobile presents the confirmed canonical agent graph as one accessible parent/subagent hierarchy. Status, attention, current action, elapsed time, session/worktree facts, and terminal reason remain typed; tapping an agent selects the same inspect target; historical imports are labeled and never gain live controls; large graphs disclose their deterministic presentation bound.
+- **Enforcement tier:** test-sweep
+- **Oracle** `agent_graph_presentation_deterministic.unit` (bun-test, unit): Pure projection tests enforce stable hierarchy ordering, explicit missing facts, status/action/attention/terminal/elapsed fields, historical control refusal, rapid-selection fallback, newest-graph selection, and a deterministic large-graph bound. — `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`
+- **Oracle** `agent_graph_mobile_component_mount.unit` (bun-test, unit): A real React Native component mount proves accessible expand, inspect/select, and typed focus actions; attention disclosure; historical control removal; and the 40-row mobile safety remainder. — `clients/khala-mobile/tests/live-agent-graph-panel.test.tsx`
+- **Verification:** bun test src/live-agent-graph-presentation.test.ts in packages/khala-sync-client plus bun test tests/live-agent-graph-panel.test.tsx tests/thread-messages-screen.test.tsx tests/ux-contracts.test.ts in clients/khala-mobile; both package typechecks are run with the known unrelated mobile SQLite-store interface failure recorded separately.
+- **Authority boundary:** Binds only the presentation of canonical `live_agent_graph` post-images already admitted into the exact thread scope. It grants no provider, process, transport, or runtime-command authority. A historical projection remains inspectable but explicitly disables controls; the live thread screen currently uses confirmed live entities only. Focus means selecting one typed agent row for inline inspection, not moving execution or issuing a provider command.

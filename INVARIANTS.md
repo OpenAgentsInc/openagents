@@ -646,7 +646,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-mobile/tests/mobile-conversation.test.ts`. The Desktop host
   registry additionally bounds active slots, closes a prior generation before
   replacement, fences stale unsubscribe, and disposes all slots once. Runtime
-  Gateway v7 now schema-decodes the full bounded update and exposes typed
+  Gateway v8 now schema-decodes the full bounded update and exposes typed
   subscribe/resume/unsubscribe outcomes through the existing event channel;
   main resets the registry before Sync authority replacement or sign-out and
   gateway disposal closes it. The Desktop runtime chat consumer registers that
@@ -693,9 +693,21 @@ More specific invariant ledgers apply inside imported apps and packages.
   Real Claude Agent SDK subagent task messages populate stable child nodes and
   parent edges in the same transaction, preserve them through root settlement,
   and discard them only when retry advances attachment generation. The
-  installed Codex SDK 0.139.0 exposes no typed child event, so Codex live child
-  production stays explicitly unsupported rather than inferred from tool text.
-  Codex child production and named-account live receipts remain CUT-11 work.
+  installed Codex SDK 0.139.0 public union exposes no typed child event, so
+  Codex live child production stays explicitly unsupported rather than inferred
+  from tool text. Redacted named runs prove the Claude lifecycle and the current
+  Codex app-server's typed `subAgentActivity` source; Pylon transport convergence
+  and a named confirmed-reconnect receipt remain CUT-11 work.
+  The shared client presentation model now converts canonical post-images into
+  deterministic hierarchy rows with typed action/attention/elapsed/terminal
+  facts, explicit unavailable facts, historical control refusal, stable focus
+  fallback, and a named large-graph remainder. Khala Mobile reads only the exact
+  thread-scope `live_agent_graph`, renders at most 40 rows, exposes the remainder
+  count, and uses ordinary accessible button/selection semantics for inline
+  inspection. This CUT-12 mobile boundary is enforced by
+  `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts` and
+  `clients/khala-mobile/tests/live-agent-graph-panel.test.tsx`; Desktop and
+  physical-device equivalence remain pending.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`

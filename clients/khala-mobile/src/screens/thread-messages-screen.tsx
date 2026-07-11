@@ -3,8 +3,10 @@ import {
   CHAT_THREAD_ENTITY_TYPE,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
+  decodeLiveAgentGraphEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
+  LIVE_AGENT_GRAPH_ENTITY_TYPE,
   RUNTIME_EVENT_ENTITY_TYPE,
   RUNTIME_TURN_ENTITY_TYPE,
   threadScope,
@@ -32,6 +34,7 @@ import { type PopupOptionType, TouchablePopupHandler } from "../components/blurr
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../components/chat-composer"
 import { KhalaScrollToLatestButton } from "../components/khala-scroll-to-latest-button"
 import { KhalaThreadHeader } from "../components/khala-thread-header"
+import { LiveAgentGraphPanel } from "../components/live-agent-graph-panel"
 import { SwipeableItem } from "../components/swipeable-item"
 import { TranscriptPartRow } from "../components/transcript-part-row"
 import { useKhalaAuth } from "../auth/khala-auth-context"
@@ -153,6 +156,14 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
     scope,
     session,
     store
+  })
+  const graphState = useKhalaSyncScopeEntities({
+    decode: decodeLiveAgentGraphEntity,
+    entityType: LIVE_AGENT_GRAPH_ENTITY_TYPE,
+    overlay,
+    scope,
+    session,
+    store,
   })
   // MM-B2 (#8472): the thread entity itself (title, status, repoBinding) is
   // replicated into this same thread-local scope alongside messages/events
@@ -290,6 +301,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
     chatState.error === "Khala Sync scope access was denied" ||
     runtimeState.error === "Khala Sync scope access was denied" ||
     turnState.error === "Khala Sync scope access was denied" ||
+    graphState.error === "Khala Sync scope access was denied" ||
     threadEntityState.error === "Khala Sync scope access was denied"
   const emptyLocalDraft = createdLocally && messages.length === 0 && transcriptParts.length === 0
   const loading = !emptyLocalDraft && status === "loading" && messages.length === 0 && transcriptParts.length === 0
@@ -319,6 +331,10 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
         <Text numberOfLines={1} style={themed($dim)} text={repoBound ? `Repo: ${boundRepo.owner}/${boundRepo.name}` : "No repo — tap to pick one"} />
         <Text style={themed($faint)} text="›" />
       </Pressable>
+      <LiveAgentGraphPanel
+        graphs={graphState.items}
+        phase={graphState.status}
+      />
       <KeyboardAvoidingView
         // iOS: `padding` + a 0 vertical offset makes the composer hug the top
         // of the keyboard exactly. The SafeAreaView's own bottom inset already

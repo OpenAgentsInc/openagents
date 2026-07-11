@@ -50,7 +50,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 9 | CUT-09 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) — deterministic matrix landed; physical receipt owner-deferred, still required | R4 / lifecycle convergence | CUT-08 |
 | 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) — Desktop/mobile no-poll subscription path landed; physical receipt pending | D1 / Runtime Gateway | CUT-09 deterministic matrix; physical receipt remains open by owner exception |
 | 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — schema/Sync/root + real Claude child binding + Gateway v8 reconnect implemented; named Claude/Codex source traces captured; Codex transport convergence + named confirmed reconnect pending | D1 / agent graph | CUT-06, CUT-10 deterministic no-poll path |
-| 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) | D1 / agent UX | CUT-01, CUT-11 |
+| 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) — shared presentation model + mobile thread agent stack landed; Desktop/physical receipts pending | D1 / agent UX | CUT-01, CUT-11 graph contract/delivery |
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) | M1 / mobile binding | CUT-01, CUT-13 |
 | 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) | D2 / commands | CUT-13 |
@@ -508,6 +508,19 @@ Verification: Effect Native contract tests, synthetic scale, built Desktop,
 physical iOS, and Android receipts.  
 Non-goals: remote-host movement.  
 Close rule: merge both clients and attach equivalent receipts.
+
+### 2026-07-11 mobile-first presentation tranche
+
+The shared client now projects canonical graph post-images into deterministic
+hierarchy rows with explicit provider/runtime/session/worktree/tool/attention/
+terminal facts, live-versus-historical authority, stable selection fallback,
+and a named large-graph remainder. Khala Mobile reads the confirmed graph from
+the exact thread scope and renders an accessible, inline agent stack above the
+transcript. Attention auto-opens the hierarchy; tap selection reveals details;
+historical controls fail closed; and the mobile surface caps at 40 rendered
+rows while naming the hidden count. Desktop equivalence and physical iOS/
+Android receipts remain open. See
+[`2026-07-11-cut-12-live-agent-supervision-ui-receipt.md`](./2026-07-11-cut-12-live-agent-supervision-ui-receipt.md).
 
 ---
 

@@ -1858,7 +1858,52 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/khala-mobile-codex-accounts-core.test.ts tests/khala-mobile-codex-accounts-api.test.ts inside clients/khala-mobile (mobile-core projection filter + disconnect round-trip); server side bun run --cwd apps/openagents.com/workers/api test -- src/provider-accounts.test.ts src/provider-account-mobile-routes.test.ts (disconnect soft-deletes the row so listProviderAccountsForUser no longer returns it, and filterMobileVisibleProviderAccountBundle drops dead residue). All run in the package/repo test sweeps before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds only the presentation of canonical `live_agent_graph` post-images already admitted into the exact thread scope. It grants no provider, process, transport, or runtime-command authority. A historical projection remains inspectable but explicitly disables controls; the live thread screen currently uses confirmed live entities only. Focus means selecting one typed agent row for inline inspection, not moving execution or issuing a provider command.",
+      blockerRefs: [],
+      contractId: "khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "packages/khala-sync-client/src/live-agent-graph-presentation.ts",
+        "packages/khala-sync-client/src/live-agent-graph-presentation.test.ts",
+        "clients/khala-mobile/src/components/live-agent-graph-panel.tsx",
+        "clients/khala-mobile/src/screens/thread-messages-screen.tsx",
+        "clients/khala-mobile/tests/live-agent-graph-panel.test.tsx",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Pure projection tests enforce stable hierarchy ordering, explicit missing facts, status/action/attention/terminal/elapsed fields, historical control refusal, rapid-selection fallback, newest-graph selection, and a deterministic large-graph bound.",
+          id: "agent_graph_presentation_deterministic.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/khala-sync-client/src/live-agent-graph-presentation.test.ts",
+        },
+        {
+          description:
+            "A real React Native component mount proves accessible expand, inspect/select, and typed focus actions; attention disclosure; historical control removal; and the 40-row mobile safety remainder.",
+          id: "agent_graph_mobile_component_mount.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/live-agent-graph-panel.test.tsx",
+        },
+      ],
+      productArea: "agent-supervision",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "enforced",
+      statement:
+        "Khala Mobile presents the confirmed canonical agent graph as one accessible parent/subagent hierarchy. Status, attention, current action, elapsed time, session/worktree facts, and terminal reason remain typed; tapping an agent selects the same inspect target; historical imports are labeled and never gain live controls; large graphs disclose their deterministic presentation bound.",
+      surface: "khala-mobile",
+      verification:
+        "bun test src/live-agent-graph-presentation.test.ts in packages/khala-sync-client plus bun test tests/live-agent-graph-panel.test.tsx tests/thread-messages-screen.test.tsx tests/ux-contracts.test.ts in clients/khala-mobile; both package typechecks are run with the known unrelated mobile SQLite-store interface failure recorded separately.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.2",
+  version: "2026-07-11.1",
 }
