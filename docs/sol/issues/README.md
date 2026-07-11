@@ -77,7 +77,7 @@ projection and
 [`desktop-session-recovery.md`](./desktop-session-recovery.md) (#8662), and
 [`desktop-session-loopback-policy.md`](./desktop-session-loopback-policy.md)
 (#8663), and [`desktop-session-pkce.md`](./desktop-session-pkce.md) (#8664),
-remain
+plus [`desktop-session-controls.md`](./desktop-session-controls.md) (#8665), remain
 closed receipts rather than open P0 queue items.
 
 ## Other source records

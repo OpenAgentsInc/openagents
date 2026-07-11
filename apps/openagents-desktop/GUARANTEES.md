@@ -104,10 +104,27 @@ Electron main owns the complete Desktop-native OpenAuth host flow.
 - Runtime Gateway session commands have no arguments and return only bounded
   completed/cancelled/unavailable phase.
 
-This host guarantee does not claim a visible renderer button, live Sync,
-package identity, or physical acceptance.
+This host guarantee does not claim live Sync, package identity, or physical
+acceptance. Visible controls are covered separately below.
 
 Contract: `openagents_desktop.session.loopback_pkce_entry_exit.v1`.
+
+### Typed Effect Native session controls
+
+Desktop Settings renders the explicit Runtime Gateway session phase and one
+appropriate visible action.
+
+- Signed-out, denied, and unavailable states offer `Sign in with GitHub`.
+- Session-ready offers `Sign out`.
+- Loading, unverified, and authenticating states disable the action and show
+  honest progress copy.
+- Both controls dispatch typed Effect Native intents to argument-free Runtime
+  Gateway commands.
+- Runtime responses are schema-decoded to bounded phase only; no browser URL,
+  callback, owner, credential, or storage data reaches renderer state.
+- Session-ready copy does not claim live network Sync.
+
+Contract: `openagents_desktop.session.effect_native_controls.v1`.
 
 ### Recent local Codex chats
 

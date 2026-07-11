@@ -554,6 +554,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   or a bounded timeout. Electron main exchanges the verifier, verifies the
   server owner, saves any immediate rotation, and requires proof of both
   access and refresh revocation before clearing on sign-out.
+- Desktop Effect Native Settings receives only the explicit Runtime Gateway
+  session phase (`signed_out`, `unverified`, `session_ready`, `denied`, or
+  `unavailable`). Its typed sign-in/sign-out intents send no arguments, disable
+  while the host action is in flight, and never render callback, owner, or
+  credential fields; `session_ready` is not presented as live Sync.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
   header. The existing OpenAuth verifier owns rotation; replacement tokens are

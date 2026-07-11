@@ -46,6 +46,7 @@ const DesktopRuntimeBootstrapSchema = Schema.Struct({
   kind: Schema.Literal("runtime.bootstrap"),
   protocolVersion: Schema.Literal(DesktopRuntimeGatewayProtocolVersion),
   lifecycle: Schema.Literals(["starting", "ready", "disposed"]),
+  sessionPhase: Schema.Literals(["signed_out", "unverified", "session_ready", "denied", "unavailable"]),
   capabilities: Schema.Array(DesktopRuntimeCapabilitySchema),
 })
 

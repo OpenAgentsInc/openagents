@@ -108,6 +108,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(calls).toEqual(["sign-in", "sign-out"])
   })
 
+  // Also enforces openagents_desktop.session.effect_native_controls.v1.
   test("keeps native-session entry and exit single-flight", async () => {
     let finish: ((value: { state: "verified" }) => void) | undefined
     const firstAction = new Promise<{ state: "verified" }>(resolve => { finish = resolve })

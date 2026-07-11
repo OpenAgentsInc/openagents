@@ -49,14 +49,17 @@ The greenfield app now has:
 - host-composed loopback listener/browser/exchange/server-verification and
   fail-closed dual-revocation sign-out behind argument-free Runtime Gateway
   commands with bounded outcomes.
+- visible Effect Native Settings session phase and typed sign-in/sign-out
+  intents over argument-free Runtime Gateway commands, with honest disabled
+  in-flight state and no credential/callback projection.
 
 The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
 bundle, and real-Electron fixture smoke. The current architecture receipt is
 `f49a66b4aa`; this is still fixture/development proof, not a signed/live-product
 claim.
 
-Not yet claimed: visible Effect Native session entry/exit actions,
-authoritative Sync threads, complete streamed session state,
+Not yet claimed: physical Desktop auth acceptance, authoritative Sync threads,
+complete streamed session state,
 full workbench, visible authoritative Fleet cockpit, signed distribution, live
 owner account success, or legacy retirement.
 

@@ -57,6 +57,7 @@ export const createDesktopRuntimeGateway = (
     signIn: () => Promise<Readonly<{ state: "verified" | "cancelled" | "unavailable" }>>
     signOut: () => Promise<Readonly<{ state: "signed_out" | "unavailable" }>>
   }>,
+  sessionPhase: () => "signed_out" | "unverified" | "session_ready" | "denied" | "unavailable" = () => "unavailable",
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
@@ -90,6 +91,7 @@ export const createDesktopRuntimeGateway = (
             kind: "runtime.bootstrap",
             lifecycle: phase === "idle" ? "starting" : phase,
             protocolVersion: DesktopRuntimeGatewayProtocolVersion,
+            sessionPhase: sessionPhase(),
           },
         }
       }

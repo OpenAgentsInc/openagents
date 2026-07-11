@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.8",
+  version: "2026-07-10.9",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -112,6 +112,23 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         { id: "desktop_session_pkce.gateway_commands", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Proves argument-free session commands round-trip through the closed Runtime Gateway and return only bounded phase outcomes." },
       ],
       verification: "Desktop PKCE, Runtime Gateway, and Electron-boundary suites plus typecheck/build enforce host composition without a live browser or GUI in tests.",
+    },
+    {
+      contractId: "openagents_desktop.session.effect_native_controls.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "native OpenAgents session UI",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "Desktop Settings renders the exact bounded OpenAgents session phase and routes visible sign-in/sign-out controls through typed Effect Native intents to argument-free Runtime Gateway commands, with honest in-flight and unavailable states.",
+      authorityBoundary: "The renderer sees only signed-out, unverified, session-ready, denied, unavailable, or local authenticating presentation state. It receives no callback/authorize URL, state, code, verifier, owner, token, storage handle, or live Sync authority.",
+      evidenceRefs: ["apps/openagents-desktop/src/renderer/settings.ts", "docs/sol/issues/desktop-session-controls.md", "github:OpenAgentsInc/openagents#8665"],
+      oracles: [
+        { id: "desktop_session_controls.effect_native_intents", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/src/renderer/settings.test.ts", description: "Drives the real Effect Native Settings view and intent registry through signed-out, authenticating, session-ready, sign-in, and sign-out states with a tokenless fake bridge." },
+        { id: "desktop_session_controls.gateway_phase", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Proves bootstrap carries an explicit bounded session phase and session commands remain argument-free and single-flight." },
+      ],
+      verification: "Settings view/intent, Runtime Gateway, and Electron-boundary suites plus Desktop typecheck/build enforce the visible tokenless path without GUI automation.",
     },
   ],
 }

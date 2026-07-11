@@ -22,6 +22,7 @@ import { makeDomRenderer } from "@effect-native/render-dom"
 import {
   unavailableCodexSettingsBridge,
   type CodexSettingsBridge,
+  type OpenAgentsSessionSettingsBridge,
 } from "./settings.ts"
 import {
   desktopShellIntents,
@@ -104,6 +105,37 @@ const codexSettingsBridge: CodexSettingsBridge = {
     return typeof bridge?.codexConnectOpenVerification === "function"
       ? bridge.codexConnectOpenVerification()
       : unavailableCodexSettingsBridge.openVerification()
+  },
+}
+
+let sessionRequestSequence = 0
+const openAgentsSessionSettingsBridge: OpenAgentsSessionSettingsBridge = {
+  status: async () => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return null
+    return bridge.runtimeRequest({
+      kind: "query",
+      requestId: `renderer-session-status-${++sessionRequestSequence}`,
+      query: { id: "runtime.bootstrap" },
+    })
+  },
+  signIn: async () => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return null
+    return bridge.runtimeRequest({
+      kind: "command",
+      commandId: `renderer-session-sign-in-${++sessionRequestSequence}`,
+      command: { id: "session.sign_in" },
+    })
+  },
+  signOut: async () => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return null
+    return bridge.runtimeRequest({
+      kind: "command",
+      commandId: `renderer-session-sign-out-${++sessionRequestSequence}`,
+      command: { id: "session.sign_out" },
+    })
   },
 }
 
@@ -218,7 +250,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge),
     )
     const bridge = (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
     const existing = typeof bridge?.listThreads === "function" ? yield* Effect.promise(bridge.listThreads) : []

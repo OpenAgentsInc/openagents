@@ -46,11 +46,22 @@ export type CodexConnectStatusView =
 export type SettingsState = Readonly<{
   accounts: CodexAccountsView
   connect: CodexConnectStatusView
+  openAgentsSession: DesktopOpenAgentsSessionView
 }>
+
+export type DesktopOpenAgentsSessionView =
+  | "loading"
+  | "authenticating"
+  | "signed_out"
+  | "unverified"
+  | "session_ready"
+  | "denied"
+  | "unavailable"
 
 export const initialSettingsState = (): SettingsState => ({
   accounts: { state: "loading" },
   connect: { state: "idle" },
+  openAgentsSession: "loading",
 })
 
 const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
@@ -74,6 +85,23 @@ const RendererConnectStatusSchema = Schema.Union([
   }),
   Schema.Struct({ state: Schema.Literal("connected"), ref: Schema.String }),
   Schema.Struct({ state: Schema.Literal("failed"), reason: Schema.String }),
+])
+
+const RendererOpenAgentsSessionSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("query_result"),
+    requestId: Schema.String,
+    result: Schema.Struct({
+      kind: Schema.Literal("runtime.bootstrap"),
+      sessionPhase: Schema.Literals(["signed_out", "unverified", "session_ready", "denied", "unavailable"]),
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("session_outcome"),
+    commandId: Schema.String,
+    status: Schema.Literals(["completed", "cancelled", "unavailable"]),
+    phase: Schema.Literals(["session_ready", "signed_out", "unavailable"]),
+  }),
 ])
 
 export const decodeAccountsView = (value: unknown): CodexAccountsView => {
@@ -115,6 +143,16 @@ export const decodeConnectStatusView = (value: unknown): CodexConnectStatusView 
   return status
 }
 
+export const decodeOpenAgentsSessionView = (
+  value: unknown,
+): Exclude<DesktopOpenAgentsSessionView, "loading" | "authenticating"> => {
+  const decoded = Schema.decodeUnknownExit(RendererOpenAgentsSessionSchema)(value)
+  if (!Exit.isSuccess(decoded)) return "unavailable"
+  return decoded.value.kind === "query_result"
+    ? decoded.value.result.sessionPhase
+    : decoded.value.phase
+}
+
 // ---------------------------------------------------------------------------
 // Typed bridge surface the settings handlers need (injected from boot.ts;
 // defaults are honest "unavailable" stand-ins for headless tests).
@@ -135,6 +173,18 @@ export const unavailableCodexSettingsBridge: CodexSettingsBridge = {
   connectStart: async () => ({ state: "failed", reason: "pylon_runtime_unavailable" }),
   connectStatus: async () => ({ state: "failed", reason: "pylon_runtime_unavailable" }),
   openVerification: async () => false,
+}
+
+export type OpenAgentsSessionSettingsBridge = Readonly<{
+  status: () => Promise<unknown>
+  signIn: () => Promise<unknown>
+  signOut: () => Promise<unknown>
+}>
+
+export const unavailableOpenAgentsSessionSettingsBridge: OpenAgentsSessionSettingsBridge = {
+  status: async () => null,
+  signIn: async () => null,
+  signOut: async () => null,
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +218,21 @@ export const DesktopCodexVerificationOpened = defineIntent(
   "DesktopCodexVerificationOpened",
   Schema.Null,
 )
+export const DesktopOpenAgentsSignInRequested = defineIntent(
+  "DesktopOpenAgentsSignInRequested",
+  Schema.Null,
+)
+export const DesktopOpenAgentsSignOutRequested = defineIntent(
+  "DesktopOpenAgentsSignOutRequested",
+  Schema.Null,
+)
 
 export const settingsIntents = [
   DesktopSettingsToggled,
   DesktopCodexConnectRequested,
   DesktopCodexVerificationOpened,
+  DesktopOpenAgentsSignInRequested,
+  DesktopOpenAgentsSignOutRequested,
 ] as const
 
 /**
@@ -189,6 +249,7 @@ export type SettingsCapableState = Readonly<{
 export const makeSettingsHandlers = <S extends SettingsCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: CodexSettingsBridge = unavailableCodexSettingsBridge,
+  openAgentsBridge: OpenAgentsSessionSettingsBridge = unavailableOpenAgentsSessionSettingsBridge,
   sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   maxPolls = 1_300, // ~15 minutes at 700ms — matches main's device-auth timeout
 ) => {
@@ -230,9 +291,15 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         const accounts = decodeAccountsView(
           yield* Effect.promise(() => bridge.listAccounts().catch(() => null)),
         )
+        const openAgentsSession = decodeOpenAgentsSessionView(
+          yield* Effect.promise(() => openAgentsBridge.status().catch(() => null)),
+        )
         yield* update((next) => ({
           ...next,
-          settings: withSettingsAccounts(next.settings, accounts),
+          settings: {
+            ...withSettingsAccounts(next.settings, accounts),
+            openAgentsSession,
+          },
         }))
       }),
     DesktopCodexConnectRequested: () =>
@@ -260,6 +327,42 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         if (current.settings.connect.state !== "awaiting_browser") return
         // No URL crosses the bridge: main opens only the URL it parsed itself.
         yield* Effect.promise(() => bridge.openVerification().catch(() => false))
+      }),
+    DesktopOpenAgentsSignInRequested: () =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        if (
+          current.settings.openAgentsSession === "authenticating" ||
+          current.settings.openAgentsSession === "unverified" ||
+          current.settings.openAgentsSession === "session_ready"
+        ) return
+        yield* update(next => ({
+          ...next,
+          settings: { ...next.settings, openAgentsSession: "authenticating" },
+        }))
+        const phase = decodeOpenAgentsSessionView(
+          yield* Effect.promise(() => openAgentsBridge.signIn().catch(() => null)),
+        )
+        yield* update(next => ({
+          ...next,
+          settings: { ...next.settings, openAgentsSession: phase },
+        }))
+      }),
+    DesktopOpenAgentsSignOutRequested: () =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        if (current.settings.openAgentsSession !== "session_ready") return
+        yield* update(next => ({
+          ...next,
+          settings: { ...next.settings, openAgentsSession: "authenticating" },
+        }))
+        const phase = decodeOpenAgentsSessionView(
+          yield* Effect.promise(() => openAgentsBridge.signOut().catch(() => null)),
+        )
+        yield* update(next => ({
+          ...next,
+          settings: { ...next.settings, openAgentsSession: phase },
+        }))
       }),
   }
 }
@@ -386,6 +489,44 @@ const connectStatusSection = (connect: CodexConnectStatusView): ReadonlyArray<Vi
   ]
 }
 
+const openAgentsSessionSection = (
+  phase: DesktopOpenAgentsSessionView,
+): ReadonlyArray<View> => {
+  const label = phase === "session_ready"
+    ? "OpenAgents session verified"
+    : phase === "signed_out"
+      ? "Signed out"
+      : phase === "denied"
+        ? "Session access removed"
+        : phase === "unverified"
+          ? "Verifying stored session…"
+          : phase === "authenticating"
+            ? "Waiting for secure browser…"
+            : phase === "loading"
+              ? "Checking session…"
+              : "Session unavailable"
+  const tone = phase === "session_ready" ? "success" as const
+    : phase === "denied" || phase === "unavailable" ? "warn" as const
+      : "neutral" as const
+  const blocked = phase === "loading" || phase === "authenticating" || phase === "unverified"
+  return [
+    Badge({
+      key: "settings-openagents-session-status",
+      label,
+      tone,
+      a11y: { label },
+    }),
+    Button({
+      key: "settings-openagents-session-action",
+      label: phase === "session_ready" ? "Sign out" : phase === "authenticating" ? "Working…" : "Sign in with GitHub",
+      variant: phase === "session_ready" ? "secondary" : "primary",
+      disabled: blocked,
+      onPress: IntentRef(phase === "session_ready" ? "DesktopOpenAgentsSignOutRequested" : "DesktopOpenAgentsSignInRequested"),
+      a11y: { label: phase === "session_ready" ? "Sign out of OpenAgents" : "Sign in to OpenAgents with GitHub" },
+    }),
+  ]
+}
+
 export const settingsView = (settings: SettingsState): View => {
   const connectLive = connectStatusIsLive(settings.connect)
   return Card(
@@ -423,6 +564,13 @@ export const settingsView = (settings: SettingsState): View => {
             }),
           ],
         ),
+        Text({
+          key: "settings-openagents-title",
+          content: "OpenAgents session",
+          variant: "label",
+          color: "textMuted",
+        }),
+        ...openAgentsSessionSection(settings.openAgentsSession),
         Text({
           key: "settings-accounts-title",
           content: "Codex accounts",

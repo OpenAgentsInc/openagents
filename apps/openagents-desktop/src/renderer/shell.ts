@@ -54,7 +54,9 @@ import {
   settingsIntents,
   settingsView,
   unavailableCodexSettingsBridge,
+  unavailableOpenAgentsSessionSettingsBridge,
   type CodexSettingsBridge,
+  type OpenAgentsSessionSettingsBridge,
   type SettingsState,
 } from "./settings.ts"
 
@@ -424,8 +426,9 @@ export const makeDesktopShellHandlers = (
   },
   codexBridge: CodexSettingsBridge = unavailableCodexSettingsBridge,
   settingsSleep?: (ms: number) => Promise<void>,
+  openAgentsBridge: OpenAgentsSessionSettingsBridge = unavailableOpenAgentsSessionSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => ({
-  ...makeSettingsHandlers(state, codexBridge, settingsSleep),
+  ...makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep),
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
   DesktopNoteSubmitted: (value) =>

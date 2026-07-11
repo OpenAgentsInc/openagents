@@ -11,11 +11,13 @@ import {
   connectStatusIsLive,
   decodeAccountsView,
   decodeConnectStatusView,
+  decodeOpenAgentsSessionView,
   initialSettingsState,
   settingsView,
   withSettingsAccounts,
   withSettingsConnectStatus,
   type CodexSettingsBridge,
+  type OpenAgentsSessionSettingsBridge,
 } from "./settings.ts"
 import {
   desktopShellIntents,
@@ -62,6 +64,41 @@ const loadedAccounts = withSettingsAccounts(initialSettingsState(), {
 })
 
 describe("settingsView (state -> component tree)", () => {
+  test("renders honest OpenAgents session phases and typed actions", () => {
+    const signedOut = settingsView({
+      ...initialSettingsState(),
+      openAgentsSession: "signed_out",
+    })
+    expect(nodeByKey(signedOut, "settings-openagents-session-status")?.label).toBe("Signed out")
+    const signIn = nodeByKey(signedOut, "settings-openagents-session-action")
+    expect(signIn?.label).toBe("Sign in with GitHub")
+    expect((signIn as { onPress?: { name?: string } }).onPress?.name).toBe(
+      "DesktopOpenAgentsSignInRequested",
+    )
+
+    const ready = settingsView({
+      ...initialSettingsState(),
+      openAgentsSession: "session_ready",
+    })
+    expect(nodeByKey(ready, "settings-openagents-session-status")?.label).toBe(
+      "OpenAgents session verified",
+    )
+    const signOut = nodeByKey(ready, "settings-openagents-session-action")
+    expect(signOut?.label).toBe("Sign out")
+    expect((signOut as { onPress?: { name?: string } }).onPress?.name).toBe(
+      "DesktopOpenAgentsSignOutRequested",
+    )
+
+    const working = settingsView({
+      ...initialSettingsState(),
+      openAgentsSession: "authenticating",
+    })
+    expect(nodeByKey(working, "settings-openagents-session-action")?.disabled).toBe(true)
+    expect(nodeByKey(working, "settings-openagents-session-status")?.label).toBe(
+      "Waiting for secure browser…",
+    )
+  })
+
   test("accounts list renders ref rows with readiness chips; revoked is a warning tone", () => {
     const view = settingsView(loadedAccounts)
     expect(nodeByKey(view, "settings-title")?.content).toBe("Settings")
@@ -163,6 +200,27 @@ describe("settingsView (state -> component tree)", () => {
 })
 
 describe("bridge payload decoding (renderer side)", () => {
+  test("decodes only bounded Runtime Gateway session phases", () => {
+    expect(decodeOpenAgentsSessionView({
+      kind: "query_result",
+      requestId: "status",
+      result: { kind: "runtime.bootstrap", sessionPhase: "session_ready" },
+    })).toBe("session_ready")
+    expect(decodeOpenAgentsSessionView({
+      kind: "session_outcome",
+      commandId: "sign-out",
+      status: "completed",
+      phase: "signed_out",
+    })).toBe("signed_out")
+    expect(decodeOpenAgentsSessionView({
+      kind: "session_outcome",
+      commandId: "bad",
+      status: "completed",
+      phase: "live",
+      accessToken: "forbidden",
+    })).toBe("unavailable")
+  })
+
   test("accounts decode: ok, unavailable, and garbage", () => {
     expect(
       decodeAccountsView({
@@ -350,6 +408,73 @@ describe("typed intent loop end-to-end (settings)", () => {
           state: "failed",
           reason: "pylon_runtime_unavailable",
         })
+      }),
+    )
+  })
+
+  // Oracle for openagents_desktop.session.effect_native_controls.v1.
+  test("OpenAgents sign-in and sign-out use typed tokenless Runtime Gateway intents", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const calls: Array<string> = []
+        const sessionBridge: OpenAgentsSessionSettingsBridge = {
+          status: async () => ({
+            kind: "query_result",
+            requestId: "status",
+            result: { kind: "runtime.bootstrap", sessionPhase: "signed_out" },
+          }),
+          signIn: async () => {
+            calls.push("sign-in")
+            return {
+              kind: "session_outcome",
+              commandId: "sign-in",
+              status: "completed",
+              phase: "session_ready",
+            }
+          },
+          signOut: async () => {
+            calls.push("sign-out")
+            return {
+              kind: "session_outcome",
+              commandId: "sign-out",
+              status: "completed",
+              phase: "signed_out",
+            }
+          },
+        }
+        const state = yield* SubscriptionRef.make<DesktopShellState>({
+          ...baseState,
+          workspace: "settings",
+          settings: { ...initialSettingsState(), openAgentsSession: "signed_out" },
+        })
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(
+            state,
+            () => "18:05",
+            undefined,
+            undefined,
+            undefined,
+            makeBridge([], []),
+            async () => {},
+            sessionBridge,
+          ),
+        )
+
+        const signIn = nodeByKey(
+          desktopShellView(yield* SubscriptionRef.get(state)),
+          "settings-openagents-session-action",
+        ) as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(signIn.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).settings.openAgentsSession).toBe("session_ready")
+
+        const signOut = nodeByKey(
+          desktopShellView(yield* SubscriptionRef.get(state)),
+          "settings-openagents-session-action",
+        ) as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(signOut.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).settings.openAgentsSession).toBe("signed_out")
+        expect(calls).toEqual(["sign-in", "sign-out"])
       }),
     )
   })

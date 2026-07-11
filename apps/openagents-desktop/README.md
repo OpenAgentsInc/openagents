@@ -129,8 +129,10 @@ validates cryptographic state + S256 PKCE, opens the exact authorize request,
 exchanges the callback code, verifies the server owner, and writes encrypted
 custody. Sign-out requires proof that both credential classes were revoked
 before clear. The Runtime Gateway exposes only argument-free entry/exit
-commands and bounded outcomes; a visible renderer action remains the next UI
-leaf.
+commands and bounded outcomes. Effect Native Settings now queries an
+explicit tokenless bootstrap phase and dispatches typed, argument-free sign-in
+or sign-out intents with honest loading/authenticating/ready/unavailable copy.
+Session-ready remains distinct from live Sync.
 
 **One catalog, many hosts.** The transcript-message and composer
 compositions are deliberately structured around the shared Effect Native chat

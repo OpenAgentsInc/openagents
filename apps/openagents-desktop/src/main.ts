@@ -102,7 +102,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     desktopSessionState = result.state
     return result
   },
-})
+}, () => desktopSessionState === "credential_present_unverified" ? "unverified" : desktopSessionState)
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
