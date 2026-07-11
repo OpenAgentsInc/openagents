@@ -25,6 +25,7 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
     expect(preload).toContain("ipcRenderer.on(DesktopCommandEventChannel")
     expect(boot).toContain("bridge?.commands?.onCommand")
     expect(boot).toContain("resolveDesktopDeferredCommandIntent")
+    expect(boot).toContain('source: "restore"')
     expect(boot).toContain("commandNotice")
   })
 

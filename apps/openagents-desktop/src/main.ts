@@ -12,6 +12,7 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import { rmSync } from "node:fs"
 import { BrowserWindow, Menu, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
 import { Effect } from "effect"
 import {
@@ -160,6 +161,12 @@ import {
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
+const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
+  smokeMode
+    ? path.join(app.getPath("temp"), `openagents-desktop-smoke-${process.pid}`)
+    : path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
+)
+app.setPath("userData", desktopUserDataPath)
 const primaryDesktopInstance = app.requestSingleInstanceLock()
 if (!primaryDesktopInstance) app.quit()
 const desktopCommandHost = makeDesktopCommandHost()
@@ -445,11 +452,10 @@ ipcMain.handle(DesktopRuntimeGatewayInvokeChannel, (event, value: unknown) => {
   return outcome instanceof Promise ? outcome.then(recordReturned) : recordReturned(outcome)
 })
 
-// Interim development identity ONLY. The frozen macOS bundle ID / Windows
-// AppUserModelId / deep-link scheme / userData path / update channel are an
-// owner decision (issue #8574 scope 1, NEEDS_OWNER) before the first packaged
-// build. Never reuse com.openagents.khala.code.desktop or khala-code://.
-app.setPath("userData", path.join(app.getPath("appData"), "OpenAgentsDesktopDev"))
+// Interim development identity ONLY. Smoke uses a per-run userData root set
+// before single-instance lock acquisition; its spawned receipt process is
+// explicitly given the same root. Normal development retains this stable path.
+// The frozen packaged identity remains the owner decision tracked by #8574.
 
 const hardenSession = (): void => {
   // Deny-by-default: this shell requests no runtime permissions.
@@ -1538,7 +1544,11 @@ const launchSmokeSecondInstance = async (): Promise<void> => {
       process.execPath,
       [app.getAppPath(), "openagents://command/settings.open"],
       {
-        env: { ...process.env, OPENAGENTS_DESKTOP_SMOKE: "0" },
+        env: {
+          ...process.env,
+          OPENAGENTS_DESKTOP_SMOKE: "0",
+          OPENAGENTS_DESKTOP_USER_DATA: app.getPath("userData"),
+        },
         stdio: "ignore",
       },
     )
@@ -1566,6 +1576,7 @@ const runSmoke = (window: BrowserWindow): void => {
     const ok = snapshot.disposed && active === 0
     console.log("[openagents-desktop smoke] lifecycle-teardown", JSON.stringify({ ok, active }))
     desktopCorrelationJournal.dispose()
+    if (smokeMode) rmSync(app.getPath("userData"), { recursive: true, force: true })
     app.exit(ok ? code : 1)
   }
   const timeout = setTimeout(() => {

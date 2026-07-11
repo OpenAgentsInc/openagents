@@ -21,6 +21,19 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
       expect(command).toHaveProperty("defaultBindings")
     }
     expect(resolveDesktopCommandBindings([]).conflicts).toEqual([])
+    expect(desktopCanonicalCommandRegistry.map(value => value.id)).toEqual(expect.arrayContaining([
+      "chat.new",
+      "chat.open",
+      "palette.toggle",
+      "settings.open",
+      "workspace.choose",
+      "workspace.files",
+      "workspace.fleet",
+      "workspace.home",
+      "workspace.inbox",
+      "workspace.review",
+      "workspace.terminal",
+    ]))
   })
 
   test("normalizes aliases and removes every conflicted chord until the user recovers it", () => {

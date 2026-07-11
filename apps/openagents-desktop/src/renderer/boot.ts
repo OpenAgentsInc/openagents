@@ -72,6 +72,7 @@ import {
 } from "../coding-catalog-contract.ts"
 import {
   decodeDesktopCommandBindingProjectionOrNull,
+  desktopCanonicalCommandRegistry,
   type DesktopCommandBindingProjection,
   type DesktopCommandId,
   type DesktopDeferredCommand,
@@ -495,13 +496,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const firstPage = selected === null ? null : yield* Effect.promise(() => historyHost.page(selected, restored?.offset??0, 50))
       yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
     }
+    let restoredWorkspace: DesktopWorkspaceName | null = null
     const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
     if (codingCatalog.sessions.length > 0) {
-      const restoredWorkspace: DesktopWorkspaceName = desktopWorkspaceForCodingFocus(codingCatalog.focus)
+      restoredWorkspace = desktopWorkspaceForCodingFocus(codingCatalog.focus)
       yield* SubscriptionRef.update(state, current => ({
         ...current,
         codingCatalog,
-        workspace: restoredWorkspace,
       }))
     }
     const existing = yield* Effect.promise(chat.listThreads)
@@ -522,28 +523,43 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       ...current,
       settings: { ...current.settings, openAgentsSession: sessionView },
     }))
+    const dispatchDeferredCommand = (command: DesktopDeferredCommand) => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const resolution = resolveDesktopDeferredCommandIntent(command, {
+        sessionReady: current.settings.openAgentsSession === "session_ready",
+        verifiedOwner: current.settings.openAgentsSession === "session_ready",
+        workspaceReady: current.workspaceSnapshot !== null || current.codingCatalog.sessions.length > 0,
+      })
+      if (resolution.state === "rejected") {
+        yield* SubscriptionRef.update(state, value => ({
+          ...value,
+          commandNotice: resolution.reason === "duplicate"
+            ? "That command request was already handled. The duplicate was ignored."
+            : "That command is unavailable for the current session or workspace.",
+        }))
+        return
+      }
+      yield* SubscriptionRef.update(state, value => ({ ...value, commandNotice: null }))
+      const ref = IntentRef(resolution.intentName, StaticPayload(resolution.payload))
+      yield* registry.dispatch(resolveIntentRef(ref))
+    })
+    if (restoredWorkspace !== null) {
+      const commandId = restoredWorkspace === "chat" ? "chat.open" : `workspace.${restoredWorkspace}`
+      const definition = desktopCanonicalCommandRegistry.find(value => value.id === commandId)
+      if (definition !== undefined) {
+        yield* dispatchDeferredCommand({
+          schema: "openagents.desktop.deferred_command.v1",
+          requestRef: `command.restore.${restoredWorkspace}`,
+          commandId: definition.id,
+          arguments: definition.defaultArguments,
+          source: "restore",
+          delivery: "dispatch",
+        })
+      }
+    }
     if (typeof bridge?.commands?.onCommand === "function") {
       const unsubscribeCommands = bridge.commands.onCommand(command => {
-        void Effect.runPromise(Effect.gen(function* () {
-          const current = yield* SubscriptionRef.get(state)
-          const resolution = resolveDesktopDeferredCommandIntent(command, {
-            sessionReady: current.settings.openAgentsSession === "session_ready",
-            verifiedOwner: current.settings.openAgentsSession === "session_ready",
-            workspaceReady: current.workspaceSnapshot !== null || current.codingCatalog.sessions.length > 0,
-          })
-          if (resolution.state === "rejected") {
-            yield* SubscriptionRef.update(state, value => ({
-              ...value,
-              commandNotice: resolution.reason === "duplicate"
-                ? "That command request was already handled. The duplicate was ignored."
-                : "That command is unavailable for the current session or workspace.",
-            }))
-            return
-          }
-          yield* SubscriptionRef.update(state, value => ({ ...value, commandNotice: null }))
-          const ref = IntentRef(resolution.intentName, StaticPayload(resolution.payload))
-          yield* registry.dispatch(resolveIntentRef(ref))
-        }))
+        void Effect.runPromise(dispatchDeferredCommand(command))
       })
       window.addEventListener("pagehide", () => unsubscribeCommands(), { once: true })
       if (typeof bridge.commands.ready === "function") {
