@@ -23,6 +23,12 @@ import {
   decodeFleetStageRequest,
   unavailableFleetStageResult,
 } from "./fleet-contract.ts"
+import {
+  ProviderAccountsListChannel,
+  ProviderAccountsUsageChannel,
+  decodeProviderAccountUsageRequest,
+  unavailableProviderAccountUsageResult,
+} from "./provider-accounts-contract.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
 import {
   DesktopWorkspaceChooseChannel,
@@ -113,4 +119,17 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   codexConnectStart: () => ipcRenderer.invoke(CodexConnectStartChannel),
   codexConnectStatus: () => ipcRenderer.invoke(CodexConnectStatusChannel),
   codexConnectOpenVerification: () => ipcRenderer.invoke(CodexConnectOpenChannel),
+  /**
+   * Provider-neutral fleet accounts (#8712): read-only projections. List is
+   * renderer-argument-free; usage carries only a schema-validated account ref.
+   */
+  providerAccounts: {
+    list: () => ipcRenderer.invoke(ProviderAccountsListChannel),
+    usage: (ref: unknown) => {
+      const request = decodeProviderAccountUsageRequest({ ref })
+      return request === null
+        ? Promise.resolve(unavailableProviderAccountUsageResult("unknown", "invalid_request"))
+        : ipcRenderer.invoke(ProviderAccountsUsageChannel, request)
+    },
+  },
 })

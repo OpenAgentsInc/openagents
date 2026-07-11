@@ -1,0 +1,48 @@
+{
+  "schema": "openagents.pylon.accounts_list.v0.3",
+  "observedAt": "2026-07-11T00:00:00.000Z",
+  "accounts": [
+    {
+      "provider": "codex",
+      "selector": "registry_ref",
+      "accountRef": "codex",
+      "accountRefHash": "hash-codex",
+      "homeRef": "accounts/codex/codex",
+      "homeState": "present",
+      "email": "owner@example.com",
+      "readiness": { "state": "ready" },
+      "blockerRefs": []
+    },
+    {
+      "provider": "codex",
+      "selector": "registry_ref",
+      "accountRef": "codex-2",
+      "accountRefHash": "hash-codex-2",
+      "homeRef": "accounts/codex/codex-2",
+      "homeState": "present",
+      "readiness": { "state": "credentials_revoked" },
+      "blockerRefs": []
+    },
+    {
+      "provider": "claude_agent",
+      "selector": "registry_ref",
+      "accountRef": "claude-pylon-3",
+      "accountRefHash": "hash-claude-pylon-3",
+      "homeRef": "accounts/claude_agent/claude-pylon-3",
+      "homeState": "present",
+      "readiness": { "state": "something_new" },
+      "blockerRefs": []
+    },
+    {
+      "provider": "codex",
+      "selector": "default_home",
+      "accountRef": null,
+      "accountRefHash": "hash-default",
+      "homeRef": "default",
+      "homeState": "present",
+      "readiness": { "state": "ready" },
+      "blockerRefs": []
+    }
+  ],
+  "blockerRefs": []
+}

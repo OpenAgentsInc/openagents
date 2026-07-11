@@ -32,6 +32,13 @@ import {
   CodexConnectStatusChannel,
 } from "./codex-connect-contract.ts"
 import { makeCodexConnectService, makeFixtureSpawnPylon } from "./codex-connect.ts"
+import {
+  ProviderAccountsListChannel,
+  ProviderAccountsUsageChannel,
+  decodeProviderAccountUsageRequest,
+  unavailableProviderAccountUsageResult,
+} from "./provider-accounts-contract.ts"
+import { makeFixtureProviderAccountsSpawn, makeProviderAccountsService } from "./provider-accounts.ts"
 import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult } from "./fleet-contract.ts"
 import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
@@ -95,6 +102,13 @@ const codexConnect = makeCodexConnectService(here, {
   ...(smokeMode ? { spawnPylon: makeFixtureSpawnPylon() } : {}),
   openExternal: (url) => shell.openExternal(url),
 })
+if (smokeMode) {
+  console.log("[openagents-desktop] provider-accounts running in SMOKE FIXTURE mode (no real pylon spawn)")
+}
+const providerAccounts = makeProviderAccountsService(
+  here,
+  smokeMode ? { spawnPylon: makeFixtureProviderAccountsSpawn() } : {},
+)
 let desktopSessionVault: DesktopSessionVault | null = null
 let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "unavailable"
 const desktopOperationSessionRef = `session.desktop.${randomUUID()}`
@@ -407,6 +421,17 @@ ipcMain.handle(CodexAccountsChannel, () => hostLifecycle.account()?.listAccounts
 ipcMain.handle(CodexConnectStartChannel, () => hostLifecycle.account()?.start() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
 ipcMain.handle(CodexConnectStatusChannel, () => hostLifecycle.account()?.status() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
 ipcMain.handle(CodexConnectOpenChannel, () => hostLifecycle.account()?.openVerification() ?? Promise.resolve(false))
+
+// Provider-neutral fleet accounts (#8712): read-only projections. List takes
+// no renderer arguments; usage validates the account ref on both sides of the
+// boundary. Failures stay typed `{ ok: false, reason }` — never a throw.
+ipcMain.handle(ProviderAccountsListChannel, () => providerAccounts.listProviderAccounts())
+ipcMain.handle(ProviderAccountsUsageChannel, (_event, value: unknown) => {
+  const request = decodeProviderAccountUsageRequest(value)
+  return request === null
+    ? unavailableProviderAccountUsageResult("unknown", "invalid_request")
+    : providerAccounts.fetchProviderAccountUsage(request.ref)
+})
 
 // Deny-by-default for every WebContents: no navigation away from the bundled
 // renderer, no window.open, no <webview> attachment.
@@ -841,6 +866,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   hostLifecycle.dispose()
+  providerAccounts.dispose()
   desktopCorrelationJournal.dispose()
 })
 
