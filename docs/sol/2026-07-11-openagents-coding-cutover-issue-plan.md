@@ -53,7 +53,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) — shared presentation model + mobile and Desktop thread agent stacks landed; physical iOS/Android receipts pending | D1 / agent UX | CUT-01, CUT-11 graph contract/delivery |
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) — closed `0c49648217`; canonical shared/hosted/device-local catalog, typed Desktop navigation, and restart/reload recovery receipt | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) — deterministic/native implementation complete through `5aeabdbb1e`; authenticated directory, exact restore, live fence, and URL/notification delivery landed; physical receipts pending | M1 / mobile binding | CUT-01, CUT-13 |
-| 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) | D2 / commands | CUT-13 |
+| 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) — canonical registry/conflict/deferred-open contract landed `aa3183748c`; host routing/persistence/packaged receipt pending | D2 / commands | CUT-13 |
 | 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) | D1-D2 / interaction | CUT-12, CUT-15 |
 | 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) | D3 / workspace | CUT-13 |
 | 18 | CUT-18 | [#8698](https://github.com/OpenAgentsInc/openagents/issues/8698) | D3 / editor | CUT-17 |
@@ -672,6 +672,19 @@ Verification: registry coverage oracle, conflict tests, and packaged-host deep-
 link/single-instance receipt.  
 Non-goals: release signing.  
 Close rule: merge with command coverage report.
+
+### 2026-07-11 canonical registry tranche
+
+Desktop now has one typed registry carrying stable command id, intent, scope,
+availability, authorization, argument/result shape, default arguments and
+bindings, and palette visibility. The existing Effect Native palette derives
+from it. User chord aliases normalize through a bounded grammar; conflicts are
+reported deterministically and removed from dispatch until recovered. Native
+menu, deep-link, second-instance, and restore sources share one closed deferred
+envelope and retain current readiness/owner gates. Full Desktop passes 385/385
+with 2,090 expectations; typecheck and build pass. Host routing, user binding
+persistence/settings recovery, and the packaged receipt remain open. See
+[`2026-07-11-cut-15-canonical-command-registry-receipt.md`](./2026-07-11-cut-15-canonical-command-registry-receipt.md).
 
 ---
 

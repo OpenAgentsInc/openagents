@@ -3,8 +3,8 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 complete; CUT-14 mobile implementation complete, physical receipts open)
-- Revision: 54
+  CUT-13 complete; CUT-14 physical receipts open; CUT-15 command contract active)
+- Revision: 55
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -632,6 +632,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   listeners. Only physical iOS/Android process-death/reconnect receipts remain
   open. See
   [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
+- CUT-15 now has one canonical Desktop registry carrying stable command id,
+  typed intent, scope, readiness, authorization, arguments/results, default
+  binding, and palette visibility. The Effect Native palette derives from it.
+  User binding aliases normalize deterministically; conflicted chords dispatch
+  nothing until recovered. One closed deferred-command envelope covers native
+  menu, deep-link, second-instance, and restore sources while preserving
+  readiness/owner gates. Host routing, persistence/settings recovery, and the
+  packaged single-instance receipt remain open. See
+  [`CUT-15 receipt`](./2026-07-11-cut-15-canonical-command-registry-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

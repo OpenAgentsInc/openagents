@@ -807,6 +807,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   both native listeners and clears the queue. This is enforced by
   `apps/openagents-mobile/tests/native-coding-target-delivery.test.ts`;
   physical iOS/Android receipts remain CUT-14 work.
+- Desktop command metadata has one canonical typed registry at
+  `apps/openagents-desktop/src/desktop-command-contract.ts`. Each command names
+  its stable id, intent, scope, readiness, authorization, argument/result
+  shape, default bindings, and palette visibility; the renderer palette derives
+  from it rather than maintaining a second list. User chord aliases normalize
+  to one bounded grammar, conflicting chords dispatch nothing until recovered,
+  and malformed/unknown overrides are ignored. Deferred menu/deep-link/
+  second-instance/restore inputs decode through the closed v1 envelope and
+  still require current readiness and owner authority. Host routing and the
+  packaged single-instance receipt remain CUT-15 work.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed
