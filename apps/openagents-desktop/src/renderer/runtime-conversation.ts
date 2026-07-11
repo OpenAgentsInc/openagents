@@ -15,6 +15,9 @@ export type RuntimeConversationOptions = Readonly<{
 
 let requestSequence = 0
 
+const unavailableLocalHarnessMessage =
+  "Fable requires a live Runtime Gateway conversation. Select Codex or sign in to OpenAgents Sync before targeting Fable."
+
 const timestamp = (value: string): string => {
   const date = new Date(value)
   return Number.isFinite(date.getTime())
@@ -266,12 +269,20 @@ export const makeRuntimeConversationChatHost = (
   }
 }
 
+const failClosedLocalHarnessHost = (local: ChatHost): ChatHost => ({
+  ...local,
+  sendMessage: async input => input.harness === "fable"
+    ? { ok: false, error: unavailableLocalHarnessMessage }
+    : local.sendMessage(input),
+})
+
 export const selectDesktopChatHost = async (input: Readonly<{
   request: RuntimeConversationRequest | undefined
   local: ChatHost
   options?: Omit<RuntimeConversationOptions, "request">
 }>): Promise<ChatHost> => {
-  if (input.request === undefined) return input.local
+  const local = failClosedLocalHarnessHost(input.local)
+  if (input.request === undefined) return local
   const result = await input.request({
     kind: "query",
     requestId: `renderer-conversation-mode-${++requestSequence}`,
@@ -279,5 +290,5 @@ export const selectDesktopChatHost = async (input: Readonly<{
   })
   return result.kind === "conversation_catalog" && result.status.phase === "live"
     ? makeRuntimeConversationChatHost({ request: input.request, ...input.options })
-    : input.local
+    : local
 }

@@ -20,11 +20,15 @@ describe("authoritative Runtime Gateway chat adapter", () => {
   })
 
   test("selects one mode at boot and retains local chat when Sync is unavailable", async () => {
+    const sent: Array<{ id: string; message: string; harness?: string }> = []
     const local: ChatHost = {
-      listThreads: async () => [],
+      listThreads: async () => [{ id: "thread.local.1", title: "Local", updatedAt: now, notes: [] }],
       newThread: async () => null,
       openThread: async () => null,
-      sendMessage: async () => ({ ok: false }),
+      sendMessage: async input => {
+        sent.push({ id: input.id, message: input.message, harness: input.harness })
+        return { ok: true }
+      },
     }
     const selected = await selectDesktopChatHost({
       local,
@@ -34,7 +38,14 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         reason: "not_live",
       }),
     })
-    expect(selected).toBe(local)
+    expect(await selected.listThreads()).toEqual([{ id: "thread.local.1", title: "Local", updatedAt: now, notes: [] }])
+    await expect(selected.sendMessage({ id: "thread.local.1", message: "no substitute", harness: "fable" })).resolves.toEqual({
+      ok: false,
+      error: "Fable requires a live Runtime Gateway conversation. Select Codex or sign in to OpenAgents Sync before targeting Fable.",
+    })
+    expect(sent).toEqual([])
+    await expect(selected.sendMessage({ id: "thread.local.1", message: "legacy ok", harness: "codex" })).resolves.toEqual({ ok: true })
+    expect(sent).toEqual([{ id: "thread.local.1", message: "legacy ok", harness: "codex" }])
 
     const catchingUp = await selectDesktopChatHost({
       local,
@@ -45,7 +56,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         threads: [],
       }),
     })
-    expect(catchingUp).toBe(local)
+    await expect(catchingUp.sendMessage({ id: "thread.local.1", message: "still closed", harness: "fable" })).resolves.toMatchObject({ ok: false })
   })
 
   test("maps confirmed threads/messages and waits for exact mutation refs", async () => {
