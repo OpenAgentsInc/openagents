@@ -829,7 +829,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   attachments, stale context, and unavailable/revoked/offline targets. Exact
   duplicate queueing is idempotent, and retry preserves submission/intent/
   idempotency identity. Its bounded receipt never carries prompt, attachment,
-  account, path, editor, or diff content.
+  account, path, editor, or diff content. Native restart recovery persists the
+  canonical snapshot only under the immutable identity's device-local
+  `local_entities` scope, with exact owner/draft binding, bounded size/count,
+  and stale/conflict/duplicate outcomes; it never enters hosted Sync.
 - Provider questions, tool approvals, and plan reviews use the private
   `openagents.runtime_interaction.v1` authority and `runtime_interaction` Sync
   entity. New requests must match authenticated owner, exact thread/turn,

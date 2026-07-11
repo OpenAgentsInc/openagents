@@ -5,7 +5,7 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.2",
+    version: "2026-07-11.3",
     contracts: [
       {
         contractId: "openagents_mobile.seam.identity.local_first_account_link.v1",
@@ -45,6 +45,45 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         ],
         verification:
           "Mobile sync-host, Home, session, typecheck, and shared local-authority suites.",
+      },
+      {
+        contractId: "openagents_mobile.seam.runtime_authoritative_interactions.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "runtime questions and approvals",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "sol-roadmap",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "Mobile renders grouped provider questions, tool approvals, and plan reviews from confirmed exact-thread authority; actions disable while reconciling and only confirmed replacement can show resolved, expired, or revoked state.",
+        authorityBoundary:
+          "Effect Native selection is local view state. Every consequential decision carries exact interaction/thread/turn and stable decision/idempotency refs through runtime.decideInteraction; cached, late, foreign, revoked, and unconfirmed outcomes never become visible authority.",
+        seam: {
+          client: "apps/openagents-mobile/src/screens/home-core.ts",
+          server: "packages/khala-sync-server/src/runtime-mutators.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
+          "packages/khala-sync-client/src/runtime-interactions.ts",
+          "docs/sol/2026-07-11-cut-16-composer-runtime-interactions-receipt.md",
+          "github:OpenAgentsInc/openagents#8696",
+        ],
+        oracles: [
+          {
+            id: "mobile_authoritative_runtime_interactions",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves grouped selection, disabled reconciliation, exact decisions, confirmed resolution, and terminal expired/revoked rendering.",
+          },
+        ],
+        verification:
+          "Mobile conversation, authoritative Home, sync-host, full app, and typecheck suites; physical screen-reader and device receipts remain open on #8696.",
       },
       {
         contractId: "openagents_mobile.seam.coding_authenticated_navigation.v1",

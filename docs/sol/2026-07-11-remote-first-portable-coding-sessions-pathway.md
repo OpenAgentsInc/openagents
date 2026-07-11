@@ -103,9 +103,10 @@ CUT-16 [#8696] now supplies the first portable composer/interaction substrate:
 one private ref-bound rich draft, durable continue/retry/close controls, and a
 provider-neutral question/tool-approval/plan-review lifecycle whose exact
 decision, duplicate, conflict, expiry, revocation, and live-only projection
-semantics are shared by Desktop and mobile clients. This does not yet make the
-provider execution portable: app hosts, Pylon/provider consumption, draft
-persistence, and live physical receipts remain open, and a default
+semantics are shared by Desktop and mobile clients. Native device-local draft
+recovery, Desktop protocol-v9 transport, and mobile interaction controls are
+now active. This does not yet make provider execution portable: Desktop UI,
+Pylon/provider consumption, and live physical receipts remain open, and a default
 non-interactive provider policy must not be relaxed merely to create a demo.
 
 ### Episodes 248–249 calibration
