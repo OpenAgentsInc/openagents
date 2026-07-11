@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
-import { Platform, Pressable, Text as RNText, TextInput, View as RNView } from "react-native"
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Text as RNText,
+  TextInput,
+  View as RNView,
+} from "react-native"
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Effect, Stream } from "@effect-native/core/effect"
@@ -65,19 +73,27 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation }: {
   }, [program, syncPhase])
 
   const chrome = chromeProps(homeState)
+  const submitTurnAndDismiss = (text: string) => {
+    Keyboard.dismiss()
+    program.khala.submitTurn(text)
+  }
 
   return (
     <RNView style={{ flex: 1, backgroundColor: khalaTheme.color.background }}>
-      <SafeAreaView edges={["top"]} style={{ flex: 1 }} pointerEvents="box-none">
-        <RNView style={{ flex: 1 }}>
-          <EffectNativeHost
-            viewStream={program.contentViewStream}
-            report={program.report}
-            theme={khalaTheme}
-            platform={enPlatform}
-            initialView={renderContentView(program.initialState)}
-          />
-        </RNView>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <SafeAreaView edges={["top"]} style={{ flex: 1 }} pointerEvents="box-none">
+          <Pressable accessible={false} onPress={Keyboard.dismiss} style={{ flex: 1 }}>
+            <EffectNativeHost
+              viewStream={program.contentViewStream}
+              report={program.report}
+              theme={khalaTheme}
+              platform={enPlatform}
+              initialView={renderContentView(program.initialState)}
+            />
+          </Pressable>
 
         {chrome.chromeVisible ? (
           <>
@@ -124,14 +140,16 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation }: {
                       placeholder={chrome.composerPlaceholder}
                       placeholderTextColor={khalaTheme.color.textMuted}
                       onChangeText={program.khala.draftChanged}
-                      onSubmitEditing={() => program.khala.submitTurn(chrome.draft)}
+                      onSubmitEditing={() => submitTurnAndDismiss(chrome.draft)}
+                      returnKeyType="send"
+                      submitBehavior="blurAndSubmit"
                       style={{ flex: 1, color: khalaTheme.color.textPrimary, fontSize: 16 }}
                     />
-                    <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => program.khala.submitTurn(chrome.draft)}>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => submitTurnAndDismiss(chrome.draft)}>
                       <RNText style={{ color: khalaTheme.color.accent, fontSize: 20 }}>{chrome.sending ? "…" : "↑"}</RNText>
                     </Pressable>
                   </RNView>
-                ) : <GlassComposer placeholder={chrome.composerPlaceholder} text={chrome.draft} isSending={chrome.sending} onTextChange={(event) => program.khala.draftChanged(event.nativeEvent.text)} onSubmit={(event) => program.khala.submitTurn(event.nativeEvent.text)} onTapPlus={program.chrome.pressNewChat} style={{ height: 54 }} />}
+                ) : <GlassComposer placeholder={chrome.composerPlaceholder} text={chrome.draft} isSending={chrome.sending} onTextChange={(event) => program.khala.draftChanged(event.nativeEvent.text)} onSubmit={(event) => submitTurnAndDismiss(event.nativeEvent.text)} onTapPlus={() => { Keyboard.dismiss(); program.chrome.pressNewChat() }} style={{ height: 54 }} />}
               </RNView>
             ) : null}
           </>
@@ -151,7 +169,8 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation }: {
             <Pressable accessibilityRole="button" accessibilityLabel="Close navigation" onPress={program.chrome.toggleDrawer} style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.55)" }} />
           </RNView>
         ) : null}
-      </SafeAreaView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </RNView>
   )
 }
