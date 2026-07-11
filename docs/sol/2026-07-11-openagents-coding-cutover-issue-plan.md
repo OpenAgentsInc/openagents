@@ -49,7 +49,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 8 | CUT-08 | [#8688](https://github.com/OpenAgentsInc/openagents/issues/8688) — closed; deterministic matrix receipt | R4 / event convergence | CUT-07 |
 | 9 | CUT-09 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) — deterministic matrix landed; physical receipt owner-deferred, still required | R4 / lifecycle convergence | CUT-08 |
 | 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) — shared/mobile, Desktop host/wire, and renderer adapter landed; no-poll consumer and physical receipt pending | D1 / Runtime Gateway | CUT-09 deterministic matrix; physical receipt remains open by owner exception |
-| 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — canonical schema/replay laws and provider normalization implemented; live bindings/projection/traces pending | D1 / agent graph | CUT-06, CUT-10 host/wire; held renderer consumer remains open |
+| 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — schema/replay, provider normalization, and Sync post-image implemented; live producer/Gateway/traces pending | D1 / agent graph | CUT-06, CUT-10 host/wire; held renderer consumer remains open |
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) | D1 / agent UX | CUT-01, CUT-11 |
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) | M1 / mobile binding | CUT-01, CUT-13 |
@@ -452,8 +452,9 @@ and refuses stale/gapped generations, identity/cursor/timestamp regression,
 terminal reopening, missing/mismatched parents, orphan tools, and cycles. It
 includes typed Codex app-server and Claude Agent SDK observation adapters with
 equivalent status/tool semantics and explicit provider omission. It does not
-claim live producer bindings, production Sync authority, Gateway emission, or
-named-account traces. See
+includes a validated Khala Sync full-post-image entity under the session thread
+scope. It does not claim the server producer/changelog writer, live provider
+binding, Gateway emission, or named-account traces. See
 [`2026-07-11-cut-11-live-agent-graph-receipt.md`](./2026-07-11-cut-11-live-agent-graph-receipt.md).
 
 ---

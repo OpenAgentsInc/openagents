@@ -75,6 +75,10 @@ export * from "./tokens-served-mix.js"
 // module doc for why). Self-contained module (no cycle).
 export * from "./activity-timeline-snapshot.js"
 
+// Canonical live Codex/Claude agent-graph post-image contract (CUT-11): one
+// graph entity per thread/session scope, validated by the shared graph laws.
+export * from "./live-agent-graph.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------
@@ -157,6 +161,8 @@ export const agentRunScope = (runId: string): SyncScope =>
   scope("agent_run", runId)
 export const threadScope = (threadId: string): SyncScope =>
   scope("thread", threadId)
+export const liveAgentGraphScope = (sessionRef: string): SyncScope =>
+  threadScope(sessionRef)
 export const fleetRunScope = (fleetRunId: string): SyncScope =>
   scope("fleet_run", fleetRunId)
 export const publicScope = (channel: string): SyncScope =>

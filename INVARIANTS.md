@@ -666,8 +666,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   enforced by `packages/agent-runtime-schema/src/live-agent-graph.test.ts`.
   Provider-specific Codex app-server and Claude Agent SDK observation adapters
   now exhaustively map their distinct status/tool vocabulary into equivalent
-  graph facts and loss-account omitted facts explicitly. Live producer
-  bindings, durable Khala Sync entities, Runtime Gateway emission, client read
+  graph facts and loss-account omitted facts explicitly. Their canonical
+  output now has a registered Khala Sync full-post-image entity boundary:
+  one validated `live_agent_graph` per `scope.thread.<sessionRef>`, keyed by
+  stable `graphRef` and advanced only through the shared exact-cursor reducer.
+  The server producer/changelog writer, Runtime Gateway emission, client read
   models, and live receipts remain CUT-11 work; registering these contracts
   does not itself claim a live graph authority.
 
@@ -675,7 +678,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
   define target contracts for a canonical live agent graph, graph-wide
   attachment fencing, portable per-child transcript/activity cursors, replay
-  repair, and one typed click/tap/hotkey action path. These are **pending model
+  repair, and one typed click/tap/hotkey action path. Except for the registered
+  graph/adapters/Sync entity boundary above, these remain **pending model
   boundaries**, not current production authority or shipped-invariant claims.
 - Current provider-native Codex topology remains owner-local, read-only, and
   loss-accounted. The landed inline child card is a bounded history projection;
