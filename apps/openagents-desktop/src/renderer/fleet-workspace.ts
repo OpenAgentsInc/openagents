@@ -41,6 +41,20 @@ export type FleetAccount = Readonly<{
   readiness: FleetAccountReadiness
 }>
 
+/**
+ * One provider rate-limit window (EP250 sidebar accounts box), mirrored from
+ * the main-process contract (../provider-accounts-contract.ts). `label` is
+ * pylon's own window label ("5h", "weekly", "hourly", …); `remainingPercent`
+ * is what the sidebar usage bar renders.
+ */
+export type FleetUsageWindow = Readonly<{
+  label: string
+  usedPercent: number
+  remainingPercent: number
+  windowMinutes: number | null
+  resetsAt: string | null
+}>
+
 export type FleetUsageEntry =
   | Readonly<{ state: "checking" }>
   | Readonly<{
@@ -49,6 +63,12 @@ export type FleetUsageEntry =
       inputTokens: number | null
       outputTokens: number | null
       totalTokens: number | null
+      /**
+       * Rate-limit windows, present only when the provider actually reported
+       * them on this probe (codex 5h/weekly). Absent means "no usage-window
+       * data" — the sidebar bar then renders grayed, never a fake fill.
+       */
+      windows?: ReadonlyArray<FleetUsageWindow>
     }>
   | Readonly<{ state: "failed"; reason: string }>
 
@@ -110,9 +130,36 @@ const RendererFleetUsageSchema = Schema.Union([
       outputTokens: Schema.NullOr(Schema.Number),
       totalTokens: Schema.NullOr(Schema.Number),
     }),
+    windows: Schema.Array(Schema.Struct({
+      label: Schema.String,
+      usedPercent: Schema.Number,
+      remainingPercent: Schema.Number,
+      windowMinutes: Schema.NullOr(Schema.Number),
+      resetsAt: Schema.NullOr(Schema.String),
+    })).pipe(Schema.optionalKey),
   }),
   Schema.Struct({ ok: Schema.Literal(false), ref: Schema.String, reason: Schema.String }),
 ])
+
+const clampWindowPercent = (value: number): number => Math.min(100, Math.max(0, value))
+
+/** Renderer-side window bounding (defense-in-depth mirror of the main side). */
+const boundFleetUsageWindows = (
+  windows: ReadonlyArray<FleetUsageWindow> | undefined,
+): ReadonlyArray<FleetUsageWindow> =>
+  (windows ?? [])
+    .filter((window) => Number.isFinite(window.usedPercent) && Number.isFinite(window.remainingPercent))
+    .slice(0, 4)
+    .map((window) => ({
+      label: window.label.slice(0, 20),
+      usedPercent: clampWindowPercent(window.usedPercent),
+      remainingPercent: clampWindowPercent(window.remainingPercent),
+      windowMinutes:
+        window.windowMinutes !== null && Number.isFinite(window.windowMinutes) && window.windowMinutes >= 0
+          ? Math.floor(window.windowMinutes)
+          : null,
+      resetsAt: window.resetsAt === null ? null : window.resetsAt.slice(0, 40),
+    }))
 
 export type FleetAccountsProjection =
   | Readonly<{ ok: true; generatedAt: string; accounts: ReadonlyArray<FleetAccount> }>
@@ -142,12 +189,14 @@ export const decodeFleetUsageEntry = (value: unknown, ref: string): FleetUsageEn
     return { state: "failed", reason: "invalid_bridge_payload" }
   }
   if (!decoded.value.ok) return { state: "failed", reason: decoded.value.reason.slice(0, 120) }
+  const windows = boundFleetUsageWindows(decoded.value.windows)
   return {
     state: "checked",
     refreshedAt: decoded.value.refreshedAt.slice(0, 40),
     inputTokens: decoded.value.summary.inputTokens,
     outputTokens: decoded.value.summary.outputTokens,
     totalTokens: decoded.value.summary.totalTokens,
+    ...(windows.length > 0 ? { windows } : {}),
   }
 }
 

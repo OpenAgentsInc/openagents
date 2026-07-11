@@ -67,15 +67,61 @@ describe("parseProviderAccountsListJson (pylon accounts list --json)", () => {
   })
 })
 
+/** The fixture's provider rate-limit windows after bounded projection. */
+const fixtureUsageWindows = [
+  { label: "5h", usedPercent: 63, remainingPercent: 37, windowMinutes: 300, resetsAt: "2026-07-11T03:00:00.000Z" },
+  { label: "weekly", usedPercent: 18, remainingPercent: 82, windowMinutes: 10080, resetsAt: "2026-07-15T00:00:00.000Z" },
+] as const
+
 describe("parseProviderAccountUsageJson (pylon accounts usage --refresh --json)", () => {
-  test("projects bounded token totals for the requested ref only", () => {
+  test("projects bounded token totals and rate-limit windows for the requested ref only", () => {
     const result = parseProviderAccountUsageJson(fixtureProviderAccountUsageStdout, "codex", generatedAt)
     expect(result).toEqual({
       ok: true,
       ref: "codex",
       refreshedAt: generatedAt,
       summary: { inputTokens: 1200, outputTokens: 340, totalTokens: 1540 },
+      windows: fixtureUsageWindows,
     })
+  })
+
+  test("rate-limit windows are bounded, clamped, second/milli epoch tolerant, and omitted when absent", () => {
+    // usedPercent-only windows infer remaining; out-of-range percents clamp;
+    // garbage windows drop; more than four windows cap at four.
+    const stdout = JSON.stringify({
+      accounts: [{
+        accountRef: "codex",
+        truth: {
+          provider: {
+            snapshots: [
+              {
+                primary: { usedPercent: 120, windowMinutes: 300, resetsAt: 1783738800, label: "5h" },
+                secondary: { usedPercent: -5, windowMinutes: 10080, resetsAt: 1783738800_000, label: "weekly" },
+              },
+              { primary: { usedPercent: 50 }, secondary: { usedPercent: "not-a-number" } },
+              { primary: { usedPercent: 10, label: "monthly" } },
+            ],
+          },
+          localSession: { usage: null },
+        },
+      }],
+    })
+    const result = parseProviderAccountUsageJson(stdout, "codex", generatedAt)
+    if (!result.ok) throw new Error("expected ok usage projection")
+    expect(result.windows).toEqual([
+      { label: "5h", usedPercent: 100, remainingPercent: 0, windowMinutes: 300, resetsAt: "2026-07-11T03:00:00.000Z" },
+      { label: "weekly", usedPercent: 0, remainingPercent: 100, windowMinutes: 10080, resetsAt: "2026-07-11T03:00:00.000Z" },
+      { label: "usage", usedPercent: 50, remainingPercent: 50, windowMinutes: null, resetsAt: null },
+      { label: "monthly", usedPercent: 10, remainingPercent: 90, windowMinutes: null, resetsAt: null },
+    ])
+    // No snapshots -> the key is omitted entirely (never an empty fake array).
+    const bare = parseProviderAccountUsageJson(
+      JSON.stringify({ accounts: [{ accountRef: "codex", truth: { localSession: { usage: null } } }] }),
+      "codex",
+      generatedAt,
+    )
+    if (!bare.ok) throw new Error("expected ok usage projection")
+    expect("windows" in bare).toBe(false)
   })
 
   test("a ref absent from the projection is a typed failure", () => {
@@ -121,11 +167,28 @@ describe("bridge contract schemas (main side; must agree with renderer decode)",
       inputTokens: 1200,
       outputTokens: 340,
       totalTokens: 1540,
+      windows: fixtureUsageWindows,
     })
     expect(decodeFleetUsageEntry(payload, "codex-2")).toEqual({
       state: "failed",
       reason: "invalid_bridge_payload",
     })
+    // A windowless payload keeps the pre-EP250 checked shape (no windows key).
+    const windowless = {
+      ok: true,
+      ref: "codex",
+      refreshedAt: generatedAt,
+      summary: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+    }
+    const entry = decodeFleetUsageEntry(windowless, "codex")
+    expect(entry).toEqual({
+      state: "checked",
+      refreshedAt: generatedAt,
+      inputTokens: 1,
+      outputTokens: 2,
+      totalTokens: 3,
+    })
+    expect("windows" in entry).toBe(false)
   })
 
   test("usage requests only pass pylon-grammar refs", () => {
@@ -207,6 +270,7 @@ describe("makeProviderAccountsService", () => {
       ref: "codex",
       refreshedAt: generatedAt,
       summary: { inputTokens: 1200, outputTokens: 340, totalTokens: 1540 },
+      windows: fixtureUsageWindows,
     })
     service.dispose()
   })

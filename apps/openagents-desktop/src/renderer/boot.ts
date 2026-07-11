@@ -871,6 +871,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     }, { once: true })
     const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
     yield* renderer.mount(root, program.viewStream, report)
+    // Sidebar connected-accounts box (EP250): one boot-time accounts pull so
+    // the pinned bottom box has evidence without visiting the Fleet
+    // workspace. This rides the EXISTING FleetRefreshRequested flow (list +
+    // session ledger) after first paint — event-driven, not a polling loop;
+    // an absent bridge degrades to the honest unavailable projection and the
+    // box simply does not render.
+    void Effect.runPromise(
+      registry.dispatch(resolveIntentRef(IntentRef("FleetRefreshRequested", StaticPayload(null)))),
+    )
     // First paint must never wait on local rollout parsing. The sidebar gets
     // metadata immediately; the selected thread receives five recent messages
     // and then its bounded expanded tail after the DOM is already visible.

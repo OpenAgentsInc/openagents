@@ -119,6 +119,7 @@ describe("design conformance (b): style values come from the shared scales", () 
       336, // inspector pane default size
       240, // files list minimum width / 240px output cap dimension
       320, // files list maximum width
+      4, // sidebar connected-accounts usage meter: thin 4px track height (EP250)
     ])
     const offenders: Array<string> = []
     for (const [name, source] of rendererSources()) {

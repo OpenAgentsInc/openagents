@@ -81,6 +81,7 @@ import {
   type FleetAccountsBridge,
   type FleetWorkspaceState,
 } from "./fleet-workspace.ts"
+import { sidebarAccountsView } from "./sidebar-accounts.ts"
 import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyWorkspaceIntents, historyWorkspaceView, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
 import {
@@ -1722,8 +1723,16 @@ const localSidebarItems = (state: DesktopShellState) => state.threads.map((threa
   onSelect:IntentRef("DesktopChatSelected",StaticPayload(thread.id)),
 }))
 
-const shellSidebar = (state: DesktopShellState): View =>
-  Stack(
+const shellSidebar = (state: DesktopShellState): View => {
+  // Connected-accounts bottom box (EP250 owner contract verbatim: "in the
+  // left sidebar, in a bottom box, like letting the chats flex up but show
+  // up to 5 connected accounts with a progress bar showing remaining
+  // weekly/hourly usage (grayed out if we dont have that data)"). The NavRail
+  // above keeps flex:1/minHeight:0, so the chats list flexes up while this
+  // box stays pinned at the column bottom; zero connected accounts render no
+  // box at all.
+  const accountsBox = sidebarAccountsView(state.fleet)
+  return Stack(
     {
       key: "shell-sidebar",
       direction: "column",
@@ -1752,8 +1761,10 @@ const shellSidebar = (state: DesktopShellState): View =>
         style:{flex:1,minHeight:0,width:"full"},
       }),
       ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
+      ...(accountsBox === null ? [] : [accountsBox]),
     ],
   )
+}
 
 const shellWelcome = (): View =>
   Stack(

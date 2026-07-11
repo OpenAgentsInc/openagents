@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.32",
+    version: "2026-07-11.33",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -1897,6 +1897,46 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the shell composer suite and the Electron smoke composer-gestures step.",
+      },
+      {
+        contractId: "openagents_desktop.sidebar.connected_accounts_usage_box.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "sidebar connected-accounts usage box",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "in the left sidebar, in a bottom box, like letting the chats flex up but show up to 5 connected accounts with a progress bar showing remaining weekly/hourly usage (grayed out if we dont have that data).",
+        authorityBoundary:
+          "Read-only presentation over the existing fleet accounts projection and its per-account usage entries: the box never probes providers, adds no polling loop, and mutates nothing. The bar renders a MEASURED remaining value only when a decoded usage entry carries real provider rate-limit windows (pylon truth.provider.snapshots, codex-rs RateLimitSnapshot 5h/weekly lineage); every other account renders the grayed borderSubtle track with zero fill and the honest reason ('no usage-window data for this provider') in the tooltip and accessible label — never a fake bar. At most five accounts render (ready first, then provider, then ref); overflow is a dim '+N more' row deep-linking to the Fleet workspace through the existing DesktopWorkspaceSelected intent. Zero connected accounts render no box.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/sidebar-accounts.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/provider-accounts.ts",
+          "apps/openagents-desktop/src/provider-accounts-contract.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "sidebar_accounts_box.view_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/sidebar-accounts.test.ts",
+            description:
+              "Proves the five-account cap with the '+N more' Fleet deep-link row, ready-first ordering, measured bar math (Meter value = tightest window remainingPercent / 100 with all windows in the accessible label), the grayed no-data bar (zero fill, reduced opacity, borderSubtle track, honest tooltip/aria reason), and the absent box at zero accounts.",
+          },
+          {
+            id: "sidebar_accounts_box.pinned_structure",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the sidebar column keeps the chats list flexing (NavRail flex:1/minHeight:0) while the accounts box renders as the LAST sidebar child (pinned bottom, hairline-topped) when accounts exist, and does not render at all when none do.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the sidebar-accounts view suite, the shell pinning assertions, and the design-conformance token oracle over the new module.",
       },
     ],
   };

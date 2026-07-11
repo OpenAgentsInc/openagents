@@ -241,6 +241,43 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(fleetView, "shell-transcript")).toBeUndefined()
   })
 
+  test("sidebar accounts box (EP250): chats flex up, the box pins at the bottom, and zero accounts render no box", () => {
+    // Owner contract verbatim: "in the left sidebar, in a bottom box, like
+    // letting the chats flex up but show up to 5 connected accounts with a
+    // progress bar showing remaining weekly/hourly usage (grayed out if we
+    // dont have that data)."
+    const withoutAccounts = desktopShellView(baseState)
+    expect(nodeByKey(withoutAccounts, "sidebar-accounts")).toBeUndefined()
+
+    const state: DesktopShellState = {
+      ...baseState,
+      fleet: {
+        ...baseState.fleet,
+        phase: "ready",
+        generatedAt: "2026-07-11T12:00:00.000Z",
+        accounts: [
+          { ref: "codex", provider: "codex", email: null, readiness: "ready" },
+          { ref: "claude-1", provider: "claude_agent", email: null, readiness: "ready" },
+        ],
+      },
+    }
+    const view = desktopShellView(state)
+    const sidebar = nodeByKey(view, "shell-sidebar") as { children?: ReadonlyArray<{ key?: string }> }
+    const children = sidebar?.children ?? []
+    // The chats list (NavRail) keeps flexible height while the box is the
+    // LAST sidebar child — pinned at the column bottom.
+    expect(children[0]?.key).toBe("sidebar-navigation")
+    const rail = nodeByKey(view, "sidebar-navigation") as { style?: { flex?: number; minHeight?: number } }
+    expect(rail?.style?.flex).toBe(1)
+    expect(rail?.style?.minHeight).toBe(0)
+    expect(children[children.length - 1]?.key).toBe("sidebar-accounts")
+    // The box content is the sidebar-accounts module's projection (rows +
+    // hairline); its own suite proves cap/order/bar semantics.
+    expect(nodeByKey(view, "sidebar-accounts-hairline")).toBeDefined()
+    expect(nodeByKey(view, "sidebar-account-codex")).toBeDefined()
+    expect(nodeByKey(view, "sidebar-account-claude-1")).toBeDefined()
+  })
+
   test("sidebar chat rows are compact navigation items with trailing metadata", () => {
     const view = desktopShellView(baseState)
     const item = navItemById(view, `sidebar-thread-${testThread.id}`)

@@ -19,10 +19,12 @@ import path from "node:path"
 
 import {
   providerAccountRefPattern,
+  providerAccountUsageWindowCap,
   type ProviderAccountEntry,
   type ProviderAccountReadiness,
   type ProviderAccountsListResult,
   type ProviderAccountUsageResult,
+  type ProviderAccountUsageWindow,
   unavailableProviderAccountsListResult,
   unavailableProviderAccountUsageResult,
 } from "./provider-accounts-contract.ts"
@@ -78,6 +80,49 @@ export const parseProviderAccountsListJson = (
 const boundedTokenTotal = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null
 
+const clampPercent = (value: number): number => Math.min(100, Math.max(0, value))
+
+/**
+ * One bounded rate-limit window from a pylon `truth.provider.snapshots[*]`
+ * primary/secondary record (codex-rs RateLimitSnapshot lineage). `resetsAt`
+ * arrives as a unix timestamp (seconds; defensively also accepts millis) and
+ * is projected to a bounded ISO string. Anything unparseable is dropped —
+ * the renderer then shows the honest grayed bar instead of a fake one.
+ */
+const boundedUsageWindow = (value: unknown): ProviderAccountUsageWindow | null => {
+  if (typeof value !== "object" || value === null) return null
+  const raw = value as {
+    usedPercent?: unknown
+    remainingPercent?: unknown
+    windowMinutes?: unknown
+    resetsAt?: unknown
+    label?: unknown
+  }
+  if (typeof raw.usedPercent !== "number" || !Number.isFinite(raw.usedPercent)) return null
+  const usedPercent = clampPercent(raw.usedPercent)
+  const remainingPercent =
+    typeof raw.remainingPercent === "number" && Number.isFinite(raw.remainingPercent)
+      ? clampPercent(raw.remainingPercent)
+      : clampPercent(100 - usedPercent)
+  const windowMinutes =
+    typeof raw.windowMinutes === "number" && Number.isFinite(raw.windowMinutes) && raw.windowMinutes >= 0
+      ? Math.floor(raw.windowMinutes)
+      : null
+  let resetsAt: string | null = null
+  if (typeof raw.resetsAt === "number" && Number.isFinite(raw.resetsAt) && raw.resetsAt > 0) {
+    const epochMs = raw.resetsAt > 10_000_000_000 ? raw.resetsAt : raw.resetsAt * 1000
+    const date = new Date(epochMs)
+    resetsAt = Number.isNaN(date.getTime()) ? null : date.toISOString()
+  }
+  return {
+    label: typeof raw.label === "string" && raw.label.length > 0 ? raw.label.slice(0, 20) : "usage",
+    usedPercent,
+    remainingPercent,
+    windowMinutes,
+    resetsAt,
+  }
+}
+
 /** Public-safe usage projection from pylon's accounts_usage JSON. */
 export const parseProviderAccountUsageJson = (
   stdout: string,
@@ -88,7 +133,10 @@ export const parseProviderAccountUsageJson = (
     const parsed = JSON.parse(stdout) as {
       accounts?: Array<{
         accountRef?: unknown
-        truth?: { localSession?: { usage?: { inputTokens?: unknown; outputTokens?: unknown; totalTokens?: unknown } | null } }
+        truth?: {
+          provider?: { snapshots?: Array<{ primary?: unknown; secondary?: unknown }> } | null
+          localSession?: { usage?: { inputTokens?: unknown; outputTokens?: unknown; totalTokens?: unknown } | null }
+        }
       }>
     }
     if (!Array.isArray(parsed.accounts)) {
@@ -99,6 +147,21 @@ export const parseProviderAccountUsageJson = (
       return unavailableProviderAccountUsageResult(ref, "account_not_found")
     }
     const usage = account.truth?.localSession?.usage ?? null
+    // Rate-limit window truth (EP250 sidebar accounts box): pylon's provider
+    // truth snapshots carry the codex 5h/weekly windows when the account's
+    // provider reports them. Bounded and additive — absent snapshots simply
+    // omit the field.
+    const snapshots = account.truth?.provider?.snapshots
+    const windows: Array<ProviderAccountUsageWindow> = []
+    if (Array.isArray(snapshots)) {
+      for (const snapshot of snapshots) {
+        if (typeof snapshot !== "object" || snapshot === null) continue
+        for (const candidate of [snapshot.primary, snapshot.secondary]) {
+          const window = boundedUsageWindow(candidate)
+          if (window !== null && windows.length < providerAccountUsageWindowCap) windows.push(window)
+        }
+      }
+    }
     return {
       ok: true,
       ref,
@@ -108,6 +171,7 @@ export const parseProviderAccountUsageJson = (
         outputTokens: boundedTokenTotal(usage?.outputTokens),
         totalTokens: boundedTokenTotal(usage?.totalTokens),
       },
+      ...(windows.length > 0 ? { windows } : {}),
     }
   } catch {
     return unavailableProviderAccountUsageResult(ref, "usage_projection_invalid")
@@ -294,6 +358,24 @@ export const fixtureProviderAccountUsageStdout = JSON.stringify({
       provider: "codex",
       accountRef: "codex",
       truth: {
+        provider: {
+          state: "available",
+          observedAt: "2026-07-11T00:00:00.000Z",
+          // codex-rs RateLimitSnapshot lineage: primary = the 5h window,
+          // secondary = the weekly window (the ChatGPT app's two limit bars).
+          snapshots: [
+            {
+              provider: "codex",
+              limitId: "codex",
+              limitName: null,
+              primary: { usedPercent: 63, remainingPercent: 37, windowMinutes: 300, resetsAt: 1783738800, label: "5h" },
+              secondary: { usedPercent: 18, remainingPercent: 82, windowMinutes: 10080, resetsAt: 1784073600, label: "weekly" },
+              credits: null,
+              planType: null,
+              rateLimitReachedType: null,
+            },
+          ],
+        },
         localSession: {
           usage: { inputTokens: 1200, outputTokens: 340, totalTokens: 1540 },
         },
