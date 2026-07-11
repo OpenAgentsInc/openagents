@@ -794,6 +794,198 @@ No source line or child file disappears silently.
 | Current top-level agent manager | `claude --background`, `claude agents` |
 | Normal history filtering | binary explicitly filters `isSidechain=true` from `/resume` |
 
+## 13. Addendum: historical implementation mechanics
+
+After the history-first analysis above was complete, I inspected the historical
+`cc` reference snapshot at commit
+`813c06acfa2d705076df6193b405c81eb11a18d1` (import commit dated 2026-03-31).
+This addendum translates the implementation into behavioral findings; it does
+not reproduce source, private identifiers, or internal file paths.
+
+### 13.1 Provenance caveat
+
+The snapshot cannot be assigned a trustworthy upstream Claude Code version.
+Its build version is injected outside the checked-in source, and the import
+commit date is not a product-version boundary. It also contains mechanisms
+that resemble the later behaviors observed in the June/July histories,
+including background agent output, forked context, workflows, worktrees, and a
+top-level agent manager. It may therefore be a mixed or later source snapshot
+under older repository metadata.
+
+The retained `~/.claude` histories remain the authority for the chronology and
+counts in sections 1-8. The source snapshot is useful for explaining mechanics
+behind those records, not for moving a feature earlier in the timeline.
+
+### 13.2 Ordinary dispatch is in-process state isolation
+
+The ordinary `Agent` path runs another query loop inside the existing process.
+The tool-facing prompt calls these agents subprocesses, but the implementation
+constructs an isolated child context rather than starting one OS process per
+ordinary child. That distinction matters for monitoring and recovery: a
+sidechain file represents a logical agent, not proof of a separate process.
+
+At dispatch, the runtime creates a stable child agent identity, records the
+immediate invoking request when available, labels the invocation as spawn or
+resume, and starts a fresh query-tracking chain with incremented depth. It then
+clones or replaces mutable state deliberately:
+
+- file-read/cache state is copied rather than shared blindly;
+- denial counters and nested tool-decision state are child-local;
+- parent UI mutation callbacks are absent from ordinary background children;
+- general application mutation is disabled, while task registration and kill
+  still have an explicit channel to the root task store; and
+- foreground execution can share selected UI/state and cancellation behavior,
+  while background execution receives an independent cancellation controller.
+
+This is a stronger model than “call the model again.” Dispatch is a scoped
+runtime allocation with identity, cancellation ownership, state boundaries,
+and selected root capabilities.
+
+### 13.3 `Task` became `Agent` through a compatibility layer
+
+The snapshot makes the naming transition explicit. `Agent` is the current tool
+name, while `Task` remains a legacy alias for permission rules, hooks, resumed
+sessions, and SDK compatibility. One compatibility surface deliberately still
+emits `Task` to older SDK consumers even though the internal dispatch path is
+`Agent`.
+
+That explains why importers must normalize tool aliases without treating them
+as different orchestration primitives. It also reinforces a broader rule:
+wire-name migrations need an explicit compatibility/version layer. A raw
+`Task` record can be an agent dispatch; a task-ledger record can be something
+else entirely.
+
+### 13.4 Context and capabilities are compiled per child
+
+A normal fresh subagent does not inherit the parent's whole message history.
+It starts from the delegated prompt plus selected policy-shaped context. Some
+read-only built-ins intentionally omit expensive or stale parent context. Tool
+availability is assembled again from the chosen agent definition, active MCP
+tools, allow/deny rules, required-server readiness, and the effective
+permission mode. Required MCP dependencies are checked for usable tools, not
+merely configured server names.
+
+Interactive permission handling is also mode-dependent. Background children
+normally cannot suspend themselves on an invisible prompt. The fork path can
+instead use a permission-bubbling mode that surfaces the decision to the
+parent. Start hooks may add context; agent-scoped stop hooks are translated to
+the subagent stop lifecycle; and managed trust policy can prevent untrusted
+agent definitions from registering hooks.
+
+The gated fork path is materially different from fresh delegation. It clones
+the parent conversation and system prompt, preserves the exact tool array and
+model/thinking configuration for prompt-cache compatibility, and runs
+asynchronously. It inserts placeholder results for sibling tool calls when
+necessary so the inherited assistant message remains API-valid, blocks a fork
+from recursively forking itself, and adds path-remapping guidance when the fork
+uses an isolated worktree.
+
+For OpenAgents, the persisted delegation record should therefore capture both
+requested and effective context/tool/policy state. Agent type alone is not a
+capability grant.
+
+### 13.5 Persistence is agent-local and resume is reconstruction
+
+Before the child loop starts, the runtime best-effort writes the initial child
+messages and metadata such as agent type, description, and worktree. That write
+does not block execution. Later messages append to the sidechain with the
+child's own `parentUuid` chain.
+
+Resume locates the leaf for the requested `agentId`, rebuilds only that local
+chain, restores agent metadata and prompt-cache replacement state, appends the
+new prompt, and reuses the original worktree when it still exists. A missing
+worktree falls back to the parent's current directory. Older records without
+agent-type metadata fall back to a general-purpose definition, and a resumed
+agent does not repeat the original agent-type denial gate.
+
+The latter is an important policy question for OpenAgents: resuming an accepted
+attempt may preserve its original grant, or current policy may require
+reauthorization. Whichever rule is chosen must be versioned and visible. It
+must not be an accidental consequence of transcript loading.
+
+### 13.6 Background completion is a staged protocol
+
+An asynchronous launch immediately registers a task and a readable output
+surface. In this snapshot, that output surface is backed by the agent's JSONL
+transcript rather than a second authoritative result stream. The live loop
+updates retained progress and transcript data. On success it marks the task
+completed before optional handoff classification and worktree inspection, then
+enqueues the enriched final notification. Abort and error take distinct killed
+or failed paths and preserve partial/error output where possible.
+
+This explains several otherwise ambiguous history shapes:
+
+```text
+accepted launch
+  -> running/progress evidence
+  -> terminal task state
+  -> optional post-processing
+  -> addressed completion notification
+  -> parent-visible summary/receipt
+```
+
+Those are not one atomic event. `async_launched` is not running proof, a
+terminal task flag can precede the notification, and a notification is not
+verification. OpenAgents should keep acceptance, execution, terminal outcome,
+notification delivery, artifact/writeback inspection, and verified receipt as
+separate typed facts.
+
+### 13.7 Addressed queues prevent parent/child cross-talk
+
+The shared in-process command queue is filtered by recipient. The root session
+drains user prompts and root notifications. A child drains only task
+notifications addressed to its own agent identity and does not consume the
+general user-prompt stream. Named-agent messaging resolves a name to a stable
+identity before delivery.
+
+The runtime also knows more topology than the persisted history exposes. It can
+associate a child with its immediate invoking agent/session and emits the
+invoking request edge sparsely at spawn or resume. That corroborates the
+history finding: runtime provenance exists, but the durable local record still
+does not provide one canonical graph table. Import must continue to reconcile
+sidechains, tool results, task state, and notifications.
+
+### 13.8 Subagents, teammates, workflows, and sessions are different classes
+
+The implementation separates at least three execution/lifecycle classes:
+
+1. an ordinary in-process delegated subagent;
+2. a named teammate, which may run in-process or in a separate terminal/process
+   and owns team/task/mailbox state; and
+3. an independent foreground/background session managed outside the ordinary
+   parent tool call.
+
+In-process teammates are further restricted from launching background
+subagents, although they can run synchronous children. Workflow execution uses
+the core child runner but adds its own deterministic script and journal
+boundary. These distinctions support the layered model in section 6 and warn
+against presenting every Claude child-like entity as the same kind of node.
+
+### 13.9 Worktree retention is outcome-sensitive
+
+Worktree isolation is selected explicitly or by agent definition, and the
+agent identity participates in worktree ownership. At completion, an unchanged
+agent worktree can be removed automatically; a changed worktree is retained
+and returned for inspection/writeback. Removed worktree metadata is cleared so
+resume does not target a stale path. Existing resumed worktrees have their
+liveness refreshed, while missing ones fall back safely as described above.
+
+OpenAgents should model isolation allocation, retained changes, writeback,
+cleanup, and resume location separately. “Agent completed” is not equivalent
+to “changes integrated” or “workspace can be deleted.”
+
+### 13.10 What this changes in the audit
+
+The source review does not change the history counts, edge-gap rate, or
+timeline. It strengthens five design conclusions:
+
+- normalize `Task`/`Agent` aliases before graph reconstruction;
+- treat dispatch as capability/context compilation, not simple inheritance;
+- persist cancellation and workspace ownership as first-class lifecycle data;
+- separate task terminal state from notification and verified receipt; and
+- keep subagents, teammates, workflows, and independent sessions distinct even
+  when they reuse a query runner or render similarly.
+
 ## Final assessment
 
 Claude Code has not used one fixed “subagent feature.” Across the inspected
