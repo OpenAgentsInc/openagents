@@ -5,11 +5,15 @@ import {
   openExpoKhalaSyncStore,
   type ExpoSqliteDatabase,
 } from "@openagentsinc/khala-sync-client/expo-sqlite-store"
+import { loadNativeSessionCredential } from "../auth/native-session-vault"
 import { openMobileSyncHostCore, type MobileSyncHost } from "./mobile-sync-host-core"
 
-export type { MobileSyncHost } from "./mobile-sync-host-core"
+export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
+  connectStoredVerifiedSession: () => Promise<"connected" | "signed_out" | "unavailable">
+}>
 
 export const OPENAGENTS_MOBILE_SYNC_DATABASE = "openagents-mobile-sync.sqlite"
+export const OPENAGENTS_MOBILE_SYNC_BASE_URL = "https://openagents.com"
 
 const openNativeStore = (databaseName: string) =>
   openExpoKhalaSyncStore(databaseName, name => {
@@ -25,10 +29,32 @@ const openNativeStore = (databaseName: string) =>
     return adapter
   })
 
-/** Open one host-owned local store; authenticated network Sync is separate. */
-export const openMobileSyncHost = (): MobileSyncHost =>
-  openMobileSyncHostCore({
+/** Open one host-owned local store and a host-only verified-session connector. */
+export const openMobileSyncHost = (): MobileNativeSyncHost => {
+  const host = openMobileSyncHostCore({
     databaseName: OPENAGENTS_MOBILE_SYNC_DATABASE,
     randomId: randomUUID,
     openStore: openNativeStore,
   })
+  return {
+    ...host,
+    connectStoredVerifiedSession: async () => {
+      try {
+        const credential = await loadNativeSessionCredential()
+        if (credential === null) {
+          host.disconnectAuthenticated()
+          return "signed_out"
+        }
+        host.connectAuthenticated({
+          baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+          ownerUserId: credential.ownerUserId,
+          authToken: () => credential.accessToken,
+        })
+        return "connected"
+      } catch {
+        host.disconnectAuthenticated()
+        return "unavailable"
+      }
+    },
+  }
+}

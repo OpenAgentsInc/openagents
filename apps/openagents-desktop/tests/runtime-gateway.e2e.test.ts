@@ -141,6 +141,7 @@ describe("Desktop Runtime Gateway", () => {
     const gateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
       sessionLocalState: "session_ready",
       syncLocalState: "ready",
+      syncNetworkPhase: "live",
     }))
     gateway.start()
     const response = await gateway.request({
@@ -151,6 +152,11 @@ describe("Desktop Runtime Gateway", () => {
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
       id: "openagents-session",
+      state: "available",
+      reason: undefined,
+    })
+    expect(response.result.capabilities).toContainEqual({
+      id: "khala-sync",
       state: "available",
       reason: undefined,
     })

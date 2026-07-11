@@ -189,7 +189,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "This proves host-owned local durability only. A local database, installation identity, or pending queue does not authorize an owner scope, network Sync, command acceptance, execution, or completion.",
+        "The verified native session authorizes only the server-derived owner's personal Sync scope. Owner refs, credentials, database handles, transport/session objects, and raw rows remain host-only; authenticated replication substrate does not imply conversation projection, command acceptance, execution, or completion.",
       blockerRefs: [],
       contractId: "openagents_mobile.sync.host_owned_expo_sqlite.v1",
       enforcementTier: "test-sweep",
@@ -197,12 +197,13 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "apps/openagents-mobile/src/sync/mobile-sync-host.ts",
         "packages/khala-sync-client/src/expo-sqlite-store.ts",
         "docs/sol/issues/mobile-sync-host.md",
+        "docs/sol/issues/native-authenticated-sync-hosts.md",
         "github:OpenAgentsInc/openagents#8657",
       ],
       oracles: [
         {
           description:
-            "Proves restart-stable write-once installation identity, bounded status projection, native Expo composition outside the view program, and idempotent close; the package adapter separately proves durable queue persistence, transaction rollback, and initialization cleanup.",
+            "Proves restart-stable write-once installation identity, authorized personal-scope selection, dynamic token lookup, bounded live/freshness projection, native Expo composition outside the view program, and session-before-store close; the package adapter separately proves durable queue persistence, transaction rollback, and initialization cleanup.",
           id: "openagents_mobile.sync.host_owned_expo_sqlite",
           kind: "bun-test",
           mode: "unit",
@@ -217,10 +218,10 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       },
       state: "enforced",
       statement:
-        "OpenAgents mobile owns one private Expo SQLite cache through the shared Khala Sync store core, closes it before OTA reload, and never presents local readiness as authenticated network Sync.",
+        "OpenAgents mobile owns one private Expo SQLite cache through the shared Khala Sync store core and, only after native-session verification, composes the shared production transport on exactly the server-derived owner's personal scope. It re-reads rotated access custody host-side and closes session-before-store on OTA reload/unmount.",
       surface: "openagents-mobile",
       verification:
-        "bun test apps/openagents-mobile/tests/mobile-sync-host.test.ts plus the khala-sync-client Expo adapter suite prove the host/storage boundary; mobile OTA and Home tests prove close-before-reload ordering and honest Local Sync ready copy.",
+        "bun test apps/openagents-mobile/tests/mobile-sync-host.test.ts plus the khala-sync-client Expo adapter suite prove the authenticated host/storage boundary; mobile OTA and Home tests prove close-before-reload ordering without credential projection.",
     },
     {
       authorityBoundary:

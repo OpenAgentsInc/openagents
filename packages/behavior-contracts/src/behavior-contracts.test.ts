@@ -167,7 +167,7 @@ describe("behavior contract registry", () => {
     )
     expect(mobileSyncHost?.state).toBe("enforced")
     expect(mobileSyncHost?.enforcementTier).toBe("test-sweep")
-    expect(mobileSyncHost?.statement).toContain("never presents local readiness")
+    expect(mobileSyncHost?.statement).toContain("server-derived owner's personal scope")
     expect(mobileSyncHost?.oracles[0]?.ref).toBe(
       "apps/openagents-mobile/tests/mobile-sync-host.test.ts",
     )

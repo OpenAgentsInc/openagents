@@ -100,13 +100,14 @@ Pylon credentials, a loopback URL, raw runtime events, general IPC, or a raw
 The first Runtime Gateway slice is now enforced: a versioned closed bootstrap,
 command-outcome, and lifecycle-event protocol crosses preload; main validates
 the top-level bundled renderer; the Electron smoke exercises a truthful
-bootstrap. Khala Sync and durable conversation streaming remain explicitly
-`unavailable` until their later leaves land.
+bootstrap. Durable conversation streaming remains explicitly `unavailable`
+until its later leaf lands.
 
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
-its private `userData` root, persists one installation identity, and closes the
-store on quit. The gateway reports that local persistence is ready while
-keeping network Sync unavailable until native OpenAgents sign-in lands. No
+its private `userData` root and persists one installation identity. After
+native-session verification, main composes the shared production HTTP/
+WebSocket session, subscribes only the server-derived owner's personal scope,
+re-reads rotated access custody, and closes the session before the store. No
 database path, handle, identity ref, row, queue, or credential crosses preload.
 
 Desktop main now also owns one versioned native-session record encrypted with
@@ -121,7 +122,8 @@ At startup, a recovered encrypted record is now validated through the existing
 native-session GET. Main rewrites valid OpenAuth rotation before projecting
 `session_ready`, purges 401/403 or server-derived owner mismatch, and retains
 custody but reports unavailable on transient or malformed-response failure.
-Verified session readiness remains distinct from live network Sync.
+Verified session readiness remains distinct from an authoritative conversation
+projection.
 
 Electron main now also composes the frozen Desktop loopback public-client
 policy end to end. It binds one temporary `127.0.0.1` listener, generates and
@@ -132,7 +134,7 @@ before clear. The Runtime Gateway exposes only argument-free entry/exit
 commands and bounded outcomes. Effect Native Settings now queries an
 explicit tokenless bootstrap phase and dispatches typed, argument-free sign-in
 or sign-out intents with honest loading/authenticating/ready/unavailable copy.
-Session-ready remains distinct from live Sync.
+Session-ready remains distinct from an authoritative conversation projection.
 
 **One catalog, many hosts.** The transcript-message and composer
 compositions are deliberately structured around the shared Effect Native chat

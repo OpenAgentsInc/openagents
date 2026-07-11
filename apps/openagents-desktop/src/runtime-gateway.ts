@@ -22,6 +22,7 @@ export type DesktopRuntimeGateway = Readonly<{
 export const desktopRuntimeCapabilities = (input: Readonly<{
   sessionLocalState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable"
   syncLocalState: "ready" | "unavailable"
+  syncNetworkPhase: "idle" | "bootstrapping" | "catching_up" | "live" | "must_refetch" | "denied" | "closed"
 }>): ReadonlyArray<CapabilityState> => [
   { id: "codex-history", state: "available" },
   { id: "workspace", state: "available" },
@@ -42,17 +43,23 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
   },
   {
     id: "khala-sync",
-    state: "unavailable",
-    reason: input.syncLocalState === "ready"
-      ? "Local Sync persistence is ready; OpenAgents sign-in is required before network Sync."
-      : "Local Sync persistence is unavailable.",
+    state: input.syncNetworkPhase === "live" ? "available" : "unavailable",
+    reason: input.syncNetworkPhase === "live"
+      ? undefined
+      : input.syncLocalState === "unavailable"
+        ? "Local Sync persistence is unavailable."
+        : input.syncNetworkPhase === "idle"
+          ? "Authenticated Sync is idle."
+          : input.syncNetworkPhase === "closed"
+            ? "Authenticated Sync is closed."
+            : `Authenticated Sync is ${input.syncNetworkPhase}.`,
   },
   { id: "conversation-stream", state: "unavailable", reason: "The durable conversation runtime is not connected yet." },
 ]
 
 export const createDesktopRuntimeGateway = (
   capabilities: ReadonlyArray<CapabilityState> | (() => ReadonlyArray<CapabilityState>) =
-    () => desktopRuntimeCapabilities({ sessionLocalState: "unavailable", syncLocalState: "unavailable" }),
+    () => desktopRuntimeCapabilities({ sessionLocalState: "unavailable", syncLocalState: "unavailable", syncNetworkPhase: "closed" }),
   sessionActions?: Readonly<{
     signIn: () => Promise<Readonly<{ state: "verified" | "cancelled" | "unavailable" }>>
     signOut: () => Promise<Readonly<{ state: "signed_out" | "unavailable" }>>

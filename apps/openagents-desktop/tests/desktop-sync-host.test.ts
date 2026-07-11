@@ -3,6 +3,18 @@ import { mkdtempSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { Database } from "bun:sqlite"
+import {
+  BootstrapResponse,
+  LogPage,
+  PushResponse,
+  SyncVersionWatermark,
+  type BootstrapRequest,
+  type SyncScope,
+} from "@openagentsinc/khala-sync"
+import {
+  KhalaSyncTransportError,
+  type KhalaSyncTransport,
+} from "@openagentsinc/khala-sync-client"
 
 import { Effect } from "effect"
 
@@ -12,6 +24,44 @@ import {
   type DesktopSqliteDatabase,
   type DesktopSyncStore,
 } from "../src/desktop-sync-store.ts"
+
+const waitFor = async (condition: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (condition()) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+  throw new Error("timed out waiting for Sync phase")
+}
+
+const liveTransport = (input: Readonly<{
+  bootstraps: Array<BootstrapRequest>
+  lifecycle: Array<string>
+}>): KhalaSyncTransport => ({
+  bootstrap: request => Effect.sync(() => {
+    input.bootstraps.push(request)
+    return new BootstrapResponse({
+      protocolVersion: 1,
+      scope: request.scope,
+      entities: [],
+      cursor: SyncVersionWatermark.make(0),
+    })
+  }),
+  logPage: (scope: SyncScope, cursor: number) => Effect.succeed(new LogPage({
+    protocolVersion: 1,
+    scope,
+    entries: [],
+    nextCursor: SyncVersionWatermark.make(cursor),
+    upToDate: true,
+  })),
+  push: () => Effect.succeed(new PushResponse({
+    protocolVersion: 1,
+    results: [],
+    lastMutationId: 0,
+  })),
+  connectLive: () => Effect.succeed({
+    close: () => input.lifecycle.push("session"),
+  }),
+})
 
 const openBunDatabase = (databasePath: string): DesktopSqliteDatabase => {
   const database = new Database(databasePath, { create: true })
@@ -59,6 +109,8 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       const first = openDesktopSyncHost({ databasePath, randomId, openStore: openTestStore })
       expect(first.status()).toEqual({
         state: "local_ready",
+        syncPhase: "idle",
+        lastDeltaAt: null,
         schemaVersion: 1,
         identityState: "persisted",
         pendingMutationCount: 0,
@@ -116,6 +168,80 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(serialized).not.toContain("private-ref")
       expect(serialized).not.toContain("token")
       expect(serialized).not.toContain("sqlite")
+      host.close()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("subscribes the verified owner's personal scope, re-reads rotated auth, and closes session before store", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-sync-auth-"))
+    const lifecycle: Array<string> = []
+    const bootstraps: Array<BootstrapRequest> = []
+    let token = "access.one"
+    let capturedAuthToken: (() => string) | undefined
+    const databasePath = path.join(root, "private", "sync.sqlite")
+    const openStore = (filePath: string): DesktopSyncStore => {
+      const store = openTestStore(filePath)
+      return {
+        ...store,
+        close: () => Effect.sync(() => {
+          lifecycle.push("store")
+          Effect.runSync(store.close())
+        }),
+      }
+    }
+    try {
+      const host = openDesktopSyncHost({ databasePath, randomId: () => "auth", openStore })
+      host.connectAuthenticated({
+        baseUrl: "https://openagents.example",
+        ownerUserId: "user.desktop",
+        authToken: () => token,
+        createTransport: config => {
+          capturedAuthToken = config.authToken
+          return liveTransport({ bootstraps, lifecycle })
+        },
+        sessionOptions: { sleep: () => Promise.resolve(), random: () => 0 },
+      })
+      await waitFor(() => host.status().syncPhase === "live")
+      expect(bootstraps.map(request => String(request.scope))).toEqual(["scope.user.user.desktop"])
+      expect(capturedAuthToken?.()).toBe("access.one")
+      token = "access.two"
+      expect(capturedAuthToken?.()).toBe("access.two")
+      expect(host.status().lastDeltaAt).not.toBeNull()
+      host.close()
+      expect(lifecycle.slice(-2)).toEqual(["session", "store"])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("projects an authorization denial as a bounded terminal phase", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-sync-denied-"))
+    try {
+      const host = openDesktopSyncHost({
+        databasePath: path.join(root, "private", "sync.sqlite"),
+        randomId: () => "denied",
+        openStore: openTestStore,
+      })
+      const denied = liveTransport({ bootstraps: [], lifecycle: [] })
+      host.connectAuthenticated({
+        baseUrl: "https://openagents.example",
+        ownerUserId: "user.denied",
+        authToken: () => "rejected",
+        createTransport: () => ({
+          ...denied,
+          bootstrap: () => Effect.fail(new KhalaSyncTransportError(
+            "http_status",
+            false,
+            "denied fixture",
+            { status: 403 },
+          )),
+        }),
+        sessionOptions: { sleep: () => Promise.resolve(), random: () => 0 },
+      })
+      await waitFor(() => host.status().syncPhase === "denied")
+      expect(host.status()).toMatchObject({ syncPhase: "denied", lastDeltaAt: null })
       host.close()
     } finally {
       rmSync(root, { recursive: true, force: true })

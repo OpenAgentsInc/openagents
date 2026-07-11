@@ -27,8 +27,10 @@ imports nothing from it.
   `@effect-native/tokens`.
 - `src/sync/mobile-sync-host.ts` — host-owned Expo SQLite composition over the
   shared Khala Sync store core. It owns the native handle and installation
-  identity, closes before OTA reload/unmount, and never projects either into
-  the Effect Native view program.
+  identity, composes production HTTP/WebSocket Sync only after session
+  verification, subscribes the server-derived owner's personal scope, closes
+  session-before-store on OTA reload/unmount, and never projects credentials,
+  owner refs, or native handles into the Effect Native view program.
 - `src/auth/native-session-vault.ts` — one versioned Expo SecureStore record
   for the native OpenAgents access/refresh tokens and server-derived owner ref.
   Recovery exposes only signed-out or credential-present-unverified state;
@@ -134,8 +136,9 @@ honest `Local Sync ready` state. Native session credentials now have a
 device-only SecureStore vault, but a recovered record remains visibly
 unverified until the server accepts it. Startup now validates that record and
 persists access/refresh rotation; denial or owner mismatch purges it. A verified
-session is still distinct from live Sync. The OpenAgents surface now enters
-through a typed GitHub sign-in intent and exits only after the server proves
+session now starts authenticated personal-scope Sync in the Expo host while
+remaining distinct from an authoritative conversation projection. The surface
+enters through a typed GitHub sign-in intent and exits only after the server proves
 both access and refresh revocation. The app does not manufacture fleet,
-account, receipt, or cross-device authority. Real Sync subscriptions and
+account, receipt, or cross-device authority. Conversation projections and
 durable commands are the next #8597 priorities.

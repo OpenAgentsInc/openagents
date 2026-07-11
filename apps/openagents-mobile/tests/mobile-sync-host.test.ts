@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
+import {
+  BootstrapResponse,
+  LogPage,
+  PushResponse,
+  SyncVersionWatermark,
+  type BootstrapRequest,
+  type SyncScope,
+} from "@openagentsinc/khala-sync"
 import { Effect } from "effect"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -9,8 +17,50 @@ import {
   openExpoKhalaSyncStore,
   type ExpoSqliteDatabase,
 } from "@openagentsinc/khala-sync-client/expo-sqlite-store"
-import { KhalaSyncClientStoreError } from "@openagentsinc/khala-sync-client"
+import {
+  KhalaSyncClientStoreError,
+  KhalaSyncTransportError,
+  type KhalaSyncTransport,
+} from "@openagentsinc/khala-sync-client"
 import { openMobileSyncHostCore } from "../src/sync/mobile-sync-host-core"
+
+const waitFor = async (condition: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (condition()) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+  throw new Error("timed out waiting for Sync phase")
+}
+
+const liveTransport = (input: Readonly<{
+  bootstraps: Array<BootstrapRequest>
+  lifecycle: Array<string>
+}>): KhalaSyncTransport => ({
+  bootstrap: request => Effect.sync(() => {
+    input.bootstraps.push(request)
+    return new BootstrapResponse({
+      protocolVersion: 1,
+      scope: request.scope,
+      entities: [],
+      cursor: SyncVersionWatermark.make(0),
+    })
+  }),
+  logPage: (scope: SyncScope, cursor: number) => Effect.succeed(new LogPage({
+    protocolVersion: 1,
+    scope,
+    entries: [],
+    nextCursor: SyncVersionWatermark.make(cursor),
+    upToDate: true,
+  })),
+  push: () => Effect.succeed(new PushResponse({
+    protocolVersion: 1,
+    results: [],
+    lastMutationId: 0,
+  })),
+  connectLive: () => Effect.succeed({
+    close: () => input.lifecycle.push("session"),
+  }),
+})
 
 const openBunDatabase = (databasePath: string): ExpoSqliteDatabase => {
   const database = new Database(databasePath, { create: true })
@@ -56,6 +106,8 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       const first = openMobileSyncHostCore({ databaseName, randomId, openStore })
       expect(first.status()).toEqual({
         state: "local_ready",
+        syncPhase: "idle",
+        lastDeltaAt: null,
         schemaVersion: 1,
         identityState: "persisted",
         pendingMutationCount: 0,
@@ -116,5 +168,79 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       "utf8",
     )
     expect(appSource).toContain("beforeReload: () => syncHost?.close()")
+  })
+
+  test("subscribes the verified owner's personal scope, re-reads rotated auth, and closes session before store", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openagents-mobile-sync-auth-"))
+    const databaseName = join(root, "mobile.sqlite")
+    const lifecycle: Array<string> = []
+    const bootstraps: Array<BootstrapRequest> = []
+    let token = "access.one"
+    let capturedAuthToken: (() => string) | undefined
+    const openStore = (name: string) => {
+      const store = openExpoKhalaSyncStore(name, openBunDatabase)
+      return {
+        ...store,
+        close: () => Effect.sync(() => {
+          lifecycle.push("store")
+          Effect.runSync(store.close())
+        }),
+      }
+    }
+    try {
+      const host = openMobileSyncHostCore({ databaseName, randomId: () => "auth", openStore })
+      host.connectAuthenticated({
+        baseUrl: "https://openagents.example",
+        ownerUserId: "user.mobile",
+        authToken: () => token,
+        createTransport: config => {
+          capturedAuthToken = config.authToken
+          return liveTransport({ bootstraps, lifecycle })
+        },
+        sessionOptions: { sleep: () => Promise.resolve(), random: () => 0 },
+      })
+      await waitFor(() => host.status().syncPhase === "live")
+      expect(bootstraps.map(request => String(request.scope))).toEqual(["scope.user.user.mobile"])
+      expect(capturedAuthToken?.()).toBe("access.one")
+      token = "access.two"
+      expect(capturedAuthToken?.()).toBe("access.two")
+      expect(host.status().lastDeltaAt).not.toBeNull()
+      host.close()
+      expect(lifecycle.slice(-2)).toEqual(["session", "store"])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("projects an authorization denial as a bounded terminal phase", async () => {
+    const root = mkdtempSync(join(tmpdir(), "openagents-mobile-sync-denied-"))
+    try {
+      const host = openMobileSyncHostCore({
+        databaseName: join(root, "mobile.sqlite"),
+        randomId: () => "denied",
+        openStore: name => openExpoKhalaSyncStore(name, openBunDatabase),
+      })
+      const denied = liveTransport({ bootstraps: [], lifecycle: [] })
+      host.connectAuthenticated({
+        baseUrl: "https://openagents.example",
+        ownerUserId: "user.denied",
+        authToken: () => "rejected",
+        createTransport: () => ({
+          ...denied,
+          bootstrap: () => Effect.fail(new KhalaSyncTransportError(
+            "http_status",
+            false,
+            "denied fixture",
+            { status: 403 },
+          )),
+        }),
+        sessionOptions: { sleep: () => Promise.resolve(), random: () => 0 },
+      })
+      await waitFor(() => host.status().syncPhase === "denied")
+      expect(host.status()).toMatchObject({ syncPhase: "denied", lastDeltaAt: null })
+      host.close()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })

@@ -524,9 +524,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   suites named there.
 - Desktop `node:sqlite` and mobile Expo SQLite are thin host adapters over the
   same `packages/khala-sync-client` store core. The host owns the database
-  handle and installation identity, closes it before process/OTA teardown,
-  and exposes only bounded readiness/freshness state to Effect Native views;
-  a local cache is never authenticated or server-authoritative Sync.
+  handle and installation identity, closes the authenticated Sync session
+  before the store on process/OTA teardown, and exposes only bounded phase/
+  freshness state to Effect Native views; a local cache is never authenticated
+  or server-authoritative Sync.
+- After native-session verification, Desktop main and the mobile Expo host
+  alone may compose the shared HTTP/WebSocket session and subscribe
+  `personalScope(serverDerivedOwnerUserId)`. The access-token callback is
+  re-read by the transport so bounded rotation does not expose a token; owner
+  refs, credentials, transport/session objects, store handles, and raw rows
+  never enter either view program.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

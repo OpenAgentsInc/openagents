@@ -459,9 +459,11 @@ records before claiming the first new slice.
   browser launch, exchange, server-owner verification, encrypted save, and
   dual-revocation sign-out behind argument-free Runtime Gateway commands. It
   now has visible typed Effect Native Settings controls over an explicit
-  tokenless session phase. It does not yet have physical Desktop auth
-  acceptance or authenticated network Sync composition,
-  authoritative Sync threads or conversation services composed behind that
+  tokenless session phase. Verified recovery and interactive entry now compose
+  the shared production HTTP/WebSocket Sync session in main, subscribe only
+  the server-derived owner's personal scope, re-read rotated access custody,
+  and close session-before-SQLite. It does not yet have physical Desktop auth
+  acceptance, authoritative Sync threads or conversation services behind that
   gateway, a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
@@ -472,9 +474,11 @@ records before claiming the first new slice.
   unverified recovery state. Recovered credentials are now validated against
   the existing native session boundary; bounded OpenAuth rotation rewrites the
   vault, while denial/owner mismatch purges it. Removed Sarah/demo/local-
-  catalog state, local cache readiness, a stored credential, and a verified
-  session are not Sync authority substitutes. It does not yet have live
-  cross-device Sync,
+  catalog state, local cache readiness, and a stored credential are not Sync
+  authority substitutes. A verified session now starts the same shared
+  production HTTP/WebSocket Sync engine in the Expo host, scoped only to the
+  server-derived owner; no credential or owner ref reaches the view. It does
+  not yet have authoritative conversation continuity,
   FleetRun authority, account/capacity state, durable controls, remote-workroom
   coding, or receipt continuity. Auth entry/exit is now native to the new app:
   one imperative state-validating GitHub authorization-code + S256 request

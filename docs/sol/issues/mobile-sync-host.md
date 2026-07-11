@@ -23,9 +23,9 @@ before the JS runtime reloads.
 The enforced behavior contract is
 `openagents_mobile.sync.host_owned_expo_sqlite.v1`.
 
-## Explicit residual
+## Follow-on status
 
-This leaf is local persistence only. SecureStore session custody,
-`device_session`, token refresh/revocation, network transport, authorized scope
-subscription, conversation projections, and physical-device recovery proof
-remain later R1/R2/F1/F2 leaves.
+Issue #8667 subsequently composed verified SecureStore custody into the shared
+production transport and authorized personal-scope subscription. Conversation
+projections, `device_session`, and physical-device recovery proof remain later
+R1/R2/F1/F2 leaves.

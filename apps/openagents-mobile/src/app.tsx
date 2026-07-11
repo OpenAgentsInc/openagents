@@ -8,7 +8,7 @@ import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
 import { signInNativeSession, signOutNativeSession } from "./auth/native-session-pkce"
 import type { MobileSyncPhase } from "./screens/home-core"
 import { HomeScreen } from "./screens/home-screen"
-import { openMobileSyncHost, type MobileSyncHost } from "./sync/mobile-sync-host"
+import { openMobileSyncHost, type MobileNativeSyncHost } from "./sync/mobile-sync-host"
 import { startOtaPolling } from "./updates/ota-polling"
 
 /**
@@ -22,6 +22,7 @@ import { startOtaPolling } from "./updates/ota-polling"
  */
 export const App = () => {
   const [syncPhase, setSyncPhase] = useState<MobileSyncPhase>("unconfigured")
+  const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
   useEffect(() => {
     syncPhaseRef.current = syncPhase
@@ -31,6 +32,13 @@ export const App = () => {
       const previousPhase = syncPhaseRef.current
       setSyncPhase("authenticating")
       const result = await signInNativeSession()
+      if (result.state === "verified") {
+        const connected = await syncHostRef.current?.connectStoredVerifiedSession()
+        if (connected !== "connected") {
+          setSyncPhase("unavailable")
+          return
+        }
+      }
       setSyncPhase(
         result.state === "verified"
           ? "session_ready"
@@ -42,6 +50,7 @@ export const App = () => {
     signOut: async () => {
       setSyncPhase("authenticating")
       const result = await signOutNativeSession()
+      if (result.state === "signed_out") syncHostRef.current?.disconnectAuthenticated()
       setSyncPhase(result.state === "signed_out" ? "local_ready" : "unavailable")
     },
   }), [])
@@ -52,24 +61,29 @@ export const App = () => {
   // dev, so the loop is a no-op there.
   useEffect(() => {
     let stopped = false
-    let syncHost: MobileSyncHost | undefined
+    let syncHost: MobileNativeSyncHost | undefined
     let localStoreReady = false
     try {
       syncHost = openMobileSyncHost()
+      syncHostRef.current = syncHost
       localStoreReady = true
       setSyncPhase("local_ready")
     } catch {
       setSyncPhase("unavailable")
     }
     void recoverVerifiedNativeSession().then(
-      recovery => {
+      async recovery => {
         if (stopped || !localStoreReady) return
         switch (recovery.state) {
           case "signed_out":
             setSyncPhase("local_ready")
             break
           case "verified":
-            setSyncPhase("session_ready")
+            setSyncPhase(
+              await syncHost?.connectStoredVerifiedSession() === "connected"
+                ? "session_ready"
+                : "unavailable",
+            )
             break
           case "denied":
             setSyncPhase("denied")
@@ -95,6 +109,7 @@ export const App = () => {
       stopped = true
       handle.stop()
       syncHost?.close()
+      syncHostRef.current = null
     }
   }, [])
 

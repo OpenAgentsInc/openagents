@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.9",
+  version: "2026-07-10.10",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -59,10 +59,10 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       enforcementTier: "test-sweep",
       blockerRefs: [],
       source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
-      statement: "Desktop opens the shared Khala Sync SQLite store inside Electron main, persists one installation identity across restart, and closes it deterministically. Until OpenAgents sign-in lands, the gateway reports local persistence ready but network Sync unavailable.",
-      authorityBoundary: "The renderer receives only bounded readiness. Database path and handle, installation identity refs, rows, mutation queue, and credentials remain host-only. The local database is a reconstructible cache/offline queue and never server authority.",
+      statement: "Desktop opens the shared Khala Sync SQLite store inside Electron main, persists one installation identity across restart, and after native-session verification composes the shared HTTP/WebSocket session on exactly the server-derived owner's personal scope. Rotation is re-read host-side and the session closes before the store.",
+      authorityBoundary: "The renderer receives only bounded phase and freshness. Owner refs, credentials, database path and handle, installation identity refs, rows, mutation queue, transport, and session remain host-only. The local database is a reconstructible cache/offline queue and never server authority; authenticated substrate is not an authoritative conversation projection.",
       evidenceRefs: ["apps/openagents-desktop/src/desktop-sync-host.ts", "apps/openagents-desktop/src/desktop-sync-store.ts", "packages/khala-sync-client/src/store-core.ts"],
-      oracles: [{ id: "desktop_sync_host.lifecycle", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-sync-host.test.ts", description: "Proves restart-stable identity, private permissions, idempotent close, bounded readiness projection, and reuse of the shared SQLite store." }],
+      oracles: [{ id: "desktop_sync_host.lifecycle", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-sync-host.test.ts", description: "Proves restart-stable identity, private permissions, personal-scope selection, dynamic token lookup, live/freshness transition, session-before-store close, and reuse of the shared SQLite store." }],
       verification: "bun run --cwd apps/openagents-desktop verify runs the host lifecycle suite and real Electron gateway bootstrap.",
     },
     {

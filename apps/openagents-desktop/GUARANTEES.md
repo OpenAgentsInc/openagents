@@ -39,12 +39,18 @@ owner-private directory under Desktop `userData`.
 - One installation identity is generated once and reused after restart.
 - The shared store schema and semantics remain the only cache/offline-queue
   implementation; Desktop does not create a parallel Sync database.
-- The store closes deterministically on quit.
+- A server-verified native session starts the shared HTTP/WebSocket engine on
+  the server-derived owner's personal scope; rotation is re-read host-side.
+- The Sync session closes before the store on quit.
 - The renderer receives only bounded readiness—never the database path/handle,
   installation refs, rows, pending mutations, or credentials.
-- Network Sync remains unavailable until OpenAgents sign-in is implemented.
 
 Contract: `openagents_desktop.sync.host_owned_sqlite.v1`.
+
+This does not yet claim authoritative conversation projection or live-device
+acceptance. The host oracle proves the scope, phase/freshness projection,
+rotating-token callback, and session-before-store lifecycle without exposing
+credential material.
 
 ### OS-encrypted native-session custody
 

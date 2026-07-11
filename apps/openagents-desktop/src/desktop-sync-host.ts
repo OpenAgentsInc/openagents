@@ -1,7 +1,23 @@
 import { chmodSync, mkdirSync } from "node:fs"
 import path from "node:path"
 
-import { ClientGroupId, ClientId, SyncSchemaVersion } from "@openagentsinc/khala-sync"
+import {
+  ClientGroupId,
+  ClientId,
+  personalScope,
+  SyncSchemaVersion,
+  type SyncScope,
+} from "@openagentsinc/khala-sync"
+import {
+  createHttpKhalaSyncTransport,
+  createKhalaSyncSession,
+  createOverlay,
+  type HttpTransportConfig,
+  type KhalaSyncSession,
+  type KhalaSyncSessionOptions,
+  type KhalaSyncTransport,
+  type ScopeSyncState,
+} from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 import { openDesktopSyncStore, type DesktopSyncStore } from "./desktop-sync-store.ts"
 
@@ -9,6 +25,8 @@ export const DesktopSyncSchemaVersion = SyncSchemaVersion.make(1)
 
 export type DesktopSyncHostStatus = Readonly<{
   state: "local_ready" | "closed"
+  syncPhase: ScopeSyncState["phase"] | "closed"
+  lastDeltaAt: number | null
   schemaVersion: number
   identityState: "persisted"
   pendingMutationCount: number
@@ -16,7 +34,17 @@ export type DesktopSyncHostStatus = Readonly<{
 
 export type DesktopSyncHost = Readonly<{
   status: () => DesktopSyncHostStatus
+  connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
+  disconnectAuthenticated: () => void
   close: () => void
+}>
+
+export type DesktopAuthenticatedSyncInput = Readonly<{
+  baseUrl: string
+  ownerUserId: string
+  authToken: () => string
+  createTransport?: (config: HttpTransportConfig) => KhalaSyncTransport
+  sessionOptions?: KhalaSyncSessionOptions
 }>
 
 const secureLocalFiles = (databasePath: string): void => {
@@ -41,6 +69,8 @@ export const openDesktopSyncHost = (input: Readonly<{
 
   const store = (input.openStore ?? openDesktopSyncStore)(input.databasePath)
   let closed = false
+  let session: KhalaSyncSession | null = null
+  let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
     if (persisted === null) {
@@ -56,16 +86,59 @@ export const openDesktopSyncHost = (input: Readonly<{
     throw error
   }
 
+  const disconnectAuthenticated = (): void => {
+    if (session === null) return
+    Effect.runSync(session.close())
+    session = null
+    scope = null
+  }
+
   return {
     status: () => ({
       state: closed ? "closed" : "local_ready",
+      syncPhase: closed
+        ? "closed"
+        : session === null || scope === null
+          ? "idle"
+          : session.state(scope).phase,
+      lastDeltaAt: closed || session === null || scope === null
+        ? null
+        : session.lastDeltaAt(scope),
       schemaVersion: Number(DesktopSyncSchemaVersion),
       identityState: "persisted",
       pendingMutationCount: closed ? 0 : Effect.runSync(store.pendingMutations()).length,
     }),
+    connectAuthenticated: connection => {
+      if (closed) throw new Error("desktop Sync host is closed")
+      const ownerUserId = connection.ownerUserId.trim()
+      if (ownerUserId === "" || connection.authToken().trim() === "") {
+        throw new Error("desktop authenticated Sync credential is incomplete")
+      }
+      disconnectAuthenticated()
+      const identity = Effect.runSync(store.identity())
+      if (identity === null) throw new Error("desktop Sync identity is unavailable")
+      const overlay = Effect.runSync(createOverlay(store, []))
+      const transportConfig = {
+        baseUrl: connection.baseUrl,
+        authToken: connection.authToken,
+      }
+      const transport = connection.createTransport?.(transportConfig) ??
+        createHttpKhalaSyncTransport(transportConfig)
+      scope = personalScope(ownerUserId)
+      session = createKhalaSyncSession({
+        baseUrl: connection.baseUrl,
+        clientGroupId: identity.clientGroupId,
+        clientId: identity.clientId,
+        schemaVersion: identity.schemaVersion,
+        authToken: connection.authToken,
+      }, store, overlay, transport, connection.sessionOptions)
+      Effect.runSync(session.subscribe(scope))
+    },
+    disconnectAuthenticated,
     close: () => {
       if (closed) return
       closed = true
+      disconnectAuthenticated()
       Effect.runSync(store.close())
     },
   }

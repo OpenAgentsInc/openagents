@@ -78,9 +78,29 @@ const codexConnect = makeCodexConnectService(here, {
 let desktopSyncHost: DesktopSyncHost | null = null
 let desktopSessionVault: DesktopSessionVault | null = null
 let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "unavailable"
+const connectVerifiedDesktopSync = (): boolean => {
+  if (desktopSyncHost === null || desktopSessionVault === null) return false
+  try {
+    const credential = desktopSessionVault.load()
+    if (credential === null) {
+      desktopSyncHost.disconnectAuthenticated()
+      return false
+    }
+    desktopSyncHost.connectAuthenticated({
+      baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
+      ownerUserId: credential.ownerUserId,
+      authToken: () => desktopSessionVault?.load()?.accessToken ?? "",
+    })
+    return true
+  } catch {
+    desktopSyncHost.disconnectAuthenticated()
+    return false
+  }
+}
 const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
   sessionLocalState: desktopSessionState,
   syncLocalState: desktopSyncHost?.status().state === "local_ready" ? "ready" : "unavailable",
+  syncNetworkPhase: desktopSyncHost?.status().syncPhase ?? "closed",
 }), {
   signIn: async () => {
     if (desktopSessionVault === null) return { state: "unavailable" }
@@ -90,7 +110,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       openExternal: url => shell.openExternal(url),
     })
     desktopSessionState = result.state === "verified"
-      ? "session_ready"
+      ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
       : result.state === "cancelled"
         ? previous
         : "unavailable"
@@ -99,6 +119,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   signOut: async () => {
     if (desktopSessionVault === null) return { state: "unavailable" }
     const result = await signOutDesktopSession({ vault: desktopSessionVault })
+    if (result.state === "signed_out") desktopSyncHost?.disconnectAuthenticated()
     desktopSessionState = result.state
     return result
   },
@@ -594,7 +615,7 @@ void app.whenReady().then(async () => {
         vault: desktopSessionVault,
       })
       desktopSessionState = recovery.state === "verified"
-        ? "session_ready"
+        ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
         : recovery.state
     }
   } catch {
