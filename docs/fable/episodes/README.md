@@ -14,7 +14,7 @@ roadmap; factual status lives in code, live issues, and receipts. Transcripts
 are machine-generated — verify wording against the video before quote-grade
 use.
 
-## Current set (249 → 240)
+## Current set (249 → 230)
 
 | Episode | Analysis | One-line focus |
 | --- | --- | --- |
@@ -28,6 +28,16 @@ use.
 | [`242` Khala, Collective Intelligence](./242.md) | the open orchestrator launch | API-shape thesis landed (#8600); plugin-marketplace half remains direction; model-variant naming deprecated. |
 | [`241` Sakana Fugu Review](./241.md) | open vs. closed orchestration | The open-at-the-load-bearing-seam differentiation thesis, now backed by the teardown corpus; validator pool landed as governance, not product. |
 | [`240` Tassadar Run Board 3D](./240.md) | watchable, spatial work | Supervision instinct came true as typed machinery (FC-3, D5 cockpit, decision 22); 3D spectacle deferred to a post-R7 revisit gate on `three-effect`. |
+| [`239` Let's Make Money](./239.md) | buy-side revenue loop | Referral attribution and marketplace-from-primitives are post-R7 gates behind the commercial freeze; margin honesty survives as exact-or-`not_measured` accounting. |
+| [`238` The Tassadar Run is Live](./238.md) | share compute, earn Bitcoin | Worker/validator replay is the direct ancestor of the six-rung/receipt discipline; the agentic-npm module loop is a post-R7 revisit. |
+| [`237` You Must Construct Additional Pylons](./237.md) | the launch constitution | Accepted outcomes and the verification wall were institutionalized; "shipped by the network" falsified — CUT-27 and #8640 are the honest descendants. |
+| [`236` Tassadar](./236.md) | training-run announcement | Setup beat for 237; the earning-modes taxonomy and node-software framing survive in `apps/pylon` + `khala fleet connect`; training retired. |
+| [`235` Agents Earn Bitcoin Tips](./235.md) | live BOLT12 tipping | Tipping rail live-proven then dormant-but-preserved; Artanis autonomous spend superseded — bounded-spend extracted as a future capability-broker lease. |
+| [`234` Product Promises](./234.md) | verifiable feature claims | The arc's biggest "came true": public registry + integrity chain, behavior contracts, and issue-level UX promise contracts all descend from it. |
+| [`233` The Monorepo](./233.md) | one repo, one sweep | Held completely except Cloudflare → GCP (#8515); typed seams made the platform swap cheap; the Rust Cloud-crates exception is governed (#8591). |
+| [`232` The Energy Layer](./232.md) | outcomes per kilowatt-hour | Numerator institutionalized (accepted outcomes); denominator dormant — post-R7 gate through execution-target descriptors and the capability broker. |
+| [`231` The Forum](./231.md) | a bulletin board for agents | Survived every pivot as a retained route; Forum-first intake is the working discipline; Bitcoin-weighted moderation never shipped (post-R7). |
+| [`230` Calling All Agents](./230.md) | the manifesto to agents | Agent-legibility became real (AGENTS.md, promise registry, fleet connect); the five-markets flow-of-funds remains dormant long-horizon vision. |
 
 ## Conventions
 

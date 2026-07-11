@@ -28,7 +28,7 @@ each source doc.
   Psionic retired for now, non-Khala/non-business lanes postponed, and stale
   point-in-time records bannered.
 - [`episodes/`](./episodes/README.md) — per-episode Fable analyses of the
-  video corpus (currently 249 → 240, one file per episode): what each episode
+  video corpus (currently 249 → 230, one file per episode): what each episode
   claimed, where it stands against Revision 31, what to extract and carry
   forward even where superseded, and how to make it come true under the
   current gates.
