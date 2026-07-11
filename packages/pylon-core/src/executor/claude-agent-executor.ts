@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
+import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import {
   CLAUDE_AGENT_SDK_PACKAGE,
   loadClaudeAgentConfig,
@@ -81,6 +82,8 @@ export type ClaudeAgentRunInput = {
   model?: string
   permissionMode: ClaudePermissionMode
   permissionAuthorityRef?: string
+  /** Explicit supervised controller; omitted by every default runner path. */
+  canUseTool?: CanUseTool
   abortSignal?: AbortSignal
 }
 
@@ -682,6 +685,7 @@ export async function runWithClaudeAgentSdk(
         maxTurns: input.maxTurns,
         abortController: abort,
         permissionMode: input.permissionMode,
+        ...(input.canUseTool === undefined ? {} : { canUseTool: input.canUseTool }),
         ...(input.permissionMode === "bypassPermissions"
           ? { settingSources: ["project"] }
           : { allowedTools: input.allowedTools, settingSources: [] }),

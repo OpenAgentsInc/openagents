@@ -243,6 +243,36 @@ describe("claude agent task recognition", () => {
     expect(projected).not.toContain("raw provider response")
   })
 
+  test("forwards canUseTool only when an explicit supervised controller is injected", async () => {
+    const captured: Array<Record<string, unknown>> = []
+    mock.module(CLAUDE_AGENT_SDK_PACKAGE, () => ({
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured.push(options)
+        return (async function* () {
+          yield { type: "result", subtype: "success", is_error: false }
+        })()
+      },
+    }))
+    const base = {
+      cwd: tmpdir(),
+      instructions: "Public-safe fixture instruction.",
+      allowedTools: [],
+      maxTurns: 1,
+      permissionMode: "acceptEdits" as const,
+      timeoutMs: 1_000,
+    }
+    await runWithClaudeAgentSdk(base)
+    const canUseTool = async () => ({ behavior: "deny" as const, message: "Denied by confirmed authority." })
+    await runWithClaudeAgentSdk({ ...base, canUseTool })
+
+    expect(captured[0]).not.toHaveProperty("canUseTool")
+    expect(captured[1]?.canUseTool).toBe(canUseTool)
+    expect(captured.map(options => options.permissionMode)).toEqual([
+      "acceptEdits",
+      "acceptEdits",
+    ])
+  })
+
   test("recognizes the typed work class and passes everything else through", async () => {
     expect(claudeAgentTaskFrom(claudeAgentCodingAssignment)).not.toBeNull()
     expect(claudeAgentTaskFrom({ kind: "job.public.tassadar_executor_trace", tassadar: {} })).toBeNull()
