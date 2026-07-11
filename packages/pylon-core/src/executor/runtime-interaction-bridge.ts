@@ -168,7 +168,8 @@ export const createClaudeCanUseToolInteractionController = (input: Readonly<{
         ? "Denied by confirmed OpenAgents authority."
         : "OpenAgents approval is no longer actionable.",
     }
-  } catch {
+  } catch (error) {
+    if (options.signal.aborted) throw error
     return {
       behavior: "deny",
       message: "OpenAgents approval authority is unavailable.",

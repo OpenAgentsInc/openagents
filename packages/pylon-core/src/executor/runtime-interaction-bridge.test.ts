@@ -188,4 +188,20 @@ describe("Pylon runtime interaction bridge", () => {
       })).toEqual({ behavior: "deny", message })
     }
   })
+
+  test("preserves Claude cancellation instead of converting interruption into denial", async () => {
+    const controller = createClaudeCanUseToolInteractionController({
+      authority: {
+        request: () => Effect.void,
+        awaitTerminal: () => Effect.never,
+      },
+      requestFor: () => request,
+    })
+    const abort = new AbortController()
+    abort.abort()
+    await expect(controller("Bash", {}, {
+      signal: abort.signal,
+      toolUseID: "tool_call.claude.cancelled",
+    })).rejects.toBeDefined()
+  })
 })
