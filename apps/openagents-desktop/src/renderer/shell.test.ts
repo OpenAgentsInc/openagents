@@ -41,6 +41,7 @@ import { openagentsDesktopTheme } from "./theme.ts"
 import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
+import { desktopCanonicalCommandRegistry } from "../desktop-command-contract.ts"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
 
@@ -1634,6 +1635,38 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
         expect(nodeByKey(pending, "question-question.1-chip")).toMatchObject({ label: "Fixture" })
       }),
     )
+  })
+})
+
+describe("EP250 window + sidebar owner contracts", () => {
+  test("DesktopFullscreenToggled dispatch invokes the window host toggle exactly once", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const state = yield* SubscriptionRef.make(baseState)
+      let calls = 0
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(
+          state, fixedNow, undefined, undefined, undefined, undefined, undefined,
+          undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+          { toggleFullScreen: async () => { calls += 1; return true } },
+        ),
+      )
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullscreenToggled", StaticPayload(null))))
+      expect(calls).toBe(1)
+    }).pipe(Effect.scoped))
+  })
+
+  test("window.fullscreen_toggle command contract carries the Meta+F/Control+F defaults", () => {
+    const entry = desktopCanonicalCommandRegistry.find((command) => command.id === "window.fullscreen_toggle")
+    expect(entry?.intentName).toBe("DesktopFullscreenToggled")
+    expect(entry?.defaultBindings).toEqual(["Meta+F", "Control+F"])
+  })
+
+  test("sidebar renders no brand row (owner: remove the OpenAgents icon+text top left)", () => {
+    const view = desktopShellView(baseState)
+    expect(nodeByKey(view, "sidebar-brand-row")).toBeUndefined()
+    expect(nodeByKey(view, "sidebar-brand")).toBeUndefined()
+    expect(JSON.stringify(view).includes('"content":"OpenAgents"')).toBe(false)
   })
 })
 

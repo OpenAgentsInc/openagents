@@ -338,6 +338,11 @@ export const DesktopMessageSelected = defineIntent("DesktopMessageSelected", Sch
 /** Expand/collapse a tool card's bounded raw details (EP250 tool cards). */
 export const DesktopToolCardToggled = defineIntent("DesktopToolCardToggled", Schema.String)
 /**
+ * Toggle window fullscreen (owner contract EP250: "add a hotkey for
+ * maximizing (command+something) to fullscreen like command f").
+ */
+export const DesktopFullscreenToggled = defineIntent("DesktopFullscreenToggled", Schema.Null)
+/**
  * Question card option activation (EP250 question cards). Single-select
  * questions record the label and auto-submit once every question in the card
  * has a selection; multiSelect questions toggle the label and wait for the
@@ -398,6 +403,7 @@ export const desktopShellIntents = [
   DesktopChatSelected,
   DesktopMessageSelected,
   DesktopToolCardToggled,
+  DesktopFullscreenToggled,
   DesktopQuestionOptionSelected,
   DesktopQuestionSubmitted,
   DesktopAgentGraphToggled,
@@ -894,6 +900,9 @@ export const withLoopProof = (state: DesktopShellState, timestamp: string): Desk
   }
 }
 
+/** Host seam for window-level controls (fullscreen toggle). */
+export type DesktopWindowHost = { readonly toggleFullScreen: () => Promise<boolean> }
+
 export const makeDesktopShellHandlers = (
   state: SubscriptionRef.SubscriptionRef<DesktopShellState>,
   now: () => string = () => formatShellTimestamp(new Date()),
@@ -923,6 +932,7 @@ export const makeDesktopShellHandlers = (
   codingCatalogHost: CodingCatalogHost = unavailableCodingCatalogHost,
   questionHost: QuestionHost = { answer: null },
   commandBindingHost: CommandBindingHost = unavailableCommandBindingHost,
+  windowHost: DesktopWindowHost = { toggleFullScreen: async () => false },
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge)
   /**
@@ -1060,6 +1070,7 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => withMessageSelected(current, key)),
   DesktopToolCardToggled: (key) =>
     SubscriptionRef.update(state, (current) => withToolCardToggled(current, key)),
+  DesktopFullscreenToggled: () => Effect.promise(async () => { await windowHost.toggleFullScreen() }),
   DesktopQuestionOptionSelected: ({ questionRef, questionIndex, label }) =>
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
@@ -1719,10 +1730,6 @@ const shellSidebar = (state: DesktopShellState): View =>
       style: { height: "full", minHeight: 0, surface: "glass" },
     },
     [
-      Stack({ key: "sidebar-brand-row", direction: "row", gap: "2", align: "center" }, [
-        Icon({ key: "sidebar-brand-icon", name: "Terminal", size: "sm", color: "accent" }),
-        Text({ key: "sidebar-brand", content: "OpenAgents", variant: "title", color: "textPrimary" }),
-      ]),
       NavRail({
         key:"sidebar-navigation",
         activeId:state.history.pendingThreadRef!==null?`sidebar-thread-${state.history.pendingThreadRef}`:state.history.page!==null?`sidebar-thread-${state.history.page.rootThreadRef}`:state.activeThreadId!==null?`sidebar-thread-${state.activeThreadId}`:`workspace-${state.workspace}`,

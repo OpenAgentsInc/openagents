@@ -497,7 +497,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost, commandBindingHost),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost, commandBindingHost, {
+        toggleFullScreen: async () => {
+          const raw = await (globalThis as { openagentsDesktop?: { toggleFullScreen?: () => Promise<boolean> } }).openagentsDesktop?.toggleFullScreen?.()
+          return raw === true
+        },
+      }),
     )
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).
@@ -641,6 +646,27 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         ),
       )
     }
+    // Cmd+F / Ctrl+F -> DesktopFullscreenToggled (owner contract EP250:
+    // "add a hotkey for maximizing (command+something) to fullscreen like
+    // command f"). Deliberately NO editable guard: fullscreen from the
+    // composer is expected; the app has no find-in-page yet (rebind review
+    // when find lands).
+    const onFullscreenShortcut = (event: KeyboardEvent): void => {
+      const platformModifier = bridge?.platform === "darwin"
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey
+      if (
+        event.defaultPrevented ||
+        event.key.toLowerCase() !== "f" ||
+        !platformModifier ||
+        event.altKey ||
+        event.shiftKey
+      ) return
+      event.preventDefault()
+      void Effect.runPromise(
+        registry.dispatch(resolveIntentRef(IntentRef("DesktopFullscreenToggled", StaticPayload(null)))),
+      )
+    }
     const onCommandPaletteShortcut = (event: KeyboardEvent): void => {
       const target = event.target
       const editable = target instanceof HTMLElement &&
@@ -749,6 +775,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     }
     const onHistoryWindowBlur=():void=>setHistoryShortcutHints(false)
     window.addEventListener("keydown", onNewChatShortcut)
+    window.addEventListener("keydown", onFullscreenShortcut)
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryModifierDown)
     window.addEventListener("keydown", onHistoryConversationShortcut)
@@ -756,6 +783,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     window.addEventListener("blur", onHistoryWindowBlur)
     window.addEventListener("pagehide", () => {
       window.removeEventListener("keydown", onNewChatShortcut)
+      window.removeEventListener("keydown", onFullscreenShortcut)
       window.removeEventListener("keydown", onCommandPaletteShortcut)
       window.removeEventListener("keydown", onHistoryModifierDown)
       window.removeEventListener("keydown", onHistoryConversationShortcut)

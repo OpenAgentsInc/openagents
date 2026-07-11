@@ -43,6 +43,7 @@ import {
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
+import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
@@ -97,6 +98,10 @@ import {
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
   platform: process.platform,
+  toggleFullScreen: async (): Promise<boolean> => {
+    const result = await ipcRenderer.invoke(DesktopWindowFullscreenChannel)
+    return result === true
+  },
   runtimeRequest: async (value: unknown) => {
     const request = decodeDesktopRuntimeGatewayRequest(value)
     if (request === null) return invalidDesktopRuntimeGatewayResponse()

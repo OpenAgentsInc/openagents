@@ -107,6 +107,7 @@ import {
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
+import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
@@ -524,6 +525,13 @@ const chooseCodingWorkspace = async (registerCatalog = true) => {
   if (registerCatalog) hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
   return root
 }
+ipcMain.handle(DesktopWindowFullscreenChannel, (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (window === null || window.isDestroyed()) return false
+  const next = !window.isFullScreen()
+  window.setFullScreen(next)
+  return next
+})
 ipcMain.handle(DesktopWorkspaceSummaryChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceFilesChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {

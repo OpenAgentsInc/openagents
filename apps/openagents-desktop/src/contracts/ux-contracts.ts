@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.30",
+    version: "2026-07-11.31",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -1595,6 +1595,64 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the popover unit assertions and the Electron smoke hover-reveal step.",
+      },
+      {
+        contractId: "openagents_desktop.window.fullscreen_hotkey.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "window controls",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement: "add a hotkey for maximizing (command+something) to fullscreen like command f",
+        authorityBoundary:
+          "Window presentation only. Cmd+F/Ctrl+F is the canonical window.fullscreen_toggle default binding dispatching DesktopFullscreenToggled through the closed command registry; the shell handler calls the window host seam, and main toggles the sender BrowserWindow's fullscreen state. Deliberately no editable-guard (no find-in-page exists yet; rebind review when find lands). No renderer window-handle authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/desktop-command-contract.ts",
+          "apps/openagents-desktop/src/window-contract.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "fullscreen_hotkey.contract_binding",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "The command contract carries window.fullscreen_toggle with Meta+F/Control+F defaults bound to DesktopFullscreenToggled, and dispatching the intent through the registry invokes the injected window host toggle exactly once.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell registry dispatch assertion.",
+      },
+      {
+        contractId: "openagents_desktop.shell.no_sidebar_brand_row.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "sidebar chrome",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement: "remove the \"OpenAgents\" with icon top left ins idebar",
+        authorityBoundary:
+          "Presentation only: the sidebar renders no brand row (icon + product-name text) above the workspace dock; window identity remains in the native title bar and app metadata.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "no_sidebar_brand.absence",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "shellSidebar's rendered view contains no sidebar-brand or sidebar-brand-icon nodes and no literal 'OpenAgents' text node in the sidebar tree.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the sidebar absence assertion.",
       },
     ],
   };
