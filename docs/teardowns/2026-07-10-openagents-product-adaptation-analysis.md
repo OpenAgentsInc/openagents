@@ -9,6 +9,7 @@ Evidence base:
 - [ChatGPT / Codex desktop teardown](./2026-07-10-chatgpt-desktop-app-teardown.md)
 - [Claude desktop teardown](./2026-07-10-claude-desktop-app-teardown.md)
 - [Claude Code architecture teardown](./2026-07-10-claude-code-teardown.md)
+- [Codex CLI and agent runtime teardown](./2026-07-10-codex-agent-runtime-teardown.md)
 - [OpenCode desktop source teardown](./2026-07-10-opencode-desktop-app-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
@@ -16,9 +17,11 @@ Evidence base:
 ## Executive decision
 
 OpenAgents should adapt the **shape** all three desktop products converge on,
-while rejecting their least transparent trust choices. OpenCode matters
-disproportionately because it exposes the implementation of that shape under an
-MIT license rather than requiring inference from a signed bundle.
+while rejecting their least transparent trust choices. OpenCode exposes the
+desktop/server implementation of that shape under an MIT license; Codex exposes
+the local engine, rich-client protocol, durable state, sandbox, subagent graph,
+and remote-control implementation under Apache-2.0. Together they replace a
+large amount of bundle inference with inspectable load-bearing seams.
 
 The convergent shape is clear:
 
@@ -40,7 +43,10 @@ architecture is not “Electron”; it is a local/remote runtime protocol with a
 desktop client. Claude Code makes the engine consequence sharper: the protocol
 must be bidirectional, the local executor must remain authoritative, and every
 surface must consume one conversation/task state machine rather than own a
-parallel query loop. The evidence does **not** justify an Owl-style runtime fork, a
+parallel query loop. Codex then demonstrates that migration in production
+source: its TUI now uses the same app-server contract in-process or remotely,
+and its former TUI-specific app-server flag is only a removed compatibility
+no-op. The evidence does **not** justify an Owl-style runtime fork, a
 live remote site as the privileged renderer, opaque sidecar sprawl, renderer-
 held general runtime authority, or ambient screen recording by default.
 
@@ -65,7 +71,7 @@ The product-level adaptation is:
 | What does the update problem become? | App, Owl, Codex, plugins, skills, computer-use services | App, live/bundled Ion, Agent SDK, CLI, extensions, VM rootfs | App bundles host/server/renderer, while plugins, MCP, skills, and remote servers still move independently | One signed component compatibility ledger with rollback proof |
 | What is the trust risk? | Unsandboxed automation host plus computer use and ambient memory | Unsandboxed host plus broad native/VM/browser/file reach | Renderer receives local-server credentials; plugins run in the trusted server; host tools are not guest isolation | Make credentials, permissions, capture, execution, memory, extensions, and remote control explicit, narrow, and auditable |
 
-## What the open source changes
+## What the OpenCode source audit changes
 
 ChatGPT and Claude establish architectural plausibility. OpenCode supplies an
 inspectable implementation and therefore turns several recommendations into
@@ -148,6 +154,65 @@ clients. The highest-value warning is architectural accretion: multiple query
 owners, memory systems, task classes, stores, and build variants can make an
 otherwise capable runtime impossible to explain as one coherent state machine.
 
+## What the Codex source audit changes
+
+Codex is the strongest engine-level confirmation of the direction above. Its
+open Rust repository shows the target architecture operating across a TUI,
+app-server, SDKs, IDE/desktop clients, local/remote transports, and multi-agent
+execution:
+
+- **One protocol can serve both embedded and remote clients.** Codex's TUI uses
+  an in-process typed app-server client for efficiency and a remote client for
+  other runtimes, while both paths reach the same request processor. In-process
+  is a transport optimization, not a second engine API.
+- **Thread → Turn → Item is a durable product vocabulary.** The app-server
+  protocol describes messages, reasoning, commands, patches, tools, agents,
+  compaction, review, usage, and terminal outcomes without exposing terminal
+  text as state. OpenAgents should extend this with Work Unit, Authority
+  Manifest, Execution Receipt, and Delivery Receipt.
+- **Protocol generation and experimental gating are release features.** Rust
+  types generate version-matched TypeScript and JSON Schema bundles; V2 naming,
+  optionality, tagged unions, pagination, and experimental opt-in are explicit
+  compatibility rules. OpenAgents needs generated desktop/mobile/SDK clients
+  and stable/experimental bundles from the beginning.
+- **Append evidence and indexed state can coexist.** Codex keeps inspectable
+  rollout JSONL while SQLite indexes thread metadata and owns operational
+  records. Recovery can repair stale/missing index rows from rollouts. This is
+  the right compromise between local transparency and product-scale queries.
+- **Agent topology deserves its own store.** Codex persists directional spawn
+  edges, open/closed status, deterministic child lists, and breadth-first
+  descendants behind a storage-neutral graph interface. OpenAgents should
+  extend that edge state through delivery and acceptance.
+- **Permissions can compile into cross-platform enforcement.** Named profiles,
+  organization requirements, approval policy, execpolicy, macOS Seatbelt,
+  Linux bubblewrap/namespaces/seccomp, Windows restricted-token paths, and a
+  managed egress proxy are distinct but composable layers.
+- **Remote control is a bounded replicated protocol.** Codex identifies client,
+  stream incarnation, sequence, cursor, acknowledgements, and chunks; caps
+  frames and reassembly; pairs controllers with short-lived artifacts; and
+  exposes revocation. Khala Sync should match this rigor while remaining
+  transport-neutral.
+- **Context discipline can be mechanical.** Codex requires typed context
+  fragments, incremental history, cache-stable inputs, hard caps, and manual
+  review for unusually large injections. OpenAgents should enforce equivalent
+  invariants in constructors and tests.
+- **Testing the public seam is essential.** Codex tests agent behavior through
+  mocked provider streams and public protocol calls, checks generated schema
+  drift, snapshot-tests terminal projections, and exercises sandbox policy
+  generation. Runtime Gateway fixtures should become OpenAgents' main
+  integration-test seam.
+- **Daemon lifecycle is product state.** Version, process, socket, readiness,
+  updater, pairing, and shutdown behavior are explicitly modeled. Pylon must
+  expose the same facts instead of flattening them to “online.”
+
+Codex also sharpens what not to copy: a 125-crate, million-line workspace; 92
+feature entries including removed compatibility flags; parallel V1/V2 and
+legacy/new policy concepts; a hybrid store set without one obvious deletion
+transaction; no general per-turn file checkpoint store; no first-class
+worktree ownership lifecycle; and a code-mode sidecar that can fall back to
+in-process V8 when missing. OpenAgents should take the seams and verification
+habits while keeping its Effect service graph smaller and fail-closed.
+
 ## Adapt now: changes that belong in the current P0 program
 
 ### 1. Freeze the engine protocol before widening the workbench
@@ -176,6 +241,11 @@ The contract should include:
   overloaded “completed” outcome;
 - redacted diagnostics and per-event provenance; and
 - compatibility fixtures replayable without a live provider.
+
+Model the public hierarchy as **Thread → Turn → Item → Work Unit/Receipt**.
+Generate every client from the Effect Schema source. Local in-process calls may
+skip serialization, but they must not skip the request processor, policy,
+events, or receipts.
 
 This is the load-bearing requirement behind Desktop D1, not an implementation
 detail. The renderer should consume an Effect Schema event algebra; provider-
@@ -237,6 +307,13 @@ Add a hermetic profile for reproducible work. It admits only explicitly named
 instructions, credentials, tools, MCP servers, plugins, directories, and
 network destinations, and records their identities and hashes before the first
 external side effect.
+
+Use Codex's enforcement direction as the platform reference: named profiles
+compile into filesystem roots and carveouts, network domain/method/socket
+policy, executable policy, and an OS-specific plan. If the host cannot
+represent the policy without weakening it, execution fails closed. A managed
+egress service should default deny, make deny override allow, protect local
+networks, and emit redacted decision events.
 
 ### 4. Turn the command registry into the shared product API
 
@@ -329,6 +406,12 @@ Create one signed manifest that records:
 Squirrel versus Sparkle is secondary. The product requirement is that the
 whole compatible set is knowable, recoverable, and explainable to the user.
 
+Codex adds two concrete compatibility requirements: generate a schema bundle
+from the exact running engine version, and make helper/daemon protocol
+negotiation explicit. The manifest should bind host, Runtime Gateway, Pylon,
+sandbox helper/image, network proxy, plugin, mobile client, and generated
+protocol bundle as one tested set.
+
 ## Product-specific adaptations
 
 ### OpenAgents Desktop
@@ -339,7 +422,8 @@ Priority order aligned with D0–D6:
 
 1. **D1:** real protocol-backed streamed sessions, eager subscribe, connected
    and heartbeat events, replay, interrupt, resume, reconnect, coalescing,
-   permissions, approvals, and usage.
+   permissions, approvals, and usage. The local embedded path and a remote path
+   must hit the same request processor, as Codex's TUI/app-server now does.
 2. **D2:** project/session routes plus the central command registry, palette,
    keybindings, native menus, deep links, and restore.
 3. **D3:** bounded file grants, lazy tree and content budgets, editor foreign
@@ -403,6 +487,12 @@ Adapt:
 - plugin/MCP/skill composition; and
 - redacted replayable event receipts.
 
+Pylon should expose a machine-readable lifecycle record containing executable
+identity/version, protocol version, process generation, socket/transport,
+readiness, update state, active worker epoch, and last transition. Start must be
+idempotent, lifecycle mutations serialized, and stop/update/rollback bounded
+and receipted.
+
 Do not expose provider-specific sidecar flags directly to renderers or mobile.
 
 ### Khala Sync
@@ -423,6 +513,10 @@ The synchronized command/event envelope must also carry an idempotency key,
 worker epoch, ordered sequence, acknowledgement state, causal parent, and
 expiry for authority-bearing responses. The server and clients must reject a
 late progress event that attempts to reopen a terminal task.
+
+Use bounded segmentation for large events and cap each frame, full message,
+segment count, and number/age of partial assemblies. Controller pairing is
+short-lived; durable device grants are listable and revocable.
 
 Cursor positions, window geometry, raw filesystem handles, secrets, and
 unredacted local logs remain local.
@@ -550,8 +644,10 @@ state comes from typed runtime outcomes and Source Authority receipts.
 
 The three reference products leave a coherent opening:
 
-- OpenAI has the more open engine but a closed desktop/plugin/runtime stack and
-  extremely broad ambient-computer ambitions.
+- OpenAI has the most inspectable engine and the clearest rich-client protocol,
+  sandbox, and explicit agent graph, but a closed desktop host and broad
+  ambient-computer ambitions; the open runtime also carries substantial
+  compatibility and feature-matrix debt.
 - Anthropic has an open extension/SDK edge but a closed engine and a desktop
   whose normal renderer is partly controlled by a live web deployment.
 - OpenCode opens the load-bearing host, engine, UI, protocol, and test seams,
@@ -575,6 +671,8 @@ OpenAgents should differentiate on five properties:
 6. **Explainable execution:** every run can show context provenance, admitted
    authority, effective containment, child topology, and delivery outcome as
    separate typed facts.
+7. **Repairable local truth:** an append-only evidence log can rebuild an
+   indexed state authority, and repair/deletion itself produces a receipt.
 
 That is a stronger product thesis than “another desktop chat app” or “OpenCode
 with Fleet buttons.” It is an inspectable operating surface for work performed
@@ -585,12 +683,12 @@ survive beyond the renderer process.
 
 | Order | Decision | Owning program | Proof |
 | ---: | --- | --- | --- |
-| 1 | Freeze the tokenless renderer → host-owned Runtime Gateway and one conversation/event protocol | Desktop D0/D1 + Pylon | Boundary oracle proves no runtime credential or generic transport enters renderer; interactive/headless/mobile fixtures replay the same versioned event algebra |
+| 1 | Freeze the tokenless renderer → host-owned Runtime Gateway and one Thread/Turn/Item conversation protocol | Desktop D0/D1 + Pylon | Boundary oracle proves no runtime credential or generic transport enters renderer; embedded/remote/interactive/headless/mobile fixtures hit the same request processor and replay the same generated event algebra |
 | 2 | Bind Desktop and mobile to the existing R1 identity and R2 Khala Sync contracts | R1/R2 + Desktop/mobile adapters | Same server-derived owner/scope, independent revoke, SQLite restart, exact phases, no token in projections |
 | 3 | Ship one real streamed Desktop conversation with immediate mobile continuation | Desktop D1 + mobile narrow Sync slice | Matching thread/message refs, versions, phases, worker epoch, idempotency, ACK/replay cursor and monotonic terminal outcome; one safe mobile follow-up/interrupt; restart/gap/lost-ACK proof |
-| 4 | Extend the central command registry through host/runtime outcomes | Desktop D2 + Effect Native | UI, keyboard, menu, mobile and test invoke the same command IDs and reconcile one durable outcome |
+| 4 | Extend the central command registry through host/runtime outcomes and generated clients | Desktop D2 + Effect Native | UI, keyboard, menu, mobile, SDK and test invoke the same command IDs/schema bundle and reconcile one durable outcome |
 | 5 | Add bounded file/editor/Git/PTY foreign hosts while mobile remote-workroom work proceeds in parallel | Desktop D3 + mobile R6 + Effect Native | Useful coding loop on each form factor without renderer or phone local process/filesystem authority |
-| 6 | Define authority manifests, execution profiles, recovery, and isolated extension compatibility | Desktop D3/D4 + Pylon + Cloud | Same task reports admitted authority separately from effective containment; hermetic run, checkpoint/rewind, signed extension denial/update/rollback/run receipts pass |
+| 6 | Define authority manifests, compiled execution/egress profiles, recovery, and isolated extension compatibility | Desktop D3/D4 + Pylon + Cloud | Same task reports admitted authority separately from effective containment; cross-platform fail-closed profile, hermetic run, checkpoint/rewind, signed extension denial/update/rollback/run receipts pass |
 | 7 | Compose the existing Fleet/approval/command-outcome authority into both clients | Desktop D5 + R3/R4 | One steer/approval converges to one effective durable outcome and receipt on both clients under faults |
 | 8 | Package the compatible component set and dogfood | Desktop D6 + R7 | Fuses, signing, notarization, clean install, update, rollback, physical mobile, diagnostics, sustained handoff |
 | 9 | Add computer use, scheduling, and advanced remote environments selectively | Post-R7 | Explicit grants, visible state, sandbox/authority receipts, failure recovery |
@@ -606,8 +704,10 @@ reference, then make its boundaries simpler and more legible:
 - versioned open local/remote engine protocol with generated clients;
 - query/command/event transports with explicit lifecycle semantics;
 - one conversation service and one indexed canonical event graph;
+- generated stable/experimental clients around Thread/Turn/Item/Work Unit;
 - host/guest execution split;
 - separate authority manifests and containment receipts;
+- named cross-platform permission profiles and managed egress audit;
 - hermetic execution, checkpoints, rewind, and outcome-sensitive worktrees;
 - central typed command registry;
 - MCPB-compatible signed catalog;
@@ -615,7 +715,9 @@ reference, then make its boundaries simpler and more legible:
 - cross-device Source Authority projections; and
 - explicit, user-controlled permissions and memory.
 
-If OpenAgents delivers those foundations through D6, computer use, agent
+Use OpenCode as the inspectable desktop/server reference, Codex as the
+inspectable engine/protocol/sandbox reference, and Claude Code as the local
+recovery/worktree reference. If OpenAgents delivers those foundations through D6, computer use, agent
 computers, Fleet, and future AI-employee surfaces can grow without turning the
 desktop app into an uninspectable collection of privileged webviews and
 sidecars.
@@ -681,7 +783,8 @@ fixture-proven / deployed / live-proven / owner-accepted / closed).
 The teardowns argued: adopt the common architecture (stock Electron, local
 Effect Native renderer, versioned host/engine protocol, tokenless renderer,
 typed command registry, cross-device Source Authority, explicit permissions),
-use OpenCode as the inspectable reference, and make the boundaries simpler.
+use OpenCode and Codex as inspectable host/engine references, combine them with
+Claude Code's recovery ergonomics, and make the boundaries simpler.
 
 Two days later, steps 1, 2, and the substrate under 6 are **real and gated**;
 step 3 is half-real; steps 4–5 and 8 are seams or early; step 7's engine is
