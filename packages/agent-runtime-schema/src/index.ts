@@ -989,6 +989,296 @@ export const decodeKhalaRuntimeControlIntent =
   S.decodeUnknownSync(KhalaRuntimeControlIntent)
 
 // ---------------------------------------------------------------------------
+// openagents.runtime_interaction.v1 — durable provider-neutral interaction.
+// ---------------------------------------------------------------------------
+
+export const RuntimeInteractionSchemaLiteral =
+  "openagents.runtime_interaction.v1" as const
+
+export const RuntimeInteractionKind = S.Literals([
+  "provider_question",
+  "tool_approval",
+  "plan_review",
+])
+export type RuntimeInteractionKind = typeof RuntimeInteractionKind.Type
+
+export const RuntimeInteractionStatus = S.Literals([
+  "pending",
+  "resolved",
+  "expired",
+  "revoked",
+])
+export type RuntimeInteractionStatus = typeof RuntimeInteractionStatus.Type
+
+const RuntimeInteractionDisplayText = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(2_000),
+)
+
+const RuntimeInteractionIsoTimestamp = S.String.check(
+  S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/),
+)
+
+export const RuntimeInteractionOption = S.Struct({
+  optionRef: KhalaRuntimeSafeRef,
+  label: S.String.check(S.isMinLength(1), S.isMaxLength(160)),
+  description: S.optional(S.String.check(S.isMaxLength(500))),
+})
+export type RuntimeInteractionOption = typeof RuntimeInteractionOption.Type
+
+export const RuntimeInteractionQuestion = S.Struct({
+  questionRef: KhalaRuntimeSafeRef,
+  displayText: RuntimeInteractionDisplayText,
+  options: S.Array(RuntimeInteractionOption).check(S.isMaxLength(12)),
+  multiSelect: S.Boolean,
+})
+export type RuntimeInteractionQuestion = typeof RuntimeInteractionQuestion.Type
+
+export const RuntimeInteractionPayload = S.Union([
+  S.Struct({
+    kind: S.Literal("provider_question"),
+    displayTitle: S.String.check(S.isMinLength(1), S.isMaxLength(160)),
+    questions: S.Array(RuntimeInteractionQuestion).check(
+      S.isMinLength(1),
+      S.isMaxLength(8),
+    ),
+  }),
+  S.Struct({
+    kind: S.Literal("tool_approval"),
+    displayText: RuntimeInteractionDisplayText,
+    toolCallId: KhalaRuntimeToolCallId,
+    toolName: S.String.check(S.isMinLength(1), S.isMaxLength(160)),
+    authority: KhalaRuntimeToolAuthority,
+  }),
+  S.Struct({
+    kind: S.Literal("plan_review"),
+    displayText: RuntimeInteractionDisplayText,
+    planRef: KhalaRuntimeSafeRef,
+  }),
+])
+export type RuntimeInteractionPayload = typeof RuntimeInteractionPayload.Type
+
+export const RuntimeInteractionQuestionAnswer = S.Struct({
+  questionRef: KhalaRuntimeSafeRef,
+  optionRefs: S.Array(KhalaRuntimeSafeRef).check(S.isMaxLength(12)),
+  text: S.optional(S.String.check(S.isMaxLength(2_000))),
+})
+export type RuntimeInteractionQuestionAnswer =
+  typeof RuntimeInteractionQuestionAnswer.Type
+
+export const RuntimeInteractionDecision = S.Union([
+  S.Struct({
+    kind: S.Literal("provider_question"),
+    answers: S.Array(RuntimeInteractionQuestionAnswer).check(
+      S.isMinLength(1),
+      S.isMaxLength(8),
+    ),
+  }),
+  S.Struct({
+    kind: S.Literal("tool_approval"),
+    outcome: S.Literals(["approve", "deny"]),
+  }),
+  S.Struct({
+    kind: S.Literal("plan_review"),
+    outcome: S.Literals(["accept", "request_changes", "replan"]),
+  }),
+])
+export type RuntimeInteractionDecision = typeof RuntimeInteractionDecision.Type
+
+export const RuntimeInteractionDecisionEnvelope = S.Struct({
+  decisionRef: KhalaRuntimeSafeRef,
+  idempotencyKey: KhalaRuntimeSafeRef,
+  decidedAt: RuntimeInteractionIsoTimestamp,
+  surface: KhalaRuntimeClientSurface,
+  decision: RuntimeInteractionDecision,
+})
+export type RuntimeInteractionDecisionEnvelope =
+  typeof RuntimeInteractionDecisionEnvelope.Type
+
+export const RuntimeInteractionLifecycle = S.Union([
+  S.Struct({ status: S.Literal("pending") }),
+  S.Struct({
+    status: S.Literal("resolved"),
+    envelope: RuntimeInteractionDecisionEnvelope,
+  }),
+  S.Struct({
+    status: S.Literal("expired"),
+    terminalAt: RuntimeInteractionIsoTimestamp,
+    reasonRef: KhalaRuntimeSafeRef,
+  }),
+  S.Struct({
+    status: S.Literal("revoked"),
+    terminalAt: RuntimeInteractionIsoTimestamp,
+    reasonRef: KhalaRuntimeSafeRef,
+  }),
+])
+export type RuntimeInteractionLifecycle =
+  typeof RuntimeInteractionLifecycle.Type
+
+export const RuntimeInteraction = S.Struct({
+  schema: S.Literal(RuntimeInteractionSchemaLiteral),
+  interactionRef: KhalaRuntimeSafeRef,
+  threadId: KhalaRuntimeThreadId,
+  turnId: KhalaRuntimeTurnId,
+  requestedSequence: S.Number.check(
+    S.isInt(),
+    S.isGreaterThanOrEqualTo(0),
+  ),
+  requestedAt: RuntimeInteractionIsoTimestamp,
+  expiresAt: RuntimeInteractionIsoTimestamp,
+  source: KhalaRuntimeSource,
+  visibility: S.Literal("private"),
+  redactionClass: S.Literal("private_ref"),
+  causalityRefs: S.Array(KhalaRuntimeCausalityRef).check(S.isMaxLength(32)),
+  payload: RuntimeInteractionPayload,
+  lifecycle: RuntimeInteractionLifecycle,
+})
+export type RuntimeInteraction = typeof RuntimeInteraction.Type
+
+export const decodeRuntimeInteraction = S.decodeUnknownSync(RuntimeInteraction)
+export const decodeRuntimeInteractionDecisionEnvelope = S.decodeUnknownSync(
+  RuntimeInteractionDecisionEnvelope,
+)
+
+const questionDecisionIsValid = (
+  payload: Extract<RuntimeInteractionPayload, { readonly kind: "provider_question" }>,
+  decision: Extract<RuntimeInteractionDecision, { readonly kind: "provider_question" }>,
+): boolean => {
+  const answers = new Map(decision.answers.map(answer => [answer.questionRef, answer]))
+  if (answers.size !== decision.answers.length || answers.size !== payload.questions.length) {
+    return false
+  }
+  return payload.questions.every(question => {
+    const answer = answers.get(question.questionRef)
+    if (answer === undefined) return false
+    const options = new Set(question.options.map(option => option.optionRef))
+    if (new Set(answer.optionRefs).size !== answer.optionRefs.length) return false
+    if (answer.optionRefs.some(optionRef => !options.has(optionRef))) return false
+    if (!question.multiSelect && answer.optionRefs.length > 1) return false
+    return answer.optionRefs.length > 0 || (answer.text?.trim().length ?? 0) > 0
+  })
+}
+
+const interactionDecisionIsValid = (
+  interaction: RuntimeInteraction,
+  decision: RuntimeInteractionDecision,
+): boolean => {
+  if (interaction.payload.kind !== decision.kind) return false
+  return interaction.payload.kind === "provider_question" &&
+    decision.kind === "provider_question"
+    ? questionDecisionIsValid(interaction.payload, decision)
+    : true
+}
+
+const sameRuntimeInteractionDecision = (
+  left: RuntimeInteractionDecisionEnvelope,
+  right: RuntimeInteractionDecisionEnvelope,
+): boolean => left.decisionRef === right.decisionRef &&
+  left.idempotencyKey === right.idempotencyKey &&
+  JSON.stringify(left.decision) === JSON.stringify(right.decision)
+
+export type RuntimeInteractionDecisionResult =
+  | Readonly<{
+      state: "applied" | "duplicate" | "expired"
+      interaction: RuntimeInteraction
+    }>
+  | Readonly<{
+      state: "conflict" | "invalid_decision" | "revoked"
+      interaction: RuntimeInteraction
+    }>
+
+export const applyRuntimeInteractionDecision = (
+  interaction: RuntimeInteraction,
+  envelope: RuntimeInteractionDecisionEnvelope,
+  serverNow: string,
+): RuntimeInteractionDecisionResult => {
+  if (interaction.lifecycle.status === "resolved") {
+    return {
+      state: sameRuntimeInteractionDecision(interaction.lifecycle.envelope, envelope)
+        ? "duplicate"
+        : "conflict",
+      interaction,
+    }
+  }
+  if (interaction.lifecycle.status === "expired") {
+    return { state: "expired", interaction }
+  }
+  if (interaction.lifecycle.status === "revoked") {
+    return { state: "revoked", interaction }
+  }
+  if (Date.parse(serverNow) >= Date.parse(interaction.expiresAt)) {
+    return {
+      state: "expired",
+      interaction: {
+        ...interaction,
+        lifecycle: {
+          status: "expired",
+          terminalAt: serverNow,
+          reasonRef: "reason.interaction_deadline_elapsed",
+        },
+      },
+    }
+  }
+  if (!interactionDecisionIsValid(interaction, envelope.decision)) {
+    return { state: "invalid_decision", interaction }
+  }
+  return {
+    state: "applied",
+    interaction: {
+      ...interaction,
+      lifecycle: { status: "resolved", envelope },
+    },
+  }
+}
+
+export const RuntimeInteractionProjection = S.Struct({
+  schema: S.Literal("openagents.runtime_interaction_projection.v1"),
+  interactionRef: KhalaRuntimeSafeRef,
+  threadId: KhalaRuntimeThreadId,
+  turnId: KhalaRuntimeTurnId,
+  kind: RuntimeInteractionKind,
+  status: RuntimeInteractionStatus,
+  displayTitle: S.String.check(S.isMinLength(1), S.isMaxLength(160)),
+  displayText: S.String.check(S.isMaxLength(2_000)),
+  questions: S.Array(RuntimeInteractionQuestion).check(S.isMaxLength(8)),
+  expiresAt: RuntimeInteractionIsoTimestamp,
+  decisionRef: S.optional(KhalaRuntimeSafeRef),
+})
+export type RuntimeInteractionProjection =
+  typeof RuntimeInteractionProjection.Type
+
+export const projectRuntimeInteraction = (
+  interaction: RuntimeInteraction,
+): RuntimeInteractionProjection => {
+  const displayTitle = interaction.payload.kind === "provider_question"
+    ? interaction.payload.displayTitle
+    : interaction.payload.kind === "tool_approval"
+      ? `Approve ${interaction.payload.toolName}`
+      : "Review plan"
+  const displayText = interaction.payload.kind === "provider_question"
+    ? interaction.payload.questions.map(question => question.displayText).join("\n")
+    : interaction.payload.displayText
+  const questions = interaction.payload.kind === "provider_question"
+    ? interaction.payload.questions
+    : []
+  return {
+    schema: "openagents.runtime_interaction_projection.v1",
+    interactionRef: interaction.interactionRef,
+    threadId: interaction.threadId,
+    turnId: interaction.turnId,
+    kind: interaction.payload.kind,
+    status: interaction.lifecycle.status,
+    displayTitle,
+    displayText,
+    questions,
+    expiresAt: interaction.expiresAt,
+    ...(interaction.lifecycle.status === "resolved"
+      ? { decisionRef: interaction.lifecycle.envelope.decisionRef }
+      : {}),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // khala.chat_turn_event.v1 — the neutral, harness-agnostic chat turn event.
 //
 // This is the versioned, canonical turn-event contract shared across harnesses

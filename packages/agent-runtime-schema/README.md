@@ -18,6 +18,11 @@ For Khala Code's AI SDK-shaped runtime work, the package also defines:
 - `openagents.khala_runtime_control_intent.v1` for mobile/desktop/server
   control intents such as append message, start/interrupt/continue turn, close
   turn, and tool approve/deny.
+- `openagents.runtime_interaction.v1` for private, provider-neutral questions,
+  tool approvals, and plan reviews. One pending/resolved/expired/revoked
+  lifecycle carries exact thread/turn/interaction identity, a server deadline,
+  bounded display-safe choices, and kind-matched decisions. Exact retries are
+  duplicates; conflicting reuse and late or revoked decisions fail closed.
 - Structural mappers from existing `AgentRuntimeEvent` records and dependency
   free AI SDK `TextStreamPart`-shaped objects into Khala runtime events.
 
