@@ -110,8 +110,8 @@ WorkOS org claim. The key is a Cloud-managed secret that never leaves the
 control plane. The same WorkOS org maps to the same `tenant_ref` across
 sessions.
 
-`tenant_ref` may appear in fleet state, receipts, projections, and Vortex
-ingest. Raw WorkOS org ids may not.
+`tenant_ref` may appear in fleet state, receipts, projections, and Worker/Khala
+Sync ingest. Raw WorkOS org ids may not.
 
 ### Identity Verification Receipt
 
@@ -466,7 +466,7 @@ Kill switch invocation is available to:
   webhook.
 
 Kill switch invocation is not available to workroom processes, Forge, Probe,
-Autopilot, or Pylon clients.
+product apps, or Pylon clients.
 
 ### Kill Switch Receipt
 
@@ -609,8 +609,8 @@ destination lists, and raw abuse signal payloads.
 
 ### Public-Safe Shape
 
-Projections forwarded to Vortex, Forge, Nexus, Probe, or Pylon-facing status
-endpoints must pass the same forbidden-secret and private-topology filter used
+Projections forwarded to Worker/Khala Sync, Forge, Aiur, Probe, or Pylon-facing
+status endpoints must pass the same forbidden-secret and private-topology filter used
 by other Cloud contracts before forwarding. Refs, digests, bounded enum values,
 and timestamps are the only field classes permitted in forwarded projections.
 
@@ -684,7 +684,7 @@ all succeed before step 6 is attempted.
 - No reusable or persistent session VMs across tenant sessions.
 - No unrestricted outbound internet egress from session VMs.
 - No tenant-visible egress destination details in egress-denied events.
-- No kill-switch authority for workroom processes, Forge, Probe, Autopilot, or
+- No kill-switch authority for workroom processes, Forge, Probe, product apps, or
   Pylon clients.
 - No generic secret tunnel for arbitrary tenant files or credentials beyond
   the `openagents.byo_credential_broker.v1` path.

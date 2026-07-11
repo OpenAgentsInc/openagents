@@ -9,7 +9,8 @@ billing invoice and not a public benchmark claim.
 ## Purpose
 
 Every Cloud-managed run should produce a resource-and-usage receipt bundle
-when practical. The receipt lets Vortex, Probe, and later Treasury distinguish:
+when practical. The receipt lets Worker/Khala Sync, Probe, and the billing
+pipeline distinguish:
 
 - real host/device facts from modeled capacity;
 - allocated or observed run resources from high-level status;
@@ -83,8 +84,8 @@ unavailable_reason: subscription_backed_codex_no_token_counts
 ```
 
 Do not estimate token counts or per-token cost for this path unless Codex
-exposes a trustworthy count source later. Vortex should still show the explicit
-unavailable receipt so proof and credit surfaces know the gap is declared.
+exposes a trustworthy count source later. Current product surfaces should still
+show the explicit unavailable receipt so proof and credit surfaces know the gap is declared.
 
 ## Runner Behavior
 

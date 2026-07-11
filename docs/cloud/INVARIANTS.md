@@ -1,8 +1,9 @@
 # INVARIANTS
 
-This repo contains private managed-cloud infrastructure. Treat these invariants
-as policy until an explicit change updates this file and the corresponding
-tests, models, or smoke checks.
+This public monorepo contains managed-cloud infrastructure. Runtime secrets,
+live topology, and private customer data remain outside Git. Treat these
+invariants as policy until an explicit change updates this file and the
+corresponding tests, models, or smoke checks.
 
 ## Public / Private Boundary
 
@@ -17,6 +18,15 @@ tests, models, or smoke checks.
 - The Worker (`apps/openagents.com`) owns admission, billing, public projection,
   and credit authority. Cloud daemons execute and emit receipts; they do not
   own user credit ledgers or wallet/payout authority.
+
+### 2026-07-11 authority-wording boundary
+
+The Vortex/Convex/private-Cloud/Treasury names removed from current Cloud docs
+were stale ownership labels, not executable policy. This reconciliation changes
+no schema, route, runtime decision, receipt, or deployment. Existing contract
+tests, Cloud smokes, and the production-cutover receipt remain the behavioral
+evidence; the superseded Convex bridge evaluation is retained as historical
+design context only.
 
 ## Wallet And Settlement
 
@@ -141,7 +151,8 @@ tests, models, or smoke checks.
   VM/container workroom profile with no wallet authority, no broad host/cloud
   credentials, session-scoped provider auth, and cleanup receipts.
 - Open-ended planning, tool choice, and semantic outcome delivery belong in
-  labor paths owned by Forge/Probe/Autopilot, not in a hidden cloud-node path.
+  Forge/Probe and current OpenAgents product paths, not in a hidden cloud-node
+  path.
 
 ## Placement And Quota Routing
 

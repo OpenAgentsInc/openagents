@@ -16,7 +16,7 @@ workrooms. The command supports two agent runtimes:
 
 Both modes use the same per-run Codex auth grant, workspace, artifact policy,
 event log, usage receipt, and cleanup path. `oa-workroomd codex session ...` is
-the long-running workroom path for SHC/Vortex runs that need to preserve
+the long-running workroom path for managed runs that need to preserve
 workspace state across turns while still scrubbing `CODEX_HOME` auth material
 after each active turn.
 
@@ -48,7 +48,7 @@ event stream in JSONL form.
 
 ## Session Commands
 
-Use the session command family when Vortex or another control plane needs a
+Use the session command family when the Worker, Pylon, or another approved control plane needs a
 Codex workroom that can pause, continue, close out, archive, and destroy later:
 
 ```bash
@@ -86,7 +86,7 @@ The session path stores:
 | --- | --- |
 | `codex-session-state.json` | Assignment, preserved workspace path, status, turn index, TTL/archive/destroy timestamps, artifact refs, receipt refs, event refs. |
 | `codex-session-events.jsonl` | Normalized `openagents.codex_workroom_event.v1` events for the multi-turn session. |
-| `openagents-runner-events.jsonl` | Typed OpenAgents runner events for Vortex/Probe ingestion, including messages, shell commands, tool calls, file edits, artifacts, receipts, usage availability, and terminal state. |
+| `openagents-runner-events.jsonl` | Typed OpenAgents runner events for Worker / Khala Sync / Probe ingestion, including messages, shell commands, tool calls, file edits, artifacts, receipts, usage availability, and terminal state. |
 | `resource-usage-receipts.jsonl` | `openagents.resource_usage_receipt.v1` receipts with host/device facts, run resource facts, and explicit subscription-backed Codex token-usage unavailability. |
 | `codex-workspaces/<assignment>/` | Preserved private workspace across turns until `session destroy`. |
 | `codex-auth-state.json` / `codex-auth-receipts.jsonl` | Fresh turn-scoped auth materialization/status/scrub receipts. The auth directory is removed after each turn. |
@@ -171,7 +171,8 @@ lines that contain forbidden markers are replaced with a `redacted` event.
 
 The compatibility event stream remains receipt-oriented. The product event
 stream lives in `openagents-runner-events.jsonl` and uses stable string event
-types that Vortex can map to messages, tool calls, shell commands, artifacts,
+types that current Worker / Khala Sync product surfaces can map to messages,
+tool calls, shell commands, artifacts,
 receipts, and checkpoints:
 
 ```text
@@ -209,7 +210,7 @@ The runner preserves only bounded excerpts plus digest refs. SDK
 `ThreadTokenUsageUpdated`, and OpenCode `step-finish` /
 `session.next.step.ended` payloads are forwarded as product runner events and
 used to populate the resource usage receipt. OpenCode events keep the raw
-provider/model/tokens payload so Vortex can ledger cache read/write detail
+provider/model/tokens payload so the Worker can ledger cache read/write detail
 across OpenCode-supported models. If the producer does not expose token usage
 for the turn, the runner emits `usage.unavailable` with an
 `openagents.resource_usage_receipt.v1` receipt ref instead of inventing token
@@ -308,7 +309,7 @@ cargo test -p oa-workroomd --test codex_run -- --nocapture
 That smoke uses the test fake-Codex executable to prove assignment validation,
 session auth state, event redaction, artifact capture, closeout, workspace
 cleanup, and auth cleanup on the VM. A real account-backed Codex run still
-requires a Vortex-issued provider-account grant and server-side brokered
+requires a product-issued provider-account grant and server-side brokered
 auth material.
 
 ## SHC VM Smoke
@@ -346,12 +347,13 @@ cargo test -p oa-workroomd --test codex_run -- --nocapture
 The fake-Codex runner test proves the same VM-local behavior as the GCP smoke:
 assignment validation, session auth state, event redaction, artifact capture,
 closeout, workspace cleanup, and auth cleanup. It still does not prove a real
-ChatGPT/Codex account-backed run; that requires the Vortex-issued provider
+ChatGPT/Codex account-backed run; that requires the product-issued provider
 account grant and brokered auth material.
 
 ## Product Boundary
 
-This command is a VM runner scaffold, not the final product API. Vortex should
+This command is a VM runner scaffold, not the final product API. Current
+OpenAgents product surfaces should
 control it through a Cloud API, SSE stream, WebSocket, or runner service. Probe
 should take over durable coding-agent runtime behavior once its adapter is
 ready. The event contract here is the compatibility layer between the temporary

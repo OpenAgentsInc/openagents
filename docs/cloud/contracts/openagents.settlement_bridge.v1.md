@@ -51,20 +51,20 @@ resource receipt digest, node/workroom/run refs, settlement-mode metadata refs,
 result, and its own receipt digest.
 
 The record is private Cloud evidence. It is not an invoice and not a public
-ledger debit. `contributor-wallet` is out of scope for this repo, and
+ledger debit. `contributor-wallet` is out of scope for managed Cloud, and
 `no-wallet` runs may still emit metering receipts that later price into public
 credits or invoice lines.
 
 ## Bridge Output
 
-The settlement bridge maps eligible Cloud inputs to public `openagents.com` D1
-ledger entries.
+The settlement bridge maps eligible Cloud inputs to the Worker-owned
+`openagents.com` billing and credit ledger.
 
 | Output | Purpose |
 | --- | --- |
 | Credit-ledger debit | Immediate customer credit consumption for prepaid or credit-backed accounts. |
 | Invoice line item | Postpaid customer billing row for the same priced usage. |
-| Public receipt projection | Refs-only pointer that lets public surfaces reconcile the debit or invoice line to private Cloud evidence. |
+| Public receipt projection | Refs-only pointer that lets public surfaces reconcile the debit or invoice line to private managed-Cloud evidence. |
 
 The public monorepo owns customer account state, credit balances, invoice
 status, tax/payment integration, and customer-facing presentation. Cloud does
@@ -129,7 +129,8 @@ line, or prove customer settlement.
 
 ### Priced Line Item State
 
-Priced line item state lives in the public `openagents.com` D1 ledger. It
+Priced line item state lives in the Worker-owned `openagents.com` billing and
+credit ledger. It
 contains customer-facing debits and invoice rows derived from accepted metering
 refs and a pricing policy ref.
 
@@ -156,10 +157,10 @@ Current ownership is:
 
 | Surface | Authority |
 | --- | --- |
-| Private metering and internal-accounting evidence | Cloud private repo |
-| Customer credits, invoice ledger, and payment state | Public `openagents.com` D1 ledger |
-| Outbound payout bridge, if required | Nexus/MDK |
-| Contributor wallet UX | Public Pylon, not this private Cloud repo |
+| Metering and internal-accounting evidence | Public-monorepo Cloud crates and Worker receipt ingest |
+| Customer credits, invoice ledger, and payment state | `openagents.com` Worker billing/credit authority |
+| Outbound payout bridge, if required | MDK/Nexus |
+| Contributor wallet UX | Public Pylon, not managed Cloud |
 
 Historical `treasury://...` refs may appear only as legacy metadata refs when
 already emitted by older internal-accounting receipts. New bridge work must use

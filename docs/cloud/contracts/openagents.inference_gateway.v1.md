@@ -334,8 +334,8 @@ Receipts must not contain:
 
 ## Retained Projections
 
-Any durable projection retained by Cloud, openagents.com, Forge, Nexus,
-Autopilot, Vortex, Probe, or receipt sinks is refs-only.
+Any durable projection retained by Cloud, the OpenAgents Worker/Khala Sync,
+Forge, Aiur, Probe, or receipt sinks is refs-only.
 
 Allowed retained projection fields:
 

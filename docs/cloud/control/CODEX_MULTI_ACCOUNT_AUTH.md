@@ -36,8 +36,8 @@ that `cli_auth_credentials_store = "file"` stores credentials under
 
 ## Account Connection Flow
 
-1. Vortex creates or selects a provider account record.
-2. Vortex asks the Cloud broker to start a Codex device-code login for that
+1. The OpenAgents account broker creates or selects a provider account record.
+2. The account broker asks the Cloud broker to start a Codex device-code login for that
    provider account.
 3. The broker runs:
 
@@ -49,7 +49,7 @@ that `cli_auth_credentials_store = "file"` stores credentials under
 
    The selected `CODEX_HOME` is not optional. If the broker logs in under the
    VM user's default `/home/ubuntu/.codex` and the control daemon later maps
-   `codex-auth://provider-account_...` to the account-scoped home, Vortex will
+   `codex-auth://provider-account_...` to the account-scoped home, the Worker will
    mark the account connected while the workroom still reads stale credentials.
    Copying the default `auth.json` into the account home is only an emergency
    repair; normal login must happen directly in the provider-account home.
@@ -62,7 +62,7 @@ that `cli_auth_credentials_store = "file"` stores credentials under
      codex login status
    ```
 
-6. Vortex records only a provider-account ref and server-side secret ref such
+6. The Worker records only a provider-account ref and server-side secret ref such
    as `codex-auth://provider-account_...`. It never stores or displays raw
    `auth.json`.
 
@@ -70,8 +70,8 @@ that `cli_auth_credentials_store = "file"` stores credentials under
 
 For each workroom run:
 
-1. Vortex issues a short-lived auth grant for the chosen provider account.
-2. `oa-codex-control` resolves the grant through Vortex.
+1. The OpenAgents account broker issues a short-lived auth grant for the chosen provider account.
+2. `oa-codex-control` resolves the grant through the product grant resolver.
 3. The control daemon maps `codex-auth://provider-account_...` to:
 
    ```text
@@ -87,7 +87,7 @@ For each workroom run:
 
 Rotation is a scheduler decision, not a Codex CLI feature.
 
-Vortex should track each connected account with:
+The Worker should track each connected account with:
 
 ```text
 provider_account_ref
@@ -119,7 +119,7 @@ Codex behavior.
 For trusted private runners, let Codex refresh ChatGPT-managed auth in place by
 running Codex under the persistent account home. If `codex login status`,
 `codex exec`, or a Codex backend call returns `401 token_revoked`, mark that
-provider account `stale` or `requires_reauth` in Vortex and present a new
+provider account `stale` or `requires_reauth` in the Worker and present a new
 device-code login for that account slot only.
 
 Do not fall back to `OPENAI_API_KEY` or `CODEX_API_KEY` for user-connected
@@ -136,5 +136,5 @@ Use one VM per account only when a stronger isolation boundary is required:
 - incident response requires quarantining a single account and host together.
 
 The default SHC/GCP managed-node plan is one trusted VM with multiple
-account-scoped Codex homes, strict file permissions, short-lived Vortex grants,
+account-scoped Codex homes, strict file permissions, short-lived broker grants,
 per-run session homes, redacted receipts, and no wallet authority.

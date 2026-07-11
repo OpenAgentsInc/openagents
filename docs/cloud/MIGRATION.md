@@ -70,7 +70,8 @@ work lands in this monorepo. See private cloud README pointer update.
 - Authority docs rewritten / historical-bannered (ARCHITECTURE, ISSUES, BENCHMARK_CLOUD, bootstrap, NEXUS_REGISTRY, SETTLEMENT_MODES).
 - Agent Computer image bake references in-repo `oa-workroomd` via `apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh`.
 - Named loopback smoke: `scripts/cloud/fake-control-plane-loopback-smoke.sh` (placement → events → cancel → fake GCE → fake Cloud-VM).
-- Phase 6 production cutover remains owner-gated.
+- Phase 6 production cutover completed on 2026-07-09; the receipt below is the
+  authority for the deployed-image transition and its stated remaining caveat.
 
 ## Phase 6 cutover receipt
 

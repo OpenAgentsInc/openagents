@@ -3,8 +3,9 @@
 Status: Cloud MVP scaffold for `CND-015`
 
 `oa-workroomd ingress` models the managed preview ingress state for a workroom.
-The MVP is intentionally file-backed so Autopilot and Forge adapters can inspect
-the same non-secret policy before the service grows an HTTP or Unix-socket API.
+The MVP is intentionally file-backed so current OpenAgents product surfaces and
+Forge adapters can inspect the same non-secret policy before the service grows
+an HTTP or Unix-socket API.
 
 ```bash
 oa-workroomd ingress status --json

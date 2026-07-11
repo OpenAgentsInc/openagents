@@ -2,11 +2,13 @@
 
 Status: SHC async MVP control surface
 
-`oa-codex-control` is the narrow HTTP control API that lets Vortex start the
-existing `oa-workroomd codex run` path on a managed VM without SSH. The primary
+`oa-codex-control` is the narrow HTTP control API that lets an approved Worker,
+Pylon, or operator control plane start the existing `oa-workroomd codex run`
+path on a managed VM without SSH. The primary
 `/v1/codex-runs` path is asynchronous: it persists a local job record, returns
 `202 Accepted`, then runs Codex in a background worker while status/events are
-recoverable from the control daemon and optionally mirrored back to Vortex.
+recoverable from the control daemon and optionally mirrored to the Worker /
+Khala Sync event-ingest path.
 
 ## Endpoints
 
@@ -40,7 +42,7 @@ Authorization: Bearer <OA_CODEX_CONTROL_TOKEN>
 Content-Type: application/json
 ```
 
-The POST body is the Vortex Codex VM envelope:
+The POST body is the Codex VM control envelope:
 
 ```json
 {
@@ -48,7 +50,7 @@ The POST body is the Vortex Codex VM envelope:
   "backend": "gcp_vm_codex",
   "goal": "Create the requested artifact.",
   "providerAccountRef": "provider-account_...",
-  "repository": "OpenAgentsInc/vortex",
+  "repository": "OpenAgentsInc/openagents",
   "runnerId": "oa-shc-katy-01",
   "runId": "workroom_codex_vm_0",
   "sandboxMode": "danger_full_access",
@@ -57,7 +59,8 @@ The POST body is the Vortex Codex VM envelope:
 }
 ```
 
-For retained Terminal-Bench/training runs, Vortex should post
+For retained Terminal-Bench/training runs, the approved Worker or control plane
+should post
 `openagents.training_run_assignment.v1` to `/v1/training-runs/start` instead.
 That path validates dataset/task/package/signature/artifact fields, writes the
 assignment into the local job directory, emits `training.assignment.validated`,
@@ -68,7 +71,8 @@ variant per request and only supports `terminal-bench` task refs.
 
 See `docs/contracts/openagents.training_run_assignment.v1.md`.
 
-For Artanis/Pylon launch bootstrap runs, Vortex or an approved operator should
+For Artanis/Pylon launch bootstrap runs, an approved Worker/control caller or
+operator should
 post `openagents.artanis_bootstrap_assignment.v1` to
 `/v1/artanis/bootstrap/start`. That path validates sanitized Artanis source
 refs, Pylon capability labels, Blueprint signature ids, artifact policy, and
@@ -80,7 +84,7 @@ events before the Codex worker starts.
 
 See `docs/contracts/openagents.artanis_bootstrap_assignment.v1.md`.
 
-The async response is the Vortex runner acknowledgement shape:
+The async response is the runner acknowledgement shape:
 
 ```json
 {
@@ -131,11 +135,11 @@ no-process-reattach behavior); only jobs still marked pending are re-dispatched.
 
 ## Lane-Agnostic Placement (`/v1/placement`)
 
-`POST /v1/placement` (or `/v1/placement/start`) accepts a Vortex-independent,
+`POST /v1/placement` (or `/v1/placement/start`) accepts a product-independent,
 lane-agnostic coding-run assignment and binds it to a concrete runner per
 `openagents.compute_quota_routing.v1`. This is the coordinator/placement layer
-a generic control front door (Pylon) can call without being a Vortex-shaped
-caller (cloud#86).
+a generic control front door such as Pylon can call without a product-specific
+request envelope (cloud#86).
 
 Request body (`openagents.codex_placement_assignment.v1`):
 
@@ -202,9 +206,10 @@ A `lane` (and optional `owner_ref`) field may also be set directly on a
 run assignment instead of trusting a caller-supplied `runner_id`.
 
 `POST /v1/workrooms/codex/start` remains the compatibility path for the old
-blocking run-to-completion behavior. Vortex should prefer
-`POST /v1/codex-runs/start`, which is the action-expanded form produced when
-`VORTEX_CODEX_VM_CONTROL_URL` points at `/v1/codex-runs`.
+blocking run-to-completion behavior. Current callers should prefer
+`POST /v1/codex-runs/start`. The legacy `VORTEX_CODEX_VM_CONTROL_URL` alias may
+still point at `/v1/codex-runs` during migration, but it grants no Vortex
+authority.
 
 ## Local Job Registry
 
@@ -230,21 +235,22 @@ readers and the live callback mirror do not observe partial JSON during worker
 updates.
 
 When `oa-workroomd` returns `runner_events`, `oa-codex-control` preserves their
-typed event names in its local `events.jsonl` and Vortex callbacks. That is the
+typed event names in its local `events.jsonl` and event-ingest callbacks. That is the
 preferred product event channel for messages, shell commands, tool calls,
 artifacts, receipts, usage availability, and terminal state. The older
 `codex-run-events.jsonl` compatibility events are still consumed as a fallback.
 For async runs, `oa-codex-control` also mirrors
 `openagents-runner-events.jsonl` from the active workroom state directory while
 `oa-workroomd codex run` is still running. New runner events are appended to
-the local job registry and posted through the Vortex callback path before final
-closeout, so Vortex can show live tool and shell activity instead of waiting
-for the blocking workroom process to exit.
+the local job registry and posted through the Worker / Khala Sync ingest path
+before final closeout, so current product surfaces can show live tool and shell
+activity instead of waiting for the blocking workroom process to exit.
 
-Vortex callback delivery is best-effort relative to local workroom execution.
+Event-ingest callback delivery is best-effort relative to local workroom execution.
 Callback failures must be logged and retried from local state, but they must
 not prevent `oa-workroomd` from starting or closing the Codex workroom. A
-production failure on 2026-06-02 showed why: a Vortex ingest 502 after
+production failure on 2026-06-02 showed why: the then-current Vortex ingest
+returned 502 after
 `cloud.run.started` left the local job stuck in `running` before the workroom
 started. The daemon now treats callback delivery as an observability/export
 path, not a precondition for running the job.
@@ -298,10 +304,10 @@ OA_CODEX_BIN=/usr/local/bin/codex
 OA_OPENCODE_BIN=/usr/local/bin/opencode
 OA_OPENCODE_CODEX_MODEL=openai/gpt-5.5
 
-# Neutral (preferred), Vortex-codebase-independent grant/ingest config (cloud#87).
+# Current product-independent grant/ingest config (cloud#87).
 # Each neutral var falls back to its legacy OA_VORTEX_* equivalent when unset,
-# so existing deployments keep working. The Vortex credential/endpoint may be
-# reused as the URL; the daemon no longer depends on the deprecated Vortex code.
+# so existing deployments keep working. The daemon does not depend on the
+# deprecated Vortex code or treat a legacy alias as authority.
 OA_CODEX_GRANT_RESOLVE_URL=https://openagents.com/api/provider-accounts/chatgpt-codex/grants/resolve
 OA_CODEX_RUNNER_GRANT_TOKEN=<grant resolver bearer token>
 OA_CODEX_EVENT_INGEST_URL=https://openagents.com/api/workrooms/codex-runs
@@ -348,7 +354,7 @@ connected-account auth through OpenCode's OpenAI provider and an explicit
 OpenAI GPT-5 model selector. Set `agentRuntime: "codex"` only for raw Codex CLI
 fallback runs.
 
-`oa-codex-control` must resolve the per-run Vortex `authGrantRef` before it
+`oa-codex-control` must resolve the per-run product-issued `authGrantRef` before it
 materializes VM-side Codex auth. The resolver response contains only the
 provider-account ref, provider-secret ref, expiry, and status. It does not
 return raw Codex credentials.
@@ -360,7 +366,7 @@ ChatGPT/Codex accounts. Each account gets a separate directory:
 $OA_CODEX_AUTH_JSON_ROOT/<provider-account-ref>/auth.json
 ```
 
-The control API selects that file only after Vortex grant resolution, only
+The control API selects that file only after approved grant resolution, only
 through `oa-workroomd codex auth materialize`, and only into a session-scoped
 `CODEX_HOME`; `oa-workroomd codex run` then scrubs that session auth directory
 after closeout. Do not print or commit the auth JSON content. The legacy
@@ -372,10 +378,10 @@ other.
 The control daemon rejects auth cache files that look like OpenAI API-key
 material. `OPENAI_API_KEY`/`CODEX_API_KEY` fallback is not an accepted
 production path for user workrooms; reconnect the user's ChatGPT/Codex account
-through Vortex instead.
+through the current OpenAgents account broker instead.
 
-`oa-shc-katy-01` also runs a Codex App Server broker for the Vortex
-device-code login flow:
+Historically, `oa-shc-katy-01` also ran a Codex App Server broker for the
+Vortex device-code login flow:
 
 ```text
 codex app-server \
@@ -384,7 +390,7 @@ codex app-server \
   --ws-token-file /home/ubuntu/.openagents-secrets/codex-app-server-token
 ```
 
-Vortex production uses:
+Legacy Vortex deployment variables were:
 
 ```text
 VORTEX_CODEX_APP_SERVER_WS_URL=ws://23.182.128.195:8788
@@ -402,40 +408,41 @@ CODEX_HOME=/home/ubuntu/.openagents-codex-accounts/provider-account_... \
 ```
 
 If `codex exec`, `codex login status`, or the compact endpoint returns
-`401 token_revoked`, treat the provider account as stale and run the Vortex
-ChatGPT/Codex login flow again for that account slot; do not retry with API
-keys.
+`401 token_revoked`, treat the provider account as stale and run the current
+OpenAgents ChatGPT/Codex account-link flow again for that account slot; do not
+retry with API keys.
 
-## Vortex Callbacks
+## Worker / Khala Sync event-ingest callbacks
 
-When `OA_VORTEX_CODEX_INGEST_URL` is configured, the background worker posts
-normalized events and status back to:
+When `OA_CODEX_EVENT_INGEST_URL` is configured, the background worker posts
+normalized events and status to:
 
 ```text
-$OA_VORTEX_CODEX_INGEST_URL/{runId}/events/ingest
+$OA_CODEX_EVENT_INGEST_URL/{runId}/events/ingest
 ```
 
 The URL may also contain a `{runId}` placeholder for deployments that need an
 exact route template. Callback event sequence numbers are local to the SHC
-daemon; Vortex assigns canonical Convex sequences. The daemon writes
+daemon; the Worker / Khala Sync ingest path assigns canonical durable
+sequences. The daemon writes
 `callbacks/<sequence>.sent` markers after successful posts so normal retry
-loops do not resend already-acknowledged local events. If Vortex receives a
+loops do not resend already-acknowledged local events. If ingest receives a
 request but the daemon loses the response before writing the marker, duplicate
-delivery is still possible; the next hardening pass should include stable
-runner event IDs in the Vortex ingest contract.
+delivery is still possible; the ingest contract must deduplicate stable runner
+event IDs.
 
 Callback errors are non-fatal to local execution. Operators should recover by
-fixing the Vortex ingest path and replaying unsent events from the local job
+fixing the Worker / Khala Sync ingest path and replaying unsent events from the local job
 registry, not by restarting the Codex workroom blindly.
 
 Callbacks never include raw Codex auth material. Event details are redacted
-when they contain token-like markers, and local-only Vortex runs still enforce
-their Convex-side retention policy.
+when they contain token-like markers, and local-only runs still enforce the
+current Worker / Khala Sync retention policy.
 
-Direct Rust Convex ingestion from SHC is not part of the MVP default. See
-`docs/control/CODEX_CONVEX_BRIDGE_EVALUATION.md`: the bridge is only acceptable
-after Vortex owns runner-scoped Convex functions and a dedicated runner service
-identity. Do not put broad Convex admin authority on SHC.
+Direct Rust Convex ingestion from SHC is retired and is not a current path. See
+`docs/control/CODEX_CONVEX_BRIDGE_EVALUATION.md` only as a superseded design
+record. Do not put broad Convex admin authority on an Agent Computer or Cloud
+runner.
 
 ## SHC Profile
 
@@ -448,8 +455,8 @@ Linux bubblewrap/loopback layer on this nested VPS.
 ## Deployment Shape
 
 For the MVP, run `oa-codex-control` as a systemd service on
-`oa-shc-katy-01`, listening on a locked-down public or tunnel endpoint. Vortex
-uses:
+`oa-shc-katy-01`, listening on a locked-down public or tunnel endpoint. Legacy
+Vortex compatibility variables were:
 
 ```text
 VORTEX_CODEX_VM_CONTROL_URL=http://23.182.128.195:8787/v1/codex-runs

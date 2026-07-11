@@ -3,7 +3,7 @@
 Status: implementation scaffold for cloud#86 / cloud#88
 
 This contract is the lane-agnostic placement input for managed coding runs. It
-lets a generic, Vortex-codebase-independent control front door (Pylon) ask
+lets a generic, product-codebase-independent control front door (Pylon) ask
 Cloud to place one bounded coding run on a managed runner without hard-wiring a
 specific node. It is the coordinator/placement layer described in Leg B / Phase
 1 of the "code on the go" plan.

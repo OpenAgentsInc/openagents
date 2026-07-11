@@ -2,8 +2,8 @@
 
 Status: implementation scaffold for `CND-046`
 
-The Codex auth grant contract is the Cloud-side input from Vortex for a
-session-scoped Codex VM workroom. It carries refs and policy only. It does not
+The Codex auth grant contract is the Cloud-side input from the OpenAgents
+account broker for a session-scoped Codex VM workroom. It carries refs and policy only. It does not
 carry raw ChatGPT/Codex tokens, API keys, device auth IDs, code verifiers, or
 `auth.json` content.
 
@@ -12,8 +12,8 @@ carry raw ChatGPT/Codex tokens, API keys, device auth IDs, code verifiers, or
 | Field | Purpose |
 | --- | --- |
 | `workroom_id` | Private workroom receiving the Codex auth context. |
-| `user_ref` / `organization_ref` / `project_ref` | Vortex-owned actor scope. |
-| `provider_account_ref` | Sanitized Vortex provider-account ref. |
+| `user_ref` / `organization_ref` / `project_ref` | Worker-owned actor scope. |
+| `provider_account_ref` | Sanitized OpenAgents provider-account ref. |
 | `grant_ref` | Short-lived grant ref selected for one session. |
 | `provider_secret_ref` | Server-side secret-store ref such as `secret://...`; never raw credential content. |
 | `requested_mode` | `exec`, `mcp_server`, or `sdk_thread`. |

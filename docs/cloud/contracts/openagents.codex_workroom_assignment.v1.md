@@ -3,17 +3,17 @@
 Status: implementation scaffold for `CND-045`
 
 This contract is the Cloud-side input for the first Codex VM workroom runner.
-It lets Vortex/Autopilot ask Cloud to run one bounded Codex task on a managed
-node while Probe can consume the same normalized event shape later.
+It lets the Worker, Pylon, or an approved operator ask Cloud to run one bounded
+Codex task on a managed node while Probe can consume the same normalized event shape later.
 
 ## Assignment Fields
 
 | Field | Purpose |
 | --- | --- |
-| `assignment_id` | Stable run id from Vortex/Autopilot. |
+| `assignment_id` | Stable run id from the Worker/control caller. |
 | `workroom_id` | Private no-wallet workroom id. |
 | `target_node_id` | First target is `oa-gcp-shc-katy-01`. |
-| `user_ref` / `organization_ref` / `project_ref` | Vortex-owned actor scope. |
+| `user_ref` / `organization_ref` / `project_ref` | Worker-owned actor scope. |
 | `provider_account_ref` | Sanitized ChatGPT/Codex provider-account ref. |
 | `auth_grant_ref` | Session grant produced by `openagents.codex_auth_grant.v1`. |
 | `repo_ref` | Non-secret repo/project context. |

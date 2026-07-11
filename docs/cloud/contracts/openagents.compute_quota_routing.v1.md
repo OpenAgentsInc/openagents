@@ -8,9 +8,9 @@ sits alongside — not in place of — the `openagents.resource_usage_receipt.v1
 receipt. It extends that receipt with compute-class metering dimensions,
 defines per-owner and per-org session and lease caps, states TTL and
 idle-timeout defaults, and introduces a refs-only rejection receipt for the
-case where compute cannot be acquired. Actual settlement — invoicing, wallet
-deduction, Treasury reconciliation — is handled downstream and is out of scope
-here.
+case where compute cannot be acquired. Actual settlement — invoicing, credit
+deduction, Worker billing reconciliation, and payout — is handled downstream
+and is out of scope here.
 
 ## Purpose
 
@@ -25,10 +25,10 @@ costs. This contract defines:
   activity;
 - the shape of the rejection receipt emitted when compute cannot be acquired;
 - the cost-plus-10% principle that converts metered GCP cost into the billing
-  input passed to Treasury.
+  input passed to the Worker billing/credit pipeline.
 
-Vortex, Probe, and Treasury use these records to distinguish real infrastructure
-consumption from modeled capacity, and to route billing inputs correctly without
+Worker/Khala Sync, Probe, and the billing pipeline use these records to
+distinguish real infrastructure consumption from modeled capacity, and to route billing inputs correctly without
 exposing raw cost or customer identity in public-facing refs.
 
 ## Compute Classes
@@ -119,7 +119,8 @@ The complete `compute_usage` sub-record within a resource_usage_receipt:
 | `cost_input_microusd` | Nullable billing input: metered/catalog GCP cost × 1.10. |
 | `cost_input_basis` | `cost_plus_10pct_gcp` (live metered Billing export), `cost_plus_10pct_gcp_catalog` (measured VM-seconds × published list-price catalog rate), or `unavailable`. |
 
-`cost_input_microusd` is the billing input forwarded to Treasury. It is not the
+`cost_input_microusd` is the billing input forwarded to the Worker billing
+pipeline. It is not the
 invoiced or settled amount. Set it to `null` when GCP billing data is not
 available at receipt closeout time; downstream reconciliation must not invent
 a cost figure.
@@ -251,9 +252,10 @@ TTL per region. Rate staleness beyond 24 h must be reflected by setting
 `metering_source` to `estimated`; a reconciliation pass corrects
 `cost_input_microusd` once fresh rates are available.
 
-The 10% markup is the billing input to Treasury. It is not the final invoiced
-or settled amount. Treasury, Nexus, and the downstream billing pipeline apply
-their own discount, subscription, credit, and rounding logic before settlement.
+The 10% markup is the input to the Worker billing pipeline. It is not the final
+invoiced or settled amount. Worker billing/credits and the downstream
+MDK/Nexus payout bridge apply their own discount, subscription, credit, and
+rounding logic before settlement.
 This contract specifies only what enters `cost_input_microusd`.
 
 ### Cost-Driven Placement (CND-042)

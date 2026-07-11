@@ -3,7 +3,8 @@
 Status: implementation scaffold for `TRAIN-005`
 
 This contract is the Cloud-side input for retained SHC benchmark/training
-runs. It lets Vortex start one bounded Terminal-Bench task through the
+runs. It lets an approved Worker/control caller start one bounded
+Terminal-Bench task through the
 account-backed Codex VM runner without giving Cloud arbitrary shell-command
 authority or product authority over training success.
 
@@ -11,14 +12,14 @@ authority or product authority over training success.
 
 | Field | Purpose |
 | --- | --- |
-| `training_run_id` | Vortex-owned parent training run id. |
-| `benchmark_run_id` | Vortex-owned benchmark run id. |
+| `training_run_id` | Worker/Khala Sync-owned parent training run id. |
+| `benchmark_run_id` | Worker/Khala Sync-owned benchmark run id. |
 | `task_run_id` | Stable child run id; used as the Cloud Codex run id. |
 | `target_node_id` | First target is `oa-shc-katy-01`. |
 | `dataset` | `dataset_slug`, `dataset_version`, `task_ref`, and optional task checksum. The first runner only accepts `terminal-bench` task refs such as `terminal-bench/db-wal-recovery`. |
 | `variants` | Agent/model variant list. The first Cloud endpoint accepts exactly one variant per request. |
 | `provider_account_ref` | Sanitized ChatGPT/Codex provider-account ref. |
-| `auth_grant_ref` | Short-lived Vortex grant ref for the provider account. |
+| `auth_grant_ref` | Short-lived product-broker grant ref for the provider account. |
 | `repository_ref` | Non-secret repo context, if any. |
 | `signature_context` | Optional Blueprint/Probe signature ids, package digest, and selector-trace requirement. |
 | `codex_adapter` | Codex/Harbor package adapter id, package name, version, and optional digest. |
@@ -49,7 +50,7 @@ Initial events:
 
 The generated Codex prompt contains a fixed Terminal-Bench/Harbor command
 shape with the selected dataset, task, variant, model, package version,
-attempt limit, and required artifact filenames. Vortex cannot submit arbitrary
+attempt limit, and required artifact filenames. The caller cannot submit arbitrary
 shell commands through this path.
 
 ## Required Artifacts
@@ -65,8 +66,8 @@ proof-bundle.json
 
 `result.md` is the human-readable summary. `benchmark-result.json`,
 `artifact-manifest.json`, and `proof-bundle.json` are the normalized payloads
-Vortex/Probe use to inspect the result, compare variants, and decide whether
-to retain or publish evidence.
+Worker/Khala Sync and Probe use to inspect the result, compare variants, and
+decide whether to retain or publish evidence.
 
 ## Retention Modes
 
@@ -76,8 +77,9 @@ to retain or publish evidence.
 | `redacted_only` | Runner should retain redacted summaries and digest refs only. |
 | `local_only` | Runner should keep details local to SHC except modeled minimal status/heartbeat events. |
 
-Vortex remains the authority for whether retained artifacts are shown to users,
-used as training data, projected publicly, or kept local.
+The Worker remains the authority for whether retained artifacts are shown to
+users, used as training data, projected publicly, or kept local; Khala Sync
+carries the durable projection.
 
 ## Validation Rules
 

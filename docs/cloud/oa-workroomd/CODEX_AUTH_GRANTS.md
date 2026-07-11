@@ -2,7 +2,7 @@
 
 Status: Cloud MVP scaffold for `CND-046`
 
-`oa-workroomd codex auth` materializes a Vortex-issued ChatGPT/Codex provider
+`oa-workroomd codex auth` materializes a product-broker-issued ChatGPT/Codex provider
 account grant into a per-session `CODEX_HOME`, checks the account with
 `codex login status`, and scrubs VM-local auth material after closeout or
 failure.
@@ -49,8 +49,8 @@ status, reasons, and digests.
 
 ## Lifecycle
 
-1. Vortex issues a short-lived `providerAccountAuthGrant`.
-2. `oa-codex-control` calls the Vortex grant resolver API with the Cloud runner
+1. The OpenAgents account broker issues a short-lived `providerAccountAuthGrant`.
+2. `oa-codex-control` calls the product grant resolver API with the Cloud runner
    bearer token and resolves the grant into a server-side provider secret ref.
 3. The broker maps `codex-auth://<provider-account-ref>` to
    `$OA_CODEX_AUTH_JSON_ROOT/<provider-account-ref>/auth.json` and supplies

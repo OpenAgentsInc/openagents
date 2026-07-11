@@ -135,10 +135,10 @@ emits a release receipt.
 ## Settlement Modes
 
 Managed `oa-node` defaults to `no-wallet` settlement. `internal-accounting`
-mode records Treasury and Nexus reconciliation refs in
+mode records Worker billing and MDK/Nexus payout-bridge reconciliation refs in
 `settlement-receipts.jsonl` and projects the latest accounting receipt digest
 into `evidence.payout_or_accounting_receipts`. `contributor-wallet` mode is
-rejected in this private Cloud repo and remains public Pylon behavior.
+rejected in managed Cloud and remains public Pylon behavior.
 
 ## Capability Broker Redaction
 

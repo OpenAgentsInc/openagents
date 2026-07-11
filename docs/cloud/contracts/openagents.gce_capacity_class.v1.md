@@ -267,8 +267,8 @@ Cloud may retain a compact lease projection for status and reconciliation:
 | `latest_receipt_ref` | Latest lease or cleanup receipt digest. |
 | `cleanup_receipt_ref` | Cleanup receipt digest after release. |
 
-This projection is refs-only. It is suitable for Vortex, Forge, Nexus, or
-Probe-facing status only after the same forbidden-secret and private-topology
+This projection is refs-only. It is suitable for Worker/Khala Sync, Forge,
+Aiur, or Probe-facing status only after the same forbidden-secret and private-topology
 checks used by other Cloud contracts.
 
 ## Validation Rules

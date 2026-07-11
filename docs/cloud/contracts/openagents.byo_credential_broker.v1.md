@@ -212,7 +212,7 @@ Receipts must not contain:
 
 ## Retained Projections
 
-Any durable projection retained by Cloud, Forge, Nexus, Autopilot, Vortex,
+Any durable projection retained by Cloud, Worker/Khala Sync, Forge, Aiur,
 Probe, or receipt sinks is refs-only.
 
 Allowed retained projection fields:

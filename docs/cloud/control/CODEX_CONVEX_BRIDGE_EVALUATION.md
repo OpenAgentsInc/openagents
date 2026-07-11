@@ -1,9 +1,14 @@
 # Codex Convex Bridge Evaluation
 
-Status: design decision
-Last updated: 2026-06-01
+Status: **superseded historical design decision**
+Last updated: 2026-07-11
 
-## Decision
+> This evaluation records the pre-cutover Vortex/Convex design. Current event
+> authority is the `openagents.com` Worker plus Khala Sync, using the neutral
+> `OA_CODEX_EVENT_INGEST_*` boundary documented in `CODEX_CONTROL_API.md`.
+> Do not build or authorize a new Vortex/Convex bridge from this document.
+
+## Historical decision (superseded)
 
 Keep the Vortex HTTP callback path as the Codex VM MVP transport.
 

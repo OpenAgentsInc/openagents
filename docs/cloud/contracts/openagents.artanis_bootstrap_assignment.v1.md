@@ -2,8 +2,8 @@
 
 Status: SHC Codex bootstrap scaffold
 
-This contract lets Vortex or an approved operator launch one bounded Artanis
-bootstrap workroom on managed SHC infrastructure. It is not a public Artanis
+This contract lets the Worker/control plane or an approved operator launch one
+bounded Artanis bootstrap workroom on managed SHC infrastructure. It is not a public Artanis
 chat transcript and it is not a Pylon wallet path. It turns the relevant
 historical Artanis policy/code into a private Codex workroom that produces the
 next Pylon launch plan, continual-learning plan, signature-mining plan, and
@@ -11,8 +11,8 @@ work-order drafts.
 
 ## Boundary
 
-Artanis source material lives across the root workspace docs, Vortex public
-projection docs, and the deprecated Autopilot4 Rust source. This contract pulls
+Artanis source material lives across the root workspace docs, historical
+Vortex public projection docs, and the deprecated Autopilot4 Rust source. This contract pulls
 in the useful pieces:
 
 - Artanis identity, objective, and instruction source refs.
@@ -30,12 +30,12 @@ redacted projection after retained evidence exists.
 
 | Field | Purpose |
 | --- | --- |
-| `bootstrap_run_id` | Stable Cloud/Vortex run id and local job id. |
+| `bootstrap_run_id` | Stable Cloud/Worker run id and local job id. |
 | `workroom_id` | Private no-wallet workroom id. |
 | `target_node_id` | First target is `oa-shc-katy-01`. |
-| `operator_ref` / `organization_ref` | Vortex-owned operator scope. |
+| `operator_ref` / `organization_ref` | Worker-owned operator scope. |
 | `provider_account_ref` | Sanitized ChatGPT/Codex account ref. |
-| `auth_grant_ref` | Short-lived Vortex grant for this Codex run. |
+| `auth_grant_ref` | Short-lived product-broker grant for this Codex run. |
 | `repository_refs` | Repos the workroom should inspect or write drafts for. |
 | `source_refs` | Artanis source docs/code to import conceptually. |
 | `objective_id` / `objective_summary` | Bounded Artanis bootstrap objective. |
@@ -93,8 +93,8 @@ The fixture uses:
 - `artifact-manifest.json`
 - `proof-bundle.json`
 
-These are enough for the next Vortex/Admin surface to show a mission briefing
-and for subsequent agents to open issue-sized implementation work.
+These are enough for the current Worker/Aiur operator surface to show a mission
+briefing and for subsequent agents to open issue-sized implementation work.
 
 ## Safety Rules
 
