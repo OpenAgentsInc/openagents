@@ -1109,3 +1109,61 @@ refs, parent edges, independent transcript/activity cursors, and graph-wide
 fencing. A source child may not remain able to accept work after target
 activation, and target-native worker/thread IDs remain attachment-local
 mappings rather than portable identity.
+
+## Cursor addendum (2026-07-11)
+
+The [Cursor product teardown](./2026-07-11-cursor-product-teardown.md)
+revisits episode 197's study target after Cursor's 2.x–3.x agent-platform
+pivot. Its evidence changes this document's decisions in the following ways.
+
+1. **The thin-host/agent-first architecture bet is market-confirmed.**
+   Cursor rebuilt its product around parallel agents isolated in worktrees
+   and remote machines, demoting the VS Code editor to one reachable pane.
+   This strengthens the executive decision (thin host, server-owned
+   authority, no IDE-parity chase) and the CUT graph's worktree discipline.
+   No scope change.
+2. **Portable sessions gain an incumbent counterexample.** Cursor's CLI `&`
+   cloud handoff and mobile Remote Control prove users want local-to-remote
+   continuation and phone-driven supervision — but both are one-way gestures
+   into one closed cloud, without portable identity, capability revocation,
+   or receipts. This sharpens, and does not alter, the Revision 30/31
+   portable-session and capability-broker packets: the differentiator is
+   session movement as a receipted authority transfer, not a copy.
+3. **Predictability failures are now documented at the market leader.**
+   Cursor's Agents Window force-open regressions (setting ignored, projects
+   forgotten, April–July 2026 forum record) are the live failure class that
+   decision 16 exists to prevent. Strengthen the adaptation rule: every
+   default-surface change lands with a restored-context behavior contract
+   and oracle in the standing sweep — a bounded leaf under the D0/D6 work in
+   #8574 rather than a new epic.
+4. **Model provenance joins the no-substitution surface.** The Composer 2 /
+   Kimi K2.5 disclosure incident shows users audit model identity
+   forensically. Any future OpenAgents first-party or fine-tuned model must
+   publish base, post-training, and serving path from day one; harness/model
+   pinning UI (the #8712 pattern) should display provenance, not merely the
+   pinned name. Bounded leaf under the D5/settings surfaces in #8574 when a
+   first-party model exists; documentation posture is effective immediately.
+5. **Usage truth must reach the pre-spend surface.** Both Cursor pricing
+   crises (June 2025 credits transition; June 2026 pool split) were bills
+   users could not predict from visible state. Extend capability-truthful
+   affordances: before dispatch, the composer/fleet surface shows the
+   account, lane, and budget that will be consumed; receipts reconcile after.
+   A bounded leaf under the D5 fleet-cockpit work in #8574, using existing
+   exact-or-`not_measured` accounting — no new metering system.
+6. **Best-of-N is a fleet shape, not a UI garnish.** Cursor's `/best-of-n`
+   validates one-task/many-workers comparison. OpenAgents already runs mixed
+   Codex+Claude fleets (#8640) with per-child usage; typed comparison records
+   over existing FleetRun/work-unit contracts are a natural post-parity leaf
+   under the D5 cockpit — never a second orchestration path.
+7. **Unattended authority stays deny-by-default.** Cursor enables computer
+   use by default inside Automations. The episode-195 follow-up's Automations
+   slice keeps the opposite posture: budgets, pause, Inbox visibility, and
+   deny/ask tool authority. Reject the default-grant pattern explicitly.
+8. **The open seam widened.** Cursor's pivot (closed fork, closed models,
+   closed cloud, closed marketplace, now SpaceX-owned) leaves the open
+   engine, typed public protocol, local execution, and economic
+   participation unclaimed. The differentiation section of this document
+   stands with more force, not less.
+
+Per the standing rule, none of these items is authority here: each lives or
+dies by its owning roadmap gate, issue, or contract when promoted.

@@ -21,6 +21,7 @@ decisions.
 | [OpenCode desktop app](./2026-07-10-opencode-desktop-app-teardown.md) | The open-source OpenCode Electron desktop, shared Solid app, and embedded Effect server | A sandboxed local renderer uses generated HTTP/SSE/WebSocket contracts to drive an authenticated utility-process sidecar; files, Git, PTY, agents, tools, MCP, plugins, providers, and SQLite state remain server-owned |
 | [OpenCode V2 architecture](./2026-07-10-opencode-v2-architecture-teardown.md) | The OpenCode 2.0 beta docs and commit-pinned V2 engine, client, service, persistence, plugin, and TUI source | V2 separates durable admission, safe-boundary promotion, process-local execution, durable replay, current projections, and volatile events while making WorkContext services and runtime generations explicit; Desktop still embeds V1 |
 | [OpenCode Effect architecture](./2026-07-10-opencode-effect-architecture-teardown.md) | Commit-pinned V1 and V2 service, Layer, Schema, HTTP, persistence, concurrency, plugin, observability, and test architecture | V1 proves deep brownfield Effect adoption but exposes the cost of ambient context and runtime bridges; V2 answers with an explicit global/Location service graph, canonical Schema identities, scope-owned generations, and one request processor across network and memory transports |
+| [Cursor product](./2026-07-11-cursor-product-teardown.md) | Cursor's 195/197-era baseline versus its 2.x–3.x agent-platform pivot, from the recovered `docs/re/cursor` archive plus public evidence | Cursor validated most episode-195 demands—agent-first desktop, parallel worktree agents, cloud handoff, mobile remote control, automations, transcript search—while dropping startup predictability, billing legibility, and model-identity transparency; the open engine, portable sessions with receipts, and usage/identity truth remain unclaimed lanes |
 | [OpenAgents adaptation analysis](./2026-07-10-openagents-product-adaptation-analysis.md) | Cross-teardown synthesis | Combine OpenCode's thin host and V2 durable-admission/scoped-service model, Codex's generated protocol and repairable graph, and Claude Code's recovery ergonomics behind the hardened Effect Native boundary; keep authority typed, isolation explicit, updates signed, and renderer/runtime privilege separate |
 
 ## Evidence convention
@@ -66,7 +67,11 @@ load-bearing decision only in competitive analysis.
   host-to-host session movement, owner or managed cloud targets, brokered
   capabilities, an any-host mobile directory, and session-neutral
   conversational voice. The dated teardowns remain evidence; the Sol roadmap
-  and executable behavior contracts own the requirement.
+  and executable behavior contracts own the requirement. The
+  [Cursor teardown](./2026-07-11-cursor-product-teardown.md) adds market
+  corroboration: Cursor's CLI cloud handoff and mobile Remote Control prove
+  demand for exactly this seam while stopping short of host-portable identity,
+  authority, and receipts.
 
 ## Transcript-driven product calibration
 
