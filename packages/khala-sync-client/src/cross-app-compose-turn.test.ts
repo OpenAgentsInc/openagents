@@ -101,7 +101,7 @@ class DualClientChatServer {
     return log.length === 0 ? 0 : Number(log[log.length - 1]!.version)
   }
 
-  private emitFrame(scope: SyncScope, frame: LiveFrame): void {
+  emitFrame(scope: SyncScope, frame: LiveFrame): void {
     const sockets = this.sockets.get(scope) ?? []
     for (const socket of sockets) {
       if (socket.open) socket.handlers.onFrame(frame)
@@ -116,6 +116,7 @@ class DualClientChatServer {
       readonly postImageJson: string
     },
     mutationRef: string,
+    options: { readonly emit?: boolean } = {},
   ): number {
     const version = this.lastVersion(scope) + 1
     const entry = new ChangelogEntry({
@@ -129,14 +130,16 @@ class DualClientChatServer {
       committedAt: FIXED_TIME,
     })
     this.logOf(scope).push(entry)
-    this.emitFrame(
-      scope,
-      new DeltaFrame({
+    if (options.emit !== false) {
+      this.emitFrame(
         scope,
-        entries: [entry],
-        cursor: SyncVersion.make(version),
-      }) as LiveFrame,
-    )
+        new DeltaFrame({
+          scope,
+          entries: [entry],
+          cursor: SyncVersion.make(version),
+        }) as LiveFrame,
+      )
+    }
     return version
   }
 
@@ -588,6 +591,113 @@ describe("cross-app chat.composeTurn over real khala-sync-client sessions", () =
     expect(
       desktop.listTurns().filter((turn) => turn.id === "turn-mobile-offline"),
     ).toHaveLength(1)
+  })
+
+  test("duplicate and stale live deltas keep desktop and mobile on one stable confirmed transcript", async () => {
+    const server = new DualClientChatServer()
+    const desktop = makeClient(server, "c_desktop_ordering")
+    const mobile = makeClient(server, "c_mobile_ordering")
+
+    await Effect.runPromise(desktop.session.subscribe(threadScope))
+    await Effect.runPromise(mobile.session.subscribe(threadScope))
+    await waitFor(
+      () =>
+        desktop.session.state(threadScope).phase === "live" &&
+        mobile.session.state(threadScope).phase === "live",
+      "both clients live before ordering trace",
+    )
+
+    server.commit(
+      threadScope,
+      {
+        entityType: "chat_turn_event",
+        entityId: "turn-ordering-1",
+        postImageJson: canonicalJson({
+          id: "turn-ordering-1",
+          threadId: "scope.thread.cross-app-proof",
+          role: "user",
+          author: "Desktop",
+          text: "first ordered event",
+          client: "desktop",
+          committedAt: FIXED_TIME,
+        }),
+      },
+      "mutation.server.ordering.1",
+    )
+    await waitFor(
+      () =>
+        desktop.listTurns().some((turn) => turn.id === "turn-ordering-1") &&
+        mobile.listTurns().some((turn) => turn.id === "turn-ordering-1"),
+      "both clients have first ordered turn",
+    )
+    expect(Effect.runSync(desktop.store.cursor(threadScope))).toBe(SyncVersion.make(1))
+    expect(Effect.runSync(mobile.store.cursor(threadScope))).toBe(SyncVersion.make(1))
+
+    server.commit(
+      threadScope,
+      {
+        entityType: "chat_turn_event",
+        entityId: "turn-ordering-2",
+        postImageJson: canonicalJson({
+          id: "turn-ordering-2",
+          threadId: "scope.thread.cross-app-proof",
+          role: "user",
+          author: "Mobile",
+          text: "second ordered event",
+          client: "mobile",
+          committedAt: FIXED_TIME,
+        }),
+      },
+      "mutation.server.ordering.2",
+      { emit: false },
+    )
+
+    const v1Entries = server
+      .logOf(threadScope)
+      .filter((entry) => Number(entry.version) === 1)
+    const v2Entries = server
+      .logOf(threadScope)
+      .filter((entry) => Number(entry.version) === 2)
+
+    server.emitFrame(
+      threadScope,
+      new DeltaFrame({
+        scope: threadScope,
+        entries: v2Entries,
+        cursor: SyncVersion.make(2),
+      }) as LiveFrame,
+    )
+    server.emitFrame(
+      threadScope,
+      new DeltaFrame({
+        scope: threadScope,
+        entries: v2Entries,
+        cursor: SyncVersion.make(2),
+      }) as LiveFrame,
+    )
+    server.emitFrame(
+      threadScope,
+      new DeltaFrame({
+        scope: threadScope,
+        entries: v1Entries,
+        cursor: SyncVersion.make(1),
+      }) as LiveFrame,
+    )
+
+    await waitFor(
+      () =>
+        Effect.runSync(desktop.store.cursor(threadScope)) === SyncVersion.make(2) &&
+        Effect.runSync(mobile.store.cursor(threadScope)) === SyncVersion.make(2),
+      "both clients advanced to ordering cursor",
+    )
+    await tick()
+    await tick()
+
+    const expectedIds = ["turn-ordering-1", "turn-ordering-2"]
+    expect(desktop.listTurns().map((turn) => turn.id).sort()).toEqual(expectedIds)
+    expect(mobile.listTurns().map((turn) => turn.id).sort()).toEqual(expectedIds)
+    expect(Effect.runSync(desktop.store.cursor(threadScope))).toBe(SyncVersion.make(2))
+    expect(Effect.runSync(mobile.store.cursor(threadScope))).toBe(SyncVersion.make(2))
   })
 
   test("both clients converge on a fleet projection tombstone and preserve its cursor after restart", async () => {
