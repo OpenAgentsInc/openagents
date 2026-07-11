@@ -123,7 +123,9 @@ describe("desktopShellView (state -> component tree)", () => {
     }))
     const state:DesktopShellState={...baseState,history:{...baseState.history,catalog:{roots,agents:roots},pendingThreadRef:"history-7"}}
     const view=desktopShellView(state)
-    expect(nodeByKey(view,"sidebar-history-list")).toMatchObject({_tag:"List",virtualize:true,estimatedItemSize:28})
+    expect(nodeByKey(view,"sidebar-history-list")).toMatchObject({_tag:"List",virtualize:false,estimatedItemSize:28})
+    expect((nodeByKey(view,"sidebar-history-list")?.items as Array<unknown>)).toHaveLength(41)
+    expect(nodeByKey(view,"sidebar-history-load-more")).toMatchObject({_tag:"Button",label:"Load 10 more"})
     expect(nodeByKey(view,"sidebar-thread-history-7")?.a11y).toMatchObject({selected:true})
     expect(nodeByKey(view,"sidebar-thread-history-8")?.a11y).toMatchObject({selected:false})
   })

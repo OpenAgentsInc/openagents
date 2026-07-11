@@ -138,3 +138,17 @@ viewport below 100px and proves `scrollTop` changes. The accepted run measured
 546px client height over 3,061px scroll height. Trace pages now render 50
 compact, variable-height previews (full bounded detail remains in the
 inspector), and the same nested selection committed in 89–91ms.
+
+The catalog itself remained a render tax because the pure Effect Native view
+constructed all 1,231 root-row trees before DOM virtualization. A controlled
+benchmark over 30 renders measured 127.358ms median, 136.622ms p95, and
+146.735ms max. The sidebar now projects the newest 40 roots and appends an
+explicit in-list `Load 40 more` action; older batches require scrolling to and
+activating that row repeatedly, and ancient restoration is suppressed. The
+same benchmark now measures 4.975ms median, 10.766ms p95, and 20.115ms max
+(25.6× median improvement).
+
+The zero-height SplitPane correction was also upstreamed to Effect Native at
+`OpenAgentsInc/effect-native@8361c045a435267b1f8d939df2fcb5cba81317c7`;
+OpenAgents' vendored DOM renderer records that provenance rather than treating
+the framework correction as a permanent app-local patch.

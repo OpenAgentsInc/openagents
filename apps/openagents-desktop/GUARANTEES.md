@@ -289,6 +289,13 @@ viewport, overflow content, and a successful `scrollTop` change. On the
 owner-local 131-agent trace the measured viewport is 546px over 3,061px of
 content, and committed selected-page readiness is 89–91ms.
 
+The sidebar initially constructs and exposes only the 40 newest top-level
+conversations. A final in-list `Load 40 more` action is the only way to reveal
+each older batch; restarting resets the disclosure window and does not restore
+an ancient selection outside it. On the owner catalog (1,231 roots), the exact
+state-to-view benchmark improved from 127.358ms median / 136.622ms p95 to
+4.975ms median / 10.766ms p95—a 25.6× median reduction.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

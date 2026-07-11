@@ -9,8 +9,10 @@ export type HistoryWorkspaceState = Readonly<{
   railCollapsed: boolean
   expandedThreadRefs: ReadonlyArray<string>
   pendingThreadRef?: string | null
+  visibleRootCount: number
 }>
-export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [], pendingThreadRef: null })
+export const historyCatalogPageSize = 40
+export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [], pendingThreadRef: null, visibleRootCount: historyCatalogPageSize })
 
 export const HistoryConversationSelected = defineIntent("HistoryConversationSelected", Schema.String)
 export const HistoryAgentSelected = defineIntent("HistoryAgentSelected", Schema.String)
@@ -18,7 +20,8 @@ export const HistoryItemSelected = defineIntent("HistoryItemSelected", Schema.St
 export const HistoryPageRequested = defineIntent("HistoryPageRequested", Schema.Number)
 export const HistoryInspectorToggled = defineIntent("HistoryInspectorToggled", Schema.Null)
 export const HistoryAgentExpandedToggled = defineIntent("HistoryAgentExpandedToggled", Schema.String)
-export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryPageRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled] as const
+export const HistoryCatalogMoreRequested = defineIntent("HistoryCatalogMoreRequested", Schema.Null)
+export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryPageRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested] as const
 
 const statusLabel = (status: string): string => status.slice(0,1).toUpperCase() + status.slice(1)
 const timelinePreview = (value: string): string => value.length <= 360 ? value : `${value.slice(0,357)}…`

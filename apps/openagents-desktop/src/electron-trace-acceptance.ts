@@ -34,7 +34,7 @@ export const traceAcceptanceJourney = `(async () => {
   if (roots.some((root,index) => index > 0 && root.updatedAt > roots[index-1].updatedAt)) return {ok:false,reason:"catalog_order"}
   const sidebarRows = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')]
   const rootRefs = new Set(roots.map(root => root.threadRef))
-  const sidebarList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label') === roots.length + ' Codex conversations')
+  const sidebarList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label')?.endsWith(' of ' + roots.length + ' Codex conversations'))
   if (!sidebarList || sidebarRows.length === 0 || sidebarRows.some(row => !rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))) return {ok:false,reason:"child_leaked_to_sidebar"}
   if ([...document.querySelectorAll('[data-en-key*="loading"]')].some(node => node.getClientRects().length > 0)) return {ok:false,reason:"stale_loading_copy"}
 
