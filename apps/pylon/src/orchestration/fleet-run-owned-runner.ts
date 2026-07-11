@@ -94,6 +94,7 @@ export type PylonOwnedFleetRunRequestPort = (
 export type PylonOwnedFleetRunAssignmentPort = (input: {
   readonly accountRef: string
   readonly assignmentRef: string
+  readonly abortSignal?: AbortSignal | undefined
   readonly claudeOwnerLocalPermissionControl?: ClaudeOwnerLocalPermissionControl
   readonly onLifecycle?: ((event: PylonAssignmentRunLifecycleEvent) => void | Promise<void>) | undefined
   /** Forwarded only; the unattended default assignment runner emits no approval signal. */
@@ -787,6 +788,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       accountRef: requestInput.accountRef,
       assignmentRef: requestInput.assignmentRef,
       strictAssignmentRef: true,
+      ...(requestInput.abortSignal === undefined
+        ? {}
+        : { abortSignal: requestInput.abortSignal }),
       ...(requestInput.claudeOwnerLocalPermissionControl === undefined
         ? {}
         : {
@@ -990,6 +994,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       assignment = await runAssignment({
         accountRef: account.ref,
         assignmentRef,
+        ...(dispatchInput.signal === undefined
+          ? {}
+          : { abortSignal: dispatchInput.signal }),
         ...(claudeOwnerLocalPermissionControl === undefined
           ? {}
           : { claudeOwnerLocalPermissionControl }),

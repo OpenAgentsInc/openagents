@@ -94,6 +94,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   account. Serialized/restarted, bridge, org-cloud, public, remote, mismatched,
   expired, and revoked paths cannot inherit it; public audit evidence carries
   policy/authority/proof refs, never the permission-mode literal.
+  Fleet supervisor loops and their Codex/Claude dispatches are owned by the
+  exact run scope: stop/close aborts and joins them before releasing the Pylon
+  slot, while late lifecycle remains retained. Completed/accepted publication
+  waits for the matching exact verifier and terminal closeout evidence; a
+  delayed, cancelled, restarted, rejected, or stale attempt cannot be promoted.
   Caller-owned Khala -> Pylon -> Codex coding delegation is also owner-local:
   when the caller is routed to their own linked Pylon, the local Codex executor
   uses the SDK equivalent of

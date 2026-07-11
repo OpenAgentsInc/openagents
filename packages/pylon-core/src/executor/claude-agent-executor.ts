@@ -130,6 +130,7 @@ export type ClaudeAgentRunResult = {
 export type ClaudeAgentRunner = (input: ClaudeAgentRunInput) => Promise<ClaudeAgentRunResult>
 
 export type ClaudeAgentExecutionOptions = {
+  abortSignal?: AbortSignal
   account?: ResolvedPylonAccountSelection | null
   agentToken?: string
   baseUrl?: string
@@ -1043,9 +1044,14 @@ export async function executeClaudeAgentAssignment(
       ...(permission.authorityRef === null
         ? {}
         : { permissionAuthorityRef: permission.authorityRef }),
-      ...(options.claudeOwnerLocalPermissionControl?.signal === undefined
-        ? {}
-        : { abortSignal: options.claudeOwnerLocalPermissionControl.signal }),
+      ...(() => {
+        const signals = [
+          options.abortSignal,
+          options.claudeOwnerLocalPermissionControl?.signal,
+        ].filter((signal): signal is AbortSignal => signal !== undefined)
+        if (signals.length === 0) return {}
+        return { abortSignal: signals.length === 1 ? signals[0] : AbortSignal.any(signals) }
+      })(),
       ...(config.model === undefined ? {} : { model: config.model }),
     })
   } catch {
@@ -1083,19 +1089,28 @@ export async function executeClaudeAgentAssignment(
 
   if (run.outcome === "cancelled") {
     await releaseClaudeAgentWorkspace({ materialized, now })
+    const ownerLocal = permission.kind === "owner_local"
     return refusalRecord({
       lease,
       runRef,
       blockerRefs: [
-        "blocker.assignment.claude_agent_owner_local_permission_cancelled",
+        ownerLocal
+          ? "blocker.assignment.claude_agent_owner_local_permission_cancelled"
+          : "blocker.assignment.claude_agent_supervisor_cancelled",
         ...tokenUsageReport.blockerRefs,
       ],
       proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
-      resultRef: "result.public.pylon.claude_agent_task.permission_cancelled",
+      resultRef: ownerLocal
+        ? "result.public.pylon.claude_agent_task.permission_cancelled"
+        : "result.public.pylon.claude_agent_task.supervisor_cancelled",
       resultRefs: tokenUsageReport.resultRefs,
-      summaryRef: "summary.public.pylon.claude_agent_task.permission_cancelled",
+      summaryRef: ownerLocal
+        ? "summary.public.pylon.claude_agent_task.permission_cancelled"
+        : "summary.public.pylon.claude_agent_task.supervisor_cancelled",
       summaryRefs: tokenUsageReport.summaryRefs,
-      message: "Local Claude Agent session stopped after its owner-local permission authority was cancelled.",
+      message: ownerLocal
+        ? "Local Claude Agent session stopped after its owner-local permission authority was cancelled."
+        : "Local Claude Agent session stopped when its owning supervisor scope was cancelled.",
     })
   }
 

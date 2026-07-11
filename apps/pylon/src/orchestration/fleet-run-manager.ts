@@ -57,6 +57,7 @@ type ActiveFleetRun = {
   readonly lifecycle: FleetRunSupervisorObservedEvent[]
   readonly pylonRef: string
   readonly scope: Scope.Scope
+  releasing: Promise<void> | null
 }
 
 /**
@@ -169,6 +170,7 @@ export class PylonFleetRunManager {
       lastTick: null,
       lifecycle: [...earlyLifecycle],
       pylonRef: input.pylonRef,
+      releasing: null,
       scope,
     }
     this.active.set(runRef, active)
@@ -206,17 +208,20 @@ export class PylonFleetRunManager {
       verb === "drain" ? "draining" :
       "stopped"
     this.store.updateFleetRunState(runRef, nextState, this.now())
-    if (verb === "stop") await this.reportTerminalThenRelease(runRef)
+    if (verb === "stop") {
+      const active = this.active.get(runRef)
+      if (active !== undefined) await this.releaseActive(runRef, active)
+    }
     return { ...this.snapshot(runRef), verb }
   }
 
   /**
    * Stop owned supervisor loops and release their scopes.
    *
-   * This does not claim to drain runner work already launched by a tick: the
-   * supervisor dispatch path records that bookkeeping asynchronously. Runtime
-   * owners must drain/reconcile in-flight work before closing SQLite; an
-   * await-idle shutdown handshake remains an explicit FC-2 wiring residual.
+   * Scope finalization aborts the process-local dispatch signal and joins the
+   * loop plus its manager-owned awaited bookkeeping before returning. External
+   * assignments that had already crossed a remote acceptance boundary remain
+   * durable records and are never relabeled terminal without closeout proof.
    */
   async close(): Promise<void> {
     if (this.closed) return
@@ -246,6 +251,10 @@ export class PylonFleetRunManager {
   ): Promise<boolean> {
     const active = knownActive ?? this.active.get(runRef)
     if (active === undefined || this.active.get(runRef) !== active) return false
+    if (active.releasing !== null) {
+      await active.releasing
+      return true
+    }
     const run = this.store.getFleetRun(runRef)
     if (run === null || (run.state !== "completed" && run.state !== "stopped")) {
       return false
@@ -253,6 +262,10 @@ export class PylonFleetRunManager {
     try {
       active.lastTick = await Effect.runPromise(active.handle.tick())
     } catch {
+      if (active.releasing !== null) {
+        await active.releasing
+        return true
+      }
       // Projection/reporting is retryable. Keeping the scope active lets the
       // standing loop or a later status/reap pass retry exact same bytes.
       return false
@@ -267,11 +280,20 @@ export class PylonFleetRunManager {
   private async releaseActive(runRef: string, knownActive?: ActiveFleetRun): Promise<void> {
     const active = knownActive ?? this.active.get(runRef)
     if (active === undefined || this.active.get(runRef) !== active) return
-    this.retainedLifecycle.set(runRef, [...active.lifecycle])
-    this.retainedPylonRefs.set(runRef, active.pylonRef)
-    this.active.delete(runRef)
-    await Effect.runPromise(Effect.exit(active.handle.stop()))
-    await Effect.runPromise(Scope.close(active.scope, Exit.void))
+    if (active.releasing !== null) return await active.releasing
+    active.releasing = (async () => {
+      // Keep the active record installed while abort + scope finalization join
+      // the loop. Late lifecycle events therefore land in the retained receipt
+      // instead of racing against map deletion.
+      try {
+        await Effect.runPromise(Scope.close(active.scope, Exit.void))
+      } finally {
+        this.retainedLifecycle.set(runRef, [...active.lifecycle])
+        this.retainedPylonRefs.set(runRef, active.pylonRef)
+        if (this.active.get(runRef) === active) this.active.delete(runRef)
+      }
+    })()
+    await active.releasing
   }
 
   private snapshot(runRef: string): PylonFleetRunSnapshot {

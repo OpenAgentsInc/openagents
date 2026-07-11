@@ -108,6 +108,8 @@ export type FleetRunSupervisorDispatchInput = {
   // that claimed this unit. In a mixed-kind FleetRun this is the per-account
   // kind, never the raw run kind, so the runner dispatches to the right harness.
   readonly workerKind: FleetRunSupervisorConcreteWorkerKind
+  /** Owning supervisor scope cancellation; never serialized or projected. */
+  readonly signal?: AbortSignal | undefined
   /** Streams executor lifecycle as it happens; buffered terminal replay is deduplicated. */
   readonly onLifecycle?: ((event: FleetRunSupervisorLifecycleEvent) => void | Promise<void>) | undefined
   /**
@@ -192,6 +194,8 @@ export type FleetRunSupervisorOptions = {
   readonly maxSpawnPerTick?: number
   readonly awaitDispatches?: boolean
   readonly startImmediately?: boolean
+  /** Optional parent cancellation composed with the supervisor-owned signal. */
+  readonly signal?: AbortSignal | undefined
   // The shared fleet-intents policy is the only `auto` selection vocabulary.
   // Production uses the compiled default; fixtures/operators may inject a
   // stricter cost ceiling without changing scheduler code.
@@ -285,6 +289,8 @@ export type FleetRunSupervisorTickResult = {
 export type FleetRunSupervisorHandle = {
   readonly pylonRef: string
   readonly runRef: string
+  /** Abort work without releasing the one-supervisor guard. */
+  readonly interrupt: () => Effect.Effect<void>
   readonly stop: () => Effect.Effect<void>
   readonly tick: () => Effect.Effect<FleetRunSupervisorTickResult, FleetRunSupervisorError>
 }
@@ -1341,6 +1347,7 @@ export async function tickFleetRunSupervisor(
           taskId,
           workUnit,
           workerKind,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           onLifecycle: async event => {
             await emit(options.onLifecycle, {
               kind: "lifecycle",
@@ -1634,40 +1641,56 @@ export async function tickFleetRunSupervisor(
 export function makeFleetRunSupervisor(
   options: FleetRunSupervisorOptions,
 ): Effect.Effect<FleetRunSupervisorHandle, FleetRunSupervisorError> {
-  return Effect.sync(() => {
-    const existing = activeSupervisors.get(options.pylonRef)
-    if (existing !== undefined) {
-      throw new FleetRunSupervisorError(`fleet run supervisor already active for pylon ${options.pylonRef}: ${existing}`)
-    }
-    activeSupervisors.set(options.pylonRef, options.runRef)
-    let stopped = false
-    let inFlightTick: Promise<FleetRunSupervisorTickResult> | null = null
-    return {
-      pylonRef: options.pylonRef,
-      runRef: options.runRef,
-      stop: () => Effect.sync(() => {
+  return Effect.try({
+    try: () => {
+      const existing = activeSupervisors.get(options.pylonRef)
+      if (existing !== undefined) {
+        throw new FleetRunSupervisorError(`fleet run supervisor already active for pylon ${options.pylonRef}: ${existing}`)
+      }
+      activeSupervisors.set(options.pylonRef, options.runRef)
+      let stopped = false
+      const abort = new AbortController()
+      const dispatchSignal = options.signal === undefined
+        ? abort.signal
+        : AbortSignal.any([options.signal, abort.signal])
+      let inFlightTick: Promise<FleetRunSupervisorTickResult> | null = null
+      const interrupt = (): void => {
+        if (stopped) return
         stopped = true
-        if (activeSupervisors.get(options.pylonRef) === options.runRef) activeSupervisors.delete(options.pylonRef)
-      }),
-      tick: () => Effect.tryPromise({
-        try: async () => {
-          if (stopped) throw new FleetRunSupervisorError(`fleet run supervisor stopped: ${options.runRef}`)
-          if (inFlightTick !== null) return await inFlightTick
-          const tick = tickFleetRunSupervisor({
-            ...options,
-            awaitDispatches: options.awaitDispatches ?? false,
-          })
-            .finally(() => {
-              if (inFlightTick === tick) inFlightTick = null
+        abort.abort()
+      }
+      return {
+        pylonRef: options.pylonRef,
+        runRef: options.runRef,
+        interrupt: () => Effect.sync(interrupt),
+        stop: () => Effect.sync(() => {
+          interrupt()
+          if (activeSupervisors.get(options.pylonRef) === options.runRef) activeSupervisors.delete(options.pylonRef)
+        }),
+        tick: () => Effect.tryPromise({
+          try: async () => {
+            if (stopped) throw new FleetRunSupervisorError(`fleet run supervisor stopped: ${options.runRef}`)
+            if (inFlightTick !== null) return await inFlightTick
+            const tick = tickFleetRunSupervisor({
+              ...options,
+              signal: dispatchSignal,
+              awaitDispatches: options.awaitDispatches ?? false,
             })
-          inFlightTick = tick
-          return await tick
-        },
-        catch: (error: unknown) => error instanceof FleetRunSupervisorError
-          ? error
-          : new FleetRunSupervisorError("fleet run supervisor tick failed", error),
-      }),
-    }
+              .finally(() => {
+                if (inFlightTick === tick) inFlightTick = null
+              })
+            inFlightTick = tick
+            return await tick
+          },
+          catch: (error: unknown) => error instanceof FleetRunSupervisorError
+            ? error
+            : new FleetRunSupervisorError("fleet run supervisor tick failed", error),
+        }),
+      }
+    },
+    catch: (error: unknown) => error instanceof FleetRunSupervisorError
+      ? error
+      : new FleetRunSupervisorError("fleet run supervisor start failed", error),
   })
 }
 
@@ -1678,16 +1701,26 @@ export function startFleetRunSupervisor(
     const handle = yield* makeFleetRunSupervisor(options)
     const scope = yield* Effect.scope
     let loopStopped = false
+    let resolveLoopStop!: () => void
+    const loopStop = new Promise<void>(resolve => {
+      resolveLoopStop = resolve
+    })
+    let loopPromise: Promise<void> | null = null
     yield* Scope.addFinalizer(
       scope,
       Effect.gen(function* () {
         loopStopped = true
+        resolveLoopStop()
+        yield* handle.interrupt()
+        if (loopPromise !== null) {
+          yield* Effect.promise(() => loopPromise as Promise<void>)
+        }
         yield* handle.stop()
       }),
     )
     // tickFleetRunSupervisor intentionally bypasses the one-supervisor guard as the direct test seam.
     const context = yield* Effect.context<never>()
-    void (async () => {
+    loopPromise = (async () => {
       const clock = { ...defaultClock, ...options.clock }
       let firstLoop = true
       while (!loopStopped) {
@@ -1699,9 +1732,14 @@ export function startFleetRunSupervisor(
           }
         }
         firstLoop = false
-        if (!loopStopped) await clock.sleep(options.tickIntervalMs ?? 1000)
+        if (!loopStopped) {
+          await Promise.race([
+            clock.sleep(options.tickIntervalMs ?? 1000),
+            loopStop,
+          ])
+        }
       }
-    })()
+    })().catch(() => undefined)
     return handle
   })
 }

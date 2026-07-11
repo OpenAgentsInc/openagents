@@ -113,6 +113,7 @@ export type CodexAgentTaskPayload = {
 }
 
 export type CodexAgentRunInput = {
+  abortSignal?: AbortSignal
   assignmentRef?: string
   cwd: string
   instructions: string
@@ -150,6 +151,7 @@ export type CodexAgentRuntimeProgress = {
 export type CodexAgentRunOutcome =
   | "completed"
   | "budget_exceeded"
+  | "cancelled"
   | "workspace_escape_blocked"
   | "refused"
 
@@ -174,6 +176,7 @@ type LocalCommandResult = {
 type LocalCommandRunner = (input: { args: string[]; cwd: string; timeoutMs?: number }) => Promise<LocalCommandResult>
 
 export type CodexAgentExecutionOptions = {
+  abortSignal?: AbortSignal
   account?: ResolvedPylonAccountSelection | null
   agentToken?: string
   baseUrl?: string
@@ -980,7 +983,18 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     }
   }
   const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), input.timeoutMs)
+  let timedOut = false
+  let cancelled = false
+  const abortFromCaller = () => {
+    cancelled = true
+    abort.abort()
+  }
+  if (input.abortSignal?.aborted === true) abortFromCaller()
+  else input.abortSignal?.addEventListener("abort", abortFromCaller, { once: true })
+  const timer = setTimeout(() => {
+    timedOut = true
+    abort.abort()
+  }, input.timeoutMs)
   let escaped = false
   let editedFileCount = 0
   let commandCount = 0
@@ -1166,19 +1180,26 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     if (escaped) {
       return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef: null }
     }
-    if (abort.signal.aborted) {
+    if (cancelled) {
+      return { outcome: "cancelled", turnCount, editedFileCount, commandCount, sessionRef: null }
+    }
+    if (timedOut || abort.signal.aborted) {
       return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef: null }
     }
     throw error
   } finally {
     clearTimeout(timer)
+    input.abortSignal?.removeEventListener("abort", abortFromCaller)
   }
 
   const sessionRef = threadId === null ? null : stableRef("session.pylon.codex_agent", threadId)
   if (escaped) {
     return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef }
   }
-  if (abort.signal.aborted) {
+  if (cancelled) {
+    return { outcome: "cancelled", turnCount, editedFileCount, commandCount, sessionRef }
+  }
+  if (timedOut || abort.signal.aborted) {
     return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef }
   }
   if (failed) {
@@ -1367,23 +1388,47 @@ async function runCodexAgentWithOuterDeadline(
   runner: CodexAgentRunner,
   input: CodexAgentRunInput,
 ): Promise<CodexAgentRunResult> {
-  return Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const runnerPromise = runner(input)
-        runnerPromise.catch(() => undefined)
-        let resolveDeadline!: (result: CodexAgentRunResult) => void
-        const timeoutPromise = new Promise<CodexAgentRunResult>((resolve) => {
-          resolveDeadline = resolve
-        })
-        yield* scopedTimeout({
-          delayMs: input.timeoutMs,
-          onTimeout: () => resolveDeadline(deadlineBudgetExceededResult()),
-        })
-        return yield* Effect.promise(() => Promise.race([runnerPromise, timeoutPromise]))
-      }),
-    ),
-  )
+  let removeAbortListener = () => {}
+  const cancelledPromise = new Promise<CodexAgentRunResult>(resolve => {
+    const cancelled = () => resolve({
+      outcome: "cancelled",
+      turnCount: 0,
+      editedFileCount: 0,
+      commandCount: 0,
+      sessionRef: null,
+    })
+    if (input.abortSignal?.aborted === true) {
+      cancelled()
+      return
+    }
+    input.abortSignal?.addEventListener("abort", cancelled, { once: true })
+    removeAbortListener = () => input.abortSignal?.removeEventListener("abort", cancelled)
+  })
+  try {
+    return Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runnerPromise = runner(input)
+          runnerPromise.catch(() => undefined)
+          let resolveDeadline!: (result: CodexAgentRunResult) => void
+          const timeoutPromise = new Promise<CodexAgentRunResult>((resolve) => {
+            resolveDeadline = resolve
+          })
+          yield* scopedTimeout({
+            delayMs: input.timeoutMs,
+            onTimeout: () => resolveDeadline(deadlineBudgetExceededResult()),
+          })
+          return yield* Effect.promise(() => Promise.race([
+            runnerPromise,
+            timeoutPromise,
+            cancelledPromise,
+          ]))
+        }),
+      ),
+    )
+  } finally {
+    removeAbortListener()
+  }
 }
 
 function refusalRecord(input: {
@@ -1618,6 +1663,7 @@ export async function executeCodexAgentAssignment(
     }).env
     run = await runCodexAgentWithOuterDeadline(runner, {
       assignmentRef: lease.assignmentRef,
+      ...(options.abortSignal === undefined ? {} : { abortSignal: options.abortSignal }),
       cwd: materialized.workspace,
       account: options.account,
       env: guardedEnv,
@@ -1667,6 +1713,17 @@ export async function executeCodexAgentAssignment(
         : `Local Codex thread refused with ${failure.reason}: ${failure.publicMessage || "no public error message available"}.`,
     })
 	  }
+  if (run.outcome === "cancelled") {
+    await releaseCodexAgentWorkspace({ materialized, now })
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_supervisor_cancelled"],
+      resultRef: "result.public.pylon.codex_agent_task.supervisor_cancelled",
+      summaryRef: "summary.public.pylon.codex_agent_task.supervisor_cancelled",
+      message: "Local Codex thread stopped when its owning supervisor scope was cancelled.",
+    })
+  }
 
   const scmCredentialPolicyRefusal = await enforceCodexScmCredentialPolicy({
     account: options.account,

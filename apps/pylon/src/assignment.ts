@@ -206,6 +206,8 @@ export type AssignmentCloseout = {
 }
 
 export type AssignmentClientOptions = {
+  /** Trusted process-local cancellation from the owning supervisor scope. */
+  abortSignal?: AbortSignal
   agentToken?: string
   accountHome?: string
   accountRef?: string
@@ -1493,7 +1495,10 @@ function assignmentRequestSignal(options: AssignmentClientOptions): AbortSignal 
     requested > 0
       ? Math.min(Math.floor(requested), 300_000)
       : DEFAULT_ASSIGNMENT_REQUEST_TIMEOUT_MS
-  return AbortSignal.timeout(timeoutMs)
+  const timeout = AbortSignal.timeout(timeoutMs)
+  return options.abortSignal === undefined
+    ? timeout
+    : AbortSignal.any([options.abortSignal, timeout])
 }
 
 export async function pollAssignments(summary: BootstrapSummary, options: AssignmentClientOptions) {
@@ -2192,6 +2197,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           // resolved from the selected registry entry so Claude credentials are
           // never crossed with Codex credentials.
           ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+          ...(options.abortSignal === undefined ? {} : { abortSignal: options.abortSignal }),
           ...(agentAccount.account === null ? {} : { account: agentAccount.account }),
           baseUrl: options.baseUrl,
           ...(options.claudeAgentCheckoutRunner === undefined ? {} : { claudeAgentCheckoutRunner: options.claudeAgentCheckoutRunner }),

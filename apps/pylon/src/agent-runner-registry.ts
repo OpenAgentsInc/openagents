@@ -111,6 +111,7 @@ export type AgentRunnerCloseoutRecord = {
 }
 
 export type AgentRunnerExecutionOptions = {
+  abortSignal?: AbortSignal
   account?: ResolvedPylonAccountSelection | null
   agentToken?: string
   baseUrl?: string
@@ -261,6 +262,7 @@ export function agentTaskPayloadFromAssignment(
 
 function commonExecutionOptions(options: AgentRunnerExecutionOptions) {
   return {
+    ...(options.abortSignal === undefined ? {} : { abortSignal: options.abortSignal }),
     ...(options.account === undefined ? {} : { account: options.account }),
     ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),

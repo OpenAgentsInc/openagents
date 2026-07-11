@@ -52,6 +52,110 @@ const managerFixture = () => {
 }
 
 describe("PylonFleetRunManager", () => {
+  test("contract background_agents.fleet.supervisor_scope_and_publication_order.v1: stop aborts and joins the owned dispatch before releasing its slot", async () => {
+    const fixture = managerFixture()
+    let capacityAvailable = false
+    let resolveStarted!: (signal: AbortSignal) => void
+    const started = new Promise<AbortSignal>(resolve => {
+      resolveStarted = resolve
+    })
+    let resolveAfterAbort!: () => void
+    const afterAbort = new Promise<void>(resolve => {
+      resolveAfterAbort = resolve
+    })
+    let stopSettled = false
+    const runner: FleetRunSupervisorRunner = {
+      dispatch: async input => {
+        if (input.run.runRef === "fleet_run.manager.cancelled") {
+          if (input.signal === undefined) throw new Error("missing supervisor signal")
+          resolveStarted(input.signal)
+          if (!input.signal.aborted) {
+            await new Promise<void>(resolve => {
+              input.signal?.addEventListener("abort", () => resolve(), { once: true })
+            })
+          }
+          await afterAbort
+          return {
+            assignmentRef: `assignment.${input.claim.claimRef}`,
+            lifecycle: [lifecycle("assignment_run.runtime_failed", "cancelled")],
+            status: "failed",
+          }
+        }
+        return {
+          assignmentRef: `assignment.${input.claim.claimRef}`,
+          lifecycle: [lifecycle("assignment_run.completed", "closed")],
+          status: "completed",
+        }
+      },
+    }
+    const capacity = {
+      accounts: async () => capacityAvailable
+        ? [{
+            accountRef: "codex-owner",
+            advertisedCapacity: 1,
+            workerKind: "codex" as const,
+          }]
+        : [],
+    }
+
+    const first = await fixture.manager.start({
+      capacity,
+      planner: fixture.planner,
+      pylonRef: "pylon.owner.manager.cancel",
+      run: fixture.run("fleet_run.manager.cancelled"),
+      runner,
+      startImmediately: false,
+      tickIntervalMs: 1,
+    })
+    expect(first.active).toBe(true)
+    capacityAvailable = true
+    const signal = await started
+    const stopping = fixture.manager.control("fleet_run.manager.cancelled", "stop")
+      .finally(() => {
+        stopSettled = true
+      })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(signal.aborted).toBe(true)
+    expect(stopSettled).toBe(false)
+    let duringJoinSettled = false
+    const duringJoin = fixture.manager.start({
+      capacity,
+      planner: fixture.planner,
+      pylonRef: "pylon.owner.manager.cancel",
+      run: fixture.run("fleet_run.manager.during_cancel_join"),
+      runner,
+      startImmediately: false,
+    }).finally(() => {
+      duringJoinSettled = true
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(duringJoinSettled).toBe(false)
+
+    resolveAfterAbort()
+    const stopped = await stopping
+    expect(stopped.active).toBe(false)
+    expect(stopped.run.state).toBe("stopped")
+    expect(stopped.lifecycle).toContainEqual(expect.objectContaining({
+      kind: "dispatch",
+      status: "failed",
+    }))
+    const joinedNext = await duringJoin
+    expect(joinedNext.active).toBe(false)
+    expect(joinedNext.run.state).toBe("completed")
+
+    const next = await fixture.manager.start({
+      capacity,
+      planner: fixture.planner,
+      pylonRef: "pylon.owner.manager.cancel",
+      run: fixture.run("fleet_run.manager.after_cancel"),
+      runner,
+      startImmediately: false,
+    })
+    expect(next.active).toBe(false)
+    expect(next.run.state).toBe("completed")
+    await fixture.manager.close()
+  })
+
   test("reports the fire-and-forget completion race once before releasing the supervisor slot", async () => {
     const fixture = managerFixture()
     const runner: FleetRunSupervisorRunner = {
@@ -122,7 +226,7 @@ describe("PylonFleetRunManager", () => {
     expect(competing.run.state).toBe("stopped")
 
     const stopped = await fixture.manager.control("fleet_run.manager.active", "stop")
-    expect(stopped.active).toBe(true)
+    expect(stopped.active).toBe(false)
     expect(stopped.run.counters.activeAssignments).toBe(1)
     await fixture.manager.close()
   })

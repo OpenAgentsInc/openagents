@@ -75,10 +75,10 @@ export async function openPylonFleetRunRuntime(
     const close = async (): Promise<void> => {
       if (closed) return
       closed = true
-      // Deterministic for a quiescent manager. Standing-node wiring must first
-      // drain/reconcile in-flight dispatch work; manager.close stops loop
-      // handles but does not overclaim an await-idle guarantee for detached
-      // runner bookkeeping.
+      // Manager close aborts and joins process-local supervisor dispatch
+      // bookkeeping before SQLite closes. Already-accepted external work
+      // remains represented by its durable assignment/claim rows and must be
+      // reconciled from exact closeout evidence after restart.
       try {
         await manager.close()
       } finally {

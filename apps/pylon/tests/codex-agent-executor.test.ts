@@ -302,6 +302,43 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("owning supervisor cancellation aborts Codex and closes without verification or publication", async () => {
+    await withState(async (state) => {
+      const controller = new AbortController()
+      let resolveStarted!: () => void
+      const started = new Promise<void>(resolve => {
+        resolveStarted = resolve
+      })
+      const pending = executeCodexAgentAssignment(state, lease, now, {
+        abortSignal: controller.signal,
+        codexAgentRunner: async input => await new Promise(resolve => {
+          resolveStarted()
+          const cancelled = () => resolve({
+            outcome: "cancelled",
+            turnCount: 0,
+            editedFileCount: 0,
+            commandCount: 0,
+            sessionRef: null,
+          })
+          if (input.abortSignal?.aborted === true) cancelled()
+          else input.abortSignal?.addEventListener("abort", cancelled, { once: true })
+        }),
+        codexAgentProbe: readyProbe,
+      })
+      await started
+      controller.abort()
+      const record = await pending
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain(
+        "blocker.assignment.codex_agent_supervisor_cancelled",
+      )
+      expect(record?.testRefs).toEqual(expect.not.arrayContaining([
+        expect.stringMatching(/^command\.pylon\.codex_agent_task\.verification\./),
+      ]))
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("surfaces revoked and usage-limited Codex account refusals and records account health", async () => {
     await withState(async (state) => {
       const accountRefHash = hashPylonAccountRef("codex", "codex-2")

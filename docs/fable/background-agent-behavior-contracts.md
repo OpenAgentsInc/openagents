@@ -1,4 +1,4 @@
-Registry version: `2026-07-11.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-11.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.claude.owner_local_execution_authority.v1` — ENFORCED
 
@@ -11,6 +11,18 @@ Registry version: `2026-07-11.1` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.claude.non_local_denial` (bun-test, integration): Runtime-intent and control-session tests prove owner-local admission while org-cloud, bridge-like, replayed, and unscoped launches remain bounded. — `apps/pylon/src/orchestration/runtime-intent-enforcement.test.ts`
 - **Verification:** CUT-05 is enforced by the authority, assignment, runtime-intent, control-session, Fleet runner, and public-projection tests in the normal Bun sweeps.
 - **Authority boundary:** This contract grants Claude bypass only inside a trusted owner-local Pylon composition. It grants no public, bridge, org-cloud, provider, spend, settlement, or remote-host authority.
+
+### `background_agents.fleet.supervisor_scope_and_publication_order.v1` — ENFORCED
+
+- **Surface:** pylon-worker (Pylon Fleet supervision)
+- **Stated by:** owner via issue_list on 2026-07-11
+- **Statement:** Every Fleet supervisor loop and harness dispatch is cancelled and joined by its owning run scope before the Pylon slot is released; completed/accepted publication remains impossible until the matching verifier and terminal closeout evidence are durable.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.fleet.scope_join` (bun-test, unit): Manager stop aborts and joins an in-flight dispatch, retains its late lifecycle, releases the Pylon slot exactly once, and permits a following run. — `apps/pylon/tests/fleet-run-manager.test.ts`
+- **Oracle** `background_agents.fleet.verifier_before_publication` (bun-test, unit): The Pylon-owned runner withholds completed dispatch evidence until the exact accepted worker closeout and verifier evidence are readable; restart cannot promote a verifier rejection. — `apps/pylon/tests/fleet-run-owned-runner.test.ts`
+- **Oracle** `background_agents.fleet.harness_cancellation` (bun-test, unit): Codex and Claude assignment executors inherit the owning supervisor abort signal and close with typed public-safe cancellation evidence before verification or publication. — `apps/pylon/tests/codex-agent-executor.test.ts`
+- **Verification:** CUT-06 is enforced by manager scope-race, exact closeout ordering, restart rejection, harness cancellation, and Khala leaked-scope regressions in the normal Bun sweeps.
+- **Authority boundary:** This contract governs process-local Fleet supervisor ownership and terminal publication order. It grants no new provider, public, remote-host, spend, settlement, or writeback authority.
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` — ENFORCED
 

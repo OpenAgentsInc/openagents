@@ -75,6 +75,60 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract governs process-local Fleet supervisor ownership and terminal publication order. It grants no new provider, public, remote-host, spend, settlement, or writeback authority.",
+      blockerRefs: [],
+      contractId: "background_agents.fleet.supervisor_scope_and_publication_order.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8686",
+        "INVARIANTS.md",
+        "apps/pylon/tests/fleet-run-manager.test.ts",
+        "apps/pylon/tests/fleet-run-owned-runner.test.ts",
+        "apps/pylon/tests/codex-agent-executor.test.ts",
+        "apps/pylon/tests/claude-agent-executor.test.ts",
+        "clients/khala-code-desktop/tests/khala-fleet-tools.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "Manager stop aborts and joins an in-flight dispatch, retains its late lifecycle, releases the Pylon slot exactly once, and permits a following run.",
+          id: "background_agents.fleet.scope_join",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/fleet-run-manager.test.ts",
+        },
+        {
+          description:
+            "The Pylon-owned runner withholds completed dispatch evidence until the exact accepted worker closeout and verifier evidence are readable; restart cannot promote a verifier rejection.",
+          id: "background_agents.fleet.verifier_before_publication",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/fleet-run-owned-runner.test.ts",
+        },
+        {
+          description:
+            "Codex and Claude assignment executors inherit the owning supervisor abort signal and close with typed public-safe cancellation evidence before verification or publication.",
+          id: "background_agents.fleet.harness_cancellation",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/codex-agent-executor.test.ts",
+        },
+      ],
+      productArea: "Pylon Fleet supervision",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "enforced",
+      statement:
+        "Every Fleet supervisor loop and harness dispatch is cancelled and joined by its owning run scope before the Pylon slot is released; completed/accepted publication remains impossible until the matching verifier and terminal closeout evidence are durable.",
+      surface: "pylon-worker",
+      verification:
+        "CUT-06 is enforced by manager scope-race, exact closeout ordering, restart rejection, harness cancellation, and Khala leaked-scope regressions in the normal Bun sweeps.",
+    },
+    {
+      authorityBoundary:
         "This contract binds dispatch budget enforcement for background-agent definitions at the openagents.com Worker dispatch boundary. It does not authorize public budget or reliability claims beyond the tested definition-run and trigger-store oracles.",
       blockerRefs: [],
       contractId: "background_agents.dispatch.budget_caps_enforced.v1",
@@ -839,5 +893,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-11.1",
+  version: "2026-07-11.2",
 }

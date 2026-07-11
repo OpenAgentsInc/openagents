@@ -441,6 +441,38 @@ describe("claude agent task recognition", () => {
     })
   })
 
+  test("bounded Claude execution inherits owning supervisor cancellation", async () => {
+    await withState(async (state) => {
+      const controller = new AbortController()
+      const runner: ClaudeAgentRunner = input => new Promise(resolve => {
+        input.abortSignal?.addEventListener("abort", () => resolve({
+          outcome: "cancelled",
+          turnCount: 1,
+          editedFileCount: 0,
+          commandCount: 0,
+          sessionRef: null,
+          usage: null,
+        }), { once: true })
+      })
+      const pending = executeClaudeAgentAssignment(state, lease, now, {
+        abortSignal: controller.signal,
+        claudeAgentRunner: runner,
+        claudeAgentProbe: readyProbe,
+      })
+      await Bun.sleep(5)
+      controller.abort()
+      const record = await pending
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain(
+        "blocker.assignment.claude_agent_supervisor_cancelled",
+      )
+      expect(record?.proofRefs).not.toContainEqual(
+        expect.stringMatching(/^proof\.pylon\.claude_owner_local_permission\./),
+      )
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("keeps accepted work visible when token reporting fails, with a typed blocker", async () => {
     await withState(async (state) => {
       const record = await executeClaudeAgentAssignment(state, lease, now, {

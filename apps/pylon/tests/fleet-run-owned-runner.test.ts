@@ -1490,6 +1490,47 @@ describe("Pylon-owned FleetRun runner", () => {
     )
   })
 
+  test("contract background_agents.fleet.supervisor_scope_and_publication_order.v1: completed publication waits for the exact verified closeout", async () => {
+    let resolveReadStarted!: () => void
+    const readStarted = new Promise<void>(resolve => {
+      resolveReadStarted = resolve
+    })
+    let resolveVerifier!: () => void
+    const verifierCommitted = new Promise<void>(resolve => {
+      resolveVerifier = resolve
+    })
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      loadRegistry: async () => [account("codex-a", "codex")],
+      request: async request => requestReceipt(request),
+      runAssignment: async request => acceptedAssignment(
+        request.assignmentRef,
+        hashPylonAccountRef("codex", "codex-a"),
+      ),
+      readCloseout: async assignmentRef => {
+        resolveReadStarted()
+        await verifierCommitted
+        return exactCloseout(assignmentRef)
+      },
+    })
+    let published = false
+    const pending = runner.dispatch(dispatchInput("codex", "codex-a", 58, "fixture"))
+      .then(result => {
+        published = true
+        return result
+      })
+
+    await readStarted
+    expect(published).toBe(false)
+    resolveVerifier()
+    const result = await pending
+    expect(result.status).toBe("completed")
+    expect(result.verification).toMatchObject({ truth: "passed" })
+    expect(result.verification?.evidenceRefs.length).toBeGreaterThan(0)
+  })
+
   test("never restart-promotes a closed verifier rejection to accepted", async () => {
     const assignmentRef = "assignment.public.rejected_verifier_restart"
     const closeout = exactCloseout(assignmentRef)
