@@ -97,6 +97,7 @@ import {
 } from "./desktop-session-vault.ts"
 import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
 import { traceAcceptanceJourney, traceAcceptanceReload } from "./electron-trace-acceptance.ts"
+import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
 import {
   signInDesktopSession,
   signOutDesktopSession,
@@ -1062,7 +1063,26 @@ void app.whenReady().then(async () => {
   }
   runtimeGateway.start()
   const window = createWindow()
+  // Episode 250 live-proof driver (#8712): REAL adapters (no smoke fixtures),
+  // mutually exclusive with smoke. See ./live-proof.ts — additive only.
+  const liveProof = resolveLiveProofConfig(process.env, app.getPath("userData"))
+  if (liveProof.enabled && liveProof.conflict) {
+    console.error("[openagents-desktop live-proof] OPENAGENTS_DESKTOP_LIVE_PROOF and OPENAGENTS_DESKTOP_SMOKE are mutually exclusive; refusing to run either")
+    app.exit(1)
+    return
+  }
   if (smokeMode) runSmoke(window)
+  else if (liveProof.enabled) {
+    runLiveProof(window, {
+      outDir: liveProof.outDir,
+      exit: (code) => {
+        hostLifecycle.dispose()
+        providerAccounts.dispose()
+        desktopCorrelationJournal.dispose()
+        app.exit(code)
+      },
+    })
+  }
 })
 
 app.on("window-all-closed", () => {

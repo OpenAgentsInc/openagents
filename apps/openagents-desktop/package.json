@@ -10,6 +10,7 @@
   "scripts": {
     "build": "bun scripts/build.ts",
     "dev": "bun scripts/build.ts && electron .",
+    "live-proof": "bun scripts/build.ts && OPENAGENTS_DESKTOP_LIVE_PROOF=1 electron .",
     "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
