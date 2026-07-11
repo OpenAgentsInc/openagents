@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.31",
+    version: "2026-07-11.32",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -1653,6 +1653,250 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the sidebar absence assertion.",
+      },
+      {
+        contractId: "openagents_desktop.chat.codex_first_class_local_lane.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer Codex local chat lane",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement: "yeah i need codex and claude both first class",
+        authorityBoundary:
+          "The Codex chip in local mode runs a REAL bounded `codex exec --json` turn on the pylon registry's isolated Codex homes — never the default ~/.codex, never the cloud gateway. The lane reuses the frozen fable-local event envelope so codex turns render through the exact same transcript cards (reasoning lines, tool cards, markdown assistant body, usage/metadata inspector facts). The chat lane persists codex sessions (no --ephemeral) so threads resume via `codex exec resume <thread_id>` on the SAME account only; a rotated account falls back to bounded-history prepend. Delegate children keep --ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-local-runtime.ts",
+          "apps/openagents-desktop/src/codex-local-contract.ts",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "codex_first_class.lane_runtime",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
+            description:
+              "Drives the REAL JSONL parser with scripted codex exec streams: the receipted no-ephemeral spawn recipe, exec-resume continuation on the same account (sandbox via -c, prompt = new message only), bounded-history fallback after rotation, full event mapping (reasoning/Bash cards/deltas/exact usage), typed visible rotation, interrupt, and typed all-revoked/no-account failures.",
+          },
+          {
+            id: "codex_first_class.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke selects the Codex chip (lit only after the fixture preflight verifies an account) and streams a scripted codex exec turn through the real parser, IPC bridge, thread persistence, and renderer: reasoning line, Bash tool card, markdown assistant body, the 'Codex · gpt-5.6-sol (requested)' caption, no ASSISTANT label, composer re-enabled.",
+          },
+          {
+            id: "codex_first_class.live_proof",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/live-proof.ts",
+            description:
+              "The EP250 live-proof driver's codex-chip and codex-turn steps pass with a verified account: a real gpt-5.6-sol turn streamed in the transcript with mid-stream capture, journaled honestly when no account verifies.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the codex-local runtime suite and the Electron smoke codex-local step; OPENAGENTS_DESKTOP_LIVE_PROOF=1 exercises the real lane.",
+      },
+      {
+        contractId: "openagents_desktop.reliability.codex_connection_signature_corpus.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Codex connection reliability regression corpus",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "add thorough fucking tests or whatever to prevent this category of codex connection error PLEASE I HATE ALL THEF UCKING SPEEDBUMPS HERE",
+        authorityBoundary:
+          "The corpus is table-driven over checked-in verbatim failure fixtures (live-captured where available): LONG revoked, SHORT auth variant, 401 token_invalidated, refresh_token_invalidated, missing auth.json, malformed auth.json, quota/429, network-refused, timeout. Every row asserts classification (auth/rate-limit/generic), rotation behavior, health-map effect, the UI-facing reason string, and the fleet readiness projection — one new signature is ONE new row. The preflight prober (a real minimal read-only `codex exec` turn per account; `codex login status` is receipted presence-only and never a probe) runs on boot, fleet Refresh, reconnect completion, and lazily before first dispatch, and its session-scoped results supersede presence-based ready state.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-connection-signatures.test.ts",
+          "apps/openagents-desktop/src/codex-preflight.ts",
+          "apps/openagents-desktop/src/codex-child-runtime.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "codex_signature_corpus.table",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-connection-signatures.test.ts",
+            description:
+              "One row per failure signature through the REAL parser/classifier/rotation path, asserting all five row dimensions, plus the chip lifecycle state machine (boot-probe to verified to enabled; revoke-mid-session demotes while another verified account keeps the chip; a reconnect probe clears; none-verified disables with the reconnect reason).",
+          },
+          {
+            id: "codex_signature_corpus.preflight",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-preflight.test.ts",
+            description:
+              "Proves the receipted minimal probe recipe, verified/reconnect/rate-limit/missing/failed classification, the credentials_missing no-spawn fast path, the host-side timeout bound, health + ledger feeds, and ensureProbed session-cache semantics.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the signature corpus and preflight suites in the normal sweep; the live-proof journey journals the real per-account probe round as step 0.",
+      },
+      {
+        contractId: "openagents_desktop.seam.codex_local_lane_no_substitution.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Codex local lane substitution law",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Selecting Codex routes to the local Codex lane only: the requested model and reasoning effort are spawn-config truth (gpt-5.6-sol, medium — the exec stream echoes nothing back), every projected model string is labeled (requested), account rotation is typed and visible in the transcript, and no send is ever silently rerouted to another account, lane, or model.",
+        authorityBoundary:
+          "When no PROBE-VERIFIED Codex account exists, Send refuses with the chip reason and the message goes nowhere. Rotation is bounded by the registry, announced per skip via typed lane_notice events, and post-content failures are terminal (a partial reply never double-runs). The ledger and message metadata record the requested model as spawn-config truth, never as a provider echo.",
+        seam: {
+          client: "apps/openagents-desktop/src/renderer/local-harness.ts",
+          server: "apps/openagents-desktop/src/codex-local-runtime.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-local-runtime.ts",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/codex-local-contract.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "codex_local_no_substitution.runtime",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
+            description:
+              "Asserts the pinned -m/-c spawn args, the (requested) model caption event, typed visible rotation with health demotion, terminal post-content failures, and typed refusals that name that no other lane was used.",
+          },
+          {
+            id: "codex_local_no_substitution.renderer_refusal",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
+            description:
+              "A codex send without verified availability is an explicit typed refusal that never reaches the legacy gateway or the fable bridge.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the codex-local runtime and local-harness suites in the normal sweep.",
+      },
+      {
+        contractId: "openagents_desktop.chat.codex_chip_verified_evidence.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer Codex chip evidence gating",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "The composer Codex chip is enabled only when a PROBE-VERIFIED Codex account exists this session; registry auth.json presence is never validity. Unavailable reads Codex — no verified account · Reconnect in Settings; while the session probe is still running it reads Codex — verifying accounts…; the shell never blocks first mount on the probe round.",
+        authorityBoundary:
+          "Verification evidence is a real bounded minimal `codex exec` probe turn per account (read-only sandbox, ~30s host bound), session-scoped with observedAt, re-run on boot/fleet-Refresh/reconnect-completion and lazily before first dispatch. Probe results feed the shared account-health ordering (verified first), the fleet readiness projection via the ledger typed reconnectRequired flag (probe evidence supersedes presence-based ready; a fresh verified probe clears a stale flag), and the chip state. The reason string lives in the chip state for the chrome disabled-reason popover to render; enabling the chip grants no new authority beyond the existing typed start channel.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-preflight.ts",
+          "apps/openagents-desktop/src/codex-local-contract.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/usage-ledger.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "codex_chip_verified_evidence.lifecycle",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-connection-signatures.test.ts",
+            description:
+              "The chip lifecycle state machine: pending probe renders verifying disabled; verified enables; revoke-mid-session keeps the chip on the other verified account; a reconnect probe clears; none verified disables with the reconnect reason.",
+          },
+          {
+            id: "codex_chip_verified_evidence.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke asserts the codex chip stays disabled (with its popover reason) until the gated fixture preflight verifies an account, then lights for the streamed codex-local turn.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the lifecycle suite and the Electron smoke chip assertions; the live-proof journal records the real per-account probe round.",
+      },
+      {
+        contractId: "openagents_desktop.chat.composer_shift_tab_harness_toggle.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer keyboard harness toggle",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "i want shift+tab to togle between modes in composer (fable / codex) in this case",
+        authorityBoundary:
+          "The gesture exists only while the composer input has focus: Shift+Tab there toggles the selected harness both directions through the SAME typed DesktopHarnessSelected intent the chips dispatch, with preventDefault so focus never moves. Shift+Tab anywhere else keeps normal reverse focus navigation, and plain Tab is untouched. Toggling TO an unavailable lane is allowed — selection moves and the disabled-reason popover / evidence-gated Send explain why it cannot act; the gesture is never silently blocked and grants no send authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/composer-shortcuts.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "composer_shift_tab_toggle.handler",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/composer-shortcuts.test.ts",
+            description:
+              "Proves focused-composer Shift+Tab toggles both directions and preventDefaults, focus-elsewhere and plain Tab are untouched, already-consumed events are left alone, and availability is never consulted (unavailable-lane toggles allowed).",
+          },
+          {
+            id: "composer_shift_tab_toggle.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke synthesizes Shift+Tab on the focused composer input, asserts the segmented selection flips to codex (a disabled lane) and back with dispatchEvent reporting preventDefault, and that Shift+Tab on a non-composer target neither toggles nor gets consumed.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the composer-shortcuts suite and the Electron smoke composer-gestures step.",
+      },
+      {
+        contractId: "openagents_desktop.chat.composer_icon_only_send.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer send control",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "airplane icon in composer OUTSIDE of the button is stupid. put it in , remove text 'send'",
+        authorityBoundary:
+          "The composer renders exactly ONE send control: the catalog IconButton with the paper-plane glyph inside (width = height per the icon-only rule), solid accent intent and control-lattice radius via typed style tokens, and no Send text label anywhere; the freestanding icon node is removed. The accessible name stays (Send message, or the disabled reason), the disabled state keeps the disabled-reason popover wrapper, and the control dispatches the same DesktopNoteSubmitted intent — no authority change.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "composer_icon_only_send.view",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the composer renders exactly one send control as an IconButton (icon Plane, accessibilityLabel Send message, no label text), the freestanding shell-send-icon node is gone, disabled/pending states hold, and the intent ref stays DesktopNoteSubmitted.",
+          },
+          {
+            id: "composer_icon_only_send.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke asserts the rendered send control carries the icon variant with an inline glyph and aria-label, exactly one send control exists, and no visible Send text or freestanding icon remains in the composer.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell composer suite and the Electron smoke composer-gestures step.",
       },
     ],
   };

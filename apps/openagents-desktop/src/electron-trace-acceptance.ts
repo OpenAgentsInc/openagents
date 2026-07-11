@@ -190,7 +190,7 @@ export const traceAcceptanceJourney = `(async () => {
   if (timeline.scrollTop <= beforeScroll) return {ok:false,reason:"timeline_scroll_stuck",clientHeight:timeline.clientHeight,scrollHeight:timeline.scrollHeight}
   const scrollBeforeModifier = timeline.scrollTop
   window.dispatchEvent(new KeyboardEvent('keydown',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true,...modifier}))
-  if (!await until(() => document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')?.textContent === '1')) return {ok:false,reason:"history_modifier_hint_missing"}
+  if (!await until(() => document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')?.textContent === '1')) return {ok:false,reason:"history_modifier_hint_missing",metaText:document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')?.textContent??null,rowPresent:document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"]')!==null,metaPresent:document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')!==null}
   await wait(50)
   if (Math.abs(timeline.scrollTop-scrollBeforeModifier)>1) return {ok:false,reason:"history_modifier_scroll_reset",phase:"down"}
   window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))

@@ -197,7 +197,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((transcript?.messages as Array<unknown>).length).toBe(0)
 
     expect(nodeByKey(view, "shell-input")?._tag).toBe("TextField")
-    expect(nodeByKey(view, "shell-note")?._tag).toBe("Button")
+    expect(nodeByKey(view, "shell-note")?._tag).toBe("IconButton")
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "sidebar-navigation")?._tag).toBe("NavRail")
@@ -209,7 +209,16 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(navItemById(view, "sidebar-thread-test-thread")?.label).toBe("New chat")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
     expect(navItemById(view, "sidebar-thread-test-thread")?.meta).toBeDefined()
-    expect(nodeByKey(view, "shell-send-icon")?.name).toBe("Plane")
+    // ONE icon-only send control (owner: "airplane icon in composer OUTSIDE
+    // of the button is stupid. put it in , remove text 'send'"): the plane
+    // glyph lives INSIDE the send IconButton; the freestanding icon is gone.
+    expect(nodeByKey(view, "shell-send-icon")).toBeUndefined()
+    expect(nodeByKey(view, "shell-note")).toMatchObject({
+      _tag: "IconButton",
+      icon: "Plane",
+      accessibilityLabel: "Send message",
+    })
+    expect((nodeByKey(view, "shell-note") as { label?: unknown }).label).toBeUndefined()
     expect(nodeByKey(view, "codex-thread-details-title")).toBeUndefined()
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })

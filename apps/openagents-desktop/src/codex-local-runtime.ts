@@ -328,9 +328,15 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       ): Readonly<{ toolName: string; summary: string; ok: boolean }> | null => {
         const type = typeof item.type === "string" ? item.type : ""
         if (type === "command_execution") {
+          // Args summaries use the SAME JSON shape the fable lane emits
+          // (JSON.stringify of the tool input) so the shared tool-card
+          // humanizer extracts the command for the card's detail line.
           return {
             toolName: "Bash",
-            summary: bounded(redact(typeof item.command === "string" ? item.command : ""), FABLE_LOCAL_SUMMARY_LIMIT),
+            summary: bounded(
+              JSON.stringify({ command: redact(typeof item.command === "string" ? item.command : "") }),
+              FABLE_LOCAL_SUMMARY_LIMIT,
+            ),
             ok: (typeof item.exit_code === "number" ? item.exit_code === 0 : item.status !== "failed"),
           }
         }
@@ -351,7 +357,10 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         if (type === "web_search") {
           return {
             toolName: "WebSearch",
-            summary: bounded(redact(typeof item.query === "string" ? item.query : ""), FABLE_LOCAL_SUMMARY_LIMIT),
+            summary: bounded(
+              JSON.stringify({ query: redact(typeof item.query === "string" ? item.query : "") }),
+              FABLE_LOCAL_SUMMARY_LIMIT,
+            ),
             ok: true,
           }
         }

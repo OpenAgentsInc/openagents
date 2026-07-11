@@ -22,6 +22,7 @@ import {
   Button,
   Card,
   ComponentValueBinding,
+  IconButton,
   IntentRef,
   Icon,
   NavRail,
@@ -2198,24 +2199,28 @@ const shellComposer = (state: DesktopShellState): View =>
             onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
             style: { flex: 1 },
           }),
-          Icon({ key: "shell-send-icon", name: "Plane", size: "sm", color: "accent" }),
+          // ONE icon-only send control (owner statement 2026-07-11:
+          // "airplane icon in composer OUTSIDE of the button is stupid. put
+          // it in , remove text 'send'"): the paper-plane glyph lives INSIDE
+          // the button — no freestanding icon, no "Send" text label. Solid
+          // accent intent per the apps-sdk icon-only rule (width = height on
+          // the catalog IconButton), radius per the control lattice; the
+          // accessible name stays "Send message" (or the disabled reason).
           withDisabledReason(
             "shell-note",
             !state.harnessLanes[state.selectedHarness].available,
             state.harnessLanes[state.selectedHarness].available
               ? null
               : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
-            Button({
+            IconButton({
               key: "shell-note",
-              label: "Send",
-              variant: "primary",
+              icon: "Plane",
+              accessibilityLabel: state.harnessLanes[state.selectedHarness].available
+                ? "Send message"
+                : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
               disabled: state.pending || !state.harnessLanes[state.selectedHarness].available,
               onPress: IntentRef("DesktopNoteSubmitted"),
-              a11y: {
-                label: state.harnessLanes[state.selectedHarness].available
-                  ? "Send the typed message"
-                  : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
-              },
+              style: { backgroundColor: "accent", color: "textInverse", borderRadius: "md" },
             }),
           ),
         ],

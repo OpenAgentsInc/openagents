@@ -699,6 +699,20 @@ const recordProbeEvidence = (result: CodexProbeResult): void => {
   }
   // rate_limited: the credential is live — no reconnect mark either way.
 }
+// Smoke probes are DETERMINISTIC PER ACCOUNT (keyed by the isolated
+// CODEX_HOME, not call order): the fleet Refresh trigger re-runs the round,
+// and the revoked fixture account must stay revoked across every round.
+const smokeProbeSpawnByHome: Record<string, ReturnType<typeof makeFixtureCodexChildSpawn>> = {
+  "/nonexistent/fixture-codex": makeFixtureCodexChildSpawn([
+    { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+  ]),
+  "/nonexistent/fixture-codex-2": makeFixtureCodexChildSpawn([
+    { stdout: fixtureCodexSuccessStdout("thread-probe-codex-2"), exitCode: 0 },
+  ]),
+  [FIXTURE_CODEX_LOCAL_ACCOUNT.home]: makeFixtureCodexChildSpawn([
+    { stdout: fixtureCodexSuccessStdout("thread-probe-fixture"), exitCode: 0 },
+  ]),
+}
 const codexPreflight = makeCodexPreflight({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   onResult: recordProbeEvidence,
@@ -708,11 +722,9 @@ const codexPreflight = makeCodexPreflight({
         // reorder the delegate-child fixture's attempt sequence.
         health: makeCodexAccountHealth(),
         hasAuthImpl: () => true,
-        spawnImpl: makeFixtureCodexChildSpawn([
-          { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
-          { stdout: fixtureCodexSuccessStdout("thread-probe-codex-2"), exitCode: 0 },
-          { stdout: fixtureCodexSuccessStdout("thread-probe-fixture"), exitCode: 0 },
-        ]),
+        spawnImpl: input =>
+          (smokeProbeSpawnByHome[String(input.env.CODEX_HOME)] ??
+            smokeProbeSpawnByHome["/nonexistent/fixture-codex"]!)(input),
         discoverImpl: async () => [
           { ref: "codex", home: "/nonexistent/fixture-codex" },
           { ref: "codex-2", home: "/nonexistent/fixture-codex-2" },
@@ -922,7 +934,23 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
 // never the default ~/.codex, never the cloud gateway. Availability is
 // PROBE-VERIFIED evidence (see codexPreflight above). Events reuse the
 // frozen fable-local envelope over the codex-local channels.
-ipcMain.handle(CodexLocalAvailabilityChannel, () => codexLocal.availability())
+// SMOKE sequencing gate: the built-Electron journey must assert BOTH chip
+// states deterministically — the disabled-reason popover on the codex chip
+// (chrome contract, asserted while the chip still reads "verifying") and
+// then the verified-enabled chip + streamed codex turn (codex-first-class
+// contract). In smoke, the availability invoke parks until the runner
+// releases it right after the fable step's popover assertions. Never active
+// in normal runs.
+let releaseSmokeCodexAvailability: (() => void) | null = null
+const smokeCodexAvailabilityGate: Promise<void> | null = smokeMode
+  ? new Promise(resolve => {
+      releaseSmokeCodexAvailability = resolve
+    })
+  : null
+ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
+  if (smokeCodexAvailabilityGate !== null) await smokeCodexAvailabilityGate
+  return codexLocal.availability()
+})
 ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
   return request === null ? false : codexLocal.interrupt(request.turnRef)
@@ -1469,6 +1497,81 @@ const smokeNewChatFromHistory = `(async () => {
   }
 })()`
 
+// Composer gestures (EP250 owner statements): "i want shift+tab to togle
+// between modes in composer (fable / codex) in this case" and "airplane icon
+// in composer OUTSIDE of the button is stupid. put it in , remove text
+// 'send'". From the fresh chat: the send control is ONE icon-only button
+// (plane INSIDE, no "Send" text anywhere in the composer); with the composer
+// focused, Shift+Tab toggles the selected harness BOTH directions with
+// preventDefault (dispatchEvent returns false), including onto the
+// currently-disabled codex lane (capability truth lives on the chip/Send).
+const smokeComposerGestures = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  if (input === null) return { ok: false, reason: "composer input never mounted" }
+  // Icon-only send control: IconButton variant, plane glyph inside, aria
+  // label present, no freestanding icon, no visible "Send" text.
+  const send = document.querySelector('[data-en-key="shell-note"]')
+  if (send === null) return { ok: false, reason: "send control never mounted" }
+  if (send.getAttribute("data-en-variant") !== "icon") {
+    return { ok: false, reason: "send control is not the icon-only variant" }
+  }
+  if (send.querySelector("svg") === null) return { ok: false, reason: "send control has no glyph inside" }
+  if ((send.getAttribute("aria-label") || "") === "") return { ok: false, reason: "send control lost its aria-label" }
+  const sendControls = document.querySelectorAll('[data-en-key="shell-note"]')
+  if (sendControls.length !== 1) return { ok: false, reason: "composer renders more than one send control" }
+  const composer = document.querySelector('[data-en-key="shell-composer"]')
+  const visibleComposerText = composer === null ? "" : (() => {
+    const clone = composer.cloneNode(true)
+    for (const bubble of clone.querySelectorAll('[data-en-role="tooltip"]')) bubble.remove()
+    return clone.textContent ?? ""
+  })()
+  if (visibleComposerText.includes("Send")) {
+    return { ok: false, reason: "composer still renders Send text" }
+  }
+  if (document.querySelector('[data-en-key="shell-send-icon"]') !== null) {
+    return { ok: false, reason: "freestanding send icon still rendered outside the button" }
+  }
+  // Shift+Tab toggle, scoped to the focused composer input.
+  const selectedHarness = () => {
+    const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
+    const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
+    if (fable?.getAttribute("data-en-variant") === "secondary") return "fable"
+    if (codex?.getAttribute("data-en-variant") === "secondary") return "codex"
+    return null
+  }
+  input.focus()
+  const before = selectedHarness()
+  if (before !== "fable") return { ok: false, reason: "expected fable selected before toggle, got " + before }
+  const dispatchShiftTab = (target) => target.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
+  )
+  const firstNotPrevented = dispatchShiftTab(input)
+  const flipDeadline = Date.now() + 5000
+  while (Date.now() < flipDeadline && selectedHarness() !== "codex") {
+    await wait(25)
+  }
+  if (selectedHarness() !== "codex") return { ok: false, reason: "Shift+Tab did not toggle to codex (disabled lane toggle must be allowed)" }
+  if (firstNotPrevented !== false) return { ok: false, reason: "Shift+Tab in the composer was not preventDefaulted" }
+  const secondNotPrevented = dispatchShiftTab(input)
+  const backDeadline = Date.now() + 5000
+  while (Date.now() < backDeadline && selectedHarness() !== "fable") {
+    await wait(25)
+  }
+  if (selectedHarness() !== "fable") return { ok: false, reason: "Shift+Tab did not toggle back to fable" }
+  if (secondNotPrevented !== false) return { ok: false, reason: "second Shift+Tab was not preventDefaulted" }
+  // Focus elsewhere: Shift+Tab must NOT toggle (normal focus navigation).
+  const elsewhere = document.querySelector('[data-en-key="workspace-new-chat"]')
+  if (elsewhere === null) return { ok: false, reason: "non-composer focus target missing" }
+  elsewhere.focus()
+  const outsideNotPrevented = dispatchShiftTab(elsewhere)
+  await wait(100)
+  if (selectedHarness() !== "fable") return { ok: false, reason: "Shift+Tab outside the composer hijacked the harness selection" }
+  if (outsideNotPrevented !== true) return { ok: false, reason: "Shift+Tab outside the composer was preventDefaulted (focus navigation hijacked)" }
+  input.focus()
+  return { ok: true, iconOnlySend: true, toggledBoth: true, outsideUntouched: true }
+})()`
+
 // Fable local streaming journey (#8712, EP250 owner fixes): from the fresh
 // chat, the Fable chip must be enabled (fixture account) and Codex visibly
 // disabled with its reason ONLY in the accessible label — NO caption text
@@ -1485,19 +1588,15 @@ const smokeFableLocalStreaming = `(async () => {
   const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
   if (fable === null || codex === null) return { ok: false, reason: "harness chips never mounted" }
   if (fable.disabled !== false) return { ok: false, reason: "fable chip disabled despite fixture account" }
-  // EP250 codex-first-class: the fixture preflight VERIFIES an account, so
-  // the codex chip must light on that evidence (poll: the availability
-  // promise resolves asynchronously after mount).
-  {
-    const deadline = Date.now() + 10000
-    while (Date.now() < deadline && codex.disabled !== false) {
-      await wait(50)
-    }
-  }
-  if (codex.disabled !== false) return { ok: false, reason: "codex chip stayed disabled despite a fixture PROBE-VERIFIED account" }
+  // EP250 chip-verified-evidence rule: the codex availability invoke is
+  // GATED in smoke (released after this step), so at this point the chip is
+  // deterministically disabled with its "verifying" reason — the state the
+  // popover contract asserts against. The codex-first-class enabled state is
+  // asserted by the later codex-local-streamed step.
+  if (codex.disabled !== true) return { ok: false, reason: "codex chip enabled before the smoke availability gate released" }
   const codexAria = codex.getAttribute("aria-label") || ""
   if (!codexAria.includes("Codex")) {
-    return { ok: false, reason: "codex chip lost its accessible label" }
+    return { ok: false, reason: "codex disabled chip lost its accessible reason label" }
   }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
   // No STANDING caption: visible composer text must not carry the reason.
@@ -1680,7 +1779,15 @@ const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
   if (codex === null) return { ok: false, reason: "codex chip never mounted" }
-  if (codex.disabled !== false) return { ok: false, reason: "codex chip disabled despite fixture verified account" }
+  // The smoke availability gate released after the fable step: the fixture
+  // preflight VERIFIED an account, so the chip must light on that evidence.
+  {
+    const deadline = Date.now() + 10000
+    while (Date.now() < deadline && codex.disabled !== false) {
+      await wait(50)
+    }
+  }
+  if (codex.disabled !== false) return { ok: false, reason: "codex chip stayed disabled despite a fixture PROBE-VERIFIED account" }
   codex.click()
   const input = document.querySelector('[data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
@@ -2036,10 +2143,17 @@ const runSmoke = (window: BrowserWindow): void => {
         // button must render the fixture accounts panel.
         await step("new-chat-from-history-empty-transcript", smokeNewChatFromHistory)
         await captureShot(window, "06-new-chat-empty")
+        // Composer gestures (EP250): icon-only send + Shift+Tab lane toggle.
+        await step("composer-icon-send-and-shift-tab-toggle", smokeComposerGestures)
         // Fable local turn is FIXTURE-driven in smoke (no real Claude SDK
         // session; a scripted delta sequence flows through the real mapping).
         await step("fable-local-streamed-turn-FIXTURE", smokeFableLocalStreaming)
         await captureShot(window, "07-fable-local-streamed")
+        // Release the codex availability gate: the popover assertions above
+        // ran against the deterministic disabled/"verifying" chip; from here
+        // the fixture PROBE-VERIFIED evidence lights the chip for the
+        // codex-local streamed step below.
+        releaseSmokeCodexAvailability?.()
         // EP250 question cards: the persisted fixture question renders as a
         // read-only pending interactive card (no answer bridge in smoke).
         await step("question-card-interactive-typed-answer-FIXTURE", smokeQuestionCard)

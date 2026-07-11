@@ -135,7 +135,9 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     const toolUse = sink.events.find(event => event.kind === "tool_use") as
       Extract<FableLocalEvent, { kind: "tool_use" }>
     expect(toolUse.toolName).toBe("Bash")
-    expect(toolUse.summary).toBe("echo fixture")
+    // JSON-args shape (same as the fable lane) so the shared tool-card
+    // humanizer extracts the command for the card detail line.
+    expect(toolUse.summary).toBe('{"command":"echo fixture"}')
     const toolResult = sink.events.find(event => event.kind === "tool_result") as
       Extract<FableLocalEvent, { kind: "tool_result" }>
     expect(toolResult.ok).toBe(true)
