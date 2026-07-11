@@ -8,7 +8,8 @@
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
   `97f90832bb`, `21d56199bd`, `88f692fe00`, `400c649904`, `600228f230`, and
-  `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, `4a9db8347b`, and `23a190905f`
+  `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, `4a9db8347b`, `23a190905f`,
+  `d2d9ee8907`, `e4d903c602`, and `4b20fe2b67`
 
 CUT-16 now builds on the existing rich `@openagentsinc/composer-state` kernel
 instead of creating a second composer. The additive private coding-draft
@@ -108,6 +109,25 @@ duplicate decisions are idempotent, revoked/expired authority is terminal,
 mobile keyboard avoidance remains active, and the shared semantic controls
 carry keyboard/screen-reader/reduced-motion behavior. These tests do not
 substitute for the issue's required physical assistive-technology receipt.
+
+Named-provider live evidence:
+
+- Claude: a real retained `claude_agent` daily-driver turn for #8696 completed
+  through Pylon's composer path with 121 events, 37 turns, 1,081 exact tokens,
+  zero edits, a passed dev check, and a clean redaction scan. The refs-only
+  artifact is
+  [`2026-07-11-claude-agent-daily-driver-proof.json`](../../apps/pylon/docs/proofs/2026-07-11-claude-agent-daily-driver-proof.json).
+- Codex: the first real attempt exposed the pinned `0.139.0` SDK as too old
+  for `gpt-5.6-sol`; `e4d903c602` upgrades all owned consumers to `0.144.1`
+  and its focused executor/composer suites pass. Both ready local subscription
+  accounts then reached the provider but were quota-limited until the
+  provider-reported 20:31 CDT reset; no API-key fallback is configured. A
+  completed named Codex receipt remains required after reset.
+- Deployment: the safe pipeline passed local architecture/type/test gates but
+  Cloudflare refused staging D1 migration with account storage-limit code
+  7500. The new authority route therefore remains undeployed; no staging gate
+  was bypassed and no remote data was deleted. Deployed-authority evidence
+  remains required after the quota is raised or storage is remediated.
 
 CUT-16 remains open. The next honest rungs are screen-reader/mobile-keyboard
 and physical-device acceptance plus named Codex/Claude live turns. Restart,
