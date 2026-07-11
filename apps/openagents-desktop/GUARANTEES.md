@@ -306,9 +306,11 @@ target behind one in-flight page load, stale responses cannot commit, and the
 sidebar centers/retries the selected row until it is inside the viewport.
 
 The trace workspace has no duplicate application/header bar. The selected
-trace title and state live only in the workspace heading; Commands and Settings
-are catalog `IconButton`s in the sidebar dock with accessible labels and the
-same typed intents/keyboard command path as before.
+trace title and state live only in the workspace heading. The sidebar is one
+Effect Native `NavRail`: its uniform icon-action group and compact conversation
+group carry controlled selection, accessible labels, trailing timestamps, and
+item-local typed intents. Commands and Settings retain the same intent and
+keyboard command paths without app-local row components.
 
 ### Large-thread first-content performance
 

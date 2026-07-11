@@ -119,24 +119,48 @@ textarea:focus-visible {
   text-align: left;
 }
 
+[data-en-key="sidebar-navigation"] {
+  min-width: 0;
+  overflow: hidden;
+}
+
 [data-en-key="sidebar-workspace-dock"] {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
   margin: -4px 0 4px;
 }
 
-[data-en-key^="workspace-"][data-en-variant="icon"],
-[data-en-key="shell-command-palette-toggle"][data-en-variant="icon"],
-[data-en-key="shell-settings-toggle"][data-en-variant="icon"] {
+[data-en-key="sidebar-workspace-dock"] > button {
+  display: inline-flex !important;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
   width: 32px !important;
   height: 32px !important;
+  padding: 0;
+  border: 1px solid rgba(168, 195, 237, 0.14);
   border-radius: 6px !important;
+  background: rgba(5, 12, 27, 0.58);
   color: var(--oa-body) !important;
 }
 
-[data-en-key^="workspace-"][data-en-variant="icon"]:hover,
-[data-en-key="shell-command-palette-toggle"][data-en-variant="icon"]:hover,
-[data-en-key="shell-settings-toggle"][data-en-variant="icon"]:hover {
+[data-en-key="sidebar-workspace-dock"] > button [data-en-role="label"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+[data-en-key="sidebar-workspace-dock"] > button:hover {
   color: var(--oa-ink) !important;
   background: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-en-key="sidebar-workspace-dock"] > button[data-en-active="true"] {
+  color: white !important;
+  background: var(--oa-blue) !important;
 }
 
 [data-en-key^="sidebar-action-"] [data-en-tag="Icon"] {
@@ -165,8 +189,8 @@ textarea:focus-visible {
   background: rgba(74, 134, 255, 0.14) !important;
 }
 
-[data-en-key="sidebar-chats-label"],
-[data-en-key="sidebar-workspace-label"] {
+[data-en-key="sidebar-history-list"] > [data-en-role="section-label"] {
+  display: block;
   padding: 14px 8px 3px;
   color: var(--oa-muted) !important;
   font-size: 11px !important;
@@ -190,7 +214,7 @@ textarea:focus-visible {
 
 [data-en-key^="sidebar-thread-"][data-en-tag="Button"] {
   justify-content: flex-start;
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 24px;
   padding: 2px 0 !important;
   border: 0 !important;
@@ -201,24 +225,33 @@ textarea:focus-visible {
   font-weight: 520;
   text-align: left !important;
   min-width: 0;
-  width: 0;
+  width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-[data-en-key^="sidebar-action-thread-"]:has([aria-selected="true"]) {
+[data-en-key^="sidebar-thread-"] > [data-en-role="label"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-en-key^="sidebar-thread-"][data-en-active="true"] {
   border-radius: 6px;
   background: rgba(74, 134, 255, 0.18) !important;
   box-shadow: inset 2px 0 var(--oa-blue), inset 0 0 0 1px rgba(114, 168, 255, 0.24);
 }
 
-[data-en-key^="sidebar-action-thread-"]:has([aria-selected="true"]) [data-en-tag="Button"] {
+[data-en-key^="sidebar-thread-"][data-en-active="true"] {
   padding-left: 4px !important;
 }
 
-[data-en-key="sidebar-history-list"],
-[data-en-key="sidebar-chat-list"] {
+[data-en-key="sidebar-history-list"] {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
   width: 100%;
   min-height: 0;
   overflow-x: hidden !important;
@@ -228,14 +261,8 @@ textarea:focus-visible {
   padding: 0;
 }
 
-[data-en-key="sidebar-history-list"] > [data-en-role="item"],
-[data-en-key="sidebar-chat-list"] > [data-en-role="item"] {
-  min-width: 0;
-  width: 100%;
-  overflow: hidden;
-}
-
-[data-en-key^="sidebar-thread-time-"][data-en-tag="Text"] {
+[data-en-key^="sidebar-thread-"] > [data-en-role="meta"] {
+  margin-left: auto;
   flex: 0 0 auto;
   padding: 2px 0;
   border: 0 !important;

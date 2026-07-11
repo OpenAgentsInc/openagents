@@ -61,6 +61,12 @@ const collectNodes = (root: unknown): Array<AnyNode> => {
 const nodeByKey = (view: View, key: string): AnyNode | undefined =>
   collectNodes(view).find((node) => node.key === key)
 
+const navItemById = (view: View, id: string): AnyNode | undefined => {
+  const nav = nodeByKey(view, "sidebar-navigation") as AnyNode | undefined
+  const sections = nav?.sections as ReadonlyArray<{ items?: ReadonlyArray<AnyNode> }> | undefined
+  return sections?.flatMap((section) => section.items ?? []).find((item) => item.id === id)
+}
+
 const testThread = { id: "test-thread", title: "New chat", updatedAt: "2026-07-10T18:04:00.000Z", notes: [] } as const
 const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), threads: [testThread], activeThreadId: testThread.id }
 const fixedNow = () => "18:05"
@@ -86,34 +92,26 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-note")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
-    expect(nodeByKey(view, "workspace-chat")?._tag).toBe("IconButton")
-    expect(nodeByKey(view, "shell-command-palette-toggle")).toMatchObject({_tag:"IconButton",icon:"Menu",accessibilityLabel:"Open command palette"})
-    expect(nodeByKey(view, "shell-settings-toggle")).toMatchObject({_tag:"IconButton",icon:"Settings",accessibilityLabel:"Open Settings"})
-    expect(nodeByKey(view, "workspace-home")?._tag).toBe("IconButton")
-    expect(nodeByKey(view, "sidebar-chats-label")?.content).toBe("Codex history · all time")
-    expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
+    expect(nodeByKey(view, "sidebar-navigation")?._tag).toBe("NavRail")
+    expect(navItemById(view, "workspace-chat")).toMatchObject({icon:"Chats",accessibilityLabel:"Chat"})
+    expect(navItemById(view, "shell-command-palette-toggle")).toMatchObject({icon:"Menu",accessibilityLabel:"Open command palette"})
+    expect(navItemById(view, "shell-settings-toggle")).toMatchObject({icon:"Settings",accessibilityLabel:"Open Settings"})
+    expect(navItemById(view, "workspace-home")?.icon).toBe("Home")
+    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Codex history · all time")
+    expect(navItemById(view, "sidebar-thread-test-thread")?.label).toBe("New chat")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
-    expect(nodeByKey(view, "sidebar-thread-time-test-thread")?._tag).toBe("Text")
+    expect(navItemById(view, "sidebar-thread-test-thread")?.meta).toBeDefined()
     expect(nodeByKey(view, "shell-send-icon")?.name).toBe("Plane")
     expect(nodeByKey(view, "codex-thread-details-title")).toBeUndefined()
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
-  test("sidebar chat rows are plain left/right text without card chrome", () => {
+  test("sidebar chat rows are compact navigation items with trailing metadata", () => {
     const view = desktopShellView(baseState)
-    const title = nodeByKey(view, `sidebar-thread-${testThread.id}`)
-    const time = nodeByKey(view, `sidebar-thread-time-${testThread.id}`)
-
-    expect(title?._tag).toBe("Button")
-    expect(title?.style).toMatchObject({
-      flex: 1,
-      padding: "0",
-      borderWidth: 0,
-      borderRadius: "none",
-      textAlign: "left",
-    })
-    expect(time?._tag).toBe("Text")
-    expect(time?.style).toEqual({ textAlign: "right" })
+    const item = navItemById(view, `sidebar-thread-${testThread.id}`)
+    expect(item).toMatchObject({label:"New chat",accessibilityLabel:"Open chat New chat"})
+    expect(item?.meta).toBeDefined()
+    expect((item?.onSelect as {name?:string})?.name).toBe("DesktopChatSelected")
   })
 
   test("large Codex catalogs use one virtual scroll owner and pending selection is active immediately", () => {
@@ -124,11 +122,12 @@ describe("desktopShellView (state -> component tree)", () => {
     }))
     const state:DesktopShellState={...baseState,history:{...baseState.history,catalog:{roots,agents:roots},pendingThreadRef:"history-7"}}
     const view=desktopShellView(state)
-    expect(nodeByKey(view,"sidebar-history-list")).toMatchObject({_tag:"List",virtualize:false,estimatedItemSize:28})
-    expect((nodeByKey(view,"sidebar-history-list")?.items as Array<unknown>)).toHaveLength(41)
-    expect(nodeByKey(view,"sidebar-history-load-more")).toMatchObject({_tag:"Button",label:"Load 10 more"})
-    expect(nodeByKey(view,"sidebar-thread-history-7")?.a11y).toMatchObject({selected:true})
-    expect(nodeByKey(view,"sidebar-thread-history-8")?.a11y).toMatchObject({selected:false})
+    const nav=nodeByKey(view,"sidebar-navigation")
+    const history=(nav?.sections as Array<AnyNode>)[1]
+    expect(history?.id).toBe("sidebar-history-list")
+    expect((history?.items as Array<unknown>)).toHaveLength(41)
+    expect(navItemById(view,"sidebar-history-load-more")).toMatchObject({label:"Load 10 more"})
+    expect(nav?.activeId).toBe("sidebar-thread-history-7")
   })
 
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {

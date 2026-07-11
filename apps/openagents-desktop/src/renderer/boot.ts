@@ -336,11 +336,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           continue
         }
         const row=[...root.querySelectorAll<HTMLElement>('[data-en-key^="sidebar-thread-"]')].find(item=>item.getAttribute("data-en-key")===`sidebar-thread-${threadRef}`)
-        const item=row?.closest<HTMLElement>('[data-en-role="item"]')
+        const item=row?.closest<HTMLElement>('[data-en-role="item"]')??row
         if(row===undefined||item==null)continue
         list.scrollTop=Math.max(0,item.offsetTop-Math.max(0,list.clientHeight-item.offsetHeight)/2)
         list.dispatchEvent(new Event("scroll",{bubbles:true}))
-        row.scrollIntoView({block:"nearest",inline:"nearest"})
         await settleFrame()
         const rowRect=row.getBoundingClientRect();const listRect=list.getBoundingClientRect()
         if(rowRect.top>=listRect.top-1&&rowRect.bottom<=listRect.bottom+1)return

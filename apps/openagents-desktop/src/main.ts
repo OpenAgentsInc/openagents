@@ -412,7 +412,7 @@ const smokeCodexHistoryDetails = `(async () => {
   while (Date.now() < deadline && document.querySelector('[data-en-key="history-workspace-split"]') === null) {
     await wait(100)
   }
-  const sidebar = document.querySelector('[data-en-key="sidebar-chats-label"]')
+  const sidebar = document.querySelector('[data-en-key="sidebar-history-list"] > [data-en-role="section-label"]')
   const detail = document.querySelector('[data-en-key="history-workspace-split"]')
   return { ok: sidebar?.textContent === "Codex history · all time" && detail !== null }
 })()`

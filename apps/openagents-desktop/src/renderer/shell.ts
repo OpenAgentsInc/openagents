@@ -25,7 +25,7 @@ import {
   IntentRef,
   Icon,
   IconButton,
-  List,
+  NavRail,
   Spacer,
   Stack,
   Text,
@@ -34,7 +34,6 @@ import {
   StaticPayload,
   defineIntent,
   type IntentHandlers,
-  type KeyedView,
   type TextView,
   type TranscriptMessage,
   type View,
@@ -605,14 +604,30 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
   ],
 })
 
-const historySidebarItems = (state: DesktopShellState): ReadonlyArray<KeyedView> => {
+const historySidebarItems = (state: DesktopShellState) => {
   const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount)
-  const rows=roots.map((thread) => Stack({ key: `sidebar-action-thread-${thread.threadRef}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-    Button({key:`sidebar-thread-${thread.threadRef}`,label:thread.title,variant:"ghost",onPress:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),a11y:{label:`Open historical chat ${thread.title}, ${thread.descendantCount} descendant agents`,selected:(state.history.pendingThreadRef??state.history.page?.rootThreadRef)===thread.threadRef},style:{flex:1,padding:"0",borderWidth:0,borderRadius:"none",color:"textPrimary",textAlign:"left"}}),
-    Text({key:`sidebar-thread-time-${thread.threadRef}`,content:formatRelativeTimestamp(thread.updatedAt),variant:"caption",color:"textMuted",style:{textAlign:"right"}}),
-  ]) as KeyedView)
-  return state.history.visibleRootCount>=state.history.catalog.roots.length?rows:[...rows,Button({key:"sidebar-history-load-more",label:`Load ${Math.min(historyCatalogPageSize,state.history.catalog.roots.length-state.history.visibleRootCount)} more`,variant:"ghost",onPress:IntentRef("HistoryCatalogMoreRequested"),a11y:{label:`Load older Codex conversations, ${state.history.visibleRootCount} of ${state.history.catalog.roots.length} shown`},style:{width:"full",textAlign:"left"}}) as KeyedView]
+  const rows=roots.map((thread) => ({
+    id:`sidebar-thread-${thread.threadRef}`,
+    label:thread.title,
+    meta:formatRelativeTimestamp(thread.updatedAt),
+    accessibilityLabel:`Open historical chat ${thread.title}, ${thread.descendantCount} descendant agents`,
+    onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
+  }))
+  return state.history.visibleRootCount>=state.history.catalog.roots.length?rows:[...rows,{
+    id:"sidebar-history-load-more",
+    label:`Load ${Math.min(historyCatalogPageSize,state.history.catalog.roots.length-state.history.visibleRootCount)} more`,
+    accessibilityLabel:`Load older Codex conversations, ${state.history.visibleRootCount} of ${state.history.catalog.roots.length} shown`,
+    onSelect:IntentRef("HistoryCatalogMoreRequested"),
+  }]
 }
+
+const localSidebarItems = (state: DesktopShellState) => state.threads.map((thread) => ({
+  id:`sidebar-thread-${thread.id}`,
+  label:thread.title,
+  meta:formatRelativeTimestamp(thread.updatedAt),
+  accessibilityLabel:`Open chat ${thread.title}`,
+  onSelect:IntentRef("DesktopChatSelected",StaticPayload(thread.id)),
+}))
 
 const shellSidebar = (state: DesktopShellState): View =>
   Stack(
@@ -627,54 +642,23 @@ const shellSidebar = (state: DesktopShellState): View =>
         Icon({ key: "sidebar-brand-icon", name: "Terminal", size: "sm", color: "accent" }),
         Text({ key: "sidebar-brand", content: "OpenAgents", variant: "title", color: "textPrimary" }),
       ]),
-      Stack({ key: "sidebar-workspace-dock", direction: "row", gap: "1", align: "center" }, [
-        IconButton({
-          key: "workspace-chat",
-          icon: "Chats",
-          accessibilityLabel: "Chat",
-          onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("chat")),
-          surface: "glass",
-          style: state.workspace === "chat" ? { backgroundColor: "accent" } : {},
-        }),
-        IconButton({
-          key: "workspace-files",
-          icon: "Folder",
-          accessibilityLabel: "Files",
-          onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("files")),
-          surface: "glass",
-          style: state.workspace === "files" ? { backgroundColor: "accent" } : {},
-        }),
-        IconButton({
-          key: "workspace-home",
-          icon: "Home",
-          accessibilityLabel: "Project home",
-          onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("home")),
-          surface: "glass",
-          style: state.workspace === "home" ? { backgroundColor: "accent" } : {},
-        }),
-        IconButton({
-          key: "shell-command-palette-toggle",
-          icon: "Menu",
-          accessibilityLabel: "Open command palette",
-          onPress: IntentRef("DesktopCommandPaletteToggled"),
-          surface: "glass",
-        }),
-        IconButton({
-          key: "shell-settings-toggle",
-          icon: "Settings",
-          accessibilityLabel: state.workspace === "settings" ? "Close Settings" : "Open Settings",
-          onPress: IntentRef("DesktopSettingsToggled"),
-          surface: "glass",
-          style: state.workspace === "settings" ? { backgroundColor: "accent" } : {},
-        }),
-      ]),
-      Text({ key: "sidebar-chats-label", content: "Codex history · all time", variant: "caption", color: "textMuted" }),
+      NavRail({
+        key:"sidebar-navigation",
+        activeId:state.history.pendingThreadRef!==null?`sidebar-thread-${state.history.pendingThreadRef}`:state.history.page!==null?`sidebar-thread-${state.history.page.rootThreadRef}`:state.activeThreadId!==null?`sidebar-thread-${state.activeThreadId}`:`workspace-${state.workspace}`,
+        sections:[
+          {id:"sidebar-workspace-dock",layout:"row",items:[
+            {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
+            {id:"workspace-files",label:"Files",icon:"Folder",selected:state.workspace==="files",accessibilityLabel:"Files",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("files"))},
+            {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
+            {id:"shell-command-palette-toggle",label:"Commands",icon:"Menu",accessibilityLabel:"Open command palette",onSelect:IntentRef("DesktopCommandPaletteToggled")},
+            {id:"shell-settings-toggle",label:"Settings",icon:"Settings",selected:state.workspace==="settings",accessibilityLabel:state.workspace==="settings"?"Close Settings":"Open Settings",onSelect:IntentRef("DesktopSettingsToggled")},
+          ]},
+          {id:"sidebar-history-list",label:"Codex history · all time",items:state.history.catalog.roots.length>0?historySidebarItems(state):localSidebarItems(state)},
+        ],
+        a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,state.history.catalog.roots.length)} of ${state.history.catalog.roots.length} Codex conversations`},
+        style:{flex:1,minHeight:0,width:"full"},
+      }),
       ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
-      ...(state.history.catalog.roots.length > 0 ? [List({ key:"sidebar-history-list", virtualize:false, estimatedItemSize:28, style:{flex:1,minHeight:0,width:"full"}, a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,state.history.catalog.roots.length)} of ${state.history.catalog.roots.length} Codex conversations`} }, historySidebarItems(state))] : []),
-      ...(state.history.catalog.roots.length === 0 && state.threads.length > 0 ? [List({key:"sidebar-chat-list",virtualize:state.threads.length>40,estimatedItemSize:28,style:{flex:1,minHeight:0,width:"full"},a11y:{role:"list",label:`${state.threads.length} conversations`}},state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-        Button({ key: `sidebar-thread-${thread.id}`, label: thread.title, variant: "ghost", onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)), a11y: { label: `Open chat ${thread.title}` }, style: { flex: 1, padding: "0", borderWidth: 0, borderRadius: "none", color: "textPrimary", textAlign: "left" } }),
-        Text({ key: `sidebar-thread-time-${thread.id}`, content: formatRelativeTimestamp(thread.updatedAt), variant: "caption", color: "textMuted", style: { textAlign: "right" } }),
-      ]) as KeyedView))] : []),
     ],
   )
 

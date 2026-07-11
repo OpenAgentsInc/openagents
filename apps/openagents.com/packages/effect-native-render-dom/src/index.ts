@@ -2083,6 +2083,8 @@ const renderNavRail = (view: NavRailView, state: DomRendererState, report: Inten
   const sections = view.sections.map((section) => {
     const sectionEl = document.createElement("div")
     sectionEl.setAttribute("data-en-section", section.id)
+    sectionEl.setAttribute("data-en-key", section.id)
+    sectionEl.setAttribute("data-en-layout", section.layout ?? "column")
     sectionEl.setAttribute("role", "group")
     if (section.label !== undefined) {
       const label = document.createElement("span")
@@ -2094,9 +2096,13 @@ const renderNavRail = (view: NavRailView, state: DomRendererState, report: Inten
       const button = document.createElement("button") as HTMLButtonElement
       button.type = "button"
       button.setAttribute("data-en-nav-item", item.id)
+      button.setAttribute("data-en-key", item.id)
+      button.setAttribute("data-en-tag", "Button")
+      button.setAttribute("aria-label", item.accessibilityLabel ?? item.label)
       button.disabled = item.disabled === true
-      const active = view.activeId === item.id
+      const active = item.selected ?? view.activeId === item.id
       button.setAttribute("data-en-active", active ? "true" : "false")
+      button.setAttribute("aria-selected", active ? "true" : "false")
       if (active) button.setAttribute("aria-current", "page")
       button.style.display = "flex"
       button.style.alignItems = "center"
@@ -2113,9 +2119,22 @@ const renderNavRail = (view: NavRailView, state: DomRendererState, report: Inten
       label.setAttribute("data-en-role", "label")
       label.textContent = item.label
       button.appendChild(label)
+      if (item.badge !== undefined) {
+        const badge = document.createElement("span")
+        badge.setAttribute("data-en-role", "badge")
+        badge.textContent = item.badge
+        button.appendChild(badge)
+      }
+      if (item.meta !== undefined) {
+        const meta = document.createElement("span")
+        meta.setAttribute("data-en-role", "meta")
+        meta.textContent = item.meta
+        button.appendChild(meta)
+      }
       state.resetListeners(button)
-      if (item.disabled !== true) {
-        state.addListener(button, "click", () => runReportedIntent(report, view.onSelect, item.id))
+      const onSelect = item.onSelect ?? view.onSelect
+      if (item.disabled !== true && onSelect !== undefined) {
+        state.addListener(button, "click", () => runReportedIntent(report, onSelect, item.id))
       }
       sectionEl.appendChild(button)
     }

@@ -1709,7 +1709,7 @@ const renderNavRail = (
       )
     }
     for (const item of section.items) {
-      const active = view.activeId === item.id
+      const active = item.selected ?? view.activeId === item.id
       const itemChildren: Array<ReactElementLike> = []
       if (item.icon !== undefined) {
         itemChildren.push(
@@ -1719,6 +1719,17 @@ const renderNavRail = (
       itemChildren.push(
         createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, item.label)
       )
+      if (item.badge !== undefined) {
+        itemChildren.push(
+          createElement(dependencies, dependencies.ReactNative.Text, { key: "badge" }, item.badge)
+        )
+      }
+      if (item.meta !== undefined) {
+        itemChildren.push(
+          createElement(dependencies, dependencies.ReactNative.Text, { key: "meta", style: { marginLeft: "auto" } }, item.meta)
+        )
+      }
+      const onSelect = item.onSelect ?? view.onSelect
       parts.push(
         createElement(
           dependencies,
@@ -1727,12 +1738,13 @@ const renderNavRail = (
             key: `item-${item.id}`,
             testID: `en-nav-item:${item.id}`,
             accessibilityRole: "menuitem",
+            accessibilityLabel: item.accessibilityLabel ?? item.label,
             accessibilityState: { selected: active, disabled: item.disabled === true },
             disabled: item.disabled === true,
             style: { flexDirection: "row", gap: spacingValue(theme, "2") },
-            ...(item.disabled === true
+            ...(item.disabled === true || onSelect === undefined
               ? {}
-              : { onPress: () => runReportedIntent(report, view.onSelect, item.id) })
+              : { onPress: () => runReportedIntent(report, onSelect, item.id) })
           },
           ...itemChildren
         )
@@ -1741,7 +1753,7 @@ const renderNavRail = (
     return createElement(
       dependencies,
       dependencies.ReactNative.View,
-      { key: `section-${section.id}` },
+      { key: `section-${section.id}`, style: { flexDirection: section.layout ?? "column" } },
       ...parts
     )
   })

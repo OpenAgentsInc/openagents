@@ -6,7 +6,7 @@
   "license": "MIT",
   "effectNativeVendor": {
     "repo": "OpenAgentsInc/effect-native",
-    "commit": "8361c045a435267b1f8d939df2fcb5cba81317c7"
+    "commit": "ce70be17295e7fa363a5edca8c4bad1345711656"
   },
   "exports": {
     ".": "./src/index.ts"

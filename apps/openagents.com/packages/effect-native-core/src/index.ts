@@ -2113,12 +2113,21 @@ export interface NavRailItem {
   readonly id: string
   readonly label: string
   readonly icon?: IconName
+  /** Compact trailing context such as a timestamp or keyboard shortcut. */
+  readonly meta?: string
+  /** Short status/count treatment rendered after the label. */
+  readonly badge?: string
+  readonly accessibilityLabel?: string
+  readonly selected?: boolean
   readonly disabled?: boolean
+  /** Item-local intent for mixed action/navigation sidebars. */
+  readonly onSelect?: IntentRef
 }
 
 export interface NavRailSection {
   readonly id: string
   readonly label?: string
+  readonly layout?: "row" | "column"
   readonly items: ReadonlyArray<NavRailItem>
 }
 
@@ -2126,7 +2135,7 @@ export interface NavRailView extends NodeBase {
   readonly _tag: "NavRail"
   readonly sections: ReadonlyArray<NavRailSection>
   readonly activeId?: string
-  readonly onSelect: IntentRef
+  readonly onSelect?: IntentRef
   readonly style?: CardStyle
 }
 
@@ -3503,12 +3512,18 @@ export const NavRailItemSchema: Schema.Codec<NavRailItem, NavRailItem> = Schema.
   id: Schema.NonEmptyString,
   label: Schema.String,
   icon: IconNameSchema.pipe(Schema.optionalKey),
-  disabled: Schema.Boolean.pipe(Schema.optionalKey)
+  meta: Schema.String.pipe(Schema.optionalKey),
+  badge: Schema.String.pipe(Schema.optionalKey),
+  accessibilityLabel: Schema.NonEmptyString.pipe(Schema.optionalKey),
+  selected: Schema.Boolean.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  onSelect: IntentRefSchema.pipe(Schema.optionalKey)
 })
 
 export const NavRailSectionSchema: Schema.Codec<NavRailSection, NavRailSection> = Schema.Struct({
   id: Schema.NonEmptyString,
   label: Schema.String.pipe(Schema.optionalKey),
+  layout: Schema.Literals(["row", "column"] as const).pipe(Schema.optionalKey),
   items: Schema.Array(NavRailItemSchema)
 })
 
@@ -3516,7 +3531,7 @@ export const NavRailSchema: Schema.Codec<NavRailView, NavRailView> = Schema.Tagg
   ...CommonFields,
   sections: Schema.Array(NavRailSectionSchema),
   activeId: Schema.String.pipe(Schema.optionalKey),
-  onSelect: IntentRefSchema,
+  onSelect: IntentRefSchema.pipe(Schema.optionalKey),
   style: CardStyleSchema.pipe(Schema.optionalKey)
 })
 
