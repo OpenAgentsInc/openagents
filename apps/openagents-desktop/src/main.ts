@@ -161,9 +161,13 @@ import {
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
+const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
-  smokeMode
-    ? path.join(app.getPath("temp"), `openagents-desktop-smoke-${process.pid}`)
+  smokeMode || liveProofDriverMode
+    ? path.join(
+        app.getPath("temp"),
+        `openagents-desktop-${smokeMode ? "smoke" : "live-proof"}-${process.pid}`,
+      )
     : path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
 )
 app.setPath("userData", desktopUserDataPath)
