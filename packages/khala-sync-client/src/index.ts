@@ -186,6 +186,15 @@ export {
   type RuntimeInteractionDecisionCommand,
 } from "./runtime-interactions.js"
 
+export {
+  CODING_COMPOSER_DRAFT_ENTITY_TYPE,
+  createKhalaSyncCodingComposerDrafts,
+  MAX_DEVICE_CODING_COMPOSER_DRAFT_BYTES,
+  MAX_DEVICE_CODING_COMPOSER_DRAFTS,
+  type CodingComposerDraftSaveOutcome,
+  type KhalaSyncCodingComposerDrafts,
+} from "./coding-composer-drafts.js"
+
 // ---------------------------------------------------------------------------
 // Transport (KS-5.3): injectable seam in transport.ts; HTTP+WebSocket
 // implementation against the SPEC §3 routes, khala-sync codecs at every

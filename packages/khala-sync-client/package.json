@@ -21,6 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/composer-state": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "effect": "catalog:"

@@ -18,6 +18,11 @@ Components (KS-5 workstream):
   `local_identity`, `local_account_link`, and `local_entities` tables. It uses
   `scope.device_local.*` and `LocalRevision`, never `SyncVersion`; hosted
   session subscribe refuses that scope, and unlink never deletes local rows.
+- **Restart-safe coding drafts** — ✅ the canonical
+  `openagents.coding_composer_draft.v1` snapshot persists only in native
+  `scope.device_local.*` rows. Exact owner/draft binding, bounded size/count,
+  stale/conflict/duplicate outcomes, and malformed/foreign withholding keep
+  process-death recovery private and deterministic.
 - **Optimistic mutators + rebase** — ✅ shipped (KS-5.2, `createOverlay`).
 - **Canonical native conversation service** — ✅ shared `chat.createThread` /
   `chat.appendMessage` client mutators plus confirmed owner-free refs/versions/
