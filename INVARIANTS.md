@@ -99,6 +99,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   slot, while late lifecycle remains retained. Completed/accepted publication
   waits for the matching exact verifier and terminal closeout evidence; a
   delayed, cancelled, restarted, rejected, or stale attempt cannot be promoted.
+  Exact own-capacity usage keeps provider counters truthful: uncached input,
+  output, reasoning, and cache-read tokens are independently nonnegative;
+  cache reads may exceed uncached input (as in Claude warm prompts), while
+  total tokens remain exactly uncached input plus output.
   Caller-owned Khala -> Pylon -> Codex coding delegation is also owner-local:
   when the caller is routed to their own linked Pylon, the local Codex executor
   uses the SDK equivalent of

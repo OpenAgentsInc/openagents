@@ -572,6 +572,9 @@ describe.skipIf(!hasLocalPostgres())(
       expect(migrated.applied).toContain(
         "0057_sarah_fleet_run_approval_requested.sql",
       )
+      expect(migrated.applied).toContain(
+        "0060_fleet_attempt_claude_cache_usage.sql",
+      )
       sql = new SQL({ url, max: 12 })
     })
 
@@ -1362,8 +1365,8 @@ describe.skipIf(!hasLocalPostgres())(
                 unitRef: "unit-a",
                 workClaimRef: "work_claim.unit-a.v1-v2",
                 assignmentRef,
-                workerKind: "codex",
-                accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+                workerKind: "claude",
+                accountRefHash: `account.pylon.claude_agent.${"a".repeat(24)}`,
                 marginalCostClass: "subscription",
                 blockerRefs: [],
               }),
@@ -1374,8 +1377,8 @@ describe.skipIf(!hasLocalPostgres())(
                 unitRef: "unit-a",
                 workClaimRef: "work_claim.unit-a.v1-v2",
                 assignmentRef,
-                workerKind: "codex",
-                accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+                workerKind: "claude",
+                accountRefHash: `account.pylon.claude_agent.${"a".repeat(24)}`,
                 marginalCostClass: "subscription",
                 terminalState: "accepted",
                 closeoutRef: "closeout.unit-a.v1-v2",
@@ -1387,11 +1390,17 @@ describe.skipIf(!hasLocalPostgres())(
                 artifactRefs: ["artifact.patch.unit-a.v1-v2"],
                 proofRefs: ["proof.unit-a.v1-v2"],
                 authorityReceiptRefs: ["receipt.authority.unit-a.v1-v2"],
-                usageEvidence: exactUsageEvidence(
-                  assignmentRef,
-                  pylonRef,
-                  "unit-a.v1-v2",
-                ),
+                usageEvidence: {
+                  ...exactUsageEvidence(
+                    assignmentRef,
+                    pylonRef,
+                    "unit-a.v1-v2",
+                  ),
+                  harnessKind: "claude",
+                  provider: "pylon-claude-own-capacity",
+                  model: "openagents/pylon-claude",
+                  cacheReadTokens: 579_960,
+                },
                 blockerRefs: [],
               }),
               pylonExecutionEvent(run.record.runRef, claimRef, 4, {
