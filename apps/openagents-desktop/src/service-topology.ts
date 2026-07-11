@@ -22,6 +22,9 @@ export type DesktopAuthority =
   | "provider"
   | "database"
   | "clock"
+  | "network"
+  | "process"
+  | "secret"
   | "foreign_host"
   | "view_projection"
 
@@ -52,12 +55,20 @@ export type DesktopServiceDisposal = Readonly<{
   invalidatesOn: ReadonlyArray<string>
 }>
 
+export type DesktopServiceSourceEvidence = Readonly<{
+  module: string
+  compositionModule: string
+  constructions: ReadonlyArray<string>
+}>
+
 export type DesktopServiceTopologyEntry = Readonly<{
   id: string
   label: string
   owner: DesktopServiceOwner
   scope: DesktopServiceScope
+  installedAt: DesktopServiceScope
   modules: ReadonlyArray<string>
+  sourceEvidence: ReadonlyArray<DesktopServiceSourceEvidence>
   dependsOn: ReadonlyArray<string>
   authority: ReadonlyArray<DesktopAuthority>
   cacheKey?: DesktopServiceCacheKey
@@ -66,6 +77,7 @@ export type DesktopServiceTopologyEntry = Readonly<{
   publicSchemas?: ReadonlyArray<DesktopPublicSchemaIdentity>
   ownedResources?: ReadonlyArray<DesktopOwnedResource>
   perimeter?: true
+  runtimeExitPerimeter?: true
   internalRunPromise?: true
   ambientAuthority?: ReadonlyArray<"cwd" | "async_local_storage" | "renderer_path" | "module_singleton">
   failureTaxonomy?: "recoverable_domain_refusal" | "dependency_outage" | "interruption" | "invariant_defect" | "telemetry_degradation"
@@ -77,6 +89,7 @@ export type DesktopServiceTopologyViolation = Readonly<{
     | "unknown_dependency"
     | "cycle"
     | "wrong_scope_dependency"
+    | "wrong_installation_scope"
     | "renderer_runtime_authority"
     | "duplicate_public_schema_identity"
     | "ambient_authority"
@@ -87,6 +100,12 @@ export type DesktopServiceTopologyViolation = Readonly<{
     | "missing_disposal"
     | "invalid_disposal_scope"
     | "internal_run_promise_escape"
+    | "missing_source_evidence"
+    | "missing_source_module"
+    | "missing_construction_symbol"
+    | "undeclared_source_authority"
+    | "forbidden_renderer_source_authority"
+    | "source_ambient_authority"
   serviceId: string
   detail: string
 }>
@@ -123,7 +142,13 @@ export const desktopServiceTopology = [
     label: "Electron main composition root and IPC perimeter",
     owner: "electron-main",
     scope: "process",
+    installedAt: "process",
     modules: ["apps/openagents-desktop/src/main.ts"],
+    sourceEvidence: [{
+      module: "apps/openagents-desktop/src/main.ts",
+      compositionModule: "apps/openagents-desktop/src/main.ts",
+      constructions: ["createDesktopRuntimeGateway", "ipcMain.handle", "new BrowserWindow"],
+    }],
     dependsOn: [
       "desktop-runtime-gateway",
       "desktop-session-custody",
@@ -135,7 +160,7 @@ export const desktopServiceTopology = [
       "codex-connect-host",
       "preload-bridge",
     ],
-    authority: ["runtime", "policy", "clock"],
+    authority: ["runtime", "policy", "clock", "filesystem", "process", "secret"],
     cacheKey: {
       scope: "none",
       parts: [],
@@ -158,10 +183,16 @@ export const desktopServiceTopology = [
     label: "Host-owned Desktop Runtime Gateway",
     owner: "electron-main",
     scope: "process",
+    installedAt: "process",
     modules: [
       "apps/openagents-desktop/src/runtime-gateway.ts",
       "apps/openagents-desktop/src/runtime-gateway-contract.ts",
     ],
+    sourceEvidence: [{
+      module: "apps/openagents-desktop/src/runtime-gateway.ts",
+      compositionModule: "apps/openagents-desktop/src/main.ts",
+      constructions: ["createDesktopRuntimeGateway"],
+    }],
     dependsOn: [
       "desktop-sync-host",
       "desktop-session-custody",
@@ -192,13 +223,36 @@ export const desktopServiceTopology = [
     label: "OpenAgents account session vault, PKCE, recovery, and sign-out host",
     owner: "electron-main",
     scope: "process",
+    installedAt: "process",
     modules: [
       "apps/openagents-desktop/src/desktop-session-vault.ts",
       "apps/openagents-desktop/src/desktop-session-pkce.ts",
       "apps/openagents-desktop/src/desktop-session-recovery.ts",
     ],
+    sourceEvidence: [
+      {
+        module: "apps/openagents-desktop/src/desktop-session-vault.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["openDesktopSessionVault"],
+      },
+      {
+        module: "apps/openagents-desktop/src/desktop-session-pkce.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["signInDesktopSession", "signOutDesktopSession"],
+      },
+      {
+        module: "apps/openagents-desktop/src/desktop-session-pkce.ts",
+        compositionModule: "apps/openagents-desktop/src/desktop-session-pkce.ts",
+        constructions: ["openDesktopAuthLoopbackListener"],
+      },
+      {
+        module: "apps/openagents-desktop/src/desktop-session-recovery.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["recoverVerifiedDesktopSession"],
+      },
+    ],
     dependsOn: [],
-    authority: ["identity", "transport", "clock"],
+    authority: ["identity", "transport", "clock", "filesystem", "network", "secret"],
     cacheKey: {
       scope: "process",
       parts: ["safe_storage_profile", "session_store_generation"],
@@ -224,12 +278,25 @@ export const desktopServiceTopology = [
     label: "Host-owned Khala Sync local store and authenticated session adapter",
     owner: "electron-main",
     scope: "process",
+    installedAt: "process",
     modules: [
       "apps/openagents-desktop/src/desktop-sync-host.ts",
       "apps/openagents-desktop/src/desktop-sync-store.ts",
     ],
+    sourceEvidence: [
+      {
+        module: "apps/openagents-desktop/src/desktop-sync-host.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["openDesktopSyncHost"],
+      },
+      {
+        module: "apps/openagents-desktop/src/desktop-sync-store.ts",
+        compositionModule: "apps/openagents-desktop/src/desktop-sync-host.ts",
+        constructions: ["openDesktopSyncStore"],
+      },
+    ],
     dependsOn: ["desktop-session-custody"],
-    authority: ["database", "identity", "transport"],
+    authority: ["database", "identity", "transport", "filesystem", "network"],
     cacheKey: {
       scope: "process",
       parts: ["owner_user_id", "sync_database_path"],
@@ -260,12 +327,18 @@ export const desktopServiceTopology = [
     label: "Selected workspace filesystem and Git review surface",
     owner: "electron-main",
     scope: "work_context",
+    installedAt: "work_context",
     modules: [
       "apps/openagents-desktop/src/workspace-service.ts",
       "apps/openagents-desktop/src/workspace-contract.ts",
     ],
+    sourceEvidence: [{
+      module: "apps/openagents-desktop/src/workspace-service.ts",
+      compositionModule: "apps/openagents-desktop/src/main.ts",
+      constructions: ["openWorkspaceService"],
+    }],
     dependsOn: [],
-    authority: ["filesystem", "policy"],
+    authority: ["filesystem", "policy", "process"],
     cacheKey: {
       scope: "work_context",
       parts: ["workspace_root_uri", "workspace_selection_generation"],
@@ -290,12 +363,27 @@ export const desktopServiceTopology = [
     label: "Read-only Codex history catalog and page projector",
     owner: "electron-main",
     scope: "process",
+    installedAt: "process",
     modules: [
       "apps/openagents-desktop/src/codex-history.ts",
+      "apps/openagents-desktop/src/codex-history-host.ts",
+      "apps/openagents-desktop/src/codex-history-worker.ts",
       "apps/openagents-desktop/src/codex-history-contract.ts",
     ],
+    sourceEvidence: [
+      {
+        module: "apps/openagents-desktop/src/codex-history-host.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["makeCodexHistoryHost"],
+      },
+      {
+        module: "apps/openagents-desktop/src/codex-history.ts",
+        compositionModule: "apps/openagents-desktop/src/codex-history-worker.ts",
+        constructions: ["readCodexHistoryCatalog", "readCodexHistoryPage"],
+      },
+    ],
     dependsOn: [],
-    authority: ["filesystem"],
+    authority: ["filesystem", "process"],
     cacheKey: {
       scope: "process",
       parts: ["codex_history_root"],
@@ -306,8 +394,8 @@ export const desktopServiceTopology = [
       invalidatesOn: ["history-root-change", "history-worker-restart"],
     },
     disposal: {
-      disposesWith: "external",
-      invalidatesOn: ["history-worker-error", "process-exit"],
+      disposesWith: "process",
+      invalidatesOn: ["history-worker-error", "app-shutdown"],
     },
     publicSchemas: [
       {
@@ -319,20 +407,34 @@ export const desktopServiceTopology = [
         module: "apps/openagents-desktop/src/codex-history-contract.ts",
       },
     ],
+    ownedResources: [{ kind: "native_handle", disposesWith: "process" }],
     failureTaxonomy: "recoverable_domain_refusal",
   },
   {
     id: "legacy-thread-store",
     label: "Local development thread JSON store and fallback chat turn",
     owner: "electron-main",
-    scope: "conversation_or_run",
+    scope: "request_or_command",
+    installedAt: "request_or_command",
     modules: [
       "apps/openagents-desktop/src/thread-store.ts",
       "apps/openagents-desktop/src/chat-service.ts",
       "apps/openagents-desktop/src/chat-contract.ts",
     ],
-    dependsOn: ["workspace-root"],
-    authority: ["filesystem", "transport"],
+    sourceEvidence: [
+      {
+        module: "apps/openagents-desktop/src/thread-store.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["makeThreadStore"],
+      },
+      {
+        module: "apps/openagents-desktop/src/chat-service.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["completeChatTurn"],
+      },
+    ],
+    dependsOn: [],
+    authority: ["filesystem", "transport", "network", "process", "secret"],
     cacheKey: {
       scope: "none",
       parts: [],
@@ -343,15 +445,14 @@ export const desktopServiceTopology = [
       invalidatesOn: ["thread-read", "message-write", "fallback-turn"],
     },
     disposal: {
-      disposesWith: "conversation_or_run",
-      invalidatesOn: ["conversation-replaced", "app-shutdown"],
+      disposesWith: "request_or_command",
+      invalidatesOn: ["request-finished"],
     },
     publicSchemas: chatSchemas.map(name => ({
       name,
       module: "apps/openagents-desktop/src/chat-contract.ts",
       legacy: true,
     })),
-    ownedResources: [{ kind: "file", disposesWith: "conversation_or_run" }],
     failureTaxonomy: "dependency_outage",
   },
   {
@@ -359,12 +460,18 @@ export const desktopServiceTopology = [
     label: "Pylon Fleet stage request perimeter",
     owner: "electron-main",
     scope: "request_or_command",
+    installedAt: "request_or_command",
     modules: [
       "apps/openagents-desktop/src/fleet-control.ts",
       "apps/openagents-desktop/src/fleet-contract.ts",
     ],
-    dependsOn: ["workspace-root"],
-    authority: ["provider", "policy", "transport"],
+    sourceEvidence: [{
+      module: "apps/openagents-desktop/src/fleet-control.ts",
+      compositionModule: "apps/openagents-desktop/src/main.ts",
+      constructions: ["submitFleetBrief"],
+    }],
+    dependsOn: [],
+    authority: ["provider", "policy", "transport", "filesystem", "network", "process", "secret"],
     cacheKey: {
       scope: "none",
       parts: [],
@@ -391,25 +498,31 @@ export const desktopServiceTopology = [
     id: "codex-connect-host",
     label: "Local Pylon Codex account reconnect host",
     owner: "electron-main",
-    scope: "request_or_command",
+    scope: "process",
+    installedAt: "process",
     modules: [
       "apps/openagents-desktop/src/codex-connect.ts",
       "apps/openagents-desktop/src/codex-connect-contract.ts",
     ],
+    sourceEvidence: [{
+      module: "apps/openagents-desktop/src/codex-connect.ts",
+      compositionModule: "apps/openagents-desktop/src/main.ts",
+      constructions: ["makeCodexConnectService"],
+    }],
     dependsOn: [],
-    authority: ["provider", "transport", "identity"],
+    authority: ["provider", "transport", "identity", "filesystem", "process", "secret"],
     cacheKey: {
-      scope: "request_or_command",
-      parts: ["codex_account_ref", "connect_request_id"],
+      scope: "process",
+      parts: ["pylon_home", "account_registry_generation"],
     },
     freshness: {
       source: "request_response",
-      maxAge: "request_lifetime",
-      invalidatesOn: ["connect-request-finished", "connect-request-cancelled"],
+      maxAge: "event_driven",
+      invalidatesOn: ["account-list-finished", "connect-status-change", "service-dispose"],
     },
     disposal: {
-      disposesWith: "request_or_command",
-      invalidatesOn: ["connect-request-finished", "connect-request-cancelled"],
+      disposesWith: "process",
+      invalidatesOn: ["service-dispose", "app-shutdown"],
     },
     publicSchemas: [
       {
@@ -430,7 +543,13 @@ export const desktopServiceTopology = [
     label: "Sandboxed preload bridge with schema-checked IPC calls",
     owner: "preload",
     scope: "foreign_host_or_view",
+    installedAt: "foreign_host_or_view",
     modules: ["apps/openagents-desktop/src/preload.cts"],
+    sourceEvidence: [{
+      module: "apps/openagents-desktop/src/preload.cts",
+      compositionModule: "apps/openagents-desktop/src/preload.cts",
+      constructions: ["contextBridge.exposeInMainWorld"],
+    }],
     dependsOn: [
       "desktop-runtime-gateway",
       "workspace-root",
@@ -460,6 +579,7 @@ export const desktopServiceTopology = [
     label: "Effect Native renderer state, command registry, and projections",
     owner: "renderer",
     scope: "renderer_view",
+    installedAt: "renderer_view",
     modules: [
       "apps/openagents-desktop/src/renderer/boot.ts",
       "apps/openagents-desktop/src/renderer/shell.ts",
@@ -468,6 +588,11 @@ export const desktopServiceTopology = [
       "apps/openagents-desktop/src/renderer/command-registry.ts",
       "apps/openagents-desktop/src/renderer/settings.ts",
     ],
+    sourceEvidence: [{
+      module: "apps/openagents-desktop/src/renderer/boot.ts",
+      compositionModule: "apps/openagents-desktop/src/renderer/boot.ts",
+      constructions: ["mountDesktopShell", "makeDomRenderer", "Scope.make"],
+    }],
     dependsOn: ["preload-bridge"],
     authority: ["view_projection"],
     cacheKey: {
@@ -483,6 +608,7 @@ export const desktopServiceTopology = [
       disposesWith: "renderer_view",
       invalidatesOn: ["view-remount", "renderer-close"],
     },
+    runtimeExitPerimeter: true,
     failureTaxonomy: "telemetry_degradation",
   },
 ] as const satisfies ReadonlyArray<DesktopServiceTopologyEntry>
@@ -541,6 +667,13 @@ export const validateDesktopServiceTopology = (
   }
 
   for (const entry of entries) {
+    if (entry.installedAt !== entry.scope) {
+      violations.push(violation(
+        "wrong_installation_scope",
+        entry.id,
+        `${entry.scope} service is installed at ${entry.installedAt} scope.`,
+      ))
+    }
     for (const dependencyId of entry.dependsOn) {
       const dependency = byId.get(dependencyId)
       if (dependency === undefined) {
@@ -626,6 +759,155 @@ export const validateDesktopServiceTopology = (
   }
 
   return violations
+}
+
+export type DesktopServiceSourceSet = Readonly<Record<string, string>>
+
+const sourceAuthorityPatterns: ReadonlyArray<Readonly<{
+  authority: Extract<DesktopAuthority, "filesystem" | "network" | "process" | "secret">
+  patterns: ReadonlyArray<RegExp>
+}>> = [
+  {
+    authority: "filesystem",
+    patterns: [/\bnode:(?:fs|path)\b/u],
+  },
+  {
+    authority: "network",
+    patterns: [/\bnode:(?:http|https|net|tls|dgram)\b/u, /\bfetch\s*\(/u],
+  },
+  {
+    authority: "process",
+    patterns: [/\bnode:(?:child_process|worker_threads)\b/u, /\bprocess\.(?:env|cwd)\b/u, /\bBun\.(?:spawn|spawnSync)\b/u],
+  },
+  {
+    authority: "secret",
+    patterns: [
+      /\bprocess\.env(?:\.|\[)[^\n]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY)/u,
+      /\benv\s*:\s*process\.env\b/u,
+      /\b(?:safeStorage|accessToken|refreshToken)\b/u,
+    ],
+  },
+]
+
+const sourceAmbientPatterns: ReadonlyArray<Readonly<{ name: string; pattern: RegExp }>> = [
+  { name: "cwd", pattern: /\bprocess\.cwd\s*\(/u },
+  { name: "async_local_storage", pattern: /\bAsyncLocalStorage\b/u },
+]
+
+/**
+ * Couples the typed topology to the checked-in implementation. The caller
+ * supplies source text so this module stays usable in production without
+ * receiving filesystem authority; the verification oracle reads the files.
+ */
+export const validateDesktopServiceSourceCoupling = (
+  entries: ReadonlyArray<DesktopServiceTopologyEntry>,
+  sources: DesktopServiceSourceSet,
+): ReadonlyArray<DesktopServiceTopologyViolation> => {
+  const violations: DesktopServiceTopologyViolation[] = []
+
+  for (const entry of entries) {
+    if (entry.sourceEvidence.length === 0) {
+      violations.push(violation(
+        "missing_source_evidence",
+        entry.id,
+        "Service must name at least one real construction symbol.",
+      ))
+    }
+
+    for (const module of entry.modules) {
+      if (sources[module] === undefined) {
+        violations.push(violation("missing_source_module", entry.id, `Missing source module ${module}.`))
+      }
+    }
+
+    const evidenceSources: string[] = []
+    for (const evidence of entry.sourceEvidence) {
+      if (!entry.modules.includes(evidence.module)) {
+        violations.push(violation(
+          "missing_source_module",
+          entry.id,
+          `Construction evidence module ${evidence.module} is not owned by the service.`,
+        ))
+        continue
+      }
+      const source = sources[evidence.module]
+      if (source === undefined) continue
+      evidenceSources.push(source)
+      const compositionSource = sources[evidence.compositionModule]
+      if (compositionSource === undefined) {
+        violations.push(violation(
+          "missing_source_module",
+          entry.id,
+          `Missing composition module ${evidence.compositionModule}.`,
+        ))
+        continue
+      }
+      if (evidence.constructions.length === 0) {
+        violations.push(violation(
+          "missing_source_evidence",
+          entry.id,
+          `Construction evidence ${evidence.module} has no symbols.`,
+        ))
+      }
+      for (const construction of evidence.constructions) {
+        if (!source.includes(construction) || !compositionSource.includes(construction)) {
+          violations.push(violation(
+            "missing_construction_symbol",
+            entry.id,
+            `Construction ${construction} must exist in ${evidence.module} and be referenced by ${evidence.compositionModule}.`,
+          ))
+        }
+      }
+    }
+
+    const implementation = evidenceSources.join("\n")
+    for (const observed of sourceAuthorityPatterns) {
+      if (!observed.patterns.some(pattern => pattern.test(implementation))) continue
+      if (entry.owner === "renderer") {
+        violations.push(violation(
+          "forbidden_renderer_source_authority",
+          entry.id,
+          `Renderer construction contains ${observed.authority} authority.`,
+        ))
+      } else if (!entry.authority.includes(observed.authority)) {
+        violations.push(violation(
+          "undeclared_source_authority",
+          entry.id,
+          `Source uses undeclared ${observed.authority} authority.`,
+        ))
+      }
+    }
+
+    for (const ambient of sourceAmbientPatterns) {
+      if (ambient.pattern.test(implementation)) {
+        violations.push(violation(
+          "source_ambient_authority",
+          entry.id,
+          `Source selects authority through ambient ${ambient.name}.`,
+        ))
+      }
+    }
+
+    if (/\b(?:Effect\.runPromise|ManagedRuntime(?:\.make)?)\b/u.test(implementation) && entry.runtimeExitPerimeter !== true) {
+      violations.push(violation(
+        "internal_run_promise_escape",
+        entry.id,
+        "Source contains an Effect runtime exit outside its named perimeter.",
+      ))
+    }
+  }
+
+  return violations
+}
+
+export const assertValidDesktopServiceSourceCoupling = (
+  sources: DesktopServiceSourceSet,
+  entries: ReadonlyArray<DesktopServiceTopologyEntry> = desktopServiceTopology,
+): void => {
+  const violations = validateDesktopServiceSourceCoupling(entries, sources)
+  if (violations.length > 0) {
+    throw new Error(violations.map(item => `${item.code}:${item.serviceId}:${item.detail}`).join("\n"))
+  }
 }
 
 export const assertValidDesktopServiceTopology = (

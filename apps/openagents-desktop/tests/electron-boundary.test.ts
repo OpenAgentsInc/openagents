@@ -141,8 +141,9 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
   })
 
   test("workspace filesystem authority starts only after an explicit directory choice", () => {
-    expect(main).toContain("let workspaceRoot: string | null = null")
+    expect(main).toContain("let workspace: DesktopWorkspaceService | null = null")
     expect(main).toContain('properties: ["openDirectory", "createDirectory"]')
+    expect(main).toContain("workspace = openWorkspaceService(result.filePaths[0])")
     expect(main).not.toContain("OPENAGENTS_DESKTOP_WORKSPACE")
   })
 

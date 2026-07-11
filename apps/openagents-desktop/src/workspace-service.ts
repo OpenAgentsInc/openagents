@@ -199,3 +199,27 @@ export const saveWorkspaceFile = (
     return { state: "unavailable", message: "The file could not be saved." }
   }
 }
+
+export type DesktopWorkspaceService = Readonly<{
+  summary: () => DesktopWorkspaceSnapshot
+  read: (requestedPath: string) => DesktopWorkspaceFile | null
+  save: (input: Readonly<{ path: string; content: string; expectedRevision: string }>) => DesktopWorkspaceSaveResult
+  gitStatus: () => DesktopWorkspaceGitStatus
+  gitDiff: (requestedPath: string) => DesktopWorkspaceGitDiff
+}>
+
+/**
+ * Creates one explicitly selected WorkContext service. The process composition
+ * root may replace this value after another directory-picker decision, but no
+ * ambient cwd or process environment selects the root.
+ */
+export const openWorkspaceService = (selectedRoot: string): DesktopWorkspaceService => {
+  const root = path.resolve(selectedRoot)
+  return {
+    summary: () => inspectWorkspace(root),
+    read: requestedPath => readWorkspaceFile(root, requestedPath),
+    save: input => saveWorkspaceFile(root, input),
+    gitStatus: () => workspaceGitStatus(root),
+    gitDiff: requestedPath => workspaceGitDiff(root, requestedPath),
+  }
+}

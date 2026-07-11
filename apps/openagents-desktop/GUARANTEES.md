@@ -404,9 +404,23 @@ The normal desktop test sweep also mechanically enforces these host boundaries:
   surface.
 - Local Codex history scanning runs in a persistent worker rather than on the
   Electron main thread.
+- The service-topology oracle reads the checked-in implementation modules and
+  binds every declared service to real construction symbols plus the module
+  that composes them. A renamed/removed/uncomposed factory, undeclared source
+  authority, wider installation scope, or missing module fails the normal
+  package sweep instead of trusting manifest prose.
+- Source-derived renderer filesystem, process, network, or secret authority is
+  forbidden. Ambient cwd/`AsyncLocalStorage` selection and unnamed
+  `Effect.runPromise`/`ManagedRuntime` exits are also rejected.
+- Cache, freshness, installation scope, and disposal declarations live on the
+  same typed entry as the checked construction evidence. The selected
+  workspace is an explicit WorkContext service, and the process-owned Codex
+  history worker has one host with an app-shutdown disposal path.
 
 The mechanical oracle is
 [`tests/electron-boundary.test.ts`](./tests/electron-boundary.test.ts).
+The source-coupled service oracle is
+[`tests/service-topology.test.ts`](./tests/service-topology.test.ts).
 
 ## Verify the guarantees
 

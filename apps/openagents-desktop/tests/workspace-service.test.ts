@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import {
+  openWorkspaceService,
   readWorkspaceFile,
   saveWorkspaceFile,
   workspaceGitDiff,
@@ -23,6 +24,21 @@ afterEach(() => {
 })
 
 describe("Desktop bounded workspace service", () => {
+  test("binds one selected root into an explicit WorkContext service", () => {
+    const root = makeRoot()
+    const outside = makeRoot()
+    const file = path.join(root, "README.md")
+    const outsideFile = path.join(outside, "private.txt")
+    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    writeFileSync(file, "inside")
+    writeFileSync(outsideFile, "outside")
+
+    const workspace = openWorkspaceService(root)
+    expect(workspace.summary().root).toBe(root)
+    expect(workspace.read(file)?.content).toBe("inside")
+    expect(workspace.read(outsideFile)).toBeNull()
+  })
+
   test("reads and atomically saves an existing bounded text file with a new revision", () => {
     const root = makeRoot()
     const file = path.join(root, "README.md")

@@ -1,18 +1,31 @@
 import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 
 import {
+  assertValidDesktopServiceSourceCoupling,
   assertValidDesktopServiceTopology,
   desktopServiceTopology,
+  validateDesktopServiceSourceCoupling,
   validateDesktopServiceTopology,
+  type DesktopServiceSourceSet,
   type DesktopServiceTopologyEntry,
 } from "../src/service-topology.ts"
+
+const repoRoot = path.resolve(import.meta.dir, "../../..")
 
 const service = (
   override: Partial<DesktopServiceTopologyEntry> & Pick<DesktopServiceTopologyEntry, "id" | "scope">,
 ): DesktopServiceTopologyEntry => ({
   label: override.id,
   owner: "electron-main",
+  installedAt: override.scope,
   modules: [`${override.id}.ts`],
+  sourceEvidence: [{
+    module: `${override.id}.ts`,
+    compositionModule: `${override.id}.ts`,
+    constructions: [`make${override.id}`],
+  }],
   dependsOn: [],
   authority: [],
   cacheKey: { scope: override.scope, parts: [`${override.id}:cache-key`] },
@@ -28,6 +41,22 @@ const service = (
 const codes = (entries: ReadonlyArray<DesktopServiceTopologyEntry>) =>
   validateDesktopServiceTopology(entries).map(violation => violation.code)
 
+const sourceCodes = (
+  entries: ReadonlyArray<DesktopServiceTopologyEntry>,
+  sources: DesktopServiceSourceSet,
+) => validateDesktopServiceSourceCoupling(entries, sources).map(violation => violation.code)
+
+const productionSources = (): DesktopServiceSourceSet => {
+  const modules = new Set(desktopServiceTopology.flatMap(entry => [
+    ...entry.modules,
+    ...entry.sourceEvidence.map(evidence => evidence.compositionModule),
+  ]))
+  return Object.fromEntries([...modules].map(module => [
+    module,
+    readFileSync(path.join(repoRoot, module), "utf8"),
+  ]))
+}
+
 const without = (
   entry: DesktopServiceTopologyEntry,
   key: keyof DesktopServiceTopologyEntry,
@@ -38,8 +67,9 @@ const without = (
 }
 
 describe("Desktop service topology oracle (#8678)", () => {
-  test("current Desktop services satisfy the checked topology manifest", () => {
+  test("current Desktop services satisfy the source-coupled topology", () => {
     expect(() => assertValidDesktopServiceTopology()).not.toThrow()
+    expect(() => assertValidDesktopServiceSourceCoupling(productionSources())).not.toThrow()
 
     const ids: ReadonlySet<string> = new Set(desktopServiceTopology.map(entry => entry.id))
     for (const id of [
@@ -66,7 +96,19 @@ describe("Desktop service topology oracle (#8678)", () => {
       }
       expect(entry.freshness?.invalidatesOn.length).toBeGreaterThan(0)
       expect(entry.disposal).toBeDefined()
+      expect(entry.installedAt).toBe(entry.scope)
+      expect(entry.sourceEvidence.length).toBeGreaterThan(0)
     }
+  })
+
+  test("fails when a bound construction is removed or no longer composed", () => {
+    const sources = productionSources()
+    const gateway = desktopServiceTopology.find(entry => entry.id === "desktop-runtime-gateway")!
+    const main = "apps/openagents-desktop/src/main.ts"
+    expect(sourceCodes([gateway], {
+      ...sources,
+      [main]: sources[main]!.replaceAll("createDesktopRuntimeGateway", "removedGatewayFactory"),
+    })).toContain("missing_construction_symbol")
   })
 
   test("fails an ordinary process service that captures WorkContext authority", () => {
@@ -88,6 +130,15 @@ describe("Desktop service topology oracle (#8678)", () => {
       service({ id: "view", scope: "foreign_host_or_view" }),
       service({ id: "workspace", scope: "work_context", dependsOn: ["view"] }),
     ])).toContain("wrong_scope_dependency")
+  })
+
+  test("fails session and project services installed at wider process scope", () => {
+    expect(codes([
+      service({ id: "session", scope: "conversation_or_run", installedAt: "process" }),
+    ])).toContain("wrong_installation_scope")
+    expect(codes([
+      service({ id: "project", scope: "work_context", installedAt: "process" }),
+    ])).toContain("wrong_installation_scope")
   })
 
   test("fails renderer-owned runtime authority", () => {
@@ -130,6 +181,41 @@ describe("Desktop service topology oracle (#8678)", () => {
     expect(codes([
       service({ id: "ambient", scope: "work_context", ambientAuthority: ["cwd", "async_local_storage"] }),
     ])).toContain("ambient_authority")
+  })
+
+  test("derives and rejects renderer filesystem, process, network, and secret authority from source", () => {
+    const renderer = service({
+      id: "renderer",
+      scope: "renderer_view",
+      owner: "renderer",
+      authority: ["view_projection"],
+    })
+    const source = [
+      'import "node:fs"',
+      'import "node:child_process"',
+      'import "node:http"',
+      'const token = process.env.OPENAGENTS_API_TOKEN',
+      'export const makerenderer = () => fetch("https://example.invalid")',
+    ].join("\n")
+    const violations = validateDesktopServiceSourceCoupling([renderer], { "renderer.ts": source })
+    expect(violations.filter(item => item.code === "forbidden_renderer_source_authority").map(item => item.detail)).toEqual([
+      "Renderer construction contains filesystem authority.",
+      "Renderer construction contains network authority.",
+      "Renderer construction contains process authority.",
+      "Renderer construction contains secret authority.",
+    ])
+  })
+
+  test("derives ambient cwd, AsyncLocalStorage, and runtime exits from implementation source", () => {
+    const internal = service({ id: "internal", scope: "work_context" })
+    const source = [
+      "export const makeinternal = () => process.cwd()",
+      "const local = new AsyncLocalStorage()",
+      "Effect.runPromise(program)",
+    ].join("\n")
+    const observed = sourceCodes([internal], { "internal.ts": source })
+    expect(observed).toContain("source_ambient_authority")
+    expect(observed).toContain("internal_run_promise_escape")
   })
 
   test("fails resources that are owned by a wider scope than their service", () => {

@@ -63,7 +63,8 @@ history acceptance run; that evidence is not the deterministic CI gate.
 
 Tests cover: pure `state -> View` component trees, pure transitions, the
 intent loop through the real registry, theme parity with the shared surface,
-the mechanical Electron/EN boundary oracle, and a real bundle build.
+the mechanical Electron/EN boundary oracle, source-coupled service topology
+and ambient-authority denial, and a real bundle build.
 
 ## Architecture
 

@@ -12,7 +12,6 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import { Worker } from "node:worker_threads"
 import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent } from "electron"
 import { Effect } from "effect"
 import {
@@ -38,6 +37,7 @@ import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import { makeThreadStore } from "./thread-store.ts"
+import { makeCodexHistoryHost } from "./codex-history-host.ts"
 import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceFilesChannel,
@@ -50,7 +50,7 @@ import {
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
-import { inspectWorkspace, readWorkspaceFile, saveWorkspaceFile, workspaceGitDiff, workspaceGitStatus } from "./workspace-service.ts"
+import { openWorkspaceService, type DesktopWorkspaceService } from "./workspace-service.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
@@ -175,8 +175,8 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       Effect.runSync(service.snapshotForThread(threadRef)),
   }
 }, () => ({
-  catalog: () => runCodexHistoryWorker({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
-  page: (threadRef, offset, limit) => runCodexHistoryWorker({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
+  catalog: () => codexHistoryHost.run({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
+  page: (threadRef, offset, limit) => codexHistoryHost.run({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
 }),()=>desktopSyncHost===null?"local_unavailable":desktopSyncHost.status().identityTier, () => {
   const service = desktopSyncHost?.runtime() ?? null
   if (service === null) return null
@@ -257,73 +257,52 @@ const codexSessionsRoot = () => path.resolve(
       : path.join(app.getPath("home"), ".codex", "sessions")
   ),
 )
-type CodexHistoryRequest =
-  | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
-  | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>
-  | Readonly<{ kind: "history_catalog"; sessionsRoot: string }>
-  | Readonly<{ kind: "history_page"; sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>
-let historyWorker: Worker | null = null
-let historyRequestId = 0
-const historyPending = new Map<number, (value: unknown) => void>()
-const runCodexHistoryWorker = (request: CodexHistoryRequest): Promise<unknown> => new Promise((resolve) => {
-  if (historyWorker === null) {
-    historyWorker = new Worker(new URL("./codex-history-worker.js", import.meta.url))
-    historyWorker.on("message", (message: { id?: unknown; ok?: unknown; result?: unknown }) => {
-      if (typeof message.id !== "number") return
-      const pending = historyPending.get(message.id); if (pending === undefined) return
-      historyPending.delete(message.id); pending(message.ok === true ? message.result : null)
-    })
-    historyWorker.on("error", () => { for (const pending of historyPending.values()) pending(null); historyPending.clear(); historyWorker = null })
-  }
-  const id = ++historyRequestId
-  historyPending.set(id, resolve)
-  historyWorker.postMessage({ id, request })
-})
+const codexHistoryHost = makeCodexHistoryHost(new URL("./codex-history-worker.js", import.meta.url))
 // Local file authority begins only after an explicit directory-picker choice.
 // A process working directory or environment default is not user selection.
-let workspaceRoot: string | null = null
+let workspace: DesktopWorkspaceService | null = null
 const workspaceSnapshot = () => {
-  if (workspaceRoot === null) return null
-  try { return inspectWorkspace(workspaceRoot) } catch { return null }
+  if (workspace === null) return null
+  try { return workspace.summary() } catch { return null }
 }
 ipcMain.handle(DesktopWorkspaceSummaryChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceFilesChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
   const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
   if (result.canceled || result.filePaths[0] === undefined) return workspaceSnapshot()
-  workspaceRoot = path.resolve(result.filePaths[0])
+  workspace = openWorkspaceService(result.filePaths[0])
   return workspaceSnapshot()
 })
 ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
   const request = decodeWorkspaceFileRequest(value)
-  return request === null || workspaceRoot === null ? null : readWorkspaceFile(workspaceRoot, request.path)
+  return request === null || workspace === null ? null : workspace.read(request.path)
 })
 ipcMain.handle(DesktopWorkspaceSaveChannel, (_event, value: unknown) => {
   const request = decodeWorkspaceSaveRequest(value)
   if (request === null) return { state: "unavailable", message: "The file save request is invalid." }
-  if (workspaceRoot === null) return { state: "unavailable", message: "Choose a workspace folder before saving." }
-  return saveWorkspaceFile(workspaceRoot, request)
+  if (workspace === null) return { state: "unavailable", message: "Choose a workspace folder before saving." }
+  return workspace.save(request)
 })
 ipcMain.handle(DesktopWorkspaceGitStatusChannel, () =>
-  workspaceRoot === null ? { state: "unavailable" } : workspaceGitStatus(workspaceRoot),
+  workspace === null ? { state: "unavailable" } : workspace.gitStatus(),
 )
 ipcMain.handle(DesktopWorkspaceGitDiffChannel, (_event, value: unknown) => {
   const request = decodeWorkspaceGitDiffRequest(value)
   if (request === null) return { state: "unavailable", message: "The diff request is invalid." }
-  if (workspaceRoot === null) return { state: "unavailable", message: "Choose a workspace folder before reviewing changes." }
-  return workspaceGitDiff(workspaceRoot, request.path)
+  if (workspace === null) return { state: "unavailable", message: "Choose a workspace folder before reviewing changes." }
+  return workspace.gitDiff(request.path)
 })
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.
-ipcMain.handle(DesktopThreadsChannel, () => runCodexHistoryWorker({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }))
+ipcMain.handle(DesktopThreadsChannel, () => codexHistoryHost.run({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }))
 ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
 ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  return request === null ? null : runCodexHistoryWorker({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id })
+  return request === null ? null : codexHistoryHost.run({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id })
 })
 ipcMain.handle(DesktopHydrateThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  return request === null ? null : runCodexHistoryWorker({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id, messageLimit: 40 })
+  return request === null ? null : codexHistoryHost.run({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id, messageLimit: 40 })
 })
 ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
@@ -730,6 +709,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   codexConnect.dispose()
+  codexHistoryHost.dispose()
   runtimeGateway.dispose()
   desktopSyncHost?.close()
   desktopSyncHost = null
