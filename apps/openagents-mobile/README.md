@@ -33,7 +33,10 @@ imports nothing from it.
   composes production HTTP/WebSocket Sync only after session
   verification, subscribes the server-derived owner's personal scope, closes
   session-before-store on OTA reload/unmount, and never projects credentials,
-  owner refs, or native handles into the Effect Native view program.
+  owner refs, or native handles into the Effect Native view program. The shared
+  store migrates the supported unversioned cache in place and refuses a newer
+  schema before mutation with typed update-or-reset guidance; sparse event
+  batches replay from the durable cursor instead of skipping history.
 - `src/conversation/mobile-conversation.ts` — public-safe adapter over the
   host-owned canonical conversation service. Startup selects confirmed Sync or
   the existing public-local path before Home mounts; exact stable refs must be

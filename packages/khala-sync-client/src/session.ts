@@ -334,6 +334,37 @@ const runEffect = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
 
 const watermark = SyncVersionWatermark.make
 
+const assertDenseConfirmedBatch = (
+  scope: SyncScope,
+  after: number,
+  through: number,
+  entries: ReadonlyArray<ChangelogEntry>,
+  source: "log_page" | "live_delta",
+): void => {
+  if (through <= after || entries.length === 0) {
+    throw PROTOCOL_VIOLATION(
+      `${source} advanced without a non-empty dense changelog batch`,
+    )
+  }
+  const versions = new Set<number>()
+  for (const entry of entries) {
+    const version = Number(entry.version)
+    if (entry.scope !== scope || version <= after || version > through) {
+      throw PROTOCOL_VIOLATION(
+        `${source} contains an entry outside its exact scope/version window`,
+      )
+    }
+    versions.add(version)
+  }
+  for (let version = after + 1; version <= through; version += 1) {
+    if (!versions.has(version)) {
+      throw PROTOCOL_VIOLATION(
+        `${source} skipped a server-assigned scope version`,
+      )
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Session
 // ---------------------------------------------------------------------------
@@ -684,7 +715,25 @@ export const createKhalaSyncSession = (
       if (page.scope !== scope) {
         throw PROTOCOL_VIOLATION("log page is for a different scope")
       }
-      if (page.entries.length > 0 && page.nextCursor > cursor) {
+      const currentNumber = Number(cursor)
+      const nextNumber = Number(page.nextCursor)
+      if (nextNumber < currentNumber) {
+        throw PROTOCOL_VIOLATION("log page cursor regressed")
+      }
+      if (nextNumber === currentNumber && page.entries.length > 0) {
+        throw PROTOCOL_VIOLATION("log page returned entries without cursor progress")
+      }
+      if (nextNumber === currentNumber && !page.upToDate) {
+        throw PROTOCOL_VIOLATION("log page made no progress before the retained head")
+      }
+      if (nextNumber > currentNumber) {
+        assertDenseConfirmedBatch(
+          scope,
+          currentNumber,
+          nextNumber,
+          page.entries,
+          "log_page",
+        )
         await runEffect(
           overlay.onConfirmed(
             scope,
@@ -769,6 +818,13 @@ export const createKhalaSyncSession = (
                   // Duplicate / out-of-order delivery: everything through
                   // `current` is already applied (at-least-once safety).
                   if (frame.cursor <= current) return
+                  assertDenseConfirmedBatch(
+                    scope,
+                    Number(current),
+                    Number(frame.cursor),
+                    frame.entries,
+                    "live_delta",
+                  )
                   await runEffect(
                     overlay.onConfirmed(scope, [...frame.entries], frame.cursor),
                   )

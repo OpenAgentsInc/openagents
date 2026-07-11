@@ -1,9 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (accepted CUT-07 command convergence, portable agent
-  graphs, episode 248/249 UX contracts, and CUT-08 next)
-- Revision: 33
+- Updated: 2026-07-11 (accepted CUT-08 event/store convergence, portable agent
+  graphs, episode 248/249 UX contracts, and CUT-09 next)
+- Revision: 34
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -513,7 +513,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   mutation/control-intent ledger. Migration `0061` adds the projected
   `expired` terminal state; expired rows never enter the runtime dispatch
   reader. Desktop Runtime Gateway v7 and mobile consume the same exact-intent
-  outcome. #8677 remains open for CUT-08/CUT-09 and the live fault rung.
+  outcome. #8677 remains open for CUT-09 and the live fault rung.
+- CUT-08 is closed by the deterministic
+  [`event/store convergence receipt`](./2026-07-11-cut-08-event-store-convergence-receipt.md):
+  duplicate/stale frames remain idempotent, sparse advancing live batches are
+  rejected and replayed from the durable cursor, retained-window loss keeps
+  MustRefetch/CVR/snapshot replacement, reordered timeline facts retain exact
+  versions, and the same trace converges through Desktop and Expo/mobile
+  stores. The supported unversioned cache migrates to local-store schema v1;
+  newer stores refuse before additive SQL across Bun, Desktop, Expo, and Web.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -1491,9 +1499,9 @@ universe.
 
 ## Canonical open issue set
 
-There are **27 open `roadmap:sol` records** after closing #8640, CUT-01–CUT-07,
+There are **26 open `roadmap:sol` records** after closing #8640, CUT-01–CUT-08,
 and topology parent #8678: the original #8547, #8566, #8574, #8597, #8636,
-#8676, and #8677; and bounded CUT-08–CUT-27 leaves #8688–#8707. #8566 remains
+#8676, and #8677; and bounded CUT-09–CUT-27 leaves #8689–#8707. #8566 remains
 the sole program epic. GitHub sub-issue
 relationships place each leaf under its narrowest owning track or reliability
 parent; prose cross-links retain the other affected tracks.
@@ -1504,8 +1512,9 @@ correlation, and built-host receipt jointly satisfy the architecture parent.
 #8677 similarly delegates its fault matrix to #8687–#8689,
 and closed #8640 delegated its supervisor/publication repair to closed #8686
 before the accepted parent receipt. Closed #8685 supplies the scoped Claude
-authority. Closed CUT-07 #8687 supplies command convergence; CUT-08 #8688 is
-the next ordered local-coding leaf.
+authority. Closed CUT-07 #8687 supplies command convergence and closed CUT-08
+#8688 supplies event/cursor/store convergence; CUT-09 #8689 is the next
+ordered local-coding leaf.
 
 The [Pylon streamlining audit](../fable/2026-07-11-pylon-streamlining-audit.md)
 also fixes the short-term boundary for this proof: `apps/pylon/src/orchestration`
@@ -1513,7 +1522,8 @@ and `apps/pylon/src/node` are the protected, load-bearing P0 core. #8640 is now
 closed, and CUT-07 honored that boundary without changing either directory.
 CLI/package cleanup, authority collapse, and product-shell streamlining remain
 a separately bounded post-proof program; CUT-08/CUT-09 may touch the protected
-core only for correctness work their fault matrices actually own.
+core only for correctness work their fault matrices actually own. CUT-08 did
+not require a protected-core change.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
@@ -1526,7 +1536,7 @@ core only for correctness work their fault matrices actually own.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8688–#8707 open | Remaining ordered CUT-08–CUT-27 graph; CUT-01–CUT-07 and the bounded #8640 Phase A proof are closed |
+| **P0 local-coding leaves** | #8689–#8707 open | Remaining ordered CUT-09–CUT-27 graph; CUT-01–CUT-08 and the bounded #8640 Phase A proof are closed |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
@@ -1579,7 +1589,7 @@ around and after that narrower installed-Desktop milestone.
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
-5. Continue with CUT-08 #8688 after the accepted CUT-07 command-convergence
+5. Continue with CUT-09 #8689 after the accepted CUT-08 event/store-convergence
    receipt. Preserve the proven Pylon fleet core and migrations `0060`–`0061`;
    treat broader streamlining
    or authority collapse as a separately bounded post-proof program, not scope

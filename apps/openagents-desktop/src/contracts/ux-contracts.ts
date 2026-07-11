@@ -250,7 +250,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "Desktop opens the shared Khala Sync SQLite store inside Electron main, persists one installation identity across restart, and after native-session verification composes the shared HTTP/WebSocket session on exactly the server-derived owner's personal scope. Rotation is re-read host-side and the session closes before the store.",
+          "Desktop opens the shared Khala Sync SQLite store inside Electron main, persists one installation identity across restart, migrates the supported legacy store without data loss, refuses a newer store before mutation with recovery guidance, and after native-session verification composes the shared HTTP/WebSocket session on exactly the server-derived owner's personal scope. Sparse event batches replay from the durable cursor; rotation is re-read host-side and the session closes before the store.",
         authorityBoundary:
           "The renderer receives only bounded phase and freshness. Owner refs, credentials, database path and handle, installation identity refs, rows, mutation queue, transport, and session remain host-only. The local database is a reconstructible cache/offline queue and never server authority; authenticated substrate is not an authoritative conversation projection.",
         evidenceRefs: [
@@ -265,7 +265,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/desktop-sync-host.test.ts",
             description:
-              "Proves restart-stable identity, private permissions, personal-scope selection, dynamic token lookup, live/freshness transition, session-before-store close, and reuse of the shared SQLite store.",
+              "Proves restart-stable identity, private permissions, supported legacy migration, newer-version refusal, personal-scope selection, dynamic token lookup, live/freshness transition, session-before-store close, and reuse of the shared SQLite store.",
           },
         ],
         verification:
@@ -296,6 +296,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "github:OpenAgentsInc/openagents#8668",
         ],
         oracles: [
+          {
+            id: "native_timeline_fault_convergence.e2e",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/tests/native-timeline-fault-convergence.e2e.test.ts",
+            description:
+              "Feeds reordered/duplicate timeline rows and an authoritative gap snapshot through the Desktop and Expo/mobile SQLite adapters, proving byte-equivalent refs, versions, cursors, and retractions.",
+          },
           {
             id: "native_conversation_continuation.e2e",
             kind: "bun-test",

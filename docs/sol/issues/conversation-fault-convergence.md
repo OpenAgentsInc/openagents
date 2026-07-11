@@ -86,4 +86,16 @@ The existing Sync mutation ledger now converges exact retries before and after
 commit; conflicting same-ID bytes reject without mutation; a server-clock-due
 control intent projects once as `expired` and is excluded from dispatch; and
 Desktop/mobile read the same stable intent result after reconnect/restart.
-CUT-08 owns rows 4–5 and 10 next. This parent remains open.
+CUT-08 owns rows 4–5 and 10; their subsequent acceptance is recorded below.
+This parent remains open.
+
+## Progress — CUT-08 accepted
+
+Rows 4–5 and 10 are complete under
+[`2026-07-11-cut-08-event-store-convergence-receipt.md`](../2026-07-11-cut-08-event-store-convergence-receipt.md).
+Advancing live/log batches now prove a dense scope-version interval, sparse
+live delivery replays from the durable cursor, retained-window loss keeps the
+existing MustRefetch/snapshot path, Desktop/mobile converge on one injected
+timeline trace, and supported-legacy versus future-incompatible stores have
+explicit migration/refusal receipts across Bun, Desktop, Expo, and Web. CUT-09
+owns rows 7–9 and the live fault rung next. This parent remains open.

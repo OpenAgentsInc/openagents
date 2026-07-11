@@ -71,6 +71,13 @@ creating a move-specific retry ledger. Their target grants, attachment
 generations, and checkpoints add authority fields, but lost ACK, duplicate,
 reconnect, restart, and expiry semantics remain the same shared contract.
 
+CUT-08 [#8688] adds the matching projection floor: clients refuse sparse
+advancing scope versions, replay from the durable cursor, replace an exact
+scope on MustRefetch, and refuse a future local-store schema before mutation.
+Portable graph/checkpoint projections must reuse those cursor and compatibility
+semantics; a host move cannot treat a missing child/event version as a valid
+partial continuation.
+
 ### Episodes 248–249 calibration
 
 Remote-first must preserve the predictability and supervision target. Closed

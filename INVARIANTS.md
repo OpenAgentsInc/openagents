@@ -542,6 +542,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   before the store on process/OTA teardown, and exposes only bounded phase/
   freshness state to Effect Native views; a local cache is never authenticated
   or server-authoritative Sync.
+- Catch-up pages and advancing live deltas must cover every dense server-
+  assigned scope version from the durable cursor through the advertised
+  cursor. A sparse or non-progressing batch is a protocol failure: the client
+  keeps its durable cursor and reconnects for authoritative replay; retained-
+  window loss enters the existing MustRefetch/snapshot-replacement path.
+  Duplicate or stale frames remain idempotent no-ops.
+- The shared local store records `store_schema_version` independently of the
+  Sync protocol/client identity version. The current app migrates the supported
+  unversioned legacy store in place, preserving rows/cursors/queue, but inspects
+  this marker before additive SQL and refuses newer/invalid versions with typed
+  `incompatible_version` recovery guidance. Desktop, Expo/mobile, and Web must
+  preserve that typed refusal rather than opening or rewriting the cache.
 - After native-session verification, Desktop main and the mobile Expo host
   alone may compose the shared HTTP/WebSocket session and subscribe
   `personalScope(serverDerivedOwnerUserId)`. The access-token callback is
@@ -593,7 +605,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-desktop/src/desktop-host-lifecycle.test.ts`,
   `apps/openagents-desktop/src/desktop-operation-context.test.ts`,
   `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`, and the normal
-  Desktop Electron smoke.
+  Desktop Electron smoke. Dense-gap, store-version, and native adapter parity
+  regressions live in `packages/khala-sync-client/src/session.test.ts`,
+  `packages/khala-sync-client/src/sqlite-store.test.ts`, and
+  `apps/openagents-desktop/tests/native-timeline-fault-convergence.e2e.test.ts`.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

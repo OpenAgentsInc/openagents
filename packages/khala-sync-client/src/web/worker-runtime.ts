@@ -1,5 +1,7 @@
 import type { StoreResponse } from "./protocol.js"
 import type { KhalaSyncStoreWorkerServer } from "./worker-server.js"
+import { toKhalaSyncStoreError } from "../store-core.js"
+import { KhalaSyncClientStoreError } from "../store.js"
 
 /**
  * Port plumbing for the storage worker (KS-5.4): attaches ports
@@ -37,14 +39,17 @@ const requestId = (data: unknown): number =>
     ? (data as { id: number }).id
     : -1
 
-const initFailureResponse = (data: unknown, error: unknown): StoreResponse => ({
-  id: requestId(data),
-  ok: false,
-  reason: "storage_failure",
-  message: `khala-sync storage worker failed to initialize: ${
-    error instanceof Error ? error.message : String(error)
-  }`,
-})
+const initFailureResponse = (data: unknown, error: unknown): StoreResponse => {
+  const failure = toKhalaSyncStoreError(error)
+  return {
+    id: requestId(data),
+    ok: false,
+    reason: failure.reason,
+    message: error instanceof KhalaSyncClientStoreError
+      ? failure.message
+      : `khala-sync storage worker failed to initialize: ${failure.message}`,
+  }
+}
 
 export const createKhalaSyncStorageWorkerRuntime = (
   init: () => Promise<KhalaSyncStoreWorkerServer>,

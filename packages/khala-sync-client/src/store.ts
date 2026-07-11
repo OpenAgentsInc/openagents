@@ -41,6 +41,8 @@ export type KhalaSyncClientStoreErrorReason =
   | "constraint_violation"
   /** The underlying SQLite layer failed (I/O, closed handle, corruption). */
   | "storage_failure"
+  /** A newer local-store schema must be opened by a compatible app build. */
+  | "incompatible_version"
 
 /**
  * Typed store error. `message` is public-safe by construction: it names the

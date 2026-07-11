@@ -101,10 +101,19 @@ CREATE TABLE IF NOT EXISTS local_identity (singleton INTEGER PRIMARY KEY CHECK(s
 CREATE TABLE IF NOT EXISTS local_account_link (singleton INTEGER PRIMARY KEY CHECK(singleton=1),identity_ref TEXT NOT NULL,owner_user_id TEXT NOT NULL,linked_at TEXT NOT NULL,link_receipt_ref TEXT NOT NULL,schema_version INTEGER NOT NULL);
 `
 
+export const KHALA_SYNC_LOCAL_STORE_SCHEMA_VERSION = 1
+const KHALA_SYNC_META_SCHEMA = `
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+`
+
 const META_CLIENT_ID = "client_id"
 const META_CLIENT_GROUP_ID = "client_group_id"
 const META_SCHEMA_VERSION = "schema_version"
 const META_LAST_MUTATION_ID = "last_mutation_id"
+const META_STORE_SCHEMA_VERSION = "store_schema_version"
 
 // ---------------------------------------------------------------------------
 // Row shapes
@@ -184,8 +193,34 @@ export const createKhalaSyncStoreCore = (
   driver: SqlDriver,
 ): KhalaSyncStoreCore => {
   try {
+    // Inspect before additive migration: a newer app may have written a
+    // shape this build cannot safely open or roll back.
+    driver.exec(KHALA_SYNC_META_SCHEMA)
+    const recorded = driver.all<{ readonly value: string }>(
+      "SELECT value FROM meta WHERE key = ?",
+      [META_STORE_SCHEMA_VERSION],
+    )[0]?.value
+    if (recorded !== undefined) {
+      const version = Number(recorded)
+      if (
+        !Number.isSafeInteger(version) ||
+        version < 1 ||
+        version > KHALA_SYNC_LOCAL_STORE_SCHEMA_VERSION
+      ) {
+        throw new KhalaSyncClientStoreError(
+          "incompatible_version",
+          `khala-sync local store schema ${recorded} is unsupported by this app; update the app or reset its local Sync cache`,
+        )
+      }
+    }
     driver.exec(KHALA_SYNC_STORE_SCHEMA)
+    driver.run(
+      `INSERT INTO meta (key, value) VALUES (?, ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      [META_STORE_SCHEMA_VERSION, String(KHALA_SYNC_LOCAL_STORE_SCHEMA_VERSION)],
+    )
   } catch (error) {
+    if (error instanceof KhalaSyncClientStoreError) throw error
     throw new KhalaSyncClientStoreError(
       "storage_failure",
       "failed to migrate khala-sync local store schema",

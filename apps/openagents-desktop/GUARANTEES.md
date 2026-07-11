@@ -42,6 +42,10 @@ owner-private directory under Desktop `userData`.
 - One installation identity is generated once and reused after restart.
 - The shared store schema and semantics remain the only cache/offline-queue
   implementation; Desktop does not create a parallel Sync database.
+- Sparse advancing event batches are refused before cursor advance and replay
+  from the durable cursor; MustRefetch atomically replaces the exact scope.
+- Supported unversioned stores migrate in place. A newer store version refuses
+  before additive migration with typed update-or-reset recovery guidance.
 - A server-verified native session starts the shared HTTP/WebSocket engine on
   the server-derived owner's personal scope; rotation is re-read host-side.
 - The Sync session closes before the store on quit.

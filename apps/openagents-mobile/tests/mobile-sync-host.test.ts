@@ -75,6 +75,34 @@ const openBunDatabase = (databasePath: string): ExpoSqliteDatabase => {
 }
 
 describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
+  test("fails closed on a newer local-store schema with recovery guidance", () => {
+    const root = mkdtempSync(join(tmpdir(), "openagents-mobile-future-sync-"))
+    const databaseName = join(root, "future.sqlite")
+    try {
+      const future = new Database(databaseName, { create: true })
+      future.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+      future.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
+      future.close()
+
+      let failure: unknown
+      try {
+        openMobileSyncHostCore({
+          databaseName,
+          randomId: () => "unused",
+          openStore: name => openExpoKhalaSyncStore(name, openBunDatabase),
+        })
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({ reason: "incompatible_version" })
+      expect((failure as Error).message).toContain(
+        "update the app or reset its local Sync cache",
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("closes the store when installation identity initialization fails", () => {
     const base = openExpoKhalaSyncStore(":memory:", openBunDatabase)
     let closed = false

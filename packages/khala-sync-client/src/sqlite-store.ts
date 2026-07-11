@@ -73,7 +73,7 @@ export interface KhalaSyncSqliteStore extends KhalaSyncLocalStore {
  * migrated.
  */
 export const openKhalaSyncStore = (path: string): KhalaSyncSqliteStore => {
-  let db: Database
+  let db: Database | undefined
   let core: ReturnType<typeof createKhalaSyncStoreCore>
   try {
     db = new Database(path, { create: true })
@@ -83,6 +83,12 @@ export const openKhalaSyncStore = (path: string): KhalaSyncSqliteStore => {
     db.exec("PRAGMA foreign_keys = ON;")
     core = createKhalaSyncStoreCore(bunSqlDriver(db))
   } catch (error) {
+    try {
+      db?.close()
+    } catch {
+      // Preserve the open/migration failure as the actionable typed error.
+    }
+    if (error instanceof KhalaSyncClientStoreError) throw error
     throw new KhalaSyncClientStoreError(
       "storage_failure",
       "failed to open khala-sync local store",
@@ -93,6 +99,6 @@ export const openKhalaSyncStore = (path: string): KhalaSyncSqliteStore => {
   return {
     ...localStoreFromCore(core),
     close: () =>
-      Effect.try({ try: () => db.close(), catch: toKhalaSyncStoreError }),
+      Effect.try({ try: () => db!.close(), catch: toKhalaSyncStoreError }),
   }
 }

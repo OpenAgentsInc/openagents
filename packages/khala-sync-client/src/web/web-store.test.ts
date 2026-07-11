@@ -219,6 +219,21 @@ describe("openKhalaSyncWasmStore", () => {
     expect(error.message).toContain("failed to initialize")
   })
 
+  test("a future web-store version preserves incompatible-version guidance", async () => {
+    const { client, worker } = createPortPair()
+    const runtime = createKhalaSyncStorageWorkerRuntime(() =>
+      Promise.reject(new KhalaSyncClientStoreError(
+        "incompatible_version",
+        "update the app or reset its local Sync cache",
+      )),
+    )
+    runtime.attach(worker)
+    const store = openKhalaSyncWasmStore({ port: client, locks: null, storage: null })
+    const error = await Effect.runPromise(Effect.flip(store.cursor(scopeA)))
+    expect(error.reason).toBe("incompatible_version")
+    expect(error.message).toContain("update the app or reset its local Sync cache")
+  })
+
   test("close() detaches this tab: later + in-flight calls fail typed, election released", async () => {
     // fake locks: grant immediately, remember release
     let lockReleased = false

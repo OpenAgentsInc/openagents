@@ -20,6 +20,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openKhalaSyncStore } from "./sqlite-store.js"
 import {
+  KHALA_SYNC_LOCAL_STORE_SCHEMA_VERSION,
+  KHALA_SYNC_STORE_SCHEMA,
+} from "./store-core.js"
+import {
   type ConfirmedEntity,
   KhalaSyncClientStoreError,
 } from "./store.js"
@@ -104,6 +108,62 @@ const memoryStore = () => {
 }
 
 describe("openKhalaSyncStore / applyConfirmed", () => {
+  test("migrates the supported unversioned store in place without losing confirmed rows", () => {
+    const root = mkdtempSync(join(tmpdir(), "khala-sync-legacy-store-"))
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }))
+    const path = join(root, "legacy.sqlite")
+    const legacy = new Database(path, { create: true })
+    legacy.exec(KHALA_SYNC_STORE_SCHEMA)
+    legacy.query(
+      "INSERT INTO entities(scope, entity_type, entity_id, post_image_json, version) VALUES (?, ?, ?, ?, ?)",
+    ).run(scopeA, "task", "legacy", canonicalJson({ retained: true }), 3)
+    legacy.query("INSERT INTO cursors(scope, version) VALUES (?, ?)").run(scopeA, 3)
+    legacy.close()
+
+    const store = openKhalaSyncStore(path)
+    cleanups.push(() => Effect.runSync(Effect.ignore(store.close())))
+    expect(run(store.readEntities(scopeA))).toEqual([{
+      entityId: "legacy",
+      entityType: "task",
+      postImageJson: canonicalJson({ retained: true }),
+      version: SyncVersion.make(3),
+    }])
+    expect(run(store.cursor(scopeA))).toBe(SyncVersion.make(3))
+
+    const inspect = new Database(path)
+    expect(inspect.query(
+      "SELECT value FROM meta WHERE key = 'store_schema_version'",
+    ).get()).toEqual({ value: String(KHALA_SYNC_LOCAL_STORE_SCHEMA_VERSION) })
+    inspect.close()
+  })
+
+  test("refuses a newer store before additive migration and gives recovery guidance", () => {
+    const root = mkdtempSync(join(tmpdir(), "khala-sync-future-store-"))
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }))
+    const path = join(root, "future.sqlite")
+    const future = new Database(path, { create: true })
+    future.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE future_sentinel(id INTEGER PRIMARY KEY);")
+    future.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
+    future.close()
+
+    let failure: unknown
+    try {
+      openKhalaSyncStore(path)
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(KhalaSyncClientStoreError)
+    expect((failure as KhalaSyncClientStoreError).reason).toBe("incompatible_version")
+    expect((failure as Error).message).toContain("update the app or reset its local Sync cache")
+
+    const inspect = new Database(path)
+    expect(inspect.query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all())
+      .toContainEqual({ name: "future_sentinel" })
+    expect(inspect.query("SELECT name FROM sqlite_master WHERE type='table' AND name='entities'").all())
+      .toEqual([])
+    inspect.close()
+  })
+
   test("applies upserts + deletes and advances the cursor atomically", () => {
     const store = memoryStore()
     expect(run(store.cursor(scopeA))).toBeNull()

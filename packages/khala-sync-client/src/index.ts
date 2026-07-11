@@ -32,6 +32,7 @@ export {
 } from "./store.js"
 export {
   createKhalaSyncStoreCore,
+  KHALA_SYNC_LOCAL_STORE_SCHEMA_VERSION,
   KHALA_SYNC_STORE_SCHEMA,
   type KhalaSyncStoreCore,
   localStoreFromCore,

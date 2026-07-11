@@ -18,6 +18,7 @@ import {
   openExpoKhalaSyncStore,
   type ExpoSqliteDatabase,
 } from "./expo-sqlite-store.js"
+import { KhalaSyncClientStoreError } from "./store.js"
 
 const roots: Array<string> = []
 afterEach(() => {
@@ -88,6 +89,29 @@ describe("Expo SQLite Khala Sync adapter", () => {
         closed = true
       },
     }))).toThrow("failed to open khala-sync Expo SQLite store")
+    expect(closed).toBe(true)
+  })
+
+  test("preserves typed incompatible-version recovery guidance at the mobile adapter", () => {
+    const database = new Database(":memory:")
+    database.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+    database.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
+    let closed = false
+    let failure: unknown
+    try {
+      openExpoKhalaSyncStore("future.sqlite", () => ({
+        ...expoDatabaseFromBun(database),
+        closeSync: () => {
+          closed = true
+          database.close()
+        },
+      }))
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(KhalaSyncClientStoreError)
+    expect((failure as KhalaSyncClientStoreError).reason).toBe("incompatible_version")
+    expect((failure as Error).message).toContain("update the app or reset its local Sync cache")
     expect(closed).toBe(true)
   })
 })

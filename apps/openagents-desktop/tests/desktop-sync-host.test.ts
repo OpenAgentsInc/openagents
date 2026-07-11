@@ -101,6 +101,30 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
     expect(closed).toBe(true)
   })
 
+  test("fails closed on a newer local-store schema with recovery guidance", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-future-sync-"))
+    const databasePath = path.join(root, "future.sqlite")
+    try {
+      const future = new Database(databasePath, { create: true })
+      future.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+      future.query("INSERT INTO meta(key, value) VALUES('store_schema_version', '2')").run()
+      future.close()
+
+      let failure: unknown
+      try {
+        openTestStore(databasePath)
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({ reason: "incompatible_version" })
+      expect((failure as Error).message).toContain(
+        "update the app or reset its local Sync cache",
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("persists one installation identity and reuses it after restart", () => {
     const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-sync-"))
     const databasePath = path.join(root, "private", "sync.sqlite")

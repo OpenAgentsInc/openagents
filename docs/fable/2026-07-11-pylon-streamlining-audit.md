@@ -8,7 +8,7 @@
   in `apps/openagents.com/workers/api`, and every legacy satellite that still
   carries the Pylon name
 - Alignment targets:
-  - [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) (rev 33)
+  - [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) (rev 34)
   - [`docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md`](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md)
     (the product recs doc), especially its "Pylon and local runtimes" section
   - [`2026-07-08-pylon-into-khala-code-proposal.md`](./2026-07-08-pylon-into-khala-code-proposal.md)
@@ -27,6 +27,11 @@ the existing Khala Sync command ledger, projection, reader, and Desktop/mobile
 adapters; it did not touch `apps/pylon/src/orchestration` or `src/node`. The
 broader streamlining program below remains separately scoped and must not be
 silently mixed into CUT-08/CUT-09 reliability work.
+
+CUT-08 execution update: event/cursor/store convergence also stayed wholly in
+Khala Sync and the Desktop/mobile adapters. No protected Pylon core file was
+needed for dense-version replay, snapshot replacement, or local-store
+compatibility. CUT-09 inherits the same boundary.
 
 Pylon's fleet-execution core is real, current, and load-bearing: the
 `orchestration/` + `node/` substrate (orchestration.sqlite runtime, mixed-kind

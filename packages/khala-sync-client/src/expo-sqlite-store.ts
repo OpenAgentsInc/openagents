@@ -76,6 +76,7 @@ export const openExpoKhalaSyncStore = (
     } catch {
       // Preserve the open/migration failure as the actionable typed error.
     }
+    if (error instanceof KhalaSyncClientStoreError) throw error
     throw new KhalaSyncClientStoreError(
       "storage_failure",
       "failed to open khala-sync Expo SQLite store",

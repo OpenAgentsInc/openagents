@@ -44,7 +44,7 @@ import {
 /**
  * KS-5.3 session tests: a deterministic FAKE transport/server (no real
  * network, no real WebSockets). Time is injected — `sleep` yields one
- * macrotask regardless of the requested delay and `random` is constant —
+ * scheduler turn regardless of the requested delay and `random` is constant —
  * so backoff paths run instantly and no logic reads a wall clock.
  */
 
@@ -52,7 +52,7 @@ import {
 // Deterministic helpers
 // ---------------------------------------------------------------------------
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+const tick = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
 
 const waitFor = async (
   condition: () => boolean,
@@ -205,7 +205,12 @@ class FakeSyncServer {
   }
 
   /** Commit one transaction (one version) and fan out a DeltaFrame. */
-  commit(scope: SyncScope, changes: ReadonlyArray<FakeChange>, mutationRef?: string): number {
+  commit(
+    scope: SyncScope,
+    changes: ReadonlyArray<FakeChange>,
+    mutationRef?: string,
+    emit = true,
+  ): number {
     const version = this.lastVersion(scope) + 1
     const entries = changes.map(
       (change) =>
@@ -223,10 +228,12 @@ class FakeSyncServer {
         }),
     )
     this.logOf(scope).push(...entries)
-    this.emitFrame(
-      scope,
-      new DeltaFrame({ scope, entries, cursor: SyncVersion.make(version) }),
-    )
+    if (emit) {
+      this.emitFrame(
+        scope,
+        new DeltaFrame({ scope, entries, cursor: SyncVersion.make(version) }),
+      )
+    }
     return version
   }
 
@@ -524,7 +531,7 @@ const makeHarness = (
   const transportErrors: Array<{ context: string; error: unknown }> = []
   const connectFailureSignals: Array<ConnectFailureSignal> = []
   const session = createKhalaSyncSession(config, store, overlay, transportOf(server), {
-    // Injected time: every sleep is one macrotask, jitter is constant.
+    // Injected time: every sleep is one immediate scheduler turn, jitter is constant.
     sleep: () => tick(),
     random: () => 0,
     ...(opts.now !== undefined ? { now: opts.now } : {}),
@@ -1079,6 +1086,56 @@ describe("khala-sync session (fake transport, injected time)", () => {
     expect(h.view(scopeA).get("task", "b")).toBe(image(2))
     expect(h.session.state(scopeA).phase).toBe("live")
     expect(h.transportErrors.filter((e) => e.context === "live")).toEqual([])
+  })
+
+  test("a missing live version is refused and replayed from the durable cursor", async () => {
+    const server = new FakeSyncServer()
+    server.commit(scopeA, [{
+      entityType: "task",
+      entityId: "a",
+      op: "upsert",
+      postImageJson: image(1),
+    }])
+    const h = makeHarness(server)
+    await Effect.runPromise(h.session.subscribe(scopeA))
+    await waitFor(() => h.session.state(scopeA).phase === "live", "live")
+    expect(h.storeCursor(scopeA)).toBe(1)
+
+    server.commit(scopeA, [{
+      entityType: "task",
+      entityId: "b",
+      op: "upsert",
+      postImageJson: image(2),
+    }], undefined, false)
+    server.commit(scopeA, [{
+      entityType: "task",
+      entityId: "c",
+      op: "upsert",
+      postImageJson: image(3),
+    }], undefined, false)
+    const onlyV3 = server.logOf(scopeA).filter(entry => Number(entry.version) === 3)
+    server.emitFrame(scopeA, new DeltaFrame({
+      scope: scopeA,
+      entries: onlyV3,
+      cursor: SyncVersion.make(3),
+    }))
+
+    await waitFor(
+      () => h.transportErrors.some(error =>
+        error.context === "live" &&
+        error.error instanceof KhalaSyncTransportError &&
+        error.error.reason === "decode_failure"),
+      "gap refusal",
+    )
+    await waitFor(
+      () => h.storeCursor(scopeA) === 3 && h.session.state(scopeA).phase === "live",
+      "dense replay through v3",
+    )
+    expect(h.view(scopeA).get("task", "a")).toBe(image(1))
+    expect(h.view(scopeA).get("task", "b")).toBe(image(2))
+    expect(h.view(scopeA).get("task", "c")).toBe(image(3))
+    expect(server.logPageCalls.some(call => call.cursor === 1)).toBe(true)
+    expect(h.session.state(scopeA).phase).toBe("live")
   })
 
   test("socket drop mid-live reconnects from the durable cursor and catches up", async () => {
