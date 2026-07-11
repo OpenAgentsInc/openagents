@@ -179,6 +179,12 @@ import type {
  *   `target.lane === "claude_pylon"` (#8404). Any OTHER `target.lane` (e.g.
  *   `ai_sdk_core`) is recorded `failed` with an explicit "not wired" detail
  *   rather than silently falling back to one provider.
+ * - Claude Agent SDK `task_started` / `task_progress` / `task_notification`
+ *   records for real subagent tasks are normalized into body-free
+ *   `agent.child.*` events and retained by the canonical live graph. The
+ *   installed Codex SDK 0.139.0 public event union exposes no child/subagent
+ *   item, so Codex child production remains explicitly unsupported here; no
+ *   tool-name or transcript-text heuristic fabricates parentage.
  * - Cross-turn context continuity (`resumeThreadId` for Codex,
  *   `resumeSessionId` for Claude) is reinforced, but still not GUARANTEED,
  *   for both providers by the per-thread account pin described above: if the
@@ -498,7 +504,17 @@ export type ClaudeRuntimeEventTranslationContext = RuntimeEventTranslationContex
    * rather than arriving paired like Codex's single `item.completed`.
    */
   readonly pendingToolCalls: Map<string, string>
+  /** Stable task-id correlation for real Claude subagent lifecycle messages. */
+  readonly childTasks: Map<string, ClaudeChildTaskFacts>
 }
+
+type ClaudeChildTaskFacts = Readonly<{
+  childAgentId: string
+  childRunId: string
+  parentAgentId: string
+  taskRef: string
+  childKindRef?: string
+}>
 
 const claudeContentBlocks = (message: unknown): ReadonlyArray<Record<string, unknown>> => {
   const content = (message as { content?: unknown } | undefined)?.content
@@ -524,19 +540,48 @@ const claudeFinishReasonFromResult = (raw: ClaudeRawMessage): KhalaRuntimeFinish
   return "error"
 }
 
+const claudeChildTaskFacts = (
+  raw: ClaudeRawMessage,
+  ctx: ClaudeRuntimeEventTranslationContext,
+): Readonly<{ taskId: string; facts: ClaudeChildTaskFacts }> | null => {
+  const taskId = typeof raw.task_id === "string" && raw.task_id.length > 0
+    ? raw.task_id
+    : null
+  if (taskId === null) return null
+  const toolUseId = typeof raw.tool_use_id === "string" && raw.tool_use_id.length > 0
+    ? raw.tool_use_id
+    : taskId
+  const subagentType = typeof raw.subagent_type === "string" && raw.subagent_type.length > 0
+    ? raw.subagent_type
+    : null
+  return {
+    taskId,
+    facts: {
+      childAgentId: stableId("child.claude", taskId),
+      childRunId: stableId("run.child.claude", taskId),
+      parentAgentId: ctx.turnId,
+      taskRef: stableId("task.claude", toolUseId),
+      ...(subagentType === null
+        ? {}
+        : { childKindRef: stableId("agent_kind.claude", subagentType) }),
+    },
+  }
+}
+
 /**
  * Translates ONE raw Claude Agent SDK `SDKMessage` into zero or more
  * `KhalaRuntimeEvent`s. Pure given its context's seams, mirroring
  * `codexRawEventToRuntimeEvents` — real production calls thread a live
- * sequence counter, clock, and per-turn `pendingToolCalls` map through it;
- * tests inject deterministic fakes.
+ * sequence counter, clock, and per-turn tool/child correlation maps through
+ * it; tests inject deterministic fakes.
  *
  * Only the full, non-streaming message shapes are handled (`assistant`
  * carries a COMPLETE `BetaMessage`, not per-token deltas) since
  * `runWithRealClaudeAgentSdk` does not enable `includePartialMessages` —
  * matching Codex's own per-item (not per-token) granularity today. A single
  * `text.delta` + `text.completed` pair is emitted per text content block,
- * exactly like Codex's `agent_message` item handling.
+ * exactly like Codex's `agent_message` item handling. Typed system task
+ * messages are handled separately as body-free child lifecycle facts.
  */
 export const claudeRawMessageToRuntimeEvents = (
   raw: ClaudeRawMessage,
@@ -564,6 +609,64 @@ export const claudeRawMessageToRuntimeEvents = (
     if (ctx.turnStarted.value) return []
     ctx.turnStarted.value = true
     return [base("turn.started", {})]
+  }
+
+  if (type === "system" && subtype === "task_started") {
+    const taskType = typeof raw.task_type === "string" ? raw.task_type : null
+    const subagentType = typeof raw.subagent_type === "string" ? raw.subagent_type : null
+    if (taskType !== "subagent" && (subagentType === null || subagentType.length === 0)) return []
+    const child = claudeChildTaskFacts(raw, ctx)
+    if (child === null) return []
+    ctx.childTasks.set(child.taskId, child.facts)
+    return [base("agent.child.started", child.facts)]
+  }
+
+  if (type === "system" && subtype === "task_progress") {
+    const taskId = typeof raw.task_id === "string" ? raw.task_id : null
+    if (taskId === null) return []
+    let facts = ctx.childTasks.get(taskId)
+    const events: KhalaRuntimeEvent[] = []
+    if (facts === undefined && typeof raw.subagent_type === "string") {
+      const child = claudeChildTaskFacts(raw, ctx)
+      if (child === null) return []
+      facts = child.facts
+      ctx.childTasks.set(child.taskId, facts)
+      events.push(base("agent.child.started", facts))
+    }
+    if (facts === undefined) return []
+    events.push(base("agent.child.progress", {
+      childAgentId: facts.childAgentId,
+      childRunId: facts.childRunId,
+      parentAgentId: facts.parentAgentId,
+      taskRef: facts.taskRef,
+    }))
+    return events
+  }
+
+  if (type === "system" && subtype === "task_notification") {
+    const taskId = typeof raw.task_id === "string" ? raw.task_id : null
+    if (taskId === null) return []
+    const facts = ctx.childTasks.get(taskId)
+    if (facts === undefined) return []
+    ctx.childTasks.delete(taskId)
+    const status = raw.status
+    const finishReason: KhalaRuntimeFinishReason = status === "completed"
+      ? "stop"
+      : status === "stopped"
+        ? "interrupted"
+        : "error"
+    const usage = raw.usage as Record<string, unknown> | undefined
+    const totalTokens = usage?.total_tokens
+    return [base("agent.child.finished", {
+      childAgentId: facts.childAgentId,
+      childRunId: facts.childRunId,
+      parentAgentId: facts.parentAgentId,
+      taskRef: facts.taskRef,
+      finishReason,
+      ...(typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens >= 0
+        ? { usage: { totalTokens, usageRef: stableId("usage.child.claude", taskId) } }
+        : {}),
+    })]
   }
 
   if (type === "assistant") {
@@ -1350,12 +1453,14 @@ const dispatchTurnStart = async (input: {
         ...(resumeRef === undefined ? {} : { resumeSessionId: resumeRef }),
       })
       const pendingToolCalls = new Map<string, string>()
+      const childTasks = new Map<string, ClaudeChildTaskFacts>()
       for await (const raw of messages) {
         captureClaudeSessionId(raw)
         const translated = claudeRawMessageToRuntimeEvents(raw, {
           allocateSequence: turn.nextEventSequence,
           nowIso: () => new Date().toISOString(),
           pendingToolCalls,
+          childTasks,
           source,
           threadId: intent.threadId,
           turnId,

@@ -276,6 +276,15 @@ const appendRuntimeAgentRunChanges = async (
 const runtimeGraphTerminal = (status: RuntimeTurnStatus): boolean =>
   status === "completed" || status === "failed" || status === "interrupted" || status === "closed"
 
+type RuntimeChildEvent = Extract<KhalaRuntimeEvent, {
+  kind: "agent.child.started" | "agent.child.progress" | "agent.child.finished"
+}>
+
+const isRuntimeChildEvent = (event: KhalaRuntimeEvent | undefined): event is RuntimeChildEvent =>
+  event?.kind === "agent.child.started" ||
+  event?.kind === "agent.child.progress" ||
+  event?.kind === "agent.child.finished"
+
 const readRuntimeLiveAgentGraph = async (
   ctx: MutatorContext,
   turn: RuntimeTurnEntity,
@@ -303,7 +312,7 @@ const appendRuntimeLiveAgentGraph = async (
 ): Promise<void> => {
   if (turn.lane !== "codex_app_server" && turn.lane !== "claude_pylon") return
   const previous = await readRuntimeLiveAgentGraph(ctx, turn)
-  const previousNode = previous?.nodes[0]
+  const previousNode = previous?.nodes.find(candidate => candidate.parent.kind === "root")
   const terminal = runtimeGraphTerminal(turn.status)
   const reopening = previousNode?.terminal.state === "terminal" && !terminal
   const attachmentGeneration = reopening
@@ -423,17 +432,106 @@ const appendRuntimeLiveAgentGraph = async (
       })
 
   let node = adapted.node
-  let edges = adapted.edges
+  let rootEdges = adapted.edges
+  const previousChildNodes = reopening || previousNode === undefined
+    ? []
+    : (previous?.nodes ?? []).filter(candidate => candidate.agentRef !== previousNode.agentRef)
+  const previousChildRefs = new Set(previousChildNodes.map(candidate => candidate.agentRef))
+  let childNodes = previousChildNodes
+  let childEdges = reopening
+    ? []
+    : (previous?.edges ?? []).filter(edge => edge.kind === "parent"
+      ? previousChildRefs.has(edge.toAgentRef)
+      : previousChildRefs.has(edge.agentRef))
   if (!reopening && !toolEvent && previousNode?.currentTool.state === "known") {
     if (!terminal && (previousNode.currentTool.status === "called" || previousNode.currentTool.status === "running")) {
       node = { ...node, currentTool: previousNode.currentTool }
-      edges = previous?.edges ?? []
+      rootEdges = (previous?.edges ?? []).filter(edge =>
+        edge.kind === "tool" && edge.agentRef === previousNode.agentRef)
     } else {
       node = { ...node, currentTool: { state: "none" } }
-      edges = (previous?.edges ?? []).map(edge => edge.kind === "tool"
-        ? { ...edge, status: "unknown" as const, version: Math.max(edge.version + 1, node.version) }
-        : edge)
+      rootEdges = (previous?.edges ?? []).filter(edge =>
+        edge.kind === "tool" && edge.agentRef === previousNode.agentRef).map(edge =>
+        ({ ...edge, status: "unknown" as const, version: Math.max(edge.version + 1, node.version) }))
     }
+  }
+
+  if (!reopening && isRuntimeChildEvent(event)) {
+    const childAgentRef = `agent.${turn.lane === "codex_app_server" ? "codex" : "claude"}.${event.childAgentId}`
+    const previousChild = previousChildNodes.find(candidate => candidate.agentRef === childAgentRef)
+    const childFinishReason = event.kind === "agent.child.finished" ? event.finishReason : null
+    const childTerminal = childFinishReason !== null
+    const childInterrupted = childFinishReason === "cancelled" || childFinishReason === "interrupted"
+    const childFailed = childFinishReason === "error"
+    const parentObservationId = event.parentAgentId === turn.turnId
+      ? observationAgentId
+      : event.parentAgentId
+    const childVersion = (previousChild?.version ?? 0) + 1
+    const childCommon = {
+      graphRef: common.graphRef,
+      sessionRef: common.sessionRef,
+      threadRef: common.threadRef,
+      provider,
+      runtimeRef: `runtime.${turn.lane}.child.${event.childAgentId}`,
+      attachmentGeneration,
+      agent: {
+        threadId: event.childAgentId,
+        runId: event.childRunId,
+        parent: { state: "known" as const, threadId: parentObservationId },
+        worktree: previousChild?.worktree.state === "known"
+          ? previousChild.worktree
+          : { state: "omitted" as const, reason: "provider_omitted" as const },
+        attention: { state: "none" as const },
+        activityCursor: (previousChild?.activityCursor ?? 0) + 1,
+        createdAt: previousChild?.createdAt ?? turn.updatedAt,
+        updatedAt: turn.updatedAt,
+        startedAt: previousChild?.startedAt ?? (childTerminal ? null : turn.updatedAt),
+        endedAt: childTerminal ? turn.updatedAt : null,
+        version: childVersion,
+      },
+    }
+    const childAdapted = turn.lane === "codex_app_server"
+      ? adaptCodexLiveAgentObservation({
+          schema: "openagents.codex_live_agent_observation.v1",
+          ...childCommon,
+          agent: {
+            ...childCommon.agent,
+            status: childInterrupted
+              ? "interrupted"
+              : childFailed
+                ? "failed"
+                : childTerminal
+                  ? "completed"
+                  : "inProgress",
+            currentTool: { state: "omitted", reason: "not_observed" },
+          },
+        })
+      : adaptClaudeLiveAgentObservation({
+          schema: "openagents.claude_live_agent_observation.v1",
+          ...childCommon,
+          agent: {
+            ...childCommon.agent,
+            status: childInterrupted
+              ? "interrupted"
+              : childFailed
+                ? "errored"
+                : childTerminal
+                  ? "succeeded"
+                  : "running",
+            currentTool: { state: "omitted", reason: "not_observed" },
+          },
+        })
+    childNodes = [
+      ...childNodes.filter(candidate => candidate.agentRef !== childAdapted.node.agentRef),
+      childAdapted.node,
+    ]
+    childEdges = [
+      ...childEdges.filter(edge => edge.kind === "parent"
+        ? edge.fromAgentRef !== childAdapted.node.agentRef &&
+          edge.toAgentRef !== childAdapted.node.agentRef
+        : edge.agentRef !== childAdapted.node.agentRef),
+      ...childAdapted.edges,
+    ]
   }
   await appendLiveAgentGraphChange(ctx.writer, {
     schema: "openagents.live_agent_graph.v1",
@@ -445,8 +543,8 @@ const appendRuntimeLiveAgentGraph = async (
     lastDeltaRef: graphCursor === 0
       ? null
       : event?.eventId ?? `delta.graph.${turn.turnId}.${graphCursor}`,
-    nodes: [node],
-    edges,
+    nodes: [node, ...childNodes],
+    edges: [...rootEdges, ...childEdges],
     updatedAt: turn.updatedAt,
   }, ctx.mutationRef)
 }
@@ -489,11 +587,19 @@ const runtimeEventStatus = (event: KhalaRuntimeEvent): string | null => {
           ? "canceled"
           : "completed"
     case "tool.call":
+    case "agent.child.started":
+    case "agent.child.progress":
       return "running"
     case "tool.result":
       return "completed"
     case "tool.error":
       return "failed"
+    case "agent.child.finished":
+      return event.finishReason === "error"
+        ? "failed"
+        : event.finishReason === "cancelled" || event.finishReason === "interrupted"
+          ? "canceled"
+          : "completed"
     default:
       return null
   }

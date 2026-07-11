@@ -146,7 +146,13 @@ const controlIntent = (
 const runtimeEvent = (
   input: Readonly<{
     eventId: string
-    kind: "turn.started" | "turn.finished" | "text.delta"
+    kind:
+      | "turn.started"
+      | "turn.finished"
+      | "text.delta"
+      | "agent.child.started"
+      | "agent.child.progress"
+      | "agent.child.finished"
     threadId: string
     turnId: string
     sequence: number
@@ -163,6 +169,10 @@ const runtimeEvent = (
       | undefined
     lane?: "codex_app_server" | "claude_pylon" | undefined
     providerRef?: string | undefined
+    childAgentId?: string | undefined
+    childRunId?: string | undefined
+    parentAgentId?: string | undefined
+    taskRef?: string | undefined
   }>,
 ) => {
   const base = {
@@ -194,6 +204,24 @@ const runtimeEvent = (
         chunkId: `chunk.${input.eventId}`,
         messageId: `message.${input.eventId}`,
         text: input.text ?? "private runtime text",
+      }
+    case "agent.child.started":
+    case "agent.child.progress":
+      return {
+        ...base,
+        childAgentId: input.childAgentId!,
+        childRunId: input.childRunId!,
+        parentAgentId: input.parentAgentId!,
+        ...(input.taskRef === undefined ? {} : { taskRef: input.taskRef }),
+      }
+    case "agent.child.finished":
+      return {
+        ...base,
+        childAgentId: input.childAgentId!,
+        childRunId: input.childRunId!,
+        parentAgentId: input.parentAgentId!,
+        ...(input.taskRef === undefined ? {} : { taskRef: input.taskRef }),
+        finishReason: input.finishReason ?? "stop",
       }
   }
 }
@@ -386,11 +414,51 @@ describe.skipIf(!hasLocalPostgres())(
             turnId,
           })),
           envelope(3, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.claude.graph.child.started",
+            kind: "agent.child.started",
+            lane: "claude_pylon",
+            providerRef: "provider.claude.named",
+            sequence: 1,
+            threadId,
+            turnId,
+            childAgentId: "child.claude.task.1",
+            childRunId: "run.child.claude.task.1",
+            parentAgentId: turnId,
+            taskRef: "task.claude.tool.1",
+          })),
+          envelope(4, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.claude.graph.child.progress",
+            kind: "agent.child.progress",
+            lane: "claude_pylon",
+            providerRef: "provider.claude.named",
+            sequence: 2,
+            threadId,
+            turnId,
+            childAgentId: "child.claude.task.1",
+            childRunId: "run.child.claude.task.1",
+            parentAgentId: turnId,
+            taskRef: "task.claude.tool.1",
+          })),
+          envelope(5, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.claude.graph.child.finished",
+            kind: "agent.child.finished",
+            lane: "claude_pylon",
+            providerRef: "provider.claude.named",
+            sequence: 3,
+            threadId,
+            turnId,
+            childAgentId: "child.claude.task.1",
+            childRunId: "run.child.claude.task.1",
+            parentAgentId: turnId,
+            taskRef: "task.claude.tool.1",
+            finishReason: "stop",
+          })),
+          envelope(6, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
             eventId: "runtime-event.claude.graph.finished",
             kind: "turn.finished",
             lane: "claude_pylon",
             providerRef: "provider.claude.named",
-            sequence: 1,
+            sequence: 4,
             threadId,
             turnId,
           })),
@@ -398,7 +466,14 @@ describe.skipIf(!hasLocalPostgres())(
         sql: sql as unknown as SyncSql,
         userId: client.userId,
       })
-      expect(response.results.map(result => result.status)).toEqual(["applied", "applied", "applied"])
+      expect(response.results.map(result => result.status)).toEqual([
+        "applied",
+        "applied",
+        "applied",
+        "applied",
+        "applied",
+        "applied",
+      ])
       const log = await logPage(sql as unknown as SyncSql, {
         afterVersion: null,
         limit: 50,
@@ -409,19 +484,34 @@ describe.skipIf(!hasLocalPostgres())(
         .at(-1)?.postImageJson
       expect(graphJson).toBeDefined()
       const graph = decodeLiveAgentGraphPostImageJson(graphJson!)
-      expect(graph).toMatchObject({ cursor: 2, threadRef: "runtime-thread.claude.graph.1" })
-      expect(graph.nodes).toHaveLength(1)
+      expect(graph).toMatchObject({ cursor: 5, threadRef: "runtime-thread.claude.graph.1" })
+      expect(graph.nodes).toHaveLength(2)
       expect(graph.nodes[0]).toMatchObject({
         provider: { state: "known", kind: "claude", providerRef: "provider.claude.named" },
         runtime: { state: "known", kind: "claude_agent_sdk" },
         status: "completed",
         terminal: { state: "terminal", reason: "completed" },
       })
+      expect(graph.nodes[1]).toMatchObject({
+        agentRef: "agent.claude.child.claude.task.1",
+        runRef: "run.claude.run.child.claude.task.1",
+        parent: { kind: "agent", agentRef: `agent.claude.${turnId}` },
+        status: "completed",
+        terminal: { state: "terminal", reason: "completed" },
+        activityCursor: 3,
+        version: 3,
+      })
+      expect(graph.edges).toContainEqual(expect.objectContaining({
+        kind: "parent",
+        fromAgentRef: `agent.claude.${turnId}`,
+        toAgentRef: "agent.claude.child.claude.task.1",
+        version: 1,
+      }))
 
       const retried = await executePush({
         registry,
         request: pushRequest(client, [
-          envelope(4, RUNTIME_RETRY_TURN_MUTATOR_NAME, controlIntent({
+          envelope(7, RUNTIME_RETRY_TURN_MUTATOR_NAME, controlIntent({
             intentId: "runtime-intent.claude.graph.retry",
             kind: "turn.retry",
             lane: "claude_pylon",
@@ -442,7 +532,8 @@ describe.skipIf(!hasLocalPostgres())(
         .filter(entry => String(entry.entityType) === LIVE_AGENT_GRAPH_ENTITY_TYPE)
         .at(-1)!.postImageJson!)
       expect(retryGraph.attachmentGeneration).toBe(2)
-      expect(retryGraph.cursor).toBe(3)
+      expect(retryGraph.cursor).toBe(6)
+      expect(retryGraph.nodes).toHaveLength(1)
       expect(retryGraph.nodes[0]).toMatchObject({
         agentRef: `agent.claude.${turnId}.g2`,
         status: "queued",

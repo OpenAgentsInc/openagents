@@ -4,8 +4,9 @@
 - Issue: [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691)
 - Status: shared schema/replay, provider normalization, Khala Sync entity,
   named server writer, live Codex/Claude root transaction binding, and confirmed
-  Runtime Gateway v8 delivery/reconnect complete; provider child topology and
-  named-account live traces pending
+  Runtime Gateway v8 delivery/reconnect complete; real Claude child topology is
+  active, while a typed Codex child source and named-account traces remain
+  pending
 - Contract: `openagents.live_agent_graph.v1`
 
 ## Registered graph facts
@@ -108,7 +109,32 @@ store:
 Real-Postgres tests prove a Codex root reaches running with the observed named
 provider ref and a Claude root reaches completed/terminal through the same
 writer. These are deterministic provider-shaped fixtures, not named-account
-live traces and not child/subagent topology.
+live traces.
+
+## Typed Claude child topology
+
+The shared runtime-event contract now includes body-free
+`agent.child.started`, `agent.child.progress`, and `agent.child.finished`
+records. They carry stable child/run/parent/task refs, terminal reason, and
+optional bounded usage—not task prompts, descriptions, result summaries,
+output paths, or provider payloads.
+
+The Pylon Claude producer maps the Agent SDK's real `system/task_started`,
+`task_progress`, and `task_notification` messages only when the task is a
+subagent. Stable task correlation survives all three records; background shell
+tasks and uncorrelated notifications are ignored. The server transaction then:
+
+- adds one stable Claude child and parent edge;
+- advances only the child activity cursor/version for later child records;
+- retains the child through root tool/text changes and root terminal state;
+- refuses terminal reopening through the existing graph laws; and
+- removes the prior attempt's children when retry advances attachment
+  generation.
+
+The installed `@openai/codex-sdk` 0.139.0 public `ThreadEvent` / `ThreadItem`
+union exposes no child or subagent record. Codex live child production is
+therefore still explicit provider-unsupported; CUT-11 does not infer parentage
+from tool names, renderer cards, or historical transcript text.
 
 ## Confirmed client and Runtime Gateway delivery
 
@@ -135,15 +161,21 @@ Codex/Claude trace.
 
 ## Verification
 
-- `@openagentsinc/agent-runtime-schema`: 35 pass, 0 fail, 259 expectations;
+- `@openagentsinc/agent-runtime-schema`: 35 pass, 0 fail, 261 expectations;
   typecheck passes.
 - CUT-11 focused graph corpus: 11 pass, 111 expectations.
 - `@openagentsinc/khala-sync`: 178 pass, 0 fail, 2,601 expectations;
   typecheck passes.
 - CUT-11 focused Sync post-image corpus: 3 pass, 11 expectations.
 - CUT-11 focused Sync server writer: 4 pass, 18 expectations; typecheck passes.
-- Runtime transaction binding: 12 pass, 84 expectations against real
+- Runtime transaction binding: 12 pass, 87 expectations against real
   throwaway Postgres; server typecheck passes.
+- Claude child producer focus: 57 pass, 199 expectations; Pylon typecheck
+  passes. It covers both direct task normalization and the dispatch call site.
+- Full Pylon verification: 2,374 pass, 3 opt-in live skips, 0 fail, 12,143
+  expectations; the supervisor-store bypass check and typecheck pass.
+- Server writer + runtime/child binding focus: 16 pass, 105 expectations
+  against real throwaway Postgres.
 - Confirmed client graph/read/reconnect focus: 13 pass, 49 expectations;
   client typecheck passes.
 - Full `@openagentsinc/khala-sync-client`: 173 pass, 3 opt-in live-smoke
@@ -155,10 +187,10 @@ Codex/Claude trace.
   subscriptions pass.
 - Shared-contract mobile compatibility: 66 pass, 0 fail, 287 expectations;
   mobile typecheck passes. This tranche does not yet present graph UI on mobile.
-- Full `@openagentsinc/khala-sync-server`: 510 pass, 1 fail, 4,540
+- Full `@openagentsinc/khala-sync-server`: 510 pass, 1 fail, 4,543
   expectations. The existing `runtime-intents.test.ts` event-count case returns
   three in-band rejections instead of its expected applies and fails identically
-  when rerun alone; CUT-11 changes no runtime-intent file.
+  when rerun alone; that reader path and its test are unchanged by this tranche.
 - A deterministic property corpus applies 50 independently shuffled batches
   of 64 child nodes and parent edges; every result is byte-identical.
 - Negative cases cover malformed/private-shaped refs, missing explicit facts,
@@ -167,7 +199,7 @@ Codex/Claude trace.
 
 ## Residual
 
-This receipt does not claim provider child/subagent topology or named-account
-live traces. The remaining CUT-11 tranches must project child observations into
-the same graph and attach redacted named-account Codex and Claude reconnect
+This receipt does not claim Codex live child/subagent topology or named-account
+live traces. The remaining CUT-11 work must bind a real typed Codex app-server
+child source and attach redacted named-account Codex and Claude reconnect
 traces. Graph presentation remains CUT-12.

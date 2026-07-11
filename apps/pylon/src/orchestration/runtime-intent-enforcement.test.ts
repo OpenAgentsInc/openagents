@@ -181,6 +181,7 @@ describe("claudeRawMessageToRuntimeEvents", () => {
     })(),
     nowIso: () => "2026-07-05T12:00:00.000Z",
     pendingToolCalls: new Map<string, string>(),
+    childTasks: new Map(),
     source: { adapterKind: "claude_code" as const, lane: "claude_pylon" as const, surface: "server" as const },
     threadId: "thread-1",
     turnId: "turn-1",
@@ -194,6 +195,75 @@ describe("claudeRawMessageToRuntimeEvents", () => {
     expect(first).toHaveLength(1)
     expect(first[0]!.kind).toBe("turn.started")
     expect(second).toHaveLength(0)
+  })
+
+  test("real Claude subagent task messages emit one stable body-free child lifecycle", () => {
+    const c = ctx()
+    const started = claudeRawMessageToRuntimeEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "task-claude-1",
+      tool_use_id: "toolu-agent-1",
+      task_type: "subagent",
+      subagent_type: "general-purpose",
+      description: "private task description",
+      prompt: "private prompt",
+    }, c)
+    const progress = claudeRawMessageToRuntimeEvents({
+      type: "system",
+      subtype: "task_progress",
+      task_id: "task-claude-1",
+      subagent_type: "general-purpose",
+      description: "private progress",
+      last_tool_name: "Bash",
+    }, c)
+    const finished = claudeRawMessageToRuntimeEvents({
+      type: "system",
+      subtype: "task_notification",
+      task_id: "task-claude-1",
+      status: "completed",
+      output_file: "/private/claude/output",
+      summary: "private result summary",
+      usage: { total_tokens: 42, tool_uses: 2, duration_ms: 100 },
+    }, c)
+
+    expect([...started, ...progress, ...finished].map(event => event.kind)).toEqual([
+      "agent.child.started",
+      "agent.child.progress",
+      "agent.child.finished",
+    ])
+    expect(progress[0]).toMatchObject({
+      childAgentId: (started[0] as Extract<KhalaRuntimeEvent, { kind: "agent.child.started" }>).childAgentId,
+      childRunId: (started[0] as Extract<KhalaRuntimeEvent, { kind: "agent.child.started" }>).childRunId,
+      parentAgentId: "turn-1",
+    })
+    expect(finished[0]).toMatchObject({
+      finishReason: "stop",
+      usage: { totalTokens: 42 },
+    })
+    const encoded = JSON.stringify([...started, ...progress, ...finished])
+    expect(encoded).not.toContain("private task description")
+    expect(encoded).not.toContain("private progress")
+    expect(encoded).not.toContain("private result summary")
+    expect(encoded).not.toContain("/private/claude/output")
+    expect(c.childTasks.size).toBe(0)
+  })
+
+  test("non-subagent and uncorrelated task notifications stay out of the graph contract", () => {
+    const c = ctx()
+    expect(claudeRawMessageToRuntimeEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "bash-task",
+      task_type: "shell",
+      description: "background bash",
+    }, c)).toEqual([])
+    expect(claudeRawMessageToRuntimeEvents({
+      type: "system",
+      subtype: "task_notification",
+      task_id: "bash-task",
+      status: "completed",
+    }, c)).toEqual([])
   })
 
   test("an assistant text content block emits a text delta + completed pair with the same messageId", () => {
@@ -659,6 +729,30 @@ describe("enforcePendingRuntimeIntents", () => {
         permissionModes.push(input.permissionMode)
         return fakeClaudeRunner([
           { session_id: "claude-sess-1", subtype: "init", type: "system" },
+          {
+            type: "system",
+            subtype: "task_started",
+            task_id: "task-live-1",
+            tool_use_id: "toolu-agent-live-1",
+            task_type: "subagent",
+            subagent_type: "general-purpose",
+            description: "private delegated task",
+          },
+          {
+            type: "system",
+            subtype: "task_progress",
+            task_id: "task-live-1",
+            subagent_type: "general-purpose",
+            description: "private child progress",
+          },
+          {
+            type: "system",
+            subtype: "task_notification",
+            task_id: "task-live-1",
+            status: "completed",
+            output_file: "/private/child-output",
+            summary: "private child result",
+          },
           { message: { content: [{ text: "hello!", type: "text" }] }, type: "assistant" },
           {
             message: { content: [{ id: "toolu_1", input: {}, name: "Bash", type: "tool_use" }] },
@@ -700,6 +794,9 @@ describe("enforcePendingRuntimeIntents", () => {
       await finished
       expect(pushedEvents.map((e) => e.kind)).toEqual([
         "turn.started",
+        "agent.child.started",
+        "agent.child.progress",
+        "agent.child.finished",
         "text.delta",
         "text.completed",
         "tool.call",
@@ -709,6 +806,8 @@ describe("enforcePendingRuntimeIntents", () => {
       ])
       expect(pushedEvents.every((e) => e.source.lane === "claude_pylon")).toBe(true)
       expect(pushedEvents.every((e) => e.source.adapterKind === "claude_code")).toBe(true)
+      expect(JSON.stringify(pushedEvents)).not.toContain("private delegated task")
+      expect(JSON.stringify(pushedEvents)).not.toContain("/private/child-output")
       expect((pushedEvents[pushedEvents.length - 1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
       expect(store.getRuntimeClaudeSessionId("thread-1")).toBe("claude-sess-1")
       expect(permissionModes).toEqual(["bypassPermissions"])

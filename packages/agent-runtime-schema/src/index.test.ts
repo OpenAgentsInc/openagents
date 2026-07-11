@@ -455,7 +455,7 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       "hosted_khala",
       "test_fixture",
     ])
-    expect(khalaRuntimeEventKinds).toHaveLength(20)
+    expect(khalaRuntimeEventKinds).toHaveLength(23)
     expect(khalaRuntimeControlIntentKinds).toHaveLength(10)
 
     const decodedEvents = khalaRuntimeEventFixtures.map((event) => decodeKhalaRuntimeEvent(event))
@@ -488,6 +488,24 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       executionTargetId: "codex:owner-account-ref-hash",
       lane: "codex_app_server",
     })
+
+    const child = decodeKhalaRuntimeEvent({
+      ...baseKhalaRuntimeEvent,
+      eventId: "event.child.started.1",
+      kind: "agent.child.started",
+      childAgentId: "child.claude.task.1",
+      childRunId: "run.child.claude.task.1",
+      parentAgentId: "turn.public.schema_test.khala.1",
+      taskRef: "task.claude.tool.1",
+      childKindRef: "agent_kind.claude.general_purpose",
+      description: "raw task description must not enter the contract",
+    })
+    expect(child).toMatchObject({
+      kind: "agent.child.started",
+      childAgentId: "child.claude.task.1",
+      parentAgentId: "turn.public.schema_test.khala.1",
+    })
+    expect(JSON.stringify(child)).not.toContain("raw task description")
   })
 
   test("maps existing AgentRuntime events and AI SDK TextStreamPart fixtures into the Khala event schema", () => {

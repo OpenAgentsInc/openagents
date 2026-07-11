@@ -553,6 +553,9 @@ export const KhalaRuntimeStreamChunkId = KhalaRuntimeSafeRef
 export type KhalaRuntimeStreamChunkId =
   typeof KhalaRuntimeStreamChunkId.Type
 
+export const KhalaRuntimeChildAgentId = KhalaRuntimeSafeRef
+export type KhalaRuntimeChildAgentId = typeof KhalaRuntimeChildAgentId.Type
+
 export const KhalaRuntimeCausalityRef = KhalaRuntimeSafeRef
 export type KhalaRuntimeCausalityRef = typeof KhalaRuntimeCausalityRef.Type
 
@@ -688,6 +691,9 @@ export const KhalaRuntimeEventKind = S.Literals([
   "tool.call",
   "tool.result",
   "tool.error",
+  "agent.child.started",
+  "agent.child.progress",
+  "agent.child.finished",
   "usage.recorded",
   "provider.metadata",
   "file.change",
@@ -712,6 +718,9 @@ export const khalaRuntimeEventKinds: ReadonlyArray<KhalaRuntimeEventKind> = [
   "tool.call",
   "tool.result",
   "tool.error",
+  "agent.child.started",
+  "agent.child.progress",
+  "agent.child.finished",
   "usage.recorded",
   "provider.metadata",
   "file.change",
@@ -827,6 +836,33 @@ export const KhalaRuntimeEvent = S.Union([
     messageSafe: S.String,
     authority: KhalaRuntimeToolAuthority,
     providerExecuted: S.optional(S.Boolean),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("agent.child.started"),
+    childAgentId: KhalaRuntimeChildAgentId,
+    childRunId: KhalaRuntimeSafeRef,
+    parentAgentId: KhalaRuntimeSafeRef,
+    taskRef: S.optional(KhalaRuntimeSafeRef),
+    childKindRef: S.optional(KhalaRuntimeSafeRef),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("agent.child.progress"),
+    childAgentId: KhalaRuntimeChildAgentId,
+    childRunId: KhalaRuntimeSafeRef,
+    parentAgentId: KhalaRuntimeSafeRef,
+    taskRef: S.optional(KhalaRuntimeSafeRef),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("agent.child.finished"),
+    childAgentId: KhalaRuntimeChildAgentId,
+    childRunId: KhalaRuntimeSafeRef,
+    parentAgentId: KhalaRuntimeSafeRef,
+    taskRef: S.optional(KhalaRuntimeSafeRef),
+    finishReason: KhalaRuntimeFinishReason,
+    usage: S.optional(KhalaRuntimeUsage),
   }),
   S.Struct({
     ...KhalaRuntimeEventBase,
