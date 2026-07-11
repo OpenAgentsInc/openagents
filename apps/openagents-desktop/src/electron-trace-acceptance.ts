@@ -60,6 +60,17 @@ export const traceAcceptanceJourney = `(async () => {
   const page = rootPageResponse.page
   const completeness = page.completeness
   if (completeness.source !== completeness.rendered + completeness.redactions + completeness.gaps) return {ok:false,reason:"silent_loss"}
+  const candidateIndex=roots.findIndex(root=>root.threadRef===candidate.root.threadRef)
+  const shortcutTarget=roots[candidateIndex+1]
+  if(shortcutTarget){
+    const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
+    window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',bubbles:true,cancelable:true,...modifier}))
+    const downLoaded=await until(()=>document.querySelector('[data-en-key="history-center-title"]')?.textContent===shortcutTarget.title)
+    if(!downLoaded)return {ok:false,reason:'history_shortcut_down_failed'}
+    window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',code:'ArrowUp',bubbles:true,cancelable:true,...modifier}))
+    const upLoaded=await until(()=>document.querySelector('[data-en-key="history-center-title"]')?.textContent===candidate.root.title)
+    if(!upLoaded)return {ok:false,reason:'history_shortcut_up_failed'}
+  }
   const treeItems = [...document.querySelectorAll('[role="treeitem"]')]
   const agentList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label') === page.agents.length + ' agents')
   if (treeItems.length === 0 || !agentList) return {ok:false,reason:"descendants_hidden",visibleAgentCount:treeItems.length,projectedAgentCount:page.agents.length}

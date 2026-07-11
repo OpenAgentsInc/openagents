@@ -322,9 +322,32 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandPaletteToggled", StaticPayload(null)))),
       )
     }
+    const onHistoryConversationShortcut = (event: KeyboardEvent): void => {
+      const target=event.target
+      const editable=target instanceof HTMLElement&&target.closest("input, textarea, [contenteditable='true']")!==null
+      const platformModifier=bridge?.platform==="darwin"?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey
+      if(event.defaultPrevented||editable||!platformModifier||event.altKey||event.shiftKey||(event.key!=="ArrowUp"&&event.key!=="ArrowDown"))return
+      event.preventDefault()
+      const direction=event.key==="ArrowDown"?1:-1
+      void Effect.runPromise(Effect.gen(function*(){
+        const current=yield* SubscriptionRef.get(state)
+        if(current.workspace!=="chat"||current.history.catalog.roots.length===0)return
+        const roots=current.history.catalog.roots
+        const activeRef=current.history.pendingThreadRef??current.history.page?.rootThreadRef
+        const activeIndex=roots.findIndex(item=>item.threadRef===activeRef)
+        const targetIndex=Math.max(0,Math.min(roots.length-1,(activeIndex<0?(direction>0?-1:1):activeIndex)+direction))
+        if(targetIndex===activeIndex)return
+        if(targetIndex>=current.history.visibleRootCount){
+          yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryCatalogMoreRequested",StaticPayload(null))))
+        }
+        yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected",StaticPayload(roots[targetIndex]!.threadRef))))
+      }))
+    }
     window.addEventListener("keydown", onCommandPaletteShortcut)
+    window.addEventListener("keydown", onHistoryConversationShortcut)
     window.addEventListener("pagehide", () => {
       window.removeEventListener("keydown", onCommandPaletteShortcut)
+      window.removeEventListener("keydown", onHistoryConversationShortcut)
     }, { once: true })
     const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
     yield* renderer.mount(root, program.viewStream, report)

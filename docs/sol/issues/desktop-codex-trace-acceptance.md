@@ -148,6 +148,18 @@ activating that row repeatedly, and ancient restoration is suppressed. The
 same benchmark now measures 4.975ms median, 10.766ms p95, and 20.115ms max
 (25.6× median improvement).
 
+Conversation traversal is also keyboard-complete: `Command+Up/Down` on macOS
+and `Control+Up/Down` elsewhere move through top-level conversations, expand
+the next disclosure batch at its boundary, and load through the existing typed
+selection path. The Electron acceptance journey moves down and back up and
+waits for each selected title to commit; text inputs retain native arrows.
+
+Owner review also removed the redundant top bar entirely: it duplicated stale
+chat-title copy above the authoritative trace heading and permanently consumed
+vertical space for Commands/Settings text buttons. Both actions now use shared
+catalog icons in the sidebar dock, retain accessible labels, and dispatch the
+same typed intents.
+
 The zero-height SplitPane correction was also upstreamed to Effect Native at
 `OpenAgentsInc/effect-native@8361c045a435267b1f8d939df2fcb5cba81317c7`;
 OpenAgents' vendored DOM renderer records that provenance rather than treating

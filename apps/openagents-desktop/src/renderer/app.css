@@ -110,14 +110,18 @@ textarea:focus-visible {
   margin: -4px 0 4px;
 }
 
-[data-en-key^="workspace-"][data-en-variant="icon"] {
+[data-en-key^="workspace-"][data-en-variant="icon"],
+[data-en-key="shell-command-palette-toggle"][data-en-variant="icon"],
+[data-en-key="shell-settings-toggle"][data-en-variant="icon"] {
   width: 32px !important;
   height: 32px !important;
   border-radius: 6px !important;
   color: var(--oa-body) !important;
 }
 
-[data-en-key^="workspace-"][data-en-variant="icon"]:hover {
+[data-en-key^="workspace-"][data-en-variant="icon"]:hover,
+[data-en-key="shell-command-palette-toggle"][data-en-variant="icon"]:hover,
+[data-en-key="shell-settings-toggle"][data-en-variant="icon"]:hover {
   color: var(--oa-ink) !important;
   background: rgba(255, 255, 255, 0.1) !important;
 }
@@ -283,23 +287,6 @@ textarea:focus-visible {
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-/* Floating glass toolbar — direct Electron analogue to the SwiftUI pills. */
-[data-en-key="shell-header"] {
-  min-height: 54px;
-  padding: 7px 9px !important;
-  border: 1px solid var(--oa-line);
-  border-radius: 10px;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 8px 20px rgba(0, 0, 0, 0.16);
-}
-
-[data-en-key="shell-title"] {
-  padding: 0 6px 0 8px;
-  color: var(--oa-ink) !important;
-  font-size: 15px !important;
-  font-weight: 650 !important;
-  letter-spacing: -0.02em;
 }
 
 [data-en-key="shell-surface"],
@@ -560,10 +547,6 @@ textarea:focus-visible {
 @media (max-width: 760px) {
   #openagents-desktop-root {
     padding: 0;
-  }
-
-  [data-en-key="shell-header"] {
-    border-radius: 8px;
   }
 
   [data-en-key="shell-sidebar"] {

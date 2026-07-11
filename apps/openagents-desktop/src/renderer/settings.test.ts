@@ -182,15 +182,15 @@ describe("settingsView (state -> component tree)", () => {
     expect(failedBadge?.tone).toBe("warn")
   })
 
-  test("shell swaps to the settings screen and back via the titlebar toggle", () => {
+  test("shell swaps to the settings screen and back via the sidebar icon", () => {
     const chat = desktopShellView(baseState)
-    expect(nodeByKey(chat, "shell-settings-toggle")?.label).toBe("Settings")
+    expect(nodeByKey(chat, "shell-settings-toggle")?.accessibilityLabel).toBe("Open Settings")
     expect(nodeByKey(chat, "settings-screen")).toBeUndefined()
     expect(nodeByKey(chat, "shell-input")?._tag).toBe("TextField")
 
     const settings = desktopShellView({ ...baseState, workspace: "settings" })
-    expect(nodeByKey(settings, "shell-title")?.content).toBe("Settings")
-    expect(nodeByKey(settings, "shell-settings-toggle")?.label).toBe("Back to chat")
+    expect(nodeByKey(settings, "shell-title")).toBeUndefined()
+    expect(nodeByKey(settings, "shell-settings-toggle")?.accessibilityLabel).toBe("Close Settings")
     expect(nodeByKey(settings, "settings-screen")?._tag).toBe("Card")
     expect(nodeByKey(settings, "settings-connect-codex")?._tag).toBe("Button")
     // the chat surface is swapped out, not stacked under
@@ -318,7 +318,7 @@ describe("typed intent loop end-to-end (settings)", () => {
           ),
         )
 
-        // Open Settings via the SAME IntentRef the titlebar button carries.
+        // Open Settings via the SAME IntentRef the sidebar icon carries.
         const chatView = desktopShellView(yield* SubscriptionRef.get(state))
         const toggle = nodeByKey(chatView, "shell-settings-toggle") as {
           onPress: Parameters<typeof resolveIntentRef>[0]

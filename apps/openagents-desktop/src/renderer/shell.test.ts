@@ -66,15 +66,14 @@ const baseState: DesktopShellState = { ...initialDesktopShellState("electron/dar
 const fixedNow = () => "18:05"
 
 describe("desktopShellView (state -> component tree)", () => {
-  test("renders neutral chat workspace: sidebar, title, transcript, composer", () => {
+  test("renders neutral chat workspace without a duplicate top bar", () => {
     const view = desktopShellView(baseState)
 
     expect(view._tag).toBe("BackgroundGradient")
     expect(view.key).toBe("desktop-liquid-backdrop")
 
-    const title = nodeByKey(view, "shell-title")
-    expect(title?._tag).toBe("Text")
-    expect(title?.content).toBe("New chat")
+    expect(nodeByKey(view, "shell-header")).toBeUndefined()
+    expect(nodeByKey(view, "shell-title")).toBeUndefined()
 
     expect(nodeByKey(view, "shell-welcome-title")).toBeUndefined()
 
@@ -88,6 +87,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "workspace-chat")?._tag).toBe("IconButton")
+    expect(nodeByKey(view, "shell-command-palette-toggle")).toMatchObject({_tag:"IconButton",icon:"Menu",accessibilityLabel:"Open command palette"})
+    expect(nodeByKey(view, "shell-settings-toggle")).toMatchObject({_tag:"IconButton",icon:"Settings",accessibilityLabel:"Open Settings"})
     expect(nodeByKey(view, "workspace-home")?._tag).toBe("IconButton")
     expect(nodeByKey(view, "sidebar-chats-label")?.content).toBe("Codex history · all time")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")

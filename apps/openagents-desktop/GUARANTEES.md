@@ -296,6 +296,18 @@ an ancient selection outside it. On the owner catalog (1,231 roots), the exact
 state-to-view benchmark improved from 127.358ms median / 136.622ms p95 to
 4.975ms median / 10.766ms p95—a 25.6× median reduction.
 
+Keyboard conversation traversal uses `Command+ArrowUp/ArrowDown` on macOS and
+`Control+ArrowUp/ArrowDown` elsewhere. It dispatches the same typed selection
+intent as a row press, loads the target page, and reveals the next 40-row batch
+when traversal crosses the current disclosure boundary. Editable controls keep
+their native arrow behavior. The built-Electron journey proves one down/up
+round trip by waiting for both target titles to commit.
+
+The trace workspace has no duplicate application/header bar. The selected
+trace title and state live only in the workspace heading; Commands and Settings
+are catalog `IconButton`s in the sidebar dock with accessible labels and the
+same typed intents/keyboard command path as before.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

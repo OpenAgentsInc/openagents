@@ -605,51 +605,6 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
   ],
 })
 
-const shellHeader = (state: DesktopShellState): View =>
-  Stack(
-    {
-      key: "shell-header",
-      direction: "row",
-      gap: "3",
-      align: "center",
-      style: {
-        width: "full",
-        paddingLeft: "3",
-        paddingRight: "3",
-        paddingTop: "2",
-        paddingBottom: "2",
-        surface: "glass",
-      },
-    },
-    [
-      Text({
-        key: "shell-title",
-        content: state.workspace === "settings"
-          ? "Settings"
-          : state.workspace === "home"
-            ? "Home"
-            : state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat",
-        variant: "title",
-        color: "textPrimary",
-      }),
-      Spacer({ key: "shell-header-fill", flex: true }),
-      Button({
-        key: "shell-command-palette-toggle",
-        label: "Commands",
-        variant: "ghost",
-        onPress: IntentRef("DesktopCommandPaletteToggled"),
-        a11y: { label: "Open command palette" },
-      }),
-      Button({
-        key: "shell-settings-toggle",
-        label: state.workspace === "settings" ? "Back to chat" : "Settings",
-        variant: "ghost",
-        onPress: IntentRef("DesktopSettingsToggled"),
-        a11y: { label: state.workspace === "settings" ? "Close Settings" : "Open Settings" },
-      }),
-    ],
-  )
-
 const historySidebarItems = (state: DesktopShellState): ReadonlyArray<KeyedView> => {
   const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount)
   const rows=roots.map((thread) => Stack({ key: `sidebar-action-thread-${thread.threadRef}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
@@ -696,6 +651,21 @@ const shellSidebar = (state: DesktopShellState): View =>
           onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("home")),
           surface: "glass",
           style: state.workspace === "home" ? { backgroundColor: "accent" } : {},
+        }),
+        IconButton({
+          key: "shell-command-palette-toggle",
+          icon: "Menu",
+          accessibilityLabel: "Open command palette",
+          onPress: IntentRef("DesktopCommandPaletteToggled"),
+          surface: "glass",
+        }),
+        IconButton({
+          key: "shell-settings-toggle",
+          icon: "Settings",
+          accessibilityLabel: state.workspace === "settings" ? "Close Settings" : "Open Settings",
+          onPress: IntentRef("DesktopSettingsToggled"),
+          surface: "glass",
+          style: state.workspace === "settings" ? { backgroundColor: "accent" } : {},
         }),
       ]),
       Text({ key: "sidebar-chats-label", content: "Codex history · all time", variant: "caption", color: "textMuted" }),
@@ -1069,7 +1039,6 @@ export const desktopShellView = (state: DesktopShellState): View =>
           style: { flex: 1, minWidth: 0, minHeight: 0 },
         },
         [
-          shellHeader(state),
           ...(state.commandPaletteOpen ? [commandPalette()] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
           ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? [Transcript({
