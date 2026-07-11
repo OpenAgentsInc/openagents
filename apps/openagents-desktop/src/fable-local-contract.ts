@@ -55,6 +55,14 @@ export const FableLocalFailureReasonSchema = Schema.Literals([
   "interrupted",
   "timeout",
   "session_failed",
+  /**
+   * The SDK init reported an effective model outside the Fable family
+   * ("IT HAS TO BE FABLE"): the turn fails typed with requested vs effective
+   * in the detail, no substituted output is ever streamed as Fable, and the
+   * lane never rotates accounts on it (rotation is for account/session
+   * failures before content only).
+   */
+  "model_substituted",
 ])
 export type FableLocalFailureReason = typeof FableLocalFailureReasonSchema.Type
 
@@ -82,6 +90,15 @@ export const FableLocalEventSchema = Schema.Union([
     toolName: Schema.String.check(Schema.isMaxLength(120)),
     ok: Schema.Boolean,
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  /**
+   * Effective-model visibility: the model the SDK init actually reported for
+   * this turn. Capability-truthful — the renderer shows model identity from
+   * this event, never from the "Fable" brand alone.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("model_effective"),
+    model: Schema.String.check(Schema.isMaxLength(120)),
   }),
   Schema.Struct({
     kind: Schema.Literal("turn_completed"),
@@ -140,6 +157,14 @@ export const fableLocalTraceNoteText = (
   return `${event.toolName} · ${status}${summary}`
 }
 
+/**
+ * Effective-model caption rendered as a transcript trace line above the
+ * assistant reply (e.g. "Fable · claude-fable-5"). The model half is the
+ * SDK-reported effective model, so the caption is capability-truthful even
+ * though it also carries the lane brand.
+ */
+export const fableLocalModelNoteText = (model: string): string => `Fable · ${model}`
+
 /** Renderer-facing copy for a typed lane failure — no provider text leaks. */
 export const fableLocalFailureMessage = (
   reason: FableLocalFailureReason,
@@ -159,5 +184,7 @@ export const fableLocalFailureMessage = (
       return "The local Fable turn timed out."
     case "session_failed":
       return `The local Fable turn failed${suffix}.`
+    case "model_substituted":
+      return `Fable refused a substituted model${suffix}. No substituted output was shown as Fable.`
   }
 }

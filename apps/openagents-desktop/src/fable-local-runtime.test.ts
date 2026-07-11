@@ -12,6 +12,8 @@ import { join } from "node:path"
 import { FABLE_LOCAL_DELTA_LIMIT, type FableLocalEvent } from "./fable-local-contract.ts"
 import {
   FABLE_LOCAL_ALLOWED_TOOLS,
+  FABLE_LOCAL_DISALLOWED_TOOLS,
+  FABLE_LOCAL_MODEL,
   discoverReadyFableClaudeHomes,
   makeFableLocalRuntime,
   makeFixtureFableLocalQuery,
@@ -138,6 +140,15 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(call.options.permissionMode).toBe("default")
     expect(call.options.allowedTools).toEqual([...FABLE_LOCAL_ALLOWED_TOOLS])
     expect(call.options.allowedTools).not.toContain("Bash")
+    // IT HAS TO BE FABLE: the requested model is pinned, never the account
+    // home's default. Skills are removed from the lane entirely (the Skill
+    // tool is disallowed and no skills are enabled), so a bundled skill can
+    // never auto-trigger and fail against the read-only whitelist.
+    expect(call.options.model).toBe(FABLE_LOCAL_MODEL)
+    expect(call.options.model).toBe("claude-fable-5")
+    expect(call.options.disallowedTools).toEqual([...FABLE_LOCAL_DISALLOWED_TOOLS])
+    expect(call.options.disallowedTools).toEqual(["Skill"])
+    expect(call.options.skills).toEqual([])
     expect(call.options.settingSources).toEqual([])
     expect(String(call.options.cwd)).toStartWith(harness.scratch)
     const env = call.options.env as Record<string, string | undefined>
@@ -287,6 +298,92 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(sink.events.at(-1)?.kind).toBe("turn_failed")
   })
 
+  test("MODEL-LEVEL NO SUBSTITUTION: an init reporting a non-Fable model fails typed, streams nothing, and never rotates", async () => {
+    // Two ready homes prove the no-rotation half: a model substitution is a
+    // provider-side refusal, not an account failure, so the second home must
+    // never be tried.
+    const root = mkdtempSync(join(tmpdir(), "fable-local-model-sub-"))
+    for (const name of [".claude-pylon-a", ".claude-pylon-b"]) {
+      mkdirSync(join(root, name))
+      writeFileSync(join(root, name, "claude-oauth-token"), `token-${name}\n`)
+    }
+    let calls = 0
+    const query: FableLocalQuery = () => {
+      calls += 1
+      return (async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-sub", model: "claude-sonnet-4-6" }
+        // A substituted model's output must NEVER surface as Fable text.
+        yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "substituted output" } } }
+        yield { type: "result", subtype: "success", is_error: false, result: "substituted output" }
+      })()
+    }
+    const runtime = makeFableLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-scratch-")),
+      env: { PYLON_ACCOUNT_HOME_ROOT: root },
+      queryImpl: async () => query,
+    })
+    const sink = collect()
+    const result = await runtime.runTurn({
+      turnRef: "turn-sub", threadRef: "thread-sub", history: [], message: "WHAT MODEL ARE YOU", emit: sink.emit,
+    })
+    expect(result).toEqual({
+      ok: false,
+      reason: "model_substituted",
+      detail: "requested claude-fable-5, effective claude-sonnet-4-6",
+    })
+    expect(calls).toBe(1)
+    // Visible: started, the effective model, the typed failure — zero deltas.
+    expect(sink.events.map(event => event.kind)).toEqual(["turn_started", "model_effective", "turn_failed"])
+    expect(sink.events.some(event => event.kind === "text_delta")).toBe(false)
+    expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-sonnet-4-6" })
+    expect(sink.events[2]).toEqual({
+      kind: "turn_failed",
+      reason: "model_substituted",
+      detail: "requested claude-fable-5, effective claude-sonnet-4-6",
+    })
+  })
+
+  test("an init reporting the Fable model streams normally and emits the effective model", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-fable", model: "claude-fable-5" }
+        yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "I am Fable." } } }
+        yield { type: "result", subtype: "success", is_error: false, result: "I am Fable.", usage: { input_tokens: 3, output_tokens: 4 } }
+      },
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-fable", threadRef: "thread-fable", history: [], message: "WHAT MODEL ARE YOU", emit: sink.emit,
+    })
+    expect(result).toEqual({ ok: true, text: "I am Fable.", totalTokens: 7 })
+    expect(sink.events.map(event => event.kind)).toEqual([
+      "turn_started",
+      "model_effective",
+      "text_delta",
+      "turn_completed",
+    ])
+    expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5" })
+  })
+
+  test("prefix-match tolerates versioned Fable model IDs and dedupes repeated init model reports", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-vers", model: "claude-fable-5-20260701" }
+        // Real sessions can emit more than one init (seen live 2026-07-11):
+        // an unchanged model is not re-announced.
+        yield { type: "system", subtype: "init", session_id: "session-vers", model: "claude-fable-5-20260701" }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+      },
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-vers", threadRef: "thread-vers", history: [], message: "hi", emit: sink.emit,
+    })
+    expect(result).toEqual({ ok: true, text: "ok", totalTokens: null })
+    expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5-20260701" })
+    expect(sink.events.filter(event => event.kind === "model_effective").length).toBe(1)
+  })
+
   test("NO SILENT SUBSTITUTION: no ready account means a typed unavailable result and the SDK is never loaded", async () => {
     const root = mkdtempSync(join(tmpdir(), "fable-local-none-"))
     let sdkLoaded = false
@@ -329,6 +426,7 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
     expect(result).toEqual({ ok: true, text: "Fable local streaming proof.", totalTokens: 49 })
     expect(sink.events.map(event => event.kind)).toEqual([
       "turn_started",
+      "model_effective",
       "text_delta",
       "text_delta",
       "tool_use",
@@ -336,5 +434,6 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
       "text_delta",
       "turn_completed",
     ])
+    expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5" })
   })
 })

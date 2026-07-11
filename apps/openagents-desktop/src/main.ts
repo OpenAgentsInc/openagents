@@ -52,6 +52,7 @@ import {
   decodeFableLocalInterruptRequest,
   decodeFableLocalStartRequest,
   fableLocalFailureMessage,
+  fableLocalModelNoteText,
   fableLocalTraceNoteText,
 } from "./fable-local-contract.ts"
 import {
@@ -476,13 +477,17 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     history,
     message: request.message.trim(),
     emit: turnEvent => {
-      // Persist tool trace lines so the finalized transcript keeps the same
-      // evidence the live stream showed (bounded by the store's note cap).
-      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_result") {
+      // Persist tool trace and effective-model lines so the finalized
+      // transcript keeps the same evidence the live stream showed (bounded by
+      // the store's note cap).
+      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_result" ||
+        turnEvent.kind === "model_effective") {
         store.append(request.threadRef, {
           key: randomUUID(),
           role: "system",
-          text: fableLocalTraceNoteText(turnEvent),
+          text: turnEvent.kind === "model_effective"
+            ? fableLocalModelNoteText(turnEvent.model)
+            : fableLocalTraceNoteText(turnEvent),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         })
       }

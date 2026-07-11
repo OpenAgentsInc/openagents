@@ -52,6 +52,22 @@ import {
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
 /** Read-only chat-turn tool set: no Bash, no Write/Edit, no WebSearch. */
 export const FABLE_LOCAL_ALLOWED_TOOLS = ["Read", "Glob", "Grep"] as const
+/**
+ * The lane's requested model ("IT HAS TO BE FABLE"): the SDK `Options.model`
+ * key accepts a full model ID and its own docs name `'claude-fable-5'` as an
+ * example. Without this the turn silently runs on the account home's default
+ * model (seen live: claude-sonnet-4-6).
+ */
+export const FABLE_LOCAL_MODEL = "claude-fable-5"
+/** Prefix-match tolerance for versioned Fable IDs (e.g. claude-fable-5-…). */
+export const FABLE_LOCAL_MODEL_FAMILY_PREFIX = "claude-fable"
+/**
+ * Skills are removed from this chat lane entirely: `disallowedTools: ["Skill"]`
+ * strips the Skill tool from the model's context (never offered, not
+ * offered-then-denied) and `skills: []` enables no skills, so bundled skill
+ * listings never auto-trigger against the read-only whitelist.
+ */
+export const FABLE_LOCAL_DISALLOWED_TOOLS = ["Skill"] as const
 export const FABLE_LOCAL_MAX_TURNS = 16
 export const FABLE_LOCAL_TIMEOUT_MS = 180_000
 /** Bounded history window prepended when no resumable session exists. */
@@ -255,6 +271,13 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       started = true
       input.emit({ kind: "turn_started" })
     }
+    /**
+     * Last init-reported model already surfaced for THIS turn. Turn-scoped
+     * (not attempt-scoped): real sessions can emit more than one init, and a
+     * rotated-away attempt's init already announced the model (both seen live
+     * 2026-07-11) — an unchanged model is not re-announced.
+     */
+    let announcedModel: string | null = null
 
     /** One SDK session against one isolated account home. Emits stream events
      * but never turn_failed — the rotation loop below owns finalization. */
@@ -312,8 +335,11 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             abortController: abort,
             includePartialMessages: true,
             maxTurns: FABLE_LOCAL_MAX_TURNS,
+            model: FABLE_LOCAL_MODEL,
             permissionMode: "default",
             allowedTools: [...FABLE_LOCAL_ALLOWED_TOOLS],
+            disallowedTools: [...FABLE_LOCAL_DISALLOWED_TOOLS],
+            skills: [],
             settingSources: [],
             ...(resumeSessionId === undefined ? {} : { resume: resumeSessionId }),
           },
@@ -326,6 +352,27 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               sessionId = record.session_id
             }
             emitStarted()
+            // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE FABLE"): the init
+            // message reports the effective model. Emit it for renderer
+            // visibility, then fail typed — before any content can stream —
+            // if it is outside the Fable family. This is a provider-side
+            // substitution, not an account failure, so it never rotates.
+            const effectiveModel = typeof (record as { model?: unknown }).model === "string"
+              ? (record as { model: string }).model
+              : null
+            if (effectiveModel !== null && effectiveModel.length > 0) {
+              if (effectiveModel !== announcedModel) {
+                announcedModel = effectiveModel
+                input.emit({ kind: "model_effective", model: bounded(effectiveModel, 120) })
+              }
+              if (!effectiveModel.startsWith(FABLE_LOCAL_MODEL_FAMILY_PREFIX)) {
+                abort.abort()
+                return finish(failure(
+                  "model_substituted",
+                  `requested ${FABLE_LOCAL_MODEL}, effective ${effectiveModel}`,
+                ))
+              }
+            }
             continue
           }
           if (type === "stream_event") {
@@ -477,7 +524,12 @@ export const FABLE_LOCAL_FIXTURE_ACCOUNT: FableLocalAccountHome = {
  */
 export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
   async function* fixture(): AsyncGenerator<unknown> {
-    yield { type: "system", subtype: "init", session_id: "fable-local-fixture-session" }
+    yield {
+      type: "system",
+      subtype: "init",
+      session_id: "fable-local-fixture-session",
+      model: FABLE_LOCAL_MODEL,
+    }
     yield {
       type: "stream_event",
       event: { type: "content_block_delta", delta: { type: "text_delta", text: "Fable local " } },

@@ -111,6 +111,14 @@ describe("makeLocalHarnessChatHost", () => {
       event: { kind: "turn_started", thread: threadWithUserNote },
     })
     await settle()
+    // Effective-model visibility: the SDK-reported model renders as a caption
+    // trace line ("Fable · claude-fable-5") — model identity never comes from
+    // the lane brand alone.
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "model_effective", model: "claude-fable-5" },
+    })
+    await settle()
     harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "Hello " } })
     await settle()
     harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "world" } })
@@ -132,6 +140,7 @@ describe("makeLocalHarnessChatHost", () => {
     // finalized persisted thread carries.
     expect(bodies).toEqual([
       "user:hello fable",
+      "system:Fable · claude-fable-5",
       "system:Read · started · notes.md",
       "system:Read · ok",
       "assistant:Hello world",

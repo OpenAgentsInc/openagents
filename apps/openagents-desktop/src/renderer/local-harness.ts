@@ -14,6 +14,7 @@
 import type { DesktopMessage, DesktopThread } from "../chat-contract.ts"
 import {
   fableLocalFailureMessage,
+  fableLocalModelNoteText,
   fableLocalTraceNoteText,
   type FableLocalAvailability,
   type FableLocalEventEnvelope,
@@ -109,6 +110,20 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
                 timestamp: noteTimestamp(now()),
               }
             : { ...assistantNote, text: assistantNote.text + event.text }
+          project()
+          return
+        }
+        if (event.kind === "model_effective") {
+          // Effective-model caption above the assistant reply ("Fable ·
+          // claude-fable-5") — model identity comes from the SDK init report,
+          // never from the lane brand alone. Main persists the same line, so
+          // finalize does not reshuffle the transcript.
+          traceNotes.push({
+            key: `${turnRef}-trace-${traceNotes.length}`,
+            role: "system",
+            text: fableLocalModelNoteText(event.model),
+            timestamp: noteTimestamp(now()),
+          })
           project()
           return
         }
