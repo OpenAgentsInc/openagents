@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.19",
+    version: "2026-07-11.20",
     contracts: [
       {
         contractId: "openagents_desktop.seam.replaceable_owned_correlated_services.v1",
@@ -618,6 +618,57 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Settings view/intent, Runtime Gateway, and Electron-boundary suites plus Desktop typecheck/build enforce the visible tokenless path without GUI automation.",
+      },
+      {
+        contractId: "openagents_desktop.chat.fable_local_lane_no_substitution.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "local-mode composer harness lanes",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "owner-codex-session",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "In local (not-signed-in) mode, selecting Fable runs a real streaming Claude turn on this machine with zero login on an isolated sibling Claude account home (never the default ~/.claude); selecting a harness never routes to the cloud gateway or another provider; an unavailable lane renders a disabled chip with its reason and a Send that does not accept the action.",
+        authorityBoundary:
+          "The renderer receives only bounded, path-redacted typed stream events and typed availability/failure reasons — never tokens, account homes, credentials, raw SDK payloads, or provider error bodies. Main owns thread history; the renderer supplies only the new message.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "fable_local.runtime_isolation_and_rotation",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            description:
+              "Proves sibling-home discovery excludes the default ~/.claude, read-only headless SDK options, bounded/redacted event mapping, same-lane account rotation only before content, and that no ready account yields a typed unavailable result with the SDK never loaded.",
+          },
+          {
+            id: "fable_local.renderer_no_silent_substitution",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
+            description:
+              "Proves fable sends stream progressively with trace lines, codex and unavailable-fable sends are typed refusals, and the legacy gateway sendMessage is reachable only by a laneless send.",
+          },
+          {
+            id: "fable_local.evidence_gated_composer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves unavailable lanes render disabled chips with visible captions, Send disables for the selected dead lane, submit refuses while keeping the draft, and selection auto-moves off a dead default.",
+          },
+        ],
+        verification:
+          "The Desktop verify gate runs the runtime/renderer/shell suites and the fixture-driven smoke journey (select Fable, send, observe progressive text, tool trace, finalize) inside built Electron.",
       },
     ],
   };
