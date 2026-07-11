@@ -496,6 +496,19 @@ textarea:focus-visible {
   gap: 2px;
 }
 
+/* The right inspector pane matches the left sidebar type scale: 13px rows,
+   11px section labels. NavRail buttons otherwise inherit the 16px document
+   default, which made the right sidebar visibly larger than the left. */
+[data-en-key="history-agent-title"] {
+  margin: 0;
+  padding: 14px 8px 3px;
+  color: var(--oa-muted) !important;
+  font-size: 11px !important;
+  font-weight: 640 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 [data-en-key^="history-agent-"][data-en-tag="Button"] {
   display: flex;
   width: 100%;
@@ -509,6 +522,8 @@ textarea:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: var(--oa-body);
+  font-size: 13px;
+  font-weight: 520;
   text-align: left;
 }
 
@@ -567,6 +582,25 @@ textarea:focus-visible {
 [data-en-key="history-agent-tree-region"] {
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+[data-en-key="history-item-title"] {
+  margin: 0;
+  font-size: 13px !important;
+  font-weight: 620 !important;
+  line-height: 1.4 !important;
+}
+
+[data-en-key="history-item-summary"],
+[data-en-key^="history-item-field-value-"],
+[data-en-key="history-item-back"] {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+[data-en-key="history-item-source"],
+[data-en-key^="history-item-field-label-"] {
+  font-size: 11px !important;
 }
 
 [data-en-key="history-item-fields"] {
