@@ -393,7 +393,14 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       }))))
     },
   }
-}, (stage, context) => desktopCorrelationJournal.record(stage, context), () => runtimeLiveSubscriptions)
+}, (stage, context) => desktopCorrelationJournal.record(stage, context), () => runtimeLiveSubscriptions, () => {
+  const service = hostLifecycle.sync()?.interactions() ?? null
+  if (service === null) return null
+  return {
+    list: threadRef => Effect.runSync(service.list(threadRef)),
+    decide: command => Number(Effect.runSync(service.decide(command))),
+  }
+})
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame

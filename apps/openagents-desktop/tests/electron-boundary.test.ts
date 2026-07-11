@@ -103,6 +103,8 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("createDesktopRuntimeLiveSubscriptions")
     expect(main).toContain("await runtimeLiveSubscriptions.reset()")
     expect(main).toContain("() => runtimeLiveSubscriptions")
+    expect(main).toContain("hostLifecycle.sync()?.interactions()")
+    expect(main).toContain("service.decide(command)")
     expect(main).not.toContain("conversation.live.update")
   })
 
