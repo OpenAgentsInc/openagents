@@ -22,7 +22,7 @@ When documents disagree, use this order:
    [`INVARIANTS.md`](../../INVARIANTS.md) for workspace/repository law.
 2. Owning schemas, behavior contracts, Source Authority, product promises, and
    runtime policy for enforceable behavior.
-3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 27, for current product
+3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 28, for current product
    direction, priority, R0–R7 gates, and issue disposition.
 4. Live GitHub issue state and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) for
    current ownership and collision avoidance.
@@ -45,6 +45,9 @@ roadmap; never repeat a stale claim merely because it is written here.
   Native renderer, host-owned Runtime Gateway over existing Pylon/Khala Sync/
   workspace services, early mobile conversation continuation, and the fastest
   F0–F7 delivery path.
+- [`issues/desktop-codex-subagent-history.md`](./issues/desktop-codex-subagent-history.md)
+  — #8674 P0 contract for lossless historical Codex parent/subagent/tool
+  rendering and the Desktop Agents/Item inspector.
 - [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
   — exhaustive legacy capability disposition, Effect Native destination,
   remote-workroom boundary, ordered waves, and physical-device acceptance.

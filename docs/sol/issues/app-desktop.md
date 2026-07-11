@@ -11,6 +11,9 @@
   [`../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
 - Bounded leaves:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- P0 historical conversation/subagent slice:
+  [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
+  (#8674)
 
 ## Outcome
 
@@ -30,8 +33,9 @@ The greenfield app now has:
 
 - hardened Electron sandbox/isolation/navigation/permission boundaries;
 - a minimal Effect Native conversation workspace;
-- local bounded thread persistence, recent read-only Codex history, and
-  host-held gateway completion with honest configuration failure;
+- local bounded thread persistence, a deliberately lossy recent read-only
+  Codex history projection, and host-held gateway completion with honest
+  configuration failure;
 - project-root selection, bounded root listing/read/edit/save with conflict and
   atomic-write checks, plus typed read-only Git status/diff;
 - a closed command registry and palette;
@@ -52,21 +56,29 @@ The greenfield app now has:
 - visible Effect Native Settings session phase and typed sign-in/sign-out
   intents over argument-free Runtime Gateway commands, with honest disabled
   in-flight state and no credential/callback projection.
+- visible authoritative Sync conversations (#8670), the matching mobile
+  continuation (#8671), and a shared confirmed provider-neutral timeline reader
+  (#8672); #8673 landed its schema-bounded Runtime Gateway v3 timeline query at
+  `bf4037e923` without claiming visible UI.
 
 The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
 bundle, and real-Electron fixture smoke. The current architecture receipt is
 `f49a66b4aa`; this is still fixture/development proof, not a signed/live-product
 claim.
 
-Not yet claimed: physical Desktop auth acceptance, authoritative Sync threads,
-complete streamed session state,
+Not yet claimed: physical Desktop auth acceptance, complete streamed session
+state,
 full workbench, visible authoritative Fleet cockpit, signed distribution, live
-owner account success, or legacy retirement.
+owner account success, lossless historical Codex/subagent/tool rendering, or
+legacy retirement. The current local reader excludes all child sessions and
+non-message items, applies a 24-hour window, and hydrates only a bounded tail;
+#8674 is the P0 correction.
 
 ## Required product shape
 
 1. **Work and activity:** persistent conversations/sessions, context, requests,
-   approvals, outcomes, and next actions.
+   approvals, outcomes, next actions, and lossless historical parent/subagent
+   activity.
 2. **Coding workbench:** projects/sessions, streamed agent timeline, rich
    composer/context, files/editor, Git review, bounded terminal, commands/
    keybindings, providers/models/MCP/permissions, settings, and diagnostics.
@@ -83,7 +95,10 @@ it does not become fabricated permanent status chrome.
   and removal or completion of dormant/fake affordances.
 - **D1:** authenticated Khala Sync session/conversation continuity with streamed
   reasoning/tools/plan/questions/permissions/errors/usage, interrupt/resume,
-  rich composer, history, context, and mobile continuation.
+  rich composer, history, context, and mobile continuation; closed #8673 plus
+  #8674 add the provider-native historical graph, complete parent/child/tool
+  timeline, completeness accounting, and the three-pane Agents/Item inspector before
+  broader D2–D6 breadth.
 - **D2:** projects/sessions/routes/tabs/search/archive, command registry/palette,
   conflict-safe keybindings, menu, deep links, single instance, and restore.
 - **D3:** recursive files, grants, watcher/search/cache, edit/save/conflict,

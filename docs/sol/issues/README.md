@@ -10,7 +10,7 @@ in source and live body differ, reconcile both before using the body for
 dispatch.
 
 As of 2026-07-10 there are seven open `roadmap:sol` records under one program
-parent. Older Sarah-first/P1 labels do not override Master Revision 27.
+parent. Older Sarah-first/P1 labels do not override Master Revision 28.
 
 ## P0 — reliable Desktop/mobile fleet software
 
@@ -28,6 +28,15 @@ parent. Older Sarah-first/P1 labels do not override Master Revision 27.
   projected into both clients; not another program or epic.
 - [`fc-5-dogfood.md`](./fc-5-dogfood.md) — #8640 real Codex+Claude runtime proof
   followed by R3/R7 client acceptance.
+
+Active bounded Desktop D1 leaf:
+
+- [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md) —
+  #8674 lossless historical Codex parent/subagent/tool rendering and the
+  opinionated Desktop Agents/Item inspector.
+
+Closed #8673 at `bf4037e923` is the schema-bounded Runtime Gateway v3 confirmed
+timeline seam consumed by #8674; it explicitly did not add visible UI.
 
 Closed Fleet substrate retained for reference:
 

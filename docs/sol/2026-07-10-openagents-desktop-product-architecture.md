@@ -9,6 +9,8 @@
 - Evidence:
   [ChatGPT, Claude, and OpenCode adaptation analysis](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md),
   [OpenCode source teardown](../teardowns/2026-07-10-opencode-desktop-app-teardown.md),
+  [Codex subagent rendering analysis](../teardowns/2026-07-10-codex-subagents-rendering-analysis.md),
+  [OpenAgents subagent design frame](../teardowns/2026-07-10-openagents-subagents-design.md),
   [Desktop parity audit](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md),
   [current Desktop guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -243,6 +245,29 @@ thread detail, stream/outcome state, follow-up/interrupt, and Sync health. It
 does not wait for mobile files, terminal, preview, writeback, full Fleet, push,
 or polish. Those build on the proven seam.
 
+### A7b. Historical Codex/subagent fidelity is part of D1, not later polish
+
+The existing local Codex history bridge is a fast top-level conversation
+index, not the historical product contract: it filters child sessions, drops
+non-message items, applies a 24-hour window, and hydrates only a bounded tail.
+Issue #8674 replaces/extends that lossy projection over #8673's landed
+Runtime Gateway v3 confirmed-timeline seam (`bf4037e923`).
+
+Desktop uses three coordinated projections over one selected history: the
+existing top-level conversation list, a full selected parent/child timeline,
+and a right-side Agents/Item inspector containing the complete historical tree
+and structured item detail. Completed children remain visible. Tool,
+reasoning, collaboration, error, usage, and final items are first-class. At
+narrow window widths the inspector becomes an explicit drawer rather than
+silently truncating descendants.
+
+Accuracy is an audited equation for supported provider versions: every source
+item is rendered once, explicitly redacted, or surfaced as a counted gap.
+Unknown/corrupt/missing/unloaded data is visible. Local provider history stays
+owner-private and is not Sync-uploaded by default. The renderer still receives
+only schema-decoded, paged projections—never raw JSONL, file paths, raw runtime
+events, credentials, or filesystem authority.
+
 ### A8. Workspace authority stays local and capability-shaped
 
 Files, Git, review, and PTY are runtime services, not renderer privileges.
@@ -374,18 +399,24 @@ implementation lane must guess the renderer/runtime/Sync boundary.
 Exit: both clients resolve the same server-derived owner/scope, can be revoked
 independently, and show no cached row as live before reconciliation.
 
-### F2 — one real conversation, continued on mobile
+### F2 — one real conversation plus lossless history/subagents
 
 - Replace local five-thread/request-response authority with `chat_thread` /
   `chat_message` and the provider-neutral runtime event algebra.
 - Ship streaming, interrupt, reconnect, terminal outcome, and minimum composer
   context on Desktop.
 - Ship the narrow mobile continuation slice defined in A7 concurrently.
+- Consume #8673's landed confirmed agent-timeline gateway query, then complete
+  #8674's provider-native history/graph projection, complete parent/child/tool
+  timeline, and three-pane Agents/Item inspector from A7b.
 - Run cross-client restart, duplicate, cursor-gap, revocation, and lost-ACK
-  fixtures.
+  fixtures plus V1/V2 nested-agent/tool/completeness/large-history fixtures.
 
 Exit: one real Desktop turn continues on mobile with matching refs/versions and
-one safe mobile action converges back. This is the earliest product milestone.
+one safe mobile action converges back; one real historical Codex parent with
+simultaneous children and a nested grandchild is fully inspectable with zero
+gaps for the supported corpus. Together these are the earliest product
+milestone.
 
 ### F3 — projects, sessions, and the shared command plane
 

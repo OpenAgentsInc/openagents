@@ -1,8 +1,8 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-10 (one program epic, executable issue queue, no paused backlog)
-- Revision: 27
+- Updated: 2026-07-10 (lossless Codex history and subagent rendering priority)
+- Revision: 28
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -13,6 +13,9 @@
   [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
 - Mobile MVP/remote-workroom port plan:
   [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
+- Codex subagent rendering evidence and OpenAgents design frame:
+  [`Codex analysis`](../teardowns/2026-07-10-codex-subagents-rendering-analysis.md),
+  [`OpenAgents frame`](../teardowns/2026-07-10-openagents-subagents-design.md)
 
 ## Owner decisions encoded here
 
@@ -113,6 +116,19 @@
     not remain open as “paused” queues. A real defect, incident, privacy request,
     or newly authorized product outcome starts as a new bounded issue under the
     actual owning program.
+15. **Lossless historical Codex/subagent rendering is a P0 Desktop D1 exit.**
+    #8674 extends the existing local Codex-conversation list and the confirmed
+    agent-timeline seam into an opinionated three-pane history workspace: top-
+    level conversations on the left, the selected parent/child transcript in
+    the center, and a persistent Agents/Item inspector on the right. Every
+    supported historical message, reasoning summary, plan, tool call/result,
+    collaboration edge, child/grandchild thread, status, error, usage fact, and
+    final outcome is rendered once or represented by an explicit redaction/gap.
+    Completed subagents remain inspectable forever; in-progress work is never
+    hidden. This is required before broad D2–D6 breadth, not optional Fleet
+    polish. #8673 landed the bounded Runtime Gateway v3 timeline seam at
+    `bf4037e923`; #8674 now owns the provider-native history/graph projection
+    and visible UI.
 
 ## The product in one sentence
 
@@ -1049,16 +1065,28 @@ reconciliation). These remain fixture/development proof: the smoke does not
 prove live model completion, real owner authentication, authoritative Sync,
 or a signed product. The parity audit's 1 landed / 6 partial / 3 scaffold / 10
 absent score is a pinned earlier baseline, not a live rescore; the new slices
-narrow D2/D3 but do not complete the everyday workbench.
+narrow D2/D3 but do not complete the everyday workbench. The visible Desktop
+chat now selects authoritative confirmed Sync conversations (#8670), mobile
+continues the same visible conversation (#8671), and the shared client projects
+a bounded confirmed provider-neutral agent timeline (#8672). #8673 now exposes
+that confirmed timeline through Runtime Gateway v3 at `bf4037e923`. None closes
+historical Codex fidelity: the local `codex-history.ts` path still filters
+child sessions,
+projects only user/assistant messages, caps discovery to files changed in the
+last 24 hours, reads a 96 KiB tail, and shows five/forty messages. It drops
+reasoning, tools, collaboration, lifecycle, usage, and errors by design. #8674
+is the P0 replacement/extension of that lossy projection.
 
 #### Required product shape
 
 OpenAgents Desktop is one coherent application with three depths:
 
 1. **Work and activity** — persistent conversations/sessions, active context,
-   follow-ups, requests, approvals, outcomes, and next actions.
+   follow-ups, requests, approvals, outcomes, next actions, and complete
+   historical parent/subagent activity.
 2. **Coding workbench** — projects/sessions, streamed agent timeline, rich
-   composer, files/editor, Git diff/review/comments, terminal, commands,
+   composer, lossless reasoning/tool/collaboration history, files/editor, Git
+   diff/review/comments, terminal, commands,
    providers/models/MCP/permissions, settings, diagnostics, and desktop
    lifecycle.
 3. **Fleet cockpit** — active FleetRun, worker/account/capacity state,
@@ -1068,6 +1096,52 @@ OpenAgents Desktop is one coherent application with three depths:
 Conversation remains the quiet default. The workbench and Fleet cockpit are
 fast to open through projects, tabs, commands, and explicit active state; they
 do not become permanent developer/proof chrome around every conversation.
+
+#### Opinionated historical subagent rendering
+
+The Desktop conversation workspace uses a stable three-pane hierarchy when a
+Codex history has subagents or inspectable tool detail:
+
+- **Left — conversations:** retain the current top-level list, add search/
+  paging and descendant/activity counts, and keep children attached to their
+  parent instead of presenting them as unrelated chats.
+- **Center — transcript:** show the selected parent or child thread at full
+  width with distinct typed items for text, reasoning summary, plan/todo,
+  question/approval, tool start/result/error, collaboration lifecycle, usage,
+  artifacts, and terminal outcome. Selecting a child changes this center
+  transcript; the topology remains visible.
+- **Right — Agents / Item inspector:** show the complete historical tree—parent,
+  children, and grandchildren—with path/id, role/nickname, lifecycle, effective
+  model/reasoning, last activity, and child counts. Selecting an event shows its
+  structured details in the same rail. The rail is collapsible/resizable; at a
+  narrow window width it becomes an explicit drawer, never silent truncation.
+
+An optional All activity mode interleaves the tree by source timestamp while
+preserving per-thread sequence and labeling concurrency. It never fabricates a
+causal total order across simultaneous threads. Completed, interrupted,
+errored, shutdown, and missing descendants remain inspectable; the UI is not a
+“currently running” status feed.
+
+Use the lightest hierarchy that works: whitespace/dividers for ordinary
+timeline siblings, recessed rows for nested agent/tool detail, and cards only
+for independently interactive blocks. Active tree state uses text/background
+contrast without font-weight changes. Status is never color-only; tree,
+inspector, drawer, and return-to-parent flows are keyboard/screen-reader
+operable.
+
+“100% accurate” has an enforceable meaning: for the pinned supported Codex V1
+and V2 history versions, every authorized source item is rendered exactly once,
+explicitly redacted under an existing security rule, or surfaced as a visible
+gap. Inaccessible chain-of-thought and data Codex never persisted are outside
+the claim. Unknown versions/types, corrupt lines, missing children, clock skew,
+and unloaded pages are disclosed with exact counts; they are never dropped,
+summarized away, or hidden behind a fixed 24-hour/five-message/six-agent cap.
+Provider-native local history remains owner-private and is not uploaded to
+Khala Sync by default.
+
+The full contract, acceptance corpus, and F1–F5 landing order live in
+[`issues/desktop-codex-subagent-history.md`](./issues/desktop-codex-subagent-history.md)
+(#8674).
 
 #### Typed action and cross-device control contract
 
@@ -1097,7 +1171,7 @@ do not become permanent developer/proof chrome around every conversation.
 | Gate | Scope | Exit |
 | --- | --- | --- |
 | D0 — truthful green baseline | Keep shared contracts green; remove or finish dormant Review/Terminal/Inbox/Fleet names and stale docs; isolate smoke state and distinguish live, unconfigured, and fixture receipts | Typecheck, tests, bundle, isolated first-run Electron smoke, and route/capability manifest are green and agree |
-| D1 — OpenAgents + Sync conversation runtime | Establish the tokenless renderer → host-owned Desktop Runtime Gateway boundary; replace five local-only threads and request/response chat with authoritative `chat_thread`/`chat_message` identity; stream text/reasoning/tools/plan/todo/questions/permissions/approvals/errors/usage with connected/heartbeat/stale/disposed/terminal semantics, bounded replay/coalescing, interrupt/resume/reconnect, minimum rich composer/context, and the narrow early-mobile continuation slice | One real authenticated stream survives restart/reconnect and continues on mobile with matching owner, thread/message refs, versions, event cursor, phase, and durable outcome; mobile submits one safe follow-up or interrupt and both clients reconcile revocation, cursor gap, duplicate delivery, and lost acknowledgement without invented completion |
+| D1 — OpenAgents + Sync conversation runtime and lossless history | Establish the tokenless renderer → host-owned Desktop Runtime Gateway boundary; replace five local-only threads/request-response chat with authoritative `chat_thread`/`chat_message` identity; stream text/reasoning/tools/plan/todo/questions/permissions/approvals/errors/usage with connected/heartbeat/stale/disposed/terminal semantics, bounded replay/coalescing, interrupt/resume/reconnect, minimum rich composer/context, and the narrow early-mobile continuation slice; consume closed #8673 and complete #8674 so provider-native historical Codex conversations render every supported parent/child item, nested agent topology, tool detail, completeness/gap state, paging, and right-side inspection without silent caps | One real authenticated stream survives restart/reconnect and continues on mobile with matching refs/versions/cursor/phase/outcome; mobile submits one safe follow-up or interrupt; and a real historical Codex conversation with simultaneous children plus a nested grandchild passes `source = rendered + explicit redactions + explicit gaps` with zero gaps for the pinned V1/V2 corpus, complete selectable child transcripts/tools, and responsive accessible three-pane restoration |
 | D2 — projects, sessions, commands | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore | Every global/session/workbench action uses the command registry or has an explicit bounded exception |
 | D3 — coding workbench | Recursive lazy tree, capability grants, watcher/cache/search, edit/save/dirty/reload, file tabs and selected ranges, typed Git status/diff, review/comments/revert, interactive workspace-bounded PTY tabs with reconnect/teardown | Select a project, edit/save, review the diff, add context, run a bounded terminal, steer the work through a typed control, and resume after restart |
 | D4 — runtime and settings | OpenAgents sign-in; provider account custody; runtime/model catalog and selection; MCP auth/enable state; enforced permissions; themes/fonts/shell/layout; locale/accessibility; notifications/sounds; diagnostics/recovery/support | Settings mutate real host/runtime state, unavailable actions explain why, and no credential/private payload reaches renderer logs or public evidence |
@@ -1182,12 +1256,12 @@ universe.
 
 ## Canonical open issue set
 
-There are **six open `roadmap:sol` records under one program parent**. #8566
+There are **seven open `roadmap:sol` records under one program parent**. #8566
 is the sole program epic. #8652 remains closed and outside the active program;
 its portal repairs are production evidence, not an active burn item. Closed
-#8638, #8639, and #8647–#8649 remain landed substrate. #8653 is a completed
-bounded Desktop leaf. Reconcile live labels, issue bodies, and claims before
-starting a slice.
+#8638, #8639, and #8647–#8649 remain landed substrate. #8653 and #8670–#8673
+are completed bounded conversation/timeline leaves. Reconcile live labels,
+issue bodies, and claims before starting a slice.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
@@ -1197,6 +1271,7 @@ starting a slice.
 | **P0 active proof** | #8640 | Real simultaneous Codex + Claude runtime burn, then R3/R7 client receipt |
 | **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
+| **P0 D1 product slice** | #8674 | Lossless historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector |
 
 Closed `wontfix` / not-planned and removed from `roadmap:sol`: #8595, #8610,
 #8634, #8635, #8642, #8643, #8646, and #8650. They are historical tombstones,
@@ -1206,7 +1281,7 @@ bounded issues under the owning program.
 ## Execution order
 
 1. Land the Desktop architecture freeze and reconcile #8566/#8574/#8597/
-   #8640 claims to Revision 27. Preserve R0 on both clients: green clean-
+   #8640 claims to Revision 28. Preserve R0 on both clients: green clean-
    state builds/tests/smokes, honest capability manifests, no fake authority,
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
@@ -1218,11 +1293,16 @@ bounded issues under the owning program.
    exact authenticated phases, and fault fixtures. Desktop `node:sqlite` and
    mobile Expo SQLite adapters are landed over the shared store core; do not
    invent a new Sync engine or app-local entity model.
-3. Implement F2/D1 as the first product milestone: one provider-neutral real
-   streamed durable conversation through the host-owned Desktop Runtime
-   Gateway, immediately continued on mobile with matching refs/versions/phases
-   and one safe follow-up or interrupt. This proof precedes broad Desktop
-   workbench parity and broad mobile remote-workroom UI.
+3. Implement F2/D1 as the first product milestone: consume #8673's landed
+   confirmed Runtime Gateway v3 timeline query, then complete #8674's lossless
+   provider-native Codex history/graph projection and visible three-pane
+   subagent/tool inspector.
+   In parallel, finish one provider-neutral real streamed durable conversation
+   through the host-owned Desktop Runtime Gateway, immediately continued on
+   mobile with matching refs/versions/phases and one safe follow-up or
+   interrupt. The complete historical subagent receipt and the live two-client
+   conversation proof both precede broad Desktop D2–D6 workbench breadth and
+   broad mobile remote-workroom UI.
 4. After the shared seam is frozen, run Desktop F3/F4 (projects/sessions,
    commands, files/editor/Git/review/PTY) and mobile F4 (repository/thread,
    managed workroom, compact files/changes/terminal/preview/artifacts/
@@ -1311,6 +1391,12 @@ bounded issues under the owning program.
     complete real Desktop conversation must continue on mobile under R1/R2
     before broad D3–D6 parity can be reported as the product path. Later mobile
     remote-workbench breadth consumes that seam rather than rebuilding it.
+19. **History completeness is measured, not implied by polish.** For supported
+    Codex history versions, every source item belongs to exactly one of
+    rendered, explicitly redacted, or explicit gap. Unknown/corrupt/missing/
+    unloaded state carries counts and reasons. A beautiful agent tree over a
+    bounded five-message tail, top-level-only sessions, or silent event drops
+    is a failed #8674 implementation.
 
 ## Completion reporting
 
@@ -1347,7 +1433,7 @@ revision diary or restore the old 30-item phase queue.
 
 **Historical snapshot.** The facts below describe the mid-day state before the
 owner's Desktop/mobile reliability reset. Any “in flight,” “P0,” or sequencing
-language here is superseded by Revision 27 and the disposition table above.
+language here is superseded by Revision 28 and the disposition table above.
 
 Factual status updates since the last Sol reconciliation (Fable lane,
 evidence on the named issues):
@@ -1386,5 +1472,5 @@ evidence on the named issues):
   in flight.
 
 *Editing note: this factual reconciliation was written by the **Fable** lane at
-explicit owner request. Revision 27 preserves it as evidence but supersedes its
+explicit owner request. Revision 28 preserves it as evidence but supersedes its
 sequencing with the reliable Desktop/mobile program above.*
