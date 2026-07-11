@@ -3,8 +3,9 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete)
-- Revision: 56
+  CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete; CUT-16
+  shared composer/runtime-interaction authority active)
+- Revision: 57
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -646,6 +647,18 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   the proof accidentally. CUT-15 is closed at `5d36b73ad2`; signed release
   packaging remains CUT-26. See
   [`CUT-15 receipt`](./2026-07-11-cut-15-canonical-command-registry-receipt.md).
+- CUT-16 now reuses the rich shared composer kernel through a private,
+  restart-safe coding-draft envelope with ref-only repository/editor/diff
+  context, explicit target readiness, attachment admission, and idempotent
+  submission/retry lifecycle. Shared continue/retry/close clients route to the
+  existing durable authority, whose controls are now fenced to the stored
+  provider lane. A new private runtime-interaction contract plus Sync entity,
+  migration 0062, server admission, decision idempotency/expiry, live-only
+  client read model, and canonical question/approval/plan timeline projection
+  are active through `1875b06cac`. Desktop/mobile host/UI adoption,
+  provider-side consumption, persistence adapters, accessibility/revocation/
+  restart tests, and named live/physical receipts remain open. See
+  [`CUT-16 receipt`](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

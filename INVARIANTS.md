@@ -822,6 +822,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   suppression; the renderer can dispatch only the decoded typed intent. The
   isolated built-host second-process receipt enforces this boundary. Release
   signing and distribution remain CUT-26 work.
+- Rich coding drafts use `@openagentsinc/composer-state`; apps must not create a
+  second editor/attachment state machine. The private
+  `openagents.coding_composer_draft.v1` snapshot carries only stable context and
+  target refs around the structured document. Submission refuses unfinished
+  attachments, stale context, and unavailable/revoked/offline targets. Exact
+  duplicate queueing is idempotent, and retry preserves submission/intent/
+  idempotency identity. Its bounded receipt never carries prompt, attachment,
+  account, path, editor, or diff content.
+- Provider questions, tool approvals, and plan reviews use the private
+  `openagents.runtime_interaction.v1` authority and `runtime_interaction` Sync
+  entity. New requests must match authenticated owner, exact thread/turn,
+  durable provider lane, next event sequence, legal turn state, and a future
+  server deadline. Decisions are kind-matched and exact-ref/idempotency-bound;
+  exact retry reconciles, conflicting reuse rejects, and late/revoked decisions
+  never resolve. Full post-images project only to the exact private thread;
+  clients withhold cached rows unless that thread scope is live.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

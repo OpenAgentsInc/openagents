@@ -99,6 +99,15 @@ command authority. CUT-16 composer/runtime controls must name their semantic
 intents here, then use CUT-07 outcomes for consequential cross-device work
 rather than adding provider-specific shortcuts or URL authority.
 
+CUT-16 [#8696] now supplies the first portable composer/interaction substrate:
+one private ref-bound rich draft, durable continue/retry/close controls, and a
+provider-neutral question/tool-approval/plan-review lifecycle whose exact
+decision, duplicate, conflict, expiry, revocation, and live-only projection
+semantics are shared by Desktop and mobile clients. This does not yet make the
+provider execution portable: app hosts, Pylon/provider consumption, draft
+persistence, and live physical receipts remain open, and a default
+non-interactive provider policy must not be relaxed merely to create a demo.
+
 ### Episodes 248–249 calibration
 
 Remote-first must preserve the predictability and supervision target. Closed
