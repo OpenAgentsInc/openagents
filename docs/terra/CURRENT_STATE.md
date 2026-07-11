@@ -30,8 +30,8 @@ real user question.
 
 | Area | Current behavior | Boundary | Not yet claimed |
 | --- | --- | --- | --- |
-| Liquid Glass | SwiftUI iOS 26 `.glassEffect`, material fallback on older iOS; one native `GlassComposer` is the only visible Khala input | `openagents-liquid-glass` native module embedded in build 116 | A React Native outline fallback or a duplicate composer |
-| Khala conversation | Persona-neutral generic streaming conversation at `/api/khala/chat`; New chat clears only the in-memory local transcript | Server-owned `openagents/khala` routing; typed native-composer intents | Sync, Fleet/account authority, receipts, local cache authority, or backing-model disclosure |
+| Liquid Glass | One Effect Native `Toolbar`/`Composer` tree; renderer-internal SwiftUI glass on iOS 26+ and accessible RN material fallback on Android/older iOS | `@effect-native/render-rn`; no app-local native module or app-owned RN controls | Physical installed-product glass/keyboard/safe-area acceptance remains CUT-27 #8707 |
+| Khala conversation | Persona-neutral generic streaming conversation at `/api/khala/chat`; New chat clears only the in-memory local transcript | Server-owned `openagents/khala` routing; typed Effect Native composer intents | Sync, Fleet/account authority, receipts, local cache authority, or backing-model disclosure |
 | Named-persona path | Removed from the mobile application source, assets, tests, and state model under the rev-24 pause | Existing server routes remain compatibility substrate outside this client | A named-assistant front door or local relationship catalog |
 | Files | No folder browser | Mobile privacy/runtime boundary | Raw device filesystem browsing |
 

@@ -92,14 +92,18 @@ owned by Effect Native contracts. Remove the app-local
 
 - The demand register and import-boundary oracle describe the actual tree and
   fail on app-local React/SwiftUI/application-state islands.
-- The mobile composer retains text, attachments, send/cancel, accessibility,
-  keyboard, and deterministic test behavior through Effect Native primitives.
+- The mobile composer retains the current text, new-chat, send/clear,
+  accessibility, keyboard, and deterministic behavior through Effect Native
+  primitives. Rich attachments and runtime cancel controls remain CUT-16
+  #8696 rather than being smuggled into this architecture leaf.
 - Native/Electron host code is limited to documented renderer, capability, and
   lifecycle lowering boundaries.
 - Desktop and mobile typecheck, focused tests, and boundary scans pass.
 
-Verification: include negative fixtures proving forbidden imports/modules fail
-and a physical mobile composer receipt.  
+Verification: include negative fixtures proving forbidden imports/modules fail,
+an iOS native prebuild/build, and iOS-26 simulator pixel evidence. Physical
+iOS/Android composer acceptance remains the final installed-product rung in
+CUT-27 #8707 so this architecture leaf stays agent-completable.
 Non-goals: eliminating native host code or waiting for remote workrooms.  
 Close rule: merge to `main`, update the demand register, attach receipts, and
 close with the commit hash.

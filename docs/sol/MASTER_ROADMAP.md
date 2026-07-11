@@ -405,9 +405,11 @@ not-planned; inclusion here is not active priority:
   bound render-rn host driver and internal `@expo/ui` lowering landed, and the
   then-current D-MB-02 app-local island was deleted. Build 115 later restored
   an application-local `openagents-liquid-glass` SwiftUI module to correct the
-  build-114 visual regression. Treat that module as a bounded current host
-  exception, not proof of final shared lowering; broad visual migration is
-  closed, and a real R0–R7 correctness/platform defect gets a bounded issue;
+  build-114 visual regression. CUT-01 #8681 now deletes that restored island,
+  moves the full chrome/drawer/composer tree into Effect Native, and gives the
+  renderer an internal iOS-26+ SwiftUI composer plus Android/older-iOS fallback.
+  Deterministic/native-build proof is green; installed physical-device
+  acceptance remains CUT-27 #8707 rather than blocking this architecture leaf;
 - the greenfield OpenAgents Desktop line through `f4cb8ed18e`: the pinned
   electron-shadcn scaffold and Electron sandbox/isolation boundary now host a
   minimal Effect Native conversation workspace, a bounded host-owned five-
@@ -592,7 +594,8 @@ records before claiming the first new slice.
   the real-Electron trace acceptance; live runtime/mobile acceptance remains
   #8676.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
-  persona-neutral public-local Khala fallback driven by the native composer,
+  persona-neutral public-local Khala fallback driven by the Effect Native
+  composer and renderer-owned native/material lowering,
   and a
   host-owned Expo SQLite adapter over the shared Khala Sync store core with a
   restart-stable installation identity and pre-OTA close, plus a versioned
@@ -1059,8 +1062,9 @@ The target hybrid contract is: `@expo/ui` is consumed strictly inside
 sees only typed Effect Native catalog components; `surface: "glass"` is a
 semantic contract (Liquid Glass on iOS 26+, honest material equivalents
 elsewhere); owned lowerings replace `@expo/ui` component-by-component. Build
-115's restored app-local SwiftUI module is the explicitly recorded current
-exception, not a second application-state architecture.
+115's restored app-local SwiftUI module was a recorded temporary exception;
+CUT-01 #8681 removes it from current source and returns all application UI and
+actions to the typed catalog.
 
 | Lane | Issue | Purpose |
 | --- | --- | --- |
@@ -1070,15 +1074,16 @@ exception, not a second application-state architecture.
 | GL-3 | #8649 | CLOSED 2026-07-10 — build 113, production conversation, contract enforced |
 | GL-4 | #8650 | **CLOSED NOT-PLANNED** — future real defects get bounded issues |
 
-Current narrow truth (2026-07-10): GL-1 closed at `5202a2665a` after the Scope-
+Current narrow truth (2026-07-11): GL-1 closed at `5202a2665a` after the Scope-
 bound render-rn host driver and catalog-v30 internal `@expo/ui` lowering landed,
 the then-current D-MB-02 island was deleted, and the mechanical import oracle
 passed. Build 114 subsequently shipped an opaque fallback because its binary
-omitted the expected native module; build 115 source at `ee78dc1a2e` restores an
-application-local `openagents-liquid-glass` module. Therefore the closed receipt
-is historical architecture evidence, not a claim that the current tree has no
-app-local native presentation module. #8646/#8650 are closed not-planned. A
-narrow host/lowering defect that blocks R0–R7 gets a new issue under #8597.
+omitted the expected native module; build 115 source at `ee78dc1a2e` restored an
+application-local `openagents-liquid-glass` module. CUT-01 #8681 now deletes it
+again only after adding the missing renderer-owned glass Composer lowering and
+an import-boundary oracle. The native prebuild and simulator build/pixel check
+pass; physical installed-product acceptance remains CUT-27 #8707.
+#8646/#8650 stay closed not-planned.
 
 GL-3 is a closed historical receipt at `6647d998ad` / TestFlight build 113. Its
 then-current mobile shell minted/persisted the production prospect session and sent
@@ -1153,6 +1158,12 @@ acceptance pass. App Store processing/`VALID` and owner device acceptance are
 still open. Khala mode remains in-memory and has no authenticated account,
 repository, workroom, FleetRun, receipt, or cross-device Sync authority.
 
+CUT-01 #8681 supersedes the build-116 source architecture: current source has
+one Effect Native home/composer tree and no app-local SwiftUI module or app-
+owned RN controls. Renderer/mobile typechecks, deterministic iOS-26/Android
+lowering tests, Expo prebuild, and an iOS 26.5 simulator build pass. The last
+`VALID`/physical-device release floor remains build 116 until hardware proof.
+
 The #8597 removal/composer claim released. Authenticated Sync, the complete
 M0–M7 capability port, remote-workroom coding, Android proof, migration/release
 reconciliation, and the full issue exit remain open. Refresh the live claim
@@ -1160,9 +1171,11 @@ ledger before new mobile changes.
 
 GL-1/#8647 landed the Scope-bound host driver and internal `@expo/ui` lowering.
 The build-115 compatibility repair reintroduced an application-local SwiftUI
-module after build 114's visible fallback regression. Preserve the working
-release floor and record the exception honestly; a narrow visual defect that
-blocks R0–R7 gets a new bounded issue under #8597.
+module after build 114's visible fallback regression. CUT-01 #8681 removes that
+temporary exception in current source and makes the pre-existing demand-
+register claim truthful: app source owns no SwiftUI/RN controls, while
+`render-rn` owns the iOS 26+ glass and Android/older-iOS fallback. Preserve the
+working release floor until the required physical-device receipt passes.
 
 - The default target is a neutral coding/fleet home: recent work, repositories,
   Sync health, attention/approvals, active threads/workrooms/runs, outcomes,

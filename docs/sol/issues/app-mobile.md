@@ -44,6 +44,12 @@ dispositioned. Importing the legacy package/component tree is forbidden.
   typecheck plus 20 tests/69 expectations, archives/exports, and was accepted
   for App Store delivery. App Store processing/`VALID` and owner physical-
   device acceptance remain distinct unproven rungs.
+- CUT-01 #8681 supersedes that temporary build-116 architecture in source: the
+  app-local SwiftUI module is deleted, one Effect Native tree owns the chrome,
+  drawer, transcript, and composer, and `render-rn` owns iOS 26+ SwiftUI plus
+  Android/older-iOS material lowering. Typecheck and deterministic cross-
+  lowering/native-build tests pass. Physical installed-product acceptance
+  remains CUT-27 #8707.
 - The generic local Khala fallback remains explicitly separate from confirmed
   authority; it does not claim a provider, FleetRun, account, remote workroom,
   command outcome, or receipt.

@@ -1,12 +1,20 @@
 import { describe, expect, test } from "bun:test"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 import { CatalogVersion } from "@effect-native/core"
 
-import { initialHomeState, renderContentView, renderDrawerView } from "../src/screens/home-core"
+import { initialHomeState, renderContentView, renderDrawerView, renderHomeView } from "../src/screens/home-core"
 
 const appRoot = join(import.meta.dir, "..")
+
+const sourceFiles = (directory: string): ReadonlyArray<string> =>
+  readdirSync(directory).flatMap((entry) => {
+    const path = join(directory, entry)
+    return statSync(path).isDirectory()
+      ? sourceFiles(path)
+      : /\.(?:ts|tsx)$/.test(entry) ? [path] : []
+  })
 
 describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
   test("the pure program stays host-agnostic and contains only Khala conversation state", () => {
@@ -18,19 +26,28 @@ describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
     }
     expect(JSON.stringify(renderContentView(initialHomeState))).toContain(`"catalogVersion":"${CatalogVersion}"`)
     expect(JSON.stringify(renderDrawerView(initialHomeState))).toContain(`"catalogVersion":"${CatalogVersion}"`)
+    expect(JSON.stringify(renderHomeView(initialHomeState))).toContain(`"catalogVersion":"${CatalogVersion}"`)
   })
 
-  test("the iOS SwiftUI island is the sole real composer and forwards typed text/submit events", () => {
-    const swift = readFileSync(join(appRoot, "modules/openagents-liquid-glass/ios/OpenAgentsLiquidGlassView.swift"), "utf8")
-    const module = readFileSync(join(appRoot, "modules/openagents-liquid-glass/ios/OpenAgentsLiquidGlassModule.swift"), "utf8")
+  test("the Effect Native tree is the sole composer and app code cannot import native UI islands", () => {
+    const view = JSON.stringify(renderHomeView(initialHomeState))
     const shell = readFileSync(join(appRoot, "src/screens/home-screen.tsx"), "utf8")
-    expect(swift).toContain("TextField(state.placeholder")
-    expect(swift).toContain("onTextChange")
-    expect(swift).toContain("onSubmit")
-    expect(module).toContain('Events("onTextChange", "onSubmit", "onTapPlus")')
-    expect(shell).toContain("<GlassComposer")
-    expect(shell).not.toContain("onTapComposer")
-    expect(shell).not.toContain("onTapMic")
+    expect(existsSync(join(appRoot, "modules/openagents-liquid-glass/package.json"))).toBe(false)
+    expect(existsSync(join(appRoot, "modules/openagents-liquid-glass/ios/OpenAgentsLiquidGlassModule.swift"))).toBe(false)
+    expect(readFileSync(join(appRoot, "package.json"), "utf8")).not.toContain("openagents-liquid-glass")
+    expect(view.match(/"_tag":"Composer"/g)?.length).toBe(1)
+    expect(view).toContain('"name":"KhalaDraftChanged"')
+    expect(view).toContain('"name":"KhalaTurnSubmitted"')
+    expect(view).toContain('"_tag":"Toolbar"')
+    expect(view).toContain('"surface":"glass"')
+    expect(shell).toContain("<EffectNativeHost")
+    expect(shell).not.toContain("Pressable")
+    expect(shell).not.toContain("TextInput")
+    for (const file of sourceFiles(join(appRoot, "src"))) {
+      const source = readFileSync(file, "utf8")
+      expect(source).not.toContain("openagents-liquid-glass")
+      expect(source).not.toMatch(/from ["']@expo\/ui/)
+    }
   })
 
   test("the mobile package no longer carries Sarah source, tests, or demo media", () => {
@@ -61,12 +78,17 @@ describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
     expect(metro).toContain("context.resolveRequest")
   })
 
-  test("the host keeps the composer above the keyboard and dismisses it on submit", () => {
+  test("the host keeps the Effect Native surface above the keyboard and the renderer owns submit blur", () => {
     const shell = readFileSync(join(appRoot, "src/screens/home-screen.tsx"), "utf8")
+    const renderer = readFileSync(
+      join(appRoot, "../openagents.com/packages/effect-native-render-rn/src/index.ts"),
+      "utf8",
+    )
     expect(shell).toContain("<KeyboardAvoidingView")
     expect(shell).toContain('Platform.OS === "ios" ? "padding" : "height"')
-    expect(shell).toContain("onPress={Keyboard.dismiss}")
-    expect(shell).toContain('submitBehavior="blurAndSubmit"')
-    expect(shell).toContain("Keyboard.dismiss()")
+    expect(shell).not.toContain("Keyboard.dismiss")
+    expect(renderer).toContain('submitBehavior: "blurAndSubmit"')
+    expect(renderer).toContain('returnKeyType: "send"')
+    expect(renderer).toContain('testID: "en-composer-input"')
   })
 })

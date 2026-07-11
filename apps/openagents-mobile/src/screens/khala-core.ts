@@ -1,7 +1,12 @@
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import {
+  Composer,
+  ComponentValueBinding,
+  IconButton,
+  IntentRef,
   Stack,
   Spacer,
+  StaticPayload,
   Text,
   Transcript,
   type TranscriptMessage,
@@ -162,9 +167,46 @@ export const renderKhalaSurface = (
         pinToEnd: true,
         style: { width: "full", flex: 1 },
       }),
-      // The one active composer is the SwiftUI Liquid Glass island mounted by
-      // the shell. Do not add an Effect Native second input here.
-      Spacer({ key: "khala-bottom-composer-clearance", size: "16" }),
+      Stack(
+        {
+          key: "khala-composer-bar",
+          direction: "row",
+          gap: "2",
+          align: "center",
+          padding: "2",
+          style: {
+            width: "full",
+            minHeight: 54,
+            borderRadius: "full",
+            surface: "glass",
+          },
+        },
+        [
+          IconButton({
+            key: "khala-new-chat",
+            icon: "Plus",
+            accessibilityLabel: "New chat",
+            onPress: IntentRef("NewChatPressed", StaticPayload({})),
+            surface: "glass",
+          }),
+          Composer({
+            key: "khala-composer",
+            doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
+            mode: "normal",
+            placeholder: authority === "sync" ? "Continue conversation" : "Message Khala",
+            submitting: state.pending,
+            clearOnSubmit: true,
+            onChange: IntentRef(KhalaDraftChanged, ComponentValueBinding()),
+            onSubmit: IntentRef(KhalaTurnSubmitted, ComponentValueBinding()),
+            style: {
+              flex: 1,
+              minHeight: 44,
+              borderWidth: 0,
+              surface: "glass",
+            },
+          }),
+        ],
+      ),
     ],
   )
 

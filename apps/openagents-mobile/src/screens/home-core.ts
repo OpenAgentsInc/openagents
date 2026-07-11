@@ -3,6 +3,7 @@ import {
   Button,
   ComponentValueBinding,
   defineIntent,
+  IconButton,
   IntentRef,
   type IntentHandlers,
   type IntentReporter,
@@ -13,6 +14,7 @@ import {
   Stack,
   StaticPayload,
   Text,
+  Toolbar,
   type View,
 } from "@effect-native/core"
 import type { ScopeSyncState } from "@openagentsinc/khala-sync-client"
@@ -147,7 +149,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible embedded-binary tag; build 116 removes the named-persona front door. */
-export const BUNDLE_TAG = "2026-07-10.embedded-116"
+export const BUNDLE_TAG = "2026-07-11.cut-01-effect-native"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -198,8 +200,6 @@ export const chromeProps = (state: HomeState): ChromeProps => ({
   sending: state.khala.pending,
 })
 
-/** The retained native composer sits above this content; do not add a second
- * input here. Its SwiftUI events enter the Khala typed intent boundary. */
 export const renderContentView = (state: HomeState): View =>
   Stack(
     {
@@ -240,6 +240,57 @@ export const renderContentView = (state: HomeState): View =>
                   onPress: IntentRef("OpenAgentsSignInPressed", StaticPayload({})),
                 })]),
         ],
+  )
+
+/**
+ * The complete application-owned mobile home tree. React Native owns only the
+ * safe-area/keyboard mount; chrome, drawer, composer, state, and actions are
+ * catalog data lowered by Effect Native.
+ */
+export const renderHomeView = (state: HomeState): View =>
+  Stack(
+    {
+      key: "home-application-root",
+      direction: "column",
+      gap: "2",
+      padding: "2",
+      style: { width: "full", height: "full", backgroundColor: "background" },
+    },
+    [
+      Toolbar(
+        {
+          key: "home-toolbar",
+          placement: "top",
+          surface: "glass",
+          style: { width: "full", minHeight: 44 },
+        },
+        [
+          IconButton({
+            key: "home-navigation",
+            icon: "Menu",
+            accessibilityLabel: state.drawerOpen ? "Close navigation" : "Open navigation",
+            onPress: IntentRef("DrawerToggled", StaticPayload({})),
+          }),
+          Button({
+            key: "home-surface-mode",
+            label: chromeProps(state).pillLabel,
+            variant: "ghost",
+            onPress: IntentRef(
+              "SurfaceModeSelected",
+              StaticPayload({ mode: state.surfaceMode === "khala" ? "openagents" : "khala" }),
+            ),
+          }),
+          Spacer({ key: "home-toolbar-space", size: "1", style: { flex: 1 } }),
+          IconButton({
+            key: "home-new-chat",
+            icon: "Compose",
+            accessibilityLabel: "New chat",
+            onPress: IntentRef("NewChatPressed", StaticPayload({})),
+          }),
+        ],
+      ),
+      state.drawerOpen ? renderDrawerView(state) : renderContentView(state),
+    ],
   )
 
 const drawerRow = (input: { readonly key: string; readonly label: string; readonly onPress: ReturnType<typeof IntentRef>; readonly selected?: boolean }): View =>
@@ -528,6 +579,7 @@ export const makeHomeHandlers = (
 
 export interface HomeProgramHandle {
   readonly initialState: HomeState
+  readonly viewStream: Stream.Stream<View>
   readonly contentViewStream: Stream.Stream<View>
   readonly drawerViewStream: Stream.Stream<View>
   readonly report: IntentReporter
@@ -567,6 +619,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
       const submitKhala = (text: string): void => fireText(IntentRef("KhalaTurnSubmitted", ComponentValueBinding()), text)
       return {
         initialState: programInitialState,
+        viewStream: makeViewProgramFromState(state, renderHomeView).viewStream,
         contentViewStream: makeViewProgramFromState(state, renderContentView).viewStream,
         drawerViewStream: makeViewProgramFromState(state, renderDrawerView).viewStream,
         report,

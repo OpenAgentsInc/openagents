@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   Button,
+  Composer,
   IntentRef,
   Stack,
   UnknownIntentError,
@@ -15,6 +16,7 @@ import {
   makeReactNativeRenderer,
   renderReactNativeView,
   type ReactElementLike,
+  type ExpoUiSwiftUiRuntime,
   type ReactNativeDependencies,
   type ReactNodeLike
 } from "./index"
@@ -50,6 +52,114 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("React Native renderer host boundaries", () => {
+  test("lowers a glass composer through renderer-owned SwiftUI on iOS 26 with typed change and submit parity", async () => {
+    const cleanups: Array<() => void> = []
+    let observedNativeState: { readonly get: () => string; readonly set: (value: string) => void } | undefined
+    const dependencies: ReactNativeDependencies = {
+      React: {
+        createElement,
+        useEffect: (effect) => {
+          const cleanup = effect()
+          if (typeof cleanup === "function") cleanups.push(cleanup)
+        }
+      },
+      ReactNative: {
+        ...reactNative,
+        Platform: { OS: "ios", Version: 26 }
+      }
+    }
+    const expoUi: ExpoUiSwiftUiRuntime = {
+      Host: "SwiftHost",
+      HStack: "SwiftHStack",
+      VStack: "SwiftVStack",
+      Button: "SwiftButton",
+      Image: "SwiftImage",
+      Text: "SwiftText",
+      Spacer: "SwiftSpacer",
+      TextField: "SwiftTextField",
+      useNativeState: <Value>(initialValue: Value) => {
+        let value = initialValue
+        const state = {
+          get: () => value,
+          set: (next: Value) => { value = next }
+        }
+        observedNativeState = state as unknown as typeof observedNativeState
+        return state
+      },
+      modifiers: {
+        glassEffect: (value) => ({ kind: "glass", value }),
+        foregroundStyle: (value) => ({ kind: "foreground", value }),
+        frame: (value) => ({ kind: "frame", value })
+      }
+    }
+    const events: Array<readonly [string, unknown]> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => {
+      events.push([ref.name, payload])
+    })
+    const element = renderReactNativeView(
+      Composer({
+        key: "composer",
+        doc: [{ kind: "text", text: "draft" }],
+        mode: "normal",
+        placeholder: "Message",
+        clearOnSubmit: true,
+        onChange: IntentRef("Changed"),
+        onSubmit: IntentRef("Submitted"),
+        style: { surface: "glass" }
+      }),
+      dependencies,
+      report,
+      { expoUi, platform: "ios" }
+    )
+    expect(element.props.testID).toBe("en-composer:normal")
+    const lifecycleRef = element.props.ref
+    if (typeof lifecycleRef === "function") lifecycleRef({})
+    const host = element.props.children as ReactElementLike
+    expect(host.type).toBe("SwiftHost")
+    const component = host.props.children as ReactElementLike
+    if (typeof component.type !== "function") throw new Error("expected native composer component")
+    const native = component.type({}) as ReactElementLike
+    const nativeChildren = native.props.children as ReadonlyArray<ReactElementLike>
+    const field = nativeChildren[0]!
+    const submit = nativeChildren[1]!
+    expect(field.type).toBe("SwiftTextField")
+    expect(submit.type).toBe("SwiftButton")
+    if (observedNativeState === undefined) throw new Error("expected native state")
+    const nativeState = observedNativeState
+    nativeState.set("edited")
+    ;(field.props.onTextChange as (value: string) => void)("edited")
+    ;(submit.props.onPress as () => void)()
+    await Effect.runPromise(nextTask)
+    expect(events).toEqual([["Changed", "edited"], ["Submitted", "edited"]])
+    expect(nativeState.get()).toBe("")
+    if (typeof lifecycleRef === "function") lifecycleRef(null)
+    for (const cleanup of cleanups) cleanup()
+  })
+
+  test("keeps the accessible RN composer fallback on Android", () => {
+    const element = renderReactNativeView(
+      Composer({
+        key: "composer",
+        doc: [],
+        mode: "normal",
+        placeholder: "Message",
+        onSubmit: IntentRef("Submitted"),
+        style: { surface: "glass" }
+      }),
+      {
+        React: { createElement },
+        ReactNative: { ...reactNative, Platform: { OS: "android", Version: 35 } }
+      },
+      () => Effect.succeed(undefined),
+      { platform: "android" }
+    )
+    const structure = JSON.stringify(element)
+    expect(structure).toContain('"type":"TextInput"')
+    expect(structure).toContain('"testID":"en-composer-submit"')
+    expect(structure).toContain('"accessibilityLabel":"Send message"')
+    expect(structure).not.toContain("SwiftHost")
+  })
+
   test("keeps a failing intent callback total while executing its effect", async () => {
     const attempted: Array<string> = []
     const report: IntentReporter = (ref) =>

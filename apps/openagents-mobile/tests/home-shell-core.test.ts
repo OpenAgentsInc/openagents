@@ -31,11 +31,13 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(chromeProps(initialHomeState).glassComposerVisible).toBe(true)
   })
 
-  test("the content has a transcript but no second Effect Native composer", () => {
+  test("the content has exactly one Effect Native composer", () => {
     const serialized = JSON.stringify(renderContentView(initialHomeState))
     expect(serialized).toContain('"_tag":"Transcript"')
-    expect(serialized).not.toContain('"_tag":"Composer"')
-    expect(serialized).not.toContain("khala-composer")
+    expect(serialized.match(/"_tag":"Composer"/g)?.length).toBe(1)
+    expect(serialized).toContain("khala-composer")
+    expect(serialized).toContain('"name":"KhalaDraftChanged"')
+    expect(serialized).toContain('"name":"KhalaTurnSubmitted"')
   })
 
   test("the neutral OpenAgents surface reports its unconfigured Sync state without inventing work", () => {
@@ -109,7 +111,7 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(calls).toEqual(["sign-in", "sign-out"])
   })
 
-  test("native-composer dispatchers own the Khala draft and New chat clears it", async () => {
+  test("Effect Native composer dispatchers own the Khala draft and New chat clears it", async () => {
     const program = buildHomeProgram()
     program.khala.draftChanged("Plan the mobile handoff")
     await Effect.runPromise(settle)

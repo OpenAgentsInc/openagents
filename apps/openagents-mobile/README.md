@@ -77,8 +77,11 @@ cd apps/openagents-mobile
 bun run dev          # expo start — press i for iOS simulator or a for Android
 ```
 
-The app carries an iOS SwiftUI Liquid Glass module, so verify the native
-composer through a development or TestFlight build rather than Expo Go.
+The app tree is Effect Native. On iOS 26+, `@effect-native/render-rn` lowers
+glass toolbar/composer nodes internally through `@expo/ui`; Android, older iOS,
+tests, and missing-module hosts use the renderer-owned React Native material
+fallback. Verify native glass, keyboard, and safe-area behavior through a
+development or TestFlight build rather than Expo Go.
 
 ### Tests
 
@@ -130,20 +133,24 @@ appears on device within ~3s, downloads, and reloads. Errors (offline etc.)
 are soft and never crash the loop. Polling is a no-op in Expo Go/dev
 (`Updates.isEnabled` false).
 
-## SwiftUI Liquid Glass island
+## Effect Native glass lowering
 
-`modules/openagents-liquid-glass` owns the visible iOS menu, icon controls,
-and the one working Khala text composer using SwiftUI `.glassEffect` on iOS
-26 and a material fallback on earlier iOS. Its serializable state comes from
-the Effect Native program; native events return only through typed intents.
-Android and test hosts use a functional React Native fallback.
+The application-local `modules/openagents-liquid-glass` island is deleted.
+`home-core.ts` and `khala-core.ts` own one serializable Effect Native tree:
+typed `Toolbar`, `IconButton`, transcript, drawer, and `Composer` nodes. The
+React Native screen owns only safe-area, keyboard avoidance, and one
+`EffectNativeHost` mount. `@expo/ui` remains a native installation vehicle but
+is loaded only inside `@effect-native/render-rn`; app source cannot import it.
+The component-sharing oracle fails on a restored app-local module, direct
+native-UI import, RN `Pressable`/`TextInput` application controls, or a second
+composer.
 
 ## What exists today
 
 The Home screen is persona-neutral: after native-session recovery it mounts one
 conversation authority. Live personal Sync reconstructs confirmed canonical
-threads/messages in the existing Effect Native transcript, drawer, and native
-Liquid Glass composer. Signed-out/not-live startup retains the public Khala
+threads/messages in the existing Effect Native transcript, drawer, and
+renderer-lowered glass composer. Signed-out/not-live startup retains the public Khala
 orchestration path. These catalogs never merge; explicit auth transitions
 dispose and remount Home. Sync mutations use stable mobile refs, render drafts
 as pending, and replace them only after exact-ref confirmation. A private

@@ -114,7 +114,10 @@ re-copy would destroy:
   (`ReactNativeRenderRuntimeOptions.runEffect`, FiberSet-backed reporter
   wiring) replacing upstream's `Effect.runPromise` in `runReportedIntent`,
   plus RN glyphs for the 12 app icons and their SF-Symbol entries in the new
-  `sfSymbolForIcon` map.
+  `sfSymbolForIcon` map. CUT-01 #8681 additionally owns the semantic glass
+  `Composer` lowering: iOS 26+ uses renderer-internal `@expo/ui` observable
+  `TextField` state plus an explicit typed send button, while Android/older iOS
+  keep the accessible RN `TextInput`/material fallback with identical intents.
 - `effect-native-render-dom/src/index.ts` — OpenAI icon catalog import, glass
   CSS tuning, and the atomic-style registry refactor from the desktop lane.
 - `@expo/ui` is an optional peer of `@effect-native/render-rn` and a real
