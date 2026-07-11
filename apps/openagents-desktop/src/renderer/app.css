@@ -85,7 +85,7 @@ textarea:focus-visible {
 [data-en-key="shell-sidebar"] {
   flex: 0 0 232px;
   min-width: 0;
-  padding: 16px 6px 12px;
+  padding: 6px 6px 12px;
   border: 1px solid var(--oa-line);
   border-radius: 0;
   overflow: hidden;
@@ -93,10 +93,23 @@ textarea:focus-visible {
 }
 
 [data-en-key="sidebar-brand"] {
-  padding: 0 0 12px;
+  padding: 0;
+  line-height: 32px !important;
   font-size: 17px !important;
   font-weight: 650 !important;
   letter-spacing: -0.025em;
+}
+
+[data-en-key="sidebar-brand-row"] {
+  min-height: 32px;
+  align-items: center !important;
+}
+
+[data-en-key="sidebar-brand-icon"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
 }
 
 [data-en-key="sidebar-brand-row"],
