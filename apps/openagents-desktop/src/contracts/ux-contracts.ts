@@ -141,6 +141,45 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "bun run --cwd apps/openagents-desktop verify runs the shell question-card suite, the local-harness projection suite, and the Electron smoke question-card step.",
       },
       {
+        contractId: "openagents_desktop.chat.opencode_card_design_language.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript card design language",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Make a design pass through the projects/repos/opencode desktop app. any of its tool/message card formatting, we should port its tailwind stuff to our Effect Native, i want our component slooking just like theirs but adapted to our starcraft blue etc, and using the openai apps sdk icons we are.",
+        authorityBoundary:
+          "This is a presentation port only: opencode's card anatomy and density translate into typed Effect Native style objects on the shared tokens vocabulary — never Tailwind class strings (owner decision 2026-07-08), never local one-off primitives, never a light theme, and always our existing catalog icon set (apps-sdk-ui lineage), our Protoss-blue tokens, and our typed intents. No opencode code is vendored; the port provenance is recorded in-repo (docs/design-ports.md) with spec receipts.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/tool-cards.ts",
+          "apps/openagents-desktop/docs/design-ports.md",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "opencode_card_design.structural_anatomy",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Asserts the opencode-derived structural properties on our cards: tool cards render the header icon + title + status-chip anatomy in that order, detail/result lines stack beneath, raw output is collapsed by default (no raw JSON in the default rendering), and styling is typed token style objects (no class strings anywhere in the card views).",
+          },
+          {
+            id: "opencode_card_design.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke asserts the rendered tool cards carry the ported anatomy (one card per invocation, humanized header, no raw JSON default) in the uniform Protoss-blue theme.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell card suites and the Electron smoke; the design-port provenance note records the opencode source receipts.",
+      },
+      {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
         state: "enforced",
         surface: "openagents-desktop",

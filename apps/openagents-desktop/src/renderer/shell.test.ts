@@ -53,6 +53,7 @@ describe("EP250 chat contracts are registered and enforced (#8712)", () => {
       "openagents_desktop.chat.compact_message_details_affordance.v1",
       "openagents_desktop.chat.typed_tool_call_cards.v1",
       "openagents_desktop.chat.interactive_question_cards.v1",
+      "openagents_desktop.chat.opencode_card_design_language.v1",
     ]) {
       expect(openAgentsDesktopUxContractRegistry.contracts.find(
         (contract) => contract.contractId === contractId,
@@ -1217,6 +1218,48 @@ describe("EP250 typed tool-call cards (owner: 'not these JSON blobs')", () => {
     const texts = collectNodes(view).filter((node) => node._tag === "Text").map((node) => String(node.content ?? ""))
     expect(texts.some((text) => text.includes('{"task"'))).toBe(false)
     expect(nodeByKey(view, "tool-raw-args-s1")).toBeUndefined()
+  })
+
+  test("opencode card design language: dense single-line trigger (icon -> 14px medium title -> inline muted subtitle -> status chip), boxed task-tool treatment for agent-class tools, typed token styles only", () => {
+    // Owner statement (verbatim): "Make a design pass through the
+    // projects/repos/opencode desktop app. any of its tool/message card
+    // formatting, we should port its tailwind stuff to our Effect Native..."
+    // Receipts: opencode packages/session-ui/src/components/basic-tool.css
+    // ([data-component="tool-trigger"], task-tool-card).
+    const view = desktopShellView(traceState)
+    const header = nodeByKey(view, "tool-header-s1") as { children?: ReadonlyArray<AnyNode>; direction?: string }
+    expect(header?.direction).toBe("row")
+    const headerTags = (header?.children ?? []).map((child) => child._tag)
+    expect(headerTags).toEqual(["Icon", "Text", "Text", "Badge"])
+    const [icon, title, subtitle] = header?.children ?? []
+    expect(icon).toMatchObject({ size: "sm" })
+    // Their tool title is 14px/medium; our label scale is exactly 14/500.
+    expect(title).toMatchObject({ variant: "label", weight: "medium", color: "textPrimary" })
+    // Inline muted single-line subtitle (basic-tool-tool-subtitle).
+    expect(subtitle).toMatchObject({ key: "tool-detail-s1", color: "textMuted" })
+    // Detail/result lines stack beneath the trigger in one column card.
+    const card = nodeByKey(view, "tool-card-s1") as { direction?: string }
+    expect(card?.direction).toBe("column")
+    // Agent-class tools get the boxed task-tool-card treatment (thin border,
+    // small radius, raised translucent surface).
+    const box = nodeByKey(view, "tool-box-s1") as { style?: Record<string, unknown>; radius?: string; padding?: string } | undefined
+    expect(box).toBeDefined()
+    expect(box?.radius).toBe("md")
+    expect(box?.padding).toBe("2")
+    expect(box?.style).toMatchObject({ borderColor: "border", borderWidth: 1 })
+    // Non-agent tools stay the flat dense row (no box).
+    const flat = desktopShellView({ ...traceState, notes: [
+      { key: "f1", role: "system" as const, text: 'Read · started · {"file_path":"a.md"}', timestamp: "18:05" },
+    ] })
+    expect(nodeByKey(flat, "tool-box-f1")).toBeUndefined()
+    expect(nodeByKey(flat, "tool-card-f1")).toBeDefined()
+    // Typed token styles only: no className/class props exist anywhere in
+    // the card subtree (Tailwind class strings are rejected by owner
+    // decision 2026-07-08).
+    for (const node of collectNodes(nodeByKey(view, "tool-box-s1"))) {
+      expect("className" in node).toBe(false)
+      expect("class" in node).toBe(false)
+    }
   })
 
   test("a running invocation shows the neutral Running chip; a failed one shows the reason text prominently", () => {

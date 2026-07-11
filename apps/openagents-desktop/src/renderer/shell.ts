@@ -1266,6 +1266,20 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
  * behind the compact details toggle. No SYSTEM role label — tool cards are
  * their own visual class (the tool title is the header); timestamps stay.
  */
+/**
+ * Design language ported from the opencode desktop reference (owner design
+ * directive, EP250): a DENSE single-line tool trigger — 16px icon slot, 14px
+ * medium title, inline muted single-line subtitle (their
+ * `[data-component="tool-trigger"]` / `basic-tool-tool-title` /
+ * `basic-tool-tool-subtitle`, projects/repos/opencode
+ * packages/session-ui/src/components/basic-tool.css) — with collapsed-by-
+ * default details, translated to typed Effect Native token styles on the
+ * Protoss-blue theme (our label scale is 14px/500, Icon sm is 16px, gap "2"
+ * is their 8px). Agent-class tools (Agent, mcp__codex__*) additionally get
+ * their boxed `task-tool-card` treatment (8px/12px padding, 6px radius, thin
+ * border on a raised translucent surface) via the catalog Card. See
+ * docs/design-ports.md.
+ */
 export const toolCardMessage = (card: ToolCardModel, expanded: boolean): TranscriptMessage => {
   const human = humanizeToolInvocation(card.toolName, card.argsSummary)
   const chip = card.status === "running"
@@ -1273,20 +1287,21 @@ export const toolCardMessage = (card: ToolCardModel, expanded: boolean): Transcr
     : card.status === "ok"
       ? { label: "OK", tone: "success" as const }
       : { label: "Failed", tone: "danger" as const }
-  return {
-    key: `tool-${card.key}`,
-    role: "tool",
-    timestamp: card.timestamp,
-    // One column Stack so detail/result/raw lines stack (Text lowers to an
-    // inline span in the DOM renderer — bare siblings would run together).
-    body: [Stack(
+  // opencode's boxed task-tool-card applies to subagent-class tools only.
+  const boxed = card.toolName === "Agent" || card.toolName.startsWith("mcp__codex__")
+  const column = Stack(
       { key: `tool-card-${card.key}`, direction: "column", gap: "1", align: "start" },
       [
         Stack(
           { key: `tool-header-${card.key}`, direction: "row", gap: "2", align: "center" },
           [
             Icon({ key: `tool-icon-${card.key}`, name: toolCardIcon(card.toolName), size: "sm", color: "accent" }),
-            Text({ key: `tool-title-${card.key}`, content: human.title, variant: "label", color: "textPrimary" }),
+            Text({ key: `tool-title-${card.key}`, content: human.title, variant: "label", color: "textPrimary", weight: "medium" }),
+            // Inline muted subtitle on the same trigger row (opencode's
+            // basic-tool-tool-subtitle), already bounded by the humanizer.
+            ...(human.detail === "" ? [] : [
+              Text({ key: `tool-detail-${card.key}`, content: human.detail, variant: "body", color: "textMuted" }),
+            ]),
             Badge({
               key: `tool-status-${card.key}`,
               label: chip.label,
@@ -1295,9 +1310,6 @@ export const toolCardMessage = (card: ToolCardModel, expanded: boolean): Transcr
             }),
           ],
         ),
-        ...(human.detail === "" ? [] : [
-          Text({ key: `tool-detail-${card.key}`, content: human.detail, variant: "body", color: "textPrimary" }),
-        ]),
         // Failure text is content, not JSON — shown prominently.
         ...(card.status === "failed" && card.resultSummary !== null ? [
           Text({ key: `tool-failure-${card.key}`, content: card.resultSummary, variant: "body", color: "danger" }),
@@ -1327,7 +1339,19 @@ export const toolCardMessage = (card: ToolCardModel, expanded: boolean): Transcr
           })]),
         ] : []),
       ],
-    )],
+    )
+  return {
+    key: `tool-${card.key}`,
+    role: "tool",
+    timestamp: card.timestamp,
+    body: [boxed
+      ? Card({
+          key: `tool-box-${card.key}`,
+          padding: "2",
+          radius: "md",
+          style: { width: "full", borderColor: "border", borderWidth: 1, surface: "glass" },
+        }, [column])
+      : column],
   }
 }
 
