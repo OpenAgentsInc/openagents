@@ -60,14 +60,12 @@ Closed bounded Desktop leaves and proofs:
   device-local identity/authority plus optional reversible OpenAgents account
   linking on Desktop and mobile.
 
-Reopened topology parent with bounded residual leaves:
+Completed topology parent with bounded residual leaves:
 
 - [`desktop-effect-scope-topology.md`](./desktop-effect-scope-topology.md) —
-  #8678 retains the landed initial topology manifest and cache/freshness/
-  disposal declarations; #8683 and #8684 now own source-coupled perimeter/
-  ambient-authority enforcement, replaceability, lifecycle disposal,
-  structured correlation, and full Desktop host acceptance before the parent
-  can close again.
+  #8678 combines its initial manifest/cache declarations with closed #8683 and
+  #8684 source-coupled perimeter enforcement, replaceability, lifecycle
+  disposal, structured correlation, and full Desktop host acceptance.
 
 Revision 31 work without a decomposed issue graph still includes portable
 session authority, owner-managed/provider targets, the general capability

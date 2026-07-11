@@ -17,13 +17,15 @@
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
 - Immediate bounded queue: closed CUT-02 #8682 supplies the deterministic
-  green verification baseline; closed CUT-03 #8683 supplies the source-coupled
-  topology/ambient-authority oracle; CUT-04 #8684 is next and proves service
-  replaceability, owned disposal, correlation, and full host acceptance; #8676
+  green verification baseline; closed CUT-03 #8683 and CUT-04 #8684 supply the
+  source-coupled topology, replaceability, owned-disposal, correlation, and
+  built-host architecture acceptance; CUT-05 #8685 is the next ordered leaf;
+  #8676
   supplies the physical streamed Desktop→mobile acceptance;
   #8677 delegates fault convergence to #8687–#8689. Closed #8675 supplies
-  trace-workspace acceptance. Reopened #8678 delegates its topology residual
-  to #8683/#8684 before broad D3/D4 acceptance.
+  trace-workspace acceptance. #8678's topology residual is complete through
+  #8683/#8684; project/session and command breadth remain CUT-13/CUT-15 rather
+  than hidden architecture residue.
 
 ## Outcome
 
@@ -81,7 +83,7 @@ The greenfield app now has:
   direct independent-transcript navigation, structured inter-agent handoffs,
   and fast typed keyboard traversal.
 
-The normal Desktop `verify` gate is green and deterministic: typecheck, 176
+The normal Desktop `verify` gate is green and deterministic: typecheck, 186
 contract/e2e tests, bundle, and real-Electron smoke/reload use a checked-in
 privacy-safe Codex history fixture instead of ambient `~/.codex` state. The
 root `test:openagents-desktop` entry invokes that same gate. An explicit
@@ -95,8 +97,13 @@ symbols, derives filesystem/network/process/secret authority from those source
 boundaries, and rejects source drift, ambient cwd/`AsyncLocalStorage`, unnamed
 runtime exits, renderer authority, and wider installation scope. It also
 extracts an explicit selected-root WorkContext service and a process-owned,
-shutdown-disposed Codex-history worker host. This is not CUT-04 replaceability,
-full disposal, correlation, or full architecture-freeze acceptance.
+shutdown-disposed Codex-history worker host. CUT-04 #8684 closed at
+`6ee87714d0` with production-used replaceable lifecycle slots, exactly-once
+window/app/service teardown, cancellable account/PKCE/session operations, and
+public-safe operation/session/run/correlation refs across IPC, Runtime Gateway,
+Sync causality, and logs. The packaged smoke exercised the full path and ended
+with zero active owned resources. This completes #8678's architecture residual;
+it does not complete CUT-13 project/session or CUT-15 command breadth.
 
 Not yet claimed: physical Desktop auth acceptance, a provider-launched live
 stream attached to the confirmed thread/timeline, physical mobile continuation,
@@ -135,9 +142,9 @@ it does not become fabricated permanent status chrome.
 - **D2:** projects/sessions/routes/tabs/search/archive, command registry/palette,
   conflict-safe keybindings, menu, deep links, single instance, and restore.
   Pointer and keyboard supervision invoke the same typed action at scale.
-  #8678's initial manifest is baseline only; finish its documented enforcement/
-  replaceability/disposal/correlation/full-host residual before broader D3/D4
-  acceptance.
+  #8678's topology, enforcement, replaceability, disposal, correlation, and
+  built-host acceptance are complete through CUT-03/CUT-04; preserve that
+  architecture freeze while implementing the remaining D2/D3/D4 leaves.
 - **D3:** recursive files, grants, watcher/search/cache, edit/save/conflict,
   typed Git diff/review, selected context, and workspace-bounded PTY.
 - **D4:** sign-in, provider/model/runtime catalog, MCP state/auth, permissions,

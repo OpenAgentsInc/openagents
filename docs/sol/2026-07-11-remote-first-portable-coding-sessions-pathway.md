@@ -524,7 +524,7 @@ Master Roadmap Revision 30 incorporated the original remote-first additions:
 Revision 31 adds the episode-249 consequence: the canonical agent graph,
 independent child transcripts/activity cursors, and the fast click/tap/hotkey
 supervision contract survive live streaming and host movement. #8691/#8692 now
-own the local live-graph contract/UI and #8683/#8684 own reopened #8678's
+own the local live-graph contract/UI and closed #8683/#8684 complete #8678's
 topology residual. The remaining coordination gap is the remote-portability
 issue ledger, not roadmap prose:
 

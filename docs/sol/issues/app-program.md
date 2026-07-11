@@ -41,9 +41,9 @@ remote coding + fleet                    full workbench + fleet
 - #8676 — one real streamed Desktop conversation immediately continued on
   mobile through the same confirmed refs and request processor.
 - #8677 — the bounded command/event fault-convergence matrix for that seam.
-- reopened #8678 — initial Effect service-topology work landed; #8683/#8684
-  own its source-coupling, ambient-authority, replaceability, lifecycle,
-  correlation, and full-host residual.
+- closed #8678 — #8683/#8684 complete its source-coupled Effect topology,
+  ambient-authority denial, replaceability, lifecycle, correlation, and
+  full-host residual.
 - #8681–#8707 — ordered CUT-01–CUT-27 leaves for the installed local
   Codex/Claude coding cutover with physical mobile continuation/supervision.
 - unfiled Revision 31 leaves — portable session authority, owner-managed and

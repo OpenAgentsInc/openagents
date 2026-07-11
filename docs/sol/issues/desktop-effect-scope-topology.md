@@ -4,12 +4,11 @@
 - Parents: #8574, #8566
 - Depends on: #8676 D1-H request-processor shape; may proceed beside #8677 when paths
   and contracts are disjoint
-- Live issue state: reopened 2026-07-11 after the initial manifest and cache/
-  freshness/disposal declaration slices
+- Live issue state: close-ready after the 2026-07-11 residual acceptance
 - Child leaves: closed #8683 source-coupled perimeter/ambient-authority oracle
-  (`4d875dcb4b`); open #8684 replaceability/lifecycle-disposal/correlation/
-  full-host proof
-- Roadmap disposition: active acceptance parent; close only after both children
+  (`4d875dcb4b`) and closed #8684 replaceability/lifecycle-disposal/
+  correlation/full-host proof (`6ee87714d0`)
+- Roadmap disposition: complete acceptance parent
 - Evidence:
   [`../../teardowns/2026-07-10-opencode-effect-architecture-teardown.md`](../../teardowns/2026-07-10-opencode-effect-architecture-teardown.md)
 
@@ -34,10 +33,11 @@ claim-release receipts explicitly exclude source-coupled `runPromise`/
 renderer/WorkContext/runtime/shutdown disposal oracles, structured trace
 correlation, and the full Desktop verify/build/real-Electron acceptance below.
 Closed state proved neither those items nor this dossier's complete exit. The
-landed manifest/declaration slices remain valid baseline. #8683 has since
-closed the source-coupling and ambient-authority portion; #8684 remains the
-live child for replaceability, complete owned disposal, correlation, and the
-full host receipt. #8678 stays open until that child closes.
+landed manifest/declaration slices remain valid baseline. #8683 then closed the
+source-coupling and ambient-authority portion. #8684 closed production-used
+substitution, complete owned-scope disposal, structured correlation, and
+built-host acceptance. Its packaged Electron smoke reported zero active
+resources after teardown, so #8678 is close-ready.
 
 ## Required topology
 
