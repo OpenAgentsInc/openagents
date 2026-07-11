@@ -9,6 +9,11 @@ This is an additive companion to the
 [OpenCode Desktop source teardown](./2026-07-10-opencode-desktop-app-teardown.md),
 which examined the V1 product snapshot at
 [9976269ab1accfc9f9dc98a4a688c516934de422](https://github.com/anomalyco/opencode/tree/9976269ab1accfc9f9dc98a4a688c516934de422).
+The separate
+[OpenCode Effect architecture teardown](./2026-07-10-opencode-effect-architecture-teardown.md)
+drills into the service graph, scopes, Schema, structured concurrency,
+persistence, plugin, observability, and test architecture across both
+generations.
 It asks what changed when the next-generation engine became authoritative, what
 those changes reveal about lessons learned from V1, and what OpenAgents should
 adapt beyond the first teardown.

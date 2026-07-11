@@ -12,6 +12,7 @@ Evidence base:
 - [Codex CLI and agent runtime teardown](./2026-07-10-codex-agent-runtime-teardown.md)
 - [OpenCode desktop source teardown](./2026-07-10-opencode-desktop-app-teardown.md)
 - [OpenCode V2 architecture teardown](./2026-07-10-opencode-v2-architecture-teardown.md)
+- [OpenCode Effect architecture teardown](./2026-07-10-opencode-effect-architecture-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -170,6 +171,64 @@ configuration is inert, hard-crash recovery is intentionally incomplete, and
 the Electron desktop still embeds the V1 server. OpenAgents should adopt the
 state-machine seams, not interpret “V2” as proof that all product surfaces have
 completed the migration.
+
+## What the OpenCode Effect source audit changes
+
+The broader V2 analysis established the product state machine. The focused
+Effect audit explains how to make that architecture composable and testable:
+
+- **V1 was already deeply Effect-based.** The migration was not
+  Promise-to-Effect so much as ambient-to-explicit topology. OpenCode's V1
+  runtime shows that individual Effect services can still inherit the
+  correctness burden of fiber references, `AsyncLocalStorage`, directory
+  caches, multiple managed runtimes, and callback bridges.
+- **Service scope is an architectural law.** OpenCode V2 classifies services as
+  process-global or Location-scoped and rejects dependency direction that
+  would let a global service capture one Location. OpenAgents should publish a
+  process, WorkContext, run, request, and foreign-host scope law before adding
+  more services.
+- **A service graph is valuable when it enables proofs.** OpenCode's custom
+  `LayerNode` representation checks dependency completeness, detects cycles,
+  validates replacements, enforces scope tags, and hoists global dependencies.
+  OpenAgents should begin with ordinary Layers plus architecture tests and add
+  a smaller graph IR only if replacement or hoisting requires it.
+- **Canonical Schema identity prevents package drift.** Public commands,
+  events, projections, authority manifests, and receipts should each have one
+  browser-safe Schema value reused by Core, Protocol, clients, Sync, and UI.
+  Compatibility contracts belong in explicit V1 namespaces.
+- **`ManagedRuntime` belongs at foreign host edges.** It is appropriate for an
+  Electron/native callback host, CLI, server, or embedded SDK. It should not be
+  the ordinary path by which Effect services call one another.
+- **Scope is the extension lifecycle.** Plugins, tools, provider catalogs, MCP,
+  and foreign hosts should be generation-owned resources whose registrations,
+  fibers, and cleanup end together. A stable ID plus mutable global map is not
+  sufficient.
+- **Promise compatibility should adapt inward.** OpenCode's Promise plugin API
+  captures Effect context and Scope, then enters the canonical Effect runtime.
+  OpenAgents should keep Effect-native internals and put `async`/`await`, IPC,
+  and provider-SDK bridges at named perimeter modules.
+- **Interruption must survive every adapter.** Cancellation is control flow
+  that owns cleanup, not an ordinary tool failure. Broad cause conversion in a
+  tool, plugin, renderer bridge, or Pylon adapter must not swallow it.
+- **Testing is a primary payoff.** Replace graph nodes for filesystem,
+  transport, identity, policy, provider, database, and Sync; use deterministic
+  time for leases, approvals, retry, debounce, reconnect, and cleanup; and test
+  forbidden scope edges and cycles directly.
+- **Effect does not provide containment.** Scope-owned in-process plugins are
+  easier to clean up but remain trusted code. OpenAgents still needs signed
+  provenance, capability narrowing, process/guest isolation, and receipts.
+- **Failure policy needs more discipline than `orDie`.** User refusal,
+  dependency outage, interruption, invariant defect, and optional telemetry
+  failure need different contracts and recovery. OpenCode's frequent
+  fatalization is cautionary evidence.
+- **Framework risk is program risk.** OpenCode pins an Effect 4 beta and uses
+  unstable HTTP, SQL, process, and observability modules. OpenAgents upgrades
+  need protocol, resource-finalization, startup, typecheck, and replacement
+  regression gates.
+
+This changes the recommended Effect Native foundation from “typed components
+over Effect” to an explicit capability-and-lifetime architecture shared by
+Desktop, mobile, web, and runtime hosts.
 
 ## What the Claude Code source audit changes
 
@@ -650,6 +709,23 @@ bounded request and durable outcome.
 The reference stacks validate the need for foreign-host components without
 weakening the one-UI-substrate decision.
 
+The OpenCode Effect audit adds a stronger foundation: Effect Native must own an
+explicit application service graph, not only expose components that happen to
+return Effects. Define five scopes up front:
+
+| Scope | OpenAgents examples |
+| --- | --- |
+| Process | identity, encrypted storage, Khala Sync, observability, component ledger |
+| WorkContext | repository, Blueprint program/action, policy, provider catalog, containment, Pylon target |
+| Conversation/run | model stream, captured tool generation, child topology, budgets, settlement |
+| Request/command | decoding, idempotency, approval, transaction, event, receipt |
+| Foreign host/view | PTY, editor, diff, browser preview, canvas, native capture |
+
+Every service and resource should declare its owner, allowed upstream scopes,
+cache key, freshness rule, and disposal proof. A WorkContext-scoped service may
+depend on process services; a process service must not capture one WorkContext.
+Avoid ambient cwd or `AsyncLocalStorage` as authority.
+
 Effect Native should define typed, lifecycle-owned hosts for:
 
 - terminal/PTY;
@@ -662,18 +738,31 @@ Effect Native should define typed, lifecycle-owned hosts for:
 
 Each host receives serializable configuration and emits typed intents/events.
 It does not leak library-specific instances, Electron APIs, native handles, or
-provider state into application code.
+provider state into application code. Acquisition creates an owned Scope;
+unmount, navigation, runtime replacement, and app shutdown close it and its
+fibers, subscriptions, registrations, and native resources together.
 
 The in-process Effect Native/runtime composition should substitute an owned
 transport into the same generated client and request processor used over the
 network. It must not become a privileged direct-service API that bypasses
 middleware, WorkContext resolution, policy, events, or receipts.
 
+Promise, Electron IPC, React Native, and native callback bridges should capture
+and re-enter Effect context only in explicit perimeter modules. Cancellation
+must become Effect interruption and run finalizers. Tests must be able to
+replace every platform host with a Layer and use deterministic time without
+starting Electron, React Native, or a browser.
+
 OpenCode's `Platform` adapter is the useful comparison point, while its
 Ghostty terminal shows the desired lifecycle shape: create/connect/replay,
 resize/input, persist bounded presentation state, disconnect, and dispose. The
 Effect Native version should make that lifecycle an owned Effect resource and
 keep the runtime token/transport outside ordinary renderer state.
+
+Do not copy OpenCode's custom `LayerNode` wholesale. Start with native Layers,
+small explicit node metadata, and architecture tests for dependency direction,
+cycles, replacement, freshness, and cleanup. Introduce a graph compiler only
+when WorkContext hoisting or graph-aware replacement produces a concrete need.
 
 ## Adapt later, after the core loop is trustworthy
 
