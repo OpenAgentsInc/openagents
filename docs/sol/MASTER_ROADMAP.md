@@ -1,10 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (live multi-agent supervision, portable agent graphs,
-  episode 248/249 UX contracts, CUT-05 scoped Claude authority, and CUT-06
-  deterministic supervisor/publication ordering)
-- Revision: 31
+- Updated: 2026-07-11 (accepted simultaneous Codex+Claude Phase A receipt,
+  portable agent graphs, episode 248/249 UX contracts, and CUT-07 next)
+- Revision: 32
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -498,18 +497,14 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
 - C1 is crossed. #8637, #8633, and #8639 are closed; the minimum-safe Sarah →
   standing Pylon → exact supervision/reconnect path is fixture-proven and
   deployed.
-- #8640 Phase A remains the next owner-authorized mixed-runtime proof, but it
-  does not block D1 client work. The API ambient-type and credential-scanner
-  gates are fixed, and one isolated named Codex home is live-proven ready
-  without touching default `~/.codex`. The first simultaneous named Codex+
-  Claude attempt executed but both closeouts were rejected. CUT-05 then closed
-  the Claude refusal at `509fb27ea1` with exact-scope owner-local authority and
-  a real accepted `claude-pylon-3` assignment. CUT-06's deterministic
-  supervisor-scope, cancellation, restart, and verifier-before-publication
-  repair is landed at `d98abda795`; the leaf and parent still need the same
-  simultaneous named-account production receipt, the correct Codex verifier,
-  and two accepted closeouts before either closes; R3/R7 remain in the client/
-  program issues.
+- #8640 Phase A and CUT-06 are closed by production run
+  `fleet_run.sarah.666432631ce5e88a47a5`: simultaneous named Codex and Claude,
+  two accepted closeouts, zero failed/stale assignments, exact usage, the
+  exact four-test verifier on both workers, and one durable typed steer outcome.
+  The compatibility stack ends at `54934f05f5`, migration `0060` is applied in
+  staging/production, and production revision `openagents-monolith-00084-tnv`
+  serves 100%. R3/R7 remain in the client/program issues; Phase A does not
+  claim those exits.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -539,7 +534,7 @@ into reliable Desktop/mobile software; it does not build another fleet system.
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation → durable authority → registered standing Pylon → bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none; live owner-account execution is #8640 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none; useful live account work is #8640, not reopened FC-2 residue |
 | #8639 FC-3 | **closed** at `1d84386cb5`: exact run/work/attempt authority, durable control outcomes, approval/steer binding, full evidence canvas, privacy-safe reconnect, migrations 0054–0057, and the integrated C1 fixture are proven; production `00069-h2k` deployed the stack | none; the live owner-account rung is #8640 |
-| #8640 FC-5 | CUT-05 closed the Claude refusal at `509fb27ea1`; CUT-06's deterministic supervisor/publication repair is landed at `d98abda795`; the earlier simultaneous parent run still had rejected Codex/Claude closeouts | run the authenticated production path with the exact Codex verifier and obtain two accepted closeouts plus one durable typed steer/approval outcome |
+| #8640 FC-5 | **closed** on the stack ending `54934f05f5`: production run `fleet_run.sarah.666432631ce5e88a47a5` has two simultaneous named Codex/Claude accepted closeouts, exact usage/verifiers, zero failures/stale claims, and one durable typed steer outcome; production `00084-tnv` plus migration `0060` carry the contract | none; R3/R7 client and sustained-work exits remain in their owning issues |
 
 These rows are implementation receipts, not issue closure. The commit named in
 one row does not imply deployment or live proof, and later commits inherit the
@@ -551,8 +546,8 @@ The active program composes **[#8566](https://github.com/OpenAgentsInc/openagent
 **[#8574](https://github.com/OpenAgentsInc/openagents/issues/8574)**,
 **[#8597](https://github.com/OpenAgentsInc/openagents/issues/8597)**, and the
 landed Fleet Command substrate under
-**[#8638](https://github.com/OpenAgentsInc/openagents/issues/8638)**. Issue
-#8640 supplies the real mixed-account burn. This roadmap priority is effective
+**[#8638](https://github.com/OpenAgentsInc/openagents/issues/8638)**. Closed
+#8640 supplied the real mixed-account burn. This roadmap priority is effective
 immediately even where live issue labels or older issue prose still say
 `P1 parallel` or require Sarah as the initiating surface; reconcile those
 records before claiming the first new slice.
@@ -914,7 +909,8 @@ Exit:
 ### P0.4 — live mixed-account runtime proof
 
 **[#8640 FC-5](https://github.com/OpenAgentsInc/openagents/issues/8640)**
-Phase A is the immediate acceptance run.
+Phase A is accepted and closed by the receipt in
+[`../pylon/2026-07-11-cut-06-fleet-supervisor-ordering-receipt.md`](../pylon/2026-07-11-cut-06-fleet-supervisor-ordering-receipt.md).
 
 Required receipt:
 
@@ -930,7 +926,7 @@ Required receipt:
 - measured FC latency distribution and proof rung for every acceptance item.
 
 This is the Fleet runtime-unblock milestone, not the user-facing product
-cutover. #8640 closes at this Phase A receipt; two-client control, fault
+cutover. #8640 is closed at this Phase A receipt; two-client control, fault
 convergence, and sustained R7 dogfood remain in #8574/#8597/#8677/#8566. Do
 not wait for cloud or Grok quota to run it. Grok is postponed; its adapters and
 historical canary remain regression evidence.
@@ -1486,9 +1482,9 @@ universe.
 
 ## Canonical open issue set
 
-There are **30 open `roadmap:sol` records** after closing CUT-01–CUT-05 and
-topology parent #8678: the original #8547, #8566, #8574, #8597, #8636, #8640,
-#8676, and #8677; and bounded CUT-06–CUT-27 leaves #8686–#8707. #8566 remains
+There are **28 open `roadmap:sol` records** after closing #8640, CUT-01–CUT-06,
+and topology parent #8678: the original #8547, #8566, #8574, #8597, #8636,
+#8676, and #8677; and bounded CUT-07–CUT-27 leaves #8687–#8707. #8566 remains
 the sole program epic. GitHub sub-issue
 relationships place each leaf under its narrowest owning track or reliability
 parent; prose cross-links retain the other affected tracks.
@@ -1497,10 +1493,9 @@ parent; prose cross-links retain the other affected tracks.
 ambient-authority denial, and #8684 replaceability, lifecycle-disposal,
 correlation, and built-host receipt jointly satisfy the architecture parent.
 #8677 similarly delegates its fault matrix to #8687–#8689,
-and #8640 delegates its supervisor/publication repair to #8686 before its
-parent-only live receipt. That repair is code-landed at `d98abda795`, but #8686
-remains open because its close rule includes the same live parent receipt.
-Closed #8685 supplies the scoped Claude authority.
+and closed #8640 delegated its supervisor/publication repair to closed #8686
+before the accepted parent receipt. Closed #8685 supplies the scoped Claude
+authority. CUT-07 #8687 is the next ordered local-coding leaf.
 
 The [Pylon streamlining audit](../fable/2026-07-11-pylon-streamlining-audit.md)
 also fixes the short-term boundary for this proof: `apps/pylon/src/orchestration`
@@ -1515,13 +1510,13 @@ streamlining wait for the post-#8640 program described by that audit.
 | **P0 program parent** | #8566 | Sole R0–R7 Effect Native Desktop/mobile program epic |
 | **P0 client track** | #8574 | OpenCode-parity Desktop, Runtime Gateway, authoritative Sync, Fleet cockpit, and D0–D6 |
 | **P0 client track** | #8597 | Effect Native mobile Sync/coding/fleet client and iOS/Android proof |
-| **P0 active proof** | #8640 | One accepted simultaneous named Codex + Claude Phase A receipt; closes at that boundary |
+| **Closed P0 proof** | #8640 | Accepted simultaneous named Codex + Claude Phase A receipt; product/client exits remain transferred |
 | **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8686–#8707 open | Remaining ordered CUT-06–CUT-27 graph; CUT-01–CUT-05 are closed, and CUT-06 implementation is landed with its named-account live rung pending |
+| **P0 local-coding leaves** | #8687–#8707 open | Remaining ordered CUT-07–CUT-27 graph; CUT-01–CUT-06 and the bounded #8640 Phase A proof are closed |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
@@ -1574,14 +1569,11 @@ around and after that narrower installed-Desktop milestone.
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
-5. Run #8640 Phase A at the first explicit owner-authorized opportunity without
-   blocking #8676/#8677 or the issue-ledger repair. Preserve CUT-05's closed
-   Claude authority and CUT-06's landed supervisor/publication ordering, use
-   the correct Codex verifier selection, obtain two accepted closeouts, post the
-   honest receipt, and close #8640. Treat the Pylon fleet core as protected
-   during this burn: admit only CUT-owned correctness and proof-compatibility
-   repairs, and defer the streamlining audit's broader cleanup and authority
-   collapse. Do not keep #8640 open for R3/R7 client work.
+5. Continue with CUT-07 #8687 after the accepted #8640/CUT-06 receipt. Preserve
+   the proven Pylon fleet core and migration `0060`; treat broader streamlining
+   or authority collapse as a separately bounded post-proof program, not scope
+   silently inherited by the remaining CUT leaves. Keep R3/R7 in their owning
+   client/program issues.
 6. Complete #8547's real brokered Firecracker workroom before #8636's live
    hybrid-routing acceptance. In parallel with non-colliding client work, prove
    server-authorized owner-capacity metering, retry-deduped usage, bounded

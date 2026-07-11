@@ -3,11 +3,11 @@
 - Issue: #8640
 - Program parent: #8566
 - Depends on: closed #8637/#8633/#8639 Fleet substrate
-- Status: active bounded owner-authorized live proof
+- Status: closed — accepted production receipt on 2026-07-11
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 31
 - Child repairs: closed #8685 Claude owner-local permission authority; #8686
-  supervisor lifecycle and verifier/publication ordering, implementation
-  landed at `d98abda795` with the live parent receipt pending
+  supervisor lifecycle and verifier/publication ordering, accepted through the
+  compatibility stack ending `54934f05f5`
 
 ## Outcome
 
@@ -21,6 +21,17 @@ No Fleet run is authorized merely because this issue is open. Each live attempt
 still requires the owner's explicit authorization and a fresh bounded claim.
 
 ## Current live truth
+
+- Phase A is accepted. Production run
+  `fleet_run.sarah.666432631ce5e88a47a5` completed with simultaneous named
+  Codex and Claude assignments, two accepted closeouts, zero failed/stale
+  assignments, exact usage, the exact four-test verifier on both workers, and
+  one durable Codex-targeted steer outcome (`skipped_stale`). The complete
+  public-safe receipt is
+  [`../../pylon/2026-07-11-cut-06-fleet-supervisor-ordering-receipt.md`](../../pylon/2026-07-11-cut-06-fleet-supervisor-ordering-receipt.md).
+- Production revision `openagents-monolith-00084-tnv` serves the matching
+  schema, and staging/production both carry migration `0060` for independent
+  Claude cache-read truth.
 
 - C1 is crossed: the durable run, mixed supervisor, command/reconnect, evidence,
   and closeout substrate is closed and deployed.
@@ -61,8 +72,8 @@ still requires the owner's explicit authorization and a fresh bounded claim.
 6. Preserve Pylon-owned post-verification credential scanning and publication;
    workers do not commit, push, open/modify PRs, or mutate issue comments.
 
-The child issues close the known code defects. #8640 still requires its own
-accepted simultaneous named-account live receipt before the parent closes.
+The child issues and accepted simultaneous named-account receipt close this
+bounded proof. Product/client exits remain transferred below.
 
 ## Acceptance
 
