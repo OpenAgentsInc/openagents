@@ -25,3 +25,19 @@ export const restorableHistoryThreadRef = (
   const rootIndex = catalog.roots.findIndex((root) => root.threadRef === current.threadRef)
   return rootIndex >= 0 && rootIndex < visibleRootCount ? selectedThreadRef : null
 }
+
+/**
+ * Where the initial window opens (EP250 bottom-anchored flow, #8675 restore
+ * contract): restoring a saved ITEM selection loads the page window AROUND
+ * that item (its saved containing-page offset; bidirectional fill takes over
+ * from there); otherwise the conversation opens at its END with the newest
+ * items visible.
+ */
+export const historyRestoreFetchPlan = (
+  restored: Readonly<{ offset: number; selectedItemRef: string | null }> | null,
+  totalItems: number,
+  limit: number,
+): Readonly<{ offset: number; anchor: "item" | "end" }> =>
+  restored !== null && restored.selectedItemRef !== null
+    ? { offset: Math.min(Math.max(0, restored.offset), Math.max(0, totalItems - 1)), anchor: "item" }
+    : { offset: Math.max(0, totalItems - limit), anchor: "end" }

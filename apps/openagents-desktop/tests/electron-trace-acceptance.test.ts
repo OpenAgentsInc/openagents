@@ -19,6 +19,9 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
       "history_shortcut_down_failed", "history_shortcut_up_failed",
       "history_shortcut_hold_failed", "history_shortcut_offscreen", "history_shortcut_hold_return_failed",
       "history_modifier_hint_missing", "history_modifier_scroll_reset",
+      // EP250 bottom-anchored autoload regressions.
+      "pager_still_present", "not_bottom_anchored", "scrollup_prefetch_failed",
+      "position_caption_stale", "prepend_anchor_lost",
     ]) expect(traceAcceptanceJourney).toContain(marker)
     expect(traceAcceptanceReload).toContain("restart_expectation_missing")
     expect(traceAcceptanceReload).toContain("itemInspectorRestored")

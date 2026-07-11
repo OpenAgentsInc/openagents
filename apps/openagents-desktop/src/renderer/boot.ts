@@ -37,7 +37,7 @@ import {
   initialDesktopShellState,
   makeDesktopShellHandlers,
 } from "./shell.ts"
-import { restorableHistoryThreadRef } from "./history-restore.ts"
+import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { selectDesktopChatHostSelection } from "./runtime-conversation.ts"
 import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
@@ -69,7 +69,7 @@ import type {
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
-import { historyAgentTraversalTarget, historyCatalogPageSize, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
+import { historyAgentTraversalTarget, historyCatalogPageSize, historyItemPageSize, historyPrependScrollTop, historyShouldFetchNewer, historyShouldFetchOlder, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
 import {
   decodeDesktopCodingCatalogProjection,
   desktopWorkspaceForCodingFocus,
@@ -576,9 +576,23 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       window.addEventListener("pagehide", () => unsubscribeLedger(), { once: true })
     }
     const historyCatalog = yield* Effect.promise(historyHost.catalog)
+    // EP250 bottom-anchored flow: a restored ITEM selection loads the window
+    // AROUND that item and scrolls to it; otherwise the conversation opens at
+    // its END with the newest items visible.
+    let initialHistoryAnchor: Readonly<{ kind: "end" }> | Readonly<{ kind: "item"; itemRef: string }> | null = null
     if (historyCatalog !== null) {
       const restored=restoreHistory(); const selected=restorableHistoryThreadRef(historyCatalog,restored?.selectedThreadRef,historyCatalogPageSize)
-      const firstPage = selected === null ? null : yield* Effect.promise(() => historyHost.page(selected, restored?.offset??0, 50))
+      let firstPage: CodexHistoryPage | null = null
+      if (selected !== null) {
+        const probe = yield* Effect.promise(() => historyHost.page(selected, 0, 1))
+        if (probe !== null) {
+          const plan = historyRestoreFetchPlan(restored, probe.totalItems, historyItemPageSize)
+          firstPage = yield* Effect.promise(() => historyHost.page(selected, plan.offset, historyItemPageSize))
+          initialHistoryAnchor = plan.anchor === "item" && restored?.selectedItemRef != null && firstPage !== null && firstPage.items.some(item => item.itemRef === restored.selectedItemRef)
+            ? { kind: "item", itemRef: restored.selectedItemRef }
+            : { kind: "end" }
+        }
+      }
       yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
     }
     let restoredWorkspace: DesktopWorkspaceName | null = null
@@ -673,9 +687,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     }
     const report: IntentReporter = (ref, runtimeValue) => {
       const shouldFocus = ref.name === "DesktopNewChat" || ref.name === "DesktopNoteSubmitted"
+      // Selection-driven history loads land bottom-anchored (EP250: "show
+      // the most recent messages, starting at bottom").
+      const shouldAnchorHistoryEnd = ref.name === "HistoryConversationSelected" || ref.name === "HistoryAgentSelected"
       return registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null)).pipe(
         Effect.ensuring(Effect.sync(() => {
           if (shouldFocus) focusComposer()
+          if (shouldAnchorHistoryEnd) void anchorHistoryEnd()
         })),
       )
     }
@@ -788,6 +806,50 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         if(rowRect.top>=listRect.top-1&&rowRect.bottom<=listRect.bottom+1)return
       }
     }
+    // --- EP250 bottom-anchored history scrolling -------------------------
+    const historyScrollEl=():HTMLElement|null=>root.querySelector<HTMLElement>('[data-en-key="history-timeline-page"]')
+    const anchorHistoryEnd=async():Promise<void>=>{
+      for(let attempt=0;attempt<8;attempt++){
+        await settleFrame()
+        const el=historyScrollEl()
+        if(el!==null&&el.scrollHeight>0){
+          el.scrollTop=el.scrollHeight
+          if(el.scrollHeight-(el.scrollTop+el.clientHeight)<=2)return
+        }
+      }
+    }
+    const anchorHistoryItem=async(itemRef:string):Promise<void>=>{
+      for(let attempt=0;attempt<8;attempt++){
+        await settleFrame()
+        const el=historyScrollEl()
+        const row=el?.querySelector<HTMLElement>(`[data-en-key="history-item-${itemRef}"]`)??null
+        if(el!==null&&row!==null){el.scrollTop=Math.max(0,row.offsetTop-Math.max(0,el.clientHeight-row.offsetHeight)/2);return}
+      }
+    }
+    // Smart prefetch: fetch the older page ~1.5 viewports BEFORE the reader
+    // reaches the top of loaded content; preserve the scroll anchor on
+    // prepend so the viewport never jumps (owner contract: "auto load them
+    // as i scroll up, smartly loading before the cursor").
+    let historyEdgeFetchInFlight=false
+    const onHistoryTimelineScroll=(event:Event):void=>{
+      const el=event.target
+      if(!(el instanceof HTMLElement)||el.getAttribute("data-en-key")!=="history-timeline-page"||historyEdgeFetchInFlight)return
+      const metrics={scrollTop:el.scrollTop,clientHeight:el.clientHeight,scrollHeight:el.scrollHeight}
+      historyEdgeFetchInFlight=true
+      void Effect.runPromise(SubscriptionRef.get(state)).then(async current=>{
+        const page=current.history.page
+        if(current.workspace!=="chat"||page===null)return
+        if(historyShouldFetchOlder({scrollTop:metrics.scrollTop,clientHeight:metrics.clientHeight,offset:page.offset,loadingEdge:current.history.loadingEdge})){
+          const savedTop=metrics.scrollTop;const savedHeight=metrics.scrollHeight
+          await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryOlderRequested",StaticPayload(null)))))
+          await settleFrame()
+          const after=historyScrollEl()
+          if(after!==null)after.scrollTop=historyPrependScrollTop(savedTop,savedHeight,after.scrollHeight)
+        } else if(historyShouldFetchNewer({scrollTop:metrics.scrollTop,clientHeight:metrics.clientHeight,scrollHeight:metrics.scrollHeight,windowEnd:page.offset+page.items.length,totalItems:page.totalItems,loadingEdge:current.history.loadingEdge})){
+          await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryNewerRequested",StaticPayload(null)))))
+        }
+      }).finally(()=>{historyEdgeFetchInFlight=false})
+    }
     const pumpHistoryConversationShortcut=async():Promise<void>=>{
       if(historyShortcutRunning)return
       historyShortcutRunning=true
@@ -820,7 +882,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             void Effect.runPromise(SubscriptionRef.get(state)).then(current=>{
               if(current.history.pendingThreadRef!==targetRef)return
               return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected",StaticPayload(targetRef)))))
-            }).then(()=>scrollHistorySelectionIntoView(targetIndex,targetRef))
+            }).then(()=>{void anchorHistoryEnd();return scrollHistorySelectionIntoView(targetIndex,targetRef)})
           },110)
         }
       }finally{
@@ -859,7 +921,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         if(current.workspace!=="chat"||current.history.page===null)return
         const targetRef=historyAgentTraversalTarget(current.history,delta)
         if(targetRef===null)return
-        return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryAgentSelected",StaticPayload(targetRef)))))
+        return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryAgentSelected",StaticPayload(targetRef))))).then(()=>anchorHistoryEnd())
       })
     }
     const onHistoryModifierDown=(event:KeyboardEvent):void=>{
@@ -879,6 +941,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     window.addEventListener("keydown", onHistoryAgentShortcut)
     window.addEventListener("keyup", onHistoryModifierUp)
     window.addEventListener("blur", onHistoryWindowBlur)
+    // Scroll events do not bubble; capture phase observes the history region.
+    window.addEventListener("scroll", onHistoryTimelineScroll, true)
     window.addEventListener("pagehide", () => {
       window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onFullscreenShortcut)
@@ -889,6 +953,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       window.removeEventListener("keydown", onHistoryAgentShortcut)
       window.removeEventListener("keyup", onHistoryModifierUp)
       window.removeEventListener("blur", onHistoryWindowBlur)
+      window.removeEventListener("scroll", onHistoryTimelineScroll, true)
       if(historySelectionTimer!==null)window.clearTimeout(historySelectionTimer)
     }, { once: true })
     const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
@@ -902,6 +967,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     void Effect.runPromise(
       registry.dispatch(resolveIntentRef(IntentRef("FleetRefreshRequested", StaticPayload(null)))),
     )
+    // Restored history lands where the reader left it: window AROUND the
+    // saved item (scrolled to it) or bottom-anchored at the newest items.
+    if (initialHistoryAnchor !== null) {
+      const anchor = initialHistoryAnchor
+      window.setTimeout(() => { void (anchor.kind === "end" ? anchorHistoryEnd() : anchorHistoryItem(anchor.itemRef)) }, 0)
+    }
     // First paint must never wait on local rollout parsing. The sidebar gets
     // metadata immediately; the selected thread receives five recent messages
     // and then its bounded expanded tail after the DOM is already visible.

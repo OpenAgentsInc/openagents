@@ -2028,5 +2028,45 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the history workspace and tool-card humanization suites.",
       },
+      {
+        contractId: "openagents_desktop.history.bottom_anchored_autoload.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "codex history workspace pagination",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "you need to show the most recent messages, starting at bottom, and auto load them as i scroll up, smartly loading before the cursor",
+        authorityBoundary:
+          "Presentation and fetch-order only. A history conversation opens at its END (tail window, newest items visible, scrolled to bottom); the Previous/Next pager is gone. Scrolling up auto-loads the previous page ~1.5 viewports before the top edge and preserves the reader's scroll anchor by the exact prepended height; scrolling down auto-loads newer pages. A thin textFaint loading row / position caption marks the fetching edge. Overlapping fetches never double-count an item. Loss-accounted completeness (#8674/#8675) is untouched: source/rendered/redactions/gaps and totalItems stay whole-conversation truth as the loaded WINDOW changes — only fetch order changed. Restoring a saved item selection reopens the window around that item and scrolls to it; otherwise restore opens at the end.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/history-workspace.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/renderer/history-restore.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "history_autoload.window_math",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/history-workspace.test.ts",
+            description:
+              "Tail offset opens at the last page; scroll-up merge prepends older items and moves the offset back with no dupes; scroll-down appends newer items; prefetch predicates fire ~1.5 viewports before each edge and only while idle; prepend preserves the scroll anchor by the growth; no pager renders and the loading edge shows a thin textFaint row/caption; the restore plan reopens a saved item's window or opens at the end; completeness stays whole-conversation as the window grows.",
+          },
+          {
+            id: "history_autoload.smoke_scroll",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "WRITTEN, pending owner (movie): the built-Electron trace acceptance opens a conversation at its tail (bottom-anchored, no pager), asserts scrolling to the top auto-prepends the previous window with the scroll anchor preserved and the position caption advancing, discovers tool/handoff items against the same tail window the UI renders, and the reload driver restores the saved window. NOT executed this session.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the windowed-loading unit suite; the Electron smoke bottom-anchored + prefetch steps are written but were not executed this session (owner watching a movie) — the coordinator runs the visual/smoke gate on integration.",
+      },
     ],
   };

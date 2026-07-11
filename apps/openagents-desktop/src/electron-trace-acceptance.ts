@@ -48,20 +48,25 @@ export const traceAcceptanceJourney = `(async () => {
   const candidateOrder = [...visibleCandidates].sort((a,b) => (b.children.length >= 2 && b.grandchild ? 1 : 0) - (a.children.length >= 2 && a.grandchild ? 1 : 0) || b.root.descendantCount - a.root.descendantCount)
   const candidate = candidateOrder[0]
   if (!candidate) return {ok:false,reason:"candidate_not_visible"}
-  const rootPageResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-root-page",query:{id:"codex.history.page",threadRef:candidate.root.threadRef,offset:0,limit:50}})
-  if (rootPageResponse?.kind !== "codex_history_page") return {ok:false,reason:"root_page_unavailable"}
+  // EP250 bottom-anchored flow: the workspace opens conversations at their
+  // TAIL window, so every visibility expectation is checked against the same
+  // tail window the app renders.
+  const pageAt = async (threadRef, offset, limit) => { const response = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-page",query:{id:"codex.history.page",threadRef,offset,limit}}); return response?.kind === "codex_history_page" ? response.page : null }
+  const tailPageOf = async (threadRef) => { const probe = await pageAt(threadRef, 0, 1); return probe ? await pageAt(threadRef, Math.max(0, probe.totalItems - 50), 50) : null }
+  const rootPage = await tailPageOf(candidate.root.threadRef)
+  if (!rootPage) return {ok:false,reason:"root_page_unavailable"}
   let inlineCandidate = null
-  let inlinePageResponse = null
+  let inlinePage = null
   for (const value of candidateOrder) {
-    const response = value.root.threadRef === candidate.root.threadRef ? rootPageResponse : await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-inline-page",query:{id:"codex.history.page",threadRef:value.root.threadRef,offset:0,limit:50}})
-    if (response?.kind === "codex_history_page" && response.page.items.some(item => item.relatedAgent)) { inlineCandidate=value; inlinePageResponse=response; break }
+    const tail = value.root.threadRef === candidate.root.threadRef ? rootPage : await tailPageOf(value.root.threadRef)
+    if (tail && tail.items.some(item => item.relatedAgent)) { inlineCandidate=value; inlinePage=tail; break }
   }
-  if (!inlineCandidate || inlinePageResponse?.kind !== "codex_history_page") return {ok:false,reason:"inline_agent_preview_missing"}
+  if (!inlineCandidate || !inlinePage) return {ok:false,reason:"inline_agent_preview_missing"}
   const selectedRef=()=>{try{return JSON.parse(localStorage.getItem('openagents.desktop.history.v1')??'null')?.selectedThreadRef??null}catch{return null}}
   const inlineRootButton = sidebarRows.find(row => row.getAttribute('data-en-key') === 'sidebar-thread-' + inlineCandidate.root.threadRef)
   inlineRootButton?.click()
   if (!await until(() => selectedRef() === inlineCandidate.root.threadRef && document.querySelector('[data-en-key="history-workspace-split"]'))) return {ok:false,reason:"workspace_not_ready"}
-  const inlineItems = inlinePageResponse.page.items.filter(item => item.relatedAgent)
+  const inlineItems = inlinePage.items.filter(item => item.relatedAgent)
   if (inlineItems.length === 0) return {ok:false,reason:"inline_agent_preview_missing"}
   const inlineItem = inlineItems[0]
   const inlineCard = await until(() => document.querySelector('[data-en-key="history-item-' + inlineItem.itemRef + '"][data-en-variant="agent"]'))
@@ -76,19 +81,58 @@ export const traceAcceptanceJourney = `(async () => {
   rootButton.click()
   if (!await until(() => selectedRef() === candidate.root.threadRef)) return {ok:false,reason:"inline_agent_return_failed"}
   const pageReadyMs = Math.round(performance.now() - selectionStart)
-  const page = rootPageResponse.page
+  const page = rootPage
   const completeness = page.completeness
   if (completeness.source !== completeness.rendered + completeness.redactions + completeness.gaps) return {ok:false,reason:"silent_loss"}
-  const metadataItem = page.items.find(item => item.kind === 'metadata')
+  // Bottom-anchored open (EP250): no pager, newest items visible, scroll
+  // starts at the end; scrolling up auto-loads the previous window with the
+  // scroll anchor preserved.
+  if (document.querySelector('[data-en-key="history-page-previous"]') || document.querySelector('[data-en-key="history-page-next"]')) return {ok:false,reason:"pager_still_present"}
+  const timelineRegion = await until(() => document.querySelector('[data-en-key="history-timeline-page"]'))
+  if (!timelineRegion) return {ok:false,reason:"timeline_missing"}
+  const bottomAnchored = await until(() => timelineRegion.scrollHeight - (timelineRegion.scrollTop + timelineRegion.clientHeight) <= 2 ? true : null)
+  if (!bottomAnchored) return {ok:false,reason:"not_bottom_anchored",scrollTop:timelineRegion.scrollTop,scrollHeight:timelineRegion.scrollHeight,clientHeight:timelineRegion.clientHeight}
+  let prefetchChecked = false
+  if (page.offset > 0) {
+    const caption = await until(() => document.querySelector('[data-en-key="history-position-caption"]'))
+    if (!caption) return {ok:false,reason:"position_caption_missing"}
+    const rowsBefore = document.querySelectorAll('[data-en-key^="history-item-"]').length
+    const captionBefore = caption.textContent
+    timelineRegion.scrollTop = 0
+    timelineRegion.dispatchEvent(new Event('scroll',{bubbles:true}))
+    const prepended = await until(() => document.querySelectorAll('[data-en-key^="history-item-"]').length > rowsBefore ? true : null)
+    if (!prepended) return {ok:false,reason:"scrollup_prefetch_failed",rowsBefore}
+    const captionAfter = document.querySelector('[data-en-key="history-position-caption"]')?.textContent ?? 'window-start-reached'
+    if (captionAfter === captionBefore) return {ok:false,reason:"position_caption_stale"}
+    // Anchor preserved: content grew above, so the offset moved off zero.
+    const anchorHeld = await until(() => timelineRegion.scrollTop > 0 ? true : null)
+    if (!anchorHeld) return {ok:false,reason:"prepend_anchor_lost",scrollTop:timelineRegion.scrollTop}
+    prefetchChecked = true
+  }
+  // Agent metadata (from #8674) lives at the conversation HEAD, so it is not
+  // in the bottom-anchored tail window. Fetch the head page to find it, then
+  // auto-load up until it is rendered before exercising expand/collapse.
+  const headPage = await pageAt(candidate.root.threadRef, 0, 50)
+  const metadataItem = headPage?.items.find(item => item.kind === 'metadata')
   if (!metadataItem) return {ok:false,reason:"agent_metadata_missing"}
-  const collapsedMetadata = await until(() => document.querySelector('[data-en-key="history-item-' + metadataItem.itemRef + '"][data-en-variant="metadata"]'))
+  const metadataSelector = '[data-en-key="history-item-' + metadataItem.itemRef + '"]'
+  for (let scrollUps = 0; scrollUps < 60 && document.querySelector(metadataSelector) === null; scrollUps++) {
+    timelineRegion.scrollTop = 0
+    timelineRegion.dispatchEvent(new Event('scroll',{bubbles:true}))
+    await wait(80)
+  }
+  const collapsedMetadata = await until(() => document.querySelector(metadataSelector + '[data-en-variant="metadata"]'))
   if (!collapsedMetadata || collapsedMetadata.querySelector('[data-en-role="detail"]') || !collapsedMetadata.textContent?.includes('Click to expand')) return {ok:false,reason:"agent_metadata_not_collapsed"}
   collapsedMetadata.click()
-  const expandedMetadata = await until(() => { const row=document.querySelector('[data-en-key="history-item-' + metadataItem.itemRef + '"][aria-selected="true"]');return row?.querySelector('[data-en-role="detail"]')?row:null })
+  const expandedMetadata = await until(() => { const row=document.querySelector(metadataSelector + '[aria-selected="true"]');return row?.querySelector('[data-en-role="detail"]')?row:null })
   if (!expandedMetadata) return {ok:false,reason:"agent_metadata_expand_failed"}
   if (!document.querySelector('[data-en-key="history-agent-list"]')) return {ok:false,reason:"agent_metadata_replaced_tree"}
   expandedMetadata.click()
-  if (!await until(() => { const row=document.querySelector('[data-en-key="history-item-' + metadataItem.itemRef + '"]');return row&&row.getAttribute('aria-selected')==='false'&&!row.querySelector('[data-en-role="detail"]')?row:null })) return {ok:false,reason:"agent_metadata_collapse_failed"}
+  if (!await until(() => { const row=document.querySelector(metadataSelector);return row&&row.getAttribute('aria-selected')==='false'&&!row.querySelector('[data-en-role="detail"]')?row:null })) return {ok:false,reason:"agent_metadata_collapse_failed"}
+  // Return to the tail before the shortcut checks so selection is well-defined.
+  const rootButtonAfterMetadata = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')].find(row => row.getAttribute('data-en-key') === 'sidebar-thread-' + candidate.root.threadRef)
+  rootButtonAfterMetadata?.click()
+  await until(() => selectedRef() === candidate.root.threadRef)
   const candidateIndex=roots.findIndex(root=>root.threadRef===candidate.root.threadRef)
   const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
   const modifierKey=bridge.platform==='darwin'?'Meta':'Control'
@@ -144,13 +188,15 @@ export const traceAcceptanceJourney = `(async () => {
   await wait(300)
   if (!keyboardEvent.defaultPrevented) return {ok:false,reason:"keyboard_tree_stuck"}
 
+  // Discover against the TAIL window each agent opens to (EP250), so the
+  // item the driver then looks for in the DOM is actually rendered.
   let toolPage = null
   let communicationPage = null
   for (const agent of page.agents) {
-    const response = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-tool-page",query:{id:"codex.history.page",threadRef:agent.threadRef,offset:0,limit:50}})
-    if (response?.kind !== "codex_history_page") continue
-    if (!toolPage && response.page.items.some(item => item.kind === "tool_call" || item.kind === "tool_result")) toolPage=response.page
-    if (!communicationPage && response.page.items.some(item => item.kind === "agent_message" && item.fields.some(field => field.label === "message type" && field.value === "NEW_TASK"))) communicationPage=response.page
+    const tail = await tailPageOf(agent.threadRef)
+    if (!tail) continue
+    if (!toolPage && tail.items.some(item => item.kind === "tool_call" || item.kind === "tool_result")) toolPage=tail
+    if (!communicationPage && tail.items.some(item => item.kind === "agent_message" && item.fields.some(field => field.label === "message type" && field.value === "NEW_TASK"))) communicationPage=tail
     if (toolPage && communicationPage) break
   }
   if (!toolPage) return {ok:false,reason:"tool_trace_missing"}
@@ -204,7 +250,7 @@ export const traceAcceptanceJourney = `(async () => {
   const saved = JSON.parse(localStorage.getItem('openagents.desktop.history.v1') ?? 'null')
   if (!saved || typeof saved.selectedThreadRef !== 'string' || typeof saved.selectedItemRef !== 'string' || !Array.isArray(saved.expandedThreadRefs)) return {ok:false,reason:"ref_restore_missing"}
   sessionStorage.setItem('openagents.desktop.trace-acceptance.expected', JSON.stringify({selectedThreadRef:saved.selectedThreadRef,selectedItemRef:saved.selectedItemRef,expandedThreadRefs:saved.expandedThreadRefs}))
-  return {ok:true,shellReadyMs,catalogReadyMs,pageReadyMs,inspectorReadyMs,rootCount:roots.length,agentCount:page.agents.length,childCount:candidate.children.length,grandchildCount:candidate.grandchild?1:0,inlinePreviewCount:inlineItems.length,toolItemCount:toolPage.items.filter(item=>item.kind==='tool_call'||item.kind==='tool_result').length,gapCount:completeness.gaps,timelineClientHeight:timeline.clientHeight,timelineScrollHeight:timeline.scrollHeight}
+  return {ok:true,shellReadyMs,catalogReadyMs,pageReadyMs,inspectorReadyMs,rootCount:roots.length,agentCount:page.agents.length,childCount:candidate.children.length,grandchildCount:candidate.grandchild?1:0,inlinePreviewCount:inlineItems.length,toolItemCount:toolPage.items.filter(item=>item.kind==='tool_call'||item.kind==='tool_result').length,gapCount:completeness.gaps,prefetchChecked,timelineClientHeight:timeline.clientHeight,timelineScrollHeight:timeline.scrollHeight}
 })()`
 
 export const traceAcceptanceReload = `(async () => {

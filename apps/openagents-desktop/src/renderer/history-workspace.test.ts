@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import type { View } from "@effect-native/core"
-import { historyAgentTraversalTarget, historyWorkspaceView, isHistoryAgentTraversalShortcut, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
-import type { CodexHistoryPage } from "../codex-history-contract.ts"
+import { historyAgentTraversalTarget, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historyPrependScrollTop, historyShouldFetchNewer, historyShouldFetchOlder, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
+import { historyRestoreFetchPlan } from "./history-restore.ts"
+import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 
 const page: CodexHistoryPage = { rootThreadRef:"root",selectedThreadRef:"child",offset:0,limit:200,totalItems:1,hasPrevious:false,hasNext:false,completeness:{source:1,rendered:1,redactions:0,gaps:0,complete:true},agents:[{threadRef:"root",parentThreadRef:null,title:"Root",status:"completed",createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth:0,descendantCount:1,model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null},{threadRef:"child",parentThreadRef:"root",title:"Worker",status:"running",createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth:1,descendantCount:0,model:"gpt",role:"worker",nickname:"worker",agentPath:"root/worker",sourceVersion:"v2",reasoning:null}],items:[{itemRef:"child:0",threadRef:"child",sequence:0,timestamp:"2026-07-10T00:00:00Z",kind:"tool_call",label:"exec",summary:"bun test",status:"running",fields:[{label:"input",value:"bun test"}],redacted:false,sourceType:"response_item/function_call"}] }
 const nodes=(view:View):any[]=>{const value=view as any; return [view,...(Array.isArray(value.children)?value.children.flatMap(nodes):[]),...(Array.isArray(value.items)?value.items.flatMap((item:any)=>item?._tag?nodes(item):[item]):[]),...(Array.isArray(value.sections)?value.sections.flatMap((section:any)=>[section,...(section.items??[])]):[]),...(Array.isArray(value.panes)?value.panes.flatMap((p:any)=>nodes(p.content)):[])]}
 const timelineEvents=(all:any[]):any[]=>all.filter(n=>n._tag==="Timeline").flatMap(n=>n.events)
 const item=(sequence:number,kind:CodexHistoryPage["items"][number]["kind"],label:string,summary:string,fields:CodexHistoryPage["items"][number]["fields"]=[]):CodexHistoryPage["items"][number]=>({itemRef:`child:${sequence}`,threadRef:"child",sequence,timestamp:"2026-07-10T00:00:00Z",kind,label,summary,status:"completed",fields,redacted:false,sourceType:`fixture/${kind}`})
-const stateWith=(pageValue:CodexHistoryPage,selectedItemRef:string|null=null):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:pageValue,selectedItemRef,railCollapsed:false,expandedThreadRefs:["root"],visibleRootCount:40})
+const stateWith=(pageValue:CodexHistoryPage,selectedItemRef:string|null=null):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:pageValue,selectedItemRef,railCollapsed:false,expandedThreadRefs:["root"],visibleRootCount:40,loadingEdge:null})
 /** Generic walk over the typed markdown model (blocks + inlines). */
 const markdownWalk=(value:any,visit:(node:any)=>void):void=>{
   if(Array.isArray(value)){value.forEach(entry=>markdownWalk(entry,visit));return}
@@ -184,7 +185,7 @@ describe("history workspace",()=>{
   describe("Cmd+Shift agent traversal walks the visible agent roster",()=>{
     const agent=(threadRef:string,parentThreadRef:string|null,depth:number,descendantCount:number)=>({threadRef,parentThreadRef,title:threadRef,status:"completed" as const,createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth,descendantCount,model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null})
     const rosterPage:CodexHistoryPage={...page,selectedThreadRef:"b",agents:[agent("root",null,0,3),agent("a","root",1,0),agent("b","root",1,1),agent("b1","b",2,0)]}
-    const rosterState=(selected:string,expanded:ReadonlyArray<string>=["root","b"]):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:{...rosterPage,selectedThreadRef:selected},selectedItemRef:null,railCollapsed:false,expandedThreadRefs:expanded,visibleRootCount:40})
+    const rosterState=(selected:string,expanded:ReadonlyArray<string>=["root","b"]):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:{...rosterPage,selectedThreadRef:selected},selectedItemRef:null,railCollapsed:false,expandedThreadRefs:expanded,visibleRootCount:40,loadingEdge:null})
     test("traverses down and up over the same roster the agent tree renders",()=>{
       expect(visibleHistoryAgents(rosterState("b")).map(a=>a.threadRef)).toEqual(["root","a","b","b1"])
       expect(historyAgentTraversalTarget(rosterState("b"),1)).toBe("b1")
@@ -198,7 +199,7 @@ describe("history workspace",()=>{
       expect(historyAgentTraversalTarget(rosterState("b1"),1)).toBeNull()
     })
     test("no-ops without an open conversation or roster",()=>{
-      expect(historyAgentTraversalTarget({catalog:{roots:[],agents:[]},page:null,selectedItemRef:null,railCollapsed:false,expandedThreadRefs:[],visibleRootCount:40},1)).toBeNull()
+      expect(historyAgentTraversalTarget({catalog:{roots:[],agents:[]},page:null,selectedItemRef:null,railCollapsed:false,expandedThreadRefs:[],visibleRootCount:40,loadingEdge:null},1)).toBeNull()
       // Selected agent hidden by a collapsed subtree -> falls to the roster edge.
       expect(historyAgentTraversalTarget(rosterState("b",[]) ,1)).toBe("root")
     })
@@ -219,6 +220,90 @@ describe("history workspace",()=>{
       // Non-darwin uses Ctrl+Shift.
       expect(isHistoryAgentTraversalShortcut(chord({ctrlKey:true,shiftKey:true}),"linux")).toBe(true)
       expect(isHistoryAgentTraversalShortcut(chord({metaKey:true,shiftKey:true}),"linux")).toBe(false)
+    })
+  })
+
+  // EP250 owner contract: "you need to show the most recent messages,
+  // starting at bottom, and auto load them as i scroll up, smartly loading
+  // before the cursor"
+  describe("bottom-anchored windowed loading",()=>{
+    const bigItem=(sequence:number):CodexHistoryItem=>({itemRef:`child:${sequence}`,threadRef:"child",sequence,timestamp:"2026-07-10T00:00:00Z",kind:"assistant_message",label:"Assistant",summary:`msg ${sequence}`,status:"completed",fields:[],redacted:false,sourceType:"fixture/assistant_message"})
+    const windowPage=(offset:number,count:number,total:number):CodexHistoryPage=>({...page,offset,limit:historyItemPageSize,totalItems:total,items:Array.from({length:count},(_,index)=>bigItem(offset+index)),hasPrevious:offset>0,hasNext:offset+count<total,completeness:{source:total,rendered:total,redactions:0,gaps:0,complete:true}})
+    test("opens at the END: tail offset targets the last page",()=>{
+      expect(historyTailOffset(1000,50)).toBe(950)
+      expect(historyTailOffset(30,50)).toBe(0)
+      expect(historyTailOffset(0,50)).toBe(0)
+    })
+    test("scroll-up prepends older items, offset moves back, no dupes, totals fixed",()=>{
+      const merged=mergeHistoryWindowUp(windowPage(950,50,1000),windowPage(900,50,1000))
+      expect(merged.offset).toBe(900)
+      expect(merged.items.length).toBe(100)
+      expect(merged.items[0]?.itemRef).toBe("child:900")
+      expect(merged.items.at(-1)?.itemRef).toBe("child:999")
+      expect(merged.totalItems).toBe(1000)
+      expect(merged.hasPrevious).toBe(true)
+      // Overlapping fetches never double-count a source item.
+      const overlap=mergeHistoryWindowUp(merged,windowPage(880,50,1000))
+      expect(new Set(overlap.items.map(item=>item.itemRef)).size).toBe(overlap.items.length)
+      expect(overlap.offset).toBe(880)
+    })
+    test("scroll-down appends newer items, offset held, totals fixed",()=>{
+      const merged=mergeHistoryWindowDown(windowPage(0,50,1000),windowPage(50,50,1000))
+      expect(merged.offset).toBe(0)
+      expect(merged.items.length).toBe(100)
+      expect(merged.items.at(-1)?.itemRef).toBe("child:99")
+      expect(merged.hasNext).toBe(true)
+      expect(merged.totalItems).toBe(1000)
+    })
+    test("smart prefetch fires ~1.5 viewports before an edge, and only while idle",()=>{
+      // Older: near the top with content above.
+      expect(historyShouldFetchOlder({scrollTop:100,clientHeight:400,offset:900,loadingEdge:null})).toBe(true)
+      expect(historyShouldFetchOlder({scrollTop:900,clientHeight:400,offset:900,loadingEdge:null})).toBe(false)
+      expect(historyShouldFetchOlder({scrollTop:100,clientHeight:400,offset:0,loadingEdge:null})).toBe(false)
+      expect(historyShouldFetchOlder({scrollTop:100,clientHeight:400,offset:900,loadingEdge:"top"})).toBe(false)
+      // Newer: near the bottom with content below.
+      expect(historyShouldFetchNewer({scrollTop:1200,clientHeight:400,scrollHeight:2000,windowEnd:100,totalItems:1000,loadingEdge:null})).toBe(true)
+      expect(historyShouldFetchNewer({scrollTop:0,clientHeight:400,scrollHeight:2000,windowEnd:100,totalItems:1000,loadingEdge:null})).toBe(false)
+      expect(historyShouldFetchNewer({scrollTop:1200,clientHeight:400,scrollHeight:2000,windowEnd:1000,totalItems:1000,loadingEdge:null})).toBe(false)
+      expect(historyShouldFetchNewer({scrollTop:1200,clientHeight:400,scrollHeight:2000,windowEnd:100,totalItems:1000,loadingEdge:"bottom"})).toBe(false)
+    })
+    test("prepend preserves the reader's scroll anchor by the exact growth",()=>{
+      expect(historyPrependScrollTop(50,1000,1600)).toBe(650)
+      expect(historyPrependScrollTop(0,1000,1000)).toBe(0)
+    })
+    test("no pager rendered; loading edge shows an honest thin row",()=>{
+      const windowed=windowPage(900,50,1000)
+      const idle=nodes(historyWorkspaceView({...stateWith(windowed),loadingEdge:null})) as any[]
+      expect(idle.find(n=>n.key==="history-page-previous")).toBeUndefined()
+      expect(idle.find(n=>n.key==="history-page-next")).toBeUndefined()
+      expect(idle.find(n=>n.key==="history-position-caption")?.content).toContain("of 1,000")
+      const loadingTop=nodes(historyWorkspaceView({...stateWith(windowed),loadingEdge:"top"})) as any[]
+      expect(loadingTop.find(n=>n.key==="history-fetch-earlier")).toMatchObject({content:"Fetching earlier items…",color:"textFaint"})
+      const loadingBottom=nodes(historyWorkspaceView({...stateWith(windowed),loadingEdge:"bottom"})) as any[]
+      expect(loadingBottom.find(n=>n.key==="history-fetch-newer")).toMatchObject({content:"Fetching newer items…"})
+      // A fully-loaded conversation from item 0 shows no top caption/pager.
+      const whole=nodes(historyWorkspaceView(stateWith(windowPage(0,30,30)))) as any[]
+      expect(whole.find(n=>n.key==="history-position-caption")).toBeUndefined()
+      expect(whole.find(n=>n.key==="history-page-previous")).toBeUndefined()
+    })
+    test("position caption is honest about the loaded window",()=>{
+      expect(historyPositionCaption(windowPage(950,50,1000))).toBe("Showing 951–1,000 of 1,000")
+      expect(historyPositionCaption(windowPage(0,30,30))).toBe("Showing all 30 items")
+    })
+    test("restore plan: saved item restores its window, otherwise open at the end",()=>{
+      expect(historyItemPageOffset(0)).toBe(0)
+      expect(historyItemPageOffset(137,50)).toBe(100)
+      expect(historyRestoreFetchPlan({offset:100,selectedItemRef:"child:137"},1000,50)).toEqual({offset:100,anchor:"item"})
+      expect(historyRestoreFetchPlan({offset:0,selectedItemRef:null},1000,50)).toEqual({offset:950,anchor:"end"})
+      expect(historyRestoreFetchPlan(null,1000,50)).toEqual({offset:950,anchor:"end"})
+    })
+    test("completeness stays whole-conversation as the window changes (no silent loss)",()=>{
+      const tail=windowPage(950,50,1000)
+      expect(tail.completeness.source).toBe(tail.completeness.rendered+tail.completeness.redactions+tail.completeness.gaps)
+      const merged=mergeHistoryWindowUp(tail,windowPage(900,50,1000))
+      // Window grew, but completeness is unchanged whole-conversation truth.
+      expect(merged.completeness).toEqual(tail.completeness)
+      expect(merged.totalItems).toBe(1000)
     })
   })
 })

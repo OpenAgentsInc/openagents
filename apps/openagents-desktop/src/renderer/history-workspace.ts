@@ -6,24 +6,98 @@ import { humanizeToolInvocation } from "./tool-cards.ts"
 
 export type HistoryWorkspaceState = Readonly<{
   catalog: CodexHistoryCatalog
+  /**
+   * The loaded WINDOW of the open conversation: `items` accumulate as the
+   * reader scrolls up (prepends) or down (appends); `offset` is the window
+   * start; `totalItems`/`completeness` stay whole-conversation truth. Fetch
+   * order changed for the bottom-anchored flow (EP250) — what counts as
+   * rendered/redacted/gap did not.
+   */
   page: CodexHistoryPage | null
   selectedItemRef: string | null
   railCollapsed: boolean
   expandedThreadRefs: ReadonlyArray<string>
   pendingThreadRef?: string | null
   visibleRootCount: number
+  /** Which window edge is fetching — drives the honest thin loading row. */
+  loadingEdge: "top" | "bottom" | null
 }>
 export const historyCatalogPageSize = 40
-export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [], pendingThreadRef: null, visibleRootCount: historyCatalogPageSize })
+export const historyItemPageSize = 50
+export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [], pendingThreadRef: null, visibleRootCount: historyCatalogPageSize, loadingEdge: null })
 
 export const HistoryConversationSelected = defineIntent("HistoryConversationSelected", Schema.String)
 export const HistoryAgentSelected = defineIntent("HistoryAgentSelected", Schema.String)
 export const HistoryItemSelected = defineIntent("HistoryItemSelected", Schema.String)
-export const HistoryPageRequested = defineIntent("HistoryPageRequested", Schema.Number)
+export const HistoryOlderRequested = defineIntent("HistoryOlderRequested", Schema.Null)
+export const HistoryNewerRequested = defineIntent("HistoryNewerRequested", Schema.Null)
 export const HistoryInspectorToggled = defineIntent("HistoryInspectorToggled", Schema.Null)
 export const HistoryAgentExpandedToggled = defineIntent("HistoryAgentExpandedToggled", Schema.String)
 export const HistoryCatalogMoreRequested = defineIntent("HistoryCatalogMoreRequested", Schema.Null)
-export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryPageRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested] as const
+export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryOlderRequested, HistoryNewerRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested] as const
+
+// ---------------------------------------------------------------------------
+// Bottom-anchored windowed loading (EP250 owner directive: "you need to show
+// the most recent messages, starting at bottom, and auto load them as i
+// scroll up, smartly loading before the cursor"). Pure window math — the
+// completeness equation and counted gaps are whole-conversation and change
+// with FETCH ORDER never.
+// ---------------------------------------------------------------------------
+
+/** Open at the END: the offset of the final page of a conversation. */
+export const historyTailOffset = (totalItems: number, limit: number = historyItemPageSize): number =>
+  Math.max(0, totalItems - limit)
+
+/** The containing-page offset for one item — restore windows around it. */
+export const historyItemPageOffset = (sequence: number, limit: number = historyItemPageSize): number =>
+  Math.max(0, Math.floor(sequence / limit) * limit)
+
+const dedupeHistoryItems = (items: ReadonlyArray<CodexHistoryItem>): ReadonlyArray<CodexHistoryItem> => {
+  const seen = new Set<string>()
+  return items.filter(item => seen.has(item.itemRef) ? false : (seen.add(item.itemRef), true))
+}
+
+/** Prepend an older fetched page onto the loaded window (scroll-up fill). */
+export const mergeHistoryWindowUp = (window: CodexHistoryPage, older: CodexHistoryPage): CodexHistoryPage => {
+  const items = dedupeHistoryItems([...older.items, ...window.items])
+  const offset = Math.min(window.offset, older.offset)
+  return { ...window, items, offset, hasPrevious: offset > 0, hasNext: offset + items.length < window.totalItems }
+}
+
+/** Append a newer fetched page onto the loaded window (scroll-down fill). */
+export const mergeHistoryWindowDown = (window: CodexHistoryPage, newer: CodexHistoryPage): CodexHistoryPage => {
+  const items = dedupeHistoryItems([...window.items, ...newer.items])
+  return { ...window, items, hasPrevious: window.offset > 0, hasNext: window.offset + items.length < window.totalItems }
+}
+
+/**
+ * SMART PREFETCH: trigger the older-page fetch when the reader crosses
+ * ~1.5 viewport heights from the top of loaded content — the page is ready
+ * BEFORE the boundary is hit.
+ */
+export const historyPrefetchViewportFactor = 1.5
+export const historyShouldFetchOlder = (input: Readonly<{ scrollTop: number; clientHeight: number; offset: number; loadingEdge: "top" | "bottom" | null }>): boolean =>
+  input.loadingEdge === null && input.offset > 0 && input.scrollTop < input.clientHeight * historyPrefetchViewportFactor
+
+export const historyShouldFetchNewer = (input: Readonly<{ scrollTop: number; clientHeight: number; scrollHeight: number; windowEnd: number; totalItems: number; loadingEdge: "top" | "bottom" | null }>): boolean =>
+  input.loadingEdge === null && input.windowEnd < input.totalItems &&
+  input.scrollHeight - (input.scrollTop + input.clientHeight) < input.clientHeight * historyPrefetchViewportFactor
+
+/**
+ * Scroll anchor preserved on prepend: content grew strictly above the
+ * viewport, so the offset moves by exactly the growth — the reader's line
+ * does not jump.
+ */
+export const historyPrependScrollTop = (savedScrollTop: number, savedScrollHeight: number, newScrollHeight: number): number =>
+  Math.max(0, savedScrollTop + (newScrollHeight - savedScrollHeight))
+
+/** Honest position caption at the loading edge. */
+export const historyPositionCaption = (page: CodexHistoryPage): string => {
+  const end = Math.min(page.totalItems, page.offset + page.items.length)
+  return end >= page.totalItems && page.offset === 0
+    ? `Showing all ${page.totalItems.toLocaleString("en-US")} items`
+    : `Showing ${(page.offset + 1).toLocaleString("en-US")}–${end.toLocaleString("en-US")} of ${page.totalItems.toLocaleString("en-US")}`
+}
 
 const statusLabel = (status: string): string => status.slice(0,1).toUpperCase() + status.slice(1)
 const agentStatusIcon = (status: NonNullable<CodexHistoryPage["agents"][number]>["status"]): IconName =>
@@ -373,12 +447,23 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   if (!page) return Stack({ key: "history-workspace-empty", direction: "column", gap: "2", style: { flex: 1, minWidth: 0 } }, [Text({ key: "history-empty-title", content: "Select a Codex conversation", variant: "heading", color: "textPrimary" }), Text({ key: "history-empty-copy", content: "Historical conversations and every discovered subagent are available without a 24-hour cutoff.", variant: "body", color: "textMuted" })])
   const center = Stack({ key: "history-center", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
     IconButton({key:"history-agents-drawer",icon:"Agent",accessibilityLabel:`${state.railCollapsed?"Open":"Close"} agents inspector, ${page.agents.length} agents`,onPress:IntentRef("HistoryInspectorToggled"),surface:"glass",a11y:{expanded:!state.railCollapsed}}),
-    Stack({ key: "history-timeline-page", direction: "column", gap: "2", style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } },
-      projectHistoryEntries(page.items, state.selectedItemRef).map(entry =>
+    Stack({ key: "history-timeline-page", direction: "column", gap: "2", style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, [
+      // Honest thin loading row / position caption at the top loading edge.
+      // No Previous/Next pager: older pages auto-load as the reader scrolls
+      // up (EP250 bottom-anchored flow).
+      ...(state.loadingEdge === "top"
+        ? [Text({ key: "history-fetch-earlier", content: "Fetching earlier items…", variant: "caption", color: "textFaint" })]
+        : page.offset > 0
+          ? [Text({ key: "history-position-caption", content: historyPositionCaption(page), variant: "caption", color: "textFaint" })]
+          : []),
+      ...projectHistoryEntries(page.items, state.selectedItemRef).map(entry =>
         entry.kind === "prose"
           ? proseRow(entry.item)
-          : Timeline({ key: `history-seg-${entry.key}`, ...(state.selectedItemRef === null ? {} : { selectedId: state.selectedItemRef }), onEventSelect: IntentRef("HistoryItemSelected", ComponentValueBinding()), events: entry.events }))),
-    Stack({ key: "history-page-controls", direction: "row", gap: "2", align: "center" }, [Button({ key: "history-page-previous", label: "Previous", variant: "secondary", disabled: !page.hasPrevious, onPress: IntentRef("HistoryPageRequested", StaticPayload(Math.max(0,page.offset-page.limit))), a11y: { label: "Previous history page" } }), Text({ key: "history-page-range", content: `${page.offset + 1}–${Math.min(page.totalItems,page.offset+page.items.length)} of ${page.totalItems}`, variant: "caption", color: "textMuted" }), Button({ key: "history-page-next", label: "Next", variant: "secondary", disabled: !page.hasNext, onPress: IntentRef("HistoryPageRequested", StaticPayload(page.offset+page.limit)), a11y: { label: "Next history page" } })]),
+          : Timeline({ key: `history-seg-${entry.key}`, ...(state.selectedItemRef === null ? {} : { selectedId: state.selectedItemRef }), onEventSelect: IntentRef("HistoryItemSelected", ComponentValueBinding()), events: entry.events })),
+      ...(state.loadingEdge === "bottom"
+        ? [Text({ key: "history-fetch-newer", content: "Fetching newer items…", variant: "caption", color: "textFaint" })]
+        : []),
+    ]),
   ])
   return SplitPane({ key: "history-workspace-split", orientation: "row", style: { flex: 1, minWidth: 0, minHeight: 0 }, onCollapseToggle: IntentRef("HistoryInspectorToggled"), panes: [{ id: "history-center", min: 360, content: center }, { id: "history-inspector", min: 280, max: 480, size: 336, collapsed: state.railCollapsed, content: inspector(state) }] })
 }
