@@ -1001,6 +1001,7 @@ const makeFakeRawEventChunkD1 = (): D1Database & {
 
 const makeFakeProofD1 = (): D1Database & {
   eventRows: Array<ProofPylonEventRow>
+  preparedQueries: Array<string>
   rawChunkRows: Array<ProofRawEventChunkRow>
   rawRows: Array<ProofRawEventRow>
   tokenRows: Array<ProofTokenUsageRow>
@@ -1011,6 +1012,7 @@ const makeFakeProofD1 = (): D1Database & {
   const rawRows: Array<ProofRawEventRow> = []
   const rawChunkRows: Array<ProofRawEventChunkRow> = []
   const eventRows: Array<ProofPylonEventRow> = []
+  const preparedQueries: Array<string> = []
 
   const matchTrace = (
     row: ProofTraceRow,
@@ -1175,7 +1177,10 @@ const makeFakeProofD1 = (): D1Database & {
             ),
           } as T
         }
-        if (query.includes('FROM pylon_api_events')) {
+        if (
+          query.includes('FROM pylon_api_events') ||
+          query.includes('FROM pylon_assignment_events')
+        ) {
           const [
             latestEventAssignmentRef,
             latestEventOwnerId,
@@ -1312,8 +1317,12 @@ const makeFakeProofD1 = (): D1Database & {
     batch: () => Promise.reject(new Error('batch unused')),
     dump: () => Promise.reject(new Error('dump unused')),
     exec: () => Promise.reject(new Error('exec unused')),
-    prepare: (query: string) => statement(query),
+    prepare: (query: string) => {
+      preparedQueries.push(query)
+      return statement(query)
+    },
     eventRows,
+    preparedQueries,
     rawChunkRows,
     rawRows,
     tokenRows,
@@ -1323,6 +1332,7 @@ const makeFakeProofD1 = (): D1Database & {
     },
   } as unknown as D1Database & {
     eventRows: Array<ProofPylonEventRow>
+    preparedQueries: Array<string>
     rawChunkRows: Array<ProofRawEventChunkRow>
     rawRows: Array<ProofRawEventRow>
     tokenRows: Array<ProofTokenUsageRow>
@@ -2139,6 +2149,29 @@ describe('GET /api/pylon/codex/trace-status', () => {
 
     expect(response.status).toBe(403)
     expect(body.error).toBe('pylon_codex_forbidden')
+  })
+
+  test('Cloud SQL trace status reads the migrated assignment-event twin', async () => {
+    const db = makeFakeProofD1()
+    const store = makeD1PylonCodexAssignmentProofStore(
+      db as unknown as D1Database,
+      { assignmentEventTable: 'pylon_assignment_events' },
+    )
+
+    await store.readAssignmentTraceStatus({
+      assignment: assignmentRecord(),
+      closeoutPolicy: noSpendCloseoutPolicy,
+      nowIso,
+      ownerAgentUserId: agentUserId,
+      ownerUserId: linkedOpenAuthUserId,
+    })
+
+    const eventQueries = db.preparedQueries.filter(query =>
+      query.includes('assignment_events'),
+    )
+    expect(eventQueries).toHaveLength(1)
+    expect(eventQueries[0]).toContain('FROM pylon_assignment_events')
+    expect(eventQueries[0]).not.toContain('FROM pylon_api_events')
   })
 
   test('D1 trace status distinguishes live chunks from final exact closeout rows', async () => {

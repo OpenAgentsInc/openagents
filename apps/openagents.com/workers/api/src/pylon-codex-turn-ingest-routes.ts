@@ -754,6 +754,15 @@ export type PylonCodexRawEventMetadataReadStore = Readonly<{
 }>
 
 export type MakeD1PylonCodexAssignmentProofStoreOptions = Readonly<{
+  /**
+   * The assignment-event relation used by trace-status aggregation. D1 keeps
+   * the legacy `pylon_api_events` name; the Cloud SQL dispatch twin is
+   * `pylon_assignment_events` (khala-sync migration 0005).
+   */
+  assignmentEventTable?:
+    | 'pylon_api_events'
+    | 'pylon_assignment_events'
+    | undefined
   rawEventMetadataStore?: PylonCodexRawEventMetadataReadStore | undefined
 }>
 
@@ -1102,6 +1111,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
   db: D1Database,
   options: MakeD1PylonCodexAssignmentProofStoreOptions = {},
 ): PylonCodexAssignmentProofStore & PylonCodexAssignmentTraceStatusStore => {
+  const assignmentEventTable =
+    options.assignmentEventTable ?? 'pylon_api_events'
   const rawEventMetadataStore =
     options.rawEventMetadataStore ??
     makeD1PylonCodexRawEventMetadataReadStore(db)
@@ -1330,7 +1341,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
             ) AS progress_count,
             (
               SELECT event_kind
-              FROM pylon_api_events
+              FROM ${assignmentEventTable}
               WHERE assignment_ref = ?
                 AND owner_agent_user_id = ?
                 AND archived_at IS NULL
@@ -1339,7 +1350,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
             ) AS latest_event_kind,
             (
               SELECT status
-              FROM pylon_api_events
+              FROM ${assignmentEventTable}
               WHERE assignment_ref = ?
                 AND owner_agent_user_id = ?
                 AND archived_at IS NULL
@@ -1348,7 +1359,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
             ) AS latest_status,
             (
               SELECT status
-              FROM pylon_api_events
+              FROM ${assignmentEventTable}
               WHERE assignment_ref = ?
                 AND owner_agent_user_id = ?
                 AND event_kind = 'assignment_progress'
@@ -1358,7 +1369,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
             ) AS latest_progress_status,
             (
               SELECT created_at
-              FROM pylon_api_events
+              FROM ${assignmentEventTable}
               WHERE assignment_ref = ?
                 AND owner_agent_user_id = ?
                 AND event_kind = 'assignment_progress'
@@ -1367,7 +1378,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
               LIMIT 1
             ) AS latest_progress_observed_at,
             MAX(created_at) AS latest_observed_at
-          FROM pylon_api_events
+          FROM ${assignmentEventTable}
           WHERE assignment_ref = ?
             AND owner_agent_user_id = ?
             AND archived_at IS NULL
@@ -1590,6 +1601,7 @@ export const makePylonCodexAssignmentProofStoreForEnv = (
     })
 
   return makeD1PylonCodexAssignmentProofStore(db, {
+    assignmentEventTable: 'pylon_assignment_events',
     rawEventMetadataStore,
   })
 }
