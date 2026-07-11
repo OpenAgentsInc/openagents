@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.10",
+  version: "2026-07-10.11",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -64,6 +64,20 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       evidenceRefs: ["apps/openagents-desktop/src/desktop-sync-host.ts", "apps/openagents-desktop/src/desktop-sync-store.ts", "packages/khala-sync-client/src/store-core.ts"],
       oracles: [{ id: "desktop_sync_host.lifecycle", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-sync-host.test.ts", description: "Proves restart-stable identity, private permissions, personal-scope selection, dynamic token lookup, live/freshness transition, session-before-store close, and reuse of the shared SQLite store." }],
       verification: "bun run --cwd apps/openagents-desktop verify runs the host lifecycle suite and real Electron gateway bootstrap.",
+    },
+    {
+      contractId: "openagents_desktop.sync.native_conversation_continuity.v1",
+      state: "enforced",
+      surface: "openagents-desktop-and-mobile-hosts",
+      productArea: "authoritative cross-device conversation continuity",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "A Desktop-created canonical chat_thread and first chat_message can be confirmed on mobile, mobile can append one canonical follow-up, and both native hosts converge on identical public-safe refs, confirmed entity versions, thread cursor, and live phase, then reconstruct the same state after restart without duplicates.",
+      authorityBoundary: "Only server-confirmed chat_thread/chat_message rows enter the bounded conversation projection. Owner identity, credentials, store/session/overlay/transport objects, optimistic bodies, provider runtime events, and assistant-role inference remain host-only or explicitly outside this contract; denial and sign-out remove the conversation capability.",
+      evidenceRefs: ["packages/khala-sync-client/src/chat.ts", "packages/khala-sync-client/src/conversation.ts", "apps/openagents-desktop/src/desktop-sync-host.ts", "apps/openagents-mobile/src/sync/mobile-sync-host-core.ts", "docs/sol/issues/native-conversation-continuation.md", "github:OpenAgentsInc/openagents#8668"],
+      oracles: [{ id: "native_conversation_continuation.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts", description: "Runs the real Desktop node:sqlite host and mobile Expo-SQLite host over the shared session/overlay protocol against a server-authoritative chat fake, then proves Desktop-to-mobile-to-Desktop convergence, exact versions/cursor, and restart reconstruction." }],
+      verification: "The native conversation continuation e2e runs in the normal Desktop sweep; shared chat mutator/projection tests run in the khala-sync-client sweep and the collection package regression proves existing consumers use the same centralized mutators.",
     },
     {
       contractId: "openagents_desktop.session.os_encrypted_custody.v1",

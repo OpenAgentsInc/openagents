@@ -15,6 +15,9 @@ Components (KS-5 workstream):
   FIFO pending-mutation queue, and client identity — **server-confirmed
   state only** (SPEC §7 invariant 2); optimistic effects never touch disk.
 - **Optimistic mutators + rebase** — ✅ shipped (KS-5.2, `createOverlay`).
+- **Canonical native conversation service** — ✅ shared `chat.createThread` /
+  `chat.appendMessage` client mutators plus confirmed owner-free refs/versions/
+  cursor projection for Desktop and mobile hosts (#8668).
   Named client mutators apply to an **in-memory overlay only** (the
   durable store holds server-confirmed state exclusively — Linear's
   rule). On every delta: rewind overlay, apply confirmed entries,

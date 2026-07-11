@@ -32,6 +32,8 @@ describe("@openagentsinc/khala-sync-client package surface", () => {
     expect(typeof rootEntryModule.createHttpKhalaSyncTransport).toBe("function")
     expect(typeof rootEntryModule.createKhalaSyncSession).toBe("function")
     expect(typeof rootEntryModule.createOverlay).toBe("function")
+    expect(typeof rootEntryModule.createChatClientMutators).toBe("function")
+    expect(typeof rootEntryModule.createKhalaSyncConversation).toBe("function")
   })
 
   test("the web barrel loads without pulling the WASM bundle", () => {

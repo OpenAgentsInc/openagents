@@ -47,10 +47,30 @@ owner-private directory under Desktop `userData`.
 
 Contract: `openagents_desktop.sync.host_owned_sqlite.v1`.
 
-This does not yet claim authoritative conversation projection or live-device
-acceptance. The host oracle proves the scope, phase/freshness projection,
-rotating-token callback, and session-before-store lifecycle without exposing
-credential material.
+This persistence/authenticated-host contract alone does not claim conversation
+projection or live-device acceptance. The separately enforced conversation
+contract below owns the bounded confirmed projection.
+
+### Native authoritative conversation continuity
+
+Once personal Sync is live, the host exposes one bounded conversation service
+over the canonical `chat_thread` / `chat_message` entities and
+`chat.createThread` / `chat.appendMessage` mutators.
+
+- Only server-confirmed rows appear in list results, with stable public-safe
+  refs, confirmed entity versions, scope cursor, and actual Sync phase.
+- Owner identity, credentials, raw store/session/overlay/transport objects, and
+  optimistic bodies do not enter the projection.
+- Denial, sign-out, reconnect-before-live, and close remove the capability.
+- The normal Desktop sweep proves Desktop start, mobile continuation, matching
+  refs/versions/cursor, and restart reconstruction over the real native store
+  adapters without duplicate objects.
+
+This is the durable owner-message floor. It does not claim renderer wiring,
+provider/runtime event streaming, assistant-role inference, physical-device
+acceptance, or a deployed live-account receipt.
+
+Contract: `openagents_desktop.sync.native_conversation_continuity.v1`.
 
 ### OS-encrypted native-session custody
 

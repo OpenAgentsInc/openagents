@@ -136,9 +136,17 @@ honest `Local Sync ready` state. Native session credentials now have a
 device-only SecureStore vault, but a recovered record remains visibly
 unverified until the server accepts it. Startup now validates that record and
 persists access/refresh rotation; denial or owner mismatch purges it. A verified
-session now starts authenticated personal-scope Sync in the Expo host while
-remaining distinct from an authoritative conversation projection. The surface
-enters through a typed GitHub sign-in intent and exits only after the server proves
+session now starts authenticated personal-scope Sync in the Expo host. Session
+readiness remains distinct from the live-only confirmed conversation service.
+The surface enters through a typed GitHub sign-in intent and exits only after the server proves
 both access and refresh revocation. The app does not manufacture fleet,
 account, receipt, or cross-device authority. Conversation projections and
 durable commands are the next #8597 priorities.
+
+The host now also owns a bounded canonical conversation service once personal
+Sync is live. It lists only confirmed `chat_thread` / `chat_message` projections
+with public-safe refs and server versions, opens exact thread scopes, and sends
+the canonical create/append mutations. The cross-native e2e proves a Desktop
+thread and first message can be continued by mobile and reconstructed by both
+stores after restart. The current Home view is not wired to this service yet;
+physical-device and deployed-account acceptance remain explicit residuals.

@@ -23,8 +23,6 @@ import {
   decodeFleetWorkerEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
-  encodeChatMessageEntity,
-  encodeChatThreadEntity,
   encodeFleetRunEntity,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ATTEMPT_ENTITY_TYPE,
@@ -34,10 +32,8 @@ import {
   FLEET_WORK_UNIT_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   fleetRunScope,
-  personalScope,
   RUNTIME_EVENT_ENTITY_TYPE,
   RUNTIME_TURN_ENTITY_TYPE,
-  threadScope,
   type ChatMessageEntity,
   type ChatThreadEntity,
   type FleetApprovalEntity,
@@ -55,13 +51,27 @@ import {
   type RuntimeTurnEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
-import type {
-  ClientMutator,
-  KhalaSyncOverlay,
-  KhalaSyncSession,
-  KhalaSyncSessionOptions,
-  OverlayEntity,
-  OverlayView,
+import {
+  CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+  CHAT_CREATE_THREAD_MUTATOR_NAME,
+  CHAT_RENAME_THREAD_MUTATOR_NAME,
+  chatAppendMessageClientMutator,
+  chatCreateThreadClientMutator,
+  chatMessagesForTranscript,
+  chatRenameThreadClientMutator,
+  chatThreadsForSidebar,
+  compareChatMessagesForTranscript,
+  compareChatThreadsForSidebar,
+  type ChatAppendMessageArgs,
+  type ChatClientMutatorOptions,
+  type ChatCreateThreadArgs,
+  type ChatRenameThreadArgs,
+  type ClientMutator,
+  type KhalaSyncOverlay,
+  type KhalaSyncSession,
+  type KhalaSyncSessionOptions,
+  type OverlayEntity,
+  type OverlayView,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
@@ -662,226 +672,30 @@ export const khalaSyncCollectionOptions = <
 }
 
 export const FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME = "fleet.setDesiredSlots"
-export const CHAT_CREATE_THREAD_MUTATOR_NAME = "chat.createThread"
-export const CHAT_APPEND_MESSAGE_MUTATOR_NAME = "chat.appendMessage"
-export const CHAT_RENAME_THREAD_MUTATOR_NAME = "chat.renameThread"
+
+export {
+  CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+  CHAT_CREATE_THREAD_MUTATOR_NAME,
+  CHAT_RENAME_THREAD_MUTATOR_NAME,
+  chatAppendMessageClientMutator,
+  chatCreateThreadClientMutator,
+  chatMessagesForTranscript,
+  chatRenameThreadClientMutator,
+  chatThreadsForSidebar,
+  compareChatMessagesForTranscript,
+  compareChatThreadsForSidebar,
+}
+export type {
+  ChatAppendMessageArgs,
+  ChatClientMutatorOptions,
+  ChatCreateThreadArgs,
+  ChatRenameThreadArgs,
+}
 
 export type FleetSetDesiredSlotsArgs = Readonly<{
   runId: string
   desiredSlots: number
 }>
-
-export type ChatCreateThreadArgs = Readonly<{
-  threadId: string
-  title: string
-}>
-
-export type ChatAppendMessageArgs = Readonly<{
-  threadId: string
-  messageId: string
-  body: string
-}>
-
-export type ChatRenameThreadArgs = Readonly<{
-  threadId: string
-  title: string
-}>
-
-export type ChatClientMutatorOptions = Readonly<{
-  ownerUserId: string
-  now?: () => string
-}>
-
-const defaultNowIso = (): string => new Date().toISOString()
-
-const normalizeChatTitle = (title: string): string => title.trim()
-
-const chatTimestampMs = (value: string | null): number => {
-  if (value === null) return 0
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-export const compareChatThreadsForSidebar = (
-  left: ChatThreadEntity,
-  right: ChatThreadEntity,
-): number => {
-  const recency =
-    chatTimestampMs(right.updatedAt) - chatTimestampMs(left.updatedAt)
-  if (recency !== 0) return recency
-  return right.threadId.localeCompare(left.threadId)
-}
-
-/**
- * Defensive hygiene against duplicate sidebar rows: collapse any entities
- * that share a `threadId` down to one, keeping the most recently updated
- * copy. The overlay/store below this function keys rows by `entityId`, not
- * by `threadId`, so a caller that ever inserts two distinct entity ids
- * carrying the same `threadId` (e.g. a retried mutation that didn't reuse
- * the original entity id) would otherwise surface as two indistinguishable
- * rows with the same title in the desktop/mobile sidebar.
- */
-const dedupeChatThreadsByThreadId = (
-  threads: Iterable<ChatThreadEntity>,
-): Array<ChatThreadEntity> => {
-  const byThreadId = new Map<string, ChatThreadEntity>()
-  for (const thread of threads) {
-    const existing = byThreadId.get(thread.threadId)
-    if (existing === undefined || chatTimestampMs(thread.updatedAt) >= chatTimestampMs(existing.updatedAt)) {
-      byThreadId.set(thread.threadId, thread)
-    }
-  }
-  return [...byThreadId.values()]
-}
-
-export const chatThreadsForSidebar = (
-  threads: Iterable<ChatThreadEntity>,
-  options: { readonly searchTerm?: string | null } = {},
-): Array<ChatThreadEntity> => {
-  const searchTerm = options.searchTerm?.trim().toLowerCase() ?? ""
-  return dedupeChatThreadsByThreadId(threads)
-    .filter(thread => {
-      if (searchTerm.length === 0) return true
-      return (
-        thread.title.toLowerCase().includes(searchTerm) ||
-        thread.threadId.toLowerCase().includes(searchTerm)
-      )
-    })
-    .sort(compareChatThreadsForSidebar)
-}
-
-const chatMessageTimestampMs = (value: string): number => {
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-export const compareChatMessagesForTranscript = (
-  left: ChatMessageEntity,
-  right: ChatMessageEntity,
-): number => {
-  const created = chatMessageTimestampMs(left.createdAt) - chatMessageTimestampMs(right.createdAt)
-  if (created !== 0) return created
-  return left.messageId.localeCompare(right.messageId)
-}
-
-export const chatMessagesForTranscript = (
-  messages: Iterable<ChatMessageEntity>,
-): Array<ChatMessageEntity> =>
-  [...messages]
-    .filter(message => message.deletedAt === null)
-    .sort(compareChatMessagesForTranscript)
-
-const baselineChatThread = (
-  args: ChatCreateThreadArgs,
-  options: ChatClientMutatorOptions,
-): ChatThreadEntity => {
-  const now = (options.now ?? defaultNowIso)()
-  return decodeChatThreadEntity({
-    createdAt: now,
-    lastMessageAt: null,
-    messageCount: 0,
-    ownerUserId: options.ownerUserId,
-    status: "active",
-    threadId: args.threadId,
-    title: normalizeChatTitle(args.title),
-    updatedAt: now,
-  })
-}
-
-const chatThreadOverlayEffects = (
-  entity: ChatThreadEntity,
-): ReturnType<ClientMutator<ChatCreateThreadArgs>["apply"]> => [
-  {
-    entityId: entity.threadId,
-    entityType: CHAT_THREAD_ENTITY_TYPE,
-    kind: "upsert",
-    postImageJson: canonicalJson(encodeChatThreadEntity(entity)),
-    scope: personalScope(entity.ownerUserId),
-  },
-  {
-    entityId: entity.threadId,
-    entityType: CHAT_THREAD_ENTITY_TYPE,
-    kind: "upsert",
-    postImageJson: canonicalJson(encodeChatThreadEntity(entity)),
-    scope: threadScope(entity.threadId),
-  },
-]
-
-const chatMessageOverlayEffect = (
-  entity: ChatMessageEntity,
-): ReturnType<ClientMutator<ChatAppendMessageArgs>["apply"]>[number] => ({
-  entityId: entity.messageId,
-  entityType: CHAT_MESSAGE_ENTITY_TYPE,
-  kind: "upsert",
-  postImageJson: canonicalJson(encodeChatMessageEntity(entity)),
-  scope: threadScope(entity.threadId),
-})
-
-export const chatCreateThreadClientMutator = (
-  options: ChatClientMutatorOptions,
-): ClientMutator<ChatCreateThreadArgs> => ({
-  apply: args => chatThreadOverlayEffects(baselineChatThread(args, options)),
-  name: MutatorName.make(CHAT_CREATE_THREAD_MUTATOR_NAME),
-})
-
-export const chatRenameThreadClientMutator = (
-  options: ChatClientMutatorOptions,
-): ClientMutator<ChatRenameThreadArgs> => ({
-  apply: (args, view) => {
-    const scope = personalScope(options.ownerUserId)
-    const currentJson = view.get(scope, CHAT_THREAD_ENTITY_TYPE, args.threadId)
-    const current =
-      currentJson === undefined
-        ? baselineChatThread(
-            { threadId: args.threadId, title: args.title },
-            options,
-          )
-        : decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
-    const now = (options.now ?? defaultNowIso)()
-    return chatThreadOverlayEffects(
-      decodeChatThreadEntity({
-        ...current,
-        title: normalizeChatTitle(args.title),
-        updatedAt: now,
-      }),
-    )
-  },
-  name: MutatorName.make(CHAT_RENAME_THREAD_MUTATOR_NAME),
-})
-
-export const chatAppendMessageClientMutator = (
-  options: ChatClientMutatorOptions,
-): ClientMutator<ChatAppendMessageArgs> => ({
-  apply: (args, view) => {
-    const currentJson =
-      view.get(personalScope(options.ownerUserId), CHAT_THREAD_ENTITY_TYPE, args.threadId) ??
-      view.get(threadScope(args.threadId), CHAT_THREAD_ENTITY_TYPE, args.threadId)
-    if (currentJson === undefined) return []
-    const current = decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
-    const now = (options.now ?? defaultNowIso)()
-    const message = decodeChatMessageEntity({
-      authorUserId: options.ownerUserId,
-      body: args.body,
-      createdAt: now,
-      deletedAt: null,
-      messageId: args.messageId,
-      threadId: args.threadId,
-      updatedAt: now,
-    })
-    return [
-      ...chatThreadOverlayEffects(
-        decodeChatThreadEntity({
-          ...current,
-          lastMessageAt: now,
-          messageCount: current.messageCount + 1,
-          updatedAt: now,
-        }),
-      ),
-      chatMessageOverlayEffect(message),
-    ]
-  },
-  name: MutatorName.make(CHAT_APPEND_MESSAGE_MUTATOR_NAME),
-})
 
 const baselineFleetRun = (
   runId: string,

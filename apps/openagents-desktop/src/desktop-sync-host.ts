@@ -10,10 +10,13 @@ import {
 } from "@openagentsinc/khala-sync"
 import {
   createHttpKhalaSyncTransport,
+  createChatClientMutators,
   createKhalaSyncSession,
+  createKhalaSyncConversation,
   createOverlay,
   type HttpTransportConfig,
   type KhalaSyncSession,
+  type KhalaSyncConversation,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
   type ScopeSyncState,
@@ -34,6 +37,7 @@ export type DesktopSyncHostStatus = Readonly<{
 
 export type DesktopSyncHost = Readonly<{
   status: () => DesktopSyncHostStatus
+  conversation: () => KhalaSyncConversation | null
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   close: () => void
@@ -45,6 +49,7 @@ export type DesktopAuthenticatedSyncInput = Readonly<{
   authToken: () => string
   createTransport?: (config: HttpTransportConfig) => KhalaSyncTransport
   sessionOptions?: KhalaSyncSessionOptions
+  now?: () => string
 }>
 
 const secureLocalFiles = (databasePath: string): void => {
@@ -70,6 +75,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   const store = (input.openStore ?? openDesktopSyncStore)(input.databasePath)
   let closed = false
   let session: KhalaSyncSession | null = null
+  let conversation: KhalaSyncConversation | null = null
   let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
@@ -90,6 +96,7 @@ export const openDesktopSyncHost = (input: Readonly<{
     if (session === null) return
     Effect.runSync(session.close())
     session = null
+    conversation = null
     scope = null
   }
 
@@ -108,6 +115,10 @@ export const openDesktopSyncHost = (input: Readonly<{
       identityState: "persisted",
       pendingMutationCount: closed ? 0 : Effect.runSync(store.pendingMutations()).length,
     }),
+    conversation: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? conversation
+        : null,
     connectAuthenticated: connection => {
       if (closed) throw new Error("desktop Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
@@ -117,7 +128,11 @@ export const openDesktopSyncHost = (input: Readonly<{
       disconnectAuthenticated()
       const identity = Effect.runSync(store.identity())
       if (identity === null) throw new Error("desktop Sync identity is unavailable")
-      const overlay = Effect.runSync(createOverlay(store, []))
+      const mutators = createChatClientMutators({
+        ownerUserId,
+        ...(connection.now === undefined ? {} : { now: connection.now }),
+      })
+      const overlay = Effect.runSync(createOverlay(store, Object.values(mutators)))
       const transportConfig = {
         baseUrl: connection.baseUrl,
         authToken: connection.authToken,
@@ -132,6 +147,12 @@ export const openDesktopSyncHost = (input: Readonly<{
         schemaVersion: identity.schemaVersion,
         authToken: connection.authToken,
       }, store, overlay, transport, connection.sessionOptions)
+      conversation = createKhalaSyncConversation({
+        ownerUserId,
+        store,
+        session,
+        mutators,
+      })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,

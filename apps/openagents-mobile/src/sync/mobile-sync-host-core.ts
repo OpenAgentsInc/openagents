@@ -7,10 +7,13 @@ import {
 } from "@openagentsinc/khala-sync"
 import {
   createHttpKhalaSyncTransport,
+  createChatClientMutators,
   createKhalaSyncSession,
+  createKhalaSyncConversation,
   createOverlay,
   type HttpTransportConfig,
   type KhalaSyncSession,
+  type KhalaSyncConversation,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
   type ScopeSyncState,
@@ -31,6 +34,7 @@ export type MobileSyncHostStatus = Readonly<{
 
 export type MobileSyncHost = Readonly<{
   status: () => MobileSyncHostStatus
+  conversation: () => KhalaSyncConversation | null
   connectAuthenticated: (input: MobileAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   close: () => void
@@ -42,6 +46,7 @@ export type MobileAuthenticatedSyncInput = Readonly<{
   authToken: () => string
   createTransport?: (config: HttpTransportConfig) => KhalaSyncTransport
   sessionOptions?: KhalaSyncSessionOptions
+  now?: () => string
 }>
 
 /**
@@ -56,6 +61,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
   const store = input.openStore(input.databaseName)
   let closed = false
   let session: KhalaSyncSession | null = null
+  let conversation: KhalaSyncConversation | null = null
   let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
@@ -79,6 +85,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
     if (session === null) return
     Effect.runSync(session.close())
     session = null
+    conversation = null
     scope = null
   }
 
@@ -97,6 +104,10 @@ export const openMobileSyncHostCore = (input: Readonly<{
       identityState: "persisted",
       pendingMutationCount: closed ? 0 : Effect.runSync(store.pendingMutations()).length,
     }),
+    conversation: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? conversation
+        : null,
     connectAuthenticated: connection => {
       if (closed) throw new Error("mobile Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
@@ -106,7 +117,11 @@ export const openMobileSyncHostCore = (input: Readonly<{
       disconnectAuthenticated()
       const identity = Effect.runSync(store.identity())
       if (identity === null) throw new Error("mobile Sync identity is unavailable")
-      const overlay = Effect.runSync(createOverlay(store, []))
+      const mutators = createChatClientMutators({
+        ownerUserId,
+        ...(connection.now === undefined ? {} : { now: connection.now }),
+      })
+      const overlay = Effect.runSync(createOverlay(store, Object.values(mutators)))
       const transportConfig = {
         baseUrl: connection.baseUrl,
         authToken: connection.authToken,
@@ -121,6 +136,12 @@ export const openMobileSyncHostCore = (input: Readonly<{
         schemaVersion: identity.schemaVersion,
         authToken: connection.authToken,
       }, store, overlay, transport, connection.sessionOptions)
+      conversation = createKhalaSyncConversation({
+        ownerUserId,
+        store,
+        session,
+        mutators,
+      })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,

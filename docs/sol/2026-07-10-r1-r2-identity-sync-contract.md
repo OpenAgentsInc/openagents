@@ -137,8 +137,9 @@ Reserved (do not implement until Sol freezes the entity schema in
   `openagents-khala-mobile`, GitHub authorization-code + S256 PKCE, canonical
   `openagents://auth`, one state-validating imperative request, server-derived
   owner verification, and server proof of access/refresh revocation before
-  local clear. Live Sync, `device_session`, and physical-device acceptance
-  remain separate R1/R2 evidence.
+  local clear. Authenticated personal-scope Sync composition is landed for both
+  native hosts in #8667; `device_session` and physical-device acceptance remain
+  separate R1/R2 evidence.
 - The `device_session` projection/mutator pair (after §R1.4 freeze).
 
 ## R2 — Khala Sync as the cross-device authority
@@ -335,15 +336,21 @@ one applied mutation; `fleet_*` rows for a real run render only from
 projections and `fleet_command_outcome`, never from optimistic overlay. Rungs
 reported per item; no rung implies the next.
 
+#8668 lands the conversation subset at the deterministic code/fixture rung:
+the real Desktop node:sqlite and mobile Expo-SQLite hosts converge on the same
+canonical thread/messages, confirmed versions, cursor, and live phase, then
+reconstruct after restart. The retention-gap, lost-ack, Fleet outcome, deployed,
+live-account, and physical-device rungs remain separate and are not implied.
+
 ## Delta ledger — binds-to vs must-build
 
 | Already exists (bind, do not rebuild) | Must be built |
 | --- | --- |
-| Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Physical Desktop auth acceptance and authenticated Sync composition over landed #8661–#8665 session path (R1.5) |
-| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Physical-device mobile auth acceptance and authenticated Sync composition over landed #8658–#8660 |
+| Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Physical Desktop auth acceptance over landed #8661–#8667 session/Sync path (R1.5) |
+| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Physical-device mobile auth acceptance over landed #8658–#8660/#8667 |
 | Client session/store/overlay/offline/reconnect + fault tests (`khala-sync-client`) | `device_session` projection + `identity.revokeSession` (after §R1.4 freeze) |
-| Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Authenticated Desktop/mobile session composition over the landed local adapters |
-| Fleet run/attempt/approval/command authority + steering exchange (#8637/#8633/#8639 substrate) | SYNC-4 cross-client continuity fixture |
+| Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Live-account/two-physical-device acceptance of the landed native composition |
+| Fleet run/attempt/approval/command authority + steering exchange (#8637/#8633/#8639 substrate) | Remaining SYNC-4 fault/Fleet continuity fixtures; #8668 lands the conversation/restart subset |
 | `khala-sync-db-collection` TanStack adapter | R3+ entities (`project/session`, `workroom`, `receipt`, …) — DRAFT, later freeze |
 
 ## Open DRAFT register

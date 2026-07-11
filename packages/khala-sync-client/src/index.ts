@@ -58,6 +58,33 @@ export {
   type OverlayView,
 } from "./overlay.js"
 
+export {
+  CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+  CHAT_CREATE_THREAD_MUTATOR_NAME,
+  CHAT_RENAME_THREAD_MUTATOR_NAME,
+  type ChatAppendMessageArgs,
+  type ChatClientMutatorOptions,
+  type ChatClientMutators,
+  type ChatCreateThreadArgs,
+  type ChatRenameThreadArgs,
+  chatAppendMessageClientMutator,
+  chatCreateThreadClientMutator,
+  chatMessagesForTranscript,
+  chatRenameThreadClientMutator,
+  chatThreadsForSidebar,
+  compareChatMessagesForTranscript,
+  compareChatThreadsForSidebar,
+  createChatClientMutators,
+} from "./chat.js"
+
+export {
+  type ConfirmedChatMessage,
+  type ConfirmedChatThread,
+  createKhalaSyncConversation,
+  type KhalaSyncConversation,
+  type KhalaSyncConversationStatus,
+} from "./conversation.js"
+
 // ---------------------------------------------------------------------------
 // Transport (KS-5.3): injectable seam in transport.ts; HTTP+WebSocket
 // implementation against the SPEC §3 routes, khala-sync codecs at every

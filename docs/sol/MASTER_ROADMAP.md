@@ -463,8 +463,11 @@ records before claiming the first new slice.
   the shared production HTTP/WebSocket Sync session in main, subscribe only
   the server-derived owner's personal scope, re-read rotated access custody,
   and close session-before-SQLite. It does not yet have physical Desktop auth
-  acceptance, authoritative Sync threads or conversation services behind that
-  gateway, a streamed provider-neutral event runtime, a complete coding
+  acceptance or renderer-visible authoritative conversation service. The host
+  now has the canonical confirmed thread/message service, and the real Desktop
+  node:sqlite plus mobile Expo-SQLite fixture proves Desktop start → mobile
+  follow-up → restart convergence with matching refs/versions/cursor/phase.
+  It does not yet have a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
   persona-neutral Khala chat path driven by the native composer, and a
@@ -478,7 +481,9 @@ records before claiming the first new slice.
   authority substitutes. A verified session now starts the same shared
   production HTTP/WebSocket Sync engine in the Expo host, scoped only to the
   server-derived owner; no credential or owner ref reaches the view. It does
-  not yet have authoritative conversation continuity,
+  now has the same canonical confirmed conversation service; the two-native-
+  host fixture proves authoritative Desktop-to-mobile continuation and restart
+  reconstruction. It does not yet have physical-device/live-account acceptance,
   FleetRun authority, account/capacity state, durable controls, remote-workroom
   coding, or receipt continuity. Auth entry/exit is now native to the new app:
   one imperative state-validating GitHub authorization-code + S256 request

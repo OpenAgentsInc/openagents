@@ -534,6 +534,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   re-read by the transport so bounded rotation does not expose a token; owner
   refs, credentials, transport/session objects, store handles, and raw rows
   never enter either view program.
+- Native conversation clients use the one shared client implementation of the
+  server's canonical `chat.createThread` / `chat.appendMessage` mutators and
+  `chat_thread` / `chat_message` schemas. View-facing confirmed projections
+  omit owner identity and carry stable thread/message refs, server entity
+  versions, scope cursor, phase, and pending count; optimistic content is never
+  labeled confirmed, and denial/sign-out removes the conversation capability.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

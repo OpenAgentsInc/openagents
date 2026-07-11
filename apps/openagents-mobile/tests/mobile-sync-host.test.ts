@@ -200,6 +200,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
         sessionOptions: { sleep: () => Promise.resolve(), random: () => 0 },
       })
       await waitFor(() => host.status().syncPhase === "live")
+      expect(host.conversation()).not.toBeNull()
       expect(bootstraps.map(request => String(request.scope))).toEqual(["scope.user.user.mobile"])
       expect(capturedAuthToken?.()).toBe("access.one")
       token = "access.two"
@@ -238,6 +239,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       })
       await waitFor(() => host.status().syncPhase === "denied")
       expect(host.status()).toMatchObject({ syncPhase: "denied", lastDeltaAt: null })
+      expect(host.conversation()).toBeNull()
       host.close()
     } finally {
       rmSync(root, { recursive: true, force: true })
