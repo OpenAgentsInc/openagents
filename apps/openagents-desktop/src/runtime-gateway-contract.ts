@@ -2,7 +2,7 @@ import { Exit, Schema } from "@effect-native/core/effect"
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 2 as const
+export const DesktopRuntimeGatewayProtocolVersion = 3 as const
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -14,6 +14,23 @@ const ConversationBodySchema = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(20_000),
 )
+const TimelineTextSchema = Schema.String.check(Schema.isMaxLength(20_000))
+const TimelineTypeSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+)
+const ArtifactRefSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(1_024),
+)
+const TimelineTimestampSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(64),
+)
+const NonNegativeIntSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+)
 const SyncPhaseSchema = Schema.Literals([
   "idle",
   "bootstrapping",
@@ -24,6 +41,7 @@ const SyncPhaseSchema = Schema.Literals([
 ])
 
 export const DesktopRuntimeCapabilityIdSchema = Schema.Literals([
+  "agent-timeline",
   "codex-history",
   "conversation-sync",
   "conversation-stream",
@@ -58,6 +76,14 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     query: Schema.Struct({
       id: Schema.Literal("conversation.thread"),
       threadRef: PublicRefSchema,
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("query"),
+    requestId: Schema.String,
+    query: Schema.Struct({
+      id: Schema.Literal("agent.timeline"),
+      runRef: PublicRefSchema,
     }),
   }),
   Schema.Struct({
@@ -118,6 +144,31 @@ const ConfirmedMessageSchema = Schema.Struct({
   version: Schema.Number,
 })
 
+const ConfirmedAgentRunSchema = Schema.Struct({
+  runRef: PublicRefSchema,
+  routeRef: PublicRefSchema,
+  status: Schema.Literals(["queued", "running", "waiting_for_input", "completed", "failed", "canceled"]),
+  createdAt: TimelineTimestampSchema,
+  updatedAt: TimelineTimestampSchema,
+  startedAt: Schema.NullOr(TimelineTimestampSchema),
+  completedAt: Schema.NullOr(TimelineTimestampSchema),
+  failedAt: Schema.NullOr(TimelineTimestampSchema),
+  canceledAt: Schema.NullOr(TimelineTimestampSchema),
+  version: NonNegativeIntSchema,
+})
+
+const ConfirmedAgentTimelineEventSchema = Schema.Struct({
+  eventRef: PublicRefSchema,
+  runRef: PublicRefSchema,
+  sequence: NonNegativeIntSchema,
+  eventType: TimelineTypeSchema,
+  summary: TimelineTextSchema,
+  status: Schema.NullOr(TimelineTypeSchema),
+  artifactRefs: Schema.Array(ArtifactRefSchema).check(Schema.isMaxLength(100)),
+  createdAt: TimelineTimestampSchema,
+  version: NonNegativeIntSchema,
+})
+
 export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("query_result"),
@@ -141,6 +192,19 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     kind: Schema.Literal("conversation_unavailable"),
     requestId: Schema.String,
     reason: Schema.Literals(["not_live", "read_failed"]),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("agent_timeline"),
+    requestId: Schema.String,
+    runRef: PublicRefSchema,
+    status: ConversationStatusSchema,
+    run: ConfirmedAgentRunSchema,
+    events: Schema.Array(ConfirmedAgentTimelineEventSchema).check(Schema.isMaxLength(500)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("agent_timeline_unavailable"),
+    requestId: Schema.String,
+    reason: Schema.Literals(["not_live", "not_found", "read_failed"]),
   }),
   Schema.Struct({
     kind: Schema.Literal("conversation_mutation_outcome"),

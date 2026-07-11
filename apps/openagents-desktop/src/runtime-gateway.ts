@@ -45,6 +45,35 @@ export type DesktopRuntimeConversation = Readonly<{
   append: (threadRef: string, messageRef: string, body: string) => number
 }>
 
+export type DesktopRuntimeAgentTimeline = Readonly<{
+  snapshot: (runRef: string) => Readonly<{
+    status: ConversationStatus
+    run: Readonly<{
+      runRef: string
+      routeRef: string
+      status: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled"
+      createdAt: string
+      updatedAt: string
+      startedAt: string | null
+      completedAt: string | null
+      failedAt: string | null
+      canceledAt: string | null
+      version: number
+    }> | null
+    events: ReadonlyArray<Readonly<{
+      eventRef: string
+      runRef: string
+      sequence: number
+      eventType: string
+      summary: string
+      status: string | null
+      artifactRefs: ReadonlyArray<string>
+      createdAt: string
+      version: number
+    }>>
+  }>
+}>
+
 export type DesktopRuntimeGateway = Readonly<{
   start: () => void
   request: (request: DesktopRuntimeGatewayRequest) => DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse>
@@ -57,6 +86,13 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
   syncLocalState: "ready" | "unavailable"
   syncNetworkPhase: "idle" | "bootstrapping" | "catching_up" | "live" | "must_refetch" | "denied" | "closed"
 }>): ReadonlyArray<CapabilityState> => [
+  {
+    id: "agent-timeline",
+    state: input.syncNetworkPhase === "live" ? "available" : "unavailable",
+    reason: input.syncNetworkPhase === "live"
+      ? undefined
+      : "Confirmed agent timeline Sync is not live.",
+  },
   { id: "codex-history", state: "available" },
   { id: "workspace", state: "available" },
   { id: "git-review", state: "available" },
@@ -106,6 +142,7 @@ export const createDesktopRuntimeGateway = (
   }>,
   sessionPhase: () => "signed_out" | "unverified" | "session_ready" | "denied" | "unavailable" = () => "unavailable",
   conversation: () => DesktopRuntimeConversation | null = () => null,
+  timeline: () => DesktopRuntimeAgentTimeline | null = () => null,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
@@ -162,6 +199,41 @@ export const createDesktopRuntimeGateway = (
             }
           } catch {
             return { kind: "conversation_unavailable", requestId: request.requestId, reason: "read_failed" }
+          }
+        }
+        if (request.query.id === "agent.timeline") {
+          const runRef = request.query.runRef
+          const service = timeline()
+          if (service === null) {
+            return { kind: "agent_timeline_unavailable", requestId: request.requestId, reason: "not_live" }
+          }
+          try {
+            const result = service.snapshot(runRef)
+            if (result.status.phase !== "live") {
+              return { kind: "agent_timeline_unavailable", requestId: request.requestId, reason: "not_live" }
+            }
+            if (result.run === null) {
+              return { kind: "agent_timeline_unavailable", requestId: request.requestId, reason: "not_found" }
+            }
+            if (
+              result.run.runRef !== runRef ||
+              result.events.length > 500 ||
+              result.events.some(event =>
+                event.runRef !== runRef || event.artifactRefs.length > 100)
+            ) {
+              return { kind: "agent_timeline_unavailable", requestId: request.requestId, reason: "read_failed" }
+            }
+            const confirmedRun = result.run
+            return {
+              kind: "agent_timeline",
+              requestId: request.requestId,
+              runRef,
+              status: result.status,
+              run: confirmedRun,
+              events: result.events,
+            }
+          } catch {
+            return { kind: "agent_timeline_unavailable", requestId: request.requestId, reason: "read_failed" }
           }
         }
         return {

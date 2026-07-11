@@ -31,7 +31,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
-      result: { protocolVersion: 2, lifecycle: "ready" },
+      result: { protocolVersion: 3, lifecycle: "ready" },
     })
   })
 
@@ -47,7 +47,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response).toMatchObject({
       kind: "query_result",
       requestId: "query-1",
-      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 2 },
+      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 3 },
     })
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
@@ -157,6 +157,11 @@ describe("Desktop Runtime Gateway", () => {
     })
     expect(response.result.capabilities).toContainEqual({
       id: "khala-sync",
+      state: "available",
+      reason: undefined,
+    })
+    expect(response.result.capabilities).toContainEqual({
+      id: "agent-timeline",
       state: "available",
       reason: undefined,
     })
@@ -289,6 +294,141 @@ describe("Desktop Runtime Gateway", () => {
     })
   })
 
+  // Oracle for openagents_desktop.seam.runtime_gateway_agent_timeline.v1.
+  test("queries a confirmed bounded agent timeline and preserves only the server route binding", async () => {
+    const status = { phase: "live" as const, cursor: 12, pendingMutationCount: 0 }
+    const gateway = createDesktopRuntimeGateway(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => ({
+        snapshot: runRef => ({
+          status,
+          run: {
+            runRef,
+            routeRef: "route.server-confirmed.42",
+            status: "running",
+            createdAt: "2026-07-10T20:00:00.000Z",
+            updatedAt: "2026-07-10T20:01:00.000Z",
+            startedAt: "2026-07-10T20:00:01.000Z",
+            completedAt: null,
+            failedAt: null,
+            canceledAt: null,
+            version: 11,
+          },
+          events: [{
+            eventRef: "event.confirmed.1",
+            runRef,
+            sequence: 1,
+            eventType: "runtime.activity",
+            summary: "Confirmed activity",
+            status: "running",
+            artifactRefs: ["artifact.confirmed.1"],
+            createdAt: "2026-07-10T20:00:02.000Z",
+            version: 12,
+          }],
+        }),
+      }),
+    )
+    gateway.start()
+    const response = await gateway.request({
+      kind: "query",
+      requestId: "timeline",
+      query: { id: "agent.timeline", runRef: "run.requested.1" },
+    })
+
+    expect(decodeDesktopRuntimeGatewayResponse(response)).toEqual(response)
+    expect(response).toMatchObject({
+      kind: "agent_timeline",
+      requestId: "timeline",
+      runRef: "run.requested.1",
+      status,
+      run: {
+        runRef: "run.requested.1",
+        routeRef: "route.server-confirmed.42",
+        version: 11,
+      },
+      events: [{ eventRef: "event.confirmed.1", sequence: 1, version: 12 }],
+    })
+    expect(JSON.stringify(response)).not.toContain("ownerUserId")
+    expect(JSON.stringify(response)).not.toContain("payloadJson")
+    expect(JSON.stringify(response)).not.toContain("externalEventId")
+  })
+
+  test("agent timeline queries fail closed without a live confirmed snapshot", async () => {
+    const offline = createDesktopRuntimeGateway()
+    offline.start()
+    expect(await offline.request({
+      kind: "query",
+      requestId: "timeline-offline",
+      query: { id: "agent.timeline", runRef: "run.requested.1" },
+    })).toEqual({
+      kind: "agent_timeline_unavailable",
+      requestId: "timeline-offline",
+      reason: "not_live",
+    })
+
+    const catchingUp = createDesktopRuntimeGateway(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => ({
+        snapshot: () => ({
+          status: { phase: "catching_up", cursor: 4, pendingMutationCount: 0 },
+          run: null,
+          events: [],
+        }),
+      }),
+    )
+    catchingUp.start()
+    expect(await catchingUp.request({
+      kind: "query",
+      requestId: "timeline-catching-up",
+      query: { id: "agent.timeline", runRef: "run.requested.1" },
+    })).toEqual({
+      kind: "agent_timeline_unavailable",
+      requestId: "timeline-catching-up",
+      reason: "not_live",
+    })
+
+    const crossRun = createDesktopRuntimeGateway(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => ({
+        snapshot: () => ({
+          status: { phase: "live", cursor: 4, pendingMutationCount: 0 },
+          run: {
+            runRef: "run.other",
+            routeRef: "route.other",
+            status: "running",
+            createdAt: "2026-07-10T20:00:00.000Z",
+            updatedAt: "2026-07-10T20:00:00.000Z",
+            startedAt: null,
+            completedAt: null,
+            failedAt: null,
+            canceledAt: null,
+            version: 4,
+          },
+          events: [],
+        }),
+      }),
+    )
+    crossRun.start()
+    expect(await crossRun.request({
+      kind: "query",
+      requestId: "timeline-cross-run",
+      query: { id: "agent.timeline", runRef: "run.requested.1" },
+    })).toEqual({
+      kind: "agent_timeline_unavailable",
+      requestId: "timeline-cross-run",
+      reason: "read_failed",
+    })
+  })
+
   test("owns ordered lifecycle delivery and terminal disposal", async () => {
     const gateway = createDesktopRuntimeGateway()
     const events: unknown[] = []
@@ -297,8 +437,8 @@ describe("Desktop Runtime Gateway", () => {
     gateway.dispose()
     unsubscribe()
     expect(events).toEqual([
-      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 2, sequence: 1 },
-      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 2, sequence: 2 },
+      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 3, sequence: 1 },
+      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 3, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
     expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
@@ -309,6 +449,7 @@ describe("Desktop Runtime Gateway", () => {
 
   test("rejects unknown operations at the schema boundary", () => {
     expect(decodeDesktopRuntimeGatewayRequest({ kind: "query", requestId: "q", query: { id: "shell.exec" } })).toBeNull()
+    expect(decodeDesktopRuntimeGatewayRequest({ kind: "query", requestId: "q", query: { id: "agent.timeline", runRef: "../private" } })).toBeNull()
     expect(decodeDesktopRuntimeGatewayRequest({ kind: "command", commandId: "c", command: { id: "arbitrary", argv: [] } })).toBeNull()
     expect(decodeDesktopRuntimeGatewayRequest({ kind: "command", commandId: "c", command: { id: "session.sign_in", token: "forbidden" } })).toEqual({
       kind: "command",
@@ -325,6 +466,35 @@ describe("Desktop Runtime Gateway", () => {
         messageRef: "message.gateway.1",
         body: "x".repeat(20_001),
       },
+    })).toBeNull()
+    expect(decodeDesktopRuntimeGatewayResponse({
+      kind: "agent_timeline",
+      requestId: "oversized-artifacts",
+      runRef: "run.1",
+      status: { phase: "live", cursor: 1, pendingMutationCount: 0 },
+      run: {
+        runRef: "run.1",
+        routeRef: "route.1",
+        status: "running",
+        createdAt: "2026-07-10T20:00:00.000Z",
+        updatedAt: "2026-07-10T20:00:00.000Z",
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        canceledAt: null,
+        version: 1,
+      },
+      events: [{
+        eventRef: "event.1",
+        runRef: "run.1",
+        sequence: 1,
+        eventType: "activity",
+        summary: "bounded",
+        status: null,
+        artifactRefs: Array.from({ length: 101 }, (_, index) => `artifact.${index}`),
+        createdAt: "2026-07-10T20:00:00.000Z",
+        version: 1,
+      }],
     })).toBeNull()
   })
 })

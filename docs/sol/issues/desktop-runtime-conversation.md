@@ -7,7 +7,8 @@
 
 ## Landed boundary
 
-Desktop Runtime Gateway protocol v2 adds two closed queries:
+Desktop Runtime Gateway protocol v2 initially added two closed queries (both
+remain unchanged in the protocol v3 superset):
 
 - `conversation.catalog` — confirmed thread refs/metadata/entity versions plus
   personal-scope phase/cursor/pending count;
@@ -34,7 +35,7 @@ typed and body-free. Entity refs/title/body are schema-bounded.
 
 ## Explicit residual
 
-The current Effect Native shell still consumes its local-only chat channels.
-Switching the visible catalog/transcript/composer to protocol v2 is the next
-bounded leaf. Provider-neutral runtime streaming, assistant replies, rich
-composer context, and live GUI/account acceptance remain separate D1 work.
+The visible catalog/transcript/composer switch landed in #8670. Protocol v3
+preserves this conversation contract and adds the separately bounded confirmed
+agent-timeline query; provider process launch/streaming, assistant replies,
+rich composer context, and live GUI/account acceptance remain separate D1 work.

@@ -13,10 +13,12 @@ import {
   createChatClientMutators,
   createKhalaSyncSession,
   createKhalaSyncConversation,
+  createKhalaSyncAgentTimeline,
   createOverlay,
   type HttpTransportConfig,
   type KhalaSyncSession,
   type KhalaSyncConversation,
+  type KhalaSyncAgentTimeline,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
   type ScopeSyncState,
@@ -38,6 +40,7 @@ export type DesktopSyncHostStatus = Readonly<{
 export type DesktopSyncHost = Readonly<{
   status: () => DesktopSyncHostStatus
   conversation: () => KhalaSyncConversation | null
+  timeline: () => KhalaSyncAgentTimeline | null
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   close: () => void
@@ -76,6 +79,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   let closed = false
   let session: KhalaSyncSession | null = null
   let conversation: KhalaSyncConversation | null = null
+  let timeline: KhalaSyncAgentTimeline | null = null
   let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
@@ -97,6 +101,7 @@ export const openDesktopSyncHost = (input: Readonly<{
     Effect.runSync(session.close())
     session = null
     conversation = null
+    timeline = null
     scope = null
   }
 
@@ -118,6 +123,10 @@ export const openDesktopSyncHost = (input: Readonly<{
     conversation: () =>
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? conversation
+        : null,
+    timeline: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? timeline
         : null,
     connectAuthenticated: connection => {
       if (closed) throw new Error("desktop Sync host is closed")
@@ -153,6 +162,7 @@ export const openDesktopSyncHost = (input: Readonly<{
         session,
         mutators,
       })
+      timeline = createKhalaSyncAgentTimeline({ store, session })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,

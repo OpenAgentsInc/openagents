@@ -545,13 +545,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   scope. Only live confirmed run state and the newest 500 ordered event facts
   may project; owner/objective/repository/runtime/backend, event source, raw
   payload JSON, external callback refs, and non-live cached rows stay hidden.
-- Desktop Runtime Gateway is the only renderer path to that conversation
-  capability. Its versioned schema permits bounded confirmed catalog/thread
-  queries and canonical create/append intents; enqueue returns
-  `pending_reconcile`, never completion. Owner/auth/store/session/transport
-  fields and generic IPC remain unrepresentable in the contract.
+- Desktop Runtime Gateway is the only renderer path to conversation and agent-
+  timeline capabilities. Protocol v3 permits bounded confirmed catalog/thread
+  queries, canonical create/append intents, and one exact-run timeline query;
+  enqueue returns `pending_reconcile`, never completion. Timeline attachment
+  uses only the confirmed `agent_run.routeId` returned as `routeRef`—clients do
+  not derive it from `runRef`. Owner/private/raw-provider/auth/store/session/
+  transport fields and generic IPC remain unrepresentable in the contract.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
-  linked Sync when the v2 catalog is live, otherwise explicit local-only mode.
+  linked Sync when the v3 catalog is live, otherwise explicit local-only mode.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.

@@ -464,7 +464,7 @@ records before claiming the first new slice.
   the server-derived owner's personal scope, re-read rotated access custody,
   and close session-before-SQLite. It does not yet have physical Desktop auth
   acceptance. Runtime Gateway
-  protocol v2 now exposes bounded confirmed catalog/thread queries and
+  protocol v3 now exposes bounded confirmed catalog/thread queries and
   create/append enqueues with honest `pending_reconcile`; the existing Effect
   Native shell now selects confirmed Sync mode at boot when live, otherwise a
   separate local-only mode, and never mixes the catalogs. The host
@@ -475,8 +475,10 @@ records before claiming the first new slice.
   workbench, or a visible server-authoritative Fleet cockpit. The shared Sync
   client now has a confirmed-only reader for the already-landed `agent_run` /
   `agent_run_event` scope: ordered bounded facts survive replay/restart while
-  private/raw provider fields stay omitted. Runtime launch/thread binding and
-  Runtime Gateway/UI consumption remain the next D1 leaves.
+  private/raw provider fields stay omitted. Runtime Gateway v3 now consumes
+  that reader by exact `runRef` and returns only the server-confirmed
+  `routeRef` binding. Runtime launch, canonical chat attachment, and visible UI
+  remain the next D1 leaves.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
   persona-neutral public-local Khala fallback driven by the native composer,
   and a

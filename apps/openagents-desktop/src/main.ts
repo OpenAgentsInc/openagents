@@ -149,6 +149,15 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       body,
     }))),
   }
+}, () => {
+  const service = desktopSyncHost?.timeline() ?? null
+  if (service === null) return null
+  return {
+    snapshot: runRef => {
+      Effect.runSync(service.open(runRef))
+      return Effect.runSync(service.snapshot(runRef))
+    },
+  }
 })
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {

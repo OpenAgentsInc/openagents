@@ -7,7 +7,8 @@
 
 ## Landed boundary
 
-One renderer adapter maps Runtime Gateway v2 confirmed thread/message results
+One renderer adapter maps the Runtime Gateway confirmed thread/message results
+(introduced in v2 and preserved unchanged in the v3 superset)
 into the existing Effect Native `DesktopThread`/transcript model. No component,
 preload method, or IPC channel was added.
 

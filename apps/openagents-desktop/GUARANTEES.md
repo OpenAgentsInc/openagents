@@ -25,9 +25,9 @@ schema-decoded query/command/event seam.
 - Tokens, credentials, URLs, raw runtime events, arbitrary IPC, `MessagePort`,
   filesystem/process handles, and command arguments cannot enter the contract.
 
-The Gateway now carries bounded OpenAgents entry/exit and canonical confirmed-
-conversation operations. Provider/runtime event streaming remains explicitly
-unavailable.
+The Gateway now carries bounded OpenAgents entry/exit, canonical confirmed-
+conversation operations, and confirmed redacted agent-timeline snapshots.
+Provider process streaming remains explicitly unavailable.
 
 Contract:
 `openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
@@ -75,7 +75,7 @@ Contract: `openagents_desktop.sync.native_conversation_continuity.v1`.
 
 ### Closed Runtime Gateway conversation protocol
 
-Protocol v2 adds schema-bounded `conversation.catalog` and
+Protocol v3 carries schema-bounded `conversation.catalog` and
 `conversation.thread` queries plus `conversation.create` and
 `conversation.append` commands.
 
@@ -93,9 +93,31 @@ This contract does not claim a provider-neutral stream or live GUI acceptance.
 
 Contract: `openagents_desktop.seam.runtime_gateway_conversation.v1`.
 
+### Confirmed agent timeline protocol
+
+Protocol v3 also adds one `agent.timeline` query by bounded exact `runRef`.
+Electron main composes the shared confirmed reader only while authenticated
+personal Sync is live.
+
+- A live result carries the exact confirmed run and its server-projected
+  `routeRef`, lifecycle/version, scope phase/cursor/pending count, and at most
+  500 ordered confirmed event facts.
+- The server-projected `agent_run.routeId` is the only thread/route attachment
+  fact. The renderer cannot derive a route from a run ID.
+- Non-live, not-found, and read-failure outcomes are typed and body-free.
+- Owner/objective/repository/runtime/backend, provider source, raw payload,
+  external callbacks, credentials, store/session/transport, and process
+  authority cannot cross the schema.
+
+This is query substrate only. Runtime launch, visible timeline rendering,
+canonical chat creation for the route, interrupt/resume, and live-account proof
+remain later D1 work.
+
+Contract: `openagents_desktop.seam.runtime_gateway_agent_timeline.v1`.
+
 ### Visible authoritative Sync conversation mode
 
-The existing Effect Native shell consumes Runtime Gateway v2 through a typed
+The existing Effect Native shell consumes Runtime Gateway v3 through a typed
 renderer adapter whenever confirmed conversation Sync is live at boot.
 
 - Sidebar and transcript map only confirmed thread/message projections.
