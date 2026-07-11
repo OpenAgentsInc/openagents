@@ -639,7 +639,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   refs, and `provisional | confirmed | interrupted` delivery. Resume gaps
   collapse to one bounded authoritative snapshot; a future cursor interrupts
   fail-closed. Slow consumers retain at most one newest pending snapshot, and
-  close removes both observers and the owned thread scope exactly once. The
+  expose source/delivery/coalescing/maximum-pending/latency metrics; close
+  removes both observers and the owned thread scope exactly once. The
   shared contract and mobile no-poll boundary are enforced by
   `packages/khala-sync-client/src/live-conversation.test.ts` and
   `apps/openagents-mobile/tests/mobile-conversation.test.ts`. Desktop Runtime

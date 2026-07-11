@@ -74,6 +74,15 @@ export type KhalaConversationLiveUpdate = Readonly<{
 export type KhalaConversationLiveSubscription = Readonly<{
   close: () => Promise<void>
   closed: () => boolean
+  metrics: () => KhalaConversationLiveMetrics
+}>
+
+export type KhalaConversationLiveMetrics = Readonly<{
+  sourceSignals: number
+  deliveredUpdates: number
+  coalescedSignals: number
+  maxPendingSnapshots: 0 | 1
+  lastDeliveryLatencyMs: number | null
 }>
 
 export type KhalaConversationLiveOptions = Readonly<{
@@ -84,6 +93,7 @@ export type KhalaConversationLiveOptions = Readonly<{
   threadRef: string
   afterCursor?: number | null
   signal?: AbortSignal
+  now?: () => number
   onError?: (error: unknown) => void
 }>
 
@@ -114,11 +124,18 @@ export const openKhalaConversationLive = async (
   listener: (update: KhalaConversationLiveUpdate) => void | Promise<void>,
 ): Promise<KhalaConversationLiveSubscription> => {
   const afterCursor = options.afterCursor ?? null
+  const now = options.now ?? Date.now
   let closed = false
   let draining = false
   let pending = false
   let sequence = 0
   let lastSignature = ""
+  let pendingSince: number | null = null
+  let sourceSignals = 0
+  let deliveredUpdates = 0
+  let coalescedSignals = 0
+  let maxPendingSnapshots: 0 | 1 = 0
+  let lastDeliveryLatencyMs: number | null = null
   let unsubscribe = (): void => undefined
 
   const snapshot = async (): Promise<KhalaConversationLiveSnapshot> => {
@@ -225,8 +242,16 @@ export const openKhalaConversationLive = async (
     try {
       while (pending && !closed) {
         pending = false
+        const scheduledAt = pendingSince
+        pendingSince = null
         const update = await nextUpdate()
-        if (update !== null && !closed) await listener(update)
+        if (update !== null && !closed) {
+          await listener(update)
+          deliveredUpdates += 1
+          lastDeliveryLatencyMs = scheduledAt === null
+            ? 0
+            : Math.max(0, now() - scheduledAt)
+        }
       }
     } catch (error) {
       options.onError?.(error)
@@ -238,7 +263,11 @@ export const openKhalaConversationLive = async (
 
   const schedule = (): void => {
     if (closed) return
+    sourceSignals += 1
+    if (pending) coalescedSignals += 1
+    else pendingSince = now()
     pending = true
+    maxPendingSnapshots = 1
     void drain()
   }
 
@@ -262,5 +291,15 @@ export const openKhalaConversationLive = async (
   if (options.signal?.aborted === true) await close()
 
   schedule()
-  return { close, closed: () => closed }
+  return {
+    close,
+    closed: () => closed,
+    metrics: () => ({
+      sourceSignals,
+      deliveredUpdates,
+      coalescedSignals,
+      maxPendingSnapshots,
+      lastDeliveryLatencyMs,
+    }),
+  }
 }

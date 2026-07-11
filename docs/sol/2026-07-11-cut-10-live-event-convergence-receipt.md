@@ -21,6 +21,9 @@ Effect Stream and projects one cursor-aware native conversation subscription:
 - a resume cursor ahead of durable state interrupts fail-closed;
 - while a listener is slow, arbitrary source churn coalesces to one newest
   pending snapshot instead of growing an event queue;
+- source signals, delivered updates, coalesced signals, the maximum pending
+  snapshot count, and latest delivery latency are directly observable without
+  transcript or payload content;
 - close removes state/content observers and unsubscribes the owned thread scope
   once.
 
@@ -32,7 +35,7 @@ no `for`-attempt polling loop, `await sleep(100)`, or conversation-state
 ## Verification
 
 - `@openagentsinc/khala-sync-client`: 169 pass, 3 explicitly gated live-smoke
-  skips, 0 fail, 12,715 expectations; import coverage reports 22 source modules,
+  skips, 0 fail, 12,716 expectations; import coverage reports 22 source modules,
   21 test files, and no uncovered production module; typecheck passes.
 - OpenAgents mobile: 66 pass, 0 fail, 287 expectations; typecheck passes.
 - Focused live-subscription tests prove ordered delivery, resume, gap refetch,

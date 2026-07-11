@@ -93,6 +93,7 @@ export {
 export {
   KhalaConversationLiveEnvelopeSchema,
   type KhalaConversationLiveEnvelope,
+  type KhalaConversationLiveMetrics,
   type KhalaConversationLiveOptions,
   type KhalaConversationLiveSnapshot,
   type KhalaConversationLiveSubscription,

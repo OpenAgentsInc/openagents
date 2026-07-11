@@ -221,12 +221,14 @@ describe("cursor-aware live conversation subscription", () => {
     let release!: () => void
     const blocked = new Promise<void>(resolve => { release = resolve })
     let first = true
+    let clock = 100
     const subscription = await openKhalaConversationLive({
       conversation: h.conversation,
       timeline: h.timeline,
       subscriptionRef: "subscription.slow",
       generation: 1,
       threadRef,
+      now: () => clock,
     }, async update => {
       updates.push(update)
       if (first) {
@@ -237,8 +239,10 @@ describe("cursor-aware live conversation subscription", () => {
     await flush()
 
     for (let cursor = 5; cursor <= 25; cursor += 1) {
+      clock += 1
       h.change({ status: status("live", cursor), timeline: timeline(cursor) })
     }
+    clock += 25
     release()
     await flush()
     await flush()
@@ -246,6 +250,13 @@ describe("cursor-aware live conversation subscription", () => {
     expect(updates).toHaveLength(2)
     expect(updates[1]!.envelope.cursor).toBe(25)
     expect(updates[1]!.envelope.sequence).toBe(2)
+    expect(subscription.metrics()).toEqual({
+      sourceSignals: 22,
+      deliveredUpdates: 2,
+      coalescedSignals: 20,
+      maxPendingSnapshots: 1,
+      lastDeliveryLatencyMs: 45,
+    })
     await subscription.close()
   })
 
