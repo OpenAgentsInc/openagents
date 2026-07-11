@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@openagentsinc/khala-tools": "workspace:*",
-    "@openai/codex-sdk": "^0.139.0"
+    "@openai/codex-sdk": "^0.144.1"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",
