@@ -71,6 +71,32 @@ const testThread = { id: "test-thread", title: "New chat", updatedAt: "2026-07-1
 const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), threads: [testThread], activeThreadId: testThread.id }
 const fixedNow = () => "18:05"
 
+/** A minimal loaded Codex history detail page (the VIDEOEDITS-regression shape). */
+const historyPageFixture = {
+  rootThreadRef: "history-root",
+  selectedThreadRef: "history-root",
+  agents: [],
+  items: [{
+    itemRef: "item-1",
+    threadRef: "history-root",
+    sequence: 0,
+    timestamp: "2026-07-10T18:04:00.000Z",
+    kind: "user_message" as const,
+    label: "You",
+    summary: "historical message",
+    status: null,
+    fields: [],
+    redacted: false,
+    sourceType: "codex/session",
+  }],
+  offset: 0,
+  limit: 50,
+  totalItems: 1,
+  hasPrevious: false,
+  hasNext: false,
+  completeness: { source: 1, rendered: 1, redactions: 0, gaps: 0, complete: true },
+} as const
+
 describe("desktopShellView (state -> component tree)", () => {
   test("renders neutral chat workspace without a duplicate top bar", () => {
     const view = desktopShellView(baseState)
@@ -106,12 +132,15 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
-  test("Fleet is the first dock item and opens the read-only fleet workspace", () => {
+  test("New chat is the first dock item, Fleet second (owner directive), and Fleet opens the read-only workspace", () => {
     const view = desktopShellView(baseState)
     const nav = nodeByKey(view, "sidebar-navigation")
     const dock = (nav?.sections as Array<{ id: string; items: Array<AnyNode> }>)[0]
     expect(dock?.id).toBe("sidebar-workspace-dock")
-    expect(dock?.items[0]?.id).toBe("workspace-fleet")
+    expect(dock?.items[0]?.id).toBe("workspace-new-chat")
+    expect(dock?.items[1]?.id).toBe("workspace-fleet")
+    expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New chat" })
+    expect((navItemById(view, "workspace-new-chat")?.onSelect as { name?: string })?.name).toBe("DesktopNewChat")
     expect(navItemById(view, "workspace-fleet")).toMatchObject({ icon: "Agent", accessibilityLabel: "Fleet" })
     expect((navItemById(view, "workspace-fleet")?.onSelect as { name?: string })?.name).toBe("DesktopWorkspaceSelected")
 
@@ -359,6 +388,39 @@ describe("pure transitions", () => {
     expect(fresh.notes).toHaveLength(0)
   })
 
+  test("New chat exits a loaded Codex history page into a fresh empty transcript", () => {
+    const withHistory: DesktopShellState = {
+      ...baseState,
+      history: {
+        ...baseState.history,
+        page: historyPageFixture,
+        selectedItemRef: "item-1",
+        expandedThreadRefs: ["history-root"],
+        pendingThreadRef: "history-root",
+      },
+    }
+    // Loaded history page owns the chat workspace before New chat…
+    expect(nodeByKey(desktopShellView(withHistory), "history-workspace-split")).toBeDefined()
+    expect(nodeByKey(desktopShellView(withHistory), "shell-transcript")).toBeUndefined()
+
+    const freshThread = { id: "fresh-thread", title: "New chat", updatedAt: "2026-07-11T16:08:00.000Z", notes: [] } as const
+    const next = withNewChat(withHistory, freshThread)
+    expect(next.workspace).toBe("chat")
+    expect(next.activeThreadId).toBe("fresh-thread")
+    expect(next.history.page).toBeNull()
+    expect(next.history.selectedItemRef).toBeNull()
+    expect(next.history.pendingThreadRef).toBeNull()
+    // The catalog (sidebar list) survives; only the loaded page is exited.
+    expect(next.history.catalog).toBe(withHistory.history.catalog)
+
+    const view = desktopShellView(next)
+    expect(nodeByKey(view, "history-workspace-split")).toBeUndefined()
+    const transcript = nodeByKey(view, "shell-transcript")
+    expect(transcript?._tag).toBe("Transcript")
+    expect((transcript?.messages as Array<unknown>).length).toBe(0)
+    expect(nodeByKey(view, "shell-composer")).toBeDefined()
+  })
+
   test("withLoopProof increments and appends a system note", () => {
     const next = withLoopProof(baseState, "18:05")
     expect(next.loopProofs).toBe(1)
@@ -595,6 +657,51 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         }
         yield* registry.dispatch(resolveIntentRef(codex.onPress, null))
         expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("codex")
+      }),
+    )
+  })
+
+  test("DesktopNewChat from a loaded history page yields an empty transcript bound to the new thread", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const loadedHistory: DesktopShellState = {
+          ...baseState,
+          history: {
+            ...baseState.history,
+            page: historyPageFixture,
+            selectedItemRef: "item-1",
+            expandedThreadRefs: ["history-root"],
+          },
+        }
+        const state = yield* SubscriptionRef.make(loadedHistory)
+        const freshThread = { id: "fresh-thread", title: "New chat", updatedAt: "2026-07-11T16:08:00.000Z", notes: [] }
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, {
+            listThreads: async () => [],
+            newThread: async () => freshThread,
+            openThread: async () => null,
+            sendMessage: async () => ({ ok: false, error: "unused" }),
+          }),
+        )
+        // The dock's first item is the New-chat affordance; dispatch through it.
+        const before = desktopShellView(yield* SubscriptionRef.get(state))
+        expect(nodeByKey(before, "history-workspace-split")).toBeDefined()
+        const newChat = navItemById(before, "workspace-new-chat") as {
+          onSelect: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(newChat.onSelect, null))
+
+        const next = yield* SubscriptionRef.get(state)
+        expect(next.workspace).toBe("chat")
+        expect(next.activeThreadId).toBe("fresh-thread")
+        expect(next.history.page).toBeNull()
+        expect(next.notes).toHaveLength(0)
+        const view = desktopShellView(next)
+        expect(nodeByKey(view, "history-workspace-split")).toBeUndefined()
+        const transcript = nodeByKey(view, "shell-transcript")
+        expect(transcript?._tag).toBe("Transcript")
+        expect((transcript?.messages as Array<unknown>).length).toBe(0)
       }),
     )
   })

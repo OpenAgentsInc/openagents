@@ -740,6 +740,62 @@ const smokeCloseSettings = `(async () => {
   return { ok: document.querySelector('[data-en-key="shell-main"]') !== null }
 })()`
 
+// Regression guard (#8712 polish): New chat from a LOADED Codex history page
+// must land in a fresh empty transcript, never the historical conversation.
+const smokeNewChatFromHistory = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  if (document.querySelector('[data-en-key="history-workspace-split"]') === null) {
+    return { ok: false, reason: "history detail was not loaded before New chat" }
+  }
+  const button = document.querySelector('[data-en-key="workspace-new-chat"]')
+  if (button === null) return { ok: false, reason: "New chat dock button never mounted" }
+  button.click()
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline && (
+    document.querySelector('[data-en-key="shell-transcript"]') === null ||
+    document.querySelector('[data-en-key="history-workspace-split"]') !== null
+  )) {
+    await wait(50)
+  }
+  const transcript = document.querySelector('[data-en-key="shell-transcript"]')
+  const split = document.querySelector('[data-en-key="history-workspace-split"]')
+  const messages = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
+  const composer = document.querySelector('[data-en-key="shell-input"] input')
+  return {
+    ok: transcript !== null && split === null && messages === 0 &&
+      composer !== null && composer.disabled === false,
+    historyStillLoaded: split !== null,
+    messages,
+    composerMounted: composer !== null,
+  }
+})()`
+
+// Fleet workspace journey (#8712): the dock's Fleet button must open the
+// read-only fleet panel with the fixture provider accounts rendered.
+const smokeOpenFleetWorkspace = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="workspace-fleet"]')
+  if (button === null) return { ok: false, reason: "Fleet dock button never mounted" }
+  button.click()
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="fleet-accounts-table"]') === null) {
+    await wait(50)
+  }
+  const panel = document.querySelector('[data-en-key="workspace-fleet-panel"]')
+  const expected = ["codex", "codex-2", "claude-pylon-3"]
+  const refs = expected.map((ref) =>
+    document.querySelector('[data-en-key="fleet-ref-' + ref + '"]')?.textContent ?? null)
+  const revoked = document.querySelector('[data-en-key="fleet-readiness-codex-2"]')
+  const dots = document.querySelector('[data-en-key="fleet-status-dots"]')
+  return {
+    ok: panel !== null && dots !== null &&
+      refs.every((value, index) => value === expected[index]) &&
+      revoked !== null && revoked.textContent === "credentials-missing",
+    refs,
+    revokedReadiness: revoked === null ? null : revoked.textContent,
+  }
+})()`
+
 const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {
   if (smokeShotsDir === undefined || smokeShotsDir === "") return
   const image = await window.webContents.capturePage()
@@ -807,6 +863,13 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("settings-connect-awaiting-browser-FIXTURE", smokeConnectCodex)
         await captureShot(window, "05-settings-awaiting-browser-fixture")
         await step("settings-back-to-chat", smokeCloseSettings)
+        // With the historical page still loaded, New chat must yield a fresh
+        // empty transcript (the on-camera regression), then the Fleet dock
+        // button must render the fixture accounts panel.
+        await step("new-chat-from-history-empty-transcript", smokeNewChatFromHistory)
+        await captureShot(window, "06-new-chat-empty")
+        await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
+        await captureShot(window, "07-fleet-workspace")
         tracePass = 1
         window.webContents.reload()
       } catch (error) {

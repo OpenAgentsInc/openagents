@@ -15,7 +15,9 @@ import {
   fleetDotEvidence,
   fleetWorkspaceIntents,
   fleetWorkspaceView,
+  formatFleetLocalTime,
   makeFleetWorkspaceHandlers,
+  sortFleetAccounts,
   withFleetLoading,
   withFleetProjection,
   withFleetUsageChecking,
@@ -99,14 +101,23 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
   test("ready phase renders the as-of caption, dots, table rows, and footer intents", () => {
     const view = fleetWorkspaceView(readyState)
     expect(nodeByKey(view, "fleet-title")?.content).toBe("Fleet")
-    expect(nodeByKey(view, "fleet-as-of")?.content).toBe("as of 2026-07-11 12:00")
+    // Rendered in local wall-clock time (the owner saw a UTC clock drift).
+    expect(nodeByKey(view, "fleet-as-of")?.content).toBe(
+      `as of ${formatFleetLocalTime("2026-07-11T12:00:00.000Z")}`,
+    )
     expect((nodeByKey(view, "fleet-refresh") as { onPress?: { name?: string } }).onPress?.name).toBe("FleetRefreshRequested")
 
     const table = nodeByKey(view, "fleet-accounts-table")
     expect(table?._tag).toBe("Table")
-    expect((table?.rows as Array<{ id: string }>).map((row) => row.id)).toEqual(["codex", "codex-2", "claude-pylon-3"])
+    // Deterministic order: ready accounts first, then provider, then ref —
+    // the same order the dots use.
+    expect((table?.rows as Array<{ id: string }>).map((row) => row.id)).toEqual(["codex", "claude-pylon-3", "codex-2"])
+    const columns = table?.columns as Array<{ id: string; align?: string }>
+    expect(columns.find((column) => column.id === "usage")?.align).toBe("end")
     expect(nodeByKey(view, "fleet-email-codex")?.content).toBe("owner@example.com")
     expect(nodeByKey(view, "fleet-email-codex-2")?.content).toBe("—")
+    expect(nodeByKey(view, "fleet-email-codex-2")?.color).toBe("textMuted")
+    expect(nodeByKey(view, "fleet-readiness-codex")?._tag).toBe("Badge")
     expect(nodeByKey(view, "fleet-readiness-codex")?.tone).toBe("success")
     expect(nodeByKey(view, "fleet-readiness-codex-2")?.tone).toBe("warn")
     expect(nodeByKey(view, "fleet-readiness-claude-pylon-3")?.tone).toBe("neutral")
@@ -119,6 +130,36 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
     expect(manage.onPress?.name).toBe("DesktopSettingsToggled")
     const newChat = nodeByKey(view, "fleet-new-chat") as { onPress?: { name?: string } }
     expect(newChat.onPress?.name).toBe("DesktopNewChat")
+  })
+
+  test("dots are a vertical flow of chips in the deterministic sort order (no horizontal strip)", () => {
+    const view = fleetWorkspaceView(readyState)
+    const dots = nodeByKey(view, "fleet-status-dots") as { direction?: string; children?: Array<AnyNode> }
+    expect(dots.direction).toBe("column")
+    expect((dots.children ?? []).map((chip) => chip.key)).toEqual([
+      "fleet-dot-codex",
+      "fleet-dot-claude-pylon-3",
+      "fleet-dot-codex-2",
+    ])
+    // Chip anatomy: ref on the line, provider small and dim beside it.
+    expect(nodeByKey(view, "fleet-dot-label-codex")?.content).toBe("codex")
+    expect(nodeByKey(view, "fleet-dot-label-codex")?.color).toBe("textPrimary")
+    expect(nodeByKey(view, "fleet-dot-provider-claude-pylon-3")?.content).toBe("claude_agent")
+    expect(nodeByKey(view, "fleet-dot-provider-claude-pylon-3")?.color).toBe("textMuted")
+  })
+
+  test("sortFleetAccounts: ready first, then provider, then ref", () => {
+    expect(sortFleetAccounts([unknownAccount, revokedAccount, readyAccount]).map((account) => account.ref))
+      .toEqual(["codex", "claude-pylon-3", "codex-2"])
+  })
+
+  test("formatFleetLocalTime renders the local wall clock for an ISO instant", () => {
+    const instant = new Date("2026-07-11T16:08:44.000Z")
+    const expected = `${String(instant.getHours()).padStart(2, "0")}:${String(instant.getMinutes()).padStart(2, "0")}:44`
+    expect(formatFleetLocalTime("2026-07-11T16:08:44.000Z")).toBe(expected)
+    expect(formatFleetLocalTime("2026-07-11T16:08:44.000Z", false)).toBe(expected.slice(0, 5))
+    // Unparseable input degrades to the bounded raw string, never NaN text.
+    expect(formatFleetLocalTime("not-a-time")).toBe("not-a-time")
   })
 
   test("lit-dot rule: only decoded ready evidence lights a dot", () => {
@@ -139,11 +180,17 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
   })
 
   test("usage cells move through — / checking / checked / failed without optimism", () => {
+    const idleCheck = nodeByKey(fleetWorkspaceView(readyState), "fleet-usage-check-codex")
     expect(nodeByKey(fleetWorkspaceView(readyState), "fleet-usage-empty-codex")?.content).toBe("—")
+    expect(idleCheck?.label).toBe("Check")
+    expect(idleCheck?.disabled).toBe(false)
 
+    // In flight: the same button stays visible, disabled, labeled Checking….
     const checking = withFleetUsageChecking(readyState, "codex")
-    expect(nodeByKey(fleetWorkspaceView(checking), "fleet-usage-codex")?.content).toBe("Checking…")
-    expect(nodeByKey(fleetWorkspaceView(checking), "fleet-usage-check-codex")).toBeUndefined()
+    const checkingButton = nodeByKey(fleetWorkspaceView(checking), "fleet-usage-check-codex")
+    expect(checkingButton?._tag).toBe("Button")
+    expect(checkingButton?.label).toBe("Checking…")
+    expect(checkingButton?.disabled).toBe(true)
 
     const checked = withFleetUsageEntry(readyState, "codex", {
       state: "checked",
@@ -152,7 +199,33 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
       outputTokens: 340,
       totalTokens: 1540,
     })
-    expect(nodeByKey(fleetWorkspaceView(checked), "fleet-usage-total-codex")?.content).toBe("1,540 tokens")
+    // Honest labeling: the number is the minimal `--refresh` probe turn, so
+    // it carries the split, the probe tag, and the local refresh time.
+    expect(nodeByKey(fleetWorkspaceView(checked), "fleet-usage-total-codex")?.content).toBe(
+      `1,540 tokens · in 1,200 / out 340 · probe · ${formatFleetLocalTime("2026-07-11T12:05:00.000Z", false)}`,
+    )
+
+    const checkedNoSplit = withFleetUsageEntry(readyState, "codex", {
+      state: "checked",
+      refreshedAt: "2026-07-11T12:05:00.000Z",
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: 8,
+    })
+    expect(nodeByKey(fleetWorkspaceView(checkedNoSplit), "fleet-usage-total-codex")?.content).toBe(
+      `8 tokens · probe · ${formatFleetLocalTime("2026-07-11T12:05:00.000Z", false)}`,
+    )
+
+    const checkedEmpty = withFleetUsageEntry(readyState, "codex", {
+      state: "checked",
+      refreshedAt: "2026-07-11T12:05:00.000Z",
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+    })
+    expect(nodeByKey(fleetWorkspaceView(checkedEmpty), "fleet-usage-total-codex")?.content).toBe(
+      `no usage recorded · probe · ${formatFleetLocalTime("2026-07-11T12:05:00.000Z", false)}`,
+    )
 
     const failed = withFleetUsageEntry(readyState, "codex", {
       state: "failed",

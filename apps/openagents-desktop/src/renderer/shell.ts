@@ -282,6 +282,17 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
   workspace: "chat",
+  // New chat must land in a fresh empty transcript even when a historical
+  // Codex page is loaded: the chat workspace renders the history page
+  // whenever one is present, so clear the in-memory page (persisted
+  // restoration prefs stay untouched — this is a view exit, not a deletion).
+  history: {
+    ...state.history,
+    page: null,
+    selectedItemRef: null,
+    pendingThreadRef: null,
+    expandedThreadRefs: [],
+  },
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -711,6 +722,9 @@ const shellSidebar = (state: DesktopShellState): View =>
         activeId:state.history.pendingThreadRef!==null?`sidebar-thread-${state.history.pendingThreadRef}`:state.history.page!==null?`sidebar-thread-${state.history.page.rootThreadRef}`:state.activeThreadId!==null?`sidebar-thread-${state.activeThreadId}`:`workspace-${state.workspace}`,
         sections:[
           {id:"sidebar-workspace-dock",layout:"row",items:[
+            // Owner directive (#8712): New chat is the top-leftmost dock item,
+            // Fleet immediately to its right.
+            {id:"workspace-new-chat",label:"New chat",icon:"ChatCompose",accessibilityLabel:"New chat",onSelect:IntentRef("DesktopNewChat")},
             {id:"workspace-fleet",label:"Fleet",icon:"Agent",selected:state.workspace==="fleet",accessibilityLabel:"Fleet",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("fleet"))},
             {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
             {id:"workspace-files",label:"Files",icon:"Folder",selected:state.workspace==="files",accessibilityLabel:"Files",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("files"))},
