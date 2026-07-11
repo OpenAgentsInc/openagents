@@ -43,7 +43,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 2 | CUT-02 | [#8682](https://github.com/OpenAgentsInc/openagents/issues/8682) — closed `fa4d6489d3` | R0 / verification | — |
 | 3 | CUT-03 | [#8683](https://github.com/OpenAgentsInc/openagents/issues/8683) — closed `4d875dcb4b` | D2 / topology | CUT-02 |
 | 4 | CUT-04 | [#8684](https://github.com/OpenAgentsInc/openagents/issues/8684) — closed `6ee87714d0` | D2 / topology | CUT-03 |
-| 5 | CUT-05 | [#8685](https://github.com/OpenAgentsInc/openagents/issues/8685) | FC5 / Claude runtime | CUT-02 |
+| 5 | CUT-05 | [#8685](https://github.com/OpenAgentsInc/openagents/issues/8685) — closed `509fb27ea1` | FC5 / Claude runtime | CUT-02 |
 | 6 | CUT-06 | [#8686](https://github.com/OpenAgentsInc/openagents/issues/8686) | FC5 / runtime authority | CUT-05 |
 | 7 | CUT-07 | [#8687](https://github.com/OpenAgentsInc/openagents/issues/8687) | R4 / command convergence | CUT-02 |
 | 8 | CUT-08 | [#8688](https://github.com/OpenAgentsInc/openagents/issues/8688) | R4 / event convergence | CUT-07 |
@@ -225,6 +225,12 @@ run.
 Non-goals: remote Claude hosts.  
 Close rule: merge and attach a redacted run receipt; #8640 stays open for
 CUT-06 and parent acceptance.
+
+Closed on 2026-07-11 at `509fb27ea1`. The process-opaque scoped authority,
+negative public/bridge/org-cloud/replay coverage, cancellation path, refs-only
+audit projection, real `claude-pylon-3` accepted run, and full deploy gate are
+recorded in
+[`CUT-05 Claude owner-local permission receipt`](../pylon/2026-07-11-cut-05-claude-owner-local-permission-receipt.md).
 
 ---
 

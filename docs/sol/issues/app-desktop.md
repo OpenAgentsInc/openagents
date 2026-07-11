@@ -19,7 +19,8 @@
 - Immediate bounded queue: closed CUT-02 #8682 supplies the deterministic
   green verification baseline; closed CUT-03 #8683 and CUT-04 #8684 supply the
   source-coupled topology, replaceability, owned-disposal, correlation, and
-  built-host architecture acceptance; CUT-05 #8685 is the next ordered leaf;
+  built-host architecture acceptance; closed CUT-05 #8685 supplies exact-scope
+  Claude owner-local authority and CUT-06 #8686 is the next ordered leaf;
   #8676
   supplies the physical streamed Desktop→mobile acceptance;
   #8677 delegates fault convergence to #8687–#8689. Closed #8675 supplies

@@ -88,9 +88,13 @@ Optional `claudeAgent` section in the Pylon config file
   by the executor gate (#4719) and the local dashboard composer; they cap,
   never expand, what an assignment may do. Config is preference, not
   authority.
-- Permission/execution-mode keys are deliberately not read from this
-  section: the assignment lane is always bounded. Only the local-only
-  `dev` section can change the composer's posture (#4845).
+- Permission/execution-mode keys are deliberately not read from this section.
+  Public, bridge, org-cloud, remote, and unscoped assignments stay bounded.
+  An accepted owner-local Fleet/runtime authority or authenticated loopback
+  control session may mint a short-lived process-opaque grant for one exact
+  Pylon, run/session, operation/assignment, and named account. That grant is
+  revocable, cannot survive serialization/restart, and projects refs rather
+  than its permission-mode literal (CUT-05, #8685).
 - Never put credential values in the config file; the bridge reads
   credentials from the environment only.
 

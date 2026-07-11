@@ -5,8 +5,8 @@
 - Depends on: closed #8637/#8633/#8639 Fleet substrate
 - Status: active bounded owner-authorized live proof
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 31
-- Child repairs: #8685 Claude owner-local permission mode; #8686 supervisor
-  lifecycle and verifier/publication ordering
+- Child repairs: closed #8685 Claude owner-local permission authority; #8686
+  supervisor lifecycle and verifier/publication ordering
 
 ## Outcome
 
@@ -34,13 +34,18 @@ still requires the owner's explicit authorization and a fresh bounded claim.
   `claude_agent_execution_refused`; Codex used the wrong verifier entry point.
 - The broader Khala test also exposed a leaked supervisor-scope failure. These
   are concrete remaining defects, not an accepted proof.
+- CUT-05 is closed at `509fb27ea1`: a real named `claude-pylon-3` assignment
+  completed with an accepted closeout under a revocable, exact-scope,
+  process-opaque owner-local grant. Public, bridge, org-cloud, replayed,
+  expired, revoked, and mismatched paths remain bounded. This repairs the
+  Claude refusal but is not the simultaneous parent receipt.
 - Grok is not an acceptance item while funded capacity is unavailable.
 
 ## Scope
 
-1. Fix the Claude permission-mode execution refusal without weakening the
-   untrusted/public permission boundary.
-2. Fix the existing supervisor-scope leak and preserve deterministic cleanup.
+1. Preserve the closed CUT-05 exact-scope Claude authority and its restrictive
+   public/remote defaults.
+2. Fix the remaining supervisor-scope leak and preserve deterministic cleanup.
 3. Bind each useful work unit to one correct package-script/single-argv verifier
    before dispatch.
 4. Run at least two simultaneous pinned public work units under one FleetRun:
