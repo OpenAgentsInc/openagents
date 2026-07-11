@@ -8,7 +8,7 @@
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
   `97f90832bb`, `21d56199bd`, `88f692fe00`, `400c649904`, `600228f230`, and
-  `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, and `4a9db8347b`
+  `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, `4a9db8347b`, and `23a190905f`
 
 CUT-16 now builds on the existing rich `@openagentsinc/composer-state` kernel
 instead of creating a second composer. The additive private coding-draft
@@ -93,6 +93,21 @@ Verification:
   focused authority/route-manifest suite pass (6 tests). The runtime mutator
   local-Postgres suite is 15 pass, 0 fail, 112 assertions, including early
   expiry refusal and durable post-deadline expiry.
+- deterministic native accessibility acceptance: mobile interaction controls
+  remain on the shared Effect Native `Button` primitive; React Native lowers
+  it to a screen-reader button with disabled state, Desktop lowers it to a
+  native keyboard button, the mobile host remains keyboard-avoiding with
+  blur-and-submit, and Desktop globally honors reduced-motion preference.
+  Focused mobile Home/component coverage is 14 pass, 0 fail, 122 assertions;
+  Desktop shell coverage is 66 pass, 0 fail, 390 assertions. Terminal
+  resolved/expired/revoked cards expose no action controls on either host.
+
+The deterministic CUT-16 edge matrix is therefore covered: offline authority
+fails closed, restart-safe draft stores reconstruct bounded snapshots,
+duplicate decisions are idempotent, revoked/expired authority is terminal,
+mobile keyboard avoidance remains active, and the shared semantic controls
+carry keyboard/screen-reader/reduced-motion behavior. These tests do not
+substitute for the issue's required physical assistive-technology receipt.
 
 CUT-16 remains open. The next honest rungs are screen-reader/mobile-keyboard
 and physical-device acceptance plus named Codex/Claude live turns. Restart,
