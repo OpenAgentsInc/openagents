@@ -140,9 +140,9 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(16)
+    expect(decoded.contracts).toHaveLength(20)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
-    expect(pending).toHaveLength(4)
+    expect(pending).toHaveLength(8)
     expect(
       decoded.contracts.find(
         contract =>
@@ -161,6 +161,35 @@ describe("behavior contract registry", () => {
     )
     expect(desktopRuntime?.state).toBe("pending")
     expect(desktopRuntime?.statement).toContain("mobile sync working soon")
+    const portableSessions = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_apps.remote_first_portable_sessions.v1",
+    )
+    expect(portableSessions?.state).toBe("pending")
+    expect(portableSessions?.statement).toContain(
+      "Sessions can be stopped on any machine and moved to any other",
+    )
+    const executionTargets = decoded.contracts.find(
+      contract =>
+        contract.contractId ===
+        "openagents_cloud.user_or_managed_execution_targets.v1",
+    )
+    expect(executionTargets?.state).toBe("pending")
+    expect(executionTargets?.statement).toContain("my own cloud (my homelab)")
+    const brokeredSecrets = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_cloud.brokered_session_secrets.v1",
+    )
+    expect(brokeredSecrets?.state).toBe("pending")
+    expect(brokeredSecrets?.statement).toContain("Secrets access via a broker")
+    const anyHostVoice = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_mobile.any_host_session_voice.v1",
+    )
+    expect(anyHostVoice?.state).toBe("pending")
+    expect(anyHostVoice?.statement).toContain(
+      "access any session on any host, with conversational voice",
+    )
     const mobileSyncHost = decoded.contracts.find(
       contract =>
         contract.contractId === "openagents_mobile.sync.host_owned_expo_sqlite.v1",

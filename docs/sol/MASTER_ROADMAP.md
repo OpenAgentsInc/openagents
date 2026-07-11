@@ -1,9 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-10 (predictable trace acceptance, live conversation handoff,
-  fault convergence, and Effect scope freeze)
-- Revision: 29
+- Updated: 2026-07-11 (remote-first portable sessions, owner/managed targets,
+  brokered capabilities, and session-neutral mobile voice)
+- Revision: 30
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -22,6 +22,8 @@
   [`OpenCode Effect audit`](../teardowns/2026-07-10-opencode-effect-architecture-teardown.md)
 - Predictable local Codex history and UX-contract product context:
   [`transcript 248`](../transcripts/248.md)
+- Remote-first portable session pathway and gap analysis:
+  [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
 
 ## Owner decisions encoded here
 
@@ -32,8 +34,10 @@
    owner can start, inspect, steer, approve, pause, resume, stop, and recover a
    fleet without guessing which device or local cache owns reality.
 2. **Sarah is not the required front door.** Named-persona, relationship-first,
-   avatar, opener, voice, video, and A/V quality backlog is closed `wontfix` /
-   not-planned rather than held open as paused work.
+   avatar, opener, Sarah/persona voice, video, and A/V quality backlog is closed
+   `wontfix` / not-planned rather than held open as paused work. Revision 30's
+   session-neutral mobile conversational voice is governed by decision 21 and
+   does not revive this backlog.
    **Amendment (owner escalation, 2026-07-10, later the same day): the Sarah
    surface is removed, not retained.** The owner overruled the
    compatibility-substrate clause ("all sarah shit must die"): the
@@ -151,12 +155,42 @@
     interruption remains cancellation; canonical Effect Schema identities are
     reused across contracts. #8678 freezes and tests this boundary before D3/D4
     expands editor, PTY, MCP, provider, and permission services.
+18. **Coding sessions are remote-first and host-independent.** The durable
+    session, thread, WorkContext, command, event, and receipt identity never
+    derives from the current machine, process, workspace path, Pylon home, or
+    cloud vendor. A session may execute locally, on an owner-managed remote
+    node, in OpenAgents Cloud, or through an audited managed-provider adapter.
+    Version 1 promises fenced stop/checkpoint/detach/attach/resume, not
+    transparent live process-memory migration. The local-only identity tier
+    remains available until an owner explicitly adopts work into remote
+    authority.
+19. **Owner cloud and managed cloud are peer target classes.** Homelab and
+    customer-cloud nodes get a supported enroll/update/revoke/capability path;
+    OpenAgents Agent Computers remain the first managed target; providers such
+    as Daytona enter only behind the same provider-neutral lifecycle,
+    isolation, snapshot, preview, cleanup, and receipt contract. Clients never
+    call vendor control planes directly, and fallback never silently changes
+    custody, provider, account, data posture, or isolation rung.
+20. **Cross-host execution requires a general capability broker.** Provider,
+    SCM, MCP/tool, and API credentials remain in approved custody and reach a
+    target through short-lived owner/session/attachment/tool-scoped leases or
+    authenticated gateways. Moving a session revokes the source grants and
+    redeems fresh target grants. Checkpoints, Sync, clients, prompts, logs, and
+    receipts never carry raw secrets or portable credential caches.
+21. **Mobile can reach every authorized session and use conversational voice.**
+    An owner-scoped host/session directory projects each enrolled target,
+    session attachment, capability, freshness, isolation rung, and durable
+    control outcome. Persona-neutral voice is re-authorized as an explicit,
+    visible ASR/TTS/barge-in modality over the same typed command and approval
+    path as text. Sarah, avatar, video, ambient recording, and voice-only
+    authority remain closed.
 
 ## The product in one sentence
 
-**OpenAgents is reliable software for doing coding work and managing fleets of
-agents from Desktop and mobile without forking identity, state, authority, or
-receipts.**
+**OpenAgents is remote-first software for doing coding work and managing fleets
+from Desktop and mobile: one durable session can execute on, stop on, and move
+between authorized local, owner-managed, and managed-cloud hosts without
+forking identity, state, authority, secrets, or receipts.**
 
 Desktop is the complete local/remote coding workbench and fleet cockpit. Mobile
 is a compact remote coding, supervision, and continuity client. It is not a
@@ -211,8 +245,8 @@ The following broad backlog categories are closed not-planned:
 
 - Sarah-specific front-door, persona, relationship, role-program, and named-
   colleague UX;
-- avatar, opener, pre-rendered clips, voice, ASR/VAD, realtime video, media
-  admission, semantic media cache, and presentation-quality experiments;
+- avatar, opener, pre-rendered clips, Sarah/persona voice, realtime video,
+  media admission, semantic media cache, and presentation-quality experiments;
 - Liquid Glass or visual polish that is not required for accessibility,
   interaction correctness, platform support, or a reliability gate;
 - new web marketing, Forum, portal, and route-conversion scope that does not
@@ -224,6 +258,12 @@ repairs begin as new bounded issues and remain allowed. Existing named-assistant
 endpoints may be used as a temporary adapter when they are the only landed
 route, but new client state and acceptance tests must target persona-neutral
 typed contracts. Do not reopen the broad wontdo tombstones.
+
+**Revision 30 carve-out:** persona-neutral conversational voice on mobile is a
+new bounded coding-session modality, not a reopened Sarah/media program. ASR,
+TTS, and barge-in must produce the same typed intents, approvals, durable
+outcomes, and receipts as text; microphone use is explicit and visible, raw
+audio is not retained by default, and text remains a complete fallback.
 
 ## Current implementation truth
 
@@ -450,9 +490,16 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   #8547, but its real brokered owner-account Firecracker turn remains open.
   Hybrid owner-local plus managed-cloud acceptance belongs to #8636 and never
   blocks the local cutover.
-- The trusted-context voice coordinator/SSE adapter remains fixture-proven
-  historical evidence and has no open product lane. Model/system text is not
-  scope authority.
+- Cross-device conversation continuation and restart do not yet equal
+  host-portable execution. There is no canonical session attachment/checkpoint
+  contract, owner-managed remote enrollment path, general live secret broker,
+  or any-host mobile session directory. Revision 30 makes those explicit
+  additions rather than relabeling #8676/#8547/#8636 as proof they do not have.
+- The trusted-context voice coordinator, legacy native STT, and historical SSE
+  adapter are extraction evidence only. Revision 30 opens a new persona-neutral
+  mobile voice lane over the shared session command contract; it does not
+  restore Sarah/media authority. Model/system text and TTS are not scope or
+  command authority.
 
 P0 closes the live runtime receipt while projecting the existing Fleet system
 into reliable Desktop/mobile software; it does not build another fleet system.
@@ -593,11 +640,11 @@ generic IPC authority.
 | R0 — truthful green foundation | Desktop and mobile typecheck/tests/builds; isolated first-run state; capability manifests; explicit `unconfigured`, `offline`, `reconnecting`, `stale`, `must_refetch`, `failed`, and `ready` states; remove or finish fake/dormant Fleet affordances | Both clients are green from clean state and no fixture, local cache, transcript, or optimistic toast is presented as authority |
 | R1 — shared identity and session | One authenticated owner/org identity; device registration; scoped provider/account readiness; stable conversation/project/session refs; safe token refresh/revocation; persona-neutral app/session bootstrap | Sign in on Desktop and mobile, see the same authorized account/session catalog, revoke either device, and prove no credential or private payload crosses renderer/public evidence boundaries |
 | R2 — Khala Sync continuity | Canonical projections for conversations, projects/sessions, FleetRuns, work units, attempts, workers/accounts, approvals, commands, outcomes, and receipts; monotonic cursor/version; tombstones; bounded cache; mutation idempotency keys; explicit conflict/refetch semantics | Create or change durable state on one device, observe it on the other with matching refs/versions, restart both, and reconstruct the same current state without duplicate objects or invented completion |
-| R3 — fleet and remote-workroom operations | Start from pinned work; choose named worker/account/capacity/execution target; create/resume/stop/reclaim a typed remote workroom; inspect plan/claim/assignment/attempt; steer, approve/reject, pause/resume/drain/stop; surface unavailable/quota/policy states; show exact or `not_measured` usage and verification/closeout | One real Codex+Claude run is started and managed with controls from both clients, including at least one remote-workroom unit; every command has one durable accepted/rejected/failed outcome and zero duplicate claims or silent provider/target substitution |
-| R4 — interruption and recovery | Offline mutation queue with bounded eligibility; foreground/background transitions; dropped acknowledgements; replay deduplication; out-of-order/duplicate events; stale leases; server restart; device restart; explicit merge/refetch rules | Fault-injection suite plus a real handoff prove no lost accepted intent, double execution, false LIVE/success state, or indefinite spinner; stale clients converge or fail closed |
+| R3 — fleet, targets, and remote-workroom operations | Start from pinned work; choose named worker/account/capacity/execution target; create/resume/stop/reclaim a typed remote workroom; enroll/select owner-managed remote, OpenAgents-managed, or audited provider-adapter targets; inspect plan/claim/assignment/attempt; steer, approve/reject, pause/resume/drain/stop; surface unavailable/quota/policy/isolation states; show exact or `not_measured` usage and verification/closeout | One real Codex+Claude run is managed from both clients, including at least one remote-workroom unit; owner-local, owner-managed remote, and managed target choices use one claim registry and every command has one durable outcome with zero duplicate claims or silent provider/target/isolation substitution |
+| R4 — interruption, migration, and recovery | Offline mutation queue with bounded eligibility; foreground/background transitions; dropped acknowledgements; replay deduplication; out-of-order/duplicate events; stale leases; server/device restart; explicit merge/refetch rules; host-independent session identity; exclusive attachment generations; secret-free checkpoint; quiesce/detach/attach/move/failback | Fault injection plus a real local-to-managed-to-owner-remote move prove no lost accepted intent, two live attachment generations, double execution, secret-bearing checkpoint, false LIVE/success state, or indefinite spinner; stale clients/hosts converge or fail closed |
 | R5 — Desktop everyday workbench | Complete D0–D6 below: streamed sessions, composer/context, projects/files/editor, Git review, bounded terminal, commands/keybindings, runtimes/models/MCP/permissions, settings/diagnostics, Fleet cockpit, lifecycle/distribution | The practical OpenCode-parity workflow completes through the hardened Effect Native/Electron app and survives restart/reconnect while retaining authoritative Sync/Fleet state |
-| R6 — mobile coding and fleet control | Activity/fleet home; GitHub/repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; run/work/attempt detail; steer/approve/pause/resume/stop; typed remote-workroom lifecycle; compact plan/files/changes/terminal/preview/artifact surfaces; safe branch/PR writeback; push, deep link, handoff, and accessible loading/error/offline states | On physical iOS and Android devices, select a repository, start or resume isolated remote coding, inspect/change code, review the exact diff, run a bounded command, open a managed preview, complete safe writeback, and supervise the R3 run without local raw filesystem/shell/credential authority |
-| R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility window; migration/rollback; public-safe diagnostics; telemetry for sync lag, workroom lifecycle, command latency, reconnect, conflicts, and duplicate suppression | A sustained owner dogfood window includes a real mobile-originated remote-container coding task, Desktop/mobile continuation of the same thread/workroom/run, safe branch/PR writeback, upgrade/restart/offline faults, no P0/P1 data-loss or false-authority defect, and a signed owner-accepted receipt |
+| R6 — mobile any-host coding and fleet control | Activity/fleet home; authorized host/session directory; repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; stop/checkpoint/move/resume/failback; run/work/attempt detail; compact plan/files/changes/terminal/preview/artifact surfaces; safe writeback; push/deep link/handoff; explicit persona-neutral ASR/TTS/barge-in over typed commands; accessible loading/error/offline states | On physical iOS and Android, access every authorized session across enrolled host classes, use text or voice to follow up/interrupt and request one move, inspect/change/review/run/preview/write back, and supervise the R3 run without raw filesystem, shell, vendor API, credential, or voice-only authority |
+| R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility; migration/rollback; public-safe diagnostics; telemetry for Sync, attachment/checkpoint/move, broker lease/revocation, command latency, reconnect, conflicts, and duplicate suppression | Sustained owner dogfood starts on one host class, moves the same session through at least one other host class, continues on Desktop/mobile, includes a mobile voice follow-up or interrupt, exercises secret revocation plus upgrade/restart/offline/lost-ACK faults, and ends with no forked identity, duplicate execution, leaked secret, orphaned source, data loss, or false authority |
 
 ### R1-LOCAL — local-first identity (implemented, #8666)
 
@@ -679,10 +726,12 @@ Silence is not a disposition.
 | Fleet and attention | Run/work/attempt/account state, approvals, controls, push/deep links, outcomes, receipts | Same refs, versions, and command outcomes as Desktop through Khala Sync |
 | Quality and release | Extract legacy architecture guards, tests, stories, Maestro flows, visual baselines, crash/connectivity and iOS/Android gates | Green clean-state builds plus physical-device and migration/recovery evidence |
 
-Voice, native speech-to-text, Apple Foundation Models, avatar/video, demo
-Minerals/IAP, and persona-first navigation are accounted for and closed
-not-planned. They are not permitted to hide gaps in the active coding, fleet,
-Sync, workroom, or release flows.
+Apple Foundation Models, avatar/video, demo Minerals/IAP, Sarah/persona voice,
+and persona-first navigation remain closed not-planned. Revision 30 moves
+persona-neutral mobile conversational voice into R6/R7 only as an explicit
+ASR/TTS/barge-in modality over the same coding-session command contract. It is
+not permitted to hide gaps in coding, fleet, Sync, portability, workroom,
+broker, or release flows.
 
 ## Proof status is six distinct rungs
 
@@ -882,6 +931,45 @@ nested-virtualization Firecracker proof is temporarily unavailable, use only an
 explicitly labeled lower-isolation development rung and keep R7 blocked; never
 rename a container/control-plane mock into production isolation proof.
 
+### P0 remote-first portability additions — new Revision 30 work packets
+
+The complete pathway and gap audit is
+[`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md).
+It distinguishes four things the prior roadmap sometimes placed too close
+together:
+
+1. a client continuing the same synchronized conversation;
+2. a work unit being placed on a selected target;
+3. a workroom surviving restart on one host; and
+4. an existing execution session being stopped, checkpointed, fenced off one
+   host, and rehydrated on another.
+
+Only the first three have current contracts or bounded implementation lanes.
+The fourth, plus first-class homelab enrollment, a general secrets broker, an
+any-host mobile directory, and persona-neutral conversational voice, is new
+work required by the 2026-07-11 owner request.
+
+Create bounded issue leaves beneath #8566 for these packets before mutation:
+
+| Packet | Required contract | Proof before R7 |
+| --- | --- | --- |
+| Portable session authority | Host-independent `coding_session`; exclusive generation-fenced attachment; content-addressed secret-free checkpoint; quiesce/detach/attach/move/abort/failback outcomes | One local → accepted Agent Computer → owner-managed remote round trip preserves session/thread/run/work-context refs and exact repository post-image with one live generation |
+| Execution target adapters | Typed custody/location/runtime descriptor; owner-managed node enrollment/update/revoke; OpenAgents-managed adapter; audited managed-provider adapter such as Daytona | Mobile/Desktop select each target through OpenAgents refs; no client vendor API and no silent provider/account/isolation/data-posture fallback |
+| General capability broker | Provider, SCM, MCP/tool, and API leases scoped to owner/session/attachment/target/tool/TTL; gateway/proxy preference; JIT materialization; revoke/release/wipe receipts | Moving a session revokes source grants, redeems fresh target grants, survives replay/revocation faults, and puts no secret in checkpoint/Sync/log/receipt |
+| Any-host mobile + voice | Authorized host/session directory; stop/checkpoint/move/resume controls; explicit ASR/TTS/barge-in through normal command registry | Physical mobile accesses every authorized host class and performs a voice follow-up or interrupt plus one move with text fallback and no raw-audio retention by default |
+
+The first implementation rung is honest checkpoint/rehydrate, not live process
+memory migration. PTYs, sockets, PIDs, provider hidden state, host paths, and
+credential caches are nonportable. Durable typed events, WorkContext, pinned
+repository state, exact diff/post-image, catalog generations, approvals,
+artifacts, and receipt refs are portable when policy permits.
+
+#8547 still proves the first managed execution target, and #8636 still proves
+one claim registry across local and managed placement. Neither closes the new
+portability packets by implication. The new broker and attachment-fencing
+contracts are prerequisites to cross-host dogfood; provider breadth and mobile
+polish cannot race ahead of them.
+
 ### P0 completed substrate — production inference
 
 **[#8600 FC-BRAIN](https://github.com/OpenAgentsInc/openagents/issues/8600)**
@@ -893,7 +981,7 @@ coalescing, caps, typed fallback, deployment, and live proof are retained
 substrate. It is not an open lane or a prerequisite for the first owner-gated
 local fleet dogfood slice.
 
-## REMOVED — Sarah presentation, voice, video, and named front door
+## REMOVED — Sarah presentation, persona voice, video, and named front door
 
 **Amendment 2026-07-10 (owner escalation, former #8610 backlog):** Sarah was
 removed. The `/sarah` web surface, all `/sarah/api/*` routes, and `apps/sarah`
@@ -903,11 +991,17 @@ stopped. The paragraphs below are the retained decision record that preceded the
 removal.
 
 **[#8610](https://github.com/OpenAgentsInc/openagents/issues/8610)** and all
-remaining opener/avatar/voice/video/media-quality work are closed not-planned.
-Existing artifacts, audits, recipes, contracts, and closed receipts remain
-historical evidence. Do not spend active product or GPU capacity on new A/V
-experiments, canaries, rendering quality, semantic media cache, ASR/VAD, or
-persona polish.
+remaining opener/avatar/Sarah-voice/video/media-quality work are closed
+not-planned. Existing artifacts, audits, recipes, contracts, and closed
+receipts remain historical evidence. Do not spend active product or GPU
+capacity on new persona A/V experiments, canaries, rendering quality, semantic
+media cache, or persona polish.
+
+Revision 30's mobile conversational voice requirement is separate: bounded
+ASR/TTS/barge-in over the normal session-neutral typed command protocol, with
+visible microphone state, text fallback, no raw-audio retention by default,
+and no voice-only authority. It gets new issue leaves and acceptance oracles;
+it does not reopen #8610 or restore any removed route/package.
 
 Allowed work is limited to a production outage, security/privacy/data-loss
 repair, removing active cost, or preserving a compatibility floor needed by an
@@ -959,7 +1053,7 @@ typed turns through the same `/sarah` contracts as web, renders the production
 reply, survives restart, and shows bounded offline/reconnect states under an
 enforced behavior contract. Its current text path renders the POST result while
 SSE carries liveness/cards. Authenticated operator posture, authoritative Sync,
-and Android proof move into R1/R2/R6; voice/avatar tiers remain wontdo. The
+and Android proof move into R1/R2/R6; Sarah voice/avatar tiers remain wontdo. The
 Build 116 removed that Sarah/persona/session path from the active app. The
 checked-in historical issue source and exit ordering live in
 [`issues/glass-ui-and-sarah-mobile.md`](./issues/glass-ui-and-sarah-mobile.md).
@@ -1042,6 +1136,11 @@ blocks R0–R7 gets a new bounded issue under #8597.
   push-driven returns, and handoff.
 - Fleet runs, approvals, command outcomes, receipts, conversations, and
   Blueprint continuity use authoritative Khala Sync projections.
+- The owner-scoped session directory spans enrolled local, owner-managed
+  remote, OpenAgents-managed, and separately accepted provider-adapter targets.
+  Mobile can inspect attachment/isolation/freshness state and request typed
+  stop, checkpoint, move, resume, and failback outcomes without receiving host
+  paths, credentials, or vendor APIs.
 - Account setup remains directly accessible for recovery/power use.
 - Effect Native is the application model and React Native/Expo is the host.
 - Mobile implements the full R6 compact remote-workbench slice. Repository
@@ -1050,6 +1149,10 @@ blocks R0–R7 gets a new bounded issue under #8597.
   typed remote-workroom capabilities. Desktop remains the higher-density local
   workbench and a handoff target; it is not a prerequisite for useful mobile
   coding.
+- Mobile conversational voice is a peer input/output modality for that same
+  surface: explicit ASR, TTS, and barge-in compile to registered session
+  commands, normal approvals, and durable outcomes. It never revives Sarah,
+  avatar/video, ambient capture, or a separate voice state machine.
 - The product name is `OpenAgents`; both the iOS bundle identifier and Android
   application ID are the owner-designated existing identifier
   `com.openagents.app`.
@@ -1228,9 +1331,11 @@ The full contract, acceptance corpus, and F1–F5 landing order live in
 
 The first practical parity gate includes the everyday OpenCode capabilities in
 D1–D5 plus the safe desktop lifecycle needed to use them. Persisted multi-window
-geometry/restore, remote-server depth, and the complete Windows WSL lifecycle
-remain explicit follow-ons unless they become necessary for a supported user
-path before D6. “Parity” never means those deferred items silently disappear.
+geometry/restore and the complete Windows WSL lifecycle remain explicit
+follow-ons unless they become necessary for a supported user path before D6.
+Remote target depth and session movement are now Revision 30 P0 requirements,
+not deferred parity residue. “Parity” never means deferred items silently
+disappear.
 
 #### Non-negotiable implementation boundaries
 
@@ -1327,6 +1432,14 @@ starting a slice.
 | **P0 architecture task** | #8678 | Executable Desktop Effect service-scope, canonical Schema, resource, and boundary freeze |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
+Revision 30 adds unmet product outcomes that are not yet represented by a live
+bounded issue: portable session authority/checkpoints, owner-managed and
+managed-provider target adapters, the general capability broker, and mobile
+any-host/voice control. Create leaves under #8566 and the owning #8574/#8597/
+#8547/#8636 tracks before implementation. Until those leaves and receipts
+exist, do not count the current ten-issue set as full coverage of the owner
+request and do not broaden #8676, #8547, or #8636 after the fact.
+
 Closed `wontfix` / not-planned and removed from `roadmap:sol`: #8595, #8610,
 #8634, #8635, #8642, #8643, #8646, and #8650. They are historical tombstones,
 not dormant queues. Production/security/privacy/accessibility defects get new
@@ -1343,9 +1456,13 @@ bounded issues under the owning program.
    stream through the provider-neutral host-owned Runtime Gateway, attach it to
    confirmed thread/run/timeline refs, then continue it on physical mobile with
    one follow-up or interrupt and honest restart/reconnect behavior.
-3. **Freeze reliability and Effect topology:** complete #8677's bounded fault
-   matrix and #8678's scope/boundary oracle before accepting broad D3/D4
-   expansion. They may run in parallel when files and contracts are disjoint.
+3. **Freeze reliability, Effect topology, and portable-session intent:**
+   complete #8677's bounded fault matrix and #8678's scope/boundary oracle,
+   then freeze the Revision 30 `coding_session`, exclusive attachment,
+   secret-free checkpoint, target descriptor, broker lease, and any-host
+   directory contracts before accepting broad D3/D4 or provider breadth. These
+   lanes may run in parallel only when schemas and authority contracts are
+   disjoint.
 4. After that shared seam is frozen, run Desktop F3/F4 (projects/sessions,
    commands, files/editor/Git/review/PTY) and mobile F4 (repository/thread,
    managed workroom, compact files/changes/terminal/preview/artifacts/
@@ -1360,20 +1477,30 @@ bounded issues under the owning program.
    server-authorized owner-capacity metering, retry-deduped usage, bounded
    workbench capabilities/writeback, and reclaim; then prove one local plus one
    managed unit under one claim registry and typed fallback history.
-7. Compose the accepted Fleet and workroom substrates into Desktop/mobile D5/
-   R3/R6 controls and receipts. A command from either client converges to one
-   durable outcome; target, account, capacity, and fallback remain explicit.
-8. Complete Desktop D4–D6/R5 and mobile R6: runtime/settings/isolated
+7. Land the general capability broker and first portable-session move. Prove a
+   local Pylon → accepted Agent Computer → local/owner-managed target round
+   trip with one attachment generation, exact checkpoint and repository
+   post-image, fresh target grants, source revocation/cleanup, and rollback on
+   an incompatible or failed attach.
+8. Ship owner-managed remote enrollment and the authorized host/session
+   directory, then audit and add one managed-provider adapter such as Daytona
+   behind the same contract. Compose the accepted Fleet, workroom, target, and
+   portability substrates into Desktop/mobile D5/R3/R6 controls and receipts.
+9. Complete Desktop D4–D6/R5 and mobile R6: runtime/settings/isolated
    extensions, accessibility, diagnostics, packaging, physical iOS/Android
-   proof, push, deep-link handoff, and safe writeback. Reuse contracts/tests
-   from deprecated clients without converting them in place.
-9. Close R7 with a sustained owner dogfood and release receipt that begins a
-   remote coding task on mobile and continues it on Desktop without forking
-   thread, workroom, Fleet, or receipt truth. Only then consider new bounded
-   cloud-placement breadth. Real privacy/data-integrity requests or incidents
-   open immediate scoped P0 issues; they do not reopen #8642. Sarah/persona,
-   A/V, presentation, landing, portal, and optional visual-lowering backlog
-   remains closed not-planned.
+   proof, push, deep links, any-host stop/checkpoint/move/resume, safe writeback,
+   and persona-neutral conversational voice. Reuse native STT and voice
+   lifecycle test knowledge from deprecated clients without importing or
+   reviving their product shells or Sarah/media paths.
+10. Close R7 with the round-trip dogfood in the remote-first pathway: start or
+    adopt a session on an owner-managed host, move it to managed capacity,
+    continue it on Desktop/mobile, use mobile voice for one follow-up or
+    interrupt, exercise secret revocation plus lost-ACK/restart/update faults,
+    move or fail back, and reclaim without forked identity, duplicate work,
+    leaked secrets, or an orphaned source. Real privacy/data-integrity requests
+    or incidents open immediate scoped P0 issues; they do not reopen #8642.
+    Sarah/persona/avatar/video, presentation, landing, portal, and optional
+    visual-lowering backlog remains closed not-planned.
 
 ## Implementation laws
 
@@ -1463,6 +1590,25 @@ bounded issues under the owning program.
     finalizers once. Broad cause handling may log/degrade an optional
     supervisor, but cannot convert cancellation or an invariant defect into a
     normal success or recoverable tool failure.
+24. **Session authority is not placement.** The durable coding session and
+    WorkContext survive a change of host; the current executor is an exclusive
+    generation-fenced attachment. At most one generation accepts new work, and
+    a stale source cannot regain authority after move without a new explicit
+    transition.
+25. **Checkpoints are secret-free and honest about portability.** Checkpoints
+    may carry durable events, repository state, exact post-images, catalog
+    generations, approvals, artifacts, and receipt refs. They never carry raw
+    credentials, auth homes, host handles, process memory, PTYs, sockets, or a
+    false claim that nonportable state continued.
+26. **Capabilities reauthorize on every target.** Provider, SCM, MCP/tool, and
+    API access is leased to one owner/session/attachment/target/tool/TTL scope.
+    Move revokes the source lease and redeems a fresh target lease; neither
+    Sync nor a checkpoint becomes a secret transport.
+27. **Voice is a modality, not authority.** Explicit microphone input compiles
+    to the same typed command, policy, approval, idempotency, and receipt path
+    as text. TTS, ASR hypotheses, model prose, and audio playback never prove a
+    command or outcome; consequential actions retain visible confirmation and
+    text fallback.
 
 ## Completion reporting
 
@@ -1499,7 +1645,7 @@ revision diary or restore the old 30-item phase queue.
 
 **Historical snapshot.** The facts below describe the mid-day state before the
 owner's Desktop/mobile reliability reset. Any “in flight,” “P0,” or sequencing
-language here is superseded by Revision 29 and the disposition table above.
+language here is superseded by Revision 30 and the disposition table above.
 
 Factual status updates since the last Sol reconciliation (Fable lane,
 evidence on the named issues):
@@ -1538,5 +1684,5 @@ evidence on the named issues):
   in flight.
 
 *Editing note: this factual reconciliation was written by the **Fable** lane at
-explicit owner request. Revision 29 preserves it as evidence but supersedes its
-sequencing with the reliable Desktop/mobile program above.*
+explicit owner request. Revision 30 preserves it as evidence but supersedes its
+sequencing with the reliable remote-first Desktop/mobile program above.*

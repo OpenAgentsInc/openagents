@@ -189,6 +189,156 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "Remote-first binds durable session identity and fenced checkpoint/rehydrate movement. It does not promise transparent migration of process memory, PTYs, sockets, provider hidden state, raw host paths, or credentials, and it does not upload a local-only session until the owner explicitly adopts it.",
+      blockerRefs: [
+        "github:OpenAgentsInc/openagents#8566",
+        "github:OpenAgentsInc/openagents#8574",
+        "github:OpenAgentsInc/openagents#8597",
+      ],
+      contractId: "openagents_apps.remote_first_portable_sessions.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/issues/native-streamed-conversation-handoff.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned cross-host oracle: quiesce and checkpoint one durable session, fence its source attachment, rehydrate it on a compatible local or remote target under the same session/thread/run/WorkContext refs, and prove one live generation, exact repository post-image, fresh target grants, source cleanup, and idempotent failure/failback outcomes.",
+          id: "openagents_apps.remote_first_portable_sessions.planned",
+          kind: "planned",
+          mode: "e2e",
+          ref: "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        },
+      ],
+      productArea: "portable coding-session authority",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "pending",
+      statement:
+        "Remote-first, not local-first. Sessions can be stopped on any machine and moved to any other, local or remote. i.e. handoff to cloud.",
+      surface: "openagents-mobile-desktop-pylon-cloud",
+      verification:
+        "Pending bounded #8566 leaves: architecture tests must reject host-derived session identity, two live attachment generations, secret-bearing checkpoints, stale-source execution, and silent target changes; then a real local-to-managed-to-owner-remote round trip must pass with matching refs and receipts.",
+    },
+    {
+      authorityBoundary:
+        "The target contract authorizes only owner-scoped execution through declared capabilities and isolation. It does not make an owner's homelab public capacity, let clients call vendor APIs, accept an unaudited provider, or silently substitute provider, custody, account, region, data posture, or isolation rung.",
+      blockerRefs: [
+        "github:OpenAgentsInc/openagents#8547",
+        "github:OpenAgentsInc/openagents#8636",
+      ],
+      contractId: "openagents_cloud.user_or_managed_execution_targets.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/issues/fc-cloud-codex.md",
+        "docs/sol/issues/fc-4-hybrid-cloud.md",
+        "docs/cloud/ARCHITECTURE.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned target-adapter oracle: enroll and revoke an owner-managed remote node, select OpenAgents-managed capacity, and exercise one separately audited managed-provider adapter behind identical lifecycle/capability/checkpoint/preview/cleanup receipts without exposing vendor APIs or topology to either client.",
+          id: "openagents_cloud.user_or_managed_targets.planned",
+          kind: "planned",
+          mode: "e2e",
+          ref: "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        },
+      ],
+      productArea: "owner-managed and managed-cloud execution targets",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "pending",
+      statement:
+        "Remote sessions on my own cloud (my homelab) OR a managed cloud (e.g. Daytona)",
+      surface: "openagents-mobile-desktop-cloud",
+      verification:
+        "Pending #8547/#8636 plus bounded target-adapter leaves: prove a real owner-managed node, the accepted Agent Computer path, and one audited managed-provider adapter through the provider-neutral contract with explicit fallback history and no silent isolation downgrade.",
+    },
+    {
+      authorityBoundary:
+        "The broker grants least-privilege capability access to one owner/session/attachment/target/tool/TTL scope. It is not a generic secret tunnel, does not place raw secrets in clients or checkpoints, and does not let a moved session reuse the source attachment's credential material.",
+      blockerRefs: [
+        "github:OpenAgentsInc/openagents#8547",
+        "github:OpenAgentsInc/openagents#8566",
+      ],
+      contractId: "openagents_cloud.brokered_session_secrets.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/cloud/INVARIANTS.md",
+        "docs/cloud/contracts/openagents.codex_auth_grant.v1.md",
+        "docs/cloud/contracts/openagents.byo_credential_broker.v1.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned broker oracle: issue, redeem, renew, revoke, release, and wipe provider/SCM/tool capability leases; move the session; prove source grants cannot replay, fresh target grants are required, and secret scans find no raw material in Sync, checkpoints, prompts, logs, artifacts, or receipts.",
+          id: "openagents_cloud.brokered_session_secrets.planned",
+          kind: "planned",
+          mode: "e2e",
+          ref: "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        },
+      ],
+      productArea: "cross-target secret capability broker",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "pending",
+      statement: "Secrets access via a broker (i.e. gondolin or agyn style)",
+      surface: "openagents-pylon-cloud-workrooms",
+      verification:
+        "Pending a bounded broker leaf under #8566/#8547: enforce target-attested short-lived leases and gateway/JIT materialization across owner-managed and managed targets, including revocation-during-move, replay, cleanup, and forbidden-material scans.",
+    },
+    {
+      authorityBoundary:
+        "Mobile receives owner-scoped session, target, capability, freshness, isolation, and command projections only. Voice is an explicit ASR/TTS/barge-in modality over the normal typed policy/approval/outcome path; it does not grant host paths, credentials, vendor APIs, ambient capture, raw-audio retention by default, or voice-only authority, and it does not revive Sarah/avatar/video.",
+      blockerRefs: [
+        "github:OpenAgentsInc/openagents#8566",
+        "github:OpenAgentsInc/openagents#8597",
+      ],
+      contractId: "openagents_mobile.any_host_session_voice.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md",
+        "docs/sol/MASTER_ROADMAP.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned physical-device oracle: list and access every authorized adopted session across enrolled host classes, use visible persona-neutral voice for one follow-up or interrupt, request one stop/checkpoint/move/resume transition, reconcile a lost acknowledgement, and prove text fallback, ordinary approvals, no raw-audio retention, and no client secret/vendor authority.",
+          id: "openagents_mobile.any_host_session_voice.planned",
+          kind: "planned",
+          mode: "e2e",
+          ref: "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        },
+      ],
+      productArea: "mobile any-host session access and conversational voice",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "pending",
+      statement:
+        "Mobile client which can access any session on any host, with conversational voice",
+      surface: "openagents-mobile",
+      verification:
+        "Pending bounded #8597/#8566 leaves: pass host/session-directory, typed movement, microphone lifecycle, ASR transcript, TTS, barge-in, approval, reconnect, privacy, and physical iOS/Android acceptance oracles against owner-managed and managed targets.",
+    },
+    {
+      authorityBoundary:
         "The verified native session authorizes only the server-derived owner's personal Sync scope. Owner refs, credentials, database handles, transport/session objects, and raw rows remain host-only; authenticated replication substrate does not imply conversation projection, command acceptance, execution, or completion.",
       blockerRefs: [],
       contractId: "openagents_mobile.sync.host_owned_expo_sqlite.v1",
@@ -604,5 +754,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.3",
+  version: "2026-07-11.1",
 }

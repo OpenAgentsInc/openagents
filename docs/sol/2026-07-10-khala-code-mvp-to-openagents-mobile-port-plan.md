@@ -1,7 +1,7 @@
 # Khala Code MVP → OpenAgents mobile Effect Native port plan
 
 - Date: 2026-07-10
-- Status: active P0 capability ledger under Master Roadmap Revision 25
+- Status: active P0 capability ledger under Master Roadmap Revision 30
 - Primary issues: #8597, #8547, #8636, #8566, #8638
 - Destination: `apps/openagents-mobile`
 - Source app: `clients/khala-mobile` (deprecated/frozen extraction source)
@@ -16,6 +16,12 @@ longer scoped to supervision plus Desktop handoff. It is a compact, phone-native
 coding and fleet client that can complete a repository-bound agent task without
 Desktop while preserving the same thread, workroom, run, authority, and receipt
 truth when the user does hand off.
+
+Revision 30 makes that client remote-first: it can discover every authorized
+session on enrolled local, owner-managed remote, OpenAgents-managed, and
+separately accepted provider-adapter targets; stop/checkpoint/move/resume the
+same durable session between compatible hosts; and use persona-neutral
+conversational voice through the same typed command contract as text.
 
 “Port” means move behavior, typed contracts, test vectors, and proven native/
 release knowledge into Effect Native and shared services. It does **not** mean
@@ -45,10 +51,17 @@ cache or timed-out request is never completion truth.
 
 The remote contract must cover:
 
-- create, resume, stop, destroy/reclaim, TTL, and snapshot identity;
+- create, quiesce, checkpoint, detach, attach, move, abort/fail back, resume,
+  stop, destroy/reclaim, TTL, and content-addressed snapshot identity;
 - stable owner/repository/thread/workroom/run refs;
+- a host-independent session ref plus one exclusive generation-fenced
+  execution attachment;
+- an owner-scoped host/session directory with target capability, health,
+  freshness, isolation, and compatibility projections;
 - isolated workspace and provider-account homes;
 - brokered GitHub/provider grants with bounded redemption and replay defense;
+- fresh target-scoped capability redemption after a move; secrets, auth homes,
+  host handles, live processes, PTYs, and sockets never enter checkpoints;
 - file list/read/write and exact pre/post-image identity;
 - bounded run/spawn/PTY with reconnect and teardown;
 - managed preview ports and explicit network policy;
@@ -81,7 +94,8 @@ smaller issue leaves, but may not silently drop it.
 | Composer and context | `chat-composer.tsx`, `khala-runtime-compose-core.ts` | Effect Native composer, attachment/context chips, typed submit | **Port behavior, redesign UI.** Queue/steer/interrupt/retry/follow-up states are explicit and accessible. |
 | Copy, copy Markdown, quote, swipe actions | Legacy transcript action cores/components | Effect Native mobile message actions | **Port where useful.** Actions never mutate authority-bearing runtime state implicitly. |
 | Codex/Claude connected accounts, readiness, quota | Account API/core modules | Shared account/capacity projection and settings | **Port.** Named account refs only; unavailable/quota/reauth states are visible. |
-| Model and target preference | Model preference modules | Shared model/runtime/execution-target selector | **Port.** Provider and `owner_local | managed_remote | auto` selection/fallback remain typed and visible. |
+| Model and target preference | Model preference modules | Shared model/runtime/execution-target selector | **Port and generalize.** The simple choice remains usable, while the durable target separates custody (`owner | openagents | third_party`), location, runtime kind, stable target ref, capability, isolation, and compatibility. Selection/fallback remains typed and visible; no client vendor API or silent downgrade. |
+| Any-host session directory and movement | New Revision 30 owner requirement; current Sync/workroom seams | Shared host-independent session, attachment, checkpoint, target, and command projections | **Add as P0.** Mobile lists every authorized adopted session, shows its current target/isolation/freshness, and requests fenced stop/checkpoint/move/resume/failback with one durable outcome. Provider-native local sessions remain private until explicitly adopted. |
 | Cross-agent handoff | `khala-cross-agent-handoff-core.ts` | Typed worker/agent handoff intent | **Port.** Preserve repository/thread/workroom continuity and record the handoff outcome. |
 | Fleet peek and attention state | `khala-fleet-collections-core.ts`, `fleet-peek-core.ts` | Mobile activity/fleet home and attention queue | **Port and deepen.** Use canonical Fleet projections, never a private mobile model. |
 | Steer/approve/pause/resume/stop | Legacy runtime controls plus Fleet intents | Shared action catalog and mobile controls | **Port.** Durable command IDs/outcomes, lost-ack reconciliation, confirmation where destructive. |
@@ -91,7 +105,7 @@ smaller issue leaves, but may not silently drop it.
 | Owned OTA/update behavior | Mobile OTA runbook and new app updater | `apps/openagents-mobile` owned OTA/release contract | **Port the discipline.** No EAS and no silent legacy feed/build identity reuse. |
 | Credits balance/history | Legacy credits API/core | Bounded account/economics projection | **Defer unless needed for workroom admission.** If shown, distinguish model subscription, compute, and payment truth. |
 | Demo Minerals/IAP pricing | Demo and StoreKit planning | None in current P0 | **Paused.** Do not port presentation/demo economics into the active app. |
-| Native push-to-talk/STT | `modules/khala-push-to-talk-stt` | Future bounded host capability | **Paused.** Native speech proof was not an accepted reliable MVP dependency. |
+| Persona-neutral conversational voice | `modules/khala-push-to-talk-stt`, historical voice lifecycle tests, Revision 30 owner requirement | Bounded mobile ASR/TTS/barge-in host capabilities over the shared typed session command registry | **Port as P0, redesign authority.** Explicit microphone state, provisional/final transcript, text fallback, no raw-audio retention by default, and ordinary approvals/outcomes. Do not revive Sarah/avatar/video or create a voice-only command path. |
 | Apple Foundation Models/local model routing | Legacy experiments | Future typed runtime target | **Paused.** Must re-enter through the same explicit target/evidence contract. |
 | Sarah/persona/avatar/video | Legacy/compatibility routes | Compatibility adapter only | **Paused.** Not default navigation, product authority, or acceptance scope. |
 | Architecture cruiser, unit/mount tests | Legacy QA scripts/tests | New app and shared package gates | **Port test intent.** Rewrite against Effect Native; never import the old app package. |
@@ -115,6 +129,10 @@ columns. The minimum repository-bound workspace exposes:
    loading/error/expired state, and no arbitrary public port exposure.
 6. **Artifacts/receipts** — outputs, tests, usage truth, writeback target,
    provenance, and terminal closeout.
+7. **Hosts, movement, and voice** — authorized session/target catalog,
+   attachment/isolation/freshness state, stop/checkpoint/move/resume/failback,
+   explicit microphone lifecycle, transcript, TTS, and barge-in over the same
+   typed command/outcome surface as text.
 
 Activity, repositories, threads, and fleet attention are primary navigation.
 Workspace modes are contextual navigation inside a selected thread/workroom.
@@ -127,12 +145,12 @@ handoff to Desktop, but handoff is an option rather than the only route.
 | --- | --- | --- |
 | M0 — freeze and inventory | Lock destination/source boundary; capability manifest; identity/icon/release locks; migrate useful legacy test cases into this ledger | Every legacy MVP idea has a disposition and source/destination owner |
 | M1 — identity, Sync, repositories | Auth/session, secure recovery, device registration, thread catalog, repository picker/binding, offline/cursor states | Same authenticated repo-bound thread appears on Desktop/mobile after restart/reconnect |
-| M2 — authoritative turns | Rich transcript, composer/context, queue/steer/interrupt/retry, account/model readiness, notifications | One real turn and its exact outcomes survive background/reconnect without duplicate submit |
-| M3 — workroom lifecycle | #8547/#8636 target policy, create/resume/stop/reclaim, grants, isolation, snapshots/TTL, progress projection | Phone starts and resumes one real owner-scoped remote workroom with honest isolation rung |
+| M2 — authoritative turns and voice seam | Rich transcript, composer/context, queue/steer/interrupt/retry, account/model readiness, notifications, explicit ASR transcript/TTS/barge-in adapters through the same typed commands | One real text turn and one voice-originated follow-up or interrupt produce the same durable outcomes and survive background/reconnect without duplicate submit or retained raw audio |
+| M3 — workroom lifecycle and portability | #8547/#8636 target policy; general capability broker; host-independent session; exclusive attachment; create/quiesce/checkpoint/detach/attach/move/resume/stop/reclaim; owner-managed enrollment; grants, isolation, snapshots/TTL, progress projection | Phone starts one real owner-scoped workroom, moves the same session between two accepted host classes, and resumes it with one live generation, fresh target grants, exact checkpoint identity, and honest isolation |
 | M4 — files, changes, writeback | Tree/read/edit, exact diff, artifacts, verification, branch/PR writeback | Useful repository change completes with safe refs, exact post-image, verification, and receipt |
 | M5 — terminal and preview | Bounded PTY/run/spawn, managed ports, preview gateway, reconnect/teardown | Command and preview work on physical iOS/Android; expiration/failure is explicit and reclaim is proven |
 | M6 — fleet and release hardening | Fleet/attention/approvals, push/deep links, diagnostics, accessibility, architecture/tests/stories/Maestro/visual gates | Mobile manages a mixed run, survives fault matrix, and passes owned iOS/Android release gates |
-| M7 — cross-device dogfood | Mobile-originated task, Desktop continuation, offline/update/restart faults, legacy retirement | One signed owner-accepted receipt; no state fork, unsafe grant, false success, or shipping legacy path |
+| M7 — cross-device/cross-host dogfood | Mobile-originated task; any-host catalog; owner-managed → managed → failback movement; Desktop continuation; persona-neutral voice follow-up/interrupt; secret revocation; offline/lost-ACK/update/restart faults; legacy retirement | One signed owner-accepted receipt; no state fork, duplicate execution, unsafe grant, secret-bearing checkpoint, silent target downgrade, false success, orphaned source, retained audio, or shipping legacy path |
 
 M1/M2 may run alongside Desktop R1/R2 work. M3's shared grants, lifecycle,
 workroom schema, and target-routing contracts require senior review and
@@ -164,19 +182,24 @@ The fold-in is complete only when a physical phone can:
    thread;
 2. select an explicit account/model/remote target and start an isolated real
    workroom;
-3. stream the authoritative agent turn, inspect the plan and tool/file events,
-   steer or approve, and survive background/reconnect;
-4. inspect/edit files, review the exact diff, run a bounded command, open a
+3. browse every authorized adopted session and enrolled host, then stop,
+   checkpoint, move, and resume the same session on a second accepted host with
+   one live attachment generation and freshly brokered target grants;
+4. stream the authoritative agent turn, inspect the plan and tool/file events,
+   use text or persona-neutral voice to follow up/interrupt/steer/approve, and
+   survive background/reconnect with no raw-audio retention by default;
+5. inspect/edit files, review the exact diff, run a bounded command, open a
    managed preview, and inspect artifacts/verification;
-5. write back through a safe branch/PR path with no force push and one durable
+6. write back through a safe branch/PR path with no force push and one durable
    receipt;
-6. supervise the associated FleetRun and receive a push/deep link to the exact
+7. supervise the associated FleetRun and receive a push/deep link to the exact
    attention item;
-7. continue the same thread/workroom/run on Desktop without duplicate work or
+8. continue the same thread/workroom/run on Desktop without duplicate work or
    forked identity/state; and
-8. survive restart, offline/lost acknowledgement, update, token revocation,
-   workroom expiration, and reclaim with explicit converged or failed-closed
-   state.
+9. survive restart, offline/lost acknowledgement, update, secret revocation,
+   workroom expiration, failed attach/failback, and reclaim with explicit
+   converged or failed-closed state and no secret-bearing checkpoint or
+   orphaned source.
 
 Unit tests or a fixture-only container do not close this acceptance. Report the
 code-landed, fixture-proven, deployed, live-proven, owner-accepted, and closed

@@ -55,3 +55,13 @@ authorities for implementation state and sequencing remain:
 When a teardown lesson becomes a product requirement, move it into the owning
 typed contract, roadmap gate, issue, and verification surface. Do not leave a
 load-bearing decision only in competitive analysis.
+
+## Derived product pathways
+
+- [Remote-first portable coding sessions](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
+  promotes the local/remote protocol, stable-runtime identity, isolation, and
+  mobile-control lessons into a concrete gap analysis and ordered pathway for
+  host-to-host session movement, owner or managed cloud targets, brokered
+  capabilities, an any-host mobile directory, and session-neutral
+  conversational voice. The dated teardowns remain evidence; the Sol roadmap
+  and executable behavior contracts own the requirement.

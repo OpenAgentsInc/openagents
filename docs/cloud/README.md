@@ -27,6 +27,10 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
 - [Invariants](./INVARIANTS.md)
 - [Architecture](./ARCHITECTURE.md)
 - Contracts under `docs/cloud/contracts/`
+- [Remote-first portable session pathway](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
+  — planned product/roadmap additions for owner-managed and managed-provider
+  targets, cross-host checkpoints, general brokered capabilities, and mobile
+  control; not current Cloud implementation status
 
 ## Local development
 
