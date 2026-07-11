@@ -38,6 +38,17 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("app.dock?.setIcon(desktopIconPath)")
   })
 
+  test("uses one OpenAgents identity for macOS process, product, and window chrome", () => {
+    const manifest=JSON.parse(read("package.json")) as {productName?:string}
+    const html=read("index.html")
+    expect(main).toContain('app.setName("OpenAgents")')
+    expect(main).toContain('process.title = "OpenAgents"')
+    expect(main).toContain('title: "OpenAgents"')
+    expect(manifest.productName).toBe("OpenAgents")
+    expect(html).toContain("<title>OpenAgents</title>")
+    expect(html).not.toContain("OpenAgents Desktop")
+  })
+
   test("deny-by-default permission, navigation, window-open, and webview handlers", () => {
     expect(main).toContain("setPermissionRequestHandler")
     expect(main).toContain("will-navigate")

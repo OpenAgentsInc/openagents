@@ -16,6 +16,12 @@ import { Worker } from "node:worker_threads"
 import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent } from "electron"
 import { Effect } from "effect"
 
+// macOS derives the running application/menu identity before `ready`; set
+// both Electron's application name and the process title at module startup so
+// development (`electron .`) and packaged launches agree on "OpenAgents".
+app.setName("OpenAgents")
+process.title = "OpenAgents"
+
 import {
   CodexAccountsChannel,
   CodexConnectOpenChannel,
@@ -194,7 +200,6 @@ runtimeGateway.subscribe(event => {
 // AppUserModelId / deep-link scheme / userData path / update channel are an
 // owner decision (issue #8574 scope 1, NEEDS_OWNER) before the first packaged
 // build. Never reuse com.openagents.khala.code.desktop or khala-code://.
-app.setName("OpenAgents Desktop")
 app.setPath("userData", path.join(app.getPath("appData"), "OpenAgentsDesktopDev"))
 
 const hardenSession = (): void => {
@@ -330,7 +335,7 @@ const createWindow = (): BrowserWindow => {
     minHeight: 480,
     backgroundColor: "#03060b",
     show: false,
-    title: "OpenAgents Desktop",
+    title: "OpenAgents",
     icon: desktopIconPath,
     webPreferences: {
       contextIsolation: true,

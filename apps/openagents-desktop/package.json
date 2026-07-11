@@ -1,8 +1,8 @@
 {
   "name": "@openagentsinc/openagents-desktop",
-  "productName": "OpenAgents Desktop",
+  "productName": "OpenAgents",
   "version": "0.0.1",
-  "description": "OpenAgents Desktop — Effect Native application on an Electron host (#8574).",
+  "description": "OpenAgents — Effect Native application on an Electron host (#8574).",
   "private": true,
   "type": "module",
   "main": "dist/main.js",
