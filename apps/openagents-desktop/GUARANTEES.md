@@ -237,11 +237,17 @@ Desktop indexes active and archived Codex rollouts without an age ceiling.
   grandchild stays attached in the semantic agent tree.
 - Selecting an agent loads a source-order page of typed messages, reasoning
   summaries, plans, collaboration, tools, approvals, usage, lifecycle, errors,
-  context and explicit gap rows. Unknown/corrupt records are never dropped.
+  context and explicit gaps. The visible timeline is a product projection:
+  standalone usage/session/context/lifecycle/developer rows are suppressed and
+  matching tool calls/results are composed into one tool row; blank/trivial
+  messages and unpersisted-reasoning placeholders are omitted. The raw bounded
+  page and accounting still retain every record; unknown/corrupt records are
+  never silently dropped.
 - The resizable inspector exposes agent topology or structured selected-item
   fields; pages are bounded to 500 and large lists use Effect Native windowing.
-- Credential-shaped fields are visibly redacted, encrypted/raw reasoning is
-  not projected, and the completeness equation is always visible.
+- Credential-shaped fields are visibly redacted and encrypted/raw reasoning is
+  not projected. Completeness remains a tested host/data invariant and Electron
+  acceptance check instead of permanent conversation chrome.
 - Missing or malformed local history produces an honest, usable empty state.
 - History access is read-only. This projection does not grant authority to
   resume a Codex session, send a message, browse arbitrary files, sync history,
@@ -256,8 +262,9 @@ The normal Desktop verification sweep now opens the built Electron app against
 the machine's real local Codex catalog and exercises the recorded-demo path.
 
 - Top-level rows are named, newest-first, and contain no child sessions.
-- A nested trace exposes its bounded agent topology, completeness equation,
-  keyboard bindings, tool row, and structured inspector.
+- A nested trace exposes its bounded agent topology, keyboard bindings,
+  composed tool row, and structured inspector; acceptance verifies the
+  completeness equation directly from the typed page response.
 - Explicit conversation selection expands every branch; subsequent agent,
   item, paging, and inspector actions preserve the ref-only restoration record.
 - A real renderer reload restores the selected trace/item and expanded set.
@@ -299,21 +306,25 @@ state-to-view benchmark improved from 127.358ms median / 136.622ms p95 to
 Keyboard conversation traversal uses `Command+ArrowUp/ArrowDown` on macOS and
 `Control+ArrowUp/ArrowDown` elsewhere. It dispatches the same typed selection
 intent as a row press, loads the target page, and reveals the next 40-row batch
-when traversal crosses the current disclosure boundary. Editable controls keep
-their native arrow behavior. The built-Electron journey proves one down/up
-round trip plus a 45-key held traversal. Repeat events coalesce into the latest
-target behind one in-flight page load, stale responses cannot commit, and the
-sidebar centers/retries the selected row until it is inside the viewport.
+when traversal crosses the current disclosure boundary. `Command+1…9` (or
+`Control+1…9`) jumps directly to one of the first nine conversations; while the
+modifier is held, those rows replace timestamps with their numeric hints.
+Editable controls keep their native keys. The built-Electron journey proves
+numeric jump, one down/up round trip, and a 45-key held traversal. Held repeats
+update typed pending selection immediately, preserve the NavRail scroll offset,
+and debounce page projection to the final target after 110ms; stale responses
+cannot commit and the selected row is centered inside the viewport.
 
-The trace workspace has no duplicate application/header bar. The selected
-trace title and state live only in the workspace heading. The sidebar is one
+The trace workspace has no duplicate application/header bar, selected title,
+state label, or accounting banner. Selection lives in the sidebar. It is one
 Effect Native `NavRail`: its uniform icon-action group and compact conversation
 group carry controlled selection, accessible labels, trailing timestamps, and
 item-local typed intents. Commands and Settings retain the same intent and
 keyboard command paths without app-local row components.
 
 The center pane is an Effect Native `Timeline` with stable event keys,
-controlled selection, compact detail/status metadata, and typed selection. The
+controlled selection, typed message/reasoning/tool/error variants, generated
+catalog icons, compact detail/status metadata, and typed selection. The
 right pane uses tree-mode `NavRail` for agent depth, expansion, roving keyboard
 bindings, and trailing lifecycle state; selected-item fields use the typed
 `Table` contract. Neither pane owns app-local list-row primitives.

@@ -153,7 +153,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     const css = read("src/renderer/app.css")
     expect(css).not.toContain('[data-en-key^="sidebar-thread-"],')
     expect(css).toContain('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')
-    expect(css).toContain('[data-en-key^="sidebar-thread-time-"][data-en-tag="Text"]')
+    expect(css).toContain('[data-en-key^="sidebar-thread-"] > [data-en-role="meta"]')
     expect(css).toContain("background: transparent !important")
     expect(css).toContain("border-radius: 0 !important")
   })

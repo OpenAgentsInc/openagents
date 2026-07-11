@@ -130,6 +130,18 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nav?.activeId).toBe("sidebar-thread-history-7")
   })
 
+  test("holding the platform modifier replaces the first nine timestamps with jump hints", () => {
+    const roots = Array.from({ length: 10 }, (_, index) => ({
+      threadRef:`hint-${index}`,parentThreadRef:null,title:`History ${index}`,status:"completed" as const,
+      createdAt:"2026-07-10T18:04:00.000Z",updatedAt:"2026-07-10T18:04:00.000Z",depth:0,descendantCount:0,
+      model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,
+    }))
+    const view=desktopShellView({...baseState,historyShortcutHintsVisible:true,history:{...baseState.history,catalog:{roots,agents:roots}}})
+    expect(navItemById(view,"sidebar-thread-hint-0")?.meta).toBe("1")
+    expect(navItemById(view,"sidebar-thread-hint-8")?.meta).toBe("9")
+    expect(navItemById(view,"sidebar-thread-hint-9")?.meta).toBe("")
+  })
+
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {
     const view = desktopShellView(baseState)
     const note = nodeByKey(view, "shell-note") as { onPress?: { name?: string } }

@@ -17,6 +17,7 @@
   --oa-muted: #91a0b5;
   --oa-blue: #4a86ff;
   --oa-cyan: #8ad7ff;
+  --oa-danger: #ff7188;
 }
 
 * {
@@ -85,7 +86,7 @@ textarea:focus-visible {
 [data-en-key="shell-sidebar"] {
   flex: 0 0 232px;
   min-width: 0;
-  padding: 6px 6px 12px;
+  padding: 0 6px 12px !important;
   border: 1px solid var(--oa-line);
   border-radius: 0;
   overflow: hidden;
@@ -93,15 +94,16 @@ textarea:focus-visible {
 }
 
 [data-en-key="sidebar-brand"] {
+  margin: 0;
   padding: 0;
-  line-height: 32px !important;
+  line-height: 24px !important;
   font-size: 17px !important;
   font-weight: 650 !important;
   letter-spacing: -0.025em;
 }
 
 [data-en-key="sidebar-brand-row"] {
-  min-height: 32px;
+  min-height: 24px;
   align-items: center !important;
 }
 
@@ -308,11 +310,17 @@ textarea:focus-visible {
 }
 
 [data-en-key="history-agents-drawer"][data-en-variant="icon"] {
-  flex: 0 0 32px;
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 2;
   width: 32px !important;
   height: 32px !important;
-  align-self: flex-start;
   border-radius: 6px !important;
+}
+
+[data-en-key="history-center"] {
+  position: relative;
 }
 
 [data-en-key="history-workspace-split"] > [data-en-pane] {
@@ -332,7 +340,7 @@ textarea:focus-visible {
 
 [data-en-key^="history-item-"][data-en-event] {
   display: grid !important;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 3px 9px !important;
   max-width: 100%;
@@ -355,6 +363,39 @@ textarea:focus-visible {
 
 [data-en-key^="history-item-"] > [data-en-role="status-dot"] {
   grid-column: 1;
+}
+
+[data-en-key^="history-item-"] > [data-en-role="event-icon"] {
+  display: inline-flex;
+  grid-column: 1;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--oa-muted);
+}
+
+[data-en-key^="history-item-"] > [data-en-role="event-icon"] svg {
+  width: 14px;
+  height: 14px;
+}
+
+[data-en-key^="history-item-"][data-en-variant="tool"] {
+  margin: 3px 6px;
+  border: 1px solid rgba(92, 148, 255, 0.16);
+  background: rgba(35, 77, 151, 0.09);
+}
+
+[data-en-key^="history-item-"][data-en-variant="tool"] > [data-en-role="event-icon"] {
+  color: var(--oa-blue);
+}
+
+[data-en-key^="history-item-"][data-en-variant="reasoning"] > [data-en-role="detail"] {
+  color: var(--oa-muted);
+}
+
+[data-en-key^="history-item-"][data-en-variant="error"] {
+  border-left: 2px solid var(--oa-danger);
 }
 
 [data-en-key^="history-item-"] > [data-en-role="label"] {

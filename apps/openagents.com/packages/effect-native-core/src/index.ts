@@ -2669,6 +2669,8 @@ export interface TimelineEvent {
   readonly detail?: string
   readonly time?: string
   readonly status?: GraphStatus
+  readonly variant?: "message" | "tool" | "reasoning" | "divider" | "error" | "metadata"
+  readonly icon?: IconName
   readonly accessibilityLabel?: string
   // Node ids this event refers to.
   readonly refs?: ReadonlyArray<string>
@@ -3953,6 +3955,8 @@ export const TimelineEventSchema: Schema.Codec<TimelineEvent, TimelineEvent> = S
   detail: Schema.String.pipe(Schema.optionalKey),
   time: Schema.String.pipe(Schema.optionalKey),
   status: Schema.Literals(graphStatuses).pipe(Schema.optionalKey),
+  variant: Schema.Literals(["message", "tool", "reasoning", "divider", "error", "metadata"] as const).pipe(Schema.optionalKey),
+  icon: IconNameSchema.pipe(Schema.optionalKey),
   accessibilityLabel: Schema.NonEmptyString.pipe(Schema.optionalKey),
   refs: Schema.Array(Schema.NonEmptyString).pipe(Schema.optionalKey)
 })

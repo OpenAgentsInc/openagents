@@ -93,6 +93,8 @@ export type DesktopShellState = Readonly<{
   workspaceGitStatus: DesktopWorkspaceGitStatus
   workspaceGitDiff: DesktopWorkspaceGitDiff | null
   commandPaletteOpen: boolean
+  /** True only while the platform command modifier is held. */
+  historyShortcutHintsVisible: boolean
   /** The desktop-only planning deck; it has no deployment authority itself. */
   fleetDeskOpen: boolean
   /** The current, explicitly unsubmitted FleetRun objective draft. */
@@ -141,6 +143,7 @@ export const initialDesktopShellState = (
   workspaceGitStatus: { state: "unavailable" },
   workspaceGitDiff: null,
   commandPaletteOpen: false,
+  historyShortcutHintsVisible: false,
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -187,6 +190,8 @@ export const DesktopWorkspaceReloadRequested = defineIntent("DesktopWorkspaceRel
 export const DesktopWorkspaceGitDiffSelected = defineIntent("DesktopWorkspaceGitDiffSelected", Schema.String)
 export const DesktopCommandPaletteToggled = defineIntent("DesktopCommandPaletteToggled", Schema.Null)
 export const DesktopCommandPaletteDismissed = defineIntent("DesktopCommandPaletteDismissed", Schema.Null)
+export const DesktopHistoryShortcutHintsChanged = defineIntent("DesktopHistoryShortcutHintsChanged", Schema.Boolean)
+export const DesktopHistoryConversationPreviewed = defineIntent("DesktopHistoryConversationPreviewed", Schema.String)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -206,6 +211,8 @@ export const desktopShellIntents = [
   DesktopWorkspaceGitDiffSelected,
   DesktopCommandPaletteToggled,
   DesktopCommandPaletteDismissed,
+  DesktopHistoryShortcutHintsChanged,
+  DesktopHistoryConversationPreviewed,
   ...settingsIntents,
   ...historyWorkspaceIntents,
 ] as const
@@ -565,6 +572,10 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => withCommandPalette(current, !current.commandPaletteOpen)),
   DesktopCommandPaletteDismissed: () =>
     SubscriptionRef.update(state, (current) => withCommandPalette(current, false)),
+  DesktopHistoryShortcutHintsChanged: (visible) =>
+    SubscriptionRef.update(state, (current) => current.historyShortcutHintsVisible === visible ? current : { ...current, historyShortcutHintsVisible: visible }),
+  DesktopHistoryConversationPreviewed: (id) =>
+    SubscriptionRef.update(state, (current) => current.history.pendingThreadRef === id ? current : { ...current, history: { ...current.history, pendingThreadRef: id } }),
 })
 
 // ---------------------------------------------------------------------------
@@ -606,10 +617,10 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
 
 const historySidebarItems = (state: DesktopShellState) => {
   const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount)
-  const rows=roots.map((thread) => ({
+  const rows=roots.map((thread,index) => ({
     id:`sidebar-thread-${thread.threadRef}`,
     label:thread.title,
-    meta:formatRelativeTimestamp(thread.updatedAt),
+    meta:state.historyShortcutHintsVisible ? (index < 9 ? String(index + 1) : "") : formatRelativeTimestamp(thread.updatedAt),
     accessibilityLabel:`Open historical chat ${thread.title}, ${thread.descendantCount} descendant agents`,
     onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
   }))
@@ -621,10 +632,10 @@ const historySidebarItems = (state: DesktopShellState) => {
   }]
 }
 
-const localSidebarItems = (state: DesktopShellState) => state.threads.map((thread) => ({
+const localSidebarItems = (state: DesktopShellState) => state.threads.map((thread,index) => ({
   id:`sidebar-thread-${thread.id}`,
   label:thread.title,
-  meta:formatRelativeTimestamp(thread.updatedAt),
+  meta:state.historyShortcutHintsVisible ? (index < 9 ? String(index + 1) : "") : formatRelativeTimestamp(thread.updatedAt),
   accessibilityLabel:`Open chat ${thread.title}`,
   onSelect:IntentRef("DesktopChatSelected",StaticPayload(thread.id)),
 }))

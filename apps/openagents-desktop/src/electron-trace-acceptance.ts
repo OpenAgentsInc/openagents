@@ -62,9 +62,20 @@ export const traceAcceptanceJourney = `(async () => {
   const completeness = page.completeness
   if (completeness.source !== completeness.rendered + completeness.redactions + completeness.gaps) return {ok:false,reason:"silent_loss"}
   const candidateIndex=roots.findIndex(root=>root.threadRef===candidate.root.threadRef)
+  const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
+  const modifierKey=bridge.platform==='darwin'?'Meta':'Control'
+  window.dispatchEvent(new KeyboardEvent('keydown',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true,...modifier}))
+  const firstHint=await until(()=>document.querySelector('[data-en-key="sidebar-thread-'+roots[0].threadRef+'"] [data-en-role="meta"]')?.textContent==='1')
+  if(!firstHint)return {ok:false,reason:'history_shortcut_hint_missing'}
+  window.dispatchEvent(new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true,...modifier}))
+  const numberLoaded=await until(()=>selectedRef()===roots[0].threadRef)
+  if(!numberLoaded)return {ok:false,reason:'history_shortcut_number_failed'}
+  window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))
+  const candidateButtonAgain=[...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')].find(row=>row.getAttribute('data-en-key')==='sidebar-thread-'+candidate.root.threadRef)
+  candidateButtonAgain?.click()
+  if(!await until(()=>selectedRef()===candidate.root.threadRef))return {ok:false,reason:'history_shortcut_restore_failed'}
   const shortcutTarget=roots[candidateIndex+1]
   if(shortcutTarget){
-    const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
     window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',bubbles:true,cancelable:true,...modifier}))
     const downLoaded=await until(()=>selectedRef()===shortcutTarget.threadRef)
     if(!downLoaded)return {ok:false,reason:'history_shortcut_down_failed'}
@@ -75,17 +86,20 @@ export const traceAcceptanceJourney = `(async () => {
   const heldTargetIndex=Math.min(roots.length-1,candidateIndex+45)
   const heldTarget=roots[heldTargetIndex]
   if(heldTargetIndex>candidateIndex){
-    const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
     for(let index=candidateIndex;index<heldTargetIndex;index++)window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',repeat:true,bubbles:true,cancelable:true,...modifier}))
     const heldLoaded=await until(()=>selectedRef()===heldTarget.threadRef)
     if(!heldLoaded)return {ok:false,reason:'history_shortcut_hold_failed'}
-    const heldRow=[...document.querySelectorAll('[data-en-key^="sidebar-thread-"]')].find(row=>row.getAttribute('data-en-key')==='sidebar-thread-'+heldTarget.threadRef)
-    const sidebarList=document.querySelector('[data-en-key="sidebar-history-list"]')
-    const rowRect=heldRow?.getBoundingClientRect();const listRect=sidebarList?.getBoundingClientRect()
-    if(!rowRect||!listRect||rowRect.top<listRect.top-1||rowRect.bottom>listRect.bottom+1)return {ok:false,reason:'history_shortcut_offscreen',rowTop:rowRect?.top??0,rowBottom:rowRect?.bottom??0,listTop:listRect?.top??0,listBottom:listRect?.bottom??0,listScrollTop:sidebarList?.scrollTop??0,listScrollHeight:sidebarList?.scrollHeight??0}
+    const heldVisible=await until(()=>{
+      const heldRow=[...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')].find(row=>row.getAttribute('data-en-key')==='sidebar-thread-'+heldTarget.threadRef)
+      const sidebarList=document.querySelector('[data-en-key="sidebar-history-list"]')
+      const rowRect=heldRow?.getBoundingClientRect();const listRect=sidebarList?.getBoundingClientRect()
+      return rowRect&&listRect&&rowRect.top>=listRect.top-1&&rowRect.bottom<=listRect.bottom+1?true:null
+    },5000)
+    if(!heldVisible){const sidebarList=document.querySelector('[data-en-key="sidebar-history-list"]');const rows=[...(sidebarList?.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')??[])];return {ok:false,reason:'history_shortcut_offscreen',listScrollTop:sidebarList?.scrollTop??0,listScrollHeight:sidebarList?.scrollHeight??0,listClientHeight:sidebarList?.clientHeight??0,rowCount:rows.length,firstRowHeight:rows[0]?.getBoundingClientRect().height??0,targetIndex:rows.findIndex(row=>row.getAttribute('data-en-key')==='sidebar-thread-'+heldTarget.threadRef),overflowY:sidebarList?getComputedStyle(sidebarList).overflowY:'missing'}}
     for(let index=candidateIndex;index<heldTargetIndex;index++)window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',code:'ArrowUp',repeat:true,bubbles:true,cancelable:true,...modifier}))
     const heldReturned=await until(()=>selectedRef()===candidate.root.threadRef)
     if(!heldReturned)return {ok:false,reason:'history_shortcut_hold_return_failed'}
+    window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))
   }
   const treeItems = [...document.querySelectorAll('[role="treeitem"]')]
   const agentList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label') === page.agents.length + ' agents')
@@ -105,8 +119,8 @@ export const traceAcceptanceJourney = `(async () => {
   if (!toolPage) return {ok:false,reason:"tool_trace_missing"}
   const agentButton = [...document.querySelectorAll('[data-en-key^="history-agent-"]')].find(row => row.getAttribute('data-en-key') === 'history-agent-' + toolPage.selectedThreadRef)
   agentButton?.click()
-  await until(() => document.querySelector('[data-en-key="history-center-title"]')?.textContent === toolPage.agents.find(agent => agent.threadRef === toolPage.selectedThreadRef)?.title)
-  const toolRef = toolPage.items.find(item => item.kind === 'tool_call' || item.kind === 'tool_result').itemRef
+  await until(() => document.querySelector('[data-en-key="history-agent-' + toolPage.selectedThreadRef + '"][aria-selected="true"]'))
+  const toolRef = (toolPage.items.find(item => item.kind === 'tool_call') ?? toolPage.items.find(item => item.kind === 'tool_result')).itemRef
   const toolButton = await until(() => [...document.querySelectorAll('[data-en-key^="history-item-"]')].find(row => row.getAttribute('data-en-key') === 'history-item-' + toolRef))
   if (!toolButton) return {ok:false,reason:"tool_row_inaccessible"}
   toolButton.click()

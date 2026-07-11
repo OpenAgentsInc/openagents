@@ -3814,6 +3814,7 @@ const renderTimeline = (view: TimelineView, state: DomRendererState, report: Int
   const items = view.events.map((graphEvent) => {
     const li = document.createElement("li")
     li.setAttribute("data-en-event", graphEvent.id)
+    if (graphEvent.variant !== undefined) li.setAttribute("data-en-variant", graphEvent.variant)
     if (graphEvent.key !== undefined) li.setAttribute("data-en-key", graphEvent.key)
     li.setAttribute("aria-label", graphEvent.accessibilityLabel ?? graphEvent.label)
     const selected = view.selectedId === graphEvent.id
@@ -3822,17 +3823,23 @@ const renderTimeline = (view: TimelineView, state: DomRendererState, report: Int
     li.style.display = "flex"
     li.style.alignItems = "baseline"
     li.style.gap = "var(--en-spacing-2)"
-    const dot = document.createElement("span")
-    dot.setAttribute("data-en-role", "status-dot")
-    dot.setAttribute("aria-hidden", "true")
-    dot.style.width = "8px"
-    dot.style.height = "8px"
-    dot.style.borderRadius = "999px"
-    dot.style.background = graphStatusColor(graphEvent.status)
+    const marker = document.createElement("span")
+    marker.setAttribute("data-en-role", graphEvent.icon === undefined ? "status-dot" : "event-icon")
+    marker.setAttribute("aria-hidden", "true")
+    if (graphEvent.icon === undefined) {
+      marker.style.width = "8px"
+      marker.style.height = "8px"
+      marker.style.borderRadius = "999px"
+      marker.style.background = graphStatusColor(graphEvent.status)
+    } else {
+      marker.setAttribute("data-en-icon", graphEvent.icon)
+      marker.style.display = "inline-flex"
+      marker.innerHTML = iconSvg(graphEvent.icon, iconSizePixels.sm)
+    }
     const label = document.createElement("span")
     label.setAttribute("data-en-role", "label")
     label.textContent = graphEvent.label
-    li.append(dot, label)
+    li.append(marker, label)
     if (graphEvent.time !== undefined) {
       const time = document.createElement("time")
       time.setAttribute("data-en-role", "time")
@@ -4006,10 +4013,36 @@ const renderView = (view: View, state: DomRendererState, report: IntentReporter)
 
 const commitView = (view: View, state: DomRendererState, report: IntentReporter): void => {
   const activeBefore = state.root.ownerDocument.activeElement as HTMLElement | null
+  const sectionScrollPositions = new Map(
+    Array.from(state.root.querySelectorAll<HTMLElement>("[data-en-section]")).map((section) => [
+      section.getAttribute("data-en-section") ?? "",
+      { top: section.scrollTop, left: section.scrollLeft }
+    ])
+  )
   state.clearFocusRequest()
   state.styles.beginRender()
   const element = renderView(view, state, report)
   state.root.replaceChildren(element)
+  for (const section of Array.from(state.root.querySelectorAll<HTMLElement>("[data-en-section]"))) {
+    const position = sectionScrollPositions.get(section.getAttribute("data-en-section") ?? "")
+    if (position !== undefined) {
+      section.scrollTop = position.top
+      section.scrollLeft = position.left
+    }
+  }
+  for (const active of Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-nav-item][data-en-active="true"]'))) {
+    const section = active.closest<HTMLElement>("[data-en-section]")
+    if (section === null || section.clientHeight <= 0) continue
+    const rows = Array.from(section.querySelectorAll<HTMLElement>("[data-en-nav-item]"))
+    const index = rows.indexOf(active)
+    if (index < 0) continue
+    const measuredHeight = rows.map((row) => row.getBoundingClientRect().height).find((height) => height > 0) ?? 32
+    const labelHeight = section.querySelector<HTMLElement>('[data-en-role="section-label"]')?.getBoundingClientRect().height ?? 0
+    const estimatedTop = labelHeight + index * measuredHeight
+    const estimatedBottom = estimatedTop + measuredHeight
+    if (estimatedTop < section.scrollTop) section.scrollTop = estimatedTop
+    else if (estimatedBottom > section.scrollTop + section.clientHeight) section.scrollTop = estimatedBottom - section.clientHeight
+  }
   const focusRequest = state.consumeFocusRequest()
   const overlayFocus = state.syncOverlayLifecycle(
     state.root.querySelector('[data-en-overlay-open="true"]') !== null,

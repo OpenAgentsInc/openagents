@@ -53,6 +53,12 @@ const collectNodes = (root: unknown): Array<AnyNode> => {
 const nodeByKey = (view: View, key: string): AnyNode | undefined =>
   collectNodes(view).find((node) => node.key === key)
 
+const navItemById = (view: View, id: string): AnyNode | undefined => {
+  const nav = nodeByKey(view, "sidebar-navigation")
+  const sections = nav?.sections as ReadonlyArray<{ items?: ReadonlyArray<AnyNode> }> | undefined
+  return sections?.flatMap((section) => section.items ?? []).find((item) => item.id === id)
+}
+
 const baseState: DesktopShellState = initialDesktopShellState("electron/darwin", "18:04")
 
 const loadedAccounts = withSettingsAccounts(initialSettingsState(), {
@@ -184,13 +190,13 @@ describe("settingsView (state -> component tree)", () => {
 
   test("shell swaps to the settings screen and back via the sidebar icon", () => {
     const chat = desktopShellView(baseState)
-    expect(nodeByKey(chat, "shell-settings-toggle")?.accessibilityLabel).toBe("Open Settings")
+    expect(navItemById(chat, "shell-settings-toggle")?.accessibilityLabel).toBe("Open Settings")
     expect(nodeByKey(chat, "settings-screen")).toBeUndefined()
     expect(nodeByKey(chat, "shell-input")?._tag).toBe("TextField")
 
     const settings = desktopShellView({ ...baseState, workspace: "settings" })
     expect(nodeByKey(settings, "shell-title")).toBeUndefined()
-    expect(nodeByKey(settings, "shell-settings-toggle")?.accessibilityLabel).toBe("Close Settings")
+    expect(navItemById(settings, "shell-settings-toggle")?.accessibilityLabel).toBe("Close Settings")
     expect(nodeByKey(settings, "settings-screen")?._tag).toBe("Card")
     expect(nodeByKey(settings, "settings-connect-codex")?._tag).toBe("Button")
     // the chat surface is swapped out, not stacked under
@@ -320,10 +326,10 @@ describe("typed intent loop end-to-end (settings)", () => {
 
         // Open Settings via the SAME IntentRef the sidebar icon carries.
         const chatView = desktopShellView(yield* SubscriptionRef.get(state))
-        const toggle = nodeByKey(chatView, "shell-settings-toggle") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
+        const toggle = navItemById(chatView, "shell-settings-toggle") as {
+          onSelect: Parameters<typeof resolveIntentRef>[0]
         }
-        yield* registry.dispatch(resolveIntentRef(toggle.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(toggle.onSelect, null))
         const afterOpen = yield* SubscriptionRef.get(state)
         expect(afterOpen.workspace).toBe("settings")
         expect(afterOpen.settings.accounts).toEqual({
