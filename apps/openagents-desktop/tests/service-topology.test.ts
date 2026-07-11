@@ -21,7 +21,7 @@ const service = (
     maxAge: "process_lifetime",
     invalidatesOn: [`${override.id}:invalidate`],
   },
-  disposal: { disposesWith: override.scope, closes: [] },
+  disposal: { disposesWith: override.scope, invalidatesOn: [`${override.id}:dispose`] },
   ...override,
 })
 
@@ -58,8 +58,12 @@ describe("Desktop service topology oracle (#8678)", () => {
       expect(ids.has(id)).toBe(true)
     }
     for (const entry of desktopServiceTopology) {
-      expect(entry.cacheKey?.scope).toBe(entry.scope)
-      expect(entry.cacheKey?.parts.length).toBeGreaterThan(0)
+      expect(entry.cacheKey?.scope === "none" || entry.cacheKey?.scope === entry.scope).toBe(true)
+      if (entry.cacheKey?.scope === "none") {
+        expect(entry.cacheKey.parts).toEqual([])
+      } else {
+        expect(entry.cacheKey?.parts.length).toBeGreaterThan(0)
+      }
       expect(entry.freshness?.invalidatesOn.length).toBeGreaterThan(0)
       expect(entry.disposal).toBeDefined()
     }
@@ -146,6 +150,9 @@ describe("Desktop service topology oracle (#8678)", () => {
       service({ id: "empty-cache", scope: "process", cacheKey: { scope: "process", parts: [] } }),
     ])).toContain("missing_cache_key")
     expect(codes([
+      service({ id: "false-no-cache", scope: "process", cacheKey: { scope: "none", parts: ["impossible"] } }),
+    ])).toContain("invalid_cache_key_scope")
+    expect(codes([
       without(service({ id: "no-freshness", scope: "process" }), "freshness"),
     ])).toContain("missing_freshness")
     expect(codes([
@@ -157,6 +164,9 @@ describe("Desktop service topology oracle (#8678)", () => {
     ])).toContain("missing_freshness")
     expect(codes([
       without(service({ id: "no-disposal", scope: "process" }), "disposal"),
+    ])).toContain("missing_disposal")
+    expect(codes([
+      service({ id: "empty-disposal", scope: "process", disposal: { disposesWith: "process", invalidatesOn: [] } }),
     ])).toContain("missing_disposal")
   })
 
@@ -172,7 +182,7 @@ describe("Desktop service topology oracle (#8678)", () => {
       service({
         id: "request-disposal-escape",
         scope: "request_or_command",
-        disposal: { disposesWith: "process", closes: ["subscription"] },
+        disposal: { disposesWith: "process", invalidatesOn: ["wrong-owner"] },
       }),
     ])).toContain("invalid_disposal_scope")
   })

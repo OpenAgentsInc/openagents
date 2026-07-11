@@ -49,7 +49,7 @@ export type DesktopServiceFreshness = Readonly<{
 
 export type DesktopServiceDisposal = Readonly<{
   disposesWith: DesktopServiceScope | "external"
-  closes: ReadonlyArray<DesktopOwnedResource["kind"]>
+  invalidatesOn: ReadonlyArray<string>
 }>
 
 export type DesktopServiceTopologyEntry = Readonly<{
@@ -137,8 +137,8 @@ export const desktopServiceTopology = [
     ],
     authority: ["runtime", "policy", "clock"],
     cacheKey: {
-      scope: "process",
-      parts: ["electron.app.instance", "desktop.protocol_version"],
+      scope: "none",
+      parts: [],
     },
     freshness: {
       source: "static_manifest",
@@ -147,7 +147,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "process",
-      closes: ["native_handle"],
+      invalidatesOn: ["app-shutdown"],
     },
     perimeter: true,
     ownedResources: [{ kind: "native_handle", disposesWith: "process" }],
@@ -179,7 +179,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "process",
-      closes: ["subscription", "fiber"],
+      invalidatesOn: ["gateway-dispose", "app-shutdown"],
     },
     publicSchemas: runtimeGatewaySchemas.map(name => ({
       name,
@@ -210,7 +210,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "process",
-      closes: ["file", "http_listener"],
+      invalidatesOn: ["app-shutdown"],
     },
     ownedResources: [
       { kind: "file", disposesWith: "process" },
@@ -241,7 +241,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "process",
-      closes: ["database", "subscription"],
+      invalidatesOn: ["unlink", "app-shutdown"],
     },
     publicSchemas: [
       {
@@ -271,13 +271,13 @@ export const desktopServiceTopology = [
       parts: ["workspace_root_uri", "workspace_selection_generation"],
     },
     freshness: {
-      source: "filesystem_snapshot",
-      maxAge: "work_context_lifetime",
+      source: "request_response",
+      maxAge: "request_lifetime",
       invalidatesOn: ["workspace-select", "file-save", "git-refresh"],
     },
     disposal: {
       disposesWith: "work_context",
-      closes: ["file"],
+      invalidatesOn: ["workspace-switch", "app-shutdown"],
     },
     publicSchemas: workspaceSchemas.map(name => ({
       name,
@@ -298,16 +298,16 @@ export const desktopServiceTopology = [
     authority: ["filesystem"],
     cacheKey: {
       scope: "process",
-      parts: ["codex_home", "codex_history_root"],
+      parts: ["codex_history_root"],
     },
     freshness: {
       source: "filesystem_snapshot",
-      maxAge: "event_driven",
-      invalidatesOn: ["history-poll", "manual-refresh"],
+      maxAge: "process_lifetime",
+      invalidatesOn: ["history-root-change", "history-worker-restart"],
     },
     disposal: {
-      disposesWith: "process",
-      closes: ["file"],
+      disposesWith: "external",
+      invalidatesOn: ["history-worker-error", "process-exit"],
     },
     publicSchemas: [
       {
@@ -334,17 +334,17 @@ export const desktopServiceTopology = [
     dependsOn: ["workspace-root"],
     authority: ["filesystem", "transport"],
     cacheKey: {
-      scope: "conversation_or_run",
-      parts: ["workspace_root_uri", "thread_id"],
+      scope: "none",
+      parts: [],
     },
     freshness: {
-      source: "filesystem_snapshot",
-      maxAge: "conversation_lifetime",
-      invalidatesOn: ["thread-select", "message-write", "fallback-turn"],
+      source: "request_response",
+      maxAge: "request_lifetime",
+      invalidatesOn: ["thread-read", "message-write", "fallback-turn"],
     },
     disposal: {
       disposesWith: "conversation_or_run",
-      closes: ["file"],
+      invalidatesOn: ["conversation-replaced", "app-shutdown"],
     },
     publicSchemas: chatSchemas.map(name => ({
       name,
@@ -366,8 +366,8 @@ export const desktopServiceTopology = [
     dependsOn: ["workspace-root"],
     authority: ["provider", "policy", "transport"],
     cacheKey: {
-      scope: "request_or_command",
-      parts: ["fleet_stage_request_id", "objective_digest"],
+      scope: "none",
+      parts: [],
     },
     freshness: {
       source: "request_response",
@@ -376,7 +376,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "request_or_command",
-      closes: ["subscription"],
+      invalidatesOn: ["stage-request-finished", "stage-request-cancelled"],
     },
     publicSchemas: [
       {
@@ -409,7 +409,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "request_or_command",
-      closes: ["native_handle"],
+      invalidatesOn: ["connect-request-finished", "connect-request-cancelled"],
     },
     publicSchemas: [
       {
@@ -450,7 +450,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "foreign_host_or_view",
-      closes: ["subscription"],
+      invalidatesOn: ["ipc-reconnect", "window-close"],
     },
     perimeter: true,
     failureTaxonomy: "recoverable_domain_refusal",
@@ -481,7 +481,7 @@ export const desktopServiceTopology = [
     },
     disposal: {
       disposesWith: "renderer_view",
-      closes: ["subscription"],
+      invalidatesOn: ["view-remount", "renderer-close"],
     },
     failureTaxonomy: "telemetry_degradation",
   },
@@ -562,8 +562,12 @@ export const validateDesktopServiceTopology = (
     if ((entry.ambientAuthority?.length ?? 0) > 0) {
       violations.push(violation("ambient_authority", entry.id, `Ambient authority: ${entry.ambientAuthority?.join(", ")}.`))
     }
-    if (entry.cacheKey === undefined || entry.cacheKey.parts.length === 0) {
-      violations.push(violation("missing_cache_key", entry.id, "Services must declare a non-empty cache key."))
+    if (entry.cacheKey === undefined) {
+      violations.push(violation("missing_cache_key", entry.id, "Services must declare a cache key or explicit no-cache state."))
+    } else if (entry.cacheKey.scope === "none" && entry.cacheKey.parts.length !== 0) {
+      violations.push(violation("invalid_cache_key_scope", entry.id, "No-cache services may not declare cache-key parts."))
+    } else if (entry.cacheKey.scope !== "none" && entry.cacheKey.parts.length === 0) {
+      violations.push(violation("missing_cache_key", entry.id, "Cached services must declare non-empty cache-key parts."))
     } else if (entry.cacheKey.scope !== "none" && entry.cacheKey.scope !== entry.scope) {
       violations.push(violation(
         "invalid_cache_key_scope",
@@ -574,7 +578,7 @@ export const validateDesktopServiceTopology = (
     if (entry.freshness === undefined || entry.freshness.invalidatesOn.length === 0) {
       violations.push(violation("missing_freshness", entry.id, "Services must declare freshness invalidation."))
     }
-    if (entry.disposal === undefined) {
+    if (entry.disposal === undefined || entry.disposal.invalidatesOn.length === 0) {
       violations.push(violation("missing_disposal", entry.id, "Services must declare their disposal owner."))
     } else if (entry.disposal.disposesWith !== "external" && scopeRank[entry.disposal.disposesWith] < scopeRank[entry.scope]) {
       violations.push(violation(
