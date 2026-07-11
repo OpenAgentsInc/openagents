@@ -320,6 +320,7 @@ const exactCloseout = (
   } as const
   const status = {
     ...trace(assignmentRef, "closed_out", {
+    harnessKind,
     lifecycle: {
       acceptedWorkRefs: ["work.public.fixture"],
       artifactRefs: ["artifact.public.fixture"],
@@ -337,6 +338,7 @@ const exactCloseout = (
   const checklistItem = { ok: true, ref: "check.public.fixture" }
   const proof = {
     assignmentRef,
+    harnessKind,
     closeoutPolicy: status.closeoutPolicy,
     generatedAt: fixedNow.toISOString(),
     ok: true as const,

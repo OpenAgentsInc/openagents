@@ -1073,6 +1073,77 @@ describe("pylon khala requester API", () => {
     })
   })
 
+  test("Claude closeout uses exact Claude tokens without fabricating Codex trace archives", () => {
+    const claudeTokenUsage = {
+      ...completeProof().tokenUsage,
+      model: "openagents/pylon-claude",
+      provider: "pylon-claude-own-capacity",
+      refs: ["event.inference.served-tokens.pylon-claude.001"],
+    }
+    const proofPayload = completeProof({
+      harnessKind: "claude",
+      tokenUsage: claudeTokenUsage,
+      traces: {
+        count: 0,
+        refs: [],
+        schemaVersion: "ATIF-v1.7",
+        visibility: "owner_only",
+      },
+      rawEvents: {
+        byteLength: 0,
+        count: 0,
+        eventCount: 0,
+        refs: [],
+        visibility: "owner_only",
+      },
+    })
+    const proofChecklist = evaluatePylonKhalaProofChecklist(
+      proofPayload as ProofPayload,
+    )
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      completeTraceStatus({
+        harnessKind: "claude",
+        tokenUsage: { ...claudeTokenUsage, status: "recorded" },
+        traces: {
+          count: 0,
+          finalTraceUuid: null,
+          latestTraceUuid: null,
+          refs: [],
+          schemaVersion: "ATIF-v1.7",
+          visibility: "owner_only",
+        },
+        rawEvents: {
+          byteLength: 0,
+          count: 0,
+          eventCount: 0,
+          latestObservedAt: null,
+          latestRawEventRef: null,
+          refs: [],
+          visibility: "owner_only",
+        },
+        progress: {
+          state: "closed_out",
+          closeoutReady: true,
+          hasLiveChunks: false,
+          hasFinalTrace: false,
+          hasTokenUsage: true,
+        },
+      }) as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(proofChecklist.ok).toBe(true)
+    expect(proofChecklist.items).toContainEqual({
+      ok: true,
+      ref: "check.khala_proof.claude.codex_traces_not_applicable",
+    })
+    expect(checklist.ok).toBe(true)
+    expect(checklist.items).toContainEqual({
+      ok: true,
+      ref: "check.khala_closeout.claude.codex_final_trace_not_applicable",
+    })
+  })
+
   test("closeout checklist accepts capped owner trace ref projections", () => {
     const cappedTraceRefs = Array.from({ length: 100 }, (_, index) => `trace-${index + 1}`)
     const proofPayload = completeProof({

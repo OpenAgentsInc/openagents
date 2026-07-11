@@ -1502,6 +1502,14 @@ parent-only live receipt. That repair is code-landed at `d98abda795`, but #8686
 remains open because its close rule includes the same live parent receipt.
 Closed #8685 supplies the scoped Claude authority.
 
+The [Pylon streamlining audit](../fable/2026-07-11-pylon-streamlining-audit.md)
+also fixes the short-term boundary for this proof: `apps/pylon/src/orchestration`
+and `apps/pylon/src/node` are the protected, load-bearing P0 core. Until #8640
+closes, changes there remain CUT-owned correctness repairs only. Compatibility
+repairs at the legacy D1/Postgres evidence seam are allowed when they directly
+unblock the receipt; CLI/package cleanup, authority collapse, and product-shell
+streamlining wait for the post-#8640 program described by that audit.
+
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
 | **P0 program parent** | #8566 | Sole R0–R7 Effect Native Desktop/mobile program epic |
@@ -1570,7 +1578,10 @@ around and after that narrower installed-Desktop milestone.
    blocking #8676/#8677 or the issue-ledger repair. Preserve CUT-05's closed
    Claude authority and CUT-06's landed supervisor/publication ordering, use
    the correct Codex verifier selection, obtain two accepted closeouts, post the
-   honest receipt, and close #8640. Do not keep it open for R3/R7 client work.
+   honest receipt, and close #8640. Treat the Pylon fleet core as protected
+   during this burn: admit only CUT-owned correctness and proof-compatibility
+   repairs, and defer the streamlining audit's broader cleanup and authority
+   collapse. Do not keep #8640 open for R3/R7 client work.
 6. Complete #8547's real brokered Firecracker workroom before #8636's live
    hybrid-routing acceptance. In parallel with non-colliding client work, prove
    server-authorized owner-capacity metering, retry-deduped usage, bounded

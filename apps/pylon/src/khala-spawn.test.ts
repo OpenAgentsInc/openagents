@@ -373,6 +373,7 @@ const claudeRequestResult: PylonKhalaRequestResult = {
 
 const exactProof: PylonKhalaProofResult = {
   assignmentRef: "assignment.public.khala_coding.test",
+  harnessKind: "codex",
   generatedAt: "2026-06-27T13:30:00.000Z",
   ok: true,
   owner: {

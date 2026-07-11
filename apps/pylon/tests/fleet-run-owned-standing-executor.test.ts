@@ -70,6 +70,7 @@ const requestReceipt = (request: PylonKhalaRequestInput, assignmentRef: string) 
 
 const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCloseoutResult> => {
   const claude = assignmentRef.includes("claude")
+  const harnessKind = claude ? "claude" as const : "codex" as const
   const tokenUsage = {
     cacheReadTokens: 1,
     demandKind: "own_capacity" as const,
@@ -121,6 +122,7 @@ const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCl
     ok: true,
     proof: {
       assignmentRef,
+      harnessKind,
       closeoutPolicy: policy,
       owner,
       pylonRef,
@@ -134,6 +136,7 @@ const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCl
     schema: "openagents.pylon.khala_closeout.v0.1",
     status: {
       assignmentRef,
+      harnessKind,
       closeoutPolicy: policy,
       lifecycle: {
         closeoutRefs: [`closeout.public.${assignmentRef}`],

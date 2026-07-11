@@ -159,6 +159,8 @@ export function exactPylonFleetRunUsageEvidence(input: {
   const proofChecklistRefs = closeout.proof.proofChecklist.items.map(item => item.ref)
   if (
     closeout.assignmentRef !== input.assignmentRef ||
+    (closeout.status.harnessKind ?? "codex") !== input.harnessKind ||
+    (closeout.proof.harnessKind ?? "codex") !== input.harnessKind ||
     closeout.status.assignmentRef !== input.assignmentRef ||
     closeout.proof.assignmentRef !== input.assignmentRef ||
     closeout.status.pylonRef !== input.pylonRef ||

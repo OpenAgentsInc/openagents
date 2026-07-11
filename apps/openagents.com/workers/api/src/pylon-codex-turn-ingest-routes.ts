@@ -95,6 +95,22 @@ const PYLON_CODEX_PRODUCER_SYSTEM = 'omega' as const
 const PYLON_CODEX_SOURCE_ROUTE = 'omega_hosted_gemini' as const
 const PYLON_CODEX_DEMAND_KIND = 'own_capacity' as const
 const PYLON_CODEX_DEMAND_SOURCE = 'khala_coding_delegation' as const
+export type PylonCodingHarnessKind = 'codex' | 'claude'
+
+const tokenIdentityForHarness = (
+  harnessKind: PylonCodingHarnessKind,
+): Readonly<{
+  model: typeof PYLON_CODEX_MODEL_NAME | typeof PYLON_CLAUDE_MODEL_NAME
+  provider: typeof PYLON_CODEX_PROVIDER | typeof PYLON_CLAUDE_PROVIDER
+}> =>
+  harnessKind === 'claude'
+    ? { model: PYLON_CLAUDE_MODEL_NAME, provider: PYLON_CLAUDE_PROVIDER }
+    : { model: PYLON_CODEX_MODEL_NAME, provider: PYLON_CODEX_PROVIDER }
+
+const harnessKindForAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): PylonCodingHarnessKind =>
+  assignment.jobKind === 'claude_agent_task' ? 'claude' : 'codex'
 const PYLON_CODEX_DIRECT_LOCAL_PRODUCER_SYSTEM = 'pylon' as const
 const PYLON_CODEX_DIRECT_LOCAL_SOURCE_ROUTE =
   'pylon_codex_direct_local' as const
@@ -252,6 +268,7 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
 
 export type PylonCodexAssignmentProof = Readonly<{
   schemaVersion: 'openagents.pylon.codex_assignment_proof.v1'
+  harnessKind: PylonCodingHarnessKind
   assignmentRef: string
   pylonRef: string
   owner: Readonly<{
@@ -261,8 +278,8 @@ export type PylonCodexAssignmentProof = Readonly<{
   tokenUsage: Readonly<{
     rowCount: number
     refs: ReadonlyArray<string>
-    provider: typeof PYLON_CODEX_PROVIDER
-    model: typeof PYLON_CODEX_MODEL_NAME
+    provider: typeof PYLON_CODEX_PROVIDER | typeof PYLON_CLAUDE_PROVIDER
+    model: typeof PYLON_CODEX_MODEL_NAME | typeof PYLON_CLAUDE_MODEL_NAME
     usageTruth: 'exact'
     demandKind: typeof PYLON_CODEX_DEMAND_KIND
     demandSource: typeof PYLON_CODEX_DEMAND_SOURCE
@@ -321,6 +338,7 @@ export type PylonCodexAssignmentWorkerCloseoutEvidence = Readonly<{
 
 export type PylonCodexAssignmentTraceStatus = Readonly<{
   schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1'
+  harnessKind: PylonCodingHarnessKind
   assignmentRef: string
   pylonRef: string
   owner: Readonly<{
@@ -398,6 +416,7 @@ export type PylonCodexAssignmentProofStore = Readonly<{
   readAssignmentProof: (
     input: Readonly<{
       assignmentRef: string
+      harnessKind: PylonCodingHarnessKind
       ownerAgentUserId: string
       ownerUserId: string
       pylonRef: string
@@ -412,6 +431,7 @@ export type PylonCodexAssignmentTraceStatusStore = Readonly<{
   readAssignmentTraceStatus: (
     input: Readonly<{
       assignment: PylonApiAssignmentRecord
+      harnessKind: PylonCodingHarnessKind
       ownerAgentUserId: string
       ownerUserId: string
       nowIso: string
@@ -1119,6 +1139,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
 
   return {
   readAssignmentProof: async input => {
+    const tokenIdentity = tokenIdentityForHarness(input.harnessKind)
     const tokenRow = await db
       .prepare(
         `
@@ -1141,8 +1162,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
         `,
       )
       .bind(
-        PYLON_CODEX_PROVIDER,
-        PYLON_CODEX_MODEL_NAME,
+        tokenIdentity.provider,
+        tokenIdentity.model,
         PYLON_CODEX_DEMAND_KIND,
         PYLON_CODEX_DEMAND_SOURCE,
         input.assignmentRef,
@@ -1169,8 +1190,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
         `,
       )
       .bind(
-        PYLON_CODEX_PROVIDER,
-        PYLON_CODEX_MODEL_NAME,
+        tokenIdentity.provider,
+        tokenIdentity.model,
         PYLON_CODEX_DEMAND_KIND,
         PYLON_CODEX_DEMAND_SOURCE,
         input.assignmentRef,
@@ -1199,29 +1220,51 @@ export const makeD1PylonCodexAssignmentProofStore = (
       traceTrajectoryPrefix,
     ] as const
 
-    const traceCountRow = await db
-      .prepare(`SELECT COUNT(*) AS row_count FROM agent_traces WHERE ${traceFilter}`)
-      .bind(...traceBindings)
-      .first<PylonCodexCountProofRow>()
+    const traceCountRow =
+      input.harnessKind === 'claude'
+        ? { row_count: 0 }
+        : await db
+            .prepare(
+              `SELECT COUNT(*) AS row_count FROM agent_traces WHERE ${traceFilter}`,
+            )
+            .bind(...traceBindings)
+            .first<PylonCodexCountProofRow>()
 
-    const traceRows = await db
-      .prepare(
-        `
-          SELECT trace_uuid
-          FROM agent_traces
-          WHERE ${traceFilter}
-          ORDER BY created_at DESC
-          LIMIT 100
-        `,
-      )
-      .bind(...traceBindings)
-      .all<PylonCodexTraceProofRow>()
+    const traceRows =
+      input.harnessKind === 'claude'
+        ? { results: [] as ReadonlyArray<PylonCodexTraceProofRow> }
+        : await db
+            .prepare(
+              `
+                SELECT trace_uuid
+                FROM agent_traces
+                WHERE ${traceFilter}
+                ORDER BY created_at DESC
+                LIMIT 100
+              `,
+            )
+            .bind(...traceBindings)
+            .all<PylonCodexTraceProofRow>()
 
-    const rawEventMetadata = await rawEventMetadataStore.readRawEventMetadata({
-      assignmentRef: input.assignmentRef,
-      ownerUserId: input.ownerUserId,
-      pylonRef: input.pylonRef,
-    })
+    const rawEventMetadata =
+      input.harnessKind === 'claude'
+        ? {
+            chunks: {
+              aggregate: emptyRawEventAggregate(),
+              rows: [],
+              sourceRefs: [],
+            },
+            turnEvents: {
+              aggregate: emptyRawEventAggregate(),
+              rows: [],
+              sourceRefs: [],
+            },
+          }
+        : await rawEventMetadataStore.readRawEventMetadata({
+            assignmentRef: input.assignmentRef,
+            ownerUserId: input.ownerUserId,
+            pylonRef: input.pylonRef,
+          })
     const rawAggregateRow = rawEventMetadata.turnEvents.aggregate
     const traces = traceRows.results ?? []
     const rawEvents = rawEventMetadata.turnEvents.rows
@@ -1229,6 +1272,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
 
     return {
       schemaVersion: 'openagents.pylon.codex_assignment_proof.v1',
+      harnessKind: input.harnessKind,
       assignmentRef: input.assignmentRef,
       pylonRef: input.pylonRef,
       owner: {
@@ -1238,8 +1282,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
       tokenUsage: {
         rowCount: Number(tokenRow?.row_count ?? 0),
         refs: boundedProofRefs(tokenRefs, 'id'),
-        provider: PYLON_CODEX_PROVIDER,
-        model: PYLON_CODEX_MODEL_NAME,
+        provider: tokenIdentity.provider,
+        model: tokenIdentity.model,
         usageTruth: 'exact',
         demandKind: PYLON_CODEX_DEMAND_KIND,
         demandSource: PYLON_CODEX_DEMAND_SOURCE,
@@ -1270,6 +1314,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
     }
   },
   readAssignmentTraceStatus: async input => {
+    const tokenIdentity = tokenIdentityForHarness(input.harnessKind)
     const tokenRow = await db
       .prepare(
         `
@@ -1292,8 +1337,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
         `,
       )
       .bind(
-        PYLON_CODEX_PROVIDER,
-        PYLON_CODEX_MODEL_NAME,
+        tokenIdentity.provider,
+        tokenIdentity.model,
         PYLON_CODEX_DEMAND_KIND,
         PYLON_CODEX_DEMAND_SOURCE,
         input.assignment.assignmentRef,
@@ -1320,8 +1365,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
         `,
       )
       .bind(
-        PYLON_CODEX_PROVIDER,
-        PYLON_CODEX_MODEL_NAME,
+        tokenIdentity.provider,
+        tokenIdentity.model,
         PYLON_CODEX_DEMAND_KIND,
         PYLON_CODEX_DEMAND_SOURCE,
         input.assignment.assignmentRef,
@@ -1418,29 +1463,51 @@ export const makeD1PylonCodexAssignmentProofStore = (
       traceTrajectoryPrefix,
     ] as const
 
-    const traceCountRow = await db
-      .prepare(`SELECT COUNT(*) AS row_count FROM agent_traces WHERE ${traceFilter}`)
-      .bind(...traceBindings)
-      .first<PylonCodexCountProofRow>()
+    const traceCountRow =
+      input.harnessKind === 'claude'
+        ? { row_count: 0 }
+        : await db
+            .prepare(
+              `SELECT COUNT(*) AS row_count FROM agent_traces WHERE ${traceFilter}`,
+            )
+            .bind(...traceBindings)
+            .first<PylonCodexCountProofRow>()
 
-    const traceRows = await db
-      .prepare(
-        `
-          SELECT trace_uuid, trajectory_id
-          FROM agent_traces
-          WHERE ${traceFilter}
-          ORDER BY created_at DESC
-          LIMIT 100
-        `,
-      )
-      .bind(...traceBindings)
-      .all<PylonCodexTraceProofRow>()
+    const traceRows =
+      input.harnessKind === 'claude'
+        ? { results: [] as ReadonlyArray<PylonCodexTraceProofRow> }
+        : await db
+            .prepare(
+              `
+                SELECT trace_uuid, trajectory_id
+                FROM agent_traces
+                WHERE ${traceFilter}
+                ORDER BY created_at DESC
+                LIMIT 100
+              `,
+            )
+            .bind(...traceBindings)
+            .all<PylonCodexTraceProofRow>()
 
-    const rawEventMetadata = await rawEventMetadataStore.readRawEventMetadata({
-      assignmentRef: input.assignment.assignmentRef,
-      ownerUserId: input.ownerUserId,
-      pylonRef: input.assignment.pylonRef,
-    })
+    const rawEventMetadata =
+      input.harnessKind === 'claude'
+        ? {
+            chunks: {
+              aggregate: emptyRawEventAggregate(),
+              rows: [],
+              sourceRefs: [],
+            },
+            turnEvents: {
+              aggregate: emptyRawEventAggregate(),
+              rows: [],
+              sourceRefs: [],
+            },
+          }
+        : await rawEventMetadataStore.readRawEventMetadata({
+            assignmentRef: input.assignment.assignmentRef,
+            ownerUserId: input.ownerUserId,
+            pylonRef: input.assignment.pylonRef,
+          })
     const rawChunkAggregateRow = rawEventMetadata.chunks.aggregate
     const latestChunkRow = rawEventMetadata.chunks.rows[0]
     const rawAggregateRow = rawEventMetadata.turnEvents.aggregate
@@ -1473,15 +1540,21 @@ export const makeD1PylonCodexAssignmentProofStore = (
               : hasLiveChunks
                 ? 'streaming_chunks'
                 : 'assignment_created'
+    const requiresCodexTraceEvidence = input.harnessKind === 'codex'
     const missingReadinessRefs = [
-      hasLiveChunks ? null : 'status.pylon_codex.raw_event_chunks.pending',
-      hasFinalTrace ? null : 'status.pylon_codex.final_trace.pending',
+      !requiresCodexTraceEvidence || hasLiveChunks
+        ? null
+        : 'status.pylon_codex.raw_event_chunks.pending',
+      !requiresCodexTraceEvidence || hasFinalTrace
+        ? null
+        : 'status.pylon_codex.final_trace.pending',
       hasTokenUsage ? null : 'status.pylon_codex.token_usage.pending',
       closedOut ? null : 'status.pylon_codex.closeout.pending',
     ].filter((ref): ref is string => ref !== null)
 
     return {
       schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1',
+      harnessKind: input.harnessKind,
       assignmentRef: input.assignment.assignmentRef,
       pylonRef: input.assignment.pylonRef,
       owner: {
@@ -1511,8 +1584,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
       tokenUsage: {
         rowCount: tokenRowCount,
         refs: boundedProofRefs(tokenRefs, 'id'),
-        provider: PYLON_CODEX_PROVIDER,
-        model: PYLON_CODEX_MODEL_NAME,
+        provider: tokenIdentity.provider,
+        model: tokenIdentity.model,
         usageTruth: 'exact',
         demandKind: PYLON_CODEX_DEMAND_KIND,
         demandSource: PYLON_CODEX_DEMAND_SOURCE,
@@ -2940,6 +3013,7 @@ const routeProof = <Bindings>(
       try: () =>
         proofStore.readAssignmentProof({
           assignmentRef,
+          harnessKind: harnessKindForAssignment(assignment),
           closeoutPolicy: workerCloseoutProjection.closeoutPolicy,
           nowIso: routeNowIso(dependencies),
           ownerAgentUserId: session.user.id,
@@ -2990,6 +3064,7 @@ const routeTraceStatus = <Bindings>(
       try: () =>
         statusStore.readAssignmentTraceStatus({
           assignment,
+          harnessKind: harnessKindForAssignment(assignment),
           closeoutPolicy: workerCloseoutProjection.closeoutPolicy,
           nowIso: routeNowIso(dependencies),
           ownerAgentUserId: session.user.id,

@@ -130,6 +130,8 @@ export type PylonKhalaStatusResult = PylonKhalaStreamProjection & {
 
 export type PylonKhalaAssignmentTraceStatusResult = {
   assignmentRef: string
+  /** Absent on pre-CUT-06 Codex responses; legacy absence means Codex. */
+  harnessKind?: "codex" | "claude"
   closeoutPolicy?: {
     paymentMode: "no-spend" | "paid" | "unknown"
     payoutClaimAllowed: boolean | null
@@ -242,6 +244,8 @@ export type PylonKhalaWorkerCloseoutEvidence = {
 
 export type PylonKhalaProofResult = {
   assignmentRef: string
+  /** Absent on pre-CUT-06 Codex responses; legacy absence means Codex. */
+  harnessKind?: "codex" | "claude"
   closeoutPolicy?: PylonKhalaAssignmentTraceStatusResult["closeoutPolicy"]
   generatedAt: string
   ok: true
@@ -538,6 +542,7 @@ export function evaluatePylonKhalaProofChecklist(
   proof: Omit<PylonKhalaProofResult, "ok" | "proofChecklist">,
 ): PylonKhalaProofChecklist {
   const tokenUsageRefs = proof.tokenUsage.refs ?? []
+  const codexTraceEvidence = proof.harnessKind !== "claude"
   const items = [
     checklistItem(
       "check.khala_proof.schema.codex_assignment_proof_v1",
@@ -555,17 +560,28 @@ export function evaluatePylonKhalaProofChecklist(
         tokenUsageRefs.length >= Math.min(proof.tokenUsage.rowCount, 100),
     ),
     checklistItem(
-      "check.khala_proof.traces.owner_only_present",
+      codexTraceEvidence
+        ? "check.khala_proof.traces.owner_only_present"
+        : "check.khala_proof.claude.codex_traces_not_applicable",
       proof.traces.visibility === "owner_only" &&
-        hasProjectedRefsForCount(proof.traces.count, proof.traces.refs),
+        (codexTraceEvidence
+          ? hasProjectedRefsForCount(proof.traces.count, proof.traces.refs)
+          : proof.traces.count === 0 && proof.traces.refs.length === 0),
     ),
     checklistItem(
-      "check.khala_proof.raw_events.owner_only_present",
+      codexTraceEvidence
+        ? "check.khala_proof.raw_events.owner_only_present"
+        : "check.khala_proof.claude.codex_raw_events_not_applicable",
       proof.rawEvents.visibility === "owner_only" &&
-        proof.rawEvents.count > 0 &&
-        proof.rawEvents.eventCount > 0 &&
-        proof.rawEvents.byteLength > 0 &&
-        proof.rawEvents.refs.length >= proof.rawEvents.count,
+        (codexTraceEvidence
+          ? proof.rawEvents.count > 0 &&
+            proof.rawEvents.eventCount > 0 &&
+            proof.rawEvents.byteLength > 0 &&
+            proof.rawEvents.refs.length >= proof.rawEvents.count
+          : proof.rawEvents.count === 0 &&
+            proof.rawEvents.eventCount === 0 &&
+            proof.rawEvents.byteLength === 0 &&
+            proof.rawEvents.refs.length === 0),
     ),
     checklistItem(
       "check.khala_proof.generated_at.iso_timestamp",
@@ -764,6 +780,9 @@ export function evaluatePylonKhalaCloseoutChecklist(
     normalizePylonKhalaWorkerCloseout(proof.workerCloseout)
   const statusTokenUsageRefs = status.tokenUsage.refs ?? []
   const proofTokenUsageRefs = proof.tokenUsage.refs ?? []
+  const statusHarnessKind = status.harnessKind ?? "codex"
+  const proofHarnessKind = proof.harnessKind ?? "codex"
+  const codexTraceEvidence = statusHarnessKind === "codex"
   const items = [
     checklistItem(
       "check.khala_closeout.status_schema.codex_assignment_trace_status_v1",
@@ -776,6 +795,10 @@ export function evaluatePylonKhalaCloseoutChecklist(
     checklistItem(
       "check.khala_closeout.assignment_ref_consistent",
       status.assignmentRef === proof.assignmentRef,
+    ),
+    checklistItem(
+      "check.khala_closeout.harness_kind_consistent",
+      statusHarnessKind === proofHarnessKind,
     ),
     checklistItem(
       "check.khala_closeout.pylon_ref_consistent",
@@ -794,19 +817,32 @@ export function evaluatePylonKhalaCloseoutChecklist(
         status.lifecycle.rejectionRefs.length === 0,
     ),
     checklistItem(
-      "check.khala_closeout.trace_status.final_owner_trace_present",
-      status.progress.hasFinalTrace &&
-        status.traces.visibility === "owner_only" &&
-        status.traces.finalTraceUuid !== null &&
-        hasProjectedRefsForCount(status.traces.count, status.traces.refs),
+      codexTraceEvidence
+        ? "check.khala_closeout.trace_status.final_owner_trace_present"
+        : "check.khala_closeout.claude.codex_final_trace_not_applicable",
+      status.traces.visibility === "owner_only" &&
+        (codexTraceEvidence
+          ? status.progress.hasFinalTrace &&
+            status.traces.finalTraceUuid !== null &&
+            hasProjectedRefsForCount(status.traces.count, status.traces.refs)
+          : !status.progress.hasFinalTrace &&
+            status.traces.count === 0 &&
+            status.traces.refs.length === 0),
     ),
     checklistItem(
-      "check.khala_closeout.trace_status.raw_events_owner_only_present",
+      codexTraceEvidence
+        ? "check.khala_closeout.trace_status.raw_events_owner_only_present"
+        : "check.khala_closeout.claude.codex_raw_events_not_applicable",
       status.rawEvents.visibility === "owner_only" &&
-        status.rawEvents.count > 0 &&
-        status.rawEvents.eventCount > 0 &&
-        status.rawEvents.byteLength > 0 &&
-        status.rawEvents.refs.length >= status.rawEvents.count,
+        (codexTraceEvidence
+          ? status.rawEvents.count > 0 &&
+            status.rawEvents.eventCount > 0 &&
+            status.rawEvents.byteLength > 0 &&
+            status.rawEvents.refs.length >= status.rawEvents.count
+          : status.rawEvents.count === 0 &&
+            status.rawEvents.eventCount === 0 &&
+            status.rawEvents.byteLength === 0 &&
+            status.rawEvents.refs.length === 0),
     ),
     checklistItem(
       "check.khala_closeout.trace_status.token_usage_recorded",

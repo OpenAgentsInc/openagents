@@ -296,6 +296,7 @@ class MemoryProofStore
     this.inputs.push({ ...input })
     return Promise.resolve({
       schemaVersion: 'openagents.pylon.codex_assignment_proof.v1',
+      harnessKind: input.harnessKind,
       assignmentRef: input.assignmentRef,
       pylonRef: input.pylonRef,
       owner: {
@@ -346,6 +347,7 @@ class MemoryProofStore
   ): Promise<PylonCodexAssignmentTraceStatus> {
     return Promise.resolve({
       schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1',
+      harnessKind: input.harnessKind,
       assignmentRef: input.assignment.assignmentRef,
       pylonRef: input.assignment.pylonRef,
       owner: {
@@ -1464,6 +1466,7 @@ describe('Pylon Codex raw-event metadata read routing', () => {
 
     const proof = await store.readAssignmentProof({
       assignmentRef: 'assignment-pylon-codex-1',
+      harnessKind: 'codex',
       closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,
@@ -1807,6 +1810,7 @@ describe('GET /api/pylon/codex/proof', () => {
     expect(proofStore.inputs).toEqual([
       {
         assignmentRef: 'assignment-pylon-codex-1',
+        harnessKind: 'codex',
         nowIso,
         ownerAgentUserId: agentUserId,
         ownerUserId: linkedOpenAuthUserId,
@@ -2047,6 +2051,7 @@ describe('GET /api/pylon/codex/proof', () => {
 
     const proof = await store.readAssignmentProof({
       assignmentRef: 'assignment-pylon-codex-1',
+      harnessKind: 'codex',
       closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,
@@ -2160,6 +2165,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
 
     await store.readAssignmentTraceStatus({
       assignment: assignmentRecord(),
+      harnessKind: 'codex',
       closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,
@@ -2172,6 +2178,58 @@ describe('GET /api/pylon/codex/trace-status', () => {
     expect(eventQueries).toHaveLength(1)
     expect(eventQueries[0]).toContain('FROM pylon_assignment_events')
     expect(eventQueries[0]).not.toContain('FROM pylon_api_events')
+  })
+
+  test('Claude proof reads Claude exact usage without fabricating Codex traces', async () => {
+    const db = makeFakeProofD1()
+    db.tokenRows.push({
+      account_ref: `agent:${agentUserId}`,
+      actor_user_id: linkedOpenAuthUserId,
+      cache_read_tokens: 40,
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      id: 'event.inference.served-tokens.pylon-claude.final',
+      input_tokens: 100,
+      model: 'openagents/pylon-claude',
+      observed_at: '2026-07-11T12:00:00.000Z',
+      output_tokens: 25,
+      provider: 'pylon-claude-own-capacity',
+      reasoning_tokens: 5,
+      task_ref: 'assignment-pylon-claude-1',
+      total_tokens: 125,
+      usage_truth: 'exact',
+    })
+    const store = makeD1PylonCodexAssignmentProofStore(
+      db as unknown as D1Database,
+    )
+
+    const proof = await store.readAssignmentProof({
+      assignmentRef: 'assignment-pylon-claude-1',
+      closeoutPolicy: noSpendCloseoutPolicy,
+      harnessKind: 'claude',
+      nowIso,
+      ownerAgentUserId: agentUserId,
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+    })
+
+    expect(proof.harnessKind).toBe('claude')
+    expect(proof.tokenUsage).toMatchObject({
+      model: 'openagents/pylon-claude',
+      provider: 'pylon-claude-own-capacity',
+      rowCount: 1,
+      totalTokens: 125,
+    })
+    expect(proof.traces).toMatchObject({ count: 0, refs: [] })
+    expect(proof.rawEvents).toMatchObject({ count: 0, refs: [] })
+    expect(
+      db.preparedQueries.some(query => query.includes('FROM agent_traces')),
+    ).toBe(false)
+    expect(
+      db.preparedQueries.some(query =>
+        query.includes('FROM pylon_codex_raw_events'),
+      ),
+    ).toBe(false)
   })
 
   test('D1 trace status distinguishes live chunks from final exact closeout rows', async () => {
@@ -2248,6 +2306,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
 
     const inProgress = await store.readAssignmentTraceStatus({
       assignment: assignmentRecord(),
+      harnessKind: 'codex',
       closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,
@@ -2331,6 +2390,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
         closeoutRefs: ['assignment.closeout.fixture'],
         state: 'accepted_work',
       }),
+      harnessKind: 'codex',
       closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,

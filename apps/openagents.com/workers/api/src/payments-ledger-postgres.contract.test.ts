@@ -71,6 +71,19 @@ describe('translateLedgerPlaceholders', () => {
     ).toBe('SELECT * FROM t WHERE a = $1 AND b = $2')
   })
 
+  test('preserves explicit SQLite numbered bindings and advances anonymous bindings', () => {
+    expect(
+      translateLedgerPlaceholders(
+        'UPDATE t SET value = ?3 WHERE owner = ?1 AND key = ?2 OR fallback = ?',
+      ),
+    ).toBe(
+      'UPDATE t SET value = $3 WHERE owner = $1 AND key = $2 OR fallback = $4',
+    )
+    expect(
+      translateLedgerPlaceholders('SELECT ?2, ?1, ?2'),
+    ).toBe('SELECT $2, $1, $2')
+  })
+
   test('ignores ? inside string literals and quoted identifiers', () => {
     expect(
       translateLedgerPlaceholders(

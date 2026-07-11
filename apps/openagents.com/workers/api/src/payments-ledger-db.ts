@@ -16,8 +16,9 @@
 // ledger write must never silently succeed against a store nobody reads).
 //
 // Statement portability: the ledger builders keep D1-era `?` placeholders;
-// `translateLedgerPlaceholders` rewrites them to `$1..$n` outside string
-// literals/quoted identifiers. The builders' SQL is deliberately
+// `translateLedgerPlaceholders` rewrites both anonymous `?` and numbered
+// `?NNN` forms to `$n` outside string literals/quoted identifiers. The
+// builders' SQL is deliberately
 // dialect-portable (no `datetime('now')`, no `INSERT OR IGNORE` — guarded by
 // the test adapter in `test/payments-ledger-sqlite.ts` and by the real
 // Postgres contract suite in `payments-ledger-postgres.contract.test.ts`).
@@ -65,16 +66,18 @@ export class PaymentsLedgerUnavailableError extends Error {
 }
 
 /**
- * Rewrite D1-style `?` placeholders to Postgres `$1..$n`, skipping `?`
- * characters inside single-quoted string literals and double-quoted
- * identifiers.
+ * Rewrite D1-style anonymous `?` and numbered `?NNN` placeholders to
+ * Postgres `$n`, skipping `?` characters inside single-quoted string
+ * literals and double-quoted identifiers. Numbered placeholders preserve
+ * their explicit binding index, including out-of-order and repeated use.
  */
 export const translateLedgerPlaceholders = (sql: string): string => {
   let out = ''
-  let next = 0
+  let maxIndex = 0
   let inSingle = false
   let inDouble = false
-  for (const ch of sql) {
+  for (let offset = 0; offset < sql.length; offset += 1) {
+    const ch = sql[offset]!
     if (inSingle) {
       out += ch
       if (ch === "'") inSingle = false
@@ -96,8 +99,22 @@ export const translateLedgerPlaceholders = (sql: string): string => {
       continue
     }
     if (ch === '?') {
-      next += 1
-      out += `$${next}`
+      let end = offset + 1
+      while (end < sql.length && /[0-9]/u.test(sql[end]!)) end += 1
+      if (end > offset + 1) {
+        const explicitIndex = Number(sql.slice(offset + 1, end))
+        if (!Number.isSafeInteger(explicitIndex) || explicitIndex < 1) {
+          throw new PaymentsLedgerUnavailableError(
+            'SQLite numbered placeholder index is invalid',
+          )
+        }
+        maxIndex = Math.max(maxIndex, explicitIndex)
+        out += `$${explicitIndex}`
+        offset = end - 1
+      } else {
+        maxIndex += 1
+        out += `$${maxIndex}`
+      }
       continue
     }
     out += ch
