@@ -13,6 +13,7 @@ import type {
 } from "./conversation.js"
 import {
   KhalaConversationLiveEnvelopeSchema,
+  KhalaConversationLiveUpdateSchema,
   openKhalaConversationLive,
   type KhalaConversationLiveUpdate,
 } from "./live-conversation.js"
@@ -144,6 +145,7 @@ describe("cursor-aware live conversation subscription", () => {
 
     expect(updates).toHaveLength(1)
     expect(Schema.decodeUnknownSync(KhalaConversationLiveEnvelopeSchema)(updates[0]!.envelope)).toEqual(updates[0]!.envelope)
+    expect(Schema.decodeUnknownSync(KhalaConversationLiveUpdateSchema)(updates[0])).toEqual(updates[0])
     expect(updates[0]!.envelope).toMatchObject({
       cursor: 4,
       delivery: "confirmed",

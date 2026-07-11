@@ -99,6 +99,13 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).not.toContain("ipcMain.on(")
   })
 
+  test("main composes and resets the bounded Runtime Gateway live registry", () => {
+    expect(main).toContain("createDesktopRuntimeLiveSubscriptions")
+    expect(main).toContain("await runtimeLiveSubscriptions.reset()")
+    expect(main).toContain("() => runtimeLiveSubscriptions")
+    expect(main).not.toContain("conversation.live.update")
+  })
+
   test("Runtime Gateway contract cannot carry credentials, URLs, raw IPC, or process handles", () => {
     const contract = stripComments(read("src/runtime-gateway-contract.ts"))
     for (const banned of ["token", "credential", "ownerUserId", "authorUserId", "url", "MessagePort", "ipcRenderer", "processHandle", "argv"]) {

@@ -85,6 +85,7 @@ import {
 } from "./runtime-gateway-contract.ts"
 import { createDesktopRuntimeGateway } from "./runtime-gateway.ts"
 import { desktopRuntimeCapabilities } from "./runtime-gateway.ts"
+import { createDesktopRuntimeLiveSubscriptions } from "./runtime-live-subscriptions.ts"
 import {
   desktopOperationRef,
   decodeDesktopOperationContext,
@@ -172,6 +173,10 @@ const connectVerifiedDesktopSync = (): boolean => {
     return false
   }
 }
+const runtimeLiveSubscriptions = createDesktopRuntimeLiveSubscriptions({
+  conversation: () => hostLifecycle.sync()?.conversation() ?? null,
+  timeline: () => hostLifecycle.sync()?.timeline() ?? null,
+})
 const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
   sessionLocalState: desktopSessionState,
   syncLocalState: hostLifecycle.sync()?.status().state === "local_ready" ? "ready" : "unavailable",
@@ -185,17 +190,19 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       openExternal: url => shell.openExternal(url),
       signal,
     })
-    desktopSessionState = result.state === "verified"
-      ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
-      : result.state === "cancelled"
-        ? previous
-        : "unavailable"
+    if (result.state === "verified") {
+      await runtimeLiveSubscriptions.reset()
+      desktopSessionState = connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
+    } else {
+      desktopSessionState = result.state === "cancelled" ? previous : "unavailable"
+    }
     return result
   },
   signOut: async signal => {
     if (desktopSessionVault === null) return { state: "unavailable" }
     // Close and purge the account-linked Sync session before the renderer can
     // race another command against remote token revocation.
+    await runtimeLiveSubscriptions.reset()
     try { hostLifecycle.sync()?.unlinkAccount() } catch { /* remote revocation still runs */ }
     const result = await signOutDesktopSession({ vault: desktopSessionVault, signal })
     desktopSessionState = result.state
@@ -296,7 +303,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       }))))
     },
   }
-}, (stage, context) => desktopCorrelationJournal.record(stage, context))
+}, (stage, context) => desktopCorrelationJournal.record(stage, context), () => runtimeLiveSubscriptions)
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame

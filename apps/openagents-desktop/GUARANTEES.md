@@ -19,7 +19,9 @@ schema-decoded query/command/event seam.
 - Unsupported conversation commands return `unavailable`, never completed;
   runtime enqueues return only `unknown_pending_reconcile` until confirmed,
   and argument-free native-session commands return bounded phase outcomes.
-- Lifecycle events have a monotonic sequence and an owned disposer.
+- Lifecycle events have a monotonic sequence and an owned disposer. Live
+  conversation updates carry their own subscription generation/sequence and
+  durable cursor through the same decoded event channel.
 - Electron main validates the top-level bundled renderer before serving a
   request.
 - Tokens, credentials, URLs, raw runtime events, arbitrary IPC, `MessagePort`,
@@ -27,9 +29,9 @@ schema-decoded query/command/event seam.
 
 Protocol v7 carries bounded OpenAgents entry/exit, canonical confirmed-
 conversation operations, exact-ref runtime start/interrupt, durable command
-outcomes, and confirmed bounded agent-timeline snapshots. Provider execution
-stays behind the host; only canonical projected lifecycle items reach the
-renderer.
+outcomes, confirmed bounded agent-timeline snapshots, and typed cursor-aware
+conversation subscribe/resume/unsubscribe. Provider execution stays behind the
+host; only canonical projected lifecycle items reach the renderer.
 
 Contract:
 `openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
@@ -91,7 +93,8 @@ Protocol v7 carries schema-bounded `conversation.catalog`,
 `conversation.thread`, `conversation.timeline`, and exact-intent
 `conversation.commandOutcome` queries plus
 `conversation.create`, `conversation.append`, `conversation.start`, and
-`conversation.interrupt` commands.
+`conversation.interrupt` commands plus `conversation.subscribe` and
+`conversation.unsubscribe`.
 
 - Queries return confirmed public-safe refs/bodies/timestamps/entity versions,
   actual scope phase/cursor, and pending count.
@@ -102,6 +105,9 @@ Protocol v7 carries schema-bounded `conversation.catalog`,
   accepted, settled, expired, failed, or canceled with its confirmed version.
   Expired commands are terminal and never reach provider dispatch.
 - Not-live and read failure are typed, body-free unavailable results.
+- Live subscriptions carry bounded canonical snapshots with explicit
+  provisional/confirmed/interrupted delivery. Exact generation replacement,
+  stale unsubscribe, capacity, reset, and disposal are host-owned and typed.
 - Owner identity, credentials, native/store/session/overlay/transport objects,
   raw events, provider authority, and generic IPC do not cross preload.
 

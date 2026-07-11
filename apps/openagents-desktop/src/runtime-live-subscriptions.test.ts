@@ -145,6 +145,29 @@ describe("Desktop runtime live subscription registry", () => {
     }, () => undefined)).toEqual({ status: "unavailable" })
   })
 
+  test("reset closes current authority but permits a replacement session", async () => {
+    const h = harness()
+    const registry = createDesktopRuntimeLiveSubscriptions({
+      conversation: () => h.conversation,
+      timeline: () => h.timeline,
+    })
+    await registry.subscribe({
+      subscriptionRef: "subscription.desktop.reset",
+      generation: 1,
+      threadRef: "thread.desktop.reset",
+    }, () => undefined)
+    await registry.reset()
+    expect(registry.activeCount()).toBe(0)
+    expect(h.counts()).toEqual({ closes: 1, listeners: 0, opens: 1 })
+    expect(await registry.subscribe({
+      subscriptionRef: "subscription.desktop.reset",
+      generation: 2,
+      threadRef: "thread.desktop.reset",
+    }, () => undefined)).toEqual({ status: "subscribed" })
+    await registry.dispose()
+    expect(h.counts()).toEqual({ closes: 2, listeners: 0, opens: 2 })
+  })
+
   test("a failed open leaves no active slot or observer", async () => {
     const h = harness({ failOpen: true })
     const registry = createDesktopRuntimeLiveSubscriptions({

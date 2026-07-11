@@ -2,7 +2,7 @@
 
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-09 physical acceptance owner-deferred while the
-  recording phone is occupied; CUT-10 shared/mobile live subscriptions active)
+  recording phone is occupied; CUT-10 host/wire live subscriptions active)
 - Revision: 36
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -538,11 +538,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   by the
   [`live-event convergence receipt`](./2026-07-11-cut-10-live-event-convergence-receipt.md):
   shared Sync emits cursor-aware, generation-fenced, backpressure-coalesced
-  conversation updates, mobile no longer polls conversation timelines, and a
-  disjoint Desktop host registry now bounds/fences subscription lifetimes.
-  Desktop Runtime Gateway integration waits for active #8712 to release or
-  land its claimed gateway/composer files; neither session duplicates the
-  other's optional harness-selection work.
+  conversation updates, mobile no longer polls conversation timelines, and the
+  Desktop host registry/Gateway wire now bounds and fences subscription
+  lifetimes. #8712 released the Gateway files after landing its optional
+  harness-selection field; its active chat-UI/local-child work remains separate
+  from CUT-10's pending renderer consumer.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

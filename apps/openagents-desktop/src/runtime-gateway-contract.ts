@@ -6,11 +6,13 @@ import {
   ConfirmedChatMessageSchema as CanonicalConfirmedChatMessageSchema,
   ConfirmedChatThreadSchema as CanonicalConfirmedChatThreadSchema,
   KhalaSyncConversationStatusSchema as CanonicalKhalaSyncConversationStatusSchema,
+  KhalaConversationLiveUpdateSchema as CanonicalKhalaConversationLiveUpdateSchema,
   type ConfirmedAgentRun,
   type ConfirmedAgentTimelineEvent,
   type ConfirmedChatMessage,
   type ConfirmedChatThread,
   type KhalaSyncConversationStatus,
+  type KhalaConversationLiveUpdate,
 } from "@openagentsinc/khala-sync-client"
 import { CodexHistoryCatalogSchema, CodexHistoryPageSchema } from "./codex-history-contract.ts"
 import { DesktopOperationContextSchema } from "./desktop-operation-context.ts"
@@ -35,6 +37,7 @@ const ConfirmedAgentTimelineEventSchema = canonicalBoundary<ConfirmedAgentTimeli
 const ConfirmedChatMessageSchema = canonicalBoundary<ConfirmedChatMessage>(CanonicalConfirmedChatMessageSchema)
 const ConfirmedChatThreadSchema = canonicalBoundary<ConfirmedChatThread>(CanonicalConfirmedChatThreadSchema)
 const KhalaSyncConversationStatusSchema = canonicalBoundary<KhalaSyncConversationStatus>(CanonicalKhalaSyncConversationStatusSchema)
+const KhalaConversationLiveUpdateSchema = canonicalBoundary<KhalaConversationLiveUpdate>(CanonicalKhalaConversationLiveUpdateSchema)
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
@@ -163,6 +166,18 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
       }),
       Schema.Struct({ id: Schema.Literal("session.sign_in") }),
       Schema.Struct({ id: Schema.Literal("session.sign_out") }),
+      Schema.Struct({
+        id: Schema.Literal("conversation.subscribe"),
+        subscriptionRef: PublicRefSchema,
+        generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+        threadRef: PublicRefSchema,
+        afterCursor: Schema.optional(Schema.NullOr(NonNegativeIntSchema)),
+      }),
+      Schema.Struct({
+        id: Schema.Literal("conversation.unsubscribe"),
+        subscriptionRef: PublicRefSchema,
+        generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+      }),
     ]),
   }),
 ])
@@ -285,18 +300,41 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
   }),
   Schema.Struct({
     ...OperationContextField,
+    kind: Schema.Literal("conversation_subscription_outcome"),
+    commandId: Schema.String,
+    subscriptionRef: PublicRefSchema,
+    generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+    status: Schema.Literals([
+      "subscribed",
+      "already_subscribed",
+      "unsubscribed",
+      "not_found",
+      "stale_generation",
+      "capacity_exceeded",
+      "unavailable",
+    ]),
+    activeGeneration: Schema.optional(Schema.Number.check(
+      Schema.isInt(),
+      Schema.isGreaterThan(0),
+    )),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("request_rejected"),
     reason: Schema.Literals(["invalid_request", "untrusted_renderer", "gateway_disposed"]),
   }),
 ])
 export type DesktopRuntimeGatewayResponse = typeof DesktopRuntimeGatewayResponseSchema.Type
 
-export const DesktopRuntimeGatewayEventSchema = Schema.Struct({
-  kind: Schema.Literal("runtime.lifecycle"),
-  protocolVersion: Schema.Literal(DesktopRuntimeGatewayProtocolVersion),
-  sequence: Schema.Number,
-  phase: Schema.Literals(["ready", "disposed"]),
-})
+export const DesktopRuntimeGatewayEventSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("runtime.lifecycle"),
+    protocolVersion: Schema.Literal(DesktopRuntimeGatewayProtocolVersion),
+    sequence: Schema.Number,
+    phase: Schema.Literals(["ready", "disposed"]),
+  }),
+  KhalaConversationLiveUpdateSchema,
+])
 export type DesktopRuntimeGatewayEvent = typeof DesktopRuntimeGatewayEventSchema.Type
 
 const decode = (schema: any, value: unknown): unknown | null => {

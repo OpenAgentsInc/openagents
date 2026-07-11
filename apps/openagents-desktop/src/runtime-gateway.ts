@@ -15,6 +15,7 @@ import type {
   DesktopCorrelationStage,
   DesktopOperationContext,
 } from "./desktop-operation-context.ts"
+import type { DesktopRuntimeLiveSubscriptions } from "./runtime-live-subscriptions.ts"
 
 type CapabilityState = Readonly<{
   id: DesktopRuntimeCapabilityId
@@ -159,12 +160,17 @@ export const createDesktopRuntimeGateway = (
   identityTier:()=>"local_only"|"account_linked"|"local_unavailable"=()=>"local_unavailable",
   runtimeCommands: () => DesktopRuntimeCommands | null = () => null,
   observeOperation: (stage: DesktopCorrelationStage, context: DesktopOperationContext) => void = () => undefined,
+  liveSubscriptions: () => DesktopRuntimeLiveSubscriptions | null = () => null,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
   let sessionActionInFlight = false
   let sessionActionAbort: AbortController | null = null
   const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
+
+  const publish = (event: DesktopRuntimeGatewayEvent): void => {
+    for (const listener of [...listeners]) listener(event)
+  }
 
   const emit = (next: "ready" | "disposed"): void => {
     const event: DesktopRuntimeGatewayEvent = {
@@ -173,7 +179,7 @@ export const createDesktopRuntimeGateway = (
       protocolVersion: DesktopRuntimeGatewayProtocolVersion,
       sequence: ++sequence,
     }
-    for (const listener of [...listeners]) listener(event)
+    publish(event)
   }
 
   return {
@@ -308,6 +314,44 @@ export const createDesktopRuntimeGateway = (
             identityTier:identityTier(),
           },
         }
+      }
+      if (
+        request.command.id === "conversation.subscribe" ||
+        request.command.id === "conversation.unsubscribe"
+      ) {
+        const command = request.command
+        const service = liveSubscriptions()
+        if (service === null) {
+          return Promise.resolve({
+            kind: "conversation_subscription_outcome" as const,
+            commandId: request.commandId,
+            subscriptionRef: command.subscriptionRef,
+            generation: command.generation,
+            status: "unavailable" as const,
+          })
+        }
+        if (command.id === "conversation.subscribe") {
+          return service.subscribe(command, update => publish(update)).then(result => ({
+            kind: "conversation_subscription_outcome" as const,
+            commandId: request.commandId,
+            subscriptionRef: command.subscriptionRef,
+            generation: command.generation,
+            status: result.status,
+            ...(result.status === "stale_generation"
+              ? { activeGeneration: result.activeGeneration }
+              : {}),
+          }))
+        }
+        return service.unsubscribe(
+          command.subscriptionRef,
+          command.generation,
+        ).then(unsubscribed => ({
+          kind: "conversation_subscription_outcome" as const,
+          commandId: request.commandId,
+          subscriptionRef: command.subscriptionRef,
+          generation: command.generation,
+          status: unsubscribed ? "unsubscribed" as const : "not_found" as const,
+        }))
       }
       if (
         request.command.id === "conversation.create" ||
@@ -481,6 +525,8 @@ export const createDesktopRuntimeGateway = (
       sessionActionAbort = null
       emit("disposed")
       listeners.clear()
+      const service = liveSubscriptions()
+      if (service !== null) void service.dispose()
     },
   }
 }

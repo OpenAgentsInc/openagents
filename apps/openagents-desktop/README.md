@@ -110,7 +110,9 @@ Pylon credentials, a loopback URL, raw runtime events, general IPC, or a raw
 
 Runtime Gateway protocol v7 now carries the authoritative conversation path:
 confirmed catalog/thread/current-timeline queries, canonical create/append
-enqueues, and exact thread/message/run start or interrupt commands. Enqueue is
+enqueues, exact thread/message/run start or interrupt commands, and typed
+cursor-aware subscribe/resume/unsubscribe over the existing decoded event
+channel. Enqueue is
 reported only as `pending_reconcile` or `unknown_pending_reconcile`. The
 Effect Native shell streams bounded canonical text, reasoning, tool/plan,
 usage, interruption, connection, and terminal items from confirmed Sync; raw
@@ -133,6 +135,11 @@ provider. The real Desktop and Expo SQLite adapters reconstruct the same
 partial timeline and terminal after close/reopen. The built Runtime Gateway v7
 smoke covers correlation and teardown; the physical-mobile network-gap receipt
 remains a separate #8689/#8677 close gate.
+
+The live host registry is capped, generation-fenced, and backpressure-
+coalesced. Authenticated Sync replacement/sign-out resets all current
+subscriptions; Runtime Gateway disposal closes the registry. Renderer
+conversation polling removal remains the final CUT-10 consumer step.
 
 Protocol v7 also carries a separate owner-local Codex history catalog/page
 capability. Active and archived (including zstd) rollouts are indexed in the

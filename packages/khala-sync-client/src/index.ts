@@ -96,8 +96,10 @@ export {
   type KhalaConversationLiveMetrics,
   type KhalaConversationLiveOptions,
   type KhalaConversationLiveSnapshot,
+  KhalaConversationLiveSnapshotSchema,
   type KhalaConversationLiveSubscription,
   type KhalaConversationLiveUpdate,
+  KhalaConversationLiveUpdateSchema,
   openKhalaConversationLive,
 } from "./live-conversation.js"
 

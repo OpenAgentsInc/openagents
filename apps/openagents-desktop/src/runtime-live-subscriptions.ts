@@ -30,6 +30,7 @@ export type DesktopRuntimeLiveSubscriptions = Readonly<{
     generation: number,
   ) => KhalaConversationLiveMetrics | null
   activeCount: () => number
+  reset: () => Promise<void>
   dispose: () => Promise<void>
 }>
 
@@ -63,6 +64,11 @@ export const createDesktopRuntimeLiveSubscriptions = (input: Readonly<{
     const result = operations.then(operation, operation)
     operations = result.then(() => undefined, () => undefined)
     return result
+  }
+  const closeAll = async (): Promise<void> => {
+    const closing = [...active.values()]
+    active.clear()
+    await Promise.all(closing.map(entry => entry.subscription.close()))
   }
 
   return {
@@ -124,12 +130,14 @@ export const createDesktopRuntimeLiveSubscriptions = (input: Readonly<{
         : current.subscription.metrics()
     },
     activeCount: () => active.size,
+    reset: () => serialize(async () => {
+      if (disposed) return
+      await closeAll()
+    }),
     dispose: () => serialize(async () => {
       if (disposed) return
       disposed = true
-      const closing = [...active.values()]
-      active.clear()
-      await Promise.all(closing.map(entry => entry.subscription.close()))
+      await closeAll()
     }),
   }
 }

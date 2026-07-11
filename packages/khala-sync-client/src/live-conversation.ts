@@ -1,14 +1,16 @@
 import { Effect, Schema } from "effect"
 
-import type {
-  ConfirmedChatMessage,
-  ConfirmedChatThread,
-  KhalaSyncConversation,
-  KhalaSyncConversationStatus,
+import {
+  ConfirmedChatMessageSchema,
+  ConfirmedChatThreadSchema,
+  KhalaSyncConversationStatusSchema,
+  type KhalaSyncConversation,
+  type KhalaSyncConversationStatus,
 } from "./conversation.js"
-import type {
-  ConfirmedAgentTimelineSnapshot,
-  KhalaSyncAgentTimeline,
+import {
+  ConfirmedAgentRunSchema,
+  ConfirmedAgentTimelineEventSchema,
+  type KhalaSyncAgentTimeline,
 } from "./agent-timeline.js"
 
 const LiveRefSchema = Schema.String.check(
@@ -59,17 +61,32 @@ export const KhalaConversationLiveEnvelopeSchema = Schema.Union([
 export type KhalaConversationLiveEnvelope =
   typeof KhalaConversationLiveEnvelopeSchema.Type
 
-export type KhalaConversationLiveSnapshot = Readonly<{
-  status: KhalaSyncConversationStatus
-  thread: ConfirmedChatThread | null
-  messages: ReadonlyArray<ConfirmedChatMessage>
-  timeline: ConfirmedAgentTimelineSnapshot | null
-}>
+const KhalaConversationLiveTimelineSnapshotSchema = Schema.Struct({
+  status: KhalaSyncConversationStatusSchema,
+  run: Schema.NullOr(ConfirmedAgentRunSchema),
+  events: Schema.Array(ConfirmedAgentTimelineEventSchema).check(
+    Schema.isMaxLength(500),
+  ),
+})
 
-export type KhalaConversationLiveUpdate = Readonly<{
-  envelope: KhalaConversationLiveEnvelope
-  snapshot: KhalaConversationLiveSnapshot | null
-}>
+export const KhalaConversationLiveSnapshotSchema = Schema.Struct({
+  status: KhalaSyncConversationStatusSchema,
+  thread: Schema.NullOr(ConfirmedChatThreadSchema),
+  messages: Schema.Array(ConfirmedChatMessageSchema).check(
+    Schema.isMaxLength(500),
+  ),
+  timeline: Schema.NullOr(KhalaConversationLiveTimelineSnapshotSchema),
+})
+export type KhalaConversationLiveSnapshot =
+  typeof KhalaConversationLiveSnapshotSchema.Type
+
+export const KhalaConversationLiveUpdateSchema = Schema.Struct({
+  kind: Schema.Literal("conversation.live.update"),
+  envelope: KhalaConversationLiveEnvelopeSchema,
+  snapshot: Schema.NullOr(KhalaConversationLiveSnapshotSchema),
+})
+export type KhalaConversationLiveUpdate =
+  typeof KhalaConversationLiveUpdateSchema.Type
 
 export type KhalaConversationLiveSubscription = Readonly<{
   close: () => Promise<void>
@@ -163,6 +180,7 @@ export const openKhalaConversationLive = async (
     } catch (error) {
       options.onError?.(error)
       return {
+        kind: "conversation.live.update",
         envelope: {
           kind: "conversation.live",
           delivery: "interrupted",
@@ -219,6 +237,7 @@ export const openKhalaConversationLive = async (
     }
     if (reason !== undefined || delivery === "interrupted") {
       return {
+        kind: "conversation.live.update",
         envelope: {
           ...baseEnvelope,
           delivery: "interrupted",
@@ -228,6 +247,7 @@ export const openKhalaConversationLive = async (
       }
     }
     return {
+      kind: "conversation.live.update",
       envelope: {
         ...baseEnvelope,
         delivery,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
+import type { KhalaConversationLiveUpdate } from "@openagentsinc/khala-sync-client"
 
 import {
   decodeDesktopRuntimeGatewayEvent,
@@ -8,6 +9,7 @@ import {
 } from "../src/runtime-gateway-contract.ts"
 import { createDesktopRuntimeGateway, desktopRuntimeCapabilities } from "../src/runtime-gateway.ts"
 import { openAgentsDesktopUxContractRegistry } from "../src/contracts/ux-contracts.ts"
+import type { DesktopRuntimeLiveSubscriptions } from "../src/runtime-live-subscriptions.ts"
 
 const contractId = "openagents_desktop.seam.runtime_gateway_closed_protocol.v1"
 
@@ -662,6 +664,154 @@ describe("Desktop Runtime Gateway", () => {
       kind: "request_rejected",
       reason: "gateway_disposed",
     })
+  })
+
+  test("routes cursor-aware live subscribe, update, unsubscribe, and disposal", async () => {
+    const calls: Array<string> = []
+    let publish: ((update: KhalaConversationLiveUpdate) => void | Promise<void>) | undefined
+    const service: DesktopRuntimeLiveSubscriptions = {
+      subscribe: async (request, listener) => {
+        calls.push(`subscribe:${request.subscriptionRef}:${request.generation}:${request.afterCursor}`)
+        publish = listener
+        return { status: "subscribed" }
+      },
+      unsubscribe: async (subscriptionRef, generation) => {
+        calls.push(`unsubscribe:${subscriptionRef}:${generation}`)
+        return true
+      },
+      metrics: () => null,
+      activeCount: () => 1,
+      reset: async () => { calls.push("reset") },
+      dispose: async () => { calls.push("dispose") },
+    }
+    const gateway = createDesktopRuntimeGateway(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => service,
+    )
+    const events: Array<unknown> = []
+    gateway.subscribe(event => events.push(event))
+    gateway.start()
+
+    const subscribeRequest = decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "subscribe-1",
+      command: {
+        id: "conversation.subscribe",
+        subscriptionRef: "subscription.gateway.1",
+        generation: 2,
+        threadRef: "thread.gateway.1",
+        afterCursor: 7,
+      },
+    })
+    if (subscribeRequest === null) throw new Error("subscribe request did not decode")
+    expect(await gateway.request(subscribeRequest)).toEqual({
+      kind: "conversation_subscription_outcome",
+      commandId: "subscribe-1",
+      subscriptionRef: "subscription.gateway.1",
+      generation: 2,
+      status: "subscribed",
+    })
+
+    const update: KhalaConversationLiveUpdate = {
+      kind: "conversation.live.update",
+      envelope: {
+        kind: "conversation.live",
+        delivery: "confirmed",
+        subscriptionRef: "subscription.gateway.1",
+        generation: 2,
+        sequence: 1,
+        threadRef: "thread.gateway.1",
+        cursor: 8,
+        recovery: "resumed",
+        messageRefs: ["message.gateway.1"],
+        eventRefs: [],
+      },
+      snapshot: {
+        status: { phase: "live", cursor: 8, pendingMutationCount: 0 },
+        thread: {
+          threadRef: "thread.gateway.1",
+          title: "Gateway live",
+          messageCount: 1,
+          lastMessageAt: "2026-07-11T16:00:00.000Z",
+          updatedAt: "2026-07-11T16:00:00.000Z",
+          version: 8,
+        },
+        messages: [{
+          messageRef: "message.gateway.1",
+          threadRef: "thread.gateway.1",
+          body: "Confirmed",
+          createdAt: "2026-07-11T16:00:00.000Z",
+          updatedAt: "2026-07-11T16:00:00.000Z",
+          version: 8,
+        }],
+        timeline: null,
+      },
+    }
+    await publish?.(update)
+    expect(events.at(-1)).toEqual(update)
+    expect(decodeDesktopRuntimeGatewayEvent(events.at(-1))).toEqual(update)
+
+    expect(await gateway.request({
+      kind: "command",
+      commandId: "unsubscribe-1",
+      command: {
+        id: "conversation.unsubscribe",
+        subscriptionRef: "subscription.gateway.1",
+        generation: 2,
+      },
+    })).toEqual({
+      kind: "conversation_subscription_outcome",
+      commandId: "unsubscribe-1",
+      subscriptionRef: "subscription.gateway.1",
+      generation: 2,
+      status: "unsubscribed",
+    })
+    gateway.dispose()
+    await Promise.resolve()
+    expect(calls).toEqual([
+      "subscribe:subscription.gateway.1:2:7",
+      "unsubscribe:subscription.gateway.1:2",
+      "dispose",
+    ])
+  })
+
+  test("live subscription operations fail closed without a host registry", async () => {
+    const gateway = createDesktopRuntimeGateway()
+    gateway.start()
+    expect(await gateway.request({
+      kind: "command",
+      commandId: "subscribe-unavailable",
+      command: {
+        id: "conversation.subscribe",
+        subscriptionRef: "subscription.gateway.unavailable",
+        generation: 1,
+        threadRef: "thread.gateway.unavailable",
+      },
+    })).toEqual({
+      kind: "conversation_subscription_outcome",
+      commandId: "subscribe-unavailable",
+      subscriptionRef: "subscription.gateway.unavailable",
+      generation: 1,
+      status: "unavailable",
+    })
+    expect(decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "subscribe-invalid",
+      command: {
+        id: "conversation.subscribe",
+        subscriptionRef: "subscription.gateway.invalid",
+        generation: 0,
+        threadRef: "thread.gateway.invalid",
+      },
+    })).toBeNull()
   })
 
   test("rejects unknown operations at the schema boundary", () => {

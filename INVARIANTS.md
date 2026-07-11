@@ -646,8 +646,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-mobile/tests/mobile-conversation.test.ts`. The Desktop host
   registry additionally bounds active slots, closes a prior generation before
   replacement, fences stale unsubscribe, and disposes all slots once. Runtime
-  Gateway wire adoption remains CUT-10 work and is not implied by these native
-  host rungs.
+  Gateway v7 now schema-decodes the full bounded update and exposes typed
+  subscribe/resume/unsubscribe outcomes through the existing event channel;
+  main resets the registry before Sync authority replacement or sign-out and
+  gateway disposal closes it. Renderer consumption remains CUT-10 work and is
+  not implied by these host/wire rungs.
 
 **Planned live-agent portability model boundary:**
 
