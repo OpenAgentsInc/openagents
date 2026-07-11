@@ -21,8 +21,10 @@ import { makeDomRenderer } from "@effect-native/render-dom"
 
 import {
   unavailableCodexSettingsBridge,
+  unavailableProviderAccountsSettingsBridge,
   type CodexSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
+  type ProviderAccountsSettingsBridge,
 } from "./settings.ts"
 import {
   unavailableFleetAccountsBridge,
@@ -137,6 +139,20 @@ const fleetAccountsBridge: FleetAccountsBridge = {
     return typeof bridge?.providerAccounts?.usage === "function"
       ? bridge.providerAccounts.usage(ref)
       : unavailableFleetAccountsBridge.usage(ref)
+  },
+}
+
+/**
+ * Settings Claude-accounts bridge over the same preload providerAccounts
+ * surface. Degrades to the explicit unavailable projection when the bridge
+ * is absent; the settings handlers schema-decode every response.
+ */
+const providerAccountsSettingsBridge: ProviderAccountsSettingsBridge = {
+  list: () => {
+    const bridge = readBridge()
+    return typeof bridge?.providerAccounts?.list === "function"
+      ? bridge.providerAccounts.list()
+      : unavailableProviderAccountsSettingsBridge.list()
   },
 }
 
@@ -303,7 +319,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge),
     )
     const historyCatalog = yield* Effect.promise(historyHost.catalog)
     if (historyCatalog !== null) {

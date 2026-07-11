@@ -10,14 +10,17 @@ import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import {
   connectStatusIsLive,
   decodeAccountsView,
+  decodeClaudeAccountsView,
   decodeConnectStatusView,
   decodeOpenAgentsSessionView,
   initialSettingsState,
   settingsView,
   withSettingsAccounts,
+  withSettingsClaudeAccounts,
   withSettingsConnectStatus,
   type CodexSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
+  type ProviderAccountsSettingsBridge,
 } from "./settings.ts"
 import {
   desktopShellIntents,
@@ -149,6 +152,47 @@ describe("settingsView (state -> component tree)", () => {
     )
   })
 
+  test("Claude accounts render read-only rows with readiness chips and no connect button", () => {
+    const view = settingsView(
+      withSettingsClaudeAccounts(initialSettingsState(), {
+        state: "loaded",
+        accounts: [
+          { ref: "claude", readiness: "ready" },
+          { ref: "claude-2", readiness: "credentials-missing" },
+        ],
+      }),
+    )
+    expect(nodeByKey(view, "settings-claude-accounts-title")?.content).toBe("Claude accounts")
+    expect(nodeByKey(view, "settings-claude-account-claude-ref")?.content).toBe("claude")
+    const ready = nodeByKey(view, "settings-claude-account-claude-readiness")
+    expect(ready?._tag).toBe("Badge")
+    expect(ready?.label).toBe("ready")
+    expect(ready?.tone).toBe("success")
+    expect(nodeByKey(view, "settings-claude-account-claude-2-readiness")?.label).toBe("credentials-missing")
+    expect(collectNodes(view).filter(node => node._tag === "Button" && typeof node.key === "string" && node.key.startsWith("settings-claude"))).toEqual([])
+  })
+
+  test("Claude accounts render honest empty and unavailable states", () => {
+    const empty = settingsView(
+      withSettingsClaudeAccounts(initialSettingsState(), { state: "loaded", accounts: [] }),
+    )
+    expect(nodeByKey(empty, "settings-claude-accounts-empty")?.content).toBe(
+      "No Claude accounts linked on this machine.",
+    )
+    const unavailable = settingsView(
+      withSettingsClaudeAccounts(initialSettingsState(), {
+        state: "unavailable",
+        message: "Claude account listing is unavailable on this build.",
+      }),
+    )
+    expect(nodeByKey(unavailable, "settings-claude-accounts-unavailable")?.content).toContain(
+      "unavailable",
+    )
+    expect(nodeByKey(settingsView(initialSettingsState()), "settings-claude-accounts-loading")?.content).toBe(
+      "Loading Claude accounts…",
+    )
+  })
+
   test("awaiting_browser shows the clickable link and the user code LARGE (heading)", () => {
     const awaiting = settingsView(
       withSettingsConnectStatus(loadedAccounts, {
@@ -244,6 +288,25 @@ describe("bridge payload decoding (renderer side)", () => {
     expect(decodeAccountsView(null).state).toBe("unavailable")
     expect(decodeAccountsView({ state: "ok", accounts: [{ ref: "../evil", readiness: "x" }] }))
       .toEqual({ state: "loaded", accounts: [] })
+  })
+
+  test("claude accounts decode: keeps only bounded claude_agent entries, degrades to unavailable", () => {
+    expect(decodeClaudeAccountsView({
+      generatedAt: "2026-07-11T12:00:00.000Z",
+      accounts: [
+        { ref: "claude", provider: "claude_agent", email: "owner@example.com", readiness: "ready" },
+        { ref: "codex-2", provider: "codex", email: null, readiness: "ready" },
+        { ref: "../evil", provider: "claude_agent", readiness: "ready" },
+      ],
+    })).toEqual({
+      state: "loaded",
+      accounts: [{ ref: "claude", readiness: "ready" }],
+    })
+    expect(decodeClaudeAccountsView(null)).toEqual({
+      state: "unavailable",
+      message: "Claude account listing is unavailable on this build.",
+    })
+    expect(decodeClaudeAccountsView({ accounts: "garbage" }).state).toBe("unavailable")
   })
 
   test("connect status decode rejects non-https URLs and malformed codes/refs", () => {
@@ -353,6 +416,79 @@ describe("typed intent loop end-to-end (settings)", () => {
         }
         yield* registry.dispatch(resolveIntentRef(back.onPress, null))
         expect((yield* SubscriptionRef.get(state)).workspace).toBe("chat")
+      }),
+    )
+  })
+
+  test("Settings toggle lists Claude accounts through the provider-accounts bridge", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const providerBridge: ProviderAccountsSettingsBridge = {
+          list: async () => ({
+            generatedAt: "2026-07-11T12:00:00.000Z",
+            accounts: [
+              { ref: "claude", provider: "claude_agent", email: "owner@example.com", readiness: "ready" },
+              { ref: "codex-2", provider: "codex", email: null, readiness: "ready" },
+            ],
+          }),
+        }
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(
+            state,
+            () => "18:05",
+            undefined,
+            undefined,
+            undefined,
+            makeBridge([], []),
+            async () => {},
+            undefined,
+            undefined,
+            providerBridge,
+          ),
+        )
+        const toggle = navItemById(desktopShellView(yield* SubscriptionRef.get(state)), "shell-settings-toggle") as {
+          onSelect: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(toggle.onSelect, null))
+        const after = yield* SubscriptionRef.get(state)
+        expect(after.settings.claudeAccounts).toEqual({
+          state: "loaded",
+          accounts: [{ ref: "claude", readiness: "ready" }],
+        })
+        const view = desktopShellView(after)
+        expect(nodeByKey(view, "settings-claude-account-claude-readiness")?.label).toBe("ready")
+      }),
+    )
+  })
+
+  test("Settings toggle degrades to an explicit unavailable Claude section when the bridge is absent", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(
+            state,
+            () => "18:05",
+            undefined,
+            undefined,
+            undefined,
+            makeBridge([], []),
+            async () => {},
+          ),
+        )
+        const toggle = navItemById(desktopShellView(yield* SubscriptionRef.get(state)), "shell-settings-toggle") as {
+          onSelect: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(toggle.onSelect, null))
+        const after = yield* SubscriptionRef.get(state)
+        expect(after.settings.claudeAccounts).toEqual({
+          state: "unavailable",
+          message: "Claude account listing is unavailable on this build.",
+        })
+        expect(nodeByKey(desktopShellView(after), "settings-claude-accounts-unavailable")?.content).toContain("unavailable")
       }),
     )
   })

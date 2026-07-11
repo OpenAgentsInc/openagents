@@ -36,6 +36,11 @@ export type CodexAccountsView =
   | Readonly<{ state: "loaded"; accounts: ReadonlyArray<CodexAccountItem> }>
   | Readonly<{ state: "unavailable"; message: string }>
 
+export type ClaudeAccountsView =
+  | Readonly<{ state: "loading" }>
+  | Readonly<{ state: "loaded"; accounts: ReadonlyArray<CodexAccountItem> }>
+  | Readonly<{ state: "unavailable"; message: string }>
+
 export type CodexConnectStatusView =
   | Readonly<{ state: "idle" }>
   | Readonly<{ state: "starting" }>
@@ -45,6 +50,7 @@ export type CodexConnectStatusView =
 
 export type SettingsState = Readonly<{
   accounts: CodexAccountsView
+  claudeAccounts: ClaudeAccountsView
   connect: CodexConnectStatusView
   openAgentsSession: DesktopOpenAgentsSessionView
 }>
@@ -60,6 +66,7 @@ export type DesktopOpenAgentsSessionView =
 
 export const initialSettingsState = (): SettingsState => ({
   accounts: { state: "loading" },
+  claudeAccounts: { state: "loading" },
   connect: { state: "idle" },
   openAgentsSession: "loading",
 })
@@ -74,6 +81,16 @@ const RendererAccountsResultSchema = Schema.Union([
   }),
   Schema.Struct({ state: Schema.Literal("unavailable"), message: Schema.String }),
 ])
+
+const RendererProviderAccountsSchema = Schema.Struct({
+  generatedAt: Schema.String,
+  accounts: Schema.Array(Schema.Struct({
+    ref: Schema.String,
+    provider: Schema.String,
+    readiness: Schema.String,
+    email: Schema.optional(Schema.NullOr(Schema.String)),
+  })),
+})
 
 const RendererConnectStatusSchema = Schema.Union([
   Schema.Struct({ state: Schema.Literal("idle") }),
@@ -117,6 +134,22 @@ export const decodeAccountsView = (value: unknown): CodexAccountsView => {
     accounts: decoded.value.accounts.filter(
       (account) => accountRefPattern.test(account.ref) && account.readiness.length <= 80,
     ),
+  }
+}
+
+export const decodeClaudeAccountsView = (value: unknown): ClaudeAccountsView => {
+  const decoded = Schema.decodeUnknownExit(RendererProviderAccountsSchema)(value)
+  if (!Exit.isSuccess(decoded)) {
+    return { state: "unavailable", message: "Claude account listing is unavailable on this build." }
+  }
+  return {
+    state: "loaded",
+    accounts: decoded.value.accounts
+      .filter((account) =>
+        account.provider === "claude_agent" &&
+        accountRefPattern.test(account.ref) &&
+        account.readiness.length <= 80)
+      .map((account) => ({ ref: account.ref, readiness: account.readiness })),
   }
 }
 
@@ -175,6 +208,14 @@ export const unavailableCodexSettingsBridge: CodexSettingsBridge = {
   openVerification: async () => false,
 }
 
+export type ProviderAccountsSettingsBridge = Readonly<{
+  list: () => Promise<unknown>
+}>
+
+export const unavailableProviderAccountsSettingsBridge: ProviderAccountsSettingsBridge = {
+  list: async () => null,
+}
+
 export type OpenAgentsSessionSettingsBridge = Readonly<{
   status: () => Promise<unknown>
   signIn: () => Promise<unknown>
@@ -195,6 +236,11 @@ export const withSettingsAccounts = (
   settings: SettingsState,
   accounts: CodexAccountsView,
 ): SettingsState => ({ ...settings, accounts })
+
+export const withSettingsClaudeAccounts = (
+  settings: SettingsState,
+  claudeAccounts: ClaudeAccountsView,
+): SettingsState => ({ ...settings, claudeAccounts })
 
 export const withSettingsConnectStatus = (
   settings: SettingsState,
@@ -252,6 +298,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
   openAgentsBridge: OpenAgentsSessionSettingsBridge = unavailableOpenAgentsSessionSettingsBridge,
   sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   maxPolls = 1_300, // ~15 minutes at 700ms — matches main's device-auth timeout
+  providerAccountsBridge: ProviderAccountsSettingsBridge = unavailableProviderAccountsSettingsBridge,
 ) => {
   const update = (transform: (current: S) => S) => SubscriptionRef.update(state, transform)
 
@@ -286,10 +333,16 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         yield* update((next) => ({
           ...next,
           workspace: "settings",
-          settings: withSettingsAccounts(next.settings, { state: "loading" }),
+          settings: withSettingsClaudeAccounts(
+            withSettingsAccounts(next.settings, { state: "loading" }),
+            { state: "loading" },
+          ),
         } as S))
         const accounts = decodeAccountsView(
           yield* Effect.promise(() => bridge.listAccounts().catch(() => null)),
+        )
+        const claudeAccounts = decodeClaudeAccountsView(
+          yield* Effect.promise(() => providerAccountsBridge.list().catch(() => null)),
         )
         const openAgentsSession = decodeOpenAgentsSessionView(
           yield* Effect.promise(() => openAgentsBridge.status().catch(() => null)),
@@ -297,7 +350,10 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         yield* update((next) => ({
           ...next,
           settings: {
-            ...withSettingsAccounts(next.settings, accounts),
+            ...withSettingsClaudeAccounts(
+              withSettingsAccounts(next.settings, accounts),
+              claudeAccounts,
+            ),
             openAgentsSession,
           },
         }))
@@ -374,10 +430,10 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
 const readinessTone = (readiness: string): "success" | "warn" | "neutral" =>
   readiness === "ready" ? "success" : readiness.startsWith("credentials_") ? "warn" : "neutral"
 
-const accountRow = (account: CodexAccountItem): View =>
+const accountRow = (keyPrefix: string) => (account: CodexAccountItem): View =>
   Stack(
     {
-      key: `settings-account-${account.ref}`,
+      key: `${keyPrefix}-${account.ref}`,
       direction: "row",
       gap: "2",
       align: "center",
@@ -385,14 +441,14 @@ const accountRow = (account: CodexAccountItem): View =>
     },
     [
       Text({
-        key: `settings-account-${account.ref}-ref`,
+        key: `${keyPrefix}-${account.ref}-ref`,
         content: account.ref,
         variant: "body",
         color: "textPrimary",
       }),
-      Spacer({ key: `settings-account-${account.ref}-fill`, flex: true }),
+      Spacer({ key: `${keyPrefix}-${account.ref}-fill`, flex: true }),
       Badge({
-        key: `settings-account-${account.ref}-readiness`,
+        key: `${keyPrefix}-${account.ref}-readiness`,
         label: account.readiness,
         tone: readinessTone(account.readiness),
         a11y: { label: `Account ${account.ref} readiness: ${account.readiness}` },
@@ -431,7 +487,41 @@ const accountsSection = (accounts: CodexAccountsView): ReadonlyArray<View> => {
       }),
     ]
   }
-  return accounts.accounts.map(accountRow)
+  return accounts.accounts.map(accountRow("settings-account"))
+}
+
+const claudeAccountsSection = (accounts: ClaudeAccountsView): ReadonlyArray<View> => {
+  if (accounts.state === "loading") {
+    return [
+      Text({
+        key: "settings-claude-accounts-loading",
+        content: "Loading Claude accounts…",
+        variant: "body",
+        color: "textMuted",
+      }),
+    ]
+  }
+  if (accounts.state === "unavailable") {
+    return [
+      Text({
+        key: "settings-claude-accounts-unavailable",
+        content: accounts.message,
+        variant: "body",
+        color: "textMuted",
+      }),
+    ]
+  }
+  if (accounts.accounts.length === 0) {
+    return [
+      Text({
+        key: "settings-claude-accounts-empty",
+        content: "No Claude accounts linked on this machine.",
+        variant: "body",
+        color: "textMuted",
+      }),
+    ]
+  }
+  return accounts.accounts.map(accountRow("settings-claude-account"))
 }
 
 const connectStatusSection = (connect: CodexConnectStatusView): ReadonlyArray<View> => {
@@ -588,6 +678,13 @@ export const settingsView = (settings: SettingsState): View => {
           a11y: { label: "Connect a Codex account with the isolated device-auth flow" },
         }),
         ...connectStatusSection(settings.connect),
+        Text({
+          key: "settings-claude-accounts-title",
+          content: "Claude accounts",
+          variant: "label",
+          color: "textMuted",
+        }),
+        ...claudeAccountsSection(settings.claudeAccounts),
       ]),
     ],
   )
