@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694)
-- Status: deterministic catalog/navigation core and visible Effect Native
-  directory/restart binding active through `81edf160e6`; production native
-  link/notification delivery and physical iOS/Android receipts remain open
+- Status: deterministic catalog/navigation, visible Effect Native directory,
+  restart binding, and native URL/notification delivery active through
+  `5aeabdbb1e`; physical iOS/Android receipts remain open
 - Contract: `openagents_mobile.coding.authenticated_navigation.v1`
 
 ## Greenfield ownership
@@ -74,10 +74,13 @@ thread.
   expectations.
 - Full greenfield mobile after visible integration: 74 pass, 0 fail, 327
   expectations; typecheck passes.
+- Native delivery focus proves bounded offline retry, serial activation, stale
+  rejection, queue overflow, initial/live source ownership, and teardown.
+- Full greenfield mobile after native delivery: 77 pass, 0 fail, 345
+  expectations; typecheck and `expo config --type public` pass.
 
 ## Residual
 
-CUT-14 remains open. The next tranche must wire native URL and notification
-event delivery through the already-enforced target resolver. Physical iOS and
-Android process-death/reconnect receipts remain required and owner-deferred
-while the recording phone is not available.
+CUT-14 remains open only for physical iOS and Android process-death/reconnect
+receipts. Those are owner-deferred while the recording phone is not available;
+the deterministic and native-host implementation is complete.

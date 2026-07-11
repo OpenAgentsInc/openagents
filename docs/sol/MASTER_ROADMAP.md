@@ -3,8 +3,8 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 complete; CUT-14 authenticated mobile directory/restart binding active)
-- Revision: 53
+  CUT-13 complete; CUT-14 mobile implementation complete, physical receipts open)
+- Revision: 54
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -626,8 +626,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   groups sessions under confirmed repositories and dispatches one typed
   selection intent; exact process-restart restoration and repository/session
   switches bind a closeable no-poll conversation lease, while superseded
-  generations and late updates are fenced. Native URL/notification event
-  delivery and physical iOS/Android receipts remain open. See
+  generations and late updates are fenced. Initial/live URLs and notification
+  responses now enter a bounded serial queue, wait for verified live authority,
+  and pass through the same exact target resolver; teardown removes both native
+  listeners. Only physical iOS/Android process-death/reconnect receipts remain
+  open. See
   [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402

@@ -52,7 +52,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — schema/Sync/root + real Claude child binding + Gateway v8 reconnect implemented; named Claude/Codex source traces captured; Codex transport convergence + named confirmed reconnect pending | D1 / agent graph | CUT-06, CUT-10 deterministic no-poll path |
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) — shared presentation model + mobile and Desktop thread agent stacks landed; physical iOS/Android receipts pending | D1 / agent UX | CUT-01, CUT-11 graph contract/delivery |
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) — closed `0c49648217`; canonical shared/hosted/device-local catalog, typed Desktop navigation, and restart/reload recovery receipt | D2 / project-session contract | CUT-04, CUT-10 |
-| 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) — authenticated live catalog, visible Effect Native directory, exact thread restore, bounded target resolver, and live generation fence landed; native event delivery + physical receipts pending | M1 / mobile binding | CUT-01, CUT-13 |
+| 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) — deterministic/native implementation complete through `5aeabdbb1e`; authenticated directory, exact restore, live fence, and URL/notification delivery landed; physical receipts pending | M1 / mobile binding | CUT-01, CUT-13 |
 | 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) | D2 / commands | CUT-13 |
 | 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) | D1-D2 / interaction | CUT-12, CUT-15 |
 | 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) | D3 / workspace | CUT-13 |
@@ -635,8 +635,12 @@ groups current sessions beneath confirmed repositories and its typed session
 intent opens the exact thread through one closeable no-poll conversation lease.
 Verified restart resolves the persisted target before conversation selection
 instead of choosing the first chat row. Full greenfield mobile tests pass 74/74
-with 327 expectations and typecheck passes. Native link/notification event
-delivery and physical iOS/Android receipts remain open.
+with 327 expectations and typecheck passes. Initial/live URLs and notification
+responses now feed a bounded serial queue that waits for live authority, uses
+the same exact resolver, coalesces concurrent flushes, rejects stale targets,
+and removes its listeners on teardown. Full mobile passes 77/77 with 345
+expectations; typecheck and Expo public-config validation pass. Only physical
+iOS/Android process-death/reconnect receipts remain open.
 See
 [`2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 
