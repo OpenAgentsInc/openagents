@@ -5,6 +5,7 @@ import {
   type RuntimeInteractionDecision,
   type RuntimeInteractionPayload,
 } from "@openagentsinc/agent-runtime-schema"
+import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import { Effect } from "effect"
 
 export type PylonRuntimeInteractionBridgeErrorReason =
@@ -133,3 +134,44 @@ export const requestPylonRuntimeInteraction = (
     terminalAt: terminal.lifecycle.terminalAt,
   }
 })
+
+/**
+ * Claude SDK adapter. Raw tool input is returned only to the same SDK call on
+ * confirmed approval; the durable request builder receives refs and labels,
+ * never the input payload.
+ */
+export const createClaudeCanUseToolInteractionController = (input: Readonly<{
+  authority: PylonRuntimeInteractionAuthority
+  requestFor: (tool: Readonly<{
+    toolName: string
+    toolUseId: string
+  }>) => PylonRuntimeInteractionRequest
+}>): CanUseTool => async (toolName, toolInput, options) => {
+  try {
+    const outcome = await Effect.runPromise(
+      requestPylonRuntimeInteraction(
+        input.authority,
+        input.requestFor({ toolName, toolUseId: options.toolUseID }),
+      ),
+      { signal: options.signal },
+    )
+    if (
+      outcome.state === "resolved" &&
+      outcome.decision.kind === "tool_approval" &&
+      outcome.decision.outcome === "approve"
+    ) {
+      return { behavior: "allow", updatedInput: toolInput }
+    }
+    return {
+      behavior: "deny",
+      message: outcome.state === "resolved"
+        ? "Denied by confirmed OpenAgents authority."
+        : "OpenAgents approval is no longer actionable.",
+    }
+  } catch {
+    return {
+      behavior: "deny",
+      message: "OpenAgents approval authority is unavailable.",
+    }
+  }
+}

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 
 import {
+  createClaudeCanUseToolInteractionController,
   PylonRuntimeInteractionBridgeError,
   requestPylonRuntimeInteraction,
   type PylonRuntimeInteractionAuthority,
@@ -119,6 +120,72 @@ describe("Pylon runtime interaction bridge", () => {
       expect(error).toBeInstanceOf(PylonRuntimeInteractionBridgeError)
       expect(error.reason).toBe(reason)
       expect(String(error)).not.toContain("Allow the bounded workspace edit?")
+    }
+  })
+
+  test("maps only confirmed Claude tool approval to allow and keeps raw input out of authority", async () => {
+    const requested: unknown[] = []
+    const controller = createClaudeCanUseToolInteractionController({
+      authority: {
+        request: interaction => Effect.sync(() => { requested.push(interaction) }),
+        awaitTerminal: () => Effect.succeed(terminal({
+          status: "resolved",
+          envelope: {
+            decisionRef: "decision.pylon.claude.1",
+            idempotencyKey: "idem.pylon.claude.1",
+            decidedAt: "2026-07-11T23:01:00.000Z",
+            surface: "desktop",
+            decision: { kind: "tool_approval", outcome: "approve" },
+          },
+        })),
+      },
+      requestFor: tool => ({
+        ...request,
+        payload: {
+          ...request.payload,
+          toolCallId: tool.toolUseId,
+          toolName: tool.toolName,
+        },
+      }),
+    })
+    const rawInput = { command: "private command must stay provider-local" }
+    expect(await controller("Bash", rawInput, {
+      signal: new AbortController().signal,
+      toolUseID: "tool_call.claude.1",
+    })).toEqual({ behavior: "allow", updatedInput: rawInput })
+    const encoded = JSON.stringify(requested)
+    expect(encoded).toContain("tool_call.claude.1")
+    expect(encoded).toContain('"toolName":"Bash"')
+    expect(encoded).not.toContain("private command")
+  })
+
+  test("maps denial, expiry, and authority failure to bounded Claude deny results", async () => {
+    const cases: ReadonlyArray<readonly [PylonRuntimeInteractionAuthority, string]> = [
+      [{
+        request: () => Effect.void,
+        awaitTerminal: () => Effect.succeed(terminal({
+          status: "resolved",
+          envelope: { decisionRef: "decision.deny", idempotencyKey: "idem.deny", decidedAt: request.requestedAt, surface: "mobile", decision: { kind: "tool_approval", outcome: "deny" } },
+        })),
+      }, "Denied by confirmed OpenAgents authority."],
+      [{
+        request: () => Effect.void,
+        awaitTerminal: () => Effect.succeed(terminal({ status: "expired", terminalAt: request.expiresAt, reasonRef: "reason.expired" })),
+      }, "OpenAgents approval is no longer actionable."],
+      [{
+        request: () => Effect.fail("offline"),
+        awaitTerminal: () => Effect.never,
+      }, "OpenAgents approval authority is unavailable."],
+    ]
+    for (const [authority, message] of cases) {
+      const controller = createClaudeCanUseToolInteractionController({
+        authority,
+        requestFor: () => request,
+      })
+      expect(await controller("Write", {}, {
+        signal: new AbortController().signal,
+        toolUseID: "tool_call.claude.deny",
+      })).toEqual({ behavior: "deny", message })
     }
   })
 })
