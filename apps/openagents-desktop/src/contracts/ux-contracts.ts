@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.24",
+    version: "2026-07-11.25",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
@@ -1039,6 +1039,62 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun test src/renderer/runtime-agent-graph.test.ts src/renderer/runtime-conversation.test.ts src/renderer/shell.test.ts plus typecheck, full test, build, and Electron smoke in apps/openagents-desktop; shared projection tests/typecheck run in packages/khala-sync-client.",
+      },
+      // =====================================================================
+      // EP250 UI-owned reconnect lane — separate block: parallel lanes also
+      // edit this registry; the coordinator owns the version bump on merge.
+      // =====================================================================
+      {
+        contractId: "openagents_desktop.settings.ui_owned_codex_reconnect.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Settings Codex account reconnect",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "owner-video-review",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "don't recommend me the CLI command for Fleet Connect. We're doing stuff with the UI now. Like, CLI stuff is nice, but the UI controls need to be working.",
+        authorityBoundary:
+          "The Settings Codex section owns connect AND per-account reconnect through the hardened device-auth bridge: the reconnect action carries exactly one grammar-validated account ref that main re-validates against its own registry listing before spawning the receipted per-ref re-auth (auth codex --account <ref> --force-device-login into the SAME isolated home; never ~/.codex). Fleet stays overview-only — its broken-credential rows navigate to Settings via the existing DesktopSettingsToggled intent and mutate nothing. No settings state renders copy instructing the user to run a CLI command, and no tokens, emails, or raw child output cross the bridge.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/settings.ts",
+          "apps/openagents-desktop/src/codex-connect.ts",
+          "apps/openagents-desktop/src/codex-connect-contract.ts",
+          "apps/openagents-desktop/src/renderer/fleet-workspace.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "ui_owned_reconnect.settings_rows_and_no_cli_copy",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/settings.test.ts",
+            description:
+              "Proves credential-failed rows render a working per-account Reconnect button (ready rows none), the full intent loop drives the ref-targeted bridge through awaiting_browser to connected with the accounts projection re-listed so readiness flips without restart (including after a FAILED exit), and that NO settings state renders copy matching a CLI-command pattern.",
+          },
+          {
+            id: "ui_owned_reconnect.per_ref_spawn_receipt",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/codex-connect.test.ts",
+            description:
+              "Proves startReconnect spawns exactly auth codex --account <ref> --force-device-login for a ref main itself listed, refuses unknown or malformed refs typed, holds single-flight across connect and reconnect, and surfaces the bounded public-safe pylon-auth failure detail.",
+          },
+          {
+            id: "ui_owned_reconnect.fleet_fix_in_settings",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/fleet-workspace.test.ts",
+            description:
+              "Proves broken-credential fleet rows carry the Fix in Settings navigation over the existing DesktopSettingsToggled intent with no account mutation from Fleet, and that a successful probe this session clears a stale reconnect override (probe evidence rules).",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the settings, codex-connect, and fleet suites plus the Electron smoke journey asserting the revoked fixture account renders its Reconnect button in Settings.",
       },
     ],
   };

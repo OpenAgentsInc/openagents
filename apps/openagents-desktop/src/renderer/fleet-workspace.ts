@@ -348,11 +348,18 @@ export const fleetReconnectRequired = (
   fleet: FleetWorkspaceState,
   account: FleetAccount,
 ): boolean => {
-  const ledgerReconnect = fleet.ledger?.rows.some((row) =>
+  // Probe evidence rules in BOTH directions (EP250): a failed probe raises
+  // the override, and a subsequent SUCCESSFUL probe this session clears a
+  // stale ledger flag — after a UI reconnect the account is live again, and
+  // the session ledger's sticky reconnectRequired must not outrank fresher
+  // real-auth evidence. Usage entries are reset on every accounts refresh,
+  // so a "checked" entry is always evidence from the current projection.
+  const probeState = fleet.usage[account.ref]?.state
+  if (probeState === "checked") return false
+  if (probeState === "failed") return true
+  return fleet.ledger?.rows.some((row) =>
     row.accountRef === account.ref && row.provider === account.provider &&
     row.reconnectRequired) ?? false
-  const probeFailed = fleet.usage[account.ref]?.state === "failed"
-  return ledgerReconnect || probeFailed
 }
 
 /** Lit ONLY on decoded ready evidence; everything else is explicitly not lit. */
@@ -516,15 +523,45 @@ const fleetAccountsTable = (fleet: FleetWorkspaceState): View =>
         Text({ key: `fleet-email-${account.ref}`, content: account.email ?? "—", variant: "caption", color: "textMuted" }),
         // Readiness honesty: a session-observed revoked credential or failed
         // probe supersedes the projection's presence-based value in the cell.
-        fleetReconnectRequired(fleet, account)
-          ? Badge({
-              key: `fleet-readiness-${account.ref}`,
-              label: "reconnect required",
-              tone: "warn",
-              a11y: {
-                label: `Account ${account.ref} readiness: reconnect required (probe evidence supersedes presence-based ${account.readiness})`,
+        // Broken-credential rows carry a "Fix in Settings" navigation (EP250:
+        // Fleet stays overview-only — account MANAGEMENT lives in Settings,
+        // reached through the existing DesktopSettingsToggled intent; no
+        // account mutation happens from this view).
+        fleetReconnectRequired(fleet, account) || account.readiness === "credentials-missing"
+          ? Stack(
+              {
+                key: `fleet-readiness-cell-${account.ref}`,
+                direction: "row",
+                gap: "1",
+                align: "center",
               },
-            })
+              [
+                fleetReconnectRequired(fleet, account)
+                  ? Badge({
+                      key: `fleet-readiness-${account.ref}`,
+                      label: "reconnect required",
+                      tone: "warn",
+                      a11y: {
+                        label: `Account ${account.ref} readiness: reconnect required (probe evidence supersedes presence-based ${account.readiness})`,
+                      },
+                    })
+                  : Badge({
+                      key: `fleet-readiness-${account.ref}`,
+                      label: account.readiness,
+                      tone: readinessTone(account.readiness),
+                      a11y: { label: `Account ${account.ref} readiness: ${account.readiness}` },
+                    }),
+                Button({
+                  key: `fleet-fix-${account.ref}`,
+                  label: "Fix in Settings",
+                  variant: "ghost",
+                  onPress: IntentRef("DesktopSettingsToggled"),
+                  a11y: {
+                    label: `Fix account ${account.ref} in Settings (reconnect runs there)`,
+                  },
+                }),
+              ],
+            )
           : Badge({
               key: `fleet-readiness-${account.ref}`,
               label: account.readiness,

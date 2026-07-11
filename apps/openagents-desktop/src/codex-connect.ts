@@ -52,6 +52,22 @@ const stripAnsi = (value: string): string =>
   value.replace(/\u001b/g, "").replace(/\[[0-9;]*m/g, "")
 
 /**
+ * Bounded public-safe failure detail (EP250 owner receipt: the CLI's
+ * `Pylon auth failed: <detail>` was collapsed to a bare `pylon_auth_failed`,
+ * hiding the actual reason from the UI). Emails, home paths, and token-like
+ * material are redacted before anything crosses the bridge; the contract
+ * decode additionally caps failure reasons at 120 chars.
+ */
+export const publicSafeFailureDetail = (value: string): string =>
+  value
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "<email>")
+    .replace(/(?:\/Users|\/home|\/private|~)\/\S*/g, "<path>")
+    .replace(/\b(?:oa_agent_\S+|sk-\S+|Bearer\s+\S+|eyJ[\w-]{8,}\S*)/g, "<redacted>")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100)
+
+/**
  * Incremental line parser over a child stdio stream. Feed chunks as they
  * arrive; complete lines produce typed events. A URL line followed by a
  * user-code line yields `awaiting_browser` (the pylon CLI may print two
@@ -82,7 +98,15 @@ export const createDeviceAuthStdoutParser = () => {
       return { kind: "failed", reason: "credentials_invalid_relogin_incomplete" }
     }
     if (line.startsWith("Pylon auth failed")) {
-      return { kind: "failed", reason: "pylon_auth_failed" }
+      // Surface the actual (public-safe, bounded) detail — the bare token hid
+      // the real reason from the owner while the flow had half-succeeded.
+      const detail = publicSafeFailureDetail(
+        line.slice("Pylon auth failed".length).replace(/^[:\s]+/, ""),
+      )
+      return {
+        kind: "failed",
+        reason: detail === "" ? "pylon_auth_failed" : `pylon_auth_failed: ${detail}`,
+      }
     }
     return null
   }
@@ -186,6 +210,15 @@ const collectStream = (stream: NodeJS.ReadableStream | null, onChunk: (text: str
 export type CodexConnectService = Readonly<{
   listAccounts: () => Promise<CodexAccountsResult>
   start: () => CodexConnectStatus
+  /**
+   * Re-auth an EXISTING registered account into its existing isolated home
+   * (EP250 owner mandate: the UI owns reconnect). Receipted CLI behavior:
+   * `pylon auth codex --account <ref> --force-device-login` targets the same
+   * ref/home (apps/pylon/src/auth.ts accountRef ?? nextCodexAccountRef;
+   * pylon-core account-connect runs device login into the SAME home when
+   * forced). The ref must be one main itself listed from the registry.
+   */
+  startReconnect: (ref: string) => CodexConnectStatus
   status: () => CodexConnectStatus
   openVerification: () => Promise<boolean>
   dispose: () => void
@@ -202,6 +235,10 @@ export const makeCodexConnectService = (
   let disposed = false
   let child: ChildLike | null = null
   let connectTimer: ReturnType<typeof setTimeout> | null = null
+  // Refs main itself has listed from the pylon registry. Reconnect only
+  // accepts one of these: the renderer can pick among refs main has seen,
+  // never inject an arbitrary target.
+  const knownRefs = new Set<string>()
   const listOperations = new Set<Readonly<{
     child: ChildLike
     finish: (result: CodexAccountsResult) => void
@@ -241,6 +278,9 @@ export const makeCodexConnectService = (
         done = true
         if (timer !== null) clearTimeout(timer)
         if (operation !== null) listOperations.delete(operation)
+        if (result.state === "ok") {
+          for (const account of result.accounts) knownRefs.add(account.ref)
+        }
         resolve(result)
       }
       operation = { child: listChild, finish }
@@ -261,13 +301,13 @@ export const makeCodexConnectService = (
       })
     })
 
-  const start = (): CodexConnectStatus => {
+  const launchDeviceAuth = (cliArgs: ReadonlyArray<string>): CodexConnectStatus => {
     if (disposed) return { state: "failed", reason: "pylon_runtime_unavailable" }
     if (current.state === "starting" || current.state === "awaiting_browser") {
       return current // single-flight: one device-auth attempt at a time
     }
     current = { state: "starting" }
-    const connectChild = spawnPylon(["auth", "codex"])
+    const connectChild = spawnPylon(cliArgs)
     if (connectChild === null) {
       current = { state: "failed", reason: "pylon_runtime_unavailable" }
       return current
@@ -312,9 +352,33 @@ export const makeCodexConnectService = (
     return current
   }
 
+  const start = (): CodexConnectStatus => launchDeviceAuth(["auth", "codex"])
+
+  const startReconnect = (ref: string): CodexConnectStatus => {
+    if (disposed) return { state: "failed", reason: "pylon_runtime_unavailable" }
+    if (current.state === "starting" || current.state === "awaiting_browser") {
+      return current // single-flight holds across connect AND reconnect
+    }
+    // Grammar first, then membership in main's own listing — the renderer may
+    // only pick among refs this service has itself read from the registry.
+    if (!codexAccountRefPattern.test(ref)) {
+      current = { state: "failed", reason: "invalid_account_ref" }
+      return current
+    }
+    if (!knownRefs.has(ref)) {
+      current = { state: "failed", reason: "unknown_account_ref" }
+      return current
+    }
+    // Receipted per-ref re-auth (apps/pylon/src/auth.ts: --account targets
+    // the existing ref; --force-device-login re-runs device auth into the
+    // SAME isolated home even when a stale auth.json is present).
+    return launchDeviceAuth(["auth", "codex", "--account", ref, "--force-device-login"])
+  }
+
   return {
     listAccounts,
     start,
+    startReconnect,
     status: () => disposed ? { state: "failed", reason: "pylon_runtime_unavailable" } : current,
     openVerification: async () => {
       // The renderer sends no URL: main opens only the URL it parsed itself.

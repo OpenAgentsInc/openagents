@@ -16,6 +16,7 @@ import {
   IntentRef,
   Spacer,
   Stack,
+  StaticPayload,
   Text,
   defineIntent,
   type View,
@@ -52,6 +53,12 @@ export type SettingsState = Readonly<{
   accounts: CodexAccountsView
   claudeAccounts: ClaudeAccountsView
   connect: CodexConnectStatusView
+  /**
+   * The account ref a RECONNECT flow is targeting (EP250 UI-owned
+   * reconnect), or null when the flow is a new-account connect. Display
+   * only — the authoritative target lives in main.
+   */
+  connectTarget: string | null
   openAgentsSession: DesktopOpenAgentsSessionView
 }>
 
@@ -68,6 +75,7 @@ export const initialSettingsState = (): SettingsState => ({
   accounts: { state: "loading" },
   claudeAccounts: { state: "loading" },
   connect: { state: "idle" },
+  connectTarget: null,
   openAgentsSession: "loading",
 })
 
@@ -194,6 +202,11 @@ export const decodeOpenAgentsSessionView = (
 export type CodexSettingsBridge = Readonly<{
   listAccounts: () => Promise<unknown>
   connectStart: () => Promise<unknown>
+  /**
+   * Per-account re-auth into the SAME isolated ref/home (EP250 UI-owned
+   * reconnect). Optional so older hosts degrade to the honest failure.
+   */
+  reconnectStart?: (ref: string) => Promise<unknown>
   connectStatus: () => Promise<unknown>
   openVerification: () => Promise<unknown>
 }>
@@ -204,6 +217,7 @@ export const unavailableCodexSettingsBridge: CodexSettingsBridge = {
     message: "Local Pylon runtime is unavailable. No accounts were read.",
   }),
   connectStart: async () => ({ state: "failed", reason: "pylon_runtime_unavailable" }),
+  reconnectStart: async () => ({ state: "failed", reason: "pylon_runtime_unavailable" }),
   connectStatus: async () => ({ state: "failed", reason: "pylon_runtime_unavailable" }),
   openVerification: async () => false,
 }
@@ -260,6 +274,15 @@ export const DesktopCodexConnectRequested = defineIntent(
   "DesktopCodexConnectRequested",
   Schema.Null,
 )
+/**
+ * Per-account reconnect (EP250 owner mandate: "the UI controls need to be
+ * working" — no CLI). Payload is the target account ref; the handler and
+ * main both re-validate it against the listed accounts.
+ */
+export const DesktopCodexReconnectRequested = defineIntent(
+  "DesktopCodexReconnectRequested",
+  Schema.String,
+)
 export const DesktopCodexVerificationOpened = defineIntent(
   "DesktopCodexVerificationOpened",
   Schema.Null,
@@ -276,6 +299,7 @@ export const DesktopOpenAgentsSignOutRequested = defineIntent(
 export const settingsIntents = [
   DesktopSettingsToggled,
   DesktopCodexConnectRequested,
+  DesktopCodexReconnectRequested,
   DesktopCodexVerificationOpened,
   DesktopOpenAgentsSignInRequested,
   DesktopOpenAgentsSignOutRequested,
@@ -302,6 +326,23 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
 ) => {
   const update = (transform: (current: S) => S) => SubscriptionRef.update(state, transform)
 
+  /**
+   * Re-read the accounts projection through the bridge. Runs after EVERY
+   * terminal connect/reconnect status — success AND failure (EP250 receipt:
+   * a flow that exited non-zero had still written valid credentials and
+   * registered a new ref; the list re-read must surface it either way), so
+   * readiness flips without an app restart.
+   */
+  const refreshAccounts = Effect.gen(function* () {
+    const accounts = decodeAccountsView(
+      yield* Effect.promise(() => bridge.listAccounts().catch(() => null)),
+    )
+    yield* update((next) => ({
+      ...next,
+      settings: withSettingsAccounts(next.settings, accounts),
+    }))
+  })
+
   const pollConnectStatus = Effect.gen(function* () {
     for (let index = 0; index < maxPolls; index += 1) {
       const current = yield* SubscriptionRef.get(state)
@@ -316,9 +357,41 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         ...next,
         settings: withSettingsConnectStatus(next.settings, status),
       }))
-      if (!connectStatusIsLive(status)) return
+      if (!connectStatusIsLive(status)) {
+        yield* refreshAccounts
+        return
+      }
     }
   })
+
+  /** Shared connect/reconnect flow: start, then poll to terminal + re-list. */
+  const runConnectFlow = (
+    target: string | null,
+    startCall: () => Promise<unknown>,
+  ) =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      if (connectStatusIsLive(current.settings.connect)) return
+      yield* update((next) => ({
+        ...next,
+        settings: {
+          ...withSettingsConnectStatus(next.settings, { state: "starting" }),
+          connectTarget: target,
+        },
+      }))
+      const started = decodeConnectStatusView(
+        yield* Effect.promise(() => startCall().catch(() => null)),
+      )
+      yield* update((next) => ({
+        ...next,
+        settings: withSettingsConnectStatus(next.settings, started),
+      }))
+      if (connectStatusIsLive(started)) {
+        yield* pollConnectStatus
+      } else {
+        yield* refreshAccounts
+      }
+    })
 
   return {
     DesktopSettingsToggled: () =>
@@ -358,24 +431,20 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
           },
         }))
       }),
-    DesktopCodexConnectRequested: () =>
+    DesktopCodexConnectRequested: () => runConnectFlow(null, () => bridge.connectStart()),
+    DesktopCodexReconnectRequested: (ref: string) =>
       Effect.gen(function* () {
         const current = yield* SubscriptionRef.get(state)
-        if (connectStatusIsLive(current.settings.connect)) return
-        yield* update((next) => ({
-          ...next,
-          settings: withSettingsConnectStatus(next.settings, { state: "starting" }),
-        }))
-        const started = decodeConnectStatusView(
-          yield* Effect.promise(() => bridge.connectStart().catch(() => null)),
-        )
-        yield* update((next) => ({
-          ...next,
-          settings: withSettingsConnectStatus(next.settings, started),
-        }))
-        if (connectStatusIsLive(started)) {
-          yield* pollConnectStatus
+        // The renderer may only target a ref it is actually displaying; main
+        // re-validates against its own registry listing regardless.
+        const accounts = current.settings.accounts
+        if (accounts.state !== "loaded" || !accounts.accounts.some((account) => account.ref === ref)) {
+          return
         }
+        yield* runConnectFlow(ref, () =>
+          bridge.reconnectStart === undefined
+            ? Promise.resolve({ state: "failed", reason: "pylon_runtime_unavailable" })
+            : bridge.reconnectStart(ref))
       }),
     DesktopCodexVerificationOpened: () =>
       Effect.gen(function* () {
@@ -456,7 +525,57 @@ const accountRow = (keyPrefix: string) => (account: CodexAccountItem): View =>
     ],
   )
 
-const accountsSection = (accounts: CodexAccountsView): ReadonlyArray<View> => {
+/**
+ * A Codex account row: ref + readiness chip, plus a per-account Reconnect
+ * button whenever the account's credential evidence is anything other than
+ * a clean "ready" (EP250 owner mandate: the UI owns reconnect — the button
+ * drives the receipted per-ref re-auth `--account <ref> --force-device-login`
+ * into the SAME isolated home; no CLI instruction ever renders).
+ */
+const codexAccountRow = (connectLive: boolean) => (account: CodexAccountItem): View =>
+  Stack(
+    {
+      key: `settings-account-${account.ref}`,
+      direction: "row",
+      gap: "2",
+      align: "center",
+      style: { width: "full" },
+    },
+    [
+      Text({
+        key: `settings-account-${account.ref}-ref`,
+        content: account.ref,
+        variant: "body",
+        color: "textPrimary",
+      }),
+      Spacer({ key: `settings-account-${account.ref}-fill`, flex: true }),
+      Badge({
+        key: `settings-account-${account.ref}-readiness`,
+        label: account.readiness,
+        tone: readinessTone(account.readiness),
+        a11y: { label: `Account ${account.ref} readiness: ${account.readiness}` },
+      }),
+      ...(account.readiness === "ready"
+        ? []
+        : [
+            Button({
+              key: `settings-account-${account.ref}-reconnect`,
+              label: connectLive ? "Waiting…" : "Reconnect",
+              variant: "secondary",
+              disabled: connectLive,
+              onPress: IntentRef("DesktopCodexReconnectRequested", StaticPayload(account.ref)),
+              a11y: {
+                label: `Reconnect Codex account ${account.ref} with the isolated device-auth flow`,
+              },
+            }),
+          ]),
+    ],
+  )
+
+const accountsSection = (
+  accounts: CodexAccountsView,
+  connectLive: boolean,
+): ReadonlyArray<View> => {
   if (accounts.state === "loading") {
     return [
       Text({
@@ -487,7 +606,7 @@ const accountsSection = (accounts: CodexAccountsView): ReadonlyArray<View> => {
       }),
     ]
   }
-  return accounts.accounts.map(accountRow("settings-account"))
+  return accounts.accounts.map(codexAccountRow(connectLive))
 }
 
 const claudeAccountsSection = (accounts: ClaudeAccountsView): ReadonlyArray<View> => {
@@ -524,13 +643,18 @@ const claudeAccountsSection = (accounts: ClaudeAccountsView): ReadonlyArray<View
   return accounts.accounts.map(accountRow("settings-claude-account"))
 }
 
-const connectStatusSection = (connect: CodexConnectStatusView): ReadonlyArray<View> => {
+const connectStatusSection = (
+  connect: CodexConnectStatusView,
+  connectTarget: string | null,
+): ReadonlyArray<View> => {
   if (connect.state === "idle") return []
   if (connect.state === "starting") {
     return [
       Text({
         key: "settings-connect-status",
-        content: "Starting the Codex device-auth flow…",
+        content: connectTarget === null
+          ? "Starting the Codex device-auth flow…"
+          : `Starting the Codex device-auth flow for ${connectTarget}…`,
         variant: "body",
         color: "textMuted",
       }),
@@ -540,7 +664,9 @@ const connectStatusSection = (connect: CodexConnectStatusView): ReadonlyArray<Vi
     return [
       Text({
         key: "settings-connect-status",
-        content: "Open this link in your browser and enter the code below:",
+        content: connectTarget === null
+          ? "Open this link in your browser and enter the code below:"
+          : `Reconnecting ${connectTarget} — open this link in your browser and enter the code below:`,
         variant: "body",
         color: "textPrimary",
       }),
@@ -563,7 +689,9 @@ const connectStatusSection = (connect: CodexConnectStatusView): ReadonlyArray<Vi
     return [
       Badge({
         key: "settings-connect-status",
-        label: `Connected: ${connect.ref}`,
+        label: connectTarget !== null && connectTarget === connect.ref
+          ? `Reconnected: ${connect.ref}`
+          : `Connected: ${connect.ref}`,
         tone: "success",
         a11y: { label: `Codex account ${connect.ref} connected` },
       }),
@@ -668,7 +796,7 @@ export const settingsView = (settings: SettingsState): View => {
           variant: "label",
           color: "textMuted",
         }),
-        ...accountsSection(settings.accounts),
+        ...accountsSection(settings.accounts, connectLive),
         Button({
           key: "settings-connect-codex",
           label: connectLive ? "Connecting…" : "Connect Codex account",
@@ -677,7 +805,7 @@ export const settingsView = (settings: SettingsState): View => {
           onPress: IntentRef("DesktopCodexConnectRequested"),
           a11y: { label: "Connect a Codex account with the isolated device-auth flow" },
         }),
-        ...connectStatusSection(settings.connect),
+        ...connectStatusSection(settings.connect, settings.connectTarget),
         Text({
           key: "settings-claude-accounts-title",
           content: "Claude accounts",

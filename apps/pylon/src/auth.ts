@@ -22,6 +22,14 @@ export type PylonAuthArgs = {
   forceDeviceLogin: boolean
   json: boolean
   /**
+   * OPT-IN (owner directive, EP250): when true, `auth codex` additionally
+   * links the OpenAgents Pylon (device link) and imports the provider
+   * account to the OpenAgents API. Default false — the flow is LOCAL-ONLY:
+   * isolated device login + local config registration, zero network calls to
+   * openagents.com.
+   */
+  openAgentsLink: boolean
+  /**
    * Claude setup-token (CLAUDE_CODE_OAUTH_TOKEN material). Only for target
    * `claude`; never projected.
    */
@@ -55,9 +63,24 @@ export type PylonAuthOpenAgentsProjection = {
 
 export type PylonAuthCodexProjection = {
   schema: "pylon.auth.codex.v1"
-  status: "connected" | "credentials_invalid"
+  /**
+   * `connected` — the local device login completed and the account is
+   * registered in the local Pylon config. In the LOCAL-ONLY default mode
+   * (owner directive, EP250) that is the whole flow: no OpenAgents network
+   * calls happen and `openAgents` is absent.
+   *
+   * `connected_local_only` (EP250 regression) — the opt-in
+   * `--openagents-link` flow completed the local connect, but a post-auth
+   * server step (the OpenAgents provider-account import POST, or the config
+   * providerAccountRef write) failed. Local credentials are valid and usable
+   * for local fleet work; only the server-side provider-account link is
+   * pending. A flow that wrote valid credentials and registered the account
+   * must NEVER be reported as a bare failure.
+   */
+  status: "connected" | "connected_local_only" | "credentials_invalid"
   accountRef: string
-  openAgents: PylonAuthOpenAgentsProjection
+  /** Present only when the opt-in `--openagents-link` flow ran. */
+  openAgents?: PylonAuthOpenAgentsProjection
   localCodex: {
     deviceLoginStatus:
       | "completed"
@@ -170,6 +193,7 @@ export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
     baseUrl: null,
     forceDeviceLogin: false,
     json: false,
+    openAgentsLink: false,
     setupToken: null,
     target,
     timeoutSeconds: 10 * 60,
@@ -191,6 +215,8 @@ export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
       index += 1
     } else if (arg === "--force-device-login") {
       parsed.forceDeviceLogin = true
+    } else if (arg === "--openagents-link") {
+      parsed.openAgentsLink = true
     } else if (arg === "--json") {
       parsed.json = true
     } else if (arg === "--timeout-seconds") {
@@ -220,6 +246,9 @@ export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
     }
   } else if (parsed.setupToken !== null) {
     throw new Error("--token / --setup-token is only valid for pylon auth claude")
+  }
+  if (parsed.openAgentsLink && parsed.target !== "codex") {
+    throw new Error("--openagents-link is only valid for pylon auth codex")
   }
 
   return parsed
@@ -1016,7 +1045,13 @@ export async function runPylonAuthCodex(
   const fetcher = options.fetcher ?? fetch
   const sleep = options.sleep ?? defaultSleep
   const baseUrl = baseUrlFrom(args, env)
-  const openAgents = await runPylonAuthOpenAgents(summary, { ...args, target: "openagents" }, options)
+  // LOCAL-ONLY by default (owner directive, EP250): the OpenAgents Pylon
+  // device link + provider-account import run ONLY behind the explicit
+  // --openagents-link opt-in. The default connect makes zero network calls
+  // to openagents.com — isolated device login + local config registration.
+  const openAgents = args.openAgentsLink
+    ? await runPylonAuthOpenAgents(summary, { ...args, target: "openagents" }, options)
+    : null
   const accountRef = args.accountRef ?? await nextCodexAccountRef(summary)
   const configBeforeConnect = await readConfig(summary)
   const previousProviderAccountRef = configuredProviderAccountRef(configBeforeConnect, accountRef)
@@ -1046,7 +1081,7 @@ export async function runPylonAuthCodex(
       schema: "pylon.auth.codex.v1",
       status: "credentials_invalid",
       accountRef,
-      openAgents: openAgents.projection,
+      ...(openAgents === null ? {} : { openAgents: openAgents.projection }),
       localCodex: {
         deviceLoginStatus: started.deviceLogin.status,
         ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
@@ -1064,19 +1099,76 @@ export async function runPylonAuthCodex(
     return projection
   }
 
-  const imported = await importLocalCodexAuth({
-    accountRef,
-    agentToken: openAgents.agentToken,
-    baseUrl,
-    fetcher,
-    providerAccountRef: previousProviderAccountRef,
-    summary,
-  })
-  await writeConfiguredProviderAccountRef({
-    accountRef,
-    providerAccountRef: imported.account.providerAccountRef,
-    summary,
-  })
+  // LOCAL-ONLY default: the connect is complete right here — device login
+  // done, account registered locally. No server import is attempted and none
+  // is pending; the OpenAgents link is a separate opt-in (--openagents-link).
+  if (openAgents === null) {
+    const projection = {
+      schema: "pylon.auth.codex.v1",
+      status: "connected",
+      accountRef,
+      localCodex: {
+        deviceLoginStatus: started.deviceLogin.status,
+        ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
+      },
+      openAgentsProviderAccount: {
+        accountStatus: "not_attempted_local_only",
+        attemptId: "not_attempted",
+        attemptStatus: "not_attempted",
+        providerAccountRef: previousProviderAccountRef ?? accountRef,
+        source: "pylon_local_codex_auth",
+      },
+      blockerRefs: [],
+    } satisfies PylonAuthCodexProjection
+    assertPublicProjectionSafe(projection)
+    return projection
+  }
+
+  // EP250 regression guard: at this point the device login already completed
+  // and the account is registered in the local Pylon config — the local
+  // connect substantively SUCCEEDED. The OpenAgents provider-account import
+  // below is a network POST that can fail independently (server down, DNS,
+  // 5xx). That failure must not surface as a bare `Pylon auth failed` exit:
+  // return an honest connected_local_only projection naming the pending step.
+  let imported: Awaited<ReturnType<typeof importLocalCodexAuth>>
+  try {
+    imported = await importLocalCodexAuth({
+      accountRef,
+      agentToken: openAgents.agentToken,
+      baseUrl,
+      fetcher,
+      providerAccountRef: previousProviderAccountRef,
+      summary,
+    })
+    await writeConfiguredProviderAccountRef({
+      accountRef,
+      providerAccountRef: imported.account.providerAccountRef,
+      summary,
+    })
+  } catch {
+    // No raw error text in the projection: import failures can embed URLs and
+    // response bodies. The typed blocker names the step; nothing else leaves.
+    const projection = {
+      schema: "pylon.auth.codex.v1",
+      status: "connected_local_only",
+      accountRef,
+      openAgents: openAgents.projection,
+      localCodex: {
+        deviceLoginStatus: started.deviceLogin.status,
+        ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
+      },
+      openAgentsProviderAccount: {
+        accountStatus: "import_failed",
+        attemptId: "not_attempted",
+        attemptStatus: "not_attempted",
+        providerAccountRef: previousProviderAccountRef ?? accountRef,
+        source: "pylon_local_codex_auth",
+      },
+      blockerRefs: ["blocker.pylon.auth.codex.openagents_provider_import_failed"],
+    } satisfies PylonAuthCodexProjection
+    assertPublicProjectionSafe(projection)
+    return projection
+  }
 
   const projection = {
     schema: "pylon.auth.codex.v1",

@@ -113,7 +113,7 @@ describe("pylon auth", () => {
 
       const projection = await runPylonAuthCodex(
         summary,
-        parsePylonAuthArgs(["codex", "--base-url", "https://openagents.example"]),
+        parsePylonAuthArgs(["codex", "--openagents-link", "--base-url", "https://openagents.example"]),
         {
           env: {},
           fetcher,
@@ -222,7 +222,7 @@ describe("pylon auth", () => {
 
       const projection = await runPylonAuthCodex(
         summary,
-        parsePylonAuthArgs(["codex", "--base-url", "https://openagents.example"]),
+        parsePylonAuthArgs(["codex", "--openagents-link", "--base-url", "https://openagents.example"]),
         {
           env: {},
           fetcher,

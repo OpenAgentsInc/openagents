@@ -30,6 +30,7 @@ import {
   CodexConnectOpenChannel,
   CodexConnectStartChannel,
   CodexConnectStatusChannel,
+  CodexReconnectStartChannel,
 } from "./codex-connect-contract.ts"
 import { makeCodexConnectService, makeFixtureSpawnPylon } from "./codex-connect.ts"
 import {
@@ -618,11 +619,18 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     : { ok: true, thread }
 })
 
-// Codex account reconnect (#8640 unblock): renderer-argument-free channels
-// only. Main owns the pylon child processes and the verification URL; the
-// renderer polls typed status and never sees tokens, emails, or raw output.
+// Codex account connect + reconnect (#8640 unblock; EP250 owner mandate:
+// the UI owns reconnect). Channels stay renderer-argument-free except the
+// reconnect start, which carries ONE grammar-bounded account ref that the
+// service re-validates against the refs it listed itself. Main owns the
+// pylon child processes and the verification URL; the renderer polls typed
+// status and never sees tokens, emails, or raw output.
 ipcMain.handle(CodexAccountsChannel, () => hostLifecycle.account()?.listAccounts() ?? Promise.resolve({ state: "unavailable" }))
 ipcMain.handle(CodexConnectStartChannel, () => hostLifecycle.account()?.start() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
+ipcMain.handle(CodexReconnectStartChannel, (_event, ref: unknown) =>
+  typeof ref === "string"
+    ? hostLifecycle.account()?.startReconnect(ref) ?? { state: "failed", reason: "pylon_runtime_unavailable" }
+    : { state: "failed", reason: "invalid_account_ref" })
 ipcMain.handle(CodexConnectStatusChannel, () => hostLifecycle.account()?.status() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
 ipcMain.handle(CodexConnectOpenChannel, () => hostLifecycle.account()?.openVerification() ?? Promise.resolve(false))
 
@@ -921,11 +929,19 @@ const smokeOpenSettings = `(async () => {
   }
   const revoked = document.querySelector('[data-en-key="settings-account-codex-2-readiness"]')
   const connect = document.querySelector('[data-en-key="settings-connect-codex"]')
+  // EP250 UI-owned reconnect: the revoked fixture account must render its
+  // per-account Reconnect button, and the screen must carry no CLI copy.
+  const reconnect = document.querySelector('[data-en-key="settings-account-codex-2-reconnect"]')
+  const screen = document.querySelector('[data-en-key="settings-screen"]')
+  const cliCopy = screen !== null && /pylon auth|khala fleet|codex login/i.test(screen.textContent ?? "")
   return {
     ok: revoked !== null && revoked.textContent === "credentials_revoked" &&
-      connect !== null && connect.textContent === "Connect Codex account",
+      connect !== null && connect.textContent === "Connect Codex account" &&
+      reconnect !== null && reconnect.textContent === "Reconnect" && !cliCopy,
     revokedChip: revoked === null ? null : revoked.textContent,
     connectLabel: connect === null ? null : connect.textContent,
+    reconnectLabel: reconnect === null ? null : reconnect.textContent,
+    cliCopy,
   }
 })()`
 

@@ -6,7 +6,7 @@
  * isolated per-child scratch dirs — all through the REAL JSONL parser.
  */
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -18,6 +18,7 @@ import {
 } from "./codex-child-contract.ts"
 import {
   FIXTURE_CODEX_CHILD_TEXT,
+  discoverRegisteredCodexAccounts,
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
   fixtureCodexSuccessStdout,
@@ -264,5 +265,76 @@ describe("makeCodexChildRuntime.runChild", () => {
       join(scratch, "codex-children", "child-b"),
       join(scratch, "codex-children", "child-c"),
     ])
+  })
+
+  test("FRESHNESS (EP250): the account candidate list is re-read at EVERY delegate call — a mid-session reconnect is picked up without restart", async () => {
+    // Owner receipt: codex-5 was registered at 15:30:40 but the 15:32
+    // children never tried it. The registry read must happen per runChild —
+    // never captured at construction or turn start. This oracle mutates the
+    // discover source BETWEEN calls and asserts the second call rotates into
+    // the newly registered ref.
+    const registered: CodexChildAccount[] = [
+      { ref: "codex", home: "/isolated/accounts/codex/codex" },
+    ]
+    let discoverCalls = 0
+    const runtime = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        // call 1: the only account is revoked -> typed all-revoked failure
+        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+        // call 2: codex still revoked -> rotate -> codex-5 succeeds
+        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+      ]),
+      discoverImpl: async () => {
+        discoverCalls += 1
+        return [...registered]
+      },
+    })
+
+    const first = await runtime.runChild({ childRef: "child-before", task: "go" })
+    expect(first.ok).toBe(false)
+    if (!first.ok) expect(first.reason).toBe("account_reconnect_required")
+    expect(discoverCalls).toBe(1)
+
+    // Mid-session reconnect: a new ready ref lands in the registry.
+    registered.push({ ref: "codex-5", home: "/isolated/accounts/codex/codex-5" })
+
+    const sink = collect()
+    const second = await runtime.runChild({ childRef: "child-after", task: "go", onEvent: sink.onEvent })
+    expect(discoverCalls).toBe(2)
+    if (!second.ok) throw new Error(`expected the fresh ref to be used, got ${second.reason}`)
+    expect(second.accountRef).toBe("codex-5")
+    expect(sink.events.some(event =>
+      event.kind === "attempt_started" && event.accountRef === "codex-5")).toBe(true)
+  })
+})
+
+describe("discoverRegisteredCodexAccounts (real registry read)", () => {
+  test("reads the pylon config fresh on every call — a ref registered after the first read appears in the second", async () => {
+    const pylonHome = mkdtempSync(join(tmpdir(), "codex-child-registry-"))
+    const homeA = join(pylonHome, "accounts", "codex", "codex")
+    mkdirSync(homeA, { recursive: true })
+    const writeConfig = (accounts: Array<{ ref: string; home: string }>): void => {
+      writeFileSync(
+        join(pylonHome, "config.json"),
+        JSON.stringify({
+          dev: { accounts: accounts.map(account => ({ provider: "codex", ...account })) },
+        }),
+      )
+    }
+    writeConfig([{ ref: "codex", home: homeA }])
+    const env = { PYLON_HOME: pylonHome }
+
+    const before = await discoverRegisteredCodexAccounts(env)
+    expect(before.map(account => account.ref)).toEqual(["codex"])
+
+    // Mid-session UI reconnect registers a new ref (the codex-5 case).
+    const homeB = join(pylonHome, "accounts", "codex", "codex-5")
+    mkdirSync(homeB, { recursive: true })
+    writeConfig([{ ref: "codex", home: homeA }, { ref: "codex-5", home: homeB }])
+
+    const after = await discoverRegisteredCodexAccounts(env)
+    expect(after.map(account => account.ref)).toEqual(["codex", "codex-5"])
   })
 })

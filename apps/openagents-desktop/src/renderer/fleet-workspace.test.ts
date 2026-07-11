@@ -338,6 +338,40 @@ describe("session usage ledger section + readiness honesty override", () => {
     expect(nodeByKey(view, "fleet-readiness-codex-2")?.label).toBe("credentials-missing")
   })
 
+  test("EP250: a SUCCESSFUL probe this session clears a stale ledger reconnect flag (probe evidence rules, both directions)", () => {
+    // The ledger marked codex reconnect-required earlier in the session…
+    expect(fleetReconnectRequired(withLedger, readyAccount)).toBe(true)
+    // …then a UI reconnect happened and a fresh probe SUCCEEDED: the fresher
+    // real-auth evidence supersedes the sticky session flag.
+    const recovered = withFleetUsageEntry(withLedger, "codex", {
+      state: "checked",
+      refreshedAt: "2026-07-11T12:20:00.000Z",
+      inputTokens: 10,
+      outputTokens: 2,
+      totalTokens: 12,
+    })
+    expect(fleetReconnectRequired(recovered, readyAccount)).toBe(false)
+    expect(fleetDotEvidence(recovered, readyAccount)).toBe("lit")
+    expect(nodeByKey(fleetWorkspaceView(recovered), "fleet-readiness-codex")?.label).toBe("ready")
+    // A merely pending probe does NOT clear it.
+    expect(fleetReconnectRequired(withFleetUsageChecking(withLedger, "codex"), readyAccount)).toBe(true)
+  })
+
+  test("EP250: broken-credential rows carry the Fix in Settings navigation (no account mutation from Fleet)", () => {
+    const view = fleetWorkspaceView(withLedger)
+    // reconnect-required row (ledger override on presence-ready codex)
+    const fix = nodeByKey(view, "fleet-fix-codex") as { label?: string; onPress?: { name?: string } }
+    expect(fix?.label).toBe("Fix in Settings")
+    expect(fix?.onPress?.name).toBe("DesktopSettingsToggled")
+    // credentials-missing row also deep-links
+    const fixMissing = nodeByKey(view, "fleet-fix-codex-2") as { label?: string; onPress?: { name?: string } }
+    expect(fixMissing?.label).toBe("Fix in Settings")
+    expect(fixMissing?.onPress?.name).toBe("DesktopSettingsToggled")
+    // a healthy ready row gets no fix affordance
+    const healthy = fleetWorkspaceView(readyState)
+    expect(nodeByKey(healthy, "fleet-fix-codex")).toBeUndefined()
+  })
+
   test("READINESS HONESTY: a FAILED usage probe also supersedes presence-based ready", () => {
     const probeFailed = withFleetUsageEntry(readyState, "codex", {
       state: "failed",

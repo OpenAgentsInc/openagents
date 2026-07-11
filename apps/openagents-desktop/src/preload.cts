@@ -17,6 +17,7 @@ import {
   CodexConnectOpenChannel,
   CodexConnectStartChannel,
   CodexConnectStatusChannel,
+  CodexReconnectStartChannel,
 } from "./codex-connect-contract.ts"
 import {
   FleetStageChannel,
@@ -127,12 +128,16 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       : ipcRenderer.invoke(DesktopWorkspaceGitDiffChannel, request)
   },
   /**
-   * Codex account reconnect (#8640 unblock): four renderer-argument-free
-   * calls. Main holds every input (including the verification URL it opens);
-   * the renderer only receives public-safe typed projections it schema-checks.
+   * Codex account connect + reconnect (#8640 unblock; EP250 UI-owned
+   * reconnect). Calls are renderer-argument-free except reconnect-start,
+   * which carries one grammar-bounded account ref (main re-validates it
+   * against its own registry listing). Main holds every other input
+   * (including the verification URL it opens); the renderer only receives
+   * public-safe typed projections it schema-checks.
    */
   codexAccounts: () => ipcRenderer.invoke(CodexAccountsChannel),
   codexConnectStart: () => ipcRenderer.invoke(CodexConnectStartChannel),
+  codexReconnectStart: (ref: string) => ipcRenderer.invoke(CodexReconnectStartChannel, ref),
   codexConnectStatus: () => ipcRenderer.invoke(CodexConnectStatusChannel),
   codexConnectOpenVerification: () => ipcRenderer.invoke(CodexConnectOpenChannel),
   /**

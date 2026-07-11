@@ -17,6 +17,7 @@ import {
   makeCodexConnectService,
   makeFixtureSpawnPylon,
   parseAccountsListJson,
+  publicSafeFailureDetail,
 } from "../src/codex-connect.ts"
 import {
   decodeAccountsView,
@@ -316,5 +317,113 @@ describe("makeCodexConnectService (fake children)", () => {
     const status = service.status()
     expect(status).toEqual({ state: "connected", ref: "codex-4" })
     expect(JSON.stringify(status)).not.toContain("owner@example.com")
+  })
+})
+
+describe("pylon-auth failure detail (EP250: the bare token hid the real reason)", () => {
+  test("captures the bounded public-safe detail after `Pylon auth failed:`", () => {
+    const parser = createDeviceAuthStdoutParser()
+    const events = parser.feed(
+      "Pylon auth failed: Unable to connect. Is the computer able to access the url?\n",
+    )
+    expect(events).toEqual([
+      {
+        kind: "failed",
+        reason: "pylon_auth_failed: Unable to connect. Is the computer able to access the url?",
+      },
+    ])
+  })
+
+  test("redacts emails, home paths, and token-like material from the detail", () => {
+    const parser = createDeviceAuthStdoutParser()
+    const events = parser.feed(
+      "Pylon auth failed: owner@example.com at /Users/owner/.openagents/pylon token oa_agent_abc123\n",
+    )
+    expect(events).toHaveLength(1)
+    const failed = events[0] as { kind: "failed"; reason: string }
+    expect(failed.reason).not.toContain("owner@example.com")
+    expect(failed.reason).not.toContain("/Users/owner")
+    expect(failed.reason).not.toContain("oa_agent_abc123")
+    expect(failed.reason).toContain("<email>")
+    expect(failed.reason).toContain("<path>")
+    expect(failed.reason).toContain("<redacted>")
+  })
+
+  test("a detail-less line degrades to the bare typed token", () => {
+    const parser = createDeviceAuthStdoutParser()
+    expect(parser.feed("Pylon auth failed\n")).toEqual([
+      { kind: "failed", reason: "pylon_auth_failed" },
+    ])
+  })
+
+  test("publicSafeFailureDetail bounds output to 100 chars", () => {
+    expect(publicSafeFailureDetail("x".repeat(500)).length).toBe(100)
+  })
+})
+
+describe("startReconnect (EP250: UI-owned per-ref re-auth)", () => {
+  test("spawns the receipted per-ref recipe against a ref main itself listed", async () => {
+    const spawnedArgs: Array<ReadonlyArray<string>> = []
+    const fixture = makeFixtureSpawnPylon()
+    const service = makeCodexConnectService("/nonexistent", {
+      spawnPylon: args => {
+        spawnedArgs.push(args)
+        return fixture(args)
+      },
+    })
+    // Main must list first: reconnect only accepts refs from its own read.
+    await service.listAccounts()
+    const started = service.startReconnect("codex-2")
+    expect(started.state).toBe("starting")
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(service.status()).toEqual({
+      state: "awaiting_browser",
+      url: "https://auth.openai.com/codex/device",
+      code: "1234-ABCDE",
+    })
+    // Receipt: pylon auth codex --account <ref> --force-device-login re-auths
+    // the SAME ref into its existing isolated home (apps/pylon/src/auth.ts).
+    expect(spawnedArgs).toEqual([
+      ["codex", "accounts", "list", "--json"],
+      ["auth", "codex", "--account", "codex-2", "--force-device-login"],
+    ])
+    service.dispose()
+  })
+
+  test("refuses a ref main never listed and a malformed ref, typed", async () => {
+    const service = makeCodexConnectService("/nonexistent", {
+      spawnPylon: makeFixtureSpawnPylon(),
+    })
+    await service.listAccounts()
+    expect(service.startReconnect("codex-999")).toEqual({
+      state: "failed",
+      reason: "unknown_account_ref",
+    })
+    expect(service.startReconnect("../escape")).toEqual({
+      state: "failed",
+      reason: "invalid_account_ref",
+    })
+    service.dispose()
+  })
+
+  test("single flight holds across connect and reconnect", async () => {
+    const service = makeCodexConnectService("/nonexistent", {
+      spawnPylon: makeFixtureSpawnPylon(),
+    })
+    await service.listAccounts()
+    service.startReconnect("codex-2")
+    await new Promise(resolve => setTimeout(resolve, 10))
+    const live = service.status()
+    expect(live.state).toBe("awaiting_browser")
+    expect(service.start()).toEqual(live)
+    expect(service.startReconnect("codex-b7d4438c")).toEqual(live)
+    service.dispose()
+  })
+
+  test("re-authenticated CLI success line yields connected for the SAME ref", () => {
+    const parser = createDeviceAuthStdoutParser()
+    expect(parser.feed("\u2713 Re-authenticated Codex account: owner@example.com (codex-2)\n")).toEqual([
+      { kind: "connected", ref: "codex-2" },
+    ])
   })
 })

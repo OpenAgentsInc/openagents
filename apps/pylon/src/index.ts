@@ -3452,15 +3452,32 @@ async function main() {
           process.exitCode = 1
           return
         }
-        const codexAccounts = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
-        const linked = codexAccounts.find((account) => account.accountRef === projection.accountRef)
-        const email = linked?.email ?? null
+        // EP250 regression: post-success decoration (the local email lookup)
+        // must never convert a completed local connect into a
+        // `Pylon auth failed` exit — guard it and degrade to a ref-only line.
+        let email: string | null = null
+        try {
+          const codexAccounts = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
+          email = codexAccounts.find((account) => account.accountRef === projection.accountRef)?.email ?? null
+        } catch {
+          email = null
+        }
         const verb = outcome.kind === "reauthed" ? "Re-authenticated" : "Linked"
         const usageNote =
           outcome.reason === "usage_limited" ? " (note: account is usage-limited right now)" : ""
         process.stdout.write(
           `✓ ${verb} Codex account${email ? `: ${email}` : ""} (${projection.accountRef})${usageNote}\n`,
         )
+        if (projection.status === "connected_local_only") {
+          // Success-with-warning (never a bare failure): local credentials
+          // are written and the account is registered; only the OpenAgents
+          // provider-account import is pending (e.g. server unreachable).
+          process.stderr.write(
+            `⚠ OpenAgents provider-account import did not complete for ${projection.accountRef}; ` +
+              `local credentials are ready for local fleet work. ` +
+              `Re-run this connect when openagents.com is reachable to finish the server link.\n`,
+          )
+        }
       }
       return
     } catch (error) {

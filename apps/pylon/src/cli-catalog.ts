@@ -72,7 +72,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     needsNetwork: true,
     json: true,
     args: [
-      pos("openagents|codex|claude", "Target to connect. codex also ensures the OpenAgents Pylon link first; claude stores a setup-token file locally."),
+      pos("openagents|codex|claude", "Target to connect. codex is LOCAL-ONLY by default (isolated device login + local registration; zero openagents.com calls) — pass --openagents-link to opt in to the OpenAgents Pylon link + provider-account import; claude stores a setup-token file locally."),
       opt("--account", "codex/claude: stable local account ref. Omit to auto-allocate (codex, codex-2… / claude, claude-2…)."),
       opt("--agent-token", "Optional existing OpenAgents agent token. Stored locally with private file permissions."),
       opt("--base-url", "OpenAgents base URL."),
@@ -80,6 +80,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       opt("--setup-token", "claude: alias for --token."),
       opt("--timeout-seconds", "Maximum time to wait for device confirmations (openagents/codex)."),
       flag("--force-device-login", "codex: run Codex device auth even when that account home already has auth.json. Not valid for claude."),
+      flag("--openagents-link", "codex: OPT-IN — additionally link the OpenAgents Pylon and import the provider account to openagents.com. Off by default (local-only)."),
       flag("--json", "Emit JSON instead of only verification URL/code lines."),
     ],
   },

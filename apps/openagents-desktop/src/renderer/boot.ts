@@ -89,6 +89,7 @@ type DesktopBridge = Readonly<{
   workspaceGitDiff?: (value: unknown) => Promise<unknown>
   codexAccounts?: () => Promise<unknown>
   codexConnectStart?: () => Promise<unknown>
+  codexReconnectStart?: (ref: string) => Promise<unknown>
   codexConnectStatus?: () => Promise<unknown>
   codexConnectOpenVerification?: () => Promise<unknown>
   providerAccounts?: Readonly<{
@@ -127,6 +128,12 @@ const codexSettingsBridge: CodexSettingsBridge = {
     return typeof bridge?.codexConnectStart === "function"
       ? bridge.codexConnectStart()
       : unavailableCodexSettingsBridge.connectStart()
+  },
+  reconnectStart: (ref: string) => {
+    const bridge = readBridge()
+    return typeof bridge?.codexReconnectStart === "function"
+      ? bridge.codexReconnectStart(ref)
+      : unavailableCodexSettingsBridge.reconnectStart!(ref)
   },
   connectStatus: () => {
     const bridge = readBridge()

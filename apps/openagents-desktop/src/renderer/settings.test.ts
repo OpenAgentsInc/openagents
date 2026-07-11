@@ -622,3 +622,268 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// EP250 owner mandate: "don't recommend me the CLI command for Fleet Connect.
+// We're doing stuff with the UI now. Like, CLI stuff is nice, but the UI
+// controls need to be working." — per-account Reconnect in Settings, no CLI
+// copy anywhere on the screen.
+// ---------------------------------------------------------------------------
+
+describe("per-account Reconnect (EP250 UI-owned reconnect)", () => {
+  test("credential-failed rows render a working Reconnect button; ready rows render none", () => {
+    const view = settingsView(loadedAccounts)
+    const reconnect = nodeByKey(view, "settings-account-codex-2-reconnect")
+    expect(reconnect?._tag).toBe("Button")
+    expect(reconnect?.label).toBe("Reconnect")
+    expect(reconnect?.disabled).toBe(false)
+    const press = (reconnect as { onPress?: { name?: string } }).onPress
+    expect(press?.name).toBe("DesktopCodexReconnectRequested")
+    // The payload carries the account ref.
+    expect(JSON.stringify(press)).toContain("codex-2")
+    // A clean ready account gets no reconnect affordance.
+    expect(nodeByKey(view, "settings-account-codex-4-reconnect")).toBeUndefined()
+  })
+
+  test("reconnect buttons disable while a flow is live", () => {
+    const live = settingsView(
+      withSettingsConnectStatus(loadedAccounts, { state: "starting" }),
+    )
+    const reconnect = nodeByKey(live, "settings-account-codex-2-reconnect")
+    expect(reconnect?.disabled).toBe(true)
+    expect(reconnect?.label).toBe("Waiting…")
+  })
+
+  test("awaiting_browser during a reconnect names the target ref beside the URL and code", () => {
+    const awaiting = settingsView({
+      ...withSettingsConnectStatus(loadedAccounts, {
+        state: "awaiting_browser",
+        url: "https://auth.openai.com/codex/device",
+        code: "8260-DUG55",
+      }),
+      connectTarget: "codex-2",
+    })
+    expect(nodeByKey(awaiting, "settings-connect-status")?.content).toBe(
+      "Reconnecting codex-2 — open this link in your browser and enter the code below:",
+    )
+    expect(nodeByKey(awaiting, "settings-connect-code")?.content).toBe("8260-DUG55")
+    expect(nodeByKey(awaiting, "settings-connect-link")?.label).toBe(
+      "https://auth.openai.com/codex/device",
+    )
+  })
+
+  test("a completed reconnect renders the Reconnected badge for the SAME ref", () => {
+    const done = settingsView({
+      ...withSettingsConnectStatus(loadedAccounts, { state: "connected", ref: "codex-2" }),
+      connectTarget: "codex-2",
+    })
+    expect(nodeByKey(done, "settings-connect-status")?.label).toBe("Reconnected: codex-2")
+  })
+
+  test("NO CLI COPY: no settings state ever renders text instructing a CLI command", () => {
+    const cliCopy = /pylon auth|khala fleet|npm install|bun apps|--force-device-login|codex login|run the command|\bCLI\b/i
+    const states = [
+      loadedAccounts,
+      withSettingsConnectStatus(loadedAccounts, { state: "starting" }),
+      {
+        ...withSettingsConnectStatus(loadedAccounts, {
+          state: "awaiting_browser",
+          url: "https://auth.openai.com/codex/device",
+          code: "8260-DUG55",
+        }),
+        connectTarget: "codex-2",
+      },
+      withSettingsConnectStatus(loadedAccounts, { state: "connected", ref: "codex-2" }),
+      withSettingsConnectStatus(loadedAccounts, { state: "failed", reason: "device_auth_timeout" }),
+      initialSettingsState(),
+    ]
+    for (const settings of states) {
+      for (const node of collectNodes(settingsView(settings))) {
+        for (const value of [node.content, node.label]) {
+          if (typeof value === "string") {
+            expect(value).not.toMatch(cliCopy)
+          }
+        }
+      }
+    }
+  })
+})
+
+describe("reconnect intent loop end-to-end (EP250)", () => {
+  test("Reconnect dispatch calls the ref-targeted bridge, polls to connected, and re-lists accounts so readiness flips without restart", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const reconnectCalls: Array<string> = []
+        let listCalls = 0
+        const statuses: Array<unknown> = [
+          { state: "awaiting_browser", url: "https://auth.openai.com/codex/device", code: "8260-DUG55" },
+          { state: "connected", ref: "codex-2" },
+        ]
+        const bridge: CodexSettingsBridge = {
+          listAccounts: async () => {
+            listCalls += 1
+            return {
+              state: "ok",
+              // After the reconnect completes, the registry read flips the
+              // readiness — the UI must show it without an app restart.
+              accounts: [{
+                ref: "codex-2",
+                readiness: listCalls >= 2 ? "ready" : "credentials_revoked",
+              }],
+            }
+          },
+          connectStart: async () => ({ state: "failed", reason: "wrong_channel" }),
+          reconnectStart: async (ref) => {
+            reconnectCalls.push(ref)
+            return { state: "starting" }
+          },
+          connectStatus: async () => statuses.shift() ?? { state: "failed", reason: "exhausted" },
+          openVerification: async () => true,
+        }
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(
+            state,
+            () => "18:05",
+            undefined,
+            undefined,
+            undefined,
+            bridge,
+            async () => {},
+          ),
+        )
+
+        // Open Settings (loads the revoked account), then press Reconnect.
+        const toggle = navItemById(
+          desktopShellView(yield* SubscriptionRef.get(state)),
+          "shell-settings-toggle",
+        ) as { onSelect: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(toggle.onSelect, null))
+        const opened = yield* SubscriptionRef.get(state)
+        const reconnect = nodeByKey(
+          desktopShellView(opened),
+          "settings-account-codex-2-reconnect",
+        ) as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(reconnect.onPress, null))
+
+        const after = yield* SubscriptionRef.get(state)
+        expect(reconnectCalls).toEqual(["codex-2"])
+        expect(after.settings.connect).toEqual({ state: "connected", ref: "codex-2" })
+        expect(after.settings.connectTarget).toBe("codex-2")
+        // Accounts were re-listed after the terminal status: readiness flips.
+        expect(after.settings.accounts).toEqual({
+          state: "loaded",
+          accounts: [{ ref: "codex-2", readiness: "ready" }],
+        })
+        expect(listCalls).toBe(2)
+      }),
+    )
+  })
+
+  test("accounts re-list even when the flow FAILS (a failed exit can still have registered a new ref)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        let listCalls = 0
+        const bridge: CodexSettingsBridge = {
+          listAccounts: async () => {
+            listCalls += 1
+            return {
+              state: "ok",
+              accounts: listCalls >= 2
+                // The codex-5 case: the CLI exited 1 AFTER registering a new
+                // valid account; the re-list must surface it regardless.
+                ? [
+                    { ref: "codex-2", readiness: "credentials_revoked" },
+                    { ref: "codex-5", readiness: "ready" },
+                  ]
+                : [{ ref: "codex-2", readiness: "credentials_revoked" }],
+            }
+          },
+          connectStart: async () => ({
+            state: "failed",
+            reason: "pylon_auth_failed: Unable to connect.",
+          }),
+          reconnectStart: async () => ({ state: "failed", reason: "unused" }),
+          connectStatus: async () => ({ state: "failed", reason: "unused" }),
+          openVerification: async () => true,
+        }
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(
+            state,
+            () => "18:05",
+            undefined,
+            undefined,
+            undefined,
+            bridge,
+            async () => {},
+          ),
+        )
+        const toggle = navItemById(
+          desktopShellView(yield* SubscriptionRef.get(state)),
+          "shell-settings-toggle",
+        ) as { onSelect: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(toggle.onSelect, null))
+        const connect = nodeByKey(
+          desktopShellView(yield* SubscriptionRef.get(state)),
+          "settings-connect-codex",
+        ) as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(connect.onPress, null))
+
+        const after = yield* SubscriptionRef.get(state)
+        expect(after.settings.connect.state).toBe("failed")
+        // The bounded public-safe failure detail reaches the badge state.
+        expect((after.settings.connect as { reason?: string }).reason).toBe(
+          "pylon_auth_failed: Unable to connect.",
+        )
+        // The re-list surfaced the half-succeeded registration anyway.
+        expect(after.settings.accounts).toEqual({
+          state: "loaded",
+          accounts: [
+            { ref: "codex-2", readiness: "credentials_revoked" },
+            { ref: "codex-5", readiness: "ready" },
+          ],
+        })
+        expect(listCalls).toBe(2)
+      }),
+    )
+  })
+
+  test("a reconnect for a ref the renderer is not displaying is refused before the bridge", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const reconnectCalls: Array<string> = []
+        const bridge: CodexSettingsBridge = {
+          listAccounts: async () => ({
+            state: "ok",
+            accounts: [{ ref: "codex-2", readiness: "credentials_revoked" }],
+          }),
+          connectStart: async () => ({ state: "failed", reason: "unused" }),
+          reconnectStart: async (ref) => {
+            reconnectCalls.push(ref)
+            return { state: "starting" }
+          },
+          connectStatus: async () => ({ state: "failed", reason: "unused" }),
+          openVerification: async () => true,
+        }
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(
+            state, () => "18:05", undefined, undefined, undefined, bridge, async () => {},
+          ),
+        )
+        const toggle = navItemById(
+          desktopShellView(yield* SubscriptionRef.get(state)),
+          "shell-settings-toggle",
+        ) as { onSelect: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(toggle.onSelect, null))
+        yield* registry.dispatch({ name: "DesktopCodexReconnectRequested", payload: "codex-999" })
+        expect(reconnectCalls).toEqual([])
+        expect((yield* SubscriptionRef.get(state)).settings.connect).toEqual({ state: "idle" })
+      }),
+    )
+  })
+})
