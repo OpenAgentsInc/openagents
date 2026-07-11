@@ -13,6 +13,7 @@ import {
   issuePylonKhalaRequest,
   readPylonKhalaAssignmentTraceStatus,
   readPylonKhalaCloseout,
+  readPylonKhalaCloseoutUntilReady,
   readPylonKhalaProof,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
@@ -1101,6 +1102,46 @@ describe("pylon khala requester API", () => {
     )
 
     expect(checklist.ok).toBe(true)
+  })
+
+  test("closeout readiness retries bounded projection convergence", async () => {
+    let requestCount = 0
+    const sleeps: number[] = []
+    const result = await readPylonKhalaCloseoutUntilReady(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: async (url: URL | RequestInfo) => {
+          requestCount += 1
+          const firstAttempt = requestCount <= 2
+          const path = new URL(String(url)).pathname
+          return Response.json(
+            path.endsWith("/trace-status")
+              ? completeTraceStatus(firstAttempt
+                  ? {
+                      lifecycle: {
+                        ...completeTraceStatus().lifecycle,
+                        proofRefs: [],
+                      },
+                    }
+                  : {})
+              : completeProof(),
+          )
+        },
+      },
+      "assignment-pylon-codex-1",
+      {
+        delayMs: 7,
+        maxAttempts: 3,
+        sleep: async delayMs => {
+          sleeps.push(delayMs)
+        },
+      },
+    )
+
+    expect(result.closeoutChecklist.ok).toBe(true)
+    expect(requestCount).toBe(4)
+    expect(sleeps).toEqual([7])
   })
 
   test("Claude closeout uses exact Claude tokens without fabricating Codex trace archives", () => {

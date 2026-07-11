@@ -1327,3 +1327,31 @@ export async function readPylonKhalaCloseout(
   assertPublicSafe(result, "khala closeout response")
   return result
 }
+
+export async function readPylonKhalaCloseoutUntilReady(
+  options: TipsNetworkOptions,
+  assignmentRefInput: string,
+  retry: Readonly<{
+    maxAttempts?: number
+    delayMs?: number
+    sleep?: (delayMs: number) => Promise<void>
+  }> = {},
+): Promise<PylonKhalaCloseoutResult> {
+  const maxAttempts = retry.maxAttempts ?? 6
+  const delayMs = retry.delayMs ?? 2_000
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10) {
+    throw new Error("khala closeout retry attempts must be between 1 and 10")
+  }
+  if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > 5_000) {
+    throw new Error("khala closeout retry delay must be between 0 and 5000ms")
+  }
+  const sleep = retry.sleep ?? ((ms: number) => new Promise<void>(resolve => {
+    setTimeout(resolve, ms)
+  }))
+  let latest = await readPylonKhalaCloseout(options, assignmentRefInput)
+  for (let attempt = 1; attempt < maxAttempts && !latest.closeoutChecklist.ok; attempt += 1) {
+    await sleep(delayMs)
+    latest = await readPylonKhalaCloseout(options, assignmentRefInput)
+  }
+  return latest
+}

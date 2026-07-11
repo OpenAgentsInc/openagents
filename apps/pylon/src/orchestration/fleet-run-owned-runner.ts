@@ -22,7 +22,7 @@ import type { BootstrapSummary } from "../bootstrap.js"
 import {
   buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
-  readPylonKhalaCloseout,
+  readPylonKhalaCloseoutUntilReady,
   readPylonKhalaAssignmentTraceStatus,
   type PylonKhalaCloseoutResult,
   type PylonKhalaAssignmentTraceStatusResult,
@@ -779,7 +779,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
   const inspectAssignment = input.inspectAssignment ?? ((assignmentRef) =>
     readPylonKhalaAssignmentTraceStatus(network, assignmentRef))
   const readCloseout = input.readCloseout ?? ((assignmentRef) =>
-    readPylonKhalaCloseout(network, assignmentRef))
+    readPylonKhalaCloseoutUntilReady(network, assignmentRef))
   const runAssignment = input.runAssignment ?? (async (requestInput) => {
     const lifecycle: PylonAssignmentRunLifecycleEvent[] = []
     const result = await runNoSpendAssignment(input.summary, {
