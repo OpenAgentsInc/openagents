@@ -792,8 +792,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   relink. Selection generations close prior thread leases and discard late
   updates before a new scope/session can render. The deterministic enforcement
   lives in `apps/openagents-mobile/tests/mobile-coding-navigation.test.ts` and
-  `apps/openagents-mobile/tests/mobile-sync-host.test.ts`; visible directory
-  wiring and physical iOS/Android receipts remain CUT-14 work.
+  `apps/openagents-mobile/tests/mobile-sync-host.test.ts`. The Effect Native
+  drawer groups live sessions under confirmed repositories, and one typed
+  session intent reopens the exact thread and binds a closeable conversation
+  subscription; new-chat and ordinary-thread navigation close that lease.
+  Process restart resolves the persisted target before choosing a conversation
+  rather than inferring the first chat row. This integration is enforced by
+  `apps/openagents-mobile/tests/authoritative-home.test.ts` and
+  `apps/openagents-mobile/tests/mobile-conversation.test.ts`; native link/
+  notification event delivery and physical iOS/Android receipts remain
+  CUT-14 work.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

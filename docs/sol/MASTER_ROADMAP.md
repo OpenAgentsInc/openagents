@@ -3,8 +3,8 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 complete; CUT-14 authenticated mobile catalog/navigation core active)
-- Revision: 52
+  CUT-13 complete; CUT-14 authenticated mobile directory/restart binding active)
+- Revision: 53
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -622,10 +622,12 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   repository/session/thread refs and revalidate owner, relationships,
   availability, and grants before activation. A device-local selection record
   retains only stable refs, and real SQLite close/reopen proves process-death
-  restoration cannot cross owner authority. Generation-fenced thread leases
-  close superseded selections and ignore late updates. Visible Effect Native
-  directory/native delivery wiring and physical iOS/Android receipts remain
-  open. See
+  restoration cannot cross owner authority. The Effect Native drawer now
+  groups sessions under confirmed repositories and dispatches one typed
+  selection intent; exact process-restart restoration and repository/session
+  switches bind a closeable no-poll conversation lease, while superseded
+  generations and late updates are fenced. Native URL/notification event
+  delivery and physical iOS/Android receipts remain open. See
   [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
