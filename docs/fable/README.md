@@ -27,6 +27,11 @@ each source doc.
   — the execution prescription for this docs-direction cleanup: Tassadar/
   Psionic retired for now, non-Khala/non-business lanes postponed, and stale
   point-in-time records bannered.
+- [`episodes/`](./episodes/README.md) — per-episode Fable analyses of the
+  video corpus (currently 249 → 240, one file per episode): what each episode
+  claimed, where it stands against Revision 31, what to extract and carry
+  forward even where superseded, and how to make it come true under the
+  current gates.
 - [`2026-07-11-sol-and-teardowns-longform-analysis.md`](./2026-07-11-sol-and-teardowns-longform-analysis.md)
   — full-corpus adversarial review of `docs/sol/` plus `docs/teardowns/`:
   the teardown→adaptation→roadmap→issue→receipt pipeline, the three-thesis
