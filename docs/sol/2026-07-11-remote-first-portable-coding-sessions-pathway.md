@@ -105,8 +105,11 @@ provider-neutral question/tool-approval/plan-review lifecycle whose exact
 decision, duplicate, conflict, expiry, revocation, and live-only projection
 semantics are shared by Desktop and mobile clients. Native device-local draft
 recovery, Desktop protocol-v9 transport, and mobile interaction controls are
-now active. This does not yet make provider execution portable: Desktop UI,
-Pylon/provider consumption, and live physical receipts remain open, and a default
+now active. Desktop also renders the confirmed interaction projection and
+routes exact-ref decisions through gateway-event-driven confirmation; an
+enqueue receipt never collapses a card as resolved. This does not yet make
+provider execution portable: production Pylon/provider injection and live
+physical receipts remain open, and a default
 non-interactive provider policy must not be relaxed merely to create a demo.
 
 ### Episodes 248–249 calibration

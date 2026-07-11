@@ -658,8 +658,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   are active. Both native hosts now expose restart-safe device-local drafts and
   interaction clients; Desktop protocol v9 is production-bound, and mobile
   renders/decides grouped questions, approvals, and plan reviews without
-  optimistic resolution. Desktop interaction UI, provider-side consumption,
-  physical accessibility, and named live receipts remain open. See
+  optimistic resolution. Desktop now projects those same confirmed states as
+  Effect Native cards, maps selections back to exact canonical refs, and waits
+  for the matching confirmed decision post-image rather than treating enqueue
+  as resolution. Provider authority injection, physical accessibility, and
+  named live receipts remain open. See
   [`CUT-16 receipt`](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402

@@ -2,11 +2,13 @@
 
 - Date: 2026-07-11
 - Issue: [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696)
-- Status: shared authority, native persistence, Desktop gateway, and mobile UI
-  active; Desktop UI/provider/live acceptance remains open
+- Status: shared authority, native persistence, both native interaction UIs,
+  and Desktop gateway active; provider injection/live acceptance remains open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
-  `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, and `835c689c4a`
+  `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
+  `97f90832bb`, `21d56199bd`, `88f692fe00`, `400c649904`, `600228f230`, and
+  `2fae80b1ec`
 
 CUT-16 now builds on the existing rich `@openagentsinc/composer-state` kernel
 instead of creating a second composer. The additive private coding-draft
@@ -49,6 +51,15 @@ adapter. Mobile consumes that same authority with typed grouped selection,
 tool approve/deny, plan accept/request-changes/replan, disabled reconciliation,
 and read-only resolved/expired/revoked states.
 
+Desktop now consumes the confirmed projection as Effect Native question,
+tool-approval, and plan-review cards. It preserves canonical thread, turn,
+interaction, question, and option identities; refuses missing or ambiguous
+display-to-ref mappings; and sends decisions through the protocol-v9 gateway.
+The renderer waits for a gateway event and re-reads the exact confirmed
+post-image. Neither an enqueue receipt nor a different decision ref can render
+the interaction resolved, and expiry/revocation remain distinct terminal
+states. The frozen Fable-local question IPC keeps its original outbound shape.
+
 Verification:
 
 - composer-state: 23 pass, 0 fail, 161 assertions; shared composer UI: 7 pass,
@@ -62,12 +73,13 @@ Verification:
   smokes skipped);
 - Desktop Runtime Gateway focused: 21 pass, 0 fail, 81 assertions; production
   composition/host focused: 51 pass, 0 fail, 445 assertions; Desktop typecheck
-  and build pass;
+  and build pass; after authoritative Desktop interaction controls, the full
+  Desktop suite is 468 pass, 0 fail, 2,487 assertions;
 - mobile full suite: 80 pass, 0 fail, 366 assertions; mobile typecheck passes.
 
-CUT-16 remains open. The next honest rungs are Desktop Effect Native
-interaction consumption, Pylon/provider request-and-decision consumption,
-screen-reader/mobile-keyboard and physical-device acceptance, and named
+CUT-16 remains open. The next honest rungs are production Pylon/provider
+authority injection, screen-reader/mobile-keyboard and physical-device
+acceptance, and named
 Codex/Claude live turns. Restart/revocation logic is covered deterministically;
 the physical and provider receipts are not.
 The default non-interactive provider safety policy must not be weakened merely
