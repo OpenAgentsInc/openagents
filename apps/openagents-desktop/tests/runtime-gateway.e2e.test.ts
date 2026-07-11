@@ -479,6 +479,21 @@ describe("Desktop Runtime Gateway", () => {
       run: { runRef: "run.gateway.1", routeRef: "thread.gateway.1" },
       events: [{ item: { kind: "connected" } }],
     })
+    expect(await gateway.request({
+      kind: "command",
+      commandId: "start-2",
+      command: {
+        id: "conversation.start",
+        threadRef: "thread.gateway.1",
+        messageRef: "message.gateway.2",
+        runRef: "run.gateway.2",
+        lane: "claude_pylon",
+      },
+    })).toMatchObject({
+      kind: "runtime_command_outcome",
+      commandId: "start-2",
+      status: "unknown_pending_reconcile",
+    })
     await gateway.request({
       kind: "command",
       commandId: "interrupt-1",
@@ -491,6 +506,7 @@ describe("Desktop Runtime Gateway", () => {
     })
     expect(calls).toEqual([
       { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1" },
+      { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.2", runRef: "run.gateway.2", lane: "claude_pylon" },
       { id: "conversation.interrupt", commandRef: "control.gateway.1", threadRef: "thread.gateway.1", runRef: "run.gateway.1" },
     ])
   })
@@ -658,6 +674,30 @@ describe("Desktop Runtime Gateway", () => {
       command: { id: "session.sign_in" },
     })
     expect(decodeDesktopRuntimeGatewayResponse({ kind: "command_outcome", commandId: "c", status: "completed" })).toBeNull()
+    expect(decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "start-no-lane",
+      command: { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1" },
+    })).toEqual({
+      kind: "command",
+      commandId: "start-no-lane",
+      command: { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1" },
+    })
+    expect(decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "start-claude",
+      command: { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1", lane: "claude_pylon" },
+    })).toMatchObject({ command: { lane: "claude_pylon" } })
+    expect(decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "start-codex",
+      command: { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1", lane: "codex_app_server" },
+    })).toMatchObject({ command: { lane: "codex_app_server" } })
+    expect(decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "start-bogus-lane",
+      command: { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1", lane: "gemini_pylon" },
+    })).toBeNull()
     expect(decodeDesktopRuntimeGatewayRequest({
       kind: "command",
       commandId: "oversized",

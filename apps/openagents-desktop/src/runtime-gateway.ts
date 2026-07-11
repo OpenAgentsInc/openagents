@@ -69,7 +69,7 @@ export type DesktopRuntimeAgentTimeline = Readonly<{
 }>
 
 export type DesktopRuntimeCommands = Readonly<{
-  start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string }>, context?: DesktopOperationContext) => number
+  start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string; lane?: "codex_app_server" | "claude_pylon" }>, context?: DesktopOperationContext) => number
   interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string }>, context?: DesktopOperationContext) => number
   outcome: (input: Readonly<{ intentId: string; threadRef: string }>) => RuntimeCommandOutcome | null
 }>

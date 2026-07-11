@@ -148,6 +148,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
         threadRef: PublicRefSchema,
         messageRef: PublicRefSchema,
         runRef: PublicRefSchema,
+        lane: Schema.optional(Schema.Literals(["codex_app_server", "claude_pylon"])),
       }),
       Schema.Struct({
         id: Schema.Literal("conversation.create"),
