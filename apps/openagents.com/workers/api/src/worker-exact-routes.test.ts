@@ -171,6 +171,7 @@ const approvedExactRoutePaths = [
   // dispatch consumer look up a turn's current status/event-count before
   // redispatching turn.continue/turn.retry. Admin bearer only.
   '/api/internal/khala-sync/runtime-turn',
+  '/api/internal/khala-sync/runtime-interaction',
   // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only;
   // per-scope KhalaSyncHubDO append / log / connect. Public /api/sync/*
   // catch-up/connect arrives with KS-4.3/4.4.

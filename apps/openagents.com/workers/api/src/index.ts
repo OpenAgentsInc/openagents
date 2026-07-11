@@ -941,6 +941,10 @@ import {
   handleKhalaSyncRuntimeTurnRead,
 } from './khala-sync-runtime-intents-routes'
 import {
+  KHALA_SYNC_RUNTIME_INTERACTION_PATH,
+  handleKhalaSyncRuntimeInteraction,
+} from './khala-sync-runtime-interaction-routes'
+import {
   KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
   KHALA_SYNC_HUB_APPEND_PATH,
   KHALA_SYNC_HUB_CONNECT_PATH,
@@ -13934,6 +13938,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleKhalaSyncRuntimeTurnRead(request, {
         binding: env.KHALA_SYNC_DB,
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
+    // CUT-16 trusted provider callback seam: the standing Pylon requests one
+    // owner-bound interaction and reads its exact confirmed post-image.
+    path: KHALA_SYNC_RUNTIME_INTERACTION_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncRuntimeInteraction(request, {
+        binding: env.KHALA_SYNC_DB,
+        registry: khalaSyncMutatorRegistry,
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },

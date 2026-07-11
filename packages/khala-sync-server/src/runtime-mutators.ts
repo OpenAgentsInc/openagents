@@ -46,6 +46,7 @@ import { ensureScopeOwner } from "./fleet-projection.js"
 import { appendLiveAgentGraphChange } from "./live-agent-graph-projection.js"
 import type { MutatorContext, MutatorDefinition } from "./push-engine.js"
 import { defineMutator } from "./push-engine.js"
+import type { SyncSql } from "./sql.js"
 
 /**
  * Khala Code runtime mutators (#8370).
@@ -862,6 +863,27 @@ const interactionEntityFromRow = (
     updatedAt: row.updated_at,
   },
 )
+
+/**
+ * Exact owner-bound interaction read for trusted runtime executors. This is
+ * deliberately not a list/search API: a Pylon waiting inside one provider
+ * callback may observe only the interaction ref it created for that owner.
+ */
+export const readRuntimeInteractionByRef = async (
+  sql: SyncSql,
+  input: Readonly<{ interactionRef: string; ownerUserId: string }>,
+): Promise<RuntimeInteractionEntity | null> => {
+  const rows: Array<RuntimeInteractionRow> = await sql`
+    SELECT interaction_ref, thread_id, turn_id, owner_user_id, kind, status,
+           requested_sequence, expires_at, interaction_json, created_at,
+           updated_at
+    FROM khala_sync_runtime_interactions
+    WHERE interaction_ref = ${input.interactionRef}
+      AND owner_user_id = ${input.ownerUserId}
+    LIMIT 1
+  `
+  return rows[0] === undefined ? null : interactionEntityFromRow(rows[0])
+}
 
 const appendRuntimeInteractionEntityChange = async (
   ctx: MutatorContext,
