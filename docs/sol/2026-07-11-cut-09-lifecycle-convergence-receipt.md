@@ -85,6 +85,28 @@ not yet claimed. On 2026-07-11 the paired physical iPhone was offline in both
 Tailnet discovery and Xcode device discovery. The built Desktop rung is green,
 but simulator/fixture evidence is intentionally not substituted for the phone.
 
+### Native mobile preparation rung
+
+The hardware-independent part of the exact current mobile build is complete:
+
+- `expo prebuild --platform ios` generated the local owned Xcode project and
+  installed CocoaPods without changing tracked app configuration;
+- Xcode 26.6 built `com.openagents.app` for an iPhone 17 Pro Max simulator on
+  iOS 26.5;
+- that built development app installed, launched to the real Effect Native
+  Khala composer, terminated, and relaunched to the same surface after a fresh
+  Metro bundle;
+- the relaunch emitted no fatal or exception entries in the app process log;
+- the same project built successfully for the generic arm64 `iphoneos` target
+  with signing disabled, proving that device compilation itself is not the
+  blocker.
+
+Generated `ios/`, DerivedData, Pods, and screenshots remained ignored/local
+artifacts. Upstream Expo/React Native deprecation/nullability warnings did not
+fail either build. What remains is specifically a signed install on the paired
+phone plus the authenticated cross-device fault journey—not native project
+generation, simulator boot, or device-architecture compilation.
+
 When the phone is available, run the public-safe procedure in
 [`native-streamed-conversation-handoff.md`](./issues/native-streamed-conversation-handoff.md):
 reload the renderer during one active run, restart the host after settlement,
