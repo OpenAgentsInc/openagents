@@ -13,13 +13,15 @@ import {
  * endpoint. It deliberately has no named-persona relationship, FleetRun, account, or
  * backing-model claim. The server owns routing and returns an honest failure.
  */
-export type KhalaRole = "user" | "assistant"
+export type KhalaRole = "user" | "assistant" | "system"
 
 export interface KhalaEntry {
   readonly key: string
   readonly role: KhalaRole
   readonly text: string
-  readonly status: "thinking" | "done" | "failed"
+  readonly status: "thinking" | "pending" | "done" | "failed"
+  readonly createdAt?: string
+  readonly version?: number
 }
 
 export interface KhalaState {
@@ -75,7 +77,8 @@ export const khalaHandlers = <State extends { readonly khala: KhalaState }>(
       const userKey = `khala-${turn}-user`
       const replyKey = `khala-${turn}-reply`
       const history = before.khala.entries
-        .filter((entry) => entry.status === "done")
+        .filter((entry): entry is KhalaEntry & { readonly role: "user" | "assistant" } =>
+          entry.status === "done" && entry.role !== "system")
         .map((entry) => ({ role: entry.role, content: entry.text }))
       yield* updateKhala(state, (khala) => ({
         ...khala,
@@ -109,7 +112,10 @@ export const khalaHandlers = <State extends { readonly khala: KhalaState }>(
     }),
 })
 
-export const renderKhalaSurface = (state: KhalaState): View =>
+export const renderKhalaSurface = (
+  state: KhalaState,
+  authority: "local" | "sync" = "local",
+): View =>
   Stack(
     {
       key: "khala-surface",
@@ -122,13 +128,15 @@ export const renderKhalaSurface = (state: KhalaState): View =>
       Spacer({ key: "khala-top-space", size: "16" }),
       Text({
         key: "khala-title",
-        content: "Khala",
+        content: authority === "sync" ? "OpenAgents" : "Khala",
         variant: "title",
         color: "textPrimary",
       }),
       Text({
         key: "khala-subtitle",
-        content: "One conversation, routed by the OpenAgents orchestrator.",
+        content: authority === "sync"
+          ? "Confirmed conversation, continuous across your devices."
+          : "One conversation, routed by the OpenAgents orchestrator.",
         variant: "body",
         color: "textMuted",
       }),
@@ -137,7 +145,11 @@ export const renderKhalaSurface = (state: KhalaState): View =>
         messages: state.entries.map((entry): TranscriptMessage => ({
           key: entry.key,
           role: entry.role,
-          status: entry.status === "thinking" ? "thinking" : "done",
+          status: entry.status === "thinking" || entry.status === "pending" ? "thinking" : "done",
+          senderLabel: entry.role === "user"
+            ? entry.status === "pending" ? "YOU · PENDING" : "YOU"
+            : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
+          ...(entry.createdAt === undefined ? {} : { timestamp: entry.createdAt.slice(11, 16) }),
           body: [
             Text({
               key: `${entry.key}-text`,

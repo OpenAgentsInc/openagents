@@ -1,4 +1,5 @@
 import { khalaTheme } from "@effect-native/tokens"
+import { randomUUID } from "expo-crypto"
 import { StatusBar } from "expo-status-bar"
 import * as Updates from "expo-updates"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -6,6 +7,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
 import { signInNativeSession, signOutNativeSession } from "./auth/native-session-pkce"
+import {
+  selectMobileConversation,
+  type MobileConversationSelection,
+} from "./conversation/mobile-conversation"
 import type { MobileSyncPhase } from "./screens/home-core"
 import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileNativeSyncHost } from "./sync/mobile-sync-host"
@@ -22,6 +27,8 @@ import { startOtaPolling } from "./updates/ota-polling"
  */
 export const App = () => {
   const [syncPhase, setSyncPhase] = useState<MobileSyncPhase>("unconfigured")
+  const [conversationSelection, setConversationSelection] = useState<MobileConversationSelection | null>(null)
+  const [conversationRevision, setConversationRevision] = useState(0)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
   useEffect(() => {
@@ -35,22 +42,32 @@ export const App = () => {
       if (result.state === "verified") {
         const connected = await syncHostRef.current?.connectStoredVerifiedSession()
         if (connected !== "connected") {
+          setConversationSelection({ mode: "local" })
+          setConversationRevision(current => current + 1)
           setSyncPhase("unavailable")
           return
         }
+        const selection = await selectMobileConversation({
+          conversation: () => syncHostRef.current?.conversation() ?? null,
+          adapter: { randomId: randomUUID },
+        })
+        setConversationSelection(selection)
+        setConversationRevision(current => current + 1)
+        setSyncPhase(selection.mode === "sync" ? "live" : "session_ready")
+        return
       }
       setSyncPhase(
-        result.state === "verified"
-          ? "session_ready"
-          : result.state === "cancelled"
-            ? previousPhase
-            : "unavailable",
+        result.state === "cancelled" ? previousPhase : "unavailable",
       )
     },
     signOut: async () => {
       setSyncPhase("authenticating")
       const result = await signOutNativeSession()
       if (result.state === "signed_out") syncHostRef.current?.disconnectAuthenticated()
+      if (result.state === "signed_out") {
+        setConversationSelection({ mode: "local" })
+        setConversationRevision(current => current + 1)
+      }
       setSyncPhase(result.state === "signed_out" ? "local_ready" : "unavailable")
     },
   }), [])
@@ -62,6 +79,7 @@ export const App = () => {
   useEffect(() => {
     let stopped = false
     let syncHost: MobileNativeSyncHost | undefined
+    let syncStatusTimer: ReturnType<typeof setInterval> | undefined
     let localStoreReady = false
     try {
       syncHost = openMobileSyncHost()
@@ -70,6 +88,7 @@ export const App = () => {
       setSyncPhase("local_ready")
     } catch {
       setSyncPhase("unavailable")
+      setConversationSelection({ mode: "local" })
     }
     void recoverVerifiedNativeSession().then(
       async recovery => {
@@ -77,26 +96,53 @@ export const App = () => {
         switch (recovery.state) {
           case "signed_out":
             setSyncPhase("local_ready")
+            setConversationSelection({ mode: "local" })
             break
           case "verified":
-            setSyncPhase(
-              await syncHost?.connectStoredVerifiedSession() === "connected"
-                ? "session_ready"
-                : "unavailable",
-            )
+            if (await syncHost?.connectStoredVerifiedSession() !== "connected") {
+              setSyncPhase("unavailable")
+              setConversationSelection({ mode: "local" })
+              break
+            }
+            {
+              const selection = await selectMobileConversation({
+                conversation: () => syncHost?.conversation() ?? null,
+                adapter: { randomId: randomUUID },
+              })
+              if (stopped) return
+              setConversationSelection(selection)
+              setSyncPhase(selection.mode === "sync" ? "live" : "session_ready")
+            }
             break
           case "denied":
             setSyncPhase("denied")
+            setConversationSelection({ mode: "local" })
             break
           case "unavailable":
             setSyncPhase("unavailable")
+            setConversationSelection({ mode: "local" })
             break
         }
       },
       () => {
-        if (!stopped) setSyncPhase("unavailable")
+        if (!stopped) {
+          setSyncPhase("unavailable")
+          setConversationSelection({ mode: "local" })
+        }
       },
     )
+    syncStatusTimer = setInterval(() => {
+      const phase = syncHost?.status().syncPhase
+      if (phase === "denied" && syncPhaseRef.current !== "denied") {
+        syncPhaseRef.current = "denied"
+        setConversationSelection({ mode: "local" })
+        setConversationRevision(current => current + 1)
+      }
+      if (
+        phase === "bootstrapping" || phase === "catching_up" || phase === "live" ||
+        phase === "must_refetch" || phase === "denied"
+      ) setSyncPhase(phase)
+    }, 250)
     const handle = startOtaPolling({
       isEnabled: Updates.isEnabled,
       checkForUpdateAsync: () => Updates.checkForUpdateAsync(),
@@ -107,6 +153,7 @@ export const App = () => {
     })
     return () => {
       stopped = true
+      if (syncStatusTimer !== undefined) clearInterval(syncStatusTimer)
       handle.stop()
       syncHost?.close()
       syncHostRef.current = null
@@ -116,7 +163,14 @@ export const App = () => {
   return (
     <SafeAreaProvider style={{ backgroundColor: khalaTheme.color.background }}>
       <StatusBar style="light" />
-      <HomeScreen syncPhase={syncPhase} sessionActions={sessionActions} />
+      {conversationSelection === null ? null : (
+        <HomeScreen
+          key={`conversation-${conversationRevision}-${conversationSelection.mode}`}
+          syncPhase={syncPhase}
+          sessionActions={sessionActions}
+          conversation={conversationSelection.mode === "sync" ? conversationSelection : undefined}
+        />
+      )}
     </SafeAreaProvider>
   )
 }

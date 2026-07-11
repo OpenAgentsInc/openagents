@@ -463,7 +463,7 @@ records before claiming the first new slice.
   the shared production HTTP/WebSocket Sync session in main, subscribe only
   the server-derived owner's personal scope, re-read rotated access custody,
   and close session-before-SQLite. It does not yet have physical Desktop auth
-  acceptance or a visible authoritative conversation surface. Runtime Gateway
+  acceptance. Runtime Gateway
   protocol v2 now exposes bounded confirmed catalog/thread queries and
   create/append enqueues with honest `pending_reconcile`; the existing Effect
   Native shell now selects confirmed Sync mode at boot when live, otherwise a
@@ -474,7 +474,8 @@ records before claiming the first new slice.
   It does not yet have a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
-  persona-neutral Khala chat path driven by the native composer, and a
+  persona-neutral public-local Khala fallback driven by the native composer,
+  and a
   host-owned Expo SQLite adapter over the shared Khala Sync store core with a
   restart-stable installation identity and pre-OTA close, plus a versioned
   device-only SecureStore vault that exposes only credential-present-
@@ -485,7 +486,11 @@ records before claiming the first new slice.
   authority substitutes. A verified session now starts the same shared
   production HTTP/WebSocket Sync engine in the Expo host, scoped only to the
   server-derived owner; no credential or owner ref reaches the view. It does
-  now has the same canonical confirmed conversation service; the two-native-
+  now has the same canonical confirmed conversation service; after recovery,
+  the host selects confirmed Sync or the public-local fallback before mounting
+  one Home program. The visible transcript/drawer/composer reconstructs
+  confirmed refs and versions, labels mutations pending, and requires exact-
+  ref confirmation without merging catalogs. The two-native-
   host fixture proves authoritative Desktop-to-mobile continuation and restart
   reconstruction. It does not yet have physical-device/live-account acceptance,
   FleetRun authority, account/capacity state, durable controls, remote-workroom

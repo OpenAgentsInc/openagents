@@ -31,6 +31,10 @@ imports nothing from it.
   verification, subscribes the server-derived owner's personal scope, closes
   session-before-store on OTA reload/unmount, and never projects credentials,
   owner refs, or native handles into the Effect Native view program.
+- `src/conversation/mobile-conversation.ts` — public-safe adapter over the
+  host-owned canonical conversation service. Startup selects confirmed Sync or
+  the existing public-local path before Home mounts; exact stable refs must be
+  confirmed before create/append appears complete.
 - `src/auth/native-session-vault.ts` — one versioned Expo SecureStore record
   for the native OpenAgents access/refresh tokens and server-derived owner ref.
   Recovery exposes only signed-out or credential-present-unverified state;
@@ -129,8 +133,13 @@ Android and test hosts use a functional React Native fallback.
 
 ## What exists today
 
-The Home screen is persona-neutral: a typed Khala conversation with one native
-Liquid Glass composer, backed by the public orchestration endpoint. A private
+The Home screen is persona-neutral: after native-session recovery it mounts one
+conversation authority. Live personal Sync reconstructs confirmed canonical
+threads/messages in the existing Effect Native transcript, drawer, and native
+Liquid Glass composer. Signed-out/not-live startup retains the public Khala
+orchestration path. These catalogs never merge; explicit auth transitions
+dispose and remount Home. Sync mutations use stable mobile refs, render drafts
+as pending, and replace them only after exact-ref confirmation. A private
 Expo SQLite cache now supplies restart-stable local Khala Sync storage and an
 honest `Local Sync ready` state. Native session credentials now have a
 device-only SecureStore vault, but a recovered record remains visibly
@@ -143,10 +152,12 @@ both access and refresh revocation. The app does not manufacture fleet,
 account, receipt, or cross-device authority. Conversation projections and
 durable commands are the next #8597 priorities.
 
-The host now also owns a bounded canonical conversation service once personal
+The host owns a bounded canonical conversation service once personal
 Sync is live. It lists only confirmed `chat_thread` / `chat_message` projections
 with public-safe refs and server versions, opens exact thread scopes, and sends
 the canonical create/append mutations. The cross-native e2e proves a Desktop
 thread and first message can be continued by mobile and reconstructed by both
-stores after restart. The current Home view is not wired to this service yet;
-physical-device and deployed-account acceptance remain explicit residuals.
+stores after restart. Home consumes that confirmed service without receiving an
+owner ref, credential, store/session object, transport, or raw row.
+Provider-neutral assistant/runtime events and physical-device/deployed-account
+acceptance remain explicit residuals.

@@ -225,6 +225,50 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "The Expo host selects confirmed account-linked Sync or the existing public-local conversation before mounting one Effect Native Home program. The modes are never merged. Owner refs, credentials, store/session/transport objects, raw rows, and optimistic completion remain outside view state; denial or sign-out disposes the account-linked program and clears its projections.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.chat.authoritative_sync_mode.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
+        "apps/openagents-mobile/src/screens/home-core.ts",
+        "apps/openagents-mobile/src/app.tsx",
+        "docs/sol/issues/mobile-visible-sync-conversation.md",
+        "github:OpenAgentsInc/openagents#8671",
+      ],
+      oracles: [
+        {
+          description:
+            "Proves bounded live-vs-local selection, confirmed startup reconstruction, stable create/append refs, exact-ref confirmation, and pending-reconcile timeout honesty against the canonical conversation interface.",
+          id: "openagents_mobile.chat.authoritative_sync_adapter",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/mobile-conversation.test.ts",
+        },
+        {
+          description:
+            "Proves confirmed refs/versions enter the existing Effect Native Home/thread surface, optimistic rows are visibly pending and replaced only by confirmed state, failures remove drafts, and denial clears account-linked projections.",
+          id: "openagents_mobile.chat.authoritative_sync_home",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+        },
+      ],
+      productArea: "mobile cross-device conversation continuity",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "OpenAgents mobile uses confirmed canonical chat_thread/chat_message projections for its visible Home conversation when verified personal Sync is live. Create and append remain visibly pending until their exact stable refs are confirmed; unavailable or timed-out work never appears completed.",
+      surface: "openagents-mobile",
+      verification:
+        "The mobile conversation adapter and authoritative Home tests run in the normal mobile sweep; mobile typecheck plus behavior-contract coverage guard the host/view boundary.",
+    },
+    {
+      authorityBoundary:
         "SecureStore custody protects credential material but does not prove the credential is current, assign identity authority to the client, authorize Sync rows or commands, or make cached state live.",
       blockerRefs: [],
       contractId: "openagents_mobile.session.secure_store_custody.v1",
@@ -560,5 +604,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.2",
+  version: "2026-07-10.3",
 }

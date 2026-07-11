@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(15)
+    expect(decoded.contracts).toHaveLength(16)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -171,6 +171,17 @@ describe("behavior contract registry", () => {
     expect(mobileSyncHost?.oracles[0]?.ref).toBe(
       "apps/openagents-mobile/tests/mobile-sync-host.test.ts",
     )
+    const mobileAuthoritativeChat = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_mobile.chat.authoritative_sync_mode.v1",
+    )
+    expect(mobileAuthoritativeChat?.state).toBe("enforced")
+    expect(mobileAuthoritativeChat?.enforcementTier).toBe("test-sweep")
+    expect(mobileAuthoritativeChat?.statement).toContain("exact stable refs")
+    expect(mobileAuthoritativeChat?.oracles.map(oracle => oracle.ref)).toEqual([
+      "apps/openagents-mobile/tests/mobile-conversation.test.ts",
+      "apps/openagents-mobile/tests/authoritative-home.test.ts",
+    ])
     const mobileSessionVault = decoded.contracts.find(
       contract =>
         contract.contractId === "openagents_mobile.session.secure_store_custody.v1",

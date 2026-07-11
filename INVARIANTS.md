@@ -550,6 +550,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.
+- Mobile selects a visible conversation authority after native-session recovery
+  and before mounting one Effect Native Home program: confirmed personal Sync
+  when live, otherwise the existing public-local conversation. Explicit auth
+  transitions dispose and remount the program; catalogs never merge. Sync-mode
+  create/append uses stable mobile refs, waits for the exact ref to become
+  confirmed, labels drafts pending, and clears account-linked projections on
+  denial or sign-out.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

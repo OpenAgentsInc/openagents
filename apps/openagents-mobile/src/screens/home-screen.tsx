@@ -6,12 +6,12 @@ import { Effect, Stream } from "@effect-native/core/effect"
 import { khalaTheme } from "@effect-native/tokens"
 
 import { loadGlassComposer, loadGlassIconButton, loadGlassPill } from "openagents-liquid-glass"
+import type { MobileConversationSelection } from "../conversation/mobile-conversation"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import { sendKhalaTurn } from "../khala/khala-client"
 import {
   buildHomeProgram,
   chromeProps,
-  initialHomeState,
   renderContentView,
   renderDrawerView,
   surfaceModeOptions,
@@ -20,9 +20,8 @@ import {
 
 /**
  * The React Native shell only positions the native SwiftUI islands and mounts
- * the Effect Native program. The active product path is persona-neutral Khala:
- * no named-persona relationship/session, demo media, local transcript catalog, or
- * presentation-only purchase state remains in this client.
+ * one selected Effect Native conversation program. It owns neither the
+ * confirmed account catalog nor the public-local fallback state.
  */
 const enPlatform = Platform.OS === "android" ? ("android" as const) : ("ios" as const)
 const GlassIconButton = Platform.OS === "ios" ? loadGlassIconButton() : undefined
@@ -35,18 +34,19 @@ const fallbackChromeStyle = {
   borderWidth: 1,
 } as const
 
-export const HomeScreen = ({ syncPhase, sessionActions }: {
+export const HomeScreen = ({ syncPhase, sessionActions, conversation }: {
   readonly syncPhase: MobileSyncPhase
   readonly sessionActions: Readonly<{
     signIn: () => Promise<void>
     signOut: () => Promise<void>
   }>
+  readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
 }) => {
   const program = useMemo(
-    () => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn }, sessionActions }),
-    [sessionActions],
+    () => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn }, sessionActions, conversation }),
+    [sessionActions, conversation],
   )
-  const [homeState, setHomeState] = useState(initialHomeState)
+  const [homeState, setHomeState] = useState(program.initialState)
   const insets = useSafeAreaInsets()
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export const HomeScreen = ({ syncPhase, sessionActions }: {
             report={program.report}
             theme={khalaTheme}
             platform={enPlatform}
-            initialView={renderContentView(initialHomeState)}
+            initialView={renderContentView(program.initialState)}
           />
         </RNView>
 
