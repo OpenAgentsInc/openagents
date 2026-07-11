@@ -10,6 +10,7 @@ import {
 } from "@openagentsinc/khala-sync"
 
 import { withSyncTransaction } from "./outbox-writer.js"
+import type { SyncTransactionWriter } from "./outbox-writer.js"
 import type { SyncSql } from "./sql.js"
 
 /** Named system-writer identity required for every non-client changelog append. */
@@ -60,6 +61,30 @@ const diagnosticFromUnknown = (error: unknown): LiveAgentGraphProjectionDiagnost
   }
 }
 
+const appendValidatedLiveAgentGraph = (
+  writer: SyncTransactionWriter,
+  postImage: ReturnType<typeof projectLiveAgentGraphPostImage>,
+  mutationRef: string,
+): Promise<ChangelogEntry> => writer.appendChange({
+  scope: liveAgentGraphScope(postImage.value.threadRef),
+  entityType: EntityType.make(LIVE_AGENT_GRAPH_ENTITY_TYPE),
+  entityId: EntityId.make(postImage.entityId),
+  op: "upsert",
+  postImage: postImage.value,
+  mutationRef,
+})
+
+/** Append inside an existing business transaction; invalid graphs throw and roll it back. */
+export const appendLiveAgentGraphChange = (
+  writer: SyncTransactionWriter,
+  raw: unknown,
+  mutationRef: string,
+): Promise<ChangelogEntry> => {
+  const postImage = projectLiveAgentGraphPostImage(raw as LiveAgentGraphEntity)
+  assertLiveAgentGraphPostImageRedacted(postImage.value)
+  return appendValidatedLiveAgentGraph(writer, postImage, mutationRef)
+}
+
 /**
  * Validate and append one full graph post-image to its canonical thread scope.
  *
@@ -82,14 +107,12 @@ export const projectLiveAgentGraphBestEffort = async (
   }
 
   try {
-    const entry = await withSyncTransaction(sql, writer => writer.appendChange({
-      scope: liveAgentGraphScope(postImage.value.threadRef),
-      entityType: EntityType.make(LIVE_AGENT_GRAPH_ENTITY_TYPE),
-      entityId: EntityId.make(postImage.entityId),
-      op: "upsert",
-      postImage: postImage.value,
-      mutationRef: LIVE_AGENT_GRAPH_PROJECTION_SYSTEM_REF,
-    }))
+    const entry = await withSyncTransaction(sql, writer =>
+      appendValidatedLiveAgentGraph(
+        writer,
+        postImage,
+        LIVE_AGENT_GRAPH_PROJECTION_SYSTEM_REF,
+      ))
     return { ok: true, entry }
   } catch (error) {
     return { ok: false, diagnostic: diagnosticFromUnknown(error) }

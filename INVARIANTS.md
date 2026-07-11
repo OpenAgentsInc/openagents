@@ -678,9 +678,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   thread refs stay distinct; provider-native node thread refs cannot choose
   Sync authorization scope. A named fail-soft server projector now validates,
   structurally redacts, and appends this post-image through the normal dense-
-  version transaction writer. Live provider call-site binding, Runtime Gateway
-  emission, client read models, and live receipts remain CUT-11 work; the
-  registered writer does not itself claim a live graph authority.
+  version transaction writer. Live provider call-site binding is now active for
+  the existing server-authoritative Codex/Claude runtime transaction: start/
+  control/event transitions append the root graph atomically,
+  provider identity stays explicit unknown until a real event source supplies
+  it, and a retry after terminal advances attachment generation instead of
+  reopening the terminal node. Child topology, Runtime Gateway graph emission,
+  client read models, and named live receipts remain CUT-11 work.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`

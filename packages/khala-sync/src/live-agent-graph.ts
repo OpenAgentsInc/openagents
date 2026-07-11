@@ -8,6 +8,14 @@ import {
 } from "@openagentsinc/agent-runtime-schema"
 import { Schema as S } from "effect"
 
+export {
+  adaptClaudeLiveAgentObservation,
+  adaptCodexLiveAgentObservation,
+  type AdaptedLiveAgentObservation,
+  type ClaudeLiveAgentObservation,
+  type CodexLiveAgentObservation,
+} from "@openagentsinc/agent-runtime-schema"
+
 /**
  * Canonical live-agent graph post-image for Khala Sync.
  *

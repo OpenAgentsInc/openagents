@@ -6,6 +6,8 @@ import {
   ClientGroupId,
   ClientId,
   KHALA_SYNC_PROTOCOL_VERSION,
+  LIVE_AGENT_GRAPH_ENTITY_TYPE,
+  decodeLiveAgentGraphPostImageJson,
   KhalaRuntimeControlIntentSchemaLiteral,
   KhalaRuntimeEventSchemaLiteral,
   MutationEnvelope,
@@ -48,6 +50,7 @@ import {
   RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
   RUNTIME_INTENT_EXPIRY_REJECTION,
   RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+  RUNTIME_RETRY_TURN_MUTATOR_NAME,
   RUNTIME_RAW_BODY_REJECTION,
   RUNTIME_SCOPE_REJECTION,
   RUNTIME_START_TURN_MUTATOR_NAME,
@@ -110,6 +113,7 @@ const controlIntent = (
     promptRef?: string | undefined
     reasonRef?: string | undefined
     expiresAt?: string | undefined
+    lane?: "codex_app_server" | "claude_pylon" | undefined
   }>,
 ) => ({
   schema: KhalaRuntimeControlIntentSchemaLiteral,
@@ -125,8 +129,8 @@ const controlIntent = (
   },
   redactionClass: "private_ref",
   target: {
-    adapterKind: "codex",
-    lane: "codex_app_server",
+    adapterKind: input.lane === "claude_pylon" ? "claude_code" : "codex",
+    lane: input.lane ?? "codex_app_server",
   },
   threadId: input.threadId,
   visibility: "private",
@@ -157,6 +161,8 @@ const runtimeEvent = (
       | "interrupted"
       | "unknown"
       | undefined
+    lane?: "codex_app_server" | "claude_pylon" | undefined
+    providerRef?: string | undefined
   }>,
 ) => {
   const base = {
@@ -168,9 +174,10 @@ const runtimeEvent = (
     redactionClass: "private_ref",
     sequence: input.sequence,
     source: {
-      adapterKind: "codex",
-      lane: "codex_app_server",
+      adapterKind: input.lane === "claude_pylon" ? "claude_code" : "codex",
+      lane: input.lane ?? "codex_app_server",
       surface: "desktop",
+      ...(input.providerRef === undefined ? {} : { providerRef: input.providerRef }),
     },
     threadId: input.threadId,
     turnId: input.turnId,
@@ -302,6 +309,7 @@ describe.skipIf(!hasLocalPostgres())(
           envelope(7, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
             eventId: "runtime-event.conversation.started",
             kind: "turn.started",
+            providerRef: "provider.codex.named",
             sequence: 0,
             threadId,
             turnId,
@@ -334,12 +342,113 @@ describe.skipIf(!hasLocalPostgres())(
       expect(runPostImage).toContain("Start the real streamed conversation.")
       expect(runPostImage).toContain("OpenAgentsInc")
       expect(runPostImage).not.toContain("DifferentOrg")
+      const graphJson = threadLog.entries
+        .filter(entry => String(entry.entityType) === LIVE_AGENT_GRAPH_ENTITY_TYPE)
+        .at(-1)?.postImageJson
+      expect(graphJson).toBeDefined()
+      const graph = decodeLiveAgentGraphPostImageJson(graphJson!)
+      expect(graph.cursor).toBe(1)
+      expect(graph.nodes[0]).toMatchObject({
+        provider: { state: "known", kind: "codex", providerRef: "provider.codex.named" },
+        runtime: { state: "known", kind: "codex_app_server" },
+        status: "running",
+      })
       const counts: Array<{ count: string | number }> = await sql`
         SELECT count(*) AS count
         FROM khala_sync_runtime_control_intents
         WHERE intent_id = ${startIntent.intentId}
       `
       expect(Number(counts[0]!.count)).toBe(1)
+    })
+
+    test("Claude runtime events converge through the same canonical graph writer", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.claude.graph.1"
+      const turnId = "runtime-turn.claude.graph.1"
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.claude.graph.start",
+            kind: "turn.start",
+            lane: "claude_pylon",
+            promptRef: "prompt.claude.graph",
+            threadId,
+            turnId,
+          })),
+          envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.claude.graph.started",
+            kind: "turn.started",
+            lane: "claude_pylon",
+            providerRef: "provider.claude.named",
+            sequence: 0,
+            threadId,
+            turnId,
+          })),
+          envelope(3, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.claude.graph.finished",
+            kind: "turn.finished",
+            lane: "claude_pylon",
+            providerRef: "provider.claude.named",
+            sequence: 1,
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(response.results.map(result => result.status)).toEqual(["applied", "applied", "applied"])
+      const log = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 50,
+        scope: threadScope(threadId),
+      })
+      const graphJson = log.entries
+        .filter(entry => String(entry.entityType) === LIVE_AGENT_GRAPH_ENTITY_TYPE)
+        .at(-1)?.postImageJson
+      expect(graphJson).toBeDefined()
+      const graph = decodeLiveAgentGraphPostImageJson(graphJson!)
+      expect(graph).toMatchObject({ cursor: 2, threadRef: "runtime-thread.claude.graph.1" })
+      expect(graph.nodes).toHaveLength(1)
+      expect(graph.nodes[0]).toMatchObject({
+        provider: { state: "known", kind: "claude", providerRef: "provider.claude.named" },
+        runtime: { state: "known", kind: "claude_agent_sdk" },
+        status: "completed",
+        terminal: { state: "terminal", reason: "completed" },
+      })
+
+      const retried = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(4, RUNTIME_RETRY_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.claude.graph.retry",
+            kind: "turn.retry",
+            lane: "claude_pylon",
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(retried.results[0]!.status).toBe("applied")
+      const retryLog = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 50,
+        scope: threadScope(threadId),
+      })
+      const retryGraph = decodeLiveAgentGraphPostImageJson(retryLog.entries
+        .filter(entry => String(entry.entityType) === LIVE_AGENT_GRAPH_ENTITY_TYPE)
+        .at(-1)!.postImageJson!)
+      expect(retryGraph.attachmentGeneration).toBe(2)
+      expect(retryGraph.cursor).toBe(3)
+      expect(retryGraph.nodes[0]).toMatchObject({
+        agentRef: `agent.claude.${turnId}.g2`,
+        status: "queued",
+        terminal: { state: "active" },
+        version: 1,
+      })
     })
 
     test("offline expiry is a durable terminal outcome and can never create or dispatch a turn", async () => {

@@ -2,8 +2,8 @@
 
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll Desktop/mobile path landed; CUT-11
-  canonical graph through the Sync server writer active)
-- Revision: 41
+  Codex/Claude root graphs enter the Sync transaction)
+- Revision: 42
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -561,8 +561,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   distinct, and the maximum 2,000-node entity round-trips byte-for-byte.
   The named Sync server projector validates/redacts and transactionally appends
   that entity at dense thread-scope versions; its real-Postgres receipt is
-  green. Live provider call-site binding, Gateway emission, and named-account
-  traces remain open.
+  green. The existing server-authoritative runtime start/control/event
+  transaction now binds both Codex and Claude root observations into that
+  writer atomically, retaining unknown provider identity until a real source
+  ref arrives and fencing terminal retries with a new attachment generation.
+  Child topology, Gateway emission, and named-account traces remain open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

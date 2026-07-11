@@ -52,11 +52,16 @@ const AttentionObservation = S.Union([
   S.Struct({ state: S.Literal("omitted"), reason: OmissionReason }),
 ])
 
+const ProviderObservation = S.Union([
+  S.Struct({ state: S.Literal("known"), providerRef: Ref }),
+  S.Struct({ state: S.Literal("omitted"), reason: OmissionReason }),
+])
+
 const CommonObservation = {
   graphRef: Ref,
   sessionRef: Ref,
   threadRef: Ref,
-  providerRef: Ref,
+  provider: ProviderObservation,
   attachmentGeneration: PositiveInt,
   agent: S.Struct({
     threadId: ProviderId,
@@ -192,7 +197,7 @@ const parentEdgeFor = (
 
 const canonicalNode = (input: Readonly<{
   provider: "codex" | "claude"
-  providerRef: string
+  providerFact: typeof ProviderObservation.Type
   runtimeKind: "codex_app_server" | "claude_agent_sdk"
   runtimeRef: string
   sessionRef: string
@@ -209,7 +214,9 @@ const canonicalNode = (input: Readonly<{
     transcriptRef: `transcript.${input.provider}.${input.agent.threadId}`,
     runRef: `run.${input.provider}.${input.agent.runId}`,
     parent: parentFor(input.provider, input.agent.parent),
-    provider: { state: "known", kind: input.provider, providerRef: input.providerRef },
+    provider: input.providerFact.state === "known"
+      ? { state: "known", kind: input.provider, providerRef: input.providerFact.providerRef }
+      : unknown(input.providerFact.reason),
     runtime: { state: "known", kind: input.runtimeKind, runtimeRef: input.runtimeRef },
     worktree: worktreeFor(input.agent.worktree),
     status: input.status,
@@ -303,7 +310,7 @@ export const adaptCodexLiveAgentObservation = (value: unknown): AdaptedLiveAgent
     threadRef: input.threadRef,
     node: canonicalNode({
       provider: "codex",
-      providerRef: input.providerRef,
+      providerFact: input.provider,
       runtimeKind: "codex_app_server",
       runtimeRef: input.runtimeRef,
       sessionRef: input.sessionRef,
@@ -325,7 +332,7 @@ export const adaptClaudeLiveAgentObservation = (value: unknown): AdaptedLiveAgen
     threadRef: input.threadRef,
     node: canonicalNode({
       provider: "claude",
-      providerRef: input.providerRef,
+      providerFact: input.provider,
       runtimeKind: "claude_agent_sdk",
       runtimeRef: input.runtimeRef,
       sessionRef: input.sessionRef,

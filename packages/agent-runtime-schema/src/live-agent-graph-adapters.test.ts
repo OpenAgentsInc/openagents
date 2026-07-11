@@ -21,7 +21,7 @@ const codex = (
   graphRef: "graph.cross-provider.1",
   sessionRef: "session.cross-provider.1",
   threadRef: "thread.canonical.1",
-  providerRef: "provider.codex.owner",
+  provider: { state: "known", providerRef: "provider.codex.owner" },
   runtimeRef: "runtime.codex.owner",
   attachmentGeneration: 1,
   agent: {
@@ -56,7 +56,7 @@ const claude = (
   graphRef: "graph.cross-provider.1",
   sessionRef: "session.cross-provider.1",
   threadRef: "thread.canonical.1",
-  providerRef: "provider.claude.owner",
+  provider: { state: "known", providerRef: "provider.claude.owner" },
   runtimeRef: "runtime.claude.owner",
   attachmentGeneration: 1,
   agent: {
@@ -193,6 +193,7 @@ describe("canonical live-agent provider adapters", () => {
     const claudeInput = claude()
     const codexAdapted = adaptCodexLiveAgentObservation({
       ...codexInput,
+      provider: { state: "omitted", reason: "provider_omitted" },
       agent: {
         ...codexInput.agent,
         parent: { state: "omitted", reason: "provider_unsupported" },
@@ -203,6 +204,7 @@ describe("canonical live-agent provider adapters", () => {
     })
     const claudeAdapted = adaptClaudeLiveAgentObservation({
       ...claudeInput,
+      provider: { state: "omitted", reason: "provider_omitted" },
       agent: {
         ...claudeInput.agent,
         parent: { state: "omitted", reason: "provider_unsupported" },
@@ -213,6 +215,7 @@ describe("canonical live-agent provider adapters", () => {
     })
     for (const adapted of [codexAdapted, claudeAdapted]) {
       expect(adapted.node.parent).toEqual({ kind: "unknown", reason: "provider_unsupported" })
+      expect(adapted.node.provider).toEqual({ state: "unknown", reason: "provider_omitted" })
       expect(adapted.node.worktree).toEqual({ state: "unknown", reason: "not_authorized" })
       expect(adapted.node.attention).toEqual({ state: "unknown", reason: "not_observed" })
       expect(adapted.node.currentTool).toEqual({ state: "unknown", reason: "provider_omitted" })

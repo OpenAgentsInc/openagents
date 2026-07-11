@@ -1,5 +1,7 @@
 import {
   agentRunScope,
+  adaptClaudeLiveAgentObservation,
+  adaptCodexLiveAgentObservation,
   AGENT_RUN_ENTITY_TYPE,
   AGENT_RUN_EVENT_ENTITY_TYPE,
   canonicalJson,
@@ -7,11 +9,13 @@ import {
   decodeAgentRunEventEntity,
   decodeKhalaRuntimeControlIntent,
   decodeKhalaRuntimeEvent,
+  decodeLiveAgentGraphEntity,
   decodeRuntimeControlIntentEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
   EntityId,
   EntityType,
+  liveAgentGraphScope,
   MutationResult,
   MutatorName,
   personalScope,
@@ -30,6 +34,7 @@ import {
   type RuntimeTurnStatus,
 } from "@openagentsinc/khala-sync"
 import { ensureScopeOwner } from "./fleet-projection.js"
+import { appendLiveAgentGraphChange } from "./live-agent-graph-projection.js"
 import type { MutatorContext, MutatorDefinition } from "./push-engine.js"
 import { defineMutator } from "./push-engine.js"
 
@@ -266,6 +271,184 @@ const appendRuntimeAgentRunChanges = async (
       scope,
     })
   }
+}
+
+const runtimeGraphTerminal = (status: RuntimeTurnStatus): boolean =>
+  status === "completed" || status === "failed" || status === "interrupted" || status === "closed"
+
+const readRuntimeLiveAgentGraph = async (
+  ctx: MutatorContext,
+  turn: RuntimeTurnEntity,
+) => {
+  const rows: Array<{ post_image_json: unknown }> = await ctx.writer.sql`
+    SELECT post_image_json
+    FROM khala_sync_changelog
+    WHERE scope = ${liveAgentGraphScope(turn.threadId)}
+      AND entity_type = 'live_agent_graph'
+      AND entity_id = ${`graph.runtime.${turn.turnId}`}
+      AND op = 'upsert'
+    ORDER BY version DESC
+    LIMIT 1
+  `
+  const value = rows[0]?.post_image_json
+  return value === undefined
+    ? null
+    : decodeLiveAgentGraphEntity(typeof value === "string" ? JSON.parse(value) : value)
+}
+
+const appendRuntimeLiveAgentGraph = async (
+  ctx: MutatorContext,
+  turn: RuntimeTurnEntity,
+  event?: KhalaRuntimeEvent,
+): Promise<void> => {
+  if (turn.lane !== "codex_app_server" && turn.lane !== "claude_pylon") return
+  const previous = await readRuntimeLiveAgentGraph(ctx, turn)
+  const previousNode = previous?.nodes[0]
+  const terminal = runtimeGraphTerminal(turn.status)
+  const reopening = previousNode?.terminal.state === "terminal" && !terminal
+  const attachmentGeneration = reopening
+    ? (previous?.attachmentGeneration ?? 1) + 1
+    : previous?.attachmentGeneration ?? 1
+  const observationAgentId = attachmentGeneration === 1
+    ? turn.turnId
+    : `${turn.turnId}.g${attachmentGeneration}`
+  const graphCursor = previous === null ? 0 : previous.cursor + 1
+  const nodeVersion = reopening
+    ? 1
+    : Math.max(turn.eventCount + 1, (previousNode?.version ?? 0) + 1)
+  const providerRef = event?.source.providerRef ?? (
+    previousNode?.provider.state === "known" ? previousNode.provider.providerRef : null
+  )
+  const provider = providerRef === null
+    ? { state: "omitted" as const, reason: "provider_omitted" as const }
+    : { state: "known" as const, providerRef }
+  const worktree = previousNode?.worktree.state === "known"
+    ? previousNode.worktree
+    : { state: "omitted" as const, reason: "provider_omitted" as const }
+  const attention = turn.status === "waiting_for_input"
+    ? { state: "omitted" as const, reason: "not_observed" as const }
+    : { state: "none" as const }
+  const common = {
+    graphRef: `graph.runtime.${turn.turnId}`,
+    sessionRef: `session.runtime.${turn.threadId}`,
+    threadRef: turn.threadId,
+    provider,
+    runtimeRef: `runtime.${turn.lane}.${observationAgentId}`,
+    attachmentGeneration,
+    agent: {
+      threadId: observationAgentId,
+      runId: turn.turnId,
+      parent: { state: "root" as const },
+      worktree,
+      attention,
+      activityCursor: turn.eventCount,
+      createdAt: turn.createdAt,
+      updatedAt: turn.updatedAt,
+      startedAt: turn.startedAt,
+      endedAt: terminal ? turn.settledAt : null,
+      version: nodeVersion,
+    },
+  }
+  const toolEvent = event?.kind === "tool.input.delta" ||
+    event?.kind === "tool.input.completed" ||
+    event?.kind === "tool.call" ||
+    event?.kind === "tool.result" ||
+    event?.kind === "tool.error"
+  const adapted = turn.lane === "codex_app_server"
+    ? adaptCodexLiveAgentObservation({
+        schema: "openagents.codex_live_agent_observation.v1",
+        ...common,
+        agent: {
+          ...common.agent,
+          status: turn.status === "queued"
+            ? "notStarted"
+            : turn.status === "running"
+              ? "inProgress"
+              : turn.status === "waiting_for_input"
+                ? "waitingForInput"
+                : turn.status === "completed"
+                  ? "completed"
+                  : turn.status === "failed"
+                    ? "failed"
+                    : "interrupted",
+          currentTool: toolEvent && event !== undefined
+            ? {
+                state: "known",
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                status: event.kind === "tool.result"
+                  ? "completed"
+                  : event.kind === "tool.error"
+                    ? "failed"
+                    : event.kind === "tool.call" || event.kind === "tool.input.completed"
+                      ? "inProgress"
+                      : "pending",
+                version: nodeVersion,
+              }
+            : { state: "omitted", reason: "not_observed" },
+        },
+      })
+    : adaptClaudeLiveAgentObservation({
+        schema: "openagents.claude_live_agent_observation.v1",
+        ...common,
+        agent: {
+          ...common.agent,
+          status: turn.status === "queued"
+            ? "queued"
+            : turn.status === "running"
+              ? "running"
+              : turn.status === "waiting_for_input"
+                ? "waiting_for_permission"
+                : turn.status === "completed"
+                  ? "succeeded"
+                  : turn.status === "failed"
+                    ? "errored"
+                    : "interrupted",
+          currentTool: toolEvent && event !== undefined
+            ? {
+                state: "known",
+                toolUseId: event.toolCallId,
+                toolName: event.toolName,
+                status: event.kind === "tool.result"
+                  ? "succeeded"
+                  : event.kind === "tool.error"
+                    ? "errored"
+                    : event.kind === "tool.call" || event.kind === "tool.input.completed"
+                      ? "running"
+                      : "queued",
+                version: nodeVersion,
+              }
+            : { state: "omitted", reason: "not_observed" },
+        },
+      })
+
+  let node = adapted.node
+  let edges = adapted.edges
+  if (!reopening && !toolEvent && previousNode?.currentTool.state === "known") {
+    if (!terminal && (previousNode.currentTool.status === "called" || previousNode.currentTool.status === "running")) {
+      node = { ...node, currentTool: previousNode.currentTool }
+      edges = previous?.edges ?? []
+    } else {
+      node = { ...node, currentTool: { state: "none" } }
+      edges = (previous?.edges ?? []).map(edge => edge.kind === "tool"
+        ? { ...edge, status: "unknown" as const, version: Math.max(edge.version + 1, node.version) }
+        : edge)
+    }
+  }
+  await appendLiveAgentGraphChange(ctx.writer, {
+    schema: "openagents.live_agent_graph.v1",
+    graphRef: adapted.graphRef,
+    sessionRef: node.sessionRef,
+    threadRef: adapted.threadRef,
+    attachmentGeneration: node.attachmentGeneration,
+    cursor: graphCursor,
+    lastDeltaRef: graphCursor === 0
+      ? null
+      : event?.eventId ?? `delta.graph.${turn.turnId}.${graphCursor}`,
+    nodes: [node],
+    edges,
+    updatedAt: turn.updatedAt,
+  }, ctx.mutationRef)
 }
 
 const runtimeEventSummary = (event: KhalaRuntimeEvent): string => {
@@ -874,6 +1057,7 @@ const executeExistingTurnIntent = async (
     turnId: validated.turnId,
   })
   await appendRuntimeAgentRunChanges(ctx, updatedTurn)
+  await appendRuntimeLiveAgentGraph(ctx, updatedTurn)
   return applied(ctx)
 }
 
@@ -908,6 +1092,7 @@ export const runtimeStartTurnMutator: MutatorDefinition =
       await insertControlIntent(ctx, intent, "accepted", nowIso)
       const turn = await insertTurn(ctx, intent, nowIso)
       await appendRuntimeAgentRunChanges(ctx, turn)
+      await appendRuntimeLiveAgentGraph(ctx, turn)
       return applied(ctx)
     },
     name: MutatorName.make(RUNTIME_START_TURN_MUTATOR_NAME),
@@ -1164,6 +1349,7 @@ export const runtimeRecordEventMutator: MutatorDefinition =
       await appendRuntimeAgentEventChanges(ctx, event, nowIso)
       const updatedTurn = await updateTurnForRuntimeEvent(ctx, turn, event, nowIso)
       await appendRuntimeAgentRunChanges(ctx, updatedTurn)
+      await appendRuntimeLiveAgentGraph(ctx, updatedTurn, event)
       return applied(ctx)
     },
     name: MutatorName.make(RUNTIME_RECORD_EVENT_MUTATOR_NAME),

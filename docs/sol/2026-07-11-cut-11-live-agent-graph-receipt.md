@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691)
-- Status: shared schema/replay, provider normalization, Khala Sync entity, and
-  named server-writer tranches complete; live provider call-site binding,
-  Runtime Gateway emission, and live traces pending
+- Status: shared schema/replay, provider normalization, Khala Sync entity,
+  named server writer, and live Codex/Claude root transaction binding complete;
+  provider child topology, Runtime Gateway emission, and live traces pending
 - Contract: `openagents.live_agent_graph.v1`
 
 ## Registered graph facts
@@ -87,16 +87,40 @@ A real throwaway-Postgres receipt appends two full post-images at versions 1
 and 2, with the registered system-writer ref, and decodes the stored bytes back
 through the graph contract.
 
+## Live runtime transaction binding
+
+The existing `runtime.startTurn`, runtime control, and `runtime.recordEvent`
+server transaction now calls the same graph adapters and appends the graph with
+the business mutation writer. There is no second poller or provider-history
+store:
+
+- `codex_app_server` maps through the Codex observation adapter;
+- `claude_pylon` maps through the Claude Agent SDK observation adapter;
+- queued roots start with explicit unknown provider identity;
+- only a real runtime event `source.providerRef` upgrades that identity;
+- later provider-omitted events preserve an already observed identity;
+- the provider event count remains the per-agent activity cursor while every
+  graph change advances its own cursor/version; and
+- retrying after terminal creates a new attachment generation/root attempt
+  rather than reopening the terminal node.
+
+Real-Postgres tests prove a Codex root reaches running with the observed named
+provider ref and a Claude root reaches completed/terminal through the same
+writer. These are deterministic provider-shaped fixtures, not named-account
+live traces and not child/subagent topology.
+
 ## Verification
 
-- `@openagentsinc/agent-runtime-schema`: 35 pass, 0 fail, 257 expectations;
+- `@openagentsinc/agent-runtime-schema`: 35 pass, 0 fail, 259 expectations;
   typecheck passes.
-- CUT-11 focused graph corpus: 11 pass, 109 expectations.
+- CUT-11 focused graph corpus: 11 pass, 111 expectations.
 - `@openagentsinc/khala-sync`: 178 pass, 0 fail, 2,601 expectations;
   typecheck passes.
 - CUT-11 focused Sync post-image corpus: 3 pass, 11 expectations.
 - CUT-11 focused Sync server writer: 4 pass, 18 expectations; typecheck passes.
-- Full `@openagentsinc/khala-sync-server`: 509 pass, 1 fail, 4,528
+- Runtime transaction binding: 12 pass, 84 expectations against real
+  throwaway Postgres; server typecheck passes.
+- Full `@openagentsinc/khala-sync-server`: 510 pass, 1 fail, 4,540
   expectations. The existing `runtime-intents.test.ts` event-count case returns
   three in-band rejections instead of its expected applies and fails identically
   when rerun alone; CUT-11 changes no runtime-intent file.
@@ -108,8 +132,8 @@ through the graph contract.
 
 ## Residual
 
-This receipt does not claim that live Codex or Claude producers currently call
-the graph writer. Next CUT-11 tranches must bind the typed adapters and named
-writer to those producers, emit confirmed post-images through Runtime Gateway,
-prove live reconnect, and attach redacted named-account traces for both
-providers. Graph presentation remains CUT-12.
+This receipt does not claim provider child/subagent topology or named-account
+live traces. Next CUT-11 tranches must project child observations into the same
+graph, emit confirmed post-images through Runtime Gateway, prove live reconnect,
+and attach redacted named-account traces for both providers. Graph presentation
+remains CUT-12.
