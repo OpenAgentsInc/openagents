@@ -282,19 +282,58 @@ export interface HomeProgramOptions {
 const confirmedKhalaState = (
   thread: MobileConversationThread | null,
   turnCounter = 0,
-): KhalaState => ({
-  draft: "",
-  entries: (thread?.messages ?? []).map(message => ({
+): KhalaState => {
+  const runtimeEntries = (thread?.timeline?.events ?? []).flatMap<KhalaState["entries"][number]>(event => {
+    const item = event.item
+    if (item == null) return []
+    switch (item.kind) {
+      case "text":
+        return [{ key: event.eventRef, role: "assistant" as const, text: item.text, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "reasoning":
+        return [{ key: event.eventRef, role: "system" as const, text: `Reasoning · ${item.text}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "connected":
+        return [{ key: event.eventRef, role: "system" as const, text: `Connected · ${item.lane}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "tool":
+        return [{ key: event.eventRef, role: "system" as const, text: `${item.toolName} · ${item.status}`, status: item.status === "failed" ? "failed" as const : "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "plan":
+        return [{ key: event.eventRef, role: "system" as const, text: `Plan · ${item.status}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "usage":
+        return [{ key: event.eventRef, role: "system" as const, text: `Usage · ${item.totalTokens ?? 0} tokens`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "terminal":
+        return [{ key: event.eventRef, role: "system" as const, text: `Turn ${item.status}`, status: item.status === "failed" ? "failed" as const : "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "interrupted":
+        return [{ key: event.eventRef, role: "system" as const, text: "Turn interrupted", status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "heartbeat":
+      case "reconnect":
+      case "stale":
+        return [{ key: event.eventRef, role: "system" as const, text: item.detail, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "approval":
+        return [{ key: event.eventRef, role: "system" as const, text: `Approval · ${item.status}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "question":
+        return [{ key: event.eventRef, role: "system" as const, text: item.prompt, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "error":
+        return [{ key: event.eventRef, role: "system" as const, text: item.messageSafe, status: "failed" as const, createdAt: event.createdAt, version: event.version }]
+    }
+  })
+  const messageEntries = (thread?.messages ?? []).map(message => ({
     key: message.messageRef,
     role: "user" as const,
     text: message.body,
     status: "done" as const,
     createdAt: message.createdAt,
     version: message.version,
-  })),
-  pending: false,
-  turnCounter,
-})
+  }))
+  return {
+    draft: "",
+    entries: [...messageEntries, ...runtimeEntries].sort((left, right) =>
+      (left.createdAt ?? "").localeCompare(right.createdAt ?? "")),
+    // A confirmed running turn is observable state, not an in-flight mobile
+    // mutation. Keep the composer available so a second device can safely
+    // append to that exact run. Only pre-dispatch queued state blocks input.
+    pending: thread?.timeline?.run?.status === "queued",
+    turnCounter,
+  }
+}
 
 const withConfirmedThread = (
   state: HomeState,
@@ -438,7 +477,20 @@ const makeSyncedConversationHandlers = (
       }))
     }
 
-    const result = yield* Effect.promise(() => host.sendMessage({ threadRef, body: message }))
+    const result = yield* Effect.promise(() => host.sendMessage({
+      threadRef,
+      body: message,
+      onUpdate: thread => {
+        Effect.runFork(SubscriptionRef.update(state, current => {
+          if (current.activeThreadRef !== thread.threadRef) return current
+          const updated = withConfirmedThread(current, thread)
+          return {
+            ...updated,
+            khala: { ...updated.khala, pending: current.khala.pending },
+          }
+        }))
+      },
+    }))
     yield* SubscriptionRef.update(state, current => result.ok
       ? withConfirmedThread(current, result.thread)
       : failedConversationState(current, result.error))

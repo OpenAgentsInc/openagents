@@ -23,7 +23,12 @@ import {
 } from "@openagentsinc/khala-sync"
 import { isDeviceLocalScope } from "@openagentsinc/khala-sync"
 import { Cause, Effect, Exit, Queue, Stream } from "effect"
-import type { ClientMutator, KhalaSyncOverlay, OverlayError } from "./overlay.js"
+import {
+  KhalaSyncOverlayError,
+  type ClientMutator,
+  type KhalaSyncOverlay,
+  type OverlayError,
+} from "./overlay.js"
 import type { ConfirmedEntity, KhalaSyncLocalStore } from "./store.js"
 import {
   isAccessDeniedSignal,
@@ -245,6 +250,12 @@ export interface KhalaSyncSession {
   ) => Effect.Effect<MutationId, OverlayError>
   /** Stop all loops and sockets. The session cannot be restarted. */
   readonly close: () => Effect.Effect<void>
+  /**
+   * Proven sign-out/revocation: stop the session, burn and discard queued
+   * account-linked mutations, and retract every subscribed hosted scope from
+   * the local confirmed store. Transient disconnects must use close instead.
+   */
+  readonly revoke: () => Effect.Effect<void, OverlayError>
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,23 +1103,47 @@ export const createKhalaSyncSession = (
     mutator: ClientMutator<Args>,
     args: Args,
   ): Effect.Effect<MutationId, OverlayError> =>
-    Effect.tap(
-      overlay.mutate(mutator, args),
-      () =>
-        Effect.sync(() => {
-          kickPush()
-        }),
-    )
+    closed
+      ? Effect.fail(
+          new KhalaSyncOverlayError(
+            "mutator_failure",
+            "Khala Sync session is closed; mutation was not queued",
+          ),
+        )
+      : Effect.tap(
+          overlay.mutate(mutator, args),
+          () =>
+            Effect.sync(() => {
+              kickPush()
+            }),
+        )
+
+  const closeNow = (): void => {
+    closed = true
+    for (const [scope, runtime] of scopes) {
+      runtime.generation += 1
+      runtime.loopRunning = false
+      runtime.socket?.close()
+      runtime.socket = null
+      setState(scope, runtime, { phase: "idle" })
+    }
+  }
 
   const close = (): Effect.Effect<void> =>
-    Effect.sync(() => {
-      closed = true
+    Effect.sync(closeNow)
+
+  const revoke = (): Effect.Effect<void, OverlayError> =>
+    Effect.gen(function* () {
+      closeNow()
+      const pending = overlay.pending()
+      const last = pending.at(-1)
+      if (last !== undefined) yield* overlay.onAck(last.mutationId)
       for (const [scope, runtime] of scopes) {
-        runtime.generation += 1
-        runtime.loopRunning = false
-        runtime.socket?.close()
-        runtime.socket = null
-        setState(scope, runtime, { phase: "idle" })
+        if (isDeviceLocalScope(scope)) continue
+        yield* store.resetScope(scope, [], watermark(0))
+        yield* overlay.refetched(scope)
+        runtime.lastDeltaAt = null
+        runtime.cvr = null
       }
     })
 
@@ -1127,5 +1162,6 @@ export const createKhalaSyncSession = (
     changes,
     mutate,
     close,
+    revoke,
   }
 }

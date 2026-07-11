@@ -36,6 +36,51 @@ const threadSummary = (thread: Readonly<{
 const nextId = (kind: "thread" | "message", randomId: () => string): string =>
   `${kind}.desktop.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
 
+const timelineNotes = (
+  events: Extract<DesktopRuntimeGatewayResponse, { kind: "conversation_timeline" }>["events"],
+): DesktopThread["notes"] => {
+  const notes: Array<DesktopThread["notes"][number]> = []
+  const textByMessage = new Map<string, number>()
+  for (const event of events) {
+    const item = event.item
+    if (item == null) continue
+    if (item.kind === "text") {
+      const index = textByMessage.get(item.messageRef)
+      if (index === undefined) {
+        textByMessage.set(item.messageRef, notes.length)
+        notes.push({ key: event.eventRef, role: "assistant", text: item.text, timestamp: timestamp(event.createdAt) })
+      } else {
+        const previous = notes[index]!
+        notes[index] = { ...previous, text: previous.text + item.text }
+      }
+      continue
+    }
+    const text = item.kind === "reasoning"
+      ? `Reasoning · ${item.text}`
+      : item.kind === "connected"
+        ? `Connected · ${item.lane}`
+        : item.kind === "tool"
+          ? `${item.toolName} · ${item.status}`
+          : item.kind === "plan"
+            ? `Plan · ${item.status}`
+            : item.kind === "usage"
+              ? `Usage · ${item.totalTokens ?? 0} tokens`
+              : item.kind === "terminal"
+                ? `Turn ${item.status}`
+                : item.kind === "interrupted"
+                  ? "Turn interrupted"
+                  : item.kind === "approval"
+                    ? `Approval · ${item.status}`
+                    : item.kind === "question"
+                      ? item.prompt
+                      : item.kind === "error"
+                        ? item.messageSafe
+                        : item.detail
+    notes.push({ key: event.eventRef, role: "system", text, timestamp: timestamp(event.createdAt) })
+  }
+  return notes
+}
+
 export const makeRuntimeConversationChatHost = (
   options: RuntimeConversationOptions,
 ): ChatHost => {
@@ -54,12 +99,17 @@ export const makeRuntimeConversationChatHost = (
     requiredMessageRef?: string,
   ): Promise<DesktopThread | null> => {
     for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
-      const [catalogResult, threadResult] = await Promise.all([
+      const [catalogResult, threadResult, timelineResult] = await Promise.all([
         catalog(),
         options.request({
           kind: "query",
           requestId: `renderer-conversation-thread-${++requestSequence}`,
           query: { id: "conversation.thread", threadRef },
+        }),
+        options.request({
+          kind: "query",
+          requestId: `renderer-conversation-timeline-${++requestSequence}`,
+          query: { id: "conversation.timeline", threadRef },
         }),
       ])
       if (
@@ -72,12 +122,17 @@ export const makeRuntimeConversationChatHost = (
         if (summary !== undefined) {
           const projected: DesktopThread = {
             ...threadSummary(summary),
-            notes: threadResult.messages.map(message => ({
-              key: message.messageRef,
-              role: "user" as const,
-              text: message.body,
-              timestamp: timestamp(message.createdAt),
-            })),
+            notes: [
+              ...threadResult.messages.map(message => ({
+                key: message.messageRef,
+                role: "user" as const,
+                text: message.body,
+                timestamp: timestamp(message.createdAt),
+              })),
+              ...(timelineResult.kind === "conversation_timeline"
+                ? timelineNotes(timelineResult.events)
+                : []),
+            ],
           }
           if (
             requiredMessageRef === undefined ||
@@ -114,6 +169,7 @@ export const makeRuntimeConversationChatHost = (
     hydrateThread: confirmedThread,
     sendMessage: async input => {
       const messageRef = nextId("message", randomId)
+      const runRef = `turn.desktop.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
       const outcome = await options.request({
         kind: "command",
         commandId: `renderer-conversation-append-${++requestSequence}`,
@@ -129,11 +185,67 @@ export const makeRuntimeConversationChatHost = (
         outcome.status !== "pending_reconcile"
       ) return { ok: false, error: "Authoritative conversation Sync is unavailable." }
 
-      const thread = await confirmedThread(input.id, messageRef)
-      if (thread !== null) return { ok: true, thread }
+      let thread = await confirmedThread(input.id, messageRef)
+      if (thread === null) {
+        return {
+          ok: false,
+          error: "Message is still pending reconciliation.",
+        }
+      }
+      const started = await options.request({
+        kind: "command",
+        commandId: `renderer-conversation-start-${++requestSequence}`,
+        command: {
+          id: "conversation.start",
+          messageRef,
+          runRef,
+          threadRef: input.id,
+        },
+      })
+      if (
+        started.kind !== "runtime_command_outcome" ||
+        (started.status !== "accepted" && started.status !== "unknown_pending_reconcile")
+      ) {
+        return { ok: false, error: "Message was admitted, but Codex dispatch was rejected." }
+      }
+
+      let lastSignature = ""
+      for (let attempt = 0; attempt < Math.max(pollAttempts, 300); attempt += 1) {
+        const next = await confirmedThread(input.id)
+        if (next !== null) {
+          thread = next
+          const signature = next.notes.map(note => `${note.key}:${note.text.length}`).join("|")
+          if (signature !== lastSignature) {
+            lastSignature = signature
+            input.onUpdate?.(next)
+          }
+        }
+        const timeline = await options.request({
+          kind: "query",
+          requestId: `renderer-conversation-stream-${++requestSequence}`,
+          query: { id: "conversation.timeline", threadRef: input.id },
+        })
+        if (
+          timeline.kind === "conversation_timeline" &&
+          timeline.run?.runRef === runRef &&
+          (timeline.run.status === "completed" ||
+            timeline.run.status === "failed" ||
+            timeline.run.status === "canceled")
+        ) return { ok: true, thread }
+        await sleep(100)
+      }
       return {
         ok: false,
-        error: "Message is still pending reconciliation.",
+        error: "Run outcome is still pending reconciliation.",
+        thread: {
+          ...thread,
+          notes: [...thread.notes, {
+            key: `pending-reconcile-${runRef}`,
+            role: "system",
+            text: "Run outcome is still pending reconciliation.",
+            timestamp: "--:--",
+          }],
+        },
       }
     },
   }

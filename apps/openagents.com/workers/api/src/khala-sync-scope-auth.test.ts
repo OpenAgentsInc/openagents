@@ -96,6 +96,17 @@ const fleetOwnerClient = (owners: Readonly<Record<string, string>>) => {
         owner === undefined ? [] : [{ owner_user_id: owner }],
       )
     }
+    if (text.includes('khala_sync_runtime_turns')) {
+      const owner = owners[`runtime:${String(values[0])}`]
+      return Promise.resolve(owner === undefined ? [] : [{
+        event_count: 1,
+        lane: 'codex_app_server',
+        owner_user_id: owner,
+        status: 'running',
+        thread_id: 'thread-runtime',
+        turn_id: String(values[0]),
+      }])
+    }
     return Promise.reject(new Error('unexpected query'))
   }) as unknown as SyncSql
   return {
@@ -230,6 +241,25 @@ describe('makeKhalaSyncScopeReadResolver (Worker auth matrix)', () => {
       kind: 'denied',
       reason: 'unauthorized_scope',
     })
+  })
+
+  test('agent_run: a Postgres runtime turn owner is authorized before legacy D1 fallback', async () => {
+    const { resolver } = makeResolver({
+      db: throwingD1(),
+      fleetOwners: { 'runtime:turn-native-1': USER },
+    })
+    expect(await resolver(USER, agentRunScope('turn-native-1'))).toEqual({
+      kind: 'allowed',
+    })
+    expect((await resolver(OTHER, agentRunScope('turn-native-1'))).kind).not.toBe('allowed')
+  })
+
+  test('agent_run: an absent Postgres binding preserves the legacy D1 owner path', async () => {
+    const { resolver } = makeResolver({
+      binding: undefined,
+      state: { runs: new Map([['run-legacy', { id: 'run-legacy', team_id: null, user_id: USER }]]) },
+    })
+    expect(await resolver(USER, agentRunScope('run-legacy'))).toEqual({ kind: 'allowed' })
   })
 
   test('thread: resolves through agent_runs directly and via the autopilot-thread mapping', async () => {

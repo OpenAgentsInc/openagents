@@ -78,22 +78,46 @@ export {
 } from "./chat.js"
 
 export {
+  ConfirmedChatMessageSchema,
+  ConfirmedChatThreadSchema,
   type ConfirmedChatMessage,
   type ConfirmedChatThread,
   createKhalaSyncConversation,
   type KhalaSyncConversation,
   type KhalaSyncConversationStatus,
+  KhalaSyncConversationStatusSchema,
 } from "./conversation.js"
 
 export {
+  ConfirmedAgentRunSchema,
+  ConfirmedAgentTimelineEventSchema,
+  ConfirmedAgentTimelineItemSchema,
   type ConfirmedAgentRun,
   type ConfirmedAgentTimelineEvent,
+  type ConfirmedAgentTimelineItem,
   type ConfirmedAgentTimelineSnapshot,
   createKhalaSyncAgentTimeline,
   type KhalaSyncAgentTimeline,
   type KhalaSyncAgentTimelineStatus,
   MAX_CONFIRMED_AGENT_TIMELINE_EVENTS,
 } from "./agent-timeline.js"
+
+export {
+  buildAppendUserMessageIntent,
+  buildInterruptTurnIntent,
+  buildStartTurnIntent,
+  chatMessageBodyRef,
+  createRuntimeClientMutators,
+  createKhalaSyncRuntimeCommands,
+  RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
+  RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
+  RUNTIME_START_TURN_MUTATOR_NAME,
+  type RuntimeClientMutators,
+  type KhalaSyncRuntimeCommands,
+  type RuntimeCommandContext,
+  type RuntimeCommandSurface,
+  type RuntimeCommandTarget,
+} from "./runtime.js"
 
 // ---------------------------------------------------------------------------
 // Transport (KS-5.3): injectable seam in transport.ts; HTTP+WebSocket

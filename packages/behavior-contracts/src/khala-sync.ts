@@ -174,7 +174,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "This is a confirmed reader over the existing agent_run scope and entity contracts; it adds no schema, producer, runtime command, thread/run binding, or optimistic event path. The public snapshot omits owner, objective, repository, runtime/backend, source, payload JSON, external callback refs, store/session/transport objects, and all non-live cached rows.",
+        "This is a confirmed reader over the canonical agent_run scope and the runtime-turn producer added for #8676. The runtime turn remains execution authority; its agent_run/agent_run_event mirrors are transactional projections, never a second run universe or optimistic event path. The bounded snapshot omits owner, objective and repository contents, provider source, payload JSON, external callback refs, store/session/transport objects, and all non-live cached rows.",
       blockerRefs: [],
       contractId: "khala_sync.client.confirmed_agent_timeline.v1",
       enforcementTier: "test-sweep",
@@ -183,12 +183,14 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         "packages/khala-sync/src/agent-run.ts",
         "packages/khala-sync-client/src/agent-timeline.ts",
         "packages/khala-sync-client/src/agent-timeline.test.ts",
+        "packages/khala-sync-server/src/runtime-mutators.ts",
+        "packages/khala-sync-server/src/runtime-mutators.test.ts",
         "docs/sol/issues/confirmed-agent-timeline.md",
       ],
       oracles: [
         {
           description:
-            "Applies out-of-order agent_run_event rows plus an at-least-once duplicate replay into the real shared SQLite store, restarts it, and proves one exact run-scope subscription reconstructs an ordered bounded confirmed timeline with refs/sequences/versions while private payload/source/owner fields remain absent; non-live cached rows stay hidden.",
+            "Applies out-of-order agent_run_event rows plus an at-least-once duplicate replay into the real shared SQLite store, restarts it, and proves exact run-scope and thread-route discovery reconstruct ordered bounded confirmed timeline items with refs/sequences/versions while private payload/source/owner fields remain absent; non-live cached rows stay hidden.",
           id: "khala_sync.client.confirmed_agent_timeline.restart_replay",
           kind: "bun-test",
           mode: "unit",
@@ -203,14 +205,14 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
       },
       state: "enforced",
       statement:
-        "Desktop and mobile share one confirmed agent-run timeline reader: exact agent_run scope state reconstructs in sequence order across replay and restart, non-live cached rows remain hidden, and raw provider/private event material never enters the public projection.",
+        "Desktop and mobile share one confirmed agent-run timeline reader: exact agent_run scope state reconstructs bounded canonical items in sequence order across replay and restart, non-live cached rows remain hidden, and raw provider callbacks or credential-bearing payloads never enter the client projection.",
       surface: "khala-sync-client",
       verification:
-        "The timeline test and package import-coverage gate run in the normal khala-sync-client sweep; behavior-contract coverage requires the enforced oracle source to reference this contract.",
+        "The timeline and shared runtime-builder tests plus package import-coverage gate run in the normal khala-sync-client sweep. The runtime-mutator real-Postgres oracle proves the exact transactional producer binding and semantic retry/conflict behavior.",
     },
     {
       authorityBoundary:
-        "This contract binds SPEC §7 invariant 7's client-visible outcome (revocation retracts synced state; the scope parks terminal instead of retrying). It does not define who may change memberships, and the revocation TRIGGER for already-open sockets remains the operator/Worker access-changed route obligation registered in apps/openagents.com/INVARIANTS.md (Khala Sync invariant 7).",
+        "This contract binds SPEC §7 invariant 7's client-visible outcome (revocation retracts synced state; the scope parks terminal instead of retrying) and proven native sign-out, which closes mutation immediately, burns queued hosted commands, and clears subscribed hosted projections. Transient disconnect remains non-destructive. It does not define who may change memberships, and the revocation trigger for already-open sockets remains the operator/Worker access-changed route obligation registered in apps/openagents.com/INVARIANTS.md (Khala Sync invariant 7).",
       blockerRefs: [],
       contractId: "khala_sync.access.revocation_clears_synced_state.v1",
       enforcementTier: "test-sweep",
@@ -233,7 +235,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
         },
         {
           description:
-            "Client-engine oracles over the fake transport: MustRefetch(access_changed) followed by a denied re-bootstrap CLEARS durable rows + cursor and parks TERMINAL denied with no retry; the same clearing holds for a 403 mid catch-up and for denial on first contact.",
+            "Client-engine oracles over the fake transport: MustRefetch(access_changed) followed by a denied re-bootstrap clears durable rows + cursor and parks terminal denied; proven revoke closes mutation before queue insertion, burns already-queued hosted commands, retracts every subscribed hosted scope, and preserves device-local rows. Transient close remains reconstructible.",
           id: "khala_sync.access.revocation_client_clears_and_parks",
           kind: "bun-test",
           mode: "unit",
@@ -248,7 +250,7 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
       },
       state: "enforced",
       statement:
-        "Access revocation clears synced state: once a user's access to a scope is revoked, the client stops receiving that scope, its locally synced copy of the scope is cleared rather than left readable, and the session parks denied instead of silently retrying.",
+        "Access revocation clears synced state: once access is revoked or native sign-out is proven, the client stops receiving hosted scopes, refuses new mutation, burns queued hosted commands, and clears locally synced hosted state rather than leaving it readable or replayable; the session parks denied or closed instead of silently retrying.",
       surface: "khala-sync-client",
       verification:
         "The full-stack oracle is the KS-7.1 revocation e2e in apps/openagents.com/workers/api (vitest; real Postgres via local-postgres, skips only on machines without initdb/pg_ctl) and the client-side clearing oracles run in the packages/khala-sync-client bun test sweep. Both suites run in their packages' normal test sweeps before pushes to main; SPEC §7 invariant 7 registration with honest limits lives in apps/openagents.com/INVARIANTS.md.",

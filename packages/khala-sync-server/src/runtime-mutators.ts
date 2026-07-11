@@ -1,4 +1,10 @@
 import {
+  agentRunScope,
+  AGENT_RUN_ENTITY_TYPE,
+  AGENT_RUN_EVENT_ENTITY_TYPE,
+  canonicalJson,
+  decodeAgentRunEntity,
+  decodeAgentRunEventEntity,
   decodeKhalaRuntimeControlIntent,
   decodeKhalaRuntimeEvent,
   decodeRuntimeControlIntentEntity,
@@ -40,12 +46,13 @@ import { defineMutator } from "./push-engine.js"
  *   control intent, optionally tied to an existing turn.
  * - `runtime.interruptTurn`, `runtime.continueTurn`, `runtime.retryTurn`,
  *   and `runtime.closeTurn` advance existing owner-private turns.
- * - `runtime.recordEvent` records full runtime stream events only in
- *   `scope.thread.<threadId>` and updates the public-safe turn summary.
+ * - `runtime.recordEvent` records full canonical runtime events only in
+ *   private thread authority, updates the turn, and transactionally mirrors a
+ *   bounded canonical event into the existing thread/run agent timeline.
  *
- * Every mutator is in-band-rejecting and ledger-idempotent via
- * `executePush`. Runtime events can carry raw text/tool deltas, so the only
- * replicated event scope is the exact private thread scope.
+ * Every mutator is in-band-rejecting and ledger-idempotent via `executePush`.
+ * Runtime events can carry private text/tool deltas, so event projections stay
+ * within the exact private thread and owner-authorized run scopes.
  */
 
 export const RUNTIME_START_TURN_MUTATOR_NAME = "runtime.startTurn"
@@ -62,7 +69,9 @@ export const RUNTIME_INTENT_KIND_REJECTION = "runtime_intent_kind_mismatch"
 export const RUNTIME_TURN_REQUIRED_REJECTION = "runtime_turn_required"
 export const RUNTIME_TURN_EXISTS_REJECTION = "runtime_turn_exists"
 export const RUNTIME_TURN_NOT_FOUND_REJECTION = "runtime_turn_not_found"
-export const RUNTIME_INTENT_EXISTS_REJECTION = "runtime_intent_exists"
+export const RUNTIME_INTENT_CONFLICT_REJECTION = "runtime_intent_conflict"
+/** @deprecated exact retries now reconcile; use the conflict code. */
+export const RUNTIME_INTENT_EXISTS_REJECTION = RUNTIME_INTENT_CONFLICT_REJECTION
 export const RUNTIME_MESSAGE_REQUIRED_REJECTION = "runtime_message_required"
 export const RUNTIME_EVENT_EXISTS_REJECTION = "runtime_event_exists"
 export const RUNTIME_EVENT_SEQUENCE_REJECTION = "runtime_event_sequence_invalid"
@@ -73,6 +82,291 @@ const RuntimeControlIntentEntityType = EntityType.make(
   RUNTIME_CONTROL_INTENT_ENTITY_TYPE,
 )
 const RuntimeEventEntityType = EntityType.make(RUNTIME_EVENT_ENTITY_TYPE)
+const AgentRunEntityType = EntityType.make(AGENT_RUN_ENTITY_TYPE)
+const AgentRunEventEntityType = EntityType.make(AGENT_RUN_EVENT_ENTITY_TYPE)
+
+type RuntimeThreadContextRow = Readonly<{
+  title: string
+  repo_binding_owner: string | null
+  repo_binding_name: string | null
+  repo_binding_default_branch: string | null
+}>
+
+type RuntimeWorkContextSnapshotRow = Readonly<{
+  work_context_ref: string | null
+  goal_message_id: string | null
+  repository_provider: string | null
+  repository_owner: string | null
+  repository_name: string | null
+  repository_ref: string | null
+}>
+
+const readRuntimeThreadContext = async (
+  ctx: MutatorContext,
+  threadId: string,
+): Promise<RuntimeThreadContextRow | null> => {
+  const rows: Array<RuntimeThreadContextRow> = await ctx.writer.sql`
+    SELECT title, repo_binding_owner, repo_binding_name,
+           repo_binding_default_branch
+    FROM khala_sync_chat_threads
+    WHERE thread_id = ${threadId}
+  `
+  return rows[0] ?? null
+}
+
+const storedJsonObject = (value: unknown): Record<string, unknown> | null => {
+  try {
+    const decoded = typeof value === "string" ? JSON.parse(value) : value
+    if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) {
+      return null
+    }
+    return decoded as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+const messageIdFromBodyRef = (bodyRef: string | undefined): string | null => {
+  const prefix = "chat_message."
+  return bodyRef?.startsWith(prefix) === true ? bodyRef.slice(prefix.length) : null
+}
+
+const readRuntimeWorkContextSnapshot = async (
+  ctx: MutatorContext,
+  turnId: string,
+): Promise<RuntimeWorkContextSnapshotRow | null> => {
+  const rows: Array<RuntimeWorkContextSnapshotRow> = await ctx.writer.sql`
+    SELECT work_context_ref, goal_message_id, repository_provider,
+           repository_owner, repository_name, repository_ref
+    FROM khala_sync_runtime_turns
+    WHERE turn_id = ${turnId}
+  `
+  return rows[0] ?? null
+}
+
+const readRuntimeGoal = async (
+  ctx: MutatorContext,
+  turnId: string,
+  threadId: string,
+  fallback: string,
+  goalMessageId?: string | null,
+): Promise<string> => {
+  let messageId = goalMessageId ?? null
+  if (messageId === null) {
+    const intentRows: Array<{ intent_json: unknown }> = await ctx.writer.sql`
+      SELECT intent_json
+      FROM khala_sync_runtime_control_intents
+      WHERE turn_id = ${turnId} AND kind = 'turn.start'
+      ORDER BY seq ASC
+      LIMIT 1
+    `
+    const bodyRef = storedJsonObject(intentRows[0]?.intent_json)?.bodyRef
+    messageId = messageIdFromBodyRef(
+      typeof bodyRef === "string" ? bodyRef : undefined,
+    )
+  }
+  if (messageId !== null) {
+    const messageRows: Array<{ body: string }> = await ctx.writer.sql`
+      SELECT body
+      FROM khala_sync_chat_messages
+      WHERE message_id = ${messageId} AND thread_id = ${threadId}
+      LIMIT 1
+    `
+    const body = messageRows[0]?.body.trim()
+    if (body !== undefined && body !== "") return body.slice(0, 10_000)
+  }
+  const normalized = fallback.trim()
+  return (normalized === "" ? "Conversation turn" : normalized).slice(0, 10_000)
+}
+
+const runtimeProjectionKind = (lane: RuntimeTurnEntity["lane"]) => {
+  switch (lane) {
+    case "claude_pylon":
+      return { backend: "pylon" as const, runtime: "claude_code" as const }
+    case "hosted_khala":
+      return { backend: "hosted" as const, runtime: "openagents_native" as const }
+    default:
+      return { backend: "pylon" as const, runtime: "codex" as const }
+  }
+}
+
+const agentRunStatus = (
+  status: RuntimeTurnStatus,
+): "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled" =>
+  status === "interrupted" || status === "closed" ? "canceled" : status
+
+const appendRuntimeAgentRunChanges = async (
+  ctx: MutatorContext,
+  turn: RuntimeTurnEntity,
+): Promise<void> => {
+  const thread = await readRuntimeThreadContext(ctx, turn.threadId)
+  // Historical runtime-only callers may use promptRef without first
+  // admitting a canonical chat thread. They keep their runtime_* projection;
+  // the agent-run route binding is created only for the conversation path.
+  if (thread === null) return
+  const snapshot = await readRuntimeWorkContextSnapshot(ctx, turn.turnId)
+  const goal = await readRuntimeGoal(
+    ctx,
+    turn.turnId,
+    turn.threadId,
+    thread.title,
+    snapshot?.goal_message_id,
+  )
+  const kind = runtimeProjectionKind(turn.lane)
+  const repository =
+    snapshot?.repository_provider !== "github" ||
+    snapshot.repository_owner === null ||
+    snapshot.repository_name === null ||
+    snapshot.repository_ref === null
+      ? undefined
+      : {
+          owner: snapshot.repository_owner,
+          provider: "github" as const,
+          ref: snapshot.repository_ref,
+          repo: snapshot.repository_name,
+        }
+  const entity = decodeAgentRunEntity({
+    backend: kind.backend,
+    canceledAt:
+      turn.status === "interrupted" || turn.status === "closed"
+        ? turn.settledAt
+        : null,
+    completedAt: turn.status === "completed" ? turn.settledAt : null,
+    createdAt: turn.createdAt,
+    failedAt: turn.status === "failed" ? turn.settledAt : null,
+    goal,
+    goalId: null,
+    projectId: null,
+    ...(repository === undefined ? {} : { repository }),
+    routeId: turn.threadId,
+    ...(snapshot?.work_context_ref === null || snapshot?.work_context_ref === undefined
+      ? {}
+      : { workContextRef: snapshot.work_context_ref }),
+    runId: turn.turnId,
+    runtime: kind.runtime,
+    startedAt: turn.startedAt,
+    status: agentRunStatus(turn.status),
+    teamId: null,
+    updatedAt: turn.updatedAt,
+    userId: turn.ownerUserId,
+  })
+  for (const scope of [
+    personalScope(turn.ownerUserId),
+    threadScope(turn.threadId),
+    agentRunScope(turn.turnId),
+  ]) {
+    await ctx.writer.appendChange({
+      entityId: EntityId.make(turn.turnId),
+      entityType: AgentRunEntityType,
+      mutationRef: ctx.mutationRef,
+      op: "upsert",
+      postImage: { ...entity },
+      scope,
+    })
+  }
+}
+
+const runtimeEventSummary = (event: KhalaRuntimeEvent): string => {
+  const summary = (() => {
+    switch (event.kind) {
+      case "text.delta":
+      case "reasoning.delta":
+        return event.text.trim() === "" ? `${event.kind} received` : event.text
+      case "tool.call":
+        return `Called ${event.toolName}`
+      case "tool.result":
+        return `${event.toolName} completed`
+      case "tool.error":
+        return event.messageSafe.trim() === ""
+          ? `${event.toolName} failed`
+          : event.messageSafe
+      case "turn.finished":
+        return `Turn finished: ${event.finishReason}`
+      case "turn.interrupted":
+        return "Turn interrupted"
+      default:
+        return event.kind.replaceAll(".", " ")
+    }
+  })()
+  return summary.slice(0, 20_000)
+}
+
+const runtimeEventStatus = (event: KhalaRuntimeEvent): string | null => {
+  switch (event.kind) {
+    case "turn.started":
+      return "running"
+    case "turn.interrupted":
+      return "canceled"
+    case "turn.finished":
+      return event.finishReason === "error"
+        ? "failed"
+        : event.finishReason === "cancelled" || event.finishReason === "interrupted"
+          ? "canceled"
+          : "completed"
+    case "tool.call":
+      return "running"
+    case "tool.result":
+      return "completed"
+    case "tool.error":
+      return "failed"
+    default:
+      return null
+  }
+}
+
+const runtimeEventArtifactRefs = (
+  event: KhalaRuntimeEvent,
+): ReadonlyArray<string> => {
+  switch (event.kind) {
+    case "file.change":
+      return [event.fileChange.fileChangeRef]
+    case "writeback.recorded":
+      return [event.writebackRef]
+    case "raw.sidecar_ref":
+      return [event.rawEventRef]
+    default:
+      return []
+  }
+}
+
+const appendRuntimeAgentEventChanges = async (
+  ctx: MutatorContext,
+  event: KhalaRuntimeEvent,
+  createdAt: string,
+): Promise<void> => {
+  if ((await readRuntimeThreadContext(ctx, event.threadId)) === null) return
+  const payload = JSON.stringify(event)
+  const entity = decodeAgentRunEventEntity({
+    artifactRefs: runtimeEventArtifactRefs(event),
+    createdAt,
+    externalEventId: event.eventId,
+    id: event.eventId,
+    // Keep the canonical runtime event as the only payload format. An
+    // abnormally large content chunk stays available in runtime_event but is
+    // omitted from this bounded client timeline instead of aborting the
+    // authoritative runtime transaction.
+    payloadJson: payload.length <= 262_144 ? payload : null,
+    runId: event.turnId,
+    sequence: event.sequence,
+    source: `runtime.${event.source.adapterKind ?? event.source.lane}`,
+    status: runtimeEventStatus(event),
+    summary: runtimeEventSummary(event),
+    type: event.kind,
+  })
+  for (const scope of [
+    threadScope(event.threadId),
+    agentRunScope(event.turnId),
+  ]) {
+    await ctx.writer.appendChange({
+      entityId: EntityId.make(event.eventId),
+      entityType: AgentRunEventEntityType,
+      mutationRef: ctx.mutationRef,
+      op: "upsert",
+      postImage: { ...entity },
+      scope,
+    })
+  }
+}
 
 export const decodeRuntimeControlIntentArgs = (
   argsJson: string,
@@ -100,6 +394,7 @@ type RuntimeControlIntentConflictRow = Readonly<{
   intent_id: string
   owner_user_id: string
   idempotency_key: string
+  intent_json: unknown
 }>
 
 type RuntimeEventConflictRow = Readonly<{
@@ -164,7 +459,7 @@ const readControlIntentConflict = async (
   intent: KhalaRuntimeControlIntent,
 ): Promise<RuntimeControlIntentConflictRow | null> => {
   const rows: Array<RuntimeControlIntentConflictRow> = await ctx.writer.sql`
-    SELECT intent_id, owner_user_id, idempotency_key
+    SELECT intent_id, owner_user_id, idempotency_key, intent_json
     FROM khala_sync_runtime_control_intents
     WHERE intent_id = ${intent.intentId}
        OR (owner_user_id = ${ctx.userId}
@@ -321,10 +616,22 @@ const validateControlIntentBasics = async (
   }
   const conflict = await readControlIntentConflict(ctx, intent)
   if (conflict !== null) {
+    const recorded = storedJsonObject(conflict.intent_json)
+    if (
+      conflict.owner_user_id === ctx.userId &&
+      recorded !== null &&
+      canonicalJson(recorded) === canonicalJson(intent)
+    ) {
+      // A retry may arrive under a fresh Sync mutation id after the first
+      // acknowledgement was lost. The durable semantic identity already
+      // exists and is byte-equivalent, so reconcile without re-inserting or
+      // dispatching a second turn.
+      return applied(ctx)
+    }
     return reject(
       ctx,
-      RUNTIME_INTENT_EXISTS_REJECTION,
-      "this runtime control intent was already recorded",
+      RUNTIME_INTENT_CONFLICT_REJECTION,
+      "runtime control intent identity was reused with different semantics",
     )
   }
   return null
@@ -403,13 +710,27 @@ const insertTurn = async (
   if (turnId === undefined) {
     throw new Error("insertTurn requires a turn id after validation")
   }
+  const thread = await readRuntimeThreadContext(ctx, intent.threadId)
+  const goalMessageId = messageIdFromBodyRef(intent.bodyRef)
+  const hasRepository =
+    thread?.repo_binding_owner !== null &&
+    thread?.repo_binding_owner !== undefined &&
+    thread.repo_binding_name !== null &&
+    thread.repo_binding_default_branch !== null
   const rows: Array<RuntimeTurnRow> = await ctx.writer.sql`
     INSERT INTO khala_sync_runtime_turns
       (turn_id, thread_id, owner_user_id, lane, status, event_count,
-       latest_intent_id, started_at, settled_at, created_at, updated_at)
+       latest_intent_id, started_at, settled_at, created_at, updated_at,
+       work_context_ref, goal_message_id, repository_provider,
+       repository_owner, repository_name, repository_ref)
     VALUES
       (${turnId}, ${intent.threadId}, ${ctx.userId}, ${intent.target.lane},
-       'queued', 0, ${intent.intentId}, ${null}, ${null}, ${nowIso}, ${nowIso})
+       'queued', 0, ${intent.intentId}, ${null}, ${null}, ${nowIso}, ${nowIso},
+       ${thread === null ? null : `work_context.thread.${intent.threadId}`},
+       ${goalMessageId}, ${hasRepository ? "github" : null},
+       ${hasRepository ? thread.repo_binding_owner : null},
+       ${hasRepository ? thread.repo_binding_name : null},
+       ${hasRepository ? thread.repo_binding_default_branch : null})
     RETURNING turn_id, thread_id, owner_user_id, lane, status, event_count,
               latest_intent_id, started_at, settled_at, created_at, updated_at
   `
@@ -512,13 +833,14 @@ const executeExistingTurnIntent = async (
     input.controlStatus ?? "accepted",
     nowIso,
   )
-  await updateTurnForIntent(ctx, {
+  const updatedTurn = await updateTurnForIntent(ctx, {
     latestIntentId: intent.intentId,
     nowIso,
     settledAt: input.settled ? nowIso : null,
     status: input.status,
     turnId: validated.turnId,
   })
+  await appendRuntimeAgentRunChanges(ctx, updatedTurn)
   return applied(ctx)
 }
 
@@ -548,7 +870,8 @@ export const runtimeStartTurnMutator: MutatorDefinition =
 
       const nowIso = await transactionNowIso(ctx)
       await insertControlIntent(ctx, intent, "accepted", nowIso)
-      await insertTurn(ctx, intent, nowIso)
+      const turn = await insertTurn(ctx, intent, nowIso)
+      await appendRuntimeAgentRunChanges(ctx, turn)
       return applied(ctx)
     },
     name: MutatorName.make(RUNTIME_START_TURN_MUTATOR_NAME),
@@ -770,7 +1093,9 @@ export const runtimeRecordEventMutator: MutatorDefinition =
            ${eventEntity.createdAt})
       `
       await appendRuntimeEventEntityChange(ctx, eventEntity)
-      await updateTurnForRuntimeEvent(ctx, turn, event, nowIso)
+      await appendRuntimeAgentEventChanges(ctx, event, nowIso)
+      const updatedTurn = await updateTurnForRuntimeEvent(ctx, turn, event, nowIso)
+      await appendRuntimeAgentRunChanges(ctx, updatedTurn)
       return applied(ctx)
     },
     name: MutatorName.make(RUNTIME_RECORD_EVENT_MUTATOR_NAME),

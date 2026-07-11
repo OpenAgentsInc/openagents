@@ -11,10 +11,15 @@ import {
   createChatClientMutators,
   createKhalaSyncSession,
   createKhalaSyncConversation,
+  createKhalaSyncAgentTimeline,
+  createKhalaSyncRuntimeCommands,
+  createRuntimeClientMutators,
   createOverlay,
   type HttpTransportConfig,
   type KhalaSyncSession,
   type KhalaSyncConversation,
+  type KhalaSyncAgentTimeline,
+  type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
   type ScopeSyncState,
@@ -37,6 +42,8 @@ export type MobileSyncHostStatus = Readonly<{
 export type MobileSyncHost = Readonly<{
   status: () => MobileSyncHostStatus
   conversation: () => KhalaSyncConversation | null
+  timeline: () => KhalaSyncAgentTimeline | null
+  runtime: () => KhalaSyncRuntimeCommands | null
   connectAuthenticated: (input: MobileAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   unlinkAccount:()=>void
@@ -66,6 +73,8 @@ export const openMobileSyncHostCore = (input: Readonly<{
   let closed = false
   let session: KhalaSyncSession | null = null
   let conversation: KhalaSyncConversation | null = null
+  let timeline: KhalaSyncAgentTimeline | null = null
+  let runtime: KhalaSyncRuntimeCommands | null = null
   let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
@@ -86,12 +95,15 @@ export const openMobileSyncHostCore = (input: Readonly<{
     throw error
   }
 
-  const disconnectAuthenticated = (): void => {
+  const disconnectAuthenticated = (revoke = false): void => {
     if (session === null) return
-    Effect.runSync(session.close())
+    const closing = session
     session = null
     conversation = null
+    timeline = null
+    runtime = null
     scope = null
+    Effect.runSync(revoke ? closing.revoke() : closing.close())
   }
 
   return {
@@ -114,6 +126,14 @@ export const openMobileSyncHostCore = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? conversation
         : null,
+    timeline: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? timeline
+        : null,
+    runtime: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? runtime
+        : null,
     connectAuthenticated: connection => {
       if (closed) throw new Error("mobile Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
@@ -130,7 +150,11 @@ export const openMobileSyncHostCore = (input: Readonly<{
         ownerUserId,
         ...(connection.now === undefined ? {} : { now: connection.now }),
       })
-      const overlay = Effect.runSync(createOverlay(store, Object.values(mutators)))
+      const runtimeMutators = createRuntimeClientMutators()
+      const overlay = Effect.runSync(createOverlay(store, [
+        ...Object.values(mutators),
+        ...Object.values(runtimeMutators),
+      ]))
       const transportConfig = {
         baseUrl: connection.baseUrl,
         authToken: connection.authToken,
@@ -151,10 +175,12 @@ export const openMobileSyncHostCore = (input: Readonly<{
         session,
         mutators,
       })
+      timeline = createKhalaSyncAgentTimeline({ store, session })
+      runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,
-    unlinkAccount:()=>{disconnectAuthenticated();Effect.runSync(store.clearLocalAccountLink())},
+    unlinkAccount:()=>{try{disconnectAuthenticated(true)}finally{Effect.runSync(store.clearLocalAccountLink())}},
     close: () => {
       if (closed) return
       closed = true

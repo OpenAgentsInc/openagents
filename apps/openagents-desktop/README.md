@@ -97,26 +97,24 @@ process before D3/D4 breadth. The renderer never receives bearer/provider/
 Pylon credentials, a loopback URL, raw runtime events, general IPC, or a raw
 `MessagePort`.
 
-The first Runtime Gateway slice is now enforced: a versioned closed bootstrap,
-command-outcome, and lifecycle-event protocol crosses preload; main validates
-the top-level bundled renderer; the Electron smoke exercises a truthful
-bootstrap. Durable provider process streaming remains explicitly `unavailable`
-until its later leaf lands.
+Runtime Gateway protocol v6 now carries the authoritative conversation path:
+confirmed catalog/thread/current-timeline queries, canonical create/append
+enqueues, and exact thread/message/run start or interrupt commands. Enqueue is
+reported only as `pending_reconcile` or `unknown_pending_reconcile`. The
+Effect Native shell streams bounded canonical text, reasoning, tool/plan,
+usage, interruption, connection, and terminal items from confirmed Sync; raw
+provider events and process authority remain host-only. Renderer remount reads
+the same host-owned run, while host restart reconstructs it from the durable
+runtime/agent-run log.
 
-Runtime Gateway protocol v5 now carries the narrower authoritative
-conversation floor: confirmed catalog/thread queries and canonical create/
-append enqueues. Results contain only public-safe refs, bodies, timestamps,
-confirmed versions, scope phase/cursor, and pending count. Mutation enqueue is
-reported as `pending_reconcile`, never completed. At boot the visible Effect
-Native shell now selects this confirmed Sync mode when the catalog is live;
-otherwise it retains an explicit local-only mode for that renderer lifetime.
-The two catalogs never merge. Protocol v5 also exposes the shared confirmed
-agent timeline by exact `runRef`: its only route/thread attachment is the
-server-projected `routeRef`, and at most 500 ordered redacted facts cross
-preload. Runtime launch, visible timeline UI, and provider streaming remain
-later leaves.
+At boot the shell selects confirmed Sync mode only when the catalog is live;
+otherwise it retains explicit local-only mode for that renderer lifetime. The
+catalogs never merge. The canonical runtime turn is the sole execution
+authority and is transactionally mirrored to `agent_run`/`agent_run_event`
+under the same thread/run refs. Exact semantic retries reconcile without a
+second dispatch; conflicting identity reuse fails closed.
 
-Protocol v5 also carries a separate owner-local Codex history catalog/page
+Protocol v6 also carries a separate owner-local Codex history catalog/page
 capability. Active and archived (including zstd) rollouts are indexed in the
 history worker without an age ceiling. The Effect Native history workspace
 keeps top-level conversations left, a bounded selected-agent timeline center,
@@ -127,7 +125,7 @@ and provider authority never cross preload or enter Khala Sync.
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
 its private `userData` root and persists one installation identity. After
 opening it also creates a separate immutable device-local identity and local-
-authority tables. Desktop remains usable without OpenAuth; Runtime Gateway v5
+authority tables. Desktop remains usable without OpenAuth; Runtime Gateway v6
 projects only `local_only | account_linked | local_unavailable`. Verified
 account linking adds personal Sync, while disconnect/denial retains local rows.
 After
@@ -141,8 +139,7 @@ Electron `safeStorage` beneath its private `userData` root. The host refuses
 unavailable OS encryption and Linux `basic_text`, writes only an opaque atomic
 encrypted blob, purges invalid records, and projects at most signed-out,
 credential-present-unverified, or unavailable through the Runtime Gateway.
-No owner ref, access token, or refresh token crosses preload. Interactive
-Desktop sign-in remains a later leaf.
+No owner ref, access token, or refresh token crosses preload.
 
 At startup, a recovered encrypted record is now validated through the existing
 native-session GET. Main rewrites valid OpenAuth rotation before projecting

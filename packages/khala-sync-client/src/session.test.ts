@@ -1123,6 +1123,49 @@ describe("khala-sync session (fake transport, injected time)", () => {
     expect(server.connectCalls.length).toBe(connectsAfterUnsubscribe) // no reconnect
   })
 
+  test("a closed session refuses mutation before anything reaches the durable queue", async () => {
+    const h = makeHarness(new FakeSyncServer())
+    await Effect.runPromise(h.session.close())
+    const exit = await Effect.runPromiseExit(h.session.mutate(setTask, {
+      id: "after-close",
+      scope: scopeA,
+      value: 1,
+    }))
+    expect(exit._tag).toBe("Failure")
+    expect(Effect.runSync(h.store.pendingMutations())).toEqual([])
+  })
+
+  test("proven revocation burns queued commands and retracts confirmed hosted state", async () => {
+    const server = new FakeSyncServer()
+    server.commit(scopeA, [{
+      entityId: "confirmed-before-revoke",
+      entityType: "task",
+      op: "upsert",
+      postImageJson: image(1),
+    }])
+    const h = makeHarness(server)
+    await Effect.runPromise(h.session.subscribe(scopeA))
+    await waitFor(() => h.session.state(scopeA).phase === "live", "live before revoke")
+    server.offline = true
+    await Effect.runPromise(h.session.mutate(setTask, {
+      id: "queued-before-revoke",
+      scope: scopeA,
+      value: 2,
+    }))
+    expect(h.session.pending()).toHaveLength(1)
+
+    await Effect.runPromise(h.session.revoke())
+
+    expect(h.session.pending()).toEqual([])
+    expect(h.storeCursor(scopeA)).toBeNull()
+    expect(Effect.runSync(h.store.readEntities(scopeA))).toEqual([])
+    expect((await Effect.runPromiseExit(h.session.mutate(setTask, {
+      id: "after-revoke",
+      scope: scopeA,
+      value: 3,
+    })))._tag).toBe("Failure")
+  })
+
   test("mobile background/foreground resubscribe catches up from the durable cursor without duplicate state", async () => {
     const server = new FakeSyncServer()
     server.commit(scopeA, [{ entityType: "task", entityId: "a", op: "upsert", postImageJson: image(1) }])

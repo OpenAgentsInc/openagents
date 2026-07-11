@@ -8,6 +8,7 @@ import type {
 } from "../src/conversation/mobile-conversation"
 import {
   buildHomeProgram,
+  chromeProps,
   renderContentView,
   renderDrawerView,
 } from "../src/screens/home-core"
@@ -75,6 +76,56 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     const drawer = JSON.stringify(renderDrawerView(program.initialState))
     expect(drawer).toContain("drawer-thread-thread.synced.1")
     expect(drawer).toContain('"label":"Synced"')
+  })
+
+  test("renders a confirmed running timeline while keeping safe follow-up available", () => {
+    const running: MobileConversationThread = {
+      ...initialThread,
+      timeline: {
+        status: { phase: "live", cursor: 9, pendingMutationCount: 0 },
+        run: {
+          runRef: "run.mobile.visible",
+          routeRef: initialThread.threadRef,
+          runtime: "codex",
+          backend: "pylon",
+          status: "running",
+          createdAt: now,
+          updatedAt: now,
+          startedAt: now,
+          completedAt: null,
+          failedAt: null,
+          canceledAt: null,
+          version: 8,
+        },
+        events: [{
+          eventRef: "event.mobile.visible",
+          runRef: "run.mobile.visible",
+          sequence: 1,
+          eventType: "tool.call",
+          summary: "Called shell",
+          status: "running",
+          artifactRefs: [],
+          item: { kind: "tool", toolCallRef: "tool.mobile.visible", toolName: "shell", status: "called" },
+          createdAt: now,
+          version: 9,
+        }],
+      },
+    }
+    const host: MobileConversationHost = {
+      listThreads: async () => [running],
+      newThread: async () => ({ ok: true, thread: running }),
+      openThread: async () => running,
+      sendMessage: async () => ({ ok: true, thread: running }),
+    }
+    const program = buildHomeProgram({ conversation: {
+      ...selection(host),
+      threads: [running],
+      activeThread: running,
+    } })
+
+    expect(program.initialState.khala.entries.at(-1)).toMatchObject({ text: "shell · called" })
+    expect(program.initialState.khala.pending).toBe(false)
+    expect(chromeProps(program.initialState).sending).toBe(false)
   })
 
   test("marks a submitted draft pending, then replaces it only with exact confirmed state", async () => {

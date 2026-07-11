@@ -15,6 +15,10 @@ import { randomUUID } from "node:crypto"
 import { Worker } from "node:worker_threads"
 import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent } from "electron"
 import { Effect } from "effect"
+import {
+  buildInterruptTurnIntent,
+  buildStartTurnIntent,
+} from "@openagentsinc/khala-sync-client"
 
 // macOS derives the running application/menu identity before `ready`; set
 // both Electron's application name and the process title at module startup so
@@ -127,8 +131,10 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   },
   signOut: async () => {
     if (desktopSessionVault === null) return { state: "unavailable" }
+    // Close and purge the account-linked Sync session before the renderer can
+    // race another command against remote token revocation.
+    try { desktopSyncHost?.unlinkAccount() } catch { /* remote revocation still runs */ }
     const result = await signOutDesktopSession({ vault: desktopSessionVault })
-    if (result.state === "signed_out") desktopSyncHost?.unlinkAccount()
     desktopSessionState = result.state
     return result
   },
@@ -165,11 +171,35 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       Effect.runSync(service.open(runRef))
       return Effect.runSync(service.snapshot(runRef))
     },
+    snapshotForThread: threadRef =>
+      Effect.runSync(service.snapshotForThread(threadRef)),
   }
 }, () => ({
   catalog: () => runCodexHistoryWorker({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
   page: (threadRef, offset, limit) => runCodexHistoryWorker({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
-}),()=>desktopSyncHost===null?"local_unavailable":desktopSyncHost.status().identityTier)
+}),()=>desktopSyncHost===null?"local_unavailable":desktopSyncHost.status().identityTier, () => {
+  const service = desktopSyncHost?.runtime() ?? null
+  if (service === null) return null
+  const context = () => ({
+    nowIso: new Date().toISOString(),
+    surface: "desktop" as const,
+    target: { lane: "codex_app_server" as const },
+  })
+  return {
+    start: input => Number(Effect.runSync(service.startTurn(buildStartTurnIntent({
+      context: context(),
+      messageRef: input.messageRef,
+      threadRef: input.threadRef,
+      turnRef: input.runRef,
+    })))),
+    interrupt: input => Number(Effect.runSync(service.interruptTurn(buildInterruptTurnIntent({
+      commandRef: input.commandRef,
+      context: context(),
+      threadRef: input.threadRef,
+      turnRef: input.runRef,
+    })))),
+  }
+})
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
@@ -387,7 +417,7 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
   return {
     ok: result?.kind === "query_result" &&
       result.requestId === "smoke-runtime-bootstrap" &&
-      result.result?.protocolVersion === 5 &&
+      result.result?.protocolVersion === 6 &&
       result.result?.lifecycle === "ready" &&
       result.result?.capabilities?.some((capability) => capability.id === "codex-history" && capability.state === "available"),
     result,

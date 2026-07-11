@@ -7,7 +7,7 @@ import {
   threadScope,
   type MutationId,
 } from "@openagentsinc/khala-sync"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import type {
   ChatAppendMessageArgs,
   ChatClientMutators,
@@ -20,29 +20,51 @@ import type {
   KhalaSyncLocalStore,
 } from "./store.js"
 
-export type ConfirmedChatThread = Readonly<{
-  threadRef: string
-  title: string
-  messageCount: number
-  lastMessageAt: string | null
-  updatedAt: string
-  version: number
-}>
+const ConfirmedRefSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+)
+const ConfirmedTimestampSchema = Schema.String.check(Schema.isMaxLength(64))
+const ConfirmedVersionSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+)
 
-export type ConfirmedChatMessage = Readonly<{
-  messageRef: string
-  threadRef: string
-  body: string
-  createdAt: string
-  updatedAt: string
-  version: number
-}>
+export const ConfirmedChatThreadSchema = Schema.Struct({
+  threadRef: ConfirmedRefSchema,
+  title: Schema.String.check(Schema.isMaxLength(160)),
+  messageCount: ConfirmedVersionSchema,
+  lastMessageAt: Schema.NullOr(ConfirmedTimestampSchema),
+  updatedAt: ConfirmedTimestampSchema,
+  version: ConfirmedVersionSchema,
+})
+export type ConfirmedChatThread = typeof ConfirmedChatThreadSchema.Type
 
-export type KhalaSyncConversationStatus = Readonly<{
-  phase: ScopeSyncState["phase"]
-  cursor: number | null
-  pendingMutationCount: number
-}>
+export const ConfirmedChatMessageSchema = Schema.Struct({
+  messageRef: ConfirmedRefSchema,
+  threadRef: ConfirmedRefSchema,
+  body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(20_000)),
+  createdAt: ConfirmedTimestampSchema,
+  updatedAt: ConfirmedTimestampSchema,
+  version: ConfirmedVersionSchema,
+})
+export type ConfirmedChatMessage = typeof ConfirmedChatMessageSchema.Type
+
+export const KhalaSyncConversationStatusSchema = Schema.Struct({
+  phase: Schema.Literals([
+    "idle",
+    "bootstrapping",
+    "catching_up",
+    "live",
+    "must_refetch",
+    "denied",
+  ]),
+  cursor: Schema.NullOr(ConfirmedVersionSchema),
+  pendingMutationCount: ConfirmedVersionSchema,
+})
+export type KhalaSyncConversationStatus =
+  typeof KhalaSyncConversationStatusSchema.Type
 
 export type KhalaSyncConversation = Readonly<{
   personalStatus: () => KhalaSyncConversationStatus

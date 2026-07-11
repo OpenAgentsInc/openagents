@@ -6,6 +6,10 @@ import type {
 } from "./runtime-gateway-contract.ts"
 import { DesktopRuntimeGatewayProtocolVersion } from "./runtime-gateway-contract.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "./codex-history-contract.ts"
+import type {
+  ConfirmedAgentRun,
+  ConfirmedAgentTimelineEvent,
+} from "@openagentsinc/khala-sync-client"
 
 type CapabilityState = Readonly<{
   id: DesktopRuntimeCapabilityId
@@ -49,30 +53,19 @@ export type DesktopRuntimeConversation = Readonly<{
 export type DesktopRuntimeAgentTimeline = Readonly<{
   snapshot: (runRef: string) => Readonly<{
     status: ConversationStatus
-    run: Readonly<{
-      runRef: string
-      routeRef: string
-      status: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled"
-      createdAt: string
-      updatedAt: string
-      startedAt: string | null
-      completedAt: string | null
-      failedAt: string | null
-      canceledAt: string | null
-      version: number
-    }> | null
-    events: ReadonlyArray<Readonly<{
-      eventRef: string
-      runRef: string
-      sequence: number
-      eventType: string
-      summary: string
-      status: string | null
-      artifactRefs: ReadonlyArray<string>
-      createdAt: string
-      version: number
-    }>>
+    run: ConfirmedAgentRun | null
+    events: ReadonlyArray<ConfirmedAgentTimelineEvent>
   }>
+  snapshotForThread?: (threadRef: string) => Readonly<{
+    status: ConversationStatus
+    run: ConfirmedAgentRun | null
+    events: ReadonlyArray<ConfirmedAgentTimelineEvent>
+  }>
+}>
+
+export type DesktopRuntimeCommands = Readonly<{
+  start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string }>) => number
+  interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string }>) => number
 }>
 
 export type DesktopRuntimeCodexHistory = Readonly<{
@@ -137,7 +130,13 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
             ? "Authenticated Sync is closed."
             : `Authenticated Sync is ${input.syncNetworkPhase}.`,
   },
-  { id: "conversation-stream", state: "unavailable", reason: "The durable conversation runtime is not connected yet." },
+  {
+    id: "conversation-stream",
+    state: input.syncNetworkPhase === "live" ? "available" : "unavailable",
+    reason: input.syncNetworkPhase === "live"
+      ? undefined
+      : "The durable conversation runtime is not connected yet.",
+  },
 ]
 
 export const createDesktopRuntimeGateway = (
@@ -152,6 +151,7 @@ export const createDesktopRuntimeGateway = (
   timeline: () => DesktopRuntimeAgentTimeline | null = () => null,
   codexHistory: () => DesktopRuntimeCodexHistory | null = () => null,
   identityTier:()=>"local_only"|"account_linked"|"local_unavailable"=()=>"local_unavailable",
+  runtimeCommands: () => DesktopRuntimeCommands | null = () => null,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
@@ -255,6 +255,23 @@ export const createDesktopRuntimeGateway = (
             return { kind: "agent_timeline_unavailable", requestId: request.requestId, reason: "read_failed" }
           }
         }
+        if (request.query.id === "conversation.timeline") {
+          const service = timeline()
+          if (service === null || service.snapshotForThread === undefined) {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "not_live" }
+          }
+          try {
+            const result = service.snapshotForThread(request.query.threadRef)
+            return {
+              kind: "conversation_timeline",
+              requestId: request.requestId,
+              threadRef: request.query.threadRef,
+              ...result,
+            }
+          } catch {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "read_failed" }
+          }
+        }
         return {
           kind: "query_result",
           requestId: request.requestId,
@@ -299,6 +316,53 @@ export const createDesktopRuntimeGateway = (
             kind: "conversation_mutation_outcome",
             commandId: request.commandId,
             status: "unavailable",
+          }
+        }
+      }
+      if (
+        request.command.id === "conversation.start" ||
+        request.command.id === "conversation.interrupt"
+      ) {
+        const service = runtimeCommands()
+        if (service === null) {
+          return {
+            kind: "runtime_command_outcome",
+            commandId: request.commandId,
+            threadRef: request.command.threadRef,
+            runRef: request.command.runRef,
+            ...(request.command.id === "conversation.start"
+              ? { messageRef: request.command.messageRef }
+              : {}),
+            status: "unavailable",
+            reason: "Authenticated runtime Sync is unavailable.",
+          }
+        }
+        try {
+          const mutationId = request.command.id === "conversation.start"
+            ? service.start(request.command)
+            : service.interrupt(request.command)
+          return {
+            kind: "runtime_command_outcome",
+            commandId: request.commandId,
+            threadRef: request.command.threadRef,
+            runRef: request.command.runRef,
+            ...(request.command.id === "conversation.start"
+              ? { messageRef: request.command.messageRef }
+              : {}),
+            status: "unknown_pending_reconcile",
+            mutationId,
+          }
+        } catch {
+          return {
+            kind: "runtime_command_outcome",
+            commandId: request.commandId,
+            threadRef: request.command.threadRef,
+            runRef: request.command.runRef,
+            ...(request.command.id === "conversation.start"
+              ? { messageRef: request.command.messageRef }
+              : {}),
+            status: "rejected",
+            reason: "Runtime command was rejected before admission.",
           }
         }
       }

@@ -34,6 +34,7 @@
 import { threadScope, type SyncScope } from '@openagentsinc/khala-sync'
 import {
   readScopeOwner,
+  readRuntimeTurnById,
   resolveScopeRead,
   type ScopeReadDecision,
   type SyncSql,
@@ -161,15 +162,49 @@ export const makeKhalaSyncScopeReadResolver = (
     }
   }
 
+  const readRuntimeTurnOwner = async (
+    turnId: string,
+  ): Promise<string | null> => {
+    if (
+      deps.binding === undefined ||
+      typeof deps.binding.connectionString !== 'string' ||
+      deps.binding.connectionString.length === 0
+    ) {
+      // Legacy D1 agent runs existed before the Postgres runtime-turn lane.
+      // An undeployed binding must preserve that established authorization
+      // path; once the binding exists, lookup failures still fail closed.
+      return null
+    }
+    const client = await (deps.makeSqlClient ?? defaultMakeSqlClient)(
+      deps.binding.connectionString,
+    )
+    try {
+      return (await readRuntimeTurnById(client.sql, { turnId }))?.ownerUserId ?? null
+    } finally {
+      try {
+        await client.end()
+      } catch {
+        // best-effort teardown (same discipline as the read routes).
+      }
+    }
+  }
+
   return (userId, scope) =>
     resolveScopeRead(
       {
-        canReadAgentRun: async (uid, runId) =>
-          canReadResolvedRun(
+        canReadAgentRun: async (uid, runId) => {
+          // Native conversation turns are Postgres-authoritative and mirror
+          // their bounded timeline into `scope.agent_run.<turnId>`. Resolve
+          // them before touching the legacy D1 run table so a D1 outage cannot
+          // deny an owner their live Desktop/mobile conversation.
+          const runtimeOwner = await readRuntimeTurnOwner(runId)
+          if (runtimeOwner !== null) return runtimeOwner === uid
+          return canReadResolvedRun(
             deps.db,
             uid,
             await resolveAgentRunIdAsync(deps.db, runId),
-          ),
+          )
+        },
         canReadThread: async (uid, threadId) => {
           // Owner-private MC-1 chat/runtime threads (the Khala Code mobile +
           // desktop path) are owned in Khala Sync Postgres

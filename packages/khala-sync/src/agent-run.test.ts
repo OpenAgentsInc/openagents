@@ -84,6 +84,7 @@ describe("agent run entity contract", () => {
         ref: "feature/fix-readme-refs",
       },
     })
+    if (entity.repository === undefined) throw new Error("expected repository")
     expect(entity.repository.ref).toBe("feature/fix-readme-refs")
     expect(entity.goal).toContain("support@example.com")
   })

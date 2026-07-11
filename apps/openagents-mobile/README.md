@@ -37,7 +37,11 @@ imports nothing from it.
 - `src/conversation/mobile-conversation.ts` — public-safe adapter over the
   host-owned canonical conversation service. Startup selects confirmed Sync or
   the existing public-local path before Home mounts; exact stable refs must be
-  confirmed before create/append appears complete.
+  confirmed before create/append appears complete. Once linked, the same host
+  reads the bounded canonical agent timeline and submits shared exact-ref
+  start, same-run follow-up, or interrupt commands. Home receives confirmed
+  stream updates until terminal state appears or an explicit pending-
+  reconciliation timeout is shown.
 - `src/auth/native-session-vault.ts` — one versioned Expo SecureStore record
   for the native OpenAgents access/refresh tokens and server-derived owner ref.
   Recovery exposes only signed-out or credential-present-unverified state;
@@ -152,8 +156,8 @@ session now starts authenticated personal-scope Sync in the Expo host. Session
 readiness remains distinct from the live-only confirmed conversation service.
 The surface enters through a typed GitHub sign-in intent and exits only after the server proves
 both access and refresh revocation. The app does not manufacture fleet,
-account, receipt, or cross-device authority. Conversation projections and
-durable commands are the next #8597 priorities.
+account, receipt, or cross-device authority. Durable runtime commands stay
+pending until confirmed projection.
 
 The host owns a bounded canonical conversation service once personal
 Sync is live. It lists only confirmed `chat_thread` / `chat_message` projections
@@ -162,5 +166,6 @@ the canonical create/append mutations. The cross-native e2e proves a Desktop
 thread and first message can be continued by mobile and reconstructed by both
 stores after restart. Home consumes that confirmed service without receiving an
 owner ref, credential, store/session object, transport, or raw row.
-Provider-neutral assistant/runtime events and physical-device/deployed-account
-acceptance remain explicit residuals.
+Provider-neutral assistant/runtime events enter Home only as bounded canonical
+timeline items; raw provider payloads never enter native state. A deployed-
+account/physical-device receipt remains the explicit #8676 close gate.

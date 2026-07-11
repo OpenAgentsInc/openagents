@@ -2,10 +2,12 @@ import {
   AGENT_RUN_ENTITY_TYPE,
   AGENT_RUN_EVENT_ENTITY_TYPE,
   agentRunScope,
+  decodeKhalaRuntimeEvent,
   decodeAgentRunEntity,
   decodeAgentRunEventEntity,
+  threadScope,
 } from "@openagentsinc/khala-sync"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import type { OverlayError } from "./overlay.js"
 import type { KhalaSyncSession, ScopeSyncState } from "./session.js"
 import type {
@@ -16,30 +18,69 @@ import type {
 
 export const MAX_CONFIRMED_AGENT_TIMELINE_EVENTS = 500
 
-export type ConfirmedAgentRun = Readonly<{
-  runRef: string
-  routeRef: string
-  status: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled"
-  createdAt: string
-  updatedAt: string
-  startedAt: string | null
-  completedAt: string | null
-  failedAt: string | null
-  canceledAt: string | null
-  version: number
-}>
+const TimelineRefSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(1_024),
+)
+const TimelineTimestampSchema = Schema.String.check(Schema.isMaxLength(64))
+const TimelineLabelSchema = Schema.String.check(Schema.isMaxLength(256))
+const TimelineDetailSchema = Schema.String.check(Schema.isMaxLength(2_000))
+const TimelineTextSchema = Schema.String.check(Schema.isMaxLength(20_000))
+const TimelineIntSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+)
 
-export type ConfirmedAgentTimelineEvent = Readonly<{
-  eventRef: string
-  runRef: string
-  sequence: number
-  eventType: string
-  summary: string
-  status: string | null
-  artifactRefs: ReadonlyArray<string>
-  createdAt: string
-  version: number
-}>
+export const ConfirmedAgentTimelineItemSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("connected"), turnRef: TimelineRefSchema, lane: TimelineLabelSchema }),
+  Schema.Struct({ kind: Schema.Literal("heartbeat"), detail: TimelineDetailSchema }),
+  Schema.Struct({ kind: Schema.Literal("text"), messageRef: TimelineRefSchema, text: TimelineTextSchema }),
+  Schema.Struct({ kind: Schema.Literal("reasoning"), messageRef: TimelineRefSchema, text: TimelineTextSchema }),
+  Schema.Struct({ kind: Schema.Literal("plan"), stepRef: TimelineRefSchema, status: TimelineLabelSchema }),
+  Schema.Struct({ kind: Schema.Literal("tool"), toolCallRef: TimelineRefSchema, toolName: TimelineLabelSchema, status: Schema.Literals(["called", "completed", "failed"]) }),
+  Schema.Struct({ kind: Schema.Literal("question"), questionRef: TimelineRefSchema, prompt: TimelineTextSchema }),
+  Schema.Struct({ kind: Schema.Literal("approval"), authorityRef: TimelineRefSchema, toolRef: TimelineRefSchema, status: TimelineLabelSchema }),
+  Schema.Struct({ kind: Schema.Literal("error"), messageSafe: TimelineTextSchema }),
+  Schema.Struct({ kind: Schema.Literal("usage"), inputTokens: Schema.optional(TimelineIntSchema), outputTokens: Schema.optional(TimelineIntSchema), totalTokens: Schema.optional(TimelineIntSchema) }),
+  Schema.Struct({ kind: Schema.Literal("stale"), detail: TimelineDetailSchema }),
+  Schema.Struct({ kind: Schema.Literal("reconnect"), detail: TimelineDetailSchema }),
+  Schema.Struct({ kind: Schema.Literal("interrupted"), reasonRef: Schema.optional(TimelineRefSchema) }),
+  Schema.Struct({ kind: Schema.Literal("terminal"), status: Schema.Literals(["completed", "failed", "canceled"]) }),
+])
+export type ConfirmedAgentTimelineItem =
+  typeof ConfirmedAgentTimelineItemSchema.Type
+
+export const ConfirmedAgentRunSchema = Schema.Struct({
+  runRef: TimelineRefSchema,
+  routeRef: TimelineRefSchema,
+  workContextRef: Schema.optionalKey(TimelineRefSchema),
+  runtime: Schema.optionalKey(Schema.Literals(["opencode_codex", "codex", "claude_code", "openagents_native"])),
+  backend: Schema.optionalKey(Schema.Literals(["shc_vm", "gcloud_vm", "pylon", "hosted"])),
+  status: Schema.Literals(["queued", "running", "waiting_for_input", "completed", "failed", "canceled"]),
+  createdAt: TimelineTimestampSchema,
+  updatedAt: TimelineTimestampSchema,
+  startedAt: Schema.NullOr(TimelineTimestampSchema),
+  completedAt: Schema.NullOr(TimelineTimestampSchema),
+  failedAt: Schema.NullOr(TimelineTimestampSchema),
+  canceledAt: Schema.NullOr(TimelineTimestampSchema),
+  version: TimelineIntSchema,
+})
+export type ConfirmedAgentRun = typeof ConfirmedAgentRunSchema.Type
+
+export const ConfirmedAgentTimelineEventSchema = Schema.Struct({
+  eventRef: TimelineRefSchema,
+  runRef: TimelineRefSchema,
+  sequence: TimelineIntSchema,
+  eventType: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  summary: Schema.String.check(Schema.isMaxLength(20_000)),
+  status: Schema.NullOr(Schema.String.check(Schema.isMaxLength(256))),
+  artifactRefs: Schema.Array(TimelineRefSchema).check(Schema.isMaxLength(100)),
+  item: Schema.optionalKey(Schema.NullOr(ConfirmedAgentTimelineItemSchema)),
+  createdAt: TimelineTimestampSchema,
+  version: TimelineIntSchema,
+})
+export type ConfirmedAgentTimelineEvent =
+  typeof ConfirmedAgentTimelineEventSchema.Type
 
 export type KhalaSyncAgentTimelineStatus = Readonly<{
   phase: ScopeSyncState["phase"]
@@ -57,6 +98,10 @@ export type KhalaSyncAgentTimeline = Readonly<{
   status: (runRef: string) => KhalaSyncAgentTimelineStatus
   open: (runRef: string) => Effect.Effect<void, OverlayError>
   snapshot: (runRef: string) => Effect.Effect<
+    ConfirmedAgentTimelineSnapshot,
+    KhalaSyncClientStoreError
+  >
+  snapshotForThread: (threadRef: string) => Effect.Effect<
     ConfirmedAgentTimelineSnapshot,
     KhalaSyncClientStoreError
   >
@@ -80,6 +125,9 @@ const confirmedRun = (
       result = {
         runRef: run.runId,
         routeRef: run.routeId,
+        ...(run.workContextRef === undefined ? {} : { workContextRef: run.workContextRef }),
+        runtime: run.runtime,
+        backend: run.backend,
         status: run.status,
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
@@ -94,6 +142,108 @@ const confirmedRun = (
     }
   }
   return result
+}
+
+const confirmedRunForThread = (
+  threadRef: string,
+  rows: ReadonlyArray<ConfirmedEntity>,
+): ConfirmedAgentRun | null => {
+  let result: ConfirmedAgentRun | null = null
+  for (const row of rows) {
+    try {
+      const run = decodeAgentRunEntity(JSON.parse(row.postImageJson) as unknown)
+      if (run.routeId !== threadRef) continue
+      if (result !== null && result.version >= Number(row.version)) continue
+      result = {
+        runRef: run.runId,
+        routeRef: run.routeId,
+        ...(run.workContextRef === undefined ? {} : { workContextRef: run.workContextRef }),
+        runtime: run.runtime,
+        backend: run.backend,
+        status: run.status,
+        createdAt: run.createdAt,
+        updatedAt: run.updatedAt,
+        startedAt: run.startedAt,
+        completedAt: run.completedAt,
+        failedAt: run.failedAt,
+        canceledAt: run.canceledAt,
+        version: Number(row.version),
+      }
+    } catch {
+      // Ignore malformed/pre-contract rows; confirmed replacement self-heals.
+    }
+  }
+  return result
+}
+
+const safeTokenCount = (value: number | undefined): number | undefined =>
+  value === undefined || !Number.isSafeInteger(value) || value < 0
+    ? undefined
+    : value
+
+const projectedTimelineItem = (payloadJson: string | null): ConfirmedAgentTimelineItem | null => {
+  if (payloadJson === null) return null
+  try {
+    const event = decodeKhalaRuntimeEvent(JSON.parse(payloadJson) as unknown)
+    switch (event.kind) {
+      case "turn.started":
+        return { kind: "connected", lane: event.source.lane, turnRef: event.turnId }
+      case "text.delta":
+        return { kind: "text", messageRef: event.messageId, text: event.text.slice(0, 20_000) }
+      case "reasoning.delta":
+        return { kind: "reasoning", messageRef: event.messageId, text: event.text.slice(0, 20_000) }
+      case "step.started":
+        return { kind: "plan", status: "running", stepRef: event.stepId }
+      case "step.finished":
+        return { kind: "plan", status: event.finishReason, stepRef: event.stepId }
+      case "tool.call":
+        if (event.authority.status === "operator_escalation_required") {
+          return {
+            authorityRef: event.authority.authorityRef,
+            kind: "approval",
+            status: event.authority.status,
+            toolRef: event.authority.toolRef,
+          }
+        }
+        return { kind: "tool", status: "called", toolCallRef: event.toolCallId, toolName: event.toolName.slice(0, 256) }
+      case "tool.result":
+        return { kind: "tool", status: "completed", toolCallRef: event.toolCallId, toolName: event.toolName.slice(0, 256) }
+      case "tool.error":
+        return { kind: "error", messageSafe: event.messageSafe.slice(0, 20_000) }
+      case "usage.recorded":
+        {
+          const inputTokens = safeTokenCount(event.usage.inputTokens)
+          const outputTokens = safeTokenCount(event.usage.outputTokens)
+          const totalTokens = safeTokenCount(event.usage.totalTokens)
+          return {
+            kind: "usage",
+            ...(inputTokens === undefined ? {} : { inputTokens }),
+            ...(outputTokens === undefined ? {} : { outputTokens }),
+            ...(totalTokens === undefined ? {} : { totalTokens }),
+          }
+        }
+      case "provider.metadata":
+        return { detail: "Provider connection active.", kind: "heartbeat" }
+      case "turn.interrupted":
+        return {
+          kind: "interrupted",
+          ...(event.reasonRef === undefined ? {} : { reasonRef: event.reasonRef }),
+        }
+      case "turn.finished":
+        return {
+          kind: "terminal",
+          status: event.finishReason === "error"
+            ? "failed"
+            : event.finishReason === "cancelled" || event.finishReason === "interrupted"
+              ? "canceled"
+              : "completed",
+        }
+      default:
+        return null
+    }
+  } catch {
+    return null
+  }
 }
 
 const confirmedEvents = (
@@ -113,6 +263,7 @@ const confirmedEvents = (
         summary: event.summary,
         status: event.status,
         artifactRefs: event.artifactRefs,
+        item: projectedTimelineItem(event.payloadJson),
         createdAt: event.createdAt,
         version: Number(row.version),
       }
@@ -162,6 +313,32 @@ export const createKhalaSyncAgentTimeline = (input: Readonly<{
           run: confirmedRun(runRef, runRows),
           events: confirmedEvents(runRef, eventRows),
         }),
+      )
+    },
+    snapshotForThread: threadRef => {
+      const state = input.session.state(threadScope(threadRef))
+      const timelineStatus: KhalaSyncAgentTimelineStatus = {
+        phase: state.phase,
+        cursor: cursorFromState(state),
+        pendingMutationCount: input.session.pending().length,
+      }
+      if (timelineStatus.phase !== "live") {
+        return Effect.succeed({ status: timelineStatus, run: null, events: [] })
+      }
+      const scope = threadScope(threadRef)
+      return Effect.map(
+        Effect.all([
+          input.store.readEntities(scope, AGENT_RUN_ENTITY_TYPE),
+          input.store.readEntities(scope, AGENT_RUN_EVENT_ENTITY_TYPE),
+        ]),
+        ([runRows, eventRows]) => {
+          const run = confirmedRunForThread(threadRef, runRows)
+          return {
+            status: timelineStatus,
+            run,
+            events: run === null ? [] : confirmedEvents(run.runRef, eventRows),
+          }
+        },
       )
     },
   }

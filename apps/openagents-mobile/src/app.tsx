@@ -49,6 +49,8 @@ export const App = () => {
         }
         const selection = await selectMobileConversation({
           conversation: () => syncHostRef.current?.conversation() ?? null,
+          timeline: () => syncHostRef.current?.timeline() ?? null,
+          runtime: () => syncHostRef.current?.runtime() ?? null,
           adapter: { randomId: randomUUID },
         })
         setConversationSelection(selection)
@@ -62,8 +64,11 @@ export const App = () => {
     },
     signOut: async () => {
       setSyncPhase("authenticating")
+      // Revoke the callable Sync host immediately. The network token
+      // revocation may still be in flight, but no captured composer can queue
+      // a command that survives unlink and replays under a later session.
+      try { syncHostRef.current?.unlinkAccount() } catch { /* remote revocation still runs */ }
       const result = await signOutNativeSession()
-      if (result.state === "signed_out") syncHostRef.current?.unlinkAccount()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
         setConversationRevision(current => current + 1)
@@ -107,6 +112,8 @@ export const App = () => {
             {
               const selection = await selectMobileConversation({
                 conversation: () => syncHost?.conversation() ?? null,
+                timeline: () => syncHost?.timeline() ?? null,
+                runtime: () => syncHost?.runtime() ?? null,
                 adapter: { randomId: randomUUID },
               })
               if (stopped) return
@@ -135,6 +142,7 @@ export const App = () => {
     syncStatusTimer = setInterval(() => {
       const phase = syncHost?.status().syncPhase
       if (phase === "denied" && syncPhaseRef.current !== "denied") {
+        try { syncHost?.unlinkAccount() } catch { /* capability is already closed */ }
         syncPhaseRef.current = "denied"
         setConversationSelection({ mode: "local" })
         setConversationRevision(current => current + 1)

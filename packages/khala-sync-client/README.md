@@ -23,10 +23,16 @@ Components (KS-5 workstream):
   `chat.appendMessage` client mutators plus confirmed owner-free refs/versions/
   cursor projection for Desktop and mobile hosts (#8668).
 - **Confirmed agent timeline** — ✅ one shared reader over the existing
-  `agent_run` / `agent_run_event` entities and exact run scope (#8672). It
-  reconstructs a bounded sequence-ordered timeline after replay/restart while
-  omitting owner/objective/repository, runtime/backend, source, raw payload
-  JSON, and external callback refs. Non-live cached rows remain hidden.
+  `agent_run` / `agent_run_event` entities by exact run or canonical thread
+  route (#8672/#8676). It reconstructs a bounded sequence-ordered timeline
+  after replay/restart while omitting owner/objective/repository contents,
+  source, raw payload JSON, and external callback refs. Non-live cached rows
+  remain hidden.
+- **Shared runtime commands** — ✅ deterministic exact-ref builders and
+  confirmed-only client mutators for Desktop/mobile start, same-run follow-up,
+  and interrupt. Runtime admission is never optimistic truth; pending queue
+  state remains visible until the canonical runtime/agent-run projection
+  reconciles.
   Named client mutators apply to an **in-memory overlay only** (the
   durable store holds server-confirmed state exclusively — Linear's
   rule). On every delta: rewind overlay, apply confirmed entries,
@@ -57,6 +63,9 @@ Components (KS-5 workstream):
   pending list. All timing is injected (`sleep`/`random`) — no wall-clock
   reads in tested logic; the suite runs against a deterministic fake
   transport.
+  Proven `session.revoke()` additionally closes mutation immediately, burns
+  queued hosted commands, and retracts subscribed hosted state; ordinary
+  transient `close()` preserves reconstructible cache/queue state.
 - **v1 offline contract** — online-optimistic: reads work offline, pushes
   wait for connectivity (bounded queue, honest expiry).
 

@@ -568,6 +568,68 @@ describe("enforcePendingRuntimeIntents", () => {
     }
   })
 
+  // Oracle for openagents_desktop.seam.runtime_gateway_conversation.v1.
+  test("two consumers race one turn but only the durable sequence-one winner invokes Codex", async () => {
+    const row = controlIntentRow({
+      bodyRef: "chat_message.msg-race",
+      intentId: "intent-race",
+      kind: "turn.start",
+      seq: 1,
+      threadId: "thread-race",
+      turnId: "turn-race",
+    })
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "run once",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-race",
+      threadId: "thread-race",
+      updatedAt: iso,
+    }
+    const admitted = new Set<string>()
+    let runnerCalls = 0
+    let finishSeen: (() => void) | undefined
+    const finished = new Promise<void>(resolve => { finishSeen = resolve })
+    const shared = {
+      codexThreadRunner: (async () => {
+        runnerCalls += 1
+        return {
+          events: (async function* () {
+            yield { type: "turn.started" }
+            yield { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1, reasoning_output_tokens: 0 } }
+          })(),
+        }
+      }) satisfies EnforceRuntimeIntentsOptions["codexThreadRunner"],
+      fetchChatMessageImpl: async () => ({ message, ok: true as const }),
+      pushEventImpl: async (input: Parameters<NonNullable<EnforceRuntimeIntentsOptions["pushEventImpl"]>>[0]) => {
+        const identity = `${input.event.turnId}:${input.event.sequence}`
+        if (admitted.has(identity)) throw new Error("duplicate runtime event sequence")
+        admitted.add(identity)
+        if (input.event.kind === "turn.finished") finishSeen?.()
+      },
+      readImpl: pageReader([row]),
+    }
+    const first = await baseOptions(shared)
+    const second = await baseOptions(shared)
+    try {
+      const outcomes = await Promise.all([
+        enforcePendingRuntimeIntents(memoryStore(), first.options),
+        enforcePendingRuntimeIntents(memoryStore(), second.options),
+      ])
+      await finished
+      expect(runnerCalls).toBe(1)
+      expect(outcomes.flatMap(result => result.ok ? result.outcomes.map(outcome => outcome.outcome) : []).sort()).toEqual([
+        "applied",
+        "skipped_stale",
+      ])
+      expect(admitted.has("turn-race:1")).toBe(true)
+    } finally {
+      await first.cleanup()
+      await second.cleanup()
+    }
+  })
+
   test("a real turn.start dispatch against target.lane claude_pylon streams translated Claude events end-to-end and finishes (#8404)", async () => {
     const store = memoryStore()
     const message: ChatMessageBody = {

@@ -163,6 +163,10 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md",
+        "docs/sol/issues/native-streamed-conversation-handoff.md",
+        "packages/khala-sync-server/src/runtime-mutators.test.ts",
+        "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts",
+        "apps/openagents-mobile/tests/mobile-conversation.test.ts",
       ],
       oracles: [
         {
@@ -185,7 +189,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Let's get the desktop architecture dialed in solidly in place, with mobile sync working soon in that process but otherwise plan to get your planned openagents product adaptation working fastest.",
       surface: "openagents-mobile-and-desktop",
       verification:
-        "Pending #8574/#8597: enforce the renderer-token ban and closed gateway boundary in the Desktop sweep, then pass the R1/R2 two-client identity/Sync fixture and one real Desktop-to-mobile conversation continuation before treating broad D3–D6 Desktop parity as the product exit.",
+        "The deterministic #8676 slice now enforces exact durable runtime→agent-run binding, protocol-v6 tokenless Desktop projection, same-thread mobile start/follow-up/interrupt, restart reconstruction, and revoke-without-replay. This program contract remains pending until the public-safe live receipt proves one named isolated provider account in built Electron and one physical mobile continuation.",
     },
     {
       authorityBoundary:
@@ -375,7 +379,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "The Expo host selects confirmed account-linked Sync or the existing public-local conversation before mounting one Effect Native Home program. The modes are never merged. Owner refs, credentials, store/session/transport objects, raw rows, and optimistic completion remain outside view state; denial or sign-out disposes the account-linked program and clears its projections.",
+        "The Expo host selects confirmed account-linked Sync or the existing public-local conversation before mounting one Effect Native Home program. The modes are never merged. Runtime commands carry exact confirmed refs through the shared client contract and never imply provider acceptance or completion. Owner refs, credentials, store/session/transport objects, raw rows/provider events, and optimistic completion remain outside view state; denial or sign-out revokes queued hosted commands and clears account-linked projections.",
       blockerRefs: [],
       contractId: "openagents_mobile.chat.authoritative_sync_mode.v1",
       enforcementTier: "test-sweep",
@@ -383,13 +387,16 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
         "apps/openagents-mobile/src/screens/home-core.ts",
         "apps/openagents-mobile/src/app.tsx",
+        "packages/khala-sync-client/src/runtime.ts",
+        "packages/khala-sync-client/src/session.ts",
+        "docs/sol/issues/native-streamed-conversation-handoff.md",
         "docs/sol/issues/mobile-visible-sync-conversation.md",
         "github:OpenAgentsInc/openagents#8671",
       ],
       oracles: [
         {
           description:
-            "Proves bounded live-vs-local selection, confirmed startup reconstruction, stable create/append refs, exact-ref confirmation, and pending-reconcile timeout honesty against the canonical conversation interface.",
+            "Proves bounded live-vs-local selection, confirmed startup reconstruction, stable create/append refs, exact-ref start/follow-up/interrupt through the shared runtime contract, confirmed terminal observation, and pending-reconcile timeout honesty.",
           id: "openagents_mobile.chat.authoritative_sync_adapter",
           kind: "bun-test",
           mode: "unit",
@@ -412,7 +419,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       },
       state: "enforced",
       statement:
-        "OpenAgents mobile uses confirmed canonical chat_thread/chat_message projections for its visible Home conversation when verified personal Sync is live. Create and append remain visibly pending until their exact stable refs are confirmed; unavailable or timed-out work never appears completed.",
+        "OpenAgents mobile uses confirmed canonical chat_thread/chat_message plus bounded agent-run timeline projections for its visible Home conversation when verified personal Sync is live. Create, append, same-run follow-up, new start, and exact-run interrupt remain visibly pending until exact stable refs and a later confirmed outcome reconcile; unavailable or timed-out work never appears completed.",
       surface: "openagents-mobile",
       verification:
         "The mobile conversation adapter and authoritative Home tests run in the normal mobile sweep; mobile typecheck plus behavior-contract coverage guard the host/view boundary.",

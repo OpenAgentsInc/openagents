@@ -17,6 +17,101 @@ second thread or optimistic completion.
 This is the first complete live application slice. It is not a FleetRun and
 does not wait for broad files/editor/terminal/settings parity.
 
+## Implementation state — 2026-07-11
+
+The deterministic product path is implemented. One canonical runtime turn is
+still the execution authority; the server transactionally mirrors it into the
+existing `agent_run` / `agent_run_event` projections consumed by both native
+clients. There is no second Desktop executor, Pylon, event store, or run
+universe.
+
+```text
+Effect Native Desktop renderer
+  -> Runtime Gateway v6 (tokenless exact refs)
+  -> host-owned Khala Sync durable mutation queue
+  -> runtime.startTurn (canonical authority + immutable WorkContext snapshot)
+  -> standing Pylon runtime-intent consumer (named isolated account selection)
+  -> canonical runtime.recordEvent
+  -> transactional agent_run / agent_run_event mirror
+  -> confirmed thread timeline
+  -> Desktop renderer and Expo mobile Home
+```
+
+The implemented laws are:
+
+- `threadRef`, owner `messageRef`, and `runRef` are client-chosen once and stay
+  identical through admission, dispatch, event projection, Desktop, and
+  mobile.
+- The starting message body, repository binding when present, and
+  `work_context.thread.<threadRef>` are snapshotted on the runtime turn.
+  Mutating the chat-thread binding later cannot rewrite the run context.
+- An exact semantic retry reconciles as applied without inserting or
+  dispatching again. Reusing the same intent/idempotency identity with changed
+  semantics rejects as `runtime_intent_conflict`.
+- Pylon durably records the deterministic sequence-one `turn.started` claim
+  before invoking Codex. A duplicate or indeterminate claim does not start a
+  second provider execution.
+- Raw provider callbacks remain in the provider host. Sync stores canonical
+  `openagents.khala_runtime_event.v1`; clients decode that into bounded
+  canonical timeline items and never receive provider credentials, account
+  homes, loopback authority, raw payload JSON, or process handles.
+- Renderer remount reads the same main-process session. Host restart rebuilds
+  the current thread/run/timeline from durable Sync state. Neither path
+  invents completion.
+- Desktop and mobile use the same shared runtime-intent builders. Mobile sends
+  a follow-up to the exact running run or starts a new exact run, can interrupt
+  only the confirmed run, and streams later confirmed state while the action
+  is pending.
+- Proven unlink/revocation closes mutation before queue insertion, burns
+  already-queued hosted commands, and retracts subscribed hosted state.
+  Transient disconnect remains non-destructive and reconstructible.
+
+## Requirement/evidence map
+
+| Requirement | Enforced implementation and oracle | State |
+| --- | --- | --- |
+| Durable admission, exact retry/conflict, immutable WorkContext | `packages/khala-sync-server/src/runtime-mutators.ts`, migration `0059`, and the real-Postgres `runtime-mutators.test.ts` | Enforced |
+| One provider execution generation | Pylon sequence-one durable claim in `runtime-intent-enforcement.ts`; focused 54-case runtime-intent suite including a two-consumer race | Enforced deterministically |
+| Canonical run/event binding | Transactional thread/personal/run-scope mirror plus `khala-sync-client` thread-route discovery | Enforced |
+| Tokenless Desktop launch and rich stream | Runtime Gateway v6, `runtime-conversation.ts`, Gateway e2e and renderer tests | Enforced |
+| Same-thread mobile continuation/interrupt | Shared `runtime.ts` builders, mobile adapter/Home, mobile conversation test | Enforced |
+| Restart/replay and revoke-without-replay | Shared SQLite timeline/session tests and native-host lifecycle | Enforced |
+| Real named isolated Codex + built Electron + physical mobile | Public-safe live receipt procedure below | Not yet receipted; required to close |
+
+## Live acceptance and receipt
+
+The issue must stay open until this last environmental acceptance is run. Use
+one real, ready, named isolated Codex account (never default `~/.codex`), the
+built Electron app signed into the same deployed OpenAgents owner as the Expo
+app, and a physical phone.
+
+Current prerequisite check (2026-07-11): the named isolated `codex` account is
+ready, but the paired physical iPhone is offline in Xcode device discovery.
+That blocks only the live receipt; it is not replaced by a simulator claim.
+
+1. Record the ready account's public-safe name and readiness only. Do not
+   record its home, credential, token, or provider session id.
+2. In built Electron, create a thread and submit a prompt that necessarily
+   yields text and at least one reasoning/tool/plan lifecycle item. Record only
+   opaque thread/message/run refs or their hashes, ordered event-kind counts,
+   terminal status, and timestamps.
+3. Reload the renderer during the turn and verify the same refs continue with
+   no duplicate sequence. Restart the host after settlement and verify the
+   same confirmed terminal projection reconstructs.
+4. On the physical phone, open the same thread and submit one follow-up while
+   the run is active, or interrupt the exact confirmed run. Verify both clients
+   converge on the same terminal status or explicit
+   `unknown_pending_reconcile`.
+5. Queue one harmless command offline, then sign out/revoke. Verify the queue
+   and hosted projection are gone and reconnect does not replay the command.
+
+The committed public-safe receipt may contain only: date/build/commit,
+platform versions, the named account label and `isolated: true`, hashed opaque
+refs, event-kind counts, renderer/host restart verdicts, mobile action kind,
+terminal/reconciliation verdict, revocation verdict, and overall pass/fail.
+It must not contain prompt/response text, repository/path names, owner ids,
+raw Sync rows/events, provider metadata, device identifiers, or credentials.
+
 ## Required flow
 
 1. Desktop resolves a selected named isolated Codex account and WorkContext in

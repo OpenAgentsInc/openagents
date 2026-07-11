@@ -1,7 +1,15 @@
 import type {
+  ConfirmedAgentTimelineSnapshot,
   ConfirmedChatMessage,
   ConfirmedChatThread,
+  KhalaSyncAgentTimeline,
   KhalaSyncConversation,
+  KhalaSyncRuntimeCommands,
+} from "@openagentsinc/khala-sync-client"
+import {
+  buildAppendUserMessageIntent,
+  buildInterruptTurnIntent,
+  buildStartTurnIntent,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
@@ -10,6 +18,7 @@ export type MobileConversationThreadSummary = ConfirmedChatThread
 
 export type MobileConversationThread = MobileConversationThreadSummary & Readonly<{
   messages: ReadonlyArray<MobileConversationMessage>
+  timeline?: ConfirmedAgentTimelineSnapshot | null
 }>
 
 export type MobileConversationMutationResult =
@@ -20,7 +29,16 @@ export type MobileConversationHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<MobileConversationThreadSummary>>
   newThread: () => Promise<MobileConversationMutationResult>
   openThread: (threadRef: string) => Promise<MobileConversationThread | null>
-  sendMessage: (input: Readonly<{ threadRef: string; body: string }>) => Promise<MobileConversationMutationResult>
+  sendMessage: (input: Readonly<{
+    threadRef: string
+    body: string
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>) => Promise<MobileConversationMutationResult>
+  interrupt?: (input: Readonly<{
+    threadRef: string
+    runRef: string
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>) => Promise<MobileConversationMutationResult>
 }>
 
 export type MobileConversationSelection =
@@ -34,6 +52,8 @@ export type MobileConversationSelection =
 
 export type MobileConversationAdapterOptions = Readonly<{
   conversation: KhalaSyncConversation
+  timeline?: KhalaSyncAgentTimeline
+  runtime?: KhalaSyncRuntimeCommands
   randomId?: () => string
   sleep?: (ms: number) => Promise<void>
   pollAttempts?: number
@@ -80,11 +100,53 @@ export const makeMobileConversationHost = (
           if (
             summary !== undefined &&
             (requiredMessageRef === undefined || messages.some(message => message.messageRef === requiredMessageRef))
-          ) return { ...summary, messages }
+          ) {
+            const timeline = options.timeline === undefined
+              ? null
+              : await run(options.timeline.snapshotForThread(threadRef))
+            return { ...summary, messages, timeline }
+          }
         } catch {
           // A transient read is retried while the exact scope remains live.
         }
       }
+      await sleep(100)
+    }
+    return null
+  }
+
+  const confirmedRuntimeOutcome = async (input: Readonly<{
+    threadRef: string
+    runRef: string
+    afterSequence: number
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>): Promise<MobileConversationThread | null> => {
+    let lastSignature = ""
+    for (let attempt = 0; attempt < Math.max(pollAttempts, 300); attempt += 1) {
+      const thread = await confirmedThread(input.threadRef)
+      const timeline = thread?.timeline
+      const run = timeline?.run
+      if (thread !== null) {
+        const signature = [
+          run?.runRef ?? "none",
+          run?.status ?? "none",
+          ...(timeline?.events ?? []).map(event => `${event.eventRef}:${event.version}`),
+        ].join("|")
+        if (signature !== lastSignature) {
+          lastSignature = signature
+          input.onUpdate?.(thread)
+        }
+      }
+      const latestSequence = Math.max(
+        0,
+        ...(timeline?.events.map(event => event.sequence) ?? []),
+      )
+      if (
+        thread !== null &&
+        run?.runRef === input.runRef &&
+        latestSequence > input.afterSequence &&
+        (run.status === "completed" || run.status === "failed" || run.status === "canceled")
+      ) return thread
       await sleep(100)
     }
     return null
@@ -120,26 +182,120 @@ export const makeMobileConversationHost = (
         return { ok: false, error: "Authoritative conversation Sync is unavailable." }
       }
       const thread = await confirmedThread(input.threadRef, messageRef)
-      return thread === null
-        ? { ok: false, error: "Message is still pending reconciliation." }
-        : { ok: true, thread }
+      if (thread === null) {
+        return { ok: false, error: "Message is still pending reconciliation." }
+      }
+      if (options.runtime === undefined) return { ok: true, thread }
+      const turnRef = `turn.mobile.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
+      const active = thread.timeline?.run
+      const continuingActiveRun =
+        active !== null && active !== undefined && active.status === "running"
+      const previousSequence = Math.max(
+        0,
+        ...(thread.timeline?.events.map(event => event.sequence) ?? []),
+      )
+      const context = {
+        nowIso: new Date().toISOString(),
+        surface: "mobile" as const,
+        target: {
+          lane: active?.runtime === "claude_code"
+            ? "claude_pylon" as const
+            : active?.runtime === "openagents_native"
+              ? "hosted_khala" as const
+              : "codex_app_server" as const,
+        },
+      }
+      try {
+        if (continuingActiveRun) {
+          await run(options.runtime.appendUserMessage(buildAppendUserMessageIntent({
+            context,
+            messageRef,
+            threadRef: input.threadRef,
+            turnRef: active.runRef,
+          })))
+        } else {
+          await run(options.runtime.startTurn(buildStartTurnIntent({
+            context,
+            messageRef,
+            threadRef: input.threadRef,
+            turnRef,
+          })))
+        }
+      } catch {
+        return { ok: false, error: "Message was admitted, but runtime dispatch is unavailable." }
+      }
+      const expectedRunRef = continuingActiveRun ? active.runRef : turnRef
+      const settled = await confirmedRuntimeOutcome({
+        afterSequence: continuingActiveRun ? previousSequence : 0,
+        onUpdate: input.onUpdate,
+        runRef: expectedRunRef,
+        threadRef: input.threadRef,
+      })
+      return settled === null
+        ? { ok: false, error: "Runtime outcome is still pending reconciliation." }
+        : { ok: true, thread: settled }
+    },
+    interrupt: async input => {
+      const thread = await confirmedThread(input.threadRef)
+      if (thread === null || thread.timeline?.run?.runRef !== input.runRef) {
+        return { ok: false, error: "The confirmed runtime turn is unavailable." }
+      }
+      if (options.runtime === undefined) {
+        return { ok: false, error: "The runtime command service is unavailable." }
+      }
+      try {
+        const previousSequence = Math.max(
+          0,
+          ...(thread.timeline.events.map(event => event.sequence) ?? []),
+        )
+        await run(options.runtime.interruptTurn(buildInterruptTurnIntent({
+          commandRef: `mobile.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`,
+          context: {
+            nowIso: new Date().toISOString(),
+            surface: "mobile",
+            target: { lane: "codex_app_server" },
+          },
+          threadRef: input.threadRef,
+          turnRef: input.runRef,
+        })))
+        const settled = await confirmedRuntimeOutcome({
+          afterSequence: previousSequence,
+          onUpdate: input.onUpdate,
+          runRef: input.runRef,
+          threadRef: input.threadRef,
+        })
+        return settled === null
+          ? { ok: false, error: "Interrupt is still pending reconciliation." }
+          : { ok: true, thread: settled }
+      } catch {
+        return { ok: false, error: "Interrupt is still pending reconciliation." }
+      }
     },
   }
 }
 
 export const selectMobileConversation = async (input: Readonly<{
   conversation: () => KhalaSyncConversation | null
+  timeline?: () => KhalaSyncAgentTimeline | null
+  runtime?: () => KhalaSyncRuntimeCommands | null
   sleep?: (ms: number) => Promise<void>
   pollAttempts?: number
-  adapter?: Omit<MobileConversationAdapterOptions, "conversation">
+  adapter?: Omit<MobileConversationAdapterOptions, "conversation" | "runtime" | "timeline">
 }>): Promise<MobileConversationSelection> => {
   const sleep = input.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
   const pollAttempts = input.pollAttempts ?? 30
 
   for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
     const conversation = input.conversation()
+    const timeline = input.timeline?.() ?? undefined
+    const runtime = input.runtime?.() ?? undefined
     if (conversation !== null && conversation.personalStatus().phase === "live") {
-      const host = makeMobileConversationHost({ conversation, ...input.adapter })
+      const host = makeMobileConversationHost({
+        conversation,
+        ...(runtime === undefined ? {} : { runtime }),
+        ...(timeline === undefined ? {} : { timeline }),
+        ...input.adapter,
+      })
       try {
         const threads = await host.listThreads()
         const activeThread = threads[0] === undefined

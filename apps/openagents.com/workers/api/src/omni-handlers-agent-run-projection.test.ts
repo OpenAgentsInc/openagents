@@ -42,6 +42,8 @@ describe('agentRunSyncProjectionRaw', () => {
     expect(entity.userId).toBe('user.alice')
     expect(entity.teamId).toBe('team.beta')
     expect(entity.status).toBe('queued')
+    expect(entity.repository).toBeDefined()
+    if (entity.repository === undefined) throw new Error('expected bound repository')
     expect(entity.repository.owner).toBe('OpenAgentsInc')
     expect(entity.repository.repo).toBe('openagents')
     expect(entity.goalId).toBe('goal.alpha')

@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-10.17",
+    version: "2026-07-11.18",
     contracts: [
       {
         contractId: "openagents_desktop.seam.codex_trace_electron_acceptance.v1",
@@ -170,7 +170,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Protocol v4 includes bounded provider-native Codex history catalog/page queries; unknown requests fail schema decoding, unavailable commands never appear completed, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.",
+          "The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Protocol v6 includes bounded provider-native Codex history, canonical confirmed conversation/timeline queries, and exact-ref start/interrupt commands; unknown requests fail schema decoding, unavailable or pending commands never appear completed, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.",
         authorityBoundary:
           "Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer may request bounded OpenAgents session entry/exit and canonical conversation operations but receives only typed projections/outcomes; it gets no credential, callback/authorize URL, raw Khala Sync/store/session/transport authority, provider credential, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.",
         seam: {
@@ -278,9 +278,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "The signed Desktop renderer can query confirmed canonical conversation catalogs/threads and enqueue bounded canonical create/append mutations only through Runtime Gateway protocol v3; enqueues return pending_reconcile with the durable mutation id, never optimistic completed.",
+          "The signed Desktop renderer can query confirmed canonical conversation catalogs, threads, and their current agent timeline and enqueue canonical create/append plus exact thread/message/run start or interrupt commands only through Runtime Gateway protocol v6. Enqueues return pending_reconcile or unknown_pending_reconcile with the durable mutation id, never optimistic completed.",
         authorityBoundary:
-          "The seam carries public-safe thread/message refs, bodies, timestamps, confirmed entity versions, exact scope phase/cursor, and pending count only. It carries no owner identity, credential, store/session/overlay/transport, generic IPC, raw event stream, or provider runtime authority; not-live/read failure is typed and body-free.",
+          "The seam carries public-safe thread/message/run/WorkContext refs, bounded canonical timeline items, timestamps, confirmed entity versions, exact scope phase/cursor, and pending count only. It carries no owner identity, credential, store/session/overlay/transport, generic IPC, raw provider stream, or process authority; not-live/read failure is typed and body-free.",
         seam: {
           client: "apps/openagents-desktop/src/preload.cts",
           server: "apps/openagents-desktop/src/runtime-gateway.ts",
@@ -288,6 +288,10 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         evidenceRefs: [
           "apps/openagents-desktop/src/runtime-gateway-contract.ts",
           "apps/openagents-desktop/src/main.ts",
+          "packages/khala-sync-server/src/runtime-mutators.ts",
+          "apps/pylon/src/orchestration/runtime-intent-enforcement.ts",
+          "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
+          "docs/sol/issues/native-streamed-conversation-handoff.md",
           "docs/sol/issues/desktop-runtime-conversation.md",
           "github:OpenAgentsInc/openagents#8669",
         ],
@@ -298,7 +302,31 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts",
             description:
-              "Round-trips confirmed catalog/thread projections and create/append mutations through protocol v3, proves pending_reconcile outcomes, unavailable fail-closed behavior, bounds, and schema rejection.",
+              "Round-trips confirmed catalog/thread/timeline projections and exact create/append/start/interrupt refs through protocol v6, proves pending-reconcile outcomes, unavailable fail-closed behavior, bounds, and schema rejection.",
+          },
+          {
+            id: "runtime_agent_run_transactional_binding",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "packages/khala-sync-server/src/runtime-mutators.test.ts",
+            description:
+              "Against real local Postgres, proves durable start admission transactionally creates the canonical agent run, exact semantic retry reconciles, conflicting reuse fails closed, WorkContext/repository snapshot stays immutable, and runtime events preserve exact thread/run refs.",
+          },
+          {
+            id: "runtime_provider_single_generation_claim",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/pylon/src/orchestration/runtime-intent-enforcement.test.ts",
+            description:
+              "Races two independent consumers against one admitted turn and proves only the winner of the durable sequence-one event claim invokes Codex.",
+          },
+          {
+            id: "mobile_same_thread_runtime_control",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-conversation.test.ts",
+            description:
+              "Proves mobile submits the same confirmed thread/message/run refs through the shared runtime builders, observes a later confirmed terminal projection, and interrupts only the exact confirmed run.",
           },
         ],
         verification:
@@ -317,9 +345,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "Runtime Gateway protocol v3 accepts one bounded agent.timeline query by exact runRef and returns only a live confirmed agent-run snapshot with its server-projected routeRef and at most 500 ordered confirmed event facts; unavailable, not-found, and read failure remain typed and body-free.",
+          "Runtime Gateway protocol v6 accepts bounded agent.timeline by exact runRef and conversation.timeline by exact threadRef, returning only a live confirmed agent-run snapshot with its server-projected routeRef and at most 500 ordered bounded canonical timeline items; unavailable, not-found, and read failure remain typed and body-free.",
         authorityBoundary:
-          "Electron main composes the shared confirmed timeline reader only behind authenticated live Sync. The server-projected agent_run.routeId is the sole route/thread binding carried by this seam; renderer code cannot derive it from runRef. Owner/objective/repository/runtime/backend, provider source, raw payload, external callback, auth/store/session/transport, generic IPC, launch, and process authority are unrepresentable.",
+          "Electron main composes the shared confirmed timeline reader only behind authenticated live Sync. The server-projected agent_run.routeId is the sole route/thread binding; renderer code cannot derive it from runRef. The seam may expose bounded runtime/backend/WorkContext classification but never owner/objective/repository contents, provider source, raw payload, external callback, auth/store/session/transport, generic IPC, or process authority.",
         seam: {
           client: "apps/openagents-desktop/src/preload.cts",
           server: "apps/openagents-desktop/src/runtime-gateway.ts",
@@ -357,7 +385,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "At boot, the Effect Native Desktop shell selects exactly one chat authority: Runtime Gateway v3 confirmed Sync when its catalog is live, otherwise the existing explicit local-only host. In Sync mode, visible threads/messages come from confirmed projections and create/append remain pending until their exact refs are confirmed.",
+          "At boot, the Effect Native Desktop shell selects exactly one chat authority: Runtime Gateway v6 confirmed Sync when its catalog is live, otherwise the existing explicit local-only host. In Sync mode, visible threads/messages and bounded assistant lifecycle items come from confirmed projections; create/append/start remain pending until exact refs and terminal state reconcile.",
         authorityBoundary:
           "Mode is selected once per renderer lifetime so local and account-linked conversations never mix. The adapter uses only the generic decoded Runtime Gateway call; it gets no owner/credential/native authority, does not add preload IPC, does not infer assistant roles, and reports an unconfirmed append as still pending rather than completed.",
         evidenceRefs: [

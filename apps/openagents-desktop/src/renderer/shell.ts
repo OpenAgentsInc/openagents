@@ -342,7 +342,11 @@ export type ChatHost = Readonly<{
   newThread: () => Promise<DesktopThread | null>
   openThread: (id: string) => Promise<DesktopThread | null>
   hydrateThread?: (id: string) => Promise<DesktopThread | null>
-  sendMessage: (input: Readonly<{ id: string; message: string }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
+  sendMessage: (input: Readonly<{
+    id: string
+    message: string
+    onUpdate?: (thread: DesktopThread) => void
+  }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
 }>
 
 export type WorkspaceHost = Readonly<{
@@ -459,7 +463,16 @@ export const makeDesktopShellHandlers = (
       const message =
         typeof value === "string" && value.trim() !== "" ? value : current.input
       yield* SubscriptionRef.set(state, withNote(current, message, now()))
-      const result = yield* Effect.promise(() => chat.sendMessage({ id: current.activeThreadId!, message }))
+      const result = yield* Effect.promise(() => chat.sendMessage({
+        id: current.activeThreadId!,
+        message,
+        onUpdate: thread => {
+          Effect.runFork(SubscriptionRef.update(state, next =>
+            next.activeThreadId === thread.id
+              ? { ...withChatSelected(next, thread), pending: true }
+              : next))
+        },
+      }))
       yield* SubscriptionRef.update(state, (next) => withTurnResult(next, result, now()))
     }),
   DesktopLoopPinged: () =>

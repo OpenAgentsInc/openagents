@@ -1232,12 +1232,16 @@ const dispatchTurnStart = async (input: {
   readonly turn: ActiveRuntimeTurn
   readonly source: KhalaRuntimeSource
   readonly lane: KhalaRuntimeLane
+  readonly startedClaimed?: boolean
   /** Codex resume-thread id OR Claude resume-session id, depending on `lane`. */
   readonly resumeRef?: string
 }): Promise<void> => {
   const { options, store, intent, turnId, prompt, account, turn, source, lane, resumeRef } = input
   const pushEvent = options.pushEventImpl ?? defaultPushEvent(options.baseUrl, options.agentToken)
-  const turnStarted = { value: false }
+  // `handleTurnStart` durably claims sequence 1 before provider execution.
+  // Provider-native started frames are therefore acknowledgement noise, not
+  // a second lifecycle event.
+  const turnStarted = { value: input.startedClaimed ?? false }
 
   const pushOne = async (event: KhalaRuntimeEvent): Promise<void> => {
     await pushEvent({
@@ -1384,6 +1388,7 @@ const dispatchTurnStart = async (input: {
         turnId,
       })
       for await (const event of events) {
+        if (input.startedClaimed === true && event.kind === "turn.started") continue
         if (event.kind === "turn.finished") finishedPushed = true
         await pushOne(event)
       }
@@ -1641,6 +1646,37 @@ const handleTurnStart = async (
     pendingAppendMessageIds: [],
     threadId: row.threadId,
   }
+  const pushEvent = options.pushEventImpl ?? defaultPushEvent(options.baseUrl, options.agentToken)
+  const claimEvent = decodeKhalaRuntimeEvent({
+    causalityRefs: [row.intent.intentId],
+    controlIntentId: row.intent.intentId,
+    eventId: stableId("event.runtime_claim", turnId),
+    kind: "turn.started",
+    observedAt: new Date().toISOString(),
+    redactionClass: "private_ref",
+    schema: "openagents.khala_runtime_event.v1",
+    sequence: turn.nextEventSequence(),
+    source,
+    threadId: row.threadId,
+    turnId,
+    userMessageId: messageId,
+    visibility: "private",
+  })
+  try {
+    await pushEvent({
+      clientGroupId: turn.clientGroupId,
+      clientId: turn.clientId,
+      event: claimEvent,
+      mutationId: turn.nextMutationId(),
+    })
+  } catch {
+    // Sequence 1 is the durable single-winner claim. A duplicate generation
+    // or an indeterminate write never proceeds to provider execution.
+    return {
+      detail: "runtime turn claim was not newly admitted; provider dispatch skipped",
+      outcome: "skipped_stale",
+    }
+  }
   options.activeTurns.set(turnId, turn)
   void dispatchTurnStart({
     intent: row,
@@ -1649,6 +1685,7 @@ const handleTurnStart = async (
     prompt: message.body,
     source,
     store,
+    startedClaimed: true,
     turn,
     turnId,
     ...(dispatchAccount === undefined ? {} : { account: dispatchAccount }),

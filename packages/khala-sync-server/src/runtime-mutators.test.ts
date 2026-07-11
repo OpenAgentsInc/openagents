@@ -1,4 +1,7 @@
 import {
+  agentRunScope,
+  AGENT_RUN_ENTITY_TYPE,
+  AGENT_RUN_EVENT_ENTITY_TYPE,
   canonicalJson,
   ClientGroupId,
   ClientId,
@@ -29,6 +32,12 @@ import { readScopeOwner } from "./fleet-projection.js"
 import { logPage } from "./read-service.js"
 import { runMigrations } from "./migrate.js"
 import { executePush, makeMutatorRegistry } from "./push-engine.js"
+import {
+  CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+  CHAT_BIND_THREAD_REPO_MUTATOR_NAME,
+  CHAT_CREATE_THREAD_MUTATOR_NAME,
+  chatMutators,
+} from "./chat-mutators.js"
 import {
   RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
   RUNTIME_CLOSE_TURN_MUTATOR_NAME,
@@ -175,7 +184,7 @@ const runtimeEvent = (
   }
 }
 
-const registry = makeMutatorRegistry([...runtimeMutators])
+const registry = makeMutatorRegistry([...chatMutators, ...runtimeMutators])
 
 describe.skipIf(!hasLocalPostgres())(
   "Khala runtime mutators against local Postgres",
@@ -200,6 +209,129 @@ describe.skipIf(!hasLocalPostgres())(
       if (sql !== undefined) await sql.end()
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (pg !== undefined) await pg.stop()
+    })
+
+    test("conversation admission mirrors exact runtime refs into the canonical agent timeline and reconciles semantic retry", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.conversation.8676"
+      const messageId = "runtime-message.conversation.8676"
+      const turnId = "runtime-turn.conversation.8676"
+      const startIntent = controlIntent({
+        bodyRef: `chat_message.${messageId}`,
+        intentId: "runtime-intent.conversation.8676",
+        kind: "turn.start",
+        threadId,
+        turnId,
+      })
+
+      const admitted = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, {
+            threadId,
+            title: "Issue 8676",
+          }),
+          envelope(2, CHAT_BIND_THREAD_REPO_MUTATOR_NAME, {
+            repo: {
+              defaultBranch: "main",
+              name: "openagents",
+              owner: "OpenAgentsInc",
+            },
+            threadId,
+          }),
+          envelope(3, CHAT_APPEND_MESSAGE_MUTATOR_NAME, {
+            body: "Start the real streamed conversation.",
+            messageId,
+            threadId,
+          }),
+          envelope(4, RUNTIME_START_TURN_MUTATOR_NAME, startIntent),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(admitted.results.map(result => result.status)).toEqual([
+        "applied",
+        "applied",
+        "applied",
+        "applied",
+      ])
+
+      const exactRetry = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(5, RUNTIME_START_TURN_MUTATOR_NAME, startIntent),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(exactRetry.results[0]!.status).toBe("applied")
+
+      const conflict = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(6, RUNTIME_START_TURN_MUTATOR_NAME, {
+            ...startIntent,
+            bodyRef: "chat_message.different",
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(conflict.results[0]!.status).toBe("rejected")
+      expect(conflict.results[0]!.errorCode).toBe("runtime_intent_conflict")
+
+      await sql`
+        UPDATE khala_sync_chat_threads
+        SET repo_binding_owner = 'DifferentOrg',
+            repo_binding_name = 'different-repo',
+            repo_binding_default_branch = 'other'
+        WHERE thread_id = ${threadId}
+      `
+
+      const streamed = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(7, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.conversation.started",
+            kind: "turn.started",
+            sequence: 1,
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(streamed.results[0]!.status).toBe("applied")
+
+      const runLog = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 50,
+        scope: agentRunScope(turnId),
+      })
+      const threadLog = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 50,
+        scope: threadScope(threadId),
+      })
+      for (const log of [runLog, threadLog]) {
+        expect(log.entries.some(entry => String(entry.entityType) === AGENT_RUN_ENTITY_TYPE)).toBe(true)
+        expect(log.entries.some(entry => String(entry.entityType) === AGENT_RUN_EVENT_ENTITY_TYPE)).toBe(true)
+      }
+      const runPostImage = runLog.entries
+        .filter(entry => String(entry.entityType) === AGENT_RUN_ENTITY_TYPE)
+        .at(-1)?.postImageJson
+      expect(runPostImage).toContain(`\"runId\":\"${turnId}\"`)
+      expect(runPostImage).toContain(`\"routeId\":\"${threadId}\"`)
+      expect(runPostImage).toContain("Start the real streamed conversation.")
+      expect(runPostImage).toContain("OpenAgentsInc")
+      expect(runPostImage).not.toContain("DifferentOrg")
+      const counts: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count
+        FROM khala_sync_runtime_control_intents
+        WHERE intent_id = ${startIntent.intentId}
+      `
+      expect(Number(counts[0]!.count)).toBe(1)
     })
 
     test("accepted control intents and events project only safe data outside the private thread scope", async () => {

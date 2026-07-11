@@ -16,18 +16,19 @@ The signed renderer reaches host runtime state through one versioned,
 schema-decoded query/command/event seam.
 
 - Bootstrap reports the gateway lifecycle and only truthful capability state.
-- Unsupported conversation commands return `unavailable`, never accepted or
-  completed; argument-free native-session commands return only bounded phase
-  outcomes after the host action finishes.
+- Unsupported conversation commands return `unavailable`, never completed;
+  runtime enqueues return only `unknown_pending_reconcile` until confirmed,
+  and argument-free native-session commands return bounded phase outcomes.
 - Lifecycle events have a monotonic sequence and an owned disposer.
 - Electron main validates the top-level bundled renderer before serving a
   request.
 - Tokens, credentials, URLs, raw runtime events, arbitrary IPC, `MessagePort`,
   filesystem/process handles, and command arguments cannot enter the contract.
 
-The Gateway now carries bounded OpenAgents entry/exit, canonical confirmed-
-conversation operations, and confirmed redacted agent-timeline snapshots.
-Provider process streaming remains explicitly unavailable.
+Protocol v6 carries bounded OpenAgents entry/exit, canonical confirmed-
+conversation operations, exact-ref runtime start/interrupt, and confirmed
+bounded agent-timeline snapshots. Provider execution stays behind the host;
+only canonical projected lifecycle items reach the renderer.
 
 Contract:
 `openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
@@ -62,7 +63,9 @@ over the canonical `chat_thread` / `chat_message` entities and
   refs, confirmed entity versions, scope cursor, and actual Sync phase.
 - Owner identity, credentials, raw store/session/overlay/transport objects, and
   optimistic bodies do not enter the projection.
-- Denial, sign-out, reconnect-before-live, and close remove the capability.
+- Denial and proven sign-out immediately refuse new mutation, burn queued
+  hosted commands, clear subscribed hosted projections, and remove the
+  capability. Transient disconnect/close keeps reconstructible queue/cache.
 - The normal Desktop sweep proves Desktop start, mobile continuation, matching
   refs/versions/cursor, and restart reconstruction over the real native store
   adapters without duplicate objects.
@@ -75,43 +78,46 @@ Contract: `openagents_desktop.sync.native_conversation_continuity.v1`.
 
 ### Closed Runtime Gateway conversation protocol
 
-Protocol v3 carries schema-bounded `conversation.catalog` and
-`conversation.thread` queries plus `conversation.create` and
-`conversation.append` commands.
+Protocol v6 carries schema-bounded `conversation.catalog`,
+`conversation.thread`, and `conversation.timeline` queries plus
+`conversation.create`, `conversation.append`, `conversation.start`, and
+`conversation.interrupt` commands.
 
 - Queries return confirmed public-safe refs/bodies/timestamps/entity versions,
   actual scope phase/cursor, and pending count.
-- Commands enqueue canonical Sync mutations and return `pending_reconcile`
-  with the durable mutation id. Enqueue is never reported as completed.
+- Commands enqueue canonical Sync mutations and return `pending_reconcile` or
+  `unknown_pending_reconcile` with the durable mutation id. Enqueue is never
+  reported as completed.
 - Not-live and read failure are typed, body-free unavailable results.
 - Owner identity, credentials, native/store/session/overlay/transport objects,
   raw events, provider authority, and generic IPC do not cross preload.
 
 The renderer selects this authority once at boot when the confirmed catalog is
 live; otherwise it retains explicit local-only mode. It does not mix catalogs.
-This contract does not claim a provider-neutral stream or live GUI acceptance.
+The built-live and physical-mobile receipt remains separate acceptance.
 
 Contract: `openagents_desktop.seam.runtime_gateway_conversation.v1`.
 
 ### Confirmed agent timeline protocol
 
-Protocol v3 also adds one `agent.timeline` query by bounded exact `runRef`.
+Protocol v6 carries `agent.timeline` by bounded exact `runRef` and
+`conversation.timeline` by exact confirmed `threadRef`.
 Electron main composes the shared confirmed reader only while authenticated
 personal Sync is live.
 
 - A live result carries the exact confirmed run and its server-projected
   `routeRef`, lifecycle/version, scope phase/cursor/pending count, and at most
-  500 ordered confirmed event facts.
+  500 ordered bounded canonical lifecycle items.
 - The server-projected `agent_run.routeId` is the only thread/route attachment
   fact. The renderer cannot derive a route from a run ID.
 - Non-live, not-found, and read-failure outcomes are typed and body-free.
-- Owner/objective/repository/runtime/backend, provider source, raw payload,
-  external callbacks, credentials, store/session/transport, and process
-  authority cannot cross the schema.
+- Bounded runtime/backend/WorkContext classification may cross; owner,
+  objective, repository contents, provider source, raw payload, external
+  callbacks, credentials, store/session/transport, and process authority may
+  not.
 
-This is query substrate only. Runtime launch, visible timeline rendering,
-canonical chat creation for the route, interrupt/resume, and live-account proof
-remain later D1 work.
+The same projection drives visible Desktop and mobile timeline rendering.
+Live-account/physical-device proof remains the final #8676 gate.
 
 Contract: `openagents_desktop.seam.runtime_gateway_agent_timeline.v1`.
 
@@ -121,7 +127,7 @@ Contract: `openagents_desktop.seam.runtime_gateway_agent_timeline.v1`.
 
 Desktop creates an immutable device-local identity before OpenAuth. Local
 authority uses separate SQLite tables, `LocalRevision`, and a device-local
-scope that hosted Sync rejects. Runtime Gateway v5 exposes only the tier, never
+scope that hosted Sync rejects. Runtime Gateway v6 exposes only the tier, never
 the identity/owner ref. A server-verified account link adds personal Sync;
 disconnect, denial, failed link, and restart preserve the local identity and
 local rows. The workbench, history, local Pylon, and local conversation path do
@@ -129,12 +135,14 @@ not require an OpenAgents account.
 
 Contract: `openagents_desktop.seam.identity.local_first_account_link.v1`.
 
-The existing Effect Native shell consumes Runtime Gateway v5 through a typed
+The existing Effect Native shell consumes Runtime Gateway v6 through a typed
 renderer adapter whenever confirmed conversation Sync is live at boot.
 
 - Sidebar and transcript map only confirmed thread/message projections.
 - New-chat and composer actions generate stable refs, enqueue canonical
-  mutations, and wait for those exact refs to be confirmed.
+  chat plus runtime mutations, and wait for exact refs and terminal state.
+- Confirmed text, reasoning, connection, tool/plan, usage, interruption, and
+  terminal items stream into the active transcript during the turn.
 - A confirmation timeout renders an honest pending-reconciliation error; it is
   never converted to completion.
 - Authority mode is selected once per renderer lifetime. Signed-out/not-live
@@ -143,9 +151,9 @@ renderer adapter whenever confirmed conversation Sync is live at boot.
 - The adapter adds no preload method, IPC channel, owner/auth field, or second
   UI architecture.
 
-Owner messages are currently rendered as user-role rows because canonical
-`chat_message` has no assistant role. Provider/runtime assistant streaming and
-live GUI/account acceptance remain later D1 evidence.
+Canonical `chat_message` rows remain owner-role input. Assistant/system rows
+come only from bounded `agent_run_event` projections. Live GUI/account
+acceptance remains separate evidence.
 
 Contract: `openagents_desktop.chat.authoritative_sync_mode.v1`.
 

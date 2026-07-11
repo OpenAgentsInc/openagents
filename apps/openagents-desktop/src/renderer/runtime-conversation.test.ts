@@ -53,6 +53,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       ["thread.synced.1", { title: "Synced", messages: [{ ref: "message.synced.1", body: "Confirmed" }] }],
     ])
     const commands: Array<Record<string, unknown>> = []
+    let startedRunRef: string | null = null
     const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
       const value = raw as { requestId?: string; commandId?: string; query?: { id: string; threadRef?: string }; command?: Record<string, string> }
       if (value.query?.id === "conversation.catalog") {
@@ -88,6 +89,31 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           })),
         }
       }
+      if (value.query?.id === "conversation.timeline") {
+        return {
+          kind: "conversation_timeline",
+          requestId: value.requestId!,
+          threadRef: value.query.threadRef!,
+          status,
+          run: startedRunRef === null ? null : {
+            runRef: startedRunRef,
+            routeRef: value.query.threadRef!,
+            status: "completed",
+            createdAt: now,
+            updatedAt: now,
+            startedAt: now,
+            completedAt: now,
+            failedAt: null,
+            canceledAt: null,
+            version: 1,
+          },
+          events: startedRunRef === null ? [] : [
+            { eventRef: "event.text.1", runRef: startedRunRef, sequence: 1, eventType: "text.delta", summary: "Hello", status: null, artifactRefs: [], item: { kind: "text", messageRef: "assistant.1", text: "Hello" }, createdAt: now, version: 2 },
+            { eventRef: "event.tool.1", runRef: startedRunRef, sequence: 2, eventType: "tool.call", summary: "Called shell", status: "completed", artifactRefs: [], item: { kind: "tool", toolCallRef: "tool.1", toolName: "shell", status: "completed" }, createdAt: now, version: 3 },
+            { eventRef: "event.terminal.1", runRef: startedRunRef, sequence: 3, eventType: "turn.finished", summary: "Turn finished", status: "completed", artifactRefs: [], item: { kind: "terminal", status: "completed" }, createdAt: now, version: 4 },
+          ],
+        }
+      }
       const command = value.command!
       commands.push(command)
       if (command.id === "conversation.create") {
@@ -97,6 +123,17 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           ref: command.messageRef!,
           body: command.body!,
         })
+      } else if (command.id === "conversation.start") {
+        startedRunRef = command.runRef!
+        return {
+          kind: "runtime_command_outcome",
+          commandId: value.commandId!,
+          threadRef: command.threadRef!,
+          runRef: command.runRef!,
+          messageRef: command.messageRef!,
+          status: "unknown_pending_reconcile",
+          mutationId: commands.length,
+        }
       }
       return {
         kind: "conversation_mutation_outcome",
@@ -108,7 +145,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     const chat = makeRuntimeConversationChatHost({
       request,
       randomId: (() => {
-        const ids = ["new-thread", "new-message"]
+        const ids = ["new-thread", "new-message", "new-run"]
         return () => ids.shift()!
       })(),
       sleep: async () => undefined,
@@ -128,14 +165,20 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       message: "Follow-up",
     })
     expect(result).toMatchObject({ ok: true })
-    expect(result.thread?.notes.at(-1)).toMatchObject({
+    expect(result.thread?.notes.find(note => note.key === "message.desktop.new-message")).toMatchObject({
       key: "message.desktop.new-message",
       text: "Follow-up",
       role: "user",
     })
+    expect(result.thread?.notes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "assistant", text: "Hello" }),
+      expect.objectContaining({ role: "system", text: "shell · completed" }),
+      expect.objectContaining({ role: "system", text: "Turn completed" }),
+    ]))
     expect(commands.map(command => command.id)).toEqual([
       "conversation.create",
       "conversation.append",
+      "conversation.start",
     ])
   })
 

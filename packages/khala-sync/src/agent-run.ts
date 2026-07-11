@@ -27,8 +27,8 @@ import { Schema as S } from "effect"
  *     `hiddenSteering`, which stays private).
  *
  * PUBLIC-SAFE BY CONSTRUCTION (SPEC §7 invariant 9): `goal` (the user's
- * free-text objective) and `repository.owner`/`repository.repo` are the
- * only free-content fields — bounded, but otherwise unconstrained, exactly
+ * free-text objective) and repository fields, when a repository is bound, are
+ * the only free-content fields — bounded, but otherwise unconstrained, exactly
  * like `KhalaCodeText`/chat `body` in ./khala-code.ts. Every other field is
  * a closed literal set, a bounded ref, an ISO timestamp, or a bounded
  * count/fraction. No provider credential, auth grant ref, callback token,
@@ -58,6 +58,14 @@ export const AgentRunRef = S.String.check(
   S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
 )
 export type AgentRunRef = typeof AgentRunRef.Type
+
+/** A structured WorkContext ref may namespace an already-bounded thread ref. */
+export const AgentRunWorkContextRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(1024),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+)
+export type AgentRunWorkContextRef = typeof AgentRunWorkContextRef.Type
 
 /** ISO-8601 UTC timestamp string (same shape the wire contracts use). */
 export const AgentRunIsoTimestamp = S.String.check(
@@ -89,10 +97,20 @@ export const AgentRunStatus = S.Literals([
 ])
 export type AgentRunStatus = typeof AgentRunStatus.Type
 
-export const AgentRunRuntime = S.Literals(["opencode_codex", "codex"])
+export const AgentRunRuntime = S.Literals([
+  "opencode_codex",
+  "codex",
+  "claude_code",
+  "openagents_native",
+])
 export type AgentRunRuntime = typeof AgentRunRuntime.Type
 
-export const AgentRunBackend = S.Literals(["shc_vm", "gcloud_vm"])
+export const AgentRunBackend = S.Literals([
+  "shc_vm",
+  "gcloud_vm",
+  "pylon",
+  "hosted",
+])
 export type AgentRunBackend = typeof AgentRunBackend.Type
 
 /**
@@ -156,6 +174,7 @@ export class AgentRunGoalContextEntity extends S.Class<AgentRunGoalContextEntity
 export class AgentRunEntity extends S.Class<AgentRunEntity>("AgentRunEntity")({
   runId: AgentRunRef,
   routeId: AgentRunRef,
+  workContextRef: S.optionalKey(AgentRunWorkContextRef),
   userId: AgentRunRef,
   teamId: S.NullOr(AgentRunRef),
   projectId: S.NullOr(AgentRunRef),
@@ -164,7 +183,11 @@ export class AgentRunEntity extends S.Class<AgentRunEntity>("AgentRunEntity")({
   status: AgentRunStatus,
   goalId: S.NullOr(AgentRunRef),
   goal: AgentRunGoalText,
-  repository: AgentRunRepositoryEntity,
+  // Conversation runtime turns may be admitted before a repository is bound
+  // to the thread. Omni workroom runs keep this field required at their own
+  // creation boundary; the shared projection keeps the absence explicit
+  // rather than inventing a GitHub repository for an unbound WorkContext.
+  repository: S.optionalKey(AgentRunRepositoryEntity),
   goalContext: S.optionalKey(AgentRunGoalContextEntity),
   createdAt: AgentRunIsoTimestamp,
   updatedAt: AgentRunIsoTimestamp,

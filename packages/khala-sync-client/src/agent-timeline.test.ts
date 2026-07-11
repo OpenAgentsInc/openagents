@@ -7,6 +7,7 @@ import {
   SyncVersion,
   SyncVersionWatermark,
   agentRunScope,
+  threadScope,
   canonicalJson,
   decodeAgentRunEntity,
   decodeAgentRunEventEntity,
@@ -132,8 +133,10 @@ describe("contract khala_sync.client.confirmed_agent_timeline.v1", () => {
       expect(opened).toEqual(["scope.agent_run.run.timeline.1"])
       expect(snapshot.status).toEqual({ phase: "live", cursor: 4, pendingMutationCount: 1 })
       expect(snapshot.run).toEqual({
+        backend: "shc_vm",
         runRef: RUN,
         routeRef: "thread.timeline.1",
+        runtime: "codex",
         status: "running",
         createdAt: NOW,
         updatedAt: NOW,
@@ -172,6 +175,33 @@ describe("contract khala_sync.client.confirmed_agent_timeline.v1", () => {
         run: null,
         events: [],
       })
+    } finally {
+      Effect.runSync(store.close())
+    }
+  })
+
+  test("discovers the confirmed latest run from the canonical thread route", () => {
+    const store = openKhalaSyncStore(":memory:")
+    const thread = "thread.timeline.1"
+    const threadEntry = (value: ChangelogEntry) => new ChangelogEntry({
+      ...value,
+      scope: threadScope(thread),
+    })
+    try {
+      Effect.runSync(store.applyConfirmed(
+        threadScope(thread),
+        [threadEntry(runEntry), threadEntry(eventEntry({
+          version: 2,
+          id: "event.thread.1",
+          sequence: 1,
+          summary: "Connected",
+        }))],
+        SyncVersion.make(2),
+      ))
+      const timeline = createKhalaSyncAgentTimeline({ store, session: session() })
+      const snapshot = Effect.runSync(timeline.snapshotForThread(thread))
+      expect(snapshot.run).toMatchObject({ runRef: RUN, routeRef: thread })
+      expect(snapshot.events.map(event => event.eventRef)).toEqual(["event.thread.1"])
     } finally {
       Effect.runSync(store.close())
     }

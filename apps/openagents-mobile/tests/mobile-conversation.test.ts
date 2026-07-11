@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import type { MutationId } from "@openagentsinc/khala-sync"
+import { MutationId, type KhalaRuntimeControlIntent } from "@openagentsinc/khala-sync"
 import type {
   ConfirmedChatMessage,
   ConfirmedChatThread,
   KhalaSyncConversation,
+  KhalaSyncAgentTimeline,
+  KhalaSyncRuntimeCommands,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
@@ -164,5 +166,101 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     const result = await host.sendMessage({ threadRef: "thread.synced.1", body: "Pending" })
     expect(result).toEqual({ ok: false, error: "Message is still pending reconciliation." })
     expect(sleeps).toBe(2)
+  })
+
+  test("admits the same message/thread/run refs through the shared runtime command and can interrupt that confirmed run", async () => {
+    const fixture = makeConversation()
+    const intents: Array<KhalaRuntimeControlIntent> = []
+    let activeRunRef: string | null = null
+    let activeStatus: "completed" | "canceled" = "completed"
+    let activeSequence = 0
+    const runtime: KhalaSyncRuntimeCommands = {
+      startTurn: intent => Effect.sync(() => {
+        intents.push(intent)
+        activeRunRef = intent.turnId ?? null
+        activeStatus = "completed"
+        activeSequence = 1
+        return MutationId.make(3)
+      }),
+      appendUserMessage: intent => Effect.sync(() => {
+        intents.push(intent)
+        return MutationId.make(4)
+      }),
+      interruptTurn: intent => Effect.sync(() => {
+        intents.push(intent)
+        activeStatus = "canceled"
+        activeSequence += 1
+        return MutationId.make(5)
+      }),
+    }
+    const snapshot = () => ({
+      status: { phase: "live" as const, cursor: 8, pendingMutationCount: 0 },
+      run: activeRunRef === null ? null : {
+        runRef: activeRunRef,
+        routeRef: "thread.synced.1",
+        runtime: "codex" as const,
+        backend: "pylon" as const,
+        status: activeStatus,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        completedAt: activeStatus === "completed" ? now : null,
+        failedAt: null,
+        canceledAt: activeStatus === "canceled" ? now : null,
+        version: 8,
+      },
+      events: activeRunRef === null ? [] : [{
+        eventRef: `event.mobile.${activeSequence}`,
+        runRef: activeRunRef,
+        sequence: activeSequence,
+        eventType: activeStatus === "canceled" ? "turn.interrupted" : "turn.finished",
+        summary: activeStatus === "canceled" ? "Interrupted" : "Completed",
+        status: activeStatus,
+        artifactRefs: [],
+        item: activeStatus === "canceled"
+          ? { kind: "interrupted" as const }
+          : { kind: "terminal" as const, status: "completed" as const },
+        createdAt: now,
+        version: 8 + activeSequence,
+      }],
+    })
+    const timeline: KhalaSyncAgentTimeline = {
+      status: () => snapshot().status,
+      open: () => Effect.succeed(undefined),
+      snapshot: () => Effect.succeed(snapshot()),
+      snapshotForThread: () => Effect.succeed(snapshot()),
+    }
+    const ids = ["runtime-message", "runtime-turn", "runtime-interrupt"]
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      runtime,
+      timeline,
+      randomId: () => ids.shift()!,
+      pollAttempts: 1,
+      sleep: async () => undefined,
+    })
+
+    const sent = await host.sendMessage({
+      body: "Continue from mobile",
+      threadRef: "thread.synced.1",
+    })
+    expect(sent.ok).toBe(true)
+    expect(intents[0]).toMatchObject({
+      bodyRef: "chat_message.message.mobile.runtime-message",
+      kind: "turn.start",
+      threadId: "thread.synced.1",
+      turnId: "turn.mobile.runtime-turn",
+    })
+
+    const interrupted = await host.interrupt?.({
+      runRef: "turn.mobile.runtime-turn",
+      threadRef: "thread.synced.1",
+    })
+    expect(interrupted?.ok).toBe(true)
+    expect(intents[1]).toMatchObject({
+      kind: "turn.interrupt",
+      threadId: "thread.synced.1",
+      turnId: "turn.mobile.runtime-turn",
+    })
   })
 })
