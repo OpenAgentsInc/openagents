@@ -540,6 +540,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   omit owner identity and carry stable thread/message refs, server entity
   versions, scope cursor, phase, and pending count; optimistic content is never
   labeled confirmed, and denial/sign-out removes the conversation capability.
+- Native provider-neutral timelines use the shared client reader over the
+  existing `agent_run` / `agent_run_event` entities on one exact agent-run
+  scope. Only live confirmed run state and the newest 500 ordered event facts
+  may project; owner/objective/repository/runtime/backend, event source, raw
+  payload JSON, external callback refs, and non-live cached rows stay hidden.
 - Desktop Runtime Gateway is the only renderer path to that conversation
   capability. Its versioned schema permits bounded confirmed catalog/thread
   queries and canonical create/append intents; enqueue returns

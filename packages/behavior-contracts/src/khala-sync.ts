@@ -174,6 +174,42 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "This is a confirmed reader over the existing agent_run scope and entity contracts; it adds no schema, producer, runtime command, thread/run binding, or optimistic event path. The public snapshot omits owner, objective, repository, runtime/backend, source, payload JSON, external callback refs, store/session/transport objects, and all non-live cached rows.",
+      blockerRefs: [],
+      contractId: "khala_sync.client.confirmed_agent_timeline.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8672",
+        "packages/khala-sync/src/agent-run.ts",
+        "packages/khala-sync-client/src/agent-timeline.ts",
+        "packages/khala-sync-client/src/agent-timeline.test.ts",
+        "docs/sol/issues/confirmed-agent-timeline.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Applies out-of-order agent_run_event rows plus an at-least-once duplicate replay into the real shared SQLite store, restarts it, and proves one exact run-scope subscription reconstructs an ordered bounded confirmed timeline with refs/sequences/versions while private payload/source/owner fields remain absent; non-live cached rows stay hidden.",
+          id: "khala_sync.client.confirmed_agent_timeline.restart_replay",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/khala-sync-client/src/agent-timeline.test.ts",
+        },
+      ],
+      productArea: "provider-neutral agent timeline",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "Desktop and mobile share one confirmed agent-run timeline reader: exact agent_run scope state reconstructs in sequence order across replay and restart, non-live cached rows remain hidden, and raw provider/private event material never enters the public projection.",
+      surface: "khala-sync-client",
+      verification:
+        "The timeline test and package import-coverage gate run in the normal khala-sync-client sweep; behavior-contract coverage requires the enforced oracle source to reference this contract.",
+    },
+    {
+      authorityBoundary:
         "This contract binds SPEC §7 invariant 7's client-visible outcome (revocation retracts synced state; the scope parks terminal instead of retrying). It does not define who may change memberships, and the revocation TRIGGER for already-open sockets remains the operator/Worker access-changed route obligation registered in apps/openagents.com/INVARIANTS.md (Khala Sync invariant 7).",
       blockerRefs: [],
       contractId: "khala_sync.access.revocation_clears_synced_state.v1",
@@ -332,5 +368,5 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-08.1",
+  version: "2026-07-10.2",
 }

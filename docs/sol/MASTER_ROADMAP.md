@@ -472,7 +472,11 @@ records before claiming the first new slice.
   node:sqlite plus mobile Expo-SQLite fixture proves Desktop start → mobile
   follow-up → restart convergence with matching refs/versions/cursor/phase.
   It does not yet have a streamed provider-neutral event runtime, a complete coding
-  workbench, or a visible server-authoritative Fleet cockpit.
+  workbench, or a visible server-authoritative Fleet cockpit. The shared Sync
+  client now has a confirmed-only reader for the already-landed `agent_run` /
+  `agent_run_event` scope: ordered bounded facts survive replay/restart while
+  private/raw provider fields stay omitted. Runtime launch/thread binding and
+  Runtime Gateway/UI consumption remain the next D1 leaves.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
   persona-neutral public-local Khala fallback driven by the native composer,
   and a

@@ -85,6 +85,16 @@ export {
   type KhalaSyncConversationStatus,
 } from "./conversation.js"
 
+export {
+  type ConfirmedAgentRun,
+  type ConfirmedAgentTimelineEvent,
+  type ConfirmedAgentTimelineSnapshot,
+  createKhalaSyncAgentTimeline,
+  type KhalaSyncAgentTimeline,
+  type KhalaSyncAgentTimelineStatus,
+  MAX_CONFIRMED_AGENT_TIMELINE_EVENTS,
+} from "./agent-timeline.js"
+
 // ---------------------------------------------------------------------------
 // Transport (KS-5.3): injectable seam in transport.ts; HTTP+WebSocket
 // implementation against the SPEC §3 routes, khala-sync codecs at every

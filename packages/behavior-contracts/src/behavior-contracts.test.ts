@@ -810,6 +810,7 @@ describe("khala sync contract registry", () => {
       "khala_sync.client.offline_pushes_queue_honestly.v1",
       "khala_sync.client.staleness_never_fabricated.v1",
       "khala_sync.client.native_conversation_continuity.v1",
+      "khala_sync.client.confirmed_agent_timeline.v1",
       "khala_sync.access.revocation_clears_synced_state.v1",
       "khala_sync.seam.bearer_ws_connect_reaches_live.v1",
       "khala_sync.hosted_chat.send_yields_assistant_reply.v1",
@@ -857,6 +858,9 @@ describe("khala sync contract registry", () => {
       "A Desktop-created authoritative chat thread",
     )
     expect(khalaSyncContractRegistry.contracts[4]!.statement).toStartWith(
+      "Desktop and mobile share one confirmed agent-run timeline reader:",
+    )
+    expect(khalaSyncContractRegistry.contracts[5]!.statement).toStartWith(
       "Access revocation clears synced state:",
     )
     // The staleness contract references the desktop indicator contract
