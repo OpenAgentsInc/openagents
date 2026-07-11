@@ -3,12 +3,12 @@
 - Date: 2026-07-11
 - Issue: [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696)
 - Status: shared authority, native persistence, both native interaction UIs,
-  and Desktop gateway active; provider injection/live acceptance remains open
+  Desktop gateway, and Claude provider injection active; live acceptance remains open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
   `97f90832bb`, `21d56199bd`, `88f692fe00`, `400c649904`, `600228f230`, and
-  `2fae80b1ec`
+  `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, and `4a9db8347b`
 
 CUT-16 now builds on the existing rich `@openagentsinc/composer-state` kernel
 instead of creating a second composer. The additive private coding-draft
@@ -60,6 +60,18 @@ post-image. Neither an enqueue receipt nor a different decision ref can render
 the interaction resolved, and expiry/revocation remain distinct terminal
 states. The frozen Fable-local question IPC keeps its original outbound shape.
 
+The standing owner-local runtime-intent supervisor now constructs a trusted
+HTTP authority from its existing internal Worker credential and fixed owner.
+POST executes the real `runtime.requestInteraction` mutator; GET returns only
+the exact owner/ref post-image. Claude dispatch injects `canUseTool` only when
+that authority is explicitly present, uses the exact current durable event
+sequence, and switches that supervised invocation to SDK `default` mode so
+the callback genuinely runs. Without the authority, the pre-existing
+permission path is unchanged. Only a confirmed matching approval returns raw
+tool input to the same SDK call. A separate `runtime.expireInteraction`
+mutator uses the database clock to persist deadline expiry without inventing a
+deny decision.
+
 Verification:
 
 - composer-state: 23 pass, 0 fail, 161 assertions; shared composer UI: 7 pass,
@@ -76,11 +88,15 @@ Verification:
   and build pass; after authoritative Desktop interaction controls, the full
   Desktop suite is 468 pass, 0 fail, 2,487 assertions;
 - mobile full suite: 80 pass, 0 fail, 366 assertions; mobile typecheck passes.
+- Pylon typecheck and full suite pass; focused HTTP-authority/runtime-dispatch
+  coverage is 59 pass, 0 fail, 208 assertions. The API Worker typecheck and
+  focused authority/route-manifest suite pass (6 tests). The runtime mutator
+  local-Postgres suite is 15 pass, 0 fail, 112 assertions, including early
+  expiry refusal and durable post-deadline expiry.
 
-CUT-16 remains open. The next honest rungs are production Pylon/provider
-authority injection, screen-reader/mobile-keyboard and physical-device
-acceptance, and named
-Codex/Claude live turns. Restart/revocation logic is covered deterministically;
-the physical and provider receipts are not.
+CUT-16 remains open. The next honest rungs are screen-reader/mobile-keyboard
+and physical-device acceptance plus named Codex/Claude live turns. Restart,
+revocation, provider injection, and expiry logic are covered deterministically;
+the physical and named-provider receipts are not.
 The default non-interactive provider safety policy must not be weakened merely
 to manufacture an approval receipt.

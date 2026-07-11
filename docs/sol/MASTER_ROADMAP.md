@@ -661,8 +661,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   optimistic resolution. Desktop now projects those same confirmed states as
   Effect Native cards, maps selections back to exact canonical refs, and waits
   for the matching confirmed decision post-image rather than treating enqueue
-  as resolution. Provider authority injection, physical accessibility, and
-  named live receipts remain open. See
+  as resolution. The standing owner-local Pylon now uses its existing internal
+  Worker credential to request/read those exact interactions and injects the
+  confirmed authority into Claude `canUseTool`; server-clock expiry is durable
+  and never fabricates an owner decision. Physical accessibility and named
+  live receipts remain open. See
   [`CUT-16 receipt`](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402

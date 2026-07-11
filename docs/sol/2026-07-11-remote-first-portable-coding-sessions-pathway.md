@@ -108,9 +108,11 @@ recovery, Desktop protocol-v9 transport, and mobile interaction controls are
 now active. Desktop also renders the confirmed interaction projection and
 routes exact-ref decisions through gateway-event-driven confirmation; an
 enqueue receipt never collapses a card as resolved. This does not yet make
-provider execution portable: production Pylon/provider injection and live
-physical receipts remain open, and a default
-non-interactive provider policy must not be relaxed merely to create a demo.
+provider execution fully proven portable: owner-local Pylon now requests the
+same durable authority through the trusted Worker seam and runs Claude's
+`canUseTool` only under explicit confirmed supervision, but named live and
+physical receipts remain open. Provider defaults remain unchanged when that
+authority is absent.
 
 ### Episodes 248–249 calibration
 
