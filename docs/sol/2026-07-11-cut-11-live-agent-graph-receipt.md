@@ -5,8 +5,9 @@
 - Status: shared schema/replay, provider normalization, Khala Sync entity,
   named server writer, live Codex/Claude root transaction binding, and confirmed
   Runtime Gateway v8 delivery/reconnect complete; real Claude child topology is
-  active, while a typed Codex child source and named-account traces remain
-  pending
+  active and redacted named-provider source traces exist for both providers,
+  while Codex child transport convergence and a named end-to-end reconnect
+  trace remain pending
 - Contract: `openagents.live_agent_graph.v1`
 
 ## Registered graph facts
@@ -136,6 +137,51 @@ union exposes no child or subagent record. Codex live child production is
 therefore still explicit provider-unsupported; CUT-11 does not infer parentage
 from tool names, renderer cards, or historical transcript text.
 
+## Redacted named-provider source traces
+
+Two bounded owner-local runs used isolated named-account custody and retained
+only stable hashes, typed lifecycle values, and exact token totals. No prompt,
+path, account name, provider payload, child response, or credential was
+retained.
+
+The Claude Agent SDK run selected
+`account.pylon.claude_agent.ba1fd0827726ff7f618c7725` and produced:
+
+- session ref `session.claude.779e1c5bded92ef237595a14`;
+- one stable task ref `task.claude.6b175360c64c54c968c1cd7f`;
+- `task_started` followed by `task_notification(completed)`; and
+- exact usage of 7 input + 516 output = 523 tokens.
+
+The live SDK used `task_type: local_agent` plus a present `subagent_type`, not
+the older `task_type: subagent` spelling. The producer already uses the
+presence of `subagent_type` as the provider-stable child discriminator. A
+different home that the local readiness projection called ready was refused by
+the provider's organization policy before inference; its error was retained
+only as `blocker.cut11.named_claude.9c2eba1b8800f2cefd52ac1b`. This is a
+readiness-freshness finding, not a fabricated successful trace.
+
+The Codex run selected the separately ready default-home account
+`account.pylon.codex.6be7b6501be36164f9c6ecda` and completed through the real
+app-server transport with:
+
+- root thread ref `thread.codex.9970eecd5d1b682060e69071`;
+- turn ref `turn.codex.03905fe35f310d794a60dc45`;
+- child thread ref `thread.codex.00f18bdc71240dd9b2e30be7` from the typed
+  `subAgentActivity(started)` record; and
+- a typed `collabAgentToolCall(wait)` in-progress/completed pair before the
+  root completed.
+
+That run establishes that the current app-server has a real typed child source.
+It also locates the remaining transport defect precisely: the installed SDK's
+bundled Codex binary fails before emitting a frame, while the current PATH
+binary succeeds but its `codex exec --experimental-json` encoder drops
+`subAgentActivity` and emits only `collab_tool_call(wait)` without a receiver
+ID. The app-server source must therefore enter Pylon's one conversation service
+or the exec encoder must preserve the child record. History/tool-name parsing
+is not an acceptable substitute. This follows the Pylon streamlining audit's
+one-conversation-service direction rather than introducing another provider
+sidecar.
+
 ## Confirmed client and Runtime Gateway delivery
 
 The Khala Sync client now reads `live_agent_graph` post-images only from the
@@ -199,7 +245,8 @@ Codex/Claude trace.
 
 ## Residual
 
-This receipt does not claim Codex live child/subagent topology or named-account
-live traces. The remaining CUT-11 work must bind a real typed Codex app-server
-child source and attach redacted named-account Codex and Claude reconnect
-traces. Graph presentation remains CUT-12.
+This receipt does not claim Codex live child/subagent topology in the Pylon
+runtime transaction or a named-account end-to-end reconnect. The remaining
+CUT-11 work must converge Pylon on the typed Codex app-server child source and
+carry one redacted named execution through confirmed Sync/Gateway reconnect.
+Graph presentation remains CUT-12.

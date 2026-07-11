@@ -3,7 +3,7 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll Desktop/mobile path landed; CUT-11
   root/Claude-child graphs enter Sync and the confirmed Gateway subscription)
-- Revision: 44
+- Revision: 45
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -572,9 +572,14 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   non-live scopes expose no cached graph authority. Real Claude Agent SDK task
   lifecycle messages now enter the shared body-free `agent.child.*` contract
   and retain stable child nodes/parent edges through root settlement and retry
-  fencing. The installed Codex SDK exposes no typed child event, so Codex live
-  child production is not inferred from tools or history. That Codex source and
-  redacted named-account traces remain open.
+  fencing. Redacted named-account probes now prove the live Claude child
+  lifecycle and the current Codex app-server's typed `subAgentActivity` child
+  source. They also isolate the remaining Codex gap: the SDK's bundled binary
+  fails before a frame, while the current PATH binary's
+  `--experimental-json` encoder omits the child activity record. Pylon must
+  converge that typed app-server source through the streamlining audit's one
+  conversation service; tools/history remain forbidden parentage sources. A
+  named confirmed-reconnect trace remains open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
