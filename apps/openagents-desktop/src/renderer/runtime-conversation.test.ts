@@ -11,9 +11,77 @@ import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.t
 import type { ChatHost } from "./shell.ts"
 import {
   makeRuntimeConversationChatHost,
+  runtimeInteractionNotes,
   selectDesktopChatHost,
   selectDesktopChatHostSelection,
 } from "./runtime-conversation.ts"
+
+test("projects canonical questions, approvals, plans, and terminal states as typed cards", () => {
+  const base = {
+    schema: "openagents.runtime_interaction_projection.v1" as const,
+    threadId: "thread.runtime.cards",
+    turnId: "turn.runtime.cards",
+    displayText: "Choose",
+    expiresAt: "2026-07-11T22:05:00.000Z",
+    requestedSequence: 7,
+    requestedAt: "2026-07-11T22:00:00.000Z",
+    version: 1,
+  }
+  const notes = runtimeInteractionNotes([
+    {
+      ...base,
+      interactionRef: "interaction.question.1",
+      kind: "provider_question",
+      status: "pending",
+      displayTitle: "Verification",
+      questions: [{
+        questionRef: "question.runtime.1",
+        displayText: "Which verification?",
+        multiSelect: false,
+        options: [{ optionRef: "option.tests", label: "Tests", description: "Run tests" }],
+      }],
+    },
+    {
+      ...base,
+      interactionRef: "interaction.tool.1",
+      kind: "tool_approval",
+      status: "resolved",
+      decisionRef: "decision.desktop.1",
+      displayTitle: "Approve workspaceWrite",
+      questions: [],
+      version: 2,
+    },
+    {
+      ...base,
+      interactionRef: "interaction.plan.1",
+      kind: "plan_review",
+      status: "revoked",
+      displayTitle: "Review plan",
+      questions: [],
+      version: 2,
+    },
+  ])
+  expect(notes.map(note => note.question)).toMatchObject([
+    {
+      source: "runtime",
+      threadRef: "thread.runtime.cards",
+      questionRef: "interaction.question.1",
+      status: "pending",
+      questions: [{ questionRef: "question.runtime.1", options: [{ optionRef: "option.tests", label: "Tests" }] }],
+    },
+    {
+      kind: "tool_approval",
+      status: "resolved",
+      decisionRef: "decision.desktop.1",
+      questions: [{ options: [{ optionRef: "approve" }, { optionRef: "deny" }] }],
+    },
+    {
+      kind: "plan_review",
+      status: "revoked",
+      questions: [{ options: [{ optionRef: "accept" }, { optionRef: "request_changes" }, { optionRef: "replan" }] }],
+    },
+  ])
+})
 
 const status = { phase: "live" as const, cursor: 5, pendingMutationCount: 0 }
 const now = "2026-07-10T20:15:00.000Z"
@@ -226,6 +294,14 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           mutationId: null,
           version: 4,
           updatedAt: now,
+        }
+      }
+      if (value.query?.id === "runtime.interactions") {
+        return {
+          kind: "runtime_interactions",
+          requestId: value.requestId!,
+          threadRef: value.query.threadRef!,
+          interactions: [],
         }
       }
       const command = value.command!

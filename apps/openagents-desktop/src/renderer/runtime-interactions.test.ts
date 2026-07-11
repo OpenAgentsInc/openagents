@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { DesktopRuntimeGatewayEvent, DesktopRuntimeGatewayResponse, RuntimeInteractionDecisionEnvelope } from "../runtime-gateway-contract.ts"
-import { makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
+import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
 
 const envelope: RuntimeInteractionDecisionEnvelope = {
   decisionRef: "decision.desktop.1",
@@ -28,6 +28,77 @@ const interaction = (status: "pending" | "resolved" | "expired" | "revoked", dec
 })
 
 describe("Desktop canonical runtime interaction host", () => {
+  test("maps display labels to exact canonical question and option refs", async () => {
+    const decisions: Array<any> = []
+    const host = {
+      list: async () => [{
+        ...interaction("pending"),
+        interactionRef: "interaction.question.1",
+        kind: "provider_question" as const,
+        displayTitle: "Verification",
+        questions: [{
+          questionRef: "question.runtime.1",
+          displayText: "Which verification?",
+          multiSelect: false,
+          options: [{ optionRef: "option.tests", label: "Tests" }],
+        }],
+      }],
+      decide: async (input: any) => {
+        decisions.push(input)
+        return { status: "confirmed_resolved" as const, interaction: interaction("resolved", input.envelope.decisionRef) }
+      },
+    }
+    expect(await answerDesktopRuntimeInteraction(host, {
+      threadRef: "thread.runtime.1",
+      turnRef: "turn.runtime.1",
+      questionRef: "interaction.question.1",
+      answers: [{ question: "Which verification?", labels: ["Tests"] }],
+    }, {
+      randomId: () => "fixed-id",
+      now: () => new Date("2026-07-11T22:01:00.000Z"),
+    })).toBe(true)
+    expect(decisions[0]).toMatchObject({
+      interactionRef: "interaction.question.1",
+      envelope: {
+        decisionRef: "decision.desktop.fixedid",
+        idempotencyKey: "idem.desktop.fixedid",
+        decision: {
+          kind: "provider_question",
+          answers: [{ questionRef: "question.runtime.1", optionRefs: ["option.tests"] }],
+        },
+      },
+    })
+  })
+
+  test("rejects missing thread identity and ambiguous display labels before mutation", async () => {
+    let decisions = 0
+    const host = {
+      list: async () => [{
+        ...interaction("pending"),
+        interactionRef: "interaction.question.1",
+        kind: "provider_question" as const,
+        questions: [{
+          questionRef: "question.runtime.1",
+          displayText: "Choose",
+          multiSelect: false,
+          options: [
+            { optionRef: "option.a", label: "Same" },
+            { optionRef: "option.b", label: "Same" },
+          ],
+        }],
+      }],
+      decide: async () => { decisions += 1; return { status: "pending_reconcile" as const } },
+    }
+    const base = {
+      turnRef: "turn.runtime.1",
+      questionRef: "interaction.question.1",
+      answers: [{ question: "Choose", labels: ["Same"] }],
+    }
+    expect(await answerDesktopRuntimeInteraction(host, base)).toBe(false)
+    expect(await answerDesktopRuntimeInteraction(host, { ...base, threadRef: "thread.runtime.1" })).toBe(false)
+    expect(decisions).toBe(0)
+  })
+
   test("sends exact refs and waits for the confirmed matching decision", async () => {
     let current = interaction("pending")
     let listener: ((event: DesktopRuntimeGatewayEvent) => void) | undefined

@@ -40,6 +40,7 @@ import {
 import { restorableHistoryThreadRef } from "./history-restore.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { selectDesktopChatHostSelection } from "./runtime-conversation.ts"
+import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
 import {
   makeLocalHarnessChatHost,
   type FableLocalRendererBridge,
@@ -310,8 +311,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // answers as [{ question, labels }]. Defensive: if the bridge is absent,
     // cards render read-only pending (evidence-gated).
     const answerQuestion = bridge?.fableLocal?.answerQuestion
-    const questionHost = typeof answerQuestion === "function"
-      ? { answer: (input: Readonly<{ turnRef: string; questionRef: string; answers: ReadonlyArray<{ readonly question: string; readonly labels: ReadonlyArray<string> }> }>) => answerQuestion(input) }
+    const localQuestionHost = typeof answerQuestion === "function"
+      ? { answer: (input: Readonly<{ turnRef: string; questionRef: string; answers: ReadonlyArray<{ readonly question: string; readonly labels: ReadonlyArray<string> }> }>) => answerQuestion({ turnRef: input.turnRef, questionRef: input.questionRef, answers: input.answers }) }
       : { answer: null }
     let fableAvailability: FableLocalAvailability | null = null
     const localHarnessChat = makeLocalHarnessChatHost({
@@ -325,6 +326,24 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       local: localHarnessChat,
     }))
     const chat = selection.host
+    const runtimeInteractionHost = typeof bridge?.runtimeRequest === "function"
+      ? makeDesktopRuntimeInteractionHost({
+          request: bridge.runtimeRequest,
+          subscribe: bridge.runtimeSubscribe,
+        })
+      : null
+    const questionHost = selection.mode === "runtime" && runtimeInteractionHost !== null
+      ? {
+          answer: async (input: Readonly<{
+            turnRef: string
+            threadRef?: string
+            questionRef: string
+            answers: ReadonlyArray<{ readonly question: string; readonly labels: ReadonlyArray<string> }>
+          }>): Promise<boolean> => {
+            return answerDesktopRuntimeInteraction(runtimeInteractionHost, input)
+          },
+        }
+      : localQuestionHost
     const codingCatalogCall = async (
       call: (() => Promise<unknown>) | undefined,
     ): Promise<DesktopCodingCatalogProjection> => {

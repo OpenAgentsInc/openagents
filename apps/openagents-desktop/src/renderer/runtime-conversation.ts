@@ -4,6 +4,7 @@ import {
   projectLiveAgentGraphPresentation,
 } from "../agent-graph-presentation.ts"
 import type {
+  ConfirmedRuntimeInteraction,
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
@@ -93,6 +94,54 @@ const timelineNotes = (
   return notes
 }
 
+export const runtimeInteractionNotes = (
+  interactions: ReadonlyArray<ConfirmedRuntimeInteraction>,
+): DesktopThread["notes"] => interactions.map(interaction => {
+  const questions = interaction.kind === "provider_question"
+    ? interaction.questions.map(question => ({
+        questionRef: question.questionRef,
+        question: question.displayText,
+        header: interaction.displayTitle,
+        multiSelect: question.multiSelect,
+        options: question.options.map(option => ({
+          optionRef: option.optionRef,
+          label: option.label,
+          ...(option.description === undefined ? {} : { description: option.description }),
+        })),
+      }))
+    : [{
+        question: interaction.displayText,
+        header: interaction.displayTitle,
+        multiSelect: false,
+        options: interaction.kind === "tool_approval"
+          ? [
+              { optionRef: "approve", label: "Approve" },
+              { optionRef: "deny", label: "Deny" },
+            ]
+          : [
+              { optionRef: "accept", label: "Accept" },
+              { optionRef: "request_changes", label: "Request changes" },
+              { optionRef: "replan", label: "Replan" },
+            ],
+      }]
+  return {
+    key: `runtime-interaction-${interaction.interactionRef}`,
+    role: "system" as const,
+    text: interaction.displayText,
+    timestamp: timestamp(interaction.requestedAt),
+    question: {
+      turnRef: interaction.turnId,
+      threadRef: interaction.threadId,
+      questionRef: interaction.interactionRef,
+      status: interaction.status,
+      source: "runtime" as const,
+      kind: interaction.kind,
+      ...(interaction.decisionRef === undefined ? {} : { decisionRef: interaction.decisionRef }),
+      questions,
+    },
+  }
+})
+
 type LiveTimeline = NonNullable<DesktopRuntimeLiveUpdate["snapshot"]>["timeline"]
 type LiveGraphs = NonNullable<DesktopRuntimeLiveUpdate["snapshot"]>["graphs"]
 
@@ -101,6 +150,7 @@ const projectedThread = (input: Readonly<{
   messages: NonNullable<DesktopRuntimeLiveUpdate["snapshot"]>["messages"]
   timeline: LiveTimeline
   graphs?: LiveGraphs
+  interactions?: ReadonlyArray<ConfirmedRuntimeInteraction>
 }>): DesktopThread => ({
   ...threadSummary(input.summary),
   ...(() => {
@@ -117,6 +167,7 @@ const projectedThread = (input: Readonly<{
       timestamp: timestamp(message.createdAt),
     })),
     ...timelineNotes(input.timeline?.events ?? []),
+    ...runtimeInteractionNotes(input.interactions ?? []),
   ],
 })
 
@@ -143,7 +194,7 @@ export const makeRuntimeConversationChatHost = (
     threadRef: string,
     requiredMessageRef?: string,
   ): Promise<DesktopThread | null> => {
-    const [catalogResult, threadResult, timelineResult] = await Promise.all([
+    const [catalogResult, threadResult, timelineResult, interactionResult] = await Promise.all([
       catalog(),
       options.request({
         kind: "query",
@@ -155,6 +206,11 @@ export const makeRuntimeConversationChatHost = (
         requestId: `renderer-conversation-timeline-${++requestSequence}`,
         query: { id: "conversation.timeline", threadRef },
       }),
+      options.request({
+        kind: "query",
+        requestId: `renderer-conversation-interactions-${++requestSequence}`,
+        query: { id: "runtime.interactions", threadRef },
+      }).catch(() => null),
     ])
     if (
       catalogResult.kind !== "conversation_catalog" ||
@@ -170,6 +226,9 @@ export const makeRuntimeConversationChatHost = (
       timeline: timelineResult.kind === "conversation_timeline"
         ? { status: timelineResult.status, run: timelineResult.run, events: timelineResult.events }
         : null,
+      interactions: interactionResult?.kind === "runtime_interactions"
+        ? interactionResult.interactions
+        : [],
     })
     return requiredMessageRef === undefined || projected.notes.some(note => note.key === requiredMessageRef)
       ? projected
@@ -199,22 +258,33 @@ export const makeRuntimeConversationChatHost = (
         if (update.snapshot === null || update.snapshot.status.phase !== "live") return
         timeline = update.snapshot.timeline
         if (update.snapshot.thread !== null) {
-          current = projectedThread({
-            summary: update.snapshot.thread,
-            messages: update.snapshot.messages,
-            timeline,
-            graphs: update.snapshot.graphs,
+          const snapshot = update.snapshot
+          void options.request({
+            kind: "query",
+            requestId: `renderer-conversation-live-interactions-${++requestSequence}`,
+            query: { id: "runtime.interactions", threadRef },
+          }).catch(() => null).then(interactionResult => {
+            current = projectedThread({
+              summary: snapshot.thread!,
+              messages: snapshot.messages,
+              timeline,
+              graphs: snapshot.graphs,
+              interactions: interactionResult?.kind === "runtime_interactions"
+                ? interactionResult.interactions
+                : [],
+            })
+            const signature = JSON.stringify({
+              notes: current.notes.map(note => [note.key, note.role, note.text, note.question?.status, note.question?.decisionRef]),
+              graph: current.agentGraph ?? null,
+            })
+            if (signature !== lastSignature) {
+              lastSignature = signature
+              onThread?.(current)
+            }
+            signal()
           })
-          const signature = JSON.stringify({
-            notes: current.notes.map(note => [note.key, note.role, note.text]),
-            graph: current.agentGraph ?? null,
-          })
-          if (signature !== lastSignature) {
-            lastSignature = signature
-            onThread?.(current)
-          }
         }
-        signal()
+        if (update.snapshot.thread === null) signal()
       },
     })
     if (handle === null) return null

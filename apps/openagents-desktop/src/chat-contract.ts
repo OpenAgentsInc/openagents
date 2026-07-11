@@ -52,12 +52,16 @@ export type DesktopMessageMeta = typeof DesktopMessageMetaSchema.Type
  * question_pending contract; the card status tracks the resolved outcome.
  */
 export const DesktopQuestionOptionSchema = Schema.Struct({
+  /** Canonical option identity for durable runtime interactions. */
+  optionRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   label: Schema.String.check(Schema.isMaxLength(200)),
   description: Schema.optional(Schema.String.check(Schema.isMaxLength(400))),
 })
 export type DesktopQuestionOption = typeof DesktopQuestionOptionSchema.Type
 
 export const DesktopQuestionSchema = Schema.Struct({
+  /** Canonical question identity for durable runtime interactions. */
+  questionRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   question: Schema.String.check(Schema.isMaxLength(2_000)),
   header: Schema.String.check(Schema.isMaxLength(120)),
   options: Schema.Array(DesktopQuestionOptionSchema),
@@ -70,13 +74,21 @@ export const DesktopQuestionCardStatusSchema = Schema.Literals([
   "answered",
   "timeout",
   "denied",
+  "resolved",
+  "expired",
+  "revoked",
 ])
 export type DesktopQuestionCardStatus = typeof DesktopQuestionCardStatusSchema.Type
 
 export const DesktopQuestionCardSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMaxLength(120)),
+  threadRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   questionRef: Schema.String.check(Schema.isMaxLength(120)),
   status: DesktopQuestionCardStatusSchema,
+  /** Absent on the frozen Fable-local bridge; canonical on Sync cards. */
+  source: Schema.optional(Schema.Literal("runtime")),
+  kind: Schema.optional(Schema.Literals(["provider_question", "tool_approval", "plan_review"])),
+  decisionRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   questions: Schema.Array(DesktopQuestionSchema),
 })
 export type DesktopQuestionCard = typeof DesktopQuestionCardSchema.Type

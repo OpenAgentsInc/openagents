@@ -24,6 +24,16 @@ export type DesktopRuntimeInteractionHost = Readonly<{
   }>) => Promise<RuntimeInteractionDecisionResult>
 }>
 
+export type DesktopRuntimeInteractionAnswer = Readonly<{
+  turnRef: string
+  threadRef?: string
+  questionRef: string
+  answers: ReadonlyArray<Readonly<{
+    question: string
+    labels: ReadonlyArray<string>
+  }>>
+}>
+
 let requestSequence = 0
 
 /**
@@ -133,4 +143,76 @@ export const makeDesktopRuntimeInteractionHost = (options: Readonly<{
       }
     },
   }
+}
+
+/** Maps display selections back to canonical refs, then requires confirmation. */
+export const answerDesktopRuntimeInteraction = async (
+  host: DesktopRuntimeInteractionHost,
+  input: DesktopRuntimeInteractionAnswer,
+  options: Readonly<{ randomId?: () => string; now?: () => Date }> = {},
+): Promise<boolean> => {
+  if (input.threadRef === undefined) return false
+  const interactions = await host.list(input.threadRef)
+  const interaction = interactions?.find(candidate =>
+    candidate.interactionRef === input.questionRef &&
+    candidate.threadId === input.threadRef &&
+    candidate.turnId === input.turnRef &&
+    candidate.status === "pending")
+  if (interaction === undefined) return false
+
+  let decision: RuntimeInteractionDecisionEnvelope["decision"]
+  if (interaction.kind === "provider_question") {
+    if (input.answers.length !== interaction.questions.length) return false
+    const answers = interaction.questions.map((question, index) => {
+      const labels = input.answers[index]?.labels ?? []
+      const optionRefs = labels.map(label => {
+        const matches = question.options.filter(option => option.label === label)
+        return matches.length === 1 ? matches[0]!.optionRef : null
+      })
+      if (
+        optionRefs.some(ref => ref === null) ||
+        optionRefs.length === 0 ||
+        (!question.multiSelect && optionRefs.length !== 1)
+      ) return null
+      return { questionRef: question.questionRef, optionRefs: optionRefs as Array<string> }
+    })
+    if (answers.some(answer => answer === null)) return false
+    decision = {
+      kind: "provider_question",
+      answers: answers as Array<{ questionRef: string; optionRefs: Array<string> }>,
+    }
+  } else {
+    const selected = input.answers[0]?.labels[0]
+    if (interaction.kind === "tool_approval") {
+      if (selected !== "Approve" && selected !== "Deny") return false
+      decision = { kind: "tool_approval", outcome: selected === "Approve" ? "approve" : "deny" }
+    } else {
+      if (selected !== "Accept" && selected !== "Request changes" && selected !== "Replan") return false
+      decision = {
+        kind: "plan_review",
+        outcome: selected === "Accept"
+          ? "accept"
+          : selected === "Request changes"
+            ? "request_changes"
+            : "replan",
+      }
+    }
+  }
+
+  const suffix = (options.randomId ?? (() => globalThis.crypto.randomUUID()))()
+    .replace(/[^A-Za-z0-9._:]/g, "")
+  if (suffix === "") return false
+  const outcome = await host.decide({
+    interactionRef: interaction.interactionRef,
+    threadRef: interaction.threadId,
+    turnRef: interaction.turnId,
+    envelope: {
+      decisionRef: `decision.desktop.${suffix}`,
+      idempotencyKey: `idem.desktop.${suffix}`,
+      decidedAt: (options.now ?? (() => new Date()))().toISOString(),
+      surface: "desktop",
+      decision,
+    },
+  })
+  return outcome.status === "confirmed_resolved"
 }

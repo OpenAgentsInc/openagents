@@ -766,6 +766,7 @@ export type QuestionHost = Readonly<{
   answer:
     | ((input: Readonly<{
         turnRef: string
+        threadRef?: string
         questionRef: string
         answers: ReadonlyArray<QuestionAnswer>
       }>) => Promise<unknown>)
@@ -925,12 +926,10 @@ export const makeDesktopShellHandlers = (
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge)
   /**
-   * Hands one completed answer set to the typed bridge. Marks the card
-   * locally answered first so the collapsed state renders immediately; the
-   * runtime's question_resolved event stays the outcome authority. An
-   * explicit typed rejection (`false`: unknown ref, already settled, no
-   * matching question) reverts the local answered mark — the card returns to
-   * pending with the selection retained rather than lying "Answered".
+   * Hands one completed answer set to the typed bridge. The card collapses
+   * only after the bridge confirms success. This preserves the frozen local
+   * behavior while preventing a durable Sync enqueue receipt from being
+   * presented as an authoritative resolution.
    */
   const submitQuestion = (
     card: NonNullable<DesktopNoteEntry["question"]>,
@@ -941,13 +940,16 @@ export const makeDesktopShellHandlers = (
       if (answer === null || interaction.answered) return
       if (!questionAnswersReady(card, interaction)) return
       const answers = questionAnswersFor(card, interaction)
-      yield* SubscriptionRef.update(state, (current) =>
-        withQuestionAnswered(current, card.questionRef, answers))
       const result = yield* Effect.promise(() =>
-        answer({ turnRef: card.turnRef, questionRef: card.questionRef, answers }).catch(() => null))
-      if (result === false) {
+        answer({
+          turnRef: card.turnRef,
+          ...(card.threadRef === undefined ? {} : { threadRef: card.threadRef }),
+          questionRef: card.questionRef,
+          answers,
+        }).catch(() => null))
+      if (result === true) {
         yield* SubscriptionRef.update(state, (current) =>
-          withQuestionAnswerRejected(current, card.questionRef))
+          withQuestionAnswered(current, card.questionRef, answers))
       }
     })
   return ({
@@ -1578,9 +1580,21 @@ export const questionCardMessage = (
           .join(" · ")
     const summary = outcome === "answered"
       ? answerText === null || answerText === "" ? "Answered." : `Answered · ${answerText}`
+      : outcome === "resolved"
+        ? "Decision confirmed."
       : outcome === "timeout"
         ? "Timed out — no answer was sent."
-        : "Denied — the question was dismissed."
+        : outcome === "expired"
+          ? "Expired — no decision was applied."
+          : outcome === "revoked"
+            ? "Revoked — authority is no longer available."
+            : "Denied — the question was dismissed."
+    const label = outcome === "answered" ? "Answered"
+      : outcome === "resolved" ? "Resolved"
+        : outcome === "timeout" ? "Timed out"
+          : outcome === "expired" ? "Expired"
+            : outcome === "revoked" ? "Revoked"
+              : "Denied"
     return {
       key: base,
       role: "tool",
@@ -1589,8 +1603,8 @@ export const questionCardMessage = (
         Stack({ key: `${base}-resolved-header`, direction: "row", gap: "2", align: "center" }, [
           Badge({
             key: `${base}-outcome`,
-            label: outcome === "answered" ? "Answered" : outcome === "timeout" ? "Timed out" : "Denied",
-            tone: outcome === "answered" ? "success" : "neutral",
+            label,
+            tone: outcome === "answered" || outcome === "resolved" ? "success" : "neutral",
           }),
           Text({ key: `${base}-resolved-question`, content: card.questions[0]?.question ?? "Question", variant: "caption", color: "textMuted" }),
         ]),
