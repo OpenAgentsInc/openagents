@@ -192,6 +192,69 @@ describe("PylonFleetRunManager", () => {
     expect(second.lifecycle.filter(event => event.kind === "completed")).toHaveLength(1)
   })
 
+  test("retains a terminal supervisor scope until the final reporting tick succeeds", async () => {
+    const fixture = managerFixture()
+    let failTerminalReport = true
+    let terminalReportAttempts = 0
+    const runner: FleetRunSupervisorRunner = {
+      dispatch: async input => ({
+        assignmentRef: `assignment.${input.claim.claimRef}`,
+        lifecycle: [lifecycle("assignment_run.accepted", "accepted")],
+        status: "accepted",
+      }),
+      reconcile: async input => {
+        terminalReportAttempts += 1
+        if (failTerminalReport) {
+          throw new Error("terminal projection temporarily unavailable")
+        }
+        return input.activeAssignments.map(active => ({
+          accountRefHash: "account.pylon.codex.0123456789abcdef01234567",
+          assignmentRef: `assignment.${active.claim.claimRef}`,
+          closeoutRef: "closeout.public.retry_terminal",
+          lifecycle: [lifecycle("assignment_run.completed", "closed")],
+          marginalCostClass: "subscription",
+          status: "completed" as const,
+          taskId: active.taskId,
+          verification: {
+            evidenceRefs: ["evidence.public.retry_terminal"],
+            truth: "passed" as const,
+            verifierRef: "verifier.public.retry_terminal",
+          },
+        }))
+      },
+    }
+
+    const first = await fixture.manager.start({
+      capacity: fixture.capacity,
+      planner: fixture.planner,
+      pylonRef: "pylon.owner.manager.retry-terminal",
+      run: fixture.run("fleet_run.manager.retry_terminal"),
+      runner,
+      startImmediately: false,
+    })
+    expect(first.active).toBe(true)
+    expect(first.run.counters.activeAssignments).toBe(1)
+    fixture.store.updateFleetRunState("fleet_run.manager.retry_terminal", "stopped", now, "reconcile")
+
+    const retained = await fixture.manager.status("fleet_run.manager.retry_terminal")
+    expect(Array.isArray(retained)).toBe(false)
+    if (Array.isArray(retained)) throw new Error("expected one snapshot")
+    expect(retained.active).toBe(true)
+    expect(retained.run.state).toBe("stopped")
+    expect(retained.pylonRef).toBe("pylon.owner.manager.retry-terminal")
+    expect(terminalReportAttempts).toBeGreaterThanOrEqual(1)
+
+    failTerminalReport = false
+    const released = await fixture.manager.status("fleet_run.manager.retry_terminal")
+    expect(Array.isArray(released)).toBe(false)
+    if (Array.isArray(released)) throw new Error("expected one snapshot")
+    expect(released.active).toBe(false)
+    expect(released.pylonRef).toBe("pylon.owner.manager.retry-terminal")
+    expect(released.run.counters.activeAssignments).toBe(0)
+    expect(released.lifecycle.some(event => event.kind === "terminal")).toBe(true)
+    await fixture.manager.close()
+  })
+
   test("records a failed competing start as reconcile-stopped and closes its scope", async () => {
     const fixture = managerFixture()
     const runner: FleetRunSupervisorRunner = {
