@@ -92,3 +92,26 @@ When local Codex history exists, opening OpenAgents Desktop:
 Close after the automated UX promise and one owner-visible real-Electron trace
 receipt both pass. Any remaining provider-stream or cross-device work belongs
 to the next D1 vertical slice, not this proof.
+
+## Acceptance receipt — 2026-07-10
+
+`bun run --cwd apps/openagents-desktop verify` passed on the owner Mac against
+the real local Codex history root. The built Electron journey observed 1,231
+top-level conversations and selected a 131-agent trace containing 127 direct
+children, a nested grandchild, 72 tool items, and zero unsupported gaps. It
+proved the catalog, nested workspace, keyboard binding, structured tool
+inspector, and a real renderer reload.
+
+Public-safe readiness measurements from that run were: shell 0 ms after the
+journey began (already painted before catalog inspection), catalog 2,111 ms,
+selected page 0 ms (already projected after the explicit row selection), tool
+inspector 147 ms, and reload restoration 3,295 ms on the first pre-fix run.
+The final gate records fresh values on every verification rather than treating
+these machine-local observations as hardware-independent budgets.
+
+The journey exposed and fixed one real state defect: conversation, agent,
+item, paging, and inspector actions could overwrite the ref-only restoration
+record while dropping expanded branches or forcing the inspector open. The
+handlers now preserve those fields, while explicit top-level selection expands
+the complete selected topology. The receipt contains no titles, message text,
+paths, credentials, raw records, or stable private refs.

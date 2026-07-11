@@ -6,8 +6,37 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-10.16",
+    version: "2026-07-10.17",
     contracts: [
+      {
+        contractId: "openagents_desktop.seam.codex_trace_electron_acceptance.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "real Electron Codex trace acceptance",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+        statement:
+          "The built Electron app must render real owner-local Codex history as a stable named top-level catalog with nested agents, loss-accounted trace items, keyboard-operable topology, a reachable structured tool inspector, and ref-only selection restoration across a real renderer reload.",
+        authorityBoundary:
+          "The acceptance journey reads only the existing schema-bounded Runtime Gateway projection. Its receipt contains aggregate counts and timings only—never titles, transcript text, paths, raw JSONL, credentials, or stable private refs—and it grants no resume, write, sync, or provider execution authority.",
+        seam: { client: "apps/openagents-desktop/src/electron-trace-acceptance.ts", server: "apps/openagents-desktop/src/main.ts" },
+        evidenceRefs: [
+          "apps/openagents-desktop/tests/electron-trace-acceptance.test.ts",
+          "docs/sol/issues/desktop-codex-trace-acceptance.md",
+          "github:OpenAgentsInc/openagents#8675",
+        ],
+        oracles: [{
+          id: "codex_trace_real_electron_acceptance",
+          kind: "bun-test",
+          mode: "e2e",
+          ref: "apps/openagents-desktop/src/electron-trace-acceptance.ts",
+          description:
+            "Runs inside built Electron against the real local Codex catalog, checks named/order-stable roots, child containment, nested topology, completeness, keyboard bindings, tool inspection, public-safe timings, and reload restoration.",
+        }],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify builds Electron, runs the normal contract suite, executes the real-history journey, reloads the renderer, and fails on every named video-blocking regression.",
+      },
       {
         contractId: "openagents_desktop.seam.identity.local_first_account_link.v1",
         state: "enforced",

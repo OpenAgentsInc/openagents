@@ -250,6 +250,23 @@ Desktop indexes active and archived Codex rollouts without an age ceiling.
 Contract:
 `openagents_desktop.seam.codex_loss_accounted_history.v2`.
 
+### Real-Electron Codex trace acceptance
+
+The normal Desktop verification sweep now opens the built Electron app against
+the machine's real local Codex catalog and exercises the recorded-demo path.
+
+- Top-level rows are named, newest-first, and contain no child sessions.
+- A nested trace exposes its bounded agent topology, completeness equation,
+  keyboard bindings, tool row, and structured inspector.
+- Explicit conversation selection expands every branch; subsequent agent,
+  item, paging, and inspector actions preserve the ref-only restoration record.
+- A real renderer reload restores the selected trace/item and expanded set.
+- Smoke output contains only aggregate counts and readiness timings; it never
+  prints titles, transcript text, paths, raw records, credentials, or refs.
+
+Contract:
+`openagents_desktop.seam.codex_trace_electron_acceptance.v1`.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

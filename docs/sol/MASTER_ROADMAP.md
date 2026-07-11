@@ -1334,8 +1334,8 @@ bounded issues under the owning program.
 
 ## Execution order
 
-1. **Immediate video-supporting proof:** complete #8675 against current `main`.
-   Exercise the real Electron app and owner-local nested Codex history, enforce
+1. **Immediate video-supporting proof (complete):** #8675 is enforced on `main`.
+   The real Electron app and owner-local nested Codex history now enforce
    the UX promise from transcript 248, fix only exposed blockers, and publish a
    public-safe trace-workspace acceptance receipt. Do not wait for provider
    streaming or create a demo-only path.

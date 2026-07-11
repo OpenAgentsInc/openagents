@@ -55,6 +55,7 @@ import {
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
 import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
+import { traceAcceptanceJourney, traceAcceptanceReload } from "./electron-trace-acceptance.ts"
 import {
   signInDesktopSession,
   signOutDesktopSession,
@@ -364,10 +365,10 @@ const smokeShotsDir = process.env.OPENAGENTS_DESKTOP_SMOKE_SHOTS
 const smokeWaitForShell = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 15000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-input"] input') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-root"]') === null) {
     await wait(100)
   }
-  return document.querySelector('[data-en-key="shell-input"] input') !== null
+  return document.querySelector('[data-en-key="shell-root"]') !== null
 })()`
 
 const smokeRuntimeGatewayBootstrap = `(async () => {
@@ -589,7 +590,8 @@ const runSmoke = (window: BrowserWindow): void => {
     console.error("[openagents-desktop smoke] TIMEOUT waiting for renderer")
     app.exit(1)
   }, 45_000)
-  window.webContents.once("did-finish-load", () => {
+  let tracePass = 0
+  window.webContents.on("did-finish-load", () => {
     void (async () => {
       const step = async (name: string, script: string): Promise<void> => {
         const result: unknown = await window.webContents.executeJavaScript(script, true)
@@ -597,14 +599,18 @@ const runSmoke = (window: BrowserWindow): void => {
           result === true ||
           (typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === true)
         if (!ok) {
-          clearTimeout(timeout)
-          console.error(`[openagents-desktop smoke] FAILED ${name}`, JSON.stringify(result))
-          app.exit(1)
-          return
+          throw new Error(`${name} failed: ${JSON.stringify(result)}`)
         }
         console.log(`[openagents-desktop smoke] ${name} OK`, JSON.stringify(result))
       }
       try {
+        if (tracePass === 1) {
+          await step("codex-trace-reload-restoration", traceAcceptanceReload)
+          clearTimeout(timeout)
+          console.log("[openagents-desktop smoke] OK")
+          app.exit(0)
+          return
+        }
         await step("shell-mounted", smokeWaitForShell)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await captureShot(window, "01-shell")
@@ -612,6 +618,7 @@ const runSmoke = (window: BrowserWindow): void => {
         await captureShot(window, "02-command-palette")
         await step("command-palette-close", smokeCloseCommandPalette)
         await step("recent-codex-history-selected-detail", smokeCodexHistoryDetails)
+        await step("codex-trace-acceptance", traceAcceptanceJourney)
         await captureShot(window, "03-codex-history-detail")
         // Settings / Codex reconnect (#8640 unblock). Headless smoke cannot
         // complete a real browser device-auth, so main runs a FIXTURE spawn:
@@ -621,9 +628,8 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("settings-connect-awaiting-browser-FIXTURE", smokeConnectCodex)
         await captureShot(window, "05-settings-awaiting-browser-fixture")
         await step("settings-back-to-chat", smokeCloseSettings)
-        clearTimeout(timeout)
-        console.log("[openagents-desktop smoke] OK")
-        app.exit(0)
+        tracePass = 1
+        window.webContents.reload()
       } catch (error) {
         clearTimeout(timeout)
         console.error("[openagents-desktop smoke] ERROR", error)
