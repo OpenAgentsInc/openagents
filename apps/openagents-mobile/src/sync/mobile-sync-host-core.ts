@@ -2,6 +2,7 @@ import {
   ClientGroupId,
   ClientId,
   LocalIdentityRef,
+  deviceLocalScope,
   personalScope,
   SyncSchemaVersion,
   type SyncScope,
@@ -12,6 +13,7 @@ import {
   createKhalaSyncSession,
   createKhalaSyncConversation,
   createKhalaSyncAgentTimeline,
+  createKhalaSyncCodingCatalog,
   createKhalaSyncRuntimeCommands,
   createRuntimeClientMutators,
   createOverlay,
@@ -19,6 +21,7 @@ import {
   type KhalaSyncSession,
   type KhalaSyncConversation,
   type KhalaSyncAgentTimeline,
+  type KhalaSyncCodingCatalog,
   type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
@@ -26,6 +29,11 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import type { KhalaSyncExpoSqliteStore } from "@openagentsinc/khala-sync-client/expo-sqlite-store"
 import { Effect } from "effect"
+
+import {
+  openMobileCodingNavigation,
+  type MobileCodingNavigation,
+} from "../coding/mobile-coding-navigation"
 
 export const MobileSyncSchemaVersion = SyncSchemaVersion.make(1)
 
@@ -44,6 +52,7 @@ export type MobileSyncHost = Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline: () => KhalaSyncAgentTimeline | null
   runtime: () => KhalaSyncRuntimeCommands | null
+  coding: () => MobileCodingNavigation
   connectAuthenticated: (input: MobileAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   unlinkAccount:()=>void
@@ -75,6 +84,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
   let conversation: KhalaSyncConversation | null = null
   let timeline: KhalaSyncAgentTimeline | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
+  let codingCatalog: KhalaSyncCodingCatalog | null = null
   let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
@@ -95,6 +105,18 @@ export const openMobileSyncHostCore = (input: Readonly<{
     throw error
   }
 
+  const localIdentity = Effect.runSync(store.localIdentity())
+  if (localIdentity === null) {
+    Effect.runSync(store.close())
+    throw new Error("mobile local identity is unavailable")
+  }
+  const coding = openMobileCodingNavigation({
+    store,
+    deviceScope: deviceLocalScope(localIdentity.identityRef),
+    catalog: () => codingCatalog,
+    ownerScope: () => scope,
+  })
+
   const disconnectAuthenticated = (revoke = false): void => {
     if (session === null) return
     const closing = session
@@ -102,6 +124,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
     conversation = null
     timeline = null
     runtime = null
+    codingCatalog = null
     scope = null
     Effect.runSync(revoke ? closing.revoke() : closing.close())
   }
@@ -134,6 +157,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? runtime
         : null,
+    coding: () => coding,
     connectAuthenticated: connection => {
       if (closed) throw new Error("mobile Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
@@ -177,6 +201,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
       })
       timeline = createKhalaSyncAgentTimeline({ store, session })
       runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session, store })
+      codingCatalog = createKhalaSyncCodingCatalog({ store, session, ownerScope: scope })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,
@@ -184,6 +209,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
     close: () => {
       if (closed) return
       closed = true
+      void coding.clearActive()
       disconnectAuthenticated()
       Effect.runSync(store.close())
     },

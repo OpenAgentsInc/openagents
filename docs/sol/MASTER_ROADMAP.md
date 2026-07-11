@@ -3,8 +3,8 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 canonical catalog and restart-safe Desktop navigation complete)
-- Revision: 51
+  CUT-13 complete; CUT-14 authenticated mobile catalog/navigation core active)
+- Revision: 52
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -614,6 +614,19 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   close/reopen and built Electron renderer reload preserve the exact stable
   session key. CUT-13 is closed at `0c49648217`; CUT-14 mobile binding is the
   next numeric dependency-ready cut.
+- CUT-14 now binds the greenfield OpenAgents Mobile Sync host to the exact live
+  personal-scope CUT-13 catalog. Available, grant-eligible repositories and
+  active/recent sessions are projected only while confirmed authority is live;
+  signed-out, refetch, idle, denied, and unavailable states withhold cached
+  rows explicitly. Bounded coding deep links and notification payloads carry
+  repository/session/thread refs and revalidate owner, relationships,
+  availability, and grants before activation. A device-local selection record
+  retains only stable refs, and real SQLite close/reopen proves process-death
+  restoration cannot cross owner authority. Generation-fenced thread leases
+  close superseded selections and ignore late updates. Visible Effect Native
+  directory/native delivery wiring and physical iOS/Android receipts remain
+  open. See
+  [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

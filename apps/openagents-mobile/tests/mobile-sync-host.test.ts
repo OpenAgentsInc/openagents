@@ -233,6 +233,13 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       })
       await waitFor(() => host.status().syncPhase === "live")
       expect(host.conversation()).not.toBeNull()
+      expect(await host.coding().directory()).toEqual({
+        authority: "confirmed",
+        phase: "live",
+        cacheState: "current",
+        repositories: [],
+        sessions: [],
+      })
       expect(bootstraps.map(request => String(request.scope))).toEqual(["scope.user.user.mobile"])
       expect(capturedAuthToken?.()).toBe("access.one")
       token = "access.two"
@@ -242,6 +249,12 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       host.unlinkAccount()
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
+      expect(await host.coding().directory()).toMatchObject({
+        authority: "withheld",
+        phase: "signed_out",
+        repositories: [],
+        sessions: [],
+      })
       host.close()
       expect(lifecycle.slice(-2)).toEqual(["session", "store"])
     } finally {

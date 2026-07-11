@@ -780,6 +780,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   create/append uses stable mobile refs, waits for the exact ref to become
   confirmed, labels drafts pending, and clears account-linked projections on
   denial or sign-out.
+- Mobile coding navigation reads the CUT-13 catalog only from the exact
+  server-verified personal scope while that scope is live. Signed-out, idle,
+  refetch, unavailable, and denied phases expose no cached repository/session
+  rows; denial is named as purged authority and other offline phases name the
+  cache as withheld. Deep-link and notification payloads contain only bounded
+  repository/session/thread refs and are revalidated against the live owner,
+  relationships, availability, and grants before use. The selected stable refs
+  may persist in device-local `local_entities` for process-death recovery, but
+  never confer hosted authority, contain paths/credentials, or cross an owner
+  relink. Selection generations close prior thread leases and discard late
+  updates before a new scope/session can render. The deterministic enforcement
+  lives in `apps/openagents-mobile/tests/mobile-coding-navigation.test.ts` and
+  `apps/openagents-mobile/tests/mobile-sync-host.test.ts`; visible directory
+  wiring and physical iOS/Android receipts remain CUT-14 work.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed
