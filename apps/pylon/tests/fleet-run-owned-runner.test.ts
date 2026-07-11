@@ -290,7 +290,7 @@ const exactCloseout = (
   const closeoutRef = `closeout.public.${assignmentRef}`
   const proofRef = `proof.public.${assignmentRef}`
   const tokenUsage = {
-    cacheReadTokens: 1,
+    cacheReadTokens: harnessKind === "claude" ? 12 : 1,
     demandKind: "own_capacity" as const,
     demandSource: "khala_coding_delegation" as const,
     inputTokens: 5,
@@ -508,6 +508,7 @@ describe("Pylon-owned FleetRun runner", () => {
       closeoutRef: expect.stringMatching(/^closeout\.public\./),
       usageEvidence: {
         truth: "exact",
+        cacheReadTokens: 12,
         harnessKind: "claude",
         provider: "pylon-claude-own-capacity",
       },

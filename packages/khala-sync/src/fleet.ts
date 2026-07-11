@@ -387,7 +387,8 @@ export const FleetAttemptExactUsageEvidence = S.Struct({
       (usage) =>
         usage.totalTokens === usage.inputTokens + usage.outputTokens &&
         usage.reasoningTokens <= usage.outputTokens &&
-        usage.cacheReadTokens <= usage.inputTokens &&
+        (usage.harnessKind === "claude" ||
+          usage.cacheReadTokens <= usage.inputTokens) &&
         usage.tokenUsageRefs.length >= Math.min(usage.tokenRows, 100) &&
         (usage.harnessKind === "codex"
           ? usage.provider === "pylon-codex-own-capacity" &&

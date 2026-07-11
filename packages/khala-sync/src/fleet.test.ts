@@ -140,6 +140,24 @@ describe("fleet entity contracts", () => {
     expect(decodeFleetAttemptEntity(succeeded).attemptRef).toBe(
       succeeded.attemptRef,
     )
+    expect(decodeFleetAttemptEntity({
+      ...succeeded,
+      accountRefHash: `account.pylon.claude_agent.${"d".repeat(24)}`,
+      workerKind: "claude",
+      usageEvidence: {
+        ...succeeded.usageEvidence,
+        harnessKind: "claude",
+        provider: "pylon-claude-own-capacity",
+        model: "openagents/pylon-claude",
+        inputTokens: 5,
+        outputTokens: 3,
+        cacheReadTokens: 12,
+        totalTokens: 8,
+      },
+    })).toMatchObject({
+      workerKind: "claude",
+      usageEvidence: { cacheReadTokens: 12, harnessKind: "claude" },
+    })
     expect(() =>
       decodeFleetAttemptEntity({ ...succeeded, proofRefs: [] }),
     ).toThrow()
