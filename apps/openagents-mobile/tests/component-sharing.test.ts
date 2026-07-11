@@ -91,4 +91,34 @@ describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
     expect(renderer).toContain('returnKeyType: "send"')
     expect(renderer).toContain('testID: "en-composer-input"')
   })
+
+  test("CUT-16 interaction controls share keyboard, screen-reader, and reduced-motion semantics across native hosts", () => {
+    const interaction = readFileSync(join(appRoot, "src/screens/khala-core.ts"), "utf8")
+    const rn = readFileSync(
+      join(appRoot, "../openagents.com/packages/effect-native-render-rn/src/index.ts"),
+      "utf8",
+    )
+    const dom = readFileSync(
+      join(appRoot, "../openagents.com/packages/effect-native-render-dom/src/index.ts"),
+      "utf8",
+    )
+    // Product code stays on one semantic Button primitive: no hidden native
+    // island or bespoke animation can diverge question/approval behavior.
+    expect(interaction).toContain('Button({')
+    expect(interaction).not.toContain("Pressable")
+    expect(interaction).not.toContain("Touchable")
+    expect(interaction).not.toContain("Animated")
+    // React Native exposes a real screen-reader button and disabled state;
+    // its Text child is the spoken visible label.
+    expect(rn).toContain('accessibilityRole: "button"')
+    expect(rn).toContain('accessibilityState: { disabled: view.disabled === true }')
+    expect(rn).toContain('view.label')
+    // Desktop lowers the same primitive to a native keyboard-operable button.
+    expect(dom).toContain('state.keyedElement(view, "button")')
+    expect(dom).toContain('element.textContent = view.label')
+    expect(dom).toContain('element.disabled = view.disabled === true')
+    // Interaction cards themselves animate nothing. Any surrounding DOM
+    // motion is globally collapsed when the OS requests reduced motion.
+    expect(dom).toContain('@media (prefers-reduced-motion: reduce)')
+  })
 })

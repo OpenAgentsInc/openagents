@@ -1615,6 +1615,32 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
     }
   })
 
+  test("canonical resolved, expired, and revoked states are terminal and non-actionable", () => {
+    for (const [status, label, summary] of [
+      ["resolved", "Resolved", "Decision confirmed."],
+      ["expired", "Expired", "Expired — no decision was applied."],
+      ["revoked", "Revoked", "Revoked — authority is no longer available."],
+    ] as const) {
+      const view = desktopShellView({
+        ...questionState,
+        notes: [{
+          ...singleSelectNote,
+          question: {
+            ...singleSelectNote.question,
+            source: "runtime" as const,
+            kind: "tool_approval" as const,
+            threadRef: "thread.runtime.1",
+            status,
+          },
+        }],
+      })
+      expect(nodeByKey(view, "question-question.1-outcome")).toMatchObject({ label })
+      expect(nodeByKey(view, "question-question.1-resolved-summary")).toMatchObject({ content: summary })
+      expect(nodeByKey(view, "question-question.1-q0-option-0")).toBeUndefined()
+      expect(nodeByKey(view, "question-question.1-confirm")).toBeUndefined()
+    }
+  })
+
   test("bridge-absent degradation: options render disabled read-only and dispatch nothing", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
