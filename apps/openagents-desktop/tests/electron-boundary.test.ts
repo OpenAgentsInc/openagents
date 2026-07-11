@@ -90,7 +90,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
 
   test("Runtime Gateway contract cannot carry credentials, URLs, raw IPC, or process handles", () => {
     const contract = stripComments(read("src/runtime-gateway-contract.ts"))
-    for (const banned of ["token", "credential", "url", "MessagePort", "ipcRenderer", "processHandle", "argv"]) {
+    for (const banned of ["token", "credential", "ownerUserId", "authorUserId", "url", "MessagePort", "ipcRenderer", "processHandle", "argv"]) {
       expect(contract.toLowerCase()).not.toContain(banned.toLowerCase())
     }
   })

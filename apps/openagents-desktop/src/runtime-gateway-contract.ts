@@ -2,10 +2,30 @@ import { Exit, Schema } from "@effect-native/core/effect"
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 1 as const
+export const DesktopRuntimeGatewayProtocolVersion = 2 as const
+
+const PublicRefSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+)
+const ConversationTitleSchema = Schema.String.check(Schema.isMaxLength(160))
+const ConversationBodySchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(20_000),
+)
+const SyncPhaseSchema = Schema.Literals([
+  "idle",
+  "bootstrapping",
+  "catching_up",
+  "live",
+  "must_refetch",
+  "denied",
+])
 
 export const DesktopRuntimeCapabilityIdSchema = Schema.Literals([
   "codex-history",
+  "conversation-sync",
   "conversation-stream",
   "git-review",
   "khala-sync",
@@ -28,12 +48,36 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     query: Schema.Struct({ id: Schema.Literal("runtime.bootstrap") }),
   }),
   Schema.Struct({
+    kind: Schema.Literal("query"),
+    requestId: Schema.String,
+    query: Schema.Struct({ id: Schema.Literal("conversation.catalog") }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("query"),
+    requestId: Schema.String,
+    query: Schema.Struct({
+      id: Schema.Literal("conversation.thread"),
+      threadRef: PublicRefSchema,
+    }),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("command"),
     commandId: Schema.String,
     command: Schema.Union([
       Schema.Struct({
         id: Schema.Literal("conversation.interrupt"),
         threadRef: Schema.String,
+      }),
+      Schema.Struct({
+        id: Schema.Literal("conversation.create"),
+        threadRef: PublicRefSchema,
+        title: ConversationTitleSchema,
+      }),
+      Schema.Struct({
+        id: Schema.Literal("conversation.append"),
+        threadRef: PublicRefSchema,
+        messageRef: PublicRefSchema,
+        body: ConversationBodySchema,
       }),
       Schema.Struct({ id: Schema.Literal("session.sign_in") }),
       Schema.Struct({ id: Schema.Literal("session.sign_out") }),
@@ -50,11 +94,59 @@ const DesktopRuntimeBootstrapSchema = Schema.Struct({
   capabilities: Schema.Array(DesktopRuntimeCapabilitySchema),
 })
 
+const ConversationStatusSchema = Schema.Struct({
+  phase: SyncPhaseSchema,
+  cursor: Schema.NullOr(Schema.Number),
+  pendingMutationCount: Schema.Number,
+})
+
+const ConfirmedThreadSchema = Schema.Struct({
+  threadRef: PublicRefSchema,
+  title: ConversationTitleSchema,
+  messageCount: Schema.Number,
+  lastMessageAt: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String,
+  version: Schema.Number,
+})
+
+const ConfirmedMessageSchema = Schema.Struct({
+  messageRef: PublicRefSchema,
+  threadRef: PublicRefSchema,
+  body: ConversationBodySchema,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  version: Schema.Number,
+})
+
 export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("query_result"),
     requestId: Schema.String,
     result: DesktopRuntimeBootstrapSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("conversation_catalog"),
+    requestId: Schema.String,
+    status: ConversationStatusSchema,
+    threads: Schema.Array(ConfirmedThreadSchema),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("conversation_thread"),
+    requestId: Schema.String,
+    threadRef: PublicRefSchema,
+    status: ConversationStatusSchema,
+    messages: Schema.Array(ConfirmedMessageSchema),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("conversation_unavailable"),
+    requestId: Schema.String,
+    reason: Schema.Literals(["not_live", "read_failed"]),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("conversation_mutation_outcome"),
+    commandId: Schema.String,
+    status: Schema.Literals(["pending_reconcile", "unavailable"]),
+    mutationId: Schema.optional(Schema.Number),
   }),
   Schema.Struct({
     kind: Schema.Literal("command_outcome"),

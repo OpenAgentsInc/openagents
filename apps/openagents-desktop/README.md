@@ -103,6 +103,14 @@ the top-level bundled renderer; the Electron smoke exercises a truthful
 bootstrap. Durable conversation streaming remains explicitly `unavailable`
 until its later leaf lands.
 
+Runtime Gateway protocol v2 now carries the narrower authoritative
+conversation floor: confirmed catalog/thread queries and canonical create/
+append enqueues. Results contain only public-safe refs, bodies, timestamps,
+confirmed versions, scope phase/cursor, and pending count. Mutation enqueue is
+reported as `pending_reconcile`, never completed. The visible shell has not yet
+switched off its local-only chat path, and provider/runtime streaming remains a
+later leaf.
+
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
 its private `userData` root and persists one installation identity. After
 native-session verification, main composes the shared production HTTP/

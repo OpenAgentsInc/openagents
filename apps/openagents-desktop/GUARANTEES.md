@@ -25,8 +25,9 @@ schema-decoded query/command/event seam.
 - Tokens, credentials, URLs, raw runtime events, arbitrary IPC, `MessagePort`,
   filesystem/process handles, and command arguments cannot enter the contract.
 
-The Gateway now carries bounded OpenAgents entry/exit commands. Khala Sync and
-provider streaming remain explicitly unavailable.
+The Gateway now carries bounded OpenAgents entry/exit and canonical confirmed-
+conversation operations. Provider/runtime event streaming remains explicitly
+unavailable.
 
 Contract:
 `openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
@@ -71,6 +72,26 @@ provider/runtime event streaming, assistant-role inference, physical-device
 acceptance, or a deployed live-account receipt.
 
 Contract: `openagents_desktop.sync.native_conversation_continuity.v1`.
+
+### Closed Runtime Gateway conversation protocol
+
+Protocol v2 adds schema-bounded `conversation.catalog` and
+`conversation.thread` queries plus `conversation.create` and
+`conversation.append` commands.
+
+- Queries return confirmed public-safe refs/bodies/timestamps/entity versions,
+  actual scope phase/cursor, and pending count.
+- Commands enqueue canonical Sync mutations and return `pending_reconcile`
+  with the durable mutation id. Enqueue is never reported as completed.
+- Not-live and read failure are typed, body-free unavailable results.
+- Owner identity, credentials, native/store/session/overlay/transport objects,
+  raw events, provider authority, and generic IPC do not cross preload.
+
+The visible renderer shell still uses the older local chat path; switching it
+to these operations is the next bounded leaf. This contract does not claim a
+provider-neutral stream or live GUI acceptance.
+
+Contract: `openagents_desktop.seam.runtime_gateway_conversation.v1`.
 
 ### OS-encrypted native-session custody
 

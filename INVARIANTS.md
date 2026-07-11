@@ -540,6 +540,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   omit owner identity and carry stable thread/message refs, server entity
   versions, scope cursor, phase, and pending count; optimistic content is never
   labeled confirmed, and denial/sign-out removes the conversation capability.
+- Desktop Runtime Gateway is the only renderer path to that conversation
+  capability. Its versioned schema permits bounded confirmed catalog/thread
+  queries and canonical create/append intents; enqueue returns
+  `pending_reconcile`, never completion. Owner/auth/store/session/transport
+  fields and generic IPC remain unrepresentable in the contract.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

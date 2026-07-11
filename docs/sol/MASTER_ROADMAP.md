@@ -463,7 +463,10 @@ records before claiming the first new slice.
   the shared production HTTP/WebSocket Sync session in main, subscribe only
   the server-derived owner's personal scope, re-read rotated access custody,
   and close session-before-SQLite. It does not yet have physical Desktop auth
-  acceptance or renderer-visible authoritative conversation service. The host
+  acceptance or a visible authoritative conversation surface. Runtime Gateway
+  protocol v2 now exposes bounded confirmed catalog/thread queries and
+  create/append enqueues with honest `pending_reconcile`; the existing renderer
+  shell has not switched from its local-only chat path. The host
   now has the canonical confirmed thread/message service, and the real Desktop
   node:sqlite plus mobile Expo-SQLite fixture proves Desktop start → mobile
   follow-up → restart convergence with matching refs/versions/cursor/phase.

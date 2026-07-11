@@ -31,7 +31,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
-      result: { protocolVersion: 1, lifecycle: "ready" },
+      result: { protocolVersion: 2, lifecycle: "ready" },
     })
   })
 
@@ -47,7 +47,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response).toMatchObject({
       kind: "query_result",
       requestId: "query-1",
-      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 1 },
+      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 2 },
     })
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
@@ -166,6 +166,129 @@ describe("Desktop Runtime Gateway", () => {
     expect(serialized).not.toContain("refreshToken")
   })
 
+  test("queries confirmed conversations and enqueues mutations as pending reconcile", async () => {
+    const calls: Array<string> = []
+    const status = { phase: "live" as const, cursor: 5, pendingMutationCount: 0 }
+    const gateway = createDesktopRuntimeGateway(undefined, undefined, undefined, () => ({
+      catalog: () => ({
+        status,
+        threads: [{
+          threadRef: "thread.gateway.1",
+          title: "Gateway thread",
+          messageCount: 1,
+          lastMessageAt: "2026-07-10T20:00:00.000Z",
+          updatedAt: "2026-07-10T20:00:00.000Z",
+          version: 4,
+        }],
+      }),
+      thread: threadRef => {
+        calls.push(`thread:${threadRef}`)
+        return {
+          status,
+          messages: [{
+            messageRef: "message.gateway.1",
+            threadRef,
+            body: "Confirmed only",
+            createdAt: "2026-07-10T20:00:00.000Z",
+            updatedAt: "2026-07-10T20:00:00.000Z",
+            version: 5,
+          }],
+        }
+      },
+      create: (threadRef, title) => {
+        calls.push(`create:${threadRef}:${title}`)
+        return 6
+      },
+      append: (threadRef, messageRef, body) => {
+        calls.push(`append:${threadRef}:${messageRef}:${body}`)
+        return 7
+      },
+    }))
+    gateway.start()
+    const catalog = await gateway.request({
+      kind: "query",
+      requestId: "catalog",
+      query: { id: "conversation.catalog" },
+    })
+    expect(decodeDesktopRuntimeGatewayResponse(catalog)).toEqual(catalog)
+    expect(catalog).toMatchObject({
+      kind: "conversation_catalog",
+      status,
+      threads: [{ threadRef: "thread.gateway.1", version: 4 }],
+    })
+    const thread = await gateway.request({
+      kind: "query",
+      requestId: "thread",
+      query: { id: "conversation.thread", threadRef: "thread.gateway.1" },
+    })
+    expect(decodeDesktopRuntimeGatewayResponse(thread)).toEqual(thread)
+    expect(thread).toMatchObject({
+      kind: "conversation_thread",
+      status,
+      messages: [{ messageRef: "message.gateway.1", version: 5 }],
+    })
+    const create = await gateway.request({
+      kind: "command",
+      commandId: "create",
+      command: { id: "conversation.create", threadRef: "thread.gateway.2", title: "New" },
+    })
+    expect(decodeDesktopRuntimeGatewayResponse(create)).toEqual(create)
+    expect(create).toEqual({
+      kind: "conversation_mutation_outcome",
+      commandId: "create",
+      status: "pending_reconcile",
+      mutationId: 6,
+    })
+    expect(await gateway.request({
+      kind: "command",
+      commandId: "append",
+      command: {
+        id: "conversation.append",
+        threadRef: "thread.gateway.1",
+        messageRef: "message.gateway.2",
+        body: "Follow-up",
+      },
+    })).toEqual({
+      kind: "conversation_mutation_outcome",
+      commandId: "append",
+      status: "pending_reconcile",
+      mutationId: 7,
+    })
+    expect(calls).toEqual([
+      "thread:thread.gateway.1",
+      "create:thread.gateway.2:New",
+      "append:thread.gateway.1:message.gateway.2:Follow-up",
+    ])
+  })
+
+  test("conversation requests fail closed while the host service is not live", async () => {
+    const gateway = createDesktopRuntimeGateway()
+    gateway.start()
+    expect(await gateway.request({
+      kind: "query",
+      requestId: "catalog-offline",
+      query: { id: "conversation.catalog" },
+    })).toEqual({
+      kind: "conversation_unavailable",
+      requestId: "catalog-offline",
+      reason: "not_live",
+    })
+    expect(await gateway.request({
+      kind: "command",
+      commandId: "append-offline",
+      command: {
+        id: "conversation.append",
+        threadRef: "thread.gateway.1",
+        messageRef: "message.gateway.2",
+        body: "Follow-up",
+      },
+    })).toEqual({
+      kind: "conversation_mutation_outcome",
+      commandId: "append-offline",
+      status: "unavailable",
+    })
+  })
+
   test("owns ordered lifecycle delivery and terminal disposal", async () => {
     const gateway = createDesktopRuntimeGateway()
     const events: unknown[] = []
@@ -174,8 +297,8 @@ describe("Desktop Runtime Gateway", () => {
     gateway.dispose()
     unsubscribe()
     expect(events).toEqual([
-      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 1, sequence: 1 },
-      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 1, sequence: 2 },
+      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 2, sequence: 1 },
+      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 2, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
     expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
@@ -193,5 +316,15 @@ describe("Desktop Runtime Gateway", () => {
       command: { id: "session.sign_in" },
     })
     expect(decodeDesktopRuntimeGatewayResponse({ kind: "command_outcome", commandId: "c", status: "completed" })).toBeNull()
+    expect(decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "oversized",
+      command: {
+        id: "conversation.append",
+        threadRef: "thread.gateway.1",
+        messageRef: "message.gateway.1",
+        body: "x".repeat(20_001),
+      },
+    })).toBeNull()
   })
 })

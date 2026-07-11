@@ -14,6 +14,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { Worker } from "node:worker_threads"
 import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent } from "electron"
+import { Effect } from "effect"
 
 import {
   CodexAccountsChannel,
@@ -123,7 +124,32 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     desktopSessionState = result.state
     return result
   },
-}, () => desktopSessionState === "credential_present_unverified" ? "unverified" : desktopSessionState)
+}, () => desktopSessionState === "credential_present_unverified" ? "unverified" : desktopSessionState, () => {
+  const service = desktopSyncHost?.conversation() ?? null
+  if (service === null) return null
+  return {
+    catalog: () => ({
+      status: service.personalStatus(),
+      threads: Effect.runSync(service.listConfirmedThreads()),
+    }),
+    thread: threadRef => {
+      Effect.runSync(service.openThread(threadRef))
+      return {
+        status: service.threadStatus(threadRef),
+        messages: Effect.runSync(service.listConfirmedMessages(threadRef)),
+      }
+    },
+    create: (threadRef, title) => Number(Effect.runSync(service.createThread({
+      threadId: threadRef,
+      title,
+    }))),
+    append: (threadRef, messageRef, body) => Number(Effect.runSync(service.appendMessage({
+      threadId: threadRef,
+      messageId: messageRef,
+      body,
+    }))),
+  }
+})
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame

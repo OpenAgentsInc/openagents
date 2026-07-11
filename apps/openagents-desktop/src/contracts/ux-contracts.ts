@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.11",
+  version: "2026-07-10.12",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -45,7 +45,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       blockerRefs: [],
       source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
       statement: "The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Unknown requests fail schema decoding, unavailable commands never appear completed, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.",
-      authorityBoundary: "Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer may request bounded OpenAgents session entry/exit commands but receives only their typed outcome; it gets no credential, callback/authorize URL, Khala Sync authority, provider credential, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.",
+      authorityBoundary: "Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer may request bounded OpenAgents session entry/exit and canonical conversation operations but receives only typed projections/outcomes; it gets no credential, callback/authorize URL, raw Khala Sync/store/session/transport authority, provider credential, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.",
       seam: { client: "apps/openagents-desktop/src/preload.cts", server: "apps/openagents-desktop/src/runtime-gateway.ts" },
       evidenceRefs: ["apps/openagents-desktop/src/runtime-gateway-contract.ts", "apps/openagents-desktop/tests/electron-boundary.test.ts"],
       oracles: [{ id: "runtime_gateway_closed_protocol.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Round-trips schema-decoded renderer requests and proves truthful capability, unavailable command, lifecycle ordering, disposal, and rejection behavior." }],
@@ -78,6 +78,21 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       evidenceRefs: ["packages/khala-sync-client/src/chat.ts", "packages/khala-sync-client/src/conversation.ts", "apps/openagents-desktop/src/desktop-sync-host.ts", "apps/openagents-mobile/src/sync/mobile-sync-host-core.ts", "docs/sol/issues/native-conversation-continuation.md", "github:OpenAgentsInc/openagents#8668"],
       oracles: [{ id: "native_conversation_continuation.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts", description: "Runs the real Desktop node:sqlite host and mobile Expo-SQLite host over the shared session/overlay protocol against a server-authoritative chat fake, then proves Desktop-to-mobile-to-Desktop convergence, exact versions/cursor, and restart reconstruction." }],
       verification: "The native conversation continuation e2e runs in the normal Desktop sweep; shared chat mutator/projection tests run in the khala-sync-client sweep and the collection package regression proves existing consumers use the same centralized mutators.",
+    },
+    {
+      contractId: "openagents_desktop.seam.runtime_gateway_conversation.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "authoritative conversation Runtime Gateway",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "The signed Desktop renderer can query confirmed canonical conversation catalogs/threads and enqueue bounded canonical create/append mutations only through Runtime Gateway protocol v2; enqueues return pending_reconcile with the durable mutation id, never optimistic completed.",
+      authorityBoundary: "The seam carries public-safe thread/message refs, bodies, timestamps, confirmed entity versions, exact scope phase/cursor, and pending count only. It carries no owner identity, credential, store/session/overlay/transport, generic IPC, raw event stream, or provider runtime authority; not-live/read failure is typed and body-free.",
+      seam: { client: "apps/openagents-desktop/src/preload.cts", server: "apps/openagents-desktop/src/runtime-gateway.ts" },
+      evidenceRefs: ["apps/openagents-desktop/src/runtime-gateway-contract.ts", "apps/openagents-desktop/src/main.ts", "docs/sol/issues/desktop-runtime-conversation.md", "github:OpenAgentsInc/openagents#8669"],
+      oracles: [{ id: "runtime_gateway_conversation.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Round-trips confirmed catalog/thread projections and create/append mutations through protocol v2, proves pending_reconcile outcomes, unavailable fail-closed behavior, bounds, and schema rejection." }],
+      verification: "Runtime Gateway e2e, Electron mechanical boundary, Desktop typecheck/build, and behavior-contract validation run in the normal Desktop sweep.",
     },
     {
       contractId: "openagents_desktop.session.os_encrypted_custody.v1",

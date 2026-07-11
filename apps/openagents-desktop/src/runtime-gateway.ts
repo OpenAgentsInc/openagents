@@ -12,6 +12,39 @@ type CapabilityState = Readonly<{
   reason?: string
 }>
 
+type ConversationStatus = Readonly<{
+  phase: "idle" | "bootstrapping" | "catching_up" | "live" | "must_refetch" | "denied"
+  cursor: number | null
+  pendingMutationCount: number
+}>
+
+export type DesktopRuntimeConversation = Readonly<{
+  catalog: () => Readonly<{
+    status: ConversationStatus
+    threads: ReadonlyArray<Readonly<{
+      threadRef: string
+      title: string
+      messageCount: number
+      lastMessageAt: string | null
+      updatedAt: string
+      version: number
+    }>>
+  }>
+  thread: (threadRef: string) => Readonly<{
+    status: ConversationStatus
+    messages: ReadonlyArray<Readonly<{
+      messageRef: string
+      threadRef: string
+      body: string
+      createdAt: string
+      updatedAt: string
+      version: number
+    }>>
+  }>
+  create: (threadRef: string, title: string) => number
+  append: (threadRef: string, messageRef: string, body: string) => number
+}>
+
 export type DesktopRuntimeGateway = Readonly<{
   start: () => void
   request: (request: DesktopRuntimeGatewayRequest) => DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse>
@@ -42,6 +75,13 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
           : "OS-encrypted OpenAgents session custody is unavailable.",
   },
   {
+    id: "conversation-sync",
+    state: input.syncNetworkPhase === "live" ? "available" : "unavailable",
+    reason: input.syncNetworkPhase === "live"
+      ? undefined
+      : "Confirmed conversation Sync is not live.",
+  },
+  {
     id: "khala-sync",
     state: input.syncNetworkPhase === "live" ? "available" : "unavailable",
     reason: input.syncNetworkPhase === "live"
@@ -65,6 +105,7 @@ export const createDesktopRuntimeGateway = (
     signOut: () => Promise<Readonly<{ state: "signed_out" | "unavailable" }>>
   }>,
   sessionPhase: () => "signed_out" | "unverified" | "session_ready" | "denied" | "unavailable" = () => "unavailable",
+  conversation: () => DesktopRuntimeConversation | null = () => null,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
@@ -90,6 +131,39 @@ export const createDesktopRuntimeGateway = (
     request: request => {
       if (phase === "disposed") return { kind: "request_rejected", reason: "gateway_disposed" }
       if (request.kind === "query") {
+        if (request.query.id === "conversation.catalog") {
+          const service = conversation()
+          if (service === null) {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "not_live" }
+          }
+          try {
+            const result = service.catalog()
+            return {
+              kind: "conversation_catalog",
+              requestId: request.requestId,
+              ...result,
+            }
+          } catch {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "read_failed" }
+          }
+        }
+        if (request.query.id === "conversation.thread") {
+          const service = conversation()
+          if (service === null) {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "not_live" }
+          }
+          try {
+            const result = service.thread(request.query.threadRef)
+            return {
+              kind: "conversation_thread",
+              requestId: request.requestId,
+              threadRef: request.query.threadRef,
+              ...result,
+            }
+          } catch {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "read_failed" }
+          }
+        }
         return {
           kind: "query_result",
           requestId: request.requestId,
@@ -100,6 +174,40 @@ export const createDesktopRuntimeGateway = (
             protocolVersion: DesktopRuntimeGatewayProtocolVersion,
             sessionPhase: sessionPhase(),
           },
+        }
+      }
+      if (
+        request.command.id === "conversation.create" ||
+        request.command.id === "conversation.append"
+      ) {
+        const service = conversation()
+        if (service === null) {
+          return {
+            kind: "conversation_mutation_outcome",
+            commandId: request.commandId,
+            status: "unavailable",
+          }
+        }
+        try {
+          const mutationId = request.command.id === "conversation.create"
+            ? service.create(request.command.threadRef, request.command.title)
+            : service.append(
+                request.command.threadRef,
+                request.command.messageRef,
+                request.command.body,
+              )
+          return {
+            kind: "conversation_mutation_outcome",
+            commandId: request.commandId,
+            status: "pending_reconcile",
+            mutationId,
+          }
+        } catch {
+          return {
+            kind: "conversation_mutation_outcome",
+            commandId: request.commandId,
+            status: "unavailable",
+          }
         }
       }
       if (request.command.id === "session.sign_in") {
