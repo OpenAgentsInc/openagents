@@ -241,6 +241,15 @@ export interface KhalaSyncSession {
   readonly subscribeState: (
     listener: (scope: SyncScope, state: ScopeSyncState) => void,
   ) => () => void
+  /**
+   * Content-change notifications after an optimistic reveal or confirmed
+   * snapshot/delta apply. This is the callback form of {@link changes} for
+   * native host boundaries that must serialize and coalesce slow consumers
+   * without running an interval poller.
+   */
+  readonly subscribeChanges: (
+    listener: (scope: SyncScope) => void,
+  ) => () => void
   /** Content-change notifications (overlay-backed) as an Effect Stream. */
   readonly changes: Stream.Stream<SyncScope>
   /** Optimistic mutate (overlay) + kick the push loop. */
@@ -1228,6 +1237,7 @@ export const createKhalaSyncSession = (
         stateListeners.delete(listener)
       }
     },
+    subscribeChanges: listener => overlay.subscribe(listener),
     changes,
     mutate,
     close,

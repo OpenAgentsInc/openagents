@@ -2,6 +2,7 @@ import type {
   ConfirmedAgentTimelineSnapshot,
   ConfirmedChatMessage,
   ConfirmedChatThread,
+  KhalaConversationLiveSnapshot,
   KhalaSyncAgentTimeline,
   KhalaSyncConversation,
   KhalaSyncRuntimeCommands,
@@ -10,6 +11,7 @@ import {
   buildAppendUserMessageIntent,
   buildInterruptTurnIntent,
   buildStartTurnIntent,
+  openKhalaConversationLive,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
@@ -75,49 +77,97 @@ export const makeMobileConversationHost = (
   const commandTtlMs = options.commandTtlMs ?? 5 * 60_000
   const sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
   const pollAttempts = options.pollAttempts ?? 30
+  let subscriptionSequence = 0
 
   const listThreads = async (): Promise<ReadonlyArray<MobileConversationThreadSummary>> =>
     options.conversation.personalStatus().phase === "live"
       ? run(options.conversation.listConfirmedThreads())
       : []
 
-  const confirmedThread = async (
+  const threadFromSnapshot = (
+    snapshot: KhalaConversationLiveSnapshot,
+  ): MobileConversationThread | null => snapshot.thread === null
+    ? null
+    : {
+        ...snapshot.thread,
+        messages: snapshot.messages,
+        timeline: snapshot.timeline,
+      }
+
+  const readConfirmedThread = async (
     threadRef: string,
-    requiredMessageRef?: string,
   ): Promise<MobileConversationThread | null> => {
+    if (
+      options.conversation.personalStatus().phase !== "live" ||
+      options.conversation.threadStatus(threadRef).phase !== "live"
+    ) return null
     try {
-      await run(options.conversation.openThread(threadRef))
+      const [threads, messages, timeline] = await Promise.all([
+        run(options.conversation.listConfirmedThreads()),
+        run(options.conversation.listConfirmedMessages(threadRef)),
+        options.timeline === undefined
+          ? Promise.resolve(null)
+          : run(options.timeline.snapshotForThread(threadRef)),
+      ])
+      const summary = threads.find(thread => thread.threadRef === threadRef)
+      return summary === undefined ? null : { ...summary, messages, timeline }
     } catch {
       return null
     }
-    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
-      if (
-        options.conversation.personalStatus().phase === "live" &&
-        options.conversation.threadStatus(threadRef).phase === "live"
-      ) {
-        try {
-          const [threads, messages] = await Promise.all([
-            run(options.conversation.listConfirmedThreads()),
-            run(options.conversation.listConfirmedMessages(threadRef)),
-          ])
-          const summary = threads.find(thread => thread.threadRef === threadRef)
-          if (
-            summary !== undefined &&
-            (requiredMessageRef === undefined || messages.some(message => message.messageRef === requiredMessageRef))
-          ) {
-            const timeline = options.timeline === undefined
-              ? null
-              : await run(options.timeline.snapshotForThread(threadRef))
-            return { ...summary, messages, timeline }
-          }
-        } catch {
-          // A transient read is retried while the exact scope remains live.
-        }
-      }
-      await sleep(100)
-    }
-    return null
   }
+
+  const waitForThread = async (input: Readonly<{
+    threadRef: string
+    requiredMessageRef?: string
+  }>): Promise<MobileConversationThread | null> => {
+    const accepted = (thread: MobileConversationThread | null): thread is MobileConversationThread =>
+      thread !== null && (
+        input.requiredMessageRef === undefined ||
+        thread.messages.some(message => message.messageRef === input.requiredMessageRef)
+      )
+    const initial = await readConfirmedThread(input.threadRef)
+    if (accepted(initial)) return initial
+
+    let settle!: (thread: MobileConversationThread | null) => void
+    let settled = false
+    const result = new Promise<MobileConversationThread | null>(resolve => {
+      settle = thread => {
+        if (settled) return
+        settled = true
+        resolve(thread)
+      }
+    })
+    let subscription
+    try {
+      subscription = await openKhalaConversationLive({
+        conversation: options.conversation,
+        timeline: options.timeline,
+        subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
+        generation: subscriptionSequence,
+        threadRef: input.threadRef,
+        afterCursor: options.conversation.threadStatus(input.threadRef).cursor,
+      }, update => {
+        const thread = update.snapshot === null ? null : threadFromSnapshot(update.snapshot)
+        if (accepted(thread)) settle(thread)
+      })
+    } catch {
+      return null
+    }
+    const deadline = sleep(Math.max(1, pollAttempts) * 100).then(() => null)
+    const resolved = await Promise.race([result, deadline])
+    settled = true
+    await subscription.close()
+    return resolved
+  }
+
+  const confirmedThread = (
+    threadRef: string,
+    requiredMessageRef?: string,
+  ): Promise<MobileConversationThread | null> =>
+    waitForThread({
+      threadRef,
+      ...(requiredMessageRef === undefined ? {} : { requiredMessageRef }),
+    })
 
   const confirmedRuntimeOutcome = async (input: Readonly<{
     intentId: string
@@ -131,13 +181,14 @@ export const makeMobileConversationHost = (
     | null
   > => {
     let lastSignature = ""
-    for (let attempt = 0; attempt < Math.max(pollAttempts, 300); attempt += 1) {
+    const evaluate = async (
+      thread: MobileConversationThread | null,
+    ): Promise<Readonly<{ kind: "settled"; thread: MobileConversationThread }> | Readonly<{ kind: "expired" }> | null> => {
       const command = await run(options.runtime!.outcome({
         intentId: input.intentId,
         threadRef: input.threadRef,
       }))
       if (command?.status === "expired") return { kind: "expired" }
-      const thread = await confirmedThread(input.threadRef)
       const timeline = thread?.timeline
       const activeRun = timeline?.run
       if (thread !== null) {
@@ -161,9 +212,42 @@ export const makeMobileConversationHost = (
         latestSequence > input.afterSequence &&
         (activeRun.status === "completed" || activeRun.status === "failed" || activeRun.status === "canceled")
       ) return { kind: "settled", thread }
-      await sleep(100)
+      return null
     }
-    return null
+
+    const initial = await evaluate(await readConfirmedThread(input.threadRef))
+    if (initial !== null) return initial
+
+    let settle!: (outcome: Readonly<{ kind: "settled"; thread: MobileConversationThread }> | Readonly<{ kind: "expired" }> | null) => void
+    let settled = false
+    const result = new Promise<Readonly<{ kind: "settled"; thread: MobileConversationThread }> | Readonly<{ kind: "expired" }> | null>(resolve => {
+      settle = outcome => {
+        if (settled || outcome === null) return
+        settled = true
+        resolve(outcome)
+      }
+    })
+    let subscription
+    try {
+      subscription = await openKhalaConversationLive({
+        conversation: options.conversation,
+        timeline: options.timeline,
+        subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
+        generation: subscriptionSequence,
+        threadRef: input.threadRef,
+        afterCursor: options.conversation.threadStatus(input.threadRef).cursor,
+      }, async update => {
+        const thread = update.snapshot === null ? null : threadFromSnapshot(update.snapshot)
+        settle(await evaluate(thread))
+      })
+    } catch {
+      return null
+    }
+    const deadline = sleep(Math.max(pollAttempts, 300) * 100).then(() => null)
+    const resolved = await Promise.race([result, deadline])
+    settled = true
+    await subscription.close()
+    return resolved
   }
 
   return {
@@ -306,38 +390,29 @@ export const selectMobileConversation = async (input: Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline?: () => KhalaSyncAgentTimeline | null
   runtime?: () => KhalaSyncRuntimeCommands | null
-  sleep?: (ms: number) => Promise<void>
-  pollAttempts?: number
   adapter?: Omit<MobileConversationAdapterOptions, "conversation" | "runtime" | "timeline">
 }>): Promise<MobileConversationSelection> => {
-  const sleep = input.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
-  const pollAttempts = input.pollAttempts ?? 30
-
-  for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
-    const conversation = input.conversation()
-    const timeline = input.timeline?.() ?? undefined
-    const runtime = input.runtime?.() ?? undefined
-    if (conversation !== null && conversation.personalStatus().phase === "live") {
-      const host = makeMobileConversationHost({
-        conversation,
-        ...(runtime === undefined ? {} : { runtime }),
-        ...(timeline === undefined ? {} : { timeline }),
-        ...input.adapter,
-      })
-      try {
-        const threads = await host.listThreads()
-        const activeThread = threads[0] === undefined
-          ? null
-          : await host.openThread(threads[0].threadRef)
-        if (threads.length === 0 || activeThread !== null) {
-          return { mode: "sync", host, threads, activeThread }
-        }
-      } catch {
-        return { mode: "local" }
-      }
-      return { mode: "local" }
-    }
-    await sleep(100)
+  const conversation = input.conversation()
+  const timeline = input.timeline?.() ?? undefined
+  const runtime = input.runtime?.() ?? undefined
+  if (conversation === null || conversation.personalStatus().phase !== "live") {
+    return { mode: "local" }
   }
-  return { mode: "local" }
+  const host = makeMobileConversationHost({
+    conversation,
+    ...(runtime === undefined ? {} : { runtime }),
+    ...(timeline === undefined ? {} : { timeline }),
+    ...input.adapter,
+  })
+  try {
+    const threads = await host.listThreads()
+    const activeThread = threads[0] === undefined
+      ? null
+      : await host.openThread(threads[0].threadRef)
+    return threads.length === 0 || activeThread !== null
+      ? { mode: "sync", host, threads, activeThread }
+      : { mode: "local" }
+  } catch {
+    return { mode: "local" }
+  }
 }

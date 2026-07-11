@@ -632,6 +632,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.
+- Native live conversation reconciliation is driven by the shared Sync
+  content/state notifications and durable scope cursor, never by transcript
+  interval polling. Each subscription carries an exact subscription ref,
+  generation, ordered local sequence, thread/run/message/event correlation
+  refs, and `provisional | confirmed | interrupted` delivery. Resume gaps
+  collapse to one bounded authoritative snapshot; a future cursor interrupts
+  fail-closed. Slow consumers retain at most one newest pending snapshot, and
+  close removes both observers and the owned thread scope exactly once. The
+  shared contract and mobile no-poll boundary are enforced by
+  `packages/khala-sync-client/src/live-conversation.test.ts` and
+  `apps/openagents-mobile/tests/mobile-conversation.test.ts`. Desktop Runtime
+  Gateway adoption remains CUT-10 work and is not implied by the mobile rung.
 
 **Planned live-agent portability model boundary:**
 

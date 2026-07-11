@@ -6,6 +6,7 @@ import type {
   KhalaSyncConversation,
   KhalaSyncAgentTimeline,
   KhalaSyncRuntimeCommands,
+  KhalaSyncConversationChange,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
@@ -23,6 +24,7 @@ const makeConversation = (input: Readonly<{
   threads: Map<string, ConfirmedChatThread>
   messages: Map<string, Array<ConfirmedChatMessage>>
   commands: Array<Record<string, string>>
+  confirmMessage: (threadRef: string, messageRef: string, body: string) => void
 }> => {
   const threads = new Map<string, ConfirmedChatThread>([[
     "thread.synced.1",
@@ -47,12 +49,25 @@ const makeConversation = (input: Readonly<{
     }],
   ]])
   const commands: Array<Record<string, string>> = []
+  const listeners = new Set<(change: KhalaSyncConversationChange) => void>()
   const live = { phase: "live" as const, cursor: 5, pendingMutationCount: 0 }
+  const notify = (threadRef: string): void => {
+    for (const listener of [...listeners]) listener({
+      kind: "content",
+      status: live,
+      threadRef,
+    })
+  }
   const conversation: KhalaSyncConversation = {
     personalStatus: () => live,
     threadStatus: () => live,
     listConfirmedThreads: () => Effect.succeed([...threads.values()]),
     openThread: () => Effect.succeed(undefined),
+    closeThread: () => Effect.succeed(undefined),
+    subscribeThread: (_threadRef, listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
     listConfirmedMessages: threadRef => Effect.succeed(messages.get(threadRef) ?? []),
     createThread: args => Effect.sync(() => {
       commands.push({ id: "create", threadRef: args.threadId })
@@ -65,6 +80,7 @@ const makeConversation = (input: Readonly<{
         version: 6,
       })
       messages.set(args.threadId, [])
+      notify(args.threadId)
       return 1 as MutationId
     }),
     appendMessage: args => Effect.sync(() => {
@@ -87,32 +103,57 @@ const makeConversation = (input: Readonly<{
           lastMessageAt: now,
           version: 7,
         })
+        notify(args.threadId)
       }
       return 2 as MutationId
     }),
   }
-  return { conversation, threads, messages, commands }
+  const confirmMessage = (threadRef: string, messageRef: string, body: string): void => {
+    const list = messages.get(threadRef) ?? []
+    list.push({
+      messageRef,
+      threadRef,
+      body,
+      createdAt: now,
+      updatedAt: now,
+      version: 8,
+    })
+    messages.set(threadRef, list)
+    const thread = threads.get(threadRef)!
+    threads.set(threadRef, {
+      ...thread,
+      messageCount: list.length,
+      lastMessageAt: now,
+      version: 8,
+    })
+    notify(threadRef)
+  }
+  return { conversation, threads, messages, commands, confirmMessage }
 }
 
 describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
+  test("production conversation reconciliation contains no interval polling loop", async () => {
+    const source = await Bun.file(new URL(
+      "../src/conversation/mobile-conversation.ts",
+      import.meta.url,
+    )).text()
+    expect(source).not.toContain("await sleep(100)")
+    expect(source).not.toContain("for (let attempt")
+    expect(source).toContain("openKhalaConversationLive")
+  })
+
   test("selects local once when confirmed Sync does not become live", async () => {
-    let sleeps = 0
     const selection = await selectMobileConversation({
       conversation: () => null,
-      pollAttempts: 2,
-      sleep: async () => { sleeps += 1 },
     })
 
     expect(selection).toEqual({ mode: "local" })
-    expect(sleeps).toBe(2)
   })
 
   test("selects live Sync and reconstructs the confirmed initial thread", async () => {
     const fixture = makeConversation()
     const selection = await selectMobileConversation({
       conversation: () => fixture.conversation,
-      sleep: async () => undefined,
-      pollAttempts: 1,
     })
 
     expect(selection.mode).toBe("sync")
@@ -165,7 +206,34 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
 
     const result = await host.sendMessage({ threadRef: "thread.synced.1", body: "Pending" })
     expect(result).toEqual({ ok: false, error: "Message is still pending reconciliation." })
-    expect(sleeps).toBe(2)
+    expect(sleeps).toBe(1)
+  })
+
+  test("reconciles an asynchronous confirmation from the live subscription without interval polling", async () => {
+    const fixture = makeConversation({ appendConfirmed: false })
+    const never = new Promise<void>(() => undefined)
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      randomId: () => "live-confirmation",
+      pollAttempts: 30,
+      sleep: () => never,
+    })
+
+    const pending = host.sendMessage({
+      threadRef: "thread.synced.1",
+      body: "Arrives through the change stream",
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    fixture.confirmMessage(
+      "thread.synced.1",
+      "message.mobile.live-confirmation",
+      "Arrives through the change stream",
+    )
+
+    expect(await pending).toMatchObject({
+      ok: true,
+      thread: { messages: [{}, { messageRef: "message.mobile.live-confirmation" }] },
+    })
   })
 
   test("admits the same message/thread/run refs through the shared runtime command and can interrupt that confirmed run", async () => {

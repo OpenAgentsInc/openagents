@@ -74,12 +74,23 @@ export type KhalaSyncConversation = Readonly<{
     KhalaSyncClientStoreError
   >
   openThread: (threadRef: string) => Effect.Effect<void, OverlayError>
+  closeThread: (threadRef: string) => Effect.Effect<void>
+  subscribeThread: (
+    threadRef: string,
+    listener: (change: KhalaSyncConversationChange) => void,
+  ) => () => void
   listConfirmedMessages: (threadRef: string) => Effect.Effect<
     ReadonlyArray<ConfirmedChatMessage>,
     KhalaSyncClientStoreError
   >
   createThread: (args: ChatCreateThreadArgs) => Effect.Effect<MutationId, OverlayError>
   appendMessage: (args: ChatAppendMessageArgs) => Effect.Effect<MutationId, OverlayError>
+}>
+
+export type KhalaSyncConversationChange = Readonly<{
+  kind: "content" | "state"
+  threadRef: string
+  status: KhalaSyncConversationStatus
 }>
 
 const cursorFromState = (state: ScopeSyncState): number | null =>
@@ -152,6 +163,7 @@ export const createKhalaSyncConversation = (input: Readonly<{
   mutators: ChatClientMutators
 }>): KhalaSyncConversation => {
   const personal = personalScope(input.ownerUserId)
+  const threadReferences = new Map<string, number>()
   const status = (scope: ReturnType<typeof personalScope>): KhalaSyncConversationStatus => {
     const state = input.session.state(scope)
     return {
@@ -168,7 +180,41 @@ export const createKhalaSyncConversation = (input: Readonly<{
       input.store.readEntities(personal, CHAT_THREAD_ENTITY_TYPE),
       rows => decodeThreads(input.ownerUserId, rows),
     ),
-    openThread: threadRef => input.session.subscribe(threadScope(threadRef)),
+    openThread: threadRef => Effect.suspend(() => {
+      const references = threadReferences.get(threadRef) ?? 0
+      threadReferences.set(threadRef, references + 1)
+      if (references > 0) return Effect.void
+      return input.session.subscribe(threadScope(threadRef)).pipe(
+        Effect.tapError(() => Effect.sync(() => { threadReferences.delete(threadRef) })),
+      )
+    }),
+    closeThread: threadRef => Effect.suspend(() => {
+      const references = threadReferences.get(threadRef) ?? 0
+      if (references <= 1) {
+        threadReferences.delete(threadRef)
+        return references === 0
+          ? Effect.void
+          : input.session.unsubscribe(threadScope(threadRef))
+      }
+      threadReferences.set(threadRef, references - 1)
+      return Effect.void
+    }),
+    subscribeThread: (threadRef, listener) => {
+      const scope = threadScope(threadRef)
+      const notify = (kind: KhalaSyncConversationChange["kind"]): void => {
+        listener({ kind, status: status(scope), threadRef })
+      }
+      const unsubscribeState = input.session.subscribeState((changedScope) => {
+        if (changedScope === scope || changedScope === personal) notify("state")
+      })
+      const unsubscribeChanges = input.session.subscribeChanges((changedScope) => {
+        if (changedScope === scope || changedScope === personal) notify("content")
+      })
+      return () => {
+        unsubscribeChanges()
+        unsubscribeState()
+      }
+    },
     listConfirmedMessages: threadRef => Effect.map(
       input.store.readEntities(threadScope(threadRef), CHAT_MESSAGE_ENTITY_TYPE),
       rows => decodeMessages(threadRef, rows),

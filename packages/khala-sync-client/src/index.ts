@@ -85,9 +85,20 @@ export {
   type ConfirmedChatThread,
   createKhalaSyncConversation,
   type KhalaSyncConversation,
+  type KhalaSyncConversationChange,
   type KhalaSyncConversationStatus,
   KhalaSyncConversationStatusSchema,
 } from "./conversation.js"
+
+export {
+  KhalaConversationLiveEnvelopeSchema,
+  type KhalaConversationLiveEnvelope,
+  type KhalaConversationLiveOptions,
+  type KhalaConversationLiveSnapshot,
+  type KhalaConversationLiveSubscription,
+  type KhalaConversationLiveUpdate,
+  openKhalaConversationLive,
+} from "./live-conversation.js"
 
 export {
   ConfirmedAgentRunSchema,

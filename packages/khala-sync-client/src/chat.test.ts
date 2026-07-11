@@ -128,6 +128,9 @@ describe("shared canonical chat client", () => {
       ], SyncVersion.make(2)))
 
       const opened: Array<string> = []
+      const closed: Array<string> = []
+      let stateListener: ((scope: SyncScope) => void) | undefined
+      let changeListener: ((scope: SyncScope) => void) | undefined
       const session = {
         state: (scope: SyncScope) => ({
           phase: "live" as const,
@@ -135,6 +138,15 @@ describe("shared canonical chat client", () => {
         }),
         pending: () => [],
         subscribe: (scope: SyncScope) => Effect.sync(() => { opened.push(String(scope)) }),
+        unsubscribe: (scope: SyncScope) => Effect.sync(() => { closed.push(String(scope)) }),
+        subscribeState: (listener: (scope: SyncScope) => void) => {
+          stateListener = listener
+          return () => { stateListener = undefined }
+        },
+        subscribeChanges: (listener: (scope: SyncScope) => void) => {
+          changeListener = listener
+          return () => { changeListener = undefined }
+        },
         mutate: <Args>(mutator: Parameters<typeof overlay.mutate<Args>>[0], args: Args) =>
           overlay.mutate(mutator, args),
       } as unknown as KhalaSyncSession
@@ -169,7 +181,24 @@ describe("shared canonical chat client", () => {
         pendingMutationCount: 0,
       })
       Effect.runSync(conversation.openThread(THREAD))
+      Effect.runSync(conversation.openThread(THREAD))
       expect(opened).toEqual(["scope.thread.thread.chat-client"])
+      const changes: Array<string> = []
+      const unsubscribe = conversation.subscribeThread(THREAD, change => {
+        changes.push(`${change.kind}:${change.threadRef}:${change.status.cursor}`)
+      })
+      stateListener?.(threadScope(THREAD))
+      changeListener?.(personalScope(OWNER))
+      expect(changes).toEqual([
+        "state:thread.chat-client:2",
+        "content:thread.chat-client:2",
+      ])
+      unsubscribe()
+      changeListener?.(threadScope(THREAD))
+      Effect.runSync(conversation.closeThread(THREAD))
+      expect(closed).toEqual([])
+      Effect.runSync(conversation.closeThread(THREAD))
+      expect(closed).toEqual(["scope.thread.thread.chat-client"])
     } finally {
       Effect.runSync(store.close())
     }
