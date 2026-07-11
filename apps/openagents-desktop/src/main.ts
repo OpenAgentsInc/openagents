@@ -88,6 +88,7 @@ const connectVerifiedDesktopSync = (): boolean => {
       return false
     }
     desktopSyncHost.connectAuthenticated({
+      verification:"server_verified",
       baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
       ownerUserId: credential.ownerUserId,
       authToken: () => desktopSessionVault?.load()?.accessToken ?? "",
@@ -120,7 +121,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   signOut: async () => {
     if (desktopSessionVault === null) return { state: "unavailable" }
     const result = await signOutDesktopSession({ vault: desktopSessionVault })
-    if (result.state === "signed_out") desktopSyncHost?.disconnectAuthenticated()
+    if (result.state === "signed_out") desktopSyncHost?.unlinkAccount()
     desktopSessionState = result.state
     return result
   },
@@ -161,7 +162,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
 }, () => ({
   catalog: () => runCodexHistoryWorker({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
   page: (threadRef, offset, limit) => runCodexHistoryWorker({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
-}))
+}),()=>desktopSyncHost===null?"local_unavailable":desktopSyncHost.status().identityTier)
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
@@ -380,7 +381,7 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
   return {
     ok: result?.kind === "query_result" &&
       result.requestId === "smoke-runtime-bootstrap" &&
-      result.result?.protocolVersion === 4 &&
+      result.result?.protocolVersion === 5 &&
       result.result?.lifecycle === "ready" &&
       result.result?.capabilities?.some((capability) => capability.id === "codex-history" && capability.state === "available"),
     result,
@@ -660,6 +661,7 @@ void app.whenReady().then(async () => {
       desktopSessionState = recovery.state === "verified"
         ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
         : recovery.state
+      if(recovery.state==="denied")desktopSyncHost?.unlinkAccount()
     }
   } catch {
     desktopSessionVault = null

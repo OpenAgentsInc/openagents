@@ -1,0 +1,11 @@
+import {Database} from "bun:sqlite"
+import {describe,expect,test} from "bun:test"
+import {deviceLocalScope,LocalIdentityRef,LocalRevision,personalScope} from "@openagentsinc/khala-sync"
+import {Effect} from "effect"
+import {createKhalaSyncStoreCore,localStoreFromCore} from "./index.js"
+import {bunSqlDriver} from "./sqlite-store.js"
+
+describe("device-local authority",()=>{
+ const open=()=>{const db=new Database(":memory:");return {db,store:localStoreFromCore(createKhalaSyncStoreCore(bunSqlDriver(db)))}}
+ test("keeps immutable local identity, reversible account link, and local rows separate",()=>{const {db,store}=open();const identity={schemaVersion:1 as const,identityRef:LocalIdentityRef.make("local_fixture123"),createdAt:"2026-07-10T00:00:00Z"};Effect.runSync(store.setLocalIdentity(identity));expect(Effect.runSync(store.localIdentity())).toEqual(identity);expect(()=>Effect.runSync(store.setLocalIdentity({...identity,identityRef:LocalIdentityRef.make("local_conflict9")}))).toThrow();const scope=deviceLocalScope(identity.identityRef);Effect.runSync(store.writeLocalEntities(scope,[{entityType:"chat_thread",entityId:"local-thread",postImageJson:"{}",revision:LocalRevision.make(1)}]));expect(Effect.runSync(store.readLocalEntities(scope))).toHaveLength(1);expect(Effect.runSync(store.readEntities(scope))).toEqual([]);expect(()=>Effect.runSync(store.writeLocalEntities(personalScope("owner"),[]))).toThrow();const link={schemaVersion:1 as const,identityRef:identity.identityRef,ownerUserId:"owner",linkedAt:"2026-07-10T00:01:00Z",linkReceiptRef:"link_receipt"};Effect.runSync(store.setLocalAccountLink(link));expect(Effect.runSync(store.localAccountLink())).toEqual(link);Effect.runSync(store.clearLocalAccountLink());expect(Effect.runSync(store.localAccountLink())).toBeNull();expect(Effect.runSync(store.readLocalEntities(scope))).toHaveLength(1);db.close()})
+})

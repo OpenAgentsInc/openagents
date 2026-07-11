@@ -8,6 +8,9 @@ import type {
   SyncScope,
   SyncVersion,
   SyncVersionWatermark,
+  LocalIdentityRecord,
+  LocalAccountLink,
+  LocalRevision,
 } from "@openagentsinc/khala-sync"
 import type { Effect } from "effect"
 
@@ -78,12 +81,20 @@ export interface ClientIdentity {
   readonly clientGroupId: ClientGroupId
   readonly schemaVersion: SyncSchemaVersion
 }
+export interface LocalAuthorityEntity { readonly entityType:string; readonly entityId:string; readonly postImageJson:string; readonly revision:LocalRevision }
 
 // ---------------------------------------------------------------------------
 // Store interface
 // ---------------------------------------------------------------------------
 
 export interface KhalaSyncLocalStore {
+  readonly localIdentity:()=>Effect.Effect<LocalIdentityRecord|null,KhalaSyncClientStoreError>
+  readonly setLocalIdentity:(identity:LocalIdentityRecord)=>Effect.Effect<void,KhalaSyncClientStoreError>
+  readonly localAccountLink:()=>Effect.Effect<LocalAccountLink|null,KhalaSyncClientStoreError>
+  readonly setLocalAccountLink:(link:LocalAccountLink)=>Effect.Effect<void,KhalaSyncClientStoreError>
+  readonly clearLocalAccountLink:()=>Effect.Effect<void,KhalaSyncClientStoreError>
+  readonly writeLocalEntities:(scope:SyncScope,entities:ReadonlyArray<LocalAuthorityEntity>)=>Effect.Effect<void,KhalaSyncClientStoreError>
+  readonly readLocalEntities:(scope:SyncScope,entityType?:string)=>Effect.Effect<ReadonlyArray<LocalAuthorityEntity>,KhalaSyncClientStoreError>
   /** Durable per-scope cursor; `null` when the scope was never synced. */
   readonly cursor: (
     scope: SyncScope,

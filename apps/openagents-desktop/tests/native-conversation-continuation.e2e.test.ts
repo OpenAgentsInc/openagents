@@ -294,6 +294,7 @@ describe("contract khala_sync.client.native_conversation_continuity.v1", () => {
     })
     const connect = (host: ReturnType<typeof openDesktop> | ReturnType<typeof openMobile>) =>
       host.connectAuthenticated({
+        verification:"server_verified",
         baseUrl: "https://openagents.test",
         ownerUserId: OWNER,
         authToken: () => "verified-test-token",

@@ -46,6 +46,7 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
           return "signed_out"
         }
         host.connectAuthenticated({
+          verification:"server_verified",
           baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
           ownerUserId: credential.ownerUserId,
           authToken: () => credential.accessToken,

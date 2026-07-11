@@ -493,9 +493,9 @@ const openAgentsSessionSection = (
   phase: DesktopOpenAgentsSessionView,
 ): ReadonlyArray<View> => {
   const label = phase === "session_ready"
-    ? "OpenAgents session verified"
+    ? "OpenAgents account linked"
     : phase === "signed_out"
-      ? "Signed out"
+      ? "Local device ready"
       : phase === "denied"
         ? "Session access removed"
         : phase === "unverified"
@@ -518,11 +518,11 @@ const openAgentsSessionSection = (
     }),
     Button({
       key: "settings-openagents-session-action",
-      label: phase === "session_ready" ? "Sign out" : phase === "authenticating" ? "Working…" : "Sign in with GitHub",
+      label: phase === "session_ready" ? "Disconnect account" : phase === "authenticating" ? "Working…" : "Link OpenAgents account",
       variant: phase === "session_ready" ? "secondary" : "primary",
       disabled: blocked,
       onPress: IntentRef(phase === "session_ready" ? "DesktopOpenAgentsSignOutRequested" : "DesktopOpenAgentsSignInRequested"),
-      a11y: { label: phase === "session_ready" ? "Sign out of OpenAgents" : "Sign in to OpenAgents with GitHub" },
+      a11y: { label: phase === "session_ready" ? "Disconnect OpenAgents account and keep local work" : "Link an optional OpenAgents account for cross-device Sync" },
     }),
   ]
 }
@@ -566,11 +566,12 @@ export const settingsView = (settings: SettingsState): View => {
         ),
         Text({
           key: "settings-openagents-title",
-          content: "OpenAgents session",
+          content: "Local device · optional OpenAgents account",
           variant: "label",
           color: "textMuted",
         }),
         ...openAgentsSessionSection(settings.openAgentsSession),
+        Text({key:"settings-local-first-copy",content:"Local coding, conversations, and fleets work without an account. Link an account for cross-device Sync, hosted capacity, and network participation; disconnecting never deletes local work.",variant:"body",color:"textMuted"}),
         Text({
           key: "settings-accounts-title",
           content: "Codex accounts",

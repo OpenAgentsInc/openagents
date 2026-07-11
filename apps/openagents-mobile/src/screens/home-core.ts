@@ -88,8 +88,8 @@ const syncStatusCopyByPhase: Record<MobileSyncPhase, SyncStatusCopy> = {
     detail: "Stored credentials remain private. Shared work stays hidden until the server verifies them.",
   },
   local_ready: {
-    title: "Local Sync ready",
-    detail: "Local data is durable. Connect an OpenAgents session to sync shared work.",
+    title: "Local device ready",
+    detail: "Coding, conversations, and fleets work without an account. Link OpenAgents only for cross-device Sync and network features.",
   },
   session_ready: {
     title: "Session verified",
@@ -235,7 +235,7 @@ export const renderContentView = (state: HomeState): View =>
               ? []
               : [Button({
                   key: "openagents-sign-in",
-                  label: "Sign in with GitHub",
+                  label: "Link OpenAgents account",
                   variant: "primary",
                   onPress: IntentRef("OpenAgentsSignInPressed", StaticPayload({})),
                 })]),

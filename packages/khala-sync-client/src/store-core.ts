@@ -8,6 +8,11 @@ import {
   SyncSchemaVersion,
   type SyncScope,
   SyncVersion,
+  LocalIdentityRecord,
+  LocalAccountLink,
+  LocalIdentityRef,
+  LocalRevision,
+  isDeviceLocalScope,
   type SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
 import { Effect } from "effect"
@@ -16,6 +21,7 @@ import {
   type ConfirmedEntity,
   KhalaSyncClientStoreError,
   type KhalaSyncLocalStore,
+  type LocalAuthorityEntity,
 } from "./store.js"
 
 /**
@@ -90,6 +96,9 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS local_entities (scope TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT NOT NULL,post_image_json TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(scope,entity_type,entity_id));
+CREATE TABLE IF NOT EXISTS local_identity (singleton INTEGER PRIMARY KEY CHECK(singleton=1),identity_ref TEXT NOT NULL,created_at TEXT NOT NULL,schema_version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS local_account_link (singleton INTEGER PRIMARY KEY CHECK(singleton=1),identity_ref TEXT NOT NULL,owner_user_id TEXT NOT NULL,linked_at TEXT NOT NULL,link_receipt_ref TEXT NOT NULL,schema_version INTEGER NOT NULL);
 `
 
 const META_CLIENT_ID = "client_id"
@@ -125,6 +134,13 @@ interface PendingRow {
  * (Effect on desktop, postMessage RPC in the web storage worker).
  */
 export interface KhalaSyncStoreCore {
+  readonly localIdentity:()=>LocalIdentityRecord|null
+  readonly setLocalIdentity:(identity:LocalIdentityRecord)=>void
+  readonly localAccountLink:()=>LocalAccountLink|null
+  readonly setLocalAccountLink:(link:LocalAccountLink)=>void
+  readonly clearLocalAccountLink:()=>void
+  readonly writeLocalEntities:(scope:SyncScope,entities:ReadonlyArray<LocalAuthorityEntity>)=>void
+  readonly readLocalEntities:(scope:SyncScope,entityType?:string)=>ReadonlyArray<LocalAuthorityEntity>
   readonly cursor: (scope: SyncScope) => SyncVersion | null
   readonly applyConfirmed: (
     scope: SyncScope,
@@ -255,7 +271,17 @@ export const createKhalaSyncStoreCore = (
     }
   }
 
+  const readLocalIdentity=():LocalIdentityRecord|null=>{const rows=driver.all<{identity_ref:string;created_at:string;schema_version:number}>("SELECT identity_ref,created_at,schema_version FROM local_identity WHERE singleton=1");const row=rows[0];return row===undefined?null:{schemaVersion:1,identityRef:LocalIdentityRef.make(row.identity_ref),createdAt:row.created_at}}
+  const readLocalLink=():LocalAccountLink|null=>{const rows=driver.all<{identity_ref:string;owner_user_id:string;linked_at:string;link_receipt_ref:string;schema_version:number}>("SELECT identity_ref,owner_user_id,linked_at,link_receipt_ref,schema_version FROM local_account_link WHERE singleton=1");const row=rows[0];return row===undefined?null:{schemaVersion:1,identityRef:LocalIdentityRef.make(row.identity_ref),ownerUserId:row.owner_user_id,linkedAt:row.linked_at,linkReceiptRef:row.link_receipt_ref}}
+
   return {
+    localIdentity:readLocalIdentity,
+    setLocalIdentity:identity=>driver.transaction(()=>{const existing=readLocalIdentity();if(existing!==null){if(existing.identityRef!==identity.identityRef||existing.createdAt!==identity.createdAt)throw new KhalaSyncClientStoreError("constraint_violation","local identity is immutable");return}driver.run("INSERT INTO local_identity(singleton,identity_ref,created_at,schema_version) VALUES(1,?,?,1)",[identity.identityRef,identity.createdAt])}),
+    localAccountLink:readLocalLink,
+    setLocalAccountLink:link=>driver.transaction(()=>{const identity=readLocalIdentity();if(identity===null||identity.identityRef!==link.identityRef)throw new KhalaSyncClientStoreError("constraint_violation","account link does not match local identity");const existing=readLocalLink();if(existing!==null&&existing.ownerUserId!==link.ownerUserId)throw new KhalaSyncClientStoreError("constraint_violation","account link owner cannot change without unlink");driver.run("INSERT INTO local_account_link(singleton,identity_ref,owner_user_id,linked_at,link_receipt_ref,schema_version) VALUES(1,?,?,?,?,1) ON CONFLICT(singleton) DO UPDATE SET linked_at=excluded.linked_at,link_receipt_ref=excluded.link_receipt_ref",[link.identityRef,link.ownerUserId,link.linkedAt,link.linkReceiptRef])}),
+    clearLocalAccountLink:()=>driver.transaction(()=>driver.run("DELETE FROM local_account_link WHERE singleton=1")),
+    writeLocalEntities:(scope,entities)=>driver.transaction(()=>{if(!isDeviceLocalScope(scope))throw new KhalaSyncClientStoreError("constraint_violation","local authority writes require device-local scope");for(const entity of entities)driver.run("INSERT INTO local_entities(scope,entity_type,entity_id,post_image_json,revision) VALUES(?,?,?,?,?) ON CONFLICT(scope,entity_type,entity_id) DO UPDATE SET post_image_json=excluded.post_image_json,revision=excluded.revision WHERE excluded.revision>local_entities.revision",[scope,entity.entityType,entity.entityId,entity.postImageJson,entity.revision])}),
+    readLocalEntities:(scope,entityType)=>{if(!isDeviceLocalScope(scope))throw new KhalaSyncClientStoreError("constraint_violation","local authority reads require device-local scope");return driver.all<{entity_type:string;entity_id:string;post_image_json:string;revision:number}>(`SELECT entity_type,entity_id,post_image_json,revision FROM local_entities WHERE scope=?${entityType===undefined?"":" AND entity_type=?"} ORDER BY entity_type,entity_id`,entityType===undefined?[scope]:[scope,entityType]).map(row=>({entityType:row.entity_type,entityId:row.entity_id,postImageJson:row.post_image_json,revision:LocalRevision.make(row.revision)}))},
     cursor: (scope) => {
       const stored = storedCursor(scope)
       return stored === null ? null : SyncVersion.make(stored)
@@ -437,6 +463,7 @@ export const localStoreFromCore = (
   ): Effect.Effect<A, KhalaSyncClientStoreError> =>
     Effect.try({ try: run, catch: toKhalaSyncStoreError })
   return {
+    localIdentity:()=>tryStore(core.localIdentity),setLocalIdentity:identity=>tryStore(()=>core.setLocalIdentity(identity)),localAccountLink:()=>tryStore(core.localAccountLink),setLocalAccountLink:link=>tryStore(()=>core.setLocalAccountLink(link)),clearLocalAccountLink:()=>tryStore(core.clearLocalAccountLink),writeLocalEntities:(scope,entities)=>tryStore(()=>core.writeLocalEntities(scope,entities)),readLocalEntities:(scope,entityType)=>tryStore(()=>core.readLocalEntities(scope,entityType)),
     cursor: (scope) => tryStore(() => core.cursor(scope)),
     applyConfirmed: (scope, entries, cursor) =>
       tryStore(() => core.applyConfirmed(scope, entries, cursor)),

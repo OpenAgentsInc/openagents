@@ -18,7 +18,11 @@ const message = (timestamp: string, role: "user" | "assistant", text: string) =>
 
 describe("openagents_desktop.seam.codex_loss_accounted_history.v2 legacy compatibility", () => {
   test("records the app-owned enforced UX contract", () => {
-    expect(openAgentsDesktopUxContractRegistry.contracts[0]?.contractId).toBe("openagents_desktop.seam.codex_loss_accounted_history.v2")
+    expect(
+      openAgentsDesktopUxContractRegistry.contracts.some(
+        ({ contractId }) => contractId === "openagents_desktop.seam.codex_loss_accounted_history.v2",
+      ),
+    ).toBe(true)
     expect(openAgentsDesktopUxContractRegistry.contracts[0]?.state).toBe("enforced")
   })
   test("projects only recent top-level chats and their bounded conversational messages", () => {

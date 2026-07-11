@@ -63,7 +63,7 @@ export const App = () => {
     signOut: async () => {
       setSyncPhase("authenticating")
       const result = await signOutNativeSession()
-      if (result.state === "signed_out") syncHostRef.current?.disconnectAuthenticated()
+      if (result.state === "signed_out") syncHostRef.current?.unlinkAccount()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
         setConversationRevision(current => current + 1)
@@ -115,6 +115,7 @@ export const App = () => {
             }
             break
           case "denied":
+            syncHost?.unlinkAccount()
             setSyncPhase("denied")
             setConversationSelection({ mode: "local" })
             break

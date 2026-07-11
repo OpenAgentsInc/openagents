@@ -1,5 +1,12 @@
 # R1–R2 identity and Khala Sync contract — `khala.identity_sync_contract.v1`
 
+> Amendment 2026-07-10 (#8666): native Desktop/mobile now have a separate
+> device-local identity and local-authority store before OpenAuth. In this
+> document, “canonical identity” and “no device-local identity invention” apply
+> to server/account authority only. A local identity cannot assert an owner,
+> enter hosted transport, or make local rows server-confirmed. Verified account
+> linking is additive/reversible and never deletes local rows.
+
 - Date: 2026-07-10
 - Status: **published senior contract freeze** for the R1–R2 gates
   (MASTER_ROADMAP Revision 24/25, owner decisions 1, 5, 7; execution-order
@@ -67,9 +74,10 @@ OpenAgents session above.
 
 ### R1.3 Fail-closed identity laws (SETTLED)
 
-1. **No device-local identity invention.** A client with no verified session
-   renders `unconfigured`/signed-out state. It never mints, guesses, caches
-   into validity, or copies an identity from another store.
+1. **No server identity invention.** A client with no verified session remains
+   usable under its immutable device-local identity, but never mints, guesses,
+   caches into validity, or copies a server owner identity. Account-only rows
+   remain unavailable until server verification.
 2. **Identity changes are server events.** Sign-in, refresh rotation,
    revocation, and account deletion are decided by the API. Clients observe
    them: a revoked/expired session produces a typed `denied` session phase and,

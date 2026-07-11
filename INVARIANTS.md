@@ -540,6 +540,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   omit owner identity and carry stable thread/message refs, server entity
   versions, scope cursor, phase, and pending count; optimistic content is never
   labeled confirmed, and denial/sign-out removes the conversation capability.
+- Native clients create one immutable device-local identity before OpenAuth.
+  Its `scope.device_local.*` rows live in separate `local_entities` tables with
+  `LocalRevision`; they are local Source Authority and are never readable as
+  server-confirmed rows, assigned `SyncVersion`, or sent through hosted Sync.
+  A server-verified account link is additive and reversible: link/unlink never
+  rewrites the local identity or deletes local rows. Revocation still purges or
+  hides the revoked owner's server cache, not the device-local authority.
 - Native provider-neutral timelines use the shared client reader over the
   existing `agent_run` / `agent_run_event` entities on one exact agent-run
   scope. Only live confirmed run state and the newest 500 ordered event facts

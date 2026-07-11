@@ -572,10 +572,9 @@ generic IPC authority.
 | R6 — mobile coding and fleet control | Activity/fleet home; GitHub/repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; run/work/attempt detail; steer/approve/pause/resume/stop; typed remote-workroom lifecycle; compact plan/files/changes/terminal/preview/artifact surfaces; safe branch/PR writeback; push, deep link, handoff, and accessible loading/error/offline states | On physical iOS and Android devices, select a repository, start or resume isolated remote coding, inspect/change code, review the exact diff, run a bounded command, open a managed preview, complete safe writeback, and supervise the R3 run without local raw filesystem/shell/credential authority |
 | R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility window; migration/rollback; public-safe diagnostics; telemetry for sync lag, workroom lifecycle, command latency, reconnect, conflicts, and duplicate suppression | A sustained owner dogfood window includes a real mobile-originated remote-container coding task, Desktop/mobile continuation of the same thread/workroom/run, safe branch/PR writeback, upgrade/restart/offline faults, no P0/P1 data-loss or false-authority defect, and a signed owner-accepted receipt |
 
-### R1-LOCAL — local-first identity (short-to-medium term amendment, #8666)
+### R1-LOCAL — local-first identity (implemented, #8666)
 
-Not top priority; slot after the R1/R2 account path and the core fleet/desktop
-loop are trustworthy, and **before** R7 packaging/dogfood — because
+The native v1 boundary is landed before R7 packaging/dogfood because
 "open the app, pair locally, no login" is core to the predictable/open-software
 thesis (rev 24, episode 248) and is the opposite of the account-and-attestation
 gate criticized in the desktop teardowns
@@ -586,16 +585,21 @@ R1 as shipped (#8657–#8665) authenticates both clients against our own
 mobile — first-party, correct) but treats identity as **auth-required**. The
 amendment makes it a **two-tier model**:
 
-1. **Local identity (default, no server auth):** a device keypair / local
+1. **Local identity (default, no server auth):** an immutable local
    account is the Source Authority for purely-local pairing (desktop ↔ local
    Codex/Pylon; run fleets, use the workbench, offline-of-account). Khala Sync
    runs in device-local scope — the existing SQLite store is the authority for
    local-only data, not a cache. Zero `auth.openagents.com` round-trip for
    anything that stays on-device.
-2. **OpenAgents account (opt-in upgrade):** signing in links the local identity
+2. **OpenAgents account (opt-in upgrade):** server-verified sign-in links the local identity
    to the server owner — promoting local projections to cross-device Khala
    Sync, network/Khala participation, and hosted capacity. Additive and
    reversible; sign-out returns to local-only and never wipes local work.
+
+Implementation uses separate `local_identity`, `local_account_link`, and
+`local_entities` tables, `LocalRevision`, and `scope.device_local.*`. Hosted
+Sync refuses that scope. Desktop Runtime Gateway v5 and both Effect Native
+clients expose only local/account tier; unlink/denial retains local rows.
 
 **Transport spike (worth exploring, not committed):** device-to-device sync in
 the local/account-linked tier need not relay through our servers. **Tailscale**

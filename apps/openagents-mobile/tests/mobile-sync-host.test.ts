@@ -111,20 +111,23 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
         schemaVersion: 1,
         identityState: "persisted",
         pendingMutationCount: 0,
+        identityTier:"local_only",
       })
       first.close()
 
       const inspect = openStore(databaseName)
       const identity = Effect.runSync(inspect.identity())
+      const localIdentity=Effect.runSync(inspect.localIdentity())
       Effect.runSync(inspect.close())
       expect(identity).toMatchObject({
         clientGroupId: "openagents-mobile.fixture-1",
         clientId: "mobile.fixture-2",
         schemaVersion: 1,
       })
+      expect(String(localIdentity?.identityRef)).toBe("local_fixture-3")
 
       const second = openMobileSyncHostCore({ databaseName, randomId, openStore })
-      expect(generated).toBe(2)
+      expect(generated).toBe(3)
       second.close()
       second.close()
       expect(second.status().state).toBe("closed")
@@ -153,7 +156,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
     }
   })
 
-  test("production composition owns Expo SQLite and cryptographic identity outside the view program", () => {
+  test("production composition owns Expo SQLite and local identity outside the view program", () => {
     const source = readFileSync(
       new URL("../src/sync/mobile-sync-host.ts", import.meta.url),
       "utf8",
@@ -190,6 +193,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
     try {
       const host = openMobileSyncHostCore({ databaseName, randomId: () => "auth", openStore })
       host.connectAuthenticated({
+        verification:"server_verified",
         baseUrl: "https://openagents.example",
         ownerUserId: "user.mobile",
         authToken: () => token,
@@ -206,6 +210,10 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       token = "access.two"
       expect(capturedAuthToken?.()).toBe("access.two")
       expect(host.status().lastDeltaAt).not.toBeNull()
+      expect(host.status().identityTier).toBe("account_linked")
+      host.unlinkAccount()
+      expect(host.status().identityTier).toBe("local_only")
+      expect(host.conversation()).toBeNull()
       host.close()
       expect(lifecycle.slice(-2)).toEqual(["session", "store"])
     } finally {
@@ -223,6 +231,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       })
       const denied = liveTransport({ bootstraps: [], lifecycle: [] })
       host.connectAuthenticated({
+        verification:"server_verified",
         baseUrl: "https://openagents.example",
         ownerUserId: "user.denied",
         authToken: () => "rejected",

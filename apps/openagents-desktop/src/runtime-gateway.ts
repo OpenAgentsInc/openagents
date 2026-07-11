@@ -103,6 +103,7 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
   { id: "workspace", state: "available" },
   { id: "git-review", state: "available" },
   { id: "provider-accounts", state: "available" },
+  {id:"local-identity",state:input.syncLocalState==="ready"?"available":"unavailable",...(input.syncLocalState==="ready"?{}:{reason:"Device-local identity persistence is unavailable."})},
   {
     id: "openagents-session",
     state: input.sessionLocalState === "session_ready" ? "available" : "unavailable",
@@ -150,6 +151,7 @@ export const createDesktopRuntimeGateway = (
   conversation: () => DesktopRuntimeConversation | null = () => null,
   timeline: () => DesktopRuntimeAgentTimeline | null = () => null,
   codexHistory: () => DesktopRuntimeCodexHistory | null = () => null,
+  identityTier:()=>"local_only"|"account_linked"|"local_unavailable"=()=>"local_unavailable",
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
@@ -262,6 +264,7 @@ export const createDesktopRuntimeGateway = (
             lifecycle: phase === "idle" ? "starting" : phase,
             protocolVersion: DesktopRuntimeGatewayProtocolVersion,
             sessionPhase: sessionPhase(),
+            identityTier:identityTier(),
           },
         }
       }

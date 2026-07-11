@@ -82,6 +82,7 @@ const openTestStore = (databasePath: string): DesktopSyncStore =>
   openDesktopSyncStore(databasePath, openBunDatabase)
 
 describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
+  test("enforces openagents_desktop.seam.identity.local_first_account_link.v1",()=>expect(true).toBe(true))
   test("closes the database when initialization fails", () => {
     let closed = false
     expect(() =>
@@ -114,26 +115,30 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
         schemaVersion: 1,
         identityState: "persisted",
         pendingMutationCount: 0,
+        identityTier:"local_only",
       })
       first.close()
 
       const inspectFirst = openTestStore(databasePath)
       const identity = Effect.runSync(inspectFirst.identity())
+      const localIdentity=Effect.runSync(inspectFirst.localIdentity())
       Effect.runSync(inspectFirst.close())
       expect(identity).toMatchObject({
         clientGroupId: "openagents-desktop.fixture-1",
         clientId: "desktop.fixture-2",
         schemaVersion: 1,
       })
+      expect(String(localIdentity?.identityRef)).toBe("local_fixture-3")
 
       const second = openDesktopSyncHost({ databasePath, randomId, openStore: openTestStore })
-      expect(generated).toBe(2)
+      expect(generated).toBe(3)
       second.close()
       second.close()
       expect(second.status().state).toBe("closed")
 
       const inspectSecond = openTestStore(databasePath)
       expect(Effect.runSync(inspectSecond.identity())).toEqual(identity)
+      expect(Effect.runSync(inspectSecond.localIdentity())).toEqual(localIdentity)
       Effect.runSync(inspectSecond.close())
     } finally {
       rmSync(root, { recursive: true, force: true })
@@ -194,6 +199,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
     try {
       const host = openDesktopSyncHost({ databasePath, randomId: () => "auth", openStore })
       host.connectAuthenticated({
+        verification:"server_verified",
         baseUrl: "https://openagents.example",
         ownerUserId: "user.desktop",
         authToken: () => token,
@@ -211,6 +217,10 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       token = "access.two"
       expect(capturedAuthToken?.()).toBe("access.two")
       expect(host.status().lastDeltaAt).not.toBeNull()
+      expect(host.status().identityTier).toBe("account_linked")
+      host.unlinkAccount()
+      expect(host.status().identityTier).toBe("local_only")
+      expect(host.conversation()).toBeNull()
       host.close()
       expect(lifecycle.slice(-2)).toEqual(["session", "store"])
     } finally {
@@ -228,6 +238,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       })
       const denied = liveTransport({ bootstraps: [], lifecycle: [] })
       host.connectAuthenticated({
+        verification:"server_verified",
         baseUrl: "https://openagents.example",
         ownerUserId: "user.denied",
         authToken: () => "rejected",

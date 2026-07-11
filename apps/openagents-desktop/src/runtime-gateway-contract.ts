@@ -3,7 +3,7 @@ import { CodexHistoryCatalogSchema, CodexHistoryPageSchema } from "./codex-histo
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 4 as const
+export const DesktopRuntimeGatewayProtocolVersion = 5 as const
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -48,6 +48,7 @@ export const DesktopRuntimeCapabilityIdSchema = Schema.Literals([
   "conversation-stream",
   "git-review",
   "khala-sync",
+  "local-identity",
   "openagents-session",
   "provider-accounts",
   "workspace",
@@ -123,6 +124,7 @@ const DesktopRuntimeBootstrapSchema = Schema.Struct({
   protocolVersion: Schema.Literal(DesktopRuntimeGatewayProtocolVersion),
   lifecycle: Schema.Literals(["starting", "ready", "disposed"]),
   sessionPhase: Schema.Literals(["signed_out", "unverified", "session_ready", "denied", "unavailable"]),
+  identityTier:Schema.Literals(["local_only","account_linked","local_unavailable"]),
   capabilities: Schema.Array(DesktopRuntimeCapabilitySchema),
 })
 

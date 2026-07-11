@@ -23,6 +23,8 @@ import {
   SyncScope,
   SyncVersion,
   SyncVersionWatermark,
+  deviceLocalScope,
+  LocalIdentityRef,
 } from "@openagentsinc/khala-sync"
 import { afterEach, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
@@ -579,6 +581,7 @@ describe("computeBackoffMs", () => {
 })
 
 describe("khala-sync session (fake transport, injected time)", () => {
+  test("refuses device-local scopes before hosted transport",async()=>{const server=new FakeSyncServer();const {session}=makeHarness(server);const exit=await Effect.runPromiseExit(session.subscribe(deviceLocalScope(LocalIdentityRef.make("local_fixture"))));expect(exit._tag).toBe("Failure");expect(server.logs.size).toBe(0)})
   test("fresh subscribe: bootstrap pages → catch-up → live; entries land via overlay", async () => {
     const server = new FakeSyncServer()
     server.bootstrapPageSize = 1 // force multi-page snapshot

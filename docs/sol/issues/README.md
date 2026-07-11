@@ -9,7 +9,7 @@ The live GitHub issue is the operational copy and claim ledger. When a checked-
 in source and live body differ, reconcile both before using the body for
 dispatch.
 
-As of 2026-07-10 there are seven open `roadmap:sol` records under one program
+As of 2026-07-10 there are six open `roadmap:sol` records under one program
 parent. Older Sarah-first/P1 labels do not override Master Revision 28.
 
 ## P0 — reliable Desktop/mobile fleet software
@@ -35,6 +35,9 @@ Closed bounded Desktop D1 leaf:
   #8674 loss-accounted historical Codex parent/subagent/tool rendering and the
   opinionated Desktop Agents/Item inspector, delivered through Runtime Gateway
   v4 with synthetic scale and structure-only real-history receipts.
+- [`local-first-identity.md`](./local-first-identity.md) — #8666 immutable
+  device-local identity/authority plus optional reversible OpenAgents account
+  linking on Desktop and mobile.
 
 Closed #8673 at `bf4037e923` is the schema-bounded Runtime Gateway v3 confirmed
 timeline seam consumed by #8674; it explicitly did not add visible UI.

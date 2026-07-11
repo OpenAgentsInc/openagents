@@ -56,12 +56,9 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     await Effect.runPromise(settle)
     const state = await Effect.runPromise(lastState(program))
     const content = JSON.stringify(renderContentView({ ...state, surfaceMode: "openagents" }))
-    expect(syncStatusCopy("local_ready")).toEqual({
-      title: "Local Sync ready",
-      detail: "Local data is durable. Connect an OpenAgents session to sync shared work.",
-    })
-    expect(content).toContain("Local Sync ready")
-    expect(content).toContain("Connect an OpenAgents session")
+    expect(syncStatusCopy("local_ready")).toEqual({title:"Local device ready",detail:"Coding, conversations, and fleets work without an account. Link OpenAgents only for cross-device Sync and network features."})
+    expect(content).toContain("Local device ready")
+    expect(content).toContain("Link OpenAgents")
     expect(content).not.toContain("Sync live")
   })
 
@@ -105,7 +102,7 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
       surfaceMode: "openagents",
       syncPhase: "local_ready",
     }))
-    expect(signedOutView).toContain("Sign in with GitHub")
+    expect(signedOutView).toContain("Link OpenAgents account")
     program.session.signIn()
     program.session.signOut()
     await Effect.runPromise(settle)

@@ -69,9 +69,9 @@ describe("settingsView (state -> component tree)", () => {
       ...initialSettingsState(),
       openAgentsSession: "signed_out",
     })
-    expect(nodeByKey(signedOut, "settings-openagents-session-status")?.label).toBe("Signed out")
+    expect(nodeByKey(signedOut, "settings-openagents-session-status")?.label).toBe("Local device ready")
     const signIn = nodeByKey(signedOut, "settings-openagents-session-action")
-    expect(signIn?.label).toBe("Sign in with GitHub")
+    expect(signIn?.label).toBe("Link OpenAgents account")
     expect((signIn as { onPress?: { name?: string } }).onPress?.name).toBe(
       "DesktopOpenAgentsSignInRequested",
     )
@@ -81,10 +81,10 @@ describe("settingsView (state -> component tree)", () => {
       openAgentsSession: "session_ready",
     })
     expect(nodeByKey(ready, "settings-openagents-session-status")?.label).toBe(
-      "OpenAgents session verified",
+      "OpenAgents account linked",
     )
     const signOut = nodeByKey(ready, "settings-openagents-session-action")
-    expect(signOut?.label).toBe("Sign out")
+    expect(signOut?.label).toBe("Disconnect account")
     expect((signOut as { onPress?: { name?: string } }).onPress?.name).toBe(
       "DesktopOpenAgentsSignOutRequested",
     )

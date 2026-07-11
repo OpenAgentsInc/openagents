@@ -21,6 +21,7 @@ import {
   SyncVersion,
   SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
+import { isDeviceLocalScope } from "@openagentsinc/khala-sync"
 import { Cause, Effect, Exit, Queue, Stream } from "effect"
 import type { ClientMutator, KhalaSyncOverlay, OverlayError } from "./overlay.js"
 import type { ConfirmedEntity, KhalaSyncLocalStore } from "./store.js"
@@ -1023,6 +1024,7 @@ export const createKhalaSyncSession = (
   ): Effect.Effect<void, OverlayError> =>
     Effect.gen(function* () {
       if (closed) return
+      if(isDeviceLocalScope(scope)) return yield* Effect.die(new Error("device-local scopes cannot use hosted Khala Sync transport"))
       yield* store.setIdentity({
         clientId: config.clientId,
         clientGroupId: config.clientGroupId,

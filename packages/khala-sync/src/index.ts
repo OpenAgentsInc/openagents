@@ -162,6 +162,11 @@ export const fleetRunScope = (fleetRunId: string): SyncScope =>
 export const publicScope = (channel: string): SyncScope =>
   scope("public", channel)
 
+// Device-local authority is intentionally exported from a separate module;
+// hosted transport must reject it rather than treating syntactic validity as
+// server authorization.
+export * from "./local-authority.js"
+
 const isSyncScope = S.is(SyncScope)
 
 /**

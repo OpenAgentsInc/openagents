@@ -27,7 +27,10 @@ imports nothing from it.
   `@effect-native/tokens`.
 - `src/sync/mobile-sync-host.ts` — host-owned Expo SQLite composition over the
   shared Khala Sync store core. It owns the native handle and installation
-  identity, composes production HTTP/WebSocket Sync only after session
+  identity plus a separate immutable device-local identity/local-authority
+  store. The app is usable without OpenAuth; server-verified account linking
+  is an optional, reversible upgrade and unlink/denial retains local rows. It
+  composes production HTTP/WebSocket Sync only after session
   verification, subscribes the server-derived owner's personal scope, closes
   session-before-store on OTA reload/unmount, and never projects credentials,
   owner refs, or native handles into the Effect Native view program.

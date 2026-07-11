@@ -287,7 +287,9 @@ export const openKhalaSyncWasmStore = (
       catch: toStoreError,
     })
 
+  const localUnavailable=<A>():Effect.Effect<A,KhalaSyncClientStoreError>=>Effect.fail(new KhalaSyncClientStoreError("storage_failure","device-local authority is unavailable in the web Sync store"))
   return {
+    localIdentity:localUnavailable,setLocalIdentity:localUnavailable,localAccountLink:localUnavailable,setLocalAccountLink:localUnavailable,clearLocalAccountLink:localUnavailable,writeLocalEntities:localUnavailable,readLocalEntities:localUnavailable,
     cursor: (scope) =>
       rpc({ op: "cursor", scope }, (value) =>
         value === null || value === undefined

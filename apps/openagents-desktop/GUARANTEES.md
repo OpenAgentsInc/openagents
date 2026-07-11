@@ -117,7 +117,19 @@ Contract: `openagents_desktop.seam.runtime_gateway_agent_timeline.v1`.
 
 ### Visible authoritative Sync conversation mode
 
-The existing Effect Native shell consumes Runtime Gateway v4 through a typed
+### Local-first identity and optional account link
+
+Desktop creates an immutable device-local identity before OpenAuth. Local
+authority uses separate SQLite tables, `LocalRevision`, and a device-local
+scope that hosted Sync rejects. Runtime Gateway v5 exposes only the tier, never
+the identity/owner ref. A server-verified account link adds personal Sync;
+disconnect, denial, failed link, and restart preserve the local identity and
+local rows. The workbench, history, local Pylon, and local conversation path do
+not require an OpenAgents account.
+
+Contract: `openagents_desktop.seam.identity.local_first_account_link.v1`.
+
+The existing Effect Native shell consumes Runtime Gateway v5 through a typed
 renderer adapter whenever confirmed conversation Sync is live at boot.
 
 - Sidebar and transcript map only confirmed thread/message projections.

@@ -4,6 +4,7 @@ import path from "node:path"
 import {
   ClientGroupId,
   ClientId,
+  LocalIdentityRef,
   personalScope,
   SyncSchemaVersion,
   type SyncScope,
@@ -35,6 +36,7 @@ export type DesktopSyncHostStatus = Readonly<{
   schemaVersion: number
   identityState: "persisted"
   pendingMutationCount: number
+  identityTier:"local_only"|"account_linked"
 }>
 
 export type DesktopSyncHost = Readonly<{
@@ -43,10 +45,12 @@ export type DesktopSyncHost = Readonly<{
   timeline: () => KhalaSyncAgentTimeline | null
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
+  unlinkAccount:()=>void
   close: () => void
 }>
 
 export type DesktopAuthenticatedSyncInput = Readonly<{
+  verification:"server_verified"
   baseUrl: string
   ownerUserId: string
   authToken: () => string
@@ -90,6 +94,7 @@ export const openDesktopSyncHost = (input: Readonly<{
         schemaVersion: DesktopSyncSchemaVersion,
       }))
     }
+    if(Effect.runSync(store.localIdentity())===null)Effect.runSync(store.setLocalIdentity({schemaVersion:1,identityRef:LocalIdentityRef.make(`local_${input.randomId()}`),createdAt:new Date().toISOString()}))
     secureLocalFiles(input.databasePath)
   } catch (error) {
     Effect.runSync(store.close())
@@ -119,6 +124,7 @@ export const openDesktopSyncHost = (input: Readonly<{
       schemaVersion: Number(DesktopSyncSchemaVersion),
       identityState: "persisted",
       pendingMutationCount: closed ? 0 : Effect.runSync(store.pendingMutations()).length,
+      identityTier:closed?"local_only":Effect.runSync(store.localAccountLink())===null?"local_only":"account_linked",
     }),
     conversation: () =>
       session !== null && scope !== null && session.state(scope).phase === "live"
@@ -131,12 +137,15 @@ export const openDesktopSyncHost = (input: Readonly<{
     connectAuthenticated: connection => {
       if (closed) throw new Error("desktop Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
-      if (ownerUserId === "" || connection.authToken().trim() === "") {
+      if (connection.verification!=="server_verified"||ownerUserId === "" || connection.authToken().trim() === "") {
         throw new Error("desktop authenticated Sync credential is incomplete")
       }
       disconnectAuthenticated()
       const identity = Effect.runSync(store.identity())
+      const localIdentity=Effect.runSync(store.localIdentity())
       if (identity === null) throw new Error("desktop Sync identity is unavailable")
+      if(localIdentity===null)throw new Error("desktop local identity is unavailable")
+      Effect.runSync(store.setLocalAccountLink({schemaVersion:1,identityRef:localIdentity.identityRef,ownerUserId,linkedAt:new Date().toISOString(),linkReceiptRef:`link_${input.randomId()}`}))
       const mutators = createChatClientMutators({
         ownerUserId,
         ...(connection.now === undefined ? {} : { now: connection.now }),
@@ -166,6 +175,7 @@ export const openDesktopSyncHost = (input: Readonly<{
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,
+    unlinkAccount:()=>{disconnectAuthenticated();Effect.runSync(store.clearLocalAccountLink())},
     close: () => {
       if (closed) return
       closed = true
