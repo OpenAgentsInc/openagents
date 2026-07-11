@@ -23,6 +23,9 @@ import {
 import { CodexHistoryCatalogSchema, CodexHistoryPageSchema } from "./codex-history-contract.ts"
 import { DesktopOperationContextSchema } from "./desktop-operation-context.ts"
 
+export type { ConfirmedRuntimeInteraction } from "@openagentsinc/khala-sync-client"
+export type { RuntimeInteractionDecisionEnvelope } from "@openagentsinc/khala-sync"
+
 /**
  * Effect Native currently pins a newer Effect build than Khala Sync. Keep the
  * canonical schema as the sole decoder and adapt it to the host's Effect
