@@ -53,10 +53,12 @@ import {
   type DesktopRuntimeGatewayEvent,
 } from "./runtime-gateway-contract.ts"
 import {
+  FableLocalAnswerQuestionChannel,
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
   FableLocalInterruptChannel,
   FableLocalStartChannel,
+  decodeFableLocalAnswerQuestionRequest,
   decodeFableLocalEventEnvelope,
   decodeFableLocalInterruptRequest,
   decodeFableLocalStartRequest,
@@ -169,6 +171,17 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     interrupt: (value: unknown) => {
       const request = decodeFableLocalInterruptRequest(value)
       return request === null ? Promise.resolve(false) : ipcRenderer.invoke(FableLocalInterruptChannel, request)
+    },
+    /**
+     * EP250 question flow: answers a pending AskUserQuestion
+     * ({ turnRef, questionRef, answers: [{ question, labels }] }).
+     * Resolves false (typed rejection) on schema-invalid or unknown refs.
+     */
+    answerQuestion: (value: unknown) => {
+      const request = decodeFableLocalAnswerQuestionRequest(value)
+      return request === null
+        ? Promise.resolve(false)
+        : ipcRenderer.invoke(FableLocalAnswerQuestionChannel, request)
     },
     onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
       const handler = (_event: unknown, value: unknown): void => {

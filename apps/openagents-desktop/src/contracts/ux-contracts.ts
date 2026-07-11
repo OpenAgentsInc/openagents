@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.25",
+    version: "2026-07-11.26",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
@@ -1095,6 +1095,77 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the settings, codex-connect, and fleet suites plus the Electron smoke journey asserting the revoked fixture account renders its Reconnect button in Settings.",
+      },
+      // -----------------------------------------------------------------------
+      // EP250 local Fable lane permissions (#8712): scoped writes + the
+      // AskUserQuestion flow. Source incident (owner on-camera run,
+      // 2026-07-11): AskUserQuestion surfaced as "AskUserQuestion · failed ·
+      // Answer questions?" with no way to answer, and a requested Write
+      // failed with "Claude requested permissions to write to
+      // <workspace>/greetings.md, but you haven't granted it yet." — copy
+      // implying a grant flow no UI provides.
+      // -----------------------------------------------------------------------
+      {
+        contractId: "openagents_desktop.chat.fable_local_lane_scoped_write.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat local Fable lane permissions",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Writes are permitted only inside the turn/thread workspace; interactive-only tools are never offered to the model in this headless lane; out-of-scope denials say so honestly. The lane must never surface permission copy implying a grant flow exists (live incident: Write greetings.md failed with 'Claude requested permissions to write to <workspace>/greetings.md, but you haven't granted it yet.' — a grant no UI could give).",
+        authorityBoundary:
+          "Write/Edit are allowlisted but contained to the per-thread scratch workspace under userData by a PreToolUse boundary guard reusing pylon-core's canonicalized path-containment mechanics (toolInputEscapesWorkspace) — never the repo, never paths outside the workspace. An out-of-bounds write is a visible typed tool failure whose copy says it is out of scope for this lane ('writes are limited to the turn workspace'), never grant-flow copy. Plan-mode, notebook, and Skill tools are disallowed (never offered, not offered-then-denied); Bash and WebSearch stay off. The workspace persists per THREAD so follow-up turns see files earlier turns wrote. No new filesystem, shell, or network authority is granted.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "packages/pylon-core/src/executor/claude-agent-executor.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "fable_local_scoped_write.boundary_guard",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            description:
+              "Proves session options carry Write/Edit plus the PreToolUse guard; in-workspace writes pass and persist end-to-end through the fake SDK; out-of-bounds writes deny with the exact out-of-scope copy and never grant-flow copy; interactive-dead tools (EnterPlanMode/ExitPlanMode/NotebookEdit/Skill) are disallowed; per-thread workspaces persist across turns and isolate threads.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime suite covering the workspace boundary guard, honest denial copy, disallowed interactive tools, and per-thread workspace persistence.",
+      },
+      {
+        contractId: "openagents_desktop.chat.fable_local_question_flow.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat local Fable lane questions",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "make the question UI too. Why not? proper effect native primitives and add some if needed. (AskUserQuestion must be a real affordance: on camera it surfaced as 'AskUserQuestion · failed · Answer questions?' with no way to answer.)",
+        authorityBoundary:
+          "This contract covers the runtime/IPC half: AskUserQuestion parks on the SDK canUseTool callback, emits a bounded path-redacted question_pending event (questionRef stable per invocation; question/header/options/multiSelect), and resolves with the user's answers via the answer-question invoke channel as canUseTool allow + updatedInput answers keyed by original question text (multi-select comma-separated — the SDK's documented mechanism). No answer within the window resolves a graceful typed deny with outcome timeout; turn interrupt/failure/dispose resolves outcome denied; unknown or settled questionRefs and unmatched answers are typed rejections that never throw and never burn a pending question. Multiple pending questions settle independently without deadlock. The renderer supplies only schema-checked answers; no tool execution, filesystem, or session authority crosses the channel.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/preload.cts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "fable_local_question_flow.answer_roundtrip",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            description:
+              "Drives the real canUseTool path: question_pending with bounded questions, typed rejections for unknown/wrong-turn/unmatched answers, allow with updatedInput answers keyed by original question text, multiSelect comma-joined, timeout outcome with the turn continuing, interrupt outcome denied, and malformed input denied without parking a question.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).",
       },
     ],
   };

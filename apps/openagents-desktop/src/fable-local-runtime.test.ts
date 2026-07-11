@@ -5,7 +5,7 @@
  * never loaded, nothing falls through to any gateway).
  */
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { tmpdir, homedir } from "node:os"
 import { join } from "node:path"
 
@@ -18,9 +18,12 @@ import {
   FABLE_LOCAL_ALLOWED_TOOLS,
   FABLE_LOCAL_DISALLOWED_TOOLS,
   FABLE_LOCAL_MODEL,
+  FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON,
   FABLE_STREAM_CLOSE_TIMEOUT_MS,
   discoverReadyFableClaudeHomes,
+  fableThreadWorkspaceSlug,
   makeFableLocalRuntime,
+  makeFableWorkspaceGuard,
   makeFixtureFableLocalQuery,
   makeFixtureFableMcpFactory,
   redactFableLocalText,
@@ -79,6 +82,7 @@ type CapturedQuery = { prompt: string; options: Record<string, unknown> }
 const makeRuntimeHarness = (input: {
   script: (captured: CapturedQuery) => AsyncIterable<unknown>
   root?: string
+  questionTimeoutMs?: number
 }) => {
   const root = input.root ?? makeAccountRoot()
   const captured: CapturedQuery[] = []
@@ -91,6 +95,7 @@ const makeRuntimeHarness = (input: {
     scratchRoot: () => scratch,
     env: { PYLON_ACCOUNT_HOME_ROOT: root },
     queryImpl: async () => query,
+    ...(input.questionTimeoutMs === undefined ? {} : { questionTimeoutMs: input.questionTimeoutMs }),
   })
   return { runtime, captured, scratch, root }
 }
@@ -155,21 +160,37 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const completed = sink.events[5] as Extract<FableLocalEvent, { kind: "turn_completed" }>
     expect(completed.totalTokens).toBe(17)
 
-    // Conservative headless posture: read-only tools, no Bash/Write/WebSearch,
-    // partial streaming on, cwd inside the scratch root, isolated account env.
+    // Conservative headless posture (EP250 revision): read tools plus
+    // Write/Edit scoped to the thread workspace by the PreToolUse guard —
+    // still no Bash, no WebSearch. Partial streaming on, cwd inside the
+    // scratch root, isolated account env.
     const call = harness.captured[0]!
     expect(call.options.includePartialMessages).toBe(true)
     expect(call.options.permissionMode).toBe("default")
     expect(call.options.allowedTools).toEqual([...FABLE_LOCAL_ALLOWED_TOOLS])
     expect(call.options.allowedTools).not.toContain("Bash")
+    expect(call.options.allowedTools).not.toContain("WebSearch")
+    expect(call.options.allowedTools).toContain("Write")
+    expect(call.options.allowedTools).toContain("Edit")
+    // Workspace containment + real question flow travel on every session.
+    const hooks = call.options.hooks as { PreToolUse?: Array<{ hooks: Array<unknown> }> }
+    expect(typeof hooks.PreToolUse?.[0]?.hooks[0]).toBe("function")
+    expect(typeof call.options.canUseTool).toBe("function")
     // IT HAS TO BE FABLE: the requested model is pinned, never the account
     // home's default. Skills are removed from the lane entirely (the Skill
     // tool is disallowed and no skills are enabled), so a bundled skill can
-    // never auto-trigger and fail against the read-only whitelist.
+    // never auto-trigger and fail against the whitelist.
     expect(call.options.model).toBe(FABLE_LOCAL_MODEL)
     expect(call.options.model).toBe("claude-fable-5")
+    // Interactive-only tools that could only fail in this headless lane are
+    // never offered; AskUserQuestion IS offered (it has a real answer path).
     expect(call.options.disallowedTools).toEqual([...FABLE_LOCAL_DISALLOWED_TOOLS])
-    expect(call.options.disallowedTools).toEqual(["Skill"])
+    expect(call.options.disallowedTools).toContain("Skill")
+    expect(call.options.disallowedTools).toContain("EnterPlanMode")
+    expect(call.options.disallowedTools).toContain("ExitPlanMode")
+    expect(call.options.disallowedTools).toContain("NotebookEdit")
+    expect(call.options.disallowedTools).not.toContain("AskUserQuestion")
+    expect(call.options.allowedTools).not.toContain("AskUserQuestion")
     expect(call.options.skills).toEqual([])
     expect(call.options.settingSources).toEqual([])
     expect(String(call.options.cwd)).toStartWith(harness.scratch)
@@ -436,6 +457,351 @@ describe("makeFableLocalRuntime.runTurn", () => {
   test("availability reports the first ready account deterministically", async () => {
     const harness = makeRuntimeHarness({ script: async function* () {} })
     expect(await harness.runtime.availability()).toEqual({ state: "available", accountRef: "claude-pylon-b" })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// EP250: scoped write (workspace boundary) + per-thread workspace persistence
+// ---------------------------------------------------------------------------
+
+type CanUseToolFn = (
+  toolName: string,
+  input: Record<string, unknown>,
+  extra: { signal?: AbortSignal },
+) => Promise<Record<string, unknown>>
+
+type GuardFn = (hookInput: unknown) => Promise<Record<string, unknown>>
+
+const guardFrom = (captured: CapturedQuery): GuardFn => {
+  const hooks = captured.options.hooks as { PreToolUse: Array<{ hooks: Array<GuardFn> }> }
+  return hooks.PreToolUse[0]!.hooks[0]!
+}
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 2_000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
+  expect(predicate()).toBe(true)
+}
+
+describe("EP250 scoped write: workspace boundary guard", () => {
+  test("in-workspace paths pass; out-of-bounds paths deny with the honest out-of-scope copy (never grant-flow copy)", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "fable-guard-"))
+    const guard = makeFableWorkspaceGuard(workspace)
+    // Absolute in-workspace and cwd-relative writes are contained: no denial.
+    expect(await guard({ tool_name: "Write", tool_input: { file_path: join(workspace, "greetings.md") } })).toEqual({})
+    expect(await guard({ tool_name: "Write", tool_input: { file_path: "greetings.md" } })).toEqual({})
+    expect(await guard({ tool_name: "Edit", tool_input: { file_path: join(workspace, "notes", "a.md") } })).toEqual({})
+    // Outside the workspace: denied, visible, honest.
+    for (const escape of ["/etc/passwd", join(workspace, "..", "escape.md"), join(homedir(), "greetings.md")]) {
+      const denied = await guard({ tool_name: "Write", tool_input: { file_path: escape } }) as {
+        hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string }
+      }
+      expect(denied.hookSpecificOutput?.permissionDecision).toBe("deny")
+      const reason = denied.hookSpecificOutput?.permissionDecisionReason ?? ""
+      expect(reason).toBe(FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON)
+      expect(reason).toContain("writes are limited to the turn workspace")
+      expect(reason.toLowerCase()).toContain("out of scope")
+      // The live bug (EP250 on camera): copy implied a grant flow that does
+      // not exist. The honest copy must never suggest one.
+      expect(reason.toLowerCase()).not.toContain("granted")
+      expect(reason.toLowerCase()).not.toContain("grant")
+    }
+  })
+
+  test("in-workspace Write succeeds end-to-end through the fake SDK session (guard consulted, file persisted, ok tool_result)", async () => {
+    const sink = collect()
+    const written: string[] = []
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-write", model: FABLE_LOCAL_MODEL }
+        // Drive the REAL guard the runtime installed for this session, the
+        // same way the CLI would before an allowlisted Write executes.
+        const guard = guardFrom(captured)
+        const target = join(String(captured.options.cwd), "greetings.md")
+        const decision = await guard({ tool_name: "Write", tool_input: { file_path: target } })
+        if (Object.keys(decision).length !== 0) throw new Error("in-workspace write was denied")
+        writeFileSync(target, "# Greetings\n")
+        written.push(target)
+        yield {
+          type: "assistant",
+          message: { content: [{ type: "tool_use", id: "w1", name: "Write", input: { file_path: target } }] },
+        }
+        yield {
+          type: "user",
+          message: { content: [{ type: "tool_result", tool_use_id: "w1", content: "wrote greetings.md" }] },
+        }
+        yield { type: "result", subtype: "success", is_error: false, result: "Wrote greetings.md." }
+      },
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-write", threadRef: "thread-write", history: [], message: "write greetings.md", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(existsSync(written[0]!)).toBe(true)
+    const toolResult = sink.events.find(event => event.kind === "tool_result") as
+      Extract<FableLocalEvent, { kind: "tool_result" }>
+    expect(toolResult.ok).toBe(true)
+    expect(toolResult.toolName).toBe("Write")
+  })
+
+  test("per-THREAD workspace: the same thread reuses one cwd across turns (files persist); another thread gets its own", async () => {
+    const cwds: string[] = []
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        const cwd = String(captured.options.cwd)
+        cwds.push(cwd)
+        yield { type: "system", subtype: "init", session_id: `s-ws-${cwds.length}` }
+        if (cwds.length === 1) writeFileSync(join(cwd, "greetings.md"), "hello")
+        yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+      },
+    })
+    const sink = collect()
+    expect((await harness.runtime.runTurn({
+      turnRef: "turn-ws-1", threadRef: "thread-persist", history: [], message: "one", emit: sink.emit,
+    })).ok).toBe(true)
+    expect((await harness.runtime.runTurn({
+      turnRef: "turn-ws-2", threadRef: "thread-persist", history: [], message: "two", emit: sink.emit,
+    })).ok).toBe(true)
+    expect((await harness.runtime.runTurn({
+      turnRef: "turn-ws-3", threadRef: "thread-other", history: [], message: "three", emit: sink.emit,
+    })).ok).toBe(true)
+    // Same thread -> same workspace; the follow-up turn SEES the file the
+    // first turn wrote. Different thread -> a different bounded workspace.
+    expect(cwds[1]).toBe(cwds[0]!)
+    expect(cwds[2]).not.toBe(cwds[0]!)
+    expect(cwds[0]!).toStartWith(join(harness.scratch, "threads"))
+    expect(cwds[0]!).toContain(fableThreadWorkspaceSlug("thread-persist"))
+    expect(existsSync(join(cwds[1]!, "greetings.md"))).toBe(true)
+  })
+
+  test("thread workspace slugs are sanitized, bounded, and collision-safe", () => {
+    expect(fableThreadWorkspaceSlug("thread-a")).toBe(fableThreadWorkspaceSlug("thread-a"))
+    expect(fableThreadWorkspaceSlug("thread-a")).not.toBe(fableThreadWorkspaceSlug("thread-b"))
+    const hostile = fableThreadWorkspaceSlug("../../../etc/passwd")
+    expect(hostile).not.toContain("/")
+    expect(hostile).not.toContain("..")
+    expect(fableThreadWorkspaceSlug("x".repeat(500)).length).toBeLessThanOrEqual(60)
+  })
+
+  test("canUseTool denies non-question tools with honest copy (no grant flow implied)", async () => {
+    const decisions: Array<Record<string, unknown>> = []
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-deny" }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        decisions.push(await canUse("Bash", { command: "rm -rf /" }, { signal: new AbortController().signal }))
+        yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+      },
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-deny", threadRef: "thread-deny", history: [], message: "hi", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(decisions[0]).toEqual({ behavior: "deny", message: "Bash is not available in this lane." })
+    expect(String((decisions[0] as { message?: unknown }).message).toLowerCase()).not.toContain("grant")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// EP250: AskUserQuestion — a real question flow, not a dead affordance
+// ---------------------------------------------------------------------------
+
+const singleQuestionInput = (): Record<string, unknown> => ({
+  questions: [
+    {
+      question: "Which greeting style should greetings.md use?",
+      header: "Style",
+      options: [
+        { label: "Formal", description: "Businesslike tone" },
+        { label: "Casual", description: "Friendly tone" },
+      ],
+      multiSelect: false,
+    },
+  ],
+})
+
+describe("EP250 AskUserQuestion flow", () => {
+  test("question_pending -> answerQuestion -> allow with updatedInput.answers -> question_resolved answered (typed rejections along the way)", async () => {
+    const decisions: Array<Record<string, unknown>> = []
+    const sink = collect()
+    const rawInput = singleQuestionInput()
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-q1", model: FABLE_LOCAL_MODEL }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        const pendingDecision = canUse("AskUserQuestion", rawInput, { signal: new AbortController().signal })
+        // The pending event is emitted synchronously when the tool parks.
+        const pendingEvent = sink.events.find(event => event.kind === "question_pending") as
+          Extract<FableLocalEvent, { kind: "question_pending" }>
+        expect(pendingEvent).toBeDefined()
+        expect(pendingEvent.questionRef).toBe("q.turn-q1.1")
+        expect(pendingEvent.questions.length).toBe(1)
+        expect(pendingEvent.questions[0]!.header).toBe("Style")
+        expect(pendingEvent.questions[0]!.multiSelect).toBe(false)
+        expect(pendingEvent.questions[0]!.options.map(option => option.label)).toEqual(["Formal", "Casual"])
+        // Typed rejections: unknown ref, wrong turnRef, unmatched question.
+        expect(harness.runtime.answerQuestion({
+          turnRef: "turn-q1", questionRef: "q.nope.1",
+          answers: [{ question: pendingEvent.questions[0]!.question, labels: ["Formal"] }],
+        })).toBe(false)
+        expect(harness.runtime.answerQuestion({
+          turnRef: "another-turn", questionRef: pendingEvent.questionRef,
+          answers: [{ question: pendingEvent.questions[0]!.question, labels: ["Formal"] }],
+        })).toBe(false)
+        expect(harness.runtime.answerQuestion({
+          turnRef: "turn-q1", questionRef: pendingEvent.questionRef,
+          answers: [{ question: "a question that was never asked?", labels: ["Formal"] }],
+        })).toBe(false)
+        // The rejected deliveries burned nothing: the question is still open.
+        expect(sink.events.some(event => event.kind === "question_resolved")).toBe(false)
+        expect(harness.runtime.answerQuestion({
+          turnRef: "turn-q1", questionRef: pendingEvent.questionRef,
+          answers: [{ question: pendingEvent.questions[0]!.question, labels: ["Formal"] }],
+        })).toBe(true)
+        decisions.push(await pendingDecision)
+        // A second delivery after settle is a typed rejection.
+        expect(harness.runtime.answerQuestion({
+          turnRef: "turn-q1", questionRef: pendingEvent.questionRef,
+          answers: [{ question: pendingEvent.questions[0]!.question, labels: ["Casual"] }],
+        })).toBe(false)
+        yield { type: "result", subtype: "success", is_error: false, result: "done" }
+      },
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-q1", threadRef: "thread-q1", history: [], message: "write greetings.md", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    // The SDK answer mechanism: allow + updatedInput carrying the ORIGINAL
+    // questions plus the answers record keyed by original question text.
+    expect(decisions[0]).toEqual({
+      behavior: "allow",
+      updatedInput: {
+        ...rawInput,
+        answers: { "Which greeting style should greetings.md use?": "Formal" },
+      },
+    })
+    expect(sink.events.filter(event => event.kind === "question_resolved")).toEqual([
+      { kind: "question_resolved", questionRef: "q.turn-q1.1", outcome: "answered" },
+    ])
+  })
+
+  test("multiSelect answers join comma-separated (the SDK's documented multi-select encoding)", async () => {
+    const decisions: Array<Record<string, unknown>> = []
+    const sink = collect()
+    const rawInput: Record<string, unknown> = {
+      questions: [
+        {
+          question: "Which features do you want to enable?",
+          header: "Features",
+          options: [
+            { label: "Streaming", description: "Live deltas" },
+            { label: "History", description: "Bounded window" },
+            { label: "Tools", description: "Read-only set" },
+          ],
+          multiSelect: true,
+        },
+      ],
+    }
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-q-multi", model: FABLE_LOCAL_MODEL }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        const pendingDecision = canUse("AskUserQuestion", rawInput, { signal: new AbortController().signal })
+        const pendingEvent = sink.events.find(event => event.kind === "question_pending") as
+          Extract<FableLocalEvent, { kind: "question_pending" }>
+        expect(pendingEvent.questions[0]!.multiSelect).toBe(true)
+        expect(harness.runtime.answerQuestion({
+          turnRef: "turn-q-multi", questionRef: pendingEvent.questionRef,
+          answers: [{ question: pendingEvent.questions[0]!.question, labels: ["Streaming", "Tools"] }],
+        })).toBe(true)
+        decisions.push(await pendingDecision)
+        yield { type: "result", subtype: "success", is_error: false, result: "done" }
+      },
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-q-multi", threadRef: "thread-q-multi", history: [], message: "hi", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    const updated = (decisions[0] as { updatedInput?: { answers?: Record<string, string> } }).updatedInput
+    expect(updated?.answers).toEqual({ "Which features do you want to enable?": "Streaming, Tools" })
+  })
+
+  test("no answer inside the question window resolves a graceful typed deny with outcome timeout", async () => {
+    const decisions: Array<Record<string, unknown>> = []
+    const sink = collect()
+    const harness = makeRuntimeHarness({
+      questionTimeoutMs: 30,
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-q-timeout", model: FABLE_LOCAL_MODEL }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        decisions.push(await canUse("AskUserQuestion", singleQuestionInput(), { signal: new AbortController().signal }))
+        yield { type: "result", subtype: "success", is_error: false, result: "proceeded without input" }
+      },
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-q-timeout", threadRef: "thread-q-timeout", history: [], message: "hi", emit: sink.emit,
+    })
+    // Graceful: the QUESTION times out, the turn continues and completes.
+    expect(result.ok).toBe(true)
+    expect((decisions[0] as { behavior?: unknown }).behavior).toBe("deny")
+    expect(sink.events.filter(event => event.kind === "question_resolved")).toEqual([
+      { kind: "question_resolved", questionRef: "q.turn-q-timeout.1", outcome: "timeout" },
+    ])
+    // After timeout the ref is settled: late answers are typed rejections.
+    expect(harness.runtime.answerQuestion({
+      turnRef: "turn-q-timeout", questionRef: "q.turn-q-timeout.1",
+      answers: [{ question: "Which greeting style should greetings.md use?", labels: ["Formal"] }],
+    })).toBe(false)
+  })
+
+  test("interrupting the turn denies the pending question with outcome denied", async () => {
+    const sink = collect()
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-q-int", model: FABLE_LOCAL_MODEL }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        const decision = await canUse("AskUserQuestion", singleQuestionInput(), { signal: new AbortController().signal })
+        expect((decision as { behavior?: unknown }).behavior).toBe("deny")
+        // Mirror the real SDK: the aborted session throws out of the stream.
+        throw new Error("aborted by controller")
+      },
+    })
+    const pending = harness.runtime.runTurn({
+      turnRef: "turn-q-int", threadRef: "thread-q-int", history: [], message: "hi", emit: sink.emit,
+    })
+    await waitFor(() => sink.events.some(event => event.kind === "question_pending"))
+    expect(harness.runtime.interrupt("turn-q-int")).toBe(true)
+    const result = await pending
+    expect(result).toEqual({ ok: false, reason: "interrupted", detail: "turn interrupted" })
+    expect(sink.events.filter(event => event.kind === "question_resolved")).toEqual([
+      { kind: "question_resolved", questionRef: "q.turn-q-int.1", outcome: "denied" },
+    ])
+  })
+
+  test("malformed AskUserQuestion input is denied without parking a question", async () => {
+    const decisions: Array<Record<string, unknown>> = []
+    const sink = collect()
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-q-bad", model: FABLE_LOCAL_MODEL }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        decisions.push(await canUse("AskUserQuestion", { questions: [] }, { signal: new AbortController().signal }))
+        decisions.push(await canUse("AskUserQuestion", { questions: [{ question: "No options?" }] }, { signal: new AbortController().signal }))
+        yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+      },
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-q-bad", threadRef: "thread-q-bad", history: [], message: "hi", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    for (const decision of decisions) {
+      expect((decision as { behavior?: unknown }).behavior).toBe("deny")
+    }
+    expect(sink.events.some(event => event.kind === "question_pending")).toBe(false)
+    expect(sink.events.some(event => event.kind === "question_resolved")).toBe(false)
   })
 })
 

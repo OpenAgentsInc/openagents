@@ -28,6 +28,14 @@ export const FableLocalAvailabilityChannel = "openagents:fable-local:availabilit
 export const FableLocalStartChannel = "openagents:fable-local:start" as const
 export const FableLocalInterruptChannel = "openagents:fable-local:interrupt" as const
 export const FableLocalEventChannel = "openagents:fable-local:event" as const
+/**
+ * Interactive question flow (EP250): the renderer answers a pending
+ * AskUserQuestion via this invoke channel (`fableLocal.answerQuestion`).
+ * Resolves `true` when a pending question with that turnRef/questionRef
+ * accepted the answers; `false` is a typed rejection (unknown ref, already
+ * settled, or no answer matched a question) and the question stays pending.
+ */
+export const FableLocalAnswerQuestionChannel = "openagents:fable-local:answer-question" as const
 
 /** Bound on a single streamed text-delta event payload. */
 export const FABLE_LOCAL_DELTA_LIMIT = 2_000
@@ -79,6 +87,26 @@ export const FableChildUsageSchema = Schema.Struct({
   totalTokens: Schema.Number,
 })
 export type FableChildUsage = typeof FableChildUsageSchema.Type
+
+/**
+ * One AskUserQuestion question as projected to the renderer (EP250 question
+ * flow). Mirrors the SDK's AskUserQuestionInput shape (question, short
+ * header chip, 2-4 options with label + description, multiSelect) with every
+ * string bounded/redacted before it crosses the boundary.
+ */
+export const FableLocalQuestionOptionSchema = Schema.Struct({
+  label: Schema.String.check(Schema.isMaxLength(200)),
+  description: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT))),
+})
+export type FableLocalQuestionOption = typeof FableLocalQuestionOptionSchema.Type
+
+export const FableLocalQuestionSchema = Schema.Struct({
+  question: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  header: Schema.String.check(Schema.isMaxLength(120)),
+  options: Schema.Array(FableLocalQuestionOptionSchema).check(Schema.isMaxLength(4)),
+  multiSelect: Schema.Boolean,
+})
+export type FableLocalQuestion = typeof FableLocalQuestionSchema.Type
 
 export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
@@ -176,6 +204,31 @@ export const FableLocalEventSchema = Schema.Union([
     ]),
     detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
   }),
+  // -------------------------------------------------------------------------
+  // Interactive question flow (EP250, owner scope change: "make the question
+  // UI too") — additive. AskUserQuestion is a REAL affordance in this lane:
+  // the runtime parks the tool call on the SDK canUseTool callback, emits
+  // question_pending so the renderer can show a card, and resolves it when
+  // the user answers via the answer-question channel (or on timeout/turn
+  // end, honestly typed). Every string is bounded and path-redacted.
+  // -------------------------------------------------------------------------
+  Schema.Struct({
+    kind: Schema.Literal("question_pending"),
+    /** Stable per AskUserQuestion invocation within the turn. */
+    questionRef: Schema.String.check(Schema.isMaxLength(120)),
+    questions: Schema.Array(FableLocalQuestionSchema).check(Schema.isMaxLength(4)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("question_resolved"),
+    questionRef: Schema.String.check(Schema.isMaxLength(120)),
+    /**
+     * "answered": the user's selection flowed back to the model.
+     * "timeout": no answer inside the question window — the tool was denied
+     * gracefully (the model is told to proceed without the input).
+     * "denied": the turn ended (interrupt/failure/dispose) before an answer.
+     */
+    outcome: Schema.Literals(["answered", "timeout", "denied"]),
+  }),
 ])
 export type FableLocalEvent = typeof FableLocalEventSchema.Type
 
@@ -197,6 +250,27 @@ export const FableLocalInterruptRequestSchema = Schema.Struct({
 })
 export type FableLocalInterruptRequest = typeof FableLocalInterruptRequestSchema.Type
 
+/**
+ * Renderer answer to a pending question (EP250). One entry per answered
+ * question: `question` is the question text exactly as the question_pending
+ * event carried it (the runtime maps it back to the SDK's original text);
+ * `labels` are the selected option labels — one for single-select, several
+ * for multiSelect (the runtime joins them comma-separated, the SDK's
+ * documented multi-select answer encoding).
+ */
+export const FableLocalQuestionAnswerSchema = Schema.Struct({
+  question: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  labels: Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(8)),
+})
+export type FableLocalQuestionAnswer = typeof FableLocalQuestionAnswerSchema.Type
+
+export const FableLocalAnswerQuestionRequestSchema = Schema.Struct({
+  turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  questionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  answers: Schema.Array(FableLocalQuestionAnswerSchema).check(Schema.isMaxLength(4)),
+})
+export type FableLocalAnswerQuestionRequest = typeof FableLocalAnswerQuestionRequestSchema.Type
+
 export const decodeFableLocalStartRequest = (value: unknown): FableLocalStartRequest | null =>
   decode(FableLocalStartRequestSchema, value) as FableLocalStartRequest | null
 
@@ -204,6 +278,11 @@ export const decodeFableLocalInterruptRequest = (
   value: unknown,
 ): FableLocalInterruptRequest | null =>
   decode(FableLocalInterruptRequestSchema, value) as FableLocalInterruptRequest | null
+
+export const decodeFableLocalAnswerQuestionRequest = (
+  value: unknown,
+): FableLocalAnswerQuestionRequest | null =>
+  decode(FableLocalAnswerQuestionRequestSchema, value) as FableLocalAnswerQuestionRequest | null
 
 export const decodeFableLocalEventEnvelope = (value: unknown): FableLocalEventEnvelope | null =>
   decode(FableLocalEventEnvelopeSchema, value) as FableLocalEventEnvelope | null

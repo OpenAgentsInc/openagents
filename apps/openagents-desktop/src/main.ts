@@ -46,10 +46,12 @@ import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
+  FableLocalAnswerQuestionChannel,
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
   FableLocalInterruptChannel,
   FableLocalStartChannel,
+  decodeFableLocalAnswerQuestionRequest,
   decodeFableLocalInterruptRequest,
   decodeFableLocalStartRequest,
   fableLocalFailureMessage,
@@ -503,6 +505,14 @@ ipcMain.handle(FableLocalAvailabilityChannel, () => fableLocal.availability())
 ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
   return request === null ? false : fableLocal.interrupt(request.turnRef)
+})
+// EP250 question flow: the renderer's answer to a pending AskUserQuestion
+// routes to the runtime's pending-question registry. Schema-checked; an
+// unknown/settled questionRef or unmatched answers resolve false (typed
+// rejection) and never throw.
+ipcMain.handle(FableLocalAnswerQuestionChannel, (_event, value: unknown) => {
+  const request = decodeFableLocalAnswerQuestionRequest(value)
+  return request === null ? false : fableLocal.answerQuestion(request)
 })
 ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)

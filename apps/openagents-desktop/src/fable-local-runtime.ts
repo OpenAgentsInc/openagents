@@ -13,24 +13,37 @@
  * ever run: no ready sibling home means a typed unavailable result — never a
  * fall-through to the cloud gateway (the no-silent-substitution law).
  *
- * Safety bounds: the session cwd is a scratch directory under the app's
- * userData (never a repo), `permissionMode: "default"` with an explicit
- * read-only `allowedTools` set (Read/Glob/Grep — no Bash, no Write/Edit, no
- * WebSearch) and `settingSources: []`. In headless stream-json mode a
- * non-allowed tool is auto-denied by the CLI and surfaces here as a visible
- * `tool_result` trace event — a denied tool is evidence, not a hang. Every
- * emitted payload is bounded and path-redacted.
+ * Safety bounds (EP250 revision): the session cwd is a per-THREAD scratch
+ * workspace under the app's userData (never a repo), `permissionMode:
+ * "default"` with `allowedTools` Read/Glob/Grep plus Write/Edit — where
+ * Write/Edit are contained to that workspace by a PreToolUse boundary guard
+ * reusing pylon-core's proven `toolInputEscapesWorkspace` mechanics
+ * (canonicalized path containment; deny outside). An out-of-bounds write is
+ * a VISIBLE typed tool failure whose copy says it is out of scope for this
+ * lane — never copy implying a grant flow exists (none does). Bash and
+ * WebSearch stay off; interactive-only tools that could only fail headless
+ * (plan mode, notebook edit, Skill) are disallowed so the model never sees
+ * them. AskUserQuestion is REAL here: it parks on the SDK `canUseTool`
+ * callback, surfaces as a typed question_pending event, and resolves with
+ * the user's answers via `answerQuestion` (allow + updatedInput — the
+ * SDK-documented answer mechanism), with honest timeout/denied outcomes.
+ * `settingSources: []`; every emitted payload is bounded and path-redacted.
  *
  * Multi-turn: the runtime keeps an in-memory threadRef -> SDK session map and
  * resumes the session (`options.resume`) when this process already ran a turn
  * for the thread; otherwise it prepends bounded thread history to the prompt.
+ * The thread workspace is derived from threadRef, so a follow-up turn sees
+ * the files an earlier turn wrote.
  *
  * This module never imports `electron` (unit-testable under `bun test`); the
  * IPC wiring lives in main.ts.
  */
+import { createHash } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+
+import { toolInputEscapesWorkspace } from "@openagentsinc/pylon-core/executor/claude-agent-executor"
 
 import {
   discoverPylonSiblingAccountHomes,
@@ -45,9 +58,11 @@ import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FABLE_LOCAL_SUMMARY_LIMIT,
   type FableChildUsage,
+  type FableLocalAnswerQuestionRequest,
   type FableLocalAvailability,
   type FableLocalEvent,
   type FableLocalFailureReason,
+  type FableLocalQuestion,
 } from "./fable-local-contract.ts"
 import {
   CODEX_CHILD_MODEL,
@@ -57,8 +72,12 @@ import {
 } from "./codex-child-contract.ts"
 
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
-/** Read-only chat-turn tool set: no Bash, no Write/Edit, no WebSearch. */
-export const FABLE_LOCAL_ALLOWED_TOOLS = ["Read", "Glob", "Grep"] as const
+/**
+ * Chat-turn tool set (EP250): read tools plus Write/Edit, with Write/Edit
+ * contained to the per-thread scratch workspace by the PreToolUse boundary
+ * guard below. Still no Bash, no WebSearch.
+ */
+export const FABLE_LOCAL_ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit"] as const
 /**
  * The lane's requested model ("IT HAS TO BE FABLE"): the SDK `Options.model`
  * key accepts a full model ID and its own docs name `'claude-fable-5'` as an
@@ -69,14 +88,79 @@ export const FABLE_LOCAL_MODEL = "claude-fable-5"
 /** Prefix-match tolerance for versioned Fable IDs (e.g. claude-fable-5-…). */
 export const FABLE_LOCAL_MODEL_FAMILY_PREFIX = "claude-fable"
 /**
- * Skills are removed from this chat lane entirely: `disallowedTools: ["Skill"]`
- * strips the Skill tool from the model's context (never offered, not
- * offered-then-denied) and `skills: []` enables no skills, so bundled skill
- * listings never auto-trigger against the read-only whitelist.
+ * Tools this headless lane strips from the model's context entirely (never
+ * offered, not offered-then-denied — the model must not see tools that can
+ * only fail):
+ * - `Skill`: skills are removed from the chat lane (`skills: []` pairs with
+ *   this so bundled skill listings never auto-trigger).
+ * - `EnterPlanMode`/`ExitPlanMode`: plan mode is an interactive CLI flow with
+ *   no counterpart in this lane (seen dead on camera, EP250).
+ * - `NotebookEdit`: notebook editing has no surface here.
+ * - `ShowOnboardingRolePicker`: interactive-only host dialog (sdk-tools.d.ts).
+ * AskUserQuestion is deliberately NOT here — it is wired to a real question
+ * UI through the canUseTool answer path below.
  */
-export const FABLE_LOCAL_DISALLOWED_TOOLS = ["Skill"] as const
+export const FABLE_LOCAL_DISALLOWED_TOOLS = [
+  "Skill",
+  "EnterPlanMode",
+  "ExitPlanMode",
+  "NotebookEdit",
+  "ShowOnboardingRolePicker",
+] as const
 export const FABLE_LOCAL_MAX_TURNS = 16
 export const FABLE_LOCAL_TIMEOUT_MS = 180_000
+/**
+ * How long a pending AskUserQuestion waits for the user before resolving as
+ * a graceful typed deny (outcome "timeout"). The turn wall clock is PAUSED
+ * while a question is pending — waiting on the user is not model latency.
+ */
+export const FABLE_LOCAL_QUESTION_TIMEOUT_MS = 600_000
+/** The one interactive tool this lane answers through a real UI path. */
+export const FABLE_LOCAL_QUESTION_TOOL = "AskUserQuestion"
+/**
+ * Out-of-scope write denial copy (EP250). HONESTY LAW: this lane has no
+ * permission-grant flow, so the copy must say the write is out of scope for
+ * the lane — never "you haven't granted it yet" (seen live on camera: a
+ * grant prompt no UI could satisfy).
+ */
+export const FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON =
+  "fable_local.workspace_boundary: out of scope for this lane — writes are limited to the turn workspace. Use a relative path inside the current working directory."
+
+/**
+ * Deterministic per-thread workspace directory name under
+ * `<scratchRoot>/threads/`. Persistent for the life of userData, so a
+ * follow-up turn in the same thread sees files an earlier turn wrote.
+ * Sanitized (no dots, no separators) plus a digest suffix so distinct
+ * threadRefs can never collide or traverse.
+ */
+export const fableThreadWorkspaceSlug = (threadRef: string): string => {
+  const digest = createHash("sha256").update(threadRef).digest("hex").slice(0, 12)
+  const safe = threadRef.replace(/[^A-Za-z0-9_-]/g, "-").replace(/^-+/, "").slice(0, 40)
+  return safe.length === 0 ? `thread-${digest}` : `${safe}-${digest}`
+}
+
+/**
+ * PreToolUse workspace-boundary guard: the same mechanics as pylon-core's
+ * proven claude-agent-executor hook (packages/pylon-core/src/executor/
+ * claude-agent-executor.ts, `guard` + `toolInputEscapesWorkspace`) — path
+ * fields canonicalized and required to resolve under the workspace root,
+ * deny outside. The denial surfaces as a visible typed tool failure with
+ * the honest out-of-scope copy above.
+ */
+export const makeFableWorkspaceGuard = (workspace: string) =>
+  async (hookInput: unknown): Promise<Record<string, unknown>> => {
+    const record = hookInput as { tool_name?: string; tool_input?: unknown }
+    if (toolInputEscapesWorkspace(record.tool_name, record.tool_input, workspace)) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse" as const,
+          permissionDecision: "deny" as const,
+          permissionDecisionReason: FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON,
+        },
+      }
+    }
+    return {}
+  }
 /**
  * Codex delegation (#8712 Lane C): the fully-qualified SDK MCP tool name.
  * It must be listed in `allowedTools` (next to Read/Glob/Grep) or the CLI
@@ -186,6 +270,8 @@ export type FableLocalRuntimeOptions = Readonly<{
   /** Injectable MCP construction (tests, smoke fixture). */
   mcpImpl?: () => Promise<FableSdkMcpFactory>
   timeoutMs?: number
+  /** Pending-question window override (tests). Default 10 minutes. */
+  questionTimeoutMs?: number
 }>
 
 const bounded = (value: string, limit: number): string =>
@@ -347,7 +433,70 @@ export type FableLocalRuntime = Readonly<{
   availability: () => Promise<FableLocalAvailability>
   runTurn: (input: FableLocalTurnInput) => Promise<FableLocalTurnResult>
   interrupt: (turnRef: string) => boolean
+  /**
+   * Delivers the user's answers to a pending AskUserQuestion (EP250 question
+   * flow). Returns true when the pending question accepted the answers and
+   * the tool call resolved; false is a typed rejection — unknown or already
+   * settled questionRef, turnRef mismatch, or no answer matching any asked
+   * question — and a still-pending question stays pending.
+   */
+  answerQuestion: (request: FableLocalAnswerQuestionRequest) => boolean
   dispose: () => void
+}>
+
+/**
+ * Parsed AskUserQuestion input: the bounded/redacted questions the renderer
+ * sees, plus the event-text -> original-text map so answers key back to the
+ * SDK's exact question strings (the answers record is keyed by question
+ * text; truncation must never break that keying).
+ */
+type ParsedFableQuestions = Readonly<{
+  eventQuestions: ReadonlyArray<FableLocalQuestion>
+  originalByEventText: ReadonlyMap<string, string>
+}>
+
+const parseAskUserQuestions = (
+  rawInput: Record<string, unknown>,
+  redact: (value: string) => string,
+): ParsedFableQuestions | null => {
+  const rawQuestions = rawInput.questions
+  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) return null
+  const eventQuestions: Array<FableLocalQuestion> = []
+  const originalByEventText = new Map<string, string>()
+  for (const candidate of rawQuestions.slice(0, 4)) {
+    if (candidate === null || typeof candidate !== "object") return null
+    const record = candidate as Record<string, unknown>
+    if (typeof record.question !== "string" || record.question.trim() === "") return null
+    const rawOptions = Array.isArray(record.options) ? record.options.slice(0, 4) : []
+    const parsedOptions: Array<{ label: string; description?: string }> = []
+    for (const option of rawOptions) {
+      if (option === null || typeof option !== "object") continue
+      const optionRecord = option as Record<string, unknown>
+      if (typeof optionRecord.label !== "string" || optionRecord.label.trim() === "") continue
+      parsedOptions.push({
+        label: bounded(redact(optionRecord.label), 200),
+        ...(typeof optionRecord.description === "string" && optionRecord.description.length > 0
+          ? { description: bounded(redact(optionRecord.description), FABLE_LOCAL_SUMMARY_LIMIT) }
+          : {}),
+      })
+    }
+    if (parsedOptions.length === 0) return null
+    const eventText = bounded(redact(record.question), FABLE_LOCAL_SUMMARY_LIMIT)
+    eventQuestions.push({
+      question: eventText,
+      header: bounded(typeof record.header === "string" ? redact(record.header) : "", 120),
+      options: parsedOptions,
+      multiSelect: record.multiSelect === true,
+    })
+    originalByEventText.set(eventText, record.question)
+  }
+  return { eventQuestions, originalByEventText }
+}
+
+type PendingFableQuestion = Readonly<{
+  turnRef: string
+  accept: (answers: FableLocalAnswerQuestionRequest["answers"]) => boolean
+  denyForTurnEnd: () => void
 }>
 
 export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableLocalRuntime => {
@@ -362,6 +511,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     if (typeof sdk.query !== "function") throw new Error("Claude Agent SDK did not expose query().")
     return sdk.query as FableLocalQuery
   })
+  const questionTimeoutMs = options.questionTimeoutMs ?? FABLE_LOCAL_QUESTION_TIMEOUT_MS
   const activeTurns = new Map<string, { interrupted: boolean; abort: () => void }>()
   /**
    * In-memory continuity: threadRef -> last completed SDK session, pinned to
@@ -369,6 +519,13 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
    * isolated account home).
    */
   const sessionByThread = new Map<string, { sessionId: string; accountRef: string }>()
+  /**
+   * Pending AskUserQuestion registry, keyed by questionRef (which embeds the
+   * turnRef, so refs never collide across turns). Parallel-safe: several
+   * questions may be pending at once without deadlock — each entry settles
+   * independently on answer, timeout, or turn end.
+   */
+  const pendingQuestions = new Map<string, PendingFableQuestion>()
 
   const availability = async (): Promise<FableLocalAvailability> => {
     const ready = await discover()
@@ -399,13 +556,20 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       return emitFailure(failure("sdk_unavailable", error instanceof Error ? error.name : "sdk import failed"))
     }
 
-    const workspace = join(options.scratchRoot(), "turns")
+    // Per-THREAD scratch workspace (EP250): derived from threadRef and stable
+    // across turns, so a follow-up turn sees the files an earlier turn wrote
+    // (e.g. greetings.md). Always under userData's scratch root — never a
+    // repo, never shared across threads.
+    const workspace = join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
     try {
       mkdirSync(workspace, { recursive: true })
     } catch (error) {
       return emitFailure(failure("session_failed", error instanceof Error ? error.name : "workspace unavailable"))
     }
     const redact = (value: string): string => redactFableLocalText(value, { workspace })
+    const workspaceGuard = makeFableWorkspaceGuard(workspace)
+    /** Per-turn AskUserQuestion sequence for stable questionRefs. */
+    const questionState = { sequence: 0 }
 
     // -----------------------------------------------------------------------
     // Codex delegation (#8712 Lane C): one SDK MCP server exposing
@@ -586,10 +750,127 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       control.inner = abort
       if (control.interrupted) abort.abort()
       let timedOut = false
-      const timer = setTimeout(() => {
+      // Pausable wall clock: waiting on the USER (a pending question) is not
+      // model latency, so the turn budget is suspended while questions are
+      // pending and resumes with the remaining allowance afterwards.
+      const clock = {
+        remainingMs: timeoutMs,
+        startedAt: Date.now(),
+        pauses: 0,
+        timer: null as ReturnType<typeof setTimeout> | null,
+      }
+      const onTimeout = (): void => {
         timedOut = true
         abort.abort()
-      }, timeoutMs)
+      }
+      clock.timer = setTimeout(onTimeout, clock.remainingMs)
+      const pauseTurnClock = (): void => {
+        clock.pauses += 1
+        if (clock.timer !== null) {
+          clearTimeout(clock.timer)
+          clock.timer = null
+          clock.remainingMs = Math.max(clock.remainingMs - (Date.now() - clock.startedAt), 1_000)
+        }
+      }
+      const resumeTurnClock = (): void => {
+        clock.pauses = Math.max(0, clock.pauses - 1)
+        if (clock.pauses === 0 && clock.timer === null && !timedOut && !abort.signal.aborted) {
+          clock.startedAt = Date.now()
+          clock.timer = setTimeout(onTimeout, clock.remainingMs)
+        }
+      }
+
+      /**
+       * AskUserQuestion answer path (EP250). Mechanism receipt: the SDK
+       * routes AskUserQuestion through `canUseTool`; the host resolves it
+       * with `{ behavior: "allow", updatedInput: { ...input, answers } }`
+       * where `answers` maps question text -> selected label(s), multi-select
+       * comma-separated (AskUserQuestionOutput.answers in sdk-tools.d.ts;
+       * same flow as Anthropic's ask-user-question-previews demo).
+       */
+      const awaitUserAnswer = (
+        rawInput: Record<string, unknown>,
+        signal: AbortSignal | undefined,
+      ): Promise<Record<string, unknown>> =>
+        new Promise(resolveAnswer => {
+          const parsed = parseAskUserQuestions(rawInput, redact)
+          if (parsed === null) {
+            resolveAnswer({
+              behavior: "deny",
+              message: "AskUserQuestion input was malformed; ask again with 1-4 questions, each with 2-4 labeled options.",
+            })
+            return
+          }
+          questionState.sequence += 1
+          const questionRef = bounded(`q.${input.turnRef}.${questionState.sequence}`, 120)
+          pauseTurnClock()
+          let settled = false
+          let questionTimer: ReturnType<typeof setTimeout> | null = null
+          const settle = (
+            outcome: "answered" | "timeout" | "denied",
+            result: Record<string, unknown>,
+          ): void => {
+            if (settled) return
+            settled = true
+            pendingQuestions.delete(questionRef)
+            if (questionTimer !== null) clearTimeout(questionTimer)
+            if (signal !== undefined) signal.removeEventListener("abort", onQuestionAbort)
+            resumeTurnClock()
+            input.emit({ kind: "question_resolved", questionRef, outcome })
+            resolveAnswer(result)
+          }
+          const onQuestionAbort = (): void =>
+            settle("denied", { behavior: "deny", message: "The turn ended before the user answered." })
+          questionTimer = setTimeout(
+            () => settle("timeout", {
+              behavior: "deny",
+              message: "The user did not answer within the question window. Proceed without this input or finish the turn.",
+            }),
+            questionTimeoutMs,
+          )
+          pendingQuestions.set(questionRef, {
+            turnRef: input.turnRef,
+            accept: answers => {
+              const record: Record<string, string> = {}
+              for (const entry of answers) {
+                const original = parsed.originalByEventText.get(entry.question)
+                if (original === undefined) continue
+                const labels = entry.labels.map(label => label.trim()).filter(label => label.length > 0)
+                if (labels.length === 0) continue
+                record[original] = labels.join(", ")
+              }
+              if (Object.keys(record).length === 0) return false
+              settle("answered", {
+                behavior: "allow",
+                updatedInput: { ...rawInput, answers: record },
+              })
+              return true
+            },
+            denyForTurnEnd: onQuestionAbort,
+          })
+          if (signal?.aborted === true || control.interrupted) {
+            onQuestionAbort()
+            return
+          }
+          if (signal !== undefined) signal.addEventListener("abort", onQuestionAbort, { once: true })
+          input.emit({ kind: "question_pending", questionRef, questions: parsed.eventQuestions })
+        })
+
+      /**
+       * Every non-auto-allowed tool call lands here. AskUserQuestion parks on
+       * the real question flow; anything else is denied with honest copy —
+       * this lane has no grant flow, so nothing ever claims one exists.
+       */
+      const canUseTool = async (
+        toolName: string,
+        toolInput: Record<string, unknown>,
+        extra: { signal?: AbortSignal } | undefined,
+      ): Promise<Record<string, unknown>> => {
+        if (toolName === FABLE_LOCAL_QUESTION_TOOL) {
+          return awaitUserAnswer(toolInput, extra?.signal)
+        }
+        return { behavior: "deny", message: `${toolName} is not available in this lane.` }
+      }
 
       const continuity = sessionByThread.get(input.threadRef)
       const resumeSessionId =
@@ -614,7 +895,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       const finish = (
         result: FableLocalTurnResult,
       ): Readonly<{ result: FableLocalTurnResult; sawContent: boolean }> => {
-        clearTimeout(timer)
+        if (clock.timer !== null) clearTimeout(clock.timer)
         return { result, sawContent }
       }
 
@@ -640,6 +921,12 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               ? [...FABLE_LOCAL_ALLOWED_TOOLS]
               : [...FABLE_LOCAL_ALLOWED_TOOLS, FABLE_DELEGATE_TOOL_NAME],
             disallowedTools: [...FABLE_LOCAL_DISALLOWED_TOOLS],
+            // Workspace containment (EP250): Write/Edit are auto-allowed
+            // ONLY inside the thread workspace — the PreToolUse guard denies
+            // any path outside it with the honest out-of-scope copy.
+            hooks: { PreToolUse: [{ hooks: [workspaceGuard] }] },
+            // AskUserQuestion answers + honest denials for everything else.
+            canUseTool,
             skills: [],
             settingSources: [],
             ...(mcpServers === null ? {} : { mcpServers }),
@@ -801,6 +1088,11 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       }
       return emitFailure(last)
     } finally {
+      // Turn end denies any question still pending for THIS turn (typed
+      // outcome "denied") so no canUseTool promise dangles past the turn.
+      for (const pending of [...pendingQuestions.values()]) {
+        if (pending.turnRef === input.turnRef) pending.denyForTurnEnd()
+      }
       activeTurns.delete(input.turnRef)
     }
   }
@@ -811,10 +1103,22 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     interrupt: turnRef => {
       const active = activeTurns.get(turnRef)
       if (active === undefined) return false
+      // Deny this turn's pending questions FIRST so a session parked on the
+      // canUseTool promise unwinds instead of dangling past the abort.
+      for (const pending of [...pendingQuestions.values()]) {
+        if (pending.turnRef === turnRef) pending.denyForTurnEnd()
+      }
       active.abort()
       return true
     },
+    answerQuestion: request => {
+      const pending = pendingQuestions.get(request.questionRef)
+      if (pending === undefined || pending.turnRef !== request.turnRef) return false
+      return pending.accept(request.answers)
+    },
     dispose: () => {
+      for (const pending of [...pendingQuestions.values()]) pending.denyForTurnEnd()
+      pendingQuestions.clear()
       for (const active of activeTurns.values()) active.abort()
       activeTurns.clear()
       sessionByThread.clear()
