@@ -1,0 +1,52 @@
+[
+  {
+    "step": "shell-mounted",
+    "ok": true,
+    "detail": "{\"dock\":[\"workspace-new-chat\",\"workspace-fleet\",\"workspace-chat\",\"workspace-files\",\"workspace-home\",\"shell-command-palette-toggle\",\"shell-settings-toggle\"]}"
+  },
+  {
+    "step": "fleet-workspace",
+    "ok": true,
+    "detail": "{\"accountCount\":10,\"asOf\":\"as of 12:09:46\",\"rows\":[{\"ref\":\"claude-pylon-2\",\"provider\":\"claude_agent\",\"readiness\":\"ready\"},{\"ref\":\"claude-pylon-3\",\"provider\":\"claude_agent\",\"readiness\":\"ready\"},{\"ref\":\"codex\",\"provider\":\"codex\",\"readiness\":\"ready\"},{\"ref\":\"grok-fc5\",\"provider\":\"grok\",\"readiness\":\"ready\"},{\"ref\":\"claude-supervisor\",\"provider\":\"claude_agent\",\"readiness\":\"credentials-missing\"},{\"ref\":\"codex-2\",\"provider\":\"codex\",\"readiness\":\"credentials-missing\"},{\"ref\":\"codex-3\",\"provider\":\"codex\",\"readiness\":\"credentials-missing\"},{\"ref\":\"codex-4\",\"provider\":\"codex\",\"readiness\":\"credentials-missing\"},{\"ref\":\"codex-b7d4438c\",\"provider\":\"codex\",\"readiness\":\"credentials-missing\"},{\"ref\":\"codex-db"
+  },
+  {
+    "step": "fleet-usage-check",
+    "ok": true,
+    "detail": "{\"ref\":\"claude-pylon-2\",\"provider\":\"claude_agent\",\"label\":\"0 tokens · in 0 / out 0 · probe · 12:09\"}"
+  },
+  {
+    "step": "new-chat",
+    "ok": true,
+    "detail": "{\"emptyTranscript\":true,\"composerEnabled\":true}"
+  },
+  {
+    "step": "fable-chip",
+    "ok": true,
+    "detail": "{\"ariaLabel\":\"Fable harness selected\",\"variant\":\"secondary\"}"
+  },
+  {
+    "step": "fable-turn",
+    "ok": true,
+    "detail": "{\"completed\":true,\"assistantChars\":133,\"streamingObserved\":true,\"growthEvents\":2,\"midStreamCaptured\":true,\"lastSystem\":null,\"snippet\":\"Streaming works — Episode 250 is live and this response arrived token by token, confirming end-to-end streaming is fully operational.\"}"
+  },
+  {
+    "step": "codex-chip",
+    "ok": false,
+    "detail": "{\"reason\":\"codex harness chip is disabled\",\"displayed\":\"FableCodex\",\"ariaLabel\":\"Codex — requires OpenAgents session\"}"
+  },
+  {
+    "step": "codex-turn",
+    "ok": false,
+    "detail": "{\"reason\":\"codex-unavailable (see codex-chip)\"}"
+  },
+  {
+    "step": "redaction-check",
+    "ok": true,
+    "detail": "{\"shotCount\":8,\"blankNames\":[],\"emptyFiles\":[]}"
+  },
+  {
+    "step": "summary",
+    "ok": true,
+    "detail": "{\"requiredFailures\":[],\"steps\":[{\"step\":\"shell-mounted\",\"ok\":true},{\"step\":\"fleet-workspace\",\"ok\":true},{\"step\":\"fleet-usage-check\",\"ok\":true},{\"step\":\"new-chat\",\"ok\":true},{\"step\":\"fable-chip\",\"ok\":true},{\"step\":\"fable-turn\",\"ok\":true},{\"step\":\"codex-chip\",\"ok\":false},{\"step\":\"codex-turn\",\"ok\":false},{\"step\":\"redaction-check\",\"ok\":true}],\"shots\":[\"01-shell.png\",\"02-fleet-workspace.png\",\"03-fleet-usage.png\",\"04-new-chat.png\",\"05-harness-fable.png\",\"06-fable-midstream.png\",\"07-fable-final.png\",\"08-harness-codex-disabled.png\"],\"outDir\":\"/private/tmp/claude-501/-Users-christopherdavid-work/2b363e13-7f73-4c08-8cd5-6c4a07c5c78f/scratchpad/ep250-final-proof\"}"
+  }
+]
