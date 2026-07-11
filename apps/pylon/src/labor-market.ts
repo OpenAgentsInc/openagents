@@ -360,6 +360,7 @@ export function makeClaudeAgentLaborRuntime(options: {
         instructions: laborPrompt(run.request),
         allowedTools: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
         maxTurns: options.maxTurns ?? 16,
+        permissionMode: "acceptEdits",
         timeoutMs: options.timeoutMs ?? 300_000,
       })
       if (result.outcome !== "completed") {

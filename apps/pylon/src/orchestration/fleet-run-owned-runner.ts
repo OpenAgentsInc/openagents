@@ -31,6 +31,10 @@ import {
   type PylonKhalaWorkflow,
 } from "../khala-requester.js"
 import { assertPublicProjectionSafe } from "../state.js"
+import {
+  issueClaudeOwnerLocalPermissionAuthority,
+  type ClaudeOwnerLocalPermissionControl,
+} from "../claude-agent-executor.js"
 import type { TipsNetworkOptions } from "../tips.js"
 import { assertPublicSafe } from "../work-requester.js"
 import type {
@@ -90,6 +94,7 @@ export type PylonOwnedFleetRunRequestPort = (
 export type PylonOwnedFleetRunAssignmentPort = (input: {
   readonly accountRef: string
   readonly assignmentRef: string
+  readonly claudeOwnerLocalPermissionControl?: ClaudeOwnerLocalPermissionControl
   readonly onLifecycle?: ((event: PylonAssignmentRunLifecycleEvent) => void | Promise<void>) | undefined
   /** Forwarded only; the unattended default assignment runner emits no approval signal. */
   readonly onApprovalRequested?: FleetRunSupervisorDispatchInput["onApprovalRequested"]
@@ -782,6 +787,12 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       accountRef: requestInput.accountRef,
       assignmentRef: requestInput.assignmentRef,
       strictAssignmentRef: true,
+      ...(requestInput.claudeOwnerLocalPermissionControl === undefined
+        ? {}
+        : {
+            claudeOwnerLocalPermissionControl:
+              requestInput.claudeOwnerLocalPermissionControl,
+          }),
       onLifecycleEvent: async event => {
         lifecycle.push(event)
         await requestInput.onLifecycle?.(event)
@@ -943,6 +954,27 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     }
 
     let assignment: PylonOwnedFleetRunAssignmentReceipt
+    const acceptedAuthority = dispatchInput.run.authorityBinding
+    const claudeOwnerLocalPermissionControl =
+      dispatchInput.workerKind === "claude" &&
+      acceptedAuthority?.phase === "accepted" &&
+      acceptedAuthority.pylonRef === input.pylonRef &&
+      acceptedAuthority.targetPreference === "owner_local"
+        ? {
+            authority: issueClaudeOwnerLocalPermissionAuthority({
+              authorizationRef:
+                `authorization.pylon.claude_owner_local.${createHash("sha256")
+                  .update(`${acceptedAuthority.authorityFingerprint}:${acceptedAuthority.claimRef}`)
+                  .digest("hex")
+                  .slice(0, 24)}`,
+              pylonRef: input.pylonRef,
+              runRef: dispatchInput.run.runRef,
+              operationRef: assignmentRef,
+              accountRefHash,
+              now: safeNow(),
+            }),
+          }
+        : undefined
     let lifecycleDeliveryTail = Promise.resolve<void>(undefined)
     const deliverLifecycle = (event: PylonAssignmentRunLifecycleEvent): Promise<void> => {
       const delivery = lifecycleDeliveryTail.then(async () => {
@@ -958,6 +990,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       assignment = await runAssignment({
         accountRef: account.ref,
         assignmentRef,
+        ...(claudeOwnerLocalPermissionControl === undefined
+          ? {}
+          : { claudeOwnerLocalPermissionControl }),
         ...(dispatchInput.onLifecycle === undefined
           ? {}
           : { onLifecycle: deliverLifecycle }),

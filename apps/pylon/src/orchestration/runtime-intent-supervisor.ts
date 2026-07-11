@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { Database } from "bun:sqlite"
+import { createHash } from "node:crypto"
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import {
@@ -10,6 +11,7 @@ import {
   type PylonAccountRegistryEntry,
 } from "../account-registry.js"
 import { resolvePylonHome } from "../bootstrap.js"
+import { issueClaudeOwnerLocalPermissionAuthority } from "../claude-agent-executor.js"
 import {
   candidateAccountsFromRegistry,
   enforcePendingRuntimeIntents,
@@ -233,6 +235,20 @@ try {
             }
           : {}),
         ...(ownerUserId === undefined ? {} : { ownerUserId }),
+        ...(executorMode === "owner_local" && ownerUserId !== undefined
+          ? {
+              claudeOwnerLocalPermissionIssuer: scope => ({
+                authority: issueClaudeOwnerLocalPermissionAuthority({
+                  authorizationRef:
+                    `authorization.pylon.claude_owner_local.${createHash("sha256")
+                      .update(`${ownerUserId}:${pylonRef}`)
+                      .digest("hex")
+                      .slice(0, 24)}`,
+                  ...scope,
+                }),
+              }),
+            }
+          : {}),
         pylonRef,
         ...(usageReceiptsEnabled
           ? {

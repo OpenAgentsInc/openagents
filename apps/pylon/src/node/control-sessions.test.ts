@@ -153,3 +153,66 @@ describe("control session Codex account failover", () => {
     }
   })
 })
+
+describe("control session Claude owner-local authority", () => {
+  test("only an internal loopback launch can honor the local danger overlay", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-control-session-claude-authority-"))
+    try {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--json", "--pylon-ref", "pylon.owner.control"]),
+        { PYLON_HOME: home },
+      )
+      const accountHome = join(home, "accounts", "claude_agent", "claude-named")
+      await mkdir(accountHome, { recursive: true })
+      await writeFile(summary.paths.config, JSON.stringify({
+        dev: {
+          claudeExecutionMode: "local_supervised_danger",
+          accounts: [
+            { provider: "claude_agent", ref: "claude-named", home: accountHome },
+          ],
+        },
+      }))
+
+      const authorityRefs: Array<string | null> = []
+      const executor: ControlSessionExecutor = async input => {
+        authorityRefs.push(
+          input.claudeOwnerLocalPermissionControl?.authority.authorityRef ?? null,
+        )
+        return {
+          commandCount: 0,
+          devCheck: passedDevCheck(),
+          editedFileCount: 0,
+          eventCount: 0,
+          externalSessionRef: null,
+          responseDigestRef: null,
+          totalTokens: 0,
+        }
+      }
+      const actions = createControlSessionActions({ env: {}, executor, summary })
+      const bridgeLike = await actions.spawn({
+        type: "session.spawn",
+        adapter: "claude_agent",
+        accountRef: "claude-named",
+        objective: "Bridge-like bounded launch.",
+        verify: ["true"],
+      })
+      const loopback = await actions.spawn({
+        type: "session.spawn",
+        adapter: "claude_agent",
+        accountRef: "claude-named",
+        objective: "Owner-local loopback launch.",
+        verify: ["true"],
+      }, { ownerLocalLoopback: true })
+      await waitForTerminal(actions, bridgeLike.sessionRef)
+      await waitForTerminal(actions, loopback.sessionRef)
+
+      expect(authorityRefs[0]).toBeNull()
+      expect(authorityRefs[1]).toMatch(
+        /^authority\.pylon\.claude_owner_local\.[0-9a-f]{24}$/,
+      )
+      expect(JSON.stringify(await actions.list())).not.toContain("bypassPermissions")
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+})

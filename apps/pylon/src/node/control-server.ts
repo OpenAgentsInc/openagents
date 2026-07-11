@@ -358,10 +358,18 @@ export const startControlServer = (
           return options.actions.assignmentsAccept(command.leaseRef)
         case "session.spawn":
           if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
-          return options.actions.sessions.spawn(command)
+          return options.actions.sessions.spawn(command, {
+            ownerLocalLoopback: isLoopbackHostname(
+              options.hostname ?? "127.0.0.1",
+            ),
+          })
         case "session.reply":
           if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
-          return options.actions.sessions.reply(command)
+          return options.actions.sessions.reply(command, {
+            ownerLocalLoopback: isLoopbackHostname(
+              options.hostname ?? "127.0.0.1",
+            ),
+          })
         case "session.list":
           if (!options.actions.sessions) throw new Error("sessions unavailable on this node")
           return options.actions.sessions.list()

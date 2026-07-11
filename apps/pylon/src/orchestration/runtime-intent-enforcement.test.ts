@@ -7,6 +7,7 @@ import { decodeFleetAccountEntity, decodeKhalaRuntimeEvent, decodeRuntimeControl
 import type { KhalaRuntimeEvent, RuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 
 import { hashPylonAccountRef } from "../account-registry.js"
+import { issueClaudeOwnerLocalPermissionAuthority } from "../claude-agent-executor.js"
 import {
   candidateAccountsFromRegistry,
   chatMessageIdFromBodyRef,
@@ -646,22 +647,32 @@ describe("enforcePendingRuntimeIntents", () => {
       finishSeen = resolve
     })
     const pushedEvents: Array<KhalaRuntimeEvent> = []
+    const permissionModes: string[] = []
     const { options, cleanup } = await baseOptions({
-      claudeThreadRunner: fakeClaudeRunner([
-        { session_id: "claude-sess-1", subtype: "init", type: "system" },
-        { message: { content: [{ text: "hello!", type: "text" }] }, type: "assistant" },
-        {
-          message: { content: [{ id: "toolu_1", input: {}, name: "Bash", type: "tool_use" }] },
-          type: "assistant",
-        },
-        { message: { content: [{ tool_use_id: "toolu_1", type: "tool_result" }] }, type: "user" },
-        {
-          is_error: false,
-          subtype: "success",
-          type: "result",
-          usage: { input_tokens: 10, output_tokens: 2 },
-        },
-      ]),
+      claudeOwnerLocalPermissionIssuer: scope => ({
+        authority: issueClaudeOwnerLocalPermissionAuthority({
+          authorizationRef: "authorization.pylon.claude_owner_local.0123456789abcdef01234567",
+          ...scope,
+        }),
+      }),
+      claudeThreadRunner: async input => {
+        permissionModes.push(input.permissionMode)
+        return fakeClaudeRunner([
+          { session_id: "claude-sess-1", subtype: "init", type: "system" },
+          { message: { content: [{ text: "hello!", type: "text" }] }, type: "assistant" },
+          {
+            message: { content: [{ id: "toolu_1", input: {}, name: "Bash", type: "tool_use" }] },
+            type: "assistant",
+          },
+          { message: { content: [{ tool_use_id: "toolu_1", type: "tool_result" }] }, type: "user" },
+          {
+            is_error: false,
+            subtype: "success",
+            type: "result",
+            usage: { input_tokens: 10, output_tokens: 2 },
+          },
+        ])!(input)
+      },
       fetchChatMessageImpl: async () => ({ message, ok: true }),
       listCandidateAccounts: async () => candidateAccountsFromRegistry([claudeBaseAccount]),
       pushEventImpl: async (input) => {
@@ -700,6 +711,54 @@ describe("enforcePendingRuntimeIntents", () => {
       expect(pushedEvents.every((e) => e.source.adapterKind === "claude_code")).toBe(true)
       expect((pushedEvents[pushedEvents.length - 1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
       expect(store.getRuntimeClaudeSessionId("thread-1")).toBe("claude-sess-1")
+      expect(permissionModes).toEqual(["bypassPermissions"])
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("an org-cloud/all-owner Claude runtime cannot inherit owner-local bypass", async () => {
+    const store = memoryStore()
+    const modes: string[] = []
+    let finishSeen: (() => void) | undefined
+    const finished = new Promise<void>(resolve => {
+      finishSeen = resolve
+    })
+    const { options, cleanup } = await baseOptions({
+      claudeThreadRunner: async input => {
+        modes.push(input.permissionMode)
+        return fakeClaudeRunner([{ is_error: false, subtype: "success", type: "result" }])!(input)
+      },
+      fetchChatMessageImpl: async () => ({
+        message: {
+          authorUserId: "user-1",
+          body: "bounded org-cloud turn",
+          createdAt: iso,
+          deletedAt: null,
+          messageId: "msg-org-cloud",
+          threadId: "thread-org-cloud",
+          updatedAt: iso,
+        },
+        ok: true,
+      }),
+      listCandidateAccounts: async () => candidateAccountsFromRegistry([claudeBaseAccount]),
+      pushEventImpl: async input => {
+        if (input.event.kind === "turn.finished") finishSeen?.()
+      },
+      readImpl: pageReader([controlIntentRow({
+        bodyRef: "chat_message.msg-org-cloud",
+        intentId: "intent-org-cloud",
+        kind: "turn.start",
+        seq: 1,
+        targetLane: "claude_pylon",
+        threadId: "thread-org-cloud",
+        turnId: "turn-org-cloud",
+      })]),
+    })
+    try {
+      await enforcePendingRuntimeIntents(store, options)
+      await finished
+      expect(modes).toEqual(["acceptEdits"])
     } finally {
       await cleanup()
     }

@@ -120,6 +120,11 @@ export class PylonFleetRunManager {
     input: Omit<StartPylonFleetRunInput, "run">,
   ): Promise<PylonFleetRunSnapshot> {
     const scope = Effect.runSync(Scope.make())
+    // `startFleetRunSupervisor` may complete a fire-and-forget dispatch before
+    // its handle is returned and installed in `this.active`. Buffer those
+    // lifecycle events at the composition boundary so the terminal receipt is
+    // not lost in that construction race.
+    const earlyLifecycle: FleetRunSupervisorObservedEvent[] = []
     let handle: FleetRunSupervisorHandle
     try {
       handle = await Effect.runPromise(Effect.provideService(
@@ -130,12 +135,17 @@ export class PylonFleetRunManager {
           planner: input.planner,
           runner: input.runner,
           capacity: input.capacity,
+          // The manager releases terminal scopes synchronously and therefore
+          // must retain lifecycle projection through dispatch bookkeeping.
+          // Direct supervisor callers keep the fire-and-forget default.
+          awaitDispatches: true,
           ...(input.clock === undefined ? {} : { clock: input.clock }),
           ...(input.startImmediately === undefined ? {} : { startImmediately: input.startImmediately }),
           ...(input.tickIntervalMs === undefined ? {} : { tickIntervalMs: input.tickIntervalMs }),
           onLifecycle: async event => {
             const existing = this.active.get(runRef)
-            existing?.lifecycle.push(event)
+            if (existing === undefined) earlyLifecycle.push(event)
+            else existing.lifecycle.push(event)
             await input.onLifecycle?.(event)
             if (event.kind === "completed" || event.kind === "terminal") {
               void this.releaseActive(runRef)
@@ -157,7 +167,7 @@ export class PylonFleetRunManager {
     const active: ActiveFleetRun = {
       handle,
       lastTick: null,
-      lifecycle: [],
+      lifecycle: [...earlyLifecycle],
       pylonRef: input.pylonRef,
       scope,
     }

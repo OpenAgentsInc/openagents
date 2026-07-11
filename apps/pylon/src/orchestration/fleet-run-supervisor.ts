@@ -1653,7 +1653,10 @@ export function makeFleetRunSupervisor(
         try: async () => {
           if (stopped) throw new FleetRunSupervisorError(`fleet run supervisor stopped: ${options.runRef}`)
           if (inFlightTick !== null) return await inFlightTick
-          const tick = tickFleetRunSupervisor({ ...options, awaitDispatches: false })
+          const tick = tickFleetRunSupervisor({
+            ...options,
+            awaitDispatches: options.awaitDispatches ?? false,
+          })
             .finally(() => {
               if (inFlightTick === tick) inFlightTick = null
             })

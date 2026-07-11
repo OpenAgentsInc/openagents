@@ -88,7 +88,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   explicit about unsettled, rejected, unpaid, credited, and settled states.
 - Pylon local supervised danger modes (Codex `danger-full-access`, Claude
   `bypassPermissions`) are explicit owner-local opt-ins only: local composer
-  and authenticated local control sessions may honor the local dev overlay.
+  and authenticated loopback control sessions may honor the local dev overlay.
+  Claude bypass is additionally a revocable, process-opaque authority bound to
+  one exact local Pylon, run/turn/session, operation/assignment, and named
+  account. Serialized/restarted, bridge, org-cloud, public, remote, mismatched,
+  expired, and revoked paths cannot inherit it; public audit evidence carries
+  policy/authority/proof refs, never the permission-mode literal.
   Caller-owned Khala -> Pylon -> Codex coding delegation is also owner-local:
   when the caller is routed to their own linked Pylon, the local Codex executor
   uses the SDK equivalent of

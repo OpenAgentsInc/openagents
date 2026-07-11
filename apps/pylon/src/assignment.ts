@@ -23,6 +23,7 @@ import {
 import {
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
+  type ClaudeOwnerLocalPermissionControl,
 } from "./claude-agent-executor.js"
 import {
   loadCodexAgentConfig,
@@ -222,6 +223,8 @@ export type AssignmentClientOptions = {
   psionicQwenAdmission?: PsionicQwenModelAdmission
   claudeAgentCheckoutRunner?: ClaudeAgentCheckoutRunner
   claudeAgentRunner?: ClaudeAgentRunner
+  /** Trusted in-process capability; never decoded from assignment/config/wire. */
+  claudeOwnerLocalPermissionControl?: ClaudeOwnerLocalPermissionControl
   claudeAgentProbe?: ClaudeAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
@@ -2194,6 +2197,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           ...(options.claudeAgentCheckoutRunner === undefined ? {} : { claudeAgentCheckoutRunner: options.claudeAgentCheckoutRunner }),
           ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
           ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
+          ...(options.claudeOwnerLocalPermissionControl === undefined
+            ? {}
+            : { claudeOwnerLocalPermissionControl: options.claudeOwnerLocalPermissionControl }),
           ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
           ...(options.codexAuthValidityProbe === undefined
             ? {}

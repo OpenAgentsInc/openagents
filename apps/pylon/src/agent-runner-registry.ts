@@ -14,6 +14,7 @@ import {
   executeClaudeAgentAssignment,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentExecutionOptions,
+  type ClaudeOwnerLocalPermissionControl,
   type ClaudeAgentRunner,
 } from "./claude-agent-executor.js"
 import {
@@ -116,6 +117,7 @@ export type AgentRunnerExecutionOptions = {
   claudeAgentCheckoutRunner?: ClaudeAgentCheckoutRunner
   claudeAgentProbe?: ClaudeAgentProbeOptions
   claudeAgentRunner?: ClaudeAgentRunner
+  claudeOwnerLocalPermissionControl?: ClaudeOwnerLocalPermissionControl
   codexAgentProbe?: CodexAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
   codexAuthValidityProbe?: PylonCodexAuthValidityProbe
@@ -263,6 +265,9 @@ function commonExecutionOptions(options: AgentRunnerExecutionOptions) {
     ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.claudeOwnerLocalPermissionControl === undefined
+      ? {}
+      : { claudeOwnerLocalPermissionControl: options.claudeOwnerLocalPermissionControl }),
   }
 }
 

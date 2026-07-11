@@ -12,6 +12,8 @@ import {
   claudeAgentTaskFrom,
   claudeUsageFrom,
   executeClaudeAgentAssignment,
+  issueClaudeOwnerLocalPermissionAuthority,
+  revokeClaudeOwnerLocalPermissionAuthority,
   runWithClaudeAgentSdk,
   toolInputEscapesWorkspace,
   type ClaudeAgentCheckoutRunner,
@@ -225,6 +227,7 @@ describe("claude agent task recognition", () => {
       instructions: "Public-safe fixture instruction.",
       allowedTools: [],
       maxTurns: 1,
+      permissionMode: "acceptEdits",
       timeoutMs: 1_000,
     })
 
@@ -292,6 +295,149 @@ describe("claude agent task recognition", () => {
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
       expect(projected).not.toContain("bounded fixture workspace")
+    })
+  })
+
+  test("owner-local authority selects bypass while public execution stays bounded", async () => {
+    await withState(async (state) => {
+      const account = {
+        provider: "claude_agent" as const,
+        selector: "registered" as const,
+        accountRef: "claude-named",
+        accountRefHash: "account.pylon.claude_agent.0123456789abcdef",
+        home: "/tmp/pylon-claude-named",
+      }
+      const modes: string[] = []
+      const observingRunner: ClaudeAgentRunner = async input => {
+        modes.push(input.permissionMode)
+        return fixingRunner(input)
+      }
+      const bounded = await executeClaudeAgentAssignment(state, lease, now, {
+        account,
+        claudeAgentRunner: observingRunner,
+        claudeAgentProbe: readyProbe,
+        claudeTurnReporter: successfulClaudeTurnReporter,
+      })
+      expect(bounded?.status).toBe("accepted")
+
+      const authority = issueClaudeOwnerLocalPermissionAuthority({
+        authorizationRef: "authorization.pylon.claude_owner_local.0123456789abcdef01234567",
+        pylonRef: state.identity.pylonRef,
+        runRef: "fleet_run.owner_local.test",
+        operationRef: lease.assignmentRef,
+        accountRefHash: account.accountRefHash,
+        now,
+      })
+      const ownerLocal = await executeClaudeAgentAssignment(state, lease, now, {
+        account,
+        claudeAgentRunner: observingRunner,
+        claudeAgentProbe: readyProbe,
+        claudeOwnerLocalPermissionControl: { authority },
+        claudeTurnReporter: successfulClaudeTurnReporter,
+      })
+      expect(ownerLocal?.status).toBe("accepted")
+      expect(modes).toEqual(["acceptEdits", "bypassPermissions"])
+      expect(ownerLocal?.proofRefs).toContainEqual(
+        expect.stringMatching(/^proof\.pylon\.claude_owner_local_permission\./),
+      )
+      expect(JSON.stringify(ownerLocal)).not.toContain("bypassPermissions")
+      expect(JSON.stringify(ownerLocal)).not.toContain("acceptEdits")
+    })
+  })
+
+  test("mismatched, restart-replayed, and revoked authority fail before launch", async () => {
+    await withState(async (state) => {
+      const account = {
+        provider: "claude_agent" as const,
+        selector: "registered" as const,
+        accountRef: "claude-named",
+        accountRefHash: "account.pylon.claude_agent.0123456789abcdef",
+        home: "/tmp/pylon-claude-named",
+      }
+      const authority = issueClaudeOwnerLocalPermissionAuthority({
+        authorizationRef: "authorization.pylon.claude_owner_local.0123456789abcdef01234567",
+        pylonRef: state.identity.pylonRef,
+        runRef: "fleet_run.owner_local.test",
+        operationRef: lease.assignmentRef,
+        accountRefHash: account.accountRefHash,
+        now,
+      })
+      let launches = 0
+      const runner: ClaudeAgentRunner = async input => {
+        launches += 1
+        return fixingRunner(input)
+      }
+      const controls = [
+        { authority: { ...authority, accountRefHash: "account.pylon.claude_agent.other" } },
+        { authority: JSON.parse(JSON.stringify(authority)) },
+        {
+          authority: revokeClaudeOwnerLocalPermissionAuthority(
+            authority,
+            new Date(now.getTime() + 1),
+          ),
+        },
+      ]
+      for (const control of controls) {
+        const record = await executeClaudeAgentAssignment(state, lease, now, {
+          account,
+          claudeAgentRunner: runner,
+          claudeAgentProbe: readyProbe,
+          claudeOwnerLocalPermissionControl: control as never,
+        })
+        expect(record?.status).toBe("rejected")
+        expect(record?.resultRefs).toContain(
+          "result.public.pylon.claude_agent_task.permission_refused",
+        )
+      }
+      expect(launches).toBe(0)
+    })
+  })
+
+  test("cancelling the live authority aborts the runner and emits refs-only audit", async () => {
+    await withState(async (state) => {
+      const account = {
+        provider: "claude_agent" as const,
+        selector: "registered" as const,
+        accountRef: "claude-named",
+        accountRefHash: "account.pylon.claude_agent.0123456789abcdef",
+        home: "/tmp/pylon-claude-named",
+      }
+      const controller = new AbortController()
+      const authority = issueClaudeOwnerLocalPermissionAuthority({
+        authorizationRef: "authorization.pylon.claude_owner_local.0123456789abcdef01234567",
+        pylonRef: state.identity.pylonRef,
+        runRef: "fleet_run.owner_local.cancel",
+        operationRef: lease.assignmentRef,
+        accountRefHash: account.accountRefHash,
+        now,
+      })
+      const runner: ClaudeAgentRunner = input => new Promise(resolve => {
+        input.abortSignal?.addEventListener("abort", () => resolve({
+          outcome: "cancelled",
+          turnCount: 1,
+          editedFileCount: 0,
+          commandCount: 0,
+          sessionRef: null,
+          usage: null,
+        }), { once: true })
+      })
+      const pending = executeClaudeAgentAssignment(state, lease, now, {
+        account,
+        claudeAgentRunner: runner,
+        claudeAgentProbe: readyProbe,
+        claudeOwnerLocalPermissionControl: { authority, signal: controller.signal },
+      })
+      await Bun.sleep(5)
+      controller.abort()
+      const record = await pending
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain(
+        "blocker.assignment.claude_agent_owner_local_permission_cancelled",
+      )
+      expect(record?.proofRefs).toContainEqual(
+        expect.stringMatching(/^proof\.pylon\.claude_owner_local_permission\./),
+      )
+      expect(JSON.stringify(record)).not.toContain("bypassPermissions")
     })
   })
 

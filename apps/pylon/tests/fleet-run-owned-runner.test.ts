@@ -4,6 +4,7 @@ import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runt
 
 import type { PylonAccountRegistryEntry } from "../src/account-registry.js"
 import { hashPylonAccountRef } from "../src/account-registry.js"
+import { admitClaudePermission } from "../src/claude-agent-executor.js"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js"
 import type {
   PylonKhalaAssignmentTraceStatusResult,
@@ -384,6 +385,74 @@ const readExactCloseout = async (assignmentRef: string): Promise<PylonKhalaClose
   exactCloseout(assignmentRef)
 
 describe("Pylon-owned FleetRun runner", () => {
+  test("mints a process-local Claude authority only for the exact accepted owner-local run", async () => {
+    const controls: unknown[] = []
+    const ownerLocalRun: FleetRun = {
+      ...run,
+      authorityBinding: {
+        schema: "openagents.pylon.fleet_run_authority_binding.v1",
+        source: "sarah_authority",
+        authorityFingerprint: "a".repeat(64),
+        claimRef: "claim.sarah_fleet_run.0123456789abcdef01234567",
+        pylonRef,
+        targetPreference: "owner_local",
+        phase: "accepted",
+      },
+    }
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      now: () => fixedNow,
+      readCloseout: readExactCloseout,
+      loadRegistry: async () => [account("claude-a", "claude_agent")],
+      request: async request => requestReceipt(request),
+      runAssignment: async input => {
+        controls.push(input.claudeOwnerLocalPermissionControl)
+        return acceptedAssignment(
+          input.assignmentRef,
+          hashPylonAccountRef("claude_agent", input.accountRef),
+        )
+      },
+    })
+
+    const result = await runner.dispatch({
+      ...dispatchInput("claude", "claude-a", 201),
+      run: ownerLocalRun,
+    })
+    expect(result.status).toBe("completed")
+    const control = controls[0] as Parameters<typeof admitClaudePermission>[0]["control"]
+    expect(admitClaudePermission({
+      control,
+      expected: {
+        pylonRef,
+        runRef: ownerLocalRun.runRef,
+        operationRef: "assignment.public.claude_agent_task",
+        accountRefHash: hashPylonAccountRef("claude_agent", "claude-a"),
+      },
+      now: fixedNow,
+    })).toMatchObject({ kind: "owner_local", permissionMode: "bypassPermissions" })
+
+    const boundedControls: unknown[] = []
+    const boundedRunner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      readCloseout: readExactCloseout,
+      loadRegistry: async () => [account("claude-a", "claude_agent")],
+      request: async request => requestReceipt(request),
+      runAssignment: async input => {
+        boundedControls.push(input.claudeOwnerLocalPermissionControl)
+        return acceptedAssignment(
+          input.assignmentRef,
+          hashPylonAccountRef("claude_agent", input.accountRef),
+        )
+      },
+    })
+    await boundedRunner.dispatch(dispatchInput("claude", "claude-a", 202))
+    expect(boundedControls).toEqual([undefined])
+  })
+
   test("runs Codex and Claude claims simultaneously on exact named accounts and pinned workspaces", async () => {
     const registry = [account("codex-a", "codex"), account("claude-a", "claude_agent")]
     const requests: PylonKhalaRequestInput[] = []

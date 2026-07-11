@@ -28,6 +28,11 @@ import {
   type ClaudeTurnReporter,
 } from "./claude-turn-reporter.js"
 import type { PylonLocalState } from "../shared/state.js"
+import {
+  admitClaudePermission,
+  type ClaudeOwnerLocalPermissionControl,
+  type ClaudePermissionMode,
+} from "./claude-owner-local-permission.js"
 
 /**
  * The local Claude Agent executor gate (issue #4719, promise
@@ -74,11 +79,15 @@ export type ClaudeAgentRunInput = {
   maxTurns: number
   timeoutMs: number
   model?: string
+  permissionMode: ClaudePermissionMode
+  permissionAuthorityRef?: string
+  abortSignal?: AbortSignal
 }
 
 export type ClaudeAgentRunOutcome =
   | "completed"
   | "budget_exceeded"
+  | "cancelled"
   | "workspace_escape_blocked"
   | "refused"
 
@@ -133,6 +142,7 @@ export type ClaudeAgentExecutionOptions = {
   // aborts the local coding task.
   claudeTurnReporter?: ClaudeTurnReporter
   fetch?: typeof fetch
+  claudeOwnerLocalPermissionControl?: ClaudeOwnerLocalPermissionControl
 }
 
 type ClaudeAgentFixture = {
@@ -583,9 +593,9 @@ export function claudeUsageFrom(value: unknown): ClaudeAgentTurnUsage | null {
 
 /**
  * The production runner: one Claude Agent SDK session with the workspace
- * boundary enforced by a PreToolUse hook (deny + abort on first escape
- * attempt), user settings excluded via settingSources, and turn/wall-clock
- * budgets. Lazy-imports the optional SDK dependency.
+ * boundary enforced by a PreToolUse hook, a permission mode already admitted
+ * from the typed owner-local authority (or the restrictive bounded default),
+ * and turn/wall-clock budgets. Lazy-imports the optional SDK dependency.
  */
 export async function runWithClaudeAgentSdk(
   input: ClaudeAgentRunInput,
@@ -598,7 +608,18 @@ export async function runWithClaudeAgentSdk(
     query: (options: { prompt: string; options: Record<string, unknown> }) => AsyncIterable<unknown>
   }
   const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), input.timeoutMs)
+  let timedOut = false
+  let cancelled = false
+  const abortFromCaller = () => {
+    cancelled = true
+    abort.abort()
+  }
+  if (input.abortSignal?.aborted === true) abortFromCaller()
+  else input.abortSignal?.addEventListener("abort", abortFromCaller, { once: true })
+  const timer = setTimeout(() => {
+    timedOut = true
+    abort.abort()
+  }, input.timeoutMs)
   let escaped = false
   let escapeDenials = 0
   let editedFileCount = 0
@@ -657,10 +678,12 @@ export async function runWithClaudeAgentSdk(
       options: {
         cwd: input.cwd,
         env,
-        allowedTools: input.allowedTools,
         maxTurns: input.maxTurns,
-        settingSources: [],
         abortController: abort,
+        permissionMode: input.permissionMode,
+        ...(input.permissionMode === "bypassPermissions"
+          ? { settingSources: ["project"] }
+          : { allowedTools: input.allowedTools, settingSources: [] }),
         ...(input.model === undefined ? {} : { model: input.model }),
         hooks: {
           PreToolUse: [{ hooks: [guard] }],
@@ -701,7 +724,10 @@ export async function runWithClaudeAgentSdk(
     if (escaped) {
       return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef: null , usage }
     }
-    if (abort.signal.aborted) {
+    if (cancelled) {
+      return { outcome: "cancelled", turnCount, editedFileCount, commandCount, sessionRef: null, usage }
+    }
+    if (timedOut || abort.signal.aborted) {
       return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef: null , usage }
     }
     // Some SDK failure paths emit a typed assistant error (and sometimes a
@@ -725,11 +751,15 @@ export async function runWithClaudeAgentSdk(
     throw error
   } finally {
     clearTimeout(timer)
+    input.abortSignal?.removeEventListener("abort", abortFromCaller)
   }
 
   const sessionRef = sessionId === null ? null : stableRef("session.pylon.claude_agent", sessionId)
   if (escaped) {
     return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef , usage }
+  }
+  if (cancelled) {
+    return { outcome: "cancelled", turnCount, editedFileCount, commandCount, sessionRef, usage }
   }
   if (resultSubtype !== null && resultSubtype.includes("max_turns")) {
     return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef , usage }
@@ -943,6 +973,33 @@ export async function executeClaudeAgentAssignment(
     })
   }
 
+  const permission = admitClaudePermission({
+    ...(options.claudeOwnerLocalPermissionControl === undefined
+      ? {}
+      : { control: options.claudeOwnerLocalPermissionControl }),
+    expected: {
+      pylonRef: state.identity.pylonRef,
+      operationRef: lease.assignmentRef,
+      accountRefHash:
+        options.account?.accountRefHash ?? "account.pylon.claude_agent.unbound",
+    },
+    now,
+  })
+  const permissionProofRefs = permission.auditReceiptRef === null
+    ? []
+    : [permission.auditReceiptRef]
+  if (permission.kind === "refused") {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: [permission.blockerRef],
+      proofRefs: permissionProofRefs,
+      resultRef: "result.public.pylon.claude_agent_task.permission_refused",
+      summaryRef: "summary.public.pylon.claude_agent_task.permission_refused",
+      message: "Local Claude Agent session refused because its owner-local permission authority was invalid, expired, revoked, or outside this execution scope.",
+    })
+  }
+
   let materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
   try {
     materialized = await materializeClaudeAgentWorkspace({
@@ -982,6 +1039,13 @@ export async function executeClaudeAgentAssignment(
           DEFAULT_TIMEOUT_SECONDS,
           MAX_TIMEOUT_SECONDS,
         ) * 1000,
+      permissionMode: permission.permissionMode,
+      ...(permission.authorityRef === null
+        ? {}
+        : { permissionAuthorityRef: permission.authorityRef }),
+      ...(options.claudeOwnerLocalPermissionControl?.signal === undefined
+        ? {}
+        : { abortSignal: options.claudeOwnerLocalPermissionControl.signal }),
       ...(config.model === undefined ? {} : { model: config.model }),
     })
   } catch {
@@ -990,6 +1054,7 @@ export async function executeClaudeAgentAssignment(
       lease,
       runRef,
       blockerRefs: ["blocker.assignment.claude_agent_execution_refused"],
+      proofRefs: permissionProofRefs,
       resultRef: "result.public.pylon.claude_agent_task.execution_refused",
       summaryRef: "summary.public.pylon.claude_agent_task.execution_refused",
       message: "Local Claude Agent session refused with a typed execution error.",
@@ -1016,6 +1081,24 @@ export async function executeClaudeAgentAssignment(
     state,
   })
 
+  if (run.outcome === "cancelled") {
+    await releaseClaudeAgentWorkspace({ materialized, now })
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: [
+        "blocker.assignment.claude_agent_owner_local_permission_cancelled",
+        ...tokenUsageReport.blockerRefs,
+      ],
+      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
+      resultRef: "result.public.pylon.claude_agent_task.permission_cancelled",
+      resultRefs: tokenUsageReport.resultRefs,
+      summaryRef: "summary.public.pylon.claude_agent_task.permission_cancelled",
+      summaryRefs: tokenUsageReport.summaryRefs,
+      message: "Local Claude Agent session stopped after its owner-local permission authority was cancelled.",
+    })
+  }
+
   if (run.outcome === "workspace_escape_blocked") {
     await releaseClaudeAgentWorkspace({ materialized, now })
     return refusalRecord({
@@ -1025,7 +1108,7 @@ export async function executeClaudeAgentAssignment(
         "blocker.assignment.claude_agent_workspace_escape_blocked",
         ...tokenUsageReport.blockerRefs,
       ],
-      proofRefs: tokenUsageReport.proofRefs,
+      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
       resultRef: "result.public.pylon.claude_agent_task.workspace_escape_blocked",
       resultRefs: tokenUsageReport.resultRefs,
       summaryRef: "summary.public.pylon.claude_agent_task.workspace_escape_blocked",
@@ -1042,7 +1125,7 @@ export async function executeClaudeAgentAssignment(
         "blocker.assignment.claude_agent_budget_exceeded",
         ...tokenUsageReport.blockerRefs,
       ],
-      proofRefs: tokenUsageReport.proofRefs,
+      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
       resultRef: "result.public.pylon.claude_agent_task.budget_exceeded",
       resultRefs: tokenUsageReport.resultRefs,
       summaryRef: "summary.public.pylon.claude_agent_task.budget_exceeded",
@@ -1060,7 +1143,7 @@ export async function executeClaudeAgentAssignment(
         ...claudeAgentFailureBlockerRefs(run.failureCode),
         ...tokenUsageReport.blockerRefs,
       ],
-      proofRefs: tokenUsageReport.proofRefs,
+      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
       resultRef: "result.public.pylon.claude_agent_task.execution_refused",
       resultRefs: tokenUsageReport.resultRefs,
       summaryRef: "summary.public.pylon.claude_agent_task.execution_refused",
@@ -1097,7 +1180,7 @@ export async function executeClaudeAgentAssignment(
       ? `Local Claude Agent completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.`
       : "Local Claude Agent session completed but the verification test command failed; the change is not accepted.",
     previewRefs: [materialized.workspaceRef],
-    proofRefs: [proofRef, ...tokenUsageReport.proofRefs],
+    proofRefs: [proofRef, ...permissionProofRefs, ...tokenUsageReport.proofRefs],
     resultRefs: [
       passed
         ? `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_passed`

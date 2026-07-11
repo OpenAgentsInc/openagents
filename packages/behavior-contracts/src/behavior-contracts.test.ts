@@ -721,6 +721,7 @@ describe("background agent contract registry", () => {
     expect(validation.issues).toEqual([])
     expect(validation.ok).toBe(true)
     expect(backgroundAgentsContractRegistry.contracts.map(contract => contract.contractId)).toEqual([
+      "background_agents.claude.owner_local_execution_authority.v1",
       "background_agents.dispatch.budget_caps_enforced.v1",
       "background_agents.dispatch.lane_account_breaker.v1",
       "background_agents.toolset.compiled_policy_enforced.v1",
@@ -743,6 +744,7 @@ describe("background agent contract registry", () => {
       .filter(contract => contract.state === "enforced")
       .map(contract => contract.contractId)
     expect(enforcedContractIds).toEqual([
+      "background_agents.claude.owner_local_execution_authority.v1",
       "background_agents.dispatch.budget_caps_enforced.v1",
       "background_agents.dispatch.lane_account_breaker.v1",
       "background_agents.toolset.compiled_policy_enforced.v1",

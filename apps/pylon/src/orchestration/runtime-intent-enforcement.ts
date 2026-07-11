@@ -19,6 +19,11 @@ import {
 import { CODEX_AGENT_SDK_PACKAGE } from "../codex-agent.js"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../claude-agent.js"
 import {
+  admitClaudePermission,
+  type ClaudeOwnerLocalPermissionControl,
+  type ClaudePermissionMode,
+} from "../claude-agent-executor.js"
+import {
   hashPylonAccountRef,
   pylonAccountEnvironment,
   type PylonAccountRegistryEntry,
@@ -733,6 +738,8 @@ export type RuntimeClaudeThreadRunner = (input: {
   readonly cwd: string
   readonly env: Record<string, string | undefined>
   readonly signal: AbortSignal
+  readonly permissionMode: ClaudePermissionMode
+  readonly permissionAuthorityRef?: string
   readonly model?: string
   /**
    * When set, resume this existing Claude Agent SDK session
@@ -948,27 +955,11 @@ export const runWithHostedKhalaGateway: RuntimeHostedKhalaThreadRunner = async (
 }
 
 /**
- * Owner-local full-access posture for the Claude Agent SDK, the direct
- * analogue of Codex's `CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY` /
- * `CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE` pair above: `permissionMode:
- * "bypassPermissions"` is the SDK's unrestricted-control mode (its
- * permission system stands in for Codex's OS sandbox + approval policy), and
- * `settingSources: ["project"]` loads the checkout's own CLAUDE.md/.claude
- * settings layers — the same combination `../claude-composer.ts`'s
- * `permissionModeForClaudeComposerExecutionMode("local_supervised_danger")`
- * already uses for real owner-local Claude execution in this codebase. This
- * runner is unconditionally owner-local (there is no untrusted-caller path
- * into `runtime.startTurn` dispatch), so it applies that posture directly
- * rather than routing through the composer's broader opt-in gate.
- */
-const CLAUDE_AGENT_OWNER_LOCAL_PERMISSION_MODE = "bypassPermissions" as const
-const CLAUDE_AGENT_OWNER_LOCAL_SETTING_SOURCES = ["project"] as const
-
-/**
  * The real runner: one Claude Agent SDK `query()` session against the given
- * working directory, owner-local full access (see
- * `CLAUDE_AGENT_OWNER_LOCAL_PERMISSION_MODE` above), aborted via the given
- * `AbortSignal`. Bridges the caller's plain `AbortSignal` into the SDK's own
+ * working directory, using the permission mode already admitted from an
+ * exact process-local authority (or the bounded default), and aborted via the
+ * given `AbortSignal`. Bridges the caller's plain `AbortSignal` into the SDK's
+ * own
  * `AbortController` option (the SDK wants a controller it can inspect, not
  * just a signal, unlike the Codex SDK's `runStreamed(prompt, {signal})`).
  *
@@ -994,8 +985,10 @@ export const runWithRealClaudeAgentSdk: RuntimeClaudeThreadRunner = async (input
       abortController: abort,
       cwd: input.cwd,
       env: input.env,
-      permissionMode: CLAUDE_AGENT_OWNER_LOCAL_PERMISSION_MODE,
-      settingSources: [...CLAUDE_AGENT_OWNER_LOCAL_SETTING_SOURCES],
+      permissionMode: input.permissionMode,
+      ...(input.permissionMode === "bypassPermissions"
+        ? { settingSources: ["project"] }
+        : { settingSources: [], allowedTools: [] }),
       ...(input.model === undefined ? {} : { model: input.model }),
       ...(input.resumeSessionId === undefined ? {} : { resume: input.resumeSessionId }),
     },
@@ -1054,6 +1047,14 @@ export interface EnforceRuntimeIntentsOptions {
   readonly pylonRef: string
   /** Restrict the poll to one owner (recommended: this Pylon's linked user). */
   readonly ownerUserId?: string
+  /** Trusted owner-local composition only. Org-cloud/all-owner pollers omit it. */
+  readonly claudeOwnerLocalPermissionIssuer?: (input: Readonly<{
+    pylonRef: string
+    runRef: string
+    operationRef: string
+    accountRefHash: string
+    now: Date
+  }>) => ClaudeOwnerLocalPermissionControl
   readonly limit?: number
   readonly now?: Date
   /** Live registry of turns this PROCESS is currently running. Persist the
@@ -1316,10 +1317,35 @@ const dispatchTurnStart = async (input: {
       }
       const env = pylonAccountEnvironment(process.env as Record<string, string | undefined>, account)
       const runClaudeThread = options.claudeThreadRunner ?? runWithRealClaudeAgentSdk
+      const permissionNow = options.now ?? new Date()
+      const permissionControl = options.claudeOwnerLocalPermissionIssuer?.({
+        pylonRef: options.pylonRef,
+        runRef: turnId,
+        operationRef: intent.intentId,
+        accountRefHash: account.accountRefHash,
+        now: permissionNow,
+      })
+      const permission = admitClaudePermission({
+        ...(permissionControl === undefined ? {} : { control: permissionControl }),
+        expected: {
+          pylonRef: options.pylonRef,
+          runRef: turnId,
+          operationRef: intent.intentId,
+          accountRefHash: account.accountRefHash,
+        },
+        now: permissionNow,
+      })
+      if (permission.kind === "refused") {
+        throw new Error(`Claude permission authority refused (${permission.blockerRef})`)
+      }
       const { messages } = await runClaudeThread({
         cwd,
         env,
         instructions: prompt,
+        permissionMode: permission.permissionMode,
+        ...(permission.authorityRef === null
+          ? {}
+          : { permissionAuthorityRef: permission.authorityRef }),
         signal: turn.abortController.signal,
         ...(resumeRef === undefined ? {} : { resumeSessionId: resumeRef }),
       })

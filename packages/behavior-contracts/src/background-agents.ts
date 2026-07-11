@@ -22,6 +22,59 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
   contracts: [
     {
       authorityBoundary:
+        "This contract grants Claude bypass only inside a trusted owner-local Pylon composition. It grants no public, bridge, org-cloud, provider, spend, settlement, or remote-host authority.",
+      blockerRefs: [],
+      contractId: "background_agents.claude.owner_local_execution_authority.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8685",
+        "INVARIANTS.md",
+        "packages/pylon-core/src/executor/claude-owner-local-permission.test.ts",
+        "apps/pylon/tests/claude-agent-executor.test.ts",
+        "apps/pylon/src/orchestration/runtime-intent-enforcement.test.ts",
+        "apps/pylon/src/node/control-sessions.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "A process-opaque, expiring authority admits only its exact Pylon, run, operation, and named account; serialization, scope mismatch, expiry, and revocation fail closed.",
+          id: "background_agents.claude.authority_scope",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/pylon-core/src/executor/claude-owner-local-permission.test.ts",
+        },
+        {
+          description:
+            "The assignment executor applies bypass only with the admitted authority, aborts on cancellation, and emits refs-only audit evidence.",
+          id: "background_agents.claude.assignment_permission",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/claude-agent-executor.test.ts",
+        },
+        {
+          description:
+            "Runtime-intent and control-session tests prove owner-local admission while org-cloud, bridge-like, replayed, and unscoped launches remain bounded.",
+          id: "background_agents.claude.non_local_denial",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/src/orchestration/runtime-intent-enforcement.test.ts",
+        },
+      ],
+      productArea: "Pylon Claude execution",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "enforced",
+      statement:
+        "Claude bypass permission is a revocable process-local capability bound to one exact owner-local Pylon run/turn/session, operation, and named account; public, bridge, org-cloud, mismatched, expired, replayed, and revoked paths remain restrictive.",
+      surface: "pylon-worker",
+      verification:
+        "CUT-05 is enforced by the authority, assignment, runtime-intent, control-session, Fleet runner, and public-projection tests in the normal Bun sweeps.",
+    },
+    {
+      authorityBoundary:
         "This contract binds dispatch budget enforcement for background-agent definitions at the openagents.com Worker dispatch boundary. It does not authorize public budget or reliability claims beyond the tested definition-run and trigger-store oracles.",
       blockerRefs: [],
       contractId: "background_agents.dispatch.budget_caps_enforced.v1",
@@ -786,5 +839,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.5",
+  version: "2026-07-11.1",
 }

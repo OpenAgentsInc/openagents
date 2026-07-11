@@ -24,9 +24,14 @@ import {
   recordCodexAccountHealthFailure,
 } from "../codex-account-health-ledger.js"
 import {
-  permissionModeForClaudeComposerExecutionMode,
   runClaudeComposerStream,
 } from "../claude-composer.js"
+import {
+  admitClaudePermission,
+  issueClaudeOwnerLocalPermissionAuthority,
+  projectClaudePermissionAudit,
+  type ClaudeOwnerLocalPermissionControl,
+} from "../claude-agent-executor.js"
 import {
   type CodexAgentConfig,
   type CodexDevConfig,
@@ -211,8 +216,8 @@ export type ControlSessionProjection = {
 }
 
 export type ControlSessionActions = {
-  spawn: (command: ControlSessionSpawnCommand) => Promise<{ sessionRef: string; state: ControlSessionState }>
-  reply: (command: ControlSessionReplyCommand) => Promise<{
+  spawn: (command: ControlSessionSpawnCommand, context?: ControlSessionLaunchContext) => Promise<{ sessionRef: string; state: ControlSessionState }>
+  reply: (command: ControlSessionReplyCommand, context?: ControlSessionLaunchContext) => Promise<{
     sessionRef: string
     parentSessionRef: string
     state: ControlSessionState
@@ -239,6 +244,11 @@ export type ControlSessionActions = {
   eventStream: (sessionRef: string) => ReadableStream<Uint8Array>
 }
 
+export type ControlSessionLaunchContext = Readonly<{
+  /** Internal server trust fact; never parsed from the command or bridge wire. */
+  ownerLocalLoopback: boolean
+}>
+
 export type ControlSessionExecutorInput = {
   adapter: ControlSessionAdapter
   account: ResolvedPylonAccountSelection | null
@@ -255,6 +265,7 @@ export type ControlSessionExecutorInput = {
   timeoutMs: number
   verify: string[]
   workspaceRef: string
+  claudeOwnerLocalPermissionControl?: ClaudeOwnerLocalPermissionControl
 }
 
 export type ControlSessionExecutorResult = {
@@ -266,6 +277,8 @@ export type ControlSessionExecutorResult = {
   externalSessionRef: string | null
   networkAccessEnabled?: boolean
   permissionMode?: "acceptEdits" | "bypassPermissions"
+  permissionAuthorityRef?: string
+  permissionPolicyRef?: string
   responseDigestRef: string | null
   sandboxMode?: "read-only" | "workspace-write" | "danger-full-access"
   totalTokens: number
@@ -355,6 +368,7 @@ type SessionRecord = {
   timeoutMs: number
   state: ControlSessionState
   abort: AbortController
+  claudeOwnerLocalPermissionControl: ClaudeOwnerLocalPermissionControl | null
   createdAt: string
   startedAt: string | null
   completedAt: string | null
@@ -943,12 +957,29 @@ async function defaultControlSessionExecutor(
     })
   } else {
     const config = await loadClaudeAgentConfig(input.summary)
-    const devConfig = await loadClaudeDevConfig(input.summary)
-    executionMode =
-      devConfig.claudeExecutionMode === "local_supervised_danger"
-        ? "local_supervised_danger"
-        : "local_bounded"
-    permissionMode = permissionModeForClaudeComposerExecutionMode(executionMode)
+    const pylonRef = input.summary.bootstrap.pylonRef ??
+      stableRef("pylon.control_session", input.summary.paths.home)
+    const permission = admitClaudePermission({
+      ...(input.claudeOwnerLocalPermissionControl === undefined
+        ? {}
+        : { control: input.claudeOwnerLocalPermissionControl }),
+      expected: {
+        pylonRef,
+        runRef: input.sessionRef,
+        operationRef: input.sessionRef,
+        accountRefHash:
+          input.account?.accountRefHash ?? "account.pylon.claude_agent.unbound",
+      },
+      now: new Date(),
+    })
+    if (permission.kind === "refused") {
+      throw new Error(`Claude control-session permission refused (${permission.blockerRef})`)
+    }
+    const permissionAudit = projectClaudePermissionAudit(permission)
+    executionMode = permission.kind === "owner_local"
+      ? "local_supervised_danger"
+      : "local_bounded"
+    permissionMode = permission.permissionMode
     const result = await runClaudeComposerStream(
       input.objective,
       {
@@ -976,7 +1007,9 @@ async function defaultControlSessionExecutor(
       result.text.length === 0 ? null : stableRef("digest.pylon.control_session.response", result.text)
     input.emit({
       phase: "composer_event",
-      message: `control session mode: ${executionMode}; permissions: ${permissionMode}`,
+      message: permissionAudit === null
+        ? "control session policy: bounded"
+        : `control session policy: ${permissionAudit.policyRef}; authority: ${permissionAudit.authorityRef}`,
       composerEventIndex: result.eventCount + 1,
     })
   }
@@ -1003,6 +1036,13 @@ async function defaultControlSessionExecutor(
     externalSessionRef,
     ...(networkAccessEnabled === undefined ? {} : { networkAccessEnabled }),
     ...(permissionMode === undefined ? {} : { permissionMode }),
+    ...(input.claudeOwnerLocalPermissionControl === undefined
+      ? {}
+      : {
+          permissionAuthorityRef:
+            input.claudeOwnerLocalPermissionControl.authority.authorityRef,
+          permissionPolicyRef: "policy.pylon.claude.owner_local_bypass.v1",
+        }),
     responseDigestRef,
     ...(sandboxMode === undefined ? {} : { sandboxMode }),
     totalTokens,
@@ -1043,6 +1083,43 @@ export function createControlSessionActions(options: {
     return executor
   }
   const proofsDir = options.proofsDir ?? join(options.summary.paths.home, "proofs", "control-sessions")
+  const localPylonRef = options.summary.bootstrap.pylonRef ??
+    stableRef("pylon.control_session", options.summary.paths.home)
+  const ownerLocalClaudeControlFor = async (input: Readonly<{
+    context?: ControlSessionLaunchContext
+    adapter: ControlSessionAdapter
+    lane: ControlSessionLane
+    sessionRef: string
+    account: ResolvedPylonAccountSelection | null
+    abort: AbortController
+  }>): Promise<ClaudeOwnerLocalPermissionControl | null> => {
+    if (
+      input.context?.ownerLocalLoopback !== true ||
+      input.adapter !== "claude_agent" ||
+      laneIsCloud(input.lane) ||
+      input.account?.accountRef === null ||
+      input.account === null
+    ) {
+      return null
+    }
+    const devConfig = await loadClaudeDevConfig(options.summary)
+    if (devConfig.claudeExecutionMode !== "local_supervised_danger") return null
+    return {
+      authority: issueClaudeOwnerLocalPermissionAuthority({
+        authorizationRef:
+          `authorization.pylon.claude_owner_local.${createHash("sha256")
+            .update(`loopback:${localPylonRef}:${input.sessionRef}`)
+            .digest("hex")
+            .slice(0, 24)}`,
+        pylonRef: localPylonRef,
+        runRef: input.sessionRef,
+        operationRef: input.sessionRef,
+        accountRefHash: input.account.accountRefHash,
+        now: new Date(),
+      }),
+      signal: input.abort.signal,
+    }
+  }
   let spawnIndex = 0
 
   const sseFrame = (payload: unknown) => `data: ${JSON.stringify(payload)}\n\n`
@@ -1135,7 +1212,12 @@ export function createControlSessionActions(options: {
           : "control_session.composer",
         executionMode: result.executionMode ?? "local_bounded",
         ...(result.sandboxMode === undefined ? {} : { sandboxMode: result.sandboxMode }),
-        ...(result.permissionMode === undefined ? {} : { permissionMode: result.permissionMode }),
+        ...(result.permissionAuthorityRef === undefined
+          ? {}
+          : { permissionAuthorityRef: result.permissionAuthorityRef }),
+        ...(result.permissionPolicyRef === undefined
+          ? {}
+          : { permissionPolicyRef: result.permissionPolicyRef }),
         ...(result.networkAccessEnabled === undefined
           ? {}
           : { networkAccessEnabled: result.networkAccessEnabled }),
@@ -1305,6 +1387,12 @@ export function createControlSessionActions(options: {
       timeoutMs: record.timeoutMs,
       verify: record.verify,
       workspaceRef: record.workspace.workspaceRef,
+      ...(record.claudeOwnerLocalPermissionControl === null
+        ? {}
+        : {
+            claudeOwnerLocalPermissionControl:
+              record.claudeOwnerLocalPermissionControl,
+          }),
     })
 
   const runExecutorWithCodexFailover = async (
@@ -1410,7 +1498,7 @@ export function createControlSessionActions(options: {
   }
 
   return {
-    spawn: async (raw) => {
+    spawn: async (raw, context) => {
       const command = parseSpawnCommand(raw)
       const index = spawnIndex
       spawnIndex += 1
@@ -1432,6 +1520,15 @@ export function createControlSessionActions(options: {
         "session.pylon.control",
         `${runRef}:${command.adapter}:${command.objective}:${workspace.workspaceRef}`,
       )
+      const abort = new AbortController()
+      const claudeOwnerLocalPermissionControl = await ownerLocalClaudeControlFor({
+        context,
+        adapter: command.adapter,
+        lane: command.lane ?? DEFAULT_CONTROL_SESSION_LANE,
+        sessionRef,
+        account: accountPlan.account,
+        abort,
+      })
       const record: SessionRecord = {
         sessionRef,
         parentSessionRef: null,
@@ -1448,7 +1545,8 @@ export function createControlSessionActions(options: {
         verifyRef: stableRef("command.pylon.control_session.verify", command.verify.join("\0")),
         timeoutMs: (command.timeoutSeconds ?? 600) * 1000,
         state: "queued",
-        abort: new AbortController(),
+        abort,
+        claudeOwnerLocalPermissionControl,
         createdAt: nowIso(),
         startedAt: null,
         completedAt: null,
@@ -1465,7 +1563,7 @@ export function createControlSessionActions(options: {
       void runSession(record)
       return { sessionRef, state: record.state }
     },
-    reply: async (raw) => {
+    reply: async (raw, context) => {
       const command = parseReplyCommand(raw)
       const parent = records.get(command.sessionRef)
       if (!parent) throw new Error("session.reply parent session not found")
@@ -1475,6 +1573,15 @@ export function createControlSessionActions(options: {
         "session.pylon.control",
         `${runRef}:${parent.adapter}:${parent.sessionRef}:${objective}:${parent.workspace.workspaceRef}`,
       )
+      const abort = new AbortController()
+      const claudeOwnerLocalPermissionControl = await ownerLocalClaudeControlFor({
+        context,
+        adapter: parent.adapter,
+        lane: parent.lane,
+        sessionRef,
+        account: parent.account,
+        abort,
+      })
       const record: SessionRecord = {
         sessionRef,
         parentSessionRef: parent.sessionRef,
@@ -1491,7 +1598,8 @@ export function createControlSessionActions(options: {
         verifyRef: parent.verifyRef,
         timeoutMs: (command.timeoutSeconds ?? Math.ceil(parent.timeoutMs / 1000)) * 1000,
         state: "queued",
-        abort: new AbortController(),
+        abort,
+        claudeOwnerLocalPermissionControl,
         createdAt: nowIso(),
         startedAt: null,
         completedAt: null,
@@ -1556,6 +1664,7 @@ export function createControlSessionActions(options: {
         timeoutMs: (command.timeoutSeconds ?? 300) * 1000,
         state: "queued",
         abort: new AbortController(),
+        claudeOwnerLocalPermissionControl: null,
         createdAt: nowIso(),
         startedAt: null,
         completedAt: null,
