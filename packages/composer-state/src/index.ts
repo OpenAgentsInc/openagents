@@ -2297,3 +2297,318 @@ export const serializeComposerMarkdown = (doc: ComposerDoc): string =>
       }
     })
     .join("\n\n")
+
+// ---------------------------------------------------------------------------
+// Coding composer draft envelope (CUT-16)
+// ---------------------------------------------------------------------------
+
+export const CODING_COMPOSER_DRAFT_SCHEMA_VERSION =
+  "openagents.coding_composer_draft.v1" as const
+
+export const CodingComposerSafeRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(256),
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+)
+export type CodingComposerSafeRef = typeof CodingComposerSafeRef.Type
+
+const CodingComposerRevision = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+)
+
+const CodingComposerLine = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(1),
+)
+
+export const CodingComposerContextItem = S.Union([
+  S.Struct({
+    kind: S.Literal("repository"),
+    repositoryRef: CodingComposerSafeRef,
+    revisionRef: CodingComposerSafeRef,
+  }),
+  S.Struct({
+    kind: S.Literal("worktree"),
+    repositoryRef: CodingComposerSafeRef,
+    worktreeRef: CodingComposerSafeRef,
+    revisionRef: CodingComposerSafeRef,
+  }),
+  S.Struct({
+    kind: S.Literal("editor_selection"),
+    artifactRef: CodingComposerSafeRef,
+    revisionRef: CodingComposerSafeRef,
+    digestRef: CodingComposerSafeRef,
+    startLine: CodingComposerLine,
+    endLine: CodingComposerLine,
+  }),
+  S.Struct({
+    kind: S.Literal("diff"),
+    diffRef: CodingComposerSafeRef,
+    baseRevisionRef: CodingComposerSafeRef,
+    headRevisionRef: CodingComposerSafeRef,
+    digestRef: CodingComposerSafeRef,
+  }),
+])
+export type CodingComposerContextItem = typeof CodingComposerContextItem.Type
+
+export const CodingComposerTargetReadiness = S.Literals([
+  "ready",
+  "unavailable",
+  "revoked",
+  "offline",
+])
+export type CodingComposerTargetReadiness =
+  typeof CodingComposerTargetReadiness.Type
+
+export const CodingComposerTargetSelection = S.Struct({
+  laneRef: CodingComposerSafeRef,
+  providerRef: S.optional(CodingComposerSafeRef),
+  modelRef: S.optional(CodingComposerSafeRef),
+  accountRef: S.optional(CodingComposerSafeRef),
+  executionTargetRef: S.optional(CodingComposerSafeRef),
+  readiness: CodingComposerTargetReadiness,
+  reasonRef: S.optional(CodingComposerSafeRef),
+})
+export type CodingComposerTargetSelection =
+  typeof CodingComposerTargetSelection.Type
+
+const CodingComposerSubmissionIdentity = {
+  submissionRef: CodingComposerSafeRef,
+  intentId: CodingComposerSafeRef,
+  idempotencyKey: CodingComposerSafeRef,
+  attempt: S.Number.check(S.isInt(), S.isGreaterThan(0)),
+} as const
+
+export const CodingComposerSubmission = S.Union([
+  S.Struct({ status: S.Literal("editing") }),
+  S.Struct({
+    status: S.Literal("queued"),
+    ...CodingComposerSubmissionIdentity,
+    queuedAt: S.String,
+  }),
+  S.Struct({
+    status: S.Literal("accepted"),
+    ...CodingComposerSubmissionIdentity,
+    queuedAt: S.String,
+    acceptedAt: S.String,
+  }),
+  S.Struct({
+    status: S.Literal("failed"),
+    ...CodingComposerSubmissionIdentity,
+    queuedAt: S.String,
+    failedAt: S.String,
+    reasonRef: CodingComposerSafeRef,
+  }),
+  S.Struct({
+    status: S.Literal("canceled"),
+    ...CodingComposerSubmissionIdentity,
+    queuedAt: S.String,
+    canceledAt: S.String,
+    reasonRef: CodingComposerSafeRef,
+  }),
+])
+export type CodingComposerSubmission = typeof CodingComposerSubmission.Type
+
+export const CodingComposerDraftSnapshot = S.Struct({
+  schema: S.Literal(CODING_COMPOSER_DRAFT_SCHEMA_VERSION),
+  draftRef: CodingComposerSafeRef,
+  ownerRef: CodingComposerSafeRef,
+  sessionRef: CodingComposerSafeRef,
+  threadRef: S.optional(CodingComposerSafeRef),
+  revision: CodingComposerRevision,
+  doc: ComposerDoc,
+  selection: ComposerSelection,
+  view: ComposerViewState,
+  context: S.Array(CodingComposerContextItem).check(S.isMaxLength(16)),
+  target: CodingComposerTargetSelection,
+  submission: CodingComposerSubmission,
+  updatedAt: S.String,
+})
+export type CodingComposerDraftSnapshot =
+  typeof CodingComposerDraftSnapshot.Type
+
+export const decodeCodingComposerDraftSnapshot = S.decodeUnknownSync(
+  CodingComposerDraftSnapshot,
+)
+
+const codingContextIdentity = (item: CodingComposerContextItem): string => {
+  switch (item.kind) {
+    case "repository":
+      return item.repositoryRef
+    case "worktree":
+      return item.worktreeRef
+    case "editor_selection":
+      return item.artifactRef
+    case "diff":
+      return item.diffRef
+  }
+}
+
+const codingContextRevision = (item: CodingComposerContextItem): string =>
+  item.kind === "diff" ? item.headRevisionRef : item.revisionRef
+
+const sameSubmissionIdentity = (
+  submission: Exclude<CodingComposerSubmission, { readonly status: "editing" }>,
+  input: Readonly<{
+    submissionRef: string
+    intentId: string
+    idempotencyKey: string
+  }>,
+): boolean => submission.submissionRef === input.submissionRef &&
+  submission.intentId === input.intentId &&
+  submission.idempotencyKey === input.idempotencyKey
+
+export type CodingComposerQueueFailureReason =
+  | "attachments_not_ready"
+  | "context_stale"
+  | "retry_identity_mismatch"
+  | "submission_in_flight"
+  | "target_unavailable"
+
+export type CodingComposerQueueResult =
+  | Readonly<{
+      ok: true
+      state: "duplicate" | "queued"
+      draft: CodingComposerDraftSnapshot
+    }>
+  | Readonly<{ ok: false; reason: CodingComposerQueueFailureReason }>
+
+export const queueCodingComposerSubmission = (
+  draft: CodingComposerDraftSnapshot,
+  input: Readonly<{
+    submissionRef: string
+    intentId: string
+    idempotencyKey: string
+    queuedAt: string
+    currentContextRevisions: Readonly<Record<string, string>>
+  }>,
+): CodingComposerQueueResult => {
+  if (draft.target.readiness !== "ready") {
+    return { ok: false, reason: "target_unavailable" }
+  }
+  if (draft.doc.attachments.some(attachment => attachment.status !== "ready")) {
+    return { ok: false, reason: "attachments_not_ready" }
+  }
+  if (draft.context.some(item =>
+    input.currentContextRevisions[codingContextIdentity(item)] !==
+      codingContextRevision(item)
+  )) {
+    return { ok: false, reason: "context_stale" }
+  }
+  if (draft.submission.status === "queued" || draft.submission.status === "accepted") {
+    return sameSubmissionIdentity(draft.submission, input)
+      ? { ok: true, state: "duplicate", draft }
+      : { ok: false, reason: "submission_in_flight" }
+  }
+  if (
+    draft.submission.status !== "editing" &&
+    !sameSubmissionIdentity(draft.submission, input)
+  ) {
+    return { ok: false, reason: "retry_identity_mismatch" }
+  }
+  const attempt = draft.submission.status === "editing"
+    ? 1
+    : draft.submission.attempt + 1
+  return {
+    ok: true,
+    state: "queued",
+    draft: {
+      ...draft,
+      revision: draft.revision + 1,
+      submission: {
+        status: "queued",
+        submissionRef: input.submissionRef,
+        intentId: input.intentId,
+        idempotencyKey: input.idempotencyKey,
+        attempt,
+        queuedAt: input.queuedAt,
+      },
+      updatedAt: input.queuedAt,
+    },
+  }
+}
+
+export type CodingComposerSettlementStatus = "accepted" | "failed" | "canceled"
+
+export const settleCodingComposerSubmission = (
+  draft: CodingComposerDraftSnapshot,
+  input: Readonly<{
+    submissionRef: string
+    status: CodingComposerSettlementStatus
+    settledAt: string
+    reasonRef?: string
+  }>,
+): CodingComposerDraftSnapshot | null => {
+  if (
+    draft.submission.status !== "queued" ||
+    draft.submission.submissionRef !== input.submissionRef
+  ) return null
+  const identity = {
+    submissionRef: draft.submission.submissionRef,
+    intentId: draft.submission.intentId,
+    idempotencyKey: draft.submission.idempotencyKey,
+    attempt: draft.submission.attempt,
+    queuedAt: draft.submission.queuedAt,
+  }
+  const submission: CodingComposerSubmission = input.status === "accepted"
+    ? { status: "accepted", ...identity, acceptedAt: input.settledAt }
+    : input.status === "failed"
+      ? {
+          status: "failed",
+          ...identity,
+          failedAt: input.settledAt,
+          reasonRef: input.reasonRef ?? "reason.submission_failed",
+        }
+      : {
+          status: "canceled",
+          ...identity,
+          canceledAt: input.settledAt,
+          reasonRef: input.reasonRef ?? "reason.submission_canceled",
+        }
+  return {
+    ...draft,
+    revision: draft.revision + 1,
+    submission,
+    updatedAt: input.settledAt,
+  }
+}
+
+export const CodingComposerSubmissionReceipt = S.Struct({
+  schema: S.Literal("openagents.coding_composer_submission_receipt.v1"),
+  draftRef: CodingComposerSafeRef,
+  sessionRef: CodingComposerSafeRef,
+  threadRef: S.optional(CodingComposerSafeRef),
+  revision: CodingComposerRevision,
+  status: S.Literals(["editing", "queued", "accepted", "failed", "canceled"]),
+  attempt: S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0)),
+  blockCount: S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0)),
+  attachmentCount: S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0)),
+  contextKinds: S.Array(S.Literals([
+    "repository",
+    "worktree",
+    "editor_selection",
+    "diff",
+  ])).check(S.isMaxLength(16)),
+  targetReadiness: CodingComposerTargetReadiness,
+  updatedAt: S.String,
+})
+export type CodingComposerSubmissionReceipt =
+  typeof CodingComposerSubmissionReceipt.Type
+
+export const projectCodingComposerSubmissionReceipt = (
+  draft: CodingComposerDraftSnapshot,
+): CodingComposerSubmissionReceipt => ({
+  schema: "openagents.coding_composer_submission_receipt.v1",
+  draftRef: draft.draftRef,
+  sessionRef: draft.sessionRef,
+  ...(draft.threadRef === undefined ? {} : { threadRef: draft.threadRef }),
+  revision: draft.revision,
+  status: draft.submission.status,
+  attempt: draft.submission.status === "editing" ? 0 : draft.submission.attempt,
+  blockCount: draft.doc.blocks.length,
+  attachmentCount: draft.doc.attachments.length,
+  contextKinds: draft.context.map(item => item.kind),
+  targetReadiness: draft.target.readiness,
+  updatedAt: draft.updatedAt,
+})

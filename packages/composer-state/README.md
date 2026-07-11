@@ -19,6 +19,22 @@ It does not render DOM, own uploads, or make routing decisions from user text.
 UI packages and app integrations consume this state layer and keep platform
 editing behavior native.
 
+## Coding draft envelope
+
+`openagents.coding_composer_draft.v1` binds the editor kernel to one private,
+restart-safe coding draft without turning prompt text into routing authority.
+It carries stable draft/session/thread identity, ref-only repository/worktree/
+editor/diff context, explicit provider/model/account/target selection and
+readiness, and an idempotent submission state machine. Queueing fails closed
+while attachments are unfinished, context revisions are stale, or authority is
+unavailable/revoked/offline. An explicit retry preserves the same submission,
+intent, and idempotency identity and increments only the attempt counter.
+
+The bounded submission receipt includes opaque draft/session/thread refs,
+counts, context kinds, readiness, and lifecycle only. It never includes draft
+text, selection contents, attachment names or executor refs, local paths, raw
+diff/editor bodies, provider payloads, or account credentials.
+
 Collaborative helpers intentionally keep raw draft text inside the private
 transaction payload. Public projections should use `ComposerChangeSummary` or
 attachment upload receipts, not serialized transaction steps.
