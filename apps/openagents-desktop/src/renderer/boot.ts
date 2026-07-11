@@ -263,6 +263,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     })
     const selection = yield* Effect.promise(() => selectDesktopChatHostSelection({
       request: bridge?.runtimeRequest,
+      subscribe: bridge?.runtimeSubscribe,
       local: localHarnessChat,
     }))
     const chat = selection.host

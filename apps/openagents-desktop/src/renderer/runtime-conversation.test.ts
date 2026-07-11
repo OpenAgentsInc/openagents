@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
-import type { DesktopRuntimeGatewayResponse } from "../runtime-gateway-contract.ts"
+import { readFileSync } from "node:fs"
+import type { DesktopThread } from "../chat-contract.ts"
+import type {
+  DesktopRuntimeGatewayEvent,
+  DesktopRuntimeGatewayResponse,
+} from "../runtime-gateway-contract.ts"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 import type { ChatHost } from "./shell.ts"
 import {
@@ -193,8 +198,6 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         const ids = ["new-thread", "new-message", "new-run"]
         return () => ids.shift()!
       })(),
-      sleep: async () => undefined,
-      pollAttempts: 2,
     })
 
     expect((await chat.listThreads())[0]?.id).toBe("thread.synced.1")
@@ -226,6 +229,145 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       "conversation.start",
     ])
     expect(commands.find(command => command.id === "conversation.start")).not.toHaveProperty("lane")
+  })
+
+  test("streams append and terminal confirmation from one fenced subscription without timeline polling", async () => {
+    const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
+    const requests: Array<{
+      command?: Record<string, string | number>
+      commandId?: string
+      query?: { id: string; intentId?: string; threadRef?: string }
+      requestId?: string
+    }> = []
+    const emit = (event: DesktopRuntimeGatewayEvent): void => {
+      for (const listener of [...listeners]) listener(event)
+    }
+    const liveEvent = (
+      sequence: number,
+      messages: Array<{ messageRef: string; body: string }>,
+      terminal: boolean,
+    ): DesktopRuntimeGatewayEvent => ({
+      kind: "conversation.live.update",
+      envelope: {
+        kind: "conversation.live",
+        delivery: "confirmed",
+        subscriptionRef: "subscription.renderer.conversation.live-subscription",
+        generation: 1,
+        sequence,
+        threadRef: "thread.live.1",
+        cursor: 5 + sequence,
+        recovery: sequence === 1 ? "initial" : "resumed",
+        ...(terminal ? { runRef: "turn.desktop.live-run" } : {}),
+        messageRefs: messages.map(message => message.messageRef),
+        eventRefs: terminal ? ["event.live.text", "event.live.terminal"] : [],
+      },
+      snapshot: {
+        status: { phase: "live", cursor: 5 + sequence, pendingMutationCount: 0 },
+        thread: {
+          threadRef: "thread.live.1",
+          title: "Live",
+          messageCount: messages.length,
+          lastMessageAt: messages.length === 0 ? null : now,
+          updatedAt: now,
+          version: sequence,
+        },
+        messages: messages.map((message, index) => ({
+          messageRef: message.messageRef,
+          threadRef: "thread.live.1",
+          body: message.body,
+          createdAt: now,
+          updatedAt: now,
+          version: index + 1,
+        })),
+        timeline: terminal ? {
+          status: { phase: "live", cursor: 5 + sequence, pendingMutationCount: 0 },
+          run: {
+            runRef: "turn.desktop.live-run",
+            routeRef: "thread.live.1",
+            status: "completed",
+            createdAt: now,
+            updatedAt: now,
+            startedAt: now,
+            completedAt: now,
+            failedAt: null,
+            canceledAt: null,
+            version: 2,
+          },
+          events: [
+            { eventRef: "event.live.text", runRef: "turn.desktop.live-run", sequence: 1, eventType: "text.delta", summary: "Live answer", status: null, artifactRefs: [], item: { kind: "text", messageRef: "assistant.live.1", text: "Live answer" }, createdAt: now, version: 2 },
+            { eventRef: "event.live.terminal", runRef: "turn.desktop.live-run", sequence: 2, eventType: "turn.finished", summary: "Done", status: "completed", artifactRefs: [], item: { kind: "terminal", status: "completed" }, createdAt: now, version: 3 },
+          ],
+        } : null,
+      },
+    })
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as { command?: Record<string, string | number>; commandId?: string; query?: { id: string; intentId?: string; threadRef?: string }; requestId?: string }
+      requests.push(value)
+      if (value.command?.id === "conversation.subscribe") {
+        emit(liveEvent(1, [], false))
+        return {
+          kind: "conversation_subscription_outcome",
+          commandId: value.commandId!,
+          subscriptionRef: String(value.command.subscriptionRef),
+          generation: Number(value.command.generation),
+          status: "subscribed",
+        }
+      }
+      if (value.command?.id === "conversation.append") {
+        queueMicrotask(() => emit(liveEvent(2, [{ messageRef: "message.desktop.live-message", body: "Stream it" }], false)))
+        return { kind: "conversation_mutation_outcome", commandId: value.commandId!, status: "pending_reconcile", mutationId: 1 }
+      }
+      if (value.command?.id === "conversation.start") {
+        queueMicrotask(() => emit(liveEvent(3, [{ messageRef: "message.desktop.live-message", body: "Stream it" }], true)))
+        return { kind: "runtime_command_outcome", commandId: value.commandId!, threadRef: "thread.live.1", messageRef: "message.desktop.live-message", runRef: "turn.desktop.live-run", status: "accepted", mutationId: 2 }
+      }
+      if (value.query?.id === "conversation.commandOutcome") {
+        return { kind: "runtime_command_status", requestId: value.requestId!, commandRef: value.query.intentId!, threadRef: "thread.live.1", runRef: "turn.desktop.live-run", status: "settled", mutationId: 2, version: 3, updatedAt: now }
+      }
+      if (value.command?.id === "conversation.unsubscribe") {
+        return { kind: "conversation_subscription_outcome", commandId: value.commandId!, subscriptionRef: String(value.command.subscriptionRef), generation: Number(value.command.generation), status: "unsubscribed" }
+      }
+      throw new Error(`unexpected request ${value.command?.id ?? value.query?.id}`)
+    }
+    const ids = ["live-message", "live-run", "live-subscription"]
+    const updates: Array<DesktopThread> = []
+    const chat = makeRuntimeConversationChatHost({
+      request,
+      subscribe: listener => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+      randomId: () => ids.shift()!,
+      liveTimeoutMs: 100,
+    })
+    const result = await chat.sendMessage({
+      id: "thread.live.1",
+      message: "Stream it",
+      onUpdate: thread => { updates.push(thread) },
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.thread?.notes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "message.desktop.live-message", text: "Stream it" }),
+      expect.objectContaining({ role: "assistant", text: "Live answer" }),
+      expect.objectContaining({ role: "system", text: "Turn completed" }),
+    ]))
+    expect(updates.at(-1)?.notes).toEqual(result.thread?.notes)
+    expect(requests.filter(value => value.query?.id === "conversation.timeline")).toEqual([])
+    expect(requests.map(value => value.command?.id).filter(Boolean)).toEqual([
+      "conversation.subscribe",
+      "conversation.append",
+      "conversation.start",
+      "conversation.unsubscribe",
+    ])
+    expect(listeners.size).toBe(0)
+  })
+
+  test("source oracle forbids recurring renderer timeline polling", () => {
+    const source = readFileSync(new URL("./runtime-conversation.ts", import.meta.url), "utf8")
+    expect(source).not.toContain("pollAttempts")
+    expect(source).not.toContain("sleep(100)")
+    expect(source).not.toContain("setInterval(")
   })
 
   const makeHarnessFixture = () => {
@@ -308,8 +450,6 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     const chat = makeRuntimeConversationChatHost({
       request,
       randomId: () => ids.shift() ?? "harness-extra",
-      sleep: async () => undefined,
-      pollAttempts: 2,
     })
     return { chat, startCommands }
   }
@@ -380,8 +520,6 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     const chat = makeRuntimeConversationChatHost({
       request,
       randomId: () => ids.shift() ?? "rejected-extra",
-      sleep: async () => undefined,
-      pollAttempts: 1,
     })
     const result = await chat.sendMessage({ id: "thread.harness.1", message: "Rejected", harness: "fable" })
     expect(result).toEqual({ ok: false, error: "Message was admitted, but agent dispatch was rejected." })
@@ -389,11 +527,8 @@ describe("authoritative Runtime Gateway chat adapter", () => {
   })
 
   test("never reports an unconfirmed append completed", async () => {
-    let sleeps = 0
     const chat = makeRuntimeConversationChatHost({
       randomId: () => "pending",
-      pollAttempts: 2,
-      sleep: async () => { sleeps += 1 },
       request: async raw => {
         const value = raw as { requestId?: string; commandId?: string; query?: { id: string; threadRef?: string } }
         if (value.query?.id === "conversation.catalog") {
@@ -432,7 +567,6 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain("pending reconciliation")
     expect(result.error).not.toContain("completed")
-    expect(sleeps).toBe(2)
   })
 
   test("surfaces the exact durable expired command after reconnect", async () => {
@@ -522,8 +656,6 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     const chat = makeRuntimeConversationChatHost({
       request,
       randomId: () => ids.shift()!,
-      sleep: async () => undefined,
-      pollAttempts: 1,
     })
 
     expect(await chat.sendMessage({

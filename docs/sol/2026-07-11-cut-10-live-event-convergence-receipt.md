@@ -2,8 +2,8 @@
 
 - Date: 2026-07-11
 - Issue: [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690)
-- Status: shared/mobile and Desktop host/wire tranches complete; Desktop
-  renderer consumption and physical receipt pending
+- Status: shared/mobile and complete Desktop host/wire/renderer no-poll path
+  landed; physical receipt pending
 - Sequencing exception: the owner deferred CUT-09 physical acceptance while
   the paired phone records video, without waiving that acceptance gate
 
@@ -42,11 +42,16 @@ the full bounded live update on its existing event channel. Main resets all
 subscriptions before authenticated Sync replacement/sign-out; Gateway disposal
 closes the registry.
 
-The renderer-side typed adapter is also staged in a new file without changing
-the active chat consumer. It registers the decoded event listener before the
+The renderer-side typed adapter registers the decoded event listener before the
 subscribe request so an immediate authoritative snapshot cannot race past,
 buffers only the latest pre-ack update, fences foreign refs/generations, stale
 sequences, and cursor regression, and sends one exact unsubscribe on disposal.
+The active runtime chat consumer now opens that adapter before append, waits
+for the exact generated message ref, keeps the same subscription through
+streamed timeline updates and exact terminal run confirmation, then closes it
+in `finally`. Harness selection still maps Fable to `claude_pylon` and Codex to
+`codex_app_server`. Initial catalog/detail reads and final timeout diagnosis are
+one-shot queries; the old recurring 100 ms loops are gone.
 
 ## Verification
 
@@ -63,20 +68,24 @@ sequences, and cursor regression, and sends one exact unsubscribe on disposal.
   open, and dispose-all behavior.
 - Renderer adapter: 4 focused tests / 17 expectations cover initial-event
   races, stale fencing, exact idempotent close, and unavailable cleanup.
-- Full Desktop verification passes on the integrated #8712 tree: 288 tests /
-  1,490 expectations, production
-  bundle, every built Electron smoke stage, renderer reload restoration, and
-  lifecycle teardown with zero active host slots.
+- Runtime consumer: 11 focused tests / 35 expectations cover listener-before-
+  append delivery, exact-message confirmation, streamed terminal projection,
+  exact unsubscribe, preserved harness lanes, expired commands, and a source
+  oracle forbidding `pollAttempts`, `sleep(100)`, and `setInterval`.
+- Full Desktop verification passes on the integrated #8712 tree: 311 tests /
+  1,581 expectations, typecheck, production bundle, every built Electron smoke
+  stage (including Fable stream/markdown/metadata), renderer reload
+  restoration, and lifecycle teardown with zero active host slots.
 
 ## Coordination boundary and residual
 
 Issue #8712 explicitly released the Gateway wire after its optional
-`conversation.start.lane` field landed; CUT-10 preserved that field and protocol
-v7. The later local Fable/Codex child and chat-UI lanes remain separate. This
-tranche did not change their local execution, child activity, usage, composer,
-provider-account, Pylon, package, or lockfile paths.
+`conversation.start.lane` field landed, then its chat-UI landing satisfied the
+stated renderer-consumer handoff condition. CUT-10 preserved that field,
+protocol v7, and all landed chat UI. The later local Fable/Codex child lane
+remains separate. This tranche did not change local execution, child activity,
+usage, composer, provider-account, Pylon, package, or lockfile paths.
 
-CUT-10 must still replace Desktop renderer `runtime-conversation.ts` polling
-with the landed adapter after the active chat-UI owner hands off that consumer,
-run the no-poll built-Electron journey, and attach the physical-mobile
-continuation receipt when the phone is available. Until then #8690 remains open.
+CUT-10 must still attach the physical-mobile continuation receipt when the
+recording phone is available. Until then #8690 remains open; the deterministic
+no-poll code and built-Electron receipt are complete.

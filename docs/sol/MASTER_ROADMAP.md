@@ -1,9 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (CUT-10 host/wire and renderer adapter landed; CUT-11
+- Updated: 2026-07-11 (CUT-10 no-poll Desktop/mobile path landed; CUT-11
   canonical graph through the Sync server writer active)
-- Revision: 40
+- Revision: 41
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -541,9 +541,12 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   conversation updates, mobile no longer polls conversation timelines, and the
   Desktop host registry/Gateway wire now bounds and fences subscription
   lifetimes; a standalone renderer adapter handles initial-event races and
-  stale updates. #8712 released the Gateway files after landing its optional
-  harness-selection field; its active chat-UI/local-child work remains separate
-  from CUT-10's pending renderer consumer.
+  stale updates. After #8712's chat-UI landing satisfied its handoff condition,
+  the Desktop runtime consumer now registers before append, streams exact
+  message/terminal confirmation through one fenced subscription, unsubscribes
+  exactly once, and has no recurring timeline loop. #8712's later local-child
+  work remains separate. CUT-10 non-device work is complete; its physical-
+  mobile receipt remains owner-deferred.
 - CUT-11 now has a registered provider-neutral
   `openagents.live_agent_graph.v1` schema and reducer. Stable node/edge identity,
   explicit unknown provider facts, parent/worktree/tool/attention/terminal
@@ -1555,9 +1558,10 @@ before the accepted parent receipt. Closed #8685 supplies the scoped Claude
 authority. Closed CUT-07 #8687 supplies command convergence and closed CUT-08
 #8688 supplies event/cursor/store convergence; CUT-09 #8689 has landed its
 deterministic lifecycle matrix but its physical-device acceptance is deferred
-at owner direction while the phone records video. CUT-10 is the active
-implementation leaf; this sequencing exception does not close or weaken the
-CUT-09 acceptance contract.
+at owner direction while the phone records video. CUT-10's deterministic no-
+poll Desktop/mobile path is landed and CUT-11 is the active implementation
+leaf; this sequencing exception does not close or weaken the CUT-09/CUT-10
+physical acceptance contracts.
 
 The [Pylon streamlining audit](../fable/2026-07-11-pylon-streamlining-audit.md)
 also fixes the short-term boundary for this proof: `apps/pylon/src/orchestration`
@@ -1579,7 +1583,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 open | Remaining CUT-09–CUT-27 graph; CUT-09 physical acceptance is owner-deferred, CUT-10 awaits its held renderer consumer/physical receipt, and CUT-11 shared graph schema/replay laws are active; CUT-01–CUT-08 and #8640 Phase A are closed |
+| **P0 local-coding leaves** | #8689–#8707 open | Remaining CUT-09–CUT-27 graph; CUT-09/CUT-10 physical acceptance is owner-deferred, CUT-10 no-poll code is landed, and CUT-11 graph/schema/provider/Sync server contracts are active; CUT-01–CUT-08 and #8640 Phase A are closed |
 | **P0 recording pull-forward** | #8712 | Bounded Episode 250 Fleet overview and harness-selector slice; active claim owns named Desktop gateway/composer/settings paths but does not claim CUT-16/CUT-21/CUT-25 exits |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |

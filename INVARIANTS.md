@@ -649,8 +649,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   Gateway v7 now schema-decodes the full bounded update and exposes typed
   subscribe/resume/unsubscribe outcomes through the existing event channel;
   main resets the registry before Sync authority replacement or sign-out and
-  gateway disposal closes it. Renderer consumption remains CUT-10 work and is
-  not implied by these host/wire rungs.
+  gateway disposal closes it. The Desktop runtime chat consumer registers that
+  decoded listener before append, uses one fenced subscription through exact-
+  message and terminal confirmation, and closes with one exact unsubscribe.
+  It retains only one-shot queries for initial catalog/detail or final timeout
+  diagnosis; no recurring 100 ms timeline loop remains. This boundary is
+  enforced by `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`.
 
 **Planned live-agent portability model boundary:**
 
