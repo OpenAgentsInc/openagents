@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693)
-- Status: shared contract, bounded restart resolver, owner-scoped server
-  projection, and confirmed client reads active; Desktop navigation/persistence
-  and built-host restart receipt remain pending
+- Status: complete and closed at `0c49648217`; shared contract, bounded restart
+  resolver, owner-scoped server projection, confirmed client reads, Desktop
+  navigation/persistence, and built-host reload restoration are active
 - Contract schema: `openagents.coding_catalog.v1`
 
 ## Durable product identities
@@ -73,13 +73,40 @@ malformed/pre-contract rows, applies explicit aggregate bounds, selects the
 newest navigation post-image, and runs the shared relationship/recovery
 resolver. Cached SQLite rows never become authority on their own.
 
+## Desktop host persistence and typed navigation
+
+OpenAgents Desktop now owns a device-local catalog through its existing Khala
+Sync SQLite `local_entities` store. Canonical post-images contain stable random
+refs and never contain a path. A main-process-only, mode-`0600` binding file
+maps the opaque worktree ref to the local checkout path needed for runtime
+placement. Device-local authority is explicit in the shared entity contract;
+the hosted server projector and confirmed client read model remain restricted
+to authenticated user/team scopes.
+
+The fixed IPC contract exposes schema-decoded snapshot, choose, open, archive,
+recover, and focus actions. Project Home renders typed active, recovery, and
+archived projections; structured `project:`, `repository:`, and `state:`
+queries avoid ad hoc intent matching. Opening a session restores its typed
+conversation/editor/terminal/agent focus. Duplicate opens retain one stable
+session, missing paths become named recovery, and archive/recover operations
+retain product identity.
+
+The catalog service test closes the real SQLite connection and private binding
+store, creates a new service instance, and proves the same refs, recent order,
+focus, archive, duplicate suppression, and missing-worktree recovery. The
+built Electron smoke then reloads the renderer and proves Project Home restores
+the exact same session key and `This Mac` authority. The existing generic
+`local_entities` schema already stores full typed post-images, so CUT-13 needed
+no new database migration; its existing migration suite plus the real reopen
+and Postgres receipts cover both storage paths.
+
 ## Verification
 
 - Focused schema/resolver suite: 9 pass, 0 fail, 94 expectations.
 - Bounded authority model: all 64 combinations of project/session archive,
   repository/worktree loss, and session/worktree revocation agree with the
   fail-closed eligibility law.
-- Full `@openagentsinc/khala-sync`: 187 pass, 0 fail, 2,695 expectations.
+- Full `@openagentsinc/khala-sync`: 188 pass, 0 fail, 2,697 expectations.
 - Package typecheck: pass.
 - Server projection focus including real Postgres: 5 pass, 0 fail,
   19 expectations; server typecheck passes.
@@ -90,10 +117,18 @@ resolver. Cached SQLite rows never become authority on their own.
   passes.
 - Full `@openagentsinc/khala-sync-client`: 183 pass, 3 opt-in live-smoke skips,
   0 fail, 12,750 expectations.
+- Desktop catalog focus: 5 pass, 0 fail, 25 expectations, including a real
+  SQLite close/reopen.
+- Desktop boundary/catalog/UI focus after concurrent contract integration: 135
+  pass, 0 fail, 996 expectations; Desktop typecheck passes.
+- Full OpenAgents Desktop: 382 pass, 0 fail, 2,023 expectations; production
+  build passes.
+- Built Electron smoke: `coding-catalog-host-persistence` and
+  `coding-catalog-reload-restoration` pass with the exact same opaque session
+  key before and after reload; lifecycle teardown reports zero active handles.
 
-## Residual
+## Close statement
 
-CUT-13 remains open for Desktop typed create/open/archive/recover navigation,
-host-owned persistence, process-restart restoration, and a built Electron
-recovery receipt. These shared/server/client tranches do not claim runtime
-placement or remote movement.
+CUT-13 is complete at `0c49648217`. It establishes local device authority and
+authenticated hosted projection without claiming remote host movement. Mobile
+binding to authenticated repository/session/thread refs remains CUT-14.

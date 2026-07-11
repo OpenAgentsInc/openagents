@@ -51,7 +51,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) — Desktop/mobile no-poll subscription path landed; physical receipt pending | D1 / Runtime Gateway | CUT-09 deterministic matrix; physical receipt remains open by owner exception |
 | 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — schema/Sync/root + real Claude child binding + Gateway v8 reconnect implemented; named Claude/Codex source traces captured; Codex transport convergence + named confirmed reconnect pending | D1 / agent graph | CUT-06, CUT-10 deterministic no-poll path |
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) — shared presentation model + mobile and Desktop thread agent stacks landed; physical iOS/Android receipts pending | D1 / agent UX | CUT-01, CUT-11 graph contract/delivery |
-| 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) — canonical shared catalog + resolver + server projector + confirmed client reads landed; Desktop persistence/navigation and built-host receipt pending | D2 / project-session contract | CUT-04, CUT-10 |
+| 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) — closed `0c49648217`; canonical shared/hosted/device-local catalog, typed Desktop navigation, and restart/reload recovery receipt | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) | M1 / mobile binding | CUT-01, CUT-13 |
 | 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) | D2 / commands | CUT-13 |
 | 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) | D1-D2 / interaction | CUT-12, CUT-15 |
@@ -560,7 +560,7 @@ Non-goals: remote host movement.
 Close rule: merge shared contract/Desktop navigation and close with recovery
 evidence.
 
-### 2026-07-11 canonical catalog tranche
+### 2026-07-11 completion
 
 Khala Sync now registers provider-neutral `coding_project`,
 `coding_repository`, `coding_worktree`, `coding_session`, and
@@ -580,8 +580,14 @@ post-images sequentially at one dense owner-scope transaction version; a real
 local-Postgres receipt proves version 1 then version 2. Confirmed client reads
 now validate/bound only exact live owner-scope post-images, ignore malformed or
 cross-owner rows, and run the shared recovery resolver; cached non-live rows
-remain hidden. Desktop host persistence/navigation and the built-host restart
-receipt remain open. See
+remain hidden. Desktop now persists the device-local projection in the existing
+Sync SQLite store while a mode-`0600` main-only binding keeps raw checkout paths
+out of canonical entities. Schema-decoded IPC actions drive choose, structured
+query, open, archive, recover, and typed focus restoration. A real SQLite
+close/reopen proves stable refs and recovery, and the built Electron reload
+restores the exact same session key. No new migration was required because the
+existing `local_entities` schema stores complete typed post-images. CUT-13
+closed at `0c49648217`. See
 [`2026-07-11-cut-13-canonical-coding-session-catalog-receipt.md`](./2026-07-11-cut-13-canonical-coding-session-catalog-receipt.md).
 
 ---
