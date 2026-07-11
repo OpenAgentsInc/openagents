@@ -1428,6 +1428,11 @@ const SUPPORTED_DISPATCH_LANES: ReadonlyArray<KhalaRuntimeLane> = [
   "hosted_khala",
 ]
 
+export const CLAUDE_OWNER_LOCAL_AUTHORITY_REQUIRED_BLOCKER_REF =
+  "blocker.runtime.claude_owner_local_authority_required"
+export const CLAUDE_OWNER_LOCAL_AUTHORITY_MISMATCH_BLOCKER_REF =
+  "blocker.runtime.claude_owner_local_authority_mismatch"
+
 const providerForLane = (lane: KhalaRuntimeLane): "codex" | "claude_agent" =>
   lane === "claude_pylon" ? "claude_agent" : "codex"
 
@@ -1568,6 +1573,30 @@ const selectAndPinDispatchAccount = async (
   }
 }
 
+const authorizeClaudeOwnerLocalRuntimeDispatch = (
+  options: Pick<EnforceRuntimeIntentsOptions, "ownerUserId">,
+  row: RuntimeControlIntentRow,
+): { ok: true } | { ok: false; detail: string } => {
+  if (row.intent.target.lane !== "claude_pylon") return { ok: true }
+  if (options.ownerUserId === undefined || options.ownerUserId.trim().length === 0) {
+    return {
+      detail:
+        `claude_pylon owner-local dispatch requires an explicit ownerUserId supervisor filter ` +
+        `(${CLAUDE_OWNER_LOCAL_AUTHORITY_REQUIRED_BLOCKER_REF})`,
+      ok: false,
+    }
+  }
+  if (row.ownerUserId !== options.ownerUserId) {
+    return {
+      detail:
+        `claude_pylon owner-local dispatch refused because the runtime intent owner did not match ` +
+        `the supervisor owner filter (${CLAUDE_OWNER_LOCAL_AUTHORITY_MISMATCH_BLOCKER_REF})`,
+      ok: false,
+    }
+  }
+  return { ok: true }
+}
+
 const handleTurnStart = async (
   options: EnforceRuntimeIntentsOptions,
   row: RuntimeControlIntentRow,
@@ -1589,6 +1618,10 @@ const handleTurnStart = async (
   }
   const lane = targetLane
   const source = sourceForLane(lane, options)
+  const authority = authorizeClaudeOwnerLocalRuntimeDispatch(options, row)
+  if (!authority.ok) {
+    return { detail: authority.detail, outcome: "failed" }
+  }
 
   const messageId = chatMessageIdFromBodyRef(
     row.intent.kind === "turn.start" ? row.intent.bodyRef : undefined,
@@ -2057,6 +2090,10 @@ const handleTurnContinueOrRetry = async (
   }
   const lane = targetLane
   const source = sourceForLane(lane, options)
+  const authority = authorizeClaudeOwnerLocalRuntimeDispatch(options, row)
+  if (!authority.ok) {
+    return { detail: authority.detail, outcome: "failed" }
+  }
 
   const fetchRuntimeTurnImpl = options.fetchRuntimeTurnImpl ?? fetchRuntimeTurnFromWorker
   const turnResult = await fetchRuntimeTurnImpl({ adminToken: options.adminToken, baseUrl: options.baseUrl, turnId })

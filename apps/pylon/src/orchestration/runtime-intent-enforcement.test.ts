@@ -10,6 +10,8 @@ import { hashPylonAccountRef } from "../account-registry.js"
 import {
   candidateAccountsFromRegistry,
   chatMessageIdFromBodyRef,
+  CLAUDE_OWNER_LOCAL_AUTHORITY_MISMATCH_BLOCKER_REF,
+  CLAUDE_OWNER_LOCAL_AUTHORITY_REQUIRED_BLOCKER_REF,
   claudeRawMessageToRuntimeEvents,
   codexRawEventToRuntimeEvents,
   enforcePendingRuntimeIntents,
@@ -664,6 +666,7 @@ describe("enforcePendingRuntimeIntents", () => {
       ]),
       fetchChatMessageImpl: async () => ({ message, ok: true }),
       listCandidateAccounts: async () => candidateAccountsFromRegistry([claudeBaseAccount]),
+      ownerUserId: "user-1",
       pushEventImpl: async (input) => {
         pushedEvents.push(input.event)
         if (input.event.kind === "turn.finished") finishSeen?.()
@@ -700,6 +703,102 @@ describe("enforcePendingRuntimeIntents", () => {
       expect(pushedEvents.every((e) => e.source.adapterKind === "claude_code")).toBe(true)
       expect((pushedEvents[pushedEvents.length - 1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
       expect(store.getRuntimeClaudeSessionId("thread-1")).toBe("claude-sess-1")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("claude_pylon owner-local dispatch fails before account selection without an explicit owner filter", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "please say hello",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-1",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    let accountSelectionAttempted = false
+    let runnerCalls = 0
+    const { options, cleanup } = await baseOptions({
+      claudeThreadRunner: async () => {
+        runnerCalls += 1
+        return { messages: (async function* () {})() }
+      },
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      listCandidateAccounts: async () => {
+        accountSelectionAttempted = true
+        return candidateAccountsFromRegistry([claudeBaseAccount])
+      },
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-4b-required",
+          kind: "turn.start",
+          seq: 1,
+          targetLane: "claude_pylon",
+          threadId: "thread-1",
+          turnId: "turn-4b-required",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain(CLAUDE_OWNER_LOCAL_AUTHORITY_REQUIRED_BLOCKER_REF)
+      }
+      expect(accountSelectionAttempted).toBe(false)
+      expect(runnerCalls).toBe(0)
+      expect(options.activeTurns.size).toBe(0)
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("claude_pylon owner-local dispatch fails closed when the intent owner differs from the supervisor filter", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "please say hello",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-1",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    let accountSelectionAttempted = false
+    const { options, cleanup } = await baseOptions({
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      listCandidateAccounts: async () => {
+        accountSelectionAttempted = true
+        return candidateAccountsFromRegistry([claudeBaseAccount])
+      },
+      ownerUserId: "user-2",
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-4b-mismatch",
+          kind: "turn.start",
+          ownerUserId: "user-1",
+          seq: 1,
+          targetLane: "claude_pylon",
+          threadId: "thread-1",
+          turnId: "turn-4b-mismatch",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain(CLAUDE_OWNER_LOCAL_AUTHORITY_MISMATCH_BLOCKER_REF)
+      }
+      expect(accountSelectionAttempted).toBe(false)
+      expect(options.activeTurns.size).toBe(0)
     } finally {
       await cleanup()
     }
@@ -880,6 +979,7 @@ describe("enforcePendingRuntimeIntents", () => {
     const { options, cleanup } = await baseOptions({
       fetchChatMessageImpl: async () => ({ message, ok: true }),
       listCandidateAccounts: async () => candidateAccountsFromRegistryForTest(), // codex-only registry
+      ownerUserId: "user-1",
       readImpl: pageReader([
         controlIntentRow({
           bodyRef: "chat_message.msg-1",
@@ -1219,6 +1319,7 @@ describe("enforcePendingRuntimeIntents", () => {
     const { options, cleanup } = await baseOptions({
       fetchRuntimeTurnImpl: fetchRuntimeTurnImplFor(fixtureRuntimeTurn({ lane: "claude_pylon" })),
       listCandidateAccounts: async () => candidateAccountsFromRegistryForTest(), // codex-only registry
+      ownerUserId: "user-1",
       readImpl: pageReader([
         controlIntentRow({
           intentId: "intent-8",
@@ -1237,6 +1338,49 @@ describe("enforcePendingRuntimeIntents", () => {
         expect(result.outcomes[0]!.outcome).toBe("failed")
         expect(result.outcomes[0]!.detail).toContain("no dispatch-ready local Claude account")
       }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.retry against claude_pylon requires the same explicit owner-local filter before redispatch", async () => {
+    const store = memoryStore()
+    let runtimeTurnLookupAttempted = false
+    let accountSelectionAttempted = false
+    const { options, cleanup } = await baseOptions({
+      fetchRuntimeTurnImpl: async () => {
+        runtimeTurnLookupAttempted = true
+        return fetchRuntimeTurnImplFor(fixtureRuntimeTurn({ lane: "claude_pylon" }))({
+          adminToken: "admin-secret",
+          baseUrl: "https://openagents.com",
+          turnId: "turn-8-owner-filter",
+        })
+      },
+      listCandidateAccounts: async () => {
+        accountSelectionAttempted = true
+        return candidateAccountsFromRegistry([claudeBaseAccount])
+      },
+      readImpl: pageReader([
+        controlIntentRow({
+          intentId: "intent-8-owner-filter",
+          kind: "turn.retry",
+          seq: 1,
+          targetLane: "claude_pylon",
+          threadId: "thread-1",
+          turnId: "turn-8-owner-filter",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain(CLAUDE_OWNER_LOCAL_AUTHORITY_REQUIRED_BLOCKER_REF)
+      }
+      expect(runtimeTurnLookupAttempted).toBe(false)
+      expect(accountSelectionAttempted).toBe(false)
+      expect(options.activeTurns.size).toBe(0)
     } finally {
       await cleanup()
     }
