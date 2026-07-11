@@ -57,7 +57,7 @@ const connectionString = (
 export const handleKhalaSyncRuntimeInteraction = (
   request: Request,
   deps: KhalaSyncRuntimeInteractionDependencies,
-): Effect.Effect<Response> => Effect.promise(async () => {
+) => Effect.promise(async () => {
   if (request.method !== 'GET' && request.method !== 'POST') {
     return methodNotAllowed(['GET', 'POST'])
   }
