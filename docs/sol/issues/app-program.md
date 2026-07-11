@@ -31,8 +31,8 @@ remote coding + fleet                    full workbench + fleet
 - #8547/#8636 — bounded P0 remote-workroom execution and target-routing tasks
   required by the
   mobile coding exit; advanced elastic/provider breadth remains follow-on.
-- #8638 — existing Fleet substrate consumed by the clients; it is not another
-  epic.
+- closed #8638 — existing Fleet substrate consumed by the clients; it is not
+  another epic.
 - #8640 — bounded real mixed-account runtime/client proof.
 
 The retired web/presentation/privacy-backlog records #8595, #8610, #8634,

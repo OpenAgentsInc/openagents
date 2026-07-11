@@ -2,7 +2,7 @@
 
 - Issue: #8638
 - Program parent: #8566
-- Status: active P0 shared substrate consumed by the client tracks; not an epic
+- Status: closed completed; landed shared substrate consumed by the client tracks
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 
 ## Owner direction
@@ -59,19 +59,17 @@ adapter and historical canary remain regression evidence.
 - Every cross-session mutation follows
   [`../CLAIM_PROTOCOL.md`](../CLAIM_PROTOCOL.md).
 
-## Substrate exit
+## Completion receipt
 
-1. #8640 produces one accepted real Codex+Claude runtime receipt with zero
-   duplicate claims or silent substitution.
-2. Desktop and mobile observe the same run/work/attempt/account/approval/
-   command/outcome/receipt refs and versions through Khala Sync.
-3. Controls from both clients converge to one durable outcome and survive lost
-   acknowledgement, reconnect, restart, stale generation, and handoff.
-4. R7 dogfood proves the direct software workflow and issue/docs/legacy paths
-   reconcile.
-5. #8547/#8636 complete the minimum real mobile remote-workroom path before R7;
-   any advanced placement/provider residual carries an explicit follow-on
-   disposition.
+The bounded substrate named above is landed: one durable FleetRun/claim model,
+typed Fleet intents and outcomes, named account custody, exact Codex/Claude
+runners, fail-closed Grok readiness, Khala Sync projections/mutators, and Pylon
+standing execution/recovery/liveness. Its closed implementation lanes #8637,
+#8633, and #8639 plus their recorded tests are the substrate receipt.
 
-#8638 closes only after these product/runtime exits agree. Sarah/persona/A/V or
-presentation quality is not an exit criterion.
+The former exit list improperly made this bounded substrate issue wait on the
+entire product program. Remaining acceptance stays with its existing owner:
+#8640 owns the real Codex+Claude proof; #8574/#8597 own the Desktop/mobile
+projection and controls; #8547/#8636 own the minimum remote-workroom and target
+routing; #8566 owns R7 dogfood. None is a reason to keep #8638 as a second
+program epic.

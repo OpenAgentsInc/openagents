@@ -107,7 +107,7 @@
     and durable outcomes. Broad D3–D6 Desktop parity does not block that proof.
 14. **There is one program parent, not a pile of epics.** #8566 is the sole
     Desktop/mobile R0–R7 program parent. #8574 and #8597 are client tracks;
-    #8638 is shared substrate; #8547/#8636 are bounded remote-workroom tasks;
+    #8638 is closed shared substrate; #8547/#8636 are bounded remote-workroom tasks;
     #8640 is a proof. Non-executable presentation/web/privacy-backlog records
     are closed not-planned with `wontfix`, removed from `roadmap:sol`, and must
     not remain open as “paused” queues. A real defect, incident, privacy request,
@@ -1162,19 +1162,18 @@ universe.
 
 ## Canonical open issue set
 
-There are **seven open `roadmap:sol` records under one program parent**. #8566
+There are **six open `roadmap:sol` records under one program parent**. #8566
 is the sole program epic. #8652 remains closed and outside the active program;
 its portal repairs are production evidence, not an active burn item. Closed
-#8639 and #8647–#8649 remain landed substrate. #8653 is a completed bounded
-Desktop leaf. Reconcile live labels, issue bodies, and claims before starting a
-slice.
+#8638, #8639, and #8647–#8649 remain landed substrate. #8653 is a completed
+bounded Desktop leaf. Reconcile live labels, issue bodies, and claims before
+starting a slice.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
 | **P0 program parent** | #8566 | Sole R0–R7 Effect Native Desktop/mobile program epic |
 | **P0 client track** | #8574 | OpenCode-parity Desktop, Runtime Gateway, authoritative Sync, Fleet cockpit, and D0–D6 |
 | **P0 client track** | #8597 | Effect Native mobile Sync/coding/fleet client and iOS/Android proof |
-| **P0 active substrate** | #8638 | Persona-neutral Fleet Command contracts projected into both clients |
 | **P0 active proof** | #8640 | Real simultaneous Codex + Claude runtime burn, then R3/R7 client receipt |
 | **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
@@ -1187,7 +1186,7 @@ bounded issues under the owning program.
 ## Execution order
 
 1. Land the Desktop architecture freeze and reconcile #8566/#8574/#8597/
-   #8638/#8640 claims to Revision 27. Preserve R0 on both clients: green clean-
+   #8640 claims to Revision 27. Preserve R0 on both clients: green clean-
    state builds/tests/smokes, honest capability manifests, no fake authority,
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
