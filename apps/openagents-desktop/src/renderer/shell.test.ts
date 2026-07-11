@@ -96,6 +96,36 @@ const availableHarnessLanes = {
   codex: { available: true, reason: null },
 } as const
 const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), harnessLanes: availableHarnessLanes, threads: [testThread], activeThreadId: testThread.id }
+const agentGraphFixture: NonNullable<DesktopShellState["agentGraph"]> = {
+  authority: "live",
+  authorityLabel: "Live",
+  graphRef: "graph.desktop.shell",
+  rows: [{
+    agentRef: "agent.desktop.shell",
+    graphRef: "graph.desktop.shell",
+    parentAgentRef: null,
+    depth: 0,
+    label: "Codex root · shell",
+    status: "running",
+    statusLabel: "Running",
+    tone: "active",
+    providerLabel: "Codex",
+    runtimeLabel: "Codex App Server",
+    sessionLabel: "Session shell",
+    worktreeLabel: "Worktree main",
+    toolLabel: "Search · Running",
+    elapsedLabel: "5s elapsed",
+    terminalLabel: null,
+    attentionLabel: null,
+    canControl: true,
+  }],
+  totalCount: 1,
+  hiddenCount: 0,
+  activeCount: 1,
+  attentionCount: 0,
+  terminalCount: 0,
+  updatedAt: "2026-07-11T18:05:00.000Z",
+}
 const fixedNow = () => "18:05"
 
 /** A minimal loaded Codex history detail page (the VIDEOEDITS-regression shape). */
@@ -523,6 +553,47 @@ describe("pure transitions", () => {
 })
 
 describe("typed chat intent loop end-to-end (registry -> state -> re-render)", () => {
+
+  test("agent graph toggle, inspect, and focus share the typed shell registry", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const graphState: DesktopShellState = {
+          ...baseState,
+          agentGraph: agentGraphFixture,
+          agentGraphExpanded: false,
+        }
+        const state = yield* SubscriptionRef.make(graphState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+
+        const collapsed = desktopShellView(yield* SubscriptionRef.get(state))
+        const toggle = nodeByKey(collapsed, "runtime-agent-toggle") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(toggle.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).agentGraphExpanded).toBe(true)
+
+        const expanded = desktopShellView(yield* SubscriptionRef.get(state))
+        const inspect = nodeByKey(expanded, "runtime-agent-select-agent.desktop.shell") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(inspect.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).selectedAgentRef).toBe("agent.desktop.shell")
+
+        const inspected = desktopShellView(yield* SubscriptionRef.get(state))
+        const focus = nodeByKey(inspected, "runtime-agent-focus-agent.desktop.shell") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(focus.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).selectedAgentRef).toBe("agent.desktop.shell")
+
+        yield* registry.dispatch(resolveIntentRef(inspect.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).selectedAgentRef).toBeNull()
+      }),
+    )
+  })
 
   test("palette command uses the same workspace handler as the visible dock", async () => {
     await Effect.runPromise(

@@ -704,10 +704,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   fallback, and a named large-graph remainder. Khala Mobile reads only the exact
   thread-scope `live_agent_graph`, renders at most 40 rows, exposes the remainder
   count, and uses ordinary accessible button/selection semantics for inline
-  inspection. This CUT-12 mobile boundary is enforced by
-  `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts` and
-  `clients/khala-mobile/tests/live-agent-graph-panel.test.tsx`; Desktop and
-  physical-device equivalence remain pending.
+  inspection. OpenAgents Desktop projects the same confirmed Gateway v8 graph
+  through that shared model, hydrates through one bounded subscription rather
+  than a timeline/graph poller, and dispatches pointer, keyboard, and screen-
+  reader inspect/focus actions through one schema-checked intent carrying the
+  stable agent ref. Historical graphs remain inspection-only on both clients.
+  This CUT-12 client boundary is enforced by
+  `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`,
+  `clients/khala-mobile/tests/live-agent-graph-panel.test.tsx`,
+  `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`, and
+  `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`; physical-
+  device equivalence remains pending.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`

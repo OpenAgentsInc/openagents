@@ -1,4 +1,5 @@
 import { Exit, Schema } from "@effect-native/core/effect"
+import type { LiveAgentGraphPresentation } from "./agent-graph-presentation.ts"
 
 export const DesktopThreadsChannel = "openagents-desktop/threads" as const
 export const DesktopNewThreadChannel = "openagents-desktop/thread-new" as const
@@ -44,7 +45,10 @@ export const DesktopThreadSchema = Schema.Struct({
   model: Schema.optional(Schema.String),
   notes: Schema.Array(DesktopMessageSchema),
 })
-export type DesktopThread = typeof DesktopThreadSchema.Type
+export type DesktopThread = typeof DesktopThreadSchema.Type & Readonly<{
+  /** Renderer-local projection of confirmed Runtime Gateway v8 graph data. */
+  agentGraph?: LiveAgentGraphPresentation
+}>
 
 export const DesktopThreadRequestSchema = Schema.Struct({ id: Schema.String })
 export const DesktopTurnRequestSchema = Schema.Struct({ id: Schema.String, message: Schema.String })

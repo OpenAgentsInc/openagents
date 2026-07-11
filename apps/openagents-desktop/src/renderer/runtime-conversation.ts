@@ -1,4 +1,8 @@
 import type { DesktopThread } from "../chat-contract.ts"
+import {
+  newestLiveAgentGraph,
+  projectLiveAgentGraphPresentation,
+} from "../agent-graph-presentation.ts"
 import type {
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayResponse,
@@ -90,13 +94,21 @@ const timelineNotes = (
 }
 
 type LiveTimeline = NonNullable<DesktopRuntimeLiveUpdate["snapshot"]>["timeline"]
+type LiveGraphs = NonNullable<DesktopRuntimeLiveUpdate["snapshot"]>["graphs"]
 
 const projectedThread = (input: Readonly<{
   summary: Readonly<{ threadRef: string; title: string; updatedAt: string }>
   messages: NonNullable<DesktopRuntimeLiveUpdate["snapshot"]>["messages"]
   timeline: LiveTimeline
+  graphs?: LiveGraphs
 }>): DesktopThread => ({
   ...threadSummary(input.summary),
+  ...(() => {
+    const graph = newestLiveAgentGraph(input.graphs ?? [])
+    return graph === null
+      ? {}
+      : { agentGraph: projectLiveAgentGraphPresentation(graph, { maxRows: 200 }) }
+  })(),
   notes: [
     ...input.messages.map(message => ({
       key: message.messageRef,
@@ -191,8 +203,12 @@ export const makeRuntimeConversationChatHost = (
             summary: update.snapshot.thread,
             messages: update.snapshot.messages,
             timeline,
+            graphs: update.snapshot.graphs,
           })
-          const signature = JSON.stringify(current.notes.map(note => [note.key, note.role, note.text]))
+          const signature = JSON.stringify({
+            notes: current.notes.map(note => [note.key, note.role, note.text]),
+            graph: current.agentGraph ?? null,
+          })
           if (signature !== lastSignature) {
             lastSignature = signature
             onThread?.(current)
@@ -256,7 +272,19 @@ export const makeRuntimeConversationChatHost = (
       }
     },
     openThread: confirmedThread,
-    hydrateThread: confirmedThread,
+    hydrateThread: async threadRef => {
+      const confirmed = await confirmedThread(threadRef)
+      if (options.subscribe === undefined) return confirmed
+      const observer = await openLiveObserver(threadRef)
+      if (observer === null) return confirmed
+      try {
+        return await observer.waitFor(() => observer.current() !== null)
+          ? observer.current()
+          : confirmed
+      } finally {
+        await observer.close()
+      }
+    },
     sendMessage: async input => {
       const messageRef = nextId("message", randomId)
       const runRef = `turn.desktop.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`

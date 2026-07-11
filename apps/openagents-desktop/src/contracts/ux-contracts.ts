@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.23",
+    version: "2026-07-11.24",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
@@ -986,6 +986,59 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the child-runtime, delegate, ledger, and fleet suites plus the fixture smoke journey where a fable fixture turn calls the delegate once (scripted child) and the transcript shows the tool_use/tool_result pair with the ledger row rendered in the Fleet view.",
+      },
+      {
+        contractId: "openagents_desktop.agent_graph.pointer_keyboard_focus_equivalence.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "live agent supervision",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "khala-code-session",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "OpenAgents Desktop presents Runtime Gateway v8's confirmed canonical agent graph as one parent/subagent hierarchy. Pointer activation, keyboard activation, and screen-reader buttons select the same typed agent ref; status, attention, current action, elapsed time, terminal reason, session, runtime, provider, and worktree facts remain inspectable; historical authority is labeled and never gains a live focus control; rapid replacement falls back deterministically and large graphs disclose their bound.",
+        authorityBoundary:
+          "The renderer accepts only graph post-images already schema-decoded by Runtime Gateway v8 and projected by the shared confirmed client model. Agent selection is local inspection/focus state, not execution movement or provider/process authority. Historical projections remain inspectable with canControl=false. No provider payload, history heuristic, credential, path, store/session handle, or transport handle enters the view.",
+        evidenceRefs: [
+          "packages/khala-sync-client/src/live-agent-graph-presentation.ts",
+          "apps/openagents-desktop/src/renderer/runtime-conversation.ts",
+          "apps/openagents-desktop/src/renderer/runtime-agent-graph.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "docs/sol/2026-07-11-cut-12-live-agent-supervision-ui-receipt.md",
+          "github:OpenAgentsInc/openagents#8692",
+        ],
+        oracles: [
+          {
+            id: "agent_graph.gateway_projection_and_no_poll",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-conversation.test.ts",
+            description:
+              "Drives a real Runtime Gateway live update carrying a validated root+child graph through the existing fenced subscription, asserts the thread receives the shared hierarchy projection, and retains the no-recurring-timeline-poll oracle.",
+          },
+          {
+            id: "agent_graph.pointer_keyboard_screen_reader_view",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts",
+            description:
+              "Proves expand/select/focus/Escape all use typed Effect Native intent refs, selection exposes every required fact through ordinary accessible buttons and a region/table inspector, hierarchy depth is preserved, and historical authority removes live focus.",
+          },
+          {
+            id: "agent_graph.shared_fault_and_scale_model",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/khala-sync-client/src/live-agent-graph-presentation.test.ts",
+            description:
+              "Enforces deterministic hierarchy ordering, explicit missing facts, rapid-selection fallback, terminal/historical refusal, newest attachment/cursor selection, and exact large-graph remainder.",
+          },
+        ],
+        verification:
+          "bun test src/renderer/runtime-agent-graph.test.ts src/renderer/runtime-conversation.test.ts src/renderer/shell.test.ts plus typecheck, full test, build, and Electron smoke in apps/openagents-desktop; shared projection tests/typecheck run in packages/khala-sync-client.",
       },
     ],
   };

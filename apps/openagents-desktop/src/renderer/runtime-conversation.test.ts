@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
+import { decodeLiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import { readFileSync } from "node:fs"
 import type { DesktopThread } from "../chat-contract.ts"
 import type {
@@ -16,6 +17,69 @@ import {
 
 const status = { phase: "live" as const, cursor: 5, pendingMutationCount: 0 }
 const now = "2026-07-10T20:15:00.000Z"
+const liveGraph = decodeLiveAgentGraphEntity({
+  schema: "openagents.live_agent_graph.v1",
+  graphRef: "graph.runtime.live.1",
+  sessionRef: "session.runtime.live.1",
+  threadRef: "thread.live.1",
+  attachmentGeneration: 1,
+  cursor: 2,
+  lastDeltaRef: "delta.runtime.live.2",
+  nodes: [
+    {
+      agentRef: "agent.runtime.root",
+      sessionRef: "session.runtime.live.1",
+      threadRef: "thread.runtime.root",
+      transcriptRef: "transcript.runtime.root",
+      runRef: "run.runtime.root",
+      parent: { kind: "root" },
+      provider: { state: "known", kind: "codex", providerRef: "provider.codex.named" },
+      runtime: { state: "known", kind: "codex_app_server", runtimeRef: "runtime.codex.named" },
+      worktree: { state: "unknown", reason: "provider_omitted" },
+      status: "running",
+      attention: { state: "none" },
+      terminal: { state: "active" },
+      currentTool: { state: "none" },
+      attachmentGeneration: 1,
+      activityCursor: 2,
+      createdAt: now,
+      updatedAt: now,
+      startedAt: now,
+      endedAt: null,
+      version: 2,
+    },
+    {
+      agentRef: "agent.runtime.child",
+      sessionRef: "session.runtime.live.1",
+      threadRef: "thread.runtime.child",
+      transcriptRef: "transcript.runtime.child",
+      runRef: "run.runtime.child",
+      parent: { kind: "agent", agentRef: "agent.runtime.root" },
+      provider: { state: "known", kind: "codex", providerRef: "provider.codex.named" },
+      runtime: { state: "known", kind: "codex_app_server", runtimeRef: "runtime.codex.child" },
+      worktree: { state: "unknown", reason: "provider_omitted" },
+      status: "running",
+      attention: { state: "question", attentionRef: "question.runtime.child", since: now },
+      terminal: { state: "active" },
+      currentTool: { state: "known", toolCallRef: "tool.runtime.child", toolName: "Search", status: "running" },
+      attachmentGeneration: 1,
+      activityCursor: 1,
+      createdAt: now,
+      updatedAt: now,
+      startedAt: now,
+      endedAt: null,
+      version: 1,
+    },
+  ],
+  edges: [{
+    edgeRef: "edge.runtime.root.child",
+    kind: "parent",
+    fromAgentRef: "agent.runtime.root",
+    toAgentRef: "agent.runtime.child",
+    version: 1,
+  }],
+  updatedAt: now,
+})
 
 describe("authoritative Runtime Gateway chat adapter", () => {
   test("registers the visible authoritative Sync-mode contract", () => {
@@ -260,7 +324,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         ...(terminal ? { runRef: "turn.desktop.live-run" } : {}),
         messageRefs: messages.map(message => message.messageRef),
         eventRefs: terminal ? ["event.live.text", "event.live.terminal"] : [],
-        graphRefs: [],
+        graphRefs: [liveGraph.graphRef],
       },
       snapshot: {
         status: { phase: "live", cursor: 5 + sequence, pendingMutationCount: 0 },
@@ -299,7 +363,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
             { eventRef: "event.live.terminal", runRef: "turn.desktop.live-run", sequence: 2, eventType: "turn.finished", summary: "Done", status: "completed", artifactRefs: [], item: { kind: "terminal", status: "completed" }, createdAt: now, version: 3 },
           ],
         } : null,
-        graphs: [],
+        graphs: [liveGraph],
       },
     })
     const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
@@ -354,6 +418,15 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       expect.objectContaining({ role: "assistant", text: "Live answer" }),
       expect.objectContaining({ role: "system", text: "Turn completed" }),
     ]))
+    expect(result.thread?.agentGraph).toMatchObject({
+      graphRef: liveGraph.graphRef,
+      totalCount: 2,
+      attentionCount: 1,
+    })
+    expect(result.thread?.agentGraph?.rows.map(row => [row.agentRef, row.depth])).toEqual([
+      ["agent.runtime.root", 0],
+      ["agent.runtime.child", 1],
+    ])
     expect(updates.at(-1)?.notes).toEqual(result.thread?.notes)
     expect(requests.filter(value => value.query?.id === "conversation.timeline")).toEqual([])
     expect(requests.map(value => value.command?.id).filter(Boolean)).toEqual([

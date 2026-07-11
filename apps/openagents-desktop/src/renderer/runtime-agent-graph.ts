@@ -1,0 +1,193 @@
+import {
+  Badge,
+  Button,
+  IntentRef,
+  Stack,
+  StaticPayload,
+  Table,
+  Text,
+  type View,
+} from "@effect-native/core"
+import type {
+  LiveAgentGraphPresentation,
+  LiveAgentGraphPresentationRow,
+  LiveAgentGraphTone,
+} from "../agent-graph-presentation.ts"
+
+const badgeTone = (tone: LiveAgentGraphTone): "neutral" | "info" | "success" | "warn" | "danger" =>
+  tone === "active"
+    ? "info"
+    : tone === "attention"
+      ? "warn"
+      : tone === "success"
+        ? "success"
+        : tone === "danger"
+          ? "danger"
+          : "neutral"
+
+export const runtimeAgentGraphDetailFields = (
+  row: LiveAgentGraphPresentationRow,
+): ReadonlyArray<Readonly<{ label: string; value: string }>> => [
+  { label: "Status", value: row.statusLabel },
+  { label: "Provider", value: row.providerLabel },
+  { label: "Runtime", value: row.runtimeLabel },
+  { label: "Session", value: row.sessionLabel },
+  { label: "Worktree", value: row.worktreeLabel },
+  { label: "Elapsed", value: row.elapsedLabel },
+  ...(row.toolLabel === null ? [] : [{ label: "Current action", value: row.toolLabel }]),
+  ...(row.attentionLabel === null ? [] : [{ label: "Attention", value: row.attentionLabel }]),
+  ...(row.terminalLabel === null ? [] : [{ label: "Terminal", value: row.terminalLabel }]),
+]
+
+const accessibilityLabel = (row: LiveAgentGraphPresentationRow): string =>
+  [
+    row.label,
+    row.statusLabel,
+    row.toolLabel,
+    row.attentionLabel,
+    row.terminalLabel,
+    row.elapsedLabel,
+    "Show agent details",
+  ].filter((value): value is string => value !== null).join(". ")
+
+const depthSpacing = (depth: number) =>
+  (["0", "2", "4", "6", "8", "10"] as const)[Math.min(depth, 5)] ?? "0"
+
+const agentInspector = (row: LiveAgentGraphPresentationRow): View => {
+  const fields = runtimeAgentGraphDetailFields(row)
+  return Stack(
+    {
+      key: `runtime-agent-inspector-${row.agentRef}`,
+      direction: "column",
+      gap: "2",
+      style: {
+        marginLeft: depthSpacing(row.depth + 1),
+        padding: "3",
+        borderColor: "border",
+        borderWidth: 1,
+        borderRadius: "md",
+      },
+      a11y: { role: "region", label: `Agent details, ${row.label}` },
+    },
+    [
+      Table({
+        key: `runtime-agent-fields-${row.agentRef}`,
+        columns: [{ id: "field", header: "Field" }, { id: "value", header: "Value" }],
+        rows: fields.map((field, index) => ({
+          id: String(index),
+          cells: [
+            Text({ key: `runtime-agent-field-${row.agentRef}-${index}`, content: field.label, variant: "caption", color: "textMuted" }),
+            Text({ key: `runtime-agent-value-${row.agentRef}-${index}`, content: field.value, variant: "body", color: "textPrimary" }),
+          ],
+        })),
+      }),
+      ...(row.canControl ? [Button({
+        key: `runtime-agent-focus-${row.agentRef}`,
+        label: "Focus agent",
+        variant: "secondary",
+        onPress: IntentRef("DesktopAgentAction", StaticPayload({
+          kind: "focus_agent",
+          agentRef: row.agentRef,
+        })),
+        a11y: { label: `Focus ${row.label}` },
+      })] : []),
+    ],
+  )
+}
+
+export const runtimeAgentGraphView = (input: Readonly<{
+  graph: LiveAgentGraphPresentation
+  expanded: boolean
+  selectedAgentRef: string | null
+}>): View => {
+  const { graph, expanded, selectedAgentRef } = input
+  const summary = `${graph.totalCount} agent${graph.totalCount === 1 ? "" : "s"} · ${graph.activeCount} active` +
+    (graph.attentionCount === 0 ? "" : ` · ${graph.attentionCount} need attention`)
+  return Stack(
+    {
+      key: "runtime-agent-graph",
+      direction: "column",
+      gap: "2",
+      style: {
+        width: "full",
+        maxWidth: 840,
+        alignSelf: "center",
+        padding: "2",
+        borderColor: "border",
+        borderWidth: 1,
+        borderRadius: "lg",
+      },
+      a11y: { role: "region", label: `${graph.authorityLabel} agent graph` },
+      interactions: {
+        onKey: [{
+          key: "Escape",
+          preventDefault: true,
+          intent: IntentRef("DesktopAgentAction", StaticPayload({
+            kind: "inspect_agent",
+            agentRef: "",
+          })),
+        }],
+      },
+    },
+    [
+      Stack({ key: "runtime-agent-summary-row", direction: "row", gap: "2", align: "center" }, [
+        Badge({
+          key: "runtime-agent-authority",
+          label: graph.authorityLabel,
+          tone: graph.authority === "live" ? "info" : "neutral",
+        }),
+        Button({
+          key: "runtime-agent-toggle",
+          label: `Agent stack · ${summary}`,
+          variant: "ghost",
+          onPress: IntentRef("DesktopAgentGraphToggled"),
+          a11y: { label: `${expanded ? "Collapse" : "Expand"} agent stack. ${summary}` },
+        }),
+      ]),
+      ...(expanded ? graph.rows.flatMap(row => {
+        const selected = row.agentRef === selectedAgentRef
+        return [
+          Stack(
+            {
+              key: `runtime-agent-row-${row.agentRef}`,
+              direction: "row",
+              gap: "2",
+              align: "center",
+              style: { paddingLeft: depthSpacing(row.depth) },
+            },
+            [
+              Badge({
+                key: `runtime-agent-status-${row.agentRef}`,
+                label: row.statusLabel,
+                tone: badgeTone(row.tone),
+              }),
+              Button({
+                key: `runtime-agent-select-${row.agentRef}`,
+                label: row.label,
+                variant: selected ? "secondary" : "ghost",
+                onPress: IntentRef("DesktopAgentAction", StaticPayload({
+                  kind: "inspect_agent",
+                  agentRef: row.agentRef,
+                })),
+                a11y: { label: accessibilityLabel(row) },
+              }),
+              ...(row.toolLabel === null ? [] : [Text({
+                key: `runtime-agent-tool-${row.agentRef}`,
+                content: row.toolLabel,
+                variant: "caption",
+                color: "textMuted",
+              })]),
+            ],
+          ),
+          ...(selected ? [agentInspector(row)] : []),
+        ]
+      }) : []),
+      ...(expanded && graph.hiddenCount > 0 ? [Text({
+        key: "runtime-agent-overflow",
+        content: `${graph.hiddenCount} more agents hidden by the Desktop safety bound`,
+        variant: "caption",
+        color: "textMuted",
+      })] : []),
+    ],
+  )
+}

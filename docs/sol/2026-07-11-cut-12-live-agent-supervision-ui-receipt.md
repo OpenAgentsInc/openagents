@@ -2,9 +2,10 @@
 
 - Date: 2026-07-11
 - Issue: [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692)
-- Status: shared presentation model and Khala Mobile thread integration active;
-  Desktop presentation plus physical iOS/Android receipts remain pending
-- Contract: `khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v1`
+- Status: shared presentation model plus Khala Mobile and OpenAgents Desktop
+  thread integration active; physical iOS/Android receipts remain pending
+- Contracts: `khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v1`,
+  `openagents_desktop.agent_graph.pointer_keyboard_focus_equivalence.v1`
 
 ## Shared presentation model
 
@@ -44,6 +45,35 @@ focus, not execution movement or provider authority. Historical authority is
 labeled `Historical import · controls unavailable` and removes the focus
 control.
 
+## Desktop thread surface
+
+OpenAgents Desktop consumes the same validated Runtime Gateway v8 graph
+post-image already carried by its fenced conversation subscription. The
+renderer projects the newest attachment/cursor through the shared presentation
+model; an opened existing thread uses one brief subscribe/current/unsubscribe
+cycle to hydrate its graph. Sends retain the existing live subscription. There
+is no second timeline query loop or graph poller.
+
+The Effect Native chat surface places one compact agent stack above the
+transcript:
+
+- graphs of up to eight agents open by default, attention opens the hierarchy,
+  and larger graphs retain the task surface behind an explicit summary;
+- rows preserve parent/subagent depth, semantic status and attention, and an
+  accessible label containing the same facts available to sighted operators;
+- selecting a row opens an inline table with provider, runtime, session,
+  worktree, action, elapsed, attention, and terminal facts;
+- pointer, keyboard, and screen-reader activation dispatch the same schema-
+  checked `DesktopAgentAction` with explicit `inspect_agent` or `focus_agent`
+  kind and stable agent ref; and
+- Escape deselects through that registry, rapid replacement falls back through
+  the shared selector, historical graphs omit focus, and the 200-row Desktop
+  bound names its exact hidden remainder.
+
+Desktop focus remains local inspection state. It does not move execution,
+change provider authority, infer parentage from transcript/tool text, or expose
+provider payloads and handles.
+
 ## Verification
 
 - Shared presentation focus: 5 pass, 0 fail, 12 expectations; typecheck passes.
@@ -51,6 +81,10 @@ control.
 - Full `@openagentsinc/khala-sync-client`: 178 pass, 3 opt-in live-smoke skips,
   0 fail, 12,741 expectations.
 - Full Khala Mobile: 485 pass, 0 fail, 1,688 expectations.
+- Desktop graph/conversation/shell focus: 59 pass, 0 fail, 294 expectations;
+  Desktop typecheck passes.
+- Full OpenAgents Desktop: 346 pass, 0 fail, 1,753 expectations; production
+  bundle and Electron smoke pass at Runtime Gateway protocol v8.
 - Mobile typecheck reaches only the pre-existing
   `expo-db-sqlite-persistence.ts` local-store interface mismatch; no CUT-12
   file reports an error.
@@ -60,8 +94,7 @@ control.
 
 ## Residual
 
-CUT-12 remains open. The next file-disjoint work is the equivalent Desktop
-hierarchy/keyboard/pointer/screen-reader presentation over Runtime Gateway v8's
-already-confirmed graph post-images. Physical iOS and Android interaction
-receipts remain required and are not claimed by these mounted component tests.
-The paired phone remains owner-deferred while it records video.
+CUT-12 remains open only for the required physical iOS and Android interaction
+receipts. The mounted component, built Desktop, and Electron smoke evidence do
+not substitute for those devices. The paired phone remains owner-deferred while
+it records video; no device completion is claimed here.

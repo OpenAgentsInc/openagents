@@ -42,7 +42,12 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopMessageMeta, DesktopThread } from "../chat-contract.ts"
+import {
+  resolveLiveAgentGraphSelection,
+  type LiveAgentGraphPresentation,
+} from "../agent-graph-presentation.ts"
 import { chatMarkdownBody } from "./markdown.ts"
+import { runtimeAgentGraphView } from "./runtime-agent-graph.ts"
 import type {
   DesktopWorkspaceFile,
   DesktopWorkspaceGitDiff,
@@ -127,6 +132,10 @@ export type DesktopShellState = Readonly<{
    * sidebar"). Null means no inspector.
    */
   selectedMessageKey: string | null
+  /** Confirmed Runtime Gateway v8 graph presentation for the active thread. */
+  agentGraph: LiveAgentGraphPresentation | null
+  agentGraphExpanded: boolean
+  selectedAgentRef: string | null
   workspace: DesktopWorkspaceName
   workspaceSnapshot: DesktopWorkspaceSnapshot | null
   workspaceFile: DesktopWorkspaceFile | null
@@ -188,6 +197,9 @@ export const initialDesktopShellState = (
   threads: [],
   activeThreadId: null,
   selectedMessageKey: null,
+  agentGraph: null,
+  agentGraphExpanded: false,
+  selectedAgentRef: null,
   workspace: "chat",
   workspaceSnapshot: null,
   workspaceFile: null,
@@ -243,6 +255,11 @@ export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.St
  * (Escape and the Close affordance dispatch the empty payload).
  */
 export const DesktopMessageSelected = defineIntent("DesktopMessageSelected", Schema.String)
+export const DesktopAgentGraphToggled = defineIntent("DesktopAgentGraphToggled", Schema.Null)
+export const DesktopAgentAction = defineIntent("DesktopAgentAction", Schema.Struct({
+  kind: Schema.Literals(["inspect_agent", "focus_agent"]),
+  agentRef: Schema.String,
+}))
 export const DesktopWorkspaceSelected = defineIntent(
   "DesktopWorkspaceSelected",
   Schema.Literals(desktopWorkspaceNames),
@@ -269,6 +286,8 @@ export const desktopShellIntents = [
   DesktopHarnessSelected,
   DesktopChatSelected,
   DesktopMessageSelected,
+  DesktopAgentGraphToggled,
+  DesktopAgentAction,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
   DesktopWorkspaceFileSelected,
@@ -323,6 +342,13 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
   selectedMessageKey: null,
+  agentGraph: thread.agentGraph ?? null,
+  agentGraphExpanded: thread.agentGraph !== undefined && (
+    thread.agentGraph.totalCount <= 8 || thread.agentGraph.attentionCount > 0
+  ),
+  selectedAgentRef: thread.agentGraph === undefined
+    ? null
+    : resolveLiveAgentGraphSelection(thread.agentGraph, null),
   workspace: "chat",
   // New chat must land in a fresh empty transcript even when a historical
   // Codex page is loaded: the chat workspace renders the history page
@@ -352,6 +378,18 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
     thread.notes.some((note) => note.key === state.selectedMessageKey)
     ? state.selectedMessageKey
     : null,
+  agentGraph: thread.agentGraph ?? null,
+  agentGraphExpanded: thread.agentGraph === undefined
+    ? false
+    : state.activeThreadId === thread.id
+      ? state.agentGraphExpanded || thread.agentGraph.attentionCount > 0
+      : thread.agentGraph.totalCount <= 8 || thread.agentGraph.attentionCount > 0,
+  selectedAgentRef: thread.agentGraph === undefined
+    ? null
+    : resolveLiveAgentGraphSelection(
+        thread.agentGraph,
+        state.activeThreadId === thread.id ? state.selectedAgentRef : null,
+      ),
   fleetDeskOpen: false,
   workspace: "chat",
   commandPaletteOpen: false,
@@ -475,7 +513,21 @@ export type WorkspaceHost = Readonly<{
 
 export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
   const active = state.activeThreadId === null ? threads[0] : threads.find((thread) => thread.id === state.activeThreadId)
-  return { ...state, threads: threads.slice(0, 5), activeThreadId: active?.id ?? null, notes: active?.notes ?? state.notes }
+  return active === undefined
+    ? { ...state, threads: threads.slice(0, 5) }
+    : {
+        ...state,
+        threads: threads.slice(0, 5),
+        activeThreadId: active.id,
+        notes: active.notes,
+        agentGraph: active.agentGraph ?? null,
+        agentGraphExpanded: active.agentGraph === undefined
+          ? false
+          : state.agentGraphExpanded || active.agentGraph.attentionCount > 0 || active.agentGraph.totalCount <= 8,
+        selectedAgentRef: active.agentGraph === undefined
+          ? null
+          : resolveLiveAgentGraphSelection(active.agentGraph, state.selectedAgentRef),
+      }
 }
 
 export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnType<ChatHost["sendMessage"]>>, timestamp: string): DesktopShellState => {
@@ -620,10 +672,33 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
   DesktopMessageSelected: (key) =>
     SubscriptionRef.update(state, (current) => withMessageSelected(current, key)),
+  DesktopAgentGraphToggled: () =>
+    SubscriptionRef.update(state, current => current.agentGraph === null
+      ? current
+      : { ...current, agentGraphExpanded: !current.agentGraphExpanded }),
+  DesktopAgentAction: ({ kind, agentRef }) =>
+    SubscriptionRef.update(state, current => {
+      if (current.agentGraph === null) return current
+      const selectedAgentRef = agentRef === "" || (kind === "inspect_agent" && current.selectedAgentRef === agentRef)
+        ? null
+        : resolveLiveAgentGraphSelection(current.agentGraph, agentRef)
+      return selectedAgentRef === current.selectedAgentRef
+        ? current
+        : { ...current, selectedAgentRef }
+    }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
-    yield* SubscriptionRef.update(state, current => ({ ...current, activeThreadId: id, notes: [] }))
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      activeThreadId: id,
+      notes: [],
+      agentGraph: null,
+      agentGraphExpanded: false,
+      selectedAgentRef: null,
+    }))
     const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
-    yield* SubscriptionRef.update(state, (current) => withChatSelected(current, thread))
+    yield* SubscriptionRef.update(state, current => current.activeThreadId === id
+      ? withChatSelected(current, thread)
+      : current)
     if (chat.hydrateThread !== undefined) {
       const hydrated = yield* Effect.promise(() => chat.hydrateThread!(id))
       if (hydrated) yield* SubscriptionRef.update(state, current => current.activeThreadId === id ? withChatSelected(current, hydrated) : current)
@@ -1302,6 +1377,13 @@ const chatMessageInspector = (entry: DesktopNoteEntry): View => {
  * Escape anywhere inside deselects through the same typed intent.
  */
 const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
+  const graph = state.agentGraph === null
+    ? []
+    : [runtimeAgentGraphView({
+        graph: state.agentGraph,
+        expanded: state.agentGraphExpanded,
+        selectedAgentRef: state.selectedAgentRef,
+      })]
   const transcript = Transcript({
     key: "shell-transcript",
     pinToEnd: true,
@@ -1320,7 +1402,7 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
   const selected = state.selectedMessageKey === null
     ? undefined
     : state.notes.find((note) => note.key === state.selectedMessageKey)
-  if (selected === undefined) return [transcript, shellComposer(state)]
+  if (selected === undefined) return [...graph, transcript, shellComposer(state)]
   return [SplitPane({
     key: "chat-message-inspector-split",
     orientation: "row",
@@ -1334,7 +1416,7 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
         min: 360,
         content: Stack(
           { key: "chat-center-column", direction: "column", gap: "3", style: { flex: 1, minWidth: 0, minHeight: 0 } },
-          [transcript, shellComposer(state)],
+          [...graph, transcript, shellComposer(state)],
         ),
       },
       { id: "chat-message-inspector-pane", min: 280, max: 480, size: 336, content: chatMessageInspector(selected) },

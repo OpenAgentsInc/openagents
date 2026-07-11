@@ -2,8 +2,8 @@
 
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
-  provider traces active; CUT-12 shared/mobile supervision UI active)
-- Revision: 46
+  provider traces active; CUT-12 shared/mobile/Desktop supervision UI active)
+- Revision: 47
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -580,15 +580,19 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   converge that typed app-server source through the streamlining audit's one
   conversation service; tools/history remain forbidden parentage sources. A
   named confirmed-reconnect trace remains open.
-- CUT-12 now has one shared graph-presentation model and a live Khala Mobile
-  thread surface. Canonical nodes become deterministic hierarchy rows with
-  typed status/action/attention/elapsed/terminal and provider/runtime/session/
-  worktree facts; historical authority is labeled and control-disabled;
+- CUT-12 now has one shared graph-presentation model plus live Khala Mobile and
+  OpenAgents Desktop thread surfaces. Canonical nodes become deterministic
+  hierarchy rows with typed status/action/attention/elapsed/terminal and
+  provider/runtime/session/worktree facts; historical authority is labeled and
+  control-disabled;
   selection survives rapid graph replacement; and large graphs name their
   exact hidden remainder. Mobile reads the exact thread-scope post-image,
   exposes an accessible inline inspector, auto-opens attention, and bounds the
-  rendered hierarchy to 40 rows. Desktop equivalence and physical iOS/Android
-  receipts remain open.
+  rendered hierarchy to 40 rows. Desktop reads the same Gateway v8 subscription
+  post-image, uses one bounded subscription to hydrate an existing thread,
+  exposes the same hierarchy/inspector through typed pointer, keyboard, and
+  screen-reader actions, and bounds it to 200 rows without adding a poller.
+  Only physical iOS/Android receipts remain open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
