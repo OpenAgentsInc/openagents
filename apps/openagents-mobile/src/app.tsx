@@ -51,6 +51,7 @@ const selectAuthenticatedMobileExperience = async (
     conversation: () => syncHost.conversation(),
     timeline: () => syncHost.timeline(),
     runtime: () => syncHost.runtime(),
+    interactions: () => syncHost.interactions(),
     ...(preferredThreadRef === undefined ? {} : { preferredThreadRef }),
     adapter: { randomId: randomUUID },
   })

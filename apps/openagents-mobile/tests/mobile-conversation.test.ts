@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { MutationId, type KhalaRuntimeControlIntent } from "@openagentsinc/khala-sync"
+import { MutationId, SyncVersionWatermark, type KhalaRuntimeControlIntent } from "@openagentsinc/khala-sync"
 import type {
   ConfirmedChatMessage,
   ConfirmedChatThread,
   KhalaSyncConversation,
   KhalaSyncAgentTimeline,
   KhalaSyncRuntimeCommands,
+  KhalaSyncRuntimeInteractions,
   KhalaSyncConversationChange,
+  RuntimeInteractionDecisionCommand,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
@@ -436,5 +438,97 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
       expiresAt: "2026-07-10T20:16:00.000Z",
       intentId: "intent.start.turn.mobile.expired-turn",
     })
+  })
+
+  test("queues an exact mobile interaction decision and waits for confirmed resolution", async () => {
+    const fixture = makeConversation()
+    const decisions: RuntimeInteractionDecisionCommand[] = []
+    let interactionStatus: "pending" | "resolved" = "pending"
+    const snapshot = () => ({
+      status: { phase: "live" as const, cursor: 9, pendingMutationCount: 0 },
+      run: {
+        runRef: "turn.interaction.1",
+        routeRef: "thread.synced.1",
+        status: "waiting_for_input" as const,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        completedAt: null,
+        failedAt: null,
+        canceledAt: null,
+        version: 9,
+      },
+      events: [{
+        eventRef: "interaction.mobile.1",
+        runRef: "turn.interaction.1",
+        sequence: 2,
+        eventType: "runtime.interaction.tool_approval",
+        summary: "Approve tests",
+        status: interactionStatus,
+        artifactRefs: [],
+        item: {
+          kind: "approval" as const,
+          interactionRef: "interaction.mobile.1",
+          prompt: "Run the focused tests?",
+          status: interactionStatus,
+          expiresAt: "2026-07-10T20:20:00.000Z",
+          ...(interactionStatus === "resolved"
+            ? { decisionRef: "decision.mobile.fixture" }
+            : {}),
+        },
+        createdAt: now,
+        version: interactionStatus === "resolved" ? 10 : 9,
+      }],
+    })
+    const timeline: KhalaSyncAgentTimeline = {
+      status: () => snapshot().status,
+      open: () => Effect.succeed(undefined),
+      snapshot: () => Effect.succeed(snapshot()),
+      snapshotForThread: () => Effect.succeed(snapshot()),
+    }
+    const interactions: KhalaSyncRuntimeInteractions = {
+      status: () => ({ phase: "live", cursor: SyncVersionWatermark.make(9) }),
+      list: () => Effect.succeed([]),
+      decide: command => Effect.sync(() => {
+        decisions.push(command)
+        interactionStatus = "resolved"
+        return MutationId.make(11)
+      }),
+    }
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      interactions,
+      timeline,
+      randomId: () => "fixture",
+      now: () => new Date("2026-07-10T20:16:00.000Z"),
+      sleep: async () => undefined,
+      pollAttempts: 1,
+    })
+
+    expect(await host.decideInteraction?.({
+      interactionRef: "interaction.mobile.1",
+      threadRef: "thread.synced.1",
+      turnRef: "turn.interaction.1",
+      decision: { kind: "tool_approval", outcome: "approve" },
+    })).toMatchObject({
+      ok: true,
+      thread: {
+        timeline: {
+          events: [{ item: { status: "resolved", decisionRef: "decision.mobile.fixture" } }],
+        },
+      },
+    })
+    expect(decisions).toEqual([{
+      interactionRef: "interaction.mobile.1",
+      threadId: "thread.synced.1",
+      turnId: "turn.interaction.1",
+      envelope: {
+        decisionRef: "decision.mobile.fixture",
+        idempotencyKey: "idem.decision.mobile.fixture",
+        decidedAt: "2026-07-10T20:16:00.000Z",
+        surface: "mobile",
+        decision: { kind: "tool_approval", outcome: "approve" },
+      },
+    }])
   })
 })

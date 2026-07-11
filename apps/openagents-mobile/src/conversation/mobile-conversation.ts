@@ -1,3 +1,4 @@
+import type { RuntimeInteractionDecision } from "@openagentsinc/khala-sync"
 import type {
   ConfirmedAgentTimelineSnapshot,
   ConfirmedChatMessage,
@@ -6,11 +7,13 @@ import type {
   KhalaSyncAgentTimeline,
   KhalaSyncConversation,
   KhalaSyncRuntimeCommands,
+  KhalaSyncRuntimeInteractions,
 } from "@openagentsinc/khala-sync-client"
 import {
   buildAppendUserMessageIntent,
   buildInterruptTurnIntent,
   buildStartTurnIntent,
+  buildRuntimeInteractionDecisionCommand,
   openKhalaConversationLive,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
@@ -47,6 +50,13 @@ export type MobileConversationHost = Readonly<{
     runRef: string
     onUpdate?: (thread: MobileConversationThread) => void
   }>) => Promise<MobileConversationMutationResult>
+  decideInteraction?: (input: Readonly<{
+    interactionRef: string
+    threadRef: string
+    turnRef: string
+    decision: RuntimeInteractionDecision
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>) => Promise<MobileConversationMutationResult>
 }>
 
 export type MobileConversationSelection =
@@ -62,6 +72,7 @@ export type MobileConversationAdapterOptions = Readonly<{
   conversation: KhalaSyncConversation
   timeline?: KhalaSyncAgentTimeline
   runtime?: KhalaSyncRuntimeCommands
+  interactions?: KhalaSyncRuntimeInteractions
   randomId?: () => string
   now?: () => Date
   commandTtlMs?: number
@@ -256,6 +267,71 @@ export const makeMobileConversationHost = (
     return resolved
   }
 
+  const interactionIsTerminal = (
+    thread: MobileConversationThread | null,
+    interactionRef: string,
+    turnRef: string,
+  ): thread is MobileConversationThread => {
+    if (thread?.timeline?.run?.runRef !== turnRef) return false
+    const item = thread.timeline.events.find(event =>
+      event.eventRef === interactionRef)?.item
+    if (item === null || item === undefined) return false
+    const status = item.kind === "question" && item.questionRef === interactionRef
+      ? item.status
+      : item.kind === "approval" && item.interactionRef === interactionRef
+        ? item.status
+        : item.kind === "plan" && item.interactionRef === interactionRef
+          ? item.status
+          : undefined
+    return status === "resolved" || status === "expired" || status === "revoked"
+  }
+
+  const waitForInteractionResolution = async (input: Readonly<{
+    interactionRef: string
+    threadRef: string
+    turnRef: string
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>): Promise<MobileConversationThread | null> => {
+    const initial = await readConfirmedThread(input.threadRef)
+    if (interactionIsTerminal(initial, input.interactionRef, input.turnRef)) {
+      return initial
+    }
+
+    let settle!: (thread: MobileConversationThread | null) => void
+    let settled = false
+    const result = new Promise<MobileConversationThread | null>(resolve => {
+      settle = thread => {
+        if (settled) return
+        settled = true
+        resolve(thread)
+      }
+    })
+    let subscription
+    try {
+      subscription = await openKhalaConversationLive({
+        conversation: options.conversation,
+        timeline: options.timeline,
+        subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
+        generation: subscriptionSequence,
+        threadRef: input.threadRef,
+        afterCursor: options.conversation.threadStatus(input.threadRef).cursor,
+      }, update => {
+        const thread = update.snapshot === null ? null : threadFromSnapshot(update.snapshot)
+        if (thread !== null) input.onUpdate?.(thread)
+        if (interactionIsTerminal(thread, input.interactionRef, input.turnRef)) {
+          settle(thread)
+        }
+      })
+    } catch {
+      return null
+    }
+    const deadline = sleep(Math.max(pollAttempts, 300) * 100).then(() => null)
+    const resolved = await Promise.race([result, deadline])
+    settled = true
+    await subscription.close()
+    return resolved
+  }
+
   return {
     listThreads,
     openThread: confirmedThread,
@@ -417,6 +493,32 @@ export const makeMobileConversationHost = (
         return { ok: false, error: "Interrupt is still pending reconciliation." }
       }
     },
+    decideInteraction: options.interactions === undefined
+      ? undefined
+      : async input => {
+          const suffix = randomId().replace(/[^A-Za-z0-9._:-]/g, "")
+          const command = buildRuntimeInteractionDecisionCommand({
+            interactionRef: input.interactionRef,
+            threadRef: input.threadRef,
+            turnRef: input.turnRef,
+            envelope: {
+              decisionRef: `decision.mobile.${suffix}`,
+              idempotencyKey: `idem.decision.mobile.${suffix}`,
+              decidedAt: now().toISOString(),
+              surface: "mobile",
+              decision: input.decision,
+            },
+          })
+          try {
+            await run(options.interactions!.decide(command))
+          } catch {
+            return { ok: false, error: "This interaction is no longer actionable." }
+          }
+          const thread = await waitForInteractionResolution(input)
+          return thread === null
+            ? { ok: false, error: "Decision is still pending reconciliation." }
+            : { ok: true, thread }
+        },
   }
 }
 
@@ -424,18 +526,21 @@ export const selectMobileConversation = async (input: Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline?: () => KhalaSyncAgentTimeline | null
   runtime?: () => KhalaSyncRuntimeCommands | null
+  interactions?: () => KhalaSyncRuntimeInteractions | null
   preferredThreadRef?: string
-  adapter?: Omit<MobileConversationAdapterOptions, "conversation" | "runtime" | "timeline">
+  adapter?: Omit<MobileConversationAdapterOptions, "conversation" | "interactions" | "runtime" | "timeline">
 }>): Promise<MobileConversationSelection> => {
   const conversation = input.conversation()
   const timeline = input.timeline?.() ?? undefined
   const runtime = input.runtime?.() ?? undefined
+  const interactions = input.interactions?.() ?? undefined
   if (conversation === null || conversation.personalStatus().phase !== "live") {
     return { mode: "local" }
   }
   const host = makeMobileConversationHost({
     conversation,
     ...(runtime === undefined ? {} : { runtime }),
+    ...(interactions === undefined ? {} : { interactions }),
     ...(timeline === undefined ? {} : { timeline }),
     ...input.adapter,
   })
