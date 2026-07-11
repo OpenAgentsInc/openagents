@@ -20,9 +20,9 @@ When documents disagree, use this order:
 
 1. [`AGENTS.md`](../../AGENTS.md) and
    [`INVARIANTS.md`](../../INVARIANTS.md) for workspace/repository law.
-2. Owning schemas, behavior contracts, Source Authority, product promises, and
-   runtime policy for enforceable behavior.
-3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 28, for current product
+2. Owning schemas, behavior contracts, Blueprint contracts, product promises,
+   and runtime policy for enforceable behavior.
+3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 29, for current product
    direction, priority, R0–R7 gates, and issue disposition.
 4. Live GitHub issue state and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) for
    current ownership and collision avoidance.
@@ -51,8 +51,18 @@ roadmap; never repeat a stale claim merely because it is written here.
   workspace services, early mobile conversation continuation, and the fastest
   F0–F7 delivery path.
 - [`issues/desktop-codex-subagent-history.md`](./issues/desktop-codex-subagent-history.md)
-  — #8674 P0 contract for lossless historical Codex parent/subagent/tool
-  rendering and the Desktop Agents/Item inspector.
+  — closed #8674 contract/receipt for loss-accounted historical Codex parent/
+  subagent/tool rendering and the Desktop Agents/Item inspector.
+- [`issues/desktop-codex-trace-acceptance.md`](./issues/desktop-codex-trace-acceptance.md)
+  — #8675 immediate predictable real-Electron trace-workspace UX promise and
+  video-readiness proof.
+- [`issues/native-streamed-conversation-handoff.md`](./issues/native-streamed-conversation-handoff.md)
+  — #8676 first real provider-neutral Desktop stream and physical mobile
+  continuation vertical slice.
+- [`issues/conversation-fault-convergence.md`](./issues/conversation-fault-convergence.md)
+  and [`issues/desktop-effect-scope-topology.md`](./issues/desktop-effect-scope-topology.md)
+  — #8677 bounded conversation fault matrix and #8678 executable Effect scope/
+  boundary freeze before broad workbench expansion.
 - [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
   — exhaustive legacy capability disposition, Effect Native destination,
   remote-workroom boundary, ordered waves, and physical-device acceptance.
@@ -143,7 +153,7 @@ Every new or updated Sol artifact should:
 3. inspect live issue state and claims before naming a next leaf;
 4. reference existing typed services before proposing new schemas;
 5. name exact paths, hot contracts, verification, and closeout evidence;
-6. preserve Source Authority, privacy, approvals, idempotency, and receipt
+6. preserve Blueprint authority, privacy, approvals, idempotency, and receipt
    boundaries;
 7. distinguish code-landed, fixture-proven, deployed/distributed, live-proven,
    owner-accepted, and closed;

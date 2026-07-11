@@ -1,103 +1,83 @@
-# P0 PROOF: live Codex + Claude runtime and two-client Fleet
+# P0 PROOF: accepted simultaneous Codex + Claude Phase A
 
 - Issue: #8640
-- Parent: #8638
-- Status: active P0 proof lane; coordinator/owner-gated hot paths
-- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
-
-This live-proof issue supplies runtime evidence to the reliable persona-neutral
-Desktop/mobile coding and Fleet program. It does not make Sarah the required
-front door, own mobile information architecture, or replace #8547/#8636's
-remote-workroom acceptance. Persona/A/V/presentation backlog is closed
-not-planned and is not part of this proof.
+- Program parent: #8566
+- Depends on: closed #8637/#8633/#8639 Fleet substrate
+- Status: active bounded owner-authorized live proof
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 29
 
 ## Outcome
 
-Prove the real mixed-account Fleet runtime, then prove reliable Desktop/mobile
-observation and control. The landed Sarah route may initiate Phase A as a
-compatibility adapter; it is not the required product front door and does not
-by itself complete R3 or R7.
+Produce one accepted real simultaneous FleetRun with useful Codex and Claude
+work through explicitly named isolated owner accounts. This issue proves the
+mixed runtime substrate only. Desktop/mobile observation, control, fault
+convergence, and sustained product dogfood remain owned by #8574/#8597/#8676/
+#8677/#8566 and do not keep #8640 open after Phase A.
 
-## Phase A — real mixed-account runtime
-
-- At least two simultaneous pinned public work units under one FleetRun.
-- Codex and Claude each complete useful work through explicitly named isolated
-  owner accounts.
-- An authenticated typed adapter starts/manages the run and performs one steer
-  or approval round trip.
-- Zero duplicate claims, default account homes, silent provider substitution,
-  or manually launched per-assignment shells.
-- Exact provider usage where available; explicit `not_measured` otherwise.
-- Verification and accepted closeout survive reconnect.
-- Latency, progress freshness, stalls/reconnects, friction, and proof rung are
-  recorded without hiding misses in an aggregate pass.
-
-No fixture, synthetic harness result, default provider home, or provider
-substitution satisfies Phase A.
-
-## R3/R7 client acceptance
-
-After the runtime receipt:
-
-- Desktop and mobile show the same run/work/attempt/account/approval/command/
-  outcome/receipt refs and versions through Khala Sync;
-- one or more controls are exercised from each client;
-- every command reaches exactly one durable accepted/rejected/failed outcome or
-  remains explicitly unknown-pending-reconcile until reconciled;
-- lost acknowledgement, duplicate/out-of-order delivery, restart, stale
-  generation, and handoff do not duplicate work or fabricate success; and
-- a sustained owner dogfood receipt proves direct software is the reliable
-  operational path.
-
-Phase A can close the Fleet runtime rung before the full client rung. Do not
-call that product cutover complete.
+No Fleet run is authorized merely because this issue is open. Each live attempt
+still requires the owner's explicit authorization and a fresh bounded claim.
 
 ## Current live truth
 
-- C1 is crossed: #8637, #8633, and #8639 are closed; the minimum-safe command/
-  reconnect stack is deployed.
-- A historical Grok canary completed; Grok is postponed while funded capacity
-  is unavailable and is not an acceptance item.
-- A Claude canary failed closed before verification on credential scanning and
-  produced no accepted work/spend.
-- Named Codex homes require isolated owner reauthentication; default
-  `~/.codex` must never be used or modified for automatic work.
-- Type-boundary/scanner/acceptance paths have coordinator-owned claims. Respect
-  the live claim ledger; do not duplicate or weaken them.
+- C1 is crossed: the durable run, mixed supervisor, command/reconnect, evidence,
+  and closeout substrate is closed and deployed.
+- One named isolated Codex registry account is live-proven ready. Default
+  `~/.codex` is forbidden for automatic work.
+- The Worker/Pylon ambient type boundary and strict SCM scanner corrections are
+  landed. Selected provider homes skip only their own login patterns; SCM/PAT/
+  Forge/extraheader detection remains strict.
+- FleetRun `fleet_run.fc5.mixed.phase-a.20260710t2212z` proved simultaneous
+  named `codex` plus named `claude-pylon-3` execution with no default-home use,
+  but both closeouts were rejected: Claude reported
+  `claude_agent_execution_refused`; Codex used the wrong verifier entry point.
+- The broader Khala test also exposed a leaked supervisor-scope failure. These
+  are concrete remaining defects, not an accepted proof.
+- Grok is not an acceptance item while funded capacity is unavailable.
 
-## Operational decision
+## Scope
 
-- Existing compatibility-route canaries may continue only at their honest
-  proof rung.
-- A clean Phase A receipt accepts the mixed-account runtime as substrate.
-- R7, not C2 alone, accepts Desktop/mobile as the owner-facing software path.
-- This Codex app remains coordinator, independent verifier, development, and
-  break-glass while reliability work continues.
-- #8547/#8636's minimum remote-workroom path is a separate P0 dependency for
-  mobile R6/R7. It does not change #8640 Phase A's owner-local runtime exit;
-  advanced managed-capacity/provider breadth follows R7.
+1. Fix the Claude permission-mode execution refusal without weakening the
+   untrusted/public permission boundary.
+2. Fix the existing supervisor-scope leak and preserve deterministic cleanup.
+3. Bind each useful work unit to one correct package-script/single-argv verifier
+   before dispatch.
+4. Run at least two simultaneous pinned public work units under one FleetRun:
+   one named Codex account and one named Claude account.
+5. Use the authenticated typed adapter and perform one steer or approval round
+   trip.
+6. Preserve Pylon-owned post-verification credential scanning and publication;
+   workers do not commit, push, open/modify PRs, or mutate issue comments.
 
-## Evidence bundle
+## Acceptance
 
-- pinned deployment/source/app versions;
-- run/work/attempt/assignment/session/account/target refs;
-- exact verification and public-safe artifact refs;
-- exact usage or explicit `not_measured`, separate compute economics, and no-
-  spend failure truth;
-- claim uniqueness/concurrency and typed fallback history;
-- command idempotency/outcomes and reconnect/restart evidence;
-- Desktop/mobile matching refs/versions and handoff receipt;
-- operator minutes, latency/freshness/stall distribution, friction ledger; and
-- could-not-prove list with owners.
+- Codex and Claude each produce useful verified work and one accepted closeout.
+- There are zero duplicate claims, default account homes, silent provider
+  substitutions, or manually launched per-assignment shells.
+- Verification, post-run scan, publication, and accepted closeout occur in the
+  enforced order and survive reconnect.
+- Exact provider usage is recorded when available; otherwise the receipt says
+  `not_measured`. Failed/rejected attempts do not fabricate spend or completion.
+- One typed steer or approval reaches exactly one durable outcome.
+- The evidence bundle records pinned source/deployment/app versions, run/work/
+  attempt/claim/session/account refs, latency/freshness/stalls, exact verifier,
+  scan result, usage truth, public-safe artifact refs, and could-not-prove list.
 
-## Exit
+No fixture, synthetic harness, default provider home, substituted provider, or
+rejected closeout satisfies acceptance.
 
-#8640 closes when the issue body explicitly records which of these are complete:
+## Explicit transfer
 
-1. clean live Codex+Claude runtime receipt;
-2. R3 Desktop/mobile control receipt; and
-3. R7 owner-accepted dogfood/product cutover receipt.
+The former #8640 body also required R3 two-client control and R7 sustained
+dogfood. Those are real program exits but made this proof an epic. They now
+remain explicitly in:
 
-If issue scope closes at Phase A only, R3/R7 residuals must be transferred to
-#8566/#8574/#8597 with exact acceptance and owners. Sarah/persona/A/V quality
-is not an exit criterion.
+- #8676 — first live Desktop conversation and physical mobile continuation;
+- #8677 — command/event fault convergence;
+- #8574/#8597 — Fleet projection/control and client release tracks; and
+- #8566 — sustained R7 product dogfood and legacy retirement.
+
+## Close
+
+Close immediately after the accepted Phase A receipt and honest evidence bundle
+are posted. Do not wait for full Desktop/mobile product cutover, and do not call
+Phase A alone that cutover.

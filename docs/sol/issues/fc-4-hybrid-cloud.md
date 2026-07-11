@@ -4,7 +4,7 @@
 - Parent: #8638
 - Mobile consumer: #8597
 - Status: active P0 target/workroom contract; advanced placement follows R7
-- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 27
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 29
 
 ## Outcome
 
@@ -18,6 +18,15 @@ history without owning placement or claim authority.
 - closed FC-1 durable run contract and FC-2 mixed-harness execution;
 - #8547 real brokered Codex Agent Computer/workroom proof;
 - shared identity, repository/thread, Fleet, and Khala Sync refs from R1/R2.
+
+## Current truthful baseline and order
+
+The managed-cloud claimed-work adapter and durable `managed_cloud` intake are
+code-landed and fixture-proven with fail-closed authority and no local fallback.
+They are not a live accepted target. Finish #8547's brokered Firecracker receipt
+first; then compose and accept hybrid routing against that proven target. Do
+not complete a placement policy around a target that has not passed isolation,
+credential, usage, writeback, and reclaim acceptance.
 
 ## Scope
 

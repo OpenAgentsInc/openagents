@@ -11,9 +11,12 @@
   [`../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
 - Bounded leaves:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
-- P0 historical conversation/subagent slice:
+- Closed P0 historical conversation/subagent slice:
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
+- Immediate bounded queue: #8675 trace-workspace acceptance, #8676 real
+  streamed Desktop→mobile conversation, #8677 fault convergence, and #8678
+  Effect scope topology.
 
 ## Outcome
 
@@ -32,10 +35,11 @@ behavior/service/release extraction source until successor and migration proof.
 The greenfield app now has:
 
 - hardened Electron sandbox/isolation/navigation/permission boundaries;
-- a minimal Effect Native conversation workspace;
-- local bounded thread persistence, a deliberately lossy recent read-only
-  Codex history projection, and host-held gateway completion with honest
-  configuration failure;
+- an Effect Native conversation workspace with a loss-accounted owner-local
+  Codex history catalog/page capability through Runtime Gateway v4: active and
+  archived rollouts, real parent/depth agent graph, source-order typed items,
+  explicit redaction/gaps, paging/windowing, and a three-pane Agents/Item
+  inspector without uploading local history;
 - project-root selection, bounded root listing/read/edit/save with conflict and
   atomic-write checks, plus typed read-only Git status/diff;
 - a closed command registry and palette;
@@ -60,19 +64,21 @@ The greenfield app now has:
   continuation (#8671), and a shared confirmed provider-neutral timeline reader
   (#8672); #8673 landed its schema-bounded Runtime Gateway v3 timeline query at
   `bf4037e923` without claiming visible UI.
+- #8674 closed at `c83f5faac9` after 138 Desktop tests, build, packaged Electron
+  smoke, Effect Native accessibility tests, a 100+ MiB/100-child/100,000-item
+  scale corpus, and a structure-only real nested-history receipt with zero
+  unsupported gaps.
 
 The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
-bundle, and real-Electron fixture smoke. The current architecture receipt is
-`f49a66b4aa`; this is still fixture/development proof, not a signed/live-product
-claim.
+bundle, and real-Electron fixture smoke. #8674 is code-landed and host-smoke
+proven, but #8675 still owns the owner-visible predictable trace-workspace
+receipt needed for the next recorded demo.
 
-Not yet claimed: physical Desktop auth acceptance, complete streamed session
-state,
-full workbench, visible authoritative Fleet cockpit, signed distribution, live
-owner account success, lossless historical Codex/subagent/tool rendering, or
-legacy retirement. The current local reader excludes all child sessions and
-non-message items, applies a 24-hour window, and hydrates only a bounded tail;
-#8674 is the P0 correction.
+Not yet claimed: physical Desktop auth acceptance, a provider-launched live
+stream attached to the confirmed thread/timeline, physical mobile continuation,
+full workbench, visible authoritative Fleet cockpit, signed distribution, or
+legacy retirement. #8676 owns the next real vertical slice; #8677 owns its
+fault acceptance.
 
 ## Required product shape
 
@@ -95,12 +101,14 @@ it does not become fabricated permanent status chrome.
   and removal or completion of dormant/fake affordances.
 - **D1:** authenticated Khala Sync session/conversation continuity with streamed
   reasoning/tools/plan/questions/permissions/errors/usage, interrupt/resume,
-  rich composer, history, context, and mobile continuation; closed #8673 plus
-  #8674 add the provider-native historical graph, complete parent/child/tool
-  timeline, completeness accounting, and the three-pane Agents/Item inspector before
-  broader D2–D6 breadth.
+  rich composer, history, context, and mobile continuation. Closed #8673/#8674
+  supply the confirmed timeline plus provider-native historical graph,
+  completeness accounting, and three-pane inspector; #8675 accepts that UX in
+  real Electron, then #8676 launches and attaches the real live runtime.
 - **D2:** projects/sessions/routes/tabs/search/archive, command registry/palette,
   conflict-safe keybindings, menu, deep links, single instance, and restore.
+  #8678 freezes the process/WorkContext/run/request/foreign-host Effect scope
+  law before broader D3/D4 services land.
 - **D3:** recursive files, grants, watcher/search/cache, edit/save/conflict,
   typed Git diff/review, selected context, and workspace-bounded PTY.
 - **D4:** sign-in, provider/model/runtime catalog, MCP state/auth, permissions,
@@ -132,6 +140,8 @@ it does not become fabricated permanent status chrome.
   stays local unless a typed continuity requirement says otherwise.
 - Pending, rejected, failed, unavailable, reconnecting, stale, must-refetch, and
   unknown-pending-reconcile are explicit.
+- Every visible milestone has an executable UX promise and real-Electron smoke;
+  a fixture or screenshot alone cannot satisfy product acceptance.
 
 ## Exit
 

@@ -27,9 +27,10 @@ inferred outcome.
 
 ## Active consumers and bounded proof
 
-1. #8640 — clean real simultaneous Codex+Claude runtime proof, then R3/R7
-   Desktop/mobile acceptance. An existing compatibility adapter may initiate
-   the runtime proof; that does not select the product front door.
+1. #8640 — clean accepted simultaneous Codex+Claude Phase A runtime proof only.
+   It closes at that receipt; R3/R7 Desktop/mobile acceptance remains with the
+   program/client issues. An existing compatibility adapter may initiate the
+   runtime proof; that does not select the product front door.
 2. #8574 — server-authoritative Desktop Fleet cockpit and typed controls.
 3. #8597 — mobile supervision, attention, typed controls, outcomes, receipts,
    compact remote coding, and handoff.

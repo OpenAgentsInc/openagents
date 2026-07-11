@@ -3,7 +3,7 @@
 - Issue: #8597
 - Program parent: #8566
 - Destination: `apps/openagents-mobile`
-- Status: active P0 under Master Revision 27 / R0–R7 / M0–M7
+- Status: active P0 under Master Revision 29 / R0–R7 / M0–M7
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Bounded leaves:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
@@ -35,13 +35,12 @@ dispositioned. Importing the legacy package/component tree is forbidden.
   typecheck plus 20 tests/69 expectations, archives/exports, and was accepted
   for App Store delivery. App Store processing/`VALID` and owner physical-
   device acceptance remain distinct unproven rungs.
-- The current in-memory generic Khala chat does not provide
-  authenticated cross-device Sync, FleetRun/account authority, command
-  outcomes, remote workrooms, or receipts.
+- The generic local Khala fallback remains explicitly separate from confirmed
+  authority; it does not claim a provider, FleetRun, account, remote workroom,
+  command outcome, or receipt.
 - A host-owned Expo SQLite adapter now reuses the shared Khala Sync store core,
-  persists one installation identity and offline queue across restart, closes
-  before OTA reload, and reports only local durability. Authenticated network
-  Sync remains unimplemented.
+  persists one installation identity and offline queue across restart, and
+  closes before OTA reload.
 - A versioned Expo SecureStore vault now holds one native access/refresh-token
   record plus the server-derived owner ref with device-only accessibility.
   Malformed/old-epoch records purge fail-closed and view state sees only
@@ -49,16 +48,20 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 - Recovered credentials now validate through `GET /api/mobile/auth/session`.
   OpenAuth rotation rewrites the vault; 401/403 or server-derived owner mismatch
   purges it; transient/network/schema failure retains it but projects only
-  unavailable. A verified session still does not claim live Sync.
+  unavailable.
 - Mobile entry/exit now uses one imperative AuthRequest with the exact
   `openagents-khala-mobile` GitHub authorization-code + S256 contract and
   canonical `openagents://auth`. It verifies the server-derived owner before
   saving and clears locally only after the server proves both access and
   refresh revocation. Typed Effect Native intents own the visible actions.
-- The #8597 Sarah-removal/composer claim released at `e8bf6b8603`. Recheck live
-  claims before editing; the next honest action is authenticated Sync
-  composition, not rebuilding removed persona/demo/local
-  catalog state.
+- A verified session now composes the shared production HTTP/WebSocket Sync
+  engine under the server-derived personal scope. #8671 switches the visible
+  mobile Home to confirmed authoritative conversations when live, and the
+  two-native-host fixture proves Desktop start → mobile follow-up → restart
+  convergence with matching refs/versions/cursor.
+- Live provider streaming, physical mobile continuation, Fleet control,
+  remote workrooms, and receipts remain unproven. #8676 owns the next complete
+  live conversation/handoff; #8677 owns its fault-convergence proof.
 
 ## Identity locks
 
@@ -118,7 +121,7 @@ dispositioned. Importing the legacy package/component tree is forbidden.
   verification, or receipt without owning authority.
 - Direct account recovery/settings remains available behind typed capabilities.
 
-## Paused/non-goals
+## Explicit non-goals
 
 - Sarah/persona/relationship home;
 - avatar, opener, voice, ASR/VAD, video, media cache/admission;

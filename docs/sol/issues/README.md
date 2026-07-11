@@ -9,8 +9,10 @@ The live GitHub issue is the operational copy and claim ledger. When a checked-
 in source and live body differ, reconcile both before using the body for
 dispatch.
 
-As of 2026-07-10 there are six open `roadmap:sol` records under one program
-parent. Older Sarah-first/P1 labels do not override Master Revision 28.
+As of 2026-07-10 there are ten open `roadmap:sol` records under one program
+parent: two client tracks, three existing bounded runtime/workroom records, and
+four executable product/architecture leaves. Older Sarah-first/P1 labels do
+not override Master Revision 29.
 
 ## P0 — reliable Desktop/mobile fleet software
 
@@ -27,7 +29,23 @@ parent. Older Sarah-first/P1 labels do not override Master Revision 28.
 - [`fc-substrate.md`](./fc-substrate.md) — #8638 existing Fleet Command substrate
   projected into both clients; not another program or epic.
 - [`fc-5-dogfood.md`](./fc-5-dogfood.md) — #8640 real Codex+Claude runtime proof
-  followed by R3/R7 client acceptance.
+  narrowed to one accepted simultaneous Phase A receipt; R3/R7 stay with the
+  client/program records.
+
+Immediate bounded queue:
+
+- [`desktop-codex-trace-acceptance.md`](./desktop-codex-trace-acceptance.md) —
+  #8675 real-Electron predictable trace-workspace UX promise and public-safe
+  video-readiness receipt.
+- [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) —
+  #8676 one real provider-neutral Desktop stream through the host-owned Runtime
+  Gateway, immediately continued on physical mobile with the same refs.
+- [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) —
+  #8677 bounded lost-ack/duplicate/gap/offline/restart/revocation/migration
+  convergence proof for the shared conversation seam.
+- [`desktop-effect-scope-topology.md`](./desktop-effect-scope-topology.md) —
+  #8678 executable process/WorkContext/run/request/foreign-host Effect scope
+  and boundary freeze before broad Desktop D3/D4 expansion.
 
 Closed bounded Desktop D1 leaf:
 

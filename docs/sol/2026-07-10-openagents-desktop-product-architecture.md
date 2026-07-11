@@ -78,7 +78,7 @@ Desktop Runtime Gateway
         |                         +--> local Codex / Claude / Grok adapters
         |                              isolated named homes + execution profiles
         |
-        +--> openagents.com API / Khala Sync / Source Authority
+        +--> openagents.com API / Khala Sync / Blueprint
                     |
                     +--> Agent Computers / remote workrooms
                     |
@@ -203,7 +203,7 @@ different purposes. They may not become competing authorities:
 
 - Pylon local storage owns runtime supervision/recovery facts until they are
   durably projected;
-- Source Authority owns accepted run/work/attempt/command/receipt truth; and
+- Blueprint owns accepted run/work/attempt/command/receipt truth; and
 - the Desktop Sync store is a cache/offline queue over those projections.
 
 ### A6. Khala Sync lands before broad Desktop parity
@@ -337,10 +337,10 @@ development smoke is not a release receipt.
 | --- | --- | --- | --- | --- |
 | OpenAgents identity/session | Server/OpenAuth | Main/keychain; session phase projection | Secure storage; session phase projection | Phase and safe account refs only |
 | Conversations | Worker/Khala Sync mutators | Main/runtime SQLite Sync mirror | Expo SQLite Sync mirror | Typed thread/message projections |
-| Fleet run/work/attempt/approval/outcome/receipt | Worker/Pylon/Source Authority | SQLite Sync mirror + local runtime reconciliation | SQLite Sync mirror | Owner-safe bounded projections |
+| Fleet run/work/attempt/approval/outcome/receipt | Worker/Pylon/Blueprint | SQLite Sync mirror + local runtime reconciliation | SQLite Sync mirror | Owner-safe bounded projections |
 | Pylon account credentials and health probes | Pylon named-account custody | Pylon-owned isolated homes | Never | Readiness/quota/blocker projection only |
 | Workspace files/Git/PTY | Host runtime under explicit grant | Granted workspace + bounded local metadata | Remote workroom only | Typed bounded projections, no general handle |
-| Window/layout/focus/drafts | Client-local | Window-scoped local store | Device-local store | Yes; never Source Authority |
+| Window/layout/focus/drafts | Client-local | Window-scoped local store | Device-local store | Yes; never Blueprint authority |
 | Raw provider/runtime events | Runtime private evidence store | Host/private refs as required | Never raw | Redacted event algebra only |
 | Extensions and sandbox images | Signed catalog/update authority | Host-managed cache | Discovery/enablement projection | Metadata and typed capabilities only |
 
@@ -482,7 +482,7 @@ waiting for the whole roadmap:
 | --- | --- | --- |
 | Desktop product | gateway adapter, renderer projections, local workspace and command surfaces | Sync schemas, server mutators, Pylon authority |
 | Mobile product | secure session adapter, SQLite binding, compact projections, remote-workroom UX | Sync schemas, local Desktop capability, workroom authority |
-| Sol/shared contracts | schemas, migrations, generated clients, compatibility fixtures, Source Authority projection | app-local layout/presentation |
+| Sol/shared contracts | schemas, migrations, generated clients, compatibility fixtures, Blueprint projection | app-local layout/presentation |
 
 All three meet in cross-client fixtures. File-disjoint work that changes the
 same schema, migration, command identity, or authority policy is still
@@ -530,8 +530,8 @@ deployed, live-proven, owner-accepted, or closed.
 | Desktop and mobile show different “truth” | Same Sync scopes, versions, entities, mutation IDs, and durable outcomes |
 | Accepted command is displayed as completed work | Delivery and effective outcome remain separate durable records |
 | Electron sandbox is mistaken for code sandbox | Explicit execution profile and receipt for every run |
-| Pylon and Desktop create two run universes | Gateway composes Pylon/Source Authority; no second claim or run database |
-| Local UI state leaks into Source Authority | Presentation state remains device/window scoped; only typed mutations cross |
+| Pylon and Desktop create two run universes | Gateway composes Pylon/Blueprint; no second claim or run database |
+| Local UI state leaks into Blueprint | Presentation state remains device/window scoped; only typed mutations cross |
 | Extension ecosystem widens authority invisibly | Signed catalog, declared capabilities, isolated lifecycle, per-session enablement |
 | Early mobile work waits behind full Desktop parity | F2 requires the narrow mobile continuation proof before D3–D6 breadth |
 | Fast implementation hardens into main-process sprawl | Gateway interface is stable; heavy services move to utility process before D3/D4 breadth |

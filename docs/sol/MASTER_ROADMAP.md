@@ -1,8 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-10 (lossless Codex history and subagent rendering priority)
-- Revision: 28
+- Updated: 2026-07-10 (predictable trace acceptance, live conversation handoff,
+  fault convergence, and Effect scope freeze)
+- Revision: 29
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -16,6 +17,11 @@
 - Codex subagent rendering evidence and OpenAgents design frame:
   [`Codex analysis`](../teardowns/2026-07-10-codex-subagents-rendering-analysis.md),
   [`OpenAgents frame`](../teardowns/2026-07-10-openagents-subagents-design.md)
+- Cross-product adaptation and focused Effect architecture:
+  [`product adaptation`](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md),
+  [`OpenCode Effect audit`](../teardowns/2026-07-10-opencode-effect-architecture-teardown.md)
+- Predictable local Codex history and UX-contract product context:
+  [`transcript 248`](../transcripts/248.md)
 
 ## Owner decisions encoded here
 
@@ -129,6 +135,22 @@
     polish. #8673 landed the bounded Runtime Gateway v3 timeline seam at
     `bf4037e923`; #8674 delivered the provider-native history/graph projection
     and visible UI through Runtime Gateway v4.
+16. **Predictable user-visible behavior is a release contract.** Transcript
+    248's promise—open Desktop, immediately find stable named recent Codex
+    conversations, select one, and inspect its trace without blank startup or
+    stuck loading—is enforced by a versioned UX/behavior contract and a real-
+    Electron journey. #8675 accepts the landed #8674 workspace at the owner-
+    visible rung before the next recorded trace demo. Every later human-visible
+    P0 milestone carries the same programmatic contract plus host/device smoke;
+    fixture green or a polished screenshot alone is not product acceptance.
+17. **Effect service topology is explicit before workbench breadth.** Process,
+    WorkContext, conversation/run, request/command, and foreign-host/view scopes
+    have declared dependency direction, freshness, disposal, and replacement
+    rules. Embedded, local, remote, mobile, and test adapters enter one request
+    processor. Promise/Electron/provider bridges remain perimeter code;
+    interruption remains cancellation; canonical Effect Schema identities are
+    reused across contracts. #8678 freezes and tests this boundary before D3/D4
+    expands editor, PTY, MCP, provider, and permission services.
 
 ## The product in one sentence
 
@@ -411,13 +433,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
 - C1 is crossed. #8637, #8633, and #8639 are closed; the minimum-safe Sarah →
   standing Pylon → exact supervision/reconnect path is fixture-proven and
   deployed.
-- #8640 Phase A is the next owner-account runtime proof, but an owner-gated
-  reconnect does not block R0–R2 client work. It requires simultaneous useful
-  Codex + Claude work through named isolated homes. Its recorded blockers are
-  the clean API ambient-type gate, a credential-scanner correction that
-  preserves the no-long-lived-SCM-credentials invariant, and owner
-  reauthentication of one isolated Codex home without touching default
-  `~/.codex`. Desktop Settings exposes the isolated Pylon device-auth flow.
+- #8640 Phase A remains the next owner-authorized mixed-runtime proof, but it
+  does not block D1 client work. The API ambient-type and credential-scanner
+  gates are fixed, and one isolated named Codex home is live-proven ready
+  without touching default `~/.codex`. The first simultaneous named Codex+
+  Claude attempt executed but both closeouts were rejected: Claude hit
+  `claude_agent_execution_refused`, Codex used the wrong verifier entry point,
+  and the broader suite exposed a supervisor-scope leak. #8640 is now narrowed
+  to fixing those defects and obtaining two accepted closeouts; R3/R7 remain in
+  the client/program issues.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -440,7 +464,7 @@ into reliable Desktop/mobile software; it does not build another fleet system.
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation → durable authority → registered standing Pylon → bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none; live owner-account execution is #8640 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none; useful live account work is #8640, not reopened FC-2 residue |
 | #8639 FC-3 | **closed** at `1d84386cb5`: exact run/work/attempt authority, durable control outcomes, approval/steer binding, full evidence canvas, privacy-safe reconnect, migrations 0054–0057, and the integrated C1 fixture are proven; production `00069-h2k` deployed the stack | none; the live owner-account rung is #8640 |
-| #8640 FC-5 | C1 crossed; Grok historical canary accepted; a Claude canary failed closed before verification; current exit is owner-approved Codex+Claude Phase A | land the strict scanner/type-boundary repairs, reauthenticate one isolated Codex home, then run one clean simultaneous Codex+Claude receipt |
+| #8640 FC-5 | Named Codex and Claude executed simultaneously with no default-home use, but both closeouts rejected; scanner/type boundary and isolated Codex readiness are already cleared | fix Claude permission-mode refusal, the supervisor-scope leak, and verifier selection; then obtain two accepted closeouts in one owner-authorized run |
 
 These rows are implementation receipts, not issue closure. The commit named in
 one row does not imply deployment or live proof, and later commits inherit the
@@ -460,8 +484,9 @@ records before claiming the first new slice.
 
 ### Starting gap, stated plainly
 
-- Desktop has a hardened Electron/Effect Native shell, local five-thread chat,
-  recent read-only Codex history, selected-root bounded read/edit/save, typed
+- Desktop has a hardened Electron/Effect Native shell, confirmed/local
+  conversation modes, loss-accounted active+archived Codex history with nested
+  agent/tool inspection, selected-root bounded read/edit/save, typed
   read-only Git status/diff, a closed command palette, and provider readiness/
   device auth, the first closed/versioned host-owned Runtime Gateway seam, and
   a private main-process Khala Sync SQLite cache using the shared store core.
@@ -479,8 +504,8 @@ records before claiming the first new slice.
   the shared production HTTP/WebSocket Sync session in main, subscribe only
   the server-derived owner's personal scope, re-read rotated access custody,
   and close session-before-SQLite. It does not yet have physical Desktop auth
-  acceptance. Runtime Gateway
-  protocol v3 now exposes bounded confirmed catalog/thread queries and
+  acceptance. Runtime Gateway protocol v4 now exposes bounded confirmed
+  catalog/thread queries and
   create/append enqueues with honest `pending_reconcile`; the existing Effect
   Native shell now selects confirmed Sync mode at boot when live, otherwise a
   separate local-only mode, and never mixes the catalogs. The host
@@ -491,10 +516,12 @@ records before claiming the first new slice.
   workbench, or a visible server-authoritative Fleet cockpit. The shared Sync
   client now has a confirmed-only reader for the already-landed `agent_run` /
   `agent_run_event` scope: ordered bounded facts survive replay/restart while
-  private/raw provider fields stay omitted. Runtime Gateway v3 now consumes
+  private/raw provider fields stay omitted. Runtime Gateway v4 now consumes
   that reader by exact `runRef` and returns only the server-confirmed
-  `routeRef` binding. Runtime launch, canonical chat attachment, and visible UI
-  remain the next D1 leaves.
+  `routeRef` binding. It separately exposes the owner-local history catalog/page
+  capability with no age ceiling or raw-file projection. #8675 owns the
+  immediate real-Electron trace acceptance; runtime launch and canonical live
+  chat attachment remain #8676.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
   persona-neutral public-local Khala fallback driven by the native composer,
   and a
@@ -585,9 +612,10 @@ R1 as shipped (#8657–#8665) authenticates both clients against our own
 mobile — first-party, correct) but treats identity as **auth-required**. The
 amendment makes it a **two-tier model**:
 
-1. **Local identity (default, no server auth):** an immutable local
-   account is the Source Authority for purely-local pairing (desktop ↔ local
-   Codex/Pylon; run fleets, use the workbench, offline-of-account). Khala Sync
+1. **Local identity (default, no server auth):** an immutable local account is
+   the canonical device-local identity authority for purely-local pairing
+   (desktop ↔ local Codex/Pylon; run fleets, use the workbench,
+   offline-of-account). Khala Sync
    runs in device-local scope — the existing SQLite store is the authority for
    local-only data, not a cache. Zero `auth.openagents.com` round-trip for
    anything that stays on-device.
@@ -812,19 +840,25 @@ Required receipt:
 - measured FC latency distribution and proof rung for every acceptance item.
 
 This is the Fleet runtime-unblock milestone, not the user-facing product
-cutover. After its clean receipt, the substrate is ready for R2/R3 integration;
-R7 still requires reliable Desktop/mobile operation. Do not wait for cloud or
-Grok quota to run it. Grok is postponed; its adapters and historical canary
-remain regression evidence.
+cutover. #8640 closes at this Phase A receipt; two-client control, fault
+convergence, and sustained R7 dogfood remain in #8574/#8597/#8677/#8566. Do
+not wait for cloud or Grok quota to run it. Grok is postponed; its adapters and
+historical canary remain regression evidence.
 
 ### P0 remote-workroom lane — mobile coding without local device authority
 
 **[#8547 FC-CLOUD-1](https://github.com/OpenAgentsInc/openagents/issues/8547)**
-completes Codex in real Firecracker.
+completes Codex in real Firecracker first, including server-authorized owner-
+subscription metering exemption, retry-deduplicated usage truth, bounded
+writeback, and reclaim.
 
 **[#8636 FC-4](https://github.com/OpenAgentsInc/openagents/issues/8636)**
 adds per-work-unit `owner_local | managed_cloud | auto` routing and owns the
 hybrid acceptance receipt.
+
+The order is binding: #8636's adapter/intake source may remain regression
+substrate, but its live hybrid acceptance cannot complete until #8547 proves a
+real managed target. Do not finish routing around an unaccepted target.
 
 #8636 closes when one owner-scoped run executes local and managed-cloud work
 concurrently under one claim registry: at least one owner-local unit and one
@@ -1043,26 +1077,29 @@ OpenCode Desktop workbench while retaining OpenAgents architecture. OpenCode's
 affordances and current `packages/desktop` + `packages/app` behavior are the
 benchmark; its code and renderer capability model are not the destination.
 Effect Native remains the only application/component/intent grammar, Electron
-remains a hardened host, Khala Sync owns cross-device continuity, Pylon/Source
-Authority own Fleet execution and receipts, and direct typed software controls
-are the primary surface. The detailed evidence and 20-area baseline are in the
+remains a hardened host, Khala Sync owns cross-device continuity, Pylon owns
+execution, Blueprint owns legible program/action state, and receipts remain
+with their typed authorities. Direct typed software controls are the primary
+surface. The detailed evidence and 20-area baseline are in the
 [`desktop parity audit`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md).
 The binding process/data/authority topology and fastest F0–F7 path are in the
 [`Desktop product architecture`](./2026-07-10-openagents-desktop-product-architecture.md).
 The cross-product rationale comes from the
 [`ChatGPT, Claude, and OpenCode adaptation analysis`](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md).
 
-**Current rung:** the app now has a hardened scaffold, minimal Effect Native
-chat, host-owned gateway completion, a bounded persisted five-thread catalog,
-recent read-only local Codex chat projection, shared icons/glass lowering,
+**Current rung:** the app now has a hardened scaffold, Effect Native
+conversation/history workspace, host-owned gateway completion, confirmed Sync
+and explicit local-only conversation modes, Runtime Gateway v4 loss-accounted
+active+archived Codex history with nested agent/tool inspection, shared icons/
+glass lowering,
 folder selection, bounded root listing/read/edit/save with conflict and atomic-
 write checks, typed read-only Git status/diff, a closed command registry and
 palette, Codex readiness/device-auth Settings, and a schema-decoded Runtime
-Gateway bootstrap/command/lifecycle seam that truthfully reports Sync and
-conversation streaming unavailable. The gateway now composes a host-owned
+Gateway bootstrap/command/lifecycle seam that truthfully reports conversation
+streaming unavailable. The gateway now composes a host-owned
 `node:sqlite` adapter over the existing Khala Sync store core, with a private
-restart-stable installation identity and deterministic close; network Sync
-remains unavailable pending sign-in. The focused landings are
+restart-stable installation identity and deterministic close; verified sign-in
+can compose the shared production Sync engine. The focused landings include
 `597f291f86` (bounded save), `09a48acd0a` (typed Git read-only seam),
 `e278ffd6c8` (palette smoke/pixel receipt), and `eeebedce20` (device-auth success
 reconciliation). These remain fixture/development proof: the smoke does not
@@ -1084,7 +1121,9 @@ traversal, bounded ref-only restoration, and responsive drawer treatment. The
 valid generated scale oracle covers 100+ MiB, 100 children, and 100,000 items;
 a structure-only local receipt found 131 threads/560,418 records under a real
 nested root with zero unsupported gaps. Local history stays owner-private and
-is not Khala Sync data.
+is not Khala Sync data. #8675 is the immediate owner-visible real-Electron
+acceptance gate for this workspace; #8676 then owns real provider streaming and
+physical mobile continuation.
 
 #### Required product shape
 
@@ -1180,8 +1219,8 @@ The full contract, acceptance corpus, and F1–F5 landing order live in
 | Gate | Scope | Exit |
 | --- | --- | --- |
 | D0 — truthful green baseline | Keep shared contracts green; remove or finish dormant Review/Terminal/Inbox/Fleet names and stale docs; isolate smoke state and distinguish live, unconfigured, and fixture receipts | Typecheck, tests, bundle, isolated first-run Electron smoke, and route/capability manifest are green and agree |
-| D1 — OpenAgents + Sync conversation runtime and lossless history | Establish the tokenless renderer → host-owned Desktop Runtime Gateway boundary; replace five local-only threads/request-response chat with authoritative `chat_thread`/`chat_message` identity; stream text/reasoning/tools/plan/todo/questions/permissions/approvals/errors/usage with connected/heartbeat/stale/disposed/terminal semantics, bounded replay/coalescing, interrupt/resume/reconnect, minimum rich composer/context, and the narrow early-mobile continuation slice; consume closed #8673 and complete #8674 so provider-native historical Codex conversations render every supported parent/child item, nested agent topology, tool detail, completeness/gap state, paging, and right-side inspection without silent caps | One real authenticated stream survives restart/reconnect and continues on mobile with matching refs/versions/cursor/phase/outcome; mobile submits one safe follow-up or interrupt; and a real historical Codex conversation with simultaneous children plus a nested grandchild passes `source = rendered + explicit redactions + explicit gaps` with zero gaps for the pinned V1/V2 corpus, complete selectable child transcripts/tools, and responsive accessible three-pane restoration |
-| D2 — projects, sessions, commands | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore | Every global/session/workbench action uses the command registry or has an explicit bounded exception |
+| D1 — OpenAgents + Sync conversation runtime and loss-accounted history | Preserve closed #8673/#8674's confirmed timeline plus provider-native three-pane history workspace; accept its predictable real-Electron UX under #8675; then use #8676 to launch one provider-neutral real stream through the host-owned Runtime Gateway, attach canonical `chat_thread`/`chat_message` and run/timeline refs, render text/reasoning/tools/plan/questions/approvals/errors/usage with explicit lifecycle, and continue immediately on mobile | #8675 proves fast stable named history, complete nested trace inspection, restoration, and the UX contract in real Electron; #8676 proves one real authenticated stream survives renderer/host restart and continues on physical mobile with matching refs/versions/cursor/phase/outcome plus one safe follow-up or interrupt |
+| D2 — projects, sessions, commands and architecture freeze | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore; #8678 freezes process/WorkContext/run/request/foreign-host scope direction and boundary oracles before D3/D4 breadth | Every global/session/workbench action uses the command registry or has an explicit bounded exception; the service topology oracle rejects forbidden scope direction, ambient authority, duplicate Schema identity, unowned resources, and internal runtime exits |
 | D3 — coding workbench | Recursive lazy tree, capability grants, watcher/cache/search, edit/save/dirty/reload, file tabs and selected ranges, typed Git status/diff, review/comments/revert, interactive workspace-bounded PTY tabs with reconnect/teardown | Select a project, edit/save, review the diff, add context, run a bounded terminal, steer the work through a typed control, and resume after restart |
 | D4 — runtime and settings | OpenAgents sign-in; provider account custody; runtime/model catalog and selection; MCP auth/enable state; enforced permissions; themes/fonts/shell/layout; locale/accessibility; notifications/sounds; diagnostics/recovery/support | Settings mutate real host/runtime state, unavailable actions explain why, and no credential/private payload reaches renderer logs or public evidence |
 | D5 — authoritative Fleet cockpit | Compose active FleetRun/work-unit/attempt/account/worker/approval/command/receipt state from current Pylon/Sync authority; Inbox attention and proof views; Desktop and mobile controls share typed intents | A run opens with matching Desktop/mobile state and controls; steering on either client converges to the same durable command outcomes and receipts |
@@ -1265,21 +1304,27 @@ universe.
 
 ## Canonical open issue set
 
-There are **seven open `roadmap:sol` records under one program parent**. #8566
+There are **ten open `roadmap:sol` records under one program parent**. #8566
 is the sole program epic. #8652 remains closed and outside the active program;
 its portal repairs are production evidence, not an active burn item. Closed
 #8638, #8639, and #8647–#8649 remain landed substrate. #8653 and #8670–#8673
-are completed bounded conversation/timeline leaves. Reconcile live labels,
-issue bodies, and claims before starting a slice.
+are completed bounded conversation/timeline leaves; #8674 is the completed
+history/inspector implementation. The four new records are executable leaves,
+not four new epics. Reconcile live labels, issue bodies, and claims before
+starting a slice.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
 | **P0 program parent** | #8566 | Sole R0–R7 Effect Native Desktop/mobile program epic |
 | **P0 client track** | #8574 | OpenCode-parity Desktop, Runtime Gateway, authoritative Sync, Fleet cockpit, and D0–D6 |
 | **P0 client track** | #8597 | Effect Native mobile Sync/coding/fleet client and iOS/Android proof |
-| **P0 active proof** | #8640 | Real simultaneous Codex + Claude runtime burn, then R3/R7 client receipt |
+| **P0 active proof** | #8640 | One accepted simultaneous named Codex + Claude Phase A receipt; closes at that boundary |
 | **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
+| **P0 immediate proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and video-readiness receipt |
+| **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
+| **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
+| **P0 architecture task** | #8678 | Executable Desktop Effect service-scope, canonical Schema, resource, and boundary freeze |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
 Closed `wontfix` / not-planned and removed from `roadmap:sol`: #8595, #8610,
@@ -1289,48 +1334,40 @@ bounded issues under the owning program.
 
 ## Execution order
 
-1. Land the Desktop architecture freeze and reconcile #8566/#8574/#8597/
-   #8640 claims to Revision 28. Preserve R0 on both clients: green clean-
-   state builds/tests/smokes, honest capability manifests, no fake authority,
-   and the existing hardened Desktop boundary.
-2. Continue F1/R1/R2 through both clients together from the published
-   `khala.identity_sync_contract.v1`: physical acceptance of the landed
-   Desktop/mobile auth paths and authenticated Sync composition,
-   physical-device acceptance of the landed mobile PKCE/vault/recovery/signout
-   composition,
-   `device_session` through the serialized freeze lane,
-   exact authenticated phases, and fault fixtures. Desktop `node:sqlite` and
-   mobile Expo SQLite adapters are landed over the shared store core; do not
-   invent a new Sync engine or app-local entity model.
-3. Continue F2/D1 from the completed #8673 confirmed timeline query and closed
-   #8674 provider-native history/graph projection plus visible three-pane
-   subagent/tool inspector (Runtime Gateway v4).
-   In parallel, finish one provider-neutral real streamed durable conversation
-   through the host-owned Desktop Runtime Gateway, immediately continued on
-   mobile with matching refs/versions/phases and one safe follow-up or
-   interrupt. The complete historical subagent receipt and the live two-client
-   conversation proof both precede broad Desktop D2–D6 workbench breadth and
-   broad mobile remote-workroom UI.
-4. After the shared seam is frozen, run Desktop F3/F4 (projects/sessions,
+1. **Immediate video-supporting proof:** complete #8675 against current `main`.
+   Exercise the real Electron app and owner-local nested Codex history, enforce
+   the UX promise from transcript 248, fix only exposed blockers, and publish a
+   public-safe trace-workspace acceptance receipt. Do not wait for provider
+   streaming or create a demo-only path.
+2. **First complete application slice:** complete #8676. Launch one real Codex
+   stream through the provider-neutral host-owned Runtime Gateway, attach it to
+   confirmed thread/run/timeline refs, then continue it on physical mobile with
+   one follow-up or interrupt and honest restart/reconnect behavior.
+3. **Freeze reliability and Effect topology:** complete #8677's bounded fault
+   matrix and #8678's scope/boundary oracle before accepting broad D3/D4
+   expansion. They may run in parallel when files and contracts are disjoint.
+4. After that shared seam is frozen, run Desktop F3/F4 (projects/sessions,
    commands, files/editor/Git/review/PTY) and mobile F4 (repository/thread,
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
-5. Run #8640 Phase A at the first honest owner-account opportunity without
-   blocking F1/F2. Fix runtime defects in place. Compose the existing Fleet
-   projections and command outcomes only after the conversation/Sync seam is
-   real, then close R3 with one simultaneous Codex+Claude run controlled from
-   both clients.
-6. Close R4 before extension or product breadth: duplicate/out-of-order events,
-   lost command acknowledgement, offline queue, stale lease, server/device
-   restart, cursor gap, migration, and rollback. Convert every counterexample
-   into a regression test and a user-visible bounded state.
-7. Complete F5/F6 plus #8547/#8636's minimum remote-workroom path, Desktop
-   D4–D6/R5, and mobile R6: runtime/settings/isolated extensions, Fleet cockpit,
-   accessibility, diagnostics, packaging, physical iOS/Android proof, push,
-   deep-link handoff, and safe writeback. Reuse contracts and tests from
-   deprecated clients without converting them in place.
-8. Close R7 with a sustained owner dogfood and release receipt that begins a
+5. Run #8640 Phase A at the first explicit owner-authorized opportunity without
+   blocking #8675–#8678. Fix the Claude permission refusal, supervisor-scope
+   leak, and verifier selection, obtain two accepted closeouts, post the honest
+   receipt, and close #8640. Do not keep it open for R3/R7 client work.
+6. Complete #8547's real brokered Firecracker workroom before #8636's live
+   hybrid-routing acceptance. In parallel with non-colliding client work, prove
+   server-authorized owner-capacity metering, retry-deduped usage, bounded
+   workbench capabilities/writeback, and reclaim; then prove one local plus one
+   managed unit under one claim registry and typed fallback history.
+7. Compose the accepted Fleet and workroom substrates into Desktop/mobile D5/
+   R3/R6 controls and receipts. A command from either client converges to one
+   durable outcome; target, account, capacity, and fallback remain explicit.
+8. Complete Desktop D4–D6/R5 and mobile R6: runtime/settings/isolated
+   extensions, accessibility, diagnostics, packaging, physical iOS/Android
+   proof, push, deep-link handoff, and safe writeback. Reuse contracts/tests
+   from deprecated clients without converting them in place.
+9. Close R7 with a sustained owner dogfood and release receipt that begins a
    remote coding task on mobile and continues it on Desktop without forking
    thread, workroom, Fleet, or receipt truth. Only then consider new bounded
    cloud-placement breadth. Real privacy/data-integrity requests or incidents
@@ -1405,6 +1442,27 @@ bounded issues under the owning program.
     unloaded state carries counts and reasons. A beautiful agent tree over a
     bounded five-message tail, top-level-only sessions, or silent event drops
     is a failed #8674 implementation.
+20. **UX promises are executable release gates.** Each human-visible P0 slice
+    names a stable behavior/UX contract, programmatic oracle, and real host or
+    physical-device journey. First paint, loading, naming, ordering,
+    accessibility, failure, restart, and privacy behavior are part of the
+    contract. A video may demonstrate the promise but never replaces the gate.
+21. **Effect scope direction is enforced.** Process, WorkContext,
+    conversation/run, request/command, and foreign-host/view scopes declare
+    dependencies, cache/freshness, replacement, and disposal. Wider scopes do
+    not capture narrower authority; renderer paths, ambient cwd,
+    `AsyncLocalStorage`, and module singletons never select runtime authority.
+22. **One request processor, many transports.** Embedded, Electron-hosted,
+    local socket, remote Pylon, mobile Sync, browser, and test adapters share
+    decoding, WorkContext resolution, policy, handler, transaction, events,
+    and receipts. Only transport and credential acquisition vary. Public values
+    reuse canonical Effect Schema identity; `ManagedRuntime` and Promise/native
+    bridges stay at named perimeter modules.
+23. **Interruption is cancellation.** Provider, tool, subagent, stream,
+    foreign-host, and UI adapters preserve Effect interruption and run owned
+    finalizers once. Broad cause handling may log/degrade an optional
+    supervisor, but cannot convert cancellation or an invariant defect into a
+    normal success or recoverable tool failure.
 
 ## Completion reporting
 
@@ -1441,7 +1499,7 @@ revision diary or restore the old 30-item phase queue.
 
 **Historical snapshot.** The facts below describe the mid-day state before the
 owner's Desktop/mobile reliability reset. Any “in flight,” “P0,” or sequencing
-language here is superseded by Revision 28 and the disposition table above.
+language here is superseded by Revision 29 and the disposition table above.
 
 Factual status updates since the last Sol reconciliation (Fable lane,
 evidence on the named issues):
@@ -1480,5 +1538,5 @@ evidence on the named issues):
   in flight.
 
 *Editing note: this factual reconciliation was written by the **Fable** lane at
-explicit owner request. Revision 28 preserves it as evidence but supersedes its
+explicit owner request. Revision 29 preserves it as evidence but supersedes its
 sequencing with the reliable Desktop/mobile program above.*

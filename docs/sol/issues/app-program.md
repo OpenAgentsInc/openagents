@@ -1,7 +1,7 @@
 # P0 PROGRAM: reliable Effect Native Desktop/mobile coding and fleet software
 
 - Issue: #8566
-- Status: sole active program parent under Master Revision 27
+- Status: sole active program parent under Master Revision 29
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Execution:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
@@ -29,11 +29,18 @@ remote coding + fleet                    full workbench + fleet
 - #8597 — mobile track: R0/R1/R2/R3/R6, full useful Khala Code MVP
   capability fold-in, remote coding, fleet controls, receipts, and iOS/Android.
 - #8547/#8636 — bounded P0 remote-workroom execution and target-routing tasks
-  required by the
-  mobile coding exit; advanced elastic/provider breadth remains follow-on.
+  required by the mobile coding exit; prove #8547's real target before #8636's
+  live hybrid-routing exit. Advanced elastic/provider breadth remains follow-on.
 - closed #8638 — existing Fleet substrate consumed by the clients; it is not
   another epic.
-- #8640 — bounded real mixed-account runtime/client proof.
+- #8640 — bounded accepted simultaneous Codex+Claude runtime proof only.
+- #8675 — immediate real-Electron acceptance of the landed loss-accounted
+  Codex trace workspace and its UX promise.
+- #8676 — one real streamed Desktop conversation immediately continued on
+  mobile through the same confirmed refs and request processor.
+- #8677 — the bounded command/event fault-convergence matrix for that seam.
+- #8678 — the executable Effect service-scope and boundary freeze before broad
+  Desktop D3/D4 expansion.
 
 The retired web/presentation/privacy-backlog records #8595, #8610, #8634,
 #8635, #8642, #8643, #8646, and #8650 are closed `wontfix` / not-planned.
@@ -57,23 +64,38 @@ these backlog tombstones are not dormant epics.
   conversion targets or parallel shipping products.
 - New shared component/host demand goes upstream; app-local state/UI
   architectures do not regrow.
+- Process, WorkContext, conversation/run, request/command, and foreign-host/
+  view scopes are explicit. Wider scopes never capture narrower authority;
+  ambient cwd, `AsyncLocalStorage`, renderer paths, and module singletons do not
+  select runtime authority.
+- Embedded, local, remote, mobile, and test adapters enter one canonical
+  request processor. `ManagedRuntime`, Promise, Electron, provider, and native
+  callback bridges remain named perimeter modules.
+- Cancellation remains Effect interruption with owned finalization. A broad
+  error adapter never converts interruption or a defect into ordinary tool
+  success/failure.
+- Every human-visible P0 milestone has a checked UX/behavior contract plus the
+  real host/device smoke appropriate to its proof rung. Fixture green is not
+  owner-visible acceptance.
 
 ## R0–R7 exit
 
 1. Desktop and mobile are truthfully green from clean state.
 2. Both use one authenticated owner/org/device/session contract.
-3. Conversation/project/Fleet/work/attempt/approval/command/outcome/receipt
+3. Loss-accounted local Codex history remains predictable under its executable
+   UX promise, without becoming Sync authority or exposing raw local data.
+4. Conversation/project/Fleet/work/attempt/approval/command/outcome/receipt
    state converges through Khala Sync across restart and handoff.
-4. One real Codex+Claude FleetRun can be inspected and controlled from both
-   clients with zero duplicate claims or false outcomes.
-5. Offline, lost-ack, out-of-order, stale generation, refetch, restart,
+5. One real Codex+Claude FleetRun completes through named isolated accounts;
+   its later client observation/control remains owned by the client tracks.
+6. Offline, lost-ack, out-of-order, stale generation, refetch, restart,
    migration, and rollback behavior fails closed and converges.
-6. Desktop completes D0–D6 practical OpenCode parity; mobile completes R6
+7. Desktop completes D0–D6 practical OpenCode parity; mobile completes R6
    compact remote coding plus fleet control through typed workroom capabilities
    without unsafe local filesystem/process/credential authority.
-7. Signed/installable iOS, Android, and Desktop releases survive sustained
+8. Signed/installable iOS, Android, and Desktop releases survive sustained
    owner dogfood with exact receipts.
-8. Legacy product/install/release/update paths are deleted or unable to ship
+9. Legacy product/install/release/update paths are deleted or unable to ship
    only after successor and migration proof.
 
 #8566 closes last, after child issues, R7, issue/docs reconciliation, and legacy
