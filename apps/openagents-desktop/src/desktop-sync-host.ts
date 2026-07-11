@@ -16,7 +16,9 @@ import {
   createKhalaSyncConversation,
   createKhalaSyncAgentTimeline,
   createKhalaSyncLiveAgentGraph,
+  createKhalaSyncRuntimeInteractions,
   createKhalaSyncRuntimeCommands,
+  createRuntimeInteractionClientMutator,
   createRuntimeClientMutators,
   createOverlay,
   type HttpTransportConfig,
@@ -24,6 +26,7 @@ import {
   type KhalaSyncConversation,
   type KhalaSyncAgentTimeline,
   type KhalaSyncLiveAgentGraph,
+  type KhalaSyncRuntimeInteractions,
   type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
@@ -54,6 +57,7 @@ export type DesktopSyncHost = Readonly<{
   timeline: () => KhalaSyncAgentTimeline | null
   agentGraph: () => KhalaSyncLiveAgentGraph | null
   runtime: () => KhalaSyncRuntimeCommands | null
+  interactions: () => KhalaSyncRuntimeInteractions | null
   codingCatalog: () => DesktopCodingCatalog | null
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
@@ -98,6 +102,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   let timeline: KhalaSyncAgentTimeline | null = null
   let agentGraph: KhalaSyncLiveAgentGraph | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
+  let interactions: KhalaSyncRuntimeInteractions | null = null
   let codingCatalog: DesktopCodingCatalog | null = null
   let scope: SyncScope | null = null
   try {
@@ -132,6 +137,7 @@ export const openDesktopSyncHost = (input: Readonly<{
     timeline = null
     agentGraph = null
     runtime = null
+    interactions = null
     scope = null
     Effect.runSync(revoke ? closing.revoke() : closing.close())
   }
@@ -168,6 +174,10 @@ export const openDesktopSyncHost = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? runtime
         : null,
+    interactions: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? interactions
+        : null,
     codingCatalog: () => closed ? null : codingCatalog,
     connectAuthenticated: connection => {
       if (closed) throw new Error("desktop Sync host is closed")
@@ -186,9 +196,11 @@ export const openDesktopSyncHost = (input: Readonly<{
         ...(connection.now === undefined ? {} : { now: connection.now }),
       })
       const runtimeMutators = createRuntimeClientMutators()
+      const interactionMutator = createRuntimeInteractionClientMutator()
       const overlay = Effect.runSync(createOverlay(store, [
         ...Object.values(mutators),
         ...Object.values(runtimeMutators),
+        interactionMutator,
       ]))
       const transportConfig = {
         baseUrl: connection.baseUrl,
@@ -213,6 +225,11 @@ export const openDesktopSyncHost = (input: Readonly<{
       timeline = createKhalaSyncAgentTimeline({ store, session })
       agentGraph = createKhalaSyncLiveAgentGraph({ store, session })
       runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session, store })
+      interactions = createKhalaSyncRuntimeInteractions({
+        store,
+        session,
+        mutator: interactionMutator,
+      })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,

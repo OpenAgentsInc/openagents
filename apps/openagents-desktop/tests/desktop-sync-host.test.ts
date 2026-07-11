@@ -236,6 +236,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       await waitFor(() => host.status().syncPhase === "live")
       expect(host.conversation()).not.toBeNull()
       expect(host.timeline()).not.toBeNull()
+      expect(host.interactions()).not.toBeNull()
       expect(bootstraps.map(request => String(request.scope))).toEqual(["scope.user.user.desktop"])
       expect(capturedAuthToken?.()).toBe("access.one")
       token = "access.two"
@@ -245,6 +246,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       host.unlinkAccount()
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
+      expect(host.interactions()).toBeNull()
       host.close()
       host.close()
       expect(lifecycle.slice(-2)).toEqual(["session", "store"])
@@ -284,6 +286,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(host.status()).toMatchObject({ syncPhase: "denied", lastDeltaAt: null })
       expect(host.conversation()).toBeNull()
       expect(host.timeline()).toBeNull()
+      expect(host.interactions()).toBeNull()
       host.close()
     } finally {
       rmSync(root, { recursive: true, force: true })

@@ -14,7 +14,9 @@ import {
   createKhalaSyncConversation,
   createKhalaSyncAgentTimeline,
   createKhalaSyncCodingCatalog,
+  createKhalaSyncRuntimeInteractions,
   createKhalaSyncRuntimeCommands,
+  createRuntimeInteractionClientMutator,
   createRuntimeClientMutators,
   createOverlay,
   type HttpTransportConfig,
@@ -22,6 +24,7 @@ import {
   type KhalaSyncConversation,
   type KhalaSyncAgentTimeline,
   type KhalaSyncCodingCatalog,
+  type KhalaSyncRuntimeInteractions,
   type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
@@ -52,6 +55,7 @@ export type MobileSyncHost = Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline: () => KhalaSyncAgentTimeline | null
   runtime: () => KhalaSyncRuntimeCommands | null
+  interactions: () => KhalaSyncRuntimeInteractions | null
   coding: () => MobileCodingNavigation
   connectAuthenticated: (input: MobileAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
@@ -84,6 +88,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
   let conversation: KhalaSyncConversation | null = null
   let timeline: KhalaSyncAgentTimeline | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
+  let interactions: KhalaSyncRuntimeInteractions | null = null
   let codingCatalog: KhalaSyncCodingCatalog | null = null
   let scope: SyncScope | null = null
   try {
@@ -124,6 +129,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
     conversation = null
     timeline = null
     runtime = null
+    interactions = null
     codingCatalog = null
     scope = null
     Effect.runSync(revoke ? closing.revoke() : closing.close())
@@ -157,6 +163,10 @@ export const openMobileSyncHostCore = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? runtime
         : null,
+    interactions: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? interactions
+        : null,
     coding: () => coding,
     connectAuthenticated: connection => {
       if (closed) throw new Error("mobile Sync host is closed")
@@ -175,9 +185,11 @@ export const openMobileSyncHostCore = (input: Readonly<{
         ...(connection.now === undefined ? {} : { now: connection.now }),
       })
       const runtimeMutators = createRuntimeClientMutators()
+      const interactionMutator = createRuntimeInteractionClientMutator()
       const overlay = Effect.runSync(createOverlay(store, [
         ...Object.values(mutators),
         ...Object.values(runtimeMutators),
+        interactionMutator,
       ]))
       const transportConfig = {
         baseUrl: connection.baseUrl,
@@ -201,6 +213,11 @@ export const openMobileSyncHostCore = (input: Readonly<{
       })
       timeline = createKhalaSyncAgentTimeline({ store, session })
       runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session, store })
+      interactions = createKhalaSyncRuntimeInteractions({
+        store,
+        session,
+        mutator: interactionMutator,
+      })
       codingCatalog = createKhalaSyncCodingCatalog({ store, session, ownerScope: scope })
       Effect.runSync(session.subscribe(scope))
     },

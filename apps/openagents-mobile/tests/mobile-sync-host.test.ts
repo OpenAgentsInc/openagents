@@ -233,6 +233,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       })
       await waitFor(() => host.status().syncPhase === "live")
       expect(host.conversation()).not.toBeNull()
+      expect(host.interactions()).not.toBeNull()
       expect(await host.coding().directory()).toEqual({
         authority: "confirmed",
         phase: "live",
@@ -249,6 +250,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       host.unlinkAccount()
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
+      expect(host.interactions()).toBeNull()
       expect(await host.coding().directory()).toMatchObject({
         authority: "withheld",
         phase: "signed_out",
@@ -290,6 +292,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       await waitFor(() => host.status().syncPhase === "denied")
       expect(host.status()).toMatchObject({ syncPhase: "denied", lastDeltaAt: null })
       expect(host.conversation()).toBeNull()
+      expect(host.interactions()).toBeNull()
       host.close()
     } finally {
       rmSync(root, { recursive: true, force: true })
