@@ -54,6 +54,27 @@ async function* fakeClaudeMessages() {
 }
 
 describe("Claude composer SDK stream", () => {
+  test("uses result subtype as the terminal discriminant when success carries is_error true", async () => {
+    const importer = async () => ({
+      query: () => (async function* () {
+        yield {
+          type: "result", subtype: "success", is_error: true, num_turns: 1,
+          result: "settled", session_id: "session-success-true", total_cost_usd: 0,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }
+      })(),
+    })
+    await expect(runClaudeComposerStream("inspect", {
+      config: { maxTurns: 1 },
+      cwd: ".",
+      env: {},
+      executionMode: "local_bounded",
+      importer: importer as any,
+      permissionMode: "acceptEdits",
+      timeoutMs: 1_000,
+    })).resolves.toMatchObject({ totalTokens: 2 })
+  })
+
   test("labels Claude with the selected model when one is configured", () => {
     expect(claudeComposerLabel("claude-fable-5")).toBe("Claude (claude-fable-5)")
     expect(claudeComposerLabel(null)).toBe("Claude")
