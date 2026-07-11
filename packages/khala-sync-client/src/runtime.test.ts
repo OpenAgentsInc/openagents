@@ -19,7 +19,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   buildAppendUserMessageIntent,
+  buildCloseTurnIntent,
+  buildContinueTurnIntent,
   buildInterruptTurnIntent,
+  buildRetryTurnIntent,
   buildStartTurnIntent,
   createKhalaSyncRuntimeCommands,
   createRuntimeClientMutators,
@@ -34,7 +37,7 @@ const context = {
 }
 
 describe("shared runtime command contract", () => {
-  test("builds exact deterministic start, follow-up, and interrupt identities", () => {
+  test("builds exact deterministic composer and runtime-control identities", () => {
     expect(buildStartTurnIntent({
       context: { ...context, expiresAtIso: "2026-07-11T12:05:00.000Z" },
       messageRef: "message.shared.1",
@@ -72,6 +75,53 @@ describe("shared runtime command contract", () => {
       idempotencyKey: "idem.interrupt.control.shared.1",
       intentId: "intent.interrupt.control.shared.1",
       kind: "turn.interrupt",
+      threadId: "thread.shared.1",
+      turnId: "run.shared.1",
+    })
+    expect(buildContinueTurnIntent({
+      commandRef: "control.shared.continue.1",
+      context,
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    })).toMatchObject({
+      idempotencyKey: "idem.continue.control.shared.continue.1",
+      intentId: "intent.continue.control.shared.continue.1",
+      kind: "turn.continue",
+      threadId: "thread.shared.1",
+      turnId: "run.shared.1",
+    })
+    const retry = buildRetryTurnIntent({
+      commandRef: "control.shared.retry.1",
+      context,
+      retryMessageRef: "message.shared.retry.1",
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    })
+    expect(retry).toMatchObject({
+      bodyRef: "chat_message.message.shared.retry.1",
+      causalityRefs: ["run.shared.1", "message.shared.retry.1"],
+      idempotencyKey: "idem.retry.control.shared.retry.1",
+      intentId: "intent.retry.control.shared.retry.1",
+      kind: "turn.retry",
+      threadId: "thread.shared.1",
+      turnId: "run.shared.1",
+    })
+    expect(buildRetryTurnIntent({
+      commandRef: "control.shared.retry.1",
+      context,
+      retryMessageRef: "message.shared.retry.1",
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    })).toEqual(retry)
+    expect(buildCloseTurnIntent({
+      commandRef: "control.shared.close.1",
+      context,
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    })).toMatchObject({
+      idempotencyKey: "idem.close.control.shared.close.1",
+      intentId: "intent.close.control.shared.close.1",
+      kind: "turn.close",
       threadId: "thread.shared.1",
       turnId: "run.shared.1",
     })
@@ -179,12 +229,39 @@ describe("shared runtime command contract", () => {
       turnRef: "run.shared.1",
     })
 
+    const continueTurn = buildContinueTurnIntent({
+      commandRef: "control.shared.continue.1",
+      context,
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    })
+    const retryTurn = buildRetryTurnIntent({
+      commandRef: "control.shared.retry.1",
+      context,
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    })
+    const closeTurn = buildCloseTurnIntent({
+      commandRef: "control.shared.close.1",
+      context,
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    })
+
     expect(mutators.startTurn.apply(start, { get: () => undefined, list: () => [] })).toEqual([])
+    expect(mutators.continueTurn.apply(continueTurn, { get: () => undefined, list: () => [] })).toEqual([])
+    expect(mutators.retryTurn.apply(retryTurn, { get: () => undefined, list: () => [] })).toEqual([])
+    expect(mutators.closeTurn.apply(closeTurn, { get: () => undefined, list: () => [] })).toEqual([])
     expect(Effect.runSync(commands.startTurn(start))).toBe(MutationId.make(41))
-    expect(mutations).toEqual([{
-      name: "runtime.startTurn",
-      intentId: "intent.start.run.shared.1",
-    }])
+    expect(Effect.runSync(commands.continueTurn(continueTurn))).toBe(MutationId.make(41))
+    expect(Effect.runSync(commands.retryTurn(retryTurn))).toBe(MutationId.make(41))
+    expect(Effect.runSync(commands.closeTurn(closeTurn))).toBe(MutationId.make(41))
+    expect(mutations).toEqual([
+      { name: "runtime.startTurn", intentId: "intent.start.run.shared.1" },
+      { name: "runtime.continueTurn", intentId: "intent.continue.control.shared.continue.1" },
+      { name: "runtime.retryTurn", intentId: "intent.retry.control.shared.retry.1" },
+      { name: "runtime.closeTurn", intentId: "intent.close.control.shared.close.1" },
+    ])
   })
 
   test("carries bounded Desktop operation correlation into Sync causality refs", () => {
@@ -207,5 +284,17 @@ describe("shared runtime command contract", () => {
       threadRef: "thread.shared.1",
       turnRef: "run.shared.1",
     }).causalityRefs).toEqual([...correlationRefs, "run.shared.1"])
+    expect(buildRetryTurnIntent({
+      commandRef: "control.shared.retry.1",
+      context,
+      correlationRefs,
+      retryMessageRef: "message.shared.retry.1",
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    }).causalityRefs).toEqual([
+      ...correlationRefs,
+      "run.shared.1",
+      "message.shared.retry.1",
+    ])
   })
 })

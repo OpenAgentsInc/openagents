@@ -23,6 +23,9 @@ export const RUNTIME_START_TURN_MUTATOR_NAME = "runtime.startTurn"
 export const RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME =
   "runtime.appendUserMessage"
 export const RUNTIME_INTERRUPT_TURN_MUTATOR_NAME = "runtime.interruptTurn"
+export const RUNTIME_CONTINUE_TURN_MUTATOR_NAME = "runtime.continueTurn"
+export const RUNTIME_RETRY_TURN_MUTATOR_NAME = "runtime.retryTurn"
+export const RUNTIME_CLOSE_TURN_MUTATOR_NAME = "runtime.closeTurn"
 
 export type RuntimeCommandSurface = "desktop" | "mobile"
 export type RuntimeCommandTarget = Readonly<{
@@ -119,10 +122,74 @@ export const buildInterruptTurnIntent = (input: Readonly<{
     visibility: "private",
   })
 
+type ExistingTurnCommandInput = Readonly<{
+  commandRef: string
+  context: RuntimeCommandContext
+  threadRef: string
+  turnRef: string
+  correlationRefs?: ReadonlyArray<string>
+}>
+
+const buildExistingTurnIntent = (
+  input: ExistingTurnCommandInput & Readonly<{
+    kind: "turn.continue" | "turn.retry" | "turn.close"
+    retryMessageRef?: string
+  }>,
+): KhalaRuntimeControlIntent => {
+  const action = input.kind.slice("turn.".length)
+  const causalityRefs = [
+    ...(input.correlationRefs ?? []),
+    input.turnRef,
+    ...(input.retryMessageRef === undefined ? [] : [input.retryMessageRef]),
+  ]
+  return decodeKhalaRuntimeControlIntent({
+    causalityRefs,
+    createdAt: input.context.nowIso,
+    ...expiry(input.context),
+    idempotencyKey: `idem.${action}.${input.commandRef}`,
+    intentId: `intent.${action}.${input.commandRef}`,
+    kind: input.kind,
+    origin: origin(input.context.surface),
+    redactionClass: "private_ref",
+    schema: "openagents.khala_runtime_control_intent.v1",
+    target: input.context.target,
+    threadId: input.threadRef,
+    turnId: input.turnRef,
+    visibility: "private",
+    ...(input.retryMessageRef === undefined
+      ? {}
+      : { bodyRef: chatMessageBodyRef(input.retryMessageRef) }),
+  })
+}
+
+export const buildContinueTurnIntent = (
+  input: ExistingTurnCommandInput,
+): KhalaRuntimeControlIntent => buildExistingTurnIntent({
+  ...input,
+  kind: "turn.continue",
+})
+
+export const buildRetryTurnIntent = (input: ExistingTurnCommandInput & Readonly<{
+  retryMessageRef?: string
+}>): KhalaRuntimeControlIntent => buildExistingTurnIntent({
+  ...input,
+  kind: "turn.retry",
+})
+
+export const buildCloseTurnIntent = (
+  input: ExistingTurnCommandInput,
+): KhalaRuntimeControlIntent => buildExistingTurnIntent({
+  ...input,
+  kind: "turn.close",
+})
+
 export type RuntimeClientMutators = Readonly<{
   startTurn: ClientMutator<KhalaRuntimeControlIntent>
   appendUserMessage: ClientMutator<KhalaRuntimeControlIntent>
   interruptTurn: ClientMutator<KhalaRuntimeControlIntent>
+  continueTurn: ClientMutator<KhalaRuntimeControlIntent>
+  retryTurn: ClientMutator<KhalaRuntimeControlIntent>
+  closeTurn: ClientMutator<KhalaRuntimeControlIntent>
 }>
 
 const confirmedOnlyMutator = (
@@ -139,7 +206,10 @@ export const createRuntimeClientMutators = (): RuntimeClientMutators => ({
   appendUserMessage: confirmedOnlyMutator(
     RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
   ),
+  closeTurn: confirmedOnlyMutator(RUNTIME_CLOSE_TURN_MUTATOR_NAME),
+  continueTurn: confirmedOnlyMutator(RUNTIME_CONTINUE_TURN_MUTATOR_NAME),
   interruptTurn: confirmedOnlyMutator(RUNTIME_INTERRUPT_TURN_MUTATOR_NAME),
+  retryTurn: confirmedOnlyMutator(RUNTIME_RETRY_TURN_MUTATOR_NAME),
   startTurn: confirmedOnlyMutator(RUNTIME_START_TURN_MUTATOR_NAME),
 })
 
@@ -147,6 +217,9 @@ export type KhalaSyncRuntimeCommands = Readonly<{
   startTurn: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
   appendUserMessage: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
   interruptTurn: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
+  continueTurn: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
+  retryTurn: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
+  closeTurn: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
   outcome: (input: Readonly<{
     intentId: string
     threadRef: string
@@ -256,6 +329,9 @@ export const createKhalaSyncRuntimeCommands = (input: Readonly<{
 }>): KhalaSyncRuntimeCommands => ({
   appendUserMessage: intent =>
     input.session.mutate(input.mutators.appendUserMessage, intent),
+  closeTurn: intent => input.session.mutate(input.mutators.closeTurn, intent),
+  continueTurn: intent =>
+    input.session.mutate(input.mutators.continueTurn, intent),
   interruptTurn: intent =>
     input.session.mutate(input.mutators.interruptTurn, intent),
   outcome: query => input.store === undefined
@@ -265,5 +341,6 @@ export const createKhalaSyncRuntimeCommands = (input: Readonly<{
         confirmed => confirmed ??
           pendingRuntimeCommand(input.session, query.intentId, query.threadRef),
       ),
+  retryTurn: intent => input.session.mutate(input.mutators.retryTurn, intent),
   startTurn: intent => input.session.mutate(input.mutators.startTurn, intent),
 })
