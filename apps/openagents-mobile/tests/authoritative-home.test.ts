@@ -194,6 +194,127 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(chromeProps(program.initialState).sending).toBe(false)
   })
 
+  test("renders grouped pending questions and resolves only after the confirmed decision", async () => {
+    const pending: MobileConversationThread = {
+      ...initialThread,
+      timeline: {
+        status: { phase: "live", cursor: 10, pendingMutationCount: 0 },
+        run: {
+          runRef: "turn.mobile.question",
+          routeRef: initialThread.threadRef,
+          status: "waiting_for_input",
+          createdAt: now, updatedAt: now, startedAt: now,
+          completedAt: null, failedAt: null, canceledAt: null, version: 10,
+        },
+        events: [{
+          eventRef: "interaction.mobile.question",
+          runRef: "turn.mobile.question",
+          sequence: 2,
+          eventType: "runtime.interaction.provider_question",
+          summary: "Choose verification",
+          status: "pending",
+          artifactRefs: [],
+          item: {
+            kind: "question",
+            questionRef: "interaction.mobile.question",
+            title: "Choose verification",
+            prompt: "Select both answers before continuing.",
+            status: "pending",
+            expiresAt: "2026-07-10T20:20:00.000Z",
+            questions: [
+              { questionRef: "question.tests", displayText: "Which tests?", multiSelect: true, options: [
+                { optionRef: "option.unit", label: "Unit", description: "Fast focused suite" },
+                { optionRef: "option.e2e", label: "End to end" },
+              ] },
+              { questionRef: "question.target", displayText: "Which target?", multiSelect: false, options: [
+                { optionRef: "option.mobile", label: "Mobile" },
+              ] },
+            ],
+          },
+          createdAt: now,
+          version: 10,
+        }],
+      },
+    }
+    const resolved: MobileConversationThread = {
+      ...pending,
+      timeline: {
+        ...pending.timeline!,
+        events: pending.timeline!.events.map(event => ({
+          ...event,
+          status: "resolved",
+          version: 11,
+          item: event.item?.kind === "question"
+            ? { ...event.item, status: "resolved", decisionRef: "decision.mobile.question" }
+            : event.item,
+        })),
+      },
+    }
+    const decisions: unknown[] = []
+    let finish: ((value: { ok: true; thread: MobileConversationThread }) => void) | undefined
+    const host: MobileConversationHost = {
+      listThreads: async () => [pending],
+      newThread: async () => ({ ok: true, thread: pending }),
+      openThread: async () => pending,
+      sendMessage: async () => ({ ok: true, thread: pending }),
+      decideInteraction: input => new Promise(resolve => {
+        decisions.push(input)
+        finish = resolve
+      }),
+    }
+    const program = buildHomeProgram({ conversation: {
+      ...selection(host), threads: [pending], activeThread: pending,
+    } })
+    const initial = JSON.stringify(renderContentView(program.initialState))
+    expect(initial).toContain("Needs your response")
+    expect(initial).toContain("Fast focused suite")
+    expect(initial).toContain('"label":"Submit answers","variant":"primary","disabled":true')
+
+    program.khala.toggleInteractionOption({ interactionRef: "interaction.mobile.question", questionRef: "question.tests", optionRef: "option.unit", multiSelect: true })
+    program.khala.toggleInteractionOption({ interactionRef: "interaction.mobile.question", questionRef: "question.target", optionRef: "option.mobile", multiSelect: false })
+    await Effect.runPromise(settle)
+    const selected = await Effect.runPromise(lastState(program))
+    expect(JSON.stringify(renderContentView(selected))).toContain('"label":"Submit answers","variant":"primary","disabled":false')
+
+    program.khala.submitInteractionDecision({ interactionRef: "interaction.mobile.question", turnRef: "turn.mobile.question", kind: "provider_question" })
+    await Effect.runPromise(settle)
+    const submitting = await Effect.runPromise(lastState(program))
+    expect(submitting.khala.interactionSubmittingRef).toBe("interaction.mobile.question")
+    expect(JSON.stringify(renderContentView(submitting))).toContain("Submitting…")
+    expect(decisions).toMatchObject([{ decision: { kind: "provider_question", answers: [
+      { questionRef: "question.tests", optionRefs: ["option.unit"] },
+      { questionRef: "question.target", optionRefs: ["option.mobile"] },
+    ] } }])
+
+    finish?.({ ok: true, thread: resolved })
+    await Effect.runPromise(settle)
+    const confirmed = await Effect.runPromise(lastState(program))
+    const confirmedView = JSON.stringify(renderContentView(confirmed))
+    expect(confirmedView).toContain("Resolved")
+    expect(confirmedView).not.toContain("Submit answers")
+  })
+
+  test("renders expired and revoked controls as terminal read-only state", () => {
+    const terminal: MobileConversationThread = {
+      ...initialThread,
+      timeline: {
+        status: { phase: "live", cursor: 12, pendingMutationCount: 0 },
+        run: { runRef: "turn.mobile.terminal", routeRef: initialThread.threadRef, status: "waiting_for_input", createdAt: now, updatedAt: now, startedAt: now, completedAt: null, failedAt: null, canceledAt: null, version: 12 },
+        events: [
+          { eventRef: "interaction.mobile.expired", runRef: "turn.mobile.terminal", sequence: 2, eventType: "runtime.interaction.tool_approval", summary: "Approve tool", status: "expired", artifactRefs: [], item: { kind: "approval", interactionRef: "interaction.mobile.expired", prompt: "Run shell?", status: "expired" }, createdAt: now, version: 12 },
+          { eventRef: "interaction.mobile.revoked", runRef: "turn.mobile.terminal", sequence: 3, eventType: "runtime.interaction.plan_review", summary: "Review plan", status: "revoked", artifactRefs: [], item: { kind: "plan", stepRef: "interaction.mobile.revoked", interactionRef: "interaction.mobile.revoked", prompt: "Apply this plan?", status: "revoked" }, createdAt: now, version: 13 },
+        ],
+      },
+    }
+    const host: MobileConversationHost = { listThreads: async () => [terminal], newThread: async () => ({ ok: true, thread: terminal }), openThread: async () => terminal, sendMessage: async () => ({ ok: true, thread: terminal }), decideInteraction: async () => ({ ok: true, thread: terminal }) }
+    const program = buildHomeProgram({ conversation: { ...selection(host), threads: [terminal], activeThread: terminal } })
+    const content = JSON.stringify(renderContentView(program.initialState))
+    expect(content).toContain("Expired")
+    expect(content).toContain("Access revoked")
+    expect(content).not.toContain('"label":"Approve"')
+    expect(content).not.toContain('"label":"Accept plan"')
+  })
+
   test("marks a submitted draft pending, then replaces it only with exact confirmed state", async () => {
     let resolveSend: ((value: Awaited<ReturnType<MobileConversationHost["sendMessage"]>>) => void) | undefined
     const confirmed: MobileConversationThread = {

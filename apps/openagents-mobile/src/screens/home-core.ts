@@ -180,6 +180,23 @@ export const CodingSessionSelected = defineIntent(
     threadRef: Schema.String,
   }),
 )
+export const RuntimeInteractionOptionToggled = defineIntent(
+  "RuntimeInteractionOptionToggled",
+  Schema.Struct({
+    interactionRef: Schema.String,
+    questionRef: Schema.String,
+    optionRef: Schema.String,
+    multiSelect: Schema.Boolean,
+  }),
+)
+export const RuntimeInteractionDecisionSubmitted = defineIntent(
+  "RuntimeInteractionDecisionSubmitted",
+  Schema.Union([
+    Schema.Struct({ interactionRef: Schema.String, turnRef: Schema.String, kind: Schema.Literal("provider_question") }),
+    Schema.Struct({ interactionRef: Schema.String, turnRef: Schema.String, kind: Schema.Literal("tool_approval"), outcome: Schema.Literals(["approve", "deny"]) }),
+    Schema.Struct({ interactionRef: Schema.String, turnRef: Schema.String, kind: Schema.Literal("plan_review"), outcome: Schema.Literals(["accept", "request_changes", "replan"]) }),
+  ]),
+)
 
 export const homeIntentDefinitions = [
   DrawerToggled,
@@ -190,6 +207,8 @@ export const homeIntentDefinitions = [
   SurfaceModeSelected,
   ConversationThreadSelected,
   CodingSessionSelected,
+  RuntimeInteractionOptionToggled,
+  RuntimeInteractionDecisionSubmitted,
   ...khalaIntentDefinitions.map((definition) => defineIntent(definition.name, definition.payload)),
 ] as const
 
@@ -395,6 +414,7 @@ export interface HomeProgramOptions {
 const confirmedKhalaState = (
   thread: MobileConversationThread | null,
   turnCounter = 0,
+  interactionActionsAvailable = false,
 ): KhalaState => {
   const runtimeEntries = (thread?.timeline?.events ?? []).flatMap<KhalaState["entries"][number]>(event => {
     const item = event.item
@@ -409,7 +429,14 @@ const confirmedKhalaState = (
       case "tool":
         return [{ key: event.eventRef, role: "system" as const, text: `${item.toolName} · ${item.status}`, status: item.status === "failed" ? "failed" as const : "done" as const, createdAt: event.createdAt, version: event.version }]
       case "plan":
-        return [{ key: event.eventRef, role: "system" as const, text: `Plan · ${item.status}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+        return [{
+          key: event.eventRef, role: "system" as const, text: `Plan · ${item.status}`,
+          status: "done" as const, createdAt: event.createdAt, version: event.version,
+          ...(item.interactionRef === undefined || item.prompt === undefined ||
+            (item.status !== "pending" && item.status !== "resolved" && item.status !== "expired" && item.status !== "revoked")
+            ? {}
+            : { interaction: { kind: "plan_review" as const, interactionRef: item.interactionRef, turnRef: event.runRef, status: item.status, title: "Review plan", prompt: item.prompt, questions: [], ...(item.decisionRef === undefined ? {} : { decisionRef: item.decisionRef }) } }),
+        }]
       case "usage":
         return [{ key: event.eventRef, role: "system" as const, text: `Usage · ${item.totalTokens ?? 0} tokens`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
       case "terminal":
@@ -421,9 +448,22 @@ const confirmedKhalaState = (
       case "stale":
         return [{ key: event.eventRef, role: "system" as const, text: item.detail, status: "done" as const, createdAt: event.createdAt, version: event.version }]
       case "approval":
-        return [{ key: event.eventRef, role: "system" as const, text: `Approval · ${item.status}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+        return [{
+          key: event.eventRef, role: "system" as const, text: `Approval · ${item.status}`,
+          status: "done" as const, createdAt: event.createdAt, version: event.version,
+          ...(item.interactionRef === undefined || item.prompt === undefined ||
+            (item.status !== "pending" && item.status !== "resolved" && item.status !== "expired" && item.status !== "revoked")
+            ? {}
+            : { interaction: { kind: "tool_approval" as const, interactionRef: item.interactionRef, turnRef: event.runRef, status: item.status, title: "Tool approval", prompt: item.prompt, questions: [], ...(item.decisionRef === undefined ? {} : { decisionRef: item.decisionRef }) } }),
+        }]
       case "question":
-        return [{ key: event.eventRef, role: "system" as const, text: item.prompt, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+        return [{
+          key: event.eventRef, role: "system" as const, text: item.prompt,
+          status: "done" as const, createdAt: event.createdAt, version: event.version,
+          ...(item.status === "pending" || item.status === "resolved" || item.status === "expired" || item.status === "revoked"
+            ? { interaction: { kind: "provider_question" as const, interactionRef: item.questionRef, turnRef: event.runRef, status: item.status, title: item.title ?? "Question", prompt: item.prompt, questions: item.questions ?? [], ...(item.decisionRef === undefined ? {} : { decisionRef: item.decisionRef }) } }
+            : {}),
+        }]
       case "error":
         return [{ key: event.eventRef, role: "system" as const, text: item.messageSafe, status: "failed" as const, createdAt: event.createdAt, version: event.version }]
     }
@@ -445,6 +485,9 @@ const confirmedKhalaState = (
     // append to that exact run. Only pre-dispatch queued state blocks input.
     pending: thread?.timeline?.run?.status === "queued",
     turnCounter,
+    interactionSelections: {},
+    interactionSubmittingRef: null,
+    interactionActionsAvailable,
   }
 }
 
@@ -467,7 +510,11 @@ const withConfirmedThread = (
     },
     ...state.conversationThreads.filter(item => item.threadRef !== thread.threadRef),
   ],
-  khala: confirmedKhalaState(thread, state.khala.turnCounter),
+  khala: confirmedKhalaState(
+    thread,
+    state.khala.turnCounter,
+    state.khala.interactionActionsAvailable,
+  ),
 })
 
 const failedConversationState = (
@@ -501,7 +548,11 @@ export const initialHomeStateForConversation = (
       conversationThreads: selection.threads,
       activeThreadRef: selection.activeThread?.threadRef ?? null,
       codingDirectory: null,
-      khala: confirmedKhalaState(selection.activeThread),
+      khala: confirmedKhalaState(
+        selection.activeThread,
+        0,
+        selection.host.decideInteraction !== undefined,
+      ),
     }
 
 const makeSyncedConversationHandlers = (
@@ -551,6 +602,90 @@ const makeSyncedConversationHandlers = (
     ...current,
     khala: { ...current.khala, draft: text.length > 4_000 ? `${text.slice(0, 4_000)}…` : text },
   })),
+  RuntimeInteractionOptionToggled: (payload: Readonly<{
+    interactionRef: string
+    questionRef: string
+    optionRef: string
+    multiSelect: boolean
+  }>) => SubscriptionRef.update(state, current => {
+    if (current.khala.interactionSubmittingRef !== null) return current
+    const interaction = current.khala.entries.find(entry =>
+      entry.interaction?.interactionRef === payload.interactionRef)?.interaction
+    if (interaction?.status !== "pending") return current
+    const interactionSelections = current.khala.interactionSelections[payload.interactionRef] ?? {}
+    const selected = interactionSelections[payload.questionRef] ?? []
+    const next = payload.multiSelect
+      ? selected.includes(payload.optionRef)
+        ? selected.filter(value => value !== payload.optionRef)
+        : [...selected, payload.optionRef]
+      : [payload.optionRef]
+    return {
+      ...current,
+      khala: {
+        ...current.khala,
+        interactionSelections: {
+          ...current.khala.interactionSelections,
+          [payload.interactionRef]: {
+            ...interactionSelections,
+            [payload.questionRef]: next,
+          },
+        },
+      },
+    }
+  }),
+  RuntimeInteractionDecisionSubmitted: (payload: Readonly<
+    | { interactionRef: string; turnRef: string; kind: "provider_question" }
+    | { interactionRef: string; turnRef: string; kind: "tool_approval"; outcome: "approve" | "deny" }
+    | { interactionRef: string; turnRef: string; kind: "plan_review"; outcome: "accept" | "request_changes" | "replan" }
+  >) => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const interaction = before.khala.entries.find(entry =>
+      entry.interaction?.interactionRef === payload.interactionRef)?.interaction
+    if (
+      interaction?.status !== "pending" || interaction.kind !== payload.kind ||
+      before.activeThreadRef === null || host.decideInteraction === undefined ||
+      before.khala.interactionSubmittingRef !== null
+    ) return
+    const selections = before.khala.interactionSelections[payload.interactionRef] ?? {}
+    const decision = payload.kind === "provider_question"
+      ? {
+          kind: "provider_question" as const,
+          answers: interaction.questions.map(question => ({
+            questionRef: question.questionRef,
+            optionRefs: [...(selections[question.questionRef] ?? [])],
+          })),
+        }
+      : payload.kind === "tool_approval"
+        ? { kind: "tool_approval" as const, outcome: payload.outcome }
+        : { kind: "plan_review" as const, outcome: payload.outcome }
+    if (decision.kind === "provider_question" &&
+      decision.answers.some(answer => answer.optionRefs.length === 0)) return
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      khala: { ...current.khala, interactionSubmittingRef: payload.interactionRef },
+    }))
+    const result = yield* Effect.promise(() => host.decideInteraction!({
+      interactionRef: payload.interactionRef,
+      threadRef: before.activeThreadRef!,
+      turnRef: payload.turnRef,
+      decision,
+      onUpdate: thread => {
+        Effect.runFork(SubscriptionRef.update(state, current =>
+          current.activeThreadRef === thread.threadRef
+            ? withConfirmedThread(current, thread)
+            : current))
+      },
+    }))
+    yield* SubscriptionRef.update(state, current => result.ok
+      ? withConfirmedThread(current, result.thread)
+      : {
+          ...failedConversationState(current, result.error),
+          khala: {
+            ...failedConversationState(current, result.error).khala,
+            interactionSubmittingRef: null,
+          },
+        })
+  }),
   KhalaTurnSubmitted: (raw: string) => Effect.gen(function* () {
     const message = raw.trim()
     if (message === "") return
@@ -587,7 +722,11 @@ const makeSyncedConversationHandlers = (
       yield* SubscriptionRef.update(state, current => ({
         ...withConfirmedThread(current, created.thread),
         khala: {
-          ...confirmedKhalaState(created.thread, turn),
+          ...confirmedKhalaState(
+            created.thread,
+            turn,
+            current.khala.interactionActionsAvailable,
+          ),
           pending: true,
           entries: current.khala.entries,
         },
@@ -634,6 +773,8 @@ export const makeHomeHandlers = (
       : Effect.promise(options.sessionActions.signOut),
     SurfaceModeSelected: (payload) => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: payload.mode as SurfaceMode })),
     ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
+    RuntimeInteractionOptionToggled: synced?.RuntimeInteractionOptionToggled ?? (() => Effect.void),
+    RuntimeInteractionDecisionSubmitted: synced?.RuntimeInteractionDecisionSubmitted ?? (() => Effect.void),
     CodingSessionSelected: options.coding === undefined
       ? () => Effect.void
       : payload => Effect.gen(function* () {
@@ -683,6 +824,17 @@ export interface HomeProgramHandle {
   readonly khala: {
     readonly draftChanged: (text: string) => void
     readonly submitTurn: (text: string) => void
+    readonly toggleInteractionOption: (input: Readonly<{
+      interactionRef: string
+      questionRef: string
+      optionRef: string
+      multiSelect: boolean
+    }>) => void
+    readonly submitInteractionDecision: (input: Readonly<
+      | { interactionRef: string; turnRef: string; kind: "provider_question" }
+      | { interactionRef: string; turnRef: string; kind: "tool_approval"; outcome: "approve" | "deny" }
+      | { interactionRef: string; turnRef: string; kind: "plan_review"; outcome: "accept" | "request_changes" | "replan" }
+    >) => void
   }
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
@@ -730,6 +882,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         khala: {
           draftChanged: (text) => fireText(IntentRef("KhalaDraftChanged", ComponentValueBinding()), text),
           submitTurn: submitKhala,
+          toggleInteractionOption: input => fireRef(IntentRef(
+            "RuntimeInteractionOptionToggled",
+            StaticPayload(input),
+          )),
+          submitInteractionDecision: input => fireRef(IntentRef(
+            "RuntimeInteractionDecisionSubmitted",
+            StaticPayload(input),
+          )),
         },
         sync: {
           setPhase: phase => {

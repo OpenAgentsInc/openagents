@@ -1,6 +1,7 @@
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import {
   Composer,
+  Button,
   ComponentValueBinding,
   IconButton,
   IntentRef,
@@ -27,13 +28,38 @@ export interface KhalaEntry {
   readonly status: "thinking" | "pending" | "done" | "failed"
   readonly createdAt?: string
   readonly version?: number
+  readonly interaction?: KhalaInteraction
 }
+
+export type KhalaInteractionStatus = "pending" | "resolved" | "expired" | "revoked"
+export type KhalaInteraction = Readonly<{
+  kind: "provider_question" | "tool_approval" | "plan_review"
+  interactionRef: string
+  turnRef: string
+  status: KhalaInteractionStatus
+  title: string
+  prompt: string
+  questions: ReadonlyArray<Readonly<{
+    questionRef: string
+    displayText: string
+    multiSelect: boolean
+    options: ReadonlyArray<Readonly<{
+      optionRef: string
+      label: string
+      description?: string
+    }>>
+  }>>
+  decisionRef?: string
+}>
 
 export interface KhalaState {
   readonly draft: string
   readonly entries: ReadonlyArray<KhalaEntry>
   readonly pending: boolean
   readonly turnCounter: number
+  readonly interactionSelections: Readonly<Record<string, Readonly<Record<string, ReadonlyArray<string>>>>>
+  readonly interactionSubmittingRef: string | null
+  readonly interactionActionsAvailable: boolean
 }
 
 export const initialKhalaState: KhalaState = {
@@ -41,6 +67,9 @@ export const initialKhalaState: KhalaState = {
   entries: [],
   pending: false,
   turnCounter: 0,
+  interactionSelections: {},
+  interactionSubmittingRef: null,
+  interactionActionsAvailable: false,
 }
 
 export interface KhalaTurnClient {
@@ -53,6 +82,101 @@ export const KhalaDraftChanged = "KhalaDraftChanged"
 export const KhalaTurnSubmitted = "KhalaTurnSubmitted"
 export const KHALA_TURN_FAILED_TEXT =
   "Khala could not respond just now. Check your connection and send that again."
+
+const interactionStatusLabel = (status: KhalaInteractionStatus): string => {
+  switch (status) {
+    case "pending": return "Needs your response"
+    case "resolved": return "Resolved"
+    case "expired": return "Expired"
+    case "revoked": return "Access revoked"
+  }
+}
+
+const interactionBody = (state: KhalaState, entry: KhalaEntry): ReadonlyArray<View> => {
+  const interaction = entry.interaction
+  if (interaction === undefined) {
+    return [Text({
+      key: `${entry.key}-text`,
+      content: entry.status === "thinking" ? "Khala is thinking…" : entry.text,
+      variant: "body",
+      color: entry.status === "failed" ? "danger" : "textPrimary",
+    })]
+  }
+  const submitting = state.interactionSubmittingRef === interaction.interactionRef
+  const actionable = interaction.status === "pending" &&
+    state.interactionActionsAvailable && !submitting
+  const selections = state.interactionSelections[interaction.interactionRef] ?? {}
+  const questionViews = interaction.kind !== "provider_question" ? [] : interaction.questions.flatMap(question => [
+    Text({
+      key: `${entry.key}-${question.questionRef}-prompt`,
+      content: question.displayText,
+      variant: "body",
+      color: "textPrimary",
+    }),
+    ...question.options.flatMap(option => [
+      Button({
+        key: `${entry.key}-${question.questionRef}-${option.optionRef}`,
+        label: option.label,
+        variant: selections[question.questionRef]?.includes(option.optionRef)
+          ? "secondary"
+          : "ghost",
+        disabled: !actionable,
+        onPress: IntentRef("RuntimeInteractionOptionToggled", StaticPayload({
+          interactionRef: interaction.interactionRef,
+          questionRef: question.questionRef,
+          optionRef: option.optionRef,
+          multiSelect: question.multiSelect,
+        })),
+        style: { width: "full" },
+      }),
+      ...(option.description === undefined ? [] : [Text({
+        key: `${entry.key}-${question.questionRef}-${option.optionRef}-description`,
+        content: option.description,
+        variant: "caption",
+        color: "textMuted",
+      })]),
+    ]),
+  ])
+  const everyQuestionAnswered = interaction.questions.every(question =>
+    (selections[question.questionRef]?.length ?? 0) > 0)
+  const actionViews = interaction.status !== "pending" ? []
+    : interaction.kind === "provider_question"
+      ? [Button({
+          key: `${entry.key}-submit-answers`,
+          label: submitting ? "Submitting…" : "Submit answers",
+          variant: "primary",
+          disabled: !actionable || !everyQuestionAnswered,
+          onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({
+            interactionRef: interaction.interactionRef,
+            turnRef: interaction.turnRef,
+            kind: interaction.kind,
+          })),
+        })]
+      : interaction.kind === "tool_approval"
+        ? [
+            Button({
+              key: `${entry.key}-approve`, label: submitting ? "Submitting…" : "Approve",
+              variant: "primary", disabled: !actionable,
+              onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "approve" })),
+            }),
+            Button({
+              key: `${entry.key}-deny`, label: "Deny", variant: "secondary", disabled: !actionable,
+              onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "deny" })),
+            }),
+          ]
+        : [
+            Button({ key: `${entry.key}-accept`, label: submitting ? "Submitting…" : "Accept plan", variant: "primary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "accept" })) }),
+            Button({ key: `${entry.key}-changes`, label: "Request changes", variant: "secondary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "request_changes" })) }),
+            Button({ key: `${entry.key}-replan`, label: "Replan", variant: "ghost", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "replan" })) }),
+          ]
+  return [
+    Text({ key: `${entry.key}-title`, content: interaction.title, variant: "heading", color: "textPrimary" }),
+    Text({ key: `${entry.key}-status`, content: interactionStatusLabel(interaction.status), variant: "caption", color: interaction.status === "expired" || interaction.status === "revoked" ? "warning" : "textMuted" }),
+    Text({ key: `${entry.key}-prompt`, content: interaction.prompt, variant: "body", color: "textPrimary" }),
+    ...questionViews,
+    ...actionViews,
+  ]
+}
 
 const boundedText = (value: string): string =>
   value.length > 4_000 ? `${value.slice(0, 4_000)}…` : value
@@ -155,14 +279,7 @@ export const renderKhalaSurface = (
             ? entry.status === "pending" ? "YOU · PENDING" : "YOU"
             : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
           ...(entry.createdAt === undefined ? {} : { timestamp: entry.createdAt.slice(11, 16) }),
-          body: [
-            Text({
-              key: `${entry.key}-text`,
-              content: entry.status === "thinking" ? "Khala is thinking…" : entry.text,
-              variant: "body",
-              color: entry.status === "failed" ? "danger" : "textPrimary",
-            }),
-          ],
+          body: interactionBody(state, entry),
         })),
         pinToEnd: true,
         style: { width: "full", flex: 1 },
