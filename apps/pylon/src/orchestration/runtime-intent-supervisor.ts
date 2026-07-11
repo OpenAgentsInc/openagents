@@ -21,6 +21,7 @@ import {
 } from "./runtime-intent-enforcement.js"
 import { recordRuntimeTurnUsageReceipt } from "./runtime-turn-usage-receipts.js"
 import { createPylonOrchestrationStore } from "./store.js"
+import { createRuntimeInteractionHttpAuthority } from "./runtime-interaction-authority.js"
 
 /**
  * Runtime control-intent dispatch consumer — standalone process (#8388).
@@ -117,6 +118,9 @@ const hostedKhalaModel =
   option("--hosted-khala-model") ??
   Bun.env.OPENAGENTS_RUNTIME_HOSTED_KHALA_MODEL ??
   DEFAULT_HOSTED_KHALA_RUNTIME_MODEL
+const runtimeInteractionAuthority = executorMode === "owner_local" && ownerUserId !== undefined
+  ? createRuntimeInteractionHttpAuthority({ adminToken, baseUrl, ownerUserId })
+  : undefined
 
 await mkdir(pylonHome, { recursive: true })
 await mkdir(workspaceRoot, { recursive: true })
@@ -237,6 +241,7 @@ try {
         ...(ownerUserId === undefined ? {} : { ownerUserId }),
         ...(executorMode === "owner_local" && ownerUserId !== undefined
           ? {
+              ...(runtimeInteractionAuthority === undefined ? {} : { runtimeInteractionAuthority }),
               claudeOwnerLocalPermissionIssuer: scope => ({
                 authority: issueClaudeOwnerLocalPermissionAuthority({
                   authorizationRef:

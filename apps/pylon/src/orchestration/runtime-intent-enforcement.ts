@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import {
   decodeFleetAccountEntity,
   decodeKhalaRuntimeEvent,
@@ -12,6 +13,10 @@ import type {
   KhalaRuntimeSource,
   KhalaRuntimeToolAuthority,
 } from "@openagentsinc/agent-runtime-schema"
+import {
+  createClaudeCanUseToolInteractionController,
+  type PylonRuntimeInteractionAuthority,
+} from "@openagentsinc/pylon-core/executor/runtime-interaction-bridge"
 import {
   CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
   CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
@@ -841,9 +846,10 @@ export type RuntimeClaudeThreadRunner = (input: {
   readonly cwd: string
   readonly env: Record<string, string | undefined>
   readonly signal: AbortSignal
-  readonly permissionMode: ClaudePermissionMode
+  readonly permissionMode: ClaudePermissionMode | "default"
   readonly permissionAuthorityRef?: string
   readonly model?: string
+  readonly canUseTool?: CanUseTool
   /**
    * When set, resume this existing Claude Agent SDK session
    * (`options.resume`) instead of starting a fresh, contextless one — the
@@ -1089,7 +1095,9 @@ export const runWithRealClaudeAgentSdk: RuntimeClaudeThreadRunner = async (input
       cwd: input.cwd,
       env: input.env,
       permissionMode: input.permissionMode,
-      ...(input.permissionMode === "bypassPermissions"
+      ...(input.canUseTool !== undefined
+        ? { settingSources: [], canUseTool: input.canUseTool }
+        : input.permissionMode === "bypassPermissions"
         ? { settingSources: ["project"] }
         : { settingSources: [], allowedTools: [] }),
       ...(input.model === undefined ? {} : { model: input.model }),
@@ -1109,6 +1117,7 @@ type ActiveRuntimeTurn = {
   readonly clientGroupId: string
   readonly clientId: string
   readonly nextEventSequence: () => number
+  readonly currentEventSequence?: () => number
   readonly nextMutationId: () => number
   /** The Khala Sync thread this turn belongs to (needed to correlate a
    * `message.append` intent's `turnId` back to a thread, and to seed any
@@ -1158,6 +1167,8 @@ export interface EnforceRuntimeIntentsOptions {
     accountRefHash: string
     now: Date
   }>) => ClaudeOwnerLocalPermissionControl
+  /** Explicit durable approval authority; omitted preserves prior defaults. */
+  readonly runtimeInteractionAuthority?: PylonRuntimeInteractionAuthority
   readonly limit?: number
   readonly now?: Date
   /** Live registry of turns this PROCESS is currently running. Persist the
@@ -1279,6 +1290,14 @@ const makeCounter = (start = 0): (() => number) => {
     value += 1
     return value
   }
+}
+
+const makeEventSequence = (start = 0): Readonly<{
+  current: () => number
+  next: () => number
+}> => {
+  let value = start
+  return { current: () => value, next: () => { value += 1; return value } }
 }
 
 const pushFinishedEvent = async (input: {
@@ -1441,15 +1460,51 @@ const dispatchTurnStart = async (input: {
       if (permission.kind === "refused") {
         throw new Error(`Claude permission authority refused (${permission.blockerRef})`)
       }
+      const canUseTool = options.runtimeInteractionAuthority === undefined ||
+          turn.currentEventSequence === undefined
+        ? undefined
+        : createClaudeCanUseToolInteractionController({
+            authority: options.runtimeInteractionAuthority,
+            requestFor: tool => {
+              const requestedAt = new Date()
+              const toolName = tool.toolName.slice(0, 160) || "tool"
+              return {
+                interactionRef: stableId("interaction.runtime_tool", `${turnId}:${tool.toolUseId}`),
+                threadRef: intent.threadId,
+                turnRef: turnId,
+                requestedSequence: turn.currentEventSequence!(),
+                requestedAt: requestedAt.toISOString(),
+                expiresAt: new Date(requestedAt.getTime() + 5 * 60_000).toISOString(),
+                source,
+                causalityRefs: [intent.intentId],
+                payload: {
+                  kind: "tool_approval",
+                  displayText: `Allow ${toolName} for this coding turn?`,
+                  toolCallId: stableId("tool_call.claude", tool.toolUseId),
+                  toolName,
+                  authority: {
+                    allowed: false,
+                    authorityRef: stableId("authority.runtime_tool", `${turnId}:${tool.toolUseId}`),
+                    blockerRefs: ["blocker.owner_approval"],
+                    decisionRef: stableId("decision.runtime_tool_pending", `${turnId}:${tool.toolUseId}`),
+                    policyRef: "policy.openagents.runtime_tool_approval.v1",
+                    status: "operator_escalation_required",
+                    toolRef: stableId("tool.claude", toolName),
+                  },
+                },
+              }
+            },
+          })
       const { messages } = await runClaudeThread({
         cwd,
         env,
         instructions: prompt,
-        permissionMode: permission.permissionMode,
+        permissionMode: canUseTool === undefined ? permission.permissionMode : "default",
         ...(permission.authorityRef === null
           ? {}
           : { permissionAuthorityRef: permission.authorityRef }),
         signal: turn.abortController.signal,
+        ...(canUseTool === undefined ? {} : { canUseTool }),
         ...(resumeRef === undefined ? {} : { resumeSessionId: resumeRef }),
       })
       const pendingToolCalls = new Map<string, string>()
@@ -1766,13 +1821,15 @@ const handleTurnStart = async (
   }
 
   const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
+  const eventSequence = makeEventSequence(0)
   const turn: ActiveRuntimeTurn = {
     abortController: new AbortController(),
     clientGroupId: clientIdentity.clientGroupId,
     clientId: clientIdentity.clientId,
     interrupted: false,
     lane,
-    nextEventSequence: makeCounter(0),
+    currentEventSequence: eventSequence.current,
+    nextEventSequence: eventSequence.next,
     nextMutationId: makeCounter(0),
     pendingAppendMessageIds: [],
     threadId: row.threadId,
@@ -2228,6 +2285,7 @@ const handleTurnContinueOrRetry = async (
   }
 
   const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
+  const eventSequence = makeEventSequence(turnState.eventCount)
   const turn: ActiveRuntimeTurn = {
     abortController: new AbortController(),
     clientGroupId: clientIdentity.clientGroupId,
@@ -2236,7 +2294,8 @@ const handleTurnContinueOrRetry = async (
     lane,
     // Resume numbering AFTER whatever this turn's earlier attempt already
     // recorded — never restart at 0 (see this function's doc).
-    nextEventSequence: makeCounter(turnState.eventCount),
+    currentEventSequence: eventSequence.current,
+    nextEventSequence: eventSequence.next,
     nextMutationId: makeCounter(0),
     pendingAppendMessageIds: [],
     threadId: row.threadId,

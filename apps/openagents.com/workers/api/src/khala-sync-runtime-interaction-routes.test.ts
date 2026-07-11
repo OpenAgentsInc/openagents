@@ -80,6 +80,29 @@ describe('trusted Pylon runtime interaction route', () => {
     expect(await response.json()).toMatchObject({ ok: true, interaction: { lifecycle: { status: 'expired' } } })
   })
 
+  test('routes expiry through the server-clock mutator without an owner decision', async () => {
+    const calls: Array<any> = []
+    const response = await Effect.runPromise(handleKhalaSyncRuntimeInteraction(
+      new Request(`https://openagents.com${KHALA_SYNC_RUNTIME_INTERACTION_PATH}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'expire', ownerUserId: 'user.1', interactionRef: 'interaction.tool.1',
+          threadId: 'thread.runtime.1', turnId: 'turn.runtime.1',
+        }),
+      }),
+      dependencies({ executeMutation: async (input: any) => {
+        calls.push(input)
+        return { results: [{ mutationId: 1, status: 'applied' }] }
+      } }),
+    ))
+    expect(response.status).toBe(200)
+    expect(calls[0].request.mutations[0].name).toBe('runtime.expireInteraction')
+    expect(JSON.parse(calls[0].request.mutations[0].argsJson)).toEqual({
+      interactionRef: 'interaction.tool.1', threadId: 'thread.runtime.1', turnId: 'turn.runtime.1',
+    })
+  })
+
   test('fails closed before storage for unauthorized or malformed requests', async () => {
     const unauthorized = await Effect.runPromise(handleKhalaSyncRuntimeInteraction(
       new Request(`https://openagents.com${KHALA_SYNC_RUNTIME_INTERACTION_PATH}`),

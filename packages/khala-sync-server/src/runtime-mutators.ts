@@ -82,6 +82,8 @@ export const RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME =
   "runtime.requestInteraction"
 export const RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME =
   "runtime.decideInteraction"
+export const RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME =
+  "runtime.expireInteraction"
 
 export const RUNTIME_SCOPE_REJECTION = "unauthorized_scope"
 export const RUNTIME_INTENT_KIND_REJECTION = "runtime_intent_kind_mismatch"
@@ -712,6 +714,19 @@ type RuntimeInteractionDecisionArgs = Readonly<{
   turnId: string
   envelope: RuntimeInteractionDecisionEnvelope
 }>
+
+const RuntimeInteractionExpireArgs = S.Struct({
+  interactionRef: S.String,
+  threadId: S.String,
+  turnId: S.String,
+})
+type RuntimeInteractionExpireArgs = typeof RuntimeInteractionExpireArgs.Type
+
+export const decodeRuntimeInteractionExpireArgs = (
+  argsJson: string,
+): RuntimeInteractionExpireArgs => S.decodeUnknownSync(
+  RuntimeInteractionExpireArgs,
+)(JSON.parse(argsJson) as unknown)
 
 export const decodeRuntimeInteractionDecisionArgs = (
   argsJson: string,
@@ -1559,6 +1574,42 @@ export const runtimeDecideInteractionMutator: MutatorDefinition =
     name: MutatorName.make(RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME),
   })
 
+/** Server-clock-only expiry; never fabricates an owner decision. */
+export const runtimeExpireInteractionMutator: MutatorDefinition =
+  defineMutator<RuntimeInteractionExpireArgs>({
+    decodeArgs: decodeRuntimeInteractionExpireArgs,
+    execute: async (input, ctx) => {
+      const ownerRejection = await ensureRuntimeThreadOwner(ctx, input.threadId)
+      if (ownerRejection !== null) return ownerRejection
+      const row = await readInteractionForUpdate(ctx, input.interactionRef)
+      if (row === null) {
+        return reject(ctx, RUNTIME_INTERACTION_STATE_REJECTION, "this runtime interaction does not exist")
+      }
+      if (row.owner_user_id !== ctx.userId || row.thread_id !== input.threadId || row.turn_id !== input.turnId) {
+        return rejectForeignScope(ctx)
+      }
+      const entity = interactionEntityFromRow(row)
+      if (entity.interaction.lifecycle.status === "expired") return applied(ctx)
+      if (entity.interaction.lifecycle.status !== "pending") {
+        return reject(ctx, RUNTIME_INTERACTION_STATE_REJECTION, "only a pending runtime interaction can expire")
+      }
+      const nowIso = await transactionNowIso(ctx)
+      if (Date.parse(nowIso) < Date.parse(entity.interaction.expiresAt)) {
+        return reject(ctx, RUNTIME_INTERACTION_EXPIRY_REJECTION, "runtime interaction deadline has not elapsed")
+      }
+      await updateRuntimeInteraction(ctx, row, {
+        ...entity.interaction,
+        lifecycle: {
+          status: "expired",
+          terminalAt: nowIso,
+          reasonRef: "reason.interaction_deadline_elapsed",
+        },
+      }, nowIso)
+      return applied(ctx)
+    },
+    name: MutatorName.make(RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME),
+  })
+
 export const runtimeStartTurnMutator: MutatorDefinition =
   defineMutator<KhalaRuntimeControlIntent>({
     decodeArgs: decodeRuntimeControlIntentArgs,
@@ -1863,4 +1914,5 @@ export const runtimeMutators: ReadonlyArray<MutatorDefinition> = [
   runtimeRecordEventMutator,
   runtimeRequestInteractionMutator,
   runtimeDecideInteractionMutator,
+  runtimeExpireInteractionMutator,
 ]

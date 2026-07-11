@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 import { decodeFleetAccountEntity, decodeKhalaRuntimeEvent, decodeRuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 import type { KhalaRuntimeEvent, RuntimeControlIntentRow } from "@openagentsinc/khala-sync"
+import { Effect } from "effect"
 
 import { hashPylonAccountRef } from "../account-registry.js"
 import { issueClaudeOwnerLocalPermissionAuthority } from "../claude-agent-executor.js"
@@ -718,6 +719,8 @@ describe("enforcePendingRuntimeIntents", () => {
     })
     const pushedEvents: Array<KhalaRuntimeEvent> = []
     const permissionModes: string[] = []
+    const approvalRequests: Array<any> = []
+    let approvalRequest: any
     const { options, cleanup } = await baseOptions({
       claudeOwnerLocalPermissionIssuer: scope => ({
         authority: issueClaudeOwnerLocalPermissionAuthority({
@@ -727,6 +730,11 @@ describe("enforcePendingRuntimeIntents", () => {
       }),
       claudeThreadRunner: async input => {
         permissionModes.push(input.permissionMode)
+        expect(input.canUseTool).toBeFunction()
+        expect(await input.canUseTool!("Bash", { command: "pwd" }, {
+          signal: input.signal,
+          toolUseID: "toolu_approval_1",
+        } as any)).toEqual({ behavior: "allow", updatedInput: { command: "pwd" } })
         return fakeClaudeRunner([
           { session_id: "claude-sess-1", subtype: "init", type: "system" },
           {
@@ -766,6 +774,25 @@ describe("enforcePendingRuntimeIntents", () => {
             usage: { input_tokens: 10, output_tokens: 2 },
           },
         ])!(input)
+      },
+      runtimeInteractionAuthority: {
+        request: interaction => Effect.sync(() => {
+          approvalRequest = interaction
+          approvalRequests.push(interaction)
+        }),
+        awaitTerminal: () => Effect.sync(() => ({
+          ...approvalRequest,
+          lifecycle: {
+            status: "resolved",
+            envelope: {
+              decisionRef: "decision.owner.1",
+              idempotencyKey: "idem.owner.1",
+              decidedAt: "2026-07-11T22:01:00.000Z",
+              surface: "desktop",
+              decision: { kind: "tool_approval", outcome: "approve" },
+            },
+          },
+        })),
       },
       fetchChatMessageImpl: async () => ({ message, ok: true }),
       listCandidateAccounts: async () => candidateAccountsFromRegistry([claudeBaseAccount]),
@@ -810,7 +837,15 @@ describe("enforcePendingRuntimeIntents", () => {
       expect(JSON.stringify(pushedEvents)).not.toContain("/private/child-output")
       expect((pushedEvents[pushedEvents.length - 1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
       expect(store.getRuntimeClaudeSessionId("thread-1")).toBe("claude-sess-1")
-      expect(permissionModes).toEqual(["bypassPermissions"])
+      expect(permissionModes).toEqual(["default"])
+      expect(approvalRequests).toHaveLength(1)
+      expect(approvalRequests[0]).toMatchObject({
+        interactionRef: expect.stringContaining("interaction.runtime_tool."),
+        threadId: "thread-1",
+        turnId: "turn-4b",
+        requestedSequence: 1,
+        payload: { kind: "tool_approval", toolName: "Bash" },
+      })
     } finally {
       await cleanup()
     }

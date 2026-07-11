@@ -14,6 +14,7 @@ import {
 import {
   executePush,
   readRuntimeInteractionByRef,
+  RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME,
   RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME,
   type MutatorRegistry,
 } from '@openagentsinc/khala-sync-server'
@@ -86,9 +87,40 @@ export const handleKhalaSyncRuntimeInteraction = (
     if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
       return noStoreJsonResponse({ error: 'payload_too_large' }, { status: 413 })
     }
-    const body = await request.json() as { ownerUserId?: unknown; interaction?: unknown }
+    const body = await request.json() as {
+      ownerUserId?: unknown
+      interaction?: unknown
+      action?: unknown
+      interactionRef?: unknown
+      threadId?: unknown
+      turnId?: unknown
+    }
     if (typeof body.ownerUserId !== 'string' || !SAFE_REF.test(body.ownerUserId)) {
       return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
+    }
+    if (body.action === 'expire') {
+      if (
+        typeof body.interactionRef !== 'string' || !SAFE_REF.test(body.interactionRef) ||
+        typeof body.threadId !== 'string' || !SAFE_REF.test(body.threadId) ||
+        typeof body.turnId !== 'string' || !SAFE_REF.test(body.turnId)
+      ) return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
+      const push = new PushRequest({
+        clientGroupId: ClientGroupId.make(`server.pylon.interaction_expiry.${body.interactionRef}`),
+        clientId: ClientId.make('openagents.worker.pylon_runtime_interaction'),
+        mutations: [new MutationEnvelope({
+          argsJson: JSON.stringify({ interactionRef: body.interactionRef, threadId: body.threadId, turnId: body.turnId }),
+          mutationId: MutationId.make(1),
+          name: MutatorName.make(RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME),
+        })],
+        protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+        schemaVersion: SyncSchemaVersion.make(1),
+      })
+      const result = (await (deps.executeMutation ?? executePush)({
+        registry: deps.registry, request: push, sql: client.sql, userId: body.ownerUserId,
+      })).results[0]
+      return result?.status === 'applied'
+        ? noStoreJsonResponse({ ok: true, routeRef: KHALA_SYNC_RUNTIME_INTERACTION_ROUTE_REF })
+        : noStoreJsonResponse({ error: result?.errorCode ?? 'mutation_rejected', ok: false, routeRef: KHALA_SYNC_RUNTIME_INTERACTION_ROUTE_REF }, { status: 409 })
     }
     let interaction
     try {

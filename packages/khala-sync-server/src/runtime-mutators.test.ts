@@ -49,10 +49,12 @@ import {
   RUNTIME_EVENT_EXISTS_REJECTION,
   RUNTIME_EVENT_SEQUENCE_REJECTION,
   RUNTIME_EVENT_STATE_REJECTION,
+  RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME,
   RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
   RUNTIME_INTENT_EXPIRY_REJECTION,
   RUNTIME_INTERACTION_CONFLICT_REJECTION,
   RUNTIME_INTERACTION_DECISION_REJECTION,
+  RUNTIME_INTERACTION_EXPIRY_REJECTION,
   RUNTIME_INTERACTION_SEQUENCE_REJECTION,
   RUNTIME_RECORD_EVENT_MUTATOR_NAME,
   RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME,
@@ -1187,6 +1189,17 @@ describe.skipIf(!hasLocalPostgres())(
         RUNTIME_INTERACTION_DECISION_REJECTION,
       )
 
+      const tooEarly = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(7, RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME, { interactionRef, threadId, turnId }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(tooEarly.results[0]!.status).toBe("rejected")
+      expect(tooEarly.results[0]!.errorCode).toBe(RUNTIME_INTERACTION_EXPIRY_REJECTION)
+
       const expired = {
         ...valid,
         expiresAt: "2000-01-01T00:00:00.000Z",
@@ -1200,8 +1213,8 @@ describe.skipIf(!hasLocalPostgres())(
       const late = await executePush({
         registry,
         request: pushRequest(owner, [
-          envelope(7, RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME,
-            runtimeQuestionDecision({ interactionRef, threadId, turnId })),
+          envelope(8, RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME,
+            { interactionRef, threadId, turnId }),
         ]),
         sql: sql as unknown as SyncSql,
         userId: owner.userId,
