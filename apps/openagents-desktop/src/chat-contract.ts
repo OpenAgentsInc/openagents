@@ -16,6 +16,23 @@ export const DesktopChatTurnChannel = "openagents-desktop/chat-turn" as const
  * duration. Bounded public-safe strings only; never prompts, paths, tokens,
  * or provider payloads.
  */
+/**
+ * Typed tool-trace facts for a system trace note (EP250, #8712: "improve the
+ * UI of those tool calls so it's not just JSON stuff"). Carried alongside the
+ * existing compact trace text so the renderer can build typed tool cards
+ * without re-parsing display strings; the summary stays the same bounded,
+ * redacted payload the text line carries.
+ */
+export const DesktopToolTracePhaseSchema = Schema.Literals(["started", "ok", "failed"])
+export type DesktopToolTracePhase = typeof DesktopToolTracePhaseSchema.Type
+
+export const DesktopToolTraceSchema = Schema.Struct({
+  toolName: Schema.String.check(Schema.isMaxLength(120)),
+  phase: DesktopToolTracePhaseSchema,
+  summary: Schema.String.check(Schema.isMaxLength(400)),
+})
+export type DesktopToolTrace = typeof DesktopToolTraceSchema.Type
+
 export const DesktopMessageMetaSchema = Schema.Struct({
   lane: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
   model: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
@@ -24,8 +41,45 @@ export const DesktopMessageMetaSchema = Schema.Struct({
   requestId: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   totalTokens: Schema.optional(Schema.NullOr(Schema.Number)),
   durationMs: Schema.optional(Schema.Number),
+  trace: Schema.optional(DesktopToolTraceSchema),
 })
 export type DesktopMessageMeta = typeof DesktopMessageMetaSchema.Type
+
+/**
+ * Interactive question card payload (EP250 scope addition: "make the question
+ * UI too. Why not? proper effect native primitives and add some if needed.").
+ * The question/option shapes mirror the FROZEN additive FableLocalEvent
+ * question_pending contract; the card status tracks the resolved outcome.
+ */
+export const DesktopQuestionOptionSchema = Schema.Struct({
+  label: Schema.String.check(Schema.isMaxLength(200)),
+  description: Schema.optional(Schema.String.check(Schema.isMaxLength(400))),
+})
+export type DesktopQuestionOption = typeof DesktopQuestionOptionSchema.Type
+
+export const DesktopQuestionSchema = Schema.Struct({
+  question: Schema.String.check(Schema.isMaxLength(2_000)),
+  header: Schema.String.check(Schema.isMaxLength(120)),
+  options: Schema.Array(DesktopQuestionOptionSchema),
+  multiSelect: Schema.Boolean,
+})
+export type DesktopQuestion = typeof DesktopQuestionSchema.Type
+
+export const DesktopQuestionCardStatusSchema = Schema.Literals([
+  "pending",
+  "answered",
+  "timeout",
+  "denied",
+])
+export type DesktopQuestionCardStatus = typeof DesktopQuestionCardStatusSchema.Type
+
+export const DesktopQuestionCardSchema = Schema.Struct({
+  turnRef: Schema.String.check(Schema.isMaxLength(120)),
+  questionRef: Schema.String.check(Schema.isMaxLength(120)),
+  status: DesktopQuestionCardStatusSchema,
+  questions: Schema.Array(DesktopQuestionSchema),
+})
+export type DesktopQuestionCard = typeof DesktopQuestionCardSchema.Type
 
 export const DesktopMessageSchema = Schema.Struct({
   key: Schema.String,
@@ -33,6 +87,8 @@ export const DesktopMessageSchema = Schema.Struct({
   text: Schema.String,
   timestamp: Schema.String,
   meta: Schema.optional(DesktopMessageMetaSchema),
+  /** Present only on interactive question notes (EP250 question cards). */
+  question: Schema.optional(DesktopQuestionCardSchema),
 })
 export type DesktopMessage = typeof DesktopMessageSchema.Type
 

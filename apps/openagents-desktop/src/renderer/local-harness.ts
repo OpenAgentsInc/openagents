@@ -15,6 +15,7 @@ import type { DesktopMessage, DesktopThread } from "../chat-contract.ts"
 import {
   fableLocalFailureMessage,
   fableLocalModelNoteText,
+  fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
   type FableLocalAvailability,
   type FableLocalEventEnvelope,
@@ -145,8 +146,46 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             role: "system",
             text: fableLocalTraceNoteText(event),
             timestamp: noteTimestamp(now()),
+            // Typed trace facts (EP250 tool cards): same bounded payload as
+            // the text line, so the renderer builds typed cards without
+            // re-parsing display strings.
+            meta: { trace: fableLocalTraceNoteMeta(event) },
           })
           project()
+          return
+        }
+        // Interactive question cards (EP250): question_pending projects an
+        // interactive card note; question_resolved updates it in place with
+        // the runtime-authoritative outcome.
+        if (event.kind === "question_pending") {
+          traceNotes.push({
+            key: `${turnRef}-question-${event.questionRef}`,
+            role: "system",
+            text: event.questions[0]?.question ?? "Question",
+            timestamp: noteTimestamp(now()),
+            question: {
+              turnRef,
+              questionRef: event.questionRef,
+              status: "pending",
+              questions: event.questions,
+            },
+          })
+          project()
+          return
+        }
+        if (event.kind === "question_resolved") {
+          const index = traceNotes.findIndex(
+            note => note.question?.questionRef === event.questionRef,
+          )
+          const existing = index === -1 ? undefined : traceNotes[index]
+          if (existing?.question !== undefined) {
+            traceNotes[index] = {
+              ...existing,
+              question: { ...existing.question, status: event.outcome },
+            }
+            project()
+          }
+          return
         }
         // turn_completed / turn_failed carry no transcript body of their
         // own; the invoke result finalizes the thread.

@@ -56,6 +56,7 @@ import {
   decodeFableLocalStartRequest,
   fableLocalFailureMessage,
   fableLocalModelNoteText,
+  fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
 } from "./fable-local-contract.ts"
 import {
@@ -665,6 +666,40 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
             ? fableLocalModelNoteText(turnEvent.model)
             : fableLocalTraceNoteText(turnEvent),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          // Typed trace facts (EP250 tool cards): the persisted note carries
+          // the same typed payload the live stream note does, so the
+          // finalized transcript renders the same typed tool cards.
+          ...(turnEvent.kind === "model_effective"
+            ? {}
+            : { meta: { trace: fableLocalTraceNoteMeta(turnEvent) } }),
+        })
+      }
+      // Smoke-only question-card fixture (EP250 question cards): persist ONE
+      // pending interactive question after the fixture Read completes so the
+      // built-Electron journey proves the interactive card, the real typed
+      // answerQuestion IPC round-trip, and the honest typed-rejection revert
+      // (this ref is store-persisted, not runtime-pending, so the runtime
+      // answers false). Real question events come from the frozen contract.
+      if (smokeMode && turnEvent.kind === "tool_result" && turnEvent.toolName === "Read") {
+        store.append(request.threadRef, {
+          key: randomUUID(),
+          role: "system",
+          text: "Which fixture path should this smoke turn take?",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          question: {
+            turnRef: request.turnRef,
+            questionRef: "question.fixture.1",
+            status: "pending",
+            questions: [{
+              question: "Which fixture path should this smoke turn take?",
+              header: "Fixture",
+              multiSelect: false,
+              options: [
+                { label: "Streamed", description: "Keep the streamed markdown proof path" },
+                { label: "Static" },
+              ],
+            }],
+          },
         })
       }
       if (sender.isDestroyed()) return
@@ -1122,8 +1157,11 @@ const smokeFableLocalStreaming = `(async () => {
   const assistantText = () => {
     const body = assistantBody()
     if (body === null) return ""
+    // Exclude the compact details affordance (a real text Button now) and
+    // any wrapper row that only hosts it.
     return Array.from(body.childNodes)
-      .filter((node) => !(node instanceof HTMLElement && node.tagName === "BUTTON"))
+      .filter((node) => !(node instanceof HTMLElement &&
+        (node.tagName === "BUTTON" || node.querySelector("button") !== null)))
       .map((node) => node.textContent ?? "")
       .join("")
   }
@@ -1140,15 +1178,28 @@ const smokeFableLocalStreaming = `(async () => {
   const systemRows = () => Array.from(
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="system"]'),
   ).map((row) => row.textContent ?? "")
-  const trace = systemRows().some((text) => text.includes("Read"))
+  // EP250 tool cards: tool invocations render as typed role="tool" cards
+  // (humanized primary line + status chip + result line), started and
+  // completion folded into ONE updating card, raw JSON collapsed by default.
+  const toolRows = () => Array.from(
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="tool"]'),
+  )
+  const toolText = (row) => row.textContent ?? ""
+  const readCards = toolRows().filter((row) => toolText(row).includes("notes.md"))
+  const trace = readCards.length === 1 && toolText(readCards[0]).includes("Read")
   // Codex delegation (#8712 Lane C): the fixture turn calls the REAL
-  // mcp__codex__delegate handler once (scripted codex exec child behind it);
-  // the transcript must show the tool_use/tool_result pair — the started
-  // trace line and the result line carrying the child's answer text.
-  const delegateUse = systemRows().some((text) =>
-    text.includes("mcp__codex__delegate") && text.includes("started"))
-  const delegateResult = systemRows().some((text) =>
-    text.includes("mcp__codex__delegate") && text.includes("Codex child fixture answer."))
+  // mcp__codex__delegate handler once (scripted codex exec child behind it).
+  // ONE card carries the humanized task line AND the child's answer text.
+  const delegateCards = toolRows().filter((row) => toolText(row).includes("Delegate to Codex"))
+  const delegateSingleCard = delegateCards.length === 1
+  const delegateUse = delegateSingleCard &&
+    toolText(delegateCards[0]).includes("Summarize the fixture delegation task")
+  const delegateResult = delegateSingleCard &&
+    toolText(delegateCards[0]).includes("Codex child fixture answer.")
+  const transcriptText = document.querySelector('[data-en-key="shell-transcript"]')?.textContent ?? ""
+  const noRawJson = !transcriptText.includes('{"task"') && !transcriptText.includes('{"file_path"')
+  const noSystemToolLabel = toolRows().every((row) => row.querySelector('[data-en-role="sender"]') === null)
+  const toolTimestamps = toolRows().every((row) => row.querySelector('[data-en-role="timestamp"]') !== null)
   const body = assistantBody()
   const strong = body === null ? null : body.querySelector("strong")
   const markdownRendered = strong !== null && strong.textContent === "streaming" &&
@@ -1159,15 +1210,74 @@ const smokeFableLocalStreaming = `(async () => {
     lastAssistant.querySelector('[data-en-role="sender"]') === null
   return {
     ok: sawPartial && assistantText() === finalText && input.disabled === false && trace &&
-      markdownRendered && noAssistantLabel && delegateUse && delegateResult,
+      markdownRendered && noAssistantLabel && delegateSingleCard && delegateUse &&
+      delegateResult && noRawJson && noSystemToolLabel && toolTimestamps,
     sawPartial,
     finalized: assistantText() === finalText,
     trace,
     markdownRendered,
     noAssistantLabel,
+    delegateSingleCard,
     delegateUse,
     delegateResult,
+    noRawJson,
+    noSystemToolLabel,
+    toolTimestamps,
     text: assistantText(),
+  }
+})()`
+
+// EP250 question cards: the smoke fixture persists one pending question note
+// after the Read tool completes. The REAL preload answerQuestion bridge is
+// live, so the card renders fully interactive (option buttons with label +
+// dim description), no SYSTEM label, never raw JSON. Clicking an option
+// drives the real typed IPC; the runtime's typed rejection (false — this
+// fixture question is store-persisted, not runtime-pending) must revert the
+// card to honest pending with the selection retained, never a fake
+// "Answered" state.
+const smokeQuestionCard = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const cardSelector = '[data-en-key="shell-transcript"] [data-en-message="question-question.fixture.1"]'
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector(cardSelector) === null) {
+    await wait(50)
+  }
+  const card = document.querySelector(cardSelector)
+  if (card === null) return { ok: false, reason: "question card never rendered" }
+  const text = card.textContent ?? ""
+  const headerChip = text.includes("Fixture")
+  const questionText = text.includes("Which fixture path should this smoke turn take?")
+  const optionSelector = '[data-en-key="question-question.fixture.1-q0-option-0"]'
+  const optionA = card.querySelector(optionSelector)
+  const optionB = card.querySelector('[data-en-key="question-question.fixture.1-q0-option-1"]')
+  const description = text.includes("Keep the streamed markdown proof path")
+  // The real answerQuestion bridge exists: options are interactive.
+  const interactive = optionA !== null && optionA.disabled === false &&
+    optionB !== null && optionB.disabled === false
+  const noSenderLabel = card.querySelector('[data-en-role="sender"]') === null
+  const noRawJson = !text.includes("{") && !text.includes("questionRef")
+  if (!(headerChip && questionText && interactive && description && noSenderLabel && noRawJson &&
+    optionA.textContent === "Streamed" && optionB.textContent === "Static")) {
+    return { ok: false, headerChip, questionText, description, interactive, noSenderLabel, noRawJson }
+  }
+  // Click through the REAL typed bridge. The runtime rejects (false: the
+  // fixture ref is not runtime-pending), so the card must settle back to
+  // pending with the Streamed selection retained — honest, no fake Answered.
+  optionA.click()
+  const settleDeadline = Date.now() + 10000
+  let settled = null
+  while (Date.now() < settleDeadline) {
+    settled = document.querySelector(optionSelector)
+    if (settled !== null && settled.getAttribute("data-en-variant") === "secondary") break
+    await wait(50)
+  }
+  const revertedPending = settled !== null && settled.getAttribute("data-en-variant") === "secondary"
+  const cardAfter = document.querySelector(cardSelector)
+  const noFakeAnswered = cardAfter !== null && !(cardAfter.textContent ?? "").includes("Answered")
+  return {
+    ok: revertedPending && noFakeAnswered,
+    revertedPending,
+    noFakeAnswered,
   }
 })()`
 
@@ -1183,6 +1293,16 @@ const smokeMessageInspector = `(async () => {
   if (last === undefined) return { ok: false, reason: "no assistant message row to inspect" }
   const details = last.querySelector('[data-en-key^="note-details-"]')
   if (details === null) return { ok: false, reason: "message details affordance never mounted" }
+  // EP250 owner fix: the details affordance must be the compact ghost text
+  // button, NOT the 44px IconButton circle ("way smaller ... not a huge
+  // ginormous circle").
+  if (details.getAttribute("data-en-variant") === "icon") {
+    return { ok: false, reason: "details affordance is still the large icon-circle variant" }
+  }
+  const detailsHeight = details.getBoundingClientRect().height
+  if (detailsHeight > 28) {
+    return { ok: false, reason: "details affordance is not compact: " + detailsHeight + "px tall" }
+  }
   details.click()
   const deadline = Date.now() + 10000
   while (Date.now() < deadline && document.querySelector('[data-en-key="chat-message-inspector"]') === null) {
@@ -1378,6 +1498,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // session; a scripted delta sequence flows through the real mapping).
         await step("fable-local-streamed-turn-FIXTURE", smokeFableLocalStreaming)
         await captureShot(window, "07-fable-local-streamed")
+        // EP250 question cards: the persisted fixture question renders as a
+        // read-only pending interactive card (no answer bridge in smoke).
+        await step("question-card-interactive-typed-answer-FIXTURE", smokeQuestionCard)
+        await captureShot(window, "10-question-card")
         // EP250 (#8712): click a message -> right-side metadata inspector
         // (model/lane/account/tokens), close through the same typed intent,
         // then re-open once for the pixel receipt.

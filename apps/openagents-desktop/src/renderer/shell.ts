@@ -24,7 +24,6 @@ import {
   ComponentValueBinding,
   IntentRef,
   Icon,
-  IconButton,
   NavRail,
   Spacer,
   SplitPane,
@@ -41,7 +40,14 @@ import {
   type View,
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
-import type { DesktopMessageMeta, DesktopThread } from "../chat-contract.ts"
+import type { DesktopMessageMeta, DesktopQuestionCard, DesktopThread } from "../chat-contract.ts"
+import {
+  humanizeToolInvocation,
+  projectTranscriptEntries,
+  toolCardIcon,
+  toolResultSnippet,
+  type ToolCardModel,
+} from "./tool-cards.ts"
 import {
   resolveLiveAgentGraphSelection,
   type LiveAgentGraphPresentation,
@@ -98,6 +104,28 @@ export type DesktopNoteEntry = Readonly<{
   timestamp: string
   /** Host-observed message metadata (#8712) — see DesktopMessageMetaSchema. */
   meta?: DesktopMessageMeta
+  /** Present only on interactive question notes (EP250 question cards). */
+  question?: DesktopQuestionCard
+}>
+
+/**
+ * One answered question in the FROZEN bridge shape: the question text exactly
+ * as question_pending carried it plus the selected option labels. Labels stay
+ * an array even for single-select; the runtime comma-joins for multiSelect.
+ */
+export type QuestionAnswer = Readonly<{
+  question: string
+  labels: ReadonlyArray<string>
+}>
+
+/** Local (renderer-only) interaction state for one pending question card. */
+export type QuestionCardInteraction = Readonly<{
+  /** Selected option labels per question index. */
+  selections: ReadonlyArray<ReadonlyArray<string>>
+  /** True once the answer was handed to the typed bridge. */
+  answered: boolean
+  /** The submitted answers (for the collapsed answered rendering). */
+  answers: ReadonlyArray<QuestionAnswer> | null
 }>
 
 export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
@@ -141,6 +169,23 @@ export type DesktopShellState = Readonly<{
    * sidebar"). Null means no inspector.
    */
   selectedMessageKey: string | null
+  /**
+   * Tool cards whose raw bounded details are expanded (EP250 tool cards).
+   * Keys are the started-note keys — stable across in-place status updates.
+   */
+  expandedToolCards: ReadonlyArray<string>
+  /**
+   * Local interaction state for pending question cards, keyed by questionRef
+   * (EP250 question cards). Selections are per-question option-label arrays;
+   * `answered` marks a locally submitted answer before question_resolved.
+   */
+  questionCards: Readonly<Record<string, QuestionCardInteraction>>
+  /**
+   * Evidence-gated answering: true only when the preload bridge actually
+   * exposes fableLocal.answerQuestion. Absent bridge (runtime lane not
+   * merged yet) renders question cards read-only pending.
+   */
+  questionAnswerHostAvailable: boolean
   /** Confirmed Runtime Gateway v8 graph presentation for the active thread. */
   agentGraph: LiveAgentGraphPresentation | null
   agentGraphExpanded: boolean
@@ -209,6 +254,9 @@ export const initialDesktopShellState = (
   threads: [],
   activeThreadId: null,
   selectedMessageKey: null,
+  expandedToolCards: [],
+  questionCards: {},
+  questionAnswerHostAvailable: false,
   agentGraph: null,
   agentGraphExpanded: false,
   selectedAgentRef: null,
@@ -270,6 +318,23 @@ export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.St
  * (Escape and the Close affordance dispatch the empty payload).
  */
 export const DesktopMessageSelected = defineIntent("DesktopMessageSelected", Schema.String)
+/** Expand/collapse a tool card's bounded raw details (EP250 tool cards). */
+export const DesktopToolCardToggled = defineIntent("DesktopToolCardToggled", Schema.String)
+/**
+ * Question card option activation (EP250 question cards). Single-select
+ * questions record the label and auto-submit once every question in the card
+ * has a selection; multiSelect questions toggle the label and wait for the
+ * explicit confirm intent.
+ */
+export const DesktopQuestionOptionSelected = defineIntent(
+  "DesktopQuestionOptionSelected",
+  Schema.Struct({
+    questionRef: Schema.String,
+    questionIndex: Schema.Number,
+    label: Schema.String,
+  }),
+)
+export const DesktopQuestionSubmitted = defineIntent("DesktopQuestionSubmitted", Schema.String)
 export const DesktopAgentGraphToggled = defineIntent("DesktopAgentGraphToggled", Schema.Null)
 export const DesktopAgentAction = defineIntent("DesktopAgentAction", Schema.Struct({
   kind: Schema.Literals(["inspect_agent", "focus_agent"]),
@@ -310,6 +375,9 @@ export const desktopShellIntents = [
   DesktopHarnessSelected,
   DesktopChatSelected,
   DesktopMessageSelected,
+  DesktopToolCardToggled,
+  DesktopQuestionOptionSelected,
+  DesktopQuestionSubmitted,
   DesktopAgentGraphToggled,
   DesktopAgentAction,
   DesktopCodingCatalogFilterSelected,
@@ -372,6 +440,8 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
   selectedMessageKey: null,
+  expandedToolCards: [],
+  questionCards: {},
   agentGraph: thread.agentGraph ?? null,
   agentGraphExpanded: thread.agentGraph !== undefined && (
     thread.agentGraph.totalCount <= 8 || thread.agentGraph.attentionCount > 0
@@ -401,6 +471,9 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
   ...state,
   notes: thread.notes,
   activeThreadId: thread.id,
+  questionCards: state.activeThreadId === thread.id
+    ? pruneQuestionCards(state.questionCards, thread.notes)
+    : {},
   // Keep an open inspector only while its message still exists in the
   // projected transcript (streaming keys are replaced at finalize).
   selectedMessageKey: state.activeThreadId === thread.id &&
@@ -434,6 +507,130 @@ export const withMessageSelected = (
   return selectedMessageKey === state.selectedMessageKey
     ? state
     : { ...state, selectedMessageKey }
+}
+
+/** Expand/collapse one tool card's bounded raw details. */
+export const withToolCardToggled = (state: DesktopShellState, key: string): DesktopShellState => ({
+  ...state,
+  expandedToolCards: state.expandedToolCards.includes(key)
+    ? state.expandedToolCards.filter((item) => item !== key)
+    : [...state.expandedToolCards, key],
+})
+
+/** The question note carrying the given questionRef, if still projected. */
+export const questionNoteFor = (
+  state: DesktopShellState,
+  questionRef: string,
+): DesktopNoteEntry | undefined =>
+  state.notes.find((note) => note.question?.questionRef === questionRef)
+
+/** Drop interaction state for question cards no longer in the transcript. */
+export const pruneQuestionCards = (
+  cards: Readonly<Record<string, QuestionCardInteraction>>,
+  notes: ReadonlyArray<DesktopNoteEntry>,
+): Readonly<Record<string, QuestionCardInteraction>> => {
+  const live = new Set(
+    notes.flatMap((note) => (note.question === undefined ? [] : [note.question.questionRef])),
+  )
+  const entries = Object.entries(cards).filter(([ref]) => live.has(ref))
+  return entries.length === Object.keys(cards).length ? cards : Object.fromEntries(entries)
+}
+
+/**
+ * Records an option activation. Single-select questions replace the
+ * selection; multiSelect questions toggle the label. No-ops on resolved,
+ * locally answered, or unknown cards.
+ */
+export const withQuestionSelection = (
+  state: DesktopShellState,
+  questionRef: string,
+  questionIndex: number,
+  label: string,
+): DesktopShellState => {
+  const note = questionNoteFor(state, questionRef)
+  const card = note?.question
+  if (card === undefined || card.status !== "pending") return state
+  const question = card.questions[questionIndex]
+  if (question === undefined || !question.options.some((option) => option.label === label)) {
+    return state
+  }
+  const interaction = state.questionCards[questionRef] ?? {
+    selections: card.questions.map(() => []),
+    answered: false,
+    answers: null,
+  }
+  if (interaction.answered) return state
+  const current = interaction.selections[questionIndex] ?? []
+  const selection = question.multiSelect
+    ? current.includes(label) ? current.filter((item) => item !== label) : [...current, label]
+    : [label]
+  const selections = card.questions.map((_, index) =>
+    index === questionIndex ? selection : interaction.selections[index] ?? [])
+  return {
+    ...state,
+    questionCards: {
+      ...state.questionCards,
+      [questionRef]: { ...interaction, selections },
+    },
+  }
+}
+
+/** True once every question in the card has at least one selected option. */
+export const questionAnswersReady = (
+  card: DesktopQuestionCard,
+  interaction: QuestionCardInteraction,
+): boolean =>
+  card.questions.every((_, index) => (interaction.selections[index]?.length ?? 0) >= 1)
+
+/**
+ * Answers in the FROZEN bridge shape: one `{ question, labels }` entry per
+ * question — the question text exactly as question_pending carried it, and
+ * the selected labels as an array even for single-select (the runtime
+ * comma-joins multiSelect labels, the SDK's documented encoding).
+ */
+export const questionAnswersFor = (
+  card: DesktopQuestionCard,
+  interaction: QuestionCardInteraction,
+): ReadonlyArray<QuestionAnswer> =>
+  card.questions.map((question, index) => ({
+    question: question.question,
+    labels: interaction.selections[index] ?? [],
+  }))
+
+export const withQuestionAnswered = (
+  state: DesktopShellState,
+  questionRef: string,
+  answers: ReadonlyArray<QuestionAnswer>,
+): DesktopShellState => {
+  const interaction = state.questionCards[questionRef]
+  if (interaction === undefined || interaction.answered) return state
+  return {
+    ...state,
+    questionCards: {
+      ...state.questionCards,
+      [questionRef]: { ...interaction, answered: true, answers },
+    },
+  }
+}
+
+/**
+ * The typed bridge rejected the answer (`false`): the card returns to
+ * pending, selections retained, so the user can retry or the runtime's
+ * question_resolved outcome can land.
+ */
+export const withQuestionAnswerRejected = (
+  state: DesktopShellState,
+  questionRef: string,
+): DesktopShellState => {
+  const interaction = state.questionCards[questionRef]
+  if (interaction === undefined || !interaction.answered) return state
+  return {
+    ...state,
+    questionCards: {
+      ...state.questionCards,
+      [questionRef]: { ...interaction, answered: false, answers: null },
+    },
+  }
 }
 
 export const withWorkspace = (
@@ -530,6 +727,22 @@ export type ChatHost = Readonly<{
     harness?: DesktopHarnessName
     onUpdate?: (thread: DesktopThread) => void
   }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
+}>
+
+/**
+ * Typed question-answer bridge (EP250 question cards). `answer` is null when
+ * the preload surface has no fableLocal.answerQuestion (defensive: cards then
+ * render read-only pending). The input mirrors the FROZEN
+ * FableLocalAnswerQuestionRequest shape.
+ */
+export type QuestionHost = Readonly<{
+  answer:
+    | ((input: Readonly<{
+        turnRef: string
+        questionRef: string
+        answers: ReadonlyArray<QuestionAnswer>
+      }>) => Promise<unknown>)
+    | null
 }>
 
 export type WorkspaceHost = Readonly<{
@@ -668,8 +881,35 @@ export const makeDesktopShellHandlers = (
   fleetBridge: FleetAccountsBridge = unavailableFleetAccountsBridge,
   providerAccountsBridge: ProviderAccountsSettingsBridge = unavailableProviderAccountsSettingsBridge,
   codingCatalogHost: CodingCatalogHost = unavailableCodingCatalogHost,
+  questionHost: QuestionHost = { answer: null },
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge)
+  /**
+   * Hands one completed answer set to the typed bridge. Marks the card
+   * locally answered first so the collapsed state renders immediately; the
+   * runtime's question_resolved event stays the outcome authority. An
+   * explicit typed rejection (`false`: unknown ref, already settled, no
+   * matching question) reverts the local answered mark — the card returns to
+   * pending with the selection retained rather than lying "Answered".
+   */
+  const submitQuestion = (
+    card: NonNullable<DesktopNoteEntry["question"]>,
+    interaction: QuestionCardInteraction,
+  ) =>
+    Effect.gen(function* () {
+      const answer = questionHost.answer
+      if (answer === null || interaction.answered) return
+      if (!questionAnswersReady(card, interaction)) return
+      const answers = questionAnswersFor(card, interaction)
+      yield* SubscriptionRef.update(state, (current) =>
+        withQuestionAnswered(current, card.questionRef, answers))
+      const result = yield* Effect.promise(() =>
+        answer({ turnRef: card.turnRef, questionRef: card.questionRef, answers }).catch(() => null))
+      if (result === false) {
+        yield* SubscriptionRef.update(state, (current) =>
+          withQuestionAnswerRejected(current, card.questionRef))
+      }
+    })
   return ({
   ...settingsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
@@ -719,6 +959,36 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
   DesktopMessageSelected: (key) =>
     SubscriptionRef.update(state, (current) => withMessageSelected(current, key)),
+  DesktopToolCardToggled: (key) =>
+    SubscriptionRef.update(state, (current) => withToolCardToggled(current, key)),
+  DesktopQuestionOptionSelected: ({ questionRef, questionIndex, label }) =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      // Evidence-gated: no typed answer bridge means read-only pending cards.
+      if (!current.questionAnswerHostAvailable || questionHost.answer === null) return
+      if (current.questionCards[questionRef]?.answered === true) return
+      const next = withQuestionSelection(current, questionRef, questionIndex, label)
+      if (next === current) return
+      yield* SubscriptionRef.set(state, next)
+      const card = questionNoteFor(next, questionRef)?.question
+      const interaction = next.questionCards[questionRef]
+      if (card === undefined || interaction === undefined) return
+      // Single-select cards dispatch as soon as every question is answered;
+      // any multiSelect question keeps the explicit confirm affordance.
+      if (!card.questions.some((question) => question.multiSelect) &&
+        questionAnswersReady(card, interaction)) {
+        yield* submitQuestion(card, interaction)
+      }
+    }),
+  DesktopQuestionSubmitted: (questionRef) =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      if (!current.questionAnswerHostAvailable) return
+      const card = questionNoteFor(current, questionRef)?.question
+      const interaction = current.questionCards[questionRef]
+      if (card === undefined || card.status !== "pending" || interaction === undefined) return
+      yield* submitQuestion(card, interaction)
+    }),
   DesktopAgentGraphToggled: () =>
     SubscriptionRef.update(state, current => current.agentGraph === null
       ? current
@@ -780,6 +1050,8 @@ export const makeDesktopShellHandlers = (
       ...current,
       activeThreadId: id,
       notes: [],
+      expandedToolCards: [],
+      questionCards: {},
       agentGraph: null,
       agentGraphExpanded: false,
       selectedAgentRef: null,
@@ -920,6 +1192,34 @@ const columnWidth = 840
  *   DesktopMessageSelected intent (the metadata inspector; keyboard
  *   accessible because it is a real catalog Button).
  */
+/**
+ * EP250 owner directive (verbatim): "that metadata button needs to be way
+ * smaller and more like an icon button, not a huge ginormous circle."
+ *
+ * The catalog IconButton lowers to a fixed 44px circle in the DOM renderer
+ * (inline sizing an app style cannot shrink), so the compact affordance is a
+ * ghost catalog Button lowered to caption scale with zero padding — a dim,
+ * roughly line-height text affordance that stays a real keyboard-focusable
+ * button. Catalog-native; no local primitive.
+ */
+const compactDetailsButton = (input: Readonly<{
+  key: string
+  label: string
+  onPress: ReturnType<typeof IntentRef>
+  a11yLabel: string
+}>): View =>
+  Button({
+    key: input.key,
+    label: input.label,
+    variant: "ghost",
+    // Zero padding + zero border + caption scale + muted color: a dim,
+    // line-height text affordance (the renderer's default button chrome is a
+    // 1px bordered chip — too loud for a per-row affordance).
+    style: { padding: "0", borderWidth: 0, typeScale: "caption", color: "textMuted" },
+    onPress: input.onPress,
+    a11y: { label: input.a11yLabel },
+  })
+
 export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
   key: entry.key,
   role: entry.role,
@@ -949,15 +1249,210 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
         align: "center",
         justify: entry.role === "user" ? "end" : "start",
       },
-      [IconButton({
+      [compactDetailsButton({
         key: `note-details-${entry.key}`,
-        icon: "ChevronRight",
-        accessibilityLabel: `Show message details, ${entry.role} message at ${entry.timestamp}`,
+        label: "details",
         onPress: IntentRef("DesktopMessageSelected", StaticPayload(entry.key)),
+        a11yLabel: `Show message details, ${entry.role} message at ${entry.timestamp}`,
       })],
     ),
   ],
 })
+
+/**
+ * One typed tool card per invocation (EP250, #8712): humanized primary line,
+ * toned status chip that updates in place (started -> ok/failed), result or
+ * failure line as content, and the bounded raw args/result reachable only
+ * behind the compact details toggle. No SYSTEM role label — tool cards are
+ * their own visual class (the tool title is the header); timestamps stay.
+ */
+export const toolCardMessage = (card: ToolCardModel, expanded: boolean): TranscriptMessage => {
+  const human = humanizeToolInvocation(card.toolName, card.argsSummary)
+  const chip = card.status === "running"
+    ? { label: "Running", tone: "neutral" as const }
+    : card.status === "ok"
+      ? { label: "OK", tone: "success" as const }
+      : { label: "Failed", tone: "danger" as const }
+  return {
+    key: `tool-${card.key}`,
+    role: "tool",
+    timestamp: card.timestamp,
+    // One column Stack so detail/result/raw lines stack (Text lowers to an
+    // inline span in the DOM renderer — bare siblings would run together).
+    body: [Stack(
+      { key: `tool-card-${card.key}`, direction: "column", gap: "1", align: "start" },
+      [
+        Stack(
+          { key: `tool-header-${card.key}`, direction: "row", gap: "2", align: "center" },
+          [
+            Icon({ key: `tool-icon-${card.key}`, name: toolCardIcon(card.toolName), size: "sm", color: "accent" }),
+            Text({ key: `tool-title-${card.key}`, content: human.title, variant: "label", color: "textPrimary" }),
+            Badge({
+              key: `tool-status-${card.key}`,
+              label: chip.label,
+              tone: chip.tone,
+              a11y: { label: `${human.title} ${chip.label}` },
+            }),
+          ],
+        ),
+        ...(human.detail === "" ? [] : [
+          Text({ key: `tool-detail-${card.key}`, content: human.detail, variant: "body", color: "textPrimary" }),
+        ]),
+        // Failure text is content, not JSON — shown prominently.
+        ...(card.status === "failed" && card.resultSummary !== null ? [
+          Text({ key: `tool-failure-${card.key}`, content: card.resultSummary, variant: "body", color: "danger" }),
+        ] : []),
+        ...(card.status === "ok" && card.resultSummary !== null ? [
+          Text({ key: `tool-result-${card.key}`, content: toolResultSnippet(card.resultSummary), variant: "caption", color: "textMuted" }),
+        ] : []),
+        compactDetailsButton({
+          key: `tool-details-${card.key}`,
+          label: expanded ? "hide details" : "details",
+          onPress: IntentRef("DesktopToolCardToggled", StaticPayload(card.key)),
+          a11yLabel: `${expanded ? "Hide" : "Show"} raw details for ${human.title}`,
+        }),
+        // The bounded raw payloads: reachable, never the default rendering.
+        ...(expanded ? [
+          Text({
+            key: `tool-raw-args-${card.key}`,
+            content: card.argsSummary === "" ? "(no recorded arguments)" : card.argsSummary,
+            variant: "caption",
+            color: "textMuted",
+          }),
+          ...(card.resultSummary === null ? [] : [Text({
+            key: `tool-raw-result-${card.key}`,
+            content: card.resultSummary,
+            variant: "caption",
+            color: "textMuted",
+          })]),
+        ] : []),
+      ],
+    )],
+  }
+}
+
+/**
+ * Interactive question card (EP250 scope addition, owner verbatim: "make the
+ * question UI too. Why not? proper effect native primitives and add some if
+ * needed."). A first-class typed card in the tool-card visual family — never
+ * raw JSON, no SYSTEM label. Option rows compose catalog primitives: the
+ * label is a real Button (prominent, keyboard accessible), the description a
+ * dim caption Text beneath it. Single-select dispatches on click (via the
+ * auto-submit in the option handler); multiSelect toggles and confirms.
+ * Without a typed answer bridge the card renders read-only pending.
+ */
+export const questionCardMessage = (
+  note: DesktopNoteEntry,
+  interaction: QuestionCardInteraction | undefined,
+  answerAvailable: boolean,
+): TranscriptMessage => {
+  const card = note.question!
+  const base = `question-${card.questionRef}`
+  const locallyAnswered = interaction?.answered === true
+  const resolved = card.status !== "pending" || locallyAnswered
+  const outcome = card.status !== "pending" ? card.status : "answered"
+  if (resolved) {
+    const answers = interaction?.answers ?? null
+    const answerText = answers === null
+      ? null
+      : answers
+          .map((answer) => answer.labels.join(", "))
+          .filter((value) => value !== "")
+          .join(" · ")
+    const summary = outcome === "answered"
+      ? answerText === null || answerText === "" ? "Answered." : `Answered · ${answerText}`
+      : outcome === "timeout"
+        ? "Timed out — no answer was sent."
+        : "Denied — the question was dismissed."
+    return {
+      key: base,
+      role: "tool",
+      timestamp: note.timestamp,
+      body: [Stack({ key: `${base}-resolved-card`, direction: "column", gap: "1", align: "start" }, [
+        Stack({ key: `${base}-resolved-header`, direction: "row", gap: "2", align: "center" }, [
+          Badge({
+            key: `${base}-outcome`,
+            label: outcome === "answered" ? "Answered" : outcome === "timeout" ? "Timed out" : "Denied",
+            tone: outcome === "answered" ? "success" : "neutral",
+          }),
+          Text({ key: `${base}-resolved-question`, content: card.questions[0]?.question ?? "Question", variant: "caption", color: "textMuted" }),
+        ]),
+        Text({ key: `${base}-resolved-summary`, content: summary, variant: "body", color: "textMuted" }),
+      ])],
+    }
+  }
+  const anyMulti = card.questions.some((question) => question.multiSelect)
+  return {
+    key: base,
+    role: "tool",
+    timestamp: note.timestamp,
+    body: [Stack({ key: `${base}-card`, direction: "column", gap: "2", align: "start" }, [
+      Stack({ key: `${base}-header`, direction: "row", gap: "2", align: "center" }, [
+        Badge({
+          key: `${base}-chip`,
+          label: (card.questions[0]?.header ?? "") === "" ? "Question" : card.questions[0]!.header,
+          tone: "info",
+          a11y: { label: "Agent question awaiting your answer" },
+        }),
+      ]),
+      ...card.questions.flatMap((question, questionIndex) => {
+        const selected = interaction?.selections[questionIndex] ?? []
+        return [
+          Text({
+            key: `${base}-q${questionIndex}`,
+            content: question.question,
+            variant: "body",
+            color: "textPrimary",
+          }),
+          ...question.options.flatMap((option, optionIndex) => [
+            Stack(
+              {
+                key: `${base}-q${questionIndex}-opt-${optionIndex}`,
+                direction: "column",
+                gap: "0.5",
+                align: "start",
+              },
+              [
+                Button({
+                  key: `${base}-q${questionIndex}-option-${optionIndex}`,
+                  label: option.label,
+                  variant: selected.includes(option.label) ? "secondary" : "ghost",
+                  disabled: !answerAvailable,
+                  onPress: IntentRef("DesktopQuestionOptionSelected", StaticPayload({
+                    questionRef: card.questionRef,
+                    questionIndex,
+                    label: option.label,
+                  })),
+                  a11y: {
+                    label: answerAvailable
+                      ? `${question.multiSelect ? "Toggle" : "Answer"} ${option.label}`
+                      : `${option.label} — answering unavailable until the runtime bridge connects`,
+                  },
+                }),
+                ...(option.description === undefined ? [] : [Text({
+                  key: `${base}-q${questionIndex}-option-${optionIndex}-description`,
+                  content: option.description,
+                  variant: "caption",
+                  color: "textMuted",
+                })]),
+              ],
+            ),
+          ]),
+        ]
+      }),
+      ...(anyMulti ? [Button({
+        key: `${base}-confirm`,
+        label: "Confirm",
+        variant: "primary",
+        disabled: !answerAvailable ||
+          interaction === undefined ||
+          !card.questions.every((_, index) => (interaction.selections[index]?.length ?? 0) >= 1),
+        onPress: IntentRef("DesktopQuestionSubmitted", StaticPayload(card.questionRef)),
+        a11y: { label: "Confirm selected answers" },
+      })] : []),
+    ])],
+  }
+}
 
 const historySidebarItems = (state: DesktopShellState) => {
   const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount)
@@ -1551,10 +2046,23 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
         expanded: state.agentGraphExpanded,
         selectedAgentRef: state.selectedAgentRef,
       })]
+  // EP250 tool/question cards: system trace notes fold into typed cards
+  // (one updating card per tool invocation); everything else stays a note.
   const transcript = Transcript({
     key: "shell-transcript",
     pinToEnd: true,
-    messages: state.notes.map(noteMessage),
+    messages: projectTranscriptEntries(state.notes).map((entry) =>
+      entry.kind === "tool"
+        ? toolCardMessage(entry.card, state.expandedToolCards.includes(entry.card.key))
+        : entry.kind === "question"
+          ? questionCardMessage(
+              entry.note,
+              entry.note.question === undefined
+                ? undefined
+                : state.questionCards[entry.note.question.questionRef],
+              state.questionAnswerHostAvailable,
+            )
+          : noteMessage(entry.note)),
     style: {
       width: "full",
       maxWidth: columnWidth,

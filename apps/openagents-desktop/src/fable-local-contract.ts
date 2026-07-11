@@ -22,7 +22,11 @@
  */
 import { Schema } from "@effect-native/core/effect"
 
-import { DesktopThreadSchema, decode } from "./chat-contract.ts"
+import {
+  DesktopThreadSchema,
+  decode,
+  type DesktopToolTrace,
+} from "./chat-contract.ts"
 
 export const FableLocalAvailabilityChannel = "openagents:fable-local:availability" as const
 export const FableLocalStartChannel = "openagents:fable-local:start" as const
@@ -301,6 +305,31 @@ export const fableLocalTraceNoteText = (
   const status = event.kind === "tool_use" ? "started" : event.ok ? "ok" : "failed"
   const summary = event.summary.trim() === "" ? "" : ` · ${event.summary.trim()}`
   return `${event.toolName} · ${status}${summary}`
+}
+
+/** The typed trace metadata carried on the same note (EP250 tool cards). */
+export const fableLocalTraceNoteMeta = (
+  event: Extract<FableLocalEvent, { kind: "tool_use" | "tool_result" }>,
+): DesktopToolTrace => ({
+  toolName: event.toolName,
+  phase: event.kind === "tool_use" ? "started" : event.ok ? "ok" : "failed",
+  summary: event.summary.trim(),
+})
+
+/**
+ * Deterministic inverse of `fableLocalTraceNoteText`, for persisted system
+ * notes written before typed `meta.trace` existed. This parses only our own
+ * bounded serialization format (`<toolName> · <status>[ · <summary>]`) — it
+ * is a fallback for historical thread-store rows, not an intent router.
+ */
+export const parseFableLocalTraceNoteText = (text: string): DesktopToolTrace | null => {
+  const match = /^([A-Za-z0-9_.:/-]{1,120}) · (started|ok|failed)(?: · ([\s\S]*))?$/.exec(text)
+  if (match === null) return null
+  return {
+    toolName: match[1] ?? "",
+    phase: (match[2] ?? "started") as DesktopToolTrace["phase"],
+    summary: (match[3] ?? "").slice(0, FABLE_LOCAL_SUMMARY_LIMIT),
+  }
 }
 
 /**

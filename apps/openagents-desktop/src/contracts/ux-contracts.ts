@@ -6,8 +6,140 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.27",
+    version: "2026-07-11.28",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript chrome",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "that metadata button needs to be way smaller and more like an icon button, not a huge ginormous circle.",
+        authorityBoundary:
+          "Only the details affordance presentation changes: it stays a real keyboard-focusable catalog Button dispatching the same typed DesktopMessageSelected intent with the same accessible label. The catalog IconButton's fixed 44px circle is simply no longer used for this affordance; no local UI primitive is introduced (ghost Button lowered via typed style tokens: zero padding, caption scale, muted color).",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "compact_details_affordance.not_icon_circle",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves every message row's details affordance is a ghost catalog Button (NOT the IconButton circle variant) with zero padding, caption type scale, and muted color, still dispatching DesktopMessageSelected with the message key.",
+          },
+          {
+            id: "compact_details_affordance.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke fails if the rendered details affordance carries the icon-button variant or exceeds a compact line-height bound before opening the inspector through it.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell view suite and the Electron smoke message-inspector step with the compact-affordance guards.",
+      },
+      {
+        contractId: "openagents_desktop.chat.typed_tool_call_cards.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript tool-call rendering",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "why don't you go improve the UI of those tool calls so it's not just JSON stuff? Like I thought we had some custom components that showed things properly, not these JSON blobs.",
+        authorityBoundary:
+          "Tool cards re-present the SAME bounded, redacted trace payloads the system notes already carried — no new data crosses the Electron boundary. One card per invocation updates in place from started to ok/failed (pairing is honest renderer-side toolName+order FIFO because the events carry no invocation id); the bounded raw args/result stay reachable behind a compact expand affordance and are never the default rendering; failure text renders as content. Tool cards drop the SYSTEM role label (the tool title is the header) but keep timestamps.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/tool-cards.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "tool_cards.pairing_humanization_fallback",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/tool-cards.test.ts",
+            description:
+              "Table-driven humanization per known tool (delegate/Agent/Bash/Read/Write/Edit/Glob/Grep/ToolSearch/WebSearch/WebFetch), started+ok folding into one card, unknown-tool bounded compact fallback with no raw JSON, failed-state result text, and the text-parse fallback for pre-typed persisted notes.",
+          },
+          {
+            id: "tool_cards.transcript_rendering",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the transcript renders one role=tool card per invocation with humanized title/detail, toned status chip, result line, no SYSTEM sender label, collapsed-by-default raw details behind the compact toggle, and the expand intent loop through the real registry.",
+          },
+          {
+            id: "tool_cards.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron fixture journey asserts the delegate invocation renders ONE updating card carrying the humanized task text and the child's answer, with no raw JSON args rendered by default anywhere in the transcript.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the tool-card projector suite, the shell view suite, and the Electron smoke tool-card assertions.",
+      },
+      {
+        contractId: "openagents_desktop.chat.interactive_question_cards.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript agent-question cards",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "make the question UI too. Why not? proper effect native primitives and add some if needed.",
+        authorityBoundary:
+          "Question cards render only the bounded typed question_pending payload from the FROZEN additive FableLocalEvent contract and answer only through the typed fableLocal.answerQuestion bridge in the frozen shape (answers: one { question, labels } entry per question, labels an array even for single-select; single-select dispatches on click, multiSelect toggles behind an explicit confirm). A bridge without answerQuestion renders read-only pending — the card never invents answer authority. Outcomes (answered/timeout/denied) come from question_resolved and render as dim resolved states; never raw JSON, never a SYSTEM label. Option rows compose catalog primitives (Button label + caption Text description); no local one-off primitives.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/chat-contract.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "question_cards.intent_loop_and_bridge",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Drives the real intent registry with a fake typed bridge: single-select option click dispatches the answer immediately in the frozen shape, multiSelect toggles then confirms, timeout/denied render dim resolved states, and an absent bridge renders disabled read-only options that dispatch nothing.",
+          },
+          {
+            id: "question_cards.event_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
+            description:
+              "Proves question_pending projects an interactive question note into the streaming transcript and question_resolved updates the same note in place with the runtime-authoritative outcome.",
+          },
+          {
+            id: "question_cards.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron journey renders the fixture question as an interactive card (header chip, option labels, dim description, no SYSTEM label, no raw JSON), clicks an option through the REAL typed answerQuestion IPC, and proves the runtime's typed rejection reverts the card to honest pending with the selection retained.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell question-card suite, the local-harness projection suite, and the Electron smoke question-card step.",
+      },
       {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
         state: "enforced",

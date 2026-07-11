@@ -50,6 +50,9 @@ describe("EP250 chat contracts are registered and enforced (#8712)", () => {
       "openagents_desktop.chat.message_metadata_inspector.v1",
       "openagents_desktop.chat.no_composer_disabled_caption.v1",
       "openagents_desktop.chat.markdown_rendering.v1",
+      "openagents_desktop.chat.compact_message_details_affordance.v1",
+      "openagents_desktop.chat.typed_tool_call_cards.v1",
+      "openagents_desktop.chat.interactive_question_cards.v1",
     ]) {
       expect(openAgentsDesktopUxContractRegistry.contracts.find(
         (contract) => contract.contractId === contractId,
@@ -325,12 +328,30 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((user.body[0] as unknown as AnyNode).content).toBe("**not bold**")
   })
 
-  test("every message row carries the typed details affordance (message metadata inspector)", () => {
+  test("EP250 owner fix: the details affordance is the COMPACT ghost button, not the huge IconButton circle", () => {
+    // Owner statement (verbatim): "that metadata button needs to be way
+    // smaller and more like an icon button, not a huge ginormous circle."
     const assistant = noteMessage({ key: "assistant-1", role: "assistant", text: "hey", timestamp: "18:05" })
     const details = collectNodes(assistant.body).find((node) => node.key === "note-details-assistant-1")
-    expect(details?._tag).toBe("IconButton")
+    // NOT the large circle variant: the catalog IconButton lowers to a fixed
+    // 44px circle in the DOM renderer, so the affordance must be a Button.
+    expect(details?._tag).toBe("Button")
+    expect(details?._tag).not.toBe("IconButton")
+    expect(details?.variant).toBe("ghost")
+    // Compact by typed style: zero padding + caption scale + muted color —
+    // roughly line-height, visually small and dim.
+    expect(details?.style).toMatchObject({ padding: "0", typeScale: "caption", color: "textMuted" })
+    // Keyboard accessible: a real catalog Button with an accessible label.
+    expect(String((details?.a11y as { label?: string })?.label ?? "")).toContain("message details")
     expect((details?.onPress as { name?: string }).name).toBe("DesktopMessageSelected")
     expect(JSON.stringify(details?.onPress)).toContain("assistant-1")
+    // Every role keeps the affordance.
+    for (const role of ["user", "system"] as const) {
+      const row = noteMessage({ key: `${role}-x`, role, text: "t", timestamp: "18:05" })
+      const affordance = collectNodes(row.body).find((node) => node.key === `note-details-${role}-x`)
+      expect(affordance?._tag).toBe("Button")
+      expect(affordance?.style).toMatchObject({ padding: "0", typeScale: "caption" })
+    }
   })
 
   test("composer carries the harness selector with Codex selected by default", () => {
@@ -1151,6 +1172,325 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     // Same thread re-projection keeps the selection while the key survives.
     const sameThread = { ...fresh, id: selected.activeThreadId!, notes: notesState.notes }
     expect(withChatSelected(selected, sameThread).selectedMessageKey).toBe("assistant-1")
+  })
+})
+
+describe("EP250 typed tool-call cards (owner: 'not these JSON blobs')", () => {
+  const delegateStarted = {
+    key: "s1",
+    role: "system" as const,
+    text: 'mcp__codex__delegate · started · {"task":"Say hi in Spanish"}',
+    timestamp: "18:05",
+    meta: { trace: { toolName: "mcp__codex__delegate", phase: "started" as const, summary: '{"task":"Say hi in Spanish"}' } },
+  }
+  const delegateOk = {
+    key: "s2",
+    role: "system" as const,
+    text: "mcp__codex__delegate · ok · Hola desde el fixture.",
+    timestamp: "18:06",
+    meta: { trace: { toolName: "mcp__codex__delegate", phase: "ok" as const, summary: "Hola desde el fixture." } },
+  }
+  const traceState: DesktopShellState = { ...baseState, notes: [
+    { key: "user-1", role: "user" as const, text: "delegate", timestamp: "18:05" },
+    delegateStarted,
+    delegateOk,
+  ] }
+
+  test("started + ok fold into ONE role=tool card: humanized line, toned chip, result line, timestamp, no SYSTEM label", () => {
+    const view = desktopShellView(traceState)
+    const transcript = nodeByKey(view, "shell-transcript") as unknown as {
+      messages: Array<{ key: string; role: string; senderLabel?: string; timestamp?: string }>
+    }
+    // ONE card for the pair — not separate started and ok rows.
+    expect(transcript.messages).toHaveLength(2)
+    const card = transcript.messages[1]!
+    expect(card.role).toBe("tool")
+    expect(card.senderLabel).toBeUndefined()
+    expect(card.timestamp).toBe("18:05")
+    expect(nodeByKey(view, "tool-title-s1")?.content).toBe("Delegate to Codex")
+    expect(nodeByKey(view, "tool-detail-s1")?.content).toBe("Say hi in Spanish")
+    const chip = nodeByKey(view, "tool-status-s1")
+    expect(chip?._tag).toBe("Badge")
+    expect(chip).toMatchObject({ label: "OK", tone: "success" })
+    expect(String(nodeByKey(view, "tool-result-s1")?.content)).toContain("Hola desde el fixture.")
+    // Raw JSON never renders by default.
+    const texts = collectNodes(view).filter((node) => node._tag === "Text").map((node) => String(node.content ?? ""))
+    expect(texts.some((text) => text.includes('{"task"'))).toBe(false)
+    expect(nodeByKey(view, "tool-raw-args-s1")).toBeUndefined()
+  })
+
+  test("a running invocation shows the neutral Running chip; a failed one shows the reason text prominently", () => {
+    const running = desktopShellView({ ...traceState, notes: [delegateStarted] })
+    expect(nodeByKey(running, "tool-status-s1")).toMatchObject({ label: "Running", tone: "neutral" })
+    expect(nodeByKey(running, "tool-result-s1")).toBeUndefined()
+
+    const failedNote = {
+      ...delegateOk,
+      text: "mcp__codex__delegate · failed · Codex account codex needs reconnection: credentials revoked",
+      meta: { trace: { toolName: "mcp__codex__delegate", phase: "failed" as const, summary: "Codex account codex needs reconnection: credentials revoked" } },
+    }
+    const failed = desktopShellView({ ...traceState, notes: [delegateStarted, failedNote] })
+    expect(nodeByKey(failed, "tool-status-s1")).toMatchObject({ label: "Failed", tone: "danger" })
+    const failure = nodeByKey(failed, "tool-failure-s1")
+    expect(String(failure?.content)).toContain("needs reconnection")
+    expect(failure?.color).toBe("danger")
+  })
+
+  test("the expand toggle is the compact affordance and reveals the bounded raw payload through the typed intent loop", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(traceState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const collapsed = desktopShellView(yield* SubscriptionRef.get(state))
+        const toggle = nodeByKey(collapsed, "tool-details-s1") as {
+          _tag: string
+          variant?: string
+          style?: Record<string, unknown>
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        // Same compact pattern as the message details affordance — never the
+        // 44px IconButton circle.
+        expect(toggle._tag).toBe("Button")
+        expect(toggle.variant).toBe("ghost")
+        expect(toggle.style).toMatchObject({ padding: "0", typeScale: "caption" })
+        yield* registry.dispatch(resolveIntentRef(toggle.onPress, null))
+        const expandedState = yield* SubscriptionRef.get(state)
+        expect(expandedState.expandedToolCards).toEqual(["s1"])
+        const expanded = desktopShellView(expandedState)
+        expect(String(nodeByKey(expanded, "tool-raw-args-s1")?.content)).toBe('{"task":"Say hi in Spanish"}')
+        expect(String(nodeByKey(expanded, "tool-raw-result-s1")?.content)).toContain("Hola desde el fixture.")
+        // Toggle again collapses.
+        const hide = nodeByKey(expanded, "tool-details-s1") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(hide.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).expandedToolCards).toEqual([])
+      }),
+    )
+  })
+
+  test("persisted pre-typed trace notes (text only, no meta) still project as cards", () => {
+    const legacy = desktopShellView({ ...traceState, notes: [
+      { key: "l1", role: "system" as const, text: 'Read · started · {"file_path":"notes.md"}', timestamp: "18:05" },
+      { key: "l2", role: "system" as const, text: "Read · ok · bounded fixture read", timestamp: "18:05" },
+    ] })
+    expect(nodeByKey(legacy, "tool-title-l1")?.content).toBe("Read")
+    expect(nodeByKey(legacy, "tool-detail-l1")?.content).toBe("notes.md")
+    expect(nodeByKey(legacy, "tool-status-l1")).toMatchObject({ label: "OK" })
+  })
+
+  test("ordinary system notes (model caption, errors) stay SYSTEM rows — only trace notes become cards", () => {
+    const view = desktopShellView({ ...traceState, notes: [
+      { key: "m1", role: "system" as const, text: "Fable · claude-fable-5", timestamp: "18:05" },
+      { key: "e1", role: "system" as const, text: "The model request failed.", timestamp: "18:05" },
+    ] })
+    const transcript = nodeByKey(view, "shell-transcript") as unknown as {
+      messages: Array<{ role: string; senderLabel?: string }>
+    }
+    expect(transcript.messages.map((message) => message.role)).toEqual(["system", "system"])
+    expect(transcript.messages.every((message) => message.senderLabel === "SYSTEM")).toBe(true)
+  })
+})
+
+describe("EP250 interactive question cards (owner: 'make the question UI too')", () => {
+  const singleSelectNote = {
+    key: "turn.fable.x-question-question.1",
+    role: "system" as const,
+    text: "Which path should we take?",
+    timestamp: "18:06",
+    question: {
+      turnRef: "turn.fable.x",
+      questionRef: "question.1",
+      status: "pending" as const,
+      questions: [{
+        question: "Which path should we take?",
+        header: "Fixture",
+        multiSelect: false,
+        options: [
+          { label: "Streamed", description: "Keep the streamed path" },
+          { label: "Static" },
+        ],
+      }],
+    },
+  }
+  const multiSelectNote = {
+    ...singleSelectNote,
+    key: "turn.fable.x-question-question.2",
+    question: {
+      ...singleSelectNote.question,
+      questionRef: "question.2",
+      questions: [{
+        question: "Which lanes should run?",
+        header: "Lanes",
+        multiSelect: true,
+        options: [{ label: "A" }, { label: "B" }, { label: "C" }],
+      }],
+    },
+  }
+  const questionState: DesktopShellState = {
+    ...baseState,
+    questionAnswerHostAvailable: true,
+    notes: [singleSelectNote],
+  }
+  const makeAnswerHost = () => {
+    const calls: Array<unknown> = []
+    return {
+      calls,
+      host: { answer: async (input: unknown) => { calls.push(input); return true } },
+    }
+  }
+
+  test("pending card renders header chip, question text, option buttons with dim descriptions — never raw JSON", () => {
+    const view = desktopShellView(questionState)
+    expect(nodeByKey(view, "question-question.1-chip")).toMatchObject({ _tag: "Badge", label: "Fixture", tone: "info" })
+    expect(String(nodeByKey(view, "question-question.1-q0")?.content)).toBe("Which path should we take?")
+    const optionA = nodeByKey(view, "question-question.1-q0-option-0")
+    expect(optionA).toMatchObject({ _tag: "Button", label: "Streamed", disabled: false })
+    const description = nodeByKey(view, "question-question.1-q0-option-0-description")
+    expect(description).toMatchObject({ variant: "caption", color: "textMuted", content: "Keep the streamed path" })
+    // Its own visual class: role=tool message, no SYSTEM sender label.
+    const transcript = nodeByKey(view, "shell-transcript") as unknown as {
+      messages: Array<{ role: string; senderLabel?: string; timestamp?: string }>
+    }
+    expect(transcript.messages[0]).toMatchObject({ role: "tool", timestamp: "18:06" })
+    expect(transcript.messages[0]?.senderLabel).toBeUndefined()
+    const texts = collectNodes(view).filter((node) => node._tag === "Text").map((node) => String(node.content ?? ""))
+    expect(texts.some((text) => text.includes("{") || text.includes("questionRef"))).toBe(false)
+  })
+
+  test("single-select: clicking an option dispatches the typed answer immediately in the frozen shape", async () => {
+    const { calls, host } = makeAnswerHost()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(questionState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, host),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        const option = nodeByKey(view, "question-question.1-q0-option-0") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(option.onPress, null))
+        // FROZEN bridge shape: one { question, labels } entry per question,
+        // labels an array even for single-select.
+        expect(calls).toEqual([{
+          turnRef: "turn.fable.x",
+          questionRef: "question.1",
+          answers: [{ question: "Which path should we take?", labels: ["Streamed"] }],
+        }])
+        const next = yield* SubscriptionRef.get(state)
+        expect(next.questionCards["question.1"]?.answered).toBe(true)
+        // Collapsed answered rendering shows the chosen answer.
+        const answered = desktopShellView(next)
+        expect(nodeByKey(answered, "question-question.1-outcome")).toMatchObject({ label: "Answered", tone: "success" })
+        expect(String(nodeByKey(answered, "question-question.1-resolved-summary")?.content)).toContain("Streamed")
+        expect(nodeByKey(answered, "question-question.1-q0-option-0")).toBeUndefined()
+        // A second click cannot double-submit.
+        yield* registry.dispatch(resolveIntentRef(option.onPress, null))
+        expect(calls).toHaveLength(1)
+      }),
+    )
+  })
+
+  test("multiSelect: options toggle, confirm stays gated until a selection exists, then submits label arrays", async () => {
+    const { calls, host } = makeAnswerHost()
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const multiState: DesktopShellState = { ...questionState, notes: [multiSelectNote] }
+        const state = yield* SubscriptionRef.make(multiState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, host),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        // Confirm is disabled before any selection.
+        expect(nodeByKey(view, "question-question.2-confirm")).toMatchObject({ disabled: true })
+        const optionA = nodeByKey(view, "question-question.2-q0-option-0") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        const optionB = nodeByKey(view, "question-question.2-q0-option-1") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(optionA.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(optionB.onPress, null))
+        // Toggling does NOT auto-submit for multiSelect.
+        expect(calls).toEqual([])
+        const selectedView = desktopShellView(yield* SubscriptionRef.get(state))
+        expect(nodeByKey(selectedView, "question-question.2-q0-option-0")?.variant).toBe("secondary")
+        expect(nodeByKey(selectedView, "question-question.2-confirm")).toMatchObject({ disabled: false })
+        // Re-toggling deselects.
+        yield* registry.dispatch(resolveIntentRef(optionB.onPress, null))
+        const confirm = nodeByKey(selectedView, "question-question.2-confirm") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(confirm.onPress, null))
+        expect(calls).toEqual([{
+          turnRef: "turn.fable.x",
+          questionRef: "question.2",
+          answers: [{ question: "Which lanes should run?", labels: ["A"] }],
+        }])
+      }),
+    )
+  })
+
+  test("a typed bridge rejection (false) reverts the local Answered mark — honest pending, selection retained", async () => {
+    const calls: Array<unknown> = []
+    const rejectingHost = { answer: async (input: unknown) => { calls.push(input); return false } }
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(questionState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, rejectingHost),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        const option = nodeByKey(view, "question-question.1-q0-option-0") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(option.onPress, null))
+        expect(calls).toHaveLength(1)
+        const next = yield* SubscriptionRef.get(state)
+        // The runtime said no: never a fake Answered state.
+        expect(next.questionCards["question.1"]?.answered).toBe(false)
+        expect(next.questionCards["question.1"]?.selections).toEqual([["Streamed"]])
+        const pending = desktopShellView(next)
+        expect(nodeByKey(pending, "question-question.1-outcome")).toBeUndefined()
+        expect(nodeByKey(pending, "question-question.1-q0-option-0")).toMatchObject({ variant: "secondary" })
+      }),
+    )
+  })
+
+  test("timeout and denied outcomes render dim resolved states naming the outcome", () => {
+    for (const [outcome, label, summary] of [
+      ["timeout", "Timed out", "Timed out — no answer was sent."],
+      ["denied", "Denied", "Denied — the question was dismissed."],
+    ] as const) {
+      const view = desktopShellView({
+        ...questionState,
+        notes: [{ ...singleSelectNote, question: { ...singleSelectNote.question, status: outcome } }],
+      })
+      expect(nodeByKey(view, "question-question.1-outcome")).toMatchObject({ label })
+      expect(nodeByKey(view, "question-question.1-resolved-summary")).toMatchObject({ content: summary, color: "textMuted" })
+      expect(nodeByKey(view, "question-question.1-q0-option-0")).toBeUndefined()
+    }
+  })
+
+  test("bridge-absent degradation: options render disabled read-only and dispatch nothing", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make({ ...questionState, questionAnswerHostAvailable: false })
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          // Default question host: answer === null (no bridge).
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        expect(nodeByKey(view, "question-question.1-q0-option-0")).toMatchObject({ disabled: true })
+        const option = nodeByKey(view, "question-question.1-q0-option-0") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(option.onPress, null))
+        const next = yield* SubscriptionRef.get(state)
+        expect(next.questionCards).toEqual({})
+        // Still the pending interactive shape, never raw JSON.
+        const pending = desktopShellView(next)
+        expect(nodeByKey(pending, "question-question.1-chip")).toMatchObject({ label: "Fixture" })
+      }),
+    )
   })
 })
 

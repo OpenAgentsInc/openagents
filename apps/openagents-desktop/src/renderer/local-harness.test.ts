@@ -157,12 +157,83 @@ describe("makeLocalHarnessChatHost", () => {
       model: "claude-fable-5",
     })
     expect(updates.every(update => update.notes.every(note => !note.text.includes("IGNORED")))).toBe(true)
+    // Typed trace facts (EP250 tool cards): trace notes carry the same
+    // bounded payload as their text line, so the shell builds typed cards
+    // without re-parsing display strings.
+    const traceNotes = last.notes.filter(note => note.meta?.trace !== undefined)
+    expect(traceNotes.map(note => note.meta!.trace)).toEqual([
+      { toolName: "Read", phase: "started", summary: "notes.md" },
+      { toolName: "Read", phase: "ok", summary: "" },
+    ])
 
     harness.resolveStart({ ok: true, thread: finalThread })
     const result = await pending
     expect(result).toEqual({ ok: true, thread: finalThread })
     expect(harness.unsubscribed()).toBe(true)
     // LAW: the legacy gateway path was never touched by a harness send.
+    expect(harness.legacySends).toEqual([])
+  })
+
+  test("question_pending projects an interactive question note; question_resolved updates it in place (EP250)", async () => {
+    const harness = makeHarness()
+    const updates: DesktopThread[] = []
+    const pending = harness.host.sendMessage({
+      id: "thread-1",
+      message: "ask me",
+      harness: "fable",
+      onUpdate: thread => updates.push(thread),
+    })
+    await settle()
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "turn_started", thread: threadWithUserNote },
+    })
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: {
+        kind: "question_pending",
+        questionRef: "question.1",
+        questions: [{
+          question: "Which path should we take?",
+          header: "Fixture",
+          multiSelect: false,
+          options: [{ label: "Streamed", description: "Keep streaming" }, { label: "Static" }],
+        }],
+      },
+    })
+    await settle()
+    const withQuestion = updates.at(-1)!
+    const questionNote = withQuestion.notes.find(note => note.question !== undefined)
+    expect(questionNote).toBeDefined()
+    expect(questionNote!.key).toBe("turn.fable.fixed-question-question.1")
+    expect(questionNote!.question).toMatchObject({
+      turnRef: "turn.fable.fixed",
+      questionRef: "question.1",
+      status: "pending",
+    })
+    expect(questionNote!.question!.questions[0]).toMatchObject({
+      question: "Which path should we take?",
+      header: "Fixture",
+      multiSelect: false,
+    })
+    // The runtime-authoritative outcome updates the SAME note in place.
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "question_resolved", questionRef: "question.1", outcome: "timeout" },
+    })
+    await settle()
+    const resolved = updates.at(-1)!
+    const resolvedNotes = resolved.notes.filter(note => note.question !== undefined)
+    expect(resolvedNotes).toHaveLength(1)
+    expect(resolvedNotes[0]!.question!.status).toBe("timeout")
+    // A foreign question ref never mutates this turn's notes.
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "question_resolved", questionRef: "question.unknown", outcome: "denied" },
+    })
+    await settle()
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
     expect(harness.legacySends).toEqual([])
   })
 

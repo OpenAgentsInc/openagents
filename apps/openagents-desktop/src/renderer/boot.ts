@@ -107,6 +107,8 @@ type DesktopBridge = Readonly<{
     start?: (value: unknown) => Promise<unknown>
     interrupt?: (value: unknown) => Promise<unknown>
     onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
+    /** FROZEN question-answer bridge (EP250) — ships with the runtime lane. */
+    answerQuestion?: (value: unknown) => Promise<unknown>
   }>
   usageLedger?: Readonly<{
     snapshot?: () => Promise<unknown>
@@ -287,6 +289,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             ) => () => void,
           }
         : null
+    // Interactive question cards (EP250): the FROZEN answer bridge is
+    // fableLocal.answerQuestion({ turnRef, questionRef, answers }) with
+    // answers as [{ question, labels }]. Defensive: if the bridge is absent,
+    // cards render read-only pending (evidence-gated).
+    const answerQuestion = bridge?.fableLocal?.answerQuestion
+    const questionHost = typeof answerQuestion === "function"
+      ? { answer: (input: Readonly<{ turnRef: string; questionRef: string; answers: ReadonlyArray<{ readonly question: string; readonly labels: ReadonlyArray<string> }> }>) => answerQuestion(input) }
+      : { answer: null }
     let fableAvailability: FableLocalAvailability | null = null
     const localHarnessChat = makeLocalHarnessChatHost({
       base: localChat,
@@ -347,6 +357,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           codex: { available: false, reason: "Codex — requires OpenAgents session" },
         }
     yield* SubscriptionRef.update(state, current => withHarnessLanes(current, harnessLanes))
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      questionAnswerHostAvailable: questionHost.answer !== null,
+    }))
     let historyRequestSequence = 0
     const restoreHistory = (): { selectedThreadRef:string;offset:number;selectedItemRef:string|null;railCollapsed:boolean;expandedThreadRefs:ReadonlyArray<string> } | null => { try { const value=JSON.parse(localStorage.getItem("openagents.desktop.history.v1")??"null");return value&&typeof value.selectedThreadRef==="string"&&Number.isInteger(value.offset)&&value.offset>=0&&value.offset<=1_000_000&&typeof value.railCollapsed==="boolean"&&(value.selectedItemRef===null||typeof value.selectedItemRef==="string")&&Array.isArray(value.expandedThreadRefs)&&value.expandedThreadRefs.every((ref:unknown)=>typeof ref==="string")?value:null } catch{return null} }
     const historyHost = {
@@ -440,7 +454,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost),
     )
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).
