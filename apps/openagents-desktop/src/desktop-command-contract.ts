@@ -76,19 +76,24 @@ export const resolveDesktopCommandBindings = (
   overrides: ReadonlyArray<Readonly<{ commandId: string; chord: string }>>,
 ): DesktopCommandBindingResolution => {
   const known = new Set(desktopCanonicalCommandRegistry.map(value => value.id))
-  const bindings: DesktopCommandBinding[] = desktopCanonicalCommandRegistry.flatMap(command =>
-    command.defaultBindings.map(chord => ({ commandId: command.id, chord })))
+  const validOverrides = new Map<DesktopCommandId, DesktopCommandChord>()
   for (const override of overrides) {
     if (!known.has(override.commandId as DesktopCommandId)) continue
     try {
-      bindings.push({
-        commandId: Schema.decodeUnknownSync(DesktopCommandId)(override.commandId),
-        chord: normalizeDesktopCommandChord(override.chord),
-      })
+      validOverrides.set(
+        Schema.decodeUnknownSync(DesktopCommandId)(override.commandId),
+        normalizeDesktopCommandChord(override.chord),
+      )
     } catch {
       // Malformed user bindings are omitted and remain recoverable in settings.
     }
   }
+  const bindings: DesktopCommandBinding[] = desktopCanonicalCommandRegistry.flatMap(command => {
+    const override = validOverrides.get(command.id)
+    return override === undefined
+      ? command.defaultBindings.map(chord => ({ commandId: command.id, chord }))
+      : [{ commandId: command.id, chord: override }]
+  })
   const byChord = new Map<string, Set<DesktopCommandId>>()
   for (const binding of bindings) {
     const commands = byChord.get(binding.chord) ?? new Set<DesktopCommandId>()
@@ -121,6 +126,40 @@ export type DesktopDeferredCommand = typeof DesktopDeferredCommand.Type
 export const decodeDesktopDeferredCommand = Schema.decodeUnknownSync(DesktopDeferredCommand)
 export const DesktopCommandEventChannel = "openagents:desktop-command:event"
 export const DesktopCommandReadyChannel = "openagents:desktop-command:ready"
+export const DesktopCommandBindingsChannel = "openagents:desktop-command:bindings"
+export const DesktopCommandBindingSaveChannel = "openagents:desktop-command:binding-save"
+export const DesktopCommandBindingsResetChannel = "openagents:desktop-command:bindings-reset"
+
+export const DesktopCommandBindingUpdate = Schema.Struct({
+  commandId: DesktopCommandId,
+  chord: Schema.NullOr(DesktopCommandChord),
+})
+export type DesktopCommandBindingUpdate = typeof DesktopCommandBindingUpdate.Type
+export const decodeDesktopCommandBindingUpdateOrNull = (value: unknown): DesktopCommandBindingUpdate | null => {
+  const decoded = Schema.decodeUnknownExit(DesktopCommandBindingUpdate)(value)
+  return decoded._tag === "Success" ? decoded.value : null
+}
+
+export const DesktopCommandBindingProjection = Schema.Struct({
+  schema: Schema.Literal("openagents.desktop.command_bindings.v1"),
+  rows: Schema.Array(Schema.Struct({
+    commandId: DesktopCommandId,
+    label: Schema.String,
+    defaultBindings: Schema.Array(DesktopCommandChord),
+    overrideBinding: Schema.NullOr(DesktopCommandChord),
+    effectiveBindings: Schema.Array(DesktopCommandChord),
+    conflict: Schema.Boolean,
+  })),
+  conflicts: Schema.Array(Schema.Struct({
+    chord: DesktopCommandChord,
+    commandIds: Schema.Array(DesktopCommandId),
+  })),
+})
+export type DesktopCommandBindingProjection = typeof DesktopCommandBindingProjection.Type
+export const decodeDesktopCommandBindingProjectionOrNull = (value: unknown): DesktopCommandBindingProjection | null => {
+  const decoded = Schema.decodeUnknownExit(DesktopCommandBindingProjection)(value)
+  return decoded._tag === "Success" ? decoded.value : null
+}
 
 export const decodeDesktopDeferredCommandOrNull = (value: unknown): DesktopDeferredCommand | null => {
   const decoded = Schema.decodeUnknownExit(DesktopDeferredCommand)(value)

@@ -70,7 +70,12 @@ import {
   emptyDesktopCodingCatalogProjection,
   type DesktopCodingCatalogProjection,
 } from "../coding-catalog-contract.ts"
-import type { DesktopDeferredCommand } from "../desktop-command-contract.ts"
+import {
+  decodeDesktopCommandBindingProjectionOrNull,
+  type DesktopCommandBindingProjection,
+  type DesktopCommandId,
+  type DesktopDeferredCommand,
+} from "../desktop-command-contract.ts"
 import { resolveDesktopDeferredCommandIntent } from "./command-registry.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
@@ -127,6 +132,9 @@ type DesktopBridge = Readonly<{
   commands?: Readonly<{
     onCommand?: (listener: (command: DesktopDeferredCommand) => void) => () => void
     ready?: () => Promise<unknown>
+    bindings?: () => Promise<unknown>
+    saveBinding?: (value: unknown) => Promise<unknown>
+    resetBindings?: () => Promise<unknown>
   }>
 }>
 
@@ -345,6 +353,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           : () => bridge.codingCatalog!.recover!({ sessionRef }),
       ),
     }
+    const decodeCommandBindings = (value: unknown): DesktopCommandBindingProjection | null =>
+      decodeDesktopCommandBindingProjectionOrNull(value)
+    const commandBindingHost = {
+      snapshot: async () => decodeCommandBindings(await bridge?.commands?.bindings?.()),
+      save: async (input: Readonly<{ commandId: DesktopCommandId; chord: string | null }>) =>
+        decodeCommandBindings(await bridge?.commands?.saveBinding?.(input)),
+      reset: async () => decodeCommandBindings(await bridge?.commands?.resetBindings?.()),
+    }
     // Evidence-gated composer lanes (#8712), resolved BEFORE first mount so
     // the chips never flash an unproven state.
     if (fableLocalBridge !== null && selection.mode === "local") {
@@ -461,7 +477,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost, commandBindingHost),
     )
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).

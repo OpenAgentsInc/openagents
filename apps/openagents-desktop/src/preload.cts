@@ -85,6 +85,11 @@ import {
 import {
   DesktopCommandEventChannel,
   DesktopCommandReadyChannel,
+  DesktopCommandBindingsChannel,
+  DesktopCommandBindingSaveChannel,
+  DesktopCommandBindingsResetChannel,
+  decodeDesktopCommandBindingProjectionOrNull,
+  decodeDesktopCommandBindingUpdateOrNull,
   decodeDesktopDeferredCommandOrNull,
   type DesktopDeferredCommand,
 } from "./desktop-command-contract.ts"
@@ -263,6 +268,18 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     },
   },
   commands: {
+    bindings: async () => decodeDesktopCommandBindingProjectionOrNull(
+      await ipcRenderer.invoke(DesktopCommandBindingsChannel),
+    ),
+    saveBinding: async (value: unknown) => {
+      const update = decodeDesktopCommandBindingUpdateOrNull(value)
+      return update === null ? null : decodeDesktopCommandBindingProjectionOrNull(
+        await ipcRenderer.invoke(DesktopCommandBindingSaveChannel, update),
+      )
+    },
+    resetBindings: async () => decodeDesktopCommandBindingProjectionOrNull(
+      await ipcRenderer.invoke(DesktopCommandBindingsResetChannel),
+    ),
     onCommand: (listener: (command: DesktopDeferredCommand) => void) => {
       const handler = (_event: unknown, value: unknown): void => {
         const command = decodeDesktopDeferredCommandOrNull(value)

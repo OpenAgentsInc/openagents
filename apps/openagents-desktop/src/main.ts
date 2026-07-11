@@ -139,7 +139,12 @@ import {
 import {
   DesktopCommandEventChannel,
   DesktopCommandReadyChannel,
+  DesktopCommandBindingsChannel,
+  DesktopCommandBindingSaveChannel,
+  DesktopCommandBindingsResetChannel,
+  decodeDesktopCommandBindingUpdateOrNull,
   desktopCanonicalCommandRegistry,
+  type DesktopCommandBindingProjection,
 } from "./desktop-command-contract.ts"
 import {
   deferredDesktopCommand,
@@ -147,6 +152,11 @@ import {
   makeDesktopCommandHost,
   parseDesktopCommandUrl,
 } from "./desktop-command-host.ts"
+import {
+  commandBindingForNativeMenu,
+  openDesktopCommandBindingStore,
+  type DesktopCommandBindingStore,
+} from "./desktop-command-bindings.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -154,6 +164,7 @@ const primaryDesktopInstance = app.requestSingleInstanceLock()
 if (!primaryDesktopInstance) app.quit()
 const desktopCommandHost = makeDesktopCommandHost()
 let desktopCommandWindow: BrowserWindow | null = null
+let desktopCommandBindings: DesktopCommandBindingStore | null = null
 
 const focusDesktopCommandWindow = (): void => {
   const window = desktopCommandWindow ?? BrowserWindow.getAllWindows()[0] ?? null
@@ -397,6 +408,22 @@ ipcMain.handle(DesktopCommandReadyChannel, (event) => {
     if (!window.isDestroyed()) window.webContents.send(DesktopCommandEventChannel, command)
   })
   return true
+})
+ipcMain.handle(DesktopCommandBindingsChannel, (event) =>
+  isTrustedRuntimeGatewaySender(event) ? desktopCommandBindings?.snapshot() ?? null : null)
+ipcMain.handle(DesktopCommandBindingSaveChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event) || desktopCommandBindings === null) return null
+  const update = decodeDesktopCommandBindingUpdateOrNull(value)
+  if (update === null) return null
+  const next = desktopCommandBindings.save(update)
+  installDesktopCommandMenu(next)
+  return next
+})
+ipcMain.handle(DesktopCommandBindingsResetChannel, (event) => {
+  if (!isTrustedRuntimeGatewaySender(event) || desktopCommandBindings === null) return null
+  const next = desktopCommandBindings.reset()
+  installDesktopCommandMenu(next)
+  return next
 })
 
 ipcMain.handle(DesktopRuntimeGatewayInvokeChannel, (event, value: unknown) => {
@@ -1136,6 +1163,28 @@ const smokeCloseSettings = `(async () => {
   return { ok: document.querySelector('[data-en-key="shell-main"]') !== null }
 })()`
 
+const smokeWaitForSecondInstanceSettings = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 8000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="desktop-command-bindings"]') === null) {
+    await wait(50)
+  }
+  return {
+    ok: document.querySelector('[data-en-key="settings-screen"]') !== null &&
+      document.querySelector('[data-en-key="desktop-command-bindings"]') !== null,
+  }
+})()`
+
+const smokeWaitForDuplicateCommandNotice = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 8000
+  while (Date.now() < deadline && !(document.querySelector('[data-en-key="desktop-command-notice"]')?.textContent ?? '').includes('duplicate')) {
+    await wait(50)
+  }
+  const notice = document.querySelector('[data-en-key="desktop-command-notice"]')?.textContent ?? ''
+  return { ok: notice.includes('duplicate') && document.querySelector('[data-en-key="settings-screen"]') === null, notice }
+})()`
+
 // Regression guard (#8712 polish): New chat from a LOADED Codex history page
 // must land in a fresh empty transcript, never the historical conversation.
 const smokeNewChatFromHistory = `(async () => {
@@ -1482,6 +1531,32 @@ const captureShot = async (window: BrowserWindow, name: string): Promise<void> =
   console.log(`[openagents-desktop smoke] shot ${name}.png`)
 }
 
+const launchSmokeSecondInstance = async (): Promise<void> => {
+  const { spawn } = await import("node:child_process")
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [app.getAppPath(), "openagents://command/settings.open"],
+      {
+        env: { ...process.env, OPENAGENTS_DESKTOP_SMOKE: "0" },
+        stdio: "ignore",
+      },
+    )
+    const timeout = setTimeout(() => {
+      child.kill()
+      reject(new Error("second-instance command process did not exit"))
+    }, 8_000)
+    child.once("error", error => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+    child.once("exit", code => {
+      clearTimeout(timeout)
+      code === 0 || code === null ? resolve() : reject(new Error(`second-instance command exited ${code}`))
+    })
+  })
+}
+
 const runSmoke = (window: BrowserWindow): void => {
   const finish = (code: 0 | 1): void => {
     hostLifecycle.dispose()
@@ -1537,6 +1612,11 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("command-palette-host-routing", smokeWaitForHostCommandPalette)
         await captureShot(window, "02-command-palette")
         await step("command-palette-close", smokeCloseCommandPalette)
+        await launchSmokeSecondInstance()
+        await step("command-second-instance-deep-link", smokeWaitForSecondInstanceSettings)
+        await step("command-second-instance-close-settings", smokeCloseSettings)
+        await launchSmokeSecondInstance()
+        await step("command-duplicate-visible-rejection", smokeWaitForDuplicateCommandNotice)
         await step("recent-codex-history-selected-detail", smokeCodexHistoryDetails)
         await step("codex-trace-acceptance", traceAcceptanceJourney)
         await captureShot(window, "03-codex-history-detail")
@@ -1589,12 +1669,22 @@ const nativeCommandAccelerator = (bindings: ReadonlyArray<string>): string | und
   return preferred?.replace(/^Meta\+/, "CmdOrCtrl+").replace(/^Control\+/, "CmdOrCtrl+")
 }
 
-const installDesktopCommandMenu = (): void => {
+const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): void => {
   const commandItems: MenuItemConstructorOptions[] = desktopCanonicalCommandRegistry.map(command => ({
     label: command.label,
-    ...(nativeCommandAccelerator(command.defaultBindings) === undefined
+    ...(nativeCommandAccelerator(
+      bindings === undefined
+        ? command.defaultBindings
+        : (commandBindingForNativeMenu(bindings, command.id) === undefined
+            ? []
+            : [commandBindingForNativeMenu(bindings, command.id)!]),
+    ) === undefined
       ? {}
-      : { accelerator: nativeCommandAccelerator(command.defaultBindings) }),
+      : { accelerator: nativeCommandAccelerator(
+          bindings === undefined
+            ? command.defaultBindings
+            : [commandBindingForNativeMenu(bindings, command.id)!],
+        ) }),
     click: () => {
       desktopCommandHost.enqueue(deferredDesktopCommand(command, "native_menu"))
     },
@@ -1617,7 +1707,10 @@ void app.whenReady().then(async () => {
   // PNG so the running desktop application has one product identity.
   if (process.platform === "darwin") app.dock?.setIcon(desktopIconPath)
   if (app.isPackaged) app.setAsDefaultProtocolClient("openagents")
-  installDesktopCommandMenu()
+  desktopCommandBindings = openDesktopCommandBindingStore(
+    path.join(app.getPath("userData"), "commands", "bindings.json"),
+  )
+  installDesktopCommandMenu(desktopCommandBindings.snapshot())
   hardenSession()
   try {
     const syncHost = openDesktopSyncHost({

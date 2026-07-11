@@ -4,7 +4,7 @@
  * dispatch -> handler -> SubscriptionRef -> re-rendered view.
  */
 import { describe, expect, test } from "bun:test"
-import { resolveIntentRef, type View } from "@effect-native/core"
+import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
@@ -34,6 +34,7 @@ import {
   withPending,
   withTurnResult,
   type DesktopShellState,
+  type CommandBindingHost,
   type HarnessLanes,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
@@ -525,6 +526,36 @@ describe("pure transitions", () => {
     expect(rejected.workspace).toBe(baseState.workspace)
   })
 
+  test("settings renders editable shortcuts and conflict recovery actions", () => {
+    const commandBindings = {
+      schema: "openagents.desktop.command_bindings.v1" as const,
+      rows: [{
+        commandId: "settings.open" as const,
+        label: "Open Settings",
+        defaultBindings: ["Meta+," as const, "Control+," as const],
+        overrideBinding: "Meta+N" as const,
+        effectiveBindings: [],
+        conflict: true,
+      }],
+      conflicts: [{
+        chord: "Meta+N" as const,
+        commandIds: ["chat.new" as const, "settings.open" as const],
+      }],
+    }
+    const view = desktopShellView({
+      ...baseState,
+      workspace: "settings",
+      commandBindings,
+      commandBindingSelectedId: "settings.open",
+      commandBindingDraft: "Meta+N",
+    })
+    expect(nodeByKey(view, "desktop-command-binding-settings.open")?._tag).toBe("Button")
+    expect(nodeByKey(view, "desktop-command-binding-draft")?._tag).toBe("TextField")
+    expect(nodeByKey(view, "desktop-command-binding-conflict-Meta+N")?.content).toContain("disabled")
+    expect(nodeByKey(view, "desktop-command-binding-remove")?._tag).toBe("Button")
+    expect(nodeByKey(view, "desktop-command-bindings-reset")?._tag).toBe("Button")
+  })
+
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
     const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
     expect(activeFleet.fleetDeskOpen).toBe(true)
@@ -737,6 +768,55 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         expect(after.commandPaletteOpen).toBe(false)
       }),
     )
+  })
+
+  test("keybinding edit, conflict, remove, and reset run through typed intents", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const baseProjection = {
+        schema: "openagents.desktop.command_bindings.v1" as const,
+        rows: [{ commandId: "settings.open" as const, label: "Open Settings", defaultBindings: ["Meta+," as const], overrideBinding: null, effectiveBindings: ["Meta+," as const], conflict: false }],
+        conflicts: [],
+      }
+      const conflictProjection = {
+        ...baseProjection,
+        rows: [{ ...baseProjection.rows[0]!, overrideBinding: "Meta+N" as const, effectiveBindings: [], conflict: true }],
+        conflicts: [{ chord: "Meta+N" as const, commandIds: ["chat.new" as const, "settings.open" as const] }],
+      }
+      const saves: Array<Readonly<{ commandId: string; chord: string | null }>> = []
+      let resets = 0
+      const commandHost: CommandBindingHost = {
+        snapshot: async () => baseProjection,
+        save: async input => {
+          saves.push(input)
+          return input.chord === null ? baseProjection : conflictProjection
+        },
+        reset: async () => { resets += 1; return baseProjection },
+      }
+      const state = yield* SubscriptionRef.make<DesktopShellState>({
+        ...baseState,
+        workspace: "settings",
+        commandBindings: baseProjection,
+      })
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(
+          state, fixedNow,
+          undefined, undefined, undefined, undefined, undefined, undefined,
+          undefined, undefined, undefined, undefined, undefined,
+          commandHost,
+        ),
+      )
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandBindingSelected", StaticPayload("settings.open"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandBindingDraftChanged", StaticPayload("Cmd+N"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandBindingSaved", StaticPayload(null))))
+      expect(saves).toEqual([{ commandId: "settings.open", chord: "Meta+N" }])
+      expect((yield* SubscriptionRef.get(state)).commandBindings?.conflicts).toHaveLength(1)
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandBindingRemoved", StaticPayload(null))))
+      expect(saves.at(-1)).toEqual({ commandId: "settings.open", chord: null })
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandBindingsReset", StaticPayload(null))))
+      expect(resets).toBe(1)
+      expect((yield* SubscriptionRef.get(state)).commandBindingSelectedId).toBeNull()
+    }))
   })
 
   test("workspace save sends one revision-bound request and requires explicit reload after conflict", async () => {

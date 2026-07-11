@@ -63,6 +63,11 @@ import type {
 } from "../workspace-contract.ts"
 import { desktopCommandRegistry } from "./command-registry.ts"
 import {
+  normalizeDesktopCommandChord,
+  type DesktopCommandBindingProjection,
+  type DesktopCommandId,
+} from "../desktop-command-contract.ts"
+import {
   emptyFleetWorkspaceState,
   fleetWorkspaceIntents,
   fleetWorkspaceView,
@@ -205,6 +210,9 @@ export type DesktopShellState = Readonly<{
   commandPaletteOpen: boolean
   /** Public-safe result of the latest deferred/native command admission. */
   commandNotice: string | null
+  commandBindings: DesktopCommandBindingProjection | null
+  commandBindingSelectedId: DesktopCommandId | null
+  commandBindingDraft: string
   /** True only while the platform command modifier is held. */
   historyShortcutHintsVisible: boolean
   /** The desktop-only planning deck; it has no deployment authority itself. */
@@ -275,6 +283,9 @@ export const initialDesktopShellState = (
   workspaceGitDiff: null,
   commandPaletteOpen: false,
   commandNotice: null,
+  commandBindings: null,
+  commandBindingSelectedId: null,
+  commandBindingDraft: "",
   historyShortcutHintsVisible: false,
   fleetDeskOpen: false,
   fleetObjective: "",
@@ -364,6 +375,11 @@ export const DesktopWorkspaceReloadRequested = defineIntent("DesktopWorkspaceRel
 export const DesktopWorkspaceGitDiffSelected = defineIntent("DesktopWorkspaceGitDiffSelected", Schema.String)
 export const DesktopCommandPaletteToggled = defineIntent("DesktopCommandPaletteToggled", Schema.Null)
 export const DesktopCommandPaletteDismissed = defineIntent("DesktopCommandPaletteDismissed", Schema.Null)
+export const DesktopCommandBindingSelected = defineIntent("DesktopCommandBindingSelected", Schema.String)
+export const DesktopCommandBindingDraftChanged = defineIntent("DesktopCommandBindingDraftChanged", Schema.String)
+export const DesktopCommandBindingSaved = defineIntent("DesktopCommandBindingSaved", Schema.Null)
+export const DesktopCommandBindingRemoved = defineIntent("DesktopCommandBindingRemoved", Schema.Null)
+export const DesktopCommandBindingsReset = defineIntent("DesktopCommandBindingsReset", Schema.Null)
 export const DesktopHistoryShortcutHintsChanged = defineIntent("DesktopHistoryShortcutHintsChanged", Schema.Boolean)
 export const DesktopHistoryConversationPreviewed = defineIntent("DesktopHistoryConversationPreviewed", Schema.String)
 
@@ -398,6 +414,11 @@ export const desktopShellIntents = [
   DesktopWorkspaceGitDiffSelected,
   DesktopCommandPaletteToggled,
   DesktopCommandPaletteDismissed,
+  DesktopCommandBindingSelected,
+  DesktopCommandBindingDraftChanged,
+  DesktopCommandBindingSaved,
+  DesktopCommandBindingRemoved,
+  DesktopCommandBindingsReset,
   DesktopHistoryShortcutHintsChanged,
   DesktopHistoryConversationPreviewed,
   ...settingsIntents,
@@ -773,6 +794,18 @@ const unavailableCodingCatalogHost: CodingCatalogHost = {
   recover: async () => emptyDesktopCodingCatalogProjection(),
 }
 
+export type CommandBindingHost = Readonly<{
+  snapshot: () => Promise<DesktopCommandBindingProjection | null>
+  save: (input: Readonly<{ commandId: DesktopCommandId; chord: string | null }>) => Promise<DesktopCommandBindingProjection | null>
+  reset: () => Promise<DesktopCommandBindingProjection | null>
+}>
+
+const unavailableCommandBindingHost: CommandBindingHost = {
+  snapshot: async () => null,
+  save: async () => null,
+  reset: async () => null,
+}
+
 export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
   const active = state.activeThreadId === null ? threads[0] : threads.find((thread) => thread.id === state.activeThreadId)
   return active === undefined
@@ -885,6 +918,7 @@ export const makeDesktopShellHandlers = (
   providerAccountsBridge: ProviderAccountsSettingsBridge = unavailableProviderAccountsSettingsBridge,
   codingCatalogHost: CodingCatalogHost = unavailableCodingCatalogHost,
   questionHost: QuestionHost = { answer: null },
+  commandBindingHost: CommandBindingHost = unavailableCommandBindingHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge)
   /**
@@ -916,6 +950,63 @@ export const makeDesktopShellHandlers = (
   return ({
   ...settingsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
+  DesktopSettingsToggled: () => Effect.gen(function* () {
+    yield* settingsHandlers.DesktopSettingsToggled()
+    const bindings = yield* Effect.promise(commandBindingHost.snapshot)
+    yield* SubscriptionRef.update(state, current => ({ ...current, commandBindings: bindings }))
+  }),
+  DesktopCommandBindingSelected: (commandId) => SubscriptionRef.update(state, current => {
+    const row = current.commandBindings?.rows.find(value => value.commandId === commandId)
+    return row === undefined
+      ? current
+      : {
+          ...current,
+          commandBindingSelectedId: row.commandId,
+          commandBindingDraft: row.overrideBinding ?? row.effectiveBindings[0] ?? "",
+        }
+  }),
+  DesktopCommandBindingDraftChanged: (value) => SubscriptionRef.update(state, current => ({
+    ...current,
+    commandBindingDraft: value.slice(0, 80),
+  })),
+  DesktopCommandBindingSaved: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.commandBindingSelectedId === null) return
+    let chord: string
+    try {
+      chord = normalizeDesktopCommandChord(current.commandBindingDraft)
+    } catch {
+      yield* SubscriptionRef.update(state, value => ({ ...value, commandNotice: "Use a shortcut such as Meta+Shift+K or Control+K." }))
+      return
+    }
+    const bindings = yield* Effect.promise(() => commandBindingHost.save({ commandId: current.commandBindingSelectedId!, chord }))
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      commandBindings: bindings,
+      commandNotice: bindings === null ? "Keybindings are unavailable." : null,
+    }))
+  }),
+  DesktopCommandBindingRemoved: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.commandBindingSelectedId === null) return
+    const bindings = yield* Effect.promise(() => commandBindingHost.save({ commandId: current.commandBindingSelectedId!, chord: null }))
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      commandBindings: bindings,
+      commandBindingDraft: bindings?.rows.find(row => row.commandId === current.commandBindingSelectedId)?.effectiveBindings[0] ?? "",
+      commandNotice: bindings === null ? "Keybindings are unavailable." : null,
+    }))
+  }),
+  DesktopCommandBindingsReset: () => Effect.gen(function* () {
+    const bindings = yield* Effect.promise(commandBindingHost.reset)
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      commandBindings: bindings,
+      commandBindingSelectedId: null,
+      commandBindingDraft: "",
+      commandNotice: bindings === null ? "Keybindings are unavailable." : null,
+    }))
+  }),
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
   DesktopNoteSubmitted: (value) =>
@@ -2126,6 +2217,54 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
   })]
 }
 
+const commandBindingSettings = (state: DesktopShellState): View => {
+  const selected = state.commandBindingSelectedId === null
+    ? null
+    : state.commandBindings?.rows.find(value => value.commandId === state.commandBindingSelectedId) ?? null
+  return Stack(
+    { key: "desktop-command-bindings", direction: "column", gap: "2", padding: "3", style: { width: "full" } },
+    [
+      Text({ key: "desktop-command-bindings-title", content: "Keyboard shortcuts", variant: "heading", color: "textPrimary" }),
+      Text({
+        key: "desktop-command-bindings-copy",
+        content: "Select a command, enter one shortcut, and save. Conflicts disable that shortcut until you change or remove it.",
+        variant: "body",
+        color: "textMuted",
+      }),
+      ...(state.commandBindings === null
+        ? [Text({ key: "desktop-command-bindings-unavailable", content: "Keyboard shortcuts are unavailable.", variant: "caption", color: "warning" })]
+        : state.commandBindings.rows.map(row => Button({
+            key: `desktop-command-binding-${row.commandId}`,
+            label: `${row.label} · ${row.overrideBinding ?? (row.effectiveBindings.join(" / ") || "Unassigned")}${row.conflict ? " · Conflict" : ""}`,
+            variant: state.commandBindingSelectedId === row.commandId ? "secondary" : "ghost",
+            onPress: IntentRef("DesktopCommandBindingSelected", StaticPayload(row.commandId)),
+            a11y: { label: `Edit shortcut for ${row.label}` },
+          }))),
+      ...(selected === null ? [] : [
+        TextField({
+          key: "desktop-command-binding-draft",
+          value: state.commandBindingDraft,
+          placeholder: "Meta+Shift+K",
+          a11y: { label: `Shortcut for ${selected.label}` },
+          onChange: IntentRef("DesktopCommandBindingDraftChanged", ComponentValueBinding()),
+          style: { width: "full" },
+        }),
+        Stack({ key: "desktop-command-binding-actions", direction: "row", gap: "2" }, [
+          Button({ key: "desktop-command-binding-save", label: "Save shortcut", variant: "primary", disabled: state.commandBindingDraft.trim() === "", onPress: IntentRef("DesktopCommandBindingSaved") }),
+          Button({ key: "desktop-command-binding-remove", label: "Use defaults", variant: "secondary", onPress: IntentRef("DesktopCommandBindingRemoved") }),
+        ]),
+      ]),
+      ...(state.commandBindings?.conflicts.map(conflict => Text({
+        key: `desktop-command-binding-conflict-${conflict.chord}`,
+        content: `${conflict.chord} conflicts across ${conflict.commandIds.length} commands and is disabled.`,
+        variant: "caption",
+        color: "warning",
+      })) ?? []),
+      Button({ key: "desktop-command-bindings-reset", label: "Reset all shortcuts", variant: "ghost", onPress: IntentRef("DesktopCommandBindingsReset") }),
+    ],
+  )
+}
+
 export const desktopShellView = (state: DesktopShellState): View =>
   BackgroundGradient(
     {
@@ -2160,7 +2299,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette()] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),
         ],
       ),
     ],
