@@ -13,6 +13,7 @@ import {
   type TranscriptMessage,
   type View,
 } from "@effect-native/core"
+import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
 
 /**
  * The public Khala mode: one conversation over the public orchestration
@@ -52,6 +53,11 @@ export type KhalaInteraction = Readonly<{
   decisionRef?: string
 }>
 
+export type KhalaRuntimeTurn = Readonly<{
+  runRef: string
+  status: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled"
+}>
+
 export interface KhalaState {
   readonly draft: string
   readonly entries: ReadonlyArray<KhalaEntry>
@@ -60,6 +66,9 @@ export interface KhalaState {
   readonly interactionSelections: Readonly<Record<string, Readonly<Record<string, ReadonlyArray<string>>>>>
   readonly interactionSubmittingRef: string | null
   readonly interactionActionsAvailable: boolean
+  readonly runtimeTurn: KhalaRuntimeTurn | null
+  readonly runtimeControlSubmittingAction: MobileRuntimeControlAction | null
+  readonly runtimeControlActionsAvailable: boolean
 }
 
 export const initialKhalaState: KhalaState = {
@@ -70,6 +79,9 @@ export const initialKhalaState: KhalaState = {
   interactionSelections: {},
   interactionSubmittingRef: null,
   interactionActionsAvailable: false,
+  runtimeTurn: null,
+  runtimeControlSubmittingAction: null,
+  runtimeControlActionsAvailable: false,
 }
 
 export interface KhalaTurnClient {
@@ -178,6 +190,72 @@ const interactionBody = (state: KhalaState, entry: KhalaEntry): ReadonlyArray<Vi
   ]
 }
 
+const runtimeControlLabel = (
+  action: MobileRuntimeControlAction,
+  submitting: boolean,
+): string => {
+  if (!submitting) {
+    switch (action) {
+      case "cancel": return "Cancel turn"
+      case "close": return "Close turn"
+      case "resume": return "Resume"
+      case "retry": return "Retry"
+    }
+  }
+  switch (action) {
+    case "cancel": return "Canceling…"
+    case "close": return "Closing…"
+    case "resume": return "Resuming…"
+    case "retry": return "Retrying…"
+  }
+}
+
+const runtimeControlActions = (
+  state: KhalaState,
+): ReadonlyArray<MobileRuntimeControlAction> => {
+  const status = state.runtimeTurn?.status
+  if (status === "queued" || status === "running" || status === "waiting_for_input") {
+    return ["cancel"]
+  }
+  if (status === "canceled") return ["resume", "retry", "close"]
+  if (status === "failed" || status === "completed") return ["retry", "close"]
+  return []
+}
+
+const runtimeControlViews = (state: KhalaState): ReadonlyArray<View> => {
+  const turn = state.runtimeTurn
+  if (turn === null) return []
+  const actions = runtimeControlActions(state)
+  if (actions.length === 0) return []
+  return [Stack(
+    {
+      key: "khala-runtime-controls",
+      direction: "row",
+      gap: "2",
+      align: "center",
+      style: { width: "full" },
+    },
+    actions.map((action) => {
+      const submitting = state.runtimeControlSubmittingAction === action
+      return Button({
+        key: `khala-runtime-${action}`,
+        label: runtimeControlLabel(action, submitting),
+        variant: action === "resume" || (action === "retry" && actions.length === 2)
+          ? "primary"
+          : action === "close"
+            ? "ghost"
+            : "secondary",
+        disabled: !state.runtimeControlActionsAvailable ||
+          state.runtimeControlSubmittingAction !== null,
+        onPress: IntentRef("RuntimeTurnControlRequested", StaticPayload({
+          action,
+          runRef: turn.runRef,
+        })),
+      })
+    }),
+  )]
+}
+
 const boundedText = (value: string): string =>
   value.length > 4_000 ? `${value.slice(0, 4_000)}…` : value
 
@@ -284,6 +362,7 @@ export const renderKhalaSurface = (
         pinToEnd: true,
         style: { width: "full", flex: 1 },
       }),
+      ...runtimeControlViews(state),
       Stack(
         {
           key: "khala-composer-bar",

@@ -315,6 +315,85 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(content).not.toContain('"label":"Accept plan"')
   })
 
+  test("renders exact mobile cancel then confirmed resume/retry/close controls", async () => {
+    const running: MobileConversationThread = {
+      ...initialThread,
+      timeline: {
+        status: { phase: "live", cursor: 20, pendingMutationCount: 0 },
+        run: {
+          runRef: "turn.mobile.control",
+          routeRef: initialThread.threadRef,
+          runtime: "claude_code",
+          backend: "pylon",
+          status: "running",
+          createdAt: now,
+          updatedAt: now,
+          startedAt: now,
+          completedAt: null,
+          failedAt: null,
+          canceledAt: null,
+          version: 20,
+        },
+        events: [],
+      },
+    }
+    const canceled: MobileConversationThread = {
+      ...running,
+      timeline: {
+        ...running.timeline!,
+        run: {
+          ...running.timeline!.run!,
+          status: "canceled",
+          canceledAt: now,
+          version: 21,
+        },
+      },
+    }
+    const controls: unknown[] = []
+    let finish: ((value: { ok: true; thread: MobileConversationThread }) => void) | undefined
+    const host: MobileConversationHost = {
+      listThreads: async () => [running],
+      newThread: async () => ({ ok: true, thread: running }),
+      openThread: async () => running,
+      sendMessage: async () => ({ ok: true, thread: running }),
+      controlTurn: input => new Promise(resolve => {
+        controls.push(input)
+        finish = resolve
+      }),
+    }
+    const program = buildHomeProgram({ conversation: {
+      mode: "sync",
+      host,
+      threads: [running],
+      activeThread: running,
+    } })
+
+    const initial = JSON.stringify(renderContentView(program.initialState))
+    expect(initial).toContain('"label":"Cancel turn"')
+    expect(initial).not.toContain('"label":"Retry"')
+
+    program.khala.controlTurn({ action: "cancel", runRef: "turn.mobile.control" })
+    await Effect.runPromise(settle)
+    const submitting = await Effect.runPromise(lastState(program))
+    expect(submitting.khala.runtimeControlSubmittingAction).toBe("cancel")
+    expect(JSON.stringify(renderContentView(submitting))).toContain('"label":"Canceling…","variant":"secondary","disabled":true')
+    expect(controls).toMatchObject([{
+      action: "cancel",
+      runRef: "turn.mobile.control",
+      threadRef: initialThread.threadRef,
+    }])
+
+    finish?.({ ok: true, thread: canceled })
+    await Effect.runPromise(settle)
+    const confirmed = await Effect.runPromise(lastState(program))
+    expect(confirmed.khala.runtimeControlSubmittingAction).toBeNull()
+    const confirmedView = JSON.stringify(renderContentView(confirmed))
+    expect(confirmedView).toContain('"label":"Resume"')
+    expect(confirmedView).toContain('"label":"Retry"')
+    expect(confirmedView).toContain('"label":"Close turn"')
+    expect(confirmedView).not.toContain('"label":"Cancel turn"')
+  })
+
   test("marks a submitted draft pending, then replaces it only with exact confirmed state", async () => {
     let resolveSend: ((value: Awaited<ReturnType<MobileConversationHost["sendMessage"]>>) => void) | undefined
     const confirmed: MobileConversationThread = {

@@ -292,34 +292,58 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })
   })
 
-  test("admits the same message/thread/run refs through the shared runtime command and can interrupt that confirmed run", async () => {
+  test("admits exact confirmed mobile retry/cancel/resume/close controls", async () => {
     const fixture = makeConversation()
     const intents: Array<KhalaRuntimeControlIntent> = []
     let activeRunRef: string | null = null
-    let activeStatus: "completed" | "canceled" = "completed"
+    let activeStatus: "queued" | "completed" | "canceled" = "completed"
     let activeSequence = 0
+    let activeVersion = 8
+    const recordControl = (
+      intent: KhalaRuntimeControlIntent,
+      status: "queued" | "canceled",
+      mutationId: number,
+    ) => Effect.sync(() => {
+      intents.push(intent)
+      activeStatus = status
+      activeSequence += 1
+      activeVersion += 1
+      return MutationId.make(mutationId)
+    })
     const runtime: KhalaSyncRuntimeCommands = {
-      outcome: () => Effect.succeed(null),
+      outcome: input => {
+        const intent = intents.find(candidate => candidate.intentId === input.intentId)
+        if (intent === undefined) return Effect.succeed(null)
+        return Effect.succeed({
+          commandRef: input.intentId,
+          mutationId: null,
+          runRef: activeRunRef,
+          status: intent.kind === "turn.close"
+            ? "settled" as const
+            : intent.kind === "turn.interrupt"
+              ? "canceled" as const
+              : "accepted" as const,
+          threadRef: input.threadRef,
+          updatedAt: now,
+          version: activeVersion,
+        })
+      },
       startTurn: intent => Effect.sync(() => {
         intents.push(intent)
         activeRunRef = intent.turnId ?? null
         activeStatus = "completed"
         activeSequence = 1
+        activeVersion += 1
         return MutationId.make(3)
       }),
       appendUserMessage: intent => Effect.sync(() => {
         intents.push(intent)
         return MutationId.make(4)
       }),
-      continueTurn: () => Effect.succeed(MutationId.make(6)),
-      retryTurn: () => Effect.succeed(MutationId.make(7)),
-      closeTurn: () => Effect.succeed(MutationId.make(8)),
-      interruptTurn: intent => Effect.sync(() => {
-        intents.push(intent)
-        activeStatus = "canceled"
-        activeSequence += 1
-        return MutationId.make(5)
-      }),
+      continueTurn: intent => recordControl(intent, "queued", 6),
+      retryTurn: intent => recordControl(intent, "queued", 7),
+      closeTurn: intent => recordControl(intent, "canceled", 8),
+      interruptTurn: intent => recordControl(intent, "canceled", 5),
     }
     const snapshot = () => ({
       status: { phase: "live" as const, cursor: 8, pendingMutationCount: 0 },
@@ -335,19 +359,29 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
         completedAt: activeStatus === "completed" ? now : null,
         failedAt: null,
         canceledAt: activeStatus === "canceled" ? now : null,
-        version: 8,
+        version: activeVersion,
       },
       events: activeRunRef === null ? [] : [{
         eventRef: `event.mobile.${activeSequence}`,
         runRef: activeRunRef,
         sequence: activeSequence,
-        eventType: activeStatus === "canceled" ? "turn.interrupted" : "turn.finished",
-        summary: activeStatus === "canceled" ? "Interrupted" : "Completed",
+        eventType: activeStatus === "canceled"
+          ? "turn.interrupted"
+          : activeStatus === "queued" ? "turn.queued" : "turn.finished",
+        summary: activeStatus === "canceled"
+          ? "Interrupted"
+          : activeStatus === "queued" ? "Queued" : "Completed",
         status: activeStatus,
         artifactRefs: [],
         item: activeStatus === "canceled"
           ? { kind: "interrupted" as const }
-          : { kind: "terminal" as const, status: "completed" as const },
+          : activeStatus === "queued"
+            ? {
+                kind: "connected" as const,
+                lane: "codex_app_server" as const,
+                turnRef: activeRunRef,
+              }
+            : { kind: "terminal" as const, status: "completed" as const },
         createdAt: now,
         version: 8 + activeSequence,
       }],
@@ -358,7 +392,17 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
       snapshot: () => Effect.succeed(snapshot()),
       snapshotForThread: () => Effect.succeed(snapshot()),
     }
-    const ids = ["runtime-message", "runtime-turn", "runtime-interrupt"]
+    const ids = [
+      "runtime-message",
+      "runtime-turn",
+      "runtime-retry-1",
+      "runtime-cancel-1",
+      "runtime-resume",
+      "runtime-cancel-2",
+      "runtime-retry-2",
+      "runtime-cancel-3",
+      "runtime-close",
+    ]
     const host = makeMobileConversationHost({
       conversation: fixture.conversation,
       runtime,
@@ -380,16 +424,119 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
       turnId: "turn.mobile.runtime-turn",
     })
 
-    const interrupted = await host.interrupt?.({
+    const retried = await host.controlTurn?.({
+      action: "retry",
       runRef: "turn.mobile.runtime-turn",
       threadRef: "thread.synced.1",
     })
-    expect(interrupted?.ok).toBe(true)
-    expect(intents[1]).toMatchObject({
-      kind: "turn.interrupt",
-      threadId: "thread.synced.1",
-      turnId: "turn.mobile.runtime-turn",
+    expect(retried?.ok).toBe(true)
+    expect(intents.at(-1)).toMatchObject({ kind: "turn.retry", target: { lane: "codex_app_server" } })
+
+    expect((await host.interrupt?.({ runRef: "turn.mobile.runtime-turn", threadRef: "thread.synced.1" }))?.ok).toBe(true)
+    expect(intents.at(-1)?.kind).toBe("turn.interrupt")
+    expect((await host.controlTurn?.({ action: "resume", runRef: "turn.mobile.runtime-turn", threadRef: "thread.synced.1" }))?.ok).toBe(true)
+    expect(intents.at(-1)?.kind).toBe("turn.continue")
+    expect((await host.controlTurn?.({ action: "cancel", runRef: "turn.mobile.runtime-turn", threadRef: "thread.synced.1" }))?.ok).toBe(true)
+    expect((await host.controlTurn?.({ action: "retry", runRef: "turn.mobile.runtime-turn", threadRef: "thread.synced.1" }))?.ok).toBe(true)
+    expect((await host.controlTurn?.({ action: "cancel", runRef: "turn.mobile.runtime-turn", threadRef: "thread.synced.1" }))?.ok).toBe(true)
+    expect((await host.controlTurn?.({ action: "close", runRef: "turn.mobile.runtime-turn", threadRef: "thread.synced.1" }))?.ok).toBe(true)
+    expect(intents.map(intent => intent.kind)).toEqual([
+      "turn.start",
+      "turn.retry",
+      "turn.interrupt",
+      "turn.continue",
+      "turn.interrupt",
+      "turn.retry",
+      "turn.interrupt",
+      "turn.close",
+    ])
+  })
+
+  test("binds controls to the confirmed Claude lane and refuses an unknown lane", async () => {
+    const fixture = makeConversation()
+    const intents: Array<KhalaRuntimeControlIntent> = []
+    let runtimeKind: "claude_code" | undefined = "claude_code"
+    let status: "canceled" | "queued" = "canceled"
+    let version = 30
+    const runtime: KhalaSyncRuntimeCommands = {
+      appendUserMessage: () => Effect.succeed(MutationId.make(1)),
+      closeTurn: () => Effect.succeed(MutationId.make(2)),
+      continueTurn: intent => Effect.sync(() => {
+        intents.push(intent)
+        status = "queued"
+        version += 1
+        return MutationId.make(3)
+      }),
+      interruptTurn: () => Effect.succeed(MutationId.make(4)),
+      retryTurn: () => Effect.succeed(MutationId.make(5)),
+      startTurn: () => Effect.succeed(MutationId.make(6)),
+      outcome: input => Effect.succeed(intents.some(intent => intent.intentId === input.intentId)
+        ? {
+            commandRef: input.intentId,
+            mutationId: null,
+            runRef: "turn.mobile.claude",
+            status: "accepted" as const,
+            threadRef: input.threadRef,
+            updatedAt: now,
+            version,
+          }
+        : null),
+    }
+    const snapshot = () => ({
+      status: { phase: "live" as const, cursor: version, pendingMutationCount: 0 },
+      run: {
+        runRef: "turn.mobile.claude",
+        routeRef: "thread.synced.1",
+        ...(runtimeKind === undefined ? {} : { runtime: runtimeKind }),
+        backend: "pylon" as const,
+        status,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        completedAt: null,
+        failedAt: null,
+        canceledAt: status === "canceled" ? now : null,
+        version,
+      },
+      events: [],
     })
+    const timeline: KhalaSyncAgentTimeline = {
+      status: () => snapshot().status,
+      open: () => Effect.void,
+      snapshot: () => Effect.succeed(snapshot()),
+      snapshotForThread: () => Effect.succeed(snapshot()),
+    }
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      runtime,
+      timeline,
+      randomId: () => "claude-control",
+      sleep: async () => undefined,
+    })
+
+    expect((await host.controlTurn?.({
+      action: "resume",
+      runRef: "turn.mobile.claude",
+      threadRef: "thread.synced.1",
+    }))?.ok).toBe(true)
+    expect(intents[0]).toMatchObject({
+      kind: "turn.continue",
+      target: { lane: "claude_pylon" },
+    })
+
+    runtimeKind = undefined
+    status = "canceled"
+    version += 1
+    const refused = await host.controlTurn?.({
+      action: "resume",
+      runRef: "turn.mobile.claude",
+      threadRef: "thread.synced.1",
+    })
+    expect(refused).toEqual({
+      ok: false,
+      error: "The confirmed runtime lane is unavailable.",
+    })
+    expect(intents).toHaveLength(1)
   })
 
   test("surfaces a durable expired result instead of executing after offline delay", async () => {

@@ -1,6 +1,7 @@
 import type { RuntimeInteractionDecision } from "@openagentsinc/khala-sync"
 import type {
   ConfirmedAgentTimelineSnapshot,
+  ConfirmedAgentRun,
   ConfirmedChatMessage,
   ConfirmedChatThread,
   KhalaConversationLiveSnapshot,
@@ -11,7 +12,10 @@ import type {
 } from "@openagentsinc/khala-sync-client"
 import {
   buildAppendUserMessageIntent,
+  buildCloseTurnIntent,
+  buildContinueTurnIntent,
   buildInterruptTurnIntent,
+  buildRetryTurnIntent,
   buildStartTurnIntent,
   buildRuntimeInteractionDecisionCommand,
   openKhalaConversationLive,
@@ -32,6 +36,12 @@ export type MobileConversationMutationResult =
   | Readonly<{ ok: true; thread: MobileConversationThread }>
   | Readonly<{ ok: false; error: string }>
 
+export type MobileRuntimeControlAction =
+  | "cancel"
+  | "close"
+  | "resume"
+  | "retry"
+
 export type MobileConversationHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<MobileConversationThreadSummary>>
   newThread: () => Promise<MobileConversationMutationResult>
@@ -46,6 +56,12 @@ export type MobileConversationHost = Readonly<{
     onUpdate?: (thread: MobileConversationThread) => void
   }>) => Promise<MobileConversationMutationResult>
   interrupt?: (input: Readonly<{
+    threadRef: string
+    runRef: string
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>) => Promise<MobileConversationMutationResult>
+  controlTurn?: (input: Readonly<{
+    action: MobileRuntimeControlAction
     threadRef: string
     runRef: string
     onUpdate?: (thread: MobileConversationThread) => void
@@ -85,6 +101,16 @@ const nextRef = (kind: "thread" | "message", randomId: () => string): string =>
 
 const run = <Value, Error>(effect: Effect.Effect<Value, Error>): Promise<Value> =>
   Effect.runPromise(effect)
+
+const laneForConfirmedRuntime = (
+  runtime: ConfirmedAgentRun["runtime"],
+) => runtime === "claude_code"
+  ? "claude_pylon" as const
+  : runtime === "openagents_native"
+    ? "hosted_khala" as const
+    : runtime === "codex" || runtime === "opencode_codex"
+      ? "codex_app_server" as const
+      : null
 
 export const makeMobileConversationHost = (
   options: MobileConversationAdapterOptions,
@@ -267,6 +293,99 @@ export const makeMobileConversationHost = (
     return resolved
   }
 
+  const confirmedControlOutcome = async (input: Readonly<{
+    action: MobileRuntimeControlAction
+    intentId: string
+    threadRef: string
+    runRef: string
+    previousRunVersion: number
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>): Promise<
+    | Readonly<{ kind: "settled"; thread: MobileConversationThread }>
+    | Readonly<{ kind: "expired" }>
+    | Readonly<{ kind: "failed" }>
+    | null
+  > => {
+    let lastSignature = ""
+    const evaluate = async (
+      thread: MobileConversationThread | null,
+    ): Promise<
+      | Readonly<{ kind: "settled"; thread: MobileConversationThread }>
+      | Readonly<{ kind: "expired" }>
+      | Readonly<{ kind: "failed" }>
+      | null
+    > => {
+      const command = await run(options.runtime!.outcome({
+        intentId: input.intentId,
+        threadRef: input.threadRef,
+      }))
+      if (command?.status === "expired") return { kind: "expired" }
+      if (command?.status === "failed") return { kind: "failed" }
+      const activeRun = thread?.timeline?.run
+      if (thread !== null) {
+        const signature = `${activeRun?.runRef ?? "none"}:${activeRun?.status ?? "none"}:${activeRun?.version ?? 0}`
+        if (signature !== lastSignature) {
+          lastSignature = signature
+          input.onUpdate?.(thread)
+        }
+      }
+      if (
+        command === null || command.status === "pending" || thread === null ||
+        activeRun?.runRef !== input.runRef ||
+        activeRun.version <= input.previousRunVersion
+      ) return null
+      const expected = input.action === "cancel" || input.action === "close"
+        ? activeRun.status === "canceled"
+        : activeRun.status === "queued" || activeRun.status === "running" ||
+          activeRun.status === "waiting_for_input"
+      return expected ? { kind: "settled", thread } : null
+    }
+
+    const initial = await evaluate(await readConfirmedThread(input.threadRef))
+    if (initial !== null) return initial
+
+    let settle!: (outcome:
+      | Readonly<{ kind: "settled"; thread: MobileConversationThread }>
+      | Readonly<{ kind: "expired" }>
+      | Readonly<{ kind: "failed" }>
+      | null
+    ) => void
+    let settled = false
+    const result = new Promise<
+      | Readonly<{ kind: "settled"; thread: MobileConversationThread }>
+      | Readonly<{ kind: "expired" }>
+      | Readonly<{ kind: "failed" }>
+      | null
+    >(resolve => {
+      settle = outcome => {
+        if (settled || outcome === null) return
+        settled = true
+        resolve(outcome)
+      }
+    })
+    let subscription
+    try {
+      subscription = await openKhalaConversationLive({
+        conversation: options.conversation,
+        timeline: options.timeline,
+        subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
+        generation: subscriptionSequence,
+        threadRef: input.threadRef,
+        afterCursor: options.conversation.threadStatus(input.threadRef).cursor,
+      }, async update => {
+        const thread = update.snapshot === null ? null : threadFromSnapshot(update.snapshot)
+        settle(await evaluate(thread))
+      })
+    } catch {
+      return null
+    }
+    const deadline = sleep(Math.max(pollAttempts, 300) * 100).then(() => null)
+    const resolved = await Promise.race([result, deadline])
+    settled = true
+    await subscription.close()
+    return resolved
+  }
+
   const interactionIsTerminal = (
     thread: MobileConversationThread | null,
     interactionRef: string,
@@ -330,6 +449,87 @@ export const makeMobileConversationHost = (
     settled = true
     await subscription.close()
     return resolved
+  }
+
+  const controlTurn = async (input: Readonly<{
+    action: MobileRuntimeControlAction
+    threadRef: string
+    runRef: string
+    onUpdate?: (thread: MobileConversationThread) => void
+  }>): Promise<MobileConversationMutationResult> => {
+    const thread = await confirmedThread(input.threadRef)
+    const activeRun = thread?.timeline?.run
+    if (thread === null || activeRun?.runRef !== input.runRef) {
+      return { ok: false, error: "The confirmed runtime turn is unavailable." }
+    }
+    if (options.runtime === undefined) {
+      return { ok: false, error: "The runtime command service is unavailable." }
+    }
+    const lane = laneForConfirmedRuntime(activeRun.runtime)
+    if (lane === null) {
+      return { ok: false, error: "The confirmed runtime lane is unavailable." }
+    }
+    const allowed = input.action === "cancel"
+      ? activeRun.status === "queued" || activeRun.status === "running" ||
+        activeRun.status === "waiting_for_input"
+      : input.action === "resume"
+        ? activeRun.status === "canceled"
+        : activeRun.status === "completed" || activeRun.status === "failed" ||
+          activeRun.status === "canceled"
+    if (!allowed) {
+      return { ok: false, error: "This control is not valid for the confirmed runtime state." }
+    }
+    const suffix = randomId().replace(/[^A-Za-z0-9._:-]/g, "")
+    const createdAt = now()
+    const commandInput = {
+      commandRef: `mobile.${suffix}`,
+      context: {
+        expiresAtIso: new Date(createdAt.getTime() + commandTtlMs).toISOString(),
+        nowIso: createdAt.toISOString(),
+        surface: "mobile" as const,
+        target: { lane },
+      },
+      threadRef: input.threadRef,
+      turnRef: input.runRef,
+    }
+    const intent = input.action === "cancel"
+      ? buildInterruptTurnIntent(commandInput)
+      : input.action === "resume"
+        ? buildContinueTurnIntent(commandInput)
+        : input.action === "retry"
+          ? buildRetryTurnIntent(commandInput)
+          : buildCloseTurnIntent(commandInput)
+    try {
+      if (input.action === "cancel") {
+        await run(options.runtime.interruptTurn(intent))
+      } else if (input.action === "resume") {
+        await run(options.runtime.continueTurn(intent))
+      } else if (input.action === "retry") {
+        await run(options.runtime.retryTurn(intent))
+      } else {
+        await run(options.runtime.closeTurn(intent))
+      }
+      const outcome = await confirmedControlOutcome({
+        action: input.action,
+        intentId: intent.intentId,
+        onUpdate: input.onUpdate,
+        previousRunVersion: activeRun.version,
+        runRef: input.runRef,
+        threadRef: input.threadRef,
+      })
+      if (outcome === null) {
+        return { ok: false, error: "Runtime control is still pending reconciliation." }
+      }
+      if (outcome.kind === "expired") {
+        return { ok: false, error: "Runtime control expired while this device was offline." }
+      }
+      if (outcome.kind === "failed") {
+        return { ok: false, error: "Runtime control was rejected by the confirmed authority." }
+      }
+      return { ok: true, thread: outcome.thread }
+    } catch {
+      return { ok: false, error: "Runtime control is still pending reconciliation." }
+    }
   }
 
   return {
@@ -451,48 +651,8 @@ export const makeMobileConversationHost = (
           ? { ok: false, error: "Runtime command expired while this device was offline." }
           : { ok: true, thread: settled.thread }
     },
-    interrupt: async input => {
-      const thread = await confirmedThread(input.threadRef)
-      if (thread === null || thread.timeline?.run?.runRef !== input.runRef) {
-        return { ok: false, error: "The confirmed runtime turn is unavailable." }
-      }
-      if (options.runtime === undefined) {
-        return { ok: false, error: "The runtime command service is unavailable." }
-      }
-      try {
-        const previousSequence = Math.max(
-          0,
-          ...(thread.timeline.events.map(event => event.sequence) ?? []),
-        )
-        const createdAt = now()
-        const intent = buildInterruptTurnIntent({
-          commandRef: `mobile.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`,
-          context: {
-            expiresAtIso: new Date(createdAt.getTime() + commandTtlMs).toISOString(),
-            nowIso: createdAt.toISOString(),
-            surface: "mobile",
-            target: { lane: "codex_app_server" },
-          },
-          threadRef: input.threadRef,
-          turnRef: input.runRef,
-        })
-        await run(options.runtime.interruptTurn(intent))
-        const settled = await confirmedRuntimeOutcome({
-          afterSequence: previousSequence,
-          intentId: intent.intentId,
-          onUpdate: input.onUpdate,
-          runRef: input.runRef,
-          threadRef: input.threadRef,
-        })
-        return settled === null
-          ? { ok: false, error: "Interrupt is still pending reconciliation." }
-          : settled.kind === "expired"
-            ? { ok: false, error: "Interrupt expired while this device was offline." }
-            : { ok: true, thread: settled.thread }
-      } catch {
-        return { ok: false, error: "Interrupt is still pending reconciliation." }
-      }
-    },
+    controlTurn,
+    interrupt: input => controlTurn({ ...input, action: "cancel" }),
     decideInteraction: options.interactions === undefined
       ? undefined
       : async input => {

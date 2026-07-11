@@ -28,6 +28,7 @@ import type {
   MobileConversationSelection,
   MobileConversationThread,
   MobileConversationThreadSummary,
+  MobileRuntimeControlAction,
 } from "../conversation/mobile-conversation"
 
 import {
@@ -197,6 +198,13 @@ export const RuntimeInteractionDecisionSubmitted = defineIntent(
     Schema.Struct({ interactionRef: Schema.String, turnRef: Schema.String, kind: Schema.Literal("plan_review"), outcome: Schema.Literals(["accept", "request_changes", "replan"]) }),
   ]),
 )
+export const RuntimeTurnControlRequested = defineIntent(
+  "RuntimeTurnControlRequested",
+  Schema.Struct({
+    action: Schema.Literals(["cancel", "close", "resume", "retry"]),
+    runRef: Schema.String,
+  }),
+)
 
 export const homeIntentDefinitions = [
   DrawerToggled,
@@ -209,6 +217,7 @@ export const homeIntentDefinitions = [
   CodingSessionSelected,
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
+  RuntimeTurnControlRequested,
   ...khalaIntentDefinitions.map((definition) => defineIntent(definition.name, definition.payload)),
 ] as const
 
@@ -415,6 +424,7 @@ const confirmedKhalaState = (
   thread: MobileConversationThread | null,
   turnCounter = 0,
   interactionActionsAvailable = false,
+  runtimeControlActionsAvailable = false,
 ): KhalaState => {
   const runtimeEntries = (thread?.timeline?.events ?? []).flatMap<KhalaState["entries"][number]>(event => {
     const item = event.item
@@ -488,6 +498,14 @@ const confirmedKhalaState = (
     interactionSelections: {},
     interactionSubmittingRef: null,
     interactionActionsAvailable,
+    runtimeTurn: thread?.timeline?.run === null || thread?.timeline?.run === undefined
+      ? null
+      : {
+          runRef: thread.timeline.run.runRef,
+          status: thread.timeline.run.status,
+        },
+    runtimeControlSubmittingAction: null,
+    runtimeControlActionsAvailable,
   }
 }
 
@@ -514,6 +532,7 @@ const withConfirmedThread = (
     thread,
     state.khala.turnCounter,
     state.khala.interactionActionsAvailable,
+    state.khala.runtimeControlActionsAvailable,
   ),
 })
 
@@ -552,6 +571,7 @@ export const initialHomeStateForConversation = (
         selection.activeThread,
         0,
         selection.host.decideInteraction !== undefined,
+        selection.host.controlTurn !== undefined,
       ),
     }
 
@@ -686,6 +706,61 @@ const makeSyncedConversationHandlers = (
           },
         })
   }),
+  RuntimeTurnControlRequested: (payload: Readonly<{
+    action: MobileRuntimeControlAction
+    runRef: string
+  }>) => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const turn = before.khala.runtimeTurn
+    if (
+      before.activeThreadRef === null || host.controlTurn === undefined ||
+      before.khala.runtimeControlSubmittingAction !== null ||
+      turn?.runRef !== payload.runRef
+    ) return
+    const allowed = payload.action === "cancel"
+      ? turn.status === "queued" || turn.status === "running" ||
+        turn.status === "waiting_for_input"
+      : payload.action === "resume"
+        ? turn.status === "canceled"
+        : turn.status === "completed" || turn.status === "failed" ||
+          turn.status === "canceled"
+    if (!allowed) return
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      khala: {
+        ...current.khala,
+        runtimeControlSubmittingAction: payload.action,
+      },
+    }))
+    const result = yield* Effect.promise(() => host.controlTurn!({
+      action: payload.action,
+      runRef: payload.runRef,
+      threadRef: before.activeThreadRef!,
+      onUpdate: thread => {
+        Effect.runFork(SubscriptionRef.update(state, current => {
+          if (current.activeThreadRef !== thread.threadRef) return current
+          const updated = withConfirmedThread(current, thread)
+          return {
+            ...updated,
+            khala: {
+              ...updated.khala,
+              runtimeControlSubmittingAction:
+                current.khala.runtimeControlSubmittingAction,
+            },
+          }
+        }))
+      },
+    }))
+    yield* SubscriptionRef.update(state, current => result.ok
+      ? withConfirmedThread(current, result.thread)
+      : {
+          ...failedConversationState(current, result.error),
+          khala: {
+            ...failedConversationState(current, result.error).khala,
+            runtimeControlSubmittingAction: null,
+          },
+        })
+  }),
   KhalaTurnSubmitted: (raw: string) => Effect.gen(function* () {
     const message = raw.trim()
     if (message === "") return
@@ -726,6 +801,7 @@ const makeSyncedConversationHandlers = (
             created.thread,
             turn,
             current.khala.interactionActionsAvailable,
+            current.khala.runtimeControlActionsAvailable,
           ),
           pending: true,
           entries: current.khala.entries,
@@ -775,6 +851,7 @@ export const makeHomeHandlers = (
     ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
     RuntimeInteractionOptionToggled: synced?.RuntimeInteractionOptionToggled ?? (() => Effect.void),
     RuntimeInteractionDecisionSubmitted: synced?.RuntimeInteractionDecisionSubmitted ?? (() => Effect.void),
+    RuntimeTurnControlRequested: synced?.RuntimeTurnControlRequested ?? (() => Effect.void),
     CodingSessionSelected: options.coding === undefined
       ? () => Effect.void
       : payload => Effect.gen(function* () {
@@ -835,6 +912,10 @@ export interface HomeProgramHandle {
       | { interactionRef: string; turnRef: string; kind: "tool_approval"; outcome: "approve" | "deny" }
       | { interactionRef: string; turnRef: string; kind: "plan_review"; outcome: "accept" | "request_changes" | "replan" }
     >) => void
+    readonly controlTurn: (input: Readonly<{
+      action: MobileRuntimeControlAction
+      runRef: string
+    }>) => void
   }
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
@@ -888,6 +969,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           )),
           submitInteractionDecision: input => fireRef(IntentRef(
             "RuntimeInteractionDecisionSubmitted",
+            StaticPayload(input),
+          )),
+          controlTurn: input => fireRef(IntentRef(
+            "RuntimeTurnControlRequested",
             StaticPayload(input),
           )),
         },
