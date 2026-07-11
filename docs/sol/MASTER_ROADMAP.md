@@ -465,8 +465,9 @@ records before claiming the first new slice.
   and close session-before-SQLite. It does not yet have physical Desktop auth
   acceptance or a visible authoritative conversation surface. Runtime Gateway
   protocol v2 now exposes bounded confirmed catalog/thread queries and
-  create/append enqueues with honest `pending_reconcile`; the existing renderer
-  shell has not switched from its local-only chat path. The host
+  create/append enqueues with honest `pending_reconcile`; the existing Effect
+  Native shell now selects confirmed Sync mode at boot when live, otherwise a
+  separate local-only mode, and never mixes the catalogs. The host
   now has the canonical confirmed thread/message service, and the real Desktop
   node:sqlite plus mobile Expo-SQLite fixture proves Desktop start → mobile
   follow-up → restart convergence with matching refs/versions/cursor/phase.

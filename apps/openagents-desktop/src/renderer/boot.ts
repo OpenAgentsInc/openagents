@@ -31,6 +31,7 @@ import {
   makeDesktopShellHandlers,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
+import { selectDesktopChatHost } from "./runtime-conversation.ts"
 import { type DesktopThread } from "../chat-contract.ts"
 import {
   type DesktopWorkspaceFile,
@@ -150,6 +151,34 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make(initialDesktopShellState(host))
     const program = makeViewProgramFromState(state, desktopShellView)
+    const bridge = readBridge()
+    const localChat = {
+      listThreads: async () => {
+        const raw = await bridge?.listThreads?.()
+        return Array.isArray(raw) ? raw as DesktopThread[] : []
+      },
+      newThread: async () => {
+        const raw = await bridge?.newThread?.()
+        return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+      },
+      openThread: async (id: string) => {
+        const raw = await bridge?.openThread?.({ id })
+        return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+      },
+      hydrateThread: async (id: string) => {
+        const raw = await bridge?.hydrateThread?.({ id })
+        return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+      },
+      sendMessage: async (input: Readonly<{ id: string; message: string }>) => {
+        const raw = await bridge?.sendMessage?.(input)
+        if (typeof raw === "object" && raw !== null && typeof (raw as { ok?: unknown }).ok === "boolean") return raw as { ok: boolean; thread?: DesktopThread | null; error?: string }
+        return { ok: false, error: "Desktop chat returned an invalid response." }
+      },
+    }
+    const chat = yield* Effect.promise(() => selectDesktopChatHost({
+      request: bridge?.runtimeRequest,
+      local: localChat,
+    }))
     const registry = yield* makeIntentRegistry(
       desktopShellIntents,
       makeDesktopShellHandlers(state, undefined, async (input) => {
@@ -181,29 +210,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           message: "Local Pylon returned an invalid response. No fleet work was dispatched.",
           intentStatus: null,
         }
-      }, {
-        listThreads: async () => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.listThreads?.()
-          return Array.isArray(raw) ? raw as DesktopThread[] : []
-        },
-        newThread: async () => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.newThread?.()
-          return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
-        },
-        openThread: async (id) => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.openThread?.({ id })
-          return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
-        },
-        hydrateThread: async (id) => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.hydrateThread?.({ id })
-          return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
-        },
-        sendMessage: async (input) => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.sendMessage?.(input)
-          if (typeof raw === "object" && raw !== null && typeof (raw as { ok?: unknown }).ok === "boolean") return raw as { ok: boolean; thread?: DesktopThread | null; error?: string }
-          return { ok: false, error: "Desktop chat returned an invalid response." }
-        },
-      }, {
+      }, chat, {
         summary: async () => {
           const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.workspaceSummary?.()
           return typeof raw === "object" && raw !== null && typeof (raw as { root?: unknown }).root === "string" ? raw as DesktopWorkspaceSnapshot : null
@@ -252,8 +259,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         },
       }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge),
     )
-    const bridge = (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
-    const existing = typeof bridge?.listThreads === "function" ? yield* Effect.promise(bridge.listThreads) : []
+    const existing = yield* Effect.promise(chat.listThreads)
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
     if (threads.length > 0) {
       const first = threads[0]!
@@ -302,19 +308,19 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // First paint must never wait on local rollout parsing. The sidebar gets
     // metadata immediately; the selected thread receives five recent messages
     // and then its bounded expanded tail after the DOM is already visible.
-    if (threads.length > 0 && typeof bridge?.openThread === "function") {
+    if (threads.length > 0) {
       const id = threads[0]!.id
       window.setTimeout(() => {
         void (async () => {
-          const detail = await bridge.openThread!({ id })
+          const detail = await chat.openThread(id)
           if (typeof detail === "object" && detail !== null && typeof (detail as { id?: unknown }).id === "string") {
             const selected = detail as DesktopThread
             await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
               ? { ...current, threads: [selected, ...current.threads.filter(thread => thread.id !== id)], notes: selected.notes }
               : current))
           }
-          if (typeof bridge.hydrateThread !== "function") return
-          const hydrated = await bridge.hydrateThread({ id })
+          if (chat.hydrateThread === undefined) return
+          const hydrated = await chat.hydrateThread(id)
           if (typeof hydrated === "object" && hydrated !== null && typeof (hydrated as { id?: unknown }).id === "string") {
             const expanded = hydrated as DesktopThread
             await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id

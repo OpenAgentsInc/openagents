@@ -342,7 +342,8 @@ export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<Des
 
 export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnType<ChatHost["sendMessage"]>>, timestamp: string): DesktopShellState => {
   if (result.ok && result.thread) return { ...withChatSelected(state, result.thread), pending: false, threads: [result.thread, ...state.threads.filter((thread) => thread.id !== result.thread!.id)].slice(0, 5) }
-  return { ...state, pending: false, notes: [...state.notes, { key: `error-${state.notes.length}`, role: "system", text: result.error ?? "The model request failed.", timestamp }] }
+  const confirmedNotes = state.notes.filter((note) => !note.key.startsWith("pending-"))
+  return { ...state, pending: false, notes: [...confirmedNotes, { key: `error-${state.notes.length}`, role: "system", text: result.error ?? "The model request failed.", timestamp }] }
 }
 
 /**
@@ -556,7 +557,9 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
   key: entry.key,
   role: entry.role,
   senderLabel:
-    entry.role === "user" ? "YOU" : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
+    entry.role === "user"
+      ? entry.key.startsWith("pending-") ? "YOU · PENDING" : "YOU"
+      : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
   timestamp: entry.timestamp,
   body: [
     text(

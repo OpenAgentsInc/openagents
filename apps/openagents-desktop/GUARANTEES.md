@@ -87,11 +87,33 @@ Protocol v2 adds schema-bounded `conversation.catalog` and
 - Owner identity, credentials, native/store/session/overlay/transport objects,
   raw events, provider authority, and generic IPC do not cross preload.
 
-The visible renderer shell still uses the older local chat path; switching it
-to these operations is the next bounded leaf. This contract does not claim a
-provider-neutral stream or live GUI acceptance.
+The renderer selects this authority once at boot when the confirmed catalog is
+live; otherwise it retains explicit local-only mode. It does not mix catalogs.
+This contract does not claim a provider-neutral stream or live GUI acceptance.
 
 Contract: `openagents_desktop.seam.runtime_gateway_conversation.v1`.
+
+### Visible authoritative Sync conversation mode
+
+The existing Effect Native shell consumes Runtime Gateway v2 through a typed
+renderer adapter whenever confirmed conversation Sync is live at boot.
+
+- Sidebar and transcript map only confirmed thread/message projections.
+- New-chat and composer actions generate stable refs, enqueue canonical
+  mutations, and wait for those exact refs to be confirmed.
+- A confirmation timeout renders an honest pending-reconciliation error; it is
+  never converted to completion.
+- Authority mode is selected once per renderer lifetime. Signed-out/not-live
+  startup stays in the explicit local-only host and never merges its catalog
+  with account-linked Sync later in that renderer lifetime.
+- The adapter adds no preload method, IPC channel, owner/auth field, or second
+  UI architecture.
+
+Owner messages are currently rendered as user-role rows because canonical
+`chat_message` has no assistant role. Provider/runtime assistant streaming and
+live GUI/account acceptance remain later D1 evidence.
+
+Contract: `openagents_desktop.chat.authoritative_sync_mode.v1`.
 
 ### OS-encrypted native-session custody
 

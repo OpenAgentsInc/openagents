@@ -29,6 +29,7 @@ import {
   withWorkspaceSnapshot,
   withNote,
   withPending,
+  withTurnResult,
   type DesktopShellState,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
@@ -147,6 +148,9 @@ describe("desktopShellView (state -> component tree)", () => {
     const assistant = noteMessage({ key: "assistant-1", role: "assistant", text: "I’m here", timestamp: "18:05" })
     expect(assistant.senderLabel).toBe("ASSISTANT")
     expect((assistant.body[0] as unknown as AnyNode).content).toBe("I’m here")
+
+    const pending = noteMessage({ key: "pending-0", role: "user", text: "wait for it", timestamp: "18:05" })
+    expect(pending.senderLabel).toBe("YOU · PENDING")
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit + pending disables", () => {
@@ -183,6 +187,21 @@ describe("pure transitions", () => {
     expect(pending.pending).toBe(true)
     expect(pending.notes).toBe(baseState.notes)
     expect(withPending(pending, false).pending).toBe(false)
+  })
+
+  test("failed turns remove optimistic notes before rendering the error", () => {
+    const pending = withNote(baseState, "not confirmed", "18:05")
+    const next = withTurnResult(pending, { ok: false, error: "Still pending reconciliation." }, "18:06")
+
+    expect(next.pending).toBe(false)
+    expect(next.notes).toEqual([
+      {
+        key: "error-1",
+        role: "system",
+        text: "Still pending reconciliation.",
+        timestamp: "18:06",
+      },
+    ])
   })
 
   test("Project home is a real typed workspace projection over persisted threads", () => {
@@ -429,12 +448,12 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         const next = yield* SubscriptionRef.get(state)
         expect(next.input).toBe("")
         expect(next.notes[0]).toEqual({
-          key: "pending-0",
-          role: "user",
-          text: "ship the shell",
+          key: "error-1",
+          role: "system",
+          text: "Desktop chat is unavailable.",
           timestamp: "18:05",
         })
-        expect(next.notes.at(-1)?.role).toBe("system")
+        expect(next.notes.some((entry) => entry.key.startsWith("pending-"))).toBe(false)
       }),
     )
   })
@@ -474,7 +493,8 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         const afterSecond = yield* SubscriptionRef.get(state)
         expect(afterSecond.input).toBe("")
         expect(afterSecond.notes.at(-1)?.text).toBe("Desktop chat is unavailable.")
-        expect(afterSecond.notes.length).toBe(4)
+        expect(afterSecond.notes.length).toBe(2)
+        expect(afterSecond.notes.some((entry) => entry.key.startsWith("pending-"))).toBe(false)
       }),
     )
   })

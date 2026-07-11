@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.12",
+  version: "2026-07-10.13",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -93,6 +93,20 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       evidenceRefs: ["apps/openagents-desktop/src/runtime-gateway-contract.ts", "apps/openagents-desktop/src/main.ts", "docs/sol/issues/desktop-runtime-conversation.md", "github:OpenAgentsInc/openagents#8669"],
       oracles: [{ id: "runtime_gateway_conversation.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Round-trips confirmed catalog/thread projections and create/append mutations through protocol v2, proves pending_reconcile outcomes, unavailable fail-closed behavior, bounds, and schema rejection." }],
       verification: "Runtime Gateway e2e, Electron mechanical boundary, Desktop typecheck/build, and behavior-contract validation run in the normal Desktop sweep.",
+    },
+    {
+      contractId: "openagents_desktop.chat.authoritative_sync_mode.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "visible authoritative conversation",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "At boot, the Effect Native Desktop shell selects exactly one chat authority: Runtime Gateway v2 confirmed Sync when its catalog is live, otherwise the existing explicit local-only host. In Sync mode, visible threads/messages come from confirmed projections and create/append remain pending until their exact refs are confirmed.",
+      authorityBoundary: "Mode is selected once per renderer lifetime so local and account-linked conversations never mix. The adapter uses only the generic decoded Runtime Gateway call; it gets no owner/credential/native authority, does not add preload IPC, does not infer assistant roles, and reports an unconfirmed append as still pending rather than completed.",
+      evidenceRefs: ["apps/openagents-desktop/src/renderer/runtime-conversation.ts", "apps/openagents-desktop/src/renderer/boot.ts", "docs/sol/issues/desktop-visible-sync-conversation.md", "github:OpenAgentsInc/openagents#8670"],
+      oracles: [{ id: "desktop_authoritative_sync_mode.adapter", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/src/renderer/runtime-conversation.test.ts", description: "Proves one-time live-vs-local selection, confirmed catalog/transcript mapping, stable client refs, create/append exact-ref confirmation, and pending timeout honesty." }],
+      verification: "The adapter, shell, Runtime Gateway, Electron boundary, typecheck, bundle, and behavior-contract validation run in the normal Desktop sweep.",
     },
     {
       contractId: "openagents_desktop.session.os_encrypted_custody.v1",

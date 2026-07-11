@@ -545,6 +545,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   queries and canonical create/append intents; enqueue returns
   `pending_reconcile`, never completion. Owner/auth/store/session/transport
   fields and generic IPC remain unrepresentable in the contract.
+- Desktop selects its chat authority once at renderer boot: confirmed account-
+  linked Sync when the v2 catalog is live, otherwise explicit local-only mode.
+  It never merges the two catalogs in one renderer lifetime. Sync-mode create/
+  append waits for the exact generated ref to appear confirmed; timeout remains
+  pending and is never converted into success.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

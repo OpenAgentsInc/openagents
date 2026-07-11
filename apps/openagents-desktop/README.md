@@ -107,9 +107,10 @@ Runtime Gateway protocol v2 now carries the narrower authoritative
 conversation floor: confirmed catalog/thread queries and canonical create/
 append enqueues. Results contain only public-safe refs, bodies, timestamps,
 confirmed versions, scope phase/cursor, and pending count. Mutation enqueue is
-reported as `pending_reconcile`, never completed. The visible shell has not yet
-switched off its local-only chat path, and provider/runtime streaming remains a
-later leaf.
+reported as `pending_reconcile`, never completed. At boot the visible Effect
+Native shell now selects this confirmed Sync mode when the catalog is live;
+otherwise it retains an explicit local-only mode for that renderer lifetime.
+The two catalogs never merge. Provider/runtime streaming remains a later leaf.
 
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
 its private `userData` root and persists one installation identity. After
