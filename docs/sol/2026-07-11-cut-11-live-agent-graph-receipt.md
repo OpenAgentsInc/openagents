@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691)
-- Status: shared schema/replay, provider normalization, and Khala Sync entity/
-  projection tranches complete; live producer/changelog bindings, Runtime
-  Gateway emission, and live traces pending
+- Status: shared schema/replay, provider normalization, Khala Sync entity, and
+  named server-writer tranches complete; live provider call-site binding,
+  Runtime Gateway emission, and live traces pending
 - Contract: `openagents.live_agent_graph.v1`
 
 ## Registered graph facts
@@ -68,8 +68,24 @@ reconnect needs no provider history and cannot silently accept a stale/gapped
 provider patch.
 
 The post-image test reaches the schema maximum of 2,000 nodes, round-trips it
-through the exact stored JSON bytes, and rejects node 2,001. This is the durable
-entity/projection boundary; no server changelog producer is claimed yet.
+through the exact stored JSON bytes, and rejects node 2,001.
+
+## Server changelog writer
+
+`@openagentsinc/khala-sync-server` now exposes one named system writer that:
+
+- decodes and validates the entire graph before storage;
+- refuses secret-, credential-, email-, or host-path-shaped structural
+  material with a bounded diagnostic;
+- derives scope only from canonical `threadRef`;
+- appends `live_agent_graph` / `graphRef` through the standard transactional
+  writer, preserving dense per-scope versions; and
+- fails soft until live provider observation and session business authority
+  share one transaction.
+
+A real throwaway-Postgres receipt appends two full post-images at versions 1
+and 2, with the registered system-writer ref, and decodes the stored bytes back
+through the graph contract.
 
 ## Verification
 
@@ -79,6 +95,11 @@ entity/projection boundary; no server changelog producer is claimed yet.
 - `@openagentsinc/khala-sync`: 178 pass, 0 fail, 2,601 expectations;
   typecheck passes.
 - CUT-11 focused Sync post-image corpus: 3 pass, 11 expectations.
+- CUT-11 focused Sync server writer: 4 pass, 18 expectations; typecheck passes.
+- Full `@openagentsinc/khala-sync-server`: 509 pass, 1 fail, 4,528
+  expectations. The existing `runtime-intents.test.ts` event-count case returns
+  three in-band rejections instead of its expected applies and fails identically
+  when rerun alone; CUT-11 changes no runtime-intent file.
 - A deterministic property corpus applies 50 independently shuffled batches
   of 64 child nodes and parent edges; every result is byte-identical.
 - Negative cases cover malformed/private-shaped refs, missing explicit facts,
@@ -87,9 +108,8 @@ entity/projection boundary; no server changelog producer is claimed yet.
 
 ## Residual
 
-This receipt does not claim that live Codex or Claude producers currently emit
-the graph or write the Sync changelog. Next CUT-11 tranches must bind the typed
-adapters to those producers, commit the registered post-image through the
-server authority, emit it through Runtime Gateway, prove live reconnect, and
-attach redacted named-account traces for both providers. Graph presentation
-remains CUT-12.
+This receipt does not claim that live Codex or Claude producers currently call
+the graph writer. Next CUT-11 tranches must bind the typed adapters and named
+writer to those producers, emit confirmed post-images through Runtime Gateway,
+prove live reconnect, and attach redacted named-account traces for both
+providers. Graph presentation remains CUT-12.

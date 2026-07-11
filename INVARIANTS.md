@@ -672,10 +672,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   `scope.thread.<threadRef>`, keyed by stable `graphRef` and advanced only
   through the shared exact-cursor reducer. The top-level session and canonical
   thread refs stay distinct; provider-native node thread refs cannot choose
-  Sync authorization scope.
-  The server producer/changelog writer, Runtime Gateway emission, client read
-  models, and live receipts remain CUT-11 work; registering these contracts
-  does not itself claim a live graph authority.
+  Sync authorization scope. A named fail-soft server projector now validates,
+  structurally redacts, and appends this post-image through the normal dense-
+  version transaction writer. Live provider call-site binding, Runtime Gateway
+  emission, client read models, and live receipts remain CUT-11 work; the
+  registered writer does not itself claim a live graph authority.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
