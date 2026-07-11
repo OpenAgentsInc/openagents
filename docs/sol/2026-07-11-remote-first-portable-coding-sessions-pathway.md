@@ -105,12 +105,17 @@ provider-neutral question/tool-approval/plan-review lifecycle whose exact
 decision, duplicate, conflict, expiry, revocation, and live-only projection
 semantics are shared by Desktop and mobile clients. Native device-local draft
 recovery, Desktop protocol-v9 transport, and mobile interaction controls are
-now active. Desktop also renders the confirmed interaction projection and
-routes exact-ref decisions through gateway-event-driven confirmation; an
-enqueue receipt never collapses a card as resolved. This does not yet make
-provider execution fully proven portable: owner-local Pylon now requests the
-same durable authority through the trusted Worker seam and runs Claude's
-`canUseTool` only under explicit confirmed supervision, but named live and
+now active. Mobile cancel, resume, retry, and close also bind the exact
+confirmed run and provider lane, remain disabled while reconciling, and require
+the matching durable command plus a newer run projection before success.
+Desktop renders the confirmed interaction projection and routes exact-ref
+decisions through gateway-event-driven confirmation; an enqueue receipt never
+collapses a card as resolved. This does not yet make provider execution fully
+proven portable: the canonical rich draft is not yet fully adopted by both host
+UIs for attachments, repository/editor/diff context, target selection, and
+restart restoration. Owner-local Pylon now requests the same durable authority
+through the trusted Worker seam and runs Claude's `canUseTool` only under
+explicit confirmed supervision, but named Codex, deployed-authority, and
 physical receipts remain open. Provider defaults remain unchanged when that
 authority is absent.
 

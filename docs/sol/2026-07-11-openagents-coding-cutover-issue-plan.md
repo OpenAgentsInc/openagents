@@ -53,8 +53,8 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) — shared presentation model + mobile and Desktop thread agent stacks landed; physical iOS/Android receipts pending | D1 / agent UX | CUT-01, CUT-11 graph contract/delivery |
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) — closed `0c49648217`; canonical shared/hosted/device-local catalog, typed Desktop navigation, and restart/reload recovery receipt | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) — deterministic/native implementation complete through `5aeabdbb1e`; authenticated directory, exact restore, live fence, and URL/notification delivery landed; physical receipts pending | M1 / mobile binding | CUT-01, CUT-13 |
-| 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) — canonical registry/conflict/deferred-open contract landed `aa3183748c`; host routing/persistence/packaged receipt pending | D2 / commands | CUT-13 |
-| 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) | D1-D2 / interaction | CUT-12, CUT-15 |
+| 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) — closed `5d36b73ad2`; canonical registry, owner-private bindings, native/deferred routing, and built-host receipt | D2 / commands | CUT-13 |
+| 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) — interaction authority + both native UIs + mobile runtime controls landed; rich composer adoption, named Codex/deploy, and physical receipts pending | D1-D2 / interaction | CUT-12, CUT-15 |
 | 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) | D3 / workspace | CUT-13 |
 | 18 | CUT-18 | [#8698](https://github.com/OpenAgentsInc/openagents/issues/8698) | D3 / editor | CUT-17 |
 | 19 | CUT-19 | [#8699](https://github.com/OpenAgentsInc/openagents/issues/8699) | D3 / Git | CUT-18 |
@@ -714,6 +714,15 @@ OpenAgents with rich context and durable typed control outcomes.
 Verification: cross-client contract suite and named Codex/Claude live turns.  
 Non-goals: remote workroom creation.  
 Close rule: merge with provider and physical-device receipts.
+
+Current status: `9fa76c3b09` adds the mobile cancel/resume/retry/close rung over
+the exact confirmed thread, run, and provider lane. The interaction authority,
+Desktop/mobile cards, device-local canonical draft store, Claude authority
+injection, and deterministic accessibility matrix are landed. The issue is not
+closeable: both native hosts still need literal end-to-end adoption of the rich
+draft for file/image picking, repository/editor/diff context, provider/model/
+account selection, and restart-restored UI state. A named Codex turn, deployed
+trusted-authority route, and physical assistive-technology receipt also remain.
 
 ---
 

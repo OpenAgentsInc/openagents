@@ -4,8 +4,9 @@
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
   CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete; CUT-16
-  native draft persistence/Desktop gateway/mobile interaction UI active)
-- Revision: 58
+  native draft persistence/Desktop gateway/mobile interaction and runtime-
+  control UI active; rich composer host adoption remains open)
+- Revision: 59
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -658,14 +659,21 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   are active. Both native hosts now expose restart-safe device-local drafts and
   interaction clients; Desktop protocol v9 is production-bound, and mobile
   renders/decides grouped questions, approvals, and plan reviews without
-  optimistic resolution. Desktop now projects those same confirmed states as
-  Effect Native cards, maps selections back to exact canonical refs, and waits
-  for the matching confirmed decision post-image rather than treating enqueue
-  as resolution. The standing owner-local Pylon now uses its existing internal
-  Worker credential to request/read those exact interactions and injects the
-  confirmed authority into Claude `canUseTool`; server-clock expiry is durable
-  and never fabricates an owner decision. Physical accessibility and named
-  live receipts remain open. See
+  optimistic resolution. Mobile also exposes cancel, resume, retry, and close
+  as Effect Native controls over the exact confirmed thread/run/provider lane;
+  controls remain disabled through reconciliation and succeed only after the
+  matching command plus a newer confirmed run projection arrive. Desktop now
+  projects those same confirmed interaction states as Effect Native cards,
+  maps selections back to exact canonical refs, and waits for the matching
+  confirmed decision post-image rather than treating enqueue as resolution.
+  The standing owner-local Pylon now uses its existing internal Worker
+  credential to request/read those exact interactions and injects the confirmed
+  authority into Claude `canUseTool`; server-clock expiry is durable and never
+  fabricates an owner decision. The remaining product gap is literal shared
+  rich-composer adoption: file/image picking, repository/editor/diff context,
+  provider/model/account selection, and restart-restored rich drafts are not
+  yet all wired end to end in both hosts. Physical accessibility, deployed-
+  authority, and named Codex receipts also remain open. See
   [`CUT-16 receipt`](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402

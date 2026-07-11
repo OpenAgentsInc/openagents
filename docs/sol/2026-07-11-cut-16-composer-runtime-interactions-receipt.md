@@ -3,13 +3,14 @@
 - Date: 2026-07-11
 - Issue: [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696)
 - Status: shared authority, native persistence, both native interaction UIs,
-  Desktop gateway, and Claude provider injection active; live acceptance remains open
+  mobile runtime-control UI, Desktop gateway, and Claude provider injection
+  active; rich-composer and live acceptance remain open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
   `97f90832bb`, `21d56199bd`, `88f692fe00`, `400c649904`, `600228f230`, and
   `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, `4a9db8347b`, `23a190905f`,
-  `d2d9ee8907`, `e4d903c602`, and `4b20fe2b67`
+  `d2d9ee8907`, `e4d903c602`, `4b20fe2b67`, and `9fa76c3b09`
 
 CUT-16 now builds on the existing rich `@openagentsinc/composer-state` kernel
 instead of creating a second composer. The additive private coding-draft
@@ -26,6 +27,17 @@ content.
 Shared Sync clients now expose deterministic continue/retry/close controls over
 the already-landed server authority. Existing-turn controls are fenced to the
 durable provider lane before any insert or state transition.
+
+Mobile now consumes all four existing-turn controls through one typed
+`cancel | resume | retry | close` action boundary. The host re-reads the exact
+confirmed thread/run, derives only a known Codex/Claude/hosted lane, refuses an
+unknown lane or invalid state transition, and queues the corresponding shared
+intent. UI state remains submitting until both the exact command outcome and a
+newer matching run projection are confirmed. Running/queued/waiting turns show
+Cancel; canceled turns show Resume, Retry, and Close; completed/failed turns
+show Retry and Close. All are shared Effect Native `Button` controls with
+disabled reconciliation semantics. The legacy mobile interrupt method now
+delegates to the same boundary rather than hard-coding the Codex lane.
 
 `openagents.runtime_interaction.v1` is the provider-neutral private authority
 for questions, tool approvals, and plan reviews. It carries exact
@@ -88,7 +100,9 @@ Verification:
   composition/host focused: 51 pass, 0 fail, 445 assertions; Desktop typecheck
   and build pass; after authoritative Desktop interaction controls, the full
   Desktop suite is 468 pass, 0 fail, 2,487 assertions;
-- mobile full suite: 80 pass, 0 fail, 366 assertions; mobile typecheck passes.
+- mobile full suite after the runtime-control UI: 83 pass, 0 fail, 400
+  assertions; focused conversation/Home contracts: 20 pass, 0 fail, 89
+  assertions; mobile typecheck passes.
 - Pylon typecheck and full suite pass; focused HTTP-authority/runtime-dispatch
   coverage is 59 pass, 0 fail, 208 assertions. The API Worker typecheck and
   focused authority/route-manifest suite pass (6 tests). The runtime mutator
@@ -129,9 +143,14 @@ Named-provider live evidence:
   was bypassed and no remote data was deleted. Deployed-authority evidence
   remains required after the quota is raised or storage is remediated.
 
-CUT-16 remains open. The next honest rungs are screen-reader/mobile-keyboard
-and physical-device acceptance plus named Codex/Claude live turns. Restart,
-revocation, provider injection, and expiry logic are covered deterministically;
-the physical and named-provider receipts are not.
+CUT-16 remains open. The completion audit still finds a literal composer gap:
+Desktop and mobile do not yet both wire file/image picking, repository/editor/
+diff context, provider/model/account selection, and restart-restored rich draft
+state through the canonical composer envelope. The remaining external receipts
+are a named Codex turn after provider quota reset, deployment of the trusted
+authority route after the Cloudflare staging storage limit is remediated, and
+physical-device/assistive-technology acceptance. Restart, revocation, provider
+injection, expiry, and mobile runtime controls are covered deterministically;
+those deterministic proofs do not substitute for the remaining receipts.
 The default non-interactive provider safety policy must not be weakened merely
 to manufacture an approval receipt.
