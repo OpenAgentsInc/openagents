@@ -16,8 +16,10 @@
 - Closed P0 historical conversation/subagent slice:
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
-- Immediate bounded queue: CUT-02 #8682 restores the green verification
-  baseline; #8676 supplies the physical streamed Desktop→mobile acceptance;
+- Immediate bounded queue: closed CUT-02 #8682 supplies the deterministic
+  green verification baseline; CUT-03 #8683 is next and makes the topology
+  oracle source-coupled with negative ambient-authority coverage; #8676
+  supplies the physical streamed Desktop→mobile acceptance;
   #8677 delegates fault convergence to #8687–#8689. Closed #8675 supplies
   trace-workspace acceptance. Reopened #8678 delegates its topology residual
   to #8683/#8684 before broad D3/D4 acceptance.
@@ -78,9 +80,13 @@ The greenfield app now has:
   direct independent-transcript navigation, structured inter-agent handoffs,
   and fast typed keyboard traversal.
 
-The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
-bundle, and real-Electron fixture smoke. #8674/#8675 are complete owner-local
-history and acceptance proof, not live Sync supervision proof.
+The normal Desktop `verify` gate is green and deterministic: typecheck, 170
+contract/e2e tests, bundle, and real-Electron smoke/reload use a checked-in
+privacy-safe Codex history fixture instead of ambient `~/.codex` state. The
+root `test:openagents-desktop` entry invokes that same gate. An explicit
+`OPENAGENTS_DESKTOP_CODEX_SESSIONS` override remains available only for a
+separately labelled real-history acceptance. #8674/#8675 are complete owner-
+local history and acceptance proof, not live Sync supervision proof.
 
 Not yet claimed: physical Desktop auth acceptance, a provider-launched live
 stream attached to the confirmed thread/timeline, physical mobile continuation,

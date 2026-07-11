@@ -1273,6 +1273,12 @@ valid generated scale oracle covers 100+ MiB, 100 children, and 100,000 items;
 a structure-only local receipt found 131 threads/560,418 records under a real
 nested root with zero unsupported gaps. Local history stays owner-private and
 is not Khala Sync data. Closed #8675 accepts this workspace in real Electron.
+Closed CUT-02 #8682 makes the package verification baseline deterministic:
+the canonical gate now runs typecheck, 170 tests, bundle, and real-Electron
+smoke/reload against a checked-in privacy-safe Codex history fixture, while
+the root Desktop test entry invokes the same gate. Ambient `~/.codex` history
+is reserved for separately labelled real-history acceptance and cannot decide
+whether CI is green.
 Subsequent landed refinements project each confirmed child-start edge as an
 inline agent card with exact child ref, lifecycle, and a bounded redacted
 latest-activity preview; the same typed selection intent opens the child's
