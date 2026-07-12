@@ -33,12 +33,6 @@ import {
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
 import {
   DesktopWorkspaceChooseChannel,
-  DesktopWorkspaceFilesChannel,
-  DesktopWorkspaceGitDiffChannel,
-  DesktopWorkspaceGitStatusChannel,
-  DesktopWorkspaceReadChannel,
-  DesktopWorkspaceSaveChannel,
-  DesktopWorkspaceSummaryChannel,
   DesktopWorkspaceTreeChannel,
   DesktopWorkspaceSearchChannel,
   DesktopWorkspaceSearchCancelChannel,
@@ -50,9 +44,6 @@ import {
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
   decodeWorkspaceChange,
-  decodeWorkspaceFileRequest,
-  decodeWorkspaceGitDiffRequest,
-  decodeWorkspaceSaveRequest,
   decodeWorkspaceSearchBridgeRequest,
   decodeWorkspaceSearchCancelRequest,
   decodeWorkspaceSearchCancelResult,
@@ -217,9 +208,10 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
     return request === null ? Promise.resolve({ ok: false, error: "That message could not be sent." }) : ipcRenderer.invoke(DesktopChatTurnChannel, request)
   },
-  workspaceSummary: () => ipcRenderer.invoke(DesktopWorkspaceSummaryChannel),
-  chooseWorkspace: () => ipcRenderer.invoke(DesktopWorkspaceChooseChannel),
-  listWorkspaceFiles: () => ipcRenderer.invoke(DesktopWorkspaceFilesChannel),
+  chooseWorkspace: async (): Promise<boolean> => {
+    const selected = await ipcRenderer.invoke(DesktopWorkspaceChooseChannel)
+    return typeof selected === "object" && selected !== null
+  },
   workspaceTree: async (value: unknown) => {
     const request = decodeWorkspaceTreeRequest(value)
     if (request === null) {
@@ -283,23 +275,6 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   refreshWorkspace: async (): Promise<boolean> =>
     (await ipcRenderer.invoke(DesktopWorkspaceRefreshChannel)) === true,
   workspaceSubscribe: subscribeWorkspaceChanges,
-  readWorkspaceFile: (value: unknown) => {
-    const request = decodeWorkspaceFileRequest(value)
-    return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopWorkspaceReadChannel, request)
-  },
-  saveWorkspaceFile: (value: unknown) => {
-    const request = decodeWorkspaceSaveRequest(value)
-    return request === null
-      ? Promise.resolve({ state: "unavailable", message: "The file save request is invalid." })
-      : ipcRenderer.invoke(DesktopWorkspaceSaveChannel, request)
-  },
-  workspaceGitStatus: () => ipcRenderer.invoke(DesktopWorkspaceGitStatusChannel),
-  workspaceGitDiff: (value: unknown) => {
-    const request = decodeWorkspaceGitDiffRequest(value)
-    return request === null
-      ? Promise.resolve({ state: "unavailable", message: "The diff request is invalid." })
-      : ipcRenderer.invoke(DesktopWorkspaceGitDiffChannel, request)
-  },
   /**
    * Typed Git/GitHub surface (EP250 E2–E5): one narrow method over the closed
    * operation set. The request is schema-decoded here before it crosses the

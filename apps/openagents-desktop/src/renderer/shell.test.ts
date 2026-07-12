@@ -27,8 +27,6 @@ import {
   withLoopProof,
   withWorkspace,
   withCommandPalette,
-  withWorkspaceFile,
-  withWorkspaceSnapshot,
   withHarnessLanes,
   withNote,
   withPending,
@@ -37,6 +35,7 @@ import {
   type CommandBindingHost,
   type HarnessLanes,
 } from "./shell.ts"
+import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspace-browser.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
@@ -529,66 +528,37 @@ describe("pure transitions", () => {
     expect(nodeByKey(desktopShellView(home), "shell-composer")).toBeUndefined()
   })
 
-  test("Files workspace projects only host-provided local entries and file content", () => {
-    const files = withWorkspaceSnapshot(withWorkspace(baseState, "files"), {
-      root: "/workspace",
-      label: "workspace",
-      git: "changed",
-      entries: [{ name: "README.md", path: "/workspace/README.md", kind: "file" }],
-    })
+  test("Files workspace composes only grant-scoped relative tree entries", () => {
+    const files = {
+      ...withWorkspace(baseState, "files"),
+      workspaceBrowser: withWorkspaceBrowserRoot(baseState.workspaceBrowser, {
+        state: "available",
+        grantRef: "workspace.grant.test",
+        directoryRef: "",
+        entries: [{ name: "README.md", pathRef: "README.md", kind: "file", expandable: false, sizeBytes: 10, revisionRef: "revision-readme" }],
+        nextOffset: null,
+        cache: { key: "tree-root", epoch: 1, freshness: "current" },
+      }),
+    }
     const view = desktopShellView(files)
-    expect(nodeByKey(view, "workspace-files-panel")?._tag).toBe("Stack")
-    expect(nodeByKey(view, "workspace-file-/workspace/README.md")?._tag).toBe("Button")
+    expect(nodeByKey(view, "workspace-browser")?._tag).toBe("Stack")
+    expect(nodeByKey(view, "workspace-browser-select-README.md")?._tag).toBe("Button")
+    expect(JSON.stringify(view)).not.toContain("/workspace")
     expect(nodeByKey(view, "shell-composer")).toBeUndefined()
   })
 
-  test("Files workspace exposes a bounded editor only for a complete host-provided text file", () => {
-    const file = {
-      path: "/workspace/README.md",
-      content: "before",
-      revision: "revision-before",
-      truncated: false,
-    } as const
-    const files = withWorkspaceFile(withWorkspaceSnapshot(withWorkspace(baseState, "files"), {
-      root: "/workspace",
-      label: "workspace",
-      git: "clean",
-      entries: [{ name: "README.md", path: "/workspace/README.md", kind: "file" }],
-    }), file)
-    const view = desktopShellView(files)
-    expect(nodeByKey(view, "workspace-file-editor")?._tag).toBe("TextField")
-    expect(nodeByKey(view, "workspace-file-save")?._tag).toBe("Button")
-    expect(nodeByKey(view, "workspace-file-preview-content")).toBeUndefined()
-
-    const truncated = desktopShellView(withWorkspaceFile(files, { ...file, truncated: true }))
-    expect(nodeByKey(truncated, "workspace-file-editor")).toBeUndefined()
-    expect(nodeByKey(truncated, "workspace-file-preview-truncated")?._tag).toBe("Text")
+  test("Files workspace no longer composes the legacy absolute-path editor", () => {
+    const view = desktopShellView(withWorkspace(baseState, "files"))
+    expect(nodeByKey(view, "workspace-browser-idle")?._tag).toBe("Text")
+    expect(nodeByKey(view, "workspace-file-editor")).toBeUndefined()
+    expect(nodeByKey(view, "workspace-file-save")).toBeUndefined()
   })
 
-  test("Review workspace renders only typed changed-file rows and a bounded diff", () => {
-    const review = {
-      ...withWorkspaceSnapshot(withWorkspace(baseState, "review"), {
-        root: "/workspace",
-        label: "workspace",
-        git: "changed" as const,
-        entries: [],
-      }),
-      workspaceGitStatus: {
-        state: "available" as const,
-        changes: [{ path: "README.md", kind: "modified" as const }],
-        truncated: false,
-      },
-      workspaceGitDiff: {
-        state: "available" as const,
-        path: "README.md",
-        content: "-before\n+after",
-        truncated: false,
-      },
-    }
-    const view = desktopShellView(review)
+  test("Review workspace uses only the typed Git panel", () => {
+    const view = desktopShellView(withWorkspace(baseState, "review"))
     expect(nodeByKey(view, "workspace-review-panel")?._tag).toBe("Stack")
-    expect(nodeByKey(view, "workspace-review-change-README.md")?._tag).toBe("Button")
-    expect(nodeByKey(view, "workspace-review-diff-content")?.content).toBe("-before\n+after")
+    expect(nodeByKey(view, "git-panel")?._tag).toBe("Stack")
+    expect(nodeByKey(view, "workspace-review-diff-content")).toBeUndefined()
     expect(nodeByKey(view, "shell-composer")).toBeUndefined()
   })
 
@@ -909,70 +879,46 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     }))
   })
 
-  test("workspace save sends one revision-bound request and requires explicit reload after conflict", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const file = {
-          path: "/workspace/README.md",
-          content: "before",
-          revision: "revision-before",
-          truncated: false,
-        } as const
-        const state = yield* SubscriptionRef.make(withWorkspaceFile(withWorkspaceSnapshot(withWorkspace(baseState, "files"), {
-          root: "/workspace",
-          label: "workspace",
-          git: "clean",
-          entries: [{ name: "README.md", path: "/workspace/README.md", kind: "file" }],
-        }), file))
-        const requests: Array<unknown> = []
-        const registry = yield* makeIntentRegistry(
-          desktopShellIntents,
-          makeDesktopShellHandlers(state, fixedNow, undefined, undefined, {
-            summary: async () => null,
-            choose: async () => null,
-            readFile: async () => null,
-            saveFile: async (input) => {
-              requests.push(input)
-              return {
-                state: "conflict" as const,
-                file: { ...file, content: "changed elsewhere", revision: "revision-current" },
-              }
-            },
-            gitStatus: async () => ({ state: "unavailable" }),
-            gitDiff: async () => ({ state: "unavailable", message: "Git review is unavailable." }),
-          }),
-        )
-        const initial = desktopShellView(yield* SubscriptionRef.get(state))
-        const editor = nodeByKey(initial, "workspace-file-editor") as {
-          onChange: Parameters<typeof resolveIntentRef>[0]
-        }
-        const save = nodeByKey(initial, "workspace-file-save") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(editor.onChange, "local draft"))
-        yield* registry.dispatch(resolveIntentRef(save.onPress, null))
+  test("Files selection and picker route through the relative browser bridge", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      let chooseCalls = 0
+      const treeCalls: unknown[] = []
+      const browser: WorkspaceBrowserBridge = {
+        workspaceTree: async (value) => {
+          treeCalls.push(value)
+          return {
+            state: "available",
+            grantRef: "workspace.grant.test",
+            directoryRef: "",
+            entries: [{ name: "README.md", pathRef: "README.md", kind: "file", expandable: false, sizeBytes: 10, revisionRef: "revision-readme" }],
+            nextOffset: null,
+            cache: { key: "tree-root", epoch: 1, freshness: "current" },
+          }
+        },
+        workspaceSearch: async () => null,
+        cancelWorkspaceSearch: async () => null,
+        createWorkspaceEntry: async () => null,
+        renameWorkspaceEntry: async () => null,
+        deleteWorkspaceEntry: async () => null,
+        revealWorkspaceEntry: async () => null,
+        refreshWorkspace: async () => true,
+      }
+      const state = yield* SubscriptionRef.make(baseState)
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(state, fixedNow, undefined, undefined, {
+          choose: async () => { chooseCalls += 1; return true },
+          browser,
+        }),
+      )
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload("files"))))
+      expect((yield* SubscriptionRef.get(state)).workspaceBrowser.grantRef).toBe("workspace.grant.test")
+      expect(treeCalls).toEqual([{ directoryRef: "", offset: 0, limit: 200 }])
 
-        const conflicted = yield* SubscriptionRef.get(state)
-        expect(requests).toEqual([{
-          path: "/workspace/README.md",
-          content: "local draft",
-          expectedRevision: "revision-before",
-        }])
-        expect(conflicted.workspaceSave).toBe("conflict")
-        expect(conflicted.workspaceDraft).toBe("local draft")
-        expect(conflicted.workspaceFile?.content).toBe("changed elsewhere")
-        const conflictView = desktopShellView(conflicted)
-        expect(nodeByKey(conflictView, "workspace-file-save")?.disabled).toBe(true)
-        const reload = nodeByKey(conflictView, "workspace-file-reload") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(reload.onPress, null))
-        const reloaded = yield* SubscriptionRef.get(state)
-        expect(reloaded.workspaceSave).toBe("idle")
-        expect(reloaded.workspaceDraft).toBe("changed elsewhere")
-        expect(reloaded.workspaceBaseRevision).toBe("revision-current")
-      }),
-    )
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspacePickerRequested", StaticPayload(null))))
+      expect(chooseCalls).toBe(1)
+      expect(treeCalls).toHaveLength(2)
+    }))
   })
 
   test("composer intents: input change then submit falls back to composer state on button press", async () => {

@@ -68,13 +68,6 @@ import {
 } from "../agent-graph-presentation.ts"
 import { chatMarkdownBody } from "./markdown.ts"
 import { runtimeAgentGraphView } from "./runtime-agent-graph.ts"
-import type {
-  DesktopWorkspaceFile,
-  DesktopWorkspaceGitDiff,
-  DesktopWorkspaceGitStatus,
-  DesktopWorkspaceSaveResult,
-  DesktopWorkspaceSnapshot,
-} from "../workspace-contract.ts"
 import { desktopCommandRegistry, formatCommandChord } from "./command-registry.ts"
 import {
   normalizeDesktopCommandChord,
@@ -102,6 +95,15 @@ import {
   type GitPanelState,
 } from "./git-panel.ts"
 import { sidebarAccountsView } from "./sidebar-accounts.ts"
+import {
+  emptyWorkspaceBrowserState,
+  makeWorkspaceBrowserHandlers,
+  unavailableWorkspaceBrowserBridge,
+  workspaceBrowserIntents,
+  workspaceBrowserView,
+  type WorkspaceBrowserBridge,
+  type WorkspaceBrowserState,
+} from "./workspace-browser.ts"
 import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyItemPageOffset, historyItemPageSize, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
 import {
@@ -228,14 +230,8 @@ export type DesktopShellState = Readonly<{
   codingSessionFilter: CodingSessionFilter
   codingSessionQuery: string
   workspace: DesktopWorkspaceName
-  workspaceSnapshot: DesktopWorkspaceSnapshot | null
-  workspaceFile: DesktopWorkspaceFile | null
-  /** Unsaved bounded text only; never an authority-bearing workspace state. */
-  workspaceDraft: string
-  workspaceBaseRevision: string | null
-  workspaceSave: "idle" | "saving" | "saved" | "conflict" | "unavailable"
-  workspaceGitStatus: DesktopWorkspaceGitStatus
-  workspaceGitDiff: DesktopWorkspaceGitDiff | null
+  /** Grant-scoped, root-relative Files workspace projection. */
+  workspaceBrowser: WorkspaceBrowserState
   commandPaletteOpen: boolean
   /** Public-safe result of the latest deferred/native command admission. */
   commandNotice: string | null
@@ -305,13 +301,7 @@ export const initialDesktopShellState = (
   codingSessionFilter: "active",
   codingSessionQuery: "",
   workspace: "chat",
-  workspaceSnapshot: null,
-  workspaceFile: null,
-  workspaceDraft: "",
-  workspaceBaseRevision: null,
-  workspaceSave: "idle",
-  workspaceGitStatus: { state: "unavailable" },
-  workspaceGitDiff: null,
+  workspaceBrowser: emptyWorkspaceBrowserState(),
   commandPaletteOpen: false,
   commandNotice: null,
   commandBindings: null,
@@ -425,11 +415,6 @@ export const DesktopWorkspaceSelected = defineIntent(
   Schema.Literals(desktopWorkspaceNames),
 )
 export const DesktopWorkspacePickerRequested = defineIntent("DesktopWorkspacePickerRequested", Schema.Null)
-export const DesktopWorkspaceFileSelected = defineIntent("DesktopWorkspaceFileSelected", Schema.String)
-export const DesktopWorkspaceDraftChanged = defineIntent("DesktopWorkspaceDraftChanged", Schema.String)
-export const DesktopWorkspaceSaveRequested = defineIntent("DesktopWorkspaceSaveRequested", Schema.Null)
-export const DesktopWorkspaceReloadRequested = defineIntent("DesktopWorkspaceReloadRequested", Schema.Null)
-export const DesktopWorkspaceGitDiffSelected = defineIntent("DesktopWorkspaceGitDiffSelected", Schema.String)
 export const DesktopCommandPaletteToggled = defineIntent("DesktopCommandPaletteToggled", Schema.Null)
 export const DesktopCommandPaletteDismissed = defineIntent("DesktopCommandPaletteDismissed", Schema.Null)
 export const DesktopCommandBindingSelected = defineIntent("DesktopCommandBindingSelected", Schema.String)
@@ -467,11 +452,6 @@ export const desktopShellIntents = [
   DesktopCodingSessionRecovered,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
-  DesktopWorkspaceFileSelected,
-  DesktopWorkspaceDraftChanged,
-  DesktopWorkspaceSaveRequested,
-  DesktopWorkspaceReloadRequested,
-  DesktopWorkspaceGitDiffSelected,
   DesktopCommandPaletteToggled,
   DesktopCommandPaletteDismissed,
   DesktopCommandBindingSelected,
@@ -485,6 +465,7 @@ export const desktopShellIntents = [
   ...historyWorkspaceIntents,
   ...fleetWorkspaceIntents,
   ...gitPanelIntents,
+  ...workspaceBrowserIntents,
 ] as const
 
 export type CodexHistoryHost = Readonly<{
@@ -723,40 +704,6 @@ export const withWorkspace = (
   workspace: DesktopWorkspaceName,
 ): DesktopShellState => ({ ...state, workspace, commandPaletteOpen: false })
 
-export const withWorkspaceSnapshot = (
-  state: DesktopShellState,
-  workspaceSnapshot: DesktopWorkspaceSnapshot | null,
-): DesktopShellState => ({
-  ...state,
-  workspaceSnapshot,
-  workspaceFile: null,
-  workspaceDraft: "",
-  workspaceBaseRevision: null,
-  workspaceSave: "idle",
-  workspaceGitStatus: { state: "unavailable" },
-  workspaceGitDiff: null,
-})
-
-export const withWorkspaceFile = (
-  state: DesktopShellState,
-  workspaceFile: DesktopWorkspaceFile | null,
-): DesktopShellState => ({
-  ...state,
-  workspaceFile,
-  workspaceDraft: workspaceFile?.content ?? "",
-  workspaceBaseRevision: workspaceFile?.revision ?? null,
-  workspaceSave: "idle",
-})
-
-export const withWorkspaceDraft = (
-  state: DesktopShellState,
-  workspaceDraft: string,
-): DesktopShellState => ({
-  ...state,
-  workspaceDraft,
-  workspaceSave: state.workspaceSave === "conflict" ? "conflict" : "idle",
-})
-
 export const withCommandPalette = (
   state: DesktopShellState,
   commandPaletteOpen: boolean,
@@ -859,12 +806,9 @@ export type QuestionHost = Readonly<{
 }>
 
 export type WorkspaceHost = Readonly<{
-  summary: () => Promise<DesktopWorkspaceSnapshot | null>
-  choose: () => Promise<DesktopWorkspaceSnapshot | null>
-  readFile: (path: string) => Promise<DesktopWorkspaceFile | null>
-  saveFile: (input: Readonly<{ path: string; content: string; expectedRevision: string }>) => Promise<DesktopWorkspaceSaveResult>
-  gitStatus: () => Promise<DesktopWorkspaceGitStatus>
-  gitDiff: (path: string) => Promise<DesktopWorkspaceGitDiff>
+  /** Opens the native picker; true means a new WorkContext is installed. */
+  choose: () => Promise<unknown>
+  browser?: WorkspaceBrowserBridge
 }>
 
 export type CodingCatalogHost = Readonly<{
@@ -995,12 +939,7 @@ export const makeDesktopShellHandlers = (
     sendMessage: async () => ({ ok: false, error: "Desktop chat is unavailable." }),
   },
   workspaceHost: WorkspaceHost = {
-    summary: async () => null,
-    choose: async () => null,
-    readFile: async () => null,
-    saveFile: async () => ({ state: "unavailable", message: "Workspace saving is unavailable." }),
-    gitStatus: async () => ({ state: "unavailable" }),
-    gitDiff: async () => ({ state: "unavailable", message: "Git review is unavailable." }),
+    choose: async () => false,
   },
   codexBridge: CodexSettingsBridge = unavailableCodexSettingsBridge,
   settingsSleep?: (ms: number) => Promise<void>,
@@ -1016,6 +955,10 @@ export const makeDesktopShellHandlers = (
   mcpConfigBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge)
+  const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
+    state,
+    workspaceHost.browser ?? unavailableWorkspaceBrowserBridge,
+  )
   /**
    * Hands one completed answer set to the typed bridge. The card collapses
    * only after the bridge confirms success. This preserves the frozen local
@@ -1047,6 +990,7 @@ export const makeDesktopShellHandlers = (
   ...settingsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
   ...makeGitPanelHandlers(state, gitBridge),
+  ...workspaceBrowserHandlers,
   DesktopSettingsToggled: () => Effect.gen(function* () {
     yield* settingsHandlers.DesktopSettingsToggled()
     const bindings = yield* Effect.promise(commandBindingHost.snapshot)
@@ -1232,9 +1176,8 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, current => ({ ...current, codingSessionQuery: query.slice(0, 512) })),
   DesktopCodingCatalogChooseRequested: () => Effect.gen(function* () {
     const codingCatalog = yield* Effect.promise(codingCatalogHost.choose)
-    const workspaceSnapshot = yield* Effect.promise(workspaceHost.summary)
     yield* SubscriptionRef.update(state, (current): DesktopShellState => ({
-      ...withWorkspaceSnapshot(current, workspaceSnapshot),
+      ...current,
       codingCatalog,
       workspace: "home",
       codingSessionFilter: "active",
@@ -1261,9 +1204,8 @@ export const makeDesktopShellHandlers = (
   }),
   DesktopCodingSessionRecovered: (sessionRef) => Effect.gen(function* () {
     const codingCatalog = yield* Effect.promise(() => codingCatalogHost.recover(sessionRef))
-    const workspaceSnapshot = yield* Effect.promise(workspaceHost.summary)
     yield* SubscriptionRef.update(state, current => ({
-      ...withWorkspaceSnapshot(current, workspaceSnapshot),
+      ...current,
       codingCatalog,
       workspace: desktopWorkspaceForCodingFocus(codingCatalog.focus),
     }))
@@ -1345,69 +1287,22 @@ export const makeDesktopShellHandlers = (
       if (workspace === "fleet") {
         yield* refreshFleetAccounts(state, fleetBridge)
       }
-      if (workspace === "home" || workspace === "files" || workspace === "review") {
-        const snapshot = yield* Effect.promise(workspaceHost.summary)
-        yield* SubscriptionRef.update(state, (current) => withWorkspaceSnapshot(current, snapshot))
-        if (workspace === "home") {
-          const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
-          yield* SubscriptionRef.update(state, current => ({ ...current, codingCatalog }))
-        }
-        if (workspace === "review") {
-          const gitStatus = yield* Effect.promise(workspaceHost.gitStatus)
-          yield* SubscriptionRef.update(state, (current) => ({ ...current, workspaceGitStatus: gitStatus }))
-          // Typed Git/GitHub panel (E2–E5): load its structured status + branches.
-          yield* refreshGitPanel(state, gitBridge)
-        }
+      if (workspace === "files") {
+        yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
+      }
+      if (workspace === "home") {
+        const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
+        yield* SubscriptionRef.update(state, current => ({ ...current, codingCatalog }))
+      }
+      if (workspace === "review") {
+        yield* refreshGitPanel(state, gitBridge)
       }
     }),
   DesktopWorkspacePickerRequested: () =>
     Effect.gen(function* () {
-      const snapshot = yield* Effect.promise(workspaceHost.choose)
-      yield* SubscriptionRef.update(state, (current) => withWorkspaceSnapshot(current, snapshot))
-    }),
-  DesktopWorkspaceFileSelected: (path) =>
-    Effect.gen(function* () {
-      const file = yield* Effect.promise(() => workspaceHost.readFile(path))
-      yield* SubscriptionRef.update(state, (current) => withWorkspaceFile(current, file))
-    }),
-  DesktopWorkspaceDraftChanged: (value) =>
-    SubscriptionRef.update(state, (current) => withWorkspaceDraft(current, value)),
-  DesktopWorkspaceSaveRequested: () =>
-    Effect.gen(function* () {
-      const current = yield* SubscriptionRef.get(state)
-      const file = current.workspaceFile
-      if (
-        file === null ||
-        file.truncated ||
-        current.workspaceBaseRevision === null ||
-        current.workspaceSave === "saving" ||
-        current.workspaceSave === "conflict"
-      ) return
-      yield* SubscriptionRef.update(state, (next): DesktopShellState => ({ ...next, workspaceSave: "saving" }))
-      const result = yield* Effect.promise(() => workspaceHost.saveFile({
-        path: file.path,
-        content: current.workspaceDraft,
-        expectedRevision: current.workspaceBaseRevision!,
-      }))
-      yield* SubscriptionRef.update(state, (next): DesktopShellState => {
-        if (result.state === "saved") return { ...withWorkspaceFile(next, result.file), workspaceSave: "saved" }
-        if (result.state === "conflict") {
-          // Preserve the editor's draft, disable save, and require an explicit
-          // reload rather than silently replacing or overwriting work.
-          return { ...next, workspaceFile: result.file, workspaceSave: "conflict" }
-        }
-        return { ...next, workspaceSave: "unavailable" }
-      })
-    }),
-  DesktopWorkspaceReloadRequested: () =>
-    SubscriptionRef.update(state, (current) => withWorkspaceFile(current, current.workspaceFile)),
-  DesktopWorkspaceGitDiffSelected: (relativePath) =>
-    Effect.gen(function* () {
-      const current = yield* SubscriptionRef.get(state)
-      if (current.workspaceSnapshot === null) return
-      const root = current.workspaceSnapshot.root
-      const diff = yield* Effect.promise(() => workspaceHost.gitDiff(`${root}/${relativePath}`))
-      yield* SubscriptionRef.update(state, (next) => ({ ...next, workspaceGitDiff: diff }))
+      const selected = yield* Effect.promise(workspaceHost.choose)
+      if (selected !== true) return
+      yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
     }),
   DesktopCommandPaletteToggled: () =>
     SubscriptionRef.update(state, (current) => withCommandPalette(current, !current.commandPaletteOpen)),
@@ -2199,110 +2094,16 @@ const projectHome = (state: DesktopShellState): View => {
 }
 
 const workspaceFiles = (state: DesktopShellState): View =>
-  Stack(
-    {
-      key: "workspace-files-panel",
-      direction: "column",
-      gap: "3",
-      style: { width: "full", minWidth: 0, flex: 1, minHeight: 0 },
-    },
-    [
-      Stack({ key: "workspace-files-heading", direction: "row", gap: "2", align: "center" }, [
-        Text({ key: "workspace-files-title", content: state.workspaceSnapshot?.label ?? "Files", variant: "heading", color: "textPrimary" }),
-        Button({
-          key: "workspace-files-choose",
-          label: "Choose folder",
-          variant: "ghost",
-          onPress: IntentRef("DesktopWorkspacePickerRequested"),
-          a11y: { label: "Choose local workspace folder" },
-        }),
-      ]),
-      ...(state.workspaceSnapshot === null ? [Text({ key: "workspace-files-empty", content: "Choose a local folder to inspect its files.", variant: "body", color: "textMuted" })] : [
-        Text({ key: "workspace-files-status", content: state.workspaceSnapshot.git === "clean" ? "No local changes" : state.workspaceSnapshot.git === "changed" ? "Local changes" : "Git status unavailable", variant: "caption", color: "textMuted" }),
-        Stack({ key: "workspace-files-layout", direction: "row", gap: "3", style: { width: "full", flex: 1, minHeight: 0 } }, [
-          Stack({ key: "workspace-files-list", direction: "column", gap: "1", style: { minWidth: 240, maxWidth: 320, flex: 1 } }, state.workspaceSnapshot.entries.map((entry) => Button({
-            key: `workspace-file-${entry.path}`,
-            label: entry.kind === "directory" ? `${entry.name}/` : entry.name,
-            variant: "ghost",
-            disabled: entry.kind === "directory",
-            onPress: IntentRef("DesktopWorkspaceFileSelected", StaticPayload(entry.path)),
-            a11y: { label: entry.kind === "directory" ? `Folder ${entry.name}` : `Open file ${entry.name}` },
-          }))),
-          Card({ key: "workspace-file-preview", padding: "3", radius: "lg", style: { flex: 2, minWidth: 0, surface: "glass" } }, [
-            Text({ key: "workspace-file-preview-title", content: state.workspaceFile?.path ?? "Select a file", variant: "caption", color: "textMuted" }),
-            ...(state.workspaceFile === null ? [
-              Text({ key: "workspace-file-preview-empty", content: "Choose a bounded text file to inspect or edit.", variant: "body", color: "textMuted" }),
-            ] : state.workspaceFile.truncated ? [
-              Text({ key: "workspace-file-preview-truncated", content: "This file is too large to edit safely. It remains read-only.", variant: "body", color: "warning" }),
-              Text({ key: "workspace-file-preview-content", content: state.workspaceFile.content, variant: "body", color: "textPrimary" }),
-            ] : [
-              TextField({
-                key: "workspace-file-editor",
-                value: state.workspaceDraft,
-                placeholder: "File contents",
-                disabled: state.workspaceSave === "saving" || state.workspaceSave === "conflict",
-                a11y: { label: "Workspace file editor" },
-                onChange: IntentRef("DesktopWorkspaceDraftChanged", ComponentValueBinding()),
-              }),
-              Stack({ key: "workspace-file-actions", direction: "row", gap: "2", align: "center" }, [
-                Button({
-                  key: "workspace-file-save",
-                  label: state.workspaceSave === "saving" ? "Saving…" : "Save",
-                  variant: "primary",
-                  disabled: state.workspaceSave === "saving" || state.workspaceSave === "conflict",
-                  onPress: IntentRef("DesktopWorkspaceSaveRequested"),
-                  a11y: { label: "Save workspace file" },
-                }),
-                ...(state.workspaceSave === "conflict" ? [Button({
-                  key: "workspace-file-reload",
-                  label: "Reload changed file",
-                  variant: "secondary",
-                  onPress: IntentRef("DesktopWorkspaceReloadRequested"),
-                  a11y: { label: "Reload changed workspace file" },
-                })] : []),
-                ...(state.workspaceSave === "saved" ? [Text({ key: "workspace-file-saved", content: "Saved", variant: "caption", color: "success" })] : []),
-                ...(state.workspaceSave === "conflict" ? [Text({ key: "workspace-file-conflict", content: "Changed elsewhere. Reload before saving.", variant: "caption", color: "warning" })] : []),
-                ...(state.workspaceSave === "unavailable" ? [Text({ key: "workspace-file-unavailable", content: "Save unavailable. The file was not changed.", variant: "caption", color: "warning" })] : []),
-              ]),
-            ]),
-          ]),
-        ]),
-      ]),
-    ],
-  )
+  workspaceBrowserView(state.workspaceBrowser)
 
 const workspaceReview = (state: DesktopShellState): View => {
-  const statusRows: View[] = state.workspaceGitStatus.state === "unavailable"
-    ? [Text({ key: "workspace-review-unavailable", content: "Git status is unavailable for this workspace.", variant: "body", color: "textMuted" })]
-    : state.workspaceGitStatus.changes.length === 0
-      ? [Text({ key: "workspace-review-clean", content: "No local changes", variant: "body", color: "textMuted" })]
-      : state.workspaceGitStatus.changes.map((change) => Button({
-          key: `workspace-review-change-${change.path}`,
-          label: `${change.kind} · ${change.path}`,
-          variant: "ghost",
-          onPress: IntentRef("DesktopWorkspaceGitDiffSelected", StaticPayload(change.path)),
-          a11y: { label: `Review ${change.kind} file ${change.path}` },
-        }))
-  if (state.workspaceGitStatus.state === "available" && state.workspaceGitStatus.truncated) {
-    statusRows.push(Text({ key: "workspace-review-truncated", content: "Only the first bounded set of changes is shown.", variant: "caption", color: "warning" }))
-  }
-  const diffRows: View[] = state.workspaceGitDiff === null
-    ? []
-    : state.workspaceGitDiff.state === "available"
-      ? [Card({ key: "workspace-review-diff", padding: "3", radius: "lg", style: { width: "full", surface: "glass" } }, [
-          Text({ key: "workspace-review-diff-path", content: state.workspaceGitDiff.path, variant: "caption", color: "textMuted" }),
-          Text({ key: "workspace-review-diff-content", content: state.workspaceGitDiff.content, variant: "body", color: "textPrimary" }),
-        ])]
-      : [Text({ key: "workspace-review-diff-unavailable", content: state.workspaceGitDiff.message, variant: "body", color: "warning" })]
   return Stack(
     { key: "workspace-review-panel", direction: "column", gap: "3", style: { width: "full", minWidth: 0, flex: 1, minHeight: 0 } },
     [
-      // Typed Git/GitHub surface (E2–E5): commit/push/branch/issue/PR with
-      // receipts, mounted above the existing read-only diff viewer.
+      // The typed Git/GitHub surface owns status, review, commit, and remote
+      // receipts using relative paths. The prior absolute-root diff adapter is
+      // deliberately not composed.
       gitPanelView(state.git),
-      Text({ key: "workspace-review-title", content: "Changes", variant: "heading", color: "textPrimary" }),
-      ...statusRows,
-      ...diffRows,
     ],
   )
 }

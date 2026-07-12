@@ -39,6 +39,10 @@ import {
   type GitGithubBridge,
 } from "./git-panel.ts"
 import {
+  unavailableWorkspaceBrowserBridge,
+  type WorkspaceBrowserBridge,
+} from "./workspace-browser.ts"
+import {
   desktopShellIntents,
   desktopShellView,
   initialDesktopShellState,
@@ -64,13 +68,7 @@ import {
   type CodexLocalAvailability,
 } from "../codex-local-contract.ts"
 import { type DesktopThread } from "../chat-contract.ts"
-import {
-  type DesktopWorkspaceFile,
-  type DesktopWorkspaceGitDiff,
-  type DesktopWorkspaceGitStatus,
-  type DesktopWorkspaceSaveResult,
-  type DesktopWorkspaceSnapshot,
-} from "../workspace-contract.ts"
+import type { DesktopWorkspaceChange } from "../workspace-contract.ts"
 import type {
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayResponse,
@@ -113,12 +111,16 @@ type DesktopBridge = Readonly<{
   openThread?: (value: unknown) => Promise<unknown>
   hydrateThread?: (value: unknown) => Promise<unknown>
   sendMessage?: (value: unknown) => Promise<unknown>
-  workspaceSummary?: () => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
-  readWorkspaceFile?: (value: unknown) => Promise<unknown>
-  saveWorkspaceFile?: (value: unknown) => Promise<unknown>
-  workspaceGitStatus?: () => Promise<unknown>
-  workspaceGitDiff?: (value: unknown) => Promise<unknown>
+  workspaceTree?: (value: unknown) => Promise<unknown>
+  workspaceSearch?: (value: unknown) => Promise<unknown>
+  cancelWorkspaceSearch?: (value: unknown) => Promise<unknown>
+  createWorkspaceEntry?: (value: unknown) => Promise<unknown>
+  renameWorkspaceEntry?: (value: unknown) => Promise<unknown>
+  deleteWorkspaceEntry?: (value: unknown) => Promise<unknown>
+  revealWorkspaceEntry?: (value: unknown) => Promise<unknown>
+  refreshWorkspace?: () => Promise<unknown>
+  workspaceSubscribe?: (listener: (change: DesktopWorkspaceChange) => void) => () => void
   codexAccounts?: () => Promise<unknown>
   codexConnectStart?: () => Promise<unknown>
   codexReconnectStart?: (ref: string) => Promise<unknown>
@@ -178,6 +180,17 @@ type DesktopBridge = Readonly<{
 
 const readBridge = (): DesktopBridge | undefined =>
   (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
+
+const workspaceBrowserBridge: WorkspaceBrowserBridge = {
+  workspaceTree: (value) => readBridge()?.workspaceTree?.(value) ?? unavailableWorkspaceBrowserBridge.workspaceTree(value),
+  workspaceSearch: (value) => readBridge()?.workspaceSearch?.(value) ?? unavailableWorkspaceBrowserBridge.workspaceSearch(value),
+  cancelWorkspaceSearch: (value) => readBridge()?.cancelWorkspaceSearch?.(value) ?? unavailableWorkspaceBrowserBridge.cancelWorkspaceSearch(value),
+  createWorkspaceEntry: (value) => readBridge()?.createWorkspaceEntry?.(value) ?? unavailableWorkspaceBrowserBridge.createWorkspaceEntry(value),
+  renameWorkspaceEntry: (value) => readBridge()?.renameWorkspaceEntry?.(value) ?? unavailableWorkspaceBrowserBridge.renameWorkspaceEntry(value),
+  deleteWorkspaceEntry: (value) => readBridge()?.deleteWorkspaceEntry?.(value) ?? unavailableWorkspaceBrowserBridge.deleteWorkspaceEntry(value),
+  revealWorkspaceEntry: (value) => readBridge()?.revealWorkspaceEntry?.(value) ?? unavailableWorkspaceBrowserBridge.revealWorkspaceEntry(value),
+  refreshWorkspace: () => readBridge()?.refreshWorkspace?.() ?? unavailableWorkspaceBrowserBridge.refreshWorkspace(),
+}
 
 /**
  * Codex settings bridge over the preload surface. Each call degrades to the
@@ -594,52 +607,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           intentStatus: null,
         }
       }, chat, {
-        summary: async () => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.workspaceSummary?.()
-          return typeof raw === "object" && raw !== null && typeof (raw as { root?: unknown }).root === "string" ? raw as DesktopWorkspaceSnapshot : null
-        },
-        choose: async () => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.chooseWorkspace?.()
-          return typeof raw === "object" && raw !== null && typeof (raw as { root?: unknown }).root === "string" ? raw as DesktopWorkspaceSnapshot : null
-        },
-        readFile: async (path) => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.readWorkspaceFile?.({ path })
-          return typeof raw === "object" && raw !== null && typeof (raw as { content?: unknown }).content === "string" ? raw as DesktopWorkspaceFile : null
-        },
-        saveFile: async (input) => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.saveWorkspaceFile?.(input)
-          if (typeof raw !== "object" || raw === null) {
-            return { state: "unavailable", message: "Workspace save returned an invalid response." }
-          }
-          const value = raw as { state?: unknown; file?: unknown; message?: unknown }
-          if (
-            (value.state === "saved" || value.state === "conflict") &&
-            typeof value.file === "object" && value.file !== null &&
-            typeof (value.file as { content?: unknown }).content === "string" &&
-            typeof (value.file as { revision?: unknown }).revision === "string"
-          ) return value as DesktopWorkspaceSaveResult
-          return {
-            state: "unavailable",
-            message: typeof value.message === "string" ? value.message : "Workspace save is unavailable.",
-          }
-        },
-        gitStatus: async () => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.workspaceGitStatus?.()
-          if (typeof raw !== "object" || raw === null) return { state: "unavailable" }
-          const value = raw as { state?: unknown; changes?: unknown; truncated?: unknown }
-          return value.state === "available" && Array.isArray(value.changes) && typeof value.truncated === "boolean"
-            ? value as DesktopWorkspaceGitStatus
-            : { state: "unavailable" }
-        },
-        gitDiff: async (path) => {
-          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.workspaceGitDiff?.({ path })
-          if (typeof raw !== "object" || raw === null) return { state: "unavailable", message: "Git review is unavailable." }
-          const value = raw as { state?: unknown; path?: unknown; content?: unknown; truncated?: unknown; message?: unknown }
-          if (value.state === "available" && typeof value.path === "string" && typeof value.content === "string" && typeof value.truncated === "boolean") {
-            return value as DesktopWorkspaceGitDiff
-          }
-          return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
-        },
+        choose: async () => (await readBridge()?.chooseWorkspace?.()) === true,
+        browser: workspaceBrowserBridge,
       }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost, commandBindingHost, {
         toggleFullScreen: async () => {
           const raw = await (globalThis as { openagentsDesktop?: { toggleFullScreen?: () => Promise<boolean> } }).openagentsDesktop?.toggleFullScreen?.()
@@ -647,6 +616,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         },
       }, gitGithubBridge, mcpConfigSettingsBridge),
     )
+    if (typeof bridge?.workspaceSubscribe === "function") {
+      const unsubscribeWorkspace = bridge.workspaceSubscribe(change => {
+        void Effect.runPromise(
+          registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserChangeReceived", StaticPayload(change)))),
+        )
+      })
+      window.addEventListener("pagehide", () => unsubscribeWorkspace(), { once: true })
+    }
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).
     if (typeof bridge?.usageLedger?.onEvent === "function") {
@@ -709,7 +686,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const resolution = resolveDesktopDeferredCommandIntent(command, {
         sessionReady: current.settings.openAgentsSession === "session_ready",
         verifiedOwner: current.settings.openAgentsSession === "session_ready",
-        workspaceReady: current.workspaceSnapshot !== null || current.codingCatalog.sessions.length > 0,
+        workspaceReady: current.workspaceBrowser.grantRef !== null || current.codingCatalog.sessions.length > 0,
       })
       if (resolution.state === "rejected") {
         yield* SubscriptionRef.update(state, value => ({

@@ -1517,6 +1517,32 @@ const smokeWorkspaceTreeBridge = `(async () => {
   }
 })()`
 
+const smokeWorkspaceFilesUi = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const files = document.querySelector('[data-en-key="workspace-files"]')
+  if (files === null) return { ok: false, reason: "Files dock item missing" }
+  files.click()
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-browser-tree-list"]') === null) {
+    await wait(50)
+  }
+  const browser = document.querySelector('[data-en-key="workspace-browser"]')
+  const tree = document.querySelector('[data-en-key="workspace-browser-tree-list"]')
+  const search = document.querySelector('[data-en-key="workspace-browser-query"] input')
+  const boundary = document.querySelector('[data-en-key="workspace-browser-boundary"]')
+  const legacyEditor = document.querySelector('[data-en-key="workspace-file-editor"]')
+  const leakedRoot = document.body.textContent?.includes("tests/fixtures/codex-smoke") === true
+  const chat = document.querySelector('[data-en-key="workspace-chat"]')
+  chat?.click()
+  return {
+    ok: browser !== null && tree !== null && search !== null && boundary !== null &&
+      legacyEditor === null && !leakedRoot && chat !== null,
+    relativeBoundary: boundary?.textContent,
+    legacyEditor: legacyEditor !== null,
+    leakedRoot,
+  }
+})()`
+
 const smokeLifecycleCorrelation = `(async () => {
   const bridge = globalThis.openagentsDesktop
   if (typeof bridge?.runtimeRequest !== "function") return { ok: false, reason: "Runtime Gateway bridge missing" }
@@ -2521,6 +2547,7 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("shell-mounted", smokeWaitForShell)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await step("workspace-tree-refresh-watch-bridge", smokeWorkspaceTreeBridge)
+        await step("workspace-files-relative-ui", smokeWorkspaceFilesUi)
         await step("lifecycle-correlation", smokeLifecycleCorrelation)
         if (!desktopCorrelationJournal.complete("correlation.desktop.smoke")) {
           throw new Error(`lifecycle-correlation journal incomplete: ${desktopCorrelationJournal.stages("correlation.desktop.smoke").join(",")}`)

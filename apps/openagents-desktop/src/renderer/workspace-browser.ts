@@ -245,6 +245,7 @@ const WorkspaceRevisionPayloadSchema = Schema.Struct({
 })
 
 export const WorkspaceBrowserRefreshRequested = defineIntent("WorkspaceBrowserRefreshRequested", Schema.Null)
+export const WorkspaceBrowserOpened = defineIntent("WorkspaceBrowserOpened", Schema.Null)
 export const WorkspaceBrowserTreeToggled = defineIntent("WorkspaceBrowserTreeToggled", DesktopWorkspacePathRefSchema)
 export const WorkspaceBrowserTreeMoreRequested = defineIntent("WorkspaceBrowserTreeMoreRequested", DesktopWorkspacePathRefSchema)
 export const WorkspaceBrowserEntrySelected = defineIntent("WorkspaceBrowserEntrySelected", DesktopWorkspacePathRefSchema)
@@ -266,6 +267,7 @@ export const WorkspaceBrowserChangeReceived = defineIntent("WorkspaceBrowserChan
 
 export const workspaceBrowserIntents = [
   WorkspaceBrowserRefreshRequested,
+  WorkspaceBrowserOpened,
   WorkspaceBrowserTreeToggled,
   WorkspaceBrowserTreeMoreRequested,
   WorkspaceBrowserEntrySelected,
@@ -301,7 +303,7 @@ export type WorkspaceBrowserBridge = Readonly<{
   refreshWorkspace: () => Promise<unknown>
 }>
 
-const unavailableWorkspaceBrowserBridge: WorkspaceBrowserBridge = {
+export const unavailableWorkspaceBrowserBridge: WorkspaceBrowserBridge = {
   workspaceTree: async () => ({ state: "unavailable", message: "Workspace files are unavailable." }),
   workspaceSearch: async (value) => ({
     requestRef: typeof value === "object" && value !== null && typeof (value as { requestRef?: unknown }).requestRef === "string"
@@ -426,6 +428,7 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
       : setBrowser(browser => withWorkspaceBrowserOperation(browser, result))
 
   return {
+    WorkspaceBrowserOpened: () => loadRoot(),
     WorkspaceBrowserRefreshRequested: () => refresh,
 
     WorkspaceBrowserTreeToggled: (directoryRef: string) =>

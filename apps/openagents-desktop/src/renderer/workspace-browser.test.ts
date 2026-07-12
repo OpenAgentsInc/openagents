@@ -323,6 +323,16 @@ describe("workspace browser typed intent loop", () => {
     }))
   })
 
+  test("Open loads the current root without advancing the host refresh epoch", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const { bridge, calls } = makeFakeBridge()
+      const { state, handlers } = yield* handlerHarness(bridge)
+      yield* handlers.WorkspaceBrowserOpened()
+      expect((yield* SubscriptionRef.get(state)).workspaceBrowser.phase).toBe("ready")
+      expect(calls.map(call => call.op)).toEqual(["tree"])
+    }))
+  })
+
   test("directory toggles lazy-load once and pagination uses the declared offset", async () => {
     const { bridge, calls } = makeFakeBridge({
       workspaceTree: async (value) => {
