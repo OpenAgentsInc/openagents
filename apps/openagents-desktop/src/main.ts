@@ -124,9 +124,15 @@ import {
   DesktopWorkspaceReadChannel,
   DesktopWorkspaceSaveChannel,
   DesktopWorkspaceSummaryChannel,
+  DesktopWorkspaceTreeChannel,
+  DesktopWorkspaceRefreshChannel,
+  DesktopWorkspaceWatchChannel,
+  DesktopWorkspaceChangeChannel,
   decodeWorkspaceFileRequest,
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
+  decodeWorkspaceTreeRequest,
+  decodeWorkspaceWatchRequest,
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
@@ -521,6 +527,36 @@ const hostLifecycle = makeDesktopHostLifecycle({
   account: codexConnect,
   history: codexHistoryHost,
 })
+const requestedWorkspaceChangeWindows = new Set<number>()
+const workspaceChangeSubscriptions = new Map<number, () => void>()
+const closeWorkspaceChangeSubscription = (windowId: number): void => {
+  const close = workspaceChangeSubscriptions.get(windowId)
+  workspaceChangeSubscriptions.delete(windowId)
+  close?.()
+}
+const bindWorkspaceChangeSubscription = (windowId: number): boolean => {
+  closeWorkspaceChangeSubscription(windowId)
+  if (!requestedWorkspaceChangeWindows.has(windowId)) return false
+  const window = BrowserWindow.fromId(windowId)
+  const workspace = hostLifecycle.workspace()
+  if (window === null || window.isDestroyed() || workspace === null) return false
+  const subscription = workspace.subscribe(change => {
+    if (!window.isDestroyed()) {
+      window.webContents.send(DesktopWorkspaceChangeChannel, change)
+    }
+  })
+  workspaceChangeSubscriptions.set(windowId, subscription.close)
+  return true
+}
+const rebindWorkspaceChangeSubscriptions = (): void => {
+  for (const windowId of requestedWorkspaceChangeWindows) {
+    bindWorkspaceChangeSubscription(windowId)
+  }
+}
+const disableWorkspaceChangeSubscription = (windowId: number): void => {
+  requestedWorkspaceChangeWindows.delete(windowId)
+  closeWorkspaceChangeSubscription(windowId)
+}
 // Local file authority begins only after an explicit directory-picker choice.
 // A process working directory or environment default is not user selection.
 const workspaceSnapshot = () => {
@@ -536,13 +572,17 @@ const codingCatalogSnapshot = () => {
 }
 const activateCodingCatalogRoot = () => {
   const root = hostLifecycle.sync()?.codingCatalog()?.selectedRoot() ?? null
-  if (root !== null) hostLifecycle.replaceWorkspace(openWorkspaceService(root))
+  if (root !== null) {
+    hostLifecycle.replaceWorkspace(openWorkspaceService(root))
+    rebindWorkspaceChangeSubscriptions()
+  }
 }
 const chooseCodingWorkspace = async (registerCatalog = true) => {
   const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
   if (result.canceled || result.filePaths[0] === undefined) return null
   const root = result.filePaths[0]
   hostLifecycle.replaceWorkspace(openWorkspaceService(root))
+  rebindWorkspaceChangeSubscriptions()
   if (registerCatalog) hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
   return root
 }
@@ -555,6 +595,36 @@ ipcMain.handle(DesktopWindowFullscreenChannel, (event) => {
 })
 ipcMain.handle(DesktopWorkspaceSummaryChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceFilesChannel, () => workspaceSnapshot())
+ipcMain.handle(DesktopWorkspaceTreeChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { state: "unavailable", message: "The workspace tree request is unavailable." }
+  }
+  const request = decodeWorkspaceTreeRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before browsing files." }
+    : workspace.tree(request)
+})
+ipcMain.handle(DesktopWorkspaceRefreshChannel, event => {
+  if (!isTrustedRuntimeGatewaySender(event)) return false
+  const workspace = hostLifecycle.workspace()
+  if (workspace === null) return false
+  workspace.refresh()
+  return true
+})
+ipcMain.handle(DesktopWorkspaceWatchChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return false
+  const request = decodeWorkspaceWatchRequest(value)
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (request === null || window === null || window.isDestroyed()) return false
+  if (!request.active) {
+    disableWorkspaceChangeSubscription(window.id)
+    return true
+  }
+  requestedWorkspaceChangeWindows.add(window.id)
+  bindWorkspaceChangeSubscription(window.id)
+  return true
+})
 ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
   await chooseCodingWorkspace()
   return workspaceSnapshot()
@@ -1160,9 +1230,13 @@ const createWindow = (): BrowserWindow => {
       preload: path.join(here, "preload.cjs"),
     },
   })
-  const closeWindowScope = hostLifecycle.registerWindow(`window.${window.id}`, runtimeGateway.subscribe(event => {
+  const unsubscribeRuntime = runtimeGateway.subscribe(event => {
     if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
-  }))
+  })
+  const closeWindowScope = hostLifecycle.registerWindow(`window.${window.id}`, () => {
+    disableWorkspaceChangeSubscription(window.id)
+    unsubscribeRuntime()
+  })
   const unsubscribeLedger = usageLedger.subscribe(snapshot => {
     if (!window.isDestroyed()) window.webContents.send(UsageLedgerEventChannel, snapshot)
   })
@@ -1217,6 +1291,39 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
     protocolVersion: result?.result?.protocolVersion,
     lifecycle: result?.result?.lifecycle,
     capabilityCount: result?.result?.capabilities?.length ?? 0,
+  }
+})()`
+
+const smokeWorkspaceTreeBridge = `(async () => {
+  const bridge = globalThis.openagentsDesktop
+  if (typeof bridge?.workspaceTree !== "function" ||
+      typeof bridge?.refreshWorkspace !== "function" ||
+      typeof bridge?.workspaceSubscribe !== "function") {
+    throw new Error("workspace capability bridge unavailable")
+  }
+  const changes = []
+  const unsubscribe = bridge.workspaceSubscribe((change) => changes.push(change))
+  try {
+    const page = await bridge.workspaceTree({ directoryRef: "", offset: 0, limit: 20 })
+    if (page?.state !== "available" || !String(page.grantRef).startsWith("workspace.grant.")) {
+      throw new Error("workspace tree unavailable")
+    }
+    const serialized = JSON.stringify(page)
+    if (serialized.includes("tests/fixtures/codex-smoke") ||
+        page.entries.some((entry) => String(entry.pathRef).startsWith("/"))) {
+      throw new Error("workspace tree leaked its selected root")
+    }
+    if (await bridge.refreshWorkspace() !== true) throw new Error("workspace refresh unavailable")
+    for (let attempt = 0; attempt < 40 && !changes.some((change) => change.kind === "refresh"); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    const refresh = changes.find((change) => change.kind === "refresh")
+    if (refresh === undefined || refresh.pathRef !== null || refresh.epoch <= page.cache.epoch) {
+      throw new Error("workspace refresh event missing")
+    }
+    return { ok: true, entryCount: page.entries.length, epoch: refresh.epoch }
+  } finally {
+    unsubscribe()
   }
 })()`
 
@@ -2126,6 +2233,7 @@ const runSmoke = (window: BrowserWindow): void => {
         }
         await step("shell-mounted", smokeWaitForShell)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
+        await step("workspace-tree-refresh-watch-bridge", smokeWorkspaceTreeBridge)
         await step("lifecycle-correlation", smokeLifecycleCorrelation)
         if (!desktopCorrelationJournal.complete("correlation.desktop.smoke")) {
           throw new Error(`lifecycle-correlation journal incomplete: ${desktopCorrelationJournal.stages("correlation.desktop.smoke").join(",")}`)

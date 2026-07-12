@@ -5,6 +5,13 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import {
+  decodeWorkspaceChange,
+  decodeWorkspaceTreePage,
+  decodeWorkspaceTreeRequest,
+  decodeWorkspaceWatchRequest,
+} from "../src/workspace-contract.ts"
+
+import {
   openWorkspaceService,
   readWorkspaceFile,
   saveWorkspaceFile,
@@ -354,5 +361,33 @@ describe("Desktop bounded workspace service", () => {
     })
     expect(second.state === "available" ? second.entries : []).toHaveLength(50)
     expect(second.state === "available" ? second.nextOffset : -1).toBeNull()
+  })
+
+  test("decodes only the fixed tree/watch bridge request and event shapes", () => {
+    expect(decodeWorkspaceTreeRequest({ directoryRef: "src", offset: 0, limit: 80 })).toEqual({
+      directoryRef: "src",
+      offset: 0,
+      limit: 80,
+    })
+    expect(decodeWorkspaceTreeRequest({ directoryRef: "src", extra: "ignored" })).toEqual({
+      directoryRef: "src",
+    })
+    expect(decodeWorkspaceWatchRequest({ active: true })).toEqual({ active: true })
+    expect(decodeWorkspaceWatchRequest({ active: "yes" })).toBeNull()
+    expect(decodeWorkspaceChange({ kind: "overflow", pathRef: null, epoch: 2 })).toEqual({
+      kind: "overflow",
+      pathRef: null,
+      epoch: 2,
+    })
+    expect(decodeWorkspaceChange({ kind: "changed", pathRef: null, epoch: "2" })).toBeNull()
+    const root = makeRoot()
+    writeFileSync(path.join(root, "README.md"), "safe")
+    const page = workspaceTreePage({
+      root,
+      grantRef: "workspace.grant.decode",
+      directoryRef: "",
+    })
+    expect(decodeWorkspaceTreePage(page)).toEqual(page)
+    expect(decodeWorkspaceTreePage({ state: "available", root })).toBeNull()
   })
 })

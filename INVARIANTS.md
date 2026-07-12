@@ -630,8 +630,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   caches, while subscriber close, WorkContext replacement, and app disposal
   close it exactly once. The core boundary and adversarial fixtures live in
   `apps/openagents-desktop/src/workspace-service.ts` and
-  `apps/openagents-desktop/tests/workspace-service.test.ts`; renderer/gateway
-  adoption and mutation controls remain CUT-17 work.
+  `apps/openagents-desktop/tests/workspace-service.test.ts`. Fixed tree,
+  refresh, subscribe/unsubscribe, and decoded change-event channels now cross
+  main/preload only for the trusted top-level bundled renderer. Preload
+  reference-counts local consumers; main keeps one exact subscription per
+  webContents, rebinds it after an explicit WorkContext replacement, and
+  closes it with the window/app lifecycle. The built Electron smoke proves a
+  relative tree page, a newer refresh event, unsubscribe, and zero active host
+  slots. Effect Native UI, cancellable content-search transport, and mutation
+  controls remain CUT-17 work.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

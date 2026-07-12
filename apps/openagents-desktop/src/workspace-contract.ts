@@ -7,6 +7,10 @@ export const DesktopWorkspaceReadChannel = "openagents-desktop/workspace-read" a
 export const DesktopWorkspaceSaveChannel = "openagents-desktop/workspace-save" as const
 export const DesktopWorkspaceGitStatusChannel = "openagents-desktop/workspace-git-status" as const
 export const DesktopWorkspaceGitDiffChannel = "openagents-desktop/workspace-git-diff" as const
+export const DesktopWorkspaceTreeChannel = "openagents-desktop/workspace-tree" as const
+export const DesktopWorkspaceRefreshChannel = "openagents-desktop/workspace-refresh" as const
+export const DesktopWorkspaceWatchChannel = "openagents-desktop/workspace-watch" as const
+export const DesktopWorkspaceChangeChannel = "openagents-desktop/workspace-change" as const
 
 export const DesktopWorkspacePathRefSchema = Schema.String.pipe(
   Schema.check(Schema.isMaxLength(1_024)),
@@ -23,6 +27,46 @@ export const DesktopWorkspaceSearchRequestSchema = Schema.Struct({
   mode: Schema.Literals(["path", "content"]),
   offset: Schema.optional(Schema.Number),
   limit: Schema.optional(Schema.Number),
+})
+
+export const DesktopWorkspaceWatchRequestSchema = Schema.Struct({
+  active: Schema.Boolean,
+})
+
+export const DesktopWorkspaceCacheFactSchema = Schema.Struct({
+  key: Schema.String,
+  epoch: Schema.Number,
+  freshness: Schema.Literal("current"),
+})
+
+export const DesktopWorkspaceTreeEntrySchema = Schema.Struct({
+  name: Schema.String,
+  pathRef: DesktopWorkspacePathRefSchema,
+  kind: Schema.Literals(["file", "directory"]),
+  expandable: Schema.Boolean,
+  sizeBytes: Schema.NullOr(Schema.Number),
+  revisionRef: Schema.String,
+})
+
+export const DesktopWorkspaceTreePageSchema = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("available"),
+    grantRef: Schema.String,
+    directoryRef: DesktopWorkspacePathRefSchema,
+    entries: Schema.Array(DesktopWorkspaceTreeEntrySchema),
+    nextOffset: Schema.NullOr(Schema.Number),
+    cache: DesktopWorkspaceCacheFactSchema,
+  }),
+  Schema.Struct({
+    state: Schema.Literal("unavailable"),
+    message: Schema.String,
+  }),
+])
+
+export const DesktopWorkspaceChangeSchema = Schema.Struct({
+  kind: Schema.Literals(["changed", "overflow", "refresh"]),
+  pathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  epoch: Schema.Number,
 })
 
 export const DesktopWorkspaceFileRequestSchema = Schema.Struct({ path: Schema.String })
@@ -155,5 +199,26 @@ export const decodeWorkspaceSearchRequest = (
   value: unknown,
 ): { query: string; mode: "path" | "content"; offset?: number; limit?: number } | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceWatchRequest = (
+  value: unknown,
+): { active: boolean } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceWatchRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceTreePage = (
+  value: unknown,
+): DesktopWorkspaceTreePage | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceTreePageSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceChange = (
+  value: unknown,
+): DesktopWorkspaceChange | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceChangeSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }

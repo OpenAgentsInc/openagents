@@ -39,9 +39,18 @@ import {
   DesktopWorkspaceReadChannel,
   DesktopWorkspaceSaveChannel,
   DesktopWorkspaceSummaryChannel,
+  DesktopWorkspaceTreeChannel,
+  DesktopWorkspaceRefreshChannel,
+  DesktopWorkspaceWatchChannel,
+  DesktopWorkspaceChangeChannel,
+  decodeWorkspaceChange,
   decodeWorkspaceFileRequest,
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
+  decodeWorkspaceTreePage,
+  decodeWorkspaceTreeRequest,
+  decodeWorkspaceWatchRequest,
+  type DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import {
@@ -105,6 +114,42 @@ import {
   type DesktopDeferredCommand,
 } from "./desktop-command-contract.ts"
 
+const workspaceChangeListeners = new Set<
+  (change: DesktopWorkspaceChange) => void
+>()
+let workspaceChangeHandler: ((_event: unknown, value: unknown) => void) | null = null
+
+const subscribeWorkspaceChanges = (
+  listener: (change: DesktopWorkspaceChange) => void,
+): (() => void) => {
+  if (workspaceChangeListeners.size === 0) {
+    workspaceChangeHandler = (_event: unknown, value: unknown): void => {
+      const change = decodeWorkspaceChange(value)
+      if (change === null) return
+      for (const activeListener of workspaceChangeListeners) activeListener(change)
+    }
+    ipcRenderer.on(DesktopWorkspaceChangeChannel, workspaceChangeHandler)
+    void ipcRenderer.invoke(
+      DesktopWorkspaceWatchChannel,
+      decodeWorkspaceWatchRequest({ active: true }),
+    )
+  }
+  workspaceChangeListeners.add(listener)
+  let closed = false
+  return () => {
+    if (closed) return
+    closed = true
+    workspaceChangeListeners.delete(listener)
+    if (workspaceChangeListeners.size !== 0 || workspaceChangeHandler === null) return
+    ipcRenderer.removeListener(DesktopWorkspaceChangeChannel, workspaceChangeHandler)
+    workspaceChangeHandler = null
+    void ipcRenderer.invoke(
+      DesktopWorkspaceWatchChannel,
+      decodeWorkspaceWatchRequest({ active: false }),
+    )
+  }
+}
+
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
   platform: process.platform,
@@ -150,6 +195,20 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   workspaceSummary: () => ipcRenderer.invoke(DesktopWorkspaceSummaryChannel),
   chooseWorkspace: () => ipcRenderer.invoke(DesktopWorkspaceChooseChannel),
   listWorkspaceFiles: () => ipcRenderer.invoke(DesktopWorkspaceFilesChannel),
+  workspaceTree: async (value: unknown) => {
+    const request = decodeWorkspaceTreeRequest(value)
+    if (request === null) {
+      return { state: "unavailable", message: "The workspace tree request is invalid." }
+    }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceTreeChannel, request)
+    return decodeWorkspaceTreePage(response) ?? {
+      state: "unavailable",
+      message: "The workspace tree response is invalid.",
+    }
+  },
+  refreshWorkspace: async (): Promise<boolean> =>
+    (await ipcRenderer.invoke(DesktopWorkspaceRefreshChannel)) === true,
+  workspaceSubscribe: subscribeWorkspaceChanges,
   readWorkspaceFile: (value: unknown) => {
     const request = decodeWorkspaceFileRequest(value)
     return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopWorkspaceReadChannel, request)
