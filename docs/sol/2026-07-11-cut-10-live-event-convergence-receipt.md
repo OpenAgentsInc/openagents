@@ -2,8 +2,8 @@
 
 - Date: 2026-07-11
 - Issue: [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690)
-- Status: shared/mobile and complete Desktop host/wire/renderer no-poll path
-  landed; physical receipt pending
+- Status: complete; shared/mobile and Desktop host/wire/renderer no-poll path
+  landed and the physical-iOS continuation receipt is accepted
 - Sequencing exception: the owner deferred CUT-09 physical acceptance while
   the paired phone records video, without waiving that acceptance gate
 
@@ -86,9 +86,9 @@ protocol v7, and all landed chat UI. The later local Fable/Codex child lane
 remains separate. This tranche did not change local execution, child activity,
 usage, composer, provider-account, Pylon, package, or lockfile paths.
 
-CUT-10 must still attach the physical-mobile continuation receipt when the
-recording phone is available. Until then #8690 remains open; the deterministic
-no-poll code and built-Electron receipt are complete.
+CUT-10's physical-mobile continuation receipt is supplied by the accepted
+CUT-12 journey below. The deterministic no-poll code, built-Electron receipt,
+and physical-iOS acceptance are complete.
 
 ## 2026-07-12 boot-convergence addendum
 
@@ -109,3 +109,21 @@ pass / 65 expectations; full Desktop 1,019 pass / 2 documented skips / 0 fail /
 5,493 expectations; typecheck, build, built Electron smoke, and teardown with
 zero active host slots all pass. The source oracle continues to forbid the old
 timeline polling constructs.
+
+## 2026-07-12 physical-iOS continuation closeout
+
+The signed OpenAgents 0.5.2 build 117 restored an authenticated production Sync
+scope on the paired iPhone 17 Pro Max. A new continuation entered the existing
+thread and the active mobile conversation projection changed through the
+shared closeable Sync subscription to `1 agent · 1 active` with `Cancel turn`.
+After the operator canceled, that same projection converged to zero active and
+the durable `Resume`, `Retry`, and `Close turn` actions. A forced CoreDevice
+process replacement then restored the same selected thread, terminal state,
+and controls.
+
+This is the literal built-Desktop/physical-mobile continuation required by
+CUT-10. The mobile surface exercised the production Sync-backed conversation
+adapter, not a fixture or device-local harness. Its accepted detailed receipt
+is [`CUT-12 live agent supervision`](./2026-07-11-cut-12-live-agent-supervision-ui-receipt.md#2026-07-12-physical-ios-acceptance).
+The separate CUT-09 network-disconnect/revocation matrix remains open and is
+not weakened by this closeout.

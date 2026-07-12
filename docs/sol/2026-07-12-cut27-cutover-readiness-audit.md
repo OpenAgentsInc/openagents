@@ -59,7 +59,7 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   sign-in, and the 4-step built-Desktop/physical-mobile network-gap/restart
   journey. Owner-gated (physical touch). Closing this also closes #8677.
 
-### CUT-10 #8690 — no-poll Runtime Gateway live events — OPEN
+### CUT-10 #8690 — no-poll Runtime Gateway live events — CLOSED
 
 - Landed on main: shared Sync cursor-aware generation-fenced live events;
   mobile no-poll; Desktop renderer adapter; final Desktop consumer at
@@ -71,10 +71,10 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   per-operation authoritative convergence without an interval and preserves
   local thread ownership; full Desktop verification is 1,019 pass / 2 skips.
   [Receipt](./2026-07-11-cut-10-live-event-convergence-receipt.md).
-- Rung: **fixture-proven** + built-Electron receipt. Non-device work is
-  complete.
-- Remaining gate: physical-mobile continuation receipt (owner-deferred while
-  the recording phone was occupied). Owner-gated (physical).
+- Rung: **physical-device-proven**. The later accepted CUT-12 journey supplied
+  the literal production-Sync continuation on signed iPhone build 117: active
+  projection, cancel convergence, and exact process-death restoration. CUT-09's
+  separate network-gap/revocation journey remains open.
 
 ### CUT-11 #8691 — canonical live Codex/Claude agent graph — OPEN
 

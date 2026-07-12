@@ -548,8 +548,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   the Desktop runtime consumer now registers before append, streams exact
   message/terminal confirmation through one fenced subscription, unsubscribes
   exactly once, and has no recurring timeline loop. #8712's later local-child
-  work remains separate. CUT-10 non-device work is complete; its physical-
-  mobile receipt remains owner-deferred.
+  work remains separate. The later signed-build CUT-12 physical-iOS journey
+  supplied CUT-10's literal production-Sync continuation: the existing thread
+  became active, converged after cancel, and restored exactly after forced
+  process replacement. CUT-10 is closed; CUT-09's separate network-gap and
+  revocation journey remains open.
 - CUT-11 now has a registered provider-neutral
   `openagents.live_agent_graph.v1` schema and reducer. Stable node/edge identity,
   explicit unknown provider facts, parent/worktree/tool/attention/terminal
@@ -1842,7 +1845,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-10, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-09/CUT-10 await physical-mobile acceptance; CUT-14 awaits one emulator OAuth handoff plus authenticated emulator/physical-iOS receipts; CUT-16 awaits physical/assistive acceptance; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
+| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-10 is closed with its no-poll code and signed physical-iOS continuation receipt; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-14 awaits one emulator OAuth handoff plus authenticated emulator/physical-iOS receipts; CUT-16 awaits physical/assistive acceptance; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
 | **P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; only the stated on-camera owner-acceptance rung remains. Do not add implementation children or treat current provider-capacity changes as invalidating the historical named-provider receipt. |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
