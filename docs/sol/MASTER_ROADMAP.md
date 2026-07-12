@@ -663,8 +663,10 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   `6ea8f2508f` adds authenticated `coding.publishCatalog`; production revision
   `openagents-monolith-00088-t24` now serves it and the confirmed owner scope
   holds three projects, repositories, worktrees, and sessions plus one
-  navigation row. An embedded iOS Simulator Release build reaches the real
-  account-link flow and verifies the repaired Effect Native Settings entry.
+  navigation row. A native iOS Simulator debug build now loads the exact
+  current Metro bundle without the former split-bundle HMR rejection and
+  verifies the repaired Effect Native Settings/account entry; 26 focused
+  account/session tests and mobile typecheck pass.
   Authenticated iOS-simulator catalog/deep-link/process-death acceptance, the
   deferred physical-iPhone confirmation, and the Android-emulator equivalent
   remain open (owner decision 2026-07-12: no physical-Android gate). See

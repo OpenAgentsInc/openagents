@@ -96,14 +96,21 @@ The confirmed production owner scope subsequently held three projects, three
 repositories, three worktrees, three sessions, and one navigation row, with the
 publisher mutation acknowledged.
 
-## iOS simulator Release receipt
+## iOS simulator debug receipt
 
-On 2026-07-12 an embedded Release build was installed on an iPhone 17 Pro iOS
-26.5 simulator. It loaded the exact current bundle without Metro or HMR, opened
-the Effect Native OpenAgents account/Sync surface from drawer Settings, and
-reached GitHub's real OpenAgents authorization form. This exposed and fixed a
-dead Settings handler and completed missing React Native lowerings for History,
-Branch, and InfoCircle icons. The simulator has no saved GitHub session, so the
+On 2026-07-12 a native debug build was installed on an iPhone 17 Pro iOS 26.5
+simulator and loaded the exact current `cut-16-exact-target-selector` bundle
+from Metro. The first run exposed two emulator-only integration defects: drawer
+Settings had a dead handler, and Expo's split-bundle async loader expected an
+HMR client that this plain React Native debug host does not install. Settings
+now opens the Effect Native OpenAgents account/Sync surface, and Metro uses its
+native async-require implementation so lazy native imports remain test-safe
+without split-bundle HMR registration. The current app cold-launches without a
+redbox or unhandled rejection. Missing React Native lowerings for History,
+Branch, and InfoCircle were completed in the same pass.
+
+The focused account/session suite passes 26 tests with 115 expectations and
+mobile typecheck passes. The simulator has no saved GitHub session, so the
 authenticated directory, exact deep link, and process-death restoration pass
 must follow an owner sign-in; credentials are not handled by the agent.
 
