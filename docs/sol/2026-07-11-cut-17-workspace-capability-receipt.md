@@ -1,13 +1,14 @@
-# CUT-17 workspace capability foundation receipt
+# CUT-17 workspace capability closure receipt
 
 - Date: 2026-07-11
 - Issue: [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697)
-- Status: capability core, tree/watch/search/mutation host bridge, cancellable
-  search worker, mutation core, scale/lifecycle receipt, and standalone bounded
-  Effect Native browser projection plus typed bridge handler loop landed;
-  shell/boot composition and legacy projection migration remain open
+- Status: complete — capability core, tree/watch/search/mutation host bridge,
+  cancellable worker, scale/lifecycle receipt, accessible Effect Native browser,
+  typed handler loop, shell/boot composition, and legacy renderer projection
+  removal landed
 - Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`, `36725a91df`,
-  `57488904c5`, `9f957a6d76`, `60369f3009`, `96692a6672`, `e6b2469e2e`
+  `57488904c5`, `9f957a6d76`, `60369f3009`, `96692a6672`, `e6b2469e2e`,
+  `de0bb06ef7`
 
 ## Landed boundary
 
@@ -38,8 +39,10 @@ non-bundled senders, keeps one workspace subscription per webContents, rebinds
 active subscribers when explicit workspace selection replaces the WorkContext,
 and closes with the registered window/app lifecycle. Preload multiplexes local
 listeners over one reference-counted decoded event handler. No root, handle,
-arbitrary channel, or filesystem API crosses. The current legacy root summary/
-read/save/Git renderer path is intentionally unchanged until UI migration.
+arbitrary channel, or filesystem API crosses. Final composition reduces native
+picker completion to a boolean and removes legacy summary/list/read/save/Git-
+diff methods from the context bridge, so the old absolute-root projection is no
+longer renderer-visible.
 
 Bounded path/content search now executes in one isolated worker per request.
 The WorkContext owns every task, terminates stale work before a watch or refresh
@@ -49,7 +52,8 @@ bounded schema decoder and contains only the opaque grant plus relative refs.
 Fixed search/start-cancel operations now cross the same trusted main/preload
 boundary. Main owns one active request per webContents; replacement cancels the
 prior task, exact cancellation is fenced by both owner and request ref, and
-window/app teardown closes the owner. No renderer search UI is claimed.
+window/app teardown closes the owner. The composed browser consumes this exact
+search surface.
 
 The root-private mutation core now supports create file/directory,
 revision-bound rename, revision-bound non-recursive delete, and host-injected
@@ -58,7 +62,8 @@ revisions, existing targets, non-empty directory deletion, and permission loss
 with typed outcomes. Only confirmed mutations advance the WorkContext epoch.
 Fixed decoded create/rename/delete/reveal operations now cross the trusted
 main/preload boundary. Electron main injects reveal authority when it opens a
-WorkContext; no absolute path returns. No mutation UI is claimed.
+WorkContext; no absolute path returns. The composed browser supplies the
+mutation/reveal UI described below.
 
 The shell-independent workspace-browser projection now expresses that boundary
 through the shared Effect Native catalog. It includes a lazy virtualized tree,
@@ -76,8 +81,14 @@ refresh, watcher-triggered reload without recursive refresh events, and
 create/rename/delete/reveal calls use the same bridge boundary. Renderer guards
 refuse unseen create parents and stale rename/delete revisions before dispatch;
 confirmed mutations reload the root before projecting a receipt. Neither the
-handler nor the view is composed into the shell yet, so this is still not
-evidence that Desktop users can reach the new boundary.
+handler nor view imports host authority.
+
+Desktop Files now composes this state, handler, and view into the shared shell.
+Boot adapts only the fixed decoded bridge, subscribes watcher changes into the
+same typed intent registry, and unsubscribes on page hide. Project Home no
+longer asks for a root summary, and Review uses the typed relative Git panel.
+The prior flat absolute-path file list/editor and root-derived diff consumer are
+removed. Editing and Git remain the issue's explicit CUT-18/CUT-19 non-goals.
 
 ## Verification
 
@@ -117,12 +128,16 @@ evidence that Desktop users can reach the new boundary.
 - focused typed browser handler loop at `e6b2469e2e`: 19 pass / 80 assertions;
   post-rebase integrated Desktop suite: 707 pass / 3,864 assertions with seven
   named capability-gap skips, plus typecheck and production build.
+- closure verification at `de0bb06ef7`: 708 pass / 3,866 assertions with seven
+  named capability-gap skips; typecheck and production build pass; real
+  Electron smoke clicks Files, finds the relative-boundary badge, virtualized
+  tree and search input, finds no legacy editor or selected-root text, returns
+  to Chat, keeps every existing EP250 acceptance stage green, and tears down
+  with `active: 0`.
 
-No composed or user-reachable tree/search/mutation UI is claimed.
+## Completion disposition
 
-## Remaining before CUT-17 closure
-
-- compose that browser into the Files workspace and remove the prior flat
-  root/read/save projection from its renderer consumers;
-- remove the legacy absolute-root renderer projection only after its consumers
-  have migrated.
+The #8697 close rule is satisfied: the grant boundary, adversarial fixtures,
+cache facts, worker scale, watcher/search disposal, composed UI, and real
+Electron acceptance all have named receipts. File editing and Git are not
+reintroduced through this boundary; they remain owned by CUT-18 and CUT-19.

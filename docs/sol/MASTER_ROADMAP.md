@@ -8,8 +8,8 @@
   control UI active; mobile canonical rich-draft and native attachment
   acquisition active; CUT-17 workspace capability core/tree-watch-search host
   bridge/cancellable search worker/mutation core/scale receipt and standalone
-  bounded workspace-browser projection/handler loop active)
-- Revision: 70
+  bounded workspace-browser projection/handler loop/composition complete)
+- Revision: 71
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -697,10 +697,9 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   traversal, and symlink-escape entries are withheld. A single recursive
   watcher exists only while subscribed; change, refresh, and unlocated/
   overflow events advance the epoch and invalidate caches, and close/dispose
-  is exactly once. The legacy root-summary renderer path remains unchanged for
-  compatibility and is not evidence that the new boundary is wired. Fixed
-  tree/refresh/watch bridge landed at `37372f30e2`: trusted top-level renderer
-  checks, schema decoding on both sides, one main subscription per webContents,
+  is exactly once. Fixed tree/refresh/watch bridge landed at `37372f30e2`:
+  trusted top-level renderer checks, schema decoding on both sides, one main
+  subscription per webContents,
   preload listener reference counting, WorkContext rebind, and window/app
   teardown are built-Electron proven. Cancellable search-task execution landed
   at `efe7738ff1`: one bounded worker per request, stale-epoch cancellation,
@@ -720,10 +719,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   covered without importing host authority. Its typed bridge handler loop
   landed at `e6b2469e2e`: exact search request ownership/cancellation, lazy
   tree/search pagination, watcher-safe reload, decoded mutation/reveal calls,
-  and stale-revision/unseen-parent guards. This remains component evidence, not
-  a shipped Files workspace: shell/boot composition and legacy absolute-root
-  migration remain before closure. See the
-  [`CUT-17 foundation receipt`](./2026-07-11-cut-17-workspace-capability-receipt.md).
+  and stale-revision/unseen-parent guards. Composition landed at `de0bb06ef7`:
+  Files now renders that relative browser, boot routes decoded watcher events
+  through the typed registry, native selection returns only a boolean, Review
+  uses the relative Git panel, and preload no longer exposes legacy workspace
+  summary/list/read/save/Git-diff projections. Real Electron clicks Files and
+  proves tree/search UI, no legacy editor, no selected-root disclosure, all
+  existing EP250 stages, and zero active owners at teardown. CUT-17 is
+  complete; editing and Git remain the declared CUT-18/CUT-19 non-goals. See the
+  [`CUT-17 closure receipt`](./2026-07-11-cut-17-workspace-capability-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
