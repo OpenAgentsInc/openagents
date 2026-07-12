@@ -58,11 +58,15 @@ import {
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
   FableLocalInterruptChannel,
+  FableLocalQueueFollowupChannel,
   FableLocalStartChannel,
+  FableLocalSteerChildChannel,
   decodeFableLocalAnswerQuestionRequest,
   decodeFableLocalEventEnvelope,
   decodeFableLocalInterruptRequest,
+  decodeFableLocalQueueFollowupRequest,
   decodeFableLocalStartRequest,
+  decodeFableLocalSteerChildRequest,
   type FableLocalEventEnvelope,
 } from "./fable-local-contract.ts"
 import {
@@ -216,6 +220,28 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return request === null
         ? Promise.resolve(false)
         : ipcRenderer.invoke(FableLocalAnswerQuestionChannel, request)
+    },
+    /**
+     * G4 substrate: steer/interrupt a running delegate child
+     * ({ turnRef, childRef, action, body? }). Resolves a typed not_found
+     * outcome on schema-invalid input, never throws.
+     */
+    steerChild: (value: unknown) => {
+      const request = decodeFableLocalSteerChildRequest(value)
+      return request === null
+        ? Promise.resolve({ ok: false, outcome: "not_found" })
+        : ipcRenderer.invoke(FableLocalSteerChildChannel, request)
+    },
+    /**
+     * A3 substrate: enqueue a follow-up while a turn streams
+     * ({ threadRef, message }). Resolves no_active_turn on schema-invalid
+     * input; delivery is queue-until-idle (followup_promoted event on end).
+     */
+    queueFollowup: (value: unknown) => {
+      const request = decodeFableLocalQueueFollowupRequest(value)
+      return request === null
+        ? Promise.resolve({ ok: false, queued: false, reason: "no_active_turn" })
+        : ipcRenderer.invoke(FableLocalQueueFollowupChannel, request)
     },
     onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
       const handler = (_event: unknown, value: unknown): void => {

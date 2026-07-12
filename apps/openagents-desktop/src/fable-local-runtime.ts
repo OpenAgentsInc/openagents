@@ -59,13 +59,20 @@ import {
 import {
   FABLE_LOCAL_DELTA_LIMIT,
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
+  FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT,
+  FABLE_LOCAL_PLAN_ENTRY_LIMIT,
   FABLE_LOCAL_SUMMARY_LIMIT,
+  normalizeFableLocalMcpServers,
   type FableChildUsage,
   type FableLocalAnswerQuestionRequest,
   type FableLocalAvailability,
   type FableLocalEvent,
   type FableLocalFailureReason,
+  type FableLocalMcpServerConfig,
+  type FableLocalPlanEntry,
   type FableLocalQuestion,
+  type FableLocalQueueFollowupRequest,
+  type FableLocalSteerChildRequest,
 } from "./fable-local-contract.ts"
 import {
   CODEX_CHILD_MODEL,
@@ -182,6 +189,14 @@ export type FableLocalTurnInput = Readonly<{
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
   emit: (event: FableLocalEvent) => void
+  /**
+   * Opt-in plan mode (J2, EP250). Default off — current behavior unchanged.
+   * When true the SDK runs with `permissionMode: "plan"` (receipted sdk.d.ts:
+   * "'plan' - Planning mode, no actual tool execution") and the ExitPlanMode
+   * tool is allowed so the model can present a plan for review. Todos still
+   * flow via `plan_updated` in BOTH modes (TodoWrite is never disallowed).
+   */
+  planMode?: boolean
 }>
 
 export type FableLocalTurnResult =
@@ -205,7 +220,15 @@ export type FableLocalAccountHome = Readonly<{ ref: string; home: string }>
  * the REAL delegate handler with a scripted child.
  */
 export type FableDelegateRuntime = Readonly<{
-  runChild: (input: CodexChildRunInput) => Promise<CodexChildResult>
+  /**
+   * G4 substrate: an optional `signal` is threaded so an in-flight child can
+   * be interrupted (`steerChild`). The real Codex child runtime ignores the
+   * signal today (interrupt therefore ABANDONS the child from the turn's view;
+   * a true SIGTERM is a one-line follow-up in codex-child-runtime.ts, which
+   * this lane deliberately does not own). Fixture delegates honor it to prove
+   * the path end-to-end.
+   */
+  runChild: (input: CodexChildRunInput & { signal?: AbortSignal }) => Promise<CodexChildResult>
 }>
 
 /**
@@ -240,6 +263,16 @@ export type FableLocalRuntimeOptions = Readonly<{
   delegate?: FableDelegateRuntime
   /** Injectable MCP construction (tests, smoke fixture). */
   mcpImpl?: () => Promise<FableSdkMcpFactory>
+  /**
+   * User-configured MCP servers (I2, EP250). A host getter — the SETTINGS UI
+   * that edits this is a SEPARATE wave-2 lane; the config CONTRACT is frozen
+   * in fable-local-contract.ts (`FableLocalMcpServerConfigSchema`). Defaults
+   * to none, so current behavior is unchanged. Enabled servers are merged into
+   * `Options.mcpServers` next to the internal `codex` delegate server; their
+   * tools surface as `mcp__<name>__<tool>`. Read fresh per turn so config
+   * edits take effect on the next turn without a runtime restart.
+   */
+  userMcpServers?: () => ReadonlyArray<FableLocalMcpServerConfig>
   timeoutMs?: number
   /** Pending-question window override (tests). Default 10 minutes. */
   questionTimeoutMs?: number
@@ -400,6 +433,17 @@ const childUsageFooter = (result: Extract<CodexChildResult, { ok: true }>): stri
   return `[codex child · account ${result.accountRef} · ${result.requestedModel} (requested, ${result.requestedEffort} reasoning) · ${usage} · ${(result.durationMs / 1000).toFixed(1)}s]`
 }
 
+/** Result of a `steerChild` control (G4). */
+export type FableLocalSteerChildOutcome = Readonly<{
+  ok: boolean
+  outcome: "interrupted" | "delivered" | "unsupported" | "not_found"
+}>
+
+/** Result of a `queueFollowup` control (A3). */
+export type FableLocalQueueFollowupOutcome =
+  | Readonly<{ ok: true; queued: true; queueRef: string; position: number }>
+  | Readonly<{ ok: false; queued: false; reason: "no_active_turn" }>
+
 export type FableLocalRuntime = Readonly<{
   availability: () => Promise<FableLocalAvailability>
   runTurn: (input: FableLocalTurnInput) => Promise<FableLocalTurnResult>
@@ -412,6 +456,22 @@ export type FableLocalRuntime = Readonly<{
    * question — and a still-pending question stays pending.
    */
   answerQuestion: (request: FableLocalAnswerQuestionRequest) => boolean
+  /**
+   * Steer or interrupt a running delegate child (G4). `interrupt` signals the
+   * child's abort (and emits `child_steered` outcome `interrupted`);
+   * `message` is honestly `unsupported` (Codex exec children are
+   * non-interactive; SDK Agent subagents expose no per-child message API).
+   * An unknown child for the turn returns `not_found` with no event.
+   */
+  steerChild: (request: FableLocalSteerChildRequest) => FableLocalSteerChildOutcome
+  /**
+   * Enqueue a follow-up message while a turn for the thread is streaming (A3).
+   * Delivery is QUEUE-UNTIL-IDLE: the queued message is promoted (emitting
+   * `followup_promoted`) when the current turn ends, not injected mid-stream.
+   * Returns `no_active_turn` when the thread has no running turn — the caller
+   * should just start a normal turn instead.
+   */
+  queueFollowup: (request: FableLocalQueueFollowupRequest) => FableLocalQueueFollowupOutcome
   dispose: () => void
 }>
 
@@ -497,6 +557,26 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
    * independently on answer, timeout, or turn end.
    */
   const pendingQuestions = new Map<string, PendingFableQuestion>()
+  /**
+   * Running delegate children (G4), keyed by childRef. Each entry carries the
+   * owning turnRef, an AbortController to interrupt it, and the turn's emit
+   * sink so `steerChild` can surface a typed `child_steered` event.
+   */
+  const runningChildren = new Map<
+    string,
+    { turnRef: string; controller: AbortController; emit: (event: FableLocalEvent) => void }
+  >()
+  /**
+   * The turn currently streaming for each thread (A3), so `queueFollowup` can
+   * tell "a turn is running" from "idle" and emit onto the live stream.
+   */
+  const activeTurnByThread = new Map<
+    string,
+    { turnRef: string; emit: (event: FableLocalEvent) => void }
+  >()
+  /** Per-thread FIFO of queued follow-ups awaiting the idle boundary (A3). */
+  const followupQueue = new Map<string, Array<{ queueRef: string; message: string }>>()
+  let followupSequence = 0
 
   const availability = async (): Promise<FableLocalAvailability> => {
     const ready = await discover()
@@ -540,6 +620,40 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     const redact = (value: string): string => redactFableLocalText(value, { workspace })
     /** Per-turn AskUserQuestion sequence for stable questionRefs. */
     const questionState = { sequence: 0 }
+    const planMode = input.planMode === true
+    /**
+     * Plan/todo entries (J2/J4) from the SDK TodoWrite tool input. TodoWrite
+     * is NEVER disallowed, so this fires in both normal and plan mode. The
+     * high-frequency (1,617-obs) todo signal from the daily-coding audit.
+     */
+    const planEntriesFromTodoWrite = (
+      rawInput: unknown,
+    ): ReadonlyArray<FableLocalPlanEntry> | null => {
+      if (rawInput === null || typeof rawInput !== "object") return null
+      const todos = (rawInput as { todos?: unknown }).todos
+      if (!Array.isArray(todos)) return null
+      const entries: Array<FableLocalPlanEntry> = []
+      for (const todo of todos.slice(0, FABLE_LOCAL_PLAN_ENTRY_LIMIT)) {
+        if (todo === null || typeof todo !== "object") continue
+        const record = todo as Record<string, unknown>
+        const content = typeof record.content === "string" && record.content.trim() !== ""
+          ? record.content
+          : typeof record.activeForm === "string" ? record.activeForm : ""
+        if (content.trim() === "") continue
+        const status = record.status === "in_progress" || record.status === "completed"
+          ? record.status
+          : "pending"
+        entries.push({ step: bounded(redact(content), FABLE_LOCAL_SUMMARY_LIMIT), status })
+      }
+      return entries.length > 0 ? entries : null
+    }
+    // User MCP servers (I2): normalized once per turn; invalid configs surface
+    // as typed mcp_server_unavailable and the turn still runs. `codex` is the
+    // reserved internal delegate server name.
+    const userMcp = normalizeFableLocalMcpServers(options.userMcpServers?.() ?? [])
+    const userServerNames = new Set(userMcp.valid.map(server => server.name))
+    /** SDK-reported MCP failures already surfaced this turn (no dupes). */
+    const announcedMcpUnavailable = new Set<string>()
 
     // -----------------------------------------------------------------------
     // Codex delegation (#8712 Lane C): one SDK MCP server exposing
@@ -578,17 +692,41 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       delegation.active += 1
       delegation.sequence += 1
       const childRef = bounded(`child.codex.${input.turnRef}.${delegation.sequence}`, 120)
+      // G4: register the running child so steerChild/interrupt can reach it,
+      // and thread its abort signal into the child runtime.
+      const childAbort = new AbortController()
+      runningChildren.set(childRef, {
+        turnRef: input.turnRef,
+        controller: childAbort,
+        emit: input.emit,
+      })
       input.emit({
         kind: "child_started",
         childRef,
         summary: bounded(redact(task), FABLE_LOCAL_SUMMARY_LIMIT),
       })
+      // Resolves to a sentinel the moment the child is interrupted, so the
+      // handler unblocks even if the (real) child runtime does not yet honor
+      // the abort signal. The child is then ABANDONED from the turn's view.
+      const CHILD_INTERRUPTED = Symbol("child-interrupted")
+      const interruptSignal = new Promise<typeof CHILD_INTERRUPTED>(resolve => {
+        if (childAbort.signal.aborted) {
+          resolve(CHILD_INTERRUPTED)
+          return
+        }
+        childAbort.signal.addEventListener("abort", () => resolve(CHILD_INTERRUPTED), { once: true })
+      })
       try {
-        const result = await delegate.runChild({
+        const raced = await Promise.race([
+          delegate.runChild({
           childRef,
           task,
           ...(context === undefined ? {} : { context }),
+          signal: childAbort.signal,
           onEvent: event => {
+            // Once interrupted, stop surfacing residual child activity so the
+            // transcript ends cleanly at the child_steered event.
+            if (childAbort.signal.aborted) return
             if (event.kind === "attempt_started") {
               input.emit({
                 kind: "child_activity",
@@ -639,7 +777,18 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               ),
             })
           },
-        })
+          }),
+          interruptSignal,
+        ])
+        if (raced === CHILD_INTERRUPTED) {
+          // G4: the user interrupted this child. steerChild already emitted
+          // child_steered(interrupted); tell the model the child is gone.
+          return toolText(
+            "The Codex child was interrupted before it finished. No child output is available.",
+            true,
+          )
+        }
+        const result = raced
         if (result.ok) {
           input.emit({
             kind: "child_completed",
@@ -667,15 +816,20 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               : `The Codex child failed: ${result.detail}`
         return toolText(failureText, true)
       } finally {
+        runningChildren.delete(childRef)
         delegation.active -= 1
       }
     }
-    let mcpServers: Record<string, unknown> | null = null
+    // MCP servers (I2 + Lane C): the internal `codex` delegate SDK-MCP server
+    // (when a delegate is present) PLUS the enabled user-configured servers,
+    // merged into one record. A record with zero servers stays null so the
+    // SDK option is omitted entirely (no-delegate/no-user-servers behavior is
+    // byte-for-byte unchanged).
+    const serverRecord: Record<string, unknown> = {}
     if (options.delegate !== undefined) {
       try {
         const mcp = await loadMcp()
-        mcpServers = {
-          codex: mcp.createSdkMcpServer({
+        serverRecord.codex = mcp.createSdkMcpServer({
             name: "codex",
             version: "1.0.0",
             tools: [
@@ -686,13 +840,29 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 (args, _extra) => delegateHandler(args),
               ),
             ],
-          }),
-        }
+          })
       } catch {
         // MCP construction failed: the lane still chats, with no delegate
         // tool offered (never offered-then-denied, never a silent stub).
-        mcpServers = null
+        delete serverRecord.codex
       }
+    }
+    // Merge enabled user servers (I2). Their tools reach the model as
+    // mcp__<name>__<tool> and flow through the allow-all canUseTool.
+    for (const server of userMcp.valid) {
+      serverRecord[server.name] = server.sdkConfig
+    }
+    const delegateOffered = Object.prototype.hasOwnProperty.call(serverRecord, "codex")
+    const mcpServers: Record<string, unknown> | null =
+      Object.keys(serverRecord).length > 0 ? serverRecord : null
+    // I2: a configured server that failed bounded validation is surfaced now
+    // (before the SDK runs) as a typed event — it never blocks the turn.
+    for (const rejected of userMcp.invalid) {
+      input.emit({
+        kind: "mcp_server_unavailable",
+        name: bounded(rejected.name, 120),
+        reason: bounded(rejected.reason, FABLE_LOCAL_SUMMARY_LIMIT),
+      })
     }
 
     const control = {
@@ -704,6 +874,8 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       },
     }
     activeTurns.set(input.turnRef, control)
+    // A3: mark this thread as having a live turn so queueFollowup can enqueue.
+    activeTurnByThread.set(input.threadRef, { turnRef: input.turnRef, emit: input.emit })
 
     let started = false
     const emitStarted = (): void => {
@@ -914,13 +1086,19 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             // would "Bypass all permission checks" (sdk.d.ts) — including
             // the canUseTool handler AskUserQuestion parks on. Default mode
             // + allow-all canUseTool = full permissions with a live
-            // question flow.
-            permissionMode: "default",
+            // question flow. Plan mode (J2, opt-in) switches to "plan"
+            // ("Planning mode, no actual tool execution" — sdk.d.ts).
+            permissionMode: planMode ? "plan" : "default",
             // No tool restriction (full SDK toolset). The delegate MCP tool
-            // stays auto-allowed when offered; everything else flows through
-            // the allow-all canUseTool below.
-            ...(mcpServers === null ? {} : { allowedTools: [FABLE_DELEGATE_TOOL_NAME] }),
-            disallowedTools: [...FABLE_LOCAL_DISALLOWED_TOOLS],
+            // (when a delegate server is offered) stays auto-allowed;
+            // everything else — including user MCP tools — flows through the
+            // allow-all canUseTool below.
+            ...(delegateOffered ? { allowedTools: [FABLE_DELEGATE_TOOL_NAME] } : {}),
+            // Plan mode allows ExitPlanMode so the model can present a plan;
+            // otherwise the interactive-only plan tools stay disallowed.
+            disallowedTools: planMode
+              ? FABLE_LOCAL_DISALLOWED_TOOLS.filter(tool => tool !== "ExitPlanMode")
+              : [...FABLE_LOCAL_DISALLOWED_TOOLS],
             // AskUserQuestion answers + allow-everything-else (owner
             // full-access override; no PreToolUse containment guard).
             canUseTool,
@@ -959,6 +1137,31 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 ))
               }
             }
+            // I2: the SDK init reports each MCP server's connection status.
+            // Surface a typed mcp_server_unavailable for any USER server that
+            // did not connect (never the internal `codex` delegate). The turn
+            // keeps running — a failed server never aborts it.
+            const initServers = (record as { mcp_servers?: unknown }).mcp_servers
+            if (Array.isArray(initServers)) {
+              for (const entry of initServers) {
+                if (entry === null || typeof entry !== "object") continue
+                const name = typeof (entry as { name?: unknown }).name === "string"
+                  ? (entry as { name: string }).name
+                  : ""
+                const status = typeof (entry as { status?: unknown }).status === "string"
+                  ? (entry as { status: string }).status
+                  : ""
+                if (!userServerNames.has(name)) continue
+                if (status === "connected" || status === "pending") continue
+                if (announcedMcpUnavailable.has(name)) continue
+                announcedMcpUnavailable.add(name)
+                input.emit({
+                  kind: "mcp_server_unavailable",
+                  name: bounded(name, 120),
+                  reason: bounded(status === "" ? "server failed to connect" : status, FABLE_LOCAL_SUMMARY_LIMIT),
+                })
+              }
+            }
             continue
           }
           if (type === "stream_event") {
@@ -991,6 +1194,13 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                   FABLE_LOCAL_SUMMARY_LIMIT,
                 )
                 input.emit({ kind: "tool_use", toolName, summary })
+                // J2/J4: the TodoWrite tool carries the current plan/todo list.
+                // Emit the structured plan_updated ADDITIONALLY (the tool_use
+                // trace above is unchanged) so a renderer can draw progress.
+                if (toolName === "TodoWrite") {
+                  const entries = planEntriesFromTodoWrite(block.input)
+                  if (entries !== null) input.emit({ kind: "plan_updated", entries })
+                }
               }
             }
             continue
@@ -1091,6 +1301,23 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         if (pending.turnRef === input.turnRef) pending.denyForTurnEnd()
       }
       activeTurns.delete(input.turnRef)
+      // A3: this thread is idle now — clear its active-turn marker (only if it
+      // is still this turn) and promote the next queued follow-up, if any, so
+      // the host can start it as the next turn (queue-until-idle semantics).
+      const current = activeTurnByThread.get(input.threadRef)
+      if (current !== undefined && current.turnRef === input.turnRef) {
+        activeTurnByThread.delete(input.threadRef)
+      }
+      const queue = followupQueue.get(input.threadRef)
+      if (queue !== undefined && queue.length > 0) {
+        const next = queue.shift()!
+        if (queue.length === 0) followupQueue.delete(input.threadRef)
+        input.emit({
+          kind: "followup_promoted",
+          queueRef: next.queueRef,
+          message: bounded(next.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+        })
+      }
     }
   }
 
@@ -1105,6 +1332,11 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       for (const pending of [...pendingQuestions.values()]) {
         if (pending.turnRef === turnRef) pending.denyForTurnEnd()
       }
+      // G4: a whole-turn interrupt also signals every delegate child of the
+      // turn (the SDK query abort does not reach the Codex child processes).
+      for (const child of runningChildren.values()) {
+        if (child.turnRef === turnRef) child.controller.abort()
+      }
       active.abort()
       return true
     },
@@ -1113,11 +1345,61 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       if (pending === undefined || pending.turnRef !== request.turnRef) return false
       return pending.accept(request.answers)
     },
+    steerChild: request => {
+      const child = runningChildren.get(request.childRef)
+      if (child === undefined || child.turnRef !== request.turnRef) {
+        return { ok: false, outcome: "not_found" }
+      }
+      if (request.action === "interrupt") {
+        child.controller.abort()
+        child.emit({
+          kind: "child_steered",
+          childRef: request.childRef,
+          action: "interrupt",
+          outcome: "interrupted",
+          detail: "child interrupt requested",
+        })
+        return { ok: true, outcome: "interrupted" }
+      }
+      // action "message": honest capability truth. `codex exec --json` is
+      // non-interactive (no mid-flight stdin), and the SDK Agent tool exposes
+      // no per-subagent message API — only whole-query interrupt/stopTask. So
+      // steering a running child by message is unsupported today.
+      child.emit({
+        kind: "child_steered",
+        childRef: request.childRef,
+        action: "message",
+        outcome: "unsupported",
+        detail: "Running Codex/Agent children cannot receive a mid-flight message; interrupt is the only supported control.",
+      })
+      return { ok: true, outcome: "unsupported" }
+    },
+    queueFollowup: request => {
+      const active = activeTurnByThread.get(request.threadRef)
+      // No live turn for this thread → not a "queue during a turn"; the caller
+      // should just start a normal turn with this message.
+      if (active === undefined) return { ok: false, queued: false, reason: "no_active_turn" }
+      followupSequence += 1
+      const queueRef = bounded(
+        `followup.${fableThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,
+        120,
+      )
+      const message = bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT)
+      const queue = followupQueue.get(request.threadRef) ?? []
+      queue.push({ queueRef, message })
+      followupQueue.set(request.threadRef, queue)
+      active.emit({ kind: "followup_queued", queueRef, position: queue.length })
+      return { ok: true, queued: true, queueRef, position: queue.length }
+    },
     dispose: () => {
       for (const pending of [...pendingQuestions.values()]) pending.denyForTurnEnd()
       pendingQuestions.clear()
+      for (const child of runningChildren.values()) child.controller.abort()
+      runningChildren.clear()
       for (const active of activeTurns.values()) active.abort()
       activeTurns.clear()
+      activeTurnByThread.clear()
+      followupQueue.clear()
       sessionByThread.clear()
     },
   }

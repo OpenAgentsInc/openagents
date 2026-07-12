@@ -51,10 +51,14 @@ import {
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
   FableLocalInterruptChannel,
+  FableLocalQueueFollowupChannel,
   FableLocalStartChannel,
+  FableLocalSteerChildChannel,
   decodeFableLocalAnswerQuestionRequest,
   decodeFableLocalInterruptRequest,
+  decodeFableLocalQueueFollowupRequest,
   decodeFableLocalStartRequest,
+  decodeFableLocalSteerChildRequest,
   fableLocalFailureMessage,
   fableLocalModelNoteText,
   fableLocalTraceNoteMeta,
@@ -779,6 +783,22 @@ ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
 ipcMain.handle(FableLocalAnswerQuestionChannel, (_event, value: unknown) => {
   const request = decodeFableLocalAnswerQuestionRequest(value)
   return request === null ? false : fableLocal.answerQuestion(request)
+})
+// EP250 runtime-capability substrate (additive; renderer UI is a wave-2 lane).
+// Steer/interrupt a running delegate child (G4). Schema-checked; an unknown
+// child or turn mismatch returns a typed not_found outcome, never a throw.
+ipcMain.handle(FableLocalSteerChildChannel, (_event, value: unknown) => {
+  const request = decodeFableLocalSteerChildRequest(value)
+  return request === null ? { ok: false, outcome: "not_found" } : fableLocal.steerChild(request)
+})
+// Enqueue a follow-up while a turn streams (A3). Delivery is queue-until-idle:
+// the runtime emits followup_queued now and followup_promoted when the current
+// turn ends. Starting the promoted next turn is a wave-2 renderer/host step.
+ipcMain.handle(FableLocalQueueFollowupChannel, (_event, value: unknown) => {
+  const request = decodeFableLocalQueueFollowupRequest(value)
+  return request === null
+    ? { ok: false, queued: false, reason: "no_active_turn" }
+    : fableLocal.queueFollowup(request)
 })
 ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)

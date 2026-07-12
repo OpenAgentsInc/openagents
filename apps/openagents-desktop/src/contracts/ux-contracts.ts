@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.35",
+    version: "2026-07-11.36",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -2115,6 +2115,73 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the windowed-loading unit suite; the Electron smoke bottom-anchored + prefetch steps are written but were not executed this session (owner watching a movie) — the coordinator runs the visual/smoke gate on integration.",
+      },
+      {
+        contractId: "openagents_desktop.chat.fable_local_runtime_capabilities.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "fable-local runtime capability substrate",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "capability-audit",
+          statedBy: "agent",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4/§6): the local Fable lane must surface plan/task progress (J2 plan mode/plan review + J4 task/todo progress — both providers externalize plans constantly, 1,617 update_plan observations, yet the app rendered none of it and plan mode was disallowed); it must be able to steer or stop a running child (G4 steer/message running children — the app could spawn children but could not talk to or stop one); it must let a user queue a follow-up while a turn runs (A3 message queueing during a turn — steer-by-queueing is habitual in both CLIs); and it must load user-configured MCP servers (I2 — ~858 calls across Stripe/Expo/Apollo/docs/design servers with no config surface, only the internal delegate server).",
+        authorityBoundary:
+          "This contract binds the RUNTIME SUBSTRATE only (typed FableLocalEvent kinds + control channels + programmatic oracles); the renderer that draws these is a separate wave-2 lane. Everything is additive and default-off so current turn behavior is unchanged: plan mode is opt-in (default permissionMode 'default'); TodoWrite (never disallowed) emits plan_updated additionally to its tool_use trace; steerChild interrupts a running Codex delegate child (message is honestly 'unsupported' — codex exec is non-interactive and the SDK Agent tool exposes no per-subagent message API); queueFollowup is queue-until-idle (the single-string-prompt turn cannot inject mid-stream, so the queued message is promoted at the idle boundary, not steered mid-stream); user MCP servers are bounded/validated and merged next to the internal 'codex' server (reserved), and a failed or invalid server emits a typed mcp_server_unavailable without ever crashing the turn. The owner-local full-access posture (no allowedTools restriction, danger-full-access children) is preserved.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "docs/fable/2026-07-11-daily-coding-capability-audit.md",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "fable_local_runtime_capabilities.plan_todo",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            description:
+              "A TodoWrite tool call emits plan_updated with mapped {step,status} entries in addition to the raw tool_use; a non-TodoWrite tool never emits plan_updated and unknown todo status coerces to pending; the default turn uses permissionMode 'default' with ExitPlanMode disallowed, and opt-in planMode switches to permissionMode 'plan' and allows ExitPlanMode while Skill/EnterPlanMode stay disallowed.",
+          },
+          {
+            id: "fable_local_runtime_capabilities.child_steer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            description:
+              "steerChild reaches a running delegate child: interrupt emits child_steered(interrupted) and the turn completes; message is honestly unsupported and a later interrupt still ends the turn; an unknown child or turn mismatch returns not_found with no event; and a whole-turn interrupt also aborts the running child.",
+          },
+          {
+            id: "fable_local_runtime_capabilities.queue_followup",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            description:
+              "queueFollowup during a streaming turn emits followup_queued (with position) and, at turn end, followup_promoted with the queued message, ordered after turn_completed; two queued follow-ups take positions 1 and 2 with only the first promoted per turn end (FIFO); and a queue with no live turn returns no_active_turn and emits nothing.",
+          },
+          {
+            id: "fable_local_runtime_capabilities.user_mcp_servers",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            description:
+              "An enabled stdio/http server is merged into Options.mcpServers and its mcp__name__tool is allow-listed via canUseTool (no delegate auto-allow when no delegate); an SDK-reported failed server and an invalid config (bad name / reserved codex / missing transport field) each emit mcp_server_unavailable while the turn still completes; and the frozen FableLocalMcpServerConfig schema enforces its bounds (cap, transport enum, boolean enabled) with normalization rejecting bad/reserved/duplicate/missing-field entries.",
+          },
+          {
+            id: "fable_local_runtime_capabilities.renderer_surface",
+            kind: "planned",
+            mode: "dom",
+            ref: "apps/openagents-desktop/src/renderer/shell.ts",
+            description:
+              "WAVE-2 (separate lane): the renderer draws the plan/todo panel, the child steer/stop affordance, the queued-follow-up indicator, and the MCP-server settings/status surface from these typed events and channels. Not built in this substrate lane.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime capability suite (src/fable-local-runtime-caps.test.ts) as programmatic oracles; the renderer oracle is a planned wave-2 lane.",
       },
     ],
   };

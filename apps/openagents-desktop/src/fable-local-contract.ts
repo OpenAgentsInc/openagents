@@ -40,6 +40,20 @@ export const FableLocalEventChannel = "openagents:fable-local:event" as const
  * settled, or no answer matched a question) and the question stays pending.
  */
 export const FableLocalAnswerQuestionChannel = "openagents:fable-local:answer-question" as const
+/**
+ * Runtime-capability channels (EP250 wave-1 substrate; renderer UI is wave-2).
+ * These carry additive control across the Electron boundary and default to
+ * NO-OP behavior when the renderer never calls them, so current turn behavior
+ * is unchanged.
+ *
+ * - `openagents:fable-local:steer-child` (invoke): steer/interrupt a running
+ *   delegate child ({ turnRef, childRef, action, body? }).
+ * - `openagents:fable-local:queue-followup` (invoke): enqueue a follow-up
+ *   message while a turn for the thread is streaming
+ *   ({ threadRef, message }); promoted at the next idle boundary.
+ */
+export const FableLocalSteerChildChannel = "openagents:fable-local:steer-child" as const
+export const FableLocalQueueFollowupChannel = "openagents:fable-local:queue-followup" as const
 
 /** Bound on a single streamed text-delta event payload. */
 export const FABLE_LOCAL_DELTA_LIMIT = 2_000
@@ -47,6 +61,12 @@ export const FABLE_LOCAL_DELTA_LIMIT = 2_000
 export const FABLE_LOCAL_SUMMARY_LIMIT = 400
 /** Bound on the persisted final assistant message text. */
 export const FABLE_LOCAL_FINAL_TEXT_LIMIT = 32_000
+/** Max plan/todo entries surfaced in one plan_updated event. */
+export const FABLE_LOCAL_PLAN_ENTRY_LIMIT = 64
+/** Max user-configured MCP servers accepted per turn (bounded passthrough). */
+export const FABLE_LOCAL_MCP_SERVER_LIMIT = 16
+/** Bound on a queued follow-up message crossing the boundary. */
+export const FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT = 8_000
 
 export const FableLocalAvailabilitySchema = Schema.Union([
   Schema.Struct({
@@ -117,6 +137,19 @@ export const FableLocalQuestionSchema = Schema.Struct({
   multiSelect: Schema.Boolean,
 })
 export type FableLocalQuestion = typeof FableLocalQuestionSchema.Type
+
+/**
+ * One plan/todo entry (EP250 J2/J4). Sourced from the SDK's high-frequency
+ * TodoWrite tool (`TodoWriteInput.todos[]` = `{ content, status, activeForm }`,
+ * receipted sdk-tools.d.ts) — the 1,617-observation "update_plan"/todo signal
+ * from the daily-coding audit. `step` is the todo `content` (bounded/redacted);
+ * `status` mirrors the SDK's exact three-state enum.
+ */
+export const FableLocalPlanEntrySchema = Schema.Struct({
+  step: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  status: Schema.Literals(["pending", "in_progress", "completed"]),
+})
+export type FableLocalPlanEntry = typeof FableLocalPlanEntrySchema.Type
 
 export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
@@ -265,6 +298,71 @@ export const FableLocalEventSchema = Schema.Union([
      */
     outcome: Schema.Literals(["answered", "timeout", "denied"]),
   }),
+  // -------------------------------------------------------------------------
+  // Runtime-capability substrate (EP250 wave-1) — additive. The renderer that
+  // draws these is a later (wave-2) lane; the runtime emits the typed events
+  // and programmatic oracles assert them. Every string is bounded/redacted.
+  // -------------------------------------------------------------------------
+  /**
+   * Plan/todo progress (J2/J4). Emitted whenever the model calls the SDK
+   * TodoWrite tool; carries the full current todo list so the renderer can
+   * replace-render it. Additive to the tool_use event the same call emits, so
+   * transcripts still show the raw tool trace.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("plan_updated"),
+    entries: Schema.Array(FableLocalPlanEntrySchema).check(
+      Schema.isMaxLength(FABLE_LOCAL_PLAN_ENTRY_LIMIT),
+    ),
+  }),
+  /**
+   * Result of a steer-child control (G4). `interrupted`: the child's abort
+   * was signaled. `unsupported`: neither a Codex exec child (non-interactive)
+   * nor an SDK Agent subagent (no per-child message API) can receive a
+   * mid-flight message — honest capability truth. `not_found`: no running
+   * child matched the ref for that turn. `delivered` is reserved for a future
+   * transport that can inject mid-flight input.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("child_steered"),
+    childRef: Schema.String.check(Schema.isMaxLength(120)),
+    action: Schema.Literals(["message", "interrupt"]),
+    outcome: Schema.Literals(["interrupted", "delivered", "unsupported", "not_found"]),
+    detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  /**
+   * A follow-up was enqueued while this turn was streaming (A3). Delivery
+   * semantics are QUEUE-UNTIL-IDLE (not steer-at-boundary): the runtime holds
+   * a single-string-prompt turn and cannot inject mid-stream, so the queued
+   * message is promoted when the current turn ends. `position` is its 1-based
+   * place in the thread queue.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("followup_queued"),
+    queueRef: Schema.String.check(Schema.isMaxLength(120)),
+    position: Schema.Number,
+  }),
+  /**
+   * A queued follow-up is now ready to become the next turn (A3). Emitted on
+   * the ending turn's stream at the idle boundary; the host/renderer starts a
+   * fresh turn with `message`.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("followup_promoted"),
+    queueRef: Schema.String.check(Schema.isMaxLength(120)),
+    message: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT)),
+  }),
+  /**
+   * A user-configured MCP server (I2) could not be offered: either its config
+   * failed bounded validation, or the SDK reported it failed/needs-auth/
+   * disabled at init. The turn still completes — a bad server never crashes
+   * the turn. `reason` is a bounded public-safe cause.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("mcp_server_unavailable"),
+    name: Schema.String.check(Schema.isMaxLength(120)),
+    reason: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
 ])
 export type FableLocalEvent = typeof FableLocalEventSchema.Type
 
@@ -319,6 +417,173 @@ export const decodeFableLocalAnswerQuestionRequest = (
   value: unknown,
 ): FableLocalAnswerQuestionRequest | null =>
   decode(FableLocalAnswerQuestionRequestSchema, value) as FableLocalAnswerQuestionRequest | null
+
+// ---------------------------------------------------------------------------
+// Child steering (G4) + follow-up queueing (A3) request contracts (EP250).
+// ---------------------------------------------------------------------------
+export const FableLocalSteerChildRequestSchema = Schema.Struct({
+  turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  childRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  action: Schema.Literals(["message", "interrupt"]),
+  /** Only meaningful for `action: "message"`; ignored for interrupt. */
+  body: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT))),
+})
+export type FableLocalSteerChildRequest = typeof FableLocalSteerChildRequestSchema.Type
+
+export const FableLocalQueueFollowupRequestSchema = Schema.Struct({
+  threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  message: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+  ),
+})
+export type FableLocalQueueFollowupRequest = typeof FableLocalQueueFollowupRequestSchema.Type
+
+export const decodeFableLocalSteerChildRequest = (
+  value: unknown,
+): FableLocalSteerChildRequest | null =>
+  decode(FableLocalSteerChildRequestSchema, value) as FableLocalSteerChildRequest | null
+
+export const decodeFableLocalQueueFollowupRequest = (
+  value: unknown,
+): FableLocalQueueFollowupRequest | null =>
+  decode(FableLocalQueueFollowupRequestSchema, value) as FableLocalQueueFollowupRequest | null
+
+// ===========================================================================
+// FROZEN user-MCP-server config contract (I2) — EP250 wave-1.
+//
+// This is the schema the SEPARATE wave-2 settings-UI lane must build against.
+// The desktop host reads a list of these (from settings/config) and hands it
+// to the fable-local runtime, which merges the ENABLED ones into the SDK's
+// `Options.mcpServers` alongside the internal `codex` delegate server. Their
+// tools then surface to the model as `mcp__<name>__<tool>`.
+//
+// FROZEN FIELDS (do not repurpose; add new optional fields only):
+// - name       server id; becomes the `mcp__<name>__…` tool prefix. Charset
+//              is validated in `normalizeFableLocalMcpServers`
+//              (`FABLE_LOCAL_MCP_NAME_PATTERN`); "codex" is RESERVED.
+// - transport  "stdio" | "http" (SSE is not exposed in wave-1).
+// - enabled    disabled entries are skipped entirely (default posture: none).
+// - command    stdio: the executable to spawn (required for stdio).
+// - args       stdio: bounded argv list.
+// - env        stdio: bounded environment overrides.
+// - url        http: the http(s) endpoint (required for http).
+// - headers    http: bounded request headers (e.g. Authorization).
+// ===========================================================================
+/**
+ * MCP server name charset: a bounded ID field (semantic route already chosen —
+ * this is the deterministic ID validation the workspace contract allows). One
+ * to 64 chars of letters/digits/underscore/hyphen, not starting/ending with a
+ * separator so the `mcp__<name>__<tool>` prefix stays well-formed.
+ */
+export const FABLE_LOCAL_MCP_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$/
+
+export const FableLocalMcpServerConfigSchema = Schema.Struct({
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  transport: Schema.Literals(["stdio", "http"]),
+  enabled: Schema.Boolean,
+  command: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
+  args: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(1_024))).check(Schema.isMaxLength(64)),
+  ),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(4_096)))),
+  url: Schema.optional(Schema.String.check(Schema.isMaxLength(2_048))),
+  headers: Schema.optional(
+    Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(4_096))),
+  ),
+})
+export type FableLocalMcpServerConfig = typeof FableLocalMcpServerConfigSchema.Type
+
+export const FableLocalMcpServerConfigsSchema = Schema.Array(FableLocalMcpServerConfigSchema).check(
+  Schema.isMaxLength(FABLE_LOCAL_MCP_SERVER_LIMIT),
+)
+
+export const decodeFableLocalMcpServerConfigs = (
+  value: unknown,
+): ReadonlyArray<FableLocalMcpServerConfig> | null =>
+  decode(FableLocalMcpServerConfigsSchema, value) as
+    | ReadonlyArray<FableLocalMcpServerConfig>
+    | null
+
+/** One normalized, ready-to-pass SDK server (`mcpServers[name] = sdkConfig`). */
+export type FableLocalNormalizedMcpServer = Readonly<{
+  name: string
+  /** A `McpStdioServerConfig` / `McpHttpServerConfig` shape (sdk.d.ts). */
+  sdkConfig: Record<string, unknown>
+}>
+
+export type FableLocalMcpNormalizeResult = Readonly<{
+  valid: ReadonlyArray<FableLocalNormalizedMcpServer>
+  invalid: ReadonlyArray<{ name: string; reason: string }>
+}>
+
+/**
+ * Pure, bounded normalization of user MCP configs into SDK server configs.
+ * Skips disabled entries; rejects (into `invalid`, never a throw) bad names,
+ * the reserved `codex` name, duplicates, and transport-specific missing
+ * fields. A failed/invalid server NEVER blocks the turn — the runtime emits a
+ * typed `mcp_server_unavailable` for each `invalid` entry and continues.
+ */
+export const normalizeFableLocalMcpServers = (
+  configs: ReadonlyArray<FableLocalMcpServerConfig>,
+): FableLocalMcpNormalizeResult => {
+  const valid: Array<FableLocalNormalizedMcpServer> = []
+  const invalid: Array<{ name: string; reason: string }> = []
+  const seen = new Set<string>()
+  for (const config of configs.slice(0, FABLE_LOCAL_MCP_SERVER_LIMIT)) {
+    if (config.enabled !== true) continue
+    const name = config.name.trim()
+    if (!FABLE_LOCAL_MCP_NAME_PATTERN.test(name)) {
+      invalid.push({ name, reason: "invalid server name (allowed: letters, digits, _ or -, 1-64 chars)" })
+      continue
+    }
+    if (name === "codex") {
+      invalid.push({ name, reason: "reserved server name (internal delegate server)" })
+      continue
+    }
+    if (seen.has(name)) {
+      invalid.push({ name, reason: "duplicate server name" })
+      continue
+    }
+    if (config.transport === "stdio") {
+      const command = (config.command ?? "").trim()
+      if (command === "") {
+        invalid.push({ name, reason: "stdio transport requires a command" })
+        continue
+      }
+      seen.add(name)
+      valid.push({
+        name,
+        sdkConfig: {
+          type: "stdio",
+          command,
+          ...(config.args !== undefined && config.args.length > 0 ? { args: [...config.args] } : {}),
+          ...(config.env !== undefined && Object.keys(config.env).length > 0
+            ? { env: { ...config.env } }
+            : {}),
+        },
+      })
+      continue
+    }
+    const url = (config.url ?? "").trim()
+    if (!/^https?:\/\//i.test(url)) {
+      invalid.push({ name, reason: "http transport requires an http(s) url" })
+      continue
+    }
+    seen.add(name)
+    valid.push({
+      name,
+      sdkConfig: {
+        type: "http",
+        url,
+        ...(config.headers !== undefined && Object.keys(config.headers).length > 0
+          ? { headers: { ...config.headers } }
+          : {}),
+      },
+    })
+  }
+  return { valid, invalid }
+}
 
 export const decodeFableLocalEventEnvelope = (value: unknown): FableLocalEventEnvelope | null =>
   decode(FableLocalEventEnvelopeSchema, value) as FableLocalEventEnvelope | null
