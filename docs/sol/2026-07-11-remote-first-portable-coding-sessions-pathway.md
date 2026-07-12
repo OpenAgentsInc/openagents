@@ -136,8 +136,10 @@ now carry that boundary to the trusted bundled renderer and rebind on explicit
 WorkContext replacement. This is host-capability evidence only: Effect Native
 UI and portable workspace materialization remain separate rungs. Bounded
 path/content search now executes in a WorkContext-owned cancellable worker per
-task, with stale-epoch fencing and relative-ref-only decoded results; its fixed
-main/preload operations and UI remain the next host rung.
+task, with stale-epoch fencing and relative-ref-only decoded results. Fixed
+main/preload search/cancel operations now bind one task to the exact
+webContents/request ref and close with that owner; the Effect Native UI remains
+the next host rung.
 
 ### Episodes 248–249 calibration
 

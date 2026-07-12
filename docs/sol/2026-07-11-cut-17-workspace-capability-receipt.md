@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697)
-- Status: capability core, tree/watch host bridge, and cancellable search worker
-  landed; search IPC/UI, mutations, and closure evidence remain open
-- Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`
+- Status: capability core, tree/watch/search host bridge, and cancellable search
+  worker landed; UI, mutations, and closure evidence remain open
+- Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`, `36725a91df`
 
 ## Landed boundary
 
@@ -43,12 +43,16 @@ The WorkContext owns every task, terminates stale work before a watch or refresh
 epoch advances, caches only a result from the unchanged epoch, and settles
 cancel/error/exit/project-close races exactly once. The worker result crosses a
 bounded schema decoder and contains only the opaque grant plus relative refs.
-No search IPC or renderer UI is claimed by this rung.
+Fixed search/start-cancel operations now cross the same trusted main/preload
+boundary. Main owns one active request per webContents; replacement cancels the
+prior task, exact cancellation is fenced by both owner and request ref, and
+window/app teardown closes the owner. No renderer search UI is claimed.
 
 ## Verification
 
-- focused worker/workspace/topology/build suite: 32 pass, 0 fail, 244 assertions;
-- full Desktop suite: 592 pass, 0 fail, 3,302 assertions, with 11 existing
+- focused search/worker/workspace/electron suite: 41 pass, 0 fail, 509 assertions;
+- full integrated Desktop suite after rebasing the concurrent Git/GitHub
+  surface: 642 pass, 0 fail, 3,515 assertions, with 11 existing
   capability-gap skips retained and named;
 - Desktop typecheck: pass;
 - Desktop production bundle: pass;
@@ -56,9 +60,10 @@ No search IPC or renderer UI is claimed by this rung.
   temporary fixture at epoch 7, returned the relative `README.md` match, and
   exposed no selected root;
 - built Electron smoke: relative tree page passed through preload, explicit
-  refresh produced a decoded newer-epoch event, unsubscribe completed, every
-  existing EP250 step remained green, and lifecycle teardown reported
-  `active: 0`;
+  refresh produced a decoded newer-epoch event, search returned the relative
+  `session_index.jsonl` match at that epoch, a foreign cancel was refused,
+  unsubscribe completed, every existing EP250 step remained green, and
+  lifecycle teardown reported `active: 0`;
 - fixtures cover lexical traversal, file and directory symlink escape,
   `.gitignore`, hidden/secret filenames, secret-shaped content, binary data,
   large-root pagination, cache identity/invalidation, watcher overflow,
@@ -70,8 +75,6 @@ No tree/search UI or scale-benchmark receipt is claimed.
 
 ## Remaining before CUT-17 closure
 
-- add fixed schema-decoded search/start-cancel main/preload operations and bind
-  their ownership to the requesting webContents;
 - migrate the Files workspace to the new relative-ref boundary and ship the
   recursive accessible Effect Native tree/search experience;
 - add reveal plus create/rename/delete capability operations with explicit

@@ -6,9 +6,9 @@
   CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete; CUT-16
   native draft persistence/Desktop gateway/mobile interaction and runtime-
   control UI active; mobile canonical rich-draft and native attachment
-  acquisition active; CUT-17 workspace capability core/host bridge/cancellable
-  search worker active)
-- Revision: 64
+  acquisition active; CUT-17 workspace capability core/tree-watch-search host
+  bridge/cancellable search worker active)
+- Revision: 65
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -704,10 +704,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   teardown are built-Electron proven. Cancellable search-task execution landed
   at `efe7738ff1`: one bounded worker per request, stale-epoch cancellation,
   current-epoch-only caching, schema-decoded relative-ref results, exactly-once
-  settlement, and a real built-worker receipt. Fixed search/cancel IPC, Effect
-  Native tree/search UI, reveal and create/rename/delete controls,
-  permission-loss acceptance, and the scale benchmark remain before closure.
-  See the
+  settlement, and a real built-worker receipt. Fixed decoded search/cancel IPC
+  landed at `36725a91df`, with exact webContents/request fencing and a real
+  built-host relative-match receipt. Effect Native tree/search UI, reveal and
+  create/rename/delete controls, permission-loss acceptance, and the scale
+  benchmark remain before closure. See the
   [`CUT-17 foundation receipt`](./2026-07-11-cut-17-workspace-capability-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
