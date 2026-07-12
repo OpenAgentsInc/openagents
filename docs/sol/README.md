@@ -1,167 +1,117 @@
-# docs/sol
+# Sol documentation index
 
-Sol owns the canonical, implementation-grounded OpenAgents roadmap. The active
-direction is reliable Desktop/mobile coding and fleet software built with
-Effect Native and Khala Sync. OpenAgents mobile absorbs the useful Khala Code
-MVP capability set—including coding through brokered remote workrooms—rather
-than remaining a supervision-only client. Sarah/persona, relationship-first
-front-door, A/V, presentation, landing, portal, optional visual-polish, and
-broad web-conversion backlog issues are closed `wontfix` / not-planned. Real
-security, production-integrity, compatibility, accessibility, and privacy
-defects begin as new bounded issues under their actual owning program.
+- Class: index
+- Status: current
+- Dispatch: no; follow the authority order below
+- Owner: Sol roadmap
 
-These documents never replace runtime authority, product promises, owner gates,
-live issue state, tests, or receipts. They turn owner decisions into dependency
-order, implementation contracts, and honest proof requirements.
+Sol owns the implementation-grounded OpenAgents roadmap for reliable Desktop
+and mobile coding, remote workrooms, cross-device continuity, and fleet
+control. This index points to the authorities; it does not cache their revision,
+issue count, or current queue.
 
-## Authority and reading order
+## Dispatch-safe reading order
 
 When documents disagree, use this order:
 
 1. [`AGENTS.md`](../../AGENTS.md) and
-   [`INVARIANTS.md`](../../INVARIANTS.md) for workspace/repository law.
-2. Owning schemas, behavior contracts, Blueprint contracts, product promises,
-   and runtime policy for enforceable behavior.
-3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 29, for current product
-   direction, priority, R0–R7 gates, and issue disposition.
-4. Live GitHub issue state and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) for
-   current ownership and collision avoidance.
-5. Current code, tests, deployments, release records, and receipts for factual
-   proof state.
-6. Dated Sol/Fable analyses for historical argument only when their banner says
-   they are superseded.
+   [`INVARIANTS.md`](../../INVARIANTS.md) for repository law.
+2. Owning schemas, behavior contracts, product promises, and runtime policy
+   for enforceable behavior.
+3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) for current owner decisions,
+   priority, gates, issue disposition, and execution order.
+4. [Live `roadmap:sol` issues](https://github.com/OpenAgentsInc/openagents/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap%3Asol)
+   and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) for current work, ownership,
+   and collision avoidance.
+5. Current code, tests, deployments, release records, and indexed receipts for
+   factual proof state.
+6. Dated analyses and teardowns only as pinned historical evidence.
 
-Current code and live issue state can move faster than prose. Reconcile the
-roadmap; never repeat a stale claim merely because it is written here.
+Never dispatch from a revision number, issue count, current-state paragraph,
+or copy/paste prompt in a dated analysis. Refresh the authorities above.
 
-## Start here
+## Current authorities and contracts
 
-- [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — canonical direction: reliable
-  Desktop/mobile coding and fleet control is P0; OpenCode-parity Desktop and a
-  compact remote-coding mobile client share identity, Khala Sync state, typed
-  workroom/actions, outcomes, and receipts.
-- [`2026-07-10-episode-195-followup-analysis.md`](./2026-07-10-episode-195-followup-analysis.md)
-  — compares the episode's Desktop/mobile, conversation-native delegation,
-  scheduled work, history/memory, integrations, local inference, open-source,
-  and compute-economics thesis against Revision 28 and proposes bounded
-  Revision 29 amendments.
-- [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
-  — binding Desktop process/data/authority topology: tokenless local Effect
-  Native renderer, host-owned Runtime Gateway over existing Pylon/Khala Sync/
-  workspace services, early mobile conversation continuation, and the fastest
-  F0–F7 delivery path.
-- [`issues/desktop-codex-subagent-history.md`](./issues/desktop-codex-subagent-history.md)
-  — closed #8674 contract/receipt for loss-accounted historical Codex parent/
-  subagent/tool rendering and the Desktop Agents/Item inspector.
-- [`issues/desktop-codex-trace-acceptance.md`](./issues/desktop-codex-trace-acceptance.md)
-  — #8675 immediate predictable real-Electron trace-workspace UX promise and
-  video-readiness proof.
-- [`issues/native-streamed-conversation-handoff.md`](./issues/native-streamed-conversation-handoff.md)
-  — #8676 first real provider-neutral Desktop stream and physical mobile
-  continuation vertical slice.
-- [`issues/conversation-fault-convergence.md`](./issues/conversation-fault-convergence.md)
-  and [`issues/desktop-effect-scope-topology.md`](./issues/desktop-effect-scope-topology.md)
-  — #8677 bounded conversation fault matrix and #8678 executable Effect scope/
-  boundary freeze before broad workbench expansion.
-- [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
-  — exhaustive legacy capability disposition, Effect Native destination,
-  remote-workroom boundary, ordered waves, and physical-device acceptance.
-- [`2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
-  — ordered, claim-aware implementation packet for bounded coding agents.
-- [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
-  — 20-area OpenCode/Khala/OpenAgents Desktop capability audit; its parity
-  findings remain active while Sarah-steerability framing is superseded.
-- [`issues/README.md`](./issues/README.md) — checked-in source records and
-  current roadmap disposition for the live issue set.
-- [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md)
-  — Sol↔Terra execution/claim contract under R0–R7.
-- [`OPERATING_MODEL.md`](./OPERATING_MODEL.md) — how to select, specify, land,
-  verify, and reconcile one bounded implementation slice.
-- [`SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md`](./SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md)
-  — current responsibilities for Desktop, mobile, Effect Native, Khala Sync,
-  Fleet/Pylon, evidence, releases, and operations.
+- [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — canonical product direction,
+  durable gates, non-goals, current issue set, and next-ready sequence.
+- [`issues/README.md`](./issues/README.md) — classification and navigation for
+  checked-in issue sources; live GitHub state remains operational authority.
 - [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) — same-session and cross-session
-  claim, hot-contract, staleness-audit, and release rules.
+  claims, hot-contract coordination, staleness audit, and release receipts.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,
-  tripwires, and review points for the reliability program.
+  tripwires, and review points.
+- [`OPERATING_MODEL.md`](./OPERATING_MODEL.md) — bounded implementation and
+  proof discipline. Its durable rules apply; transient status must be checked
+  against the master and live issues.
+- [`SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md`](./SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md)
+  — subsystem ownership and architecture implications. Until its scheduled
+  cleanup, current product state comes from the master and code, not its dated
+  status prose.
+- [`2026-07-10-r1-r2-identity-sync-contract.md`](./2026-07-10-r1-r2-identity-sync-contract.md)
+  — frozen identity and Sync contract for the R1/R2 boundary.
+- [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
+  — promoted pathway for portable sessions, target authority, brokered
+  capabilities, any-host mobile control, and persona-neutral voice. Current
+  sequencing still comes from the master and live issues.
 
-## Current program shape
+## Evidence and historical baselines
 
-```text
-intent -> policy -> orchestration -> execution
-  ^                                  |
-  |                                  v
-state <- Khala Sync <- evidence <- durable outcome
+These documents explain decisions or preserve point-in-time evidence. They are
+not current queues:
 
-OpenAgents mobile <----------------> OpenAgents Desktop
-remote coding + fleet                 full workbench + fleet
-```
+- [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
+  — durable process/data/authority topology plus a dated delivery baseline.
+- [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
+  — pinned competitor-capability and OpenAgents implementation baseline; its
+  score is historical, not current product status.
+- [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
+  — legacy capability disposition and remote-workroom design evidence; the
+  master owns current acceptance and sequence.
+- [`2026-07-10-episode-195-followup-analysis.md`](./2026-07-10-episode-195-followup-analysis.md)
+  — dated product and compute-economics analysis.
+- [`2026-07-11-openagents-coding-cutover-issue-plan.md`](./2026-07-11-openagents-coding-cutover-issue-plan.md)
+  — dated CUT-01–CUT-27 dependency and acceptance design. Live issue state and
+  receipts override its mutable status prose.
+- [`2026-07-12-cut27-cutover-readiness-audit.md`](./2026-07-12-cut27-cutover-readiness-audit.md)
+  — chronological readiness evidence, not a current blocker table.
+- [`../teardowns/README.md`](../teardowns/README.md) — point-in-time product and
+  implementation evidence. Promoted requirements must live in an owning
+  contract, roadmap gate, issue, or verifier.
 
-The active gates are:
+The July 9 Sol argument corpus and the July 10 execution diary remain
+historical evidence pending the ordered extraction and Backroom export in the
+[`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
+They are intentionally absent from this dispatch-safe reading path.
 
-1. **R0:** truthful green Desktop/mobile foundations;
-2. **R1:** shared authenticated identity and session;
-3. **R2:** authoritative Khala Sync continuity;
-4. **R3:** real Fleet operations from both clients;
-5. **R4:** interruption, offline, replay, and recovery safety;
-6. **R5:** practical OpenCode-parity Desktop workbench;
-7. **R6:** compact mobile remote coding and fleet control;
-8. **R7:** signed releases and sustained cross-device dogfood.
+## Proof and receipt rule
 
-Desktop and mobile may expose different host capabilities. Mobile files,
-terminal, preview, and writeback are brokered remote-workroom capabilities, not
-local device authority. The clients never own different identifiers, workroom/
-run state, command outcomes, authority, or receipts.
-Web remains a supported public/API/operations surface, not the active product-
-expansion queue.
+Preserve the distinction between:
 
-## Historical analysis
+1. code landed;
+2. fixture or model proven;
+3. deployed or distributed;
+4. live proven;
+5. owner accepted;
+6. closed.
 
-The dated 2026-07-09 documents preserve the reasoning that preceded Revision
-24. Their supersession banners control how they may be used:
+A later receipt may supersede an intermediate statement inside an earlier
+receipt without making the earlier evidence false. Use the file's final
+disposition and the canonical roadmap; do not promote an intermediate rung to
+current truth.
 
-- [`2026-07-09-sarah-first-product-architecture.md`](./2026-07-09-sarah-first-product-architecture.md)
-  — historical Sarah-first thesis; named front-door conclusion superseded.
-- [`2026-07-09-roadmap-system-model.md`](./2026-07-09-roadmap-system-model.md)
-  — historical relationship-loop model; current authority loop is in the
-  master roadmap.
-- [`2026-07-09-execution-sequence-and-critical-path.md`](./2026-07-09-execution-sequence-and-critical-path.md)
-  — historical queue; R0–R7 supersedes its sequencing.
-- [`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md)
-  — historical C0–C3 runtime cutover; C2 remains substrate proof, not product
-  front-door authority.
-- [`2026-07-09-greenfield-mobile-desktop-decision.md`](./2026-07-09-greenfield-mobile-desktop-decision.md)
-  — greenfield/identity/extraction decisions retained; “Sarah is home” is
-  superseded.
-- [`2026-07-09-effect-native-strategic-importance.md`](./2026-07-09-effect-native-strategic-importance.md)
-  — Effect Native conclusion retained; Sarah-first rationale is historical.
-- [`2026-07-09-authority-trust-and-economics.md`](./2026-07-09-authority-trust-and-economics.md)
-  — authority/evidence/economic separation retained; Sarah framing historical.
-- [`2026-07-09-risks-tensions-and-decision-tests.md`](./2026-07-09-risks-tensions-and-decision-tests.md)
-  — objections and tests that helped motivate the reliability reset.
-- [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md) — historical
-  issue-reset receipt, not the current issue list.
-- [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) — compact
-  supersession pointer; the old rev-1 30-item queue is no longer dispatchable.
+## Documentation maintenance
 
-## Working method
+Every new or changed Sol artifact should:
 
-Every new or updated Sol artifact should:
+1. declare its class, snapshot, dispatch status, and owner;
+2. separate durable contract from transient implementation state;
+3. link to live issue authority instead of copying an open count;
+4. avoid hard-coded master revisions in active documents;
+5. name the proof rung and final disposition for receipts;
+6. promote binding conclusions out of historical analysis;
+7. preserve owner decisions, failures, contracts, and non-revival tombstones;
+8. use Backroom for fully obsolete narrative only after conclusion extraction,
+   link migration, and a pushed provenance manifest.
 
-1. pin its date and source snapshot;
-2. separate current fact, interpretation, recommendation, and owner decision;
-3. inspect live issue state and claims before naming a next leaf;
-4. reference existing typed services before proposing new schemas;
-5. name exact paths, hot contracts, verification, and closeout evidence;
-6. preserve Blueprint authority, privacy, approvals, idempotency, and receipt
-   boundaries;
-7. distinguish code-landed, fixture-proven, deployed/distributed, live-proven,
-   owner-accepted, and closed;
-8. add supersession banners to dated analysis instead of silently rewriting
-   its original argument; and
-9. update the master roadmap and this index when priority, proof state, or the
-   document set materially changes.
-
-The short version: **build reliable direct software first; keep one typed
-authority and Sync reality; treat personas and presentation as optional future
-consumers, not the product foundation.**
+The target is one small dispatch surface surrounded by indexed evidence, not a
+freshened copy of every old plan.
