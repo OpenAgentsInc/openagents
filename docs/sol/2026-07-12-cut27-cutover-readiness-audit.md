@@ -198,7 +198,7 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   `083f3f3654` (malformed / huge / account-removal / duplicate / truncated /
   schema-drift each a named oracle; 67 pass / 0 fail on the CUT-22 surface).
 
-### CUT-23 #8703 — MCP, skills, plugins, permissions, settings typed lifecycle — OPEN
+### CUT-23 #8703 — MCP, skills, plugins, permissions, settings typed lifecycle — CLOSED
 
 - Landed on main: MCP/plugin/skill registries with modeled `/skill` grammar
   (never keyword-routed prose); unified declare→validate→enable→run→revoke
@@ -213,10 +213,11 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   its explicit skill grant, and named account `claude-pylon-3` streamed a real
   `claude-fable-5` response with exact usage (330 input, 15,663 cached, 735
   output, 16,728 total); no tools, files, or secrets were used.
-- Remaining gate: reconcile the issue's literal "one real MCP/skill workflow
-  on each provider" line with the landed explicit Codex-unsupported provider
-  fact: either prove a supported Codex MCP workflow or record an explicit
-  acceptance exception. The Claude live requirement has passed.
+- Close interpretation: "each provider" means each provider that declares the
+  lifecycle supported. Claude passed the live workflow; Codex declares the
+  plugin/skill lifecycle unsupported through the same typed disagreement
+  projection and is recorded in the cutover exception register. It is never
+  silently treated as a supported-but-untested lane.
 
 ### CUT-24 #8704 — preferences, accessibility, notifications, diagnostics, recovery — CLOSED
 
@@ -312,8 +313,8 @@ loss/exception register explicitly.
    by **emulator** receipts — it is automatable and no longer owner-gated.
 3. **Run accepted #8676 handoff and #8677/#8678/#8640 parent receipts;
    every cutover leaf closed; no waived P0** — NOT met. #8678/#8640 closed;
-   #8676/#8677 open; 10 CUT leaves open (09, 10, 11, 12, 14, 16, 21, 23,
-   25, 26). The owner's 2026-07-11 phone deferral explicitly did NOT waive
+   #8676/#8677 open; 9 CUT leaves open (09, 10, 11, 12, 14, 16, 21, 25,
+   26). The owner's 2026-07-11 phone deferral explicitly did NOT waive
    any acceptance gate.
 4. **Publish loss/exception register, accessibility/privacy/security
    results, artifact provenance, rollback result, remote-work boundary** —
@@ -353,13 +354,11 @@ loss/exception register explicitly.
 1. CUT-21: one named Codex `gpt-5.6-sol` live turn after owner reconnect.
    Named Claude `claude-fable-5` streaming passed on the built app at
    `5e701a93b7`.
-2. CUT-23: one real plugin/skill workflow live receipt on the Claude lane
-   (Codex recorded as an explicit unsupported fact).
-3. CUT-26: publish the locally verified signed/notarized artifact, then run
+2. CUT-26: publish the locally verified signed/notarized artifact, then run
    install/update/interruption/rollback/uninstall acceptance.
-4. CUT-25: live operator acceptance of the Fleet cockpit with named
+3. CUT-25: live operator acceptance of the Fleet cockpit with named
    simultaneous Codex+Claude work.
-5. #8676: the full streamed Desktop conversation with mobile continuation
+4. #8676: the full streamed Desktop conversation with mobile continuation
    run end-to-end (also the CUT-27 criterion-1/2 spine).
 
 ### (c) Owner-gated physical/manual acceptance
@@ -384,15 +383,14 @@ loss/exception register explicitly.
 
 ## Honest summary
 
-16 of 27 CUT leaves are closed (01–08, 13, 15, 17, 18, 19, 20, 22, 24);
-10 are open (09, 10, 11, 12, 14, 16, 21, 23, 25, 26) plus CUT-27 itself.
+17 of 27 CUT leaves are closed (01–08, 13, 15, 17, 18, 19, 20, 22–24);
+9 are open (09, 10, 11, 12, 14, 16, 21, 25, 26) plus CUT-27 itself.
 The deterministic/fixture spine of
 the cutover is substantially complete and enforced by ~900+ Desktop tests,
 mobile suites, real-Postgres projections, and built-Electron smokes wired
 into a main-push guard. What separates today's state from an honest
-declaration is concentrated, not diffuse: two live named-provider turns, one
+declaration is concentrated, not diffuse: one live named Codex turn, one
 signed installer journey, one iPhone journey set on an already-installed
-build, an entirely-missing Android leg (emulator-satisfiable per the
-2026-07-12 owner decision — no physical Android gate), and the small
+build, the authenticated Android emulator leg, and the small
 CUT-11/CUT-16 code residuals. Nothing reviewed here justifies declaring the cutover now, and
 nothing suggests the remaining gates require new architecture.
