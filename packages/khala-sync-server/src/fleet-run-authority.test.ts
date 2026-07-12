@@ -575,6 +575,9 @@ describe.skipIf(!hasLocalPostgres())(
       expect(migrated.applied).toContain(
         "0060_fleet_attempt_claude_cache_usage.sql",
       )
+      expect(migrated.applied).toContain(
+        "0065_sarah_fleet_run_managed_cloud_capacity.sql",
+      )
       sql = new SQL({ url, max: 12 })
     })
 
@@ -3534,6 +3537,219 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE run_ref = ${race.record.runRef} AND state = 'claimed'
       `
       expect(Number(leases[0]!.count)).toBe(1)
+    })
+
+    test("claims only an exact owner-scoped managed-cloud Codex run and preserves its capacity", async () => {
+      const ownerUserId = "user-managed-cloud-owner"
+      const pylonRef = "pylon-managed-cloud-owner"
+      const cloud = await start(ownerUserId, "managed-cloud-codex-1", {
+        targetPreference: "managed_cloud",
+        workerKind: "codex",
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.managed-cloud",
+          units: [{ unitRef: "unit-cloud", title: "Cloud unit", dependsOn: [] }],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      await seedPylon({
+        pylonRef: "pylon-managed-cloud-foreign",
+        ownerUserId: "user-managed-cloud-foreign",
+      })
+
+      const wrongOwner = await Effect.runPromise(
+        repository()
+          .claim({
+            ownerUserId: "user-managed-cloud-foreign",
+            pylonRef: "pylon-managed-cloud-foreign",
+            runRef: cloud.record.runRef,
+            claimIdempotencyKey: "managed-cloud-wrong-owner",
+            leaseDurationMs: 30_000,
+          })
+          .pipe(Effect.flip),
+      )
+      expect(wrongOwner.kind).toBe("run_not_found")
+
+      for (const workerKind of ["claude", "grok"] as const) {
+        const unsupported = await start(
+          ownerUserId,
+          `managed-cloud-${workerKind}-1`,
+          { targetPreference: "managed_cloud", workerKind },
+        )
+        const error = await Effect.runPromise(
+          repository()
+            .claim({
+              ownerUserId,
+              pylonRef,
+              runRef: unsupported.record.runRef,
+              claimIdempotencyKey: `managed-cloud-${workerKind}-claim`,
+              leaseDurationMs: 30_000,
+            })
+            .pipe(Effect.flip),
+        )
+        expect(error.kind).toBe("run_not_found")
+      }
+
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: cloud.record.runRef,
+        claimIdempotencyKey: "managed-cloud-codex-claim",
+      })
+      const wrongHarness = await Effect.runPromise(
+        repository()
+          .appendExecutionEvents({
+            ownerUserId,
+            pylonRef,
+            runRef: cloud.record.runRef,
+            batch: {
+              schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+              claimRef,
+              events: [
+                pylonExecutionEvent(cloud.record.runRef, claimRef, 1, {
+                  schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                  observedAt: "2026-07-09T22:00:01.000Z",
+                  kind: "run_started",
+                }),
+                pylonExecutionEvent(cloud.record.runRef, claimRef, 2, {
+                  schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                  observedAt: "2026-07-09T22:00:02.000Z",
+                  kind: "work_progress",
+                  unitRef: "unit-cloud",
+                  workClaimRef: "work_claim.managed-cloud.claude.refused",
+                  workerKind: "claude",
+                  accountRefHash: `account.pylon.claude_agent.${"d".repeat(24)}`,
+                  blockerRefs: [],
+                }),
+              ],
+            },
+          })
+          .pipe(Effect.flip),
+      )
+      expect(wrongHarness.kind).toBe("invalid_request")
+      const rolledBackEvents: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM sarah_fleet_run_execution_events
+        WHERE run_ref = ${cloud.record.runRef}
+      `
+      expect(Number(rolledBackEvents[0]!.count)).toBe(0)
+
+      const accountRefHash = `account.pylon.codex.${"c".repeat(24)}`
+      await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: cloud.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events: [
+              pylonExecutionEvent(cloud.record.runRef, claimRef, 1, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:01.000Z",
+                kind: "run_started",
+              }),
+              pylonExecutionEvent(cloud.record.runRef, claimRef, 2, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:02.000Z",
+                kind: "work_progress",
+                unitRef: "unit-cloud",
+                workClaimRef: "work_claim.managed-cloud.codex.1",
+                assignmentRef: "assignment.managed-cloud.codex.1",
+                workerKind: "codex",
+                accountRefHash,
+                marginalCostClass: "not_measured",
+                blockerRefs: [],
+              }),
+              pylonExecutionEvent(cloud.record.runRef, claimRef, 3, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:03.000Z",
+                kind: "work_terminal",
+                unitRef: "unit-cloud",
+                workClaimRef: "work_claim.managed-cloud.codex.1",
+                assignmentRef: "assignment.managed-cloud.codex.1",
+                workerKind: "codex",
+                accountRefHash,
+                terminalState: "failed",
+                closeoutRef: "closeout.managed-cloud.codex.1",
+                verification: {
+                  truth: "failed",
+                  verifierRef: "verifier.managed-cloud.codex.1",
+                  evidenceRefs: ["evidence.managed-cloud.codex.1"],
+                },
+                blockerRefs: ["blocker.managed_cloud.executor_failed"],
+              }),
+            ],
+          },
+        }),
+      )
+
+      const attemptRows: Array<{
+        capacity_class: string
+        worker_kind: string
+      }> = await sql`
+        SELECT capacity_class, worker_kind
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${cloud.record.runRef}
+      `
+      expect(attemptRows).toEqual([
+        { capacity_class: "managed_cloud", worker_kind: "codex" },
+      ])
+      const projectedAttempts: Array<{ post_image_json: unknown }> = await sql`
+        SELECT post_image_json
+        FROM khala_sync_changelog
+        WHERE scope = ${cloud.record.scope} AND entity_type = 'fleet_attempt'
+        ORDER BY version
+      `
+      expect(projectedAttempts).toHaveLength(1)
+      const projectedAttempt = projectedAttempts.at(-1)!.post_image_json
+      expect(
+        typeof projectedAttempt === "string"
+          ? projectedAttempt
+          : JSON.stringify(projectedAttempt),
+      ).toContain('"capacityClass":"managed_cloud"')
+
+      const auto = await start(ownerUserId, "managed-cloud-auto-control-1", {
+        targetPreference: "auto",
+        workerKind: "codex",
+      })
+      const autoClaimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: auto.record.runRef,
+        claimIdempotencyKey: "managed-cloud-auto-control-claim",
+      })
+      await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: auto.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef: autoClaimRef,
+            events: [
+              pylonExecutionEvent(auto.record.runRef, autoClaimRef, 1, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:01.000Z",
+                kind: "run_started",
+              }),
+              pylonExecutionEvent(auto.record.runRef, autoClaimRef, 2, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:02.000Z",
+                kind: "work_progress",
+                unitRef: "issue.8637",
+                workClaimRef: "work_claim.auto.owner-local.1",
+                workerKind: "codex",
+                blockerRefs: [],
+              }),
+            ],
+          },
+        }),
+      )
+      const autoAttempts: Array<{ capacity_class: string }> = await sql`
+        SELECT capacity_class FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${auto.record.runRef}
+      `
+      expect(autoAttempts).toEqual([{ capacity_class: "owner_local" }])
     })
 
     test("an expired claim requires a new idempotency key and can be re-leased", async () => {

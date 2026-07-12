@@ -158,6 +158,32 @@ describe("fleet entity contracts", () => {
       workerKind: "claude",
       usageEvidence: { cacheReadTokens: 12, harnessKind: "claude" },
     })
+    expect(
+      decodeFleetAttemptEntity({
+        ...succeeded,
+        capacityClass: "managed_cloud",
+      }).capacityClass,
+    ).toBe("managed_cloud")
+    expect(() =>
+      decodeFleetAttemptEntity({
+        ...succeeded,
+        capacityClass: "auto",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetAttemptEntity({
+        ...succeeded,
+        workerKind: "claude",
+        accountRefHash: `account.pylon.claude_agent.${"b".repeat(24)}`,
+        capacityClass: "managed_cloud",
+        usageEvidence: {
+          ...succeeded.usageEvidence,
+          harnessKind: "claude",
+          provider: "pylon-claude-own-capacity",
+          model: "openagents/pylon-claude",
+        },
+      }),
+    ).toThrow()
     expect(() =>
       decodeFleetAttemptEntity({ ...succeeded, proofRefs: [] }),
     ).toThrow()

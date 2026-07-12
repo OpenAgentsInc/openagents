@@ -769,7 +769,7 @@ type FleetRunAttemptRow = Readonly<{
   progress_class: "active" | "blocked" | "terminal"
   assignment_ref: string | null
   account_ref_hash: string | null
-  capacity_class: "owner_local"
+  capacity_class: "owner_local" | "managed_cloud"
   marginal_cost_class: "free" | "subscription" | "api_metered" | "not_measured"
   verification_json: string
   artifact_refs_json: string
@@ -1976,7 +1976,13 @@ const selectClaimableRun = async (
           WHERE run_ref = ${input.runRef}
             AND owner_user_id = ${input.ownerUserId}
             AND status = 'pending_executor'
-            AND target_preference IN ('owner_local', 'auto')
+            AND (
+              target_preference IN ('owner_local', 'auto')
+              OR (
+                target_preference = 'managed_cloud'
+                AND worker_kind = 'codex'
+              )
+            )
           FOR UPDATE
         `
   const row = rows[0]
@@ -2311,6 +2317,7 @@ const projectAttemptForEvent = async (
         | "work_terminal"
     }
   >,
+  capacityClass: FleetAttemptEntity["capacityClass"],
   nowIso: string,
 ): Promise<Readonly<{
   attempt: FleetAttemptEntity
@@ -2337,7 +2344,8 @@ const projectAttemptForEvent = async (
       existing.workUnitRef !== event.unitRef ||
       existing.workerKind !== event.workerKind ||
       existing.intakeClaimRef !== input.batch.claimRef ||
-      existing.pylonRef !== input.pylonRef)
+      existing.pylonRef !== input.pylonRef ||
+      existing.capacityClass !== capacityClass)
   ) {
     throw fixedError(
       "idempotency_conflict",
@@ -2474,7 +2482,7 @@ const projectAttemptForEvent = async (
     progressClass,
     assignmentRef,
     accountRefHash,
-    capacityClass: "owner_local",
+    capacityClass,
     marginalCostClass,
     verification,
     artifactRefs,
@@ -3040,6 +3048,20 @@ const appendFleetRunExecutionEvents = async (
     }
     const initialRecord = await recordFromRow(initialRow)
     await assertStoredWorkUnits(writer.sql, initialRecord)
+    const attemptCapacityClass: FleetAttemptEntity["capacityClass"] =
+      initialRecord.request.workerPolicy.targetPreference === "managed_cloud"
+        ? "managed_cloud"
+        : "owner_local"
+    if (
+      attemptCapacityClass === "managed_cloud" &&
+      initialRecord.request.workerPolicy.workerKind !== "codex"
+    ) {
+      throw fixedError(
+        "storage_unavailable",
+        "managed-cloud fleet run worker policy failed integrity validation",
+        { runRef: input.runRef },
+      )
+    }
     if (initialRecord.status !== "claimed_by_pylon") {
       throw fixedError(
         "claim_conflict",
@@ -3233,6 +3255,16 @@ const appendFleetRunExecutionEvents = async (
         event.kind === "approval_requested" ||
         event.kind === "work_terminal"
       ) {
+        if (
+          attemptCapacityClass === "managed_cloud" &&
+          event.workerKind !== "codex"
+        ) {
+          throw fixedError(
+            "invalid_request",
+            "managed-cloud fleet run execution requires a Codex worker",
+            { runRef: input.runRef },
+          )
+        }
         if (!knownUnits.has(event.unitRef)) {
           throw fixedError(
             "invalid_request",
@@ -3289,6 +3321,7 @@ const appendFleetRunExecutionEvents = async (
           writer.sql,
           input,
           event,
+          attemptCapacityClass,
           nowIso,
         )
         await appendFleetEntityChange(

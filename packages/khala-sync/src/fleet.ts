@@ -326,9 +326,10 @@ export const FleetAttemptVerification = S.Union([
 export type FleetAttemptVerification = typeof FleetAttemptVerification.Type
 
 // Kept exactly in lockstep with
-// `@openagentsinc/khala-fleet-intents` `MarginalCostClass`. Capacity custody
-// (`owner_local`) is deliberately separate: owner-local subscriptions are not
-// free, and absent economics must remain `not_measured`.
+// `@openagentsinc/khala-fleet-intents` `MarginalCostClass`. Capacity custody is
+// deliberately separate: owner-local subscriptions are not free, managed
+// cloud is not an economic classification, and absent economics must remain
+// `not_measured`.
 export const FleetAttemptMarginalCostClass = S.Literals([
   "free",
   "subscription",
@@ -337,6 +338,13 @@ export const FleetAttemptMarginalCostClass = S.Literals([
 ])
 export type FleetAttemptMarginalCostClass =
   typeof FleetAttemptMarginalCostClass.Type
+
+export const FleetAttemptCapacityClass = S.Literals([
+  "owner_local",
+  "managed_cloud",
+])
+export type FleetAttemptCapacityClass =
+  typeof FleetAttemptCapacityClass.Type
 
 const attemptUsageCount = S.Number.check(
   S.isInt(),
@@ -442,7 +450,7 @@ const FleetAttemptEntityFields = {
   /** Optional graph edge only. It is never the attempt identity. */
   assignmentRef: S.NullOr(FleetPublicRef),
   accountRefHash: S.NullOr(FleetAccountRefHash),
-  capacityClass: S.Literal("owner_local"),
+  capacityClass: FleetAttemptCapacityClass,
   marginalCostClass: FleetAttemptMarginalCostClass,
   verification: FleetAttemptVerification,
   artifactRefs: boundedPublicRefs,
@@ -467,6 +475,12 @@ export const FleetAttemptEntity = S.Struct(FleetAttemptEntityFields).pipe(
   S.check(
     S.makeFilter(
       (entity) => {
+        if (
+          entity.capacityClass === "managed_cloud" &&
+          entity.workerKind !== "codex"
+        ) {
+          return false
+        }
         if (
           entity.accountRefHash !== null &&
           !entity.accountRefHash.startsWith(
