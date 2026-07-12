@@ -91,9 +91,6 @@ import {
 import type { CodexPreflight } from "./codex-preflight.ts"
 import type { CodexModel, CodexReasoningEffort } from "./fable-local-contract.ts"
 
-/** Wall clock per codex turn (host-side SIGTERM; exec has no timeout flag). */
-export const CODEX_LOCAL_TIMEOUT_MS = 240_000
-
 export type CodexLocalTurnInput = Readonly<{
   turnRef: string
   threadRef: string
@@ -138,6 +135,7 @@ export type CodexLocalRuntimeOptions = Readonly<{
    * discover/health directly.
    */
   preflight?: CodexPreflight
+  /** Test-only host deadline. Production turns have no automatic cutoff. */
   timeoutMs?: number
   /**
    * Typed per-account evidence feed (main wires this into the usage ledger
@@ -218,7 +216,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
   const spawnCodex = options.spawnImpl ?? defaultSpawnCodex
   const discover = options.discoverImpl ?? (() => discoverRegisteredCodexAccounts(env))
   const health = options.health ?? sharedCodexAccountHealth
-  const timeoutMs = options.timeoutMs ?? CODEX_LOCAL_TIMEOUT_MS
+  const timeoutMs = options.timeoutMs
   const activeTurns = new Map<string, { interrupted: boolean; child: ChildLike | null }>()
   /**
    * In-memory continuity: threadRef -> the codex thread session, pinned to
@@ -368,15 +366,21 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       let errorMessage: string | null = null
       const pendingToolNames = new Map<string, string>()
 
-      const timer = setTimeout(() => {
-        timedOut = true
-        child.kill("SIGTERM")
-      }, timeoutMs)
+      // Long coding turns are normal and Codex can be quiet while reasoning
+      // or running a tool. Production therefore has no host wall-clock kill;
+      // the composer's Stop action is the explicit cancellation authority.
+      // A bounded timer remains injectable for deterministic failure tests.
+      const timer = timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true
+            child.kill("SIGTERM")
+          }, timeoutMs)
 
       const finish = (attempt: ParsedTurnAttempt): void => {
         if (done) return
         done = true
-        clearTimeout(timer)
+        if (timer !== undefined) clearTimeout(timer)
         input.control.child = null
         resolve(attempt)
       }
@@ -551,7 +555,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             text: "",
             usage,
             threadId,
-            detail: `wall clock budget reached (${Math.round(timeoutMs / 1000)}s)`,
+            detail: `test deadline reached (${Math.round((timeoutMs ?? 0) / 1000)}s)`,
             preContent,
             rateLimited: false,
           })

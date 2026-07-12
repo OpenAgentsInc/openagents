@@ -6,8 +6,36 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.4",
+    version: "2026-07-12.5",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.codex_turns_do_not_time_out.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Codex local turn lifecycle",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-12" },
+        statement: "WHAT THE FUCK IS THIS TIMEOUT --- FIX IT",
+        authorityBoundary:
+          "A production top-level local Codex turn has no host wall-clock deadline: long or temporarily quiet work remains alive until the Codex process completes, fails, or the owner dispatches the existing typed Stop intent. Elapsed time alone never sends SIGTERM and never fabricates a timeout/provider-unavailable state. A deadline remains dependency-injectable only for deterministic unit coverage of the typed failure path; it is not wired by Electron main and grants no renderer or provider authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-local-runtime.ts",
+          "apps/openagents-desktop/src/main.ts",
+        ],
+        oracles: [
+          {
+            id: "codex_turn_lifecycle.no_production_deadline",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
+            description:
+              "Runs a non-closing Codex process with production defaults, proves it remains pending, then proves the existing exact-turn interrupt still terminates it as interrupted rather than timed out.",
+          },
+        ],
+        verification:
+          "bun test apps/openagents-desktop/src/codex-local-runtime.test.ts plus Desktop typecheck and build enforce the no-default-deadline lifecycle and explicit Stop authority.",
+      },
       {
         contractId: "openagents_desktop.chat.provider_event_interleaving.v1",
         state: "enforced",

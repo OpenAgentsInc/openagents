@@ -808,6 +808,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   invocation's original position rather than moving the card or surrounding
   assistant text. Persisted model, reasoning, lane, tool, and assistant notes
   must reopen in the same relative sequence the user saw live.
+- Desktop top-level local Codex turns have no automatic wall-clock deadline.
+  Long or temporarily quiet coding work continues until Codex completes,
+  fails, or the owner explicitly uses Stop; elapsed time alone must never send
+  SIGTERM or manufacture a provider-unavailable failure. A host deadline may
+  be injected only by bounded tests and is not production configuration.
 - Desktop's mixed runtime/provider conversation sidebar has one canonical
   target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
   numbering never restarts at a source boundary. Selecting a runtime/app-local

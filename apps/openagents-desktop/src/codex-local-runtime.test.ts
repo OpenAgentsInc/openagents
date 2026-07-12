@@ -381,6 +381,33 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(runtime.interrupt("turn-unknown")).toBe(false)
   })
 
+  test("production turns have no automatic wall-clock deadline and remain stoppable", async () => {
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      spawnImpl: makeFixtureCodexChildSpawn([
+        { stdout: JSON.stringify({ type: "thread.started", thread_id: "t-long" }), exitCode: 0, hang: true },
+      ]),
+      discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
+    })
+    const pending = runtime.runTurn({
+      turnRef: "turn-long",
+      threadRef: "thread-long",
+      history: [],
+      message: "keep working",
+      emit: () => {},
+    })
+    const raced = await Promise.race([
+      pending.then(() => "settled" as const),
+      new Promise<"still-running">(resolve => setTimeout(() => resolve("still-running"), 60)),
+    ])
+    expect(raced).toBe("still-running")
+    expect(runtime.interrupt("turn-long")).toBe(true)
+    const result = await pending
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("interrupted")
+  })
+
   test("all accounts auth-failed yields the typed account_reconnect_required turn failure", async () => {
     const sink = collect()
     const evidences: Array<{ accountRef: string; evidence: string }> = []
