@@ -167,22 +167,56 @@ Ranked, with the owning repo:
 
 1. ~~Baked agent-computer rootfs~~ — DONE (digest pinned in `guestImage`,
    in-microVM turn proven above).
-2. **Control-plane guest transport (`crates/oa-codex-control/src/cloud_vm.rs`)**
-   — live vsock guest protocol is in-repo; keep `guest_exec`/`guest_copy_out`
-   and `wait_guest_ready` on the real vsock readiness signal (fake lane remains
-   default off-host).
-3. **placement -> firecracker -> executor integration (`crates/oa-codex-control`)**
-   — `POST /v1/placement` must bind admitted Agent Computer work contexts to the
-   Firecracker path: boot a microVM from the baked image, run the executor,
-   stream `runtime_event`s into the thread scope, and emit `cloud.gce.*`
-   lifecycle + `openagents.resource_usage_receipt.v1` receipts carrying
-   `workContextRef`, `scratchWipeReceiptRef`, and `microvmDestroyReceiptRef`
-   (the Worker's `validateAgentComputerPlacement` already requires these).
-4. **Model-token receipt** — bake a Codex/Claude OAuth login into the image (or
-   route the turn through the hosted Khala gateway) so the turn produces a real
-   model-token usage receipt, not just the deterministic coding step.
-5. **Arm + dispatch** — arm staging flags against that control plane and run one
-   real mobile-dispatched turn.
+2. ~~**Control-plane guest transport**~~ — DONE. The live vsock guest protocol,
+   `guest_exec`/`guest_copy_out`, and real readiness poll are in
+   `crates/oa-codex-control/src/cloud_vm.rs`.
+3. ~~**placement -> firecracker -> executor integration**~~ — DONE in source.
+   A `cloud-gcp` placement carrying a bounded `work_context_b64` runs the baked
+   turn-runner inside the live Cloud-VM provisioner and publishes lifecycle,
+   compute, token, and reclaim evidence through the normal run event stream.
+4. ~~**Brokered model-token receipt path**~~ — DONE in source and fixtures. The
+   turn-runner redeems the owner-scoped provider grant into scratch-only
+   `CODEX_HOME`, runs the baked Codex binary, and refuses a missing/inexact or
+   unexpectedly metered receipt.
+5. **Arm + dispatch** — expose the validated nested-virt control daemon through
+   the approved private/public control boundary, bind the production Worker to
+   it, and run one real physical-mobile owner turn. This remains the literal
+   #8547 exit; a direct host smoke is readiness evidence, not mobile acceptance.
+
+## Build and live-host readiness smoke (2026-07-12, #8547)
+
+The production control image is reproducibly built from the repository root:
+
+```sh
+IMAGE="us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/oa-codex-control:openagents-main-$(git rev-parse --short=10 HEAD)"
+CLOUDSDK_CONFIG=/path/to/isolated-automation-config \
+  gcloud builds submit . \
+    --project openagentsgemini \
+    --region us-central1 \
+    --config docker/cloud/cloudbuild-oa-codex-control.yaml \
+    --substitutions="_IMAGE=${IMAGE},_REVISION=$(git rev-parse HEAD)"
+```
+
+The runtime image includes `iproute2` and `iptables`, which the live
+Firecracker network setup executes directly. The daemon must run on the
+nested-virtualization host with `/dev/kvm`, `/dev/net/tun`, the pinned kernel
+and rootfs, the Firecracker binary, and its runtime directory available. Keep
+the control bearer in a mode-0600 host env file or Secret Manager; never place
+it on the command line or in a receipt.
+
+At commit `ba084c0816`, an authenticated loopback request to the current-image
+daemon on `agent-computer-gce-1` completed the exact live
+`POST /v1/cloud-vm/sessions` lifecycle with `provisionerKind=live`, guest exec
+code `0`, and `cleanupReceipt.tornDown=true`. The post-run host audit reported
+zero TAP devices and zero jail directories. The same change retains an async
+waiter for each Firecracker child so teardown is followed by process reaping;
+otherwise a long-lived control host accumulates defunct processes even though
+scratch and networking were reclaimed.
+
+This smoke deliberately used loopback and did not repoint production. Before a
+physical-phone turn, the operator must expose the daemon only through the
+approved control boundary, configure the Worker control URL/token, and verify
+that the owner has an active GitHub connection plus an owner-scoped Codex grant.
 
 ## Owner-Gated Receipts
 

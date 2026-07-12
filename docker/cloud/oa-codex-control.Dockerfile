@@ -39,6 +39,7 @@ RUN apt-get update \
       git \
       iproute2 \
       iptables \
+      procps \
       python3 \
       apt-transport-https \
       gnupg \
