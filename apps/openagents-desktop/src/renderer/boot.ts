@@ -69,7 +69,7 @@ import {
   type DesktopPreferences,
 } from "../desktop-preferences-contract.ts"
 import { preferencesRootAttributes, themeForPreferences } from "../desktop-preferences-effects.ts"
-import { selectDesktopChatHostSelection } from "./runtime-conversation.ts"
+import { makeConvergingDesktopChatHost, selectDesktopChatHostSelection } from "./runtime-conversation.ts"
 import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
 import {
   makeLocalHarnessChatHost,
@@ -640,7 +640,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       subscribe: bridge?.runtimeSubscribe,
       local: localHarnessChat,
     }))
-    const chat = selection.host
+    // The initial selection gates first-paint lane chrome, but it is never a
+    // lifetime routing decision: verified Sync may still be catching up. The
+    // converging facade re-admits each operation with one authoritative query
+    // and pins existing thread refs to their creating host (CUT-10).
+    const chat = makeConvergingDesktopChatHost({
+      request: bridge?.runtimeRequest,
+      subscribe: bridge?.runtimeSubscribe,
+      local: localHarnessChat,
+    })
     const runtimeInteractionHost = typeof bridge?.runtimeRequest === "function"
       ? makeDesktopRuntimeInteractionHost({
           request: bridge.runtimeRequest,

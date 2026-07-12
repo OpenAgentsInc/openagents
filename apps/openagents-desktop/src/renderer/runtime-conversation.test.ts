@@ -10,6 +10,7 @@ import type {
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 import type { ChatHost } from "./shell.ts"
 import {
+  makeConvergingDesktopChatHost,
   makeRuntimeConversationChatHost,
   runtimeInteractionNotes,
   selectDesktopChatHost,
@@ -215,6 +216,62 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     })
     expect(runtimeSelection.mode).toBe("runtime")
     expect(runtimeSelection.host).not.toBe(local)
+  })
+
+  test("converges after a raced boot probe without polling or losing local threads", async () => {
+    const localThread: DesktopThread = {
+      id: "thread.local.raced",
+      title: "Local draft",
+      updatedAt: now,
+      notes: [],
+    }
+    const local: ChatHost = {
+      listThreads: async () => [localThread],
+      newThread: async () => localThread,
+      openThread: async id => id === localThread.id ? localThread : null,
+      sendMessage: async () => ({ ok: true, thread: localThread }),
+    }
+    let catalogCalls = 0
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as { requestId?: string; query?: { id?: string } }
+      if (value.query?.id !== "conversation.catalog") {
+        return { kind: "request_rejected", reason: "invalid_request" }
+      }
+      catalogCalls += 1
+      if (catalogCalls === 1) {
+        return {
+          kind: "conversation_unavailable",
+          requestId: value.requestId!,
+          reason: "not_live",
+        }
+      }
+      return {
+        kind: "conversation_catalog",
+        requestId: value.requestId!,
+        status,
+        threads: [{
+          threadRef: "thread.hosted.after-bootstrap",
+          title: "Hosted after bootstrap",
+          messageCount: 0,
+          lastMessageAt: now,
+          updatedAt: now,
+          version: 1,
+        }],
+      }
+    }
+    const host = makeConvergingDesktopChatHost({ local, request })
+
+    expect((await host.listThreads()).map(thread => thread.id)).toEqual([
+      "thread.local.raced",
+    ])
+    expect((await host.listThreads()).map(thread => thread.id)).toEqual([
+      "thread.hosted.after-bootstrap",
+      "thread.local.raced",
+    ])
+    expect(catalogCalls).toBe(3)
+    expect(await host.openThread("thread.local.raced")).toBe(localThread)
+    // Known local authority never incurs another hosted admission query.
+    expect(catalogCalls).toBe(3)
   })
 
   test("maps confirmed threads/messages and waits for exact mutation refs", async () => {

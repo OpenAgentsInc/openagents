@@ -645,3 +645,107 @@ export const selectDesktopChatHost = async (input: Readonly<{
   local: ChatHost
   options?: Omit<RuntimeConversationOptions, "request" | "subscribe">
 }>): Promise<ChatHost> => (await selectDesktopChatHostSelection(input)).host
+
+/**
+ * A renderer can mount while an already-verified Sync session is still
+ * bootstrapping. Pinning the one-shot boot result made that transient state a
+ * lifetime decision. This facade re-admits each user operation with one
+ * authoritative catalog query: no interval, no timeline poller, and no delay
+ * to first paint. Threads retain the host that created/opened them so a local
+ * draft is never silently reinterpreted as a hosted ref when Sync comes live.
+ */
+export const makeConvergingDesktopChatHost = (input: Readonly<{
+  request: RuntimeConversationRequest | undefined
+  subscribe?: RuntimeConversationOptions["subscribe"]
+  local: ChatHost
+  options?: Omit<RuntimeConversationOptions, "request" | "subscribe">
+}>): ChatHost => {
+  if (input.request === undefined) return input.local
+  const runtime = makeRuntimeConversationChatHost({
+    request: input.request,
+    subscribe: input.subscribe,
+    ...input.options,
+  })
+  const threadModes = new Map<string, "local" | "runtime">()
+  let active: ChatHost | null = null
+
+  const current = async (): Promise<Readonly<{ host: ChatHost; mode: "local" | "runtime" }>> => {
+    const result = await input.request!({
+      kind: "query",
+      requestId: `renderer-conversation-converge-${++requestSequence}`,
+      query: { id: "conversation.catalog" },
+    })
+    return result.kind === "conversation_catalog" && result.status.phase === "live"
+      ? { host: runtime, mode: "runtime" }
+      : { host: input.local, mode: "local" }
+  }
+  const remember = (thread: DesktopThread | null, mode: "local" | "runtime"): DesktopThread | null => {
+    if (thread !== null) threadModes.set(thread.id, mode)
+    return thread
+  }
+  const hostForThread = async (threadRef: string): Promise<Readonly<{
+    host: ChatHost
+    mode: "local" | "runtime"
+  }>> => {
+    const known = threadModes.get(threadRef)
+    if (known === "local") return { host: input.local, mode: "local" }
+    if (known === "runtime") return { host: runtime, mode: "runtime" }
+    return current()
+  }
+
+  return {
+    listThreads: async () => {
+      const selected = await current()
+      if (selected.mode === "local") {
+        const local = await input.local.listThreads()
+        for (const thread of local) threadModes.set(thread.id, "local")
+        return local
+      }
+      const [hosted, local] = await Promise.all([
+        runtime.listThreads(),
+        input.local.listThreads(),
+      ])
+      for (const thread of hosted) threadModes.set(thread.id, "runtime")
+      for (const thread of local) {
+        if (!threadModes.has(thread.id)) threadModes.set(thread.id, "local")
+      }
+      const hostedRefs = new Set(hosted.map(thread => thread.id))
+      return [...hosted, ...local.filter(thread => !hostedRefs.has(thread.id))]
+    },
+    newThread: async () => {
+      const selected = await current()
+      return remember(await selected.host.newThread(), selected.mode)
+    },
+    openThread: async threadRef => {
+      const selected = await hostForThread(threadRef)
+      const opened = await selected.host.openThread(threadRef)
+      if (opened !== null) return remember(opened, selected.mode)
+      if (threadModes.has(threadRef)) return null
+      const fallback = selected.mode === "runtime"
+        ? { host: input.local, mode: "local" as const }
+        : { host: runtime, mode: "runtime" as const }
+      return remember(await fallback.host.openThread(threadRef), fallback.mode)
+    },
+    hydrateThread: async threadRef => {
+      const selected = await hostForThread(threadRef)
+      const hydrated = await (selected.host.hydrateThread?.(threadRef) ?? selected.host.openThread(threadRef))
+      return remember(hydrated, selected.mode)
+    },
+    sendMessage: async value => {
+      const selected = await hostForThread(value.id)
+      active = selected.host
+      try {
+        const result = await selected.host.sendMessage(value)
+        if (result.thread !== undefined && result.thread !== null) {
+          threadModes.set(result.thread.id, selected.mode)
+        }
+        return result
+      } finally {
+        active = null
+      }
+    },
+    interruptActive: async () => active?.interruptActive?.() ?? false,
+    steerChild: async value => active?.steerChild?.(value) ?? { ok: false, outcome: "not_found" },
+    queueFollowup: async value => active?.queueFollowup?.(value) ?? { ok: false, queued: false },
+  }
+}
