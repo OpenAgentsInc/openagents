@@ -709,7 +709,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   versions, and reports missing, malformed, or unverified updates without
   paths, raw output, credentials, or provider-home data. Version probing does
   not read or mutate default `~/.codex` or `~/.claude` homes. Provider turns
-  continue to receive only account-scoped isolated-home environments.
+  continue to receive only account-scoped isolated-home environments. An
+  explicit Desktop provider target is the exact provider, bundled model, and
+  named account ref for that turn: the channel rejects cross-lane or unknown
+  model pairings, and the runtime must fail on that account rather than rotate
+  or silently substitute another account. An omitted target alone preserves
+  automatic health-ordered account selection and visible rotation.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.

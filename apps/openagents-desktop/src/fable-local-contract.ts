@@ -421,6 +421,13 @@ export const FableLocalEventEnvelopeSchema = Schema.Struct({
 })
 export type FableLocalEventEnvelope = typeof FableLocalEventEnvelopeSchema.Type
 
+export const LocalProviderTargetSchema = Schema.Struct({
+  provider: Schema.Literals(["codex", "claude_agent"]),
+  accountRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  model: Schema.Literals(["gpt-5.6-sol", "claude-fable-5"]),
+})
+export type LocalProviderTarget = typeof LocalProviderTargetSchema.Type
+
 export const FableLocalStartRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
@@ -439,6 +446,8 @@ export const FableLocalStartRequestSchema = Schema.Struct({
       Schema.isMaxLength(FABLE_LOCAL_IMAGE_COUNT_LIMIT),
     ),
   ),
+  /** Exact owner-selected target; absent preserves automatic health ordering. */
+  target: Schema.optional(LocalProviderTargetSchema),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
 

@@ -375,6 +375,36 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect((captured[1]!.options.env as Record<string, string>).CLAUDE_CONFIG_DIR).toBe(join(root, ".claude-pylon-b"))
   })
 
+  test("an exact account target never rotates to another ready Claude home", async () => {
+    const root = mkdtempSync(join(tmpdir(), "fable-local-exact-"))
+    for (const name of [".claude-pylon-a", ".claude-pylon-b"]) {
+      mkdirSync(join(root, name))
+      writeFileSync(join(root, name, "claude-oauth-token"), `token-${name}\n`)
+    }
+    const captured: CapturedQuery[] = []
+    const query: FableLocalQuery = call => {
+      captured.push(call)
+      return (async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-exact-fail" }
+        yield { type: "result", subtype: "error_during_execution", is_error: true }
+      })()
+    }
+    const runtime = makeFableLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-scratch-")),
+      env: { PYLON_ACCOUNT_HOME_ROOT: root },
+      queryImpl: async () => query,
+    })
+    const sink = collect()
+    const result = await runtime.runTurn({
+      turnRef: "turn-exact", threadRef: "thread-exact", history: [], message: "hi",
+      accountRef: "claude-pylon-b", emit: sink.emit,
+    })
+    expect(result).toEqual({ ok: false, reason: "session_failed", detail: "error_during_execution" })
+    expect(captured).toHaveLength(1)
+    expect((captured[0]!.options.env as Record<string, string>).CLAUDE_CONFIG_DIR)
+      .toBe(join(root, ".claude-pylon-b"))
+  })
+
   test("does not rotate once content streamed: a partial reply fails honestly", async () => {
     const root = mkdtempSync(join(tmpdir(), "fable-local-norotate-"))
     for (const name of [".claude-pylon-a", ".claude-pylon-b"]) {

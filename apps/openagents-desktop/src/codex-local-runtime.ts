@@ -98,6 +98,7 @@ export type CodexLocalTurnInput = Readonly<{
   threadRef: string
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
+  accountRef?: string
   /**
    * Optional image attachments (capability I1). `codex exec` accepts images
    * via `-i, --image <FILE>...` (local file paths), so the runtime writes each
@@ -609,7 +610,10 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       return result
     }
 
-    const { accounts } = await verifiedOrderedAccounts()
+    const discovered = await verifiedOrderedAccounts()
+    const accounts = input.accountRef === undefined
+      ? discovered.accounts
+      : discovered.accounts.filter(account => account.ref === input.accountRef)
     if (accounts.length === 0) {
       return emitFailure(failure(
         "no_codex_account",

@@ -104,6 +104,7 @@ import {
   codexLocalFailureMessage,
   codexLocalModelNoteText,
   codexLocalRequestedModelLabel,
+  CODEX_LOCAL_MODEL,
 } from "./codex-local-contract.ts"
 import {
   FIXTURE_CODEX_LOCAL_ACCOUNT,
@@ -1267,6 +1268,10 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   if (request === null || !startRequestHasContent(request)) {
     return { ok: false, error: "That message could not be sent." }
   }
+  if (request.target !== undefined &&
+      (request.target.provider !== "claude_agent" || request.target.model !== FABLE_LOCAL_MODEL)) {
+    return { ok: false, error: "That provider target is not available on the Fable lane." }
+  }
   const store = threads()
   const user: DesktopMessage = {
     key: randomUUID(),
@@ -1295,6 +1300,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     threadRef: request.threadRef,
     history,
     message: turnPromptText(request.message, request.images),
+    ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
@@ -1461,6 +1467,10 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   if (request === null || !startRequestHasContent(request)) {
     return { ok: false, error: "That message could not be sent." }
   }
+  if (request.target !== undefined &&
+      (request.target.provider !== "codex" || request.target.model !== CODEX_LOCAL_MODEL)) {
+    return { ok: false, error: "That provider target is not available on the Codex lane." }
+  }
   const store = threads()
   const user: DesktopMessage = {
     key: randomUUID(),
@@ -1482,6 +1492,7 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     threadRef: request.threadRef,
     history,
     message: turnPromptText(request.message, request.images),
+    ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model

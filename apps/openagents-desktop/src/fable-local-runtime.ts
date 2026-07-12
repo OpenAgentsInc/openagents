@@ -248,6 +248,7 @@ export type FableLocalTurnInput = Readonly<{
   threadRef: string
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
+  accountRef?: string
   /**
    * Optional image attachments (capability I1). When present the turn's SDK
    * input becomes a streaming-input user message carrying the text plus one
@@ -663,7 +664,10 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       return result
     }
 
-    const ready = await discover()
+    const discovered = await discover()
+    const ready = input.accountRef === undefined
+      ? discovered
+      : discovered.filter(account => account.ref === input.accountRef)
     if (ready.length === 0) {
       return emitFailure(failure("no_claude_account", "no linked Claude account home found"))
     }

@@ -291,6 +291,32 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(sink.events.some(event => event.kind === "lane_notice")).toBe(true)
   })
 
+  test("an exact account target never rotates to another registered Codex account", async () => {
+    const captured: SpawnCapture[] = []
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: fixtureCodexShortAuthStdout, exitCode: 1 }],
+        input => captured.push(input),
+      ),
+      discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
+    })
+    const sink = collect()
+    const result = await runtime.runTurn({
+      turnRef: "turn-exact",
+      threadRef: "thread-exact",
+      history: [],
+      message: "go",
+      accountRef: "codex-2",
+      emit: sink.emit,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("account_reconnect_required")
+    expect(captured).toHaveLength(1)
+    expect(captured[0]!.env.CODEX_HOME).toBe("/isolated/accounts/codex/codex-2")
+  })
+
   test("INTERRUPT kills the child and yields the typed interrupted failure", async () => {
     const runtime = makeCodexLocalRuntime({
       scratchRoot: scratch,
