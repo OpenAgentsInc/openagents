@@ -230,10 +230,18 @@ targets. The surrounding status retained the exact confirmed thread and
 displayed `Account not selected` before a target was chosen, rather than
 inventing a default account. This proves the migration repair reached the
 owner-visible Effect Native surface and that the client preserved explicit
-selection authority. Mirroring was interrupted by concurrent physical iPhone
-use during the first Codex-target tap, so selection persistence, a submitted
-cross-client turn, and physical-iOS VoiceOver remain open; no stronger result
-is inferred from the populated catalog.
+selection authority.
+
+The interrupted tap persisted a real target, but device SQLite proved it was
+the hosted-Gemini choice rather than the Codex choice inferred from the
+Mirroring pointer position. The exact draft advanced to revision 3 with
+`lane.hosted_khala`, `provider.openagents.hosted`,
+`model.gemini-3.5-flash`, execution target `gemini`, and readiness `ready`,
+bound to the same confirmed thread/session refs. A subsequent CoreDevice
+process termination and relaunch retained that exact revision and target.
+This supplies the physical target-selection and process-restoration receipt
+without relabeling it as a named-Codex selection. A submitted cross-client turn
+and physical-iOS VoiceOver remain open.
 
 ## Addendum (2026-07-12): Desktop durable runtime controls — Stop, queue-until-idle, lane-exact control intents
 
