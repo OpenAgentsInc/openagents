@@ -15,11 +15,13 @@
 | Chunk | Live issue | Final state | Landed receipt |
 | --- | --- | --- | --- |
 | SOL-DOC-01 — truthful, revision-independent entry points | [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723) | **Closed 2026-07-12.** `docs/sol/README.md`, `docs/sol/issues/README.md`, and `docs/sol/IMPLEMENTATION_ROADMAP.md` now route to current authority without caching a master revision, issue count, old queue, or executable delegation diary. | `9d432817e9` — local links resolve; stale Revision 25/29/31 and delegation-dispatch scans pass; repository fast pre-push guards pass. |
+| SOL-DOC-02 — durable operating and subsystem contracts | [#8724](https://github.com/OpenAgentsInc/openagents/issues/8724) | **Closed 2026-07-12.** Operating/subsystem guidance is revision-independent, does not own the current queue, treats #8640 as closed proof, keeps physical Android non-gating, and separates persona-neutral voice from closed Sarah presentation scope. The July 9 authority analysis now links to repository invariants. | `1eefd72465` — local links, stale-policy scans, positive voice/Android/#8640 assertions, invariant-link check, and repository fast pre-push guards pass. |
 
-**Next ordered chunk:** SOL-DOC-02 reconciles the durable operating and
-subsystem documents. It removes Revision 25/current-queue state, corrects
-voice and physical-Android policy, and keeps durable claim/authority boundaries
-without attempting master compaction or receipt moves.
+**Next ordered chunk:** SOL-DOC-03 retires false dispatch artifacts. It marks
+the July 10 delegation diary non-dispatch, migrates its active inbound links,
+freezes the CUT plan/readiness audit as historical dependency and proof
+snapshots, and demotes stale parity/delivery status without compacting the
+master or moving receipts.
 
 ## Executive decision
 
@@ -380,8 +382,9 @@ analysis” remains.
 **Goal:** a new agent cannot be routed to obsolete work.
 
 SOL-DOC-01 [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723)
-completed items 1–3 at `9d432817e9`. Items 4–6 are the next bounded issue;
-they were intentionally not folded into the entry-point change.
+completed items 1–3 at `9d432817e9`. SOL-DOC-02
+[#8724](https://github.com/OpenAgentsInc/openagents/issues/8724) completed
+items 4–6 at `1eefd72465`.
 
 1. **Complete.** Rewrite `docs/sol/README.md` to point revision-independently to the current
    master, current issue projection, claim protocol, durable contracts, and
@@ -391,12 +394,12 @@ they were intentionally not folded into the entry-point change.
    separating program/client sources from closed receipt sources and `wontdo`
    tombstones. Do not hard-code a revision or manually maintained count.
 3. **Complete.** Reduce `IMPLEMENTATION_ROADMAP.md` to a minimal redirect.
-4. Remove Revision 25 pins from `OPERATING_MODEL.md` and
+4. **Complete.** Remove Revision 25 pins from `OPERATING_MODEL.md` and
    `SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md`; remove current queue state from
    both.
-5. Correct the subsystem voice rule, Android acceptance rule, #8640 state, and
+5. **Complete.** Correct the subsystem voice rule, Android acceptance rule, #8640 state, and
    already-landed Desktop/mobile capability statements.
-6. Correct the wrong invariant link in the July 9 authority/economics file
+6. **Complete.** Correct the wrong invariant link in the July 9 authority/economics file
    while that file remains in the product repository.
 
 **Exit:** `README.md` plus `MASTER_ROADMAP.md` yields one coherent current
