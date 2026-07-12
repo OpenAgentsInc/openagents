@@ -173,6 +173,7 @@ export type CodexProviderAuthMaterialization =
         | 'codex.provider_auth_broker_unavailable'
         | 'codex.provider_auth_material_invalid'
         | 'codex.provider_auth_material_expiring'
+        | 'codex.provider_auth_material_write_failed'
       status: number | null
     }
 
@@ -354,15 +355,36 @@ export const materializeCodexProviderAuth = async (
   if (expiresAt - nowMs <= CODEX_PROVIDER_AUTH_PRE_EXPIRY_BUFFER_MS) {
     return { ok: false, reasonRef: 'codex.provider_auth_material_expiring', status: response.status }
   }
-  const scratchRoot = args.providerAuth.scratchRoot ?? '/scratch/openagents-codex'
-  const codexHome = join(scratchRoot, args.turnId, 'codex-home')
-  await mkdir(codexHome, { recursive: true })
+  let scratchRoot = args.providerAuth.scratchRoot ?? '/scratch/openagents-codex'
+  let codexHome = join(scratchRoot, args.turnId, 'codex-home')
+  try {
+    await mkdir(codexHome, { recursive: true })
+  } catch {
+    if (args.providerAuth.scratchRoot !== undefined) {
+      return { ok: false, reasonRef: 'codex.provider_auth_material_write_failed', status: response.status }
+    }
+    // Some production Firecracker kernels expose the disposable scratch disk
+    // after the turn starts rather than at guest-agent readiness. Keep auth
+    // ephemeral and per-turn by falling back to the VM's tmpfs; the whole VM
+    // is destroyed after this one bounded turn.
+    scratchRoot = '/tmp/openagents-codex'
+    codexHome = join(scratchRoot, args.turnId, 'codex-home')
+    try {
+      await mkdir(codexHome, { recursive: true })
+    } catch {
+      return { ok: false, reasonRef: 'codex.provider_auth_material_write_failed', status: response.status }
+    }
+  }
   const authJsonPath = join(codexHome, 'auth.json')
   const codexAuthJson = codexAuthJsonFromOpenCodeAuthContent(authContentJson)
   if (codexAuthJson === null) {
     return { ok: false, reasonRef: 'codex.provider_auth_material_invalid', status: response.status }
   }
-  await writeFile(authJsonPath, `${codexAuthJson}\n`, { mode: 0o600 })
+  try {
+    await writeFile(authJsonPath, `${codexAuthJson}\n`, { mode: 0o600 })
+  } catch {
+    return { ok: false, reasonRef: 'codex.provider_auth_material_write_failed', status: response.status }
+  }
   return {
     ok: true,
     authGrantRef: args.providerAuth.authGrantRef,
