@@ -1160,6 +1160,7 @@ import {
   issueProviderAccountGrant,
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
+  resolveProviderAccountGrant,
 } from './provider-accounts'
 import {
   handlePublicActivityTimelineApiForEnv,
@@ -8500,6 +8501,19 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
         })
         if (grant === undefined) {
           throw new Error('managed_cloud_owner_codex_grant_unavailable')
+        }
+        // Redeem the owner-scoped grant before the guest launches. The exact
+        // usage receipt gate accepts owner subscription capacity only from a
+        // USED grant; leaving it merely ISSUED made a successful Codex turn
+        // fail its final receipt with 403.
+        const redeemed = await resolveProviderAccountGrant(accountRepository, {
+          actorId: turn.ownerUserId,
+          grantRef: grant.grantRef,
+          providerAccountRef: grant.providerAccountRef,
+          runnerSessionId: turn.turnId,
+        })
+        if (redeemed === undefined) {
+          throw new Error('managed_cloud_owner_codex_grant_redeem_failed')
         }
         return {
           ...turn,
