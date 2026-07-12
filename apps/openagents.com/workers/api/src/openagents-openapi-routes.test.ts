@@ -1584,6 +1584,16 @@ describe('OpenAgents OpenAPI route', () => {
         'post',
         'createOperatorCrmSalesCheckoutLink',
       ],
+      [
+        '/api/operator/business/outreach/template-approvals',
+        'post',
+        'approveOperatorBusinessOutreachTemplate',
+      ],
+      [
+        '/api/operator/business/pipeline/{pipelineRef}/outreach-sends',
+        'post',
+        'recordOperatorBusinessOutreachSend',
+      ],
     ]
 
     for (const [path, method, operationId] of operatorRoutes) {
@@ -1612,6 +1622,46 @@ describe('OpenAgents OpenAPI route', () => {
     expect(schemaProperties(body, 'CrmBatchApproveRequest').commandIds).toEqual(
       expect.objectContaining({ maxItems: 500, minItems: 1 }),
     )
+    const templateApprovalOperation = operationAt(
+      body,
+      '/api/operator/business/outreach/template-approvals',
+      'post',
+    )
+    expect(templateApprovalOperation.description).toContain(
+      'operator LG-4 approval route anchor',
+    )
+    expect(templateApprovalOperation.description).toContain(
+      'does not send outreach',
+    )
+    const outreachSendOperation = operationAt(
+      body,
+      '/api/operator/business/pipeline/{pipelineRef}/outreach-sends',
+      'post',
+    )
+    expect(outreachSendOperation.description).toContain(
+      'owner approval receipt',
+    )
+    expect(outreachSendOperation.description).toContain(
+      'not independent bulk-send authority',
+    )
+    expect(
+      schemaProperties(body, 'BusinessOutreachTemplateApprovalRequest')
+        .approvalReceiptRef,
+    ).toEqual(expect.objectContaining({ type: 'string' }))
+    expect(
+      schemaProperties(body, 'BusinessOutreachSendRequest')
+        .dailyMailboxSendCap,
+    ).toEqual(expect.objectContaining({ minimum: 1 }))
+    expect(
+      schemaProperties(body, 'BusinessOutreachSendRequest').channel,
+    ).toEqual({
+      type: 'string',
+      enum: ['apollo_sequence', 'customer_mailbox', 'manual'],
+    })
+    expect(schemaProperties(body, 'BusinessOutreachSend').channel).toEqual({
+      type: 'string',
+      enum: ['apollo_sequence', 'customer_mailbox', 'manual'],
+    })
     expect(schemaProperties(body, 'CrmReplyInboundRequest').fromEmail).toEqual(
       expect.objectContaining({ format: 'email' }),
     )
@@ -1781,10 +1831,8 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // of the operator business-pipeline surface (internal, not part of the
   // public OpenAPI contract).
   '/api/operator/business/outreach/suppressions',
-  '/api/operator/business/outreach/template-approvals',
   '/api/operator/business/outreach/templates',
   '/api/operator/business/pipeline/{param}/outreach-drafts',
-  '/api/operator/business/pipeline/{param}/outreach-sends',
   // Owner/admin agent token reissue console (admin bearer only): operator
   // credential surface, not part of the public OpenAPI contract.
   '/api/admin/agents/reissue-token',

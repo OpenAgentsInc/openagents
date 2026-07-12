@@ -1,5 +1,18 @@
 # Promise Registry
 
+> Registry `2026-07-12.1` is the LG-4 operator route-anchor binding pass. It
+> binds the existing admin-bearer outreach template-approval route
+> (`POST /api/operator/business/outreach/template-approvals`) and
+> approval-gated outreach-send route
+> (`POST /api/operator/business/pipeline/{pipelineRef}/outreach-sends`) to
+> planned `autopilot.lead_gen.v1` as route-level operator approval/send
+> evidence only. The promise stays planned, all four Lead Gen blockers remain,
+> and green stays exactly 34. These route refs identify where an operator
+> approval receipt and a capped send receipt can be recorded; they are not a
+> live customer run, not a real LG-4 send-approval receipt, not
+> customer-result proof, and not Apollo/contact-reveal/payment/payout/
+> settlement authority.
+
 > Registry `2026-07-10.2` is the Portal route-evidence binding pass. It binds
 > the live auth-gated Portal admin/client engagement and content-decision routes
 > to planned `autopilot.lead_gen.v1` as route-level client-engagement and
