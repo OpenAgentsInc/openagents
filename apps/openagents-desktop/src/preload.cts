@@ -40,6 +40,8 @@ import {
   DesktopWorkspaceRenameChannel,
   DesktopWorkspaceDeleteChannel,
   DesktopWorkspaceRevealChannel,
+  DesktopWorkspaceDocumentOpenChannel,
+  DesktopWorkspaceDocumentSaveChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
@@ -52,6 +54,9 @@ import {
   decodeWorkspaceRenameRequest,
   decodeWorkspaceDeleteRequest,
   decodeWorkspaceRevealRequest,
+  decodeWorkspaceDocumentRequest,
+  decodeWorkspaceDocumentSaveRequest,
+  decodeWorkspaceDocumentResult,
   decodeWorkspaceOperationResult,
   decodeWorkspaceTreePage,
   decodeWorkspaceTreeRequest,
@@ -273,6 +278,18 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     if (request === null) return { state: "unavailable", message: "The reveal request is invalid." }
     const response = await ipcRenderer.invoke(DesktopWorkspaceRevealChannel, request)
     return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The reveal response is invalid." }
+  },
+  openWorkspaceDocument: async (value: unknown) => {
+    const request = decodeWorkspaceDocumentRequest(value)
+    if (request === null) return { state: "unavailable", reason: "invalid_ref", message: "The document request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceDocumentOpenChannel, request)
+    return decodeWorkspaceDocumentResult(response) ?? { state: "unavailable", reason: "unavailable", message: "The document response is invalid." }
+  },
+  saveWorkspaceDocument: async (value: unknown) => {
+    const request = decodeWorkspaceDocumentSaveRequest(value)
+    if (request === null) return { state: "unavailable", reason: "invalid_ref", message: "The document save request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceDocumentSaveChannel, request)
+    return decodeWorkspaceDocumentResult(response) ?? { state: "unavailable", reason: "unavailable", message: "The document save response is invalid." }
   },
   refreshWorkspace: async (): Promise<boolean> =>
     (await ipcRenderer.invoke(DesktopWorkspaceRefreshChannel)) === true,

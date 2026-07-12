@@ -146,6 +146,8 @@ import {
   DesktopWorkspaceRenameChannel,
   DesktopWorkspaceDeleteChannel,
   DesktopWorkspaceRevealChannel,
+  DesktopWorkspaceDocumentOpenChannel,
+  DesktopWorkspaceDocumentSaveChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
@@ -158,6 +160,8 @@ import {
   decodeWorkspaceRenameRequest,
   decodeWorkspaceDeleteRequest,
   decodeWorkspaceRevealRequest,
+  decodeWorkspaceDocumentRequest,
+  decodeWorkspaceDocumentSaveRequest,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
 } from "./workspace-contract.ts"
@@ -699,6 +703,26 @@ ipcMain.handle(DesktopWorkspaceRevealChannel, (event, value: unknown) => {
   return request === null || workspace === null
     ? { state: "unavailable", message: "Choose a workspace folder before revealing entries." }
     : workspace.revealEntry(request)
+})
+ipcMain.handle(DesktopWorkspaceDocumentOpenChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { state: "unavailable", reason: "unavailable", message: "Workspace documents are unavailable." }
+  }
+  const request = decodeWorkspaceDocumentRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", reason: "unavailable", message: "Choose a workspace folder before opening documents." }
+    : workspace.openDocument(request)
+})
+ipcMain.handle(DesktopWorkspaceDocumentSaveChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { state: "unavailable", reason: "unavailable", message: "Workspace document saving is unavailable." }
+  }
+  const request = decodeWorkspaceDocumentSaveRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", reason: "unavailable", message: "Choose a workspace folder before saving documents." }
+    : workspace.saveDocument(request)
 })
 ipcMain.handle(DesktopWorkspaceRefreshChannel, event => {
   if (!isTrustedRuntimeGatewaySender(event)) return false
@@ -1527,6 +1551,8 @@ const smokeWorkspaceTreeBridge = `(async () => {
   if (typeof bridge?.workspaceTree !== "function" ||
       typeof bridge?.workspaceSearch !== "function" ||
       typeof bridge?.cancelWorkspaceSearch !== "function" ||
+      typeof bridge?.openWorkspaceDocument !== "function" ||
+      typeof bridge?.saveWorkspaceDocument !== "function" ||
       typeof bridge?.refreshWorkspace !== "function" ||
       typeof bridge?.workspaceSubscribe !== "function") {
     throw new Error("workspace capability bridge unavailable")
@@ -1568,6 +1594,27 @@ const smokeWorkspaceTreeBridge = `(async () => {
         search.page.matches.some((match) => String(match.pathRef).startsWith("/"))) {
       throw new Error("workspace search leaked its selected root")
     }
+    const document = await bridge.openWorkspaceDocument({
+      grantRef: page.grantRef,
+      pathRef: "session_index.jsonl",
+    })
+    if (document?.state !== "available" || document.document?.pathRef !== "session_index.jsonl" ||
+        document.document?.grantRef !== page.grantRef || document.document?.encoding !== "utf-8") {
+      throw new Error("workspace document open missing")
+    }
+    if (JSON.stringify(document).includes("tests/fixtures/codex-smoke") ||
+        String(document.document.pathRef).startsWith("/")) {
+      throw new Error("workspace document leaked its selected root")
+    }
+    const staleSave = await bridge.saveWorkspaceDocument({
+      grantRef: page.grantRef,
+      pathRef: "session_index.jsonl",
+      content: document.document.content,
+      expectedRevisionRef: "workspace.document.stale",
+    })
+    if (staleSave?.state !== "conflict" || staleSave.current?.pathRef !== "session_index.jsonl") {
+      throw new Error("workspace document conflict fencing missing")
+    }
     const foreignCancel = await bridge.cancelWorkspaceSearch({
       requestRef: "workspace.search.request.foreign",
     })
@@ -1578,6 +1625,8 @@ const smokeWorkspaceTreeBridge = `(async () => {
       ok: true,
       entryCount: page.entries.length,
       matchCount: search.page.matches.length,
+      documentLanguage: document.document.languageMode,
+      staleSave: staleSave.state,
       epoch: refresh.epoch,
       foreignCancel: foreignCancel.cancelled,
     }
