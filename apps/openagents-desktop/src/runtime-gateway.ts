@@ -73,7 +73,10 @@ export type DesktopRuntimeAgentTimeline = Readonly<{
 
 export type DesktopRuntimeCommands = Readonly<{
   start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string; lane?: "codex_app_server" | "claude_pylon" }>, context?: DesktopOperationContext) => number
-  interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string }>, context?: DesktopOperationContext) => number
+  interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion?: number }>, context?: DesktopOperationContext) => number
+  continue?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion: number }>, context?: DesktopOperationContext) => number
+  retry?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion: number }>, context?: DesktopOperationContext) => number
+  close?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion: number }>, context?: DesktopOperationContext) => number
   outcome: (input: Readonly<{ intentId: string; threadRef: string }>) => RuntimeCommandOutcome | null
 }>
 
@@ -481,7 +484,10 @@ export const createDesktopRuntimeGateway = (
       }
       if (
         request.command.id === "conversation.start" ||
-        request.command.id === "conversation.interrupt"
+        request.command.id === "conversation.interrupt" ||
+        request.command.id === "conversation.continue" ||
+        request.command.id === "conversation.retry" ||
+        request.command.id === "conversation.close"
       ) {
         const service = runtimeCommands()
         if (service === null) {
@@ -497,10 +503,30 @@ export const createDesktopRuntimeGateway = (
             reason: "Authenticated runtime Sync is unavailable.",
           }
         }
+        if (
+          (request.command.id === "conversation.continue" && service.continue === undefined) ||
+          (request.command.id === "conversation.retry" && service.retry === undefined) ||
+          (request.command.id === "conversation.close" && service.close === undefined)
+        ) {
+          return {
+            kind: "runtime_command_outcome",
+            commandId: request.commandId,
+            threadRef: request.command.threadRef,
+            runRef: request.command.runRef,
+            status: "unavailable",
+            reason: "This runtime control is unavailable in the connected host.",
+          }
+        }
         try {
           const mutationId = request.command.id === "conversation.start"
             ? service.start(request.command, context)
-            : service.interrupt(request.command, context)
+            : request.command.id === "conversation.interrupt"
+              ? service.interrupt(request.command, context)
+              : request.command.id === "conversation.continue"
+                ? service.continue!(request.command, context)
+                : request.command.id === "conversation.retry"
+                  ? service.retry!(request.command, context)
+                  : service.close!(request.command, context)
           return {
             kind: "runtime_command_outcome",
             commandId: request.commandId,

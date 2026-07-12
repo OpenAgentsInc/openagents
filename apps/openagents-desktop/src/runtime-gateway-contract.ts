@@ -68,7 +68,7 @@ const ConfirmedRuntimeInteractionSchema = Schema.declare<ConfirmedRuntimeInterac
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 9 as const
+export const DesktopRuntimeGatewayProtocolVersion = 10 as const
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -187,6 +187,14 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
         commandRef: PublicRefSchema,
         threadRef: PublicRefSchema,
         runRef: PublicRefSchema,
+        expectedVersion: Schema.optional(NonNegativeIntSchema),
+      }),
+      Schema.Struct({
+        id: Schema.Literals(["conversation.continue", "conversation.retry", "conversation.close"]),
+        commandRef: PublicRefSchema,
+        threadRef: PublicRefSchema,
+        runRef: PublicRefSchema,
+        expectedVersion: NonNegativeIntSchema,
       }),
       Schema.Struct({
         id: Schema.Literal("conversation.start"),

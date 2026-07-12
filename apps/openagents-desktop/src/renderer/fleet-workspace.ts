@@ -31,7 +31,12 @@ import {
   type UsageLedgerRow,
   type UsageLedgerSnapshot,
 } from "../usage-ledger-contract.ts"
-import type { FleetCockpitCard } from "@openagentsinc/khala-sync-client"
+import {
+  admitFleetRunCommand,
+  type FleetCockpitCard,
+  type FleetRunAction,
+  type FleetRunCommand,
+} from "../fleet-cockpit.ts"
 
 export type FleetAccountReadiness = "ready" | "credentials-missing" | "unknown"
 
@@ -272,12 +277,17 @@ export const FleetManageAccountsRequested = defineIntent(
 )
 /** Ledger push arrived (#8712 Lane C): re-pull the snapshot from the bridge. */
 export const FleetLedgerUpdated = defineIntent("FleetLedgerUpdated", Schema.Null)
+export const FleetRunControlRequested = defineIntent("FleetRunControlRequested", Schema.Struct({
+  action: Schema.Literals(["pause", "cancel", "resume", "retry", "close"]),
+  runRef: Schema.String,
+}))
 
 export const fleetWorkspaceIntents = [
   FleetRefreshRequested,
   FleetUsageCheckRequested,
   FleetManageAccountsRequested,
   FleetLedgerUpdated,
+  FleetRunControlRequested,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -291,6 +301,7 @@ export type FleetAccountsBridge = Readonly<{
   /** Session usage ledger snapshot (#8712 Lane C); optional for older hosts. */
   ledger?: () => Promise<unknown>
   cockpit?: () => Promise<Readonly<{ authority: FleetWorkspaceState["cockpitAuthority"]; cards: ReadonlyArray<FleetCockpitCard> }>>
+  control?: (command: FleetRunCommand) => Promise<unknown>
 }>
 
 export const unavailableFleetAccountsBridge: FleetAccountsBridge = {
@@ -364,6 +375,19 @@ export const makeFleetWorkspaceHandlers = <S extends FleetCapableState>(
     }),
   FleetManageAccountsRequested: () => manageAccounts?.() ?? Effect.void,
   FleetLedgerUpdated: () => pullFleetLedger(state, bridge),
+  FleetRunControlRequested: (payload: Readonly<{ action: FleetRunAction; runRef: string }>) =>
+    Effect.gen(function* () {
+      if (bridge.control === undefined) return
+      const current = yield* SubscriptionRef.get(state)
+      const card = current.fleet.cockpitCards.find(item => item.runRef === payload.runRef)
+      if (card === undefined) return
+      const command = admitFleetRunCommand(card, payload.action)
+      if (command === null) return
+      yield* Effect.promise(() => bridge.control!(command).catch(() => null))
+      if (bridge.cockpit === undefined) return
+      const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
+      yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))
+    }),
 })
 
 // ---------------------------------------------------------------------------
@@ -789,6 +813,13 @@ const fleetCockpitSection = (fleet: FleetWorkspaceState): ReadonlyArray<View> =>
         ]),
         Text({ key: `fleet-cockpit-${card.runRef}-refs`, content: [card.workContextRef, card.repositoryRef, ...card.agentRefs, ...card.receiptRefs].filter((value): value is string => value !== null).join(" · "), variant: "caption", color: "textMuted" }),
         ...(card.attention.length === 0 ? [] : [Text({ key: `fleet-cockpit-${card.runRef}-attention`, content: `${card.attention.length} item${card.attention.length === 1 ? "" : "s"} ${card.attention.length === 1 ? "needs" : "need"} attention`, variant: "label", color: "warning" })]),
+        ...(card.actions.length === 0 ? [] : [Stack({ key: `fleet-cockpit-${card.runRef}-controls`, direction: "row", gap: "2", align: "center" }, card.actions.map(action => Button({
+          key: `fleet-cockpit-${card.runRef}-${action}`,
+          label: action[0]!.toUpperCase() + action.slice(1),
+          variant: action === "resume" ? "primary" : action === "close" ? "ghost" : "secondary",
+          onPress: IntentRef("FleetRunControlRequested", StaticPayload({ action, runRef: card.runRef })),
+          a11y: { label: `${action} ${card.title}` },
+        })))]),
       ],
     )),
   ]

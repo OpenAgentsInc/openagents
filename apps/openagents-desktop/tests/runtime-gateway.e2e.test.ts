@@ -34,7 +34,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
-      result: { protocolVersion: 9, lifecycle: "ready" },
+      result: { protocolVersion: 10, lifecycle: "ready" },
     })
   })
 
@@ -50,7 +50,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response).toMatchObject({
       kind: "query_result",
       requestId: "query-1",
-      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 9,identityTier:"local_unavailable" },
+      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 10,identityTier:"local_unavailable" },
     })
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
@@ -385,7 +385,7 @@ describe("Desktop Runtime Gateway", () => {
   })
 
   test("submits exact runtime refs and projects the same thread timeline", async () => {
-    const calls: Array<Record<string, string>> = []
+    const calls: Array<Record<string, unknown>> = []
     const status = { phase: "live" as const, cursor: 21, pendingMutationCount: 0 }
     const gateway = createDesktopRuntimeGateway(
       undefined,
@@ -436,6 +436,9 @@ describe("Desktop Runtime Gateway", () => {
         }),
         start: input => { calls.push({ id: "start", ...input }); return 31 },
         interrupt: input => { calls.push({ id: "interrupt", ...input }); return 32 },
+        continue: input => { calls.push({ id: "continue", ...input }); return 33 },
+        retry: input => { calls.push({ id: "retry", ...input }); return 34 },
+        close: input => { calls.push({ id: "close", ...input }); return 35 },
       }),
     )
     gateway.start()
@@ -512,10 +515,34 @@ describe("Desktop Runtime Gateway", () => {
         runRef: "run.gateway.1",
       },
     })
+    for (const [id, commandId] of [
+      ["conversation.continue", "continue-1"],
+      ["conversation.retry", "retry-1"],
+      ["conversation.close", "close-1"],
+    ] as const) {
+      expect(await gateway.request({
+        kind: "command",
+        commandId,
+        command: {
+          id,
+          commandRef: `control.gateway.${commandId}`,
+          threadRef: "thread.gateway.1",
+          runRef: "run.gateway.1",
+          expectedVersion: 2,
+        },
+      })).toMatchObject({
+        kind: "runtime_command_outcome",
+        commandId,
+        status: "unknown_pending_reconcile",
+      })
+    }
     expect(calls).toEqual([
       { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1" },
       { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.2", runRef: "run.gateway.2", lane: "claude_pylon" },
       { id: "conversation.interrupt", commandRef: "control.gateway.1", threadRef: "thread.gateway.1", runRef: "run.gateway.1" },
+      { id: "conversation.continue", commandRef: "control.gateway.continue-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", expectedVersion: 2 },
+      { id: "conversation.retry", commandRef: "control.gateway.retry-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", expectedVersion: 2 },
+      { id: "conversation.close", commandRef: "control.gateway.close-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", expectedVersion: 2 },
     ])
   })
 
@@ -812,8 +839,8 @@ describe("Desktop Runtime Gateway", () => {
     gateway.dispose()
     unsubscribe()
     expect(events).toEqual([
-      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 9, sequence: 1 },
-      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 9, sequence: 2 },
+      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 10, sequence: 1 },
+      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 10, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
     expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
@@ -1053,7 +1080,7 @@ describe("Desktop Runtime Gateway", () => {
     })).toBeNull()
   })
 
-  test("projects provider-native Codex history through protocol v9 only", async () => {
+  test("projects provider-native Codex history through protocol v10 only", async () => {
     const agent = { threadRef: "root", parentThreadRef: null, title: "Root", status: "completed" as const, createdAt: "2026-07-10T00:00:00Z", updatedAt: "2026-07-10T00:00:00Z", depth: 0, descendantCount: 0, model: null, role: null, nickname:null,agentPath:null,sourceVersion:null,reasoning:null, source: "codex" as const }
     const page = { rootThreadRef: "root", selectedThreadRef: "root", agents: [agent], items: [{ itemRef: "root:0", threadRef: "root", sequence: 0, timestamp: "2026-07-10T00:00:00Z", kind: "session" as const, label: "Session", summary: "Started", status: null, fields: [], redacted: false, sourceType: "session_meta/session_meta" }], offset: 0, limit: 200, totalItems: 1, hasPrevious: false, hasNext: false, completeness: { source: 1, rendered: 1, redactions: 0, gaps: 0, complete: true } }
     const gateway = createDesktopRuntimeGateway(undefined, undefined, undefined, undefined, undefined, () => ({ catalog: () => ({ roots: [agent], agents: [agent] }), page: () => page, search: () => ({ query: "", results: [], indexedSessions: 0, truncated: false }) }))

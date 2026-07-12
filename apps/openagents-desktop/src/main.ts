@@ -17,7 +17,10 @@ import { execFileSync } from "node:child_process"
 import { BrowserWindow, Menu, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
 import { Effect } from "effect"
 import {
+  buildCloseTurnIntent,
+  buildContinueTurnIntent,
   buildInterruptTurnIntent,
+  buildRetryTurnIntent,
   buildStartTurnIntent,
 } from "@openagentsinc/khala-sync-client"
 
@@ -479,6 +482,18 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
         if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
         return 1
       },
+      continue: (_input, operationContext) => {
+        if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+        return 1
+      },
+      retry: (_input, operationContext) => {
+        if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+        return 1
+      },
+      close: (_input, operationContext) => {
+        if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+        return 1
+      },
       outcome: () => null,
     }
   }
@@ -518,6 +533,36 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
           operationContext.sessionRef,
           operationContext.correlationRef,
         ],
+        threadRef: input.threadRef,
+        turnRef: input.runRef,
+      }))))
+    },
+    continue: (input, operationContext) => {
+      if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+      return Number(Effect.runSync(service.continueTurn(buildContinueTurnIntent({
+        commandRef: input.commandRef,
+        context: context(),
+        correlationRefs: operationContext === undefined ? [] : [operationContext.operationRef, operationContext.sessionRef, operationContext.correlationRef],
+        threadRef: input.threadRef,
+        turnRef: input.runRef,
+      }))))
+    },
+    retry: (input, operationContext) => {
+      if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+      return Number(Effect.runSync(service.retryTurn(buildRetryTurnIntent({
+        commandRef: input.commandRef,
+        context: context(),
+        correlationRefs: operationContext === undefined ? [] : [operationContext.operationRef, operationContext.sessionRef, operationContext.correlationRef],
+        threadRef: input.threadRef,
+        turnRef: input.runRef,
+      }))))
+    },
+    close: (input, operationContext) => {
+      if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+      return Number(Effect.runSync(service.closeTurn(buildCloseTurnIntent({
+        commandRef: input.commandRef,
+        context: context(),
+        correlationRefs: operationContext === undefined ? [] : [operationContext.operationRef, operationContext.sessionRef, operationContext.correlationRef],
         threadRef: input.threadRef,
         turnRef: input.runRef,
       }))))

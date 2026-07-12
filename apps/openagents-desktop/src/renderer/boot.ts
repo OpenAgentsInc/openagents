@@ -18,7 +18,7 @@ import {
 } from "@effect-native/core"
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
 import { makeDomRenderer, makeStubCodeEditorDriver } from "@effect-native/render-dom"
-import { projectFleetCockpitCard, type FleetAuthority } from "@openagentsinc/khala-sync-client"
+import { projectFleetCockpitCard, type FleetAuthority } from "../fleet-cockpit.ts"
 
 import {
   unavailableCodexSettingsBridge,
@@ -355,6 +355,25 @@ const fleetAccountsBridge: FleetAccountsBridge = {
       })
     }))).filter((card): card is NonNullable<typeof card> => card !== null)
     return { authority, cards }
+  },
+  control: async (command) => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return null
+    const id = command.action === "resume" ? "conversation.continue"
+      : command.action === "retry" ? "conversation.retry"
+        : command.action === "close" ? "conversation.close"
+          : "conversation.interrupt"
+    return bridge.runtimeRequest({
+      kind: "command",
+      commandId: `fleet-${command.action}-${command.runRef}-${command.expectedVersion}`,
+      command: {
+        id,
+        commandRef: `fleet.${command.action}.${command.runRef}.${command.expectedVersion}`,
+        threadRef: command.threadRef,
+        runRef: command.runRef,
+        expectedVersion: command.expectedVersion,
+      },
+    })
   },
 }
 

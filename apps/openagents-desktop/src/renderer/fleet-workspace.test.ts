@@ -28,7 +28,7 @@ import {
   type FleetWorkspaceState,
 } from "./fleet-workspace.ts"
 import type { UsageLedgerSnapshot } from "../usage-ledger-contract.ts"
-import type { FleetCockpitCard } from "@openagentsinc/khala-sync-client"
+import type { FleetCockpitCard } from "../fleet-cockpit.ts"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
 
@@ -176,6 +176,8 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
     const open = nodeByKey(view, "fleet-cockpit-run.demo-open") as { onPress?: { name?: string } }
     expect(open.onPress?.name).toBe("DesktopChatSelected")
     expect(JSON.stringify(open.onPress)).toContain("thread.demo")
+    expect((nodeByKey(view, "fleet-cockpit-run.demo-pause") as { onPress?: { name?: string } }).onPress?.name).toBe("FleetRunControlRequested")
+    expect((nodeByKey(view, "fleet-cockpit-run.demo-cancel") as { onPress?: { name?: string } }).onPress?.name).toBe("FleetRunControlRequested")
   })
 
   test("non-live cockpit authority states honestly that controls are withheld", () => {
@@ -481,7 +483,7 @@ describe("renderer bridge decode", () => {
 describe("typed fleet intent loop (registry -> state -> re-render)", () => {
   const makeHarness = (bridge: Parameters<typeof makeFleetWorkspaceHandlers>[1], manage?: () => Effect.Effect<void>) =>
     Effect.gen(function* () {
-      const state = yield* SubscriptionRef.make({ fleet: readyState })
+      const state = yield* SubscriptionRef.make<{ fleet: FleetWorkspaceState }>({ fleet: readyState })
       const registry = yield* makeIntentRegistry(
         fleetWorkspaceIntents,
         makeFleetWorkspaceHandlers(state, bridge, manage),
@@ -637,5 +639,27 @@ describe("typed fleet intent loop (registry -> state -> re-render)", () => {
         expect(toggles).toBe(1)
       }),
     )
+  })
+
+  test("run control re-admits the current generation and refreshes confirmed state", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const submitted: unknown[] = []
+      const confirmed = { ...runningCockpitCard, status: "canceled" as const, runVersion: 8, actions: ["resume", "retry", "close"] as const }
+      const { state, registry } = yield* makeHarness({
+        list: async () => ({ ok: false, reason: "unused" }),
+        usage: async ref => ({ ok: false, ref, reason: "unused" }),
+        control: async command => { submitted.push(command); return { status: "unknown_pending_reconcile" } },
+        cockpit: async () => ({ authority: "live", cards: [confirmed] }),
+      })
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        fleet: { ...current.fleet, cockpitAuthority: "live" as const, cockpitCards: [runningCockpitCard] },
+      }))
+      const pause = nodeByKey(fleetWorkspaceView((yield* SubscriptionRef.get(state)).fleet), "fleet-cockpit-run.demo-pause") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+      yield* registry.dispatch(resolveIntentRef(pause.onPress, null))
+      expect(submitted).toEqual([{ action: "pause", threadRef: "thread.demo", runRef: "run.demo", expectedVersion: 7 }])
+      expect((yield* SubscriptionRef.get(state)).fleet.cockpitCards[0]?.runVersion).toBe(8)
+      expect((yield* SubscriptionRef.get(state)).fleet.cockpitCards[0]?.status).toBe("canceled")
+    }))
   })
 })

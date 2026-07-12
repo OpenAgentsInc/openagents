@@ -15,6 +15,7 @@ import {
 } from "@effect-native/core"
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
 import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
+import { fleetRunActions } from "@openagentsinc/khala-sync-client"
 
 export type MobileTextScale = "normal" | "large" | "extra_large"
 
@@ -257,12 +258,13 @@ const runtimeControlActions = (
   state: KhalaState,
 ): ReadonlyArray<MobileRuntimeControlAction> => {
   const status = state.runtimeTurn?.status
-  if (status === "queued" || status === "running" || status === "waiting_for_input") {
-    return ["cancel"]
-  }
-  if (status === "canceled") return ["resume", "retry", "close"]
-  if (status === "failed" || status === "completed") return ["retry", "close"]
-  return []
+  if (status === undefined) return []
+  // Mobile and Desktop consume the same closed authoritative action table.
+  // Pause remains a Desktop-only presentation until mobile has a distinct
+  // pause transport; filtering it here avoids pretending cancel and pause are
+  // different commands on the current native runtime.
+  return fleetRunActions("live", status)
+    .filter((action): action is MobileRuntimeControlAction => action !== "pause")
 }
 
 const runtimeControlViews = (
