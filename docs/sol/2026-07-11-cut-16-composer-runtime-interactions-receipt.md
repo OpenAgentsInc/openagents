@@ -221,9 +221,19 @@ three connected healthy Codex account refs; disconnected/re-auth-required rows
 remain ineligible.
 
 No fallback, credential copy, raw account secret, or client-side substitution
-was introduced. The remaining receipt is the visible physical selector and
-composer/control interaction, plus VoiceOver after explicit owner approval to
-change that system setting.
+was introduced.
+
+The follow-up physical-iOS pass then visibly crossed the catalog rung. On the
+authenticated build-117 coding composer, the former unavailable state was
+replaced by five real choices: Khala, hosted Gemini, and three owner Codex
+targets. The surrounding status retained the exact confirmed thread and
+displayed `Account not selected` before a target was chosen, rather than
+inventing a default account. This proves the migration repair reached the
+owner-visible Effect Native surface and that the client preserved explicit
+selection authority. Mirroring was interrupted by concurrent physical iPhone
+use during the first Codex-target tap, so selection persistence, a submitted
+cross-client turn, and physical-iOS VoiceOver remain open; no stronger result
+is inferred from the populated catalog.
 
 ## Addendum (2026-07-12): Desktop durable runtime controls — Stop, queue-until-idle, lane-exact control intents
 

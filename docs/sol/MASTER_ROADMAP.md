@@ -3,11 +3,12 @@
 - Date: 2026-07-10
 - Updated: 2026-07-12 (CUT-10/CUT-11/CUT-12/CUT-21 closed; CUT-14 physical
   iOS directory/deep-link/process-death acceptance complete and Android
-  emulator OAuth remains; CUT-16 physical target-catalog acceptance exposed
-  and repaired a missing production migration; CUT-26 publish/legacy-lockout
+  emulator OAuth remains; CUT-16 repaired a missing production migration and
+  the physical authenticated catalog now visibly lists hosted Gemini plus
+  three owner Codex targets; CUT-26 publish/legacy-lockout
   code complete; remaining local-cutover leaves are acceptance-gated CUT-09,
   CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27)
-- Revision: 76
+- Revision: 77
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -742,8 +743,12 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   selection is now landed under [CUT-16A #8717](https://github.com/OpenAgentsInc/openagents/issues/8717):
   the authenticated personal catalog drives accessible Effect Native controls,
   the canonical draft persists exact refs, and `runtime.startTurn` carries the
-  selected `executionTargetId` without silent substitution. Physical
-  accessibility remains open. The named Codex
+  selected `executionTargetId` without silent substitution. After the missing
+  production preference-table migration was applied, physical iOS visibly
+  replaced `Execution targets unavailable` with Khala, hosted Gemini, and
+  three owner Codex choices while retaining explicit `Account not selected`
+  state. Target-selection persistence, a cross-client turn, and physical-iOS
+  VoiceOver remain open. The named Codex
   composer receipt completed on 2026-07-12 with a retained redaction-clean
   proof. The trusted interaction authority is live on production Cloud Run
   revision `openagents-monolith-00085-k4v`; migrations 0061/0062 are applied
