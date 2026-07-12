@@ -58,6 +58,16 @@ describe("React Native renderer host boundaries", () => {
     const dependencies: ReactNativeDependencies = {
       React: {
         createElement,
+        useState: <State>(initial: State | (() => State)) => {
+          let value = typeof initial === "function"
+            ? (initial as () => State)()
+            : initial
+          return [value, (next: State | ((current: State) => State)) => {
+            value = typeof next === "function"
+              ? (next as (current: State) => State)(value)
+              : next
+          }] as const
+        },
         useEffect: (effect) => {
           const cleanup = effect()
           if (typeof cleanup === "function") cleanups.push(cleanup)
@@ -138,7 +148,14 @@ describe("React Native renderer host boundaries", () => {
 
   test("keeps the iOS glass composer component identity stable across draft emissions", () => {
     const dependencies: ReactNativeDependencies = {
-      React: { createElement, useEffect: () => undefined },
+      React: {
+        createElement,
+        useEffect: () => undefined,
+        useState: <State>(initial: State | (() => State)) => [
+          typeof initial === "function" ? (initial as () => State)() : initial,
+          () => undefined,
+        ],
+      },
       ReactNative: { ...reactNative, Platform: { OS: "ios", Version: 26 } }
     }
     const expoUi: ExpoUiSwiftUiRuntime = {
@@ -183,6 +200,97 @@ describe("React Native renderer host boundaries", () => {
     expect(secondComposer.key).toBe("composer")
     expect(secondComposer.type).toBe(firstComposer.type)
     expect(secondComposer.props.view).not.toBe(firstComposer.props.view)
+  })
+
+  test("does not restore a submitted draft while the controlled clear is still emitting", () => {
+    const hookValues: unknown[] = []
+    let hookIndex = 0
+    let nativeValue = ""
+    let nativeInitialized = false
+    const nativeState = {
+      get: () => nativeValue,
+      set: (value: string) => { nativeValue = value },
+    }
+    const dependencies: ReactNativeDependencies = {
+      React: {
+        createElement,
+        useEffect: effect => { effect() },
+        useState: <State>(initial: State | (() => State)) => {
+          const index = hookIndex++
+          if (!(index in hookValues)) {
+            hookValues[index] = typeof initial === "function"
+              ? (initial as () => State)()
+              : initial
+          }
+          return [hookValues[index] as State, (next: State | ((current: State) => State)) => {
+            const current = hookValues[index] as State
+            hookValues[index] = typeof next === "function"
+              ? (next as (value: State) => State)(current)
+              : next
+          }] as const
+        },
+      },
+      ReactNative: { ...reactNative, Platform: { OS: "ios", Version: 26 } },
+    }
+    const expoUi: ExpoUiSwiftUiRuntime = {
+      Host: "SwiftHost",
+      HStack: "SwiftHStack",
+      VStack: "SwiftVStack",
+      Button: "SwiftButton",
+      Image: "SwiftImage",
+      Text: "SwiftText",
+      Spacer: "SwiftSpacer",
+      TextField: "SwiftTextField",
+      useNativeState: <Value>(initialValue: Value) => {
+        if (!nativeInitialized) {
+          nativeValue = initialValue as string
+          nativeInitialized = true
+        }
+        return nativeState as unknown as {
+          readonly get: () => Value
+          readonly set: (value: Value) => void
+        }
+      },
+      modifiers: {
+        glassEffect: value => ({ kind: "glass", value }),
+        foregroundStyle: value => ({ kind: "foreground", value }),
+        frame: value => ({ kind: "frame", value }),
+      },
+    }
+    const renderNative = (text: string): ReactElementLike => {
+      hookIndex = 0
+      const rendered = renderReactNativeView(
+        Composer({
+          key: "composer",
+          doc: text === "" ? [] : [{ kind: "text", text }],
+          mode: "normal",
+          placeholder: "Message",
+          clearOnSubmit: true,
+          onSubmit: IntentRef("Submitted"),
+          style: { surface: "glass" },
+        }),
+        dependencies,
+        () => Effect.void,
+        { expoUi, platform: "ios" },
+      )
+      const host = rendered.props.children as ReactElementLike
+      const component = host.props.children as ReactElementLike
+      if (typeof component.type !== "function") throw new Error("expected native composer component")
+      return component.type(component.props) as ReactElementLike
+    }
+
+    const first = renderNative("submitted draft")
+    const submit = (first.props.children as ReadonlyArray<ReactElementLike>)[1]!
+    ;(submit.props.onPress as () => void)()
+    expect(nativeValue).toBe("")
+
+    // The app's Effect has not emitted its cleared controlled draft yet. This
+    // render used to copy the stale submitted text back into SwiftUI.
+    renderNative("submitted draft")
+    expect(nativeValue).toBe("")
+
+    renderNative("")
+    expect(nativeValue).toBe("")
   })
 
   test("keeps the accessible RN composer fallback on Android", () => {

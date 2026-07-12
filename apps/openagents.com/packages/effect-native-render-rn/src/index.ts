@@ -4200,6 +4200,7 @@ interface ExpoUiNativeComposerProps {
   readonly report: IntentReporter
   readonly theme: Theme
   readonly useEffect: NonNullable<ReactRuntime["useEffect"]>
+  readonly useState: NonNullable<ReactRuntime["useState"]>
 }
 
 // Keep this component at module scope. Defining it inside
@@ -4207,21 +4208,33 @@ interface ExpoUiNativeComposerProps {
 // Effect Native view. A controlled draft emits after every character, so that
 // old shape remounted the SwiftUI TextField and dismissed the iOS keyboard.
 const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLike => {
-  const { view, expoUi, dependencies, report, theme, useEffect } = props
+  const { view, expoUi, dependencies, report, theme, useEffect, useState } = props
   const controlledValue = composerPlainText(view.doc)
   const textState = expoUi.useNativeState(controlledValue)
+  // `runReportedIntent` starts an Effect fiber. The controlled draft therefore
+  // clears on the next app emission, not in the button's call stack. Remember
+  // the submitted value so an intervening render cannot copy that stale draft
+  // back into the native TextField after `clearOnSubmit` cleared it locally.
+  const [pendingClearValue, setPendingClearValue] = useState<string | null>(null)
   useEffect(() => {
+    if (pendingClearValue !== null) {
+      if (controlledValue === pendingClearValue) return
+      setPendingClearValue(null)
+    }
     if (textState.get() !== controlledValue) {
       textState.set(controlledValue)
     }
-  }, [controlledValue, textState])
+  }, [controlledValue, pendingClearValue, textState])
   const submitDisabled = view.disabled === true || view.submitting === true ||
     view.onSubmit === undefined
   const submit = (): void => {
     if (submitDisabled || view.onSubmit === undefined) return
     const value = textState.get()
     runReportedIntent(report, view.onSubmit, value)
-    if (view.clearOnSubmit === true) textState.set("")
+    if (view.clearOnSubmit === true) {
+      setPendingClearValue(value)
+      textState.set("")
+    }
   }
   return createElement(
     dependencies,
@@ -4284,8 +4297,9 @@ const renderExpoUiComposer = (
   const useNativeState = expoUi.useNativeState
   const TextField = expoUi.TextField
   const useEffect = dependencies.React.useEffect
-  if (useNativeState === undefined || TextField === undefined || useEffect === undefined) {
-    throw new Error("@expo/ui composer lowering requires TextField, useNativeState, and React.useEffect")
+  const useState = dependencies.React.useState
+  if (useNativeState === undefined || TextField === undefined || useEffect === undefined || useState === undefined) {
+    throw new Error("@expo/ui composer lowering requires TextField, useNativeState, React.useEffect, and React.useState")
   }
   const theme = options.theme ?? defaultTheme
   return createElement(
@@ -4307,7 +4321,8 @@ const renderExpoUiComposer = (
         dependencies,
         report,
         theme,
-        useEffect
+        useEffect,
+        useState
       })
     )
   )
