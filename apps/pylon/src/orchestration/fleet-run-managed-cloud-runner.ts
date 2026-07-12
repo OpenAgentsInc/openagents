@@ -13,7 +13,19 @@ import type {
 import type {
   FleetRunSupervisorDispatchInput,
   FleetRunSupervisorDispatchResult,
+  FleetRunSupervisorCapacity,
+  FleetRunSupervisorClock,
+  FleetRunSupervisorObservedEvent,
 } from "./fleet-run-supervisor.js"
+import type { FleetRunOwnerLocalLivenessProbe } from "./fleet-run-recovery.js"
+import {
+  createPylonDurableFleetRunPlanner,
+  type CreatePylonDurableFleetRunPlannerInput,
+} from "./fleet-run-durable-planner.js"
+import {
+  openPylonStandingFleetRunExecutor,
+  type PylonStandingFleetRunExecutor,
+} from "./fleet-run-standing-executor.js"
 
 export const PYLON_MANAGED_CLOUD_FLEET_TARGET_SCHEMA =
   "openagents.pylon.managed_cloud_fleet_target.v1" as const
@@ -112,6 +124,24 @@ export type CreatePylonManagedCloudFleetRunClaimedWorkPortInput = Readonly<{
   createExecutor: PylonManagedCloudFleetExecutorPort
   cloudLane?: Exclude<ControlSessionLane, "local"> | undefined
   now?: (() => Date) | undefined
+  timeoutMs?: number | undefined
+}>
+
+export type OpenPylonManagedCloudStandingFleetRunExecutorInput = Readonly<{
+  summary: BootstrapSummary
+  pylonRef: string
+  runRef: string
+  capacity: FleetRunSupervisorCapacity
+  livenessProbe: FleetRunOwnerLocalLivenessProbe
+  resolveGrantBinding: PylonManagedCloudFleetGrantPort
+  createExecutor: PylonManagedCloudFleetExecutorPort
+  cloudLane?: Exclude<ControlSessionLane, "local"> | undefined
+  planner?: Omit<CreatePylonDurableFleetRunPlannerInput, "store"> | undefined
+  clock?: Partial<FleetRunSupervisorClock> | undefined
+  now?: (() => Date) | undefined
+  onLifecycle?: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+  startImmediately?: boolean | undefined
+  tickIntervalMs?: number | undefined
   timeoutMs?: number | undefined
 }>
 
@@ -656,8 +686,13 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
       const result: PylonManagedCloudFleetRunDispatchResult = {
         assignmentRef: prepared.assignmentRef,
         accountRefHash: null,
-        closeoutRef: prepared.closeoutRef,
+        // The cloud runtime close event is not the accepted Sarah closeout.
+        // Keep the supervisor carrier empty until exact owner-attributed token
+        // evidence can supply its real closeout ref atomically.
+        closeoutRef: null,
         lifecycle,
+        marginalCostClass:
+          input.dispatch.claim.marginalCostClass ?? "not_measured",
         status: passed ? "completed" : "failed",
         summary: passed
           ? "Managed-cloud Codex work completed with receipt-backed target evidence."
@@ -683,4 +718,63 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
       return result
     },
   }
+}
+
+/**
+ * Compose the managed-cloud claimed-work adapter into the same durable
+ * planner/supervisor used by owner-local FleetRuns. All provider-account,
+ * grant, capacity, and restart-liveness authority stays injected: this layer
+ * never derives it from a public capacity class and has no local runner port.
+ */
+export async function openPylonManagedCloudStandingFleetRunExecutor(
+  input: OpenPylonManagedCloudStandingFleetRunExecutorInput,
+): Promise<PylonStandingFleetRunExecutor> {
+  return await openPylonStandingFleetRunExecutor({
+    bootstrap: input.summary,
+    pylonRef: input.pylonRef,
+    runRef: input.runRef,
+    ...(input.clock === undefined ? {} : { clock: input.clock }),
+    ...(input.now === undefined ? {} : { now: input.now }),
+    ...(input.onLifecycle === undefined ? {} : { onLifecycle: input.onLifecycle }),
+    ...(input.startImmediately === undefined
+      ? {}
+      : { startImmediately: input.startImmediately }),
+    ...(input.tickIntervalMs === undefined
+      ? {}
+      : { tickIntervalMs: input.tickIntervalMs }),
+    adapterFactory: ({ store }) => {
+      const claimedWork = createPylonManagedCloudFleetRunClaimedWorkPort({
+        summary: input.summary,
+        resolveGrantBinding: input.resolveGrantBinding,
+        createExecutor: input.createExecutor,
+        ...(input.cloudLane === undefined ? {} : { cloudLane: input.cloudLane }),
+        ...(input.now === undefined ? {} : { now: input.now }),
+        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+      })
+      return {
+        capacity: input.capacity,
+        livenessProbe: input.livenessProbe,
+        planner: createPylonDurableFleetRunPlanner({
+          ...(input.planner ?? {}),
+          store,
+        }),
+        runner: {
+          dispatch: dispatch => {
+            // The supervisor persists `in_progress` immediately before it
+            // invokes the runner, while its immutable call snapshot still
+            // carries the preceding `claimed` state. Bind cloud authority to
+            // the durable post-transition claim, never to the stale snapshot.
+            const durableClaim = store.getWorkClaim(dispatch.claim.claimRef)
+            return claimedWork.dispatch({
+              targetPreference: "managed_cloud",
+              dispatch: {
+                ...dispatch,
+                ...(durableClaim === null ? {} : { claim: durableClaim }),
+              },
+            })
+          },
+        },
+      }
+    },
+  })
 }

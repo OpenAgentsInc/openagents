@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js"
 import type { PylonDevCheckProjection } from "../src/dev-loop.js"
@@ -8,10 +11,15 @@ import type {
 } from "../src/node/control-sessions.js"
 import {
   createPylonManagedCloudFleetRunClaimedWorkPort,
+  openPylonManagedCloudStandingFleetRunExecutor,
   PYLON_MANAGED_CLOUD_FLEET_BLOCKERS,
   type PylonManagedCloudFleetExactTuple,
 } from "../src/orchestration/fleet-run-managed-cloud-runner.js"
-import type { FleetRunSupervisorDispatchInput } from "../src/orchestration/fleet-run-supervisor.js"
+import { openPylonFleetRunRuntime } from "../src/orchestration/fleet-run-runtime.js"
+import type {
+  FleetRunSupervisorDispatchInput,
+  FleetRunSupervisorObservedEvent,
+} from "../src/orchestration/fleet-run-supervisor.js"
 import type { FleetRun, WorkClaim } from "../src/orchestration/store.js"
 
 const fixedNow = new Date("2026-07-10T09:30:00.000Z")
@@ -163,6 +171,133 @@ const blockerRefs = (result: {
 }): readonly string[] => result.lifecycle.flatMap(event => event.blockerRefs ?? [])
 
 describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
+  test("composes the real managed-cloud adapter and fails closed at the exact-usage gate", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-managed-cloud-standing-"))
+    const composedSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+      PYLON_HOME: join(root, "pylon-home"),
+    })
+    const runRef = `fleet_run.sarah.${"4".repeat(20)}`
+    const composedPylonRef = "pylon.public.managed_cloud_composed"
+    let grantCalls = 0
+    let executorCalls = 0
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    try {
+      const seed = await openPylonFleetRunRuntime({
+        bootstrap: composedSummary,
+        now: () => fixedNow,
+      })
+      seed.store.createFleetRun({
+        runRef,
+        objective: "Implement the bounded managed-cloud issue and verify it.",
+        workSource: "issue_list",
+        workSourceDescriptor: {
+          schema: "openagents.pylon.fleet_run_work_source.v1",
+          kind: "issue_list",
+          repo: "OpenAgentsInc/openagents",
+          branch: "main",
+          baseCommit: commit,
+          verify: "bun test apps/pylon/tests/fleet-run-managed-cloud-runner.test.ts",
+          issues: [{
+            number: 8547,
+            title: "Compose managed-cloud execution",
+            body: "Use the exact accepted Sarah authority and cloud grant.",
+          }],
+        },
+        authorityBinding: {
+          schema: "openagents.pylon.fleet_run_authority_binding.v1",
+          source: "sarah_authority",
+          authorityFingerprint: "e".repeat(64),
+          claimRef: `claim.sarah_fleet_run.${"2".repeat(24)}`,
+          pylonRef: composedPylonRef,
+          targetPreference: "managed_cloud",
+          phase: "accepted",
+        },
+        targetConcurrency: 1,
+        workerKind: "codex",
+        state: "running",
+        now: fixedNow,
+      })
+      await seed.close()
+
+      const standing = await openPylonManagedCloudStandingFleetRunExecutor({
+        summary: composedSummary,
+        pylonRef: composedPylonRef,
+        runRef,
+        capacity: {
+          accounts: async () => [{
+            accountRef,
+            advertisedCapacity: 1,
+            marginalCostClass: "api_metered",
+            workerKind: "codex",
+          }],
+        },
+        livenessProbe: () => "unknown",
+        resolveGrantBinding: async tuple => {
+          grantCalls += 1
+          expect(tuple.runRef).toBe(runRef)
+          expect(tuple.workUnitRef).toContain("8547")
+          return validBinding
+        },
+        createExecutor: ({ binding, tuple }) => {
+          expect(binding).toEqual(validBinding)
+          expect(tuple.workerKind).toBe("codex")
+          return async () => {
+            executorCalls += 1
+            return cloudResult()
+          }
+        },
+        now: () => fixedNow,
+        clock: {
+          now: () => fixedNow,
+          sleep: () => new Promise<void>(() => {}),
+        },
+        onLifecycle: event => {
+          observed.push(event)
+        },
+        startImmediately: false,
+      })
+
+      try {
+        for (let attempt = 0; attempt < 100 && executorCalls === 0; attempt += 1) {
+          await Bun.sleep(2)
+        }
+        const taskFailed = (): boolean => standing.runtime.store
+          .listTasks()
+          .some(candidate => candidate.status === "failed")
+        for (let attempt = 0; attempt < 100 && !taskFailed(); attempt += 1) {
+          await Bun.sleep(2)
+        }
+        expect(grantCalls).toBe(1)
+        expect(executorCalls).toBe(1)
+        expect(standing.runtime.store.listWorkClaims({ runRef })).toEqual([
+          expect.objectContaining({
+            runRef,
+            state: "released",
+            workerAccountRef: accountRef,
+            assignmentRef: expect.stringMatching(
+              /^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
+            ),
+          }),
+        ])
+        expect(standing.runtime.store.listTasks("failed")).toEqual([
+          expect.objectContaining({
+            spec: expect.objectContaining({ fleetRunRef: runRef }),
+          }),
+        ])
+        expect(observed).toContainEqual(expect.objectContaining({
+          kind: "dispatch",
+          runRef,
+          status: "failed",
+          blockerRefs: ["blocker.pylon.fleet_run.usage_evidence_required"],
+        }))
+      } finally {
+        await standing.close()
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("binds the exact tuple to the existing cloud executor and returns refs-only managed-cloud evidence", async () => {
     let resolvedTuple: PylonManagedCloudFleetExactTuple | null = null
     let executorTuple: PylonManagedCloudFleetExactTuple | null = null
@@ -209,9 +344,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     expect(result.assignmentRef).toMatch(
       /^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
     )
-    expect(result.closeoutRef).toMatch(
-      /^closeout\.public\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
-    )
+    expect(result.closeoutRef).toBeNull()
     expect(result.target).toEqual({
       schema: "openagents.pylon.managed_cloud_fleet_target.v1",
       targetPreference: "managed_cloud",
@@ -518,9 +651,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     })
 
     expect(result.status).toBe("failed")
-    expect(result.closeoutRef).toMatch(
-      /^closeout\.public\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
-    )
+    expect(result.closeoutRef).toBeNull()
     expect(result.verification?.truth).toBe("failed")
     expect(result.authorityReceiptRefs).toEqual([
       "receipt.openagents.resource_usage_receipt.v1.aaaaaaaaaaaaaaaaaaaaaaaa",

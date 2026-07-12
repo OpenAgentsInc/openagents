@@ -778,44 +778,53 @@ export async function openPylonFleetRunRemoteIntakeService(
     if (targetPreference === undefined) {
       throw fixedError("authority_conflict", run.runRef)
     }
-    // Typed placement decision before any executor is touched (FC-4 #8636).
-    // The current activation port opens the owner-local standing executor. A
-    // managed-cloud authority may be accepted and replayed durably, but must
-    // fail closed until its separate runner is explicitly composed here — the
-    // resolver records that denial as typed history, and an explicit
-    // managed_cloud preference never enters the owner-local activation port.
-    const placement = resolveFleetExecutionTarget({
+    const selectedTarget = targetPreference === "managed_cloud"
+      ? "managed_cloud" as const
+      : "owner_local" as const
+    const selectedRouting = () => resolveFleetExecutionTarget({
       preference: targetPreference,
-      candidates: [
-        { target: "owner_local", ready: true },
-        managedCloudCandidate,
-      ],
+      candidates: [{ target: selectedTarget, ready: true }],
     })
-    if (placement.selectedTarget !== "owner_local") {
-      return projection(input.pylonRef, "accepted_activation_blocked", {
-        runRef: run.runRef,
-        retryable: true,
-        blocker: MANAGED_CLOUD_UNCONFIGURED_BLOCKER,
-        routing: placement,
-      })
+    const persistRouting = (
+      routing: FleetExecutionTargetDecision,
+    ): FleetExecutionTargetDecision => {
+      const binding = run.authorityBinding
+      if (binding === undefined) {
+        throw fixedError("authority_conflict", run.runRef)
+      }
+      runtime.store.upsertFleetRun({
+        ...run,
+        authorityBinding: { ...binding, routing },
+      }, now())
+      return routing
     }
-    const ownerLocalBlocked = (
+    const activationBlocked = (
       blocker: string,
       retryable: boolean,
+      managedCloudUnconfigured = false,
     ): PylonFleetRunRemoteIntakeProjection =>
       projection(input.pylonRef, "accepted_activation_blocked", {
         runRef: run.runRef,
         retryable,
         blocker,
-        // Re-resolve with the observed owner-local outcome so the projected
-        // history names the real skip (and, under `auto`, the reason no
-        // managed-cloud fallback was executed) instead of the pre-attempt
-        // eligibility guess. Never a silent target change.
-        routing: resolveFleetExecutionTarget({
+        routing: persistRouting(resolveFleetExecutionTarget({
           preference: targetPreference,
-          candidates: [ownerLocalBlockedCandidate(blocker), managedCloudCandidate],
-        }),
+          candidates: selectedTarget === "managed_cloud"
+            ? [{
+                target: "managed_cloud",
+                ready: false,
+                reason: managedCloudUnconfigured
+                  ? "managed_cloud_unconfigured"
+                  : "managed_cloud_unavailable",
+                blockerRef: blocker,
+              }]
+            : [ownerLocalBlockedCandidate(blocker), managedCloudCandidate],
+        })),
       })
+    // The node activation authority selects the opener from the exact durable
+    // target preference. Explicit managed-cloud work reaches only its injected
+    // opener; when that private composition is absent the activation service
+    // returns a fixed blocker and never substitutes owner-local execution.
     try {
       await input.activation.arm(run.runRef)
       const status = await input.activation.status(run.runRef)
@@ -823,15 +832,17 @@ export async function openPylonFleetRunRemoteIntakeService(
       if (activation?.armed === true && activation.active === true) {
         return projection(input.pylonRef, "active", {
           runRef: run.runRef,
-          routing: placement,
+          routing: persistRouting(selectedRouting()),
         })
       }
-      return ownerLocalBlocked(
-        activationBlocker(activation),
+      const blocker = activationBlocker(activation)
+      return activationBlocked(
+        blocker,
         activation?.retryable ?? true,
+        activation?.reason === "managed_cloud_executor_unconfigured",
       )
     } catch {
-      return ownerLocalBlocked(
+      return activationBlocked(
         "blocker.pylon.fleet_run_intake.activation_unavailable",
         true,
       )

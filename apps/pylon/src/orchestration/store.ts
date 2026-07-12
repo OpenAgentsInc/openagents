@@ -130,6 +130,41 @@ export const FleetRunCountersSchema = S.Struct({
 })
 export type FleetRunCounters = typeof FleetRunCountersSchema.Type
 
+const FleetExecutionTargetRoutingEventSchema = S.Struct({
+  target: S.Literals(["owner_local", "managed_cloud"]),
+  disposition: S.Literals(["selected", "skipped"]),
+  reason: S.optionalKey(S.Literals([
+    "owner_local_unavailable",
+    "owner_local_activation_blocked",
+    "managed_cloud_unconfigured",
+    "managed_cloud_unavailable",
+    "target_capacity_exhausted",
+  ])),
+  blockerRef: S.optionalKey(S.String.check(
+    S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u),
+  )),
+  nextTarget: S.NullOr(S.Literals(["owner_local", "managed_cloud"])),
+})
+
+/**
+ * Restart-durable FC-4 placement evidence. This mirrors the shared
+ * `khala.fleet_execution_target_decision.v1` vocabulary at the persistence
+ * boundary so a restart cannot erase why a target was selected or skipped.
+ */
+export const FleetExecutionTargetDecisionSchema = S.Struct({
+  schema: S.Literal("khala.fleet_execution_target_decision.v1"),
+  preference: S.Literals(["owner_local", "managed_cloud", "auto"]),
+  outcome: S.Literals(["selected", "denied"]),
+  selectedTarget: S.NullOr(S.Literals(["owner_local", "managed_cloud"])),
+  usedFallback: S.Boolean,
+  history: S.Array(FleetExecutionTargetRoutingEventSchema).check(
+    S.isMinLength(1),
+    S.isMaxLength(2),
+  ),
+})
+export type FleetExecutionTargetDecision =
+  typeof FleetExecutionTargetDecisionSchema.Type
+
 /**
  * Durable import/accept journal for one server-authoritative Sarah FleetRun.
  *
@@ -151,6 +186,7 @@ export const FleetRunAuthorityBindingSchema = S.Struct({
   ),
   targetPreference: S.Literals(["owner_local", "managed_cloud", "auto"]),
   phase: S.Literals(["imported", "accepted"]),
+  routing: S.optionalKey(FleetExecutionTargetDecisionSchema),
 })
 export type FleetRunAuthorityBinding =
   typeof FleetRunAuthorityBindingSchema.Type

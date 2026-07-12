@@ -57,6 +57,34 @@ const seedRuns = async (
   }
 }
 
+const seedManagedCloudRun = async (
+  summary: ReturnType<typeof createBootstrapSummary>,
+  runRef: string,
+): Promise<void> => {
+  const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+  try {
+    runtime.store.createFleetRun({
+      runRef,
+      objective: `Bounded managed-cloud fixture for ${runRef}`,
+      workSource: "fixture",
+      targetConcurrency: 1,
+      workerKind: "codex",
+      state: "running",
+      authorityBinding: {
+        schema: "openagents.pylon.fleet_run_authority_binding.v1",
+        source: "sarah_authority",
+        authorityFingerprint: "d".repeat(64),
+        claimRef: `claim.sarah_fleet_run.${"1".repeat(24)}`,
+        pylonRef,
+        targetPreference: "managed_cloud",
+        phase: "accepted",
+      },
+    })
+  } finally {
+    await runtime.close()
+  }
+}
+
 const setRunState = async (
   summary: ReturnType<typeof createBootstrapSummary>,
   runRef: string,
@@ -85,6 +113,52 @@ const openerFixture = () => {
 }
 
 describe("headless Pylon FleetRun activation", () => {
+  test("blocks explicit managed-cloud authority without its opener and never substitutes owner-local execution", async () => {
+    await fixture(async ({ summary }) => {
+      const runRef = `fleet_run.sarah.${"3".repeat(20)}`
+      await seedManagedCloudRun(summary, runRef)
+      const ownerLocal = openerFixture()
+      const blocked = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: ownerLocal.opener,
+      })
+
+      expect(await blocked.arm(runRef)).toEqual({
+        schema: "openagents.pylon.fleet_run_activation.v1",
+        pylonRef,
+        runRef,
+        armed: true,
+        active: false,
+        state: "armed_blocked",
+        reason: "managed_cloud_executor_unconfigured",
+        retryable: true,
+      })
+      expect(ownerLocal.opened).toEqual([])
+      await blocked.close()
+
+      const restartedOwnerLocal = openerFixture()
+      const managedCloud = openerFixture()
+      const configured = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: restartedOwnerLocal.opener,
+        openManagedCloudExecutor: managedCloud.opener,
+      })
+      expect(restartedOwnerLocal.opened).toEqual([])
+      expect(managedCloud.opened).toEqual([runRef])
+      expect((await configured.status(runRef)).runs[0]).toMatchObject({
+        runRef,
+        armed: true,
+        active: true,
+        reason: null,
+      })
+      await configured.close()
+    })
+  })
+
   test("concurrent duplicate arm opens one handle and restart resumes only the durable armed run", async () => {
     await fixture(async ({ summary }) => {
       const armedRef = "fleet_run.fc2.armed"
@@ -187,7 +261,7 @@ describe("headless Pylon FleetRun activation", () => {
     })
   })
 
-  test("wires accepted Sarah-run lifecycle observations into the durable execution reporter", async () => {
+  test("wires accepted managed-cloud lifecycle observations into the normal durable execution reporter", async () => {
     await fixture(async ({ summary }) => {
       const runRef = "fleet_run.sarah.0123456789abcdefabcd"
       const claimRef = "claim.sarah_fleet_run.0123456789abcdef01234567"
@@ -205,7 +279,7 @@ describe("headless Pylon FleetRun activation", () => {
           authorityFingerprint: "a".repeat(64),
           claimRef,
           pylonRef,
-          targetPreference: "owner_local",
+          targetPreference: "managed_cloud",
           phase: "accepted",
         },
       })
@@ -252,7 +326,10 @@ describe("headless Pylon FleetRun activation", () => {
         baseUrl: "https://openagents.test",
         agentToken: "private-token",
         executionRemote,
-        openExecutor: opener,
+        openExecutor: async () => {
+          throw new Error("owner-local fallback must not run")
+        },
+        openManagedCloudExecutor: opener,
       })
       await service.arm(runRef)
       await observe?.({ kind: "completed", runRef, reason: "backlog_empty" })

@@ -28,6 +28,7 @@ export type PylonFleetRunActivationReason =
   | "active_limit_reached"
   | "executor_close_failed"
   | "executor_open_failed"
+  | "managed_cloud_executor_unconfigured"
   | "run_not_runnable"
   | "transport_not_configured"
   | "unsafe_stored_ref"
@@ -68,6 +69,8 @@ export type OpenPylonNodeFleetRunActivationServiceInput = {
   readonly env?: NodeJS.ProcessEnv | undefined
   readonly executionRemote?: PylonFleetRunExecutionHttpPort | undefined
   readonly maxActiveRuns?: number | undefined
+  /** Explicit managed-cloud opener. Absence blocks; it never falls back local. */
+  readonly openManagedCloudExecutor?: PylonFleetRunExecutorOpener | undefined
   readonly openExecutor?: PylonFleetRunExecutorOpener | undefined
   readonly openRuntime?: typeof openPylonFleetRunRuntime | undefined
   readonly pylonRef: string
@@ -135,7 +138,8 @@ export async function openPylonNodeFleetRunActivationService(
   const authority = await (input.openRuntime ?? openPylonFleetRunRuntime)({
     bootstrap: input.summary,
   })
-  const openExecutor = input.openExecutor ?? openPylonOwnedStandingFleetRunExecutor
+  const openOwnerLocalExecutor =
+    input.openExecutor ?? openPylonOwnedStandingFleetRunExecutor
   const handles = new Map<string, PylonFleetRunExecutorHandle>()
   const opening = new Set<string>()
   const blocked = new Map<string, PylonFleetRunActivationReason>()
@@ -192,7 +196,10 @@ export async function openPylonNodeFleetRunActivationService(
       active,
       state,
       reason,
-      retryable: reason === "active_limit_reached" || reason === "executor_open_failed",
+      retryable:
+        reason === "active_limit_reached" ||
+        reason === "executor_open_failed" ||
+        reason === "managed_cloud_executor_unconfigured",
     }
   }
 
@@ -265,6 +272,17 @@ export async function openPylonNodeFleetRunActivationService(
     }
     if (!transportConfigured(input.baseUrl)) {
       blocked.set(runRef, "transport_not_configured")
+      return
+    }
+    const openExecutor =
+      run.authorityBinding?.targetPreference === "managed_cloud"
+        ? input.openManagedCloudExecutor
+        : openOwnerLocalExecutor
+    if (openExecutor === undefined) {
+      // A managed-cloud authority is never evidence for owner-local dispatch.
+      // Keep restart intent armed so adding the private grant/capacity
+      // composition can retry this exact run without accepting another claim.
+      blocked.set(runRef, "managed_cloud_executor_unconfigured")
       return
     }
     if (handles.size + opening.size >= maxActiveRuns) {

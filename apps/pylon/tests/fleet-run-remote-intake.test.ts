@@ -60,7 +60,10 @@ const ownerLocalSelectedRouting = (
   ],
 })
 
-const managedCloudDeniedRouting = () => ({
+const managedCloudDeniedRouting = (
+  blockerRef =
+    "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+) => ({
   schema: "khala.fleet_execution_target_decision.v1",
   preference: "managed_cloud",
   outcome: "denied",
@@ -70,10 +73,20 @@ const managedCloudDeniedRouting = () => ({
     target: "managed_cloud",
     disposition: "skipped",
     reason: "managed_cloud_unconfigured",
-    blockerRef:
-      "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+    blockerRef,
     nextTarget: null,
   }],
+})
+
+const managedCloudSelectedRouting = () => ({
+  schema: "khala.fleet_execution_target_decision.v1",
+  preference: "managed_cloud",
+  outcome: "selected",
+  selectedTarget: "managed_cloud",
+  usedFallback: false,
+  history: [
+    { target: "managed_cloud", disposition: "selected", nextTarget: null },
+  ],
 })
 
 const ownerLocalDeniedRouting = (
@@ -397,6 +410,48 @@ describe("Pylon Sarah FleetRun remote intake", () => {
     })
   })
 
+  test("real activation fails an explicit managed-cloud intake closed when private composition is absent", async () => {
+    await fixture(async ({ summary }) => {
+      const claimed = claimResult({ targetPreference: "managed_cloud" })
+      const ownerLocalOpened: string[] = []
+      const activation = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: async input => {
+          ownerLocalOpened.push(input.runRef)
+          return { close: () => Promise.resolve() }
+        },
+      })
+      const service = await openPylonFleetRunRemoteIntakeService({
+        activation,
+        bootstrap: summary,
+        pylonRef,
+        remote: {
+          claimNext: async () => claimed,
+          acceptClaim: async () => acceptedResult(claimed),
+        },
+      })
+
+      expect(await service.runOnce()).toEqual({
+        schema: "openagents.pylon.fleet_run_remote_intake.v1",
+        pylonRef,
+        runRef,
+        state: "accepted_activation_blocked",
+        retryable: true,
+        blockerRefs: [
+          "blocker.pylon.fleet_run_intake.activation_managed_cloud_executor_unconfigured",
+        ],
+        routing: managedCloudDeniedRouting(
+          "blocker.pylon.fleet_run_intake.activation_managed_cloud_executor_unconfigured",
+        ),
+      })
+      expect(ownerLocalOpened).toEqual([])
+      await service.close()
+      await activation.close()
+    })
+  })
+
   test("standing poller carries an authenticated HTTP fixture through the real activation opener", async () => {
     await fixture(async ({ summary }) => {
       const claimed = claimResult()
@@ -586,7 +641,7 @@ describe("Pylon Sarah FleetRun remote intake", () => {
     })
   })
 
-  test("preserves managed_cloud through import, duplicate accept replay, and reload without local activation", async () => {
+  test("preserves managed_cloud through import, duplicate accept replay, activation, and reload", async () => {
     await fixture(async ({ summary }) => {
       const claimed = claimResult({ targetPreference: "managed_cloud" })
       let claimCalls = 0
@@ -647,16 +702,17 @@ describe("Pylon Sarah FleetRun remote intake", () => {
         schema: "openagents.pylon.fleet_run_remote_intake.v1",
         pylonRef,
         runRef,
-        state: "accepted_activation_blocked",
-        retryable: true,
-        blockerRefs: [
-          "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
-        ],
-        routing: managedCloudDeniedRouting(),
+        state: "active",
+        retryable: false,
+        blockerRefs: [],
+        routing: managedCloudSelectedRouting(),
       })
       expect(claimCalls).toBe(1)
       expect(acceptCalls).toBe(2)
-      expect(secondActivation.calls).toEqual([])
+      expect(secondActivation.calls).toEqual([
+        `arm:${runRef}`,
+        `status:${runRef}`,
+      ])
       await second.close()
 
       const persisted = await openPylonFleetRunRuntime({ bootstrap: summary })
@@ -668,6 +724,7 @@ describe("Pylon Sarah FleetRun remote intake", () => {
         pylonRef,
         targetPreference: "managed_cloud",
         phase: "accepted",
+        routing: managedCloudSelectedRouting(),
       })
       await persisted.close()
 
@@ -687,13 +744,13 @@ describe("Pylon Sarah FleetRun remote intake", () => {
           },
         },
       })
-      expect(await replay.runOnce()).toMatchObject({
-        state: "accepted_activation_blocked",
-        runRef,
-      })
+      expect(await replay.runOnce()).toMatchObject({ state: "active", runRef })
       expect(claimCalls).toBe(1)
       expect(acceptCalls).toBe(2)
-      expect(replayActivation.calls).toEqual([])
+      expect(replayActivation.calls).toEqual([
+        `arm:${runRef}`,
+        `status:${runRef}`,
+      ])
       await replay.close()
     })
   })
