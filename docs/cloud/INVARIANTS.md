@@ -124,15 +124,20 @@ design context only.
 - Owner-subscription-capacity usage receipts (lane `codex_app_server` with
   provider `pylon-codex-org-capacity`; lane `claude_pylon` with provider
   `pylon-claude-org-capacity`) are exact token TRUTH rows and are NEVER
-  card/credit-metered: the Worker usage-ingest route skips the metering hook
-  for that exact lane+provider match and answers
+  card/credit-metered only after server-held grant authority proves a used
+  provider-account grant matching the owner, provider account, and provider
+  kind. Caller-supplied lane/provider labels and grant refs alone grant no
+  exemption. The Worker then skips the metering hook and answers
   `tokenChargeMetered: false` with
   `tokenChargeSkippedReason: owner_subscription_capacity`
   (`isOwnerSubscriptionCapacityReceipt` in
   `apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts`).
   Any other lane/provider combination — including a codex-lane row that does
   not carry the org-capacity provider — meters normally (the skip can never
-  widen into a metering bypass). Compute lifecycle stays separately billed
+  widen into a metering bypass). Missing, unredeemed, revoked, cross-owner,
+  wrong-account, or wrong-provider grant evidence is denied before token
+  insertion; authority-store failure is a typed 503. Grant/account refs never
+  enter the public token event. Compute lifecycle stays separately billed
   through `openagents.resource_usage_receipt.v1`.
 - Agent Computer receipt consumers independently require that same exact
   no-charge disposition for owner-subscription capacity. A `200` response that

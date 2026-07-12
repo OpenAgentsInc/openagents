@@ -1209,6 +1209,7 @@ import {
 import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   makeKhalaCloudRuntimeUsageRoutes,
+  ownerCapacityGrantAuthorizesReceipt,
   publishKhalaCloudRuntimeInsufficientCreditEvent,
 } from './khala-cloud-runtime-usage-routes'
 import {
@@ -8576,6 +8577,12 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
 
 const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  authorizeOwnerCapacityReceipt: async (env, input) => {
+    const grant = await makeD1ProviderAccountRepository(
+      openAgentsDatabase(env),
+    ).findGrantByRef(input.authGrantRef)
+    return ownerCapacityGrantAuthorizesReceipt(grant, input)
+  },
   ledger: env =>
     makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
       onIngestedEvent: makeTokensServedProjectionObserver(env),

@@ -14,6 +14,7 @@ import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION,
   makeKhalaCloudRuntimeUsageRoutes,
+  ownerCapacityGrantAuthorizesReceipt,
 } from './khala-cloud-runtime-usage-routes'
 import { readAgentBalance } from './payments-ledger'
 import { paymentsLedgerDbFromD1, type D1LikeDatabase } from './test/payments-ledger-sqlite'
@@ -28,6 +29,11 @@ const nowIso = '2026-07-06T12:00:00.000Z'
 const agentToken = 'oa_agent_khala_cloud_runtime_usage_test'
 const agentUserId = 'agent-khala-cloud-runtime-1'
 const ownerAccountRef = 'agent:user-owner-1'
+const ownerCapacityRefs = {
+  authGrantRef: 'provider-auth-grant_agent-computer-1',
+  providerAccountRef: 'provider-account_agent-computer-1',
+} as const
+const allowOwnerCapacityReceipt = async () => true
 
 class MemoryAgentStore implements AgentRegistrationStore {
   constructor(
@@ -251,11 +257,103 @@ const post = (payload: unknown, token = agentToken) =>
   })
 
 describe('khala cloud runtime usage routes', () => {
+  test('owner-capacity authority requires the exact redeemed grant tuple', () => {
+    const input = {
+      ownerUserId: 'user-owner-1',
+      provider: 'chatgpt_codex' as const,
+      providerAccountRef: ownerCapacityRefs.providerAccountRef,
+    }
+    const grant = {
+      provider: 'chatgpt_codex',
+      providerAccountRef: ownerCapacityRefs.providerAccountRef,
+      status: 'used',
+      usedAt: nowIso,
+      userId: 'user-owner-1',
+    }
+
+    expect(ownerCapacityGrantAuthorizesReceipt(grant, input)).toBe(true)
+    expect(ownerCapacityGrantAuthorizesReceipt(undefined, input)).toBe(false)
+    for (const rejected of [
+      { ...grant, status: 'issued', usedAt: null },
+      { ...grant, status: 'revoked' },
+      { ...grant, userId: 'user-other' },
+      { ...grant, providerAccountRef: 'provider-account_other' },
+      { ...grant, provider: 'anthropic_claude' },
+    ]) {
+      expect(ownerCapacityGrantAuthorizesReceipt(rejected, input)).toBe(false)
+    }
+  })
+
+  test('denies unproven owner capacity before token insertion or delta publication', async () => {
+    const tokenHash = await sha256Hex(agentToken)
+    const { events, ledger } = makeLedger()
+    const publishedDeltas: Array<unknown> = []
+    const routes = makeKhalaCloudRuntimeUsageRoutes({
+      agentStore: () => new MemoryAgentStore(tokenHash),
+      authorizeOwnerCapacityReceipt: async () => false,
+      ledger: () => ledger,
+      publishDelta: (_env, input) => {
+        publishedDeltas.push(input)
+        return Effect.void
+      },
+    })
+    const response = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(
+        post(
+          body({
+            ...ownerCapacityRefs,
+            lane: 'codex_app_server',
+            model: 'openagents/pylon-codex',
+            provider: 'pylon-codex-org-capacity',
+          }),
+        ),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(403)
+    expect(events).toHaveLength(0)
+    expect(publishedDeltas).toHaveLength(0)
+  })
+
+  test('fails unavailable when the owner-capacity authority store cannot be read', async () => {
+    const tokenHash = await sha256Hex(agentToken)
+    const { events, ledger } = makeLedger()
+    const routes = makeKhalaCloudRuntimeUsageRoutes({
+      agentStore: () => new MemoryAgentStore(tokenHash),
+      authorizeOwnerCapacityReceipt: async () => {
+        throw new Error('grant store unavailable')
+      },
+      ledger: () => ledger,
+    })
+    const response = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(
+        post(
+          body({
+            ...ownerCapacityRefs,
+            lane: 'claude_pylon',
+            model: 'openagents/pylon-claude',
+            provider: 'pylon-claude-org-capacity',
+          }),
+        ),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    expect(events).toHaveLength(0)
+    expect(await response.json()).toMatchObject({
+      error: 'khala_cloud_runtime_storage_error',
+      operation: 'owner_capacity_grant_authority',
+    })
+  })
+
   test('rejects missing agent bearer', async () => {
     const tokenHash = await sha256Hex(agentToken)
     const { ledger } = makeLedger()
     const routes = makeKhalaCloudRuntimeUsageRoutes({
       agentStore: () => new MemoryAgentStore(tokenHash),
+      authorizeOwnerCapacityReceipt: allowOwnerCapacityReceipt,
       ledger: () => ledger,
       nowIso: () => nowIso,
     })
@@ -397,6 +495,7 @@ describe('khala cloud runtime usage routes', () => {
     const publishedDeltas: Array<{ eventRef: string; tokensServedDelta: number }> = []
     const routes = makeKhalaCloudRuntimeUsageRoutes({
       agentStore: () => new MemoryAgentStore(tokenHash),
+      authorizeOwnerCapacityReceipt: allowOwnerCapacityReceipt,
       ledger: () => ledger,
       nowIso: () => nowIso,
       publishDelta: (_env, input) => {
@@ -413,6 +512,7 @@ describe('khala cloud runtime usage routes', () => {
         routes.handleKhalaCloudRuntimeUsageIngestApi(
           post(
             body({
+              ...ownerCapacityRefs,
               lane: 'codex_app_server',
               model: 'openagents/pylon-codex',
               provider: 'pylon-codex-org-capacity',
@@ -425,6 +525,7 @@ describe('khala cloud runtime usage routes', () => {
         routes.handleKhalaCloudRuntimeUsageIngestApi(
           post(
             body({
+              ...ownerCapacityRefs,
               lane: 'codex_app_server',
               model: 'openagents/pylon-codex',
               provider: 'pylon-codex-org-capacity',
@@ -471,6 +572,7 @@ describe('khala cloud runtime usage routes', () => {
     const publishedEvents: Array<unknown> = []
     const routes = makeKhalaCloudRuntimeUsageRoutes({
       agentStore: () => new MemoryAgentStore(tokenHash),
+      authorizeOwnerCapacityReceipt: allowOwnerCapacityReceipt,
       ledger: () => ledger,
       meteringHook: () =>
         makeLedgerMeteringHook({
@@ -513,6 +615,7 @@ describe('khala cloud runtime usage routes', () => {
     await seedOwnerBalance(billingDb, 10_000)
     const routes = makeKhalaCloudRuntimeUsageRoutes({
       agentStore: () => new MemoryAgentStore(tokenHash),
+      authorizeOwnerCapacityReceipt: allowOwnerCapacityReceipt,
       ledger: () => ledger,
       meteringHook: () =>
         makeLedgerMeteringHook({
@@ -527,6 +630,7 @@ describe('khala cloud runtime usage routes', () => {
       routes.handleKhalaCloudRuntimeUsageIngestApi(
         post(
           body({
+            ...ownerCapacityRefs,
             lane: 'codex_app_server',
             model: 'openagents/pylon-codex',
             provider: 'pylon-codex-org-capacity',
@@ -552,6 +656,10 @@ describe('khala cloud runtime usage routes', () => {
       'pylon-codex-org-capacity',
     )
     expect((events[0] as { model: string }).model).toBe('openagents/pylon-codex')
+    expect(JSON.stringify(events[0])).not.toContain(ownerCapacityRefs.authGrantRef)
+    expect(JSON.stringify(events[0])).not.toContain(
+      ownerCapacityRefs.providerAccountRef,
+    )
     // …but the owner's own subscription tokens are never a customer charge.
     expect(json.tokenChargeMetered).toBe(false)
     expect(json.tokenChargeFailureReason).toBeNull()
@@ -571,6 +679,7 @@ describe('khala cloud runtime usage routes', () => {
     await seedOwnerBalance(billingDb, 10_000)
     const routes = makeKhalaCloudRuntimeUsageRoutes({
       agentStore: () => new MemoryAgentStore(tokenHash),
+      authorizeOwnerCapacityReceipt: allowOwnerCapacityReceipt,
       ledger: () => ledger,
       meteringHook: () =>
         makeLedgerMeteringHook({
@@ -585,6 +694,7 @@ describe('khala cloud runtime usage routes', () => {
       routes.handleKhalaCloudRuntimeUsageIngestApi(
         post(
           body({
+            ...ownerCapacityRefs,
             lane: 'claude_pylon',
             model: 'openagents/pylon-claude',
             provider: 'pylon-claude-org-capacity',

@@ -1038,6 +1038,10 @@ describe('agent-computer turn-runner: runCodexTurnWithReceipt (CX-3 #8547)', () 
       expect(body.provider).toBe(CODEX_USAGE_RECEIPT_PROVIDER)
       expect(body.model).toBe(CODEX_USAGE_RECEIPT_MODEL)
       expect(body.ownerUserId).toBe(codexTurn.ownerUserId)
+      expect(body.providerAccountRef).toBe(
+        materializedCodexAuth.providerAccountRef,
+      )
+      expect(body.authGrantRef).toBe(materializedCodexAuth.authGrantRef)
       expect((body.usage as Record<string, unknown>).inputTokens).toBe(900)
       expect((body.usage as Record<string, unknown>).reasoningTokens).toBe(40)
       // The bearer authenticates the POST but never appears in the outcome.

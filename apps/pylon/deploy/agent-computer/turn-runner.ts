@@ -593,6 +593,8 @@ export const usageIngestBody = (input: {
   usage: ChatCompletionUsage
   usageRef: string
   runtimeEventId?: string
+  providerAccountRef?: string
+  authGrantRef?: string
 }): Record<string, unknown> => ({
   schemaVersion: KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION,
   ownerUserId: input.inference.ownerUserId,
@@ -608,6 +610,12 @@ export const usageIngestBody = (input: {
   ...(input.inference.pylonRef === undefined
     ? {}
     : { pylonRef: input.inference.pylonRef }),
+  ...(input.providerAccountRef === undefined
+    ? {}
+    : { providerAccountRef: input.providerAccountRef }),
+  ...(input.authGrantRef === undefined
+    ? {}
+    : { authGrantRef: input.authGrantRef }),
   ...(input.runtimeEventId === undefined
     ? {}
     : { runtimeEventId: input.runtimeEventId }),
@@ -657,6 +665,8 @@ export const postExactUsageReceipt = async (
     usage: ChatCompletionUsage
     usageRef: string
     runtimeEventId?: string
+    providerAccountRef?: string
+    authGrantRef?: string
   },
   fetchImpl: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<ExactUsageReceiptOutcome> => {
@@ -667,6 +677,12 @@ export const postExactUsageReceipt = async (
     turnId: args.turnId,
     usage: args.usage,
     usageRef: args.usageRef,
+    ...(args.providerAccountRef === undefined
+      ? {}
+      : { providerAccountRef: args.providerAccountRef }),
+    ...(args.authGrantRef === undefined
+      ? {}
+      : { authGrantRef: args.authGrantRef }),
     ...(args.runtimeEventId === undefined
       ? {}
       : { runtimeEventId: args.runtimeEventId }),
@@ -1112,6 +1128,8 @@ export const runCodexTurnWithReceipt = async (
       turnId: args.turnId,
       usage: parsed.usage,
       usageRef,
+      providerAccountRef: args.providerAuth.providerAccountRef,
+      authGrantRef: args.providerAuth.authGrantRef,
       ...(args.runtimeEventId === undefined
         ? {}
         : { runtimeEventId: args.runtimeEventId }),

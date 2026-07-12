@@ -96,12 +96,35 @@ class KhalaCloudRuntimeUsageIngestBody extends S.Class<KhalaCloudRuntimeUsageIng
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
   pylonRef: S.optionalKey(BoundedSafeRef),
   executorRef: S.optionalKey(BoundedSafeRef),
+  providerAccountRef: S.optionalKey(BoundedSafeRef),
+  authGrantRef: S.optionalKey(BoundedSafeRef),
   runtimeEventId: S.optionalKey(BoundedSafeRef),
   usage: KhalaCloudRuntimeUsage,
 }) {}
 
 export type KhalaCloudRuntimeUsageIngest =
   typeof KhalaCloudRuntimeUsageIngestBody.Type
+
+export const ownerCapacityGrantAuthorizesReceipt = (
+  grant: Readonly<{
+    provider: string
+    providerAccountRef: string
+    status: string
+    usedAt: string | null
+    userId: string
+  }> | undefined,
+  input: Readonly<{
+    ownerUserId: string
+    provider: 'anthropic_claude' | 'chatgpt_codex'
+    providerAccountRef: string
+  }>,
+): boolean =>
+  grant !== undefined &&
+  grant.status === 'used' &&
+  grant.usedAt !== null &&
+  grant.userId === input.ownerUserId &&
+  grant.providerAccountRef === input.providerAccountRef &&
+  grant.provider === input.provider
 
 /**
  * CX-3 (#8547) single-charge law for OWNER SUBSCRIPTION CAPACITY. The
@@ -144,6 +167,15 @@ export type KhalaCloudRuntimeTokenCounts = Readonly<{
 
 export type KhalaCloudRuntimeUsageDependencies<Bindings> = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
+  authorizeOwnerCapacityReceipt?: (
+    env: Bindings,
+    input: Readonly<{
+      authGrantRef: string
+      ownerUserId: string
+      provider: 'anthropic_claude' | 'chatgpt_codex'
+      providerAccountRef: string
+    }>,
+  ) => Promise<boolean>
   ledger: (env: Bindings) => TokenUsageLedgerShape
   meteringHook?: ((env: Bindings) => MeteringHook) | undefined
   nowIso?: () => string
@@ -635,6 +667,47 @@ const routeUsageIngest = <Bindings>(
     yield* validateExactUsage(body)
 
     const observedAt = body.observedAt ?? routeNowIso(dependencies)
+    const ownerSubscriptionCapacity = isOwnerSubscriptionCapacityReceipt(body)
+    if (ownerSubscriptionCapacity) {
+      if (body.authGrantRef === undefined || body.providerAccountRef === undefined) {
+        return yield* new KhalaCloudRuntimeForbidden({
+          reason: 'owner-capacity usage requires redeemed provider grant authority',
+        })
+      }
+      const authGrantRef = body.authGrantRef
+      const providerAccountRef = body.providerAccountRef
+      const provider =
+        body.lane === 'codex_app_server'
+          ? ('chatgpt_codex' as const)
+          : ('anthropic_claude' as const)
+      const authorizeOwnerCapacityReceipt =
+        dependencies.authorizeOwnerCapacityReceipt
+      if (authorizeOwnerCapacityReceipt === undefined) {
+        return yield* new KhalaCloudRuntimeStorageError({
+          operation: 'owner_capacity_grant_authority',
+          reason: 'owner capacity grant authority is unconfigured',
+        })
+      }
+      const authorized = yield* Effect.tryPromise({
+        catch: error =>
+          new KhalaCloudRuntimeStorageError({
+            operation: 'owner_capacity_grant_authority',
+            reason: storageReason(error),
+          }),
+        try: () =>
+          authorizeOwnerCapacityReceipt(env, {
+            authGrantRef,
+            ownerUserId: body.ownerUserId,
+            provider,
+            providerAccountRef,
+          }),
+      })
+      if (!authorized) {
+        return yield* new KhalaCloudRuntimeForbidden({
+          reason: 'owner-capacity provider grant authority was not proven',
+        })
+      }
+    }
     const digest = yield* stableUsageDigest(body)
     const tokenBody = tokenUsageEventBody({
       body,
@@ -661,7 +734,6 @@ const routeUsageIngest = <Bindings>(
     // CX-3 (#8547): owner-subscription-capacity receipts are token truth,
     // never a customer charge — the metering hook is skipped entirely, so the
     // response proves `tokenChargeMetered: false` with a typed skip reason.
-    const ownerSubscriptionCapacity = isOwnerSubscriptionCapacityReceipt(body)
     const meteringHook = dependencies.meteringHook?.(env)
     const tokenCharge: MeteringOutcome | undefined =
       meteringHook === undefined || ownerSubscriptionCapacity
