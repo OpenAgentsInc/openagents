@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "openagents-audio-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-12",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "routes": [{ "pattern": "openagents.com/v1/stream", "zone_name": "openagents.com" }],
+  "vars": { "OPENAGENTS_AUDIO_CLOUD_RUN_URL": "https://openagents-audio-staging-157437760789.us-central1.run.app" }
+}
