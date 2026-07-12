@@ -443,6 +443,13 @@ current blocker state.
   `9f8a76333c` — truncated claim `stableId` meant only the FIRST
   `turn.desktop.*` run in history could ever dispatch; later runs were
   silently rejected. SHA-256 ids + regression test.
+- Runtime-custody defect found during the same lane: a supervisor launched
+  with `--pylon-home ~/.pylon-fable` still inherited the general inventory
+  scan of `$HOME` and dispatched through the owner's default `~/.codex`.
+  `d445c0c9a0` now confines implicit sibling discovery to the declared
+  Pylon's account root; widening requires an explicit root. The exact
+  physical-receipt supervisor was replaced from clean main under that fence.
+  This is a safety receipt, not yet a successful mobile Codex-turn receipt.
 - Physical iPhone: signed build launched and running on-device; live Desktop
   rungs receipted (hosted streamed turn, host-restart identity, mid-stream
   renderer reload). Remaining: 4 owner taps (see `NEEDS_OWNER.md`, now
