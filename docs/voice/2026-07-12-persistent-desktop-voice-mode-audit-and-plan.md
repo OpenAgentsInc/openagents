@@ -1,9 +1,10 @@
 # Persistent Desktop voice mode — lineage, vision, architecture, and delivery plan
 
 - **Date:** 2026-07-12
-- **Status:** AUDIO-1 through AUDIO-7 are closed; AUDIO-8 has deployed lower-rung
-  evidence and owner review. A signed release containing AUDIO-8 remains the
-  epic closeout rung. This is not yet a public product promise.
+- **Status:** AUDIO-1 through AUDIO-8 and epic #8733 are implementation-complete
+  on `main` with deployed lower-rung evidence and owner review. A future signed
+  release candidate remains release-system work, not an unproven implementation
+  claim or public product promise.
 - **Destination:** `apps/openagents-desktop`
 - **Related authority:** `docs/sol/MASTER_ROADMAP.md`
 - **Effect/Rust decision:** [`2026-07-12-effect-vs-rust-audio-architecture-decision.md`](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)
@@ -873,12 +874,12 @@ appears in Sync, logs, analytics, or support bundles.
 
 Keep the implemented hybrid boundary: Rust owns bounded native media and
 Effect owns policy, UI, Google adapters, retention, commands, and receipts.
-The deployed owner-dogfood path now proves real microphone capture and exact
-retention disposition. Close AUDIO-8 only after the owner reviews the named
-recording; close the epic only after that acceptance and the signed-release
-rung are either proven or explicitly accepted at the issue's documented lower
-rung. Retained media remains an explicit, visible dogfood policy rather than a
-hidden side effect.
+The deployed owner-dogfood path proves real microphone capture, canonical
+assistant-to-Chirp playback, and exact retention disposition. The owner
+reviewed and explicitly accepted the documented lower rung; AUDIO-8 and the
+implementation epic are closed. Retained media remains an explicit, visible
+dogfood policy rather than a hidden side effect. Packaging this exact main in a
+new signed RC remains governed by the established Desktop release system.
 
 The north star is the old Onyx promise—say what you want and useful work
 happens—combined with Commander's Jarvis/StarCraft fleet surface and Sol's

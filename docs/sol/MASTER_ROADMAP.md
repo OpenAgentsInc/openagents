@@ -423,11 +423,11 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   Desktop voice is now separately bounded by #8733–#8741.
 - Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
   receipt; it is not current work or a product-front-door decision.
-- #8733 is the separately tracked persistent-audio MVP. AUDIO-1 #8734 through
-  AUDIO-7 #8740 are closed on `main`. AUDIO-8 #8741 has deployed private-gateway,
-  real-microphone, durable-retention, full Desktop verify, and packaged lower-
-  rung receipts; its owner-reviewed recording/release acceptance remains the
-  closeout gate. Audio work must not silently broaden CUT, managed
+- #8733 is the closed persistent-audio MVP. AUDIO-1 #8734 through AUDIO-8
+  #8741 are on `main`; the deployed private-gateway, real-microphone,
+  canonical-Chirp, durable-retention, full Desktop verify, packaged lower-rung,
+  and owner-review receipts satisfy the implementation epic. A signed RC of
+  this exact main is subsequent release-system work. Audio work must not silently broaden CUT, managed
   workroom, Sync, command, behavior-contract, migration, or release authority.
 - `apps/pylon/src/orchestration` and `apps/pylon/src/node` remain protected
   load-bearing Fleet core during the open correctness proof. Streamlining is a
@@ -486,10 +486,9 @@ Live issues and claims control exact selection. At this snapshot:
    #8547's accepted managed workroom before #8636's live hybrid-routing receipt.
    Keep metering, target custody, quota/cost/data posture, usage, writeback,
    reclaim, and fallback explicit.
-4. Finish #8733's separate P1 audio closeout: AUDIO-1 through AUDIO-7 are
-   landed; AUDIO-8's deployed lower-rung proof is complete. Obtain the named
-   owner recording review and signed-release acceptance without widening
-   Runtime Gateway, Desktop command, Sync, or release authority.
+4. Treat closed #8733 as the accepted P1 audio implementation substrate. Ship
+   it through the existing Desktop RC system without widening Runtime Gateway,
+   Desktop command, Sync, or release authority.
 5. File bounded leaves for portable-session attachment/checkpoint authority,
    general capability broker, owner-managed targets, first audited provider
    adapter, and any-host directory before mutation. Mobile voice may later

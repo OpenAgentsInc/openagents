@@ -107,7 +107,7 @@ The owner recorded review in the active voice-roadmap thread on 2026-07-12:
 assistant-message → closed `voice.speak` command → grant-gated `/v1/speak` →
 Chirp/native playback seam was then added and live-proven before closeout.
 
-AUDIO-8 may therefore close at its documented packaged real-Electron lower
-rung. The epic remains open until a signed/notarized release containing these
-voice commits is accepted; the earlier RC5 #8706 artifact predates AUDIO-8 and
-cannot be reused as proof of this code.
+AUDIO-8 and the implementation epic therefore close at the owner-accepted,
+documented packaged real-Electron lower rung. The earlier RC5 #8706 artifact
+predates AUDIO-8 and is not cited as proof of this code; producing a newer
+signed/notarized RC from current `main` remains ordinary release-system work.
