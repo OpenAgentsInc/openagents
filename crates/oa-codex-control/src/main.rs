@@ -1742,6 +1742,75 @@ fn microvm_failure_reason_ref(exit_code: i32, output: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct GuestDiagnosticEvent {
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exit_code: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_class: Option<String>,
+}
+
+const MAX_GUEST_DIAGNOSTIC_EVENTS: usize = 8;
+
+fn public_reason_ref(value: &str) -> Option<String> {
+    let allowed_prefix = ["codex.", "workspace.", "agent_computer."]
+        .iter()
+        .any(|prefix| value.starts_with(prefix));
+    (allowed_prefix
+        && value.len() <= 120
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-')
+        }))
+    .then(|| value.to_string())
+}
+
+fn bounded_guest_diagnostic_tail(output: &str) -> Vec<GuestDiagnosticEvent> {
+    let mut events = Vec::new();
+    for line in output.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let Some(record) = value.as_object() else { continue };
+        let Some(kind) = record.get("kind").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if !matches!(kind, "tool.call" | "tool.result" | "turn.finished") {
+            continue;
+        }
+        let status = record
+            .get("status")
+            .and_then(|value| value.as_str())
+            .filter(|value| matches!(*value, "ok" | "failed" | "completed"))
+            .map(str::to_string);
+        let reason_ref = record
+            .get("reasonRef")
+            .or_else(|| record.get("error"))
+            .and_then(|value| value.as_str())
+            .and_then(public_reason_ref);
+        let exit_code = record.get("exitCode").and_then(|value| value.as_i64());
+        let error_class = record
+            .get("errorClass")
+            .and_then(|value| value.as_str())
+            .filter(|value| {
+                matches!(*value, "provider_auth" | "workspace" | "codex_exec" | "network" | "artifact")
+            })
+            .map(str::to_string);
+        events.push(GuestDiagnosticEvent {
+            kind: kind.to_string(), status, reason_ref, exit_code, error_class,
+        });
+        if events.len() > MAX_GUEST_DIAGNOSTIC_EVENTS {
+            events.remove(0);
+        }
+    }
+    events
+}
+
 /// Worker thread: boot the microVM, run the turn, then emit lifecycle receipts
 /// and a terminal status. Teardown (scratch wipe + microVM destroy) is guaranteed
 /// inside `run_cloud_vm_session`; we surface its cleanup receipt as the reclaim
@@ -1896,6 +1965,7 @@ fn run_org_cloud_microvm_worker(
     let exit_code = outcome.exec.code;
     let failure_class = microvm_failure_class(exit_code, &outcome.exec.output);
     let failure_reason_ref = microvm_failure_reason_ref(exit_code, &outcome.exec.output);
+    let guest_diagnostic_tail = bounded_guest_diagnostic_tail(&outcome.exec.output);
     let terminal_status = if exit_code == 0 { "completed" } else { "failed" };
     append_job_event(
         &config,
@@ -1909,6 +1979,7 @@ fn run_org_cloud_microvm_worker(
                 "failureClass": failure_class,
                 "failureReasonRef": failure_reason_ref,
                 "guestFailureReasonRef": result.failure_reason_ref,
+                "guestDiagnosticTail": guest_diagnostic_tail,
             }))?),
             detail: Some("Agent Computer microVM turn finished.".to_string()),
             digest: None,
@@ -6286,5 +6357,43 @@ echo '{"status":"ok"}'
         .unwrap();
         assignment.created_at_ms = now_ms().unwrap();
         assignment
+    }
+
+    #[test]
+    fn guest_diagnostic_tail_is_bounded_and_allowlisted() {
+        let mut lines = Vec::new();
+        for index in 0..12 {
+            lines.push(format!(
+                r#"{{"kind":"tool.result","status":"failed","reasonRef":"codex.exec_failed","exitCode":{index},"prompt":"private prompt {index}","token":"secret-{index}"}}"#
+            ));
+        }
+        let tail = bounded_guest_diagnostic_tail(&lines.join("\n"));
+        assert_eq!(tail.len(), MAX_GUEST_DIAGNOSTIC_EVENTS);
+        assert_eq!(tail.first().and_then(|event| event.exit_code), Some(4));
+        let serialized = serde_json::to_string(&tail).unwrap();
+        assert!(!serialized.contains("private prompt"));
+        assert!(!serialized.contains("secret-"));
+        assert!(!serialized.contains("token"));
+    }
+
+    #[test]
+    fn guest_diagnostic_tail_drops_raw_and_secret_shaped_fields() {
+        let output = concat!(
+            "Bearer super-secret-token\n",
+            r#"{"kind":"text.delta","text":"private repository content"}"#, "\n",
+            r#"{"kind":"tool.result","status":"failed","reasonRef":"codex.provider_auth_material_invalid","errorClass":"provider_auth","authorization":"Bearer secret","authMaterial":"secret"}"#,
+        );
+        let tail = bounded_guest_diagnostic_tail(output);
+        assert_eq!(tail, vec![GuestDiagnosticEvent {
+            kind: "tool.result".to_string(),
+            status: Some("failed".to_string()),
+            reason_ref: Some("codex.provider_auth_material_invalid".to_string()),
+            exit_code: None,
+            error_class: Some("provider_auth".to_string()),
+        }]);
+        let serialized = serde_json::to_string(&tail).unwrap();
+        assert!(!serialized.contains("Bearer"));
+        assert!(!serialized.contains("authMaterial"));
+        assert!(!serialized.contains("repository content"));
     }
 }
