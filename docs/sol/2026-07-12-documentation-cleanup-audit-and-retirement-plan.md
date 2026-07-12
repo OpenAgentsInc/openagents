@@ -16,12 +16,13 @@
 | --- | --- | --- | --- |
 | SOL-DOC-01 — truthful, revision-independent entry points | [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723) | **Closed 2026-07-12.** `docs/sol/README.md`, `docs/sol/issues/README.md`, and `docs/sol/IMPLEMENTATION_ROADMAP.md` now route to current authority without caching a master revision, issue count, old queue, or executable delegation diary. | `9d432817e9` — local links resolve; stale Revision 25/29/31 and delegation-dispatch scans pass; repository fast pre-push guards pass. |
 | SOL-DOC-02 — durable operating and subsystem contracts | [#8724](https://github.com/OpenAgentsInc/openagents/issues/8724) | **Closed 2026-07-12.** Operating/subsystem guidance is revision-independent, does not own the current queue, treats #8640 as closed proof, keeps physical Android non-gating, and separates persona-neutral voice from closed Sarah presentation scope. The July 9 authority analysis now links to repository invariants. | `1eefd72465` — local links, stale-policy scans, positive voice/Android/#8640 assertions, invariant-link check, and repository fast pre-push guards pass. |
+| SOL-DOC-03 — retire false dispatch artifacts | [#8725](https://github.com/OpenAgentsInc/openagents/issues/8725) | **Closed 2026-07-12.** The July 10 delegation diary is non-dispatch and its executable prompt is removed; active inbound links now use live authority. The CUT plan, CUT-27 audit, parity score, and Desktop delivery sequence are pinned historical evidence. | `7476316a69` — changed-file links resolve; active inbound-link and obsolete-prompt scans pass; snapshot-status assertions and repository fast pre-push guards pass. |
 
-**Next ordered chunk:** SOL-DOC-03 retires false dispatch artifacts. It marks
-the July 10 delegation diary non-dispatch, migrates its active inbound links,
-freezes the CUT plan/readiness audit as historical dependency and proof
-snapshots, and demotes stale parity/delivery status without compacting the
-master or moving receipts.
+**Next ordered chunk:** SOL-DOC-04 compacts the master roadmap. It retains
+owner decisions, durable gates/laws/non-goals, one current issue projection,
+and one next-ready sequence; extracts old implementation diaries, starting-gap
+snapshots, duplicated receipts, obsolete execution orders, and the historical
+Fable reconciliation pass without changing product truth.
 
 ## Executive decision
 
@@ -410,16 +411,19 @@ CUT-25.
 
 **Goal:** eliminate executable historical prompts and queues.
 
-1. Mark the July 10 delegation packet historical and non-dispatch.
-2. Replace its inbound references with the master roadmap, live issue,
+SOL-DOC-03 [#8725](https://github.com/OpenAgentsInc/openagents/issues/8725)
+completed this phase at `7476316a69` without rewriting chronological evidence.
+
+1. **Complete.** Mark the July 10 delegation packet historical and non-dispatch.
+2. **Complete.** Replace its inbound references with the master roadmap, live issue,
    `CLAIM_PROTOCOL.md`, current cut leaf, or exact receipt appropriate to the
    caller.
-3. Freeze the CUT-01–CUT-27 plan as a dated dependency/acceptance snapshot.
+3. **Complete.** Freeze the CUT-01–CUT-27 plan as a dated dependency/acceptance snapshot.
    Remove its claim to be the current queue and link each mutable status cell
    to live issue or receipt state.
-4. Freeze the current CUT-27 audit as a pinned readiness snapshot and create a
+4. **Complete.** Freeze the current CUT-27 audit as a pinned readiness snapshot and create a
    small successor only if a current capstone blocker table is still required.
-5. Demote the July 10 parity score and F0–F7 implementation state to historical
+5. **Complete.** Demote the July 10 parity score and F0–F7 implementation state to historical
    baselines; retain reusable capability and topology analysis.
 
 **Exit:** searching the repository cannot find a copy/paste prompt or “active

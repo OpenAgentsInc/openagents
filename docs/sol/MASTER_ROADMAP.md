@@ -9,16 +9,18 @@
   replacement; CUT-26 `0.1.0-rc.1` is signed, notarized, stapled, and live on
   the production RC feed; CUT-25 cross-client Fleet control is closed; remaining
   local-cutover leaves are acceptance-gated CUT-09, CUT-26, and CUT-27)
-- Revision: 85
+- Revision: 86
 - Status: canonical OpenAgents implementation roadmap
 - Documentation cleanup: SOL-DOC-01
   [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723) closed the
   stale entry path at `9d432817e9`; SOL-DOC-02
   [#8724](https://github.com/OpenAgentsInc/openagents/issues/8724) made the
   operating/subsystem contracts revision-independent and corrected voice,
-  Android, #8640, and invariant-link drift at `1eefd72465`. SOL-DOC-03 retires
-  false dispatch artifacts next. Master compaction, receipt moves, and
-  Backroom export remain later chunks in the
+  Android, #8640, and invariant-link drift at `1eefd72465`; SOL-DOC-03
+  [#8725](https://github.com/OpenAgentsInc/openagents/issues/8725) retired the
+  stale delegation prompt and pinned CUT/parity/delivery status as historical
+  evidence at `7476316a69`. SOL-DOC-04 compacts this master next. Receipt moves
+  and Backroom export remain later chunks in the
   [`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
