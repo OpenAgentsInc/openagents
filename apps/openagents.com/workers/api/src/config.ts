@@ -2,6 +2,14 @@ import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
+  // Shared HMAC secret for host-only AUDIO-2 grants. This is a Worker secret,
+  // never a public var or response field, and must match the private audio
+  // gateway's OPENAGENTS_AUDIO_TOKEN_SECRET. Missing/weak values fail closed.
+  OPENAGENTS_AUDIO_TOKEN_SECRET?: string | undefined
+  // Private AUDIO-2 WebSocket address returned to the Desktop host only after
+  // auth. Must be the exact wss:// service origin plus /v1/stream, with no
+  // credentials, query, or fragment; malformed/missing values fail closed.
+  OPENAGENTS_AUDIO_GATEWAY_URL?: string | undefined
   ARTANIS_FLEET_OVERSEER_ENABLED?: string | undefined
   ARTANIS_SCHEDULED_RUNNER_ENABLED?: string | undefined
   // Compose-and-list marketplace MVP flag (EPIC #5510, #5515). Default OFF: the

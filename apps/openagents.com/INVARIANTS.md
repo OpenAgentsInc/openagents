@@ -95,6 +95,26 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/khala-code-openagents-auth-routes.test.ts`.
 - Background context: `docs/auth/2026-06-16-login-and-auth-audit.md`.
 
+## Desktop Audio Grant Authority
+
+- `POST /api/desktop/audio/grant` is the only openagents.com seam that may mint
+  an AUDIO-2 gateway grant for OpenAgents Desktop. It requires the existing
+  revocation-aware OpenAuth user-bearer boundary, derives the owner from that
+  verified session, and requires the host's exact device ref to match the typed
+  bounded `VoiceIdentity`; caller substitution fails closed.
+- Grants bind the exact owner/device/thread/session/generation identity, use a
+  server-held HMAC secret shared only with the private audio gateway, and expire
+  after five minutes (never more than AUDIO-2's 15-minute maximum). A missing or
+  weak secret disables issuance. The authenticated response derives its exact
+  `wss://.../v1/stream` gateway URL from server configuration and refuses URL
+  credentials, query, or fragment material. The signing secret never enters a
+  response, log, renderer, preload, fixture, or public projection.
+- The issuer accepts only the closed `openagents.audio.grant.request.v1` shape
+  plus a bounded disclosure ref. It grants audio transport authentication only:
+  no command execution, retention, storage, payment, settlement, public-claim,
+  or provider-credential authority follows from it. Regression coverage lives
+  in `workers/api/src/audio-grant-routes.test.ts`.
+
 ## Clean Public URLs
 
 - First-party product routes must not carry auth, connection, payment,

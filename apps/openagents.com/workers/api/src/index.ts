@@ -356,6 +356,10 @@ import {
   type OpenAgentsWorkerEnv,
   ThreadFileArtifacts,
 } from './bindings'
+import {
+  AUDIO_GRANT_ISSUE_PATH,
+  handleAudioGrantIssueRequest,
+} from './audio-grant-routes'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
 import {
@@ -13496,6 +13500,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/mobile/auth/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileAuthSessionApi(request, env, ctx)),
+  },
+  {
+    path: AUDIO_GRANT_ISSUE_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleAudioGrantIssueRequest(
+          {
+            gatewayUrl: workerEnv =>
+              workerEnv.OPENAGENTS_AUDIO_GATEWAY_URL,
+            requireUserBearerSession,
+            signingSecret: workerEnv =>
+              workerEnv.OPENAGENTS_AUDIO_TOKEN_SECRET,
+            userIdFromSession: session => session.user.userId,
+          },
+          request,
+          env,
+          ctx,
+        ),
+      ),
   },
   {
     path: '/api/mobile/session',
