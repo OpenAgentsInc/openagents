@@ -39,6 +39,13 @@ export type FableLocalRendererBridge = Readonly<{
   start: (value: unknown) => Promise<unknown>
   interrupt: (value: unknown) => Promise<unknown>
   onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
+  /**
+   * EP250 wave-2 runtime-capability channels (additive; absent on older
+   * bridges). `steerChild` interrupts a running delegate child (G4);
+   * `queueFollowup` enqueues a follow-up while a turn streams (A3).
+   */
+  steerChild?: (value: unknown) => Promise<unknown>
+  queueFollowup?: (value: unknown) => Promise<unknown>
 }>
 
 /** EP250 evidence-gated refusal: Send refuses with the chip's reason — the
@@ -121,6 +128,40 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       })
       project()
     }
+    // EP250 wave-2 runtime cards: upsert/remove a keyed system note carrying a
+    // typed `runtime` payload (plan/child/queue). Plan updates in place (latest
+    // wins); child status/steer merge onto the same childRef note; the queue
+    // chip is removed when its follow-up is promoted.
+    const upsertRuntimeNote = (
+      key: string,
+      runtime: NonNullable<DesktopMessage["runtime"]>,
+      text: string,
+    ): void => {
+      const index = traceNotes.findIndex(entry => entry.key === key)
+      if (index === -1) {
+        traceNotes.push({ key, role: "system", text, timestamp: noteTimestamp(now()), runtime })
+      } else {
+        traceNotes[index] = { ...traceNotes[index]!, runtime, text }
+      }
+      project()
+    }
+    const removeRuntimeNote = (key: string): void => {
+      const index = traceNotes.findIndex(entry => entry.key === key)
+      if (index !== -1) {
+        traceNotes.splice(index, 1)
+        project()
+      }
+    }
+    const childNoteKey = (childRef: string): string => `${turnRef}-child-${childRef}`
+    const existingChildRuntime = (childRef: string): Extract<
+      NonNullable<DesktopMessage["runtime"]>,
+      { kind: "child" }
+    > | null => {
+      const found = traceNotes.find(entry => entry.key === childNoteKey(childRef))?.runtime
+      return found !== undefined && found.kind === "child" ? found : null
+    }
+    // A3: a follow-up promoted at the idle boundary becomes the next turn.
+    let promotedFollowup: string | null = null
 
     const unsubscribe = bridge.onEvent(envelope => {
       if (envelope.turnRef !== turnRef) return
@@ -226,13 +267,108 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         }
         return
       }
+      // -----------------------------------------------------------------
+      // EP250 wave-2 runtime-capability cards.
+      // -----------------------------------------------------------------
+      // Plan/todo progress (J2/J4): ONE card per turn, updated in place.
+      if (event.kind === "plan_updated") {
+        upsertRuntimeNote(
+          `${turnRef}-plan`,
+          { kind: "plan", entries: event.entries.map(entry => ({ step: entry.step, status: entry.status })) },
+          "Plan updated",
+        )
+        return
+      }
+      // Delegate-child lifecycle (G4): a running child card offers Interrupt;
+      // status/steer merge onto the same childRef note.
+      if (event.kind === "child_started") {
+        upsertRuntimeNote(
+          childNoteKey(event.childRef),
+          { kind: "child", turnRef, childRef: event.childRef, status: "running", title: event.summary, detail: "", steered: null },
+          `Delegate child started · ${event.summary}`,
+        )
+        return
+      }
+      if (event.kind === "child_activity") {
+        const existing = existingChildRuntime(event.childRef)
+        upsertRuntimeNote(
+          childNoteKey(event.childRef),
+          {
+            kind: "child",
+            turnRef,
+            childRef: event.childRef,
+            status: existing?.status ?? "running",
+            title: existing?.title ?? "",
+            detail: event.summary,
+            steered: existing?.steered ?? null,
+          },
+          `Delegate child · ${event.summary}`,
+        )
+        return
+      }
+      if (event.kind === "child_completed") {
+        const existing = existingChildRuntime(event.childRef)
+        upsertRuntimeNote(
+          childNoteKey(event.childRef),
+          { kind: "child", turnRef, childRef: event.childRef, status: "completed", title: existing?.title ?? event.summary, detail: event.summary, steered: existing?.steered ?? null },
+          `Delegate child completed · ${event.summary}`,
+        )
+        return
+      }
+      if (event.kind === "child_failed") {
+        const existing = existingChildRuntime(event.childRef)
+        const detail = event.detail.trim() === "" ? event.reason : `${event.reason} · ${event.detail}`
+        upsertRuntimeNote(
+          childNoteKey(event.childRef),
+          { kind: "child", turnRef, childRef: event.childRef, status: "failed", title: existing?.title ?? "", detail, steered: existing?.steered ?? null },
+          `Delegate child failed · ${detail}`,
+        )
+        return
+      }
+      if (event.kind === "child_steered") {
+        const existing = existingChildRuntime(event.childRef)
+        if (existing === null) return
+        upsertRuntimeNote(
+          childNoteKey(event.childRef),
+          { ...existing, steered: { action: event.action, outcome: event.outcome, detail: event.detail } },
+          `Delegate child steered · ${event.action} · ${event.outcome}`,
+        )
+        return
+      }
+      // Queued follow-up (A3): a chip while queued; promoted becomes next turn.
+      if (event.kind === "followup_queued") {
+        upsertRuntimeNote(
+          `${turnRef}-queue-${event.queueRef}`,
+          { kind: "queue", turnRef, queueRef: event.queueRef, position: event.position },
+          `Follow-up queued (#${event.position})`,
+        )
+        return
+      }
+      if (event.kind === "followup_promoted") {
+        removeRuntimeNote(`${turnRef}-queue-${event.queueRef}`)
+        promotedFollowup = event.message
+        return
+      }
       // turn_completed / turn_failed carry no transcript body of their
       // own; the invoke result finalizes the thread.
     })
     try {
       activeTurn = { bridge, turnRef }
       const raw = await bridge.start({ turnRef, threadRef: send.id, message: send.message })
-      return decodeTurnResult(raw, laneLabel)
+      const result = decodeTurnResult(raw, laneLabel)
+      // A3 queue-until-idle: a follow-up promoted at this turn's idle boundary
+      // becomes the NEXT turn (the runtime emits it but does not run it). Chain
+      // it on the same lane/onUpdate and return its result so the shell's
+      // withTurnResult applies the final thread; `pending` stays true across
+      // the chain because onUpdate keeps setting it.
+      // `?? ""` reads the closure-assigned value at runtime (the onEvent
+      // assignment above is invisible to CFA, which linearly narrows the
+      // `= null` init and would otherwise make a `!== null` guard `never`).
+      const promoted = promotedFollowup ?? ""
+      if (promoted.trim() !== "" && result.ok) {
+        return runLaneTurn(lane, bridge, { id: send.id, message: promoted, onUpdate: send.onUpdate })
+      }
+      return result
     } finally {
       activeTurn = null
       unsubscribe()
@@ -251,6 +387,45 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       if (active === null) return false
       const raw = await active.bridge.interrupt({ turnRef: active.turnRef })
       return raw === true
+    },
+    /**
+     * Interrupt a running delegate child of the active turn (EP250 wave-2 G4).
+     * Signals the active lane's frozen steer-child channel by exact ref (only
+     * `interrupt` — message is capability-unsupported). The runtime's typed
+     * child_steered event renders the outcome; no active lane returns not_found.
+     */
+    steerChild: async input => {
+      const active = activeTurn
+      if (active === null || active.bridge.steerChild === undefined) {
+        return { ok: false, outcome: "not_found" }
+      }
+      const raw = await active.bridge.steerChild({
+        turnRef: input.turnRef,
+        childRef: input.childRef,
+        action: "interrupt",
+      })
+      return typeof raw === "object" && raw !== null && typeof (raw as { outcome?: unknown }).outcome === "string"
+        ? (raw as { ok: boolean; outcome: string })
+        : { ok: false, outcome: "not_found" }
+    },
+    /**
+     * Enqueue a follow-up while a turn streams (EP250 wave-2 A3). Routes through
+     * the active lane's frozen queue channel; delivery is queue-until-idle (the
+     * runtime emits followup_queued now and followup_promoted at turn end). No
+     * active lane returns a no-queue result.
+     */
+    queueFollowup: async input => {
+      const active = activeTurn
+      if (active === null || active.bridge.queueFollowup === undefined) {
+        return { ok: false, queued: false }
+      }
+      const raw = await active.bridge.queueFollowup({
+        threadRef: input.threadRef,
+        message: input.message,
+      })
+      return typeof raw === "object" && raw !== null && typeof (raw as { queued?: unknown }).queued === "boolean"
+        ? (raw as { ok: boolean; queued: boolean })
+        : { ok: false, queued: false }
     },
     sendMessage: async send => {
       if (send.harness === undefined) return input.base.sendMessage(send)

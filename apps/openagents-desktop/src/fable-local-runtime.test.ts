@@ -1161,10 +1161,20 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
       "text_delta",
       "tool_use",
       "tool_result",
+      // EP250 wave-2: the fixture's TodoWrite emits a tool_use plus a
+      // plan_updated (J2/J4), then its tool_result.
+      "tool_use",
+      "plan_updated",
+      "tool_result",
       "text_delta",
       "turn_completed",
     ])
     expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5" })
+    const plan = sink.events.find(event => event.kind === "plan_updated") as Extract<FableLocalEvent, { kind: "plan_updated" }>
+    expect(plan.entries).toEqual([
+      { step: "Read the fixture notes", status: "completed" },
+      { step: "Summarize for the user", status: "in_progress" },
+    ])
   })
 
   test("with the fixture MCP factory + scripted child, the fixture turn shows the delegate tool_use/tool_result pair and child lifecycle (the smoke's deterministic delegation proof)", async () => {

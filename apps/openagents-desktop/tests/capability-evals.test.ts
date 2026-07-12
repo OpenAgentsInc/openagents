@@ -392,10 +392,11 @@ describe("capability gaps (skipped-with-reason: blocked until wired)", () => {
 
   test("the blocked set matches the audit's ranked gaps (documented, not silently absent)", () => {
     // These are the capabilities with NO wired oracle on either side today.
-    // I2 (user-configured MCP servers) landed on the EP250 wave-2 lane and is
-    // no longer a blocked gap (settings UI + persistence host + runtime).
+    // EP250 wave-2 (#8712): I2 (MCP settings), A3 (queued follow-up), G4
+    // (steer/stop a running child), and J4 (task/todo progress) all landed
+    // wired oracles, so they leave the blocked set.
     expect(blockedRows.map((row) => row.id).sort()).toEqual(
-      ["A3", "D3", "G4", "H2", "H5", "I1", "I3", "I4", "J2", "J4"].sort(),
+      ["D3", "H2", "H5", "I1", "I3", "I4", "J2"].sort(),
     )
   })
 

@@ -135,6 +135,9 @@ type DesktopBridge = Readonly<{
     onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
     /** FROZEN question-answer bridge (EP250) — ships with the runtime lane. */
     answerQuestion?: (value: unknown) => Promise<unknown>
+    /** EP250 wave-2 runtime-capability channels (G4 child steer, A3 queue). */
+    steerChild?: (value: unknown) => Promise<unknown>
+    queueFollowup?: (value: unknown) => Promise<unknown>
   }>
   /** Codex local lane (EP250 codex-first-class): same bridge shape. */
   codexLocal?: Readonly<{
@@ -142,6 +145,8 @@ type DesktopBridge = Readonly<{
     start?: (value: unknown) => Promise<unknown>
     interrupt?: (value: unknown) => Promise<unknown>
     onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
+    steerChild?: (value: unknown) => Promise<unknown>
+    queueFollowup?: (value: unknown) => Promise<unknown>
   }>
   usageLedger?: Readonly<{
     snapshot?: () => Promise<unknown>
@@ -383,6 +388,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             onEvent: bridge.fableLocal.onEvent as (
               listener: (envelope: FableLocalEventEnvelope) => void,
             ) => () => void,
+            // EP250 wave-2: additive child-steer (G4) + queue-followup (A3)
+            // channels; absent on older preloads (the shell degrades to no-op).
+            ...(typeof bridge.fableLocal.steerChild === "function"
+              ? { steerChild: bridge.fableLocal.steerChild }
+              : {}),
+            ...(typeof bridge.fableLocal.queueFollowup === "function"
+              ? { queueFollowup: bridge.fableLocal.queueFollowup }
+              : {}),
           }
         : null
     // Interactive question cards (EP250): the FROZEN answer bridge is
@@ -409,6 +422,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             onEvent: bridge.codexLocal.onEvent as (
               listener: (envelope: FableLocalEventEnvelope) => void,
             ) => () => void,
+            ...(typeof bridge.codexLocal.steerChild === "function"
+              ? { steerChild: bridge.codexLocal.steerChild }
+              : {}),
+            ...(typeof bridge.codexLocal.queueFollowup === "function"
+              ? { queueFollowup: bridge.codexLocal.queueFollowup }
+              : {}),
           }
         : null
     let codexAvailability: CodexLocalAvailability | null = null

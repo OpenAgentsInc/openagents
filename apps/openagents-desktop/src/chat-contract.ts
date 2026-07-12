@@ -93,6 +93,48 @@ export const DesktopQuestionCardSchema = Schema.Struct({
 })
 export type DesktopQuestionCard = typeof DesktopQuestionCardSchema.Type
 
+/**
+ * Runtime-capability transcript card payloads (EP250 wave-2, #8712). A system
+ * note may carry ONE of these typed `runtime` payloads so the renderer draws a
+ * plan/todo checklist (J2/J4), a delegate-child lifecycle card with an
+ * Interrupt control (G4), or a queued-follow-up chip (A3) — projected from the
+ * frozen additive FableLocalEvent stream, never raw JSON. The glyph/model
+ * vocabulary lives in `renderer/runtime-cards.ts`; the View render in
+ * `renderer/shell.ts`, exactly like the tool/question cards.
+ */
+export const DesktopRuntimePlanEntrySchema = Schema.Struct({
+  step: Schema.String.check(Schema.isMaxLength(400)),
+  status: Schema.Literals(["pending", "in_progress", "completed"]),
+})
+export const DesktopRuntimeCardSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("plan"),
+    entries: Schema.Array(DesktopRuntimePlanEntrySchema).check(Schema.isMaxLength(64)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("child"),
+    turnRef: Schema.String.check(Schema.isMaxLength(120)),
+    childRef: Schema.String.check(Schema.isMaxLength(120)),
+    status: Schema.Literals(["running", "completed", "failed"]),
+    title: Schema.String.check(Schema.isMaxLength(400)),
+    detail: Schema.String.check(Schema.isMaxLength(400)),
+    steered: Schema.NullOr(
+      Schema.Struct({
+        action: Schema.Literals(["message", "interrupt"]),
+        outcome: Schema.Literals(["interrupted", "delivered", "unsupported", "not_found"]),
+        detail: Schema.String.check(Schema.isMaxLength(400)),
+      }),
+    ),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("queue"),
+    turnRef: Schema.String.check(Schema.isMaxLength(120)),
+    queueRef: Schema.String.check(Schema.isMaxLength(120)),
+    position: Schema.Number,
+  }),
+])
+export type DesktopRuntimeCard = typeof DesktopRuntimeCardSchema.Type
+
 export const DesktopMessageSchema = Schema.Struct({
   key: Schema.String,
   role: Schema.Literals(["user", "assistant", "system"]),
@@ -101,6 +143,8 @@ export const DesktopMessageSchema = Schema.Struct({
   meta: Schema.optional(DesktopMessageMetaSchema),
   /** Present only on interactive question notes (EP250 question cards). */
   question: Schema.optional(DesktopQuestionCardSchema),
+  /** Present only on runtime-capability cards (EP250 wave-2 plan/child/queue). */
+  runtime: Schema.optional(DesktopRuntimeCardSchema),
 })
 export type DesktopMessage = typeof DesktopMessageSchema.Type
 

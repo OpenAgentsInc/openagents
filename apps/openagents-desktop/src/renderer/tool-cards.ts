@@ -64,6 +64,9 @@ export type ContextGroupModel = Readonly<{
 export type TranscriptEntry =
   | Readonly<{ kind: "note"; note: DesktopNoteEntry }>
   | Readonly<{ kind: "question"; note: DesktopNoteEntry }>
+  /** A runtime-capability card (EP250 wave-2 plan/child/queue) — the note
+   * carries the typed `runtime` payload; the shell renders it. */
+  | Readonly<{ kind: "runtime"; note: DesktopNoteEntry }>
   | Readonly<{ kind: "tool"; card: ToolCardModel }>
   | Readonly<{ kind: "context-group"; group: ContextGroupModel }>
 
@@ -137,6 +140,10 @@ export const projectToolCardEntries = (
   // Open (still-running) cards by entries index, FIFO per toolName.
   const openByTool = new Map<string, Array<number>>()
   for (const note of notes) {
+    if (note.runtime !== undefined) {
+      entries.push({ kind: "runtime", note })
+      continue
+    }
     if (note.question !== undefined) {
       entries.push({ kind: "question", note })
       continue

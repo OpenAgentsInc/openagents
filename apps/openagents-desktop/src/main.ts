@@ -1033,6 +1033,10 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   // total, and wall-clock duration. Bounded public-safe strings only.
   const startedAt = Date.now()
   let effectiveModel: string | null = null
+  // EP250 wave-2 (J2/J4): track the latest plan/todo list so the FINAL plan
+  // state persists into the finalized transcript (the live in-place plan card
+  // is renderer-only). One persisted plan card, latest wins.
+  let latestPlanEntries: ReadonlyArray<{ step: string; status: "pending" | "in_progress" | "completed" }> | null = null
   const result = await fableLocal.runTurn({
     turnRef: request.turnRef,
     threadRef: request.threadRef,
@@ -1040,6 +1044,20 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     message: request.message.trim(),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
+      // EP250 wave-2 J2/J4: remember the latest todo list; persist it once the
+      // turn completes so the finalized transcript keeps a plan/todo card.
+      if (turnEvent.kind === "plan_updated") {
+        latestPlanEntries = turnEvent.entries.map(entry => ({ step: entry.step, status: entry.status }))
+      }
+      if (turnEvent.kind === "turn_completed" && latestPlanEntries !== null) {
+        store.append(request.threadRef, {
+          key: `${request.turnRef}-plan`,
+          role: "system",
+          text: "Plan updated",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          runtime: { kind: "plan", entries: latestPlanEntries },
+        })
+      }
       // Session usage ledger feed (#8712 Lane C): exact usage from the typed
       // completion events. Fable turns attribute to the Claude account the
       // turn ran on; delegate children attribute to the Codex account with
@@ -2069,6 +2087,15 @@ const smokeFableLocalStreaming = `(async () => {
     toolText(delegateCards[0]).includes("Codex child fixture answer.")
   const transcriptText = document.querySelector('[data-en-key="shell-transcript"]')?.textContent ?? ""
   const noRawJson = !transcriptText.includes('{"task"') && !transcriptText.includes('{"file_path"')
+  // EP250 wave-2 (J2/J4): the fixture's TodoWrite emits plan_updated, so the
+  // transcript must render a compact plan/todo card — the "Plan" header, the
+  // progress line, and the step content with a status glyph — never raw JSON.
+  const planCards = toolRows().filter((row) => toolText(row).includes("Summarize for the user"))
+  const planCard = planCards.length === 1 &&
+    toolText(planCards[0]).includes("Plan") &&
+    toolText(planCards[0]).includes("1 of 2 done") &&
+    toolText(planCards[0]).includes("Read the fixture notes") &&
+    !toolText(planCards[0]).includes('{"todos"')
   const noSystemToolLabel = toolRows().every((row) => row.querySelector('[data-en-role="sender"]') === null)
   const toolTimestamps = toolRows().every((row) => row.querySelector('[data-en-role="timestamp"]') !== null)
   const body = assistantBody()
@@ -2082,7 +2109,7 @@ const smokeFableLocalStreaming = `(async () => {
   return {
     ok: sawPartial && assistantText() === finalText && input.disabled === false && trace &&
       markdownRendered && noAssistantLabel && delegateSingleCard && delegateUse &&
-      delegateResult && noRawJson && noSystemToolLabel && toolTimestamps,
+      delegateResult && noRawJson && noSystemToolLabel && toolTimestamps && planCard,
     sawPartial,
     finalized: assistantText() === finalText,
     trace,
@@ -2094,6 +2121,7 @@ const smokeFableLocalStreaming = `(async () => {
     noRawJson,
     noSystemToolLabel,
     toolTimestamps,
+    planCard,
     text: assistantText(),
   }
 })()`

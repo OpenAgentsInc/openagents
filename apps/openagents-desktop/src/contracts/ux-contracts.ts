@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.38",
+    version: "2026-07-11.39",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -2173,15 +2173,75 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
           {
             id: "fable_local_runtime_capabilities.renderer_surface",
-            kind: "planned",
-            mode: "dom",
-            ref: "apps/openagents-desktop/src/renderer/shell.ts",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-cards.test.ts",
             description:
-              "WAVE-2 (separate lane): the renderer draws the plan/todo panel, the child steer/stop affordance, the queued-follow-up indicator, and the MCP-server settings/status surface from these typed events and channels. Not built in this substrate lane.",
+              "WAVE-2 landed for plan/todo, child steer/stop, and the queued-follow-up chip (see openagents_desktop.chat.runtime_capability_cards.v1). The MCP-server settings/status surface (I2) remains a separate wave-2 settings lane.",
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime capability suite (src/fable-local-runtime-caps.test.ts) as programmatic oracles; the renderer oracle is a planned wave-2 lane.",
+          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime capability suite (src/fable-local-runtime-caps.test.ts) as programmatic oracles; the wave-2 renderer surfaces are proven by runtime-cards.test.ts + the smoke.",
+      },
+      {
+        contractId: "openagents_desktop.chat.runtime_capability_cards.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript runtime-capability cards",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "capability-audit",
+          statedBy: "agent",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "WAVE-2 renderer for the wave-1 runtime substrate (audit §4/§6 J2/J4 plan-todo progress, G4 steer/stop a running child, A3 queue a follow-up while a turn runs): the desktop transcript must render a compact task-progress checklist that updates in place, let the user Interrupt a running delegate child, and let the user queue a follow-up while a turn streams — the three habits the archives prove daily that the app could not surface.",
+        authorityBoundary:
+          "Renderer/presentation only over the FROZEN additive FableLocalEvent stream + control channels — no new data crosses the Electron boundary and no new authority is granted. plan_updated renders ONE compact plan card per turn (a status glyph per entry from the exact pending/in_progress/completed enum, the in_progress row emphasized) that replace-renders in place as new plan_updated events arrive (latest wins). A running delegate child (child_started with no terminal) offers a single Interrupt control that dispatches DesktopChildInterruptRequested -> fableLocal.steerChild(action:'interrupt') by exact { turnRef, childRef }; MESSAGE-ing an in-flight child is NOT offered (capability-truthful: codex exec is non-interactive and the SDK Agent tool exposes no per-child message API), and the child_steered outcome renders as a compact line — the renderer invents no outcome. The composer stays usable while a turn streams; a mid-turn submit calls fableLocal.queueFollowup instead of starting a new turn, renders a 'Queued follow-up (#N)' chip, and clears it on followup_promoted, whose message the host starts as the next turn — delivery is queue-until-idle (at the current turn's completion), never mid-stream. Token styling only (design-conformance: no raw colors/px); a host without a local streaming lane simply no-ops (the Stop button, Shift+Tab lane toggle, and icon-only Send are unchanged).",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/runtime-cards.ts",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "docs/fable/2026-07-11-daily-coding-capability-audit.md",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "runtime_capability_cards.plan_todo",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-cards.test.ts",
+            description:
+              "Proves plan_updated projects ONE plan card (keyed) that updates in place as entries change (latest wins), each row carrying the status glyph for the exact pending/in_progress/completed enum with the in_progress row emphasized, and the progress summary counting done/in-progress.",
+          },
+          {
+            id: "runtime_capability_cards.child_steer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-cards.test.ts",
+            description:
+              "Proves a running child card renders an Interrupt control (and NO message control), the control dispatches DesktopChildInterruptRequested with the exact { turnRef, childRef }, the child_steered outcome renders as a compact line, and a completed/failed or already-interrupted child no longer offers Interrupt.",
+          },
+          {
+            id: "runtime_capability_cards.queue_followup",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-cards.test.ts",
+            description:
+              "Proves followup_queued renders a 'Queued follow-up (#N)' chip, followup_promoted clears it, the composer stays usable while pending with a queue placeholder, a mid-turn submit routes to queueFollowup (not sendMessage), and the promoted follow-up starts as the next turn.",
+          },
+          {
+            id: "runtime_capability_cards.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke fable fixture turn scripts a TodoWrite plan_updated and asserts the plan/todo card renders in the transcript with status glyphs (no raw JSON, no SYSTEM label).",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs runtime-cards.test.ts + the local-harness projection suite as the renderer oracles and the Electron smoke plan-card step.",
       },
       {
         contractId: "openagents_desktop.seam.typed_git_github_surface.v1",

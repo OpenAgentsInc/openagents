@@ -84,6 +84,8 @@ const MARKDOWN = "apps/openagents-desktop/src/renderer/markdown.test.ts"
 const WORKSPACE = "apps/openagents-desktop/tests/workspace-service.test.ts"
 const USAGE = "apps/openagents-desktop/src/usage-ledger.test.ts"
 const FABLE_RT = "apps/openagents-desktop/src/fable-local-runtime.test.ts"
+const FABLE_CAPS_RT = "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts"
+const RUNTIME_CARDS = "apps/openagents-desktop/src/renderer/runtime-cards.test.ts"
 const CODEX_CHILD_RT = "apps/openagents-desktop/src/codex-child-runtime.test.ts"
 const CODEX_HISTORY = "apps/openagents-desktop/tests/codex-history.test.ts"
 const CODING_CATALOG = "apps/openagents-desktop/tests/desktop-coding-catalog.test.ts"
@@ -118,8 +120,13 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // the already-landed runtime passthrough.
   ui_available: 16,
   programmatic_only: 4,
-  partial: 13,
-  missing: 7,
+  // EP250 wave-2 (#8712): the renderer surfaces landed for the queued follow-up
+  // (A3), steer-a-running-child (G4), and task/todo progress (J4) capabilities,
+  // so G4 and J4 move missing -> partial (A3 was already partial). Combined
+  // with I2 (missing -> ui_available on the MCP-settings lane): partial 13 ->
+  // 15, missing 8 -> 5.
+  partial: 15,
+  missing: 5,
 } as const
 
 export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
@@ -141,10 +148,15 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   },
   {
     id: "A3", group: "A", capability: "Queue follow-up while turn runs", status: "partial",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit A3: no local-lane message queue; sending a second prompt mid-turn is not implemented",
+    uiOracleRef: RUNTIME_CARDS, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
+    // EP250 wave-2: the composer stays usable while a turn streams; a mid-turn
+    // submit enqueues via fableLocal.queueFollowup, renders a queued chip, and
+    // the promoted follow-up becomes the next turn. Residual (still partial):
+    // delivery is queue-until-idle, not mid-stream steering (the single-string
+    // turn cannot inject), and it is local-lane only.
+    blocker: "audit A3: queued follow-up is queue-until-idle (delivered at turn completion), not mid-stream steering; local lane only",
   },
   {
     id: "A4", group: "A", capability: "Model selection / mix", status: "partial",
@@ -287,11 +299,16 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     blocker: "audit G3: children run async with caps/timeouts, but there is no notification-on-complete surface",
   },
   {
-    id: "G4", group: "G", capability: "Steer/message running children", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit G4: no child-steer channel in fable-local-contract.ts; the app can spawn but not talk to or stop a child",
+    id: "G4", group: "G", capability: "Steer/message running children", status: "partial",
+    uiOracleRef: RUNTIME_CARDS, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
+    // EP250 wave-2: a running child card offers an Interrupt control that drives
+    // fableLocal.steerChild(action:"interrupt") and renders the child_steered
+    // outcome. Residual (still partial): MESSAGE-ing an in-flight child is
+    // capability-unsupported (codex exec is non-interactive; the SDK Agent tool
+    // exposes no per-child message API), so only Interrupt is offered.
+    blocker: "audit G4: interrupt-a-running-child is UI-driven; messaging an in-flight child stays unsupported (codex exec non-interactive; no per-subagent SDK message API)",
   },
   {
     id: "G5", group: "G", capability: "Scheduled / fleet automation", status: "partial",
@@ -391,11 +408,15 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     blocker: "audit J3: local lane is allow-all canUseTool; signed-in decideInteraction exists but there is no local permission-mode UI",
   },
   {
-    id: "J4", group: "J", capability: "Task/todo progress tracking", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit J4: no todo/plan-progress rendering",
+    id: "J4", group: "J", capability: "Task/todo progress tracking", status: "partial",
+    uiOracleRef: RUNTIME_CARDS, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
+    // EP250 wave-2: TodoWrite plan_updated events render a compact task-progress
+    // card (status glyphs from the exact enum) that updates in place live, and
+    // the final plan state persists into the finalized transcript. Residual
+    // (still partial): the J2 plan-mode toggle/review is not built.
+    blocker: "audit J4: live-updating plan/todo card renders and the final plan state persists; the J2 plan-mode toggle/review is unbuilt (shipped as residual)",
   },
 
   // --- K. Workspace & observability ---------------------------------------

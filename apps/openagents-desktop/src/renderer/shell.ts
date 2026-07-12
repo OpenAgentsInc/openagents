@@ -42,7 +42,7 @@ import {
   type View,
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
-import type { DesktopMessageMeta, DesktopQuestionCard, DesktopThread } from "../chat-contract.ts"
+import type { DesktopMessageMeta, DesktopQuestionCard, DesktopRuntimeCard, DesktopThread } from "../chat-contract.ts"
 import {
   contextGroupSummary,
   humanizeToolInvocation,
@@ -52,6 +52,16 @@ import {
   type ContextGroupModel,
   type ToolCardModel,
 } from "./tool-cards.ts"
+import {
+  childInterruptable,
+  childSteerLine,
+  childStatusChip,
+  planProgressSummary,
+  planStatusGlyph,
+  type RuntimeChildCardPayload,
+  type RuntimePlanCardPayload,
+  type RuntimeQueueChipPayload,
+} from "./runtime-cards.ts"
 import {
   resolveLiveAgentGraphSelection,
   type LiveAgentGraphPresentation,
@@ -128,6 +138,8 @@ export type DesktopNoteEntry = Readonly<{
   meta?: DesktopMessageMeta
   /** Present only on interactive question notes (EP250 question cards). */
   question?: DesktopQuestionCard
+  /** Present only on runtime-capability cards (EP250 wave-2: plan/child/queue). */
+  runtime?: DesktopRuntimeCard
 }>
 
 /**
@@ -338,6 +350,18 @@ export const DesktopNoteSubmitted = defineIntent(
  * reverts the control to Send.
  */
 export const DesktopTurnInterrupted = defineIntent("DesktopTurnInterrupted", Schema.Null)
+/**
+ * Interrupt a running delegate child (EP250 wave-2 G4). Fired by the Interrupt
+ * control on a running child card; the handler signals the active local lane's
+ * frozen steer-child channel by exact { turnRef, childRef } with action
+ * "interrupt" (the only supported control — the SDK/codex cannot MESSAGE an
+ * in-flight child). The runtime's typed child_steered event renders the
+ * outcome; the handler invents none.
+ */
+export const DesktopChildInterruptRequested = defineIntent(
+  "DesktopChildInterruptRequested",
+  Schema.Struct({ turnRef: Schema.String, childRef: Schema.String }),
+)
 export const DesktopLoopPinged = defineIntent("DesktopLoopPinged", Schema.Null)
 export const DesktopFleetDeskToggled = defineIntent("DesktopFleetDeskToggled", Schema.Null)
 export const DesktopFleetObjectiveChanged = defineIntent(
@@ -420,6 +444,7 @@ export const desktopShellIntents = [
   DesktopInputChanged,
   DesktopNoteSubmitted,
   DesktopTurnInterrupted,
+  DesktopChildInterruptRequested,
   DesktopLoopPinged,
   DesktopFleetDeskToggled,
   DesktopFleetObjectiveChanged,
@@ -795,6 +820,25 @@ export type ChatHost = Readonly<{
    * it and the Stop intent no-ops.
    */
   interruptActive?: () => Promise<boolean>
+  /**
+   * Interrupt a running delegate child of the active turn (EP250 wave-2 G4).
+   * Resolves the runtime's typed outcome; a host with no active local lane
+   * returns not_found. Only `interrupt` is offered (mid-flight message is
+   * capability-unsupported). Optional: a host without a local streaming lane
+   * omits it and the child-interrupt intent no-ops.
+   */
+  steerChild?: (input: Readonly<{ turnRef: string; childRef: string }>) => Promise<
+    Readonly<{ ok: boolean; outcome: string }>
+  >
+  /**
+   * Enqueue a follow-up while a turn streams (EP250 wave-2 A3), delivered at
+   * the current turn's completion (queue-until-idle). Resolves the runtime's
+   * typed queue outcome. Optional: a host that cannot queue (e.g. the runtime
+   * adapter) omits it and a mid-turn submit is a no-op that keeps the draft.
+   */
+  queueFollowup?: (input: Readonly<{ threadRef: string; message: string }>) => Promise<
+    Readonly<{ ok: boolean; queued: boolean }>
+  >
 }>
 
 /**
@@ -1065,13 +1109,26 @@ export const makeDesktopShellHandlers = (
   DesktopNoteSubmitted: (value) =>
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
-      if (current.pending || current.activeThreadId === null) return
+      if (current.activeThreadId === null) return
+      const message =
+        typeof value === "string" && value.trim() !== "" ? value : current.input
+      if (message.trim() === "") return
+      // A3 queue-until-idle (EP250 wave-2): the composer stays usable while a
+      // turn streams; a submit mid-turn ENQUEUES a follow-up instead of
+      // starting a new turn. Delivery is at the current turn's completion (the
+      // runtime's followup_queued/followup_promoted events drive the chip and
+      // the promoted next turn). A host that cannot queue keeps the draft.
+      if (current.pending) {
+        if (chat.queueFollowup === undefined) return
+        yield* SubscriptionRef.update(state, (next) => withInput(next, ""))
+        yield* Effect.promise(() =>
+          chat.queueFollowup!({ threadRef: current.activeThreadId!, message: message.trim() }))
+        return
+      }
       // Evidence-gated send (#8712): an unavailable selected lane must not
       // accept the action — the composer keeps the draft and the caption
       // already names the reason. Never substitute another lane silently.
       if (!current.harnessLanes[current.selectedHarness].available) return
-      const message =
-        typeof value === "string" && value.trim() !== "" ? value : current.input
       yield* SubscriptionRef.set(state, withNote(current, message, now()))
       const result = yield* Effect.promise(() => chat.sendMessage({
         id: current.activeThreadId!,
@@ -1094,6 +1151,15 @@ export const makeDesktopShellHandlers = (
       const current = yield* SubscriptionRef.get(state)
       if (!current.pending) return
       yield* Effect.promise(() => chat.interruptActive?.() ?? Promise.resolve(false))
+    }),
+  DesktopChildInterruptRequested: ({ turnRef, childRef }) =>
+    Effect.gen(function* () {
+      // G4: signal the frozen steer-child channel by exact ref. The runtime's
+      // typed child_steered event renders the outcome; the handler invents no
+      // state, and a host without a local streaming lane simply no-ops.
+      const current = yield* SubscriptionRef.get(state)
+      if (!current.pending || chat.steerChild === undefined) return
+      yield* Effect.promise(() => chat.steerChild!({ turnRef, childRef }))
     }),
   DesktopLoopPinged: () =>
     SubscriptionRef.update(state, (current) => withLoopProof(current, now())),
@@ -1776,6 +1842,137 @@ export const questionCardMessage = (
   }
 }
 
+/**
+ * Plan/todo progress card (EP250 wave-2 J2/J4). A compact checklist — one row
+ * per todo with a status glyph (pending/in_progress/completed from the exact
+ * frozen enum), the in-progress row subtly emphasized. Updates in place as new
+ * plan_updated events replace the entries (latest wins). Token styling only —
+ * never raw JSON, no SYSTEM label.
+ */
+export const planCardMessage = (note: DesktopNoteEntry, plan: RuntimePlanCardPayload): TranscriptMessage => ({
+  key: note.key,
+  role: "tool",
+  timestamp: note.timestamp,
+  body: [Stack(
+    { key: `plan-card-${note.key}`, direction: "column", gap: "1", align: "start", style: { width: "full" } },
+    [
+      Stack(
+        { key: `plan-header-${note.key}`, direction: "row", gap: "2", align: "center" },
+        [
+          Icon({ key: `plan-icon-${note.key}`, name: "Compare", size: "sm", color: "accent" }),
+          Text({ key: `plan-title-${note.key}`, content: "Plan", variant: "label", color: "textPrimary", weight: "medium" }),
+          Text({ key: `plan-progress-${note.key}`, content: planProgressSummary(plan.entries), variant: "body", color: "textMuted" }),
+        ],
+      ),
+      ...plan.entries.map((entry, index) => {
+        const glyph = planStatusGlyph(entry.status)
+        return Stack(
+          { key: `plan-step-${note.key}-${index}`, direction: "row", gap: "2", align: "center" },
+          [
+            Icon({ key: `plan-step-icon-${note.key}-${index}`, name: glyph.icon, size: "sm", color: glyph.color }),
+            Text({
+              key: `plan-step-text-${note.key}-${index}`,
+              content: entry.step,
+              variant: "body",
+              color: entry.status === "completed" ? "textMuted" : "textPrimary",
+              weight: glyph.active ? "medium" : "regular",
+            }),
+          ],
+        )
+      }),
+    ],
+  )],
+})
+
+/**
+ * Delegate-child lifecycle card (EP250 wave-2 G4). A running child (no terminal
+ * and no interrupt yet) offers a single Interrupt control — the SDK/codex
+ * cannot MESSAGE an in-flight child, so message is NOT offered
+ * (capability-truthful). The child_steered outcome renders as a compact line.
+ */
+export const childCardMessage = (note: DesktopNoteEntry, child: RuntimeChildCardPayload): TranscriptMessage => {
+  const chip = childStatusChip(child.status)
+  const steerLine = childSteerLine(child.steered)
+  return {
+    key: note.key,
+    role: "tool",
+    timestamp: note.timestamp,
+    body: [Card(
+      {
+        key: `child-box-${note.key}`,
+        padding: "2",
+        radius: "lg",
+        style: { width: "full", borderColor: "borderSubtle", borderWidth: 1, surface: "glass" },
+      },
+      [Stack(
+        { key: `child-card-${note.key}`, direction: "column", gap: "1", align: "start", style: { width: "full" } },
+        [
+          Stack(
+            { key: `child-header-${note.key}`, direction: "row", gap: "2", align: "center" },
+            [
+              Icon({ key: `child-icon-${note.key}`, name: "Agent", size: "sm", color: "accent" }),
+              Text({ key: `child-title-${note.key}`, content: child.title === "" ? "Delegate child" : child.title, variant: "label", color: "textPrimary", weight: "medium" }),
+              Badge({ key: `child-status-${note.key}`, label: chip.label, tone: chip.tone, a11y: { label: `Delegate child ${chip.label}` } }),
+              ...(childInterruptable(child)
+                ? [Button({
+                    key: `child-interrupt-${note.key}`,
+                    label: "Interrupt",
+                    variant: "ghost",
+                    style: { padding: "0", borderWidth: 0, typeScale: "caption", color: "danger" },
+                    onPress: IntentRef("DesktopChildInterruptRequested", StaticPayload({ turnRef: child.turnRef, childRef: child.childRef })),
+                    a11y: { label: `Interrupt delegate child ${child.childRef}` },
+                  })]
+                : []),
+            ],
+          ),
+          ...(child.detail === "" ? [] : [Text({ key: `child-detail-${note.key}`, content: child.detail, variant: "caption", color: "textMuted" })]),
+          ...(steerLine === null ? [] : [Text({
+            key: `child-steer-${note.key}`,
+            content: steerLine,
+            variant: "caption",
+            color: child.steered?.outcome === "interrupted" ? "textMuted" : "textFaint",
+          })]),
+        ],
+      )],
+    )],
+  }
+}
+
+/**
+ * Queued follow-up chip (EP250 wave-2 A3). A compact "Queued follow-up (#N)"
+ * badge shown while the follow-up sits in the queue-until-idle queue; it clears
+ * when its followup_promoted lands (the promoted message becomes the next
+ * turn). Honest semantics: delivered at the current turn's completion.
+ */
+export const queueChipMessage = (note: DesktopNoteEntry, queue: RuntimeQueueChipPayload): TranscriptMessage => ({
+  key: note.key,
+  role: "tool",
+  timestamp: note.timestamp,
+  body: [Stack(
+    { key: `queue-chip-${note.key}`, direction: "row", gap: "2", align: "center" },
+    [
+      Icon({ key: `queue-icon-${note.key}`, name: "Pause", size: "sm", color: "textMuted" }),
+      Badge({
+        key: `queue-badge-${note.key}`,
+        label: `Queued follow-up (#${queue.position})`,
+        tone: "info",
+        a11y: { label: `Follow-up queued at position ${queue.position}; delivered when this turn completes` },
+      }),
+      Text({ key: `queue-note-${note.key}`, content: "delivered when this turn completes", variant: "caption", color: "textFaint" }),
+    ],
+  )],
+})
+
+/** Dispatch a runtime-capability note to its typed card render (EP250 wave-2). */
+export const runtimeCardMessage = (note: DesktopNoteEntry): TranscriptMessage => {
+  const runtime = note.runtime!
+  return runtime.kind === "plan"
+    ? planCardMessage(note, runtime)
+    : runtime.kind === "child"
+      ? childCardMessage(note, runtime)
+      : queueChipMessage(note, runtime)
+}
+
 const historySidebarItems = (state: DesktopShellState) => {
   const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount)
   const rows=roots.map((thread,index) => ({
@@ -2328,10 +2525,14 @@ const shellComposer = (state: DesktopShellState): View =>
           TextField({
             key: "shell-input",
             value: state.input,
-            placeholder: "Message",
-            disabled: state.pending,
+            // A3 queue-until-idle (EP250 wave-2): the composer stays usable
+            // while a turn streams so a follow-up can be queued (submit mid-turn
+            // enqueues instead of starting a new turn); the placeholder names
+            // the honest semantics. The Stop button still interrupts.
+            placeholder: state.pending ? "Queue a follow-up…" : "Message",
+            disabled: false,
             clearOnSubmit: true,
-            a11y: { label: "Message" },
+            a11y: { label: state.pending ? "Queue a follow-up, delivered when this turn completes" : "Message" },
             onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
             onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
             style: { flex: 1 },
@@ -2496,15 +2697,17 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
         ? toolCardMessage(entry.card, state.expandedToolCards.includes(entry.card.key))
         : entry.kind === "context-group"
           ? contextGroupMessage(entry.group, state.expandedToolCards.includes(entry.group.key))
-          : entry.kind === "question"
-            ? questionCardMessage(
-                entry.note,
-                entry.note.question === undefined
-                  ? undefined
-                  : state.questionCards[entry.note.question.questionRef],
-                state.questionAnswerHostAvailable,
-              )
-            : noteMessage(entry.note)),
+          : entry.kind === "runtime"
+            ? runtimeCardMessage(entry.note)
+            : entry.kind === "question"
+              ? questionCardMessage(
+                  entry.note,
+                  entry.note.question === undefined
+                    ? undefined
+                    : state.questionCards[entry.note.question.questionRef],
+                  state.questionAnswerHostAvailable,
+                )
+              : noteMessage(entry.note)),
     style: {
       width: "full",
       maxWidth: columnWidth,

@@ -1496,6 +1496,32 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
         content: [{ type: "tool_result", tool_use_id: "fixture-tool-1", content: "bounded fixture read" }],
       },
     }
+    // Plan/todo progress rung (EP250 wave-2 J2/J4): a TodoWrite tool call emits
+    // `plan_updated` ADDITIONALLY to its tool_use, so the renderer draws the
+    // compact task-progress card (status glyphs from the exact enum) that the
+    // wave-2 smoke asserts.
+    yield {
+      type: "assistant",
+      message: {
+        content: [{
+          type: "tool_use",
+          id: "fixture-todo-1",
+          name: "TodoWrite",
+          input: {
+            todos: [
+              { content: "Read the fixture notes", status: "completed", activeForm: "Reading the fixture notes" },
+              { content: "Summarize for the user", status: "in_progress", activeForm: "Summarizing for the user" },
+            ],
+          },
+        }],
+      },
+    }
+    yield {
+      type: "user",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "fixture-todo-1", content: "todos updated" }],
+      },
+    }
     // Deterministic delegation rung: call the REAL mcp__codex__delegate
     // handler (scripted Codex child behind it) and replay its CallToolResult
     // through the same assistant/user mapping a live SDK session uses.

@@ -426,14 +426,27 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(pending, "shell-harness-codex")?.disabled).toBe(true)
   })
 
-  test("composer rides the v29 submit lifecycle contract: clearOnSubmit + pending disables", () => {
-    const idle = nodeByKey(desktopShellView(baseState), "shell-input")
+  test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {
+    const idle = nodeByKey(desktopShellView(baseState), "shell-input") as {
+      clearOnSubmit?: boolean
+      disabled?: boolean
+      placeholder?: string
+    }
     expect(idle?.clearOnSubmit).toBe(true)
     expect(idle?.disabled).toBe(false)
+    expect(idle?.placeholder).toBe("Message")
 
+    // EP250 wave-2 A3: the composer STAYS usable while a turn streams so a
+    // follow-up can be queued (a mid-turn submit enqueues instead of starting a
+    // new turn); the placeholder names the honest queue semantics.
     const pendingView = desktopShellView(withPending(baseState, true))
-    expect(nodeByKey(pendingView, "shell-input")?.disabled).toBe(true)
-    // EP250 Stop button: while pending the trailing control is Stop, not Send.
+    const pendingInput = nodeByKey(pendingView, "shell-input") as {
+      disabled?: boolean
+      placeholder?: string
+    }
+    expect(pendingInput?.disabled).toBe(false)
+    expect(pendingInput?.placeholder).toBe("Queue a follow-up…")
+    // The Stop button still replaces Send while pending (unchanged).
     expect(nodeByKey(pendingView, "shell-note")).toBeUndefined()
     expect(nodeByKey(pendingView, "shell-stop")?._tag).toBe("IconButton")
   })

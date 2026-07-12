@@ -36,6 +36,8 @@ type Harness = {
   host: ChatHost
   legacySends: Array<unknown>
   startCalls: Array<unknown>
+  steerCalls: Array<unknown>
+  queueCalls: Array<unknown>
   emit: (envelope: FableLocalEventEnvelope) => void
   resolveStart: (value: unknown) => void
   unsubscribed: () => boolean
@@ -44,8 +46,11 @@ type Harness = {
 const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Harness => {
   const legacySends: Array<unknown> = []
   const startCalls: Array<unknown> = []
+  const steerCalls: Array<unknown> = []
+  const queueCalls: Array<unknown> = []
   let listener: ((envelope: FableLocalEventEnvelope) => void) | null = null
   let resolveStart: (value: unknown) => void = () => {}
+  let starts = 0
   let unsubscribed = false
   const base: ChatHost = {
     listThreads: async () => [threadWithUserNote],
@@ -60,11 +65,23 @@ const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Ha
     availability: async () => ({ state: "available", accountRef: "claude-pylon-b" }),
     start: async value => {
       startCalls.push(value)
+      starts += 1
+      // A chained promoted-follow-up turn (A3) resolves immediately so a test
+      // that promotes a queued message does not hang.
+      if (starts > 1) return { ok: true, thread: finalThread }
       return new Promise(resolve => {
         resolveStart = resolve
       })
     },
     interrupt: async () => true,
+    steerChild: async value => {
+      steerCalls.push(value)
+      return { ok: true, outcome: "interrupted" }
+    },
+    queueFollowup: async value => {
+      queueCalls.push(value)
+      return { ok: true, queued: true, queueRef: "q1", position: 1 }
+    },
     onEvent: cb => {
       listener = cb
       return () => {
@@ -85,6 +102,8 @@ const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Ha
     host,
     legacySends,
     startCalls,
+    steerCalls,
+    queueCalls,
     emit: envelope => listener?.(envelope),
     resolveStart: value => resolveStart(value),
     unsubscribed: () => unsubscribed,
@@ -276,5 +295,48 @@ describe("makeLocalHarnessChatHost", () => {
     harness.resolveStart("garbage")
     const result = await pending
     expect(result).toEqual({ ok: false, error: "The local Fable lane returned an invalid response." })
+  })
+
+  test("steerChild routes an interrupt to the active lane by exact ref (EP250 wave-2 G4)", async () => {
+    const harness = makeHarness()
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })
+    await settle()
+    const outcome = await harness.host.steerChild!({ turnRef: "turn.fable.fixed", childRef: "c1" })
+    expect(outcome).toEqual({ ok: true, outcome: "interrupted" })
+    // Only `interrupt` is ever offered (message is capability-unsupported).
+    expect(harness.steerCalls).toEqual([{ turnRef: "turn.fable.fixed", childRef: "c1", action: "interrupt" }])
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
+  })
+
+  test("steerChild with no active turn is a typed not_found no-op", async () => {
+    const harness = makeHarness()
+    expect(await harness.host.steerChild!({ turnRef: "x", childRef: "c" })).toEqual({ ok: false, outcome: "not_found" })
+    expect(harness.steerCalls).toEqual([])
+  })
+
+  test("queueFollowup routes to the active lane's queue channel (EP250 wave-2 A3)", async () => {
+    const harness = makeHarness()
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })
+    await settle()
+    const outcome = await harness.host.queueFollowup!({ threadRef: "thread-1", message: "and then this" })
+    expect(outcome).toMatchObject({ ok: true, queued: true })
+    expect(harness.queueCalls).toEqual([{ threadRef: "thread-1", message: "and then this" }])
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
+  })
+
+  test("a promoted follow-up is chained as the next turn (A3 queue-until-idle)", async () => {
+    const harness = makeHarness()
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "first", harness: "fable" })
+    await settle()
+    expect(harness.startCalls).toHaveLength(1)
+    // The runtime promotes a queued message on the ending turn's stream…
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "followup_promoted", queueRef: "q1", message: "second" } })
+    // …and the turn finalizes; the host must start the promoted message next.
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
+    expect(harness.startCalls).toHaveLength(2)
+    expect(harness.startCalls[1]).toMatchObject({ threadRef: "thread-1", message: "second" })
   })
 })
