@@ -87,11 +87,18 @@ GitHub connections.
 Use a repository-bound coding thread. Confirm the mobile execution catalog
 advertises `Agent Computer`, enqueue one bounded turn, and verify:
 
-1. exactly one durable `turn.started` wins;
+1. the repository branch/ref resolves server-side to an immutable 40-character
+   commit SHA before placement, and exactly one durable `turn.started` wins;
 2. the provider grant is issued only after that claim;
 3. the live microVM executes the request;
 4. a terminal `turn.finished` is synced to the thread; and
 5. the microVM and host network resources are torn down.
+
+The 2026-07-12 production acceptance turn
+`turn.agent-computer-smoke.20260712T235107Z` exercised the literal `main`
+binding and completed with one consumed Postgres provider grant and one exact
+usage row (60,167 input, 294 output, 60,461 total tokens). The terminal control
+event reported exit code 0; no tap or runtime directory remained after cleanup.
 
 If any gate fails, remove `Agent Computer` from the catalog by disabling the
 cloud-coding flag or live provisioner setting before investigating. Never
