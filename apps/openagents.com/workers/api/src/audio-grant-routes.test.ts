@@ -52,6 +52,7 @@ const request = (
 
 const dependencies = (
   options: Readonly<{
+    gatewayUrl?: string | undefined
     now?: number | undefined
     ownerRef?: string | undefined
     secret?: string | undefined

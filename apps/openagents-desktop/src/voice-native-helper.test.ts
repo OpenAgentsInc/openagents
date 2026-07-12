@@ -23,4 +23,13 @@ describe("packaged voice helper oracle", () => {
     expect(source).not.toContain("shell: true")
     expect(source).not.toContain("spawnSync")
   })
+  test("Electron main obtains one bounded grant through the authenticated host-only route", async () => {
+    const source = await Bun.file(new URL("./main.ts", import.meta.url)).text()
+    expect(source).toContain("/api/desktop/audio/grant")
+    expect(source).toContain('"x-openagents-desktop-device-ref": identity.deviceRef')
+    expect(source).toContain("authorization: `Bearer ${credential.accessToken}`")
+    expect(source).toContain('value.schema !== "openagents.audio.grant.v1"')
+    expect(source).toContain("value.disclosureRef !== disclosureRef")
+    expect(source).not.toContain("OPENAGENTS_AUDIO_TOKEN_SECRET")
+  })
 })
