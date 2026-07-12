@@ -3,9 +3,9 @@
 - Date: 2026-07-11
 - Issue: [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696)
 - Status: shared authority, native persistence, both native interaction UIs,
-  mobile runtime-control and canonical draft UI, Desktop gateway, and Claude
-  provider injection active; mobile native attachment acquisition active;
-  selector authority and live/physical acceptance remain open
+  mobile runtime-control and canonical draft UI, Desktop gateway, Claude
+  provider injection, native attachments, and exact execution-target selector
+  authority active; physical iOS assistive/cross-client acceptance remains open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
@@ -198,6 +198,32 @@ mobile canonical draft restoration are covered deterministically; those proofs
 and the simulator launch do not substitute for the remaining receipts.
 The default non-interactive provider safety policy must not be weakened merely
 to manufacture an approval receipt.
+
+## Addendum (2026-07-12): physical target-catalog production repair
+
+The first authenticated physical-iOS coding-composer pass after CUT-14 showed
+`Execution targets unavailable` even though the owner has connected healthy
+Codex accounts. A temporary public-safe client diagnostic and the Cloud Run
+request log agreed on the exact failure: authenticated
+`GET /api/mobile/model-preference` returned HTTP 500 from production revision
+`openagents-monolith-00088-t24`.
+
+The source migration `0306_user_model_preferences.sql` had been committed for
+the D1-era API but its table was absent from the current Cloud SQL production
+database. The handler lists provider accounts successfully, then unconditionally
+reads that preference table, so the missing production migration—not account
+inventory, selector decoding, or mobile authentication—caused the 500. The
+existing idempotent migration was applied to `khala_sync_prod` under the
+dedicated migration role. The application role can read the new empty table,
+and the next physical request completed without the prior 500. Production
+inventory for the authenticated owner includes the hosted Gemini target and
+three connected healthy Codex account refs; disconnected/re-auth-required rows
+remain ineligible.
+
+No fallback, credential copy, raw account secret, or client-side substitution
+was introduced. The remaining receipt is the visible physical selector and
+composer/control interaction, plus VoiceOver after explicit owner approval to
+change that system setting.
 
 ## Addendum (2026-07-12): Desktop durable runtime controls — Stop, queue-until-idle, lane-exact control intents
 

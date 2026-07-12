@@ -150,6 +150,15 @@ Authenticated catalog/deep-link/process-death acceptance remains pending the
 same one-time owner OAuth sign-in. The Android emulator and Metro remain
 available for that handoff; no physical Android is required.
 
+On 2026-07-12 the persisted `khala_test` AVD was booted without loading or
+saving a snapshot and upgraded in place to a fresh debug build from current
+main. The pre-update and candidate APK signing-certificate SHA-256 digests
+matched exactly, so `adb install -r` preserved app data; no uninstall, package
+clear, or credential injection occurred. The cold-launched current bundle logs
+`Running "main"` and renders the signed-out Khala surface. This removes the
+stale pre-physical-fix APK as an acceptance risk, but does not satisfy the
+authenticated criterion: the emulator still needs its one owner GitHub OAuth.
+
 ## Physical iOS authenticated acceptance
 
 On 2026-07-12 build 117 on the paired iPhone exposed and closed three live

@@ -1,12 +1,13 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-12 (CUT-11/CUT-12/CUT-21 live receipts accepted and closed;
-  CUT-14 production catalog publication plus native iOS/Android emulator shells
-  operational; CUT-16 exact mobile execution-target selector landed; CUT-26
-  publish/legacy-lockout code complete; remaining local-cutover leaves are
-  acceptance-gated CUT-09, CUT-10, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27)
-- Revision: 75
+- Updated: 2026-07-12 (CUT-10/CUT-11/CUT-12/CUT-21 closed; CUT-14 physical
+  iOS directory/deep-link/process-death acceptance complete and Android
+  emulator OAuth remains; CUT-16 physical target-catalog acceptance exposed
+  and repaired a missing production migration; CUT-26 publish/legacy-lockout
+  code complete; remaining local-cutover leaves are acceptance-gated CUT-09,
+  CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27)
+- Revision: 76
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -671,10 +672,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   Android 15/API 35 Release install now reaches GitHub's real OpenAgents sign-in
   boundary; that pass also moved
   native auth, notification, fetch, and secure-store modules out of split
-  dynamic imports and into the embedded main bundle. Authenticated emulator
-  catalog/deep-link/process-death acceptance and the deferred physical-iPhone
-  confirmation remain open (owner decision 2026-07-12: no physical-Android
-  gate). See
+  dynamic imports and into the embedded main bundle. Physical iOS build 117
+  now renders three authenticated repository/session groups before ordinary
+  history, resolves an exact directory row and cold-launch deep link, persists
+  only the exact stable selection tuple, and restores it after CoreDevice
+  process replacement. That pass repaired the post-auth catalog refresh race,
+  unreachable drawer ordering, missing hosted coding-thread rows, and the
+  dedicated-thread catch-up lease race. Only authenticated Android-emulator
+  catalog/deep-link/process-death acceptance remains after its one-time owner
+  OAuth (owner decision 2026-07-12: no physical-Android gate). See
   [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 - CUT-15 now has one canonical Desktop registry carrying stable command id,
   typed intent, scope, readiness, authorization, arguments/results, default
@@ -1800,10 +1806,10 @@ universe.
 
 ## Canonical open issue set
 
-There are **15 open `roadmap:sol` records** as of 2026-07-12: #8547, #8566,
-#8574, #8597, #8636, #8676, #8677; open CUT leaves #8689, #8690, #8694,
-#8696, #8705, #8706, and #8707; plus the owner-acceptance-only Episode 250
-slice #8712. #8566 remains the sole program epic. No new Agent Computer child
+There are **13 open `roadmap:sol` records** as of 2026-07-12: #8547, #8566,
+#8574, #8597, #8636, #8676, #8677; open CUT leaves #8689, #8694,
+#8696, #8705, #8706, and #8707. Episode 250 slice #8712 is closed with its
+retained on-camera owner acceptance. #8566 remains the sole program epic. No new Agent Computer child
 issues are needed for the local Desktop/mobile cutover; closed #8719–#8721
 already own the bounded metering correction under #8547. GitHub sub-issue
 relationships place each leaf under its narrowest owning track or reliability
@@ -1845,8 +1851,8 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-10 is closed with its no-poll code and signed physical-iOS continuation receipt; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-14 awaits one emulator OAuth handoff plus authenticated emulator/physical-iOS receipts; CUT-16 awaits physical/assistive acceptance; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
-| **P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; only the stated on-camera owner-acceptance rung remains. Do not add implementation children or treat current provider-capacity changes as invalidating the historical named-provider receipt. |
+| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-10 is closed with its no-poll code and signed physical-iOS continuation receipt; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-14's physical-iOS receipt passes and only the authenticated Android-emulator OAuth/directory/deep-link/process-death handoff remains; CUT-16 awaits physical/assistive acceptance; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
+| **Closed P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; Episode 250 transcript 250 retains the on-camera owner acceptance and explicit mechanics-win verdict. Do not add implementation children or treat later provider-capacity changes as invalidating the historical named-provider receipt. |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
@@ -1909,7 +1915,7 @@ around and after that narrower installed-Desktop milestone.
    the recording phone is available, run the shared physical-iOS journey once
    and attach its evidence to CUT-09, CUT-10, CUT-14, CUT-16, CUT-25, #8676,
    and #8677 only where the observed steps satisfy each leaf's literal close
-   rule. #8712 holds no code files and needs only on-camera acceptance. CUT-26
+   rule. #8712 is closed from retained Episode 250 on-camera acceptance. CUT-26
    follows with its scripted signed publication and clean-machine lifecycle;
    CUT-27 closes last after every leaf and exception register is reconciled.
    Preserve the proven Pylon fleet core and migrations `0060`–`0062`; treat
