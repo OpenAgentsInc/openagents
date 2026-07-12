@@ -894,6 +894,25 @@ Verification: clean-machine-shaped harness plus named Codex/Claude live runs.
 Non-goals: cloud provider placement.  
 Close rule: merge with redacted readiness and runtime receipts.
 
+### 2026-07-11 implementation status
+
+The code-complete portion is on `main`. Commits `ff222f367b` and `c0e8362cc5`
+pin and probe the bundled Codex `0.144.1` and Claude Agent SDK `0.3.172`
+runtimes, fail closed on incompatible observations, resolve Codex from its
+package-owned optional native binary rather than ambient `PATH`, and project
+only redacted runtime readiness. Commits `655a0b772b` and `25b35b4d24` add the
+exact provider/model/account boundary plus an Effect Native composer selector:
+a named target is retained per conversation and cannot silently rotate to a
+different account, while an omitted target preserves the prior visible
+health-ordered automatic lane.
+
+The deterministic clean-machine-shaped Desktop verification is green (839
+tests, 4,397 assertions, and the complete built-Electron smoke with lifecycle
+teardown `active=0`). CUT-21 remains open only for public-safe named live-run
+receipts from one selected `gpt-5.6-sol` Codex account and one selected
+`claude-fable-5` Claude account. Fixture smoke must not be represented as live
+provider evidence.
+
 ---
 
 <!-- issue:CUT-22 -->
