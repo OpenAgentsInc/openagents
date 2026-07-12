@@ -223,6 +223,11 @@ This smoke deliberately used loopback and did not repoint production. Before a
 physical-phone turn, the operator must expose the daemon only through the
 approved control boundary, configure the Worker control URL/token, and verify
 that the owner has an active GitHub connection plus an owner-scoped Codex grant.
+The current OpenAgents mobile execution-target catalog does not yet advertise a
+`managed_cloud`/Agent Computer option; it exposes hosted, named Codex, and named
+Claude targets. The mobile start leg is therefore not owner-executable until
+that server-authorized target is projected into the catalog and composer. Do
+not ask the owner to look for a selector that the shipped source cannot render.
 
 ## Owner-Gated Receipts
 
