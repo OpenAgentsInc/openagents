@@ -167,6 +167,8 @@ const agentGraphFixture: NonNullable<DesktopShellState["agentGraph"]> = {
     elapsedLabel: "5s elapsed",
     terminalLabel: null,
     attentionLabel: null,
+    tokenTruth: "unreported",
+    tokensLabel: "Unreported",
     canControl: true,
   }],
   totalCount: 1,

@@ -5,7 +5,7 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.3",
+    version: "2026-07-12.4",
     contracts: [
       {
         contractId: "openagents_mobile.seam.identity.local_first_account_link.v1",
@@ -226,6 +226,46 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         ],
         verification:
           "Mobile coding navigation, authoritative Home, sync-host, full app, and typecheck suites; physical iOS/Android receipts remain open on #8694.",
+      },
+      {
+        contractId: "openagents_mobile.seam.agent_graph_inline_supervision.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "live agent supervision",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "sol-roadmap",
+          statedBy: "owner",
+          statedOn: "2026-07-12",
+        },
+        statement:
+          "The mobile conversation renders the confirmed canonical live-agent hierarchy inline above the transcript: root turns, delegate children, lifecycle status, current action, elapsed time, terminal reason, attention state, and per-node token attribution that is exact only when reported and loss-accounted otherwise. Attention auto-opens the stack, a tap selects/inspects the exact typed agent ref locally, at most 40 rows render with the exact hidden remainder named, and historical authority is labeled and never issues live controls.",
+        authorityBoundary:
+          "Rows come only from confirmed `openagents.live_agent_graph.v1` post-images in the exact live thread scope through the shared provider-neutral presentation model; no parallel graph shape exists. Selection and expansion are local view state; no graph row can dispatch runtime-control or execution-movement intents, and token truth is never synthesized from missing usage.",
+        seam: {
+          client: "apps/openagents-mobile/src/screens/khala-core.ts",
+          server: "apps/openagents-mobile/src/sync/mobile-sync-host-core.ts",
+        },
+        evidenceRefs: [
+          "packages/khala-sync-client/src/live-agent-graph-presentation.ts",
+          "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "docs/sol/2026-07-11-cut-12-live-agent-supervision-ui-receipt.md",
+          "github:OpenAgentsInc/openagents#8692",
+        ],
+        oracles: [
+          {
+            id: "mobile_agent_graph_inline_supervision",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-agent-graph.test.ts",
+            description:
+              "Proves confirmed hierarchy projection, attention auto-open, tap select/inspect with deterministic replacement fallback, the named 40-row bound, historical control refusal, and exact/loss-accounted token attribution.",
+          },
+        ],
+        verification:
+          "Mobile agent-graph oracle, shared presentation suite, mobile typecheck, and app test sweep; physical iOS/Android receipts remain open on #8692.",
       },
     ],
   };

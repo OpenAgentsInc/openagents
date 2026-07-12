@@ -34,6 +34,7 @@ export const runtimeAgentGraphDetailFields = (
   { label: "Session", value: row.sessionLabel },
   { label: "Worktree", value: row.worktreeLabel },
   { label: "Elapsed", value: row.elapsedLabel },
+  { label: "Tokens", value: row.tokensLabel },
   ...(row.toolLabel === null ? [] : [{ label: "Current action", value: row.toolLabel }]),
   ...(row.attentionLabel === null ? [] : [{ label: "Attention", value: row.attentionLabel }]),
   ...(row.terminalLabel === null ? [] : [{ label: "Terminal", value: row.terminalLabel }]),
@@ -47,6 +48,7 @@ const accessibilityLabel = (row: LiveAgentGraphPresentationRow): string =>
     row.attentionLabel,
     row.terminalLabel,
     row.elapsedLabel,
+    `Tokens ${row.tokensLabel}`,
     "Show agent details",
   ].filter((value): value is string => value !== null).join(". ")
 

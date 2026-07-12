@@ -1,5 +1,6 @@
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import {
+  Badge,
   Composer,
   Button,
   ComponentValueBinding,
@@ -15,7 +16,12 @@ import {
 } from "@effect-native/core"
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
 import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
-import { fleetRunActions } from "@openagentsinc/khala-sync-client"
+import {
+  fleetRunActions,
+  type LiveAgentGraphPresentation,
+  type LiveAgentGraphPresentationRow,
+  type LiveAgentGraphTone,
+} from "@openagentsinc/khala-sync-client"
 
 export type MobileTextScale = "normal" | "large" | "extra_large"
 
@@ -106,6 +112,10 @@ export interface KhalaState {
   readonly runtimeTurn: KhalaRuntimeTurn | null
   readonly runtimeControlSubmittingAction: MobileRuntimeControlAction | null
   readonly runtimeControlActionsAvailable: boolean
+  /** Confirmed canonical live-agent hierarchy for the active thread, or null. */
+  readonly agentGraph: LiveAgentGraphPresentation | null
+  readonly agentGraphExpanded: boolean
+  readonly selectedAgentRef: string | null
 }
 
 export const initialKhalaState: KhalaState = {
@@ -119,6 +129,9 @@ export const initialKhalaState: KhalaState = {
   runtimeTurn: null,
   runtimeControlSubmittingAction: null,
   runtimeControlActionsAvailable: false,
+  agentGraph: null,
+  agentGraphExpanded: false,
+  selectedAgentRef: null,
 }
 
 export interface KhalaTurnClient {
@@ -129,6 +142,11 @@ export interface KhalaTurnClient {
 
 export const KhalaDraftChanged = "KhalaDraftChanged"
 export const KhalaTurnSubmitted = "KhalaTurnSubmitted"
+export const AgentStackToggled = "AgentStackToggled"
+export const AgentRowSelected = "AgentRowSelected"
+
+/** Mobile renders at most this many hierarchy rows and names the remainder. */
+export const MOBILE_AGENT_GRAPH_MAX_ROWS = 40
 export const KHALA_TURN_FAILED_TEXT =
   "Khala could not respond just now. Check your connection and send that again."
 
@@ -305,6 +323,180 @@ const runtimeControlViews = (
   )]
 }
 
+const agentBadgeTone = (tone: LiveAgentGraphTone): "neutral" | "info" | "success" | "warn" | "danger" =>
+  tone === "active"
+    ? "info"
+    : tone === "attention"
+      ? "warn"
+      : tone === "success"
+        ? "success"
+        : tone === "danger"
+          ? "danger"
+          : "neutral"
+
+export const mobileAgentRowDetailFields = (
+  row: LiveAgentGraphPresentationRow,
+): ReadonlyArray<Readonly<{ label: string; value: string }>> => [
+  { label: "Status", value: row.statusLabel },
+  { label: "Provider", value: row.providerLabel },
+  { label: "Runtime", value: row.runtimeLabel },
+  { label: "Session", value: row.sessionLabel },
+  { label: "Worktree", value: row.worktreeLabel },
+  { label: "Elapsed", value: row.elapsedLabel },
+  { label: "Tokens", value: row.tokensLabel },
+  ...(row.toolLabel === null ? [] : [{ label: "Current action", value: row.toolLabel }]),
+  ...(row.attentionLabel === null ? [] : [{ label: "Attention", value: row.attentionLabel }]),
+  ...(row.terminalLabel === null ? [] : [{ label: "Terminal", value: row.terminalLabel }]),
+]
+
+const agentRowAccessibilityLabel = (
+  row: LiveAgentGraphPresentationRow,
+  selected: boolean,
+): string =>
+  [
+    row.label,
+    row.statusLabel,
+    row.toolLabel,
+    row.attentionLabel,
+    row.terminalLabel,
+    row.elapsedLabel,
+    `Tokens ${row.tokensLabel}`,
+    selected ? "Hide agent details" : "Show agent details",
+  ].filter((value): value is string => value !== null).join(". ")
+
+const agentDepthSpacing = (depth: number) =>
+  (["0", "2", "4", "6", "8", "10"] as const)[Math.min(depth, 5)] ?? "0"
+
+const agentInspectorView = (
+  row: LiveAgentGraphPresentationRow,
+): View =>
+  Stack(
+    {
+      key: `khala-agent-inspector-${row.agentRef}`,
+      direction: "column",
+      gap: "1",
+      style: {
+        width: "full",
+        marginLeft: agentDepthSpacing(row.depth + 1),
+        padding: "2",
+        borderColor: "border",
+        borderWidth: 1,
+        borderRadius: "md",
+      },
+      a11y: { role: "region", label: `Agent details, ${row.label}` },
+    },
+    mobileAgentRowDetailFields(row).flatMap((field, index) => [
+      Text({
+        key: `khala-agent-field-${row.agentRef}-${index}`,
+        content: `${field.label} · ${field.value}`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+    ]),
+  )
+
+/**
+ * Inline live-agent supervision stack rendered above the transcript. Rows are
+ * the shared provider-neutral hierarchy presentation; a tap selects/inspects
+ * the exact typed agent ref locally and never issues execution movement.
+ * Historical authority is labeled and stays inspection-only.
+ */
+export const agentStackViews = (
+  state: KhalaState,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => {
+  const graph = state.agentGraph
+  if (graph === null || graph.rows.length === 0) return []
+  const summary = `${graph.totalCount} agent${graph.totalCount === 1 ? "" : "s"} · ${graph.activeCount} active` +
+    (graph.attentionCount === 0 ? "" : ` · ${graph.attentionCount} need attention`)
+  const authorityDetail = graph.authority === "historical"
+    ? " · Historical import · controls unavailable"
+    : ""
+  return [Stack(
+    {
+      key: "khala-agent-stack",
+      direction: "column",
+      gap: "1",
+      style: {
+        width: "full",
+        padding: "2",
+        borderColor: "border",
+        borderWidth: 1,
+        borderRadius: "lg",
+      },
+      a11y: { role: "region", label: `${graph.authorityLabel} agent stack` },
+    },
+    [
+      Stack(
+        {
+          key: "khala-agent-stack-header",
+          direction: "row",
+          gap: "2",
+          align: "center",
+          style: { width: "full" },
+        },
+        [
+          Badge({
+            key: "khala-agent-stack-authority",
+            label: graph.authorityLabel,
+            tone: graph.authority === "live" ? "info" : "neutral",
+          }),
+          Button({
+            key: "khala-agent-stack-toggle",
+            label: `Agents · ${summary}`,
+            variant: "ghost",
+            onPress: IntentRef(AgentStackToggled, StaticPayload({})),
+            a11y: {
+              label: `${state.agentGraphExpanded ? "Collapse" : "Expand"} agent stack. ${summary}${authorityDetail}`,
+            },
+            style: { flex: 1, ...mobileInteractiveStyle(accessibility) },
+          }),
+        ],
+      ),
+      ...(state.agentGraphExpanded
+        ? graph.rows.flatMap(row => {
+            const selected = row.agentRef === state.selectedAgentRef
+            return [
+              Stack(
+                {
+                  key: `khala-agent-row-${row.agentRef}`,
+                  direction: "row",
+                  gap: "2",
+                  align: "center",
+                  style: { width: "full", paddingLeft: agentDepthSpacing(row.depth) },
+                },
+                [
+                  Badge({
+                    key: `khala-agent-status-${row.agentRef}`,
+                    label: row.statusLabel,
+                    tone: agentBadgeTone(row.tone),
+                  }),
+                  Button({
+                    key: `khala-agent-select-${row.agentRef}`,
+                    label: row.label,
+                    variant: selected ? "secondary" : "ghost",
+                    onPress: IntentRef(AgentRowSelected, StaticPayload({ agentRef: row.agentRef })),
+                    a11y: { label: agentRowAccessibilityLabel(row, selected) },
+                    style: { flex: 1, ...mobileInteractiveStyle(accessibility) },
+                  }),
+                ],
+              ),
+              ...(selected ? [agentInspectorView(row)] : []),
+            ]
+          })
+        : []),
+      ...(state.agentGraphExpanded && graph.hiddenCount > 0
+        ? [Text({
+            key: "khala-agent-stack-overflow",
+            content: `${graph.hiddenCount} more agents hidden by the mobile safety bound`,
+            variant: "caption",
+            color: "textMuted",
+          })]
+        : []),
+    ],
+  )]
+}
+
 const codingComposerContextViews = (
   session: MobileCodingComposerSession | null,
   attachmentStatus: Readonly<{
@@ -461,6 +653,7 @@ export const renderKhalaSurface = (
         variant: "body",
         color: "textMuted",
       }),
+      ...agentStackViews(state, accessibility),
       Transcript({
         key: "khala-transcript",
         messages: state.entries.map((entry): TranscriptMessage => ({

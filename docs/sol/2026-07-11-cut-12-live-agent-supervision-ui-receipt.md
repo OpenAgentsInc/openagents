@@ -98,3 +98,52 @@ CUT-12 remains open only for the required physical iOS and Android interaction
 receipts. The mounted component, built Desktop, and Electron smoke evidence do
 not substitute for those devices. The paired phone remains owner-deferred while
 it records video; no device completion is claimed here.
+
+## 2026-07-12 tranche — greenfield OpenAgents Mobile surface and exact token attribution
+
+The greenfield product app `apps/openagents-mobile` now renders the same
+canonical supervision boundary the deprecated Khala Mobile reference proved:
+
+- the mobile Sync host exposes the confirmed thread-scope
+  `live_agent_graph` reader (`createKhalaSyncLiveAgentGraph`) with the same
+  live-phase gating as the timeline;
+- the conversation adapter passes that reader into
+  `openKhalaConversationLive` and the confirmed-thread read, so every thread
+  snapshot carries the exact confirmed graph post-images — no parallel shape
+  and no poller;
+- the Effect Native conversation surface mounts one accessible agent stack
+  above the transcript: authority badge, summary toggle, parent/subagent
+  depth rows with status badges, attention auto-open, tap select/inspect of
+  the exact typed agent ref, deterministic replacement fallback through the
+  shared selector, an inline inspector with provider/runtime/session/
+  worktree/elapsed/token/action/attention/terminal facts, and a named 40-row
+  remainder;
+- no runtime-control or execution-movement intent is reachable from a graph
+  row, and historical authority renders `Historical import · controls
+  unavailable`.
+
+Exact token attribution is now part of the shared presentation contract.
+`projectLiveAgentGraphPresentation` accepts a typed per-node attribution
+ledger (the shape produced by the desktop-local fold's `usageAttributions()`);
+each row carries `tokenTruth` and `tokensLabel` where `exact` requires every
+recorded attribution to hold a complete well-formed usage split, a mix names
+the exact recorded total plus the unreported turn count, and missing or
+malformed claims stay loss-accounted `Unreported` — never synthesized. Both
+inspectors (Desktop table, mobile stack) and both accessible row labels
+surface the token fact. The live Desktop and mobile paths currently provide no
+attribution ledger, so every live row honestly reads `Unreported` until the
+CUT-11 local-fold wiring or a gateway attribution source lands.
+
+Verification (2026-07-12, worktree at `origin/main` 375a8997ff):
+
+- Shared presentation focus: 7 pass, 0 fail, 16 expectations.
+- Full `@openagentsinc/khala-sync-client`: 192 pass, 3 opt-in live skips,
+  0 fail, 12,803 expectations.
+- Mobile agent-graph oracle: 6 pass, 0 fail, 32 expectations.
+- Full OpenAgents Mobile: 104 pass, 0 fail, 533 expectations; mobile
+  typecheck passes.
+- Full OpenAgents Desktop: 985 pass, 3 skip, 0 fail, 5,275 expectations;
+  Desktop typecheck passes; built Electron smoke passes end-to-end.
+- Rendering proof is deterministic view-program oracles plus the built
+  Electron smoke; no new pixel/screenshot claim is made for the mobile
+  surface, and physical iOS/Android receipts remain open.

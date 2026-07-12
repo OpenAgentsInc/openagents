@@ -12,6 +12,30 @@ export type LiveAgentGraphTone =
   | "danger"
   | "muted"
 
+/**
+ * One typed per-node token attribution input. The canonical
+ * `openagents.live_agent_graph.v1` snapshot deliberately carries no usage
+ * fields, so token truth arrives as a separate typed ledger (for example the
+ * desktop-local fold's `usageAttributions()`). `usageTruth: "exact"` is
+ * honored only when the reported usage split is complete and well-formed;
+ * anything else is presented as loss-accounted, never synthesized.
+ */
+export type LiveAgentGraphTokenUsage = Readonly<{
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  totalTokens: number
+}>
+
+export type LiveAgentGraphTokenAttribution = Readonly<{
+  agentRef: string
+  usageTruth: "exact" | "unreported"
+  usage: LiveAgentGraphTokenUsage | null
+}>
+
+export type LiveAgentGraphTokenTruth = "exact" | "partial" | "unreported"
+
 export type LiveAgentGraphPresentationRow = Readonly<{
   agentRef: string
   graphRef: string
@@ -29,6 +53,8 @@ export type LiveAgentGraphPresentationRow = Readonly<{
   elapsedLabel: string
   terminalLabel: string | null
   attentionLabel: string | null
+  tokenTruth: LiveAgentGraphTokenTruth
+  tokensLabel: string
   canControl: boolean
 }>
 
@@ -112,6 +138,71 @@ const terminalLabel = (node: LiveAgentGraphNode): string | null =>
       ? `Terminal state unavailable · ${titleCase(node.terminal.reason)}`
       : null
 
+const TOKENS_UNREPORTED_LABEL = "Unreported"
+
+const formatCount = (value: number): string =>
+  String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+
+const isExactUsage = (usage: LiveAgentGraphTokenUsage | null): usage is LiveAgentGraphTokenUsage =>
+  usage !== null &&
+  [
+    usage.inputTokens,
+    usage.cachedInputTokens,
+    usage.outputTokens,
+    usage.reasoningTokens,
+    usage.totalTokens,
+  ].every(value => Number.isSafeInteger(value) && value >= 0)
+
+type TokenFacts = Readonly<{ tokenTruth: LiveAgentGraphTokenTruth; tokensLabel: string }>
+
+const UNREPORTED_TOKEN_FACTS: TokenFacts = {
+  tokenTruth: "unreported",
+  tokensLabel: TOKENS_UNREPORTED_LABEL,
+}
+
+/**
+ * Deterministic per-node token facts. A node is `exact` only when every
+ * attribution recorded for it carries a complete well-formed usage split;
+ * a mix of exact and unreported turns is presented as `partial` with the
+ * exact remainder named; malformed exact claims are demoted to unreported.
+ */
+const tokenFactsByAgent = (
+  attributions: ReadonlyArray<LiveAgentGraphTokenAttribution>,
+): Map<string, TokenFacts> => {
+  const grouped = new Map<string, { exact: LiveAgentGraphTokenUsage[]; unreported: number }>()
+  for (const attribution of attributions) {
+    const entry = grouped.get(attribution.agentRef) ?? { exact: [], unreported: 0 }
+    if (attribution.usageTruth === "exact" && isExactUsage(attribution.usage)) {
+      entry.exact.push(attribution.usage)
+    } else {
+      entry.unreported += 1
+    }
+    grouped.set(attribution.agentRef, entry)
+  }
+  const facts = new Map<string, TokenFacts>()
+  for (const [agentRef, entry] of grouped) {
+    if (entry.exact.length === 0) {
+      facts.set(agentRef, UNREPORTED_TOKEN_FACTS)
+      continue
+    }
+    const input = entry.exact.reduce((sum, usage) => sum + usage.inputTokens, 0)
+    const output = entry.exact.reduce((sum, usage) => sum + usage.outputTokens, 0)
+    const total = entry.exact.reduce((sum, usage) => sum + usage.totalTokens, 0)
+    if (entry.unreported === 0) {
+      facts.set(agentRef, {
+        tokenTruth: "exact",
+        tokensLabel: `${formatCount(input)} in · ${formatCount(output)} out · ${formatCount(total)} total · exact`,
+      })
+      continue
+    }
+    facts.set(agentRef, {
+      tokenTruth: "partial",
+      tokensLabel: `${formatCount(total)} total from ${entry.exact.length} exact turn${entry.exact.length === 1 ? "" : "s"} · ${entry.unreported} unreported`,
+    })
+  }
+  return facts
+}
+
 const toolLabel = (node: LiveAgentGraphNode): string | null =>
   node.currentTool.state === "known"
     ? `${node.currentTool.toolName} · ${titleCase(node.currentTool.status)}`
@@ -141,8 +232,10 @@ const rowFor = (
   depth: number,
   siblingIndex: number,
   nowMs: number,
+  tokenFacts: Map<string, TokenFacts>,
 ): LiveAgentGraphPresentationRow => {
   const relation = node.parent.kind === "root" ? "root" : "subagent"
+  const tokens = tokenFacts.get(node.agentRef) ?? UNREPORTED_TOKEN_FACTS
   return {
     agentRef: node.agentRef,
     graphRef: graph.graphRef,
@@ -160,6 +253,8 @@ const rowFor = (
     elapsedLabel: elapsedLabel(node, nowMs),
     terminalLabel: terminalLabel(node),
     attentionLabel: attentionLabel(node),
+    tokenTruth: tokens.tokenTruth,
+    tokensLabel: tokens.tokensLabel,
     canControl: authority === "live" && !terminalStatuses.has(node.status),
   }
 }
@@ -170,11 +265,13 @@ export const projectLiveAgentGraphPresentation = (
     authority?: LiveAgentGraphAuthority
     maxRows?: number
     nowMs?: number
+    tokenAttributions?: ReadonlyArray<LiveAgentGraphTokenAttribution>
   }> = {},
 ): LiveAgentGraphPresentation => {
   const authority = options.authority ?? "live"
   const maxRows = Math.max(1, Math.min(2_000, Math.trunc(options.maxRows ?? 200)))
   const nowMs = options.nowMs ?? Date.now()
+  const tokenFacts = tokenFactsByAgent(options.tokenAttributions ?? [])
   const byParent = new Map<string, LiveAgentGraphNode[]>()
   const roots: LiveAgentGraphNode[] = []
   for (const node of graph.nodes) {
@@ -192,7 +289,7 @@ export const projectLiveAgentGraphPresentation = (
   const rows: LiveAgentGraphPresentationRow[] = []
   const visit = (node: LiveAgentGraphNode, depth: number, siblingIndex: number): void => {
     if (rows.length >= maxRows) return
-    rows.push(rowFor(graph, node, authority, depth, siblingIndex, nowMs))
+    rows.push(rowFor(graph, node, authority, depth, siblingIndex, nowMs, tokenFacts))
     const children = byParent.get(node.agentRef) ?? []
     children.forEach((child, index) => visit(child, depth + 1, index))
   }

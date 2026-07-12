@@ -172,6 +172,9 @@ export {
   type LiveAgentGraphAuthority,
   type LiveAgentGraphPresentation,
   type LiveAgentGraphPresentationRow,
+  type LiveAgentGraphTokenAttribution,
+  type LiveAgentGraphTokenTruth,
+  type LiveAgentGraphTokenUsage,
   type LiveAgentGraphTone,
 } from "./live-agent-graph-presentation.js"
 

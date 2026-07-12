@@ -7,6 +7,7 @@ import type {
   KhalaConversationLiveSnapshot,
   KhalaSyncAgentTimeline,
   KhalaSyncConversation,
+  KhalaSyncLiveAgentGraph,
   KhalaSyncRuntimeCommands,
   KhalaSyncRuntimeInteractions,
 } from "@openagentsinc/khala-sync-client"
@@ -30,6 +31,8 @@ export type MobileConversationThreadSummary = ConfirmedChatThread
 export type MobileConversationThread = MobileConversationThreadSummary & Readonly<{
   messages: ReadonlyArray<MobileConversationMessage>
   timeline?: ConfirmedAgentTimelineSnapshot | null
+  /** Confirmed canonical `live_agent_graph` post-images for this exact thread scope. */
+  graphs?: KhalaConversationLiveSnapshot["graphs"]
 }>
 
 export type MobileConversationMutationResult =
@@ -87,6 +90,7 @@ export type MobileConversationSelection =
 export type MobileConversationAdapterOptions = Readonly<{
   conversation: KhalaSyncConversation
   timeline?: KhalaSyncAgentTimeline
+  agentGraph?: KhalaSyncLiveAgentGraph
   runtime?: KhalaSyncRuntimeCommands
   interactions?: KhalaSyncRuntimeInteractions
   randomId?: () => string
@@ -135,6 +139,7 @@ export const makeMobileConversationHost = (
         ...snapshot.thread,
         messages: snapshot.messages,
         timeline: snapshot.timeline,
+        graphs: snapshot.graphs,
       }
 
   const readConfirmedThread = async (
@@ -145,15 +150,20 @@ export const makeMobileConversationHost = (
       options.conversation.threadStatus(threadRef).phase !== "live"
     ) return null
     try {
-      const [threads, messages, timeline] = await Promise.all([
+      const [threads, messages, timeline, graphSnapshot] = await Promise.all([
         run(options.conversation.listConfirmedThreads()),
         run(options.conversation.listConfirmedMessages(threadRef)),
         options.timeline === undefined
           ? Promise.resolve(null)
           : run(options.timeline.snapshotForThread(threadRef)),
+        options.agentGraph === undefined
+          ? Promise.resolve(null)
+          : run(options.agentGraph.snapshotForThread(threadRef)),
       ])
       const summary = threads.find(thread => thread.threadRef === threadRef)
-      return summary === undefined ? null : { ...summary, messages, timeline }
+      return summary === undefined
+        ? null
+        : { ...summary, messages, timeline, graphs: graphSnapshot?.graphs ?? [] }
     } catch {
       return null
     }
@@ -185,6 +195,7 @@ export const makeMobileConversationHost = (
       subscription = await openKhalaConversationLive({
         conversation: options.conversation,
         timeline: options.timeline,
+        ...(options.agentGraph === undefined ? {} : { agentGraph: options.agentGraph }),
         subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
         generation: subscriptionSequence,
         threadRef: input.threadRef,
@@ -275,6 +286,7 @@ export const makeMobileConversationHost = (
       subscription = await openKhalaConversationLive({
         conversation: options.conversation,
         timeline: options.timeline,
+        ...(options.agentGraph === undefined ? {} : { agentGraph: options.agentGraph }),
         subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
         generation: subscriptionSequence,
         threadRef: input.threadRef,
@@ -368,6 +380,7 @@ export const makeMobileConversationHost = (
       subscription = await openKhalaConversationLive({
         conversation: options.conversation,
         timeline: options.timeline,
+        ...(options.agentGraph === undefined ? {} : { agentGraph: options.agentGraph }),
         subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
         generation: subscriptionSequence,
         threadRef: input.threadRef,
@@ -430,6 +443,7 @@ export const makeMobileConversationHost = (
       subscription = await openKhalaConversationLive({
         conversation: options.conversation,
         timeline: options.timeline,
+        ...(options.agentGraph === undefined ? {} : { agentGraph: options.agentGraph }),
         subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
         generation: subscriptionSequence,
         threadRef: input.threadRef,
@@ -543,6 +557,7 @@ export const makeMobileConversationHost = (
         const subscription = await openKhalaConversationLive({
           conversation: options.conversation,
           timeline: options.timeline,
+          ...(options.agentGraph === undefined ? {} : { agentGraph: options.agentGraph }),
           subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
           generation: subscriptionSequence,
           threadRef,
@@ -685,13 +700,15 @@ export const makeMobileConversationHost = (
 export const selectMobileConversation = async (input: Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline?: () => KhalaSyncAgentTimeline | null
+  agentGraph?: () => KhalaSyncLiveAgentGraph | null
   runtime?: () => KhalaSyncRuntimeCommands | null
   interactions?: () => KhalaSyncRuntimeInteractions | null
   preferredThreadRef?: string
-  adapter?: Omit<MobileConversationAdapterOptions, "conversation" | "interactions" | "runtime" | "timeline">
+  adapter?: Omit<MobileConversationAdapterOptions, "agentGraph" | "conversation" | "interactions" | "runtime" | "timeline">
 }>): Promise<MobileConversationSelection> => {
   const conversation = input.conversation()
   const timeline = input.timeline?.() ?? undefined
+  const agentGraph = input.agentGraph?.() ?? undefined
   const runtime = input.runtime?.() ?? undefined
   const interactions = input.interactions?.() ?? undefined
   if (conversation === null || conversation.personalStatus().phase !== "live") {
@@ -702,6 +719,7 @@ export const selectMobileConversation = async (input: Readonly<{
     ...(runtime === undefined ? {} : { runtime }),
     ...(interactions === undefined ? {} : { interactions }),
     ...(timeline === undefined ? {} : { timeline }),
+    ...(agentGraph === undefined ? {} : { agentGraph }),
     ...input.adapter,
   })
   try {

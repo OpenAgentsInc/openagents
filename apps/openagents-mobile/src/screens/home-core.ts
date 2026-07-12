@@ -17,7 +17,12 @@ import {
   Toolbar,
   type View,
 } from "@effect-native/core"
-import type { ScopeSyncState } from "@openagentsinc/khala-sync-client"
+import {
+  newestLiveAgentGraph,
+  projectLiveAgentGraphPresentation,
+  resolveLiveAgentGraphSelection,
+  type ScopeSyncState,
+} from "@openagentsinc/khala-sync-client"
 
 import type {
   MobileCodingDirectory,
@@ -37,10 +42,13 @@ import type {
 } from "../conversation/mobile-conversation"
 
 import {
+  AgentRowSelected,
+  AgentStackToggled,
   initialKhalaState,
   khalaHandlers,
   khalaIntentDefinitions,
   defaultMobileAccessibilityProfile,
+  MOBILE_AGENT_GRAPH_MAX_ROWS,
   mobileInteractiveStyle,
   normalizeMobileAccessibilityProfile,
   renderKhalaSurface,
@@ -235,6 +243,11 @@ export const RuntimeTurnControlRequested = defineIntent(
     runRef: Schema.String,
   }),
 )
+export const AgentStackToggledIntent = defineIntent(AgentStackToggled, EmptyPayload)
+export const AgentRowSelectedIntent = defineIntent(
+  AgentRowSelected,
+  Schema.Struct({ agentRef: Schema.String }),
+)
 
 export const homeIntentDefinitions = [
   DrawerToggled,
@@ -249,6 +262,8 @@ export const homeIntentDefinitions = [
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
+  AgentStackToggledIntent,
+  AgentRowSelectedIntent,
   ...khalaIntentDefinitions.map((definition) => defineIntent(definition.name, definition.payload)),
 ] as const
 
@@ -526,7 +541,26 @@ const confirmedKhalaState = (
   turnCounter = 0,
   interactionActionsAvailable = false,
   runtimeControlActionsAvailable = false,
+  previousGraphView: Readonly<{
+    agentGraphExpanded: boolean
+    selectedAgentRef: string | null
+  }> | null = null,
 ): KhalaState => {
+  const confirmedGraph = newestLiveAgentGraph(thread?.graphs ?? [])
+  const agentGraph = confirmedGraph === null
+    ? null
+    : projectLiveAgentGraphPresentation(confirmedGraph, {
+        maxRows: MOBILE_AGENT_GRAPH_MAX_ROWS,
+      })
+  // Attention auto-opens the stack; an explicit prior expansion is preserved.
+  const agentGraphExpanded = agentGraph !== null &&
+    ((previousGraphView?.agentGraphExpanded ?? false) || agentGraph.attentionCount > 0)
+  // Selection survives rapid graph replacement through the deterministic
+  // shared fallback; no row is auto-inspected before the first explicit tap.
+  const selectedAgentRef = agentGraph === null ||
+      previousGraphView === null || previousGraphView.selectedAgentRef === null
+    ? null
+    : resolveLiveAgentGraphSelection(agentGraph, previousGraphView.selectedAgentRef)
   const runtimeEntries = (thread?.timeline?.events ?? []).flatMap<KhalaState["entries"][number]>(event => {
     const item = event.item
     if (item == null) return []
@@ -607,6 +641,9 @@ const confirmedKhalaState = (
         },
     runtimeControlSubmittingAction: null,
     runtimeControlActionsAvailable,
+    agentGraph,
+    agentGraphExpanded,
+    selectedAgentRef,
   }
 }
 
@@ -635,6 +672,12 @@ const withConfirmedThread = (
       state.khala.turnCounter,
       state.khala.interactionActionsAvailable,
       state.khala.runtimeControlActionsAvailable,
+      state.activeThreadRef === thread.threadRef
+        ? {
+            agentGraphExpanded: state.khala.agentGraphExpanded,
+            selectedAgentRef: state.khala.selectedAgentRef,
+          }
+        : null,
     ),
     draft: state.khala.draft,
   },
@@ -1060,6 +1103,26 @@ export const makeHomeHandlers = (
       ? Effect.void
       : Effect.promise(options.sessionActions.signOut),
     SurfaceModeSelected: (payload) => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: payload.mode as SurfaceMode })),
+    [AgentStackToggled]: () => SubscriptionRef.update(state, current => ({
+      ...current,
+      khala: {
+        ...current.khala,
+        agentGraphExpanded: !current.khala.agentGraphExpanded,
+      },
+    })),
+    [AgentRowSelected]: (payload: Readonly<{ agentRef: string }>) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        khala: {
+          ...current.khala,
+          // A second tap on the inspected row closes its inspector; any other
+          // tap resolves through the shared deterministic selection fallback.
+          selectedAgentRef: current.khala.agentGraph === null ||
+              current.khala.selectedAgentRef === payload.agentRef
+            ? null
+            : resolveLiveAgentGraphSelection(current.khala.agentGraph, payload.agentRef),
+        },
+      })),
     ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
     RuntimeInteractionOptionToggled: synced?.RuntimeInteractionOptionToggled ?? (() => Effect.void),
     RuntimeInteractionDecisionSubmitted: synced?.RuntimeInteractionDecisionSubmitted ?? (() => Effect.void),
@@ -1141,6 +1204,8 @@ export interface HomeProgramHandle {
       action: MobileRuntimeControlAction
       runRef: string
     }>) => void
+    readonly toggleAgentStack: () => void
+    readonly selectAgentRow: (agentRef: string) => void
   }
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
@@ -1214,6 +1279,11 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           controlTurn: input => fireRef(IntentRef(
             "RuntimeTurnControlRequested",
             StaticPayload(input),
+          )),
+          toggleAgentStack: fire(AgentStackToggled),
+          selectAgentRow: agentRef => fireRef(IntentRef(
+            AgentRowSelected,
+            StaticPayload({ agentRef }),
           )),
         },
         sync: {

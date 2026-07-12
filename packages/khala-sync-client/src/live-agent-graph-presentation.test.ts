@@ -146,4 +146,67 @@ describe("contract khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v
     const current = decodeLiveAgentGraphEntity({ ...old, graphRef: "graph.presentation.2", cursor: 2 })
     expect(newestLiveAgentGraph([current, old])?.graphRef).toBe("graph.presentation.2")
   })
+
+  test("attributes exact per-node token usage and loss-accounts everything else", () => {
+    const result = projectLiveAgentGraphPresentation(graph([
+      node("agent.root", { kind: "root" }),
+      node("agent.child", { kind: "agent", agentRef: "agent.root" }),
+      node("agent.silent", { kind: "agent", agentRef: "agent.root" }),
+    ]), {
+      nowMs: Date.parse(now),
+      tokenAttributions: [
+        {
+          agentRef: "agent.root",
+          usageTruth: "exact",
+          usage: { inputTokens: 1_200, cachedInputTokens: 100, outputTokens: 340, reasoningTokens: 60, totalTokens: 1_600 },
+        },
+        {
+          agentRef: "agent.root",
+          usageTruth: "exact",
+          usage: { inputTokens: 800, cachedInputTokens: 0, outputTokens: 160, reasoningTokens: 40, totalTokens: 1_000 },
+        },
+        {
+          agentRef: "agent.child",
+          usageTruth: "exact",
+          usage: { inputTokens: 500, cachedInputTokens: 0, outputTokens: 100, reasoningTokens: 0, totalTokens: 600 },
+        },
+        { agentRef: "agent.child", usageTruth: "unreported", usage: null },
+      ],
+    })
+    const byRef = new Map(result.rows.map(row => [row.agentRef, row]))
+    expect(byRef.get("agent.root")).toMatchObject({
+      tokenTruth: "exact",
+      tokensLabel: "2,000 in · 500 out · 2,600 total · exact",
+    })
+    expect(byRef.get("agent.child")).toMatchObject({
+      tokenTruth: "partial",
+      tokensLabel: "600 total from 1 exact turn · 1 unreported",
+    })
+    expect(byRef.get("agent.silent")).toMatchObject({
+      tokenTruth: "unreported",
+      tokensLabel: "Unreported",
+    })
+  })
+
+  test("never synthesizes token truth from malformed exact claims", () => {
+    const result = projectLiveAgentGraphPresentation(graph([
+      node("agent.root", { kind: "root" }),
+    ]), {
+      nowMs: Date.parse(now),
+      tokenAttributions: [
+        // An "exact" claim without the reported split is a contradiction:
+        // it must demote to loss-accounted, never render invented numbers.
+        { agentRef: "agent.root", usageTruth: "exact", usage: null },
+        {
+          agentRef: "agent.root",
+          usageTruth: "exact",
+          usage: { inputTokens: Number.NaN, cachedInputTokens: 0, outputTokens: -5, reasoningTokens: 0, totalTokens: 10 },
+        },
+      ],
+    })
+    expect(result.rows[0]).toMatchObject({
+      tokenTruth: "unreported",
+      tokensLabel: "Unreported",
+    })
+  })
 })

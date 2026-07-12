@@ -72,6 +72,7 @@ const selectAuthenticatedMobileExperience = async (
   const conversation = await selectMobileConversation({
     conversation: () => syncHost.conversation(),
     timeline: () => syncHost.timeline(),
+    agentGraph: () => syncHost.agentGraph(),
     runtime: () => syncHost.runtime(),
     interactions: () => syncHost.interactions(),
     ...(preferredThreadRef === undefined ? {} : { preferredThreadRef }),

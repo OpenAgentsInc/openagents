@@ -110,9 +110,37 @@ describe("contract openagents_desktop.agent_graph.pointer_keyboard_focus_equival
     expect(JSON.stringify(nodeByKey(view, "runtime-agent-focus-agent.desktop.child")?.onPress)).toContain("focus_agent")
     expect((nodeByKey(view, "runtime-agent-select-agent.desktop.child")?.a11y as { label?: string }).label).toContain("Approval needs attention")
     expect(runtimeAgentGraphDetailFields(presentation.rows[1]!).map(field => field.label)).toEqual([
-      "Status", "Provider", "Runtime", "Session", "Worktree", "Elapsed", "Attention",
+      "Status", "Provider", "Runtime", "Session", "Worktree", "Elapsed", "Tokens", "Attention",
     ])
     expect(JSON.stringify((view as unknown as Node).interactions)).toContain("DesktopAgentAction")
+  })
+
+  test("token attribution stays exact when reported and loss-accounted otherwise", () => {
+    const attributed = projectLiveAgentGraphPresentation(graph, {
+      nowMs: Date.parse(now),
+      tokenAttributions: [{
+        agentRef: "agent.desktop.child",
+        usageTruth: "exact",
+        usage: { inputTokens: 2_100, cachedInputTokens: 300, outputTokens: 450, reasoningTokens: 50, totalTokens: 2_600 },
+      }],
+    })
+    const fieldsFor = (agentRef: string) =>
+      runtimeAgentGraphDetailFields(attributed.rows.find(row => row.agentRef === agentRef)!)
+    expect(fieldsFor("agent.desktop.child")).toContainEqual({
+      label: "Tokens",
+      value: "2,100 in · 450 out · 2,600 total · exact",
+    })
+    expect(fieldsFor("agent.desktop.root")).toContainEqual({
+      label: "Tokens",
+      value: "Unreported",
+    })
+    const view = runtimeAgentGraphView({
+      graph: attributed,
+      expanded: true,
+      selectedAgentRef: "agent.desktop.child",
+    })
+    expect((nodeByKey(view, "runtime-agent-select-agent.desktop.child")?.a11y as { label?: string }).label)
+      .toContain("2,600 total · exact")
   })
 
   test("collapsed hierarchy omits rows and historical authority omits live focus", () => {

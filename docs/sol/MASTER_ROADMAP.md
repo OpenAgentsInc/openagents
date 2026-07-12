@@ -12,7 +12,7 @@
   CUT-18 typed editor/document lifecycle, exclusive-create Save As, rename,
   conflict, and ref-only reload recovery complete; CUT-19 fenced Git diff,
   discard confirmation, and composer-context review loop complete)
-- Revision: 73
+- Revision: 74
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -601,6 +601,13 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   post-image, uses one bounded subscription to hydrate an existing thread,
   exposes the same hierarchy/inspector through typed pointer, keyboard, and
   screen-reader actions, and bounds it to 200 rows without adding a poller.
+  The greenfield OpenAgents Mobile app now mounts the same shared-model agent
+  stack above its transcript from the exact confirmed thread scope (attention
+  auto-open, tap select/inspect, deterministic replacement fallback, named
+  40-row remainder, historical control refusal), and the shared presentation
+  carries per-node token attribution: exact only when every recorded turn
+  reports a complete split, partial mixes named exactly, everything else
+  loss-accounted — never synthesized from the usage-free canonical graph.
   Only physical-iOS and Android-emulator receipts remain open (owner
   decision 2026-07-12: nothing gates on physical Android; emulator
   evidence satisfies every Android leg).

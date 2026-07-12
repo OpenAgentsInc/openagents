@@ -815,9 +815,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   than a timeline/graph poller, and dispatches pointer, keyboard, and screen-
   reader inspect/focus actions through one schema-checked intent carrying the
   stable agent ref. Historical graphs remain inspection-only on both clients.
+  The greenfield OpenAgents Mobile app now carries the same boundary: its Sync
+  host exposes the confirmed thread-scope graph reader, the conversation
+  adapter forwards `live_agent_graph` post-images into the thread snapshot, and
+  the Effect Native surface mounts one accessible agent stack above the
+  transcript with attention auto-open, tap select/inspect of the exact typed
+  agent ref, deterministic replacement fallback, a named 40-row remainder, and
+  no runtime-control intent reachable from a graph row. Per-node token
+  attribution presents only typed truth: a node is `exact` solely when every
+  recorded attribution carries a complete well-formed usage split, a mix names
+  the exact recorded total plus the unreported turn count, and everything else
+  is loss-accounted `Unreported` — token facts are never synthesized from the
+  canonical graph, which deliberately carries no usage fields.
   This CUT-12 client boundary is enforced by
   `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`,
   `clients/khala-mobile/tests/live-agent-graph-panel.test.tsx`,
+  `apps/openagents-mobile/tests/mobile-agent-graph.test.ts`,
   `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`, and
   `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`; physical-
   device equivalence remains pending.

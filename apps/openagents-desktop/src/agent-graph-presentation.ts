@@ -12,5 +12,8 @@ export {
 export type {
   LiveAgentGraphPresentation,
   LiveAgentGraphPresentationRow,
+  LiveAgentGraphTokenAttribution,
+  LiveAgentGraphTokenTruth,
+  LiveAgentGraphTokenUsage,
   LiveAgentGraphTone,
 } from "@openagentsinc/khala-sync-client"
