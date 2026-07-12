@@ -81,6 +81,21 @@ import {
 } from "./mcp-config-contract.ts"
 import { openMcpConfigStore } from "./mcp-config-host.ts"
 import {
+  DiagnosticsActionChannel,
+  DiagnosticsExportChannel,
+  DiagnosticsGatherChannel,
+  decodeDiagnosticsAction,
+} from "./diagnostics-contract.ts"
+import { makeDiagnosticsHost } from "./diagnostics-host.ts"
+import type { DiagnosticsInputs } from "./diagnostics-report.ts"
+import {
+  DesktopPreferencesGetChannel,
+  DesktopPreferencesResetChannel,
+  DesktopPreferencesUpdateChannel,
+  decodeDesktopPreferencesPatch,
+} from "./desktop-preferences-contract.ts"
+import { openDesktopPreferencesStore } from "./desktop-preferences-host.ts"
+import {
   FABLE_LOCAL_FIXTURE_ACCOUNT,
   FABLE_LOCAL_MODEL,
   makeFableLocalRuntime,
@@ -1172,6 +1187,91 @@ ipcMain.handle(McpConfigToggleChannel, (_event, value: unknown) => {
     ? { state: "rejected", reason: "invalid toggle request" }
     : mcpConfigStore.toggle(request.name, request.enabled)
 })
+
+// Typed durable preferences (CUT-24 #8704). The store owns the private JSON
+// file under userData (mode 0600), migrating on read. Every mutation crosses
+// through the migrator so a hostile patch is field-normalized, never trusted.
+const preferencesStore = openDesktopPreferencesStore(
+  path.join(app.getPath("userData"), "preferences.json"),
+)
+ipcMain.handle(DesktopPreferencesGetChannel, () => preferencesStore.snapshot())
+ipcMain.handle(DesktopPreferencesUpdateChannel, (_event, value: unknown) =>
+  preferencesStore.update(decodeDesktopPreferencesPatch(value)))
+ipcMain.handle(DesktopPreferencesResetChannel, () => preferencesStore.reset())
+
+// Diagnostics / watchdog (CUT-24 #8704). Collect live health from the existing
+// operability surfaces into the PUBLIC-SAFE report; the export is always
+// redacted before it touches disk. Recovery actions map only to safe, typed
+// paths (provider re-probe + re-gathers); restart_runtime/reconnect_sync have
+// no safe typed restart yet and honestly report "no recovery action available".
+const collectDiagnosticsInputs = async (): Promise<DiagnosticsInputs> => {
+  const providerList = await providerAccounts.listProviderAccounts().catch(() => null)
+  const syncStatus = hostLifecycle.sync()?.status() ?? null
+  const workspace = workspaceSnapshot()
+  const mcp = mcpConfigStore.list()
+  const capabilities = desktopRuntimeCapabilities({
+    sessionLocalState: desktopSessionState,
+    syncLocalState: syncStatus?.state === "local_ready" ? "ready" : "unavailable",
+    syncNetworkPhase: syncStatus?.syncPhase ?? "closed",
+  })
+  return {
+    appVersion: app.getVersion(),
+    generatedAt: Date.now(),
+    provider:
+      providerList === null || providerList.ok !== true
+        ? { state: "unavailable", reason: providerList === null ? "list failed" : providerList.reason }
+        : { state: "ok", accounts: providerList.accounts.map((account: { ref: string; readiness: string }) => ({ ref: account.ref, readiness: account.readiness })) },
+    runtimeGateway:
+      hostLifecycle.runtime() === null
+        ? { state: "absent" }
+        : {
+            state: "present",
+            lifecycle: "ready",
+            sessionPhase: syncStatus?.state === "local_ready" ? "session_ready" : "unavailable",
+            capabilities: capabilities.map((capability) => ({ id: capability.id, state: capability.state })),
+          },
+    sync:
+      syncStatus === null
+        ? { state: "unobserved" }
+        : { state: syncStatus.state, syncPhase: syncStatus.syncPhase, pendingMutationCount: syncStatus.pendingMutationCount },
+    workspace:
+      workspace === null
+        ? { state: "none" }
+        : { state: "selected", git: workspace.git, entryCount: workspace.entries.length },
+    pty: { state: "available", sessionCount: terminalHost.snapshot().sessions.length },
+    extensions:
+      mcp.state === "ok"
+        ? { state: "ok", enabledCount: mcp.servers.filter((server) => server.enabled).length, totalCount: mcp.servers.length, dropped: mcp.dropped }
+        : { state: "unavailable", message: mcp.message },
+  }
+}
+const diagnosticsHost = makeDiagnosticsHost({
+  collectInputs: collectDiagnosticsInputs,
+  exportDir: path.join(app.getPath("userData"), "diagnostics"),
+  recovery: {
+    // Safe, typed recovery: re-probe every connected provider account, then
+    // the renderer re-gathers so readiness flips without a restart.
+    reprobe_providers: async () => {
+      try {
+        await codexPreflight.probeAll("diagnostics_recovery")
+        return { ok: true, notice: "Providers re-checked" }
+      } catch {
+        return { ok: false, notice: "Provider re-check failed" }
+      }
+    },
+    // These are pure re-gathers of already-fresh sources — safe no-op recovery.
+    refresh: async () => ({ ok: true, notice: "Refreshed" }),
+    refresh_workspace: async () => ({ ok: true, notice: "Workspace refreshed" }),
+    reload_extensions: async () => ({ ok: true, notice: "Extensions reloaded" }),
+  },
+})
+ipcMain.handle(DiagnosticsGatherChannel, () => diagnosticsHost.gather())
+ipcMain.handle(DiagnosticsExportChannel, () => diagnosticsHost.exportRedacted())
+ipcMain.handle(DiagnosticsActionChannel, (_event, value: unknown) => {
+  const action = decodeDiagnosticsAction(value)
+  return action === null ? { ok: false, notice: "Unknown action" } : diagnosticsHost.runAction(action)
+})
+
 ipcMain.handle(FableLocalAvailabilityChannel, () => fableLocal.availability())
 // Image file picker (capability I1): open the native dialog in MAIN, read the
 // chosen images from disk here (never the renderer), bound size + count, and
@@ -2291,6 +2391,55 @@ const smokeMcpAddServer = `(async () => {
   }
 })()`
 
+// CUT-24 (#8704): the diagnostics/watchdog panel renders live health rows, its
+// redacted export produces a public-safe notice (no path/secret), and the
+// durable preferences IPC round-trips (update → read → reset).
+const smokeDiagnosticsAndPreferences = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const screen = document.querySelector('[data-en-key="diagnostics-screen"]')
+  if (screen === null) return { ok: false, reason: "diagnostics panel never mounted" }
+  // The boot gather populates rows; wait for the six domain rows to render.
+  const domains = ["provider", "runtimeGateway", "sync", "workspace", "pty", "extensions"]
+  const deadline = Date.now() + 6000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="diagnostics-row-provider"]') === null) await wait(50)
+  const rows = domains.map((d) => document.querySelector('[data-en-key="diagnostics-row-' + d + '"]'))
+  const rowsRendered = rows.every((row) => row !== null)
+  const levels = domains.map((d) => {
+    const badge = document.querySelector('[data-en-key="diagnostics-row-' + d + '-level"]')
+    return badge === null ? null : badge.textContent
+  })
+  // No rendered diagnostics text may carry a path, url, or token-like blob.
+  const texts = Array.from(screen.querySelectorAll('*')).map((el) => el.textContent || "")
+  const secretLike = texts.some((t) => /(?:^|[\\s=(])[~.]*\\/[\\w.]|:\\/\\/|Bearer|sk-/.test(t))
+  // Redacted export → public-safe notice (never a saved path).
+  const exportBtn = document.querySelector('[data-en-key="diagnostics-export"]')
+  if (exportBtn === null) return { ok: false, reason: "export button missing" }
+  exportBtn.click()
+  const noticeDeadline = Date.now() + 5000
+  while (Date.now() < noticeDeadline && document.querySelector('[data-en-key="diagnostics-notice"]') === null) await wait(50)
+  const notice = document.querySelector('[data-en-key="diagnostics-notice"]')
+  const noticeText = notice === null ? "" : (notice.textContent || "")
+  const noticeSafe = notice !== null && !/(?:^|[\\s=(])[~.]*\\/[\\w.]|:\\/\\//.test(noticeText)
+  // Preferences durable IPC round-trip: update → read → reset.
+  const bridge = window.openagentsDesktop
+  let prefRoundTrip = false
+  if (bridge && bridge.preferences) {
+    await bridge.preferences.update({ appearance: { density: "compact" } })
+    const afterUpdate = await bridge.preferences.get()
+    const reset = await bridge.preferences.reset()
+    prefRoundTrip = afterUpdate && afterUpdate.appearance && afterUpdate.appearance.density === "compact" &&
+      reset && reset.appearance && reset.appearance.density === "comfortable"
+  }
+  return {
+    ok: rowsRendered && !secretLike && noticeSafe && prefRoundTrip,
+    rowsRendered,
+    levels,
+    secretLike,
+    noticeSafe,
+    prefRoundTrip,
+  }
+})()`
+
 const smokeCloseSettings = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const button = document.querySelector('[data-en-key="settings-back"]')
@@ -3261,6 +3410,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // form + IPC; it persists to the real userData store and lists.
         await step("settings-mcp-add-and-list", smokeMcpAddServer)
         await captureShot(window, "04b-settings-mcp-server")
+        // CUT-24 (#8704): diagnostics panel renders live health + redacted
+        // export notice (no secrets), and preferences durable IPC round-trips.
+        await step("diagnostics-and-preferences", smokeDiagnosticsAndPreferences)
+        await captureShot(window, "04c-diagnostics-panel")
         await step("settings-connect-awaiting-browser-FIXTURE", smokeConnectCodex)
         await captureShot(window, "05-settings-awaiting-browser-fixture")
         await step("settings-back-to-chat", smokeCloseSettings)

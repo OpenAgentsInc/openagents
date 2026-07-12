@@ -156,6 +156,16 @@ import {
 } from "./settings.ts"
 
 import {
+  diagnosticsIntents,
+  diagnosticsView,
+  initialDiagnosticsState,
+  makeDiagnosticsHandlers,
+  unavailableDiagnosticsBridge,
+  type DiagnosticsBridge,
+  type DiagnosticsState,
+} from "./diagnostics.ts"
+
+import {
   addComposerImage,
   canAttachMoreImages,
   composerImageDataUrl,
@@ -313,6 +323,8 @@ export type DesktopShellState = Readonly<{
   loopProofs: number
   /** Codex account reconnect state, shown by the "settings" workspace (see ./settings.ts). */
   settings: SettingsState
+  /** Diagnostics/watchdog panel, shown under the "settings" workspace (CUT-24). */
+  diagnostics: DiagnosticsState
   history: HistoryWorkspaceState
   /** Read-only fleet accounts projection (see ./fleet-workspace.ts). */
   fleet: FleetWorkspaceState
@@ -383,6 +395,7 @@ export const initialDesktopShellState = (
   fleetDeployment: "not_requested",
   loopProofs: 0,
   settings: initialSettingsState(),
+  diagnostics: initialDiagnosticsState(),
   history: emptyHistoryWorkspaceState(),
   fleet: emptyFleetWorkspaceState(),
   terminal: emptyTerminalWorkspaceState(),
@@ -565,6 +578,7 @@ export const desktopShellIntents = [
   DesktopHistoryShortcutHintsChanged,
   DesktopHistoryConversationPreviewed,
   ...settingsIntents,
+  ...diagnosticsIntents,
   ...historyWorkspaceIntents,
   ...fleetWorkspaceIntents,
   ...terminalWorkspaceIntents,
@@ -1138,8 +1152,10 @@ export const makeDesktopShellHandlers = (
   // threads it here AND into its own deferred-command dispatch so a duplicate
   // rejection and a keybinding notice cancel one another's pending auto-clear.
   noticeController: CommandNoticeController = makeCommandNoticeController(state),
+  diagnosticsBridge: DiagnosticsBridge = unavailableDiagnosticsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge)
+  const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
     state,
     workspaceHost.browser ?? unavailableWorkspaceBrowserBridge,
@@ -1211,6 +1227,7 @@ export const makeDesktopShellHandlers = (
     })
   return ({
   ...settingsHandlers,
+  ...diagnosticsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
   ...makeTerminalWorkspaceHandlers(state, terminalBridge),
   ...gitPanelHandlers,
@@ -3193,7 +3210,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
         ],
       ),
     ],

@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.42",
+    version: "2026-07-12.1",
     contracts: [
       {
         contractId: "openagents_desktop.chrome.command_notice_is_transient_toast.v1",
@@ -2637,6 +2637,165 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the adversarial PTY host suite and the renderer intent-loop suite as programmatic/UI oracles, plus the built-Electron smoke terminal PTY receipt step and its lifecycle-teardown disposal check.",
+      },
+      {
+        contractId: "openagents_desktop.preferences.typed_durable_migratable_schemas.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "app preferences & operability",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "issue", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Theme, density, font, reduced motion, keybindings, provider defaults, privacy, notifications, and update preferences have typed durable schemas/migrations.",
+        authorityBoundary:
+          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT a mutable field (the app is the fixed Protoss-blue khalaTheme; recorded, not switchable) and keybindings keep their existing typed store (desktop-command-bindings). Density and font genuinely resize the app through a scaled theme applied at mount; reduced-motion resolves to a root attribute the CSS honors (explicit override wins over the OS). Provider-defaults/privacy/notifications/update-prefs are durable and IPC-round-tripped; each is consumed where a real effect already exists. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
+        evidenceRefs: [
+          "https://github.com/OpenAgentsInc/openagents/issues/8704",
+          "apps/openagents-desktop/src/desktop-preferences-contract.ts",
+          "apps/openagents-desktop/src/desktop-preferences-host.ts",
+          "apps/openagents-desktop/src/desktop-preferences-effects.ts",
+          "apps/openagents-desktop/src/renderer/app.css",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+        ],
+        oracles: [
+          {
+            id: "preferences.migration_and_host_and_effects",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/desktop-preferences.test.ts",
+            description:
+              "The migration chain (current/defaults/legacy_v0/merged/downgraded) is total and value-preserving, the host round-trips to a mode-0600 file and self-heals legacy bytes, and the effects module scales the theme (font/density) and maps reduced-motion to the root attribute with defaults returning the identity theme.",
+          },
+          {
+            id: "preferences.durable_ipc_round_trip.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke round-trips preferences over the real IPC (update density→compact, read back compact, reset→comfortable) in the diagnostics-and-preferences step.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the preferences migration/host/effects suite and the Electron smoke preferences round-trip.",
+      },
+      {
+        contractId: "openagents_desktop.accessibility.core_flows_meet_wcag_aa.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "accessibility",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "issue", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Desktop/mobile meet keyboard, focus, screen-reader, contrast, dynamic type, target-size, and reduced-motion acceptance for core coding flows.",
+        authorityBoundary:
+          "This contract binds the DESKTOP surface only. It guarantees: WCAG 2.1 AA text contrast on the theme's primary/secondary/status text roles across all four surfaces; a high-contrast, clearly-visible focus ring (focus token ≈ 7.9:1 on background); reduced-motion honored both via the OS prefers-reduced-motion media query AND an explicit in-app override; and accessible names on every interactive node in the diagnostics/preferences operability surfaces. Disabled text is treated per the WCAG 1.4.3 exemption. Mobile accessibility for core coding flows is a SEPARATE app (apps/openagents-mobile) and is NOT covered by this contract — it remains the named residual on #8704.",
+        evidenceRefs: [
+          "https://github.com/OpenAgentsInc/openagents/issues/8704",
+          "apps/openagents-desktop/tests/accessibility.test.ts",
+          "apps/openagents-desktop/src/renderer/app.css",
+          "apps/openagents-desktop/docs/2026-07-11-cut24-accessibility-audit.md",
+        ],
+        oracles: [
+          {
+            id: "accessibility.contrast_and_reduced_motion",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/accessibility.test.ts",
+            description:
+              "Computes WCAG relative-luminance contrast for the theme text roles and asserts AA (primary/secondary/status ≥ 4.5:1, faint/accent ≥ 3:1, focus ring high-contrast); asserts app.css honors both the OS prefers-reduced-motion media query and the explicit data-en-reduce-motion override.",
+          },
+          {
+            id: "accessibility.diagnostics_accessible_names",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/diagnostics.test.ts",
+            description:
+              "Every interactive control in the diagnostics panel carries a non-empty accessible name (Button label), each health row is a labelled group region, and no rendered text leaks a path/url/token.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the accessibility contrast/reduced-motion suite and the diagnostics accessible-name suite. Mobile a11y is tracked separately as the #8704 residual.",
+      },
+      {
+        contractId: "openagents_desktop.notifications.refs_only_and_authoritative_clear.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "notifications & attention",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "issue", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Notifications carry stable authorized refs and never prompt/code/secrets; attention clears only after authoritative acknowledgement.",
+        authorityBoundary:
+          "The desktop notification-analog is the confirmed live-agent-graph attention projection (attentionCount / attentionLabel) plus the typed notification preference payload. Attention surfaces only enum-derived labels and public-safe refs (never the underlying question/approval prompt text), and it reflects the newest confirmed graph cursor only — a stale lower-cursor snapshot can neither raise nor clear attention optimistically. The notification preference payload is boolean-only, with no content field a prompt/secret could ride in on. The in-transcript question/approval CARD (which does carry prompt text) is a separate detail surface and is never routed into a notification payload.",
+        evidenceRefs: [
+          "https://github.com/OpenAgentsInc/openagents/issues/8704",
+          "apps/openagents-desktop/tests/notification-attention.test.ts",
+          "apps/openagents-desktop/src/renderer/runtime-interactions.ts",
+          "apps/openagents-desktop/src/agent-graph-presentation.ts",
+        ],
+        oracles: [
+          {
+            id: "notifications.refs_only_authoritative_clear",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/notification-attention.test.ts",
+            description:
+              "An approval/question attention projects an enum-derived label (not the prompt), the serialized projection carries no prompt/secret text, newestLiveAgentGraph picks the higher-cursor confirmed graph so attention clears only on the authoritative snapshot (and a stale snapshot never overrides it), and the notification preference payload rejects any content string.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the notification/attention suite; the authoritative-clearing of interactive decisions is additionally exercised by runtime-interactions.test.ts.",
+      },
+      {
+        contractId: "openagents_desktop.diagnostics.watchdog_redacted_export_and_recovery.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "diagnostics & recovery",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "issue", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Diagnostics/watchdog show provider, Runtime Gateway, Sync, workspace, PTY, and extension health with redacted export, restart, and recovery actions.",
+        authorityBoundary:
+          "The diagnostics panel projects public-safe health for all six domains (provider, Runtime Gateway, Sync, workspace, PTY, extensions). Health rows carry only a bounded domain/level enum, a short public-safe summary, and public-safe refs — never a path, email, prompt, token, or url (structural privacy). The export is ALWAYS redacted before it touches disk (a secret-pattern scrubber runs even if an upstream builder regresses), and the returned notice never carries the saved path. Recovery actions map only to safe typed paths: provider re-probe re-checks accounts, and refresh/refresh_workspace/reload_extensions re-gather fresh sources. PTY health is honestly 'unavailable' until the CUT-20 (#8700) PTY host merges, and restart_runtime/reconnect_sync report 'no recovery action available' until a safe typed restart exists — surfaced honestly, never faked.",
+        evidenceRefs: [
+          "https://github.com/OpenAgentsInc/openagents/issues/8704",
+          "apps/openagents-desktop/src/diagnostics-contract.ts",
+          "apps/openagents-desktop/src/diagnostics-report.ts",
+          "apps/openagents-desktop/src/diagnostics-host.ts",
+          "apps/openagents-desktop/src/renderer/diagnostics.ts",
+        ],
+        oracles: [
+          {
+            id: "diagnostics.builder_redaction_and_host",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/diagnostics.test.ts",
+            description:
+              "The report builder maps each domain to the right level under fault injection (provider outage, closed/unobserved sync, gateway lifecycle/capability degradation, git-unavailable workspace, dropped MCP rows) and never emits a path/token; redaction scrubs a leaked secret and keeps the report schema-valid + export-safe; and the host writes an owner-only redacted bundle whose notice carries no saved path.",
+          },
+          {
+            id: "diagnostics.view_and_handler_loop",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/diagnostics.test.ts",
+            description:
+              "The panel renders a row + level badge per domain, refresh/export/recovery intents drive a fake bridge (a successful recovery re-gathers), a corrupt gather resolves to unavailable (never a throw), and no rendered text leaks a path/token.",
+          },
+          {
+            id: "diagnostics.renders_and_exports.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke opens Settings, asserts all six diagnostics health rows render with level badges, asserts no rendered diagnostics text is secret-like, clicks Export and asserts a public-safe notice appears (no saved path).",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the diagnostics builder/redaction/host suite, the diagnostics view/handler suite, and the Electron smoke diagnostics-and-preferences step.",
       },
     ],
   };

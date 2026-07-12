@@ -61,7 +61,11 @@ import {
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
 import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
-import { openagentsDesktopTheme } from "./theme.ts"
+import {
+  migrateDesktopPreferences,
+  type DesktopPreferences,
+} from "../desktop-preferences-contract.ts"
+import { preferencesRootAttributes, themeForPreferences } from "../desktop-preferences-effects.ts"
 import { selectDesktopChatHostSelection } from "./runtime-conversation.ts"
 import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
 import {
@@ -206,10 +210,32 @@ type DesktopBridge = Readonly<{
     remove?: (value: unknown) => Promise<unknown>
     toggle?: (value: unknown) => Promise<unknown>
   }>
+  /** Typed durable preferences (CUT-24 #8704). */
+  preferences?: Readonly<{
+    get?: () => Promise<unknown>
+    update?: (value: unknown) => Promise<unknown>
+    reset?: () => Promise<unknown>
+  }>
+  /** Diagnostics / watchdog (CUT-24 #8704). */
+  diagnostics?: Readonly<{
+    gather?: () => Promise<unknown>
+    exportRedacted?: () => Promise<unknown>
+    runAction?: (value: unknown) => Promise<unknown>
+  }>
 }>
 
 const readBridge = (): DesktopBridge | undefined =>
   (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
+
+/**
+ * Load the durable preferences via the bridge, defensively migrated so a
+ * missing preload or a malformed payload resolves to valid defaults (identity
+ * theme, OS-deferred motion). CUT-24 #8704.
+ */
+const loadDesktopPreferences = async (): Promise<DesktopPreferences> => {
+  const raw = await (readBridge()?.preferences?.get?.() ?? Promise.resolve(undefined)).catch(() => undefined)
+  return migrateDesktopPreferences(raw).preferences
+}
 
 const workspaceBrowserBridge: WorkspaceBrowserBridge = {
   workspaceTree: (value) => readBridge()?.workspaceTree?.(value) ?? unavailableWorkspaceBrowserBridge.workspaceTree(value),
@@ -701,7 +727,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const pick = readBridge()?.fableLocal?.pickImages
           return typeof pick === "function" ? await pick() : []
         },
-      }, terminalRendererBridge, noticeController),
+      }, terminalRendererBridge, noticeController, {
+        // Diagnostics/watchdog bridge (CUT-24 #8704). Absent preload degrades to
+        // an unavailable projection; the renderer schema-decodes every result.
+        gather: () => readBridge()?.diagnostics?.gather?.() ?? Promise.resolve(null),
+        runAction: (action) => readBridge()?.diagnostics?.runAction?.(action) ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
+        exportRedacted: () => readBridge()?.diagnostics?.exportRedacted?.() ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
+      }),
     )
     if (typeof bridge?.workspaceSubscribe === "function") {
       const unsubscribeWorkspace = bridge.workspaceSubscribe(change => {
@@ -1196,8 +1228,16 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       window.removeEventListener("scroll", onHistoryTimelineScroll, true)
       if(historySelectionTimer!==null)window.clearTimeout(historySelectionTimer)
     }, { once: true })
+    // Durable preferences → real presentation (CUT-24 #8704): density + font
+    // scale the shared theme through the token pipeline; reduced-motion resolves
+    // to a root data attribute the app CSS honors. Defaults are identity, so the
+    // common path (and the no-preload smoke path) is unchanged.
+    const preferences = yield* Effect.promise(loadDesktopPreferences)
+    for (const [name, value] of Object.entries(preferencesRootAttributes(preferences))) {
+      document.documentElement.setAttribute(name, value)
+    }
     const renderer = makeDomRenderer({
-      theme: openagentsDesktopTheme,
+      theme: themeForPreferences(preferences),
       hostDrivers: [makeStubCodeEditorDriver()],
     })
     yield* renderer.mount(root, program.viewStream, report)
@@ -1219,6 +1259,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // box simply does not render.
     void Effect.runPromise(
       registry.dispatch(resolveIntentRef(IntentRef("FleetRefreshRequested", StaticPayload(null)))),
+    )
+    // One boot-time diagnostics gather so the watchdog panel has live health the
+    // first time Settings is opened (CUT-24 #8704). Event-driven, not a poll.
+    void Effect.runPromise(
+      registry.dispatch(resolveIntentRef(IntentRef("DesktopDiagnosticsRefreshRequested", StaticPayload(null)))),
     )
     // Restored history lands where the reader left it: window AROUND the
     // saved item (scrolled to it) or bottom-anchored at the newest items.

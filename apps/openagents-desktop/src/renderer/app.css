@@ -963,3 +963,28 @@ textarea {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Explicit user reduced-motion override (CUT-24 #8704). The reduced-motion
+   preference resolves to a root data attribute (see desktop-preferences-effects):
+   `always` sets data-en-reduce-motion="true" (force reduced motion regardless of
+   the OS setting), `never` sets "false" (force full motion, winning over the OS
+   media query above), and `system` leaves the attribute off to defer to the OS.
+   The "true" block mirrors the media query so an in-app toggle works even when
+   the OS setting is unset. */
+:root[data-en-reduce-motion="true"] *,
+:root[data-en-reduce-motion="true"] *::before,
+:root[data-en-reduce-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-en-reduce-motion="false"] *,
+  :root[data-en-reduce-motion="false"] *::before,
+  :root[data-en-reduce-motion="false"] *::after {
+    scroll-behavior: auto;
+    transition-duration: revert !important;
+    animation-duration: revert !important;
+  }
+}

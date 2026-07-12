@@ -132,6 +132,17 @@ import {
   decodeMcpConfigToggleRequest,
 } from "./mcp-config-contract.ts"
 import {
+  DiagnosticsActionChannel,
+  DiagnosticsExportChannel,
+  DiagnosticsGatherChannel,
+  decodeDiagnosticsAction,
+} from "./diagnostics-contract.ts"
+import {
+  DesktopPreferencesGetChannel,
+  DesktopPreferencesResetChannel,
+  DesktopPreferencesUpdateChannel,
+} from "./desktop-preferences-contract.ts"
+import {
   UsageLedgerEventChannel,
   UsageLedgerSnapshotChannel,
   decodeUsageLedgerSnapshot,
@@ -591,6 +602,32 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return request === null
         ? Promise.resolve({ state: "rejected", reason: "invalid toggle request" })
         : ipcRenderer.invoke(McpConfigToggleChannel, request)
+    },
+  },
+  /**
+   * Typed durable preferences (CUT-24 #8704). Pass-through invoke; the renderer
+   * schema-decodes every result. `update` sends a partial patch; main
+   * field-normalizes it through the migrator, so an out-of-contract value can
+   * never persist.
+   */
+  preferences: {
+    get: () => ipcRenderer.invoke(DesktopPreferencesGetChannel),
+    update: (value: unknown) => ipcRenderer.invoke(DesktopPreferencesUpdateChannel, value),
+    reset: () => ipcRenderer.invoke(DesktopPreferencesResetChannel),
+  },
+  /**
+   * Diagnostics / watchdog (CUT-24 #8704). Health gather + always-redacted
+   * export + bounded recovery actions. The action name is validated here to the
+   * bounded enum before it crosses; main re-validates.
+   */
+  diagnostics: {
+    gather: () => ipcRenderer.invoke(DiagnosticsGatherChannel),
+    exportRedacted: () => ipcRenderer.invoke(DiagnosticsExportChannel),
+    runAction: (value: unknown) => {
+      const action = decodeDiagnosticsAction(value)
+      return action === null
+        ? Promise.resolve({ ok: false, notice: "Unknown action" })
+        : ipcRenderer.invoke(DiagnosticsActionChannel, action)
     },
   },
   commands: {
