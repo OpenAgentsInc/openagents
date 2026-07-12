@@ -16,6 +16,10 @@ COPY desktop-dist ./desktop-dist
 # when OA_PYLON_RELEASES_DIST=/app/pylon-dist is set (powers Pylon default-on OTA).
 COPY pylon-dist ./pylon-dist
 COPY desktop-ota ./desktop-ota
+# Independent signed Electron feed. The directory is intentionally empty in
+# source; release automation stages only the bounded descriptor + signed
+# manifest envelope before a deliberate release deploy.
+COPY openagents-desktop-dist ./openagents-desktop-dist
 
 EXPOSE 8080
 

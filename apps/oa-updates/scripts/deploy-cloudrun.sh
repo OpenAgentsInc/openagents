@@ -14,6 +14,7 @@ set -euo pipefail
 #   export OA_SEED_PLATFORM=ios
 #   export OA_SEED_EXPO_CLIENT_PATH=/app/dist/expo-client.json
 #   export OA_DESKTOP_RELEASES_DIST=/app/desktop-dist
+#   export OA_OPENAGENTS_DESKTOP_RELEASE_DIST=/app/openagents-desktop-dist
 #
 # Code signing (#8530 / CFG-14): the OTA manifest signing key reaches the
 # service as the OA_SIGNING_KEY env var mounted from GCP Secret Manager

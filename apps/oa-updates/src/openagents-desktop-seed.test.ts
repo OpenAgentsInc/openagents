@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 import { createUpdatesServer } from "./server.ts"
 import { seedOpenAgentsDesktopRelease } from "./openagents-desktop-seed.ts"
 import { sha256 } from "./openagents-desktop-release.ts"
 
 describe("OpenAgents Desktop release seed", () => {
+  test("release image copies an independent seed directory", () => {
+    const dockerfile = readFileSync(path.resolve(import.meta.dir, "../Dockerfile"), "utf8")
+    expect(dockerfile).toContain("COPY openagents-desktop-dist ./openagents-desktop-dist")
+  })
   test("registers exact manifest/signature bytes from a bounded descriptor", async () => {
     const manifestBytes = new TextEncoder().encode(JSON.stringify({
       schema: "openagents.desktop.update_manifest.v1",
