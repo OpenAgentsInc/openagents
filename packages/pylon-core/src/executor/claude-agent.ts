@@ -23,6 +23,7 @@ export type ClaudeAgentReadinessState =
   | "credentials_missing"
   | "platform_unsupported"
   | "disabled_by_config"
+  | "provider_disabled"
 
 export type ClaudeAgentReadiness = {
   schema: typeof CLAUDE_AGENT_READINESS_SCHEMA

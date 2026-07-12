@@ -25,6 +25,11 @@ import {
 import { hashPylonAccountRef } from "../src/account-registry"
 import { recordQuotaBlock } from "../src/account-quota-ledger"
 import { assertPublicProjectionSafe } from "../src/state"
+import {
+  claudeProviderDisabledFailure,
+  clearClaudeAccountHealth,
+  recordClaudeProviderDisabled,
+} from "@openagentsinc/pylon-core/custody/claude-account-health-ledger"
 
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
 const CWD = join(import.meta.dir, "..")
@@ -424,6 +429,68 @@ describe("pylon account usage", () => {
       expect(JSON.stringify(projection)).not.toContain(home)
       assertPublicProjectionSafe(projection)
     })
+  })
+
+  test("provider-disabled Claude health overrides credential-presence readiness until cleared", async () => {
+    await withHome(async (home) => {
+      const claudeHome = join(home, "claude-disabled")
+      await mkdir(claudeHome, { recursive: true })
+      await writeFile(join(claudeHome, "claude-oauth-token"), "fixture-token\n")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await writeFile(
+        summary.paths.config,
+        `${JSON.stringify({
+          dev: {
+            accounts: [
+              { ref: "claude-disabled", provider: "claude_agent", home: claudeHome },
+            ],
+          },
+        })}\n`,
+      )
+      const accountRefHash = hashPylonAccountRef("claude_agent", "claude-disabled")
+      await recordClaudeProviderDisabled(summary, accountRefHash)
+
+      const blocked = await collectPylonAccountsList(summary, {
+        env: { PYLON_HOME: home },
+      })
+      const account = blocked.accounts.find(entry => entry.accountRef === "claude-disabled")
+      expect(account?.readiness).toMatchObject({
+        state: "provider_disabled",
+        capabilityRefs: [],
+        blockerRefs: ["blocker.pylon.claude_account.provider_disabled"],
+      })
+      const blockedUsage = await collectPylonAccountsUsage(
+        summary,
+        parsePylonAccountsUsageArgs(["--account", "claude-disabled", "--json"]),
+        { env: { PYLON_HOME: home } },
+      )
+      expect(blockedUsage.accounts[0]?.truth.localSession).toMatchObject({
+        state: "missing",
+        usage: null,
+        blockerRefs: ["blocker.pylon.claude_account.provider_disabled"],
+      })
+      expect(JSON.stringify(blocked)).not.toContain("fixture-token")
+
+      await clearClaudeAccountHealth(summary, accountRefHash)
+      const recovered = await collectPylonAccountsList(summary, {
+        env: { PYLON_HOME: home },
+      })
+      expect(
+        recovered.accounts.find(entry => entry.accountRef === "claude-disabled")
+          ?.readiness.state,
+      ).toBe("ready")
+    })
+  })
+
+  test("classifies only the bounded provider-disabled Claude refusal", () => {
+    expect(
+      claudeProviderDisabledFailure(
+        new Error("Your organization has disabled Claude subscription access for Claude Code"),
+      ),
+    ).toBe(true)
+    expect(claudeProviderDisabledFailure(new Error("network unavailable"))).toBe(false)
   })
 
   test("lists only named isolated Grok custody with bounded not-measured readiness", async () => {

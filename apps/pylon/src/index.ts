@@ -121,6 +121,11 @@ import {
   type PylonAccountsUsageArgs,
 } from "./account-usage.js"
 import { reportDirectLocalCodexUsage } from "./codex-direct-local-usage-reporter.js"
+import {
+  claudeProviderDisabledFailure,
+  clearClaudeAccountHealth,
+  recordClaudeProviderDisabled,
+} from "@openagentsinc/pylon-core/custody/claude-account-health-ledger"
 import { collectPylonOperatorAccountStatus } from "./account-status.js"
 import {
   createCodexFleetOffloadPlan,
@@ -973,6 +978,7 @@ async function runAccountsUsageRefresh(
   }
   let attemptedCount = 0
   let skippedGrok = false
+  const failureBlockerRefs: string[] = []
   const prompt = "Reply with exactly: ok."
   for (const target of targets) {
     if (target.provider === "grok") {
@@ -1023,17 +1029,28 @@ async function runAccountsUsageRefresh(
             usageStateSummary: summary,
           },
         )
+        await clearClaudeAccountHealth(summary, target.accountRefHash)
       }
-    } catch {
+    } catch (error) {
+      if (
+        target.provider === "claude_agent" &&
+        claudeProviderDisabledFailure(error)
+      ) {
+        await recordClaudeProviderDisabled(summary, target.accountRefHash)
+        failureBlockerRefs.push("blocker.pylon.claude_account.provider_disabled")
+      }
       // Readiness and missing provider snapshots are reported in the final
       // JSON truth tiers; refresh failure must not leak raw provider errors.
     }
   }
   return {
     attemptedCount,
-    blockerRefs: skippedGrok
-      ? ["blocker.pylon.accounts_usage.grok_refresh_not_measured"]
-      : [],
+    blockerRefs: [
+      ...(skippedGrok
+        ? ["blocker.pylon.accounts_usage.grok_refresh_not_measured"]
+        : []),
+      ...failureBlockerRefs,
+    ],
   }
 }
 

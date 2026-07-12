@@ -41,6 +41,7 @@ import {
   codexAccountHealthBlocksReadiness,
   loadCodexAccountHealthRecord,
 } from "./codex-account-health-ledger.js"
+import { loadClaudeAccountHealthRecord } from "./claude-account-health-ledger.js"
 
 export const PYLON_ACCOUNT_USAGE_STORE_SCHEMA = "openagents.pylon.account_usage_store.v0.3"
 export const PYLON_ACCOUNTS_LIST_SCHEMA = "openagents.pylon.accounts_list.v0.3"
@@ -894,15 +895,28 @@ export async function readinessForTarget(
     }
   }
   const config = await loadClaudeAgentConfig(summary)
+  const baseReadiness = await probeClaudeAgentReadiness({
+    config,
+    env: effectiveEnv,
+    localSessionProbe: () => target.account
+      ? pylonClaudeAccountHomeHasAuth(target.home)
+      : pathIsDirectory(target.home),
+  })
+  const health = await loadClaudeAccountHealthRecord(summary, target.accountRefHash)
+  if (health?.reason === "provider_disabled") {
+    return {
+      provider: "claude_agent",
+      readiness: {
+        ...baseReadiness,
+        state: "provider_disabled",
+        capabilityRefs: [],
+        blockerRefs: ["blocker.pylon.claude_account.provider_disabled"],
+      },
+    }
+  }
   return {
     provider: "claude_agent",
-    readiness: await probeClaudeAgentReadiness({
-      config,
-      env: effectiveEnv,
-      localSessionProbe: () => target.account
-        ? pylonClaudeAccountHomeHasAuth(target.home)
-        : pathIsDirectory(target.home),
-    }),
+    readiness: baseReadiness,
   }
 }
 
@@ -1183,6 +1197,14 @@ function localSessionTruth(entry: PylonAccountUsageStoreEntry | undefined, now: 
     blockerRefs: [],
   }
 }
+
+const providerDisabledLocalSessionTruth = (): LocalSessionTruthProjection => ({
+  state: "missing",
+  observedAt: null,
+  ageSeconds: null,
+  usage: null,
+  blockerRefs: ["blocker.pylon.claude_account.provider_disabled"],
+})
 
 function refFromPlatformValue(value: unknown): string | null {
   if (typeof value === "string" && value.trim().length > 0) {
@@ -1517,7 +1539,11 @@ export async function collectPylonAccountsUsage(
     ).readiness
     const entry = store.accounts[target.accountRefHash]
     const provider = providerTruth(entry, now)
-    const local = localSessionTruth(entry, now)
+    const local =
+      target.provider === "claude_agent" &&
+      readiness.state === "provider_disabled"
+        ? providerDisabledLocalSessionTruth()
+        : localSessionTruth(entry, now)
     const platformForAccount = clonePlatformTruth(platform)
     accounts.push({
       provider: target.provider,

@@ -127,6 +127,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   from the caller-owned Pylon account registry. Automatic real-work fanout must
   not route through the display/default Codex account or omit `--account-ref`;
   that would write rollouts under the operator's default `~/.codex` home.
+  Named Claude readiness is provider-proven, not inferred permanently from a
+  credential directory: an exact provider-disabled refusal removes the local
+  execution capability and suppresses stale local-session availability until
+  a later successful bounded provider probe clears that health record. Failed
+  Claude turns never manufacture a zero-token successful-usage observation,
+  and public projections expose only the bounded provider-disabled blocker.
   A runtime-intent supervisor rooted at an explicit Pylon home must also bound
   implicit sibling-home discovery to that Pylon's account root; it may widen
   discovery only through an explicit account-home root and must never infer

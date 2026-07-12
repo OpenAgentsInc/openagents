@@ -283,6 +283,15 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
         outputTokens = usage.outputTokens
         totalCostUsd = numberOrZero(message.total_cost_usd)
         callbacks.onUsage?.({ ...usage, totalCostUsd })
+        // SDKResultMessage is discriminated by subtype, not `is_error`: the
+        // published SDK types leave `is_error` as a plain boolean on BOTH
+        // success and error variants, and real success records can carry true
+        // (for example after a permission denial inside an otherwise settled
+        // turn). Never throw the nonsensical "Claude composer success".
+        if (message.subtype !== "success") {
+          const errors = Array.isArray(message.errors) ? message.errors.filter((entry) => typeof entry === "string") : []
+          throw new Error(`Claude composer ${message.subtype ?? "error"}${errors.length > 0 ? `: ${errors[0]}` : ""}`)
+        }
         if (options.usageStateSummary) {
           await recordPylonAccountUsageObservation(options.usageStateSummary, {
             provider: "claude_agent",
@@ -296,15 +305,6 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
               totalCostUsd,
             },
           })
-        }
-        // SDKResultMessage is discriminated by subtype, not `is_error`: the
-        // published SDK types leave `is_error` as a plain boolean on BOTH
-        // success and error variants, and real success records can carry true
-        // (for example after a permission denial inside an otherwise settled
-        // turn). Never throw the nonsensical "Claude composer success".
-        if (message.subtype !== "success") {
-          const errors = Array.isArray(message.errors) ? message.errors.filter((entry) => typeof entry === "string") : []
-          throw new Error(`Claude composer ${message.subtype ?? "error"}${errors.length > 0 ? `: ${errors[0]}` : ""}`)
         }
       }
     }
