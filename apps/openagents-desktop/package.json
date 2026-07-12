@@ -10,7 +10,7 @@
   "scripts": {
     "build": "bun scripts/build.ts",
     "package:mac": "electron-forge package --platform=darwin --arch=arm64",
-    "make:mac": "electron-forge make --platform=darwin --arch=arm64",
+    "make:mac": "npm rebuild macos-alias --prefix ../.. && electron-forge make --platform=darwin --arch=arm64",
     "dev": "bun scripts/build.ts && electron .",
     "live-proof": "bun scripts/build.ts && OPENAGENTS_DESKTOP_LIVE_PROOF=1 electron .",
     "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",

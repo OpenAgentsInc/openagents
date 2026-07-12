@@ -15,6 +15,8 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(asar.unpack).toContain("claude-agent-sdk")
     expect(asar.unpack).toContain("@openai/codex")
     expect(config.makers).toHaveLength(2)
+    const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }
+    expect(manifest.scripts["make:mac"]).toContain("npm rebuild macos-alias")
   })
 
   test("locks the hardened Electron fuse posture", () => {
