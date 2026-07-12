@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694)
-- Status: production catalog publication is live at `6ea8f2508f`; the iOS
-  simulator Release app reaches the real account-link flow and the remaining
-  authenticated simulator/device acceptance is owner-gated
+- Status: physical iOS authenticated directory, exact session activation,
+  deep-link resolution, and process-death restore pass on build 117; Android
+  emulator authenticated acceptance remains owner-OAuth-gated
 - Contract: `openagents_mobile.coding.authenticated_navigation.v1`
 
 ## Greenfield ownership
@@ -130,12 +130,10 @@ under test.
 
 ## Residual
 
-CUT-14 remains open for authenticated iOS- and Android-emulator catalog/deep-
-link/process-death acceptance plus the deferred physical-iPhone confirmation.
-Both embedded Release hosts now reach GitHub's real OpenAgents sign-in boundary.
-Nothing gates on physical Android. The production publisher is live and
-confirmed; owner authentication, not catalog transport or native account entry,
-is the current simulator handoff.
+CUT-14 remains open only for authenticated Android-emulator catalog/deep-link/
+process-death acceptance. Nothing gates on physical Android. The Android
+Release host reaches GitHub's real OpenAgents sign-in boundary; its one-time
+owner OAuth remains the current emulator handoff.
 
 ## Android emulator debug receipt
 
@@ -151,3 +149,39 @@ post-fix log contains no HMR, fatal, or React Native JS error.
 Authenticated catalog/deep-link/process-death acceptance remains pending the
 same one-time owner OAuth sign-in. The Android emulator and Metro remain
 available for that handoff; no physical Android is required.
+
+## Physical iOS authenticated acceptance
+
+On 2026-07-12 build 117 on the paired iPhone exposed and closed three live
+integration gaps that deterministic tests had not revealed:
+
+- the post-auth experience could become Sync-current while retaining a
+  pre-live withheld coding-directory snapshot;
+- 48 ordinary chat rows preceded coding navigation in a non-scrollable drawer,
+  making valid coding groups unreachable below the viewport; and
+- published coding sessions named thread refs for which no hosted
+  `chat_thread` existed, while a newly opened dedicated thread scope could be
+  misclassified as stale during its short catch-up window.
+
+Commits `d97e14fc1d`, `a3af489cc5`, `8612aca5b2`, and `a6afa94f74` repair those
+boundaries. Desktop now materializes each published coding thread through the
+authenticated conversation service before catalog publication. Mobile refreshes
+the full authenticated experience after catch-up, places coding groups before
+ordinary history, and waits boundedly for the live thread lease to become
+confirmed.
+
+Physical receipts:
+
+- the drawer renders `Coding sessions` with three `codex-smoke` repository /
+  session groups before ordinary chat history;
+- device SQLite contains three coding sessions and a matching confirmed
+  `chat_thread` for every published `threadRef`;
+- selecting a directory row persists the exact owner/repository/session/thread
+  tuple as `mobile_coding_selection` under device-local scope;
+- a CoreDevice process replacement restores the same exact coding thread and
+  coding composer context without inferring the first conversation; and
+- a cold-launch `openagents://coding/session/...` payload resolves and persists
+  the requested second session after authenticated catch-up.
+
+Focused verification after the repairs: mobile 29 pass / 138 expectations,
+Desktop 98 pass / 546 expectations, both app typechecks pass.
