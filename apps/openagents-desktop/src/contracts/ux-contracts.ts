@@ -6,8 +6,48 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.41",
+    version: "2026-07-11.42",
     contracts: [
+      {
+        contractId: "openagents_desktop.chrome.command_notice_is_transient_toast.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "command notice chrome",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "what is that yellow command request shit at top, is that supposed to be there, fix if not",
+        authorityBoundary:
+          "The command notice (a duplicate/unavailable deferred-command rejection or a keybinding-save failure) presentation changes ONLY: from a permanent full-width top-edge caption banner that never cleared until the next successful command, to a compact, floated, token-styled warn TOAST that auto-dismisses on a bounded (~4.5s) Effect-scheduled clear and is dismissible immediately via a typed intent (× / click). The auto-clear is a forked Effect fiber (never a leaked raw setTimeout); a new notice cancels any prior pending clear; and the mount registers the controller's shutdown as a scope finalizer so a pending clear can never fire after unmount. The underlying rejection behavior is unchanged (CUT-15): the command is still rejected/ignored; only the notice is now transient, not permanent. No raw colors/px enter the renderer (apps-sdk chrome tokens + the design-conformance oracle), and the render stays commit-idempotent (the keyed toast is not re-parented on unrelated re-renders, so its enter animation never replays).",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/command-notice.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/renderer/app.css",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "command_notice.transient_controller_and_toast",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/command-notice.test.ts",
+            description:
+              "Drives the controller under Effect's TestClock (not wall-clock): a notice auto-clears exactly on the bounded delay boundary, a new notice cancels the prior pending clear (no early/double dismiss), the dismiss intent clears immediately and kills the pending timer, the view renders a warn Toast carrying the DesktopCommandNoticeDismissed intent (and nothing when clear), and the real intent registry clears the notice on that dismiss intent.",
+          },
+          {
+            id: "command_notice.transient_rejection_smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke's command-duplicate-visible-rejection step asserts the duplicate command's rejection notice APPEARS as a dismissible toast (data-en-role=toast with a dismiss control) AND then auto-dismisses on its own bounded timer, rather than persisting as a permanent banner.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the command-notice controller/toast suite, the shell view suite, and the Electron smoke command-duplicate-visible-rejection step asserting appear-then-auto-dismiss.",
+      },
       {
         contractId: "openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1",
         state: "enforced",

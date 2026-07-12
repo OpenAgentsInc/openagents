@@ -197,10 +197,50 @@ textarea {
 }
 
 [data-en-key="shell-main"] {
+  position: relative;
   min-width: 0;
   min-height: 0;
   width: 0;
   overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Transient command notice: a compact warn TOAST floated at the top-  */
+/* center of the main pane with overlay elevation — never the old raw  */
+/* full-width top-edge banner. Auto-dismiss + immediate × dismiss are  */
+/* owned by the typed command-notice controller / intent; this recipe  */
+/* only positions and elevates the render-dom Toast card.              */
+/* ------------------------------------------------------------------ */
+
+[data-en-key="desktop-command-notice"] {
+  position: absolute;
+  top: var(--en-spacing-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: min(90%, 32rem);
+  box-shadow: var(--en-elevation-overlay-shadow), var(--en-elevation-hairline);
+  border-radius: var(--en-radius-md);
+  animation: oa-overlay-enter var(--en-motion-fast) var(--en-ease-basic);
+}
+
+[data-en-key="desktop-command-notice"] > [role] {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+[data-en-key="desktop-command-notice"] [data-en-role="title"] {
+  flex: 1;
+}
+
+[data-en-key="desktop-command-notice"] [data-en-role="dismiss"] {
+  background: transparent;
+  border: 0;
+  padding: 0 var(--en-spacing-1);
+  cursor: pointer;
+  color: var(--en-color-textMuted);
+  line-height: 1;
 }
 
 /* ------------------------------------------------------------------ */

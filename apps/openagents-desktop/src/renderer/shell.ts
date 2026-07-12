@@ -33,6 +33,7 @@ import {
   Table,
   Text,
   TextField,
+  Toast,
   Tooltip,
   Transcript,
   StaticPayload,
@@ -70,6 +71,7 @@ import {
 import { chatMarkdownBody } from "./markdown.ts"
 import { runtimeAgentGraphView } from "./runtime-agent-graph.ts"
 import { desktopCommandRegistry, formatCommandChord } from "./command-registry.ts"
+import { makeCommandNoticeController, type CommandNoticeController } from "./command-notice.ts"
 import {
   normalizeDesktopCommandChord,
   type DesktopCommandBindingProjection,
@@ -510,6 +512,8 @@ export const DesktopCommandBindingDraftChanged = defineIntent("DesktopCommandBin
 export const DesktopCommandBindingSaved = defineIntent("DesktopCommandBindingSaved", Schema.Null)
 export const DesktopCommandBindingRemoved = defineIntent("DesktopCommandBindingRemoved", Schema.Null)
 export const DesktopCommandBindingsReset = defineIntent("DesktopCommandBindingsReset", Schema.Null)
+/** Dismisses the transient command notice toast immediately (× / click). */
+export const DesktopCommandNoticeDismissed = defineIntent("DesktopCommandNoticeDismissed", Schema.Null)
 export const DesktopHistoryShortcutHintsChanged = defineIntent("DesktopHistoryShortcutHintsChanged", Schema.Boolean)
 export const DesktopHistoryConversationPreviewed = defineIntent("DesktopHistoryConversationPreviewed", Schema.String)
 
@@ -552,6 +556,7 @@ export const desktopShellIntents = [
   DesktopCommandBindingSaved,
   DesktopCommandBindingRemoved,
   DesktopCommandBindingsReset,
+  DesktopCommandNoticeDismissed,
   DesktopHistoryShortcutHintsChanged,
   DesktopHistoryConversationPreviewed,
   ...settingsIntents,
@@ -1123,6 +1128,10 @@ export const makeDesktopShellHandlers = (
   mcpConfigBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
   imagePickerHost: ComposerImagePickerHost = { pick: async () => [] },
   terminalBridge: TerminalRendererBridge = unavailableTerminalBridge,
+  // Shared transient command-notice controller. Boot creates one instance and
+  // threads it here AND into its own deferred-command dispatch so a duplicate
+  // rejection and a keybinding notice cancel one another's pending auto-clear.
+  noticeController: CommandNoticeController = makeCommandNoticeController(state),
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
@@ -1263,15 +1272,14 @@ export const makeDesktopShellHandlers = (
     try {
       chord = normalizeDesktopCommandChord(current.commandBindingDraft)
     } catch {
-      yield* SubscriptionRef.update(state, value => ({ ...value, commandNotice: "Use a shortcut such as Meta+Shift+K or Control+K." }))
+      yield* noticeController.setTransientNotice("Use a shortcut such as Meta+Shift+K or Control+K.")
       return
     }
     const bindings = yield* Effect.promise(() => commandBindingHost.save({ commandId: current.commandBindingSelectedId!, chord }))
-    yield* SubscriptionRef.update(state, value => ({
-      ...value,
-      commandBindings: bindings,
-      commandNotice: bindings === null ? "Keybindings are unavailable." : null,
-    }))
+    yield* SubscriptionRef.update(state, value => ({ ...value, commandBindings: bindings }))
+    yield* bindings === null
+      ? noticeController.setTransientNotice("Keybindings are unavailable.")
+      : noticeController.dismissNotice
   }),
   DesktopCommandBindingRemoved: () => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
@@ -1281,8 +1289,10 @@ export const makeDesktopShellHandlers = (
       ...value,
       commandBindings: bindings,
       commandBindingDraft: bindings?.rows.find(row => row.commandId === current.commandBindingSelectedId)?.effectiveBindings[0] ?? "",
-      commandNotice: bindings === null ? "Keybindings are unavailable." : null,
     }))
+    yield* bindings === null
+      ? noticeController.setTransientNotice("Keybindings are unavailable.")
+      : noticeController.dismissNotice
   }),
   DesktopCommandBindingsReset: () => Effect.gen(function* () {
     const bindings = yield* Effect.promise(commandBindingHost.reset)
@@ -1291,9 +1301,12 @@ export const makeDesktopShellHandlers = (
       commandBindings: bindings,
       commandBindingSelectedId: null,
       commandBindingDraft: "",
-      commandNotice: bindings === null ? "Keybindings are unavailable." : null,
     }))
+    yield* bindings === null
+      ? noticeController.setTransientNotice("Keybindings are unavailable.")
+      : noticeController.dismissNotice
   }),
+  DesktopCommandNoticeDismissed: () => noticeController.dismissNotice,
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
   DesktopReviewContextRemoved: () =>
@@ -3102,11 +3115,21 @@ export const desktopShellView = (state: DesktopShellState): View =>
           style: { flex: 1, minWidth: 0, minHeight: 0 },
         },
         [
-          ...(state.commandNotice === null ? [] : [Text({
+          // Transient command notice: a compact, floated warn toast (elevation
+          // + top-center anchor via the [data-en-key="desktop-command-notice"]
+          // app.css recipe), NOT the old raw full-width top-edge caption banner.
+          // Auto-clear + cancel-prior-timer is owned by the Effect-scheduled
+          // command-notice controller; the × / click here dispatches the typed
+          // immediate-dismiss intent. role=status + aria-live=polite are added
+          // by the render-dom Toast recipe.
+          ...(state.commandNotice === null ? [] : [Toast({
             key: "desktop-command-notice",
-            content: state.commandNotice,
-            variant: "caption",
-            color: "warning",
+            notification: {
+              id: "desktop-command-notice",
+              tone: "warn",
+              title: state.commandNotice,
+            },
+            onDismiss: IntentRef("DesktopCommandNoticeDismissed"),
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),

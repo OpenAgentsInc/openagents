@@ -26,7 +26,10 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
     expect(boot).toContain("bridge?.commands?.onCommand")
     expect(boot).toContain("resolveDesktopDeferredCommandIntent")
     expect(boot).toContain('source: "restore"')
-    expect(boot).toContain("commandNotice")
+    // The deferred-command rejection still surfaces a visible notice (CUT-15),
+    // now through the transient command-notice controller (self-dismissing
+    // toast) rather than a permanent commandNotice banner set inline.
+    expect(boot).toContain("setTransientNotice")
   })
 
   test("parses only exact closed command URLs and ignores unrelated argv", () => {

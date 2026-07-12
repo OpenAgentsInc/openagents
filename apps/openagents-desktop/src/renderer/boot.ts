@@ -59,6 +59,7 @@ import {
   initialDesktopShellState,
   makeDesktopShellHandlers,
 } from "./shell.ts"
+import { makeCommandNoticeController } from "./command-notice.ts"
 import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { selectDesktopChatHostSelection } from "./runtime-conversation.ts"
@@ -643,6 +644,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       },
       save: (value: any): void => { try { localStorage.setItem("openagents.desktop.history.v1",JSON.stringify({...value,expandedThreadRefs:Array.isArray(value?.expandedThreadRefs)?value.expandedThreadRefs:[]})) } catch { /* restoration is best effort and contains refs only */ } },
     }
+    // One shared transient command-notice controller: threaded into the shell
+    // handlers AND the deferred-command dispatch below so both paths cancel one
+    // another's pending auto-clear. shutdown is a scope finalizer so a pending
+    // clear fiber can never fire after the renderer unmounts.
+    const noticeController = makeCommandNoticeController(state)
+    yield* Effect.addFinalizer(() => noticeController.shutdown)
     const registry = yield* makeIntentRegistry(
       desktopShellIntents,
       makeDesktopShellHandlers(state, undefined, async (input) => {
@@ -694,7 +701,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const pick = readBridge()?.fableLocal?.pickImages
           return typeof pick === "function" ? await pick() : []
         },
-      }, terminalRendererBridge),
+      }, terminalRendererBridge, noticeController),
     )
     if (typeof bridge?.workspaceSubscribe === "function") {
       const unsubscribeWorkspace = bridge.workspaceSubscribe(change => {
@@ -788,15 +795,17 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         workspaceReady: current.workspaceBrowser.grantRef !== null || current.codingCatalog.sessions.length > 0,
       })
       if (resolution.state === "rejected") {
-        yield* SubscriptionRef.update(state, value => ({
-          ...value,
-          commandNotice: resolution.reason === "duplicate"
+        // CUT-15: the command IS still rejected/ignored. Only the notice
+        // presentation is now transient (a self-dismissing toast) instead of a
+        // permanent top banner.
+        yield* noticeController.setTransientNotice(
+          resolution.reason === "duplicate"
             ? "That command request was already handled. The duplicate was ignored."
             : "That command is unavailable for the current session or workspace.",
-        }))
+        )
         return
       }
-      yield* SubscriptionRef.update(state, value => ({ ...value, commandNotice: null }))
+      yield* noticeController.dismissNotice
       const ref = IntentRef(resolution.intentName, StaticPayload(resolution.payload))
       yield* registry.dispatch(resolveIntentRef(ref))
     })

@@ -2285,12 +2285,32 @@ const smokeWaitForSecondInstanceSettings = `(async () => {
 
 const smokeWaitForDuplicateCommandNotice = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const deadline = Date.now() + 8000
-  while (Date.now() < deadline && !(document.querySelector('[data-en-key="desktop-command-notice"]')?.textContent ?? '').includes('duplicate')) {
+  const q = () => document.querySelector('[data-en-key="desktop-command-notice"]')
+  // CUT-15: the duplicate command is still visibly REJECTED — but the notice is
+  // now a TRANSIENT toast, not a permanent banner. Assert both: it appears with
+  // the duplicate rejection copy, THEN auto-dismisses on its own bounded timer.
+  const appearDeadline = Date.now() + 8000
+  while (Date.now() < appearDeadline && !((q()?.textContent ?? '').includes('duplicate'))) {
     await wait(50)
   }
-  const notice = document.querySelector('[data-en-key="desktop-command-notice"]')?.textContent ?? ''
-  return { ok: notice.includes('duplicate') && document.querySelector('[data-en-key="settings-screen"]') === null, notice }
+  const notice = q()?.textContent ?? ''
+  const appeared = notice.includes('duplicate')
+  const settingsHidden = document.querySelector('[data-en-key="settings-screen"]') === null
+  // It must be a real toast (role=status/alert with a dismiss control), not the
+  // old raw caption Text banner.
+  const toast = q()
+  const dismissible =
+    toast !== null &&
+    (toast.getAttribute('data-en-role') === 'toast' ||
+      toast.querySelector('[data-en-role="dismiss"]') !== null)
+  // Transient: it clears itself without any further command. Auto-dismiss is
+  // ~4.5s, so allow generous headroom for the real Electron clock.
+  const clearDeadline = Date.now() + 9000
+  while (Date.now() < clearDeadline && q() !== null) {
+    await wait(100)
+  }
+  const cleared = q() === null
+  return { ok: appeared && settingsHidden && dismissible && cleared, notice, appeared, dismissible, cleared }
 })()`
 
 // Regression guard (#8712 polish): New chat from a LOADED Codex history page

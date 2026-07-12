@@ -730,16 +730,27 @@ describe("pure transitions", () => {
     expect(nodeByKey(view, "desktop-command-palette-close")?._tag).toBe("Button")
   })
 
-  test("deferred command rejection is visible without changing the active workspace", () => {
+  test("deferred command rejection is a dismissible warn toast, not a persistent banner, and does not change the active workspace", () => {
     const rejected = {
       ...baseState,
       commandNotice: "That command is unavailable for the current session or workspace.",
     }
     const view = desktopShellView(rejected)
-    expect(nodeByKey(view, "desktop-command-notice")).toMatchObject({
-      content: "That command is unavailable for the current session or workspace.",
-      color: "warning",
+    // The visible rejection (CUT-15) stays — as a transient TOAST now.
+    const toast = nodeByKey(view, "desktop-command-notice") as {
+      _tag?: string
+      notification?: { tone?: string; title?: string }
+      onDismiss?: { name?: string }
+    }
+    expect(toast?._tag).toBe("Toast")
+    expect(toast?.notification).toMatchObject({
+      tone: "warn",
+      title: "That command is unavailable for the current session or workspace.",
     })
+    // Dismissible: the × / click carries the typed immediate-dismiss intent.
+    expect(toast?.onDismiss?.name).toBe("DesktopCommandNoticeDismissed")
+    // It is NOT the old raw top caption Text banner.
+    expect(JSON.stringify(view)).not.toContain('"color":"warning"')
     expect(rejected.workspace).toBe(baseState.workspace)
   })
 

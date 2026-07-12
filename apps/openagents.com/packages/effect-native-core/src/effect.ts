@@ -1,1 +1,1 @@
-export { Effect, Exit, Schema, Scope, Stream, SubscriptionRef } from 'effect'
+export { Duration, Effect, Exit, Fiber, Schema, Scope, Stream, SubscriptionRef } from 'effect'
