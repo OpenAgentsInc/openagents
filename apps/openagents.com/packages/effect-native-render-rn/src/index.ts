@@ -752,7 +752,15 @@ const renderStack = (
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
-    baseProps(view, style),
+    {
+      ...baseProps(view, style),
+      // A labelled structural View becomes one giant TalkBack/VoiceOver focus
+      // target and hides every interactive descendant. Stacks are layout
+      // containers, never controls; keep their children independently
+      // discoverable even when the catalog carries a region/group label.
+      accessible: false,
+      importantForAccessibility: "no"
+    },
     ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
   )
 }

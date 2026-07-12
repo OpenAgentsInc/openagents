@@ -993,6 +993,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   create/append uses stable mobile refs, waits for the exact ref to become
   confirmed, labels drafts pending, and clears account-linked projections on
   denial or sign-out.
+- Effect Native React Native stacks are structural layout containers, never
+  aggregate accessibility controls. A stack may retain a catalog region/group
+  label for diagnostics, but the native View is explicitly excluded from the
+  TalkBack/VoiceOver focus order so it cannot collapse or hide interactive
+  descendants. Buttons, fields, composer actions, agent rows, and other leaf
+  controls remain independently discoverable. This boundary is enforced by
+  `apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts` and
+  an Android TalkBack Release-host receipt.
 - Mobile coding navigation reads the CUT-13 catalog only from the exact
   server-verified personal scope while that scope is live. Signed-out, idle,
   refetch, unavailable, and denied phases expose no cached repository/session

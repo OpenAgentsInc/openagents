@@ -160,6 +160,36 @@ describe("React Native renderer host boundaries", () => {
     expect(structure).not.toContain("SwiftHost")
   })
 
+  test("keeps labelled structural stacks out of the screen-reader focus order", () => {
+    const element = renderReactNativeView(
+      Stack(
+        {
+          key: "application-root",
+          direction: "column",
+          a11y: { role: "region", label: "Application root" }
+        },
+        [Button({
+          key: "open-navigation",
+          label: "Open navigation",
+          variant: "ghost",
+          onPress: IntentRef("OpenNavigation")
+        })]
+      ),
+      {
+        React: { createElement },
+        ReactNative: { ...reactNative, Platform: { OS: "android", Version: 35 } }
+      },
+      () => Effect.succeed(undefined),
+      { platform: "android" }
+    )
+    expect(element.props.accessibilityLabel).toBe("Application root")
+    expect(element.props.accessible).toBe(false)
+    expect(element.props.importantForAccessibility).toBe("no")
+    const child = element.props.children as ReactElementLike
+    expect(child.props.accessibilityRole).toBe("button")
+    expect(JSON.stringify(child)).toContain("Open navigation")
+  })
+
   test("keeps an unavailable-target draft editable while disabling Send", () => {
     const element = renderReactNativeView(
       Composer({

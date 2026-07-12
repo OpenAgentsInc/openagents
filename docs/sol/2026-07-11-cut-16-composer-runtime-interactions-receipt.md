@@ -347,3 +347,23 @@ the confirmed lane. The retained sub-issue receipt is
 
 CUT-16 now remains open for physical cross-client/assistive-technology
 acceptance.
+
+## Addendum (2026-07-12): Android TalkBack structural-focus repair
+
+An Android 15/API 35 Release-host TalkBack pass found a real renderer defect:
+the labelled application-root Stack became one full-screen accessibility focus
+target, so swipe navigation could not reach Open navigation, the composer, or
+Send. Effect Native React Native stacks are layout containers, not controls;
+the renderer now lowers every Stack with `accessible=false` and
+`importantForAccessibility=no` while retaining independently accessible child
+controls. A focused renderer oracle proves a labelled root remains outside the
+focus order and its button child remains discoverable.
+
+After rebundling and clean reinstalling the Release APK, TalkBack reported
+touch exploration active with its spoken/haptic service bound. The initial
+full-screen green focus frame disappeared; the next swipe placed the green
+focus frame tightly around the Open navigation button, and TalkBack attempted
+the bounded utterance `Open navigation. Button`. This supplies real Android-
+emulator assistive evidence and fixes the discovered trap. It does not replace
+the remaining physical-iOS VoiceOver and authenticated cross-client acceptance
+required to close CUT-16.

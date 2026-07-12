@@ -162,6 +162,11 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   `openagents-monolith-00085-k4v`: direct migrations 0061/0062 are recorded in
   Cloud SQL, unauthenticated access fails 401, and an authenticated exact-ref
   read returns HTTP 200 with the typed v1 route receipt and null result.
+- Android TalkBack Release-host acceptance found and fixed a structural focus
+  trap: labelled Effect Native stacks no longer collapse all interactive
+  descendants into one full-screen target. TalkBack now advances to the
+  independently labelled Open navigation button. Physical-iOS VoiceOver and
+  authenticated cross-client acceptance remain open.
 
 ### CUT-17 #8697 — grant-scoped workspace tree/watch/cache/search — CLOSED
 
