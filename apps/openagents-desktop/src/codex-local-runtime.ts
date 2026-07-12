@@ -124,6 +124,8 @@ export type CodexLocalTurnResult =
 export type CodexLocalRuntimeOptions = Readonly<{
   /** Resolved lazily (Electron's userData path is not final at module load). */
   scratchRoot: () => string
+  /** Exact top-level coding cwd; replaceable by a future directory setting. */
+  workspaceRoot?: () => string
   env?: Record<string, string | undefined>
   spawnImpl?: CodexChildSpawn
   discoverImpl?: () => Promise<ReadonlyArray<CodexChildAccount>>
@@ -637,9 +639,10 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       ))
     }
 
-    // Same per-thread workspace as the fable lane, so switching chips inside
-    // one thread keeps file continuity (the thread dir is the default cwd).
-    const workspace = join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
+    // Desktop uses its launch directory for top-level coding turns. The
+    // isolated per-thread fallback remains available to tests/other hosts.
+    const workspace = options.workspaceRoot?.() ??
+      join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
     try {
       mkdirSync(workspace, { recursive: true })
     } catch {

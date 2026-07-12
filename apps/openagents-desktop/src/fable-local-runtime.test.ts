@@ -93,6 +93,7 @@ type CapturedQuery = { prompt: string | AsyncIterable<unknown>; options: Record<
 const makeRuntimeHarness = (input: {
   script: (captured: CapturedQuery) => AsyncIterable<unknown>
   root?: string
+  workspaceRoot?: string
   questionTimeoutMs?: number
 }) => {
   const root = input.root ?? makeAccountRoot()
@@ -104,6 +105,7 @@ const makeRuntimeHarness = (input: {
   const scratch = mkdtempSync(join(tmpdir(), "fable-local-scratch-"))
   const runtime = makeFableLocalRuntime({
     scratchRoot: () => scratch,
+    ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: () => input.workspaceRoot! }),
     env: { PYLON_ACCOUNT_HOME_ROOT: root },
     queryImpl: async () => query,
     ...(input.questionTimeoutMs === undefined ? {} : { questionTimeoutMs: input.questionTimeoutMs }),
@@ -117,6 +119,21 @@ const collect = () => {
 }
 
 describe("makeFableLocalRuntime.runTurn", () => {
+  test("an explicit workspace root is the exact Claude cwd", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "fable-local-workspace-"))
+    const harness = makeRuntimeHarness({
+      workspaceRoot: workspace,
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-workspace" }
+        yield { type: "result", subtype: "success", is_error: false, result: "done", usage: {} }
+      },
+    })
+    await harness.runtime.runTurn({
+      turnRef: "turn-workspace", threadRef: "thread-workspace", history: [], message: "work here", emit: () => {},
+    })
+    expect(harness.captured[0]?.options.cwd).toBe(workspace)
+  })
+
   test("streams a real turn: conservative SDK options, mapped events, usage, final text", async () => {
     const longDelta = "x".repeat(FABLE_LOCAL_DELTA_LIMIT + 500)
     const harness = makeRuntimeHarness({

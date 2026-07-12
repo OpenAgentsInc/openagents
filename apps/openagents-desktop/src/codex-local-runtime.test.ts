@@ -51,6 +51,26 @@ const verifiedPreflight = (refs: ReadonlyArray<string>) => ({
 })
 
 describe("makeCodexLocalRuntime.runTurn", () => {
+  test("an explicit workspace root is the exact Codex cwd", async () => {
+    const captured: SpawnCapture[] = []
+    const workspace = scratch()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      workspaceRoot: () => workspace,
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: fixtureCodexLocalTurnStdout(), exitCode: 0 }],
+        input => captured.push(input),
+      ),
+      discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
+    })
+    await runtime.runTurn({
+      turnRef: "turn-workspace", threadRef: "thread-workspace", history: [], message: "work here", emit: () => {},
+    })
+    expect(captured[0]?.cwd).toBe(workspace)
+    expect(captured[0]?.args).toContain(workspace)
+  })
+
   test("prefers the ordinary Codex session without inheriting a stale Pylon CODEX_HOME", async () => {
     const captured: SpawnCapture[] = []
     const runtime = makeCodexLocalRuntime({

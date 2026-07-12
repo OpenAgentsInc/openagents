@@ -6,8 +6,44 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.5",
+    version: "2026-07-12.6",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.launch_directory_is_default_cwd.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "local coding workspace",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-review", statedBy: "owner", statedOn: "2026-07-12" },
+        statement:
+          "the sessions are saved to this fucking app support shit ... needs to go into the current directory where the app was started from by default, and later configurable in a dir",
+        authorityBoundary:
+          "Electron main captures process.cwd() at module launch and supplies that exact directory as the top-level Claude and Codex coding cwd. The provider runtimes may not silently substitute an Application Support per-thread directory. The cwd crosses through an explicit host getter so a later persisted directory picker can replace the launch default without changing either provider runtime. Smoke/live-proof runs remain isolated under test userData; probes, account custody, and delegated child scratch work are unchanged. This default cwd does not grant the renderer path-selection authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/codex-local-runtime.ts",
+        ],
+        oracles: [
+          {
+            id: "local_workspace.claude_exact_host_root",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            description: "Proves an explicit host workspace root becomes the exact Claude SDK cwd.",
+          },
+          {
+            id: "local_workspace.codex_exact_host_root",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
+            description: "Proves the same explicit host workspace root becomes Codex's process cwd and -C argument.",
+          },
+        ],
+        verification:
+          "Desktop typecheck/build plus the Fable and Codex local-runtime suites enforce exact host-root propagation while retaining isolated fallback coverage.",
+      },
       {
         contractId: "openagents_desktop.chat.codex_turns_do_not_time_out.v1",
         state: "enforced",

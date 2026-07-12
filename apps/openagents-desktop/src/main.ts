@@ -350,6 +350,10 @@ recordMainMark("mainModuleEvaluated")
 // isolates main-process init ordering rather than live filesystem/network state.
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
+// Capture before any host lifecycle can change process state. This is the
+// default top-level coding workspace today; the runtime-facing getter is the
+// seam a future persisted directory setting/picker will replace.
+const desktopLaunchWorkingDirectory = path.resolve(process.cwd())
 const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
   smokeMode || liveProofDriverMode
     ? path.join(
@@ -1344,6 +1348,9 @@ const codexPreflight = makeCodexPreflight({
 // keep --ephemeral). Smoke drives a scripted stream through the REAL parser.
 const codexLocal = makeCodexLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  workspaceRoot: () => smokeMode || liveProofDriverMode
+    ? path.join(app.getPath("userData"), "fable-local", "fixture-workspace")
+    : desktopLaunchWorkingDirectory,
   preflight: codexPreflight,
   onAccountEvidence: input => {
     if (input.evidence === "verified") {
@@ -1375,6 +1382,9 @@ const pluginConfigStore = openPluginConfigStore(
 )
 const fableLocal = makeFableLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  workspaceRoot: () => smokeMode || liveProofDriverMode
+    ? path.join(app.getPath("userData"), "fable-local", "fixture-workspace")
+    : desktopLaunchWorkingDirectory,
   delegate: codexChildren,
   userMcpServers: () => mcpConfigStore.servers(),
   userPlugins: () => pluginConfigStore.enabledPaths(),

@@ -813,6 +813,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   fails, or the owner explicitly uses Stop; elapsed time alone must never send
   SIGTERM or manufacture a provider-unavailable failure. A host deadline may
   be injected only by bounded tests and is not production configuration.
+- Desktop captures its process working directory at launch and uses that exact
+  directory as the default coding cwd for top-level local Codex and Claude
+  turns. It must not silently replace that cwd with an Application Support
+  per-thread directory. The runtime accepts the cwd through a host getter so a
+  future explicit directory setting can replace the launch default; provider
+  probes, account custody, and delegated scratch workers remain isolated.
 - Desktop's mixed runtime/provider conversation sidebar has one canonical
   target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
   numbering never restarts at a source boundary. Selecting a runtime/app-local

@@ -124,9 +124,9 @@ export const FABLE_LOCAL_QUESTION_TIMEOUT_MS = 600_000
 export const FABLE_LOCAL_QUESTION_TOOL = "AskUserQuestion"
 
 /**
- * Deterministic per-thread workspace directory name under
- * `<scratchRoot>/threads/`. Persistent for the life of userData, so a
- * follow-up turn in the same thread sees files an earlier turn wrote.
+ * Deterministic fallback per-thread workspace directory name under
+ * `<scratchRoot>/threads/`. Production Desktop supplies its launch directory
+ * instead; this fallback keeps isolated tests and alternate hosts stable.
  * Sanitized (no dots, no separators) plus a digest suffix so distinct
  * threadRefs can never collide or traverse.
  */
@@ -329,6 +329,12 @@ export type FableSdkMcpFactory = Readonly<{
 export type FableLocalRuntimeOptions = Readonly<{
   /** Resolved lazily: Electron's userData path is not final at module load. */
   scratchRoot: () => string
+  /**
+   * Exact coding cwd for top-level turns. Desktop supplies its launch cwd;
+   * this seam is intentionally replaceable by a future directory setting.
+   * When absent, tests/fixtures retain the isolated per-thread scratch cwd.
+   */
+  workspaceRoot?: () => string
   env?: Record<string, string | undefined>
   /** Injectable SDK loader (tests, smoke fixture). Default lazy-imports the SDK. */
   queryImpl?: () => Promise<FableLocalQuery>
@@ -717,11 +723,11 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       return emitFailure(failure("sdk_unavailable", error instanceof Error ? error.name : "sdk import failed"))
     }
 
-    // Per-THREAD scratch workspace (EP250): derived from threadRef and stable
-    // across turns, so a follow-up turn sees the files an earlier turn wrote
-    // (e.g. greetings.md). Always under userData's scratch root — never a
-    // repo, never shared across threads.
-    const workspace = join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
+    // Production Desktop explicitly supplies the directory it was launched
+    // from. The per-thread scratch fallback remains for tests/fixtures and
+    // hosts that have not selected an execution workspace.
+    const workspace = options.workspaceRoot?.() ??
+      join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
     try {
       mkdirSync(workspace, { recursive: true })
     } catch (error) {
