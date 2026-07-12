@@ -1,7 +1,11 @@
 # OpenAgents Desktop product architecture and fastest delivery path
 
+- Class: durable architecture boundary plus historical delivery plan
 - Date: 2026-07-10
-- Status: binding target architecture for #8574 under MASTER_ROADMAP R0–R7
+- Status: topology/authority decisions remain binding where enforced by current
+  contracts and guarantees; delivery sequence and implementation state are a
+  pinned historical snapshot
+- Dispatch: no; current work comes from the master roadmap and live issues
 - Product: OpenAgents Desktop at `apps/openagents-desktop`
 - Companion client: OpenAgents mobile at `apps/openagents-mobile`
 - Contract freeze consumed:
@@ -14,8 +18,11 @@
   [Desktop parity audit](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md),
   [current Desktop guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
-This document freezes architecture and dependency order. It does not claim that
-the target is implemented. Current guaranteed behavior remains limited to
+This document records the selected architecture and its original dependency
+order. The process/data/authority topology remains a design boundary where
+current contracts and tests enforce it; the F0–F7 delivery order and status
+prose are historical and cannot select current work. Current guaranteed
+behavior comes from
 [`apps/openagents-desktop/GUARANTEES.md`](../../apps/openagents-desktop/GUARANTEES.md),
 current code, tests, and receipts.
 

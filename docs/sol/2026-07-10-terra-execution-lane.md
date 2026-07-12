@@ -65,45 +65,26 @@ Terra does not need Sol to restate an already-clear issue body before starting
 such a leaf. Discovery that materially changes scope, authority, sequencing, or
 a hot contract returns to Sol for integration ownership.
 
-## Current Terra assignment: #8574 Desktop parity under R0–R7
+## Assignment authority
 
-The Desktop lane is beyond scaffold-only state, but local threads, local Fleet
-staging, and host smoke are not Sync/Fleet authority. Current factual state is
-maintained in [`../terra/CURRENT_STATE.md`](../terra/CURRENT_STATE.md); bounded
-task packets and stop rules live in the
-[`reliable fleet implementation delegation`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md).
-
-The active Terra delivery order is:
-
-1. Close #8574's R0/D0 baseline, including shared type/catalog drift and honest
-   fixture/local/unconfigured capability states. A real owner Codex reconnect
-   is evidence when available, not a queue-wide blocker.
-2. After Sol freezes R1/R2, consume the canonical identity/session/Khala Sync
-   contract in Desktop; do not invent app-local thread or fleet authority.
-3. Complete bounded file edit/save and typed Git status/diff/review through the
-   hardened host boundary.
-4. Add command registry/palette/keybindings, then the terminal only after its
-   workspace/PTY/redaction/lifecycle contract is approved.
-5. Connect the server-authoritative Fleet cockpit, approvals, command outcomes,
-   receipts, provider/MCP/permission settings, and diagnostics.
-6. Finish identity, fuses, signing/notarization, updates, rollback, clean-
-   machine proof, and R7 dogfood under explicit owner gates.
+Terra's current assignment and delivery order come from the master roadmap,
+live issue, and active claim. This durable lane contract does not cache them.
+Factual working notes may live in
+[`../terra/CURRENT_STATE.md`](../terra/CURRENT_STATE.md), but they do not
+override those authorities.
 
 Terra may make required reusable Effect Native DOM/catalog changes when the
-live #8574 claim names the shared hot contract before mutation. App-local UI
+live claim names the shared hot contract before mutation. App-local UI
 semantics remain prohibited when the need belongs in the shared catalog or
 renderer.
 
 ## Boundaries around the runtime proof and client program
 
-C1 is crossed: #8637, #8633, and #8639 are closed, fixture-proven, and the
-minimum-safe supervision stack is deployed. #8640 Phase A is a clean
-simultaneous Codex + Claude owner-local runtime proof through a landed
-compatibility adapter. It does not make Sarah the product front door or block
-ready R0–R2 client work. Grok is
-postponed by owner decision because the connected account is quota/payment
-exhausted; its existing adapter and receipt coverage remain regression
-substrate but do not block the cutover.
+Closed #8640 preserves the accepted simultaneous Codex + Claude owner-local
+runtime proof through a landed compatibility adapter. It does not make Sarah
+the product front door, select current client work, or reopen its closed
+substrate issues. Provider readiness is refreshed from current account/runtime
+evidence rather than cached here.
 
 Sol owns shared identity/Sync schemas, FleetRun authority/projection, Pylon
 claim/execution/retry state, account-health and credential scanners, deployment

@@ -1,15 +1,25 @@
 # Reliable fleet software implementation delegation
 
+- Class: historical execution diary
+- Status: retired; non-dispatch
+- Dispatch: no; use the current master roadmap, live issues, and claim protocol
 - Created: 2026-07-10 11:28:32 CDT (`2026-07-10T16:28:32Z`)
 - Repository snapshot: `19ebe9741f23cfd58e4a1be47c6c08476f742709`
 - Audience: bounded, high-throughput coding agent with limited architectural
   judgment
-- Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 25
+- Historical authority at creation:
+  [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), then Revision 25
 - Mobile capability ledger:
   [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
 - Coordination: [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
-- Status: executable delegation packet; not a replacement for the roadmap,
-  live issue state, or an active claim
+
+> **Retired dispatch surface (2026-07-12):** This file preserves the execution
+> chronology, landed receipts, and decisions from its pinned snapshot. Its leaf
+> availability, claim narration, prompts, and recommended order are obsolete.
+> Nothing in this file may select current work. Use the
+> [`master roadmap`](./MASTER_ROADMAP.md),
+> [live `roadmap:sol` issues](https://github.com/OpenAgentsInc/openagents/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap%3Asol),
+> and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md).
 
 ## Execution progress
 
@@ -750,44 +760,10 @@ are explicitly removed from scope by the owner, docs and live issue state agree,
 and duplicate/legacy paths are deleted or demonstrably unable to ship. Parent
 epics #8566 and #8638 close last, after child receipts and R7 reconciliation.
 
-## Copy/paste task prompt for the coding agent
+## Retired dispatch material
 
-```text
-Implement only <LEAF-ID> under openagents/docs/sol/
-2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md.
-
-Issue: #<NUMBER>
-Base: current clean origin/main
-Allowed paths: <EXACT PATHS>
-Hot files/contracts: <EXACT LIST OR NONE>
-Acceptance: <ONE FALSIFIABLE OUTCOME>
-Verification: <EXACT COMMANDS>
-
-Before editing, read the root AGENTS.md/INVARIANTS.md, the repo claim protocol,
-Master Revision 25, the mobile port ledger when applicable, the live issue
-body/comments, and the named source/tests. Post an
-exact CLAIM. Do not touch overlapping claims, paused scope, schemas/migrations,
-authority, credentials, lockfiles, shared catalogs, or external systems unless
-listed above. Preserve unrelated work. If blocked or uncertain after two
-attempts/15 minutes, post a bounded blocker receipt and take the next READY
-leaf. On success, stage only scoped files, commit, rebase safely, push main,
-and post CLAIM-RELEASE with exact results and residuals.
-```
-
-## Recommended next dispatch at this timestamp
-
-1. Refresh the active claim states (#8574, #8597, #8640, #8547, #8636).
-2. FAST-1 and FAST-2 are already landed; do not repeat them. If #8597 releases,
-   rebase and run FAST-3 mobile verification before adding Sync/workroom UI.
-3. While shared contracts are blocked, take only M0 inventory/test-vector work
-   or app-local honest-state/accessibility leaves with disjoint claims.
-4. The senior integration owner freezes R1–R2 and the M3 workroom/target/grant/
-   writeback contract. Then dispatch SYNC-1/2/3 and M1/M2 leaves separately,
-   integrate through SYNC-4, and keep schema/migration changes serialized.
-5. After real #8547/#8636 substrate is available, dispatch M3–M5 read-only
-   projections first, then controls, fault tests, physical-device receipts, and
-   the M7 cross-device dogfood.
-
-The fastest route is not maximum parallel edits. It is a frozen shared contract,
-small disjoint leaves, immediate receipts, and zero rework from invented
-authority or competing local state.
+The original copy/paste coding prompt and timestamp-specific “recommended next
+dispatch” were removed on 2026-07-12 because they directed agents to obsolete
+Revision 25 state. Their exact bytes remain in Git history at this document's
+pinned snapshot. Current task packets belong in live issues and claims; the
+durable claim/release shape remains in [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md).

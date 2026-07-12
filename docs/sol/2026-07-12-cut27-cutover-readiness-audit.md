@@ -1,10 +1,13 @@
 # CUT-27 cutover-readiness audit — 2026-07-12
 
+- Class: historical readiness audit and receipt index
+- Status: pinned additive snapshot; non-dispatch
+- Dispatch: no; use the master roadmap, live issues, and current receipts
 - Issue: #8707 "CUT-27 — Prove and declare the Codex/Claude-to-OpenAgents
   coding cutover" (capstone of #8566 / #8574 / #8597)
 - Audit base: `origin/main` @ `375a8997ff` (all cited SHAs verified as
   ancestors of that tip)
-- Status: **readiness reconciliation only.** This document does NOT declare
+- Original audit status: **readiness reconciliation only.** This document does NOT declare
   the cutover. It states, per CUT leaf and per #8707 completion criterion,
   what is landed, its proof rung, and the exact remaining gate.
 - Rung vocabulary: the six proof rungs of `MASTER_ROADMAP.md` §"Proof status
@@ -16,6 +19,12 @@
   with Android **emulator** evidence. No gate anywhere blocks on physical
   Android hardware. Physical iOS gates are unchanged. Android references
   below are annotated accordingly.
+
+> **Snapshot warning:** This audit accumulated evidence and amendments during
+> the day. Earlier `OPEN`, blocker, and summary sections are intentionally
+> preserved and may be superseded by later sections or later dedicated
+> receipts. They are not a current blocker table. Do not dispatch or infer a
+> proof rung without refreshing the canonical roadmap and live issue.
 
 ## Method
 

@@ -1,10 +1,11 @@
 # P0 PROGRAM: reliable Effect Native Desktop/mobile coding and fleet software
 
 - Issue: #8566
-- Status: sole active program parent under Master Revision 31
+- Status: checked-in program source; refresh the live issue for current state
+- Dispatch: no; current/next/open language below is pinned issue-source prose
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
-- Execution:
-  [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Current work and ownership: live issue comments plus
+  [`../CLAIM_PROTOCOL.md`](../CLAIM_PROTOCOL.md)
 - Local coding cutover:
   [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
 
@@ -46,7 +47,7 @@ remote coding + fleet                    full workbench + fleet
   full-host residual.
 - #8681–#8707 — ordered CUT-01–CUT-27 leaves for the installed local
   Codex/Claude coding cutover with physical mobile continuation/supervision.
-- unfiled Revision 31 leaves — portable session authority, owner-managed and
+- later leaves at this snapshot — portable session authority, owner-managed and
   managed-provider targets, the general broker, and any-host mobile/voice.
   Local live multi-agent supervision is now #8691/#8692. Do not overload
   #8676/#8547/#8636 or CUT-27 with host-movement proof.

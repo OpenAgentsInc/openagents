@@ -3,30 +3,22 @@
 - Issue: #8574
 - Program parent: #8566
 - Destination: `apps/openagents-desktop`
-- Status: active P0 under R0–R7/D0–D6
+- Status: checked-in track source; refresh the live issue for current state
+- Dispatch: no; current/next/open language below is pinned issue-source prose
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Architecture:
   [`../2026-07-10-openagents-desktop-product-architecture.md`](../2026-07-10-openagents-desktop-product-architecture.md)
 - Capability audit:
   [`../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
-- Bounded leaves:
-  [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Current work and ownership: live issue comments plus
+  [`../CLAIM_PROTOCOL.md`](../CLAIM_PROTOCOL.md)
 - Local coding cutover graph:
   [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
 - Closed P0 historical conversation/subagent slice:
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
-- Immediate bounded queue: closed CUT-02 #8682 supplies the deterministic
-  green verification baseline; closed CUT-03 #8683 and CUT-04 #8684 supply the
-  source-coupled topology, replaceability, owned-disposal, correlation, and
-  built-host architecture acceptance; closed CUT-05 #8685 supplies exact-scope
-  Claude owner-local authority and CUT-06 #8686 is the next ordered leaf;
-  #8676
-  supplies the physical streamed Desktop→mobile acceptance;
-  #8677 delegates fault convergence to #8687–#8689. Closed #8675 supplies
-  trace-workspace acceptance. #8678's topology residual is complete through
-  #8683/#8684; project/session and command breadth remain CUT-13/CUT-15 rather
-  than hidden architecture residue.
+The dated cutover graph preserves acceptance history, not the immediate queue.
+Refresh the master roadmap and live issue before selecting a leaf.
 
 ## Outcome
 

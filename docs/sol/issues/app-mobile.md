@@ -3,21 +3,19 @@
 - Issue: #8597
 - Program parent: #8566
 - Destination: `apps/openagents-mobile`
-- Status: active P0 under Master Revision 31 / R0–R7 / M0–M7
+- Status: checked-in track source; refresh the live issue for current state
+- Dispatch: no; current/next/open language below is pinned issue-source prose
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
-- Bounded leaves:
-  [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Current work and ownership: live issue comments plus
+  [`../CLAIM_PROTOCOL.md`](../CLAIM_PROTOCOL.md)
 - Capability/port ledger:
   [`../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
 - Local coding cutover graph:
   [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
 
-The immediate local-coding subset is #8681 Effect Native surface authority,
-#8692 live-agent UX, #8694 authenticated repository/session binding, #8696
-interaction controls, #8704 operability, #8705 Fleet/mobile attention, and the
-physical-device portions of #8707. Remote workrooms, host movement, managed
-providers, and voice remain later Revision 31 exits and are not inferred from
-the local cutover.
+The dated cutover graph preserves acceptance history, not the immediate queue.
+Refresh the master roadmap and live issue before selecting a leaf or inferring
+the current remote-workroom, host-movement, provider, or voice exit.
 
 ## Outcome
 
@@ -151,7 +149,8 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 - Sarah/persona/relationship home;
 - avatar, opener, persona voice, video, media cache/admission, ambient capture,
   or any voice-only authority path; persona-neutral ASR/TTS/barge-in under the
-  normal typed session command contract remains required by Revision 31;
+  normal typed session command contract remains required by the current master
+  roadmap;
 - demo Minerals/pricing or StoreKit work;
 - aesthetic Liquid Glass iteration not required for accessibility, correctness,
   platform support, or R0–R7;

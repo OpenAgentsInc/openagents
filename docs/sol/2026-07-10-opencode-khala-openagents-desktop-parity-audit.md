@@ -1,8 +1,10 @@
 # OpenCode, Khala Code, and OpenAgents Desktop parity audit
 
-Date: 2026-07-10
-
-Status: current-source audit and implementation gap analysis
+- Class: historical competitor-capability and implementation baseline
+- Date: 2026-07-10
+- Snapshot status: pinned; non-dispatch
+- Current state authority: `apps/openagents-desktop`, its guarantees/tests,
+  the Sol master roadmap, live issues, and receipts
 
 Destination: `apps/openagents-desktop`
 
@@ -10,15 +12,17 @@ Legacy extraction source: `clients/khala-code-desktop`
 
 Benchmark: `anomalyco/opencode` desktop and shared app packages
 
-> **Revision 25 scope note:** The 20-area Desktop parity findings remain the
-> active #8574 benchmark. Sarah-as-front-door/steerability framing is
-> superseded. Relevant Khala Code MVP ideas also feed the Effect Native mobile
-> remote-coding plan; see
+> **Historical baseline warning (2026-07-12):** The 20-area competitor
+> capability model remains useful, but the OpenAgents implementation score and
+> gap prose are pinned to this audit's source snapshot. CUT-13 through CUT-25
+> and later Desktop work have invalidated it as current status. A future score
+> must be a new dated audit. Relevant Khala Code MVP ideas also feed the Effect
+> Native mobile remote-coding plan; see
 > [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
 
-## Executive decision
+## Executive decision at the snapshot
 
-OpenAgents Desktop is a secure, runnable development prototype, not yet a
+At this snapshot, OpenAgents Desktop was a secure, runnable development prototype, not yet a
 desktop coding workbench and not yet a releasable desktop product.
 
 Khala Code did substantially more OpenCode-parity work than the greenfield app
@@ -32,9 +36,10 @@ of its parity surfaces are intentionally shallow or fixture-driven, and its
 largest architectural gaps remain a real Khala-owned local server, interactive
 PTYs, complete editing, multi-window/server behavior, and WSL.
 
-The greenfield OpenAgents Desktop has one landed foundation, six real but
+At this snapshot, the greenfield OpenAgents Desktop had one landed foundation,
+six real but
 narrow partial slices, three scaffolds, and ten absent areas across the 20-area
-matrix below. Its useful current product consists of:
+matrix below. Its then-current product consisted of:
 
 - a hardened Electron + Effect Native host;
 - a local five-thread conversation store and non-streaming gateway call;
@@ -43,7 +48,7 @@ matrix below. Its useful current product consists of:
 - a typed but currently unreachable Fleet brief adapter; and
 - unit/build/smoke coverage for those limited surfaces.
 
-The correct next move is not a wholesale UI port. Extract the proven behavior
+The resulting recommendation was not a wholesale UI port: extract the proven behavior
 and host services from Khala Code, adopt OpenCode's workbench interaction model,
 keep Effect Native as the only application/component/intent architecture, and
 connect each surface to current OpenAgents/Pylon/Sync authority before calling

@@ -9,14 +9,13 @@
 
 - Date: 2026-07-10
 - Status: **published senior contract freeze** for the R1–R2 gates
-  (MASTER_ROADMAP Revision 24/25, owner decisions 1, 5, 7; execution-order
-  step 2). Sections are individually marked **SETTLED** (frozen — build against
+  and the owner decisions named by the current master roadmap. Sections are
+  individually marked **SETTLED** (frozen — build against
   it) or **DRAFT** (bounded open question — do not invent; wait for the named
   follow-up or escalate to Sol).
 - Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) (R0–R7 gates, "Khala
   Sync laws for this program"),
-  [`2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
-  ("R1–R2 contract freeze: senior decision required"),
+  [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md),
   [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
 - Integration owner: **Sol**. Schema/migration/catalog changes under this
   contract remain serialized through one lane per the claim protocol.

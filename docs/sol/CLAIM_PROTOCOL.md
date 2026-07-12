@@ -3,8 +3,8 @@
 - Date: 2026-07-09
 - Status: active coordination contract
 - Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
-- Bounded task packets:
-  [`2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Dispatch sources: live `roadmap:sol` issues and their comments; this contract
+  governs ownership but does not select the queue
 
 ## Purpose
 
