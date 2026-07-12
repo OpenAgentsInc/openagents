@@ -9,7 +9,7 @@
   replacement; CUT-26 publish/legacy-lockout
   code complete; remaining local-cutover leaves are acceptance-gated CUT-09,
   CUT-16, CUT-25, CUT-26, and CUT-27)
-- Revision: 79
+- Revision: 80
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -750,8 +750,10 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   three owner Codex choices while retaining explicit `Account not selected`
   state. The physical app then persisted an exact ready hosted-Gemini target
   in the canonical draft and retained the same revision, thread/session refs,
-  and target through CoreDevice process replacement. A submitted cross-client
-  turn and physical-iOS VoiceOver remain open. The named Codex
+  and target through CoreDevice process replacement. The authenticated Android
+  app then submitted a real hosted-Gemini turn on that confirmed coding thread,
+  projected active cancellation, received the exact bounded response and usage,
+  and reached `Turn completed`. Only physical-iOS VoiceOver remains open. The named Codex
   composer receipt completed on 2026-07-12 with a retained redaction-clean
   proof. The trusted interaction authority is live on production Cloud Run
   revision `openagents-monolith-00085-k4v`; migrations 0061/0062 are applied
@@ -1861,7 +1863,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-10 is closed with its no-poll code and signed physical-iOS continuation receipt; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-14's physical-iOS receipt passes and only the authenticated Android-emulator OAuth/directory/deep-link/process-death handoff remains; CUT-16 awaits physical/assistive acceptance; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
+| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-10 and CUT-14 are closed with their required physical receipts; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-16 now awaits only physical-iOS VoiceOver; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
 | **Closed P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; Episode 250 transcript 250 retains the on-camera owner acceptance and explicit mechanics-win verdict. Do not add implementation children or treat later provider-capacity changes as invalidating the historical named-provider receipt. |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
@@ -1918,10 +1920,10 @@ around and after that narrower installed-Desktop milestone.
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
-5. **Current acceptance queue (2026-07-12):** first complete the one-screen
-   GitHub OAuth handoff in the already-running Android emulator, then automate
-   CUT-14's authenticated directory/deep-link/process-death receipt and reuse
-   that authenticated surface for CUT-25 attention/control and TalkBack. When
+5. **Current acceptance queue (2026-07-12):** CUT-14's authenticated Android
+   directory/deep-link/process-death receipt and CUT-16's hosted-Gemini turn
+   now pass. Reuse that authenticated surface for CUT-25 attention/control.
+   When
    the recording phone is available, run the shared physical-iOS journey once
    and attach its evidence to CUT-09, CUT-10, CUT-14, CUT-16, CUT-25, #8676,
    and #8677 only where the observed steps satisfy each leaf's literal close

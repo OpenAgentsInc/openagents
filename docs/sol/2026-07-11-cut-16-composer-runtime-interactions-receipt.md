@@ -5,7 +5,8 @@
 - Status: shared authority, native persistence, both native interaction UIs,
   mobile runtime-control and canonical draft UI, Desktop gateway, Claude
   provider injection, native attachments, and exact execution-target selector
-  authority active; physical iOS assistive/cross-client acceptance remains open
+  authority active; authenticated Android hosted-Gemini turn passes and only
+  physical-iOS VoiceOver remains open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
@@ -411,3 +412,20 @@ the bounded utterance `Open navigation. Button`. This supplies real Android-
 emulator assistive evidence and fixes the discovered trap. It does not replace
 the remaining physical-iOS VoiceOver and authenticated cross-client acceptance
 required to close CUT-16.
+
+## Addendum (2026-07-12): authenticated Android provider turn
+
+The owner-authenticated API 35 `khala_test` emulator restored its exact coding
+session and canonical ready hosted-Gemini selection after CUT-14 process-death
+acceptance. Using the macOS hardware-keyboard bridge, the active Effect Native
+composer submitted one bounded prompt. The UI projected the durable user
+message, `Connected · hosted_khala`, an independently addressable `Cancel turn`
+control while active, the exact assistant response `ANDROID-CUT16-OK`,
+`Usage · 51 tokens`, and `Turn completed`. The composer then returned to an
+enabled send state without provider or target substitution.
+
+This is a real authenticated mobile-to-hosted-provider round trip over the
+canonical confirmed thread, not enqueue-only evidence. Together with the
+earlier Android TalkBack receipt and physical-iOS target-selection/process-
+restoration receipt, it closes the authenticated cross-client-turn residual.
+CUT-16 remains open only for its literal physical-iOS VoiceOver receipt.
