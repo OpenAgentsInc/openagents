@@ -21,6 +21,8 @@ import {
   readJsonObject,
 } from './json-boundary'
 import { logWorkerRouteError, observedPromise } from './observability'
+import { postgresIdentityAuthStoreForEnv } from './identity-auth-domain-store'
+import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
 import {
   providerAccountRouteErrorMessage,
   providerAccountRouteErrorName,
@@ -79,7 +81,23 @@ type ProviderAccountServiceDependencies<
     request: Request,
     env: RouteEnv,
   ) => Promise<ProviderServiceActor | undefined>
+  providerGrantRepository?: (
+    env: RouteEnv,
+  ) => ReturnType<typeof makeD1ProviderAccountRepository>
 }>
+
+const authoritativeProviderGrantRepository = (
+  env: ProviderAccountServiceEnv,
+) => {
+  const postgres = postgresIdentityAuthStoreForEnv(env)
+  if (postgres === undefined) {
+    throw new Error('authoritative_postgres_provider_grant_repository_unavailable')
+  }
+  return makeAuthoritativePostgresProviderGrantRepository(
+    makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+    postgres.queryRows,
+  )
+}
 
 const optionalFailedStatus = (
   value: unknown,
@@ -609,7 +627,8 @@ export const makeProviderAccountServiceHandlers = <
         'ProviderAccountService.resolveProviderAccountGrant',
         () =>
           resolveProviderAccountGrant(
-            makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+            dependencies.providerGrantRepository?.(env) ??
+              authoritativeProviderGrantRepository(env),
             {
               actorId: actor.user.id,
               grantRef,
