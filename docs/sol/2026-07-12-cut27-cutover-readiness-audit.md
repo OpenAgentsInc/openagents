@@ -396,3 +396,69 @@ iPhone journey set on an already-installed
 build, the authenticated Android emulator leg, and the small
 CUT-11/CUT-16 code residuals. Nothing reviewed here justifies declaring the cutover now, and
 nothing suggests the remaining gates require new architecture.
+
+## End-of-day addendum — 2026-07-12 (post-audit landings)
+
+Everything below is verified as an ancestor of `origin/main` @ `77c4673dfe`.
+The audit body above reflects the morning base (`375a8997ff`) and is retained
+unedited except for the Android-emulator amendments; this addendum is the
+current blocker state.
+
+### Landed since the audit base
+
+- Android policy: `1eb9f1a95f` — owner decision, no physical-Android gate
+  anywhere; emulator satisfies every Android leg.
+- **First Android evidence in the program**: `53d928e6cb` — emulator receipts
+  for cold launch, PKCE sign-in entry, deep-link fail-closed (warm+cold),
+  process-death reconvergence, offline OTA fallback
+  (`2026-07-12-android-emulator-receipts.md`, 9 screenshots).
+- CUT-11 residuals CLOSED as code: `f1d7029554` (main-process live graph
+  wiring, push+snapshot IPC), `d6a906187a` (Codex app-server child-activity
+  source convergence, app-server-first dispatch), `42e2698058` (docs).
+  Residual (3) live trace: the **Claude leg ran live** — a real named-account
+  runtime turn end-to-end through durable production Sync with exact usage
+  and single-winner claim admission. Confirmed-graph reconnect legs are
+  **deploy-gated**: the deployed production API predates the server graph
+  binding, so live turns emit no `live_agent_graph` rows until the next API
+  deploy.
+- CUT-12 residuals: `55fea7e4f5` — greenfield `apps/openagents-mobile`
+  supervision stack (the gap the Android lane exposed) + shared exact-token
+  attribution presentation. #8692 residual is physical-iOS interaction only;
+  its Android leg is now emulator-runnable.
+- CUT-16: `82b2682544` — durable-turn Stop and queue-until-idle now real
+  (both previously no-oped), control-intent lane fence fixed, contract
+  `durable_runtime_turn_controls.v1`.
+- CUT-26 code residuals CLOSED: `8a6a5b5167` — scripted signed publish path
+  converged on the deployed oa-updates desktop feed seam + legacy desktop
+  lockout (typed 410, armed by default, fail-closed). Only owner ceremony
+  remains.
+- #8636: `5df9aa6a88` — typed `khala.fleet_execution_target_decision.v1`
+  routing with honest provenance in the intake projection.
+- Live-dispatch defect found and fixed during the physical-iPhone lane:
+  `9f8a76333c` — truncated claim `stableId` meant only the FIRST
+  `turn.desktop.*` run in history could ever dispatch; later runs were
+  silently rejected. SHA-256 ids + regression test.
+- Physical iPhone: signed build launched and running on-device; live Desktop
+  rungs receipted (hosted streamed turn, host-restart identity, mid-stream
+  renderer reload). Remaining: 4 owner taps (see `NEEDS_OWNER.md`, now
+  push-visible on GitHub per the new workspace AGENTS.md rule).
+- #8704 (CUT-24) closed earlier today with desktop + mobile receipts.
+
+### Current blocker list (supersedes the one above)
+
+(a) Code: CUT-16 attachment-bearing runtime delivery + capability H2/I4
+residuals (H1/H2 under an active #8712 claim by a concurrent session);
+CUT-25 remainder per its own ledger. CUT-11/CUT-12/CUT-26 code lanes are
+done.
+
+(b) Live proofs (automatable): deploy the API so live turns emit
+`live_agent_graph` rows, then the CUT-11 per-provider confirmed reconnect
+traces; CUT-21 named-Codex turn (after owner reconnect) — the named-Claude
+leg is now live-proven; CUT-23 live plugin/skill receipt; Android-emulator
+authenticated CUT-14 legs + CUT-12 interaction receipts (scriptable after
+the one-time emulator GitHub sign-in); #8676 end-to-end journey.
+
+(c) Owner-gated (all queued in `NEEDS_OWNER.md`, pushed): 4 iPhone taps;
+one-time Android-emulator GitHub sign-in; Codex account reconnect in
+Desktop Settings; VoiceOver/TalkBack QA; Developer ID signing +
+clean-machine acceptance; final #8676/CUT-27 acceptance review.
