@@ -1,18 +1,12 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
-  provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 complete; CUT-14 authenticated client receipts open; CUT-15 complete; CUT-16
-  native draft persistence/Desktop gateway/mobile interaction and runtime-
-  control UI active; mobile canonical rich-draft and native attachment
-  acquisition active; CUT-17 workspace capability core/tree-watch-search host
-  bridge/cancellable search worker/mutation core/scale receipt and standalone
-  bounded workspace-browser projection/handler loop/composition complete;
-  CUT-18 typed editor/document lifecycle, exclusive-create Save As, rename,
-  conflict, and ref-only reload recovery complete; CUT-19 fenced Git diff,
-  discard confirmation, and composer-context review loop complete)
-- Revision: 74
+- Updated: 2026-07-12 (CUT-11/CUT-12/CUT-21 live receipts accepted and closed;
+  CUT-14 production catalog publication plus native iOS/Android emulator shells
+  operational; CUT-16 exact mobile execution-target selector landed; CUT-26
+  publish/legacy-lockout code complete; remaining local-cutover leaves are
+  acceptance-gated CUT-09, CUT-10, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27)
+- Revision: 75
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -1803,12 +1797,12 @@ universe.
 
 ## Canonical open issue set
 
-There are **27 open `roadmap:sol` records** after closing #8640, CUT-01–CUT-08,
-and topology parent #8678: the original #8547, #8566, #8574, #8597, #8636,
-#8676, and #8677; and bounded CUT-09–CUT-27 leaves #8689–#8707. #8566 remains
-the sole program epic. Owner-directed Episode 250 pull-forward #8712 is the
-additional bounded recording slice; it does not claim CUT-16, CUT-21, or
-CUT-25 exits. GitHub sub-issue
+There are **15 open `roadmap:sol` records** as of 2026-07-12: #8547, #8566,
+#8574, #8597, #8636, #8676, #8677; open CUT leaves #8689, #8690, #8694,
+#8696, #8705, #8706, and #8707; plus the owner-acceptance-only Episode 250
+slice #8712. #8566 remains the sole program epic. No new Agent Computer child
+issues are needed for the local Desktop/mobile cutover; closed #8719–#8721
+already own the bounded metering correction under #8547. GitHub sub-issue
 relationships place each leaf under its narrowest owning track or reliability
 parent; prose cross-links retain the other affected tracks.
 
@@ -1824,7 +1818,9 @@ deterministic lifecycle matrix but its physical-device acceptance is deferred
 at owner direction while the phone records video. CUT-10's deterministic no-
 poll Desktop/mobile path is landed and CUT-11 is the active implementation
 leaf; this sequencing exception does not close or weaken the CUT-09/CUT-10
-physical acceptance contracts.
+physical acceptance contracts. CUT-11, CUT-12, CUT-20, CUT-21, CUT-23, and
+CUT-24 have since closed; their receipts remain prerequisites and should not be
+reopened or duplicated in new leaves.
 
 The [Pylon streamlining audit](../fable/2026-07-11-pylon-streamlining-audit.md)
 also fixes the short-term boundary for this proof: `apps/pylon/src/orchestration`
@@ -1846,8 +1842,8 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 mixed | CUT-01–CUT-08, CUT-13, CUT-15, CUT-17–CUT-19, and CUT-22 are closed; CUT-09/CUT-10 physical acceptance is owner-deferred, CUT-10 no-poll code is landed, and CUT-11 graph/schema/provider/Sync server contracts are active; CUT-20 is the next D3 workbench leaf |
-| **P0 recording pull-forward** | #8712 | Bounded Episode 250 Fleet overview and harness-selector slice; #8718 reports the admitted Pylon, the 2026-07-12 integrated rerun now fails honestly on unavailable Codex capacity plus organization-disabled Claude access instead of returning a false-zero proof result, and Pylon persists that exact Claude refusal as `provider_disabled` so Fleet cannot project credential presence or stale zero-token usage as readiness |
+| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-10, CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-09/CUT-10 await physical-mobile acceptance; CUT-14 awaits one emulator OAuth handoff plus authenticated emulator/physical-iOS receipts; CUT-16 awaits physical/assistive acceptance; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
+| **P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; only the stated on-camera owner-acceptance rung remains. Do not add implementation children or treat current provider-capacity changes as invalidating the historical named-provider receipt. |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
@@ -1903,16 +1899,19 @@ around and after that narrower installed-Desktop milestone.
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
-5. When the recording phone is available, finish CUT-09 #8689's built-Desktop/
-   physical-mobile network-gap receipt over the landed deterministic lifecycle
-   matrix. In the meantime, continue CUT-10 through collision-free shared/
-   mobile paths and integrate Desktop only after #8712 releases its claimed
-   gateway files. Preserve the proven Pylon fleet
-   core and migrations `0060`–`0061`;
-   treat broader streamlining
-   or authority collapse as a separately bounded post-proof program, not scope
-   silently inherited by the remaining CUT leaves. Keep R3/R7 in their owning
-   client/program issues.
+5. **Current acceptance queue (2026-07-12):** first complete the one-screen
+   GitHub OAuth handoff in the already-running Android emulator, then automate
+   CUT-14's authenticated directory/deep-link/process-death receipt and reuse
+   that authenticated surface for CUT-25 attention/control and TalkBack. When
+   the recording phone is available, run the shared physical-iOS journey once
+   and attach its evidence to CUT-09, CUT-10, CUT-14, CUT-16, CUT-25, #8676,
+   and #8677 only where the observed steps satisfy each leaf's literal close
+   rule. #8712 holds no code files and needs only on-camera acceptance. CUT-26
+   follows with its scripted signed publication and clean-machine lifecycle;
+   CUT-27 closes last after every leaf and exception register is reconciled.
+   Preserve the proven Pylon fleet core and migrations `0060`–`0062`; treat
+   broader streamlining or authority collapse as a separately bounded
+   post-proof program, not scope silently inherited by the remaining leaves.
 6. Complete #8547's real brokered Firecracker workroom before #8636's live
    hybrid-routing acceptance. In parallel with non-colliding client work, prove
    server-authorized owner-capacity metering, retry-deduped usage, bounded
