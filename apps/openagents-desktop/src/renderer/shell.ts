@@ -3542,10 +3542,19 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
       })
   if (selected === undefined && graph === null) return [transcript, shellComposer(state)]
   const rightRail = Stack(
-    { key: "chat-right-rail", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } },
+    {
+      key: "chat-right-rail",
+      direction: "column",
+      gap: "3",
+      ...(selected === undefined ? {} : { scrollToKey: `chat-message-inspector-start-${selected.key}` }),
+      style: { width: "full", minHeight: 0 },
+    },
     [
       ...(graph === null ? [] : [graph]),
-      ...(selected === undefined ? [] : [chatMessageInspector(selected)]),
+      ...(selected === undefined ? [] : [
+        Spacer({ key: `chat-message-inspector-start-${selected.key}`, size: "0" }),
+        chatMessageInspector(selected),
+      ]),
     ],
   )
   return [SplitPane({

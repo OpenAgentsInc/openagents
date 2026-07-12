@@ -33,6 +33,43 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("a changed Stack scroll target reveals once after scroll restoration", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      const release = yield* Deferred.make<void>()
+      const frame = (reveal: boolean) => Stack({
+        key: "inspector-rail",
+        direction: "column",
+        ...(reveal ? { scrollToKey: "details-start" } : {}),
+      }, [
+        Text({ key: "agent-graph", content: "Tall graph", variant: "body" }),
+        Text({ key: "details-start", content: "Message details", variant: "body" }),
+      ])
+      const stream = Stream.concat(
+        Stream.succeed(frame(false)),
+        Stream.fromEffect(Deferred.await(release).pipe(Effect.as(frame(true)))),
+      )
+      yield* makeDomRenderer({ document }).mount(root, stream, () => Effect.succeed(undefined))
+      yield* nextTask
+      const rail = root.querySelector<HTMLElement>('[data-en-key="inspector-rail"]')!
+      const details = root.querySelector<HTMLElement>('[data-en-key="details-start"]')!
+      Object.defineProperty(details, "offsetTop", { configurable: true, value: 640 })
+      rail.scrollTop = 120
+      yield* Deferred.succeed(release, undefined)
+      yield* nextTask
+      expect(rail.style.overflowY).toBe("auto")
+      expect(rail.scrollTop).toBe(640)
+      expect(rail.getAttribute("data-en-scroll-to-key")).toBe("details-start")
+      expect(rail.hasAttribute("data-en-scroll-reveal-pending")).toBe(false)
+      rail.scrollTop = 500
+      yield* nextTask
+      expect(rail.scrollTop).toBe(500)
+    })))
+  })
+
   test("compact icon buttons lower to a 32px icon-only accessible control", async () => {
     const window = new Window({ url: "http://localhost/" })
     const document = window.document as unknown as Document

@@ -1837,6 +1837,8 @@ export interface StackView extends NodeBase {
   readonly onPinnedChange?: IntentRef
   /** Keep the first visible keyed child stationary when content is prepended. */
   readonly preserveScrollAnchor?: boolean
+  /** Reveal this keyed descendant once when the target changes. */
+  readonly scrollToKey?: NodeKey
   readonly children: ReadonlyArray<View>
 }
 
@@ -3262,6 +3264,7 @@ export const StackSchema: Schema.Codec<StackView, StackView> = Schema.TaggedStru
   pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
   onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
   preserveScrollAnchor: Schema.Boolean.pipe(Schema.optionalKey),
+  scrollToKey: NodeKeySchema.pipe(Schema.optionalKey),
   children: Schema.Array(ViewSelf)
 })
 

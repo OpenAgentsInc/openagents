@@ -300,10 +300,10 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         productArea: "chat message metadata inspector",
         enforcementTier: "test-sweep",
         blockerRefs: [],
-        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
-        statement: "if I click on the message, I see the metadata of the message in the right sidebar",
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-12" },
+        statement: "when i load message details in right sidebar it doesnt scroll down, fix that.",
         authorityBoundary:
-          "The inspector projects only the bounded per-message metadata the host persisted on the local thread store (role, timestamp, lane, SDK-reported effective model, account ref, turn ref, exact token total, duration) — never prompts, paths, tokens, credentials, or provider payloads. Selection is a typed intent (click dispatches; Escape and Close deselect) and grants no runtime, resume, or filesystem authority.",
+          "The inspector projects only bounded per-message metadata persisted by the host. When a new message selection appends details below a taller live-agent graph, the exact right rail becomes its own scroll owner and synchronously reveals a unique keyed marker immediately before the inspector. The reveal runs once per changed target after generic scroll restoration, never moves the transcript viewport, and does not keep pinning after the user scrolls manually. Selection remains a typed intent and grants no runtime, resume, or filesystem authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/chat-contract.ts",
@@ -318,6 +318,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
               "Drives the real intent registry: details click selects the message, the right-side rail renders role/time/lane/model/account/turn/tokens/duration, Close and Escape deselect, and stale selections drop on thread switches.",
+          },
+          {
+            id: "chat_message_inspector.keyed_scroll_reveal",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents.com/packages/effect-native-render-dom/tests/index.test.ts",
+            description:
+              "Proves a changed Stack scroll target becomes the exact overflow owner, reveals the keyed details marker after generic position restoration, clears its one-shot marker, and leaves later manual scrolling untouched.",
           },
           {
             id: "chat_message_inspector.smoke",

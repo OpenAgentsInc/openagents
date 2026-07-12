@@ -2030,6 +2030,9 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     expect(escape?.key).toBe("Escape")
     expect(escape?.intent?.name).toBe("DesktopMessageSelected")
     expect(nodeByKey(open, "chat-message-inspector")?._tag).toBe("Stack")
+    const rightRail = nodeByKey(open, "chat-right-rail") as { scrollToKey?: string }
+    expect(rightRail.scrollToKey).toBe("chat-message-inspector-start-assistant-1")
+    expect(nodeByKey(open, "chat-message-inspector-start-assistant-1")?._tag).toBe("Spacer")
     expect(nodeByKey(open, "chat-message-inspector-close")?._tag).toBe("Button")
     // Transcript and composer stay usable next to the inspector.
     expect(nodeByKey(open, "shell-transcript")).toBeDefined()

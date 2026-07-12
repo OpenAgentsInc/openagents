@@ -1141,6 +1141,7 @@ const renderChildren = (
 
 const renderStack = (view: StackView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "div")
+  const previousScrollTarget = element.getAttribute("data-en-scroll-to-key")
   if (view.preserveScrollAnchor === true) element.setAttribute("data-en-preserve-scroll-anchor", "true")
   else element.removeAttribute("data-en-preserve-scroll-anchor")
   // Same Chromium quirk renderTimeline guards against: replacing a scroll
@@ -1165,6 +1166,16 @@ const renderStack = (view: StackView, state: DomRendererState, report: IntentRep
   if (element.scrollTop !== scrollPosition.top) element.scrollTop = scrollPosition.top
   if (element.scrollLeft !== scrollPosition.left) element.scrollLeft = scrollPosition.left
   applyScrollRegion(element, view, state, report)
+  if (view.scrollToKey === undefined) {
+    element.removeAttribute("data-en-scroll-to-key")
+    element.removeAttribute("data-en-scroll-reveal-pending")
+  } else {
+    element.style.overflowY = "auto"
+    element.setAttribute("data-en-scroll-to-key", view.scrollToKey)
+    if (previousScrollTarget !== view.scrollToKey) {
+      element.setAttribute("data-en-scroll-reveal-pending", "true")
+    }
+  }
   return element
 }
 
@@ -4291,6 +4302,18 @@ const commitView = (view: View, state: DomRendererState, report: IntentReporter)
       node.scrollTop = restoredTop ?? position.top
       node.scrollLeft = position.left
     }
+  }
+  // One-shot keyed reveal runs after generic scroll restoration so it cannot
+  // be overwritten by the pre-commit position snapshot. The target is found
+  // inside its exact scroll owner; no ancestor transcript viewport moves.
+  for (const container of Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-scroll-reveal-pending="true"]'))) {
+    const targetKey = container.getAttribute("data-en-scroll-to-key")
+    const target = targetKey === null
+      ? undefined
+      : Array.from(container.querySelectorAll<HTMLElement>("[data-en-key]"))
+          .find((candidate) => candidate.getAttribute("data-en-key") === targetKey)
+    if (target !== undefined) container.scrollTop = Math.max(0, target.offsetTop)
+    container.removeAttribute("data-en-scroll-reveal-pending")
   }
   for (const active of Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-nav-item][data-en-active="true"]'))) {
     const section = active.closest<HTMLElement>("[data-en-section]")

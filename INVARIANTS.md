@@ -807,6 +807,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   The shared SplitPane renderer targets the explicitly sized pane adjacent to
   a divider (including a trailing/right pane), and the renderer-owned typed
   resize intent persists that width across rerenders.
+- Opening message details below a taller live-agent graph makes the exact right
+  rail its own overflow owner and synchronously reveals the selected message's
+  unique keyed inspector marker after generic scroll restoration. This is a
+  one-shot reveal per changed selection: it never moves the transcript scroll
+  owner and never continuously re-pins against later manual reader scrolling.
 - Desktop New Chat is never a silent no-op. The dock action, command palette,
   and platform Command-N chord dispatch one typed `DesktopNewChat` intent. A
   new thread is created first through the app-owned durable local store and
