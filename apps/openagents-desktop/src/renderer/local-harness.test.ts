@@ -193,6 +193,25 @@ describe("makeLocalHarnessChatHost", () => {
     expect(harness.legacySends).toEqual([])
   })
 
+  test("an exact provider target crosses the renderer bridge unchanged", async () => {
+    const harness = makeHarness()
+    const pending = harness.host.sendMessage({
+      id: "thread-1",
+      message: "hello fable",
+      harness: "fable",
+      target: { provider: "claude_agent", accountRef: "claude-pylon-b", model: "claude-fable-5" },
+    })
+    await settle()
+    expect(harness.startCalls[0]).toEqual({
+      turnRef: "turn.fable.fixed",
+      threadRef: "thread-1",
+      message: "hello fable",
+      target: { provider: "claude_agent", accountRef: "claude-pylon-b", model: "claude-fable-5" },
+    })
+    harness.resolveStart({ ok: true, thread: finalThread })
+    expect((await pending).ok).toBe(true)
+  })
+
   test("question_pending projects an interactive question note; question_resolved updates it in place (EP250)", async () => {
     const harness = makeHarness()
     const updates: DesktopThread[] = []

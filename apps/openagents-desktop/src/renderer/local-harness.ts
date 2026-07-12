@@ -27,6 +27,7 @@ import {
   type FableLocalAvailability,
   type FableLocalEventEnvelope,
   type FableLocalImageAttachment,
+  type LocalProviderTarget,
 } from "../fable-local-contract.ts"
 import {
   CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
@@ -99,6 +100,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       id: string
       message: string
       images?: ReadonlyArray<FableLocalImageAttachment>
+      target?: LocalProviderTarget
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
@@ -362,6 +364,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         message: send.message,
         // Capability I1: images ride the frozen start request additively.
         ...(send.images !== undefined && send.images.length > 0 ? { images: send.images } : {}),
+        ...(send.target === undefined ? {} : { target: send.target }),
       })
       const result = decodeTurnResult(raw, laneLabel)
       // A3 queue-until-idle: a follow-up promoted at this turn's idle boundary

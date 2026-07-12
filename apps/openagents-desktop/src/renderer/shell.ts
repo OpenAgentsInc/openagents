@@ -164,7 +164,7 @@ import {
   toStartImages,
   type ComposerImageAttachment,
 } from "./composer-images.ts"
-import type { FableLocalImageAttachment } from "../fable-local-contract.ts"
+import type { FableLocalImageAttachment, LocalProviderTarget } from "../fable-local-contract.ts"
 
 export type DesktopNoteEntry = Readonly<{
   key: string
@@ -254,6 +254,8 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
   selectedHarness: DesktopHarnessName
+  /** Exact named provider target retained independently for each conversation. */
+  providerTargetsByThread: Readonly<Record<string, LocalProviderTarget>>
   /** Probed lane availability; boot replaces this with real evidence pre-mount. */
   harnessLanes: HarnessLanes
   threads: ReadonlyArray<DesktopThread>
@@ -348,6 +350,7 @@ export const initialDesktopShellState = (
   composerReviewContext: null,
   notes: [],
   selectedHarness: "codex",
+  providerTargetsByThread: {},
   // Unproven until boot's availability probe lands (before first mount):
   // an unproven lane is disabled, not optimistically enabled.
   harnessLanes: {
@@ -457,6 +460,7 @@ export const DesktopHarnessSelected = defineIntent(
   "DesktopHarnessSelected",
   Schema.Literals(desktopHarnessNames),
 )
+export const DesktopProviderAccountSelected = defineIntent("DesktopProviderAccountSelected", Schema.String)
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
 /**
  * Message metadata inspector selection (#8712). Payload is the transcript
@@ -533,6 +537,7 @@ export const desktopShellIntents = [
   DesktopFleetDeploymentRequested,
   DesktopNewChat,
   DesktopHarnessSelected,
+  DesktopProviderAccountSelected,
   DesktopChatSelected,
   DesktopMessageSelected,
   DesktopToolCardToggled,
@@ -896,6 +901,7 @@ export type ChatHost = Readonly<{
     id: string
     message: string
     harness?: DesktopHarnessName
+    target?: LocalProviderTarget
     /** Optional image attachments threaded into the turn payload (capability I1). */
     images?: ReadonlyArray<FableLocalImageAttachment>
     onUpdate?: (thread: DesktopThread) => void
@@ -1347,6 +1353,7 @@ export const makeDesktopShellHandlers = (
         id: current.activeThreadId!,
         message: providerMessage,
         harness: current.selectedHarness,
+        ...(providerTargetForThread(current) === null ? {} : { target: providerTargetForThread(current)! }),
         ...(images.length > 0 ? { images } : {}),
         onUpdate: thread => {
           Effect.runFork(SubscriptionRef.update(state, next =>
@@ -1420,6 +1427,21 @@ export const makeDesktopShellHandlers = (
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
   DesktopHarnessSelected: (harness) =>
     SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
+  DesktopProviderAccountSelected: (accountRef) =>
+    SubscriptionRef.update(state, (current) => {
+      if (current.activeThreadId === null) return current
+      const account = current.fleet.accounts.find(candidate =>
+        candidate.ref === accountRef && candidate.readiness === "ready" &&
+        (current.selectedHarness === "codex" ? candidate.provider === "codex" : candidate.provider === "claude_agent"))
+      if (account === undefined) return current
+      return {
+        ...current,
+        providerTargetsByThread: {
+          ...current.providerTargetsByThread,
+          [current.activeThreadId]: targetForHarness(current.selectedHarness, account.ref),
+        },
+      }
+    }),
   DesktopMessageSelected: (key) =>
     SubscriptionRef.update(state, (current) => withMessageSelected(current, key)),
   DesktopToolCardToggled: (key) =>
@@ -2597,6 +2619,43 @@ const harnessChip = (
   )
 }
 
+const targetForHarness = (harness: DesktopHarnessName, accountRef: string): LocalProviderTarget =>
+  harness === "codex"
+    ? { provider: "codex", accountRef, model: "gpt-5.6-sol" }
+    : { provider: "claude_agent", accountRef, model: "claude-fable-5" }
+
+export const providerTargetForThread = (state: DesktopShellState): LocalProviderTarget | null => {
+  if (state.activeThreadId === null) return null
+  const selected = state.providerTargetsByThread[state.activeThreadId]
+  const expectedProvider = state.selectedHarness === "codex" ? "codex" : "claude_agent"
+  if (selected !== undefined && selected.provider === expectedProvider) return selected
+  const account = state.fleet.accounts.find(candidate =>
+    candidate.provider === expectedProvider && candidate.readiness === "ready")
+  return account === undefined ? null : targetForHarness(state.selectedHarness, account.ref)
+}
+
+const providerAccountControl = (state: DesktopShellState): View | null => {
+  const target = providerTargetForThread(state)
+  if (target === null) return null
+  const candidates = state.fleet.accounts.filter(account =>
+    account.provider === target.provider && account.readiness === "ready")
+  const currentIndex = candidates.findIndex(account => account.ref === target.accountRef)
+  const next = candidates[(currentIndex + 1) % candidates.length]
+  return Button({
+    key: "shell-provider-account",
+    label: target.accountRef,
+    variant: "ghost",
+    disabled: state.pending || candidates.length < 2,
+    onPress: IntentRef("DesktopProviderAccountSelected", StaticPayload(next?.ref ?? target.accountRef)),
+    style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", color: "textMuted" },
+    a11y: {
+      label: candidates.length < 2
+        ? `${target.accountRef} is the only ready ${state.selectedHarness} account`
+        : `${target.accountRef} selected. Choose next ready account`,
+    },
+  })
+}
+
 /**
  * The composer's trailing action control (EP250 Stop button, audit gap #9).
  * While a turn streams (`state.pending`) the evidence-gated Send is replaced by
@@ -2799,6 +2858,7 @@ const shellComposer = (state: DesktopShellState): View =>
         [
           harnessChip(state, "fable", "Fable"),
           harnessChip(state, "codex", "Codex"),
+          ...(providerAccountControl(state) === null ? [] : [providerAccountControl(state)!]),
         ],
       ),
       // Capability I1: pending image thumbnails + transient rejection notice

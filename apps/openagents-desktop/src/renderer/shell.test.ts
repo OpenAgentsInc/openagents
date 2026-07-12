@@ -14,6 +14,7 @@ import {
   formatRelativeTimestamp,
   formatShellTimestamp,
   initialDesktopShellState,
+  providerTargetForThread,
   makeDesktopShellHandlers,
   messageWithReviewContext,
   noteMessage,
@@ -110,6 +111,27 @@ const availableHarnessLanes = {
   codex: { available: true, reason: null },
 } as const
 const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), harnessLanes: availableHarnessLanes, threads: [testThread], activeThreadId: testThread.id }
+
+test("provider target selection is exact and stable per conversation", () => {
+  const fleet = {
+    ...baseState.fleet,
+    phase: "ready" as const,
+    accounts: [
+      { ref: "codex", provider: "codex", email: null, readiness: "ready" as const },
+      { ref: "codex-2", provider: "codex", email: null, readiness: "ready" as const },
+    ],
+  }
+  expect(providerTargetForThread({ ...baseState, fleet })).toEqual({
+    provider: "codex", accountRef: "codex", model: "gpt-5.6-sol",
+  })
+  expect(providerTargetForThread({
+    ...baseState,
+    fleet,
+    providerTargetsByThread: {
+      [testThread.id]: { provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" },
+    },
+  })).toEqual({ provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" })
+})
 const agentGraphFixture: NonNullable<DesktopShellState["agentGraph"]> = {
   authority: "live",
   authorityLabel: "Live",
