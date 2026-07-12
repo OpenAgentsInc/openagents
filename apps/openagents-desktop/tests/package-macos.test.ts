@@ -58,6 +58,7 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(source).toContain('cargo", ["build", "--release", "-p", "oa-desktop-audio"]')
     expect(source).toContain("chmodSync(destination, 0o755)")
     expect(source).toContain("manifest.json")
+    expect(config.packagerConfig?.extendInfo).toMatchObject({ NSMicrophoneUsageDescription: expect.any(String) })
   })
 
   test("entitlements stay minimal and never disable library validation or permit debugging", () => {

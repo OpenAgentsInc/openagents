@@ -91,9 +91,10 @@ const DesktopVoiceIdentitySchema = Schema.Struct({
 })
 export const DesktopVoiceStateSchema = Schema.Struct({
   protocolVersion: Schema.Literal(1),
-  phase: Schema.Literals(["idle", "requesting_permission", "connecting", "live", "muted", "suspended", "denied", "offline", "backpressured", "revoked", "failed"]),
+  phase: Schema.Literals(["idle", "requesting_permission", "connecting", "live", "muted", "suspended", "denied", "offline", "backpressured", "device_changed", "revoked", "failed"]),
   generation: NonNegativeIntSchema, nextSequence: NonNegativeIntSchema, acknowledgedSequence: NonNegativeIntSchema,
-  reason: Schema.optional(Schema.Literals(["permission_denied", "network_lost", "gateway_revoked", "helper_crashed", "stale_generation", "backpressure"])),
+  capture: Schema.Boolean, egress: Schema.Boolean, playback: Schema.Boolean,
+  reason: Schema.optional(Schema.Literals(["permission_denied", "network_lost", "gateway_revoked", "helper_crashed", "stale_generation", "backpressure", "device_changed"])),
 })
 
 /**

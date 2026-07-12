@@ -35,8 +35,10 @@ export const spawnVoiceHelper = (absolutePath: string): ChildProcessWithoutNullS
 export const createPackagedVoiceNativeMedia = (input: Readonly<{
   resourcesPath: string
   verifySignature: (absolutePath: string) => boolean
+  connection: (identity: Parameters<VoiceNativeMedia["open"]>[0]["identity"], disclosureRef: string) => Promise<Readonly<{ gatewayUrl: string; grant: string }>>
 }>): VoiceNativeMedia => ({
-  open: request => {
+  open: async request => {
+    const connection = await input.connection(request.identity, request.disclosureRef)
     const manifest = JSON.parse(readFileSync(path.join(input.resourcesPath, "native", process.arch, "manifest.json"), "utf8")) as VoiceHelperManifest
     const child = spawnVoiceHelper(verifyVoiceHelper({ ...input, manifest }))
     let closed = false
@@ -45,14 +47,18 @@ export const createPackagedVoiceNativeMedia = (input: Readonly<{
       let state: unknown
       try { state = JSON.parse(line) } catch { request.onState("crashed"); return }
       if (typeof state !== "object" || state === null || !("state" in state)) { request.onState("crashed"); return }
-      const tag = (state as { state: string }).state
+      const record = state as Record<string, unknown>
+      const tag = record.state
       if (tag === "live") request.onState("live")
+      else if (tag === "ack" && typeof record.sequence === "number" && typeof record.generation === "number") request.onAck(record.sequence, record.generation)
+      else if (tag === "packet" && typeof record.sequence === "number" && typeof record.generation === "number" && typeof record.payloadLength === "number" && typeof record.sha256 === "string") request.onPacket({ sequence: record.sequence, generation: record.generation, payloadLength: record.payloadLength, sha256: record.sha256 })
       else if (tag === "offline") request.onState("offline")
       else if (tag === "backpressured") request.onState("backpressured")
+      else if (tag === "device_changed") request.onState("device_changed")
       else if (tag === "refused") request.onState("revoked")
     })
     child.once("exit", () => { if (!closed) request.onState("crashed") })
-    child.stdin.write(JSON.stringify({ command: "start", protocol_version: 1, identity: request.identity, disclosure_ref: request.disclosureRef }) + "\n")
+    child.stdin.write(JSON.stringify({ command: "start", protocol_version: 1, identity: request.identity, disclosure_ref: request.disclosureRef, gateway_url: connection.gatewayUrl, application_grant: connection.grant }) + "\n")
     return {
       setCaptureEnabled: enabled => { if (!closed) child.stdin.write(JSON.stringify({ command: "set_capture", enabled }) + "\n") },
       close: reason => {

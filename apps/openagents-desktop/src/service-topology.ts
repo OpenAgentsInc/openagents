@@ -173,7 +173,7 @@ export const desktopServiceTopology = [
       "desktop-operation-correlation",
       "preload-bridge",
     ],
-    authority: ["runtime", "policy", "clock", "filesystem", "process", "secret"],
+    authority: ["runtime", "policy", "clock", "filesystem", "process", "secret", "network"],
     cacheKey: {
       scope: "none",
       parts: [],

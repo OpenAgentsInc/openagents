@@ -12,11 +12,14 @@ export type DesktopVoiceCommand = typeof DesktopVoiceCommandSchema.Type
 
 export type DesktopVoiceState = Readonly<{
   protocolVersion: 1
-  phase: "idle" | "requesting_permission" | "connecting" | "live" | "muted" | "suspended" | "denied" | "offline" | "backpressured" | "revoked" | "failed"
+  phase: "idle" | "requesting_permission" | "connecting" | "live" | "muted" | "suspended" | "denied" | "offline" | "backpressured" | "device_changed" | "revoked" | "failed"
   generation: number
   nextSequence: number
   acknowledgedSequence: number
-  reason?: "permission_denied" | "network_lost" | "gateway_revoked" | "helper_crashed" | "stale_generation" | "backpressure"
+  capture: boolean
+  egress: boolean
+  playback: boolean
+  reason?: "permission_denied" | "network_lost" | "gateway_revoked" | "helper_crashed" | "stale_generation" | "backpressure" | "device_changed"
 }>
 
 export type VoiceMediaPacket = Readonly<{ sequence: number; generation: number; payloadLength: number; sha256: string }>
@@ -30,8 +33,8 @@ export type VoiceNativeMedia = Readonly<{
     disclosureRef: string
     onPacket: (packet: VoiceMediaPacket) => void
     onAck: (sequence: number, generation: number) => void
-    onState: (state: "offline" | "backpressured" | "live" | "revoked" | "crashed") => void
-  }>) => VoiceNativeMediaSession
+    onState: (state: "offline" | "backpressured" | "device_changed" | "live" | "revoked" | "crashed") => void
+  }>) => VoiceNativeMediaSession | Promise<VoiceNativeMediaSession>
 }>
 
 export type DesktopVoiceHost = Readonly<{
@@ -46,11 +49,16 @@ export const createDesktopVoiceHost = (input: Readonly<{
   requestPermission: () => "granted" | "denied" | Promise<"granted" | "denied">
   media: VoiceNativeMedia
 }>): DesktopVoiceHost => {
-  let current: DesktopVoiceState = { protocolVersion: 1, phase: "idle", generation: 0, nextSequence: 0, acknowledgedSequence: 0 }
+  let current: DesktopVoiceState = { protocolVersion: 1, phase: "idle", generation: 0, nextSequence: 0, acknowledgedSequence: 0, capture: false, egress: false, playback: false }
   let session: VoiceNativeMediaSession | null = null
+  let captureWanted = false
   let disposed = false
   const listeners = new Set<(state: DesktopVoiceState) => void>()
-  const publish = (next: DesktopVoiceState) => { current = next; for (const listener of listeners) listener(next) }
+  const publish = (next: Omit<DesktopVoiceState, "capture" | "egress" | "playback"> & Partial<Pick<DesktopVoiceState, "capture" | "egress" | "playback">>) => {
+    const live = next.phase === "live"; const muted = next.phase === "muted"
+    current = { ...next, capture: live && captureWanted, egress: live && captureWanted, playback: live || muted }
+    for (const listener of listeners) listener(current)
+  }
   const close = (reason: "stop" | "revoke" | "replace" | "suspend" | "shutdown") => { const owned = session; session = null; owned?.close(reason) }
   const typedFailure = (phase: DesktopVoiceState["phase"], reason: DesktopVoiceState["reason"]) => publish({ ...current, phase, ...(reason === undefined ? {} : { reason }) })
 
@@ -59,13 +67,15 @@ export const createDesktopVoiceHost = (input: Readonly<{
     if (command.id === "voice.start") {
       close("replace")
       const generation = Math.max(current.generation + 1, command.identity.generation)
+      captureWanted = false
       publish({ protocolVersion: 1, phase: "requesting_permission", generation, nextSequence: 0, acknowledgedSequence: 0 })
       const observedPermission = await input.permission()
       const permission = observedPermission === "not_determined" ? await input.requestPermission() : observedPermission
       if (permission !== "granted") { typedFailure("denied", "permission_denied"); return current }
+      captureWanted = true
       publish({ ...current, phase: "connecting" })
       const ownedGeneration = generation
-      try { session = input.media.open({
+      try { session = await input.media.open({
         identity: { ...command.identity, generation }, disclosureRef: command.disclosureRef,
         onPacket: packet => {
           if (session === null || packet.generation !== ownedGeneration || current.generation !== ownedGeneration || current.phase !== "live") return
@@ -77,19 +87,21 @@ export const createDesktopVoiceHost = (input: Readonly<{
         },
         onState: state => {
           if (current.generation !== ownedGeneration) return
-          if (state === "live") publish({ ...current, phase: "live", reason: undefined })
-          else if (state === "offline") typedFailure("offline", "network_lost")
-          else if (state === "backpressured") typedFailure("backpressured", "backpressure")
+          if (state === "live") { session?.setCaptureEnabled(captureWanted); publish({ ...current, phase: captureWanted ? "live" : "muted", reason: undefined }) }
+          else if (state === "offline") { session?.setCaptureEnabled(false); typedFailure("offline", "network_lost") }
+          else if (state === "backpressured") { session?.setCaptureEnabled(false); typedFailure("backpressured", "backpressure") }
+          else if (state === "device_changed") { session?.setCaptureEnabled(false); typedFailure("device_changed", "device_changed") }
           else if (state === "revoked") { close("revoke"); typedFailure("revoked", "gateway_revoked") }
           else { close("shutdown"); typedFailure("failed", "helper_crashed") }
         },
       }) } catch { typedFailure("failed", "helper_crashed") }
       return current
     }
-    if (command.id === "voice.mute") { session?.setCaptureEnabled(false); publish({ ...current, phase: "muted" }); return current }
-    if (command.id === "voice.unmute") { if (session !== null) { session.setCaptureEnabled(true); publish({ ...current, phase: "live", reason: undefined }) }; return current }
-    if (command.id === "voice.suspend") { session?.setCaptureEnabled(false); publish({ ...current, phase: "suspended" }); return current }
-    if (command.id === "voice.resume") { if (session !== null) { session.setCaptureEnabled(true); publish({ ...current, phase: "live", reason: undefined }) }; return current }
+    if (command.id === "voice.mute") { captureWanted = false; session?.setCaptureEnabled(false); publish({ ...current, phase: "muted" }); return current }
+    if (command.id === "voice.unmute") { captureWanted = true; if (session !== null) { session.setCaptureEnabled(true); publish({ ...current, phase: "live", reason: undefined }) }; return current }
+    if (command.id === "voice.suspend") { captureWanted = false; session?.setCaptureEnabled(false); publish({ ...current, phase: "suspended" }); return current }
+    if (command.id === "voice.resume") { captureWanted = true; if (session !== null) { session.setCaptureEnabled(true); publish({ ...current, phase: "live", reason: undefined }) }; return current }
+    captureWanted = false
     close(command.id === "voice.revoke" ? "revoke" : "stop")
     publish({ ...current, phase: command.id === "voice.revoke" ? "revoked" : "idle", ...(command.id === "voice.revoke" ? { reason: "gateway_revoked" as const } : { reason: undefined }) })
     return current

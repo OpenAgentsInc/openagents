@@ -62,6 +62,7 @@ const config: ForgeConfig = {
     executableName: "OpenAgents",
     appBundleId: OPENAGENTS_DESKTOP_BUNDLE_ID,
     appCategoryType: "public.app-category.developer-tools",
+    extendInfo: { NSMicrophoneUsageDescription: "OpenAgents uses the microphone only while you explicitly run a voice session." },
     asar: {
       // Both provider packages resolve and spawn native executables relative
       // to their installed package. Executables cannot run inside app.asar.
