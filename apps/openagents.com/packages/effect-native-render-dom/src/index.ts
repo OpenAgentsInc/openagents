@@ -1062,6 +1062,12 @@ const describeDroppedItems = (event: DragEvent): ReadonlyArray<JsonPayload> => {
   }))
 }
 
+export const scrollRegionIsAtEnd = (input: Readonly<{
+  scrollHeight: number
+  scrollTop: number
+  clientHeight: number
+}>): boolean => input.scrollHeight - (input.scrollTop + input.clientHeight) <= 1
+
 // Declarative scroll auto-pin (imperative view effect as data, issue #24).
 // When pinToEnd is true the region is kept scrolled to its end after each
 // commit; onPinnedChange fires with the current pinned boolean whenever the
@@ -1070,7 +1076,8 @@ const applyScrollRegion = (
   element: HTMLElement,
   view: StackView | ListView | TranscriptView,
   state: DomRendererState,
-  report: IntentReporter
+  report: IntentReporter,
+  pinOnCommit: boolean = true
 ): void => {
   if (view.pinToEnd !== true) return
   element.style.overflowY = "auto"
@@ -1078,7 +1085,7 @@ const applyScrollRegion = (
   if (onPinnedChange !== undefined) {
     const signatureKey = `${view._tag}:${view.key ?? ""}`
     state.addListener(element, "scroll", () => {
-      const atEnd = element.scrollHeight - (element.scrollTop + element.clientHeight) <= 1
+      const atEnd = scrollRegionIsAtEnd(element)
       const previous = state.pinnedSignatures.get(signatureKey)
       if (previous !== atEnd) {
         state.pinnedSignatures.set(signatureKey, atEnd)
@@ -1088,7 +1095,7 @@ const applyScrollRegion = (
   }
   // Defer the scroll so it runs after children are committed into the DOM.
   queueMicrotask(() => {
-    element.scrollTop = element.scrollHeight
+    if (pinOnCommit) element.scrollTop = element.scrollHeight
   })
 }
 
@@ -3582,6 +3589,11 @@ const renderMarkdown = (view: MarkdownView, state: DomRendererState): HTMLElemen
 
 const renderTranscript = (view: TranscriptView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "div")
+  // A sibling-only commit (for example showing Cmd+1 shortcut hints) must not
+  // steal a reader's scroll position. Auto-pin only when this retained
+  // transcript was already at its end before children were reconciled.
+  const scrollPosition = { top: element.scrollTop, left: element.scrollLeft }
+  const wasAtEnd = scrollRegionIsAtEnd(element)
   state.resetListeners(element)
   element.setAttribute("role", "log")
   element.setAttribute("aria-live", "polite")
@@ -3684,9 +3696,13 @@ const renderTranscript = (view: TranscriptView, state: DomRendererState, report:
     return messageEl
   })
   reconcileChildren(element, messages)
+  if (!wasAtEnd) {
+    element.scrollTop = scrollPosition.top
+    element.scrollLeft = scrollPosition.left
+  }
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
-  applyScrollRegion(element, view, state, report)
+  applyScrollRegion(element, view, state, report, wasAtEnd)
   return element
 }
 

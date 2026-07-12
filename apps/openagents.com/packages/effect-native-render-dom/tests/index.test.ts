@@ -18,7 +18,13 @@ import {
 import { Effect, Stream } from "@effect-native/core/effect"
 import { Deferred } from "effect"
 
-import { makeDomRenderer, makeStubCodeEditorDriver, type DomHostContext, type DomHostDriver } from "../src/index"
+import { makeDomRenderer, makeStubCodeEditorDriver, scrollRegionIsAtEnd, type DomHostContext, type DomHostDriver } from "../src/index"
+
+test("transcript pinning distinguishes a reader scrolled up from the live edge", () => {
+  expect(scrollRegionIsAtEnd({ scrollHeight: 1_000, scrollTop: 300, clientHeight: 400 })).toBe(false)
+  expect(scrollRegionIsAtEnd({ scrollHeight: 1_000, scrollTop: 600, clientHeight: 400 })).toBe(true)
+  expect(scrollRegionIsAtEnd({ scrollHeight: 1_000, scrollTop: 599, clientHeight: 400 })).toBe(true)
+})
 
 const nextTask = Effect.promise<void>(
   () => new Promise((resolve) => setTimeout(resolve, 0))

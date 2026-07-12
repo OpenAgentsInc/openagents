@@ -112,6 +112,9 @@ describe("contract openagents_desktop.agent_graph.pointer_keyboard_focus_equival
     expect(runtimeAgentGraphDetailFields(presentation.rows[1]!).map(field => field.label)).toEqual([
       "Status", "Provider", "Runtime", "Session", "Worktree", "Elapsed", "Tokens", "Attention",
     ])
+    expect(nodeByKey(view, "runtime-agent-summary-row")?.direction).toBe("column")
+    expect(nodeByKey(view, "runtime-agent-row-agent.desktop.child")?.direction).toBe("column")
+    expect(nodeByKey(view, "runtime-agent-fields-agent.desktop.child")?._tag).toBe("Stack")
     expect(JSON.stringify((view as unknown as Node).interactions)).toContain("DesktopAgentAction")
   })
 

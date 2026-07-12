@@ -4,7 +4,6 @@ import {
   IntentRef,
   Stack,
   StaticPayload,
-  Table,
   Text,
   type View,
 } from "@effect-native/core"
@@ -72,17 +71,16 @@ const agentInspector = (row: LiveAgentGraphPresentationRow): View => {
       a11y: { role: "region", label: `Agent details, ${row.label}` },
     },
     [
-      Table({
-        key: `runtime-agent-fields-${row.agentRef}`,
-        columns: [{ id: "field", header: "Field" }, { id: "value", header: "Value" }],
-        rows: fields.map((field, index) => ({
-          id: String(index),
-          cells: [
+      Stack(
+        { key: `runtime-agent-fields-${row.agentRef}`, direction: "column", gap: "2", style: { width: "full" } },
+        fields.map((field, index) => Stack(
+          { key: `runtime-agent-field-row-${row.agentRef}-${index}`, direction: "column", gap: "1", style: { width: "full" } },
+          [
             Text({ key: `runtime-agent-field-${row.agentRef}-${index}`, content: field.label, variant: "caption", color: "textMuted" }),
             Text({ key: `runtime-agent-value-${row.agentRef}-${index}`, content: field.value, variant: "body", color: "textPrimary" }),
           ],
-        })),
-      }),
+        )),
+      ),
       ...(row.canControl ? [Button({
         key: `runtime-agent-focus-${row.agentRef}`,
         label: "Focus agent",
@@ -112,8 +110,7 @@ export const runtimeAgentGraphView = (input: Readonly<{
       gap: "2",
       style: {
         width: "full",
-        maxWidth: 840,
-        alignSelf: "center",
+        minWidth: 0,
         padding: "2",
         borderColor: "border",
         borderWidth: 1,
@@ -132,7 +129,7 @@ export const runtimeAgentGraphView = (input: Readonly<{
       },
     },
     [
-      Stack({ key: "runtime-agent-summary-row", direction: "row", gap: "2", align: "center" }, [
+      Stack({ key: "runtime-agent-summary-row", direction: "column", gap: "1", align: "start", style: { width: "full" } }, [
         Badge({
           key: "runtime-agent-authority",
           label: graph.authorityLabel,
@@ -142,6 +139,7 @@ export const runtimeAgentGraphView = (input: Readonly<{
           key: "runtime-agent-toggle",
           label: `Agent stack · ${summary}`,
           variant: "ghost",
+          style: { width: "full", padding: "1", borderWidth: 0, textAlign: "left" },
           onPress: IntentRef("DesktopAgentGraphToggled"),
           a11y: { label: `${expanded ? "Collapse" : "Expand"} agent stack. ${summary}` },
         }),
@@ -152,10 +150,10 @@ export const runtimeAgentGraphView = (input: Readonly<{
           Stack(
             {
               key: `runtime-agent-row-${row.agentRef}`,
-              direction: "row",
-              gap: "2",
-              align: "center",
-              style: { paddingLeft: depthSpacing(row.depth) },
+              direction: "column",
+              gap: "1",
+              align: "start",
+              style: { width: "full", minWidth: 0, paddingLeft: depthSpacing(row.depth) },
             },
             [
               Badge({
@@ -167,6 +165,7 @@ export const runtimeAgentGraphView = (input: Readonly<{
                 key: `runtime-agent-select-${row.agentRef}`,
                 label: row.label,
                 variant: selected ? "secondary" : "ghost",
+                style: { width: "full", padding: "1", textAlign: "left" },
                 onPress: IntentRef("DesktopAgentAction", StaticPayload({
                   kind: "inspect_agent",
                   agentRef: row.agentRef,
