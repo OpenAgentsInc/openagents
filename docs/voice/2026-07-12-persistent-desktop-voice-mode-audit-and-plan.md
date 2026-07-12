@@ -13,6 +13,13 @@
 - **AUDIO-2 Google STT gateway:** implemented and live-smoked on private Cloud
   Run revision `openagents-audio-staging-00002-7x4`; see
   [`evidence/2026-07-12-audio-2-google-stt-staging-receipt.md`](./evidence/2026-07-12-audio-2-google-stt-staging-receipt.md).
+- **AUDIO-3 retained audio:** implemented on `main` at `658ecd197d` with
+  receipt-gated envelope encryption, private GCS objects, Cloud SQL manifests,
+  eight-class disposition receipts, and live export/delete reconciliation.
+- **AUDIO-4 Desktop media host:** implemented through `06cbc97b07`,
+  `0b91925886`, `f59cbd741b`, `5b243319d6`, and `65ad1fca1e`: Electron owns
+  permissions/finalizers and a signed Rust helper owns capture, conversion,
+  authenticated transport, bounded reconnect/backpressure, and playback.
 - **Historical inputs:** Sarah/Hydralisk records in `docs/sarah/` and their deleted source in Git history
 
 ## 0. Vision summary

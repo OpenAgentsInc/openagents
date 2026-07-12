@@ -11,6 +11,12 @@ official Google Node gRPC client and completed a real Chirp 3 streaming smoke
 on private Cloud Run. Its cancellation/runtime threshold passed, so the ADR's
 Rust-gateway fallback is not activated.
 
+**Measured AUDIO-4 result (#8737):** the narrow Rust helper now provides real
+`cpal` capture/playback and direct TLS WebSocket media transport while Electron
+main retains permission, grant, lifecycle, and finalizer authority. Rust's
+boundary did not expand into renderer, command, Sync, retention, or credential
+authority, so the accepted hybrid decision remains intact.
+
 - **Date:** 2026-07-12
 - **Status:** accepted planning decision for [AUDIO-0 #8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
 - **Owner direction:** Rust is permitted for this track when it is the better systems boundary; do not force the whole feature into Effect
