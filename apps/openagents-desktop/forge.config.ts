@@ -72,7 +72,9 @@ const config: ForgeConfig = {
       // Electron Framework/Versions/Current is a symlink to A. Walking and
       // signing both views races the same resource tree and eventually asks
       // codesign to reopen a path already rewritten through the other view.
-      ignore: file => file.includes("/Electron Framework.framework/Versions/Current/"),
+      ignore: file =>
+        file.includes("/Electron Framework.framework/Versions/Current/") ||
+        file.endsWith(".pak"),
       optionsForFile: () => ({
         entitlements: "build/entitlements.mac.plist",
         hardenedRuntime: true,
