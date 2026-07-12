@@ -17,12 +17,12 @@
 | SOL-DOC-01 — truthful, revision-independent entry points | [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723) | **Closed 2026-07-12.** `docs/sol/README.md`, `docs/sol/issues/README.md`, and `docs/sol/IMPLEMENTATION_ROADMAP.md` now route to current authority without caching a master revision, issue count, old queue, or executable delegation diary. | `9d432817e9` — local links resolve; stale Revision 25/29/31 and delegation-dispatch scans pass; repository fast pre-push guards pass. |
 | SOL-DOC-02 — durable operating and subsystem contracts | [#8724](https://github.com/OpenAgentsInc/openagents/issues/8724) | **Closed 2026-07-12.** Operating/subsystem guidance is revision-independent, does not own the current queue, treats #8640 as closed proof, keeps physical Android non-gating, and separates persona-neutral voice from closed Sarah presentation scope. The July 9 authority analysis now links to repository invariants. | `1eefd72465` — local links, stale-policy scans, positive voice/Android/#8640 assertions, invariant-link check, and repository fast pre-push guards pass. |
 | SOL-DOC-03 — retire false dispatch artifacts | [#8725](https://github.com/OpenAgentsInc/openagents/issues/8725) | **Closed 2026-07-12.** The July 10 delegation diary is non-dispatch and its executable prompt is removed; active inbound links now use live authority. The CUT plan, CUT-27 audit, parity score, and Desktop delivery sequence are pinned historical evidence. | `7476316a69` — changed-file links resolve; active inbound-link and obsolete-prompt scans pass; snapshot-status assertions and repository fast pre-push guards pass. |
+| SOL-DOC-04 — compact the canonical master | [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726) | **Closed 2026-07-12.** The master is one compact authority with durable decisions/gates/laws/non-goals, one live issue projection, and one next-ready sequence. Historical implementation diaries and the Fable pass are removed from its body. CUT dependency edges remain binding while their mutable status prose is historical. | `6bfe97fddb` — 2,189→557 lines; 22 decisions, 30 laws, R0–R7, D0–D6, C0–C3, live-issue equality, forbidden-history, link, diff, and repository fast pre-push checks pass. |
 
-**Next ordered chunk:** SOL-DOC-04 compacts the master roadmap. It retains
-owner decisions, durable gates/laws/non-goals, one current issue projection,
-and one next-ready sequence; extracts old implementation diaries, starting-gap
-snapshots, duplicated receipts, obsolete execution orders, and the historical
-Fable reconciliation pass without changing product truth.
+**Next ordered chunk:** SOL-DOC-05 normalizes receipts and closed checked-in
+issue sources. It adds one receipt index and final-disposition headers, then
+classifies issue sources as open source, closed receipt source, or non-revival
+tombstone before any link-safe moves.
 
 ## Executive decision
 
@@ -432,6 +432,10 @@ queue” that starts from Revision 25–31 or a closed CUT.
 ### P3 — Split and compact the master roadmap
 
 **Goal:** restore the master as a usable authority.
+
+SOL-DOC-04 [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726)
+completed this phase at `6bfe97fddb`. The final master is 557 lines and the
+Revision 86 pre-compaction source remains pinned at `4239689e24`.
 
 Keep in `MASTER_ROADMAP.md`:
 

@@ -3,17 +3,18 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 87
+- Revision: 88
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: yes, together with live issues and
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
-- Documentation cleanup: SOL-DOC-04
-  [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726) is the
-  documentation-only compaction claim after closed SOL-DOC-01/02/03. It does
-  not change product proof. See the
+- Documentation cleanup: SOL-DOC-01 through SOL-DOC-04 are closed.
+  SOL-DOC-04 [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726)
+  compacted this authority from 2,189 to 557 lines at `6bfe97fddb` without
+  changing product proof. SOL-DOC-05 normalizes receipts and closed issue
+  sources next. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
 This file owns current product direction, durable gates and laws, the current
@@ -392,7 +393,6 @@ SOL-DOC-04 refresh. Refresh live issues again before dispatch.
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | CUT-09 remaining lifecycle acceptance |
 | [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | CUT-26 distribution/update/rollback/legacy lockout |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
-| [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726) | SOL-DOC-04 documentation-only master compaction |
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 #8642, #8643, #8646, and #8650. They are not dormant queues.
@@ -401,8 +401,8 @@ Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 
 Live issues and claims control exact selection. At this snapshot:
 
-1. In parallel with this documentation-only claim, run the combined physical-
-   iPhone journey for #8676 and CUT-09: same-ref named-Codex continuation,
+1. In parallel, run the combined physical-iPhone journey for #8676 and CUT-09:
+   same-ref named-Codex continuation,
    literal offline/network gap, exactly-once reconnect, then unlink/sign-out/
    revocation denial without replay. Complete CUT-26's next monotonic RC and
    clean-machine lifecycle independently.
