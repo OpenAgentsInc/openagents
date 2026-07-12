@@ -5,7 +5,7 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.3",
+    version: "2026-07-12.2",
     contracts: [
       {
         contractId: "openagents_mobile.seam.identity.local_first_account_link.v1",
@@ -140,6 +140,46 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         ],
         verification:
           "Mobile coding, conversation, Home, sync-host, full app, and typecheck suites; physical iOS/Android receipts remain open on #8694.",
+      },
+      {
+        contractId: "openagents_mobile.seam.accessibility_core_flows.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile accessibility",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "sol-roadmap",
+          statedBy: "owner",
+          statedOn: "2026-07-12",
+        },
+        statement:
+          "Mobile Home and Khala coding flows carry platform font-scale and reduced-motion state into the Effect Native view program, keep primary touch targets at least 44pt and larger under Dynamic Type, expose non-empty labels/roles for chrome, transcript, composer, runtime questions, approvals, and drawer navigation, and avoid app-owned animation in these core flows.",
+        authorityBoundary:
+          "React Native reads OS accessibility signals only through AccessibilityInfo and useWindowDimensions, then projects bounded booleans/numbers into serializable Effect Native state. No prompt, credential, provider payload, file path, or private Sync row is included in accessibility metadata; physical device screen-reader proof is not claimed by this deterministic oracle.",
+        seam: {
+          client: "apps/openagents-mobile/src/screens/home-core.ts",
+          server: "apps/openagents-mobile/src/screens/home-screen.tsx",
+        },
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/home-screen.tsx",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents-mobile/src/screens/khala-core.ts",
+          "apps/openagents-mobile/tests/mobile-accessibility.test.ts",
+          "github:OpenAgentsInc/openagents#8704",
+        ],
+        oracles: [
+          {
+            id: "mobile_accessibility_core_flows",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-accessibility.test.ts",
+            description:
+              "Proves bounded font-scale/reduced-motion projection, enlarged touch targets, transcript/composer/runtime-control accessibility metadata, and absence of app-owned animation in mobile core coding flows.",
+          },
+        ],
+        verification:
+          "Mobile accessibility oracle, Home/Khala focused suites, mobile typecheck, and app test sweep. Manual VoiceOver/TalkBack and physical device receipts remain intentionally unclaimed.",
       },
     ],
   };

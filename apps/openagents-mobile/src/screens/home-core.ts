@@ -40,9 +40,19 @@ import {
   initialKhalaState,
   khalaHandlers,
   khalaIntentDefinitions,
+  defaultMobileAccessibilityProfile,
+  mobileInteractiveStyle,
+  normalizeMobileAccessibilityProfile,
   renderKhalaSurface,
   type KhalaState,
   type KhalaTurnClient,
+  type MobileAccessibilityProfile,
+} from "./khala-core"
+
+export {
+  defaultMobileAccessibilityProfile,
+  normalizeMobileAccessibilityProfile,
+  type MobileAccessibilityProfile,
 } from "./khala-core"
 
 /**
@@ -79,6 +89,7 @@ export interface HomeState {
     kind: "ready" | "failed"
     message: string
   }> | null
+  readonly accessibility: MobileAccessibilityProfile
   readonly khala: KhalaState
 }
 
@@ -166,6 +177,7 @@ export const initialHomeState: HomeState = {
   codingComposer: null,
   codingAttachmentPicking: false,
   codingAttachmentStatus: null,
+  accessibility: defaultMobileAccessibilityProfile,
   khala: initialKhalaState,
 }
 
@@ -276,6 +288,7 @@ export const renderContentView = (state: HomeState): View =>
           state.codingComposer,
           state.codingAttachmentPicking,
           state.codingAttachmentStatus,
+          state.accessibility,
         )]
       : [
           Spacer({ key: "openagents-top-space", size: "16" }),
@@ -294,11 +307,12 @@ export const renderContentView = (state: HomeState): View =>
           }),
           ...(state.syncPhase === "session_ready"
             ? [Button({
-                key: "openagents-sign-out",
-                label: "Sign out",
-                variant: "secondary",
-                onPress: IntentRef("OpenAgentsSignOutPressed", StaticPayload({})),
-              })]
+              key: "openagents-sign-out",
+              label: "Sign out",
+              variant: "secondary",
+              onPress: IntentRef("OpenAgentsSignOutPressed", StaticPayload({})),
+              style: mobileInteractiveStyle(state.accessibility),
+            })]
             : state.syncPhase === "authenticating"
               ? []
               : [Button({
@@ -306,6 +320,7 @@ export const renderContentView = (state: HomeState): View =>
                   label: "Link OpenAgents account",
                   variant: "primary",
                   onPress: IntentRef("OpenAgentsSignInPressed", StaticPayload({})),
+                  style: mobileInteractiveStyle(state.accessibility),
                 })]),
         ],
   )
@@ -322,6 +337,10 @@ export const renderHomeView = (state: HomeState): View =>
       direction: "column",
       gap: "2",
       padding: "2",
+      a11y: {
+        role: "region",
+        label: `OpenAgents mobile home, ${state.accessibility.textScale} text scale, reduced motion ${state.accessibility.reduceMotion ? "on" : "off"}`,
+      },
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
     [
@@ -330,7 +349,7 @@ export const renderHomeView = (state: HomeState): View =>
           key: "home-toolbar",
           placement: "top",
           surface: "glass",
-          style: { width: "full", minHeight: 44 },
+          style: { width: "full", minHeight: state.accessibility.minTouchTarget },
         },
         [
           IconButton({
@@ -338,6 +357,7 @@ export const renderHomeView = (state: HomeState): View =>
             icon: "Menu",
             accessibilityLabel: state.drawerOpen ? "Close navigation" : "Open navigation",
             onPress: IntentRef("DrawerToggled", StaticPayload({})),
+            style: mobileInteractiveStyle(state.accessibility),
           }),
           Button({
             key: "home-surface-mode",
@@ -347,6 +367,7 @@ export const renderHomeView = (state: HomeState): View =>
               "SurfaceModeSelected",
               StaticPayload({ mode: state.surfaceMode === "khala" ? "openagents" : "khala" }),
             ),
+            style: mobileInteractiveStyle(state.accessibility),
           }),
           Spacer({ key: "home-toolbar-space", size: "1", style: { flex: 1 } }),
           IconButton({
@@ -354,6 +375,7 @@ export const renderHomeView = (state: HomeState): View =>
             icon: "Compose",
             accessibilityLabel: "New chat",
             onPress: IntentRef("NewChatPressed", StaticPayload({})),
+            style: mobileInteractiveStyle(state.accessibility),
           }),
         ],
       ),
@@ -361,13 +383,25 @@ export const renderHomeView = (state: HomeState): View =>
     ],
   )
 
-const drawerRow = (input: { readonly key: string; readonly label: string; readonly onPress: ReturnType<typeof IntentRef>; readonly selected?: boolean }): View =>
+const drawerRow = (
+  input: {
+    readonly key: string
+    readonly label: string
+    readonly onPress: ReturnType<typeof IntentRef>
+    readonly selected?: boolean
+  },
+  accessibility: MobileAccessibilityProfile,
+): View =>
   Button({
     key: input.key,
     label: input.label,
     variant: input.selected === true ? "secondary" : "ghost",
     onPress: input.onPress,
-    style: { width: "full", ...(input.selected === true ? { backgroundColor: "surfaceRaised" } : {}) },
+    style: {
+      width: "full",
+      ...mobileInteractiveStyle(accessibility),
+      ...(input.selected === true ? { backgroundColor: "surfaceRaised" } : {}),
+    },
   })
 
 const codingSessionStateLabel = (state: MobileCodingDirectory["sessions"][number]["state"]): string => {
@@ -384,14 +418,14 @@ export const renderDrawerView = (state: HomeState): View =>
     { key: "drawer-root", direction: "column", gap: "2", padding: "4", style: { width: "full", height: "full", backgroundColor: "surface" } },
     [
       Spacer({ key: "drawer-top-space", size: "10" }),
-      drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }),
-      drawerRow({ key: "drawer-khala", label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })), selected: state.surfaceMode === "khala" }),
+      drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
+      drawerRow({ key: "drawer-khala", label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })), selected: state.surfaceMode === "khala" }, state.accessibility),
       ...state.conversationThreads.map(thread => drawerRow({
         key: `drawer-thread-${thread.threadRef}`,
         label: thread.title,
         onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: thread.threadRef })),
         selected: state.activeThreadRef === thread.threadRef,
-      })),
+      }, state.accessibility)),
       ...(state.codingDirectory?.authority === "confirmed" && state.codingDirectory.sessions.length > 0
         ? [
             Text({
@@ -418,12 +452,12 @@ export const renderDrawerView = (state: HomeState): View =>
                     threadRef: session.threadRef,
                   })),
                   selected: state.activeThreadRef === session.threadRef,
-                })),
+                }, state.accessibility)),
             ]),
           ]
         : []),
       Spacer({ key: "drawer-flex-space", size: "8" }),
-      drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }),
+      drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
       Text({ key: "drawer-bundle", content: `Bundle ${BUNDLE_TAG}`, variant: "caption", color: "textMuted" }),
     ],
   )
@@ -435,6 +469,7 @@ export interface HomeProgramOptions {
     signOut: () => Promise<void>
   }>
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
+  readonly accessibility?: MobileAccessibilityProfile
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     activeComposer: () => MobileCodingComposerSession | null
@@ -597,22 +632,27 @@ const failedConversationState = (
 
 export const initialHomeStateForConversation = (
   selection: HomeProgramOptions["conversation"],
-): HomeState => selection === undefined
-  ? initialHomeState
-  : {
-      ...initialHomeState,
-      syncPhase: "live",
-      conversationAuthority: "sync",
-      conversationThreads: selection.threads,
-      activeThreadRef: selection.activeThread?.threadRef ?? null,
-      codingDirectory: null,
-      khala: confirmedKhalaState(
-        selection.activeThread,
-        0,
-        selection.host.decideInteraction !== undefined,
-        selection.host.controlTurn !== undefined,
-      ),
-    }
+  accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
+): HomeState => {
+  const profile = normalizeMobileAccessibilityProfile(accessibility)
+  return selection === undefined
+    ? { ...initialHomeState, accessibility: profile }
+    : {
+        ...initialHomeState,
+        accessibility: profile,
+        syncPhase: "live",
+        conversationAuthority: "sync",
+        conversationThreads: selection.threads,
+        activeThreadRef: selection.activeThread?.threadRef ?? null,
+        codingDirectory: null,
+        khala: confirmedKhalaState(
+          selection.activeThread,
+          0,
+          selection.host.decideInteraction !== undefined,
+          selection.host.controlTurn !== undefined,
+        ),
+      }
+}
 
 const makeSyncedConversationHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
@@ -1075,6 +1115,9 @@ export interface HomeProgramHandle {
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
   }
+  readonly accessibility: {
+    readonly setProfile: (profile: MobileAccessibilityProfile) => void
+  }
   readonly coding: {
     readonly selectSession: (target: MobileCodingTarget) => void
     readonly pickAttachments: () => void
@@ -1088,7 +1131,10 @@ export interface HomeProgramHandle {
 export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramHandle =>
   Effect.runSync(
     Effect.gen(function* () {
-      const baseInitialState = initialHomeStateForConversation(options.conversation)
+      const baseInitialState = initialHomeStateForConversation(
+        options.conversation,
+        options.accessibility,
+      )
       const activeComposer = options.coding?.activeComposer() ?? null
       const programInitialState: HomeState = {
         ...baseInitialState,
@@ -1155,6 +1201,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     khala: initialKhalaState,
                   }
                 : { ...current, syncPhase: phase }))
+          },
+        },
+        accessibility: {
+          setProfile: profile => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({
+              ...current,
+              accessibility: normalizeMobileAccessibilityProfile(profile),
+            })))
           },
         },
         coding: {

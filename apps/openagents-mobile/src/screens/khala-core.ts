@@ -16,6 +16,41 @@ import {
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
 import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
 
+export type MobileTextScale = "normal" | "large" | "extra_large"
+
+export interface MobileAccessibilityProfile {
+  readonly reduceMotion: boolean
+  readonly fontScale: number
+  readonly textScale: MobileTextScale
+  readonly minTouchTarget: number
+}
+
+export const defaultMobileAccessibilityProfile: MobileAccessibilityProfile = {
+  reduceMotion: false,
+  fontScale: 1,
+  textScale: "normal",
+  minTouchTarget: 44,
+}
+
+export const normalizeMobileAccessibilityProfile = (input: Partial<Pick<MobileAccessibilityProfile, "reduceMotion" | "fontScale">> = {}): MobileAccessibilityProfile => {
+  const rawFontScale = Number.isFinite(input.fontScale) ? Number(input.fontScale) : 1
+  const fontScale = Math.min(2, Math.max(0.85, Math.round(rawFontScale * 100) / 100))
+  const textScale: MobileTextScale = fontScale >= 1.55
+    ? "extra_large"
+    : fontScale >= 1.25 ? "large" : "normal"
+  return {
+    reduceMotion: input.reduceMotion === true,
+    fontScale,
+    textScale,
+    minTouchTarget: textScale === "extra_large" ? 56 : textScale === "large" ? 52 : 44,
+  }
+}
+
+export const mobileInteractiveStyle = (accessibility: MobileAccessibilityProfile) => ({
+  minHeight: accessibility.minTouchTarget,
+  minWidth: accessibility.minTouchTarget,
+})
+
 /**
  * The public Khala mode: one conversation over the public orchestration
  * endpoint. It deliberately has no named-persona relationship, FleetRun, account, or
@@ -105,7 +140,11 @@ const interactionStatusLabel = (status: KhalaInteractionStatus): string => {
   }
 }
 
-const interactionBody = (state: KhalaState, entry: KhalaEntry): ReadonlyArray<View> => {
+const interactionBody = (
+  state: KhalaState,
+  entry: KhalaEntry,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => {
   const interaction = entry.interaction
   if (interaction === undefined) {
     return [Text({
@@ -140,7 +179,7 @@ const interactionBody = (state: KhalaState, entry: KhalaEntry): ReadonlyArray<Vi
           optionRef: option.optionRef,
           multiSelect: question.multiSelect,
         })),
-        style: { width: "full" },
+        style: { width: "full", ...mobileInteractiveStyle(accessibility) },
       }),
       ...(option.description === undefined ? [] : [Text({
         key: `${entry.key}-${question.questionRef}-${option.optionRef}-description`,
@@ -164,6 +203,7 @@ const interactionBody = (state: KhalaState, entry: KhalaEntry): ReadonlyArray<Vi
             turnRef: interaction.turnRef,
             kind: interaction.kind,
           })),
+          style: mobileInteractiveStyle(accessibility),
         })]
       : interaction.kind === "tool_approval"
         ? [
@@ -171,16 +211,18 @@ const interactionBody = (state: KhalaState, entry: KhalaEntry): ReadonlyArray<Vi
               key: `${entry.key}-approve`, label: submitting ? "Submitting…" : "Approve",
               variant: "primary", disabled: !actionable,
               onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "approve" })),
+              style: mobileInteractiveStyle(accessibility),
             }),
             Button({
               key: `${entry.key}-deny`, label: "Deny", variant: "secondary", disabled: !actionable,
               onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "deny" })),
+              style: mobileInteractiveStyle(accessibility),
             }),
           ]
         : [
-            Button({ key: `${entry.key}-accept`, label: submitting ? "Submitting…" : "Accept plan", variant: "primary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "accept" })) }),
-            Button({ key: `${entry.key}-changes`, label: "Request changes", variant: "secondary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "request_changes" })) }),
-            Button({ key: `${entry.key}-replan`, label: "Replan", variant: "ghost", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "replan" })) }),
+            Button({ key: `${entry.key}-accept`, label: submitting ? "Submitting…" : "Accept plan", variant: "primary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "accept" })), style: mobileInteractiveStyle(accessibility) }),
+            Button({ key: `${entry.key}-changes`, label: "Request changes", variant: "secondary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "request_changes" })), style: mobileInteractiveStyle(accessibility) }),
+            Button({ key: `${entry.key}-replan`, label: "Replan", variant: "ghost", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "replan" })), style: mobileInteractiveStyle(accessibility) }),
           ]
   return [
     Text({ key: `${entry.key}-title`, content: interaction.title, variant: "heading", color: "textPrimary" }),
@@ -223,7 +265,10 @@ const runtimeControlActions = (
   return []
 }
 
-const runtimeControlViews = (state: KhalaState): ReadonlyArray<View> => {
+const runtimeControlViews = (
+  state: KhalaState,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => {
   const turn = state.runtimeTurn
   if (turn === null) return []
   const actions = runtimeControlActions(state)
@@ -252,6 +297,7 @@ const runtimeControlViews = (state: KhalaState): ReadonlyArray<View> => {
           action,
           runRef: turn.runRef,
         })),
+        style: mobileInteractiveStyle(accessibility),
       })
     }),
   )]
@@ -383,6 +429,7 @@ export const renderKhalaSurface = (
     kind: "ready" | "failed"
     message: string
   }> | null = null,
+  accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
 ): View =>
   Stack(
     {
@@ -390,6 +437,10 @@ export const renderKhalaSurface = (
       direction: "column",
       gap: "3",
       padding: "4",
+      a11y: {
+        role: "region",
+        label: `Conversation surface, ${accessibility.textScale} text scale, reduced motion ${accessibility.reduceMotion ? "on" : "off"}`,
+      },
       style: { width: "full", height: "full" },
     },
     [
@@ -418,12 +469,16 @@ export const renderKhalaSurface = (
             ? entry.status === "pending" ? "YOU · PENDING" : "YOU"
             : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
           ...(entry.createdAt === undefined ? {} : { timestamp: entry.createdAt.slice(11, 16) }),
-          body: interactionBody(state, entry),
+          body: interactionBody(state, entry, accessibility),
         })),
+        a11y: {
+          role: "list",
+          label: `Conversation transcript, reduced motion ${accessibility.reduceMotion ? "on" : "off"}`,
+        },
         pinToEnd: true,
         style: { width: "full", flex: 1 },
       }),
-      ...runtimeControlViews(state),
+      ...runtimeControlViews(state, accessibility),
       ...codingComposerContextViews(
         codingComposer,
         codingAttachmentStatus,
@@ -438,7 +493,7 @@ export const renderKhalaSurface = (
           padding: "2",
           style: {
             width: "full",
-            minHeight: 54,
+            minHeight: Math.max(54, accessibility.minTouchTarget),
             borderRadius: "full",
             surface: "glass",
           },
@@ -460,6 +515,7 @@ export const renderKhalaSurface = (
               StaticPayload({}),
             ),
             surface: "glass",
+            style: mobileInteractiveStyle(accessibility),
           }),
           Composer({
             key: "khala-composer",
@@ -489,7 +545,7 @@ export const renderKhalaSurface = (
                 }),
             style: {
               flex: 1,
-              minHeight: 44,
+              minHeight: accessibility.minTouchTarget,
               borderWidth: 0,
               surface: "glass",
             },
