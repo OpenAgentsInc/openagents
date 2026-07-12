@@ -18,11 +18,13 @@
 | SOL-DOC-02 — durable operating and subsystem contracts | [#8724](https://github.com/OpenAgentsInc/openagents/issues/8724) | **Closed 2026-07-12.** Operating/subsystem guidance is revision-independent, does not own the current queue, treats #8640 as closed proof, keeps physical Android non-gating, and separates persona-neutral voice from closed Sarah presentation scope. The July 9 authority analysis now links to repository invariants. | `1eefd72465` — local links, stale-policy scans, positive voice/Android/#8640 assertions, invariant-link check, and repository fast pre-push guards pass. |
 | SOL-DOC-03 — retire false dispatch artifacts | [#8725](https://github.com/OpenAgentsInc/openagents/issues/8725) | **Closed 2026-07-12.** The July 10 delegation diary is non-dispatch and its executable prompt is removed; active inbound links now use live authority. The CUT plan, CUT-27 audit, parity score, and Desktop delivery sequence are pinned historical evidence. | `7476316a69` — changed-file links resolve; active inbound-link and obsolete-prompt scans pass; snapshot-status assertions and repository fast pre-push guards pass. |
 | SOL-DOC-04 — compact the canonical master | [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726) | **Closed 2026-07-12.** The master is one compact authority with durable decisions/gates/laws/non-goals, one live issue projection, and one next-ready sequence. Historical implementation diaries and the Fable pass are removed from its body. CUT dependency edges remain binding while their mutable status prose is historical. | `6bfe97fddb` — 2,189→557 lines; 22 decisions, 30 laws, R0–R7, D0–D6, C0–C3, live-issue equality, forbidden-history, link, diff, and repository fast pre-push checks pass. |
+| SOL-DOC-05 — normalize receipts and issue sources | [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727) | **Closed 2026-07-12.** One receipt index exposes final rungs for 25 root evidence files; every checked-in issue source is classified as live, closed proof, tombstone, or reference; ambiguous receipt headers now lead with final disposition. | `991f908b6b` — 43/43 unique issue-source coverage, live-state equality, stale-close, link, diff, and repository fast pre-push checks pass. |
 
-**Next ordered chunk:** SOL-DOC-05 normalizes receipts and closed checked-in
-issue sources. It adds one receipt index and final-disposition headers, then
-classifies issue sources as open source, closed receipt source, or non-revival
-tombstone before any link-safe moves.
+**Next ordered chunk:** SOL-DOC-06 extracts still-binding authority/trust rules,
+risk falsifiers, the post-Sarah Effect Native falsifier, and the compact
+greenfield/Sarah-removal decision into their durable owners. It produces the
+exact Backroom export manifest and inbound-link plan for the July 9 corpus but
+does not delete source files before the archive is pushed.
 
 ## Executive decision
 
@@ -468,6 +470,10 @@ tense.
 ### P4 — Normalize receipts and closed issue sources
 
 **Goal:** retain proof without making it look like a backlog.
+
+SOL-DOC-05 [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727)
+completed the classification/index phase at `991f908b6b`. Files intentionally
+remain in place until the inbound-link and archive batches execute.
 
 1. Create `docs/sol/receipts/README.md` with issue, cut, snapshot, final proof
    rung, final disposition, and artifact links.

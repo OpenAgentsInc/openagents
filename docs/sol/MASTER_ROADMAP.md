@@ -3,18 +3,20 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 88
+- Revision: 89
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: yes, together with live issues and
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
-- Documentation cleanup: SOL-DOC-01 through SOL-DOC-04 are closed.
+- Documentation cleanup: SOL-DOC-01 through SOL-DOC-05 are closed.
   SOL-DOC-04 [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726)
   compacted this authority from 2,189 to 557 lines at `6bfe97fddb` without
-  changing product proof. SOL-DOC-05 normalizes receipts and closed issue
-  sources next. See the
+  changing product proof. SOL-DOC-05
+  [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727) indexed
+  receipts and classified every checked-in issue source at `991f908b6b`.
+  SOL-DOC-06 extracts retained doctrine before Backroom export. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
 This file owns current product direction, durable gates and laws, the current
@@ -351,12 +353,13 @@ SOL-DOC-04 refresh. Refresh live issues again before dispatch.
 - The foundational local coding graph through CUT-25 is landed/closed except
   CUT-09's distinct lifecycle acceptance. CUT-16 is closed with physical-iOS
   VoiceOver; CUT-25 is closed with cross-client Fleet control.
-- CUT-26 published signed/notarized/stapled `0.1.0-rc.1`, whose installed
-  artifact exposed a V8 snapshot-fuse boot failure. The fix is on `main`; the
-  next monotonic release candidate must finish packaging/notarization and pass
-  clean-machine first run, named-account readiness, a real coding smoke,
-  update/interruption/resume, rollback/reinstall, uninstall, and diagnostics
-  export.
+- CUT-26 retained two installed-artifact counterexamples: RC1 exposed a V8
+  snapshot-fuse boot failure; RC2 then reached main but failed hardened
+  renderer admission through `file:`/ASAR. Both fixes are on `main`; the next
+  monotonic candidate must finish packaging/notarization and pass downloaded-
+  artifact clean-machine first run, named-account readiness, a real coding
+  smoke, update/interruption/resume, rollback/reinstall, uninstall, and
+  diagnostics export without weakening the fuse posture.
 - CUT-27 closes the bounded ordinary Codex/Claude-to-OpenAgents cutover only
   after its open dependencies and exception register reconcile. It does not
   manufacture remote-workroom, portability, broker, any-host, or voice proof.
@@ -544,6 +547,7 @@ evidence remains discoverable here:
 
 - [`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md)
 - [`checked-in issue sources`](./issues/README.md)
+- [`receipt and evidence index`](./receipts/README.md)
 - [`binding CUT dependencies and historical status`](./2026-07-11-openagents-coding-cutover-issue-plan.md)
 - [`historical CUT-27 readiness audit`](./2026-07-12-cut27-cutover-readiness-audit.md)
 - [`retired July 10 execution diary`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
