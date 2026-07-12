@@ -293,10 +293,42 @@ receiver-less negative (64 pass, 223 expectations); Pylon and Desktop
 typechecks and full suites green at landing (exact counts in the landing
 commits on #8691).
 
+## 2026-07-12 named live-turn probe (partial; reconnect legs deploy-gated)
+
+With ready isolated-registry accounts present (Codex `codex`/`codex-5`,
+Claude `claude-pylon-2`/`claude-pylon-3`), a fresh throwaway thread was
+created against production and a real `runtime.startTurn`
+(`target.lane: claude_pylon`) was pushed with the owner-linked Pylon agent
+credential. The turn executed end-to-end as a REAL named-account Claude
+run through the durable production Sync path:
+
+- thread scope `scope.thread.e02d7fcd-7bfc-4865-a1ea-73de983bdd43`, turn
+  `94e068a2-e462-477c-b198-4348fb0cb5e3`, intent feed seq 84;
+- the single-winner turn-claim admission held live under real concurrency:
+  a second bounded consumer observed the typed
+  `skipped_stale (runtime turn claim was not newly admitted)` refusal while
+  the winning owner-local consumer executed the turn — no double dispatch;
+- changelog cursors 1-8 carry `chat_thread`/`chat_message`, the intent, the
+  claim (`turn.started` seq 1), `text.delta`/`text.completed`,
+  `usage.recorded` (3 input + 13 output, 16,823 cache-write, exact
+  `totalTokens: 16`), and `turn.finished(stop)`; `runtime_turn` settled
+  `completed` with `eventCount: 5`, all read back over the authenticated
+  Sync log API. No prompt text, credential, or provider payload was
+  retained in this receipt.
+
+The confirmed-graph reconnect legs could NOT complete: the deployed
+production API predates the CUT-11 server graph binding, so this live turn
+produced no `live_agent_graph` changelog rows to reconnect against (the
+binding is proven by real-Postgres server tests on `main`). The remaining
+residual is therefore deploy-gated, not code-gated.
+
 ## Residual
 
-One CUT-11 residual remains: a redacted NAMED-account execution carried
-through confirmed Sync/Gateway reconnect for both providers. The desktop
-wiring and the Pylon app-server child source above are deterministic-fixture
-and probe-grounded; the named confirmed-reconnect trace requires a ready
-named account at run time. Graph presentation remains CUT-12.
+One CUT-11 residual remains: after the next production API deploy picks up
+the server graph binding, carry one redacted NAMED-account execution
+through confirmed Sync/Gateway reconnect for both providers (the Codex leg
+should run through the app-server-first source above so the child records
+are live). All CUT-11 code paths — schema, adapters, server projection,
+Gateway v8 delivery, desktop live wiring, and the Pylon app-server child
+source — are landed and deterministically verified. Graph presentation
+remains CUT-12.
