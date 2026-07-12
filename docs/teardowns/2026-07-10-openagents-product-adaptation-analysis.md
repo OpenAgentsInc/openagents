@@ -13,6 +13,7 @@ Evidence base:
 - [OpenCode desktop source teardown](./2026-07-10-opencode-desktop-app-teardown.md)
 - [OpenCode V2 architecture teardown](./2026-07-10-opencode-v2-architecture-teardown.md)
 - [OpenCode Effect architecture teardown](./2026-07-10-opencode-effect-architecture-teardown.md)
+- [Executor architecture teardown](./2026-07-12-executor-architecture-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -1236,3 +1237,325 @@ No morning-addendum recommendation is weakened; items 3, 4 above upgrade
 two of them from `[public]`-argued to `[bundle]`-backed. Per the standing
 rule, promotion into requirements happens only through the owning gates,
 issues, and contracts.
+
+## Executor addendum (2026-07-12)
+
+The [Executor architecture teardown](./2026-07-12-executor-architecture-teardown.md)
+adds a reference the original desktop synthesis did not have: a focused,
+open-source integration substrate whose July Apps slice lets a typed authored
+function compose authenticated tools in an isolate and then re-enter the
+catalog as a durable tool.
+
+This does not alter the original decision that OpenAgents owns its engine,
+policy, containment, identity, and receipts. It sharpens what “signed, isolated
+typed catalog” must mean and moves one narrow capability out of the broad
+“app-generation studio” deferral.
+
+### Decision
+
+> Adapt Executor's authored-capability artifact, caller-bound account roles,
+> staged compiler, default-deny function isolate, and nested canonical-dispatch
+> pattern into OpenAgents. Consume Executor itself only as an optional MCP/HTTP
+> capability provider. Do not embed it as Khala/Pylon's authority core.
+
+The distinction matters because Executor and OpenAgents already overlap in
+tool registry, MCP, account/credential references, policy, approval, Effect
+runtime, storage, and host forms, and both are aimed at workflows, skills, and
+remote execution. Embedding Executor would create two answers for catalog
+projection, policy precedence, approval identity, cancellation, durability,
+and receipts. Interoperability keeps the boundary explainable; wholesale
+consumption does not.
+
+### What the implemented Executor slice proves
+
+At the pinned `v1.5.33` commit, Executor proves these claims in source and
+tests:
+
+1. **A durable authored tool is distinct from transient Code Mode.** Code Mode
+   runs one generated program over a captured catalog. Apps adds source
+   identity, bundling, deterministic schema collection, content-addressed
+   publication, an active descriptor/tool-row projection, and tombstones.
+   Generated code can become a reviewable reusable artifact rather than
+   disappear with one model turn.
+2. **Accounts can remain invocation parameters.** Source declares semantic
+   roles such as `github`, `crm`, or `inboxes`; the caller supplies one or many
+   concrete named connections. The handler receives callable proxies, never
+   the selected addresses as ordinary business input and never raw secrets.
+3. **Composition must return to the ordinary invocation processor.** Every
+   nested proxy call reconstructs a connection-backed tool address and re-
+   enters Executor policy, approval/elicitation, credential resolution, plugin
+   dispatch, and result handling. Custom code is not a privileged adapter path.
+4. **Local and hosted isolation can share an artifact contract.** Local/self-
+   hosted Apps use a deny-network `workerd` subprocess with a random-token
+   loopback bridge; cloud Apps use Cloudflare Dynamic Workers and tenant-
+   separated isolate keys.
+5. **Source publication is a lifecycle.** HTTPS Git and local-directory
+   sources move through bounded discovery, bundle, collect, projection, no-op,
+   failure, deletion, and tombstone behavior. The persisted source states are
+   pending, published, up-to-date, and failed; a ref mismatch is reported as a
+   failed publication diagnostic rather than a distinct lifecycle state.
+
+Those are meaningful substrate results. They make the June characterization
+of Executor as only an MCP catalog too narrow. The prior E2E audit remains
+useful for its Target/capability/artifact test architecture, but it is not a
+current whole-product description.
+
+### What Executor does not prove yet
+
+The Apps descriptor explicitly marks workflows, UI, and skills `not supported
+yet`. The runtime `author_tool`/`create_workflow`/`skills.create` path, Git
+promotion loop, reactive stores, rich-result handles, unified durable Run,
+remote cores, typed meta-capabilities, and transitive `scope()` membrane are
+vision, not this release.
+
+Two source facts require particular caution:
+
+- current v2 owner policy explicitly has no scope stack, while the vision
+  describes strict `scope()` intersection; and
+- current toolkits hold connection patterns and policy rules, while the vision
+  describes future toolkits as pure curation separate from policy.
+
+The implemented Apps bridge confines calls to declared integration roles and
+caller-selected connections. It does not yet establish a captured author
+authority ceiling that can never be widened at a later invocation. OpenAgents
+must model and test that intersection before claiming object-capability non-
+amplification.
+
+Other boundaries stay open:
+
+- authored integration clients return `Promise<unknown>`, not operation-typed
+  results;
+- source synchronization is operator-driven; repository webhooks, watchers,
+  scheduled polling, and the envisioned deploy/pull promotion loop are not the
+  implemented control plane;
+- only direct `tools/<slug>.{ts,tsx,js,jsx}` files and root package/lock files are
+  fetched, so ordinary multi-file source organization is not yet a full app
+  model;
+- publication source limits are good, but signature, SBOM, lockfile-integrity,
+  publisher policy, dependency transparency, and reproducible-build receipts
+  are absent;
+- Git literal-host checks do not by themselves prove DNS-resolved private-
+  address exclusion;
+- tool rows and the active descriptor are not visibly switched in one storage
+  transaction;
+- org-wide source create/sync/delete has no Apps-local role check visible in
+  the plugin handlers;
+- `destructive` is stored but not projected as an independent core enforcement
+  class, and author-declared `readOnly` affects the default approval hint; and
+- Apps is not a stable public embedding package: the release allowlist omits
+  it and its local/cloud runtime packages are private; Apps is wired into the
+  local CLI/desktop, Cloud, and Docker host, but not the separate Cloudflare
+  self-host plugin set at this snapshot.
+
+These are reasons to strengthen the pattern inside OpenAgents, not reasons to
+dismiss it.
+
+### OpenAgents already owns the authority half
+
+The relevant current OpenAgents code is materially beyond a blank slate:
+
+- `@openagentsinc/khala-tools` already defines typed tool authority,
+  availability, execution mode, input/output schema, permission mode,
+  invocation, events, artifacts, public/private/redacted results, runtime
+  services, dispatcher phases, turn call budgets, and bounded output.
+- compiled Agent Definitions already carry allow/deny/ask toolsets, network
+  and secret policy, triggers, lane, budgets, and escalation. Deny wins and
+  unmatched authority fails closed.
+- `@openagentsinc/mcp-contract` already defines authority classes, grants,
+  scope refs, transport/config types, and high-risk classes, although its
+  status still truthfully says phase-0 groundwork and no exposed runtime
+  transport.
+- Khala's concrete MCP client/server path already lists and invokes external
+  tools through policy-filtered projections. This should converge with the
+  shared MCP contract before Executor becomes another catalog source.
+- Desktop's extension lifecycle already gives MCP servers, plugins, and skills
+  one public-safe declare/validate/grant/revoke audit, while truthfully marking
+  current provider disagreement. It is a projection, not yet an owning
+  generation state machine.
+- Runtime Gateway and mobile already project and decide typed provider
+  questions, approvals, and plan reviews without putting runtime credentials
+  in the renderer.
+- local and managed sandbox provider interfaces, cloud workroom policy, exact
+  usage, Blueprint/Fleet runs, Sync events, and receipt vocabulary already
+  exist.
+
+The missing slice is therefore specific: OpenAgents lacks Executor's
+source → bundle → deterministic collect → staged generation → isolated
+capability bridge → canonical catalog loop for user- or agent-authored tools.
+
+### Adapt-now amendment
+
+The original “Adapt now” catalog decision should be read with the following
+amendment:
+
+1. **Add `AuthoredCapabilityArtifact`.** One browser-safe Effect Schema should
+   name immutable artifact/version, publisher/owner, source ref and hashes,
+   license/signature/provenance, toolchain, input/output Schema identity,
+   requested capability roles, effect/egress ceiling, compatible runtime,
+   budgets, and prior/superseding generation.
+2. **Add a Capability Broker.** At invocation, resolve declared roles into
+   owner-, WorkContext-, run-, account-, scope-, and expiry-bound handles.
+   Effective authority is the intersection of the parent grant, artifact
+   declaration, selected connection, organization policy, and execution-
+   profile ceiling. No term can widen inward.
+3. **Add a brokered-function-isolate profile.** This sits between projection-
+   only and workspace-bounded shell execution: no ambient filesystem, process,
+   environment, network, or secret; only the canonical tool bridge, bounded
+   dependencies/CPU/time/memory/nested calls/output/logs, and an effective
+   containment receipt. `workerd` is a strong adapter candidate, not the
+   product contract.
+4. **Add a staged source compiler.** Fetch a pinned Git/local source, verify
+   redirect and network policy, discover, bundle in an isolated worker,
+   collect schemas twice, validate capability requests, content-address the
+   descriptor, show authority/behavior diff, stage, approve if needed, then
+   atomically activate. Update, revoke, tombstone, and rollback are tested
+   lifecycle transitions.
+5. **Project into the canonical Khala registry.** Authored tools reuse the
+   current dispatcher, compiled Agent Definition policy, approvals, events,
+   redaction, accounting, cancellation, and Run/Work Unit receipts. There is
+   no Apps-only dispatcher or workflow store.
+6. **Capture catalog generation at advertisement.** A model executes the tool
+   generation and authority manifest it saw. Source sync cannot silently
+   replace a described operation before call.
+7. **Keep semantic routing.** Adapt exact namespace enumeration and lazy
+   search/describe/execute. Do not copy Executor's default token/substring/
+   field-weight ranking; user-facing tool selection remains the central typed
+   semantic selector or embedding/structured-planner path required by the
+   workspace invariant.
+8. **Make nested effects visible.** Each inner operation is a child invocation
+   with idempotency class, policy/approval, private durable events, accounting,
+   and receipt lineage. Parent completion does not erase partial side effects.
+
+This is a bounded extension/catalog lane under ordered consequence 6. It does
+not supersede the current protocol, cross-device conversation, foreign-host,
+Fleet, or packaging sequence.
+
+### “Adapt later” refinement
+
+The original deferral of complex app-generation/artifact studios remains
+correct for:
+
+- generative UI and durable dashboards;
+- broad internal-app studios;
+- dynamic integration plugins;
+- reactive agent KV/SQLite/filesystem stores;
+- remote-core federation; and
+- durable workflows whose crash/retry/compensation semantics are not proven.
+
+One narrow item moves earlier: **typed tool authoring and publication is a
+catalog/runtime primitive, not a full app studio**. It can be built and proven
+with one read-only composite and one approval-gated mutating composite without
+waiting for UI generation or a general workflow engine.
+
+OpenAgents' Agent Definition trigger, budget, escalation, scheduler, and
+durable run contracts already exist. Authored tools should become capabilities
+callable by that workflow authority. Executor's future workflow vision must
+not create a second scheduler or run truth.
+
+### Component-ledger amendment
+
+The signed compatibility ledger in Adapt-now 7 should additionally bind:
+
+- source repository and exact commit/tree digest;
+- source and dependency lock digests;
+- authored bundle and descriptor digests;
+- compiler, bundler, runtime, and driver versions;
+- Schema/catalog generation;
+- required integration kinds and compatible adapter generations;
+- requested versus effective authority and containment profile;
+- publisher/license/signature/transparency evidence;
+- activation, revocation, supersession, and rollback state; and
+- last-known-good execution evidence.
+
+Git is source and distribution, not trust. A reachable or updated repository
+does not authorize organization-wide activation.
+
+### Pylon, clients, and web amendment
+
+Pylon should host the compiler/broker/isolate lifecycle behind the existing
+runtime protocol, or route it to managed Cloud through the same contract. It
+must not pass SDK clients or credentials into authored code. Every run captures
+the exact artifact and leaf-tool generation and preserves interruption through
+the isolate and every nested call.
+
+Desktop and `openagents.com` may expose source connection, sync/build
+diagnostics, requested roles, authority diff, staged generation, enable,
+revoke, update, and rollback. The renderer receives serializable public-safe
+state and typed commands, never a runtime handle, Git token, provider secret,
+or arbitrary source filesystem capability. Mobile receives approval, status,
+revocation, and receipt projections; it does not silently gain local install
+authority.
+
+Effect Native scope mapping is:
+
+| Scope | Authored-capability responsibility |
+| --- | --- |
+| Process | source registry, compiler/runtime identity, semantic catalog index, component ledger |
+| WorkContext | eligible integrations/accounts, organization policy, artifact visibility, containment choices |
+| Conversation/run | captured artifact/catalog generations, selected bindings, budgets, parent receipt lineage |
+| Request/command | decoding, idempotency, approval, nested-call accounting, transaction, events, receipt |
+| Foreign host/view | compiler worker and authored-code isolate lifecycle, diagnostics, preview/editor UI |
+
+### Direct-consumption boundary
+
+Near-term direct consumption should be interoperability only, with the two
+Executor surfaces kept distinct:
+
+```text
+HTTP leaf mode
+  authenticated Executor HTTP catalog
+    → OpenAgents-owned immutable catalog snapshot and policy
+    → versioned Executor HTTP invocation
+    → normalized result and foreign-provider evidence
+
+MCP meta-tool mode
+  OpenAgents WorkContext and policy
+    → scoped Executor `execute` / `skills` / `resume` meta-tools
+    → Executor-owned lazy leaf selection and execution
+    → normalized result and foreign-provider evidence
+```
+
+Executor MCP does not enumerate the leaf catalog. The HTTP adapter may import
+bounded leaf descriptors and capture them in an OpenAgents-owned catalog
+generation; the MCP adapter advertises only the compact meta-tools and must not
+invent a remote leaf generation. Both adapters pin endpoint/protocol version,
+map their admitted surface into OpenAgents authority classes, preserve outer
+policy and cancellation, bound/redact payloads, expose auth/stale/offline/
+incompatible states, and label Executor credential/containment facts as
+provider-asserted unless backed by verifiable receipts. Executor results never
+directly authorize settlement, payout, deployment, or public claims.
+
+This initially consumes tools that an Executor operator has already configured
+and published. Apps source management is HTTP/console-driven at this snapshot;
+the MCP `author_tool` path is vision. Direct interoperability is therefore not
+yet an agent-facing OpenAgents authoring and publication route.
+
+A narrow package spike may compare `@executor-js/codemode-core` or its QuickJS
+adapter behind the same OpenAgents execution contract. It does not make
+Executor's SDK, storage, plugin, or owner model authoritative. The Apps package
+and its private runtime packages are not a supported core dependency at this
+snapshot.
+
+### Verification packet
+
+Before promoting authored tools into an owning roadmap gate, require one
+bounded packet:
+
+1. a read-only composite spanning two fixture integrations and caller-selected
+   accounts;
+2. a mutating composite whose nested effect requires the existing durable
+   Desktop/mobile approval path;
+3. undeclared-role, wrong-integration, cross-owner, secret, network,
+   filesystem, process, and authority-widening denials;
+4. source-update-between-advertisement-and-call refusal;
+5. runtime kill, cancellation, retry, and idempotency evidence with partial
+   effects represented honestly;
+6. activation, revoke, deleted-tool tombstone, update-conflict, and rollback;
+7. local and managed isolate conformance with distinct effective containment
+   receipts; and
+8. the optional external Executor adapter driving the exact same outer Khala
+   tool contract for comparison.
+
+Per the standing rule, this addendum is still design evidence. Promotion into
+implementation authority happens through the owning Effect Schema contracts,
+invariant/model note, roadmap gate, issue, tests, and receipts.
