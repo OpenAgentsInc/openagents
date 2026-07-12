@@ -139,6 +139,11 @@ const workspaceSchemas = [
   "DesktopWorkspaceSearchRequest",
   "DesktopWorkspaceSearchPage",
   "DesktopWorkspaceChange",
+  "DesktopWorkspaceCreateRequest",
+  "DesktopWorkspaceRenameRequest",
+  "DesktopWorkspaceDeleteRequest",
+  "DesktopWorkspaceRevealRequest",
+  "DesktopWorkspaceOperationResult",
 ]
 
 export const desktopServiceTopology = [

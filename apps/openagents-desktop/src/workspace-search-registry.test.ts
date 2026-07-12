@@ -43,6 +43,10 @@ const fixtureWorkspace = (pending: Pending[]): DesktopWorkspaceService => ({
       },
     }
   },
+  createEntry: () => ({ state: "unavailable", message: "unused" }),
+  renameEntry: () => ({ state: "unavailable", message: "unused" }),
+  deleteEntry: () => ({ state: "unavailable", message: "unused" }),
+  revealEntry: async () => ({ state: "unavailable", message: "unused" }),
   refresh: () => undefined,
   subscribe: () => ({ close: () => undefined }),
   read: () => null,

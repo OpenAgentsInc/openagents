@@ -651,8 +651,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   cancels the prior task, an exact request ref cannot cancel another window or
   request, and window/app teardown closes the owner. The built smoke proves a
   real relative-ref worker result at the refreshed epoch plus fail-closed
-  foreign cancellation. Effect Native UI and mutation controls remain CUT-17
-  work.
+  foreign cancellation. Root-private create-file/create-directory,
+  revision-bound rename, revision-bound non-recursive delete, and host-injected
+  reveal operations accept and return only relative refs. Hidden, secret,
+  Git-ignored, traversal, symlink, stale-revision, existing-target, non-empty-
+  directory, and permission-loss cases fail with typed outcomes; only confirmed
+  mutations advance the WorkContext epoch. Their adversarial core fixtures live
+  in `apps/openagents-desktop/tests/workspace-service.test.ts`. Effect Native UI
+  and fixed mutation IPC remain CUT-17 work.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

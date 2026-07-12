@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
 import {
   decodeWorkspaceChange,
+  decodeWorkspaceCreateRequest,
+  decodeWorkspaceDeleteRequest,
+  decodeWorkspaceOperationResult,
+  decodeWorkspaceRenameRequest,
+  decodeWorkspaceRevealRequest,
   decodeWorkspaceSearchPage,
   decodeWorkspaceSearchRequest,
   decodeWorkspaceTreePage,
@@ -15,12 +20,17 @@ import {
 
 import {
   openWorkspaceService,
+  createWorkspaceEntry,
+  deleteWorkspaceEntry,
   readWorkspaceFile,
   saveWorkspaceFile,
+  renameWorkspaceEntry,
+  revealWorkspaceEntry,
   searchWorkspace,
   workspaceGitDiff,
   workspaceGitStatus,
   workspaceTreePage,
+  type WorkspaceMutationIo,
 } from "../src/workspace-service.ts"
 import type {
   WorkspaceSearchHost,
@@ -293,6 +303,127 @@ describe("Desktop bounded workspace service", () => {
     })
   })
 
+  test("creates, revision-renames, reveals, and non-recursively deletes only visible relative entries", async () => {
+    const root = makeRoot()
+    const outside = makeRoot()
+    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n")
+    const revealed: string[] = []
+    const changes: unknown[] = []
+    const workspace = openWorkspaceService(root, {
+      grantRef: "workspace.grant.mutations",
+      watchFactory: () => ({ close: () => undefined }),
+      reveal: absolutePath => {
+        revealed.push(absolutePath)
+        return true
+      },
+    })
+    const subscription = workspace.subscribe(change => changes.push(change))
+
+    const createdDirectory = workspace.createEntry({ parentRef: "", name: "docs", kind: "directory" })
+    expect(createdDirectory.state).toBe("created")
+    const createdFile = workspace.createEntry({ parentRef: "docs", name: "README.md", kind: "file" })
+    expect(createdFile.state).toBe("created")
+    if (createdFile.state !== "created") throw new Error("expected created file")
+    expect(JSON.stringify([createdDirectory, createdFile])).not.toContain(root)
+    expect(workspace.createEntry({ parentRef: "docs", name: "README.md", kind: "file" }).state).toBe("conflict")
+    expect(workspace.createEntry({ parentRef: "", name: ".hidden", kind: "file" }).state).toBe("unavailable")
+    expect(workspace.createEntry({ parentRef: "", name: "client.pem", kind: "file" }).state).toBe("unavailable")
+    expect(workspace.createEntry({ parentRef: "", name: "ignored.txt", kind: "file" }).state).toBe("unavailable")
+    expect(workspace.createEntry({ parentRef: "../", name: "escape.txt", kind: "file" }).state).toBe("unavailable")
+
+    expect(workspace.renameEntry({
+      pathRef: "docs/README.md",
+      name: "guide.md",
+      expectedRevisionRef: "workspace.entry.stale",
+    }).state).toBe("conflict")
+    expect(workspace.createEntry({ parentRef: "docs", name: "existing.md", kind: "file" }).state).toBe("created")
+    expect(workspace.renameEntry({
+      pathRef: "docs/README.md",
+      name: "existing.md",
+      expectedRevisionRef: createdFile.entry.revisionRef,
+    }).state).toBe("conflict")
+    const renamed = workspace.renameEntry({
+      pathRef: "docs/README.md",
+      name: "guide.md",
+      expectedRevisionRef: createdFile.entry.revisionRef,
+    })
+    expect(renamed.state).toBe("renamed")
+    if (renamed.state !== "renamed") throw new Error("expected renamed entry")
+    expect(renamed.entry.pathRef).toBe("docs/guide.md")
+    expect(await workspace.revealEntry({ pathRef: "docs/guide.md" })).toEqual({
+      state: "revealed",
+      pathRef: "docs/guide.md",
+    })
+    expect(revealed).toEqual([path.join(realpathSync(root), "docs", "guide.md")])
+    symlinkSync(outside, path.join(root, "outside-link"))
+    expect((await workspace.revealEntry({ pathRef: "outside-link" })).state).toBe("unavailable")
+
+    const rootPage = workspace.tree({ directoryRef: "" })
+    if (rootPage.state !== "available") throw new Error("expected root tree")
+    const docs = rootPage.entries.find(entry => entry.pathRef === "docs")!
+    expect(workspace.deleteEntry({ pathRef: "docs", expectedRevisionRef: docs.revisionRef }).state).toBe("conflict")
+    expect(workspace.deleteEntry({ pathRef: "docs/guide.md", expectedRevisionRef: "workspace.entry.stale" }).state).toBe("conflict")
+    expect(workspace.deleteEntry({ pathRef: "docs/guide.md", expectedRevisionRef: renamed.entry.revisionRef })).toEqual({
+      state: "deleted",
+      pathRef: "docs/guide.md",
+    })
+    const docsPage = workspace.tree({ directoryRef: "docs" })
+    if (docsPage.state !== "available") throw new Error("expected docs tree")
+    const existing = docsPage.entries.find(entry => entry.pathRef === "docs/existing.md")!
+    expect(workspace.deleteEntry({ pathRef: existing.pathRef, expectedRevisionRef: existing.revisionRef }).state).toBe("deleted")
+    const refreshedRoot = workspace.tree({ directoryRef: "" })
+    if (refreshedRoot.state !== "available") throw new Error("expected refreshed root")
+    const emptyDocs = refreshedRoot.entries.find(entry => entry.pathRef === "docs")!
+    expect(workspace.deleteEntry({ pathRef: "docs", expectedRevisionRef: emptyDocs.revisionRef })).toEqual({
+      state: "deleted",
+      pathRef: "docs",
+    })
+    expect(changes).toHaveLength(7)
+    expect(changes.every(change => (change as { kind?: unknown }).kind === "changed")).toBe(true)
+    subscription.close()
+    workspace.dispose()
+  })
+
+  test("classifies permission loss for every mutation and reveal without leaking the root", async () => {
+    const root = makeRoot()
+    writeFileSync(path.join(root, "source.txt"), "safe")
+    const page = workspaceTreePage({ root, grantRef: "workspace.grant.permission", directoryRef: "" })
+    if (page.state !== "available") throw new Error("expected root tree")
+    const source = page.entries.find(entry => entry.pathRef === "source.txt")!
+    const denied = Object.assign(new Error("private operating-system detail"), { code: "EACCES" })
+    const deny = (): never => { throw denied }
+    const deniedIo: WorkspaceMutationIo = {
+      createFile: deny,
+      createDirectory: deny,
+      rename: deny,
+      deleteFile: deny,
+      deleteDirectory: deny,
+    }
+    const results = [
+      createWorkspaceEntry(root, { parentRef: "", name: "new.txt", kind: "file" }, deniedIo),
+      renameWorkspaceEntry(root, {
+        pathRef: "source.txt",
+        name: "renamed.txt",
+        expectedRevisionRef: source.revisionRef,
+      }, deniedIo),
+      deleteWorkspaceEntry(root, {
+        pathRef: "source.txt",
+        expectedRevisionRef: source.revisionRef,
+      }, deniedIo),
+      await revealWorkspaceEntry(root, { pathRef: "source.txt" }, deny),
+    ]
+    expect(results.map(result => result.state)).toEqual([
+      "permission_denied",
+      "permission_denied",
+      "permission_denied",
+      "permission_denied",
+    ])
+    expect(JSON.stringify(results)).not.toContain(root)
+    expect(JSON.stringify(results)).not.toContain("private operating-system detail")
+    expect(readFileSync(path.join(root, "source.txt"), "utf8")).toBe("safe")
+  })
+
   test("declares cache epochs, invalidates once per watcher event, and disposes watchers exactly once", async () => {
     const root = makeRoot()
     writeFileSync(path.join(root, "README.md"), "before")
@@ -493,5 +624,25 @@ describe("Desktop bounded workspace service", () => {
     })
     expect(decodeWorkspaceSearchPage(search)).toEqual(search)
     expect(decodeWorkspaceSearchPage({ state: "available", root })).toBeNull()
+    expect(decodeWorkspaceCreateRequest({ parentRef: "src", name: "new.ts", kind: "file", root })).toEqual({
+      parentRef: "src",
+      name: "new.ts",
+      kind: "file",
+    })
+    expect(decodeWorkspaceRenameRequest({
+      pathRef: "src/old.ts",
+      name: "new.ts",
+      expectedRevisionRef: "workspace.entry.fixture",
+    })?.name).toBe("new.ts")
+    expect(decodeWorkspaceDeleteRequest({
+      pathRef: "src/new.ts",
+      expectedRevisionRef: "workspace.entry.fixture",
+    })?.pathRef).toBe("src/new.ts")
+    expect(decodeWorkspaceRevealRequest({ pathRef: "src/new.ts" })).toEqual({ pathRef: "src/new.ts" })
+    expect(decodeWorkspaceOperationResult({ state: "deleted", pathRef: "src/new.ts" })).toEqual({
+      state: "deleted",
+      pathRef: "src/new.ts",
+    })
+    expect(decodeWorkspaceOperationResult({ state: "deleted", pathRef: root })).toBeNull()
   })
 })

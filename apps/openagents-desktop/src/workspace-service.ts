@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { lstatSync, realpathSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from "node:fs"
+import { lstatSync, mkdirSync, realpathSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync } from "node:fs"
 import path from "node:path"
 import { execFileSync, spawnSync } from "node:child_process"
 
@@ -13,6 +13,7 @@ import type {
   DesktopWorkspaceSnapshot,
   DesktopWorkspaceTreePage,
   DesktopWorkspaceChange,
+  DesktopWorkspaceOperationResult,
 } from "./workspace-contract.ts"
 import {
   makeWorkspaceSearchHost,
@@ -33,6 +34,11 @@ const maxSearchPreviewCharacters = 240
 const inside = (root: string, candidate: string): boolean => {
   const relative = path.relative(root, candidate)
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+}
+
+const permissionError = (error: unknown): boolean => {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+  return code === "EACCES" || code === "EPERM" || code === "EROFS"
 }
 
 const revisionFor = (bytes: Uint8Array): string =>
@@ -63,7 +69,11 @@ const secretShapedName = (name: string): boolean =>
 const defaultIgnoredName = (name: string): boolean =>
   name.startsWith(".") || name === "node_modules"
 
-const canonicalDirectoryForRef = (root: string, directoryRef: string): string | null => {
+const canonicalDirectoryForRef = (
+  root: string,
+  directoryRef: string,
+  surfacePermission = false,
+): string | null => {
   const relative = workspacePathRef(directoryRef)
   if (relative === null) return null
   try {
@@ -75,7 +85,8 @@ const canonicalDirectoryForRef = (root: string, directoryRef: string): string | 
     const canonicalRoot = realpathSync(lexicalRoot)
     const canonicalDirectory = realpathSync(requested)
     return inside(canonicalRoot, canonicalDirectory) ? canonicalDirectory : null
-  } catch {
+  } catch (error) {
+    if (surfacePermission && permissionError(error)) throw error
     return null
   }
 }
@@ -137,6 +148,191 @@ const safeDirectoryEntries = (
     .sort((left, right) =>
       Number(right.kind === "directory") - Number(left.kind === "directory") ||
       left.name.localeCompare(right.name))
+}
+
+type SafeWorkspaceEntry = ReturnType<typeof safeDirectoryEntries>[number]
+
+const safeWorkspaceEntry = (root: string, requestedRef: string): SafeWorkspaceEntry | null => {
+  const pathRef = workspacePathRef(requestedRef)
+  if (pathRef === null || pathRef === "") return null
+  const parentRef = path.posix.dirname(pathRef) === "." ? "" : path.posix.dirname(pathRef)
+  const parent = canonicalDirectoryForRef(root, parentRef, true)
+  if (parent === null) return null
+  try {
+    return safeDirectoryEntries(root, parent).find(entry => entry.pathRef === pathRef) ?? null
+  } catch (error) {
+    if (permissionError(error)) throw error
+    return null
+  }
+}
+
+const publicWorkspaceEntry = (entry: SafeWorkspaceEntry) => ({
+  name: entry.name,
+  pathRef: entry.pathRef,
+  kind: entry.kind,
+  expandable: entry.kind === "directory",
+  sizeBytes: entry.sizeBytes,
+  revisionRef: entry.revisionRef,
+})
+
+const workspaceEntryName = (value: string): string | null => {
+  if (value !== value.trim() || value.length === 0 || value.length > 120 ||
+      value === "." || value === ".." || value.includes("/") || value.includes("\\") ||
+      value.includes("\0") || defaultIgnoredName(value) || secretShapedName(value)) return null
+  return value
+}
+
+const missingPath = (value: string): boolean => {
+  try {
+    lstatSync(value)
+    return false
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true
+    throw error
+  }
+}
+
+const mutationFailure = (
+  error: unknown,
+  conflictMessage: string,
+  unavailableMessage: string,
+): DesktopWorkspaceOperationResult => {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+  if (permissionError(error)) {
+    return { state: "permission_denied", message: "The selected workspace no longer permits that change." }
+  }
+  if (code === "EEXIST" || code === "ENOTEMPTY") return { state: "conflict", message: conflictMessage }
+  return { state: "unavailable", message: unavailableMessage }
+}
+
+export type WorkspaceMutationIo = Readonly<{
+  createFile: (absolutePath: string) => void
+  createDirectory: (absolutePath: string) => void
+  rename: (source: string, target: string) => void
+  deleteFile: (absolutePath: string) => void
+  deleteDirectory: (absolutePath: string) => void
+}>
+
+const defaultWorkspaceMutationIo: WorkspaceMutationIo = {
+  createFile: absolutePath => writeFileSync(absolutePath, "", { encoding: "utf8", flag: "wx" }),
+  createDirectory: absolutePath => mkdirSync(absolutePath),
+  rename: (source, target) => renameSync(source, target),
+  deleteFile: absolutePath => unlinkSync(absolutePath),
+  deleteDirectory: absolutePath => rmdirSync(absolutePath),
+}
+
+export const createWorkspaceEntry = (
+  root: string,
+  input: Readonly<{ parentRef: string; name: string; kind: "file" | "directory" }>,
+  io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+): DesktopWorkspaceOperationResult => {
+  const parentRef = workspacePathRef(input.parentRef)
+  const name = workspaceEntryName(input.name)
+  let parent: string | null
+  try {
+    parent = parentRef === null ? null : canonicalDirectoryForRef(root, parentRef, true)
+  } catch (error) {
+    return mutationFailure(error, "That workspace location is not available.", "That workspace location is not available.")
+  }
+  if (parentRef === null || name === null || parent === null) {
+    return { state: "unavailable", message: "That workspace location is not available." }
+  }
+  const pathRef = parentRef === "" ? name : `${parentRef}/${name}`
+  if (gitIgnoredPathRefs(root, [pathRef]).has(pathRef)) {
+    return { state: "unavailable", message: "Ignored workspace entries cannot be created from this surface." }
+  }
+  const absolutePath = path.join(parent, name)
+  try {
+    if (!missingPath(absolutePath)) return { state: "conflict", message: "An entry with that name already exists." }
+    if (input.kind === "directory") io.createDirectory(absolutePath)
+    else io.createFile(absolutePath)
+    const entry = safeWorkspaceEntry(root, pathRef)
+    return entry === null
+      ? { state: "unavailable", message: "The created entry could not be projected safely." }
+      : { state: "created", entry: publicWorkspaceEntry(entry) }
+  } catch (error) {
+    return mutationFailure(error, "An entry with that name already exists.", "The workspace entry could not be created.")
+  }
+}
+
+export const renameWorkspaceEntry = (
+  root: string,
+  input: Readonly<{ pathRef: string; name: string; expectedRevisionRef: string }>,
+  io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+): DesktopWorkspaceOperationResult => {
+  let source: SafeWorkspaceEntry | null
+  try {
+    source = safeWorkspaceEntry(root, input.pathRef)
+  } catch (error) {
+    return mutationFailure(error, "That workspace entry is not available.", "That workspace entry is not available.")
+  }
+  const name = workspaceEntryName(input.name)
+  if (source === null || name === null) return { state: "unavailable", message: "That workspace entry is not available." }
+  if (source.revisionRef !== input.expectedRevisionRef) {
+    return { state: "conflict", message: "That workspace entry changed before it could be renamed." }
+  }
+  const parentRef = path.posix.dirname(source.pathRef) === "." ? "" : path.posix.dirname(source.pathRef)
+  const targetRef = parentRef === "" ? name : `${parentRef}/${name}`
+  if (targetRef === source.pathRef) return { state: "conflict", message: "That workspace entry already uses this name." }
+  if (gitIgnoredPathRefs(root, [targetRef]).has(targetRef)) {
+    return { state: "unavailable", message: "Ignored workspace entries cannot be created from this surface." }
+  }
+  const target = path.join(path.dirname(source.absolutePath), name)
+  try {
+    if (!missingPath(target)) return { state: "conflict", message: "An entry with that name already exists." }
+    io.rename(source.absolutePath, target)
+    const entry = safeWorkspaceEntry(root, targetRef)
+    return entry === null
+      ? { state: "unavailable", message: "The renamed entry could not be projected safely." }
+      : { state: "renamed", entry: publicWorkspaceEntry(entry) }
+  } catch (error) {
+    return mutationFailure(error, "An entry with that name already exists.", "The workspace entry could not be renamed.")
+  }
+}
+
+export const deleteWorkspaceEntry = (
+  root: string,
+  input: Readonly<{ pathRef: string; expectedRevisionRef: string }>,
+  io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+): DesktopWorkspaceOperationResult => {
+  let entry: SafeWorkspaceEntry | null
+  try {
+    entry = safeWorkspaceEntry(root, input.pathRef)
+  } catch (error) {
+    return mutationFailure(error, "That workspace entry is not available.", "That workspace entry is not available.")
+  }
+  if (entry === null) return { state: "unavailable", message: "That workspace entry is not available." }
+  if (entry.revisionRef !== input.expectedRevisionRef) {
+    return { state: "conflict", message: "That workspace entry changed before it could be deleted." }
+  }
+  try {
+    if (entry.kind === "directory") io.deleteDirectory(entry.absolutePath)
+    else io.deleteFile(entry.absolutePath)
+    return { state: "deleted", pathRef: entry.pathRef }
+  } catch (error) {
+    return mutationFailure(error, "Only empty directories can be deleted.", "The workspace entry could not be deleted.")
+  }
+}
+
+export const revealWorkspaceEntry = async (
+  root: string,
+  input: Readonly<{ pathRef: string }>,
+  reveal: ((absolutePath: string) => Promise<boolean> | boolean) | undefined,
+): Promise<DesktopWorkspaceOperationResult> => {
+  let entry: SafeWorkspaceEntry | null
+  try {
+    entry = safeWorkspaceEntry(root, input.pathRef)
+  } catch (error) {
+    return mutationFailure(error, "That workspace entry cannot be revealed.", "That workspace entry cannot be revealed.")
+  }
+  if (entry === null || reveal === undefined) return { state: "unavailable", message: "That workspace entry cannot be revealed." }
+  try {
+    return await reveal(entry.absolutePath)
+      ? { state: "revealed", pathRef: entry.pathRef }
+      : { state: "unavailable", message: "The workspace entry could not be revealed." }
+  } catch (error) {
+    return mutationFailure(error, "The workspace entry could not be revealed.", "The workspace entry could not be revealed.")
+  }
 }
 
 const cacheFact = (key: string, epoch: number) => ({
@@ -455,6 +651,10 @@ export type DesktopWorkspaceService = Readonly<{
   summary: () => DesktopWorkspaceSnapshot
   tree: (input: Readonly<{ directoryRef: string; offset?: number; limit?: number }>) => DesktopWorkspaceTreePage
   search: (input: Readonly<{ query: string; mode: "path" | "content"; offset?: number; limit?: number }>) => WorkspaceSearchTask
+  createEntry: (input: Readonly<{ parentRef: string; name: string; kind: "file" | "directory" }>) => DesktopWorkspaceOperationResult
+  renameEntry: (input: Readonly<{ pathRef: string; name: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
+  deleteEntry: (input: Readonly<{ pathRef: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
+  revealEntry: (input: Readonly<{ pathRef: string }>) => Promise<DesktopWorkspaceOperationResult>
   refresh: () => void
   subscribe: (listener: (change: DesktopWorkspaceChange) => void) => Readonly<{ close: () => void }>
   read: (requestedPath: string) => DesktopWorkspaceFile | null
@@ -478,6 +678,8 @@ export const openWorkspaceService = (
       onChange: (pathRef: string | null) => void,
     ) => Readonly<{ close: () => void }>
     searchHostFactory?: (root: string, grantRef: string) => WorkspaceSearchHost
+    mutationIo?: WorkspaceMutationIo
+    reveal?: (absolutePath: string) => Promise<boolean> | boolean
   }> = {},
 ): DesktopWorkspaceService => {
   const root = path.resolve(selectedRoot)
@@ -571,6 +773,27 @@ export const openWorkspaceService = (
         }),
       }
     },
+    createEntry: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const result = createWorkspaceEntry(root, request, options.mutationIo)
+      if (result.state === "created") notify("changed", result.entry.pathRef)
+      return result
+    },
+    renameEntry: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const result = renameWorkspaceEntry(root, request, options.mutationIo)
+      if (result.state === "renamed") notify("changed", result.entry.pathRef)
+      return result
+    },
+    deleteEntry: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const result = deleteWorkspaceEntry(root, request, options.mutationIo)
+      if (result.state === "deleted") notify("changed", result.pathRef)
+      return result
+    },
+    revealEntry: request => disposed
+      ? Promise.resolve({ state: "unavailable", message: "The selected workspace has been disposed." })
+      : revealWorkspaceEntry(root, request, options.reveal),
     refresh: () => {
       if (!disposed) notify("refresh", null)
     },

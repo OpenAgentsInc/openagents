@@ -15,7 +15,10 @@ export const DesktopWorkspaceWatchChannel = "openagents-desktop/workspace-watch"
 export const DesktopWorkspaceChangeChannel = "openagents-desktop/workspace-change" as const
 
 export const DesktopWorkspacePathRefSchema = Schema.String.pipe(
-  Schema.check(Schema.isMaxLength(1_024)),
+  Schema.check(
+    Schema.isMaxLength(1_024),
+    Schema.isPattern(/^(?!\/)(?![A-Za-z]:[\\/])(?!.*(?:^|\/)\.\.(?:\/|$))(?!.*\\)[^\0]*$/u),
+  ),
 )
 
 export const DesktopWorkspaceTreeRequestSchema = Schema.Struct({
@@ -64,6 +67,27 @@ export const DesktopWorkspaceWatchRequestSchema = Schema.Struct({
   active: Schema.Boolean,
 })
 
+export const DesktopWorkspaceCreateRequestSchema = Schema.Struct({
+  parentRef: DesktopWorkspacePathRefSchema,
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  kind: Schema.Literals(["file", "directory"]),
+})
+
+export const DesktopWorkspaceRenameRequestSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+})
+
+export const DesktopWorkspaceDeleteRequestSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+})
+
+export const DesktopWorkspaceRevealRequestSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+})
+
 export const DesktopWorkspaceCacheFactSchema = Schema.Struct({
   key: Schema.String,
   epoch: Schema.Number,
@@ -78,6 +102,16 @@ export const DesktopWorkspaceTreeEntrySchema = Schema.Struct({
   sizeBytes: Schema.NullOr(Schema.Number),
   revisionRef: Schema.String,
 })
+
+export const DesktopWorkspaceOperationResultSchema = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("created"), entry: DesktopWorkspaceTreeEntrySchema }),
+  Schema.Struct({ state: Schema.Literal("renamed"), entry: DesktopWorkspaceTreeEntrySchema }),
+  Schema.Struct({ state: Schema.Literal("deleted"), pathRef: DesktopWorkspacePathRefSchema }),
+  Schema.Struct({ state: Schema.Literal("revealed"), pathRef: DesktopWorkspacePathRefSchema }),
+  Schema.Struct({ state: Schema.Literal("conflict"), message: Schema.String.check(Schema.isMaxLength(400)) }),
+  Schema.Struct({ state: Schema.Literal("permission_denied"), message: Schema.String.check(Schema.isMaxLength(400)) }),
+  Schema.Struct({ state: Schema.Literal("unavailable"), message: Schema.String.check(Schema.isMaxLength(400)) }),
+])
 
 export const DesktopWorkspaceTreePageSchema = Schema.Union([
   Schema.Struct({
@@ -222,6 +256,15 @@ export type DesktopWorkspaceSearchCancelResult = Readonly<{
   cancelled: boolean
 }>
 
+export type DesktopWorkspaceOperationResult =
+  | Readonly<{ state: "created"; entry: DesktopWorkspaceTreeEntry }>
+  | Readonly<{ state: "renamed"; entry: DesktopWorkspaceTreeEntry }>
+  | Readonly<{ state: "deleted"; pathRef: string }>
+  | Readonly<{ state: "revealed"; pathRef: string }>
+  | Readonly<{ state: "conflict"; message: string }>
+  | Readonly<{ state: "permission_denied"; message: string }>
+  | Readonly<{ state: "unavailable"; message: string }>
+
 export type DesktopWorkspaceChange = Readonly<{
   kind: "changed" | "overflow" | "refresh"
   pathRef: string | null
@@ -316,6 +359,34 @@ export const decodeWorkspaceWatchRequest = (
   return Exit.isSuccess(result) ? result.value : null
 }
 
+export const decodeWorkspaceCreateRequest = (
+  value: unknown,
+): { parentRef: string; name: string; kind: "file" | "directory" } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceCreateRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceRenameRequest = (
+  value: unknown,
+): { pathRef: string; name: string; expectedRevisionRef: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceRenameRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceDeleteRequest = (
+  value: unknown,
+): { pathRef: string; expectedRevisionRef: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceDeleteRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceRevealRequest = (
+  value: unknown,
+): { pathRef: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceRevealRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
 export const decodeWorkspaceTreePage = (
   value: unknown,
 ): DesktopWorkspaceTreePage | null => {
@@ -352,5 +423,12 @@ export const decodeWorkspaceChange = (
   value: unknown,
 ): DesktopWorkspaceChange | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceChangeSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceOperationResult = (
+  value: unknown,
+): DesktopWorkspaceOperationResult | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceOperationResultSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
