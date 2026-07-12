@@ -308,6 +308,161 @@ export const resolveFleetAutoTarget = (
   return { events, selection: null, usedFallback: true }
 }
 
+// --- Execution-target routing (FC-4 #8636) ---------------------------------
+//
+// One typed per-run/per-work-unit placement vocabulary shared by Pylon, the
+// server, and the Effect Native clients: work runs on an `owner_local` Pylon
+// or a `managed_cloud` Agent Computer under an explicit
+// `owner_local | managed_cloud | auto` preference. This mirrors the harness
+// `auto` resolver above at the TARGET layer — deliberately dumb, fully typed,
+// deterministic — and enforces the FC-4 substitution invariants as data:
+//
+// - an EXPLICIT target preference never evaluates (and never reports) the
+//   other target; it selects its target or is denied, so owner-local
+//   subscription capacity can never be silently pooled into a managed lane
+//   and a managed authority can never silently consume local capacity;
+// - `auto` walks the fixed V1 order owner_local → managed_cloud and emits one
+//   typed fallback event per skipped target — never a silent substitution.
+
+export const FleetExecutionTarget = S.Literals(["owner_local", "managed_cloud"])
+export type FleetExecutionTarget = typeof FleetExecutionTarget.Type
+
+export const fleetExecutionTargets: ReadonlyArray<FleetExecutionTarget> = [
+  "owner_local",
+  "managed_cloud",
+]
+
+export const FleetExecutionTargetPreference = S.Literals([
+  "owner_local",
+  "managed_cloud",
+  "auto",
+])
+export type FleetExecutionTargetPreference = typeof FleetExecutionTargetPreference.Type
+
+// The fixed V1 `auto` target order (roadmap R3/FC-4: owner-local is the P0
+// daily driver; managed cloud is additive after #8547's accepted receipt).
+export const fleetAutoExecutionTargetOrder: ReadonlyArray<FleetExecutionTarget> = [
+  "owner_local",
+  "managed_cloud",
+]
+
+// Why a target was not selected. Bounded and public-safe by construction;
+// callers with richer private detail keep it behind their own boundary and
+// map to one of these plus an optional fixed public blocker ref.
+export const FleetExecutionTargetSkipReason = S.Literals([
+  "owner_local_unavailable",
+  "owner_local_activation_blocked",
+  "managed_cloud_unconfigured",
+  "managed_cloud_unavailable",
+  "target_capacity_exhausted",
+])
+export type FleetExecutionTargetSkipReason = typeof FleetExecutionTargetSkipReason.Type
+
+const defaultFleetExecutionTargetSkipReason: Readonly<
+  Record<FleetExecutionTarget, FleetExecutionTargetSkipReason>
+> = {
+  owner_local: "owner_local_unavailable",
+  managed_cloud: "managed_cloud_unavailable",
+}
+
+export type FleetExecutionTargetCandidate = Readonly<{
+  target: FleetExecutionTarget
+  ready: boolean
+  // Only meaningful when `ready` is false; a not-ready candidate with no
+  // reason falls back to the target's honest default unavailability reason.
+  reason?: FleetExecutionTargetSkipReason
+  // Optional FIXED public-safe blocker ref carried for provenance (for
+  // example the exact activation blocker the skip was derived from). Never
+  // free-form provider/error text.
+  blockerRef?: string
+}>
+
+export type FleetExecutionTargetRoutingEvent = Readonly<{
+  target: FleetExecutionTarget
+  disposition: "selected" | "skipped"
+  // Present exactly when `disposition` is "skipped".
+  reason?: FleetExecutionTargetSkipReason
+  blockerRef?: string
+  // The target evaluated next after a skip, or null when the policy is
+  // exhausted. Always null on the selected event.
+  nextTarget: FleetExecutionTarget | null
+}>
+
+export const FleetExecutionTargetDecisionSchemaLiteral =
+  "khala.fleet_execution_target_decision.v1" as const
+
+export type FleetExecutionTargetDecision = Readonly<{
+  schema: typeof FleetExecutionTargetDecisionSchemaLiteral
+  preference: FleetExecutionTargetPreference
+  outcome: "selected" | "denied"
+  // The concrete target this decision landed on, or null when denied.
+  selectedTarget: FleetExecutionTarget | null
+  // True whenever at least one candidate was skipped before the outcome.
+  usedFallback: boolean
+  // One entry per evaluated target in evaluation order — the complete typed
+  // eligibility/selection/denial/fallback history for this decision. Targets
+  // outside the preference's plan are NEVER evaluated and NEVER reported.
+  history: ReadonlyArray<FleetExecutionTargetRoutingEvent>
+}>
+
+/**
+ * Pure, deterministic execution-target resolver (FC-4 #8636 V1).
+ *
+ * The evaluation plan is derived from the preference alone: an explicit
+ * `owner_local` or `managed_cloud` preference evaluates ONLY that target;
+ * `auto` evaluates `fleetAutoExecutionTargetOrder`. Within the plan the first
+ * `ready` candidate is selected; every earlier candidate produces one typed
+ * skip event. A target in the plan with no candidate row is skipped with the
+ * target's default unavailability reason — absence is a typed denial, never a
+ * fabricated readiness. When no candidate is selected the decision is
+ * `denied` with the full history retained.
+ */
+export const resolveFleetExecutionTarget = (
+  input: Readonly<{
+    preference: FleetExecutionTargetPreference
+    candidates: ReadonlyArray<FleetExecutionTargetCandidate>
+  }>,
+): FleetExecutionTargetDecision => {
+  const plan: ReadonlyArray<FleetExecutionTarget> = input.preference === "auto"
+    ? fleetAutoExecutionTargetOrder
+    : [input.preference]
+
+  const history: FleetExecutionTargetRoutingEvent[] = []
+
+  for (let index = 0; index < plan.length; index += 1) {
+    const target = plan[index] as FleetExecutionTarget
+    // First candidate row per target wins; V1 has at most one row per target.
+    const candidate = input.candidates.find(row => row.target === target)
+    if (candidate?.ready === true) {
+      history.push({ target, disposition: "selected", nextTarget: null })
+      return {
+        schema: FleetExecutionTargetDecisionSchemaLiteral,
+        preference: input.preference,
+        outcome: "selected",
+        selectedTarget: target,
+        usedFallback: history.length > 1,
+        history,
+      }
+    }
+    history.push({
+      target,
+      disposition: "skipped",
+      reason: candidate?.reason ?? defaultFleetExecutionTargetSkipReason[target],
+      ...(candidate?.blockerRef === undefined ? {} : { blockerRef: candidate.blockerRef }),
+      nextTarget: plan[index + 1] ?? null,
+    })
+  }
+
+  return {
+    schema: FleetExecutionTargetDecisionSchemaLiteral,
+    preference: input.preference,
+    outcome: "denied",
+    selectedTarget: null,
+    usedFallback: history.length > 0,
+    history,
+  }
+}
+
 // --- Intent value objects --------------------------------------------------
 
 export const FleetRunControlAction = S.Literals([

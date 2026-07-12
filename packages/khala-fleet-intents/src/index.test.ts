@@ -21,6 +21,7 @@ import {
   marginalCostClasses,
   rankFleetHarnessesByCostClass,
   resolveFleetAutoTarget,
+  resolveFleetExecutionTarget,
 } from "./index.ts"
 
 describe("Fleet steering delivery transport", () => {
@@ -561,5 +562,145 @@ describe("resolveFleetAutoTarget", () => {
     })
     expect(afterFreeEndsAndAccountExhausted.selection?.harnessKind).toBe("codex")
     expect(afterFreeEndsAndAccountExhausted.events[0]?.type).toBe("account_exhausted")
+  })
+})
+
+describe("resolveFleetExecutionTarget (FC-4 #8636 typed owner-local/managed-cloud routing)", () => {
+  const ownerLocalReady = { target: "owner_local" as const, ready: true }
+  const ownerLocalBlocked = {
+    target: "owner_local" as const,
+    ready: false,
+    reason: "owner_local_activation_blocked" as const,
+    blockerRef: "blocker.pylon.fleet_run_intake.activation_executor_open_failed",
+  }
+  const managedCloudReady = { target: "managed_cloud" as const, ready: true }
+  const managedCloudUnconfigured = {
+    target: "managed_cloud" as const,
+    ready: false,
+    reason: "managed_cloud_unconfigured" as const,
+    blockerRef: "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+  }
+
+  it("selects an explicit owner_local target without evaluating managed cloud", () => {
+    const decision = resolveFleetExecutionTarget({
+      preference: "owner_local",
+      candidates: [ownerLocalReady, managedCloudReady],
+    })
+    expect(decision).toEqual({
+      schema: "khala.fleet_execution_target_decision.v1",
+      preference: "owner_local",
+      outcome: "selected",
+      selectedTarget: "owner_local",
+      usedFallback: false,
+      history: [{ target: "owner_local", disposition: "selected", nextTarget: null }],
+    })
+  })
+
+  it("denies an explicit owner_local target without silently substituting ready managed cloud", () => {
+    const decision = resolveFleetExecutionTarget({
+      preference: "owner_local",
+      candidates: [ownerLocalBlocked, managedCloudReady],
+    })
+    expect(decision.outcome).toBe("denied")
+    expect(decision.selectedTarget).toBeNull()
+    expect(decision.history).toEqual([{
+      target: "owner_local",
+      disposition: "skipped",
+      reason: "owner_local_activation_blocked",
+      blockerRef: "blocker.pylon.fleet_run_intake.activation_executor_open_failed",
+      nextTarget: null,
+    }])
+    expect(decision.history.some(event => event.target === "managed_cloud")).toBe(false)
+  })
+
+  it("denies an explicit managed_cloud target without silently substituting ready owner-local capacity", () => {
+    const decision = resolveFleetExecutionTarget({
+      preference: "managed_cloud",
+      candidates: [ownerLocalReady, managedCloudUnconfigured],
+    })
+    expect(decision.outcome).toBe("denied")
+    expect(decision.selectedTarget).toBeNull()
+    expect(decision.history).toEqual([{
+      target: "managed_cloud",
+      disposition: "skipped",
+      reason: "managed_cloud_unconfigured",
+      blockerRef: "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+      nextTarget: null,
+    }])
+    expect(decision.history.some(event => event.target === "owner_local")).toBe(false)
+  })
+
+  it("selects an explicit managed_cloud target when it is ready", () => {
+    const decision = resolveFleetExecutionTarget({
+      preference: "managed_cloud",
+      candidates: [managedCloudReady],
+    })
+    expect(decision.outcome).toBe("selected")
+    expect(decision.selectedTarget).toBe("managed_cloud")
+    expect(decision.usedFallback).toBe(false)
+  })
+
+  it("auto selects owner_local first without evaluating or reporting managed cloud", () => {
+    const decision = resolveFleetExecutionTarget({
+      preference: "auto",
+      candidates: [ownerLocalReady, managedCloudUnconfigured],
+    })
+    expect(decision.outcome).toBe("selected")
+    expect(decision.selectedTarget).toBe("owner_local")
+    expect(decision.usedFallback).toBe(false)
+    expect(decision.history).toEqual([
+      { target: "owner_local", disposition: "selected", nextTarget: null },
+    ])
+  })
+
+  it("auto falls back to managed_cloud through one typed event per skip", () => {
+    const decision = resolveFleetExecutionTarget({
+      preference: "auto",
+      candidates: [ownerLocalBlocked, managedCloudReady],
+    })
+    expect(decision.outcome).toBe("selected")
+    expect(decision.selectedTarget).toBe("managed_cloud")
+    expect(decision.usedFallback).toBe(true)
+    expect(decision.history).toEqual([
+      {
+        target: "owner_local",
+        disposition: "skipped",
+        reason: "owner_local_activation_blocked",
+        blockerRef: "blocker.pylon.fleet_run_intake.activation_executor_open_failed",
+        nextTarget: "managed_cloud",
+      },
+      { target: "managed_cloud", disposition: "selected", nextTarget: null },
+    ])
+  })
+
+  it("auto denies with the full ordered fallback history when every target is skipped", () => {
+    const decision = resolveFleetExecutionTarget({
+      preference: "auto",
+      candidates: [ownerLocalBlocked, managedCloudUnconfigured],
+    })
+    expect(decision.outcome).toBe("denied")
+    expect(decision.selectedTarget).toBeNull()
+    expect(decision.usedFallback).toBe(true)
+    expect(decision.history.map(event => [event.target, event.disposition, event.reason])).toEqual([
+      ["owner_local", "skipped", "owner_local_activation_blocked"],
+      ["managed_cloud", "skipped", "managed_cloud_unconfigured"],
+    ])
+  })
+
+  it("treats a missing candidate row as a typed default denial, never fabricated readiness", () => {
+    const decision = resolveFleetExecutionTarget({ preference: "auto", candidates: [] })
+    expect(decision.outcome).toBe("denied")
+    expect(decision.history.map(event => event.reason)).toEqual([
+      "owner_local_unavailable",
+      "managed_cloud_unavailable",
+    ])
+  })
+
+  it("is deterministic: identical input produces an identical decision value", () => {
+    const input = {
+      preference: "auto" as const,
+      candidates: [ownerLocalBlocked, managedCloudUnconfigured],
+    }
+    expect(resolveFleetExecutionTarget(input)).toEqual(resolveFleetExecutionTarget(input))
   })
 })

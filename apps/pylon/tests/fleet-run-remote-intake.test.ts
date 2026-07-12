@@ -47,6 +47,71 @@ const claimRef = `claim.sarah_fleet_run.${sha256({
   claimIdempotencyKey,
 }).slice(0, 24)}`
 
+const ownerLocalSelectedRouting = (
+  preference: "auto" | "owner_local" = "owner_local",
+) => ({
+  schema: "khala.fleet_execution_target_decision.v1",
+  preference,
+  outcome: "selected",
+  selectedTarget: "owner_local",
+  usedFallback: false,
+  history: [
+    { target: "owner_local", disposition: "selected", nextTarget: null },
+  ],
+})
+
+const managedCloudDeniedRouting = () => ({
+  schema: "khala.fleet_execution_target_decision.v1",
+  preference: "managed_cloud",
+  outcome: "denied",
+  selectedTarget: null,
+  usedFallback: true,
+  history: [{
+    target: "managed_cloud",
+    disposition: "skipped",
+    reason: "managed_cloud_unconfigured",
+    blockerRef:
+      "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+    nextTarget: null,
+  }],
+})
+
+const ownerLocalDeniedRouting = (
+  blockerRef: string,
+  preference: "auto" | "owner_local" = "owner_local",
+) => ({
+  schema: "khala.fleet_execution_target_decision.v1",
+  preference,
+  outcome: "denied",
+  selectedTarget: null,
+  usedFallback: true,
+  history: preference === "auto"
+    ? [
+        {
+          target: "owner_local",
+          disposition: "skipped",
+          reason: "owner_local_activation_blocked",
+          blockerRef,
+          nextTarget: "managed_cloud",
+        },
+        {
+          target: "managed_cloud",
+          disposition: "skipped",
+          reason: "managed_cloud_unconfigured",
+          blockerRef:
+            "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+          nextTarget: null,
+        },
+      ]
+    : [{
+        target: "owner_local",
+        disposition: "skipped",
+        reason: "owner_local_activation_blocked",
+        blockerRef,
+        nextTarget: null,
+      }],
+})
+
 const authorityRequest = (
   input: {
     readonly workerKind?: "auto" | "claude" | "codex" | "grok"
@@ -288,6 +353,7 @@ describe("Pylon Sarah FleetRun remote intake", () => {
         state: "active",
         retryable: false,
         blockerRefs: [],
+        routing: ownerLocalSelectedRouting(),
       })
       expect(events).toEqual(["claim", "accept"])
       expect(activation.calls).toEqual([`arm:${runRef}`, `status:${runRef}`])
@@ -586,6 +652,7 @@ describe("Pylon Sarah FleetRun remote intake", () => {
         blockerRefs: [
           "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
         ],
+        routing: managedCloudDeniedRouting(),
       })
       expect(claimCalls).toBe(1)
       expect(acceptCalls).toBe(2)
@@ -644,7 +711,15 @@ describe("Pylon Sarah FleetRun remote intake", () => {
           acceptClaim: async () => acceptedResult(claimed),
         },
       })
-      expect(await service.runOnce()).toMatchObject({ state: "active", runRef })
+      expect(await service.runOnce()).toEqual({
+        schema: "openagents.pylon.fleet_run_remote_intake.v1",
+        pylonRef,
+        runRef,
+        state: "active",
+        retryable: false,
+        blockerRefs: [],
+        routing: ownerLocalSelectedRouting("auto"),
+      })
       const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
       expect(runtime.store.getFleetRun(runRef)?.authorityBinding).toMatchObject({
         phase: "accepted",
@@ -652,6 +727,51 @@ describe("Pylon Sarah FleetRun remote intake", () => {
       })
       await runtime.close()
       expect(activation.calls).toEqual([`arm:${runRef}`, `status:${runRef}`])
+      await service.close()
+    })
+  })
+
+  test("projects the typed auto fallback history when owner-local activation is blocked and managed cloud is unconfigured", async () => {
+    await fixture(async ({ summary }) => {
+      const claimed = claimResult({ targetPreference: "auto" })
+      const activation = activationFixture({ blockedFirst: true })
+      const service = await openPylonFleetRunRemoteIntakeService({
+        activation: activation.activation,
+        bootstrap: summary,
+        pylonRef,
+        remote: {
+          claimNext: async () => claimed,
+          acceptClaim: async () => acceptedResult(claimed),
+        },
+      })
+      // First tick: owner-local arm is blocked. The projection must name the
+      // owner-local skip AND why no managed-cloud fallback executed — a typed
+      // denial history, never a silent target substitution.
+      expect(await service.runOnce()).toEqual({
+        schema: "openagents.pylon.fleet_run_remote_intake.v1",
+        pylonRef,
+        runRef,
+        state: "accepted_activation_blocked",
+        retryable: true,
+        blockerRefs: [
+          "blocker.pylon.fleet_run_intake.activation_executor_open_failed",
+        ],
+        routing: ownerLocalDeniedRouting(
+          "blocker.pylon.fleet_run_intake.activation_executor_open_failed",
+          "auto",
+        ),
+      })
+      // Recovery stays on the same typed decision contract: the retry selects
+      // owner_local explicitly rather than mutating the denied decision.
+      expect(await service.runOnce()).toEqual({
+        schema: "openagents.pylon.fleet_run_remote_intake.v1",
+        pylonRef,
+        runRef,
+        state: "active",
+        retryable: false,
+        blockerRefs: [],
+        routing: ownerLocalSelectedRouting("auto"),
+      })
       await service.close()
     })
   })
@@ -726,6 +846,7 @@ describe("Pylon Sarah FleetRun remote intake", () => {
           blockerRefs: [
             `blocker.pylon.fleet_run_intake.remote_accept_${kind}`,
           ],
+          routing: null,
         })
         // A durable import is not execution authority. Only accepted state is
         // allowed to reach node arm/status.
@@ -762,6 +883,7 @@ describe("Pylon Sarah FleetRun remote intake", () => {
         blockerRefs: [
           "blocker.pylon.fleet_run_intake.remote_claim_not_authorized",
         ],
+        routing: null,
       })
       const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
       expect(runtime.store.listFleetRuns()).toEqual([])
@@ -998,6 +1120,9 @@ describe("Pylon Sarah FleetRun remote intake", () => {
         blockerRefs: [
           "blocker.pylon.fleet_run_intake.activation_executor_open_failed",
         ],
+        routing: ownerLocalDeniedRouting(
+          "blocker.pylon.fleet_run_intake.activation_executor_open_failed",
+        ),
       })
       expect(await service.runOnce()).toMatchObject({ state: "active", runRef })
       expect(claims).toBe(1)

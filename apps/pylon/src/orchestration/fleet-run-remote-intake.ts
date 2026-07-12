@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto"
 
+import {
+  resolveFleetExecutionTarget,
+  type FleetExecutionTargetCandidate,
+  type FleetExecutionTargetDecision,
+} from "@openagentsinc/khala-fleet-intents"
 import { canonicalJson } from "@openagentsinc/khala-sync"
 import { Effect, Schema as S } from "effect"
 
@@ -273,6 +278,15 @@ export type PylonFleetRunRemoteIntakeProjection = {
   readonly state: PylonFleetRunRemoteIntakeState
   readonly retryable: boolean
   readonly blockerRefs: readonly string[]
+  /**
+   * The typed execution-target routing decision for this tick (FC-4 #8636):
+   * explicit `owner_local | managed_cloud | auto` preference, typed
+   * eligibility, selection or denial, and the complete per-target fallback
+   * history. Null until a durably accepted authority reaches the activation
+   * step — routing is decided at placement time, never earlier. Contains only
+   * fixed literals and fixed public-safe blocker refs.
+   */
+  readonly routing: FleetExecutionTargetDecision | null
 }
 
 export type OpenPylonFleetRunRemoteIntakeServiceInput = {
@@ -325,6 +339,7 @@ const projection = (
     readonly runRef?: string | null
     readonly blocker?: string | undefined
     readonly retryable?: boolean | undefined
+    readonly routing?: FleetExecutionTargetDecision | undefined
   } = {},
 ): PylonFleetRunRemoteIntakeProjection => ({
   schema: PYLON_FLEET_RUN_REMOTE_INTAKE_SCHEMA,
@@ -333,6 +348,7 @@ const projection = (
   state,
   retryable: input.retryable ?? false,
   blockerRefs: input.blocker === undefined ? [] : [input.blocker],
+  routing: input.routing ?? null,
 })
 
 const remoteBlockedProjection = (
@@ -585,6 +601,31 @@ const activationBlocker = (
     : `blocker.pylon.fleet_run_intake.activation_${reason}`
 }
 
+const MANAGED_CLOUD_UNCONFIGURED_BLOCKER =
+  "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured" as const
+
+// This service composes only the owner-local activation authority today. The
+// managed-cloud runner (fleet-run-managed-cloud-runner.ts) exists as a
+// separate fail-closed adapter and is not wired here yet, so the managed
+// candidate is honestly typed as unconfigured rather than fabricated as
+// ready. When that runner is explicitly composed, this candidate becomes an
+// injected readiness input — never an implicit default.
+const managedCloudCandidate: FleetExecutionTargetCandidate = {
+  target: "managed_cloud",
+  ready: false,
+  reason: "managed_cloud_unconfigured",
+  blockerRef: MANAGED_CLOUD_UNCONFIGURED_BLOCKER,
+}
+
+const ownerLocalBlockedCandidate = (
+  blockerRef: string,
+): FleetExecutionTargetCandidate => ({
+  target: "owner_local",
+  ready: false,
+  reason: "owner_local_activation_blocked",
+  blockerRef,
+})
+
 /**
  * Open the restart-safe bridge from the server intake lease to the one local
  * Pylon orchestration registry and the existing node activation authority.
@@ -733,35 +774,67 @@ export async function openPylonFleetRunRemoteIntakeService(
   }
 
   const activate = async (run: FleetRun): Promise<PylonFleetRunRemoteIntakeProjection> => {
+    const targetPreference = run.authorityBinding?.targetPreference
+    if (targetPreference === undefined) {
+      throw fixedError("authority_conflict", run.runRef)
+    }
+    // Typed placement decision before any executor is touched (FC-4 #8636).
     // The current activation port opens the owner-local standing executor. A
     // managed-cloud authority may be accepted and replayed durably, but must
-    // fail closed until its separate runner is explicitly composed here.
-    if (run.authorityBinding?.targetPreference === "managed_cloud") {
+    // fail closed until its separate runner is explicitly composed here — the
+    // resolver records that denial as typed history, and an explicit
+    // managed_cloud preference never enters the owner-local activation port.
+    const placement = resolveFleetExecutionTarget({
+      preference: targetPreference,
+      candidates: [
+        { target: "owner_local", ready: true },
+        managedCloudCandidate,
+      ],
+    })
+    if (placement.selectedTarget !== "owner_local") {
       return projection(input.pylonRef, "accepted_activation_blocked", {
         runRef: run.runRef,
         retryable: true,
-        blocker:
-          "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+        blocker: MANAGED_CLOUD_UNCONFIGURED_BLOCKER,
+        routing: placement,
       })
     }
+    const ownerLocalBlocked = (
+      blocker: string,
+      retryable: boolean,
+    ): PylonFleetRunRemoteIntakeProjection =>
+      projection(input.pylonRef, "accepted_activation_blocked", {
+        runRef: run.runRef,
+        retryable,
+        blocker,
+        // Re-resolve with the observed owner-local outcome so the projected
+        // history names the real skip (and, under `auto`, the reason no
+        // managed-cloud fallback was executed) instead of the pre-attempt
+        // eligibility guess. Never a silent target change.
+        routing: resolveFleetExecutionTarget({
+          preference: targetPreference,
+          candidates: [ownerLocalBlockedCandidate(blocker), managedCloudCandidate],
+        }),
+      })
     try {
       await input.activation.arm(run.runRef)
       const status = await input.activation.status(run.runRef)
       const activation = status.runs.find(entry => entry.runRef === run.runRef)
       if (activation?.armed === true && activation.active === true) {
-        return projection(input.pylonRef, "active", { runRef: run.runRef })
+        return projection(input.pylonRef, "active", {
+          runRef: run.runRef,
+          routing: placement,
+        })
       }
-      return projection(input.pylonRef, "accepted_activation_blocked", {
-        runRef: run.runRef,
-        retryable: activation?.retryable ?? true,
-        blocker: activationBlocker(activation),
-      })
+      return ownerLocalBlocked(
+        activationBlocker(activation),
+        activation?.retryable ?? true,
+      )
     } catch {
-      return projection(input.pylonRef, "accepted_activation_blocked", {
-        runRef: run.runRef,
-        retryable: true,
-        blocker: "blocker.pylon.fleet_run_intake.activation_unavailable",
-      })
+      return ownerLocalBlocked(
+        "blocker.pylon.fleet_run_intake.activation_unavailable",
+        true,
+      )
     }
   }
 
