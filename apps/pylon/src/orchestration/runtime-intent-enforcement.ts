@@ -1478,7 +1478,9 @@ const defaultPushEvent =
     })
     if (!result.ok || result.result.status === "rejected") {
       const detail = !result.ok ? result.reason : result.result.errorMessageSafe
-      throw new Error(`runtime.recordEvent push failed: ${detail ?? "unknown"}`)
+      throw new Error(
+        `runtime.recordEvent ${input.event.kind} sequence ${input.event.sequence} push failed: ${detail ?? "unknown"}`,
+      )
     }
   }
 
@@ -1890,9 +1892,29 @@ const selectAndPinDispatchAccount = async (
   store: PylonOrchestrationStore,
   threadId: string,
   lane: KhalaRuntimeLane,
+  executionTargetId?: string,
 ): Promise<SelectDispatchAccountResult> => {
   const provider = providerForLane(lane)
   const candidates = await options.listCandidateAccounts()
+
+  const expectedTargetPrefix = provider === "claude_agent" ? "claude:" : "codex:"
+  const requestedAccountRefHash = executionTargetId === undefined
+    ? undefined
+    : executionTargetId.startsWith(expectedTargetPrefix)
+      ? executionTargetId.slice(expectedTargetPrefix.length)
+      : null
+  if (requestedAccountRefHash === null || requestedAccountRefHash === "") {
+    return { detail: `execution target does not match the ${provider} lane`, ok: false }
+  }
+  const requestedCandidate = requestedAccountRefHash === undefined
+    ? undefined
+    : candidates.find(candidate =>
+        candidate.fleetAccount.accountRefHash === requestedAccountRefHash &&
+        candidate.fleetAccount.provider === provider &&
+        candidate.fleetAccount.readiness === "ready")
+  if (requestedAccountRefHash !== undefined && requestedCandidate === undefined) {
+    return { detail: `requested ${provider} execution target is not dispatch-ready`, ok: false }
+  }
 
   // Thread-resume account affinity (#8410 follow-up): prefer the account
   // already PINNED to this Khala thread (see `store.getRuntimeDispatchAccountRefHash`'s
@@ -1908,7 +1930,7 @@ const selectAndPinDispatchAccount = async (
       c.fleetAccount.readiness === "ready",
   )
   const lastUsedAccountRefHash = options.lastDispatchedAccountByThread?.get(threadId)
-  const selected =
+  const selected = requestedCandidate?.fleetAccount ??
     pinnedCandidate?.fleetAccount ??
     selectDispatchAccount(candidates.map((c) => c.fleetAccount), {
       provider,
@@ -2015,7 +2037,13 @@ const handleTurnStart = async (
   let dispatchResumeRef: string | undefined
   let dispatchDetail = `hosted Khala dispatch started on model ${hostedKhalaModelForOptions(options)}`
   if (lane !== "hosted_khala") {
-    const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
+    const selection = await selectAndPinDispatchAccount(
+      options,
+      store,
+      row.threadId,
+      lane,
+      row.intent.target.executionTargetId,
+    )
     if (!selection.ok) {
       return { detail: selection.detail, outcome: "failed" }
     }
@@ -2486,7 +2514,13 @@ const handleTurnContinueOrRetry = async (
     `${row.intent.kind} redispatch started on hosted Khala model ${hostedKhalaModelForOptions(options)}, ` +
     `resuming event sequence after ${turnState.eventCount}`
   if (lane !== "hosted_khala") {
-    const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
+    const selection = await selectAndPinDispatchAccount(
+      options,
+      store,
+      row.threadId,
+      lane,
+      row.intent.target.executionTargetId,
+    )
     if (!selection.ok) {
       return { detail: selection.detail, outcome: "failed" }
     }

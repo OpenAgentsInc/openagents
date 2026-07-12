@@ -534,6 +534,7 @@ const controlIntentRow = (input: {
   bodyRef?: string
   ownerUserId?: string
   targetLane?: "codex_app_server" | "claude_pylon" | "ai_sdk_core" | "hosted_khala"
+  executionTargetId?: string
 }): RuntimeControlIntentRow =>
   decodeRuntimeControlIntentRow({
     createdAt: iso,
@@ -546,7 +547,10 @@ const controlIntentRow = (input: {
       origin: { lane: "khala_sync_mobile_control", surface: "mobile" },
       redactionClass: "private_ref",
       schema: "openagents.khala_runtime_control_intent.v1",
-      target: { lane: input.targetLane ?? "codex_app_server" },
+      target: {
+        lane: input.targetLane ?? "codex_app_server",
+        ...(input.executionTargetId === undefined ? {} : { executionTargetId: input.executionTargetId }),
+      },
       threadId: input.threadId,
       visibility: "private",
       ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
@@ -2015,6 +2019,37 @@ describe("thread-resume account affinity (#8410 follow-up)", () => {
     messageId,
     threadId,
     updatedAt: iso,
+  })
+
+  test("an explicit typed execution target selects that exact ready account and overrides deterministic fallback", async () => {
+    const store = memoryStore()
+    const accounts = twoTiedCodexAccounts()
+    const requested = accounts[1]!.fleetAccount.accountRefHash
+    const threadId = "thread-exact-account"
+    const { options, cleanup } = await baseOptions({
+      codexThreadRunner: fakeCodexRunner([]),
+      listCandidateAccounts: async () => accounts,
+      fetchChatMessageImpl: async () => ({ message: messageFor(threadId, "msg-exact"), ok: true }),
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-exact",
+          executionTargetId: `codex:${requested}`,
+          intentId: "intent-exact-account",
+          kind: "turn.start",
+          seq: 1,
+          threadId,
+          turnId: "turn-exact-account",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      expect(result.ok ? accountHashFromDispatchDetail(result.outcomes[0]!.detail) : null).toBe(requested)
+      expect(store.getRuntimeDispatchAccountRefHash(threadId)).toBe(requested)
+    } finally {
+      await cleanup()
+    }
   })
 
   test("pins a thread's SECOND turn.start dispatch to the SAME account as its first, bypassing round-robin", async () => {
