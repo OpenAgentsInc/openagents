@@ -711,7 +711,11 @@ receipts remain (owner decision 2026-07-12: no physical-Android gate)
   image bytes in the owner-private authoritative message. Server admission
   additionally verifies image signature/digest before storage; Codex receives
   ephemeral local-image files, Claude receives base64 image blocks, and hosted
-  Khala receives data URLs. Binary non-images and invalid payloads fail before
+  Khala receives data URLs in Pylon or Gemini `inlineData` in the production
+  dispatcher. Migration 0063 and production revision
+  `openagents-monolith-00087-5gn` are live: exact SHA-256 readback of an
+  unlabeled red PNG was followed by the provider answer `red` and a metered
+  successful terminal. Binary non-images and invalid payloads fail before
   mutation and preserve the draft. The remaining product gap is real
   provider/model/account selector authority. Physical accessibility remains
   open. The named Codex

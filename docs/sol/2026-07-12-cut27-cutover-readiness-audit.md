@@ -140,16 +140,18 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   simulator native-link/render smoke only), verified UTF-8 lowering, and the
   bounded owner-private byte-bearing image path. Server admission verifies
   decoded size, signature, and SHA-256; Pylon lowers the exact confirmed bytes
-  to Codex local-image, Claude base64-image, or hosted-Khala data-URL input.
-- Rung: **fixture-proven**; the attachment tranche is code-landed +
-  fixture-proven, explicitly *not* a picker-tap or physical receipt.
+  to Codex local-image, Claude base64-image, or hosted-Khala data-URL input,
+  while the production hosted dispatcher lowers them to Gemini `inlineData`.
+- Rung: **live-proven for hosted image transport** on production revision
+  `openagents-monolith-00087-5gn`: an exact SHA-256 readback plus an unlabeled
+  solid-red PNG produced the provider answer `red` and a successful metered
+  terminal. This remains explicitly *not* a picker-tap or physical receipt.
 - Desktop I4 is now **`ui_available`**: the grant-scoped editor attaches a
   removable relative-path/revision/language/current-draft mention and lowers
   it as bounded explicitly untrusted context through both local and durable
   ChatHost sends. H2 session fork is also UI-available. Remaining gates are
-  production image proof and real selectors, plus the named physical
-  cross-client receipts. CUT-21 already supplies named
-  Codex/Claude live streaming evidence.
+  real selectors plus the named physical cross-client receipts. CUT-21 already
+  supplies named Codex/Claude live streaming evidence.
 - CUT-16's own retained Codex daily-driver gate is now complete: the
   2026-07-12 `composer.run_stream` proof records 34 events, 7 commands, zero
   edits, exact usage, passed focused verification, and a clean redaction scan.

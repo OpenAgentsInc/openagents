@@ -191,9 +191,8 @@ Named-provider live evidence:
 
 CUT-16 remains open. The completion audit still finds literal composer gaps:
 mobile native file/image acquisition and byte-bearing runtime transport are
-landed, but the latter still needs its production provider receipt; real
-provider/model/account selection remains. The
-remaining external receipt is physical-device/assistive-technology acceptance.
+landed and production-proven; real provider/model/account selection remains.
+The remaining external receipt is physical-device/assistive-technology acceptance.
 Restart, revocation, provider injection, expiry, mobile runtime controls, and
 mobile canonical draft restoration are covered deterministically; those proofs
 and the simulator launch do not substitute for the remaining receipts.
@@ -304,19 +303,35 @@ no public or view receipt carries base64.
 Mobile re-reads and verifies each digest-addressed sandbox file immediately
 before the authoritative append. The runtime intent references that exact
 confirmed message. The trusted Pylon reader decodes the canonical schema;
-Codex receives private turn-scoped local-image files (removed in `finally`),
+Codex receives private OS-temp turn-scoped local-image files (removed in
+`finally`),
 Claude receives documented streaming user-message base64 image blocks, and
-hosted Khala receives OpenAI-compatible data URLs. Images-only turns receive a
-non-empty explicit review instruction. Binary non-images still fail closed and
-preserve the complete draft.
+hosted Khala receives OpenAI-compatible data URLs in Pylon or Gemini
+`inlineData` in the production monolith. Images-only turns receive a non-empty
+explicit review instruction. Binary non-images still fail closed and preserve
+the complete draft.
 
 Verification before production deployment: Khala Sync 192 pass / 3 gated
 live skips / 0 fail / 12,803 assertions; Khala Sync Server full suite and
 typecheck green, including real-Postgres storage/integrity/runtime-read tests;
 Pylon focused image/app-server/enforcement suites 80 pass / 0 fail / 305
 assertions with typecheck; mobile 112 pass / 0 fail / 600 assertions with
-typecheck. Production migration/deployment and a real byte-bearing provider
-turn remain required before calling this live-proven.
+typecheck.
 
-CUT-16 now remains open for real provider/model/account selectors, the live
-image receipt, and physical cross-client/assistive-technology acceptance.
+Production is live-proven. Migration
+`0063_chat_message_image_attachments.sql` is recorded in `khala_sync_prod`;
+Cloud Run revision `openagents-monolith-00087-5gn` serves 100% of traffic. The
+first deployed probe was a useful counterexample: Sync read the generated PNG
+back with the exact SHA-256, but hosted Gemini answered that no image was
+attached. That located a second production-only dispatcher outside Pylon.
+`7e0b21302f` then carried the authoritative attachment through that dispatcher
+and lowered it to Gemini `inlineData`. Repeating the same test against
+production produced `red` for an otherwise unlabeled solid-red PNG, with
+exact SHA-256 readback and the durable event sequence `turn.started` →
+`text.delta` → `text.completed` → `usage.recorded` → `turn.finished(stop)`.
+The opt-in `HOSTED_CHAT_SMOKE_IMAGE_PATH` path in
+`hosted-chat-e2e-smoke.ts` makes this receipt repeatable without printing
+credentials or image bytes.
+
+CUT-16 now remains open for real provider/model/account selectors and physical
+cross-client/assistive-technology acceptance.
