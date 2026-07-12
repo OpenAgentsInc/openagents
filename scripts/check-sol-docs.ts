@@ -311,7 +311,11 @@ export function validateIssueIndex(
   const sourceIssues = extractIssueNumbers(extractSection(index, "## Live issue sources"))
   const receiptIssues = extractIssueNumbers(extractSection(index, "## Live issues represented by receipts"))
   const planIssues = extractIssueNumbers(extractSection(index, "## Live issues represented by an owning plan"))
-  const actual = uniqueSorted([...sourceIssues, ...receiptIssues, ...planIssues])
+  const representedIssues = [...sourceIssues, ...receiptIssues, ...planIssues]
+  const actual = uniqueSorted(representedIssues)
+  if (representedIssues.length !== actual.length) {
+    errors.push("issue index represents a live issue in more than one coverage section")
+  }
   const expected = snapshot.issues.map((issue) => issue.number)
   if (!equalNumbers(actual, expected)) {
     errors.push(`issue index live set ${formatNumbers(actual)} differs from snapshot ${formatNumbers(expected)}`)

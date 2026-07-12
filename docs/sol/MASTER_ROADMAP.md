@@ -416,8 +416,8 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   Desktop voice is now separately bounded by #8733–#8741.
 - Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
   receipt; it is not current work or a product-front-door decision.
-- #8733 is the separately tracked persistent-audio MVP. AUDIO-1 #8734 freezes
-  its hot schemas first. AUDIO-2 #8735 (Google STT gateway), AUDIO-3 #8736
+- #8733 is the separately tracked persistent-audio MVP. Closed AUDIO-1 #8734
+  froze its hot schemas first. AUDIO-2 #8735 (Google STT gateway), AUDIO-3 #8736
   (GCS/Cloud SQL retention), and AUDIO-4 #8737 (Desktop capture/transport) may
   then run in parallel. AUDIO-5 #8738 (visible UX), AUDIO-6 #8739 (registered
   actions), AUDIO-7 #8740 (Google TTS/barge-in), and AUDIO-8 #8741 (deployed
@@ -447,7 +447,6 @@ the currently unclaimed worker lease.
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | CUT-09 remaining lifecycle acceptance |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
 | [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | P1-parallel persistent Desktop audio epic; Google STT/TTS, retained media, typed UI actions |
-| [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | AUDIO-1 shared voice wire/lifecycle/authority/retention contract freeze |
 | [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | AUDIO-2 private Cloud Run gateway and Google STT V2 streaming |
 | [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | AUDIO-3 encrypted GCS media and Cloud SQL retention manifests/receipts |
 | [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | AUDIO-4 host-owned Desktop capture/playback/persistent transport lifecycle |
@@ -481,8 +480,8 @@ Live issues and claims control exact selection. At this snapshot:
    #8547's accepted managed workroom before #8636's live hybrid-routing receipt.
    Keep metering, target custody, quota/cost/data posture, usage, writeback,
    reclaim, and fallback explicit.
-4. Run #8733 as a separate P1-parallel audio program: close AUDIO-1 #8734's
-   contract freeze first; then permit file/contract-disjoint AUDIO-2 #8735,
+4. Run #8733 as a separate P1-parallel audio program: closed AUDIO-1 #8734's
+   contract freeze now permits file/contract-disjoint AUDIO-2 #8735,
    AUDIO-3 #8736, and AUDIO-4 #8737 work alongside the P0 lanes. AUDIO-5 through
    AUDIO-8 converge only through their declared dependencies. Serialize any
    overlap with Runtime Gateway versions, Desktop commands, behavior-contract

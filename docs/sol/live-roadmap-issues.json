@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-12T20:11:43.022Z",
+  "generatedAt": "2026-07-12T20:20:43.678Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -148,19 +148,6 @@
       "state": "OPEN",
       "title": "AUDIO-0 EPIC: persistent two-way Desktop voice mode on Google Cloud",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8733"
-    },
-    {
-      "labels": [
-        "effect",
-        "area:security",
-        "roadmap:sol",
-        "priority:P1-parallel",
-        "track:audio"
-      ],
-      "number": 8734,
-      "state": "OPEN",
-      "title": "AUDIO-1: freeze voice wire, lifecycle, authority, and retention contracts",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8734"
     },
     {
       "labels": [

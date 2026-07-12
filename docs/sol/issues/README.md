@@ -40,7 +40,6 @@ must equal the pinned product-issue projection.
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
 | [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) master epic |
-| [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | Same plan: AUDIO-1 shared contract freeze |
 | [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | Same plan: AUDIO-2 Google STT gateway |
 | [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | Same plan: AUDIO-3 retained-media custody |
 | [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | Same plan: AUDIO-4 Desktop media lifecycle |
@@ -49,31 +48,13 @@ must equal the pinned product-issue projection.
 | [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | Same plan: AUDIO-7 Google TTS/barge-in |
 | [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | Same plan: AUDIO-8 deployed acceptance |
 
-## Live issues represented by an owning plan
-
-The P1-parallel persistent-voice lane is specified outside the issue-source
-directory. Its live issues and claims remain operational authority; the plan
-owns lineage, boundaries, and dependency design without becoming a second
-queue.
-
-| Live issue | Owning plan role |
-| --- | --- |
-| [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | [`AUDIO-0 epic`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | [`AUDIO-1 contract freeze`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | [`AUDIO-2 gateway`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | [`AUDIO-3 retained-audio experiment`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | [`AUDIO-4 Desktop media host`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8738](https://github.com/OpenAgentsInc/openagents/issues/8738) | [`AUDIO-5 voice HUD`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8739](https://github.com/OpenAgentsInc/openagents/issues/8739) | [`AUDIO-6 typed action routing`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | [`AUDIO-7 TTS/barge-in`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | [`AUDIO-8 live proof`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
-
 ## Closed proof and implementation sources
 
 These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
 
 - [`CUT-26 RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md) — #8706
+- [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) — closed AUDIO-1 #8734 contract freeze
 
 - [`confirmed-agent-timeline.md`](./confirmed-agent-timeline.md) — #8672
 - [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md) — #8674

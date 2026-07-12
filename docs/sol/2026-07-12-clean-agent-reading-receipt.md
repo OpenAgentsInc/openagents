@@ -46,8 +46,8 @@ bounded entry path contains the required facts and denies known stale routes.
   master product direction, live issues/claims, and current implementation
   evidence each own a distinct kind of truth.
 - The pinned product set is #8547, #8566, #8574, #8597, #8636, #8676, #8677,
-  #8689, #8707, and the P1-parallel AUDIO-0…AUDIO-8 lane
-  (#8733–#8741). The product projection intentionally excludes
+  #8689, #8707, open AUDIO-0 #8733 and AUDIO-2…AUDIO-8 #8735–#8741; AUDIO-1
+  #8734 is closed contract proof. The product projection intentionally excludes
   `area:docs`; it is not a claim that the snapshot replaces live GitHub.
 - The next-ready structure is a partial order: #8676 and CUT-09 may run in
   parallel while closed CUT-26 remains evidence; CUT-09 precedes #8677;

@@ -164,6 +164,7 @@ describe("authority, queue, and issue classification regressions", () => {
     expect(result).toContain("missing.md is classified 0 times")
     expect(result).toContain("#1001 is classified as closed")
     expect(validateIssueIndex(index.replace("#1001 |", "#1002 |"), ["source.md", "closed.md"], snapshot()).join("\n")).toContain("differs")
+    expect(validateIssueIndex(index.replace("No plan-only issues.", "Plan duplicate #1001."), ["source.md", "closed.md"], snapshot()).join("\n")).toContain("more than one coverage section")
   })
 })
 
