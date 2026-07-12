@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.1",
+    version: "2026-07-12.2",
     contracts: [
       {
         contractId: "openagents_desktop.chrome.command_notice_is_transient_toast.v1",
@@ -416,6 +416,52 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the shell Stop-button suite and the capability-evals interrupt-path oracle; the interrupt-stop live-proof step is exercised by the live-proof driver run.",
+      },
+      {
+        contractId: "openagents_desktop.chat.opencode_composer_shape.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat input composer layout",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "edit our chat input composer to look exactly like the opencode desktop, and put our codex/claude toggle in that bar underneath it. find their css and adapt it to ours.",
+        authorityBoundary:
+          "This is a re-layout + restyle of the SAME composer functionality into OpenCode's prompt-input shape (colors adapted to our Protoss-blue tokens; no OpenCode code vendored — provenance in docs/design-ports.md). ONE rounded container (radius \"xl\") holds a multiline text input on top and a bottom action bar below it inside the same card. The bottom bar carries the leading `+` attach affordance, the Fable|Codex harness toggle (owner: \"put our codex/claude toggle in that bar underneath it\"), a flexible spacer, and the trailing circular (radius \"full\") send / stop control. The send fills with accent when there is text or an image and dims to ghost when empty. No feature is removed or weakened: the attach picker + drop/paste, the harness toggle + Shift+Tab + evidence-gated availability, image thumbnails, the Stop-while-streaming swap, queue-until-idle, the disabled-reason hover popovers, and the DesktopInputChanged/DesktopNoteSubmitted wiring all survive, re-homed into the bar. Styling stays typed token style objects on the shared scales — no raw color/px literals in the renderer (the one composer dimension, the input min height, rides the documented dimension allowlist).",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/docs/design-ports.md",
+          "projects/repos/opencode/packages/app/src/components/prompt-input.tsx",
+        ],
+        oracles: [
+          {
+            id: "opencode_composer_shape.structural_layout",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the composer card holds a multiline shell-input on top and a shell-composer-bar row beneath it, the bar containing the shell-attach-image control, the recessed shell-harness-row toggle, and the trailing circular send/stop control (borderRadius \"full\"), with the send accent-filled when the input carries text/images and dimmed to a ghost when blank.",
+          },
+          {
+            id: "opencode_composer_shape.token_conformance",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            description:
+              "The design-conformance oracle holds on the re-laid-out composer: no raw color literals, spacing/radius values stay on the token scales, the harness track keeps its recessed segmented recipe, and the only new numeric dimension (the input min height) is on the documented allowlist.",
+          },
+          {
+            id: "opencode_composer_shape.smoke",
+            kind: "visual-smoke",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke renders the composer in the new shape (input on top, action bar below with attach + harness toggle + circular send) and fails if the bar or its controls are missing.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell composer-layout suite, the design-conformance oracle, and the Electron smoke; pixel receipts of the empty/text/image/streaming composer states are captured under scratchpad ep250-composer-shots/.",
       },
       {
         contractId: "openagents_desktop.chat.composer_image_input.v1",

@@ -468,6 +468,41 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(pending, "shell-harness-codex")?.disabled).toBe(true)
   })
 
+  test("EP250 OpenCode composer shape: multiline input on top; bottom bar carries attach + harness toggle + spacer + circular send", () => {
+    const view = desktopShellView(baseState)
+    // Multiline input on TOP.
+    const input = nodeByKey(view, "shell-input") as { _tag?: string; multiline?: boolean }
+    expect(input?._tag).toBe("TextField")
+    expect(input?.multiline).toBe(true)
+    // A BOTTOM ACTION BAR row holds the controls in order: attach, harness
+    // toggle, flexible spacer, send.
+    const bar = nodeByKey(view, "shell-composer-bar") as {
+      _tag?: string
+      direction?: string
+      children?: ReadonlyArray<{ key?: string; _tag?: string; flex?: boolean }>
+    }
+    expect(bar?._tag).toBe("Stack")
+    expect(bar?.direction).toBe("row")
+    const keys = (bar?.children ?? []).map((child) => child.key)
+    expect(keys[0]).toBe("shell-attach-image")
+    expect(keys[1]).toBe("shell-harness-row")
+    expect(bar?.children?.[2]?._tag).toBe("Spacer")
+    expect(bar?.children?.[2]?.flex).toBe(true)
+    // The trailing send control is circular and dims to a ghost while blank.
+    const blankSend = nodeByKey(view, "shell-note") as { style?: Record<string, unknown> }
+    expect(blankSend?.style).toMatchObject({ backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" })
+    // With text present it fills with accent (ready-to-send).
+    const typed = nodeByKey(desktopShellView({ ...baseState, input: "hello" }), "shell-note") as { style?: Record<string, unknown> }
+    expect(typed?.style).toMatchObject({ backgroundColor: "accent", color: "textInverse", borderRadius: "full" })
+    // An image-only composer also reads as ready-to-send.
+    const withImage = withComposerImageAdded(baseState, { id: "z1", mediaType: "image/png", data: "aGVsbG8=", name: "z1.png", sizeBytes: 5 })
+    const imageSend = nodeByKey(desktopShellView(withImage), "shell-note") as { style?: Record<string, unknown> }
+    expect(imageSend?.style).toMatchObject({ backgroundColor: "accent", borderRadius: "full" })
+    // The Stop control (streaming) shares the circular shape.
+    const stop = nodeByKey(desktopShellView(withPending(baseState, true)), "shell-stop") as { style?: Record<string, unknown> }
+    expect(stop?.style).toMatchObject({ borderRadius: "full" })
+  })
+
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {
     const idle = nodeByKey(desktopShellView(baseState), "shell-input") as {
       clearOnSubmit?: boolean

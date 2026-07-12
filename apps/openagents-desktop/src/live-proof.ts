@@ -195,7 +195,7 @@ const probeUsageScript = (ref: string): string => `(() => {
 const probeNewChatScript = `(() => {
   const transcript = document.querySelector('[data-en-key="shell-transcript"]')
   const split = document.querySelector('[data-en-key="history-workspace-split"]')
-  const composer = document.querySelector('[data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const messages = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
   return {
     transcript: transcript !== null,
@@ -222,7 +222,7 @@ const probeChipScript = (harness: string): string => `(() => {
 })()`
 
 const submitTurnScript = (message: string): string => `(() => {
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { submitted: false, reason: "composer input not mounted" }
   if (input.disabled) return { submitted: false, reason: "composer disabled" }
   input.focus()
@@ -233,7 +233,7 @@ const submitTurnScript = (message: string): string => `(() => {
 })()`
 
 const probeTurnScript = `(() => {
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const assistantRows = Array.from(document.querySelectorAll(
     '[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]'
   ))
@@ -257,7 +257,7 @@ const probeTurnScript = `(() => {
 
 /** Reads the trailing composer control + pending state for interrupt-stop. */
 const probeComposerControlScript = `(() => {
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const stop = document.querySelector('[data-en-key="shell-stop"]')
   const send = document.querySelector('[data-en-key="shell-note"]')
   const systemRows = Array.from(document.querySelectorAll(

@@ -123,6 +123,9 @@ describe("design conformance (b): style values come from the shared scales", () 
       400, // files browser pane default size (workspace-files SplitPane)
       4, // sidebar connected-accounts usage meter: thin 4px track height (EP250)
       56, // composer image attachment thumbnail (capability I1)
+      64, // composer multiline input min height (EP250 OpenCode restyle)
+      560, // workspace files browser pane maximum width (compose workspace editor)
+      400, // workspace files browser pane default size (compose workspace editor)
     ])
     const offenders: Array<string> = []
     for (const [name, source] of rendererSources()) {

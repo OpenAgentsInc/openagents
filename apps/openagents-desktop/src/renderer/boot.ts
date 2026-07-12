@@ -959,7 +959,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       // or command N, auto focus the input").
       let attempts = 0
       const tryFocus = (): void => {
-        const input = root.querySelector<HTMLInputElement>('[data-en-key="shell-input"] input')
+        // EP250 OpenCode restyle made the composer a multiline textarea; accept
+        // either the textarea or a legacy input so focus still lands.
+        const input = root.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+          '[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input',
+        )
         if (input !== null && !input.disabled) {
           input.focus()
           if (root.ownerDocument.activeElement === input) return

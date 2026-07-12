@@ -2724,20 +2724,31 @@ const permissionModeControl = (state: DesktopShellState): View | null => {
  */
 const composerActionControl = (state: DesktopShellState): View => {
   if (state.pending) {
+    // EP250 OpenCode restyle: the Stop control lives in the bottom bar's right
+    // slot while a turn streams — a circular button (radius "full" -> the 44px
+    // IconButton square becomes a circle) matching the send affordance's shape.
     return IconButton({
       key: "shell-stop",
       icon: "Stop",
       accessibilityLabel: "Stop turn",
       onPress: IntentRef("DesktopTurnInterrupted"),
-      style: { backgroundColor: "surfaceRaised", color: "textPrimary", borderRadius: "md" },
+      style: { backgroundColor: "surfaceRaised", color: "textPrimary", borderRadius: "full" },
     })
   }
   const lane = state.harnessLanes[state.selectedHarness]
+  // A composer with no text and no attachments is "blank": the send affordance
+  // dims to a ghost so the accent-filled state reads as "ready to send" (OpenCode
+  // composer shape — filled-when-active, ghost-when-empty). Submit semantics are
+  // unchanged (an empty submit is a no-op), so the control stays enabled and the
+  // disabled path is still reserved for an unavailable lane + its reason popover.
+  const blank = state.input.trim() === "" && state.composerImages.length === 0
   // ONE icon-only send control (owner statement 2026-07-11: "airplane icon in
   // composer OUTSIDE of the button is stupid. put it in , remove text 'send'"):
   // the paper-plane glyph lives INSIDE the button — no freestanding icon, no
-  // "Send" text label. The disabled reason survives only in the accessible
-  // label + hover popover (no standing caption).
+  // "Send" text label. EP250 OpenCode restyle makes it a CIRCULAR up-arrow-style
+  // send (radius "full"), accent-filled when there is text/images and dim/ghost
+  // when empty. The disabled reason survives only in the accessible label +
+  // hover popover (no standing caption).
   return withDisabledReason(
     "shell-note",
     !lane.available,
@@ -2750,7 +2761,9 @@ const composerActionControl = (state: DesktopShellState): View => {
         : lane.reason ?? "Send unavailable: selected lane cannot act",
       disabled: !lane.available,
       onPress: IntentRef("DesktopNoteSubmitted"),
-      style: { backgroundColor: "accent", color: "textInverse", borderRadius: "md" },
+      style: blank
+        ? { backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" }
+        : { backgroundColor: "accent", color: "textInverse", borderRadius: "full" },
     }),
   )
 }
@@ -2881,6 +2894,45 @@ const composerAttachControl = (state: DesktopShellState): View => {
   })
 }
 
+/**
+ * The recessed segmented harness track (Fable | Codex). EP250 OpenCode restyle
+ * relocates it INTO the composer's bottom action bar (owner: "put our
+ * codex/claude toggle in that bar underneath it"). The track keeps its
+ * apps-sdk recessed styling: it sits BELOW the surface (`background` fill) with
+ * a 2px gutter and radius "lg"; the nested-radius rule gives the chips "md".
+ */
+const harnessTrack = (state: DesktopShellState): View =>
+  Stack(
+    {
+      key: "shell-harness-row",
+      direction: "row",
+      gap: "0.5",
+      align: "center",
+      style: {
+        backgroundColor: "background",
+        borderRadius: "lg",
+        padding: "0.5",
+      },
+    },
+    [
+      harnessChip(state, "fable", "Fable"),
+      harnessChip(state, "codex", "Codex"),
+    ],
+  )
+
+/**
+ * The chat composer, re-laid-out to OpenCode's prompt-input shape (EP250 owner
+ * directive, verbatim: "edit our chat input composer to look exactly like the
+ * opencode desktop, and put our codex/claude toggle in that bar underneath
+ * it"). ONE rounded container (radius "xl"): the multiline text input sits on
+ * TOP; a BOTTOM ACTION BAR sits below it inside the same card, carrying the
+ * leading `+` attach affordance, the Fable|Codex harness toggle, a flexible
+ * spacer, and the trailing circular send / stop control. No feature is removed
+ * — the attach picker + drop/paste, harness toggle + Shift+Tab, image
+ * thumbnails, Stop-while-streaming, queue-until-idle, disabled-reason popovers,
+ * and the DesktopInputChanged/DesktopNoteSubmitted wiring are all preserved,
+ * re-homed into the new shape.
+ */
 const shellComposer = (state: DesktopShellState): View =>
   Card(
     {
@@ -2888,6 +2940,7 @@ const shellComposer = (state: DesktopShellState): View =>
       padding: "2",
       // Radius capped at the shared scale's xl (8) — the apps-sdk 24px
       // composer radius is deliberately NOT ported (spec "not ported" list).
+      // OpenCode's rounded-xl container maps onto our "xl" step.
       radius: "xl",
       style: {
         width: "full",
@@ -2900,57 +2953,54 @@ const shellComposer = (state: DesktopShellState): View =>
       },
     },
     [
-      Stack(
-        {
-          key: "shell-harness-row",
-          direction: "row",
-          gap: "0.5",
-          align: "center",
-          style: {
-            backgroundColor: "background",
-            borderRadius: "lg",
-            padding: "0.5",
-            alignSelf: "start",
-          },
-        },
-        [
-          harnessChip(state, "fable", "Fable"),
-          harnessChip(state, "codex", "Codex"),
-          ...(providerAccountControl(state) === null ? [] : [providerAccountControl(state)!]),
-          ...(permissionModeControl(state) === null ? [] : [permissionModeControl(state)!]),
-        ],
-      ),
       // Capability I1: pending image thumbnails + transient rejection notice
-      // sit above the input row (empty when nothing is attached).
+      // sit ABOVE the input (OpenCode renders attachments before the editor);
+      // empty when nothing is attached.
       ...composerImageRegion(state),
       ...composerReviewContextRegion(state),
+      // Multiline text input on TOP — grows/wraps with content (textarea).
+      TextField({
+        key: "shell-input",
+        value: state.input,
+        multiline: true,
+        // A3 queue-until-idle (EP250 wave-2): the composer stays usable
+        // while a turn streams so a follow-up can be queued (submit mid-turn
+        // enqueues instead of starting a new turn); the placeholder names
+        // the honest semantics. The Stop button still interrupts.
+        placeholder: state.pending ? "Queue a follow-up…" : "Message",
+        disabled: false,
+        clearOnSubmit: true,
+        a11y: { label: state.pending ? "Queue a follow-up, delivered when this turn completes" : "Message" },
+        onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
+        onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
+        // Generous multiline input (OpenCode min-h-[52px] editor). 64px min
+        // height gives a comfortable ~3-line composer; the textarea soft-wraps
+        // and scrolls internally past that.
+        style: { width: "full", minHeight: 64 },
+      }),
+      // BOTTOM ACTION BAR inside the same container: [+ attach] [Fable|Codex]
+      // …spacer… [circular send / stop].
       Stack(
         {
-          key: "shell-composer-row",
+          key: "shell-composer-bar",
           direction: "row",
-          gap: "2",
+          gap: "1",
           align: "center",
           style: { width: "full" },
         },
         [
           // Leading attach affordance (capability I1) — picker + drop/paste.
           composerAttachControl(state),
-          TextField({
-            key: "shell-input",
-            value: state.input,
-            // A3 queue-until-idle (EP250 wave-2): the composer stays usable
-            // while a turn streams so a follow-up can be queued (submit mid-turn
-            // enqueues instead of starting a new turn); the placeholder names
-            // the honest semantics. The Stop button still interrupts.
-            placeholder: state.pending ? "Queue a follow-up…" : "Message",
-            disabled: false,
-            clearOnSubmit: true,
-            a11y: { label: state.pending ? "Queue a follow-up, delivered when this turn completes" : "Message" },
-            onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
-            onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
-            style: { flex: 1 },
-          }),
-          // Icon-only Send (idle) or Stop (streaming) — see composerActionControl.
+          // The Fable|Codex toggle, now living in the bar (owner directive).
+          harnessTrack(state),
+          // Provider-account + permission-mode controls kept from the old
+          // harness row (landed after the restyle was cut) — same bar, same
+          // null-collapse behavior.
+          ...(providerAccountControl(state) === null ? [] : [providerAccountControl(state)!]),
+          ...(permissionModeControl(state) === null ? [] : [permissionModeControl(state)!]),
+          // Push the send/stop control to the far right of the bar.
+          Spacer({ key: "shell-composer-bar-spacer", flex: true }),
+          // Circular Send (idle) or Stop (streaming) — see composerActionControl.
           composerActionControl(state),
         ],
       ),

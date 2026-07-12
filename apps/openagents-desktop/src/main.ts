@@ -2150,7 +2150,7 @@ const smokeLifecycleCorrelation = `(async () => {
 })()`
 
 const smokeTypeIntoComposer = `(() => {
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Pixel-proof: real chat rows on the shared catalog"
@@ -2312,7 +2312,7 @@ const smokeTerminalWorkspace = `(async () => {
 
 const smokeSubmitComposer = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   const messageCount = () =>
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
@@ -2604,7 +2604,7 @@ const smokeNewChatFromHistory = `(async () => {
   const transcript = document.querySelector('[data-en-key="shell-transcript"]')
   const split = document.querySelector('[data-en-key="history-workspace-split"]')
   const messages = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
-  const composer = document.querySelector('[data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   // Owner contract (EP250): "when i do new chat, clicking button or command
   // N, auto focus the input." The focus retry loop lands AFTER the chat
   // view mounts, so poll for it.
@@ -2633,7 +2633,7 @@ const smokeNewChatFromHistory = `(async () => {
 // currently-disabled codex lane (capability truth lives on the chip/Send).
 const smokeComposerGestures = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   // Icon-only send control: IconButton variant, plane glyph inside, aria
   // label present, no freestanding icon, no visible "Send" text.
@@ -2757,7 +2757,7 @@ const smokeFableLocalStreaming = `(async () => {
   await wait(50)
   if (bubble.hidden !== true) return { ok: false, reason: "leave did not dismiss the reason popover" }
   fable.click()
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Stream a fable-local proof"
@@ -2862,7 +2862,7 @@ const smokeFableImageAttach = `(async () => {
   const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
   if (fable !== null && fable.getAttribute("data-en-variant") !== "secondary") fable.click()
   const composer = document.querySelector('[data-en-key="shell-composer"]')
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (composer === null || input === null) return { ok: false, reason: "composer not mounted" }
   // A minimal in-renderer PNG File dropped on the composer (no filesystem read).
   const bytes = new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x01])
@@ -2972,7 +2972,7 @@ const smokeCodexLocalStreaming = `(async () => {
   }
   if (codex.disabled !== false) return { ok: false, reason: "codex chip stayed disabled despite a fixture PROBE-VERIFIED account" }
   codex.click()
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Stream a codex-local proof"
@@ -3062,7 +3062,7 @@ const smokeDetailsAffordanceStableOnInput = `(async () => {
   details.dataset.enFlashProbe = "1"
   const parentBefore = details.parentElement
   // Type in the composer — the exact "type something in the input" scenario.
-  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   let maxOpacityDuringTyping = 0
@@ -3260,7 +3260,7 @@ const smokeCmdNNewChat = `(async () => {
   )) {
     await wait(50)
   }
-  const composer = document.querySelector('[data-en-key="shell-input"] input')
+  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   const focusDeadline = Date.now() + 3000
   while (Date.now() < focusDeadline && document.activeElement !== composer) {
     await wait(50)

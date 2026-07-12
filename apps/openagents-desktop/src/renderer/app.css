@@ -872,25 +872,28 @@ textarea {
 /* Composer: one floating capsule on the shared radius scale.           */
 /* ------------------------------------------------------------------ */
 
+/* OpenCode prompt-input shape (EP250): one rounded container holding the
+   multiline input on top and the action bar below. */
 [data-en-key="shell-composer"] {
   width: min(100%, 840px) !important;
   align-self: center;
   margin: 0 0 var(--en-spacing-1\.5) !important;
-  padding: var(--en-spacing-1\.5) var(--en-spacing-2) var(--en-spacing-1\.5) var(--en-spacing-4) !important;
+  padding: var(--en-spacing-3) var(--en-spacing-3) var(--en-spacing-2) !important;
 }
 
-[data-en-key="shell-composer-row"] {
-  min-height: 46px;
-}
-
-[data-en-key="shell-input"] input {
+/* Bottom action bar: attach + harness toggle + spacer + circular send. */
+[data-en-key="shell-composer-bar"] {
   min-height: var(--en-control-xl-height);
+}
+
+/* Multiline input (textarea): fills the top of the container, no manual
+   resize handle, transparent so the container fill shows through. */
+[data-en-key="shell-input"] textarea {
   color: var(--en-color-textPrimary) !important;
   font-size: var(--en-type-body-fontSize);
-}
-
-[data-en-key="shell-send-icon"] {
-  color: var(--en-color-accent) !important;
+  line-height: var(--en-type-body-lineHeight);
+  resize: none;
+  padding: var(--en-spacing-1) var(--en-spacing-1) var(--en-spacing-2);
 }
 
 /* Harness chips: fixed control-lattice height inside the recessed track. */
@@ -901,8 +904,8 @@ textarea {
 
 /* The composer is already the visible input affordance; do not draw a
    second rectangular focus ring inside its rounded capsule. */
-[data-en-key="shell-input"] input:focus,
-[data-en-key="shell-input"] input:focus-visible {
+[data-en-key="shell-input"] textarea:focus,
+[data-en-key="shell-input"] textarea:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }

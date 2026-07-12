@@ -7,6 +7,46 @@ vocabulary — never Tailwind/CSS class strings (owner decision 2026-07-08),
 never vendored reference code, always our catalog icon set and the uniform
 Protoss-blue theme.
 
+## 2026-07-11 — opencode prompt-input → chat composer shape
+
+Owner directive (verbatim): "edit our chat input composer to look exactly like
+the opencode desktop, and put our codex/claude toggle in that bar underneath
+it. find their css and adapt it to ours."
+
+Source (read-only; nothing vendored):
+`projects/repos/opencode/packages/app/src/components/prompt-input.tsx`, the
+`newLayoutDesigns` branch (OpenCode's modern prompt-input; it is Tailwind +
+`--v2-*` custom properties, not a standalone `.css` file). Extracted spec,
+Tailwind/CSS-var values translated to concrete numbers:
+
+| OpenCode prompt-input (newLayoutDesigns) | value | Effect Native (this repo) |
+| --- | --- | --- |
+| container | `rounded-xl` (12px), `min-h-[96px]`, `bg-v2-background-bg-base` fill, `shadow-[var(--v2-elevation-raised)]`, dashed border only while dragging | `Card` radius `xl` (8, quantized down from their 12 — the 24px composer radius stays excluded), `surface: "glass"`, `border`/1px, `background`/`surface` fill via glass |
+| input (editor) | `min-h-[52px]`, `px-4`/`pt-4`/`pb-2` (16/16/8), `text-[13px]`, `leading-5` (20px), `font-[440]`, scroll container `max-h-[180px]` | multiline `TextField` (textarea) on TOP, `minHeight: 64` (documented dimension), body typeScale, app.css `resize:none` + internal scroll |
+| bottom action bar | `flex h-11 items-center px-2` (height 44px, px 8px), left group `gap-1` (4px) | `Stack` row `shell-composer-bar`, `gap "1"`, min-height `--en-control-xl-height` (40) |
+| attach `+` | `IconButton` `size-7` (28px), `rounded-md` (6px), ghost, `text-v2-icon-icon-muted`, `icon="plus"` | `shell-attach-image` `IconButton` (fixed 44px), `Plus` glyph, `surfaceRaised`/`textMuted`, radius `md` |
+| harness/model controls | live in the left area of the bar, after `+` | Fable\|Codex recessed segmented `shell-harness-row`, relocated into the bar after `+` (owner directive) |
+| send | `IconButton` `size-7` `rounded-md`, `variant="primary"`, gradient `bg-contrast` fill, `disabled:opacity-50`, `icon="arrow-up"` (or `stop`) | circular `shell-note` (radius `full` on the 44px `IconButton` square), `accent`/`textInverse` when the input has text/images, `surfaceRaised`/`textMuted` ghost when blank; `Stop` shares the circle while streaming |
+
+Layout change: OpenCode already stacks the editor above a bottom action bar
+inside one container; the owner target is that exact shape plus the
+codex/claude toggle moved into the bar. We flipped our previous
+toggle-on-top / inline `[+ input send]` row into `[image thumbnails]` →
+`[multiline input]` → `[+  Fable|Codex  ⇢spacer⇢  ●send]`. Every prior feature
+(attach picker + drop/paste, harness toggle + Shift+Tab + evidence gating,
+image thumbnails, Stop-while-streaming, queue-until-idle, disabled-reason
+popovers, `DesktopInputChanged`/`DesktopNoteSubmitted` wiring) is preserved,
+re-homed into the bar.
+
+Colors adapted to Protoss-blue tokens (no OpenCode `--v2-*` values used);
+styling stays typed token style objects — the only new numeric dimension (the
+input `minHeight: 64`) rides the documented `design-conformance.test.ts`
+allowlist. Glyph gap: the catalog `IconName` set has no `ArrowUp` (or
+paperclip); interim uses `Plane` (send) / `Plus` (attach), recorded as
+`D-DESK-09` in `docs/effect-native/DEMAND_REGISTER.md`. Behavior contract:
+`openagents_desktop.chat.opencode_composer_shape.v1` in
+`apps/openagents-desktop/src/contracts/ux-contracts.ts`.
+
 ## 2026-07-11 — opencode tool/message card language → chat transcript cards
 
 Owner directive (verbatim): "Make a design pass through the
