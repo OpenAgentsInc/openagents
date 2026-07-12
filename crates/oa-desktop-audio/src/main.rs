@@ -18,6 +18,16 @@ fn main() {
             .and_then(|line| serde_json::from_str::<HelperCommand>(&line).ok());
         let state = match decoded {
             Some(command) => {
+                // Native start/capture/stop truth comes only from the real
+                // transport event stream. Emitting MediaLifecycle's optimistic
+                // `live` projection here can race a real crash/revocation and
+                // leave Desktop claiming to listen after the helper exited.
+                let emit_lifecycle_state = !matches!(
+                    &command,
+                    HelperCommand::Start { .. }
+                        | HelperCommand::SetCapture { .. }
+                        | HelperCommand::Stop { .. }
+                );
                 if let HelperCommand::Start {
                     identity,
                     gateway_url: Some(gateway_url),
@@ -114,7 +124,11 @@ fn main() {
                         active.stop();
                     }
                 }
-                lifecycle.apply(command).clone()
+                let state = lifecycle.apply(command).clone();
+                if !emit_lifecycle_state {
+                    continue;
+                }
+                state
             }
             None => oa_desktop_audio::HelperState::Refused {
                 reason: "invalid_control_frame".into(),

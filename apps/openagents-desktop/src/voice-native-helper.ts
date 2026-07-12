@@ -62,7 +62,11 @@ export const createPackagedVoiceNativeMedia = (input: Readonly<{
       else if (tag === "command_proposal" && typeof record.proposalRef === "string" && typeof record.utteranceRef === "string" && typeof record.turnRef === "string" && typeof record.targetRef === "string" && ["chat.open", "workspace.files", "workspace.home", "workspace.review", "conversation.interrupt", "conversation.followup"].includes(String(record.commandId)) && typeof record.expiresAtMs === "number" && Number.isSafeInteger(record.expiresAtMs)) request.onControl({ kind: "proposal", proposalRef: record.proposalRef.slice(0, 256), utteranceRef: record.utteranceRef.slice(0, 256), turnRef: record.turnRef.slice(0, 256), targetRef: record.targetRef.slice(0, 256), commandId: String(record.commandId), expiresAtMs: record.expiresAtMs })
       else if (tag === "refused") request.onState("revoked")
     })
-    child.once("exit", () => { if (!closed) request.onState("crashed") })
+    child.once("exit", (code, signal) => {
+      if (closed) return
+      console.error("[openagents-desktop:voice] native helper exited:", code === null ? `signal:${signal ?? "unknown"}` : `code:${code}`)
+      request.onState("crashed")
+    })
     child.stdin.write(JSON.stringify({ command: "start", protocol_version: 1, identity: request.identity, disclosure_ref: request.disclosureRef, gateway_url: connection.gatewayUrl, application_grant: connection.grant }) + "\n")
     return {
       setCaptureEnabled: enabled => { if (!closed) child.stdin.write(JSON.stringify({ command: "set_capture", enabled }) + "\n") },
