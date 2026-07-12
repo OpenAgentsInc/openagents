@@ -1693,6 +1693,24 @@ struct MicrovmModelReceipt {
     tokens_served_delta: Option<u64>,
 }
 
+fn microvm_failure_class(exit_code: i32, output: &str) -> Option<&'static str> {
+    if exit_code == 0 {
+        return None;
+    }
+    let normalized = output.to_ascii_lowercase();
+    Some(if normalized.contains("turn-runner") && normalized.contains("not found") {
+        "turn_runner_unavailable"
+    } else if normalized.contains("unauthorized") || normalized.contains("authentication") {
+        "provider_auth_failed"
+    } else if normalized.contains("connection") || normalized.contains("timed out") {
+        "network_failed"
+    } else if normalized.contains("result.json") || normalized.contains("no such file") {
+        "artifact_missing"
+    } else {
+        "guest_command_failed"
+    })
+}
+
 /// Worker thread: boot the microVM, run the turn, then emit lifecycle receipts
 /// and a terminal status. Teardown (scratch wipe + microVM destroy) is guaranteed
 /// inside `run_cloud_vm_session`; we surface its cleanup receipt as the reclaim
@@ -1845,6 +1863,7 @@ fn run_org_cloud_microvm_worker(
     let _ = cleanup;
 
     let exit_code = outcome.exec.code;
+    let failure_class = microvm_failure_class(exit_code, &outcome.exec.output);
     let terminal_status = if exit_code == 0 { "completed" } else { "failed" };
     append_job_event(
         &config,
@@ -1855,6 +1874,7 @@ fn run_org_cloud_microvm_worker(
                 "workContextRef": work_context_ref,
                 "runnerId": runner_id,
                 "exitCode": exit_code,
+                "failureClass": failure_class,
             }))?),
             detail: Some("Agent Computer microVM turn finished.".to_string()),
             digest: None,

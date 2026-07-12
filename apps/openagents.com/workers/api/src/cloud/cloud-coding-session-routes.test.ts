@@ -724,10 +724,18 @@ describe('POST /v1/cloud-coding-sessions', () => {
               }),
               kind: 'cloud.gce.provisioning',
             },
+            {
+              dataJson: JSON.stringify({
+                microvmDestroyReceiptRef: 'receipt.microvm.destroy.daemon',
+                scratchWipeReceiptRef: 'receipt.scratch.wipe.daemon',
+                workContextRef: 'work-context.agent-computer.ccs_daemon',
+              }),
+              kind: 'cloud.gce.cleanup',
+            },
           ],
           agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           externalRunId: 'run_gce_daemon',
-          status: 'provisioning',
+          status: 'completed',
         }),
       gceProvisioningArmed: true,
     })

@@ -1240,7 +1240,69 @@ export const makeCloudControlCloudCodingAdapter = (
             }),
           )
         }
-        const placement = placementResult.placement
+        let placement = placementResult.placement
+        // The live microVM placement is asynchronous: the initial response is
+        // only `provisioning`. Follow the control job to its authoritative
+        // terminal state before projecting Sync completion. This also ensures
+        // cleanup receipts are validated from the real completed lifecycle.
+        if (placement.status === 'provisioning') {
+          const deadline = Date.now() + request.timeoutSeconds * 1_000
+          while (placement.status === 'provisioning' && Date.now() < deadline) {
+            yield* Effect.promise(
+              () => new Promise<void>(resolve => setTimeout(resolve, 250)),
+            )
+            const terminalPayload = yield* Effect.tryPromise({
+              catch: error =>
+                new CloudCodingAdapterError({
+                  adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+                  reason:
+                    error instanceof Error
+                      ? error.message
+                      : 'cloud_job_follow_failed',
+                }),
+              try: async () => {
+                const response = await fetchImpl(
+                  `${baseUrl}/v1/codex-runs/${encodeURIComponent(sessionId)}/events?cursor=0`,
+                  {
+                    headers: { Authorization: `Bearer ${config.bearerToken}` },
+                    method: 'GET',
+                  },
+                )
+                if (!response.ok) {
+                  throw new Error(`cloud_job_follow_http_${response.status}`)
+                }
+                return response.json()
+              },
+            })
+            const followed = normalizeCloudPlacementResponse(
+              {
+                ...(terminalPayload as Record<string, unknown>),
+                agentComputerIsolationPolicy:
+                  placement.agentComputerIsolationPolicy,
+                binding: placement.binding,
+              },
+              sessionId,
+              lane,
+            )
+            placement = followed
+          }
+          if (placement.status === 'provisioning') {
+            return yield* Effect.fail(
+              new CloudCodingAdapterError({
+                adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+                reason: 'cloud_job_follow_timeout',
+              }),
+            )
+          }
+          if (placement.status !== 'completed') {
+            return yield* Effect.fail(
+              new CloudCodingAdapterError({
+                adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+                reason: `cloud_job_terminal_${placement.status}`,
+              }),
+            )
+          }
+        }
         const workContextRef = workContextRefForSession(request, sessionId)
         const isolationValidationReason = validateAgentComputerPlacement(
           placement,
