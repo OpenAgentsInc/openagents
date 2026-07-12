@@ -14,6 +14,14 @@ export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents"
 
 const ignoredCheckoutPath = /^\/(src|scripts|tests|docs|receipts)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/
 const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"))
+const notarizeCredentials = process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &&
+  process.env.ASC_API_KEY_ID !== undefined && process.env.ASC_API_ISSUER_ID !== undefined
+  ? {
+      appleApiKey: process.env.ASC_API_PRIVATE_KEY_PATH,
+      appleApiKeyId: process.env.ASC_API_KEY_ID,
+      appleApiIssuer: process.env.ASC_API_ISSUER_ID,
+    }
+  : undefined
 
 const copyRuntimePackage = async (
   buildPath: string,
@@ -55,6 +63,7 @@ const config: ForgeConfig = {
         hardenedRuntime: true,
       }),
     },
+    osxNotarize: notarizeCredentials,
   },
   hooks: {
     generateAssets: async () => {

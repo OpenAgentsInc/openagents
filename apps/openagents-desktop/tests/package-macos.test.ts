@@ -40,4 +40,13 @@ describe("CUT-26 macOS artifact contract", () => {
       expect(plist).not.toContain("allow-dyld-environment-variables")
     }
   })
+
+  test("notarization is API-key-only and never embeds credential material", () => {
+    const source = readFileSync(path.join(root, "forge.config.ts"), "utf8")
+    expect(source).toContain("ASC_API_PRIVATE_KEY_PATH")
+    expect(source).toContain("ASC_API_KEY_ID")
+    expect(source).toContain("ASC_API_ISSUER_ID")
+    expect(source).not.toContain("appleIdPassword")
+    expect(source).not.toContain("@openagents.com")
+  })
 })
