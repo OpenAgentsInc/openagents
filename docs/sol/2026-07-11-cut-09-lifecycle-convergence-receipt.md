@@ -227,6 +227,15 @@ Completed/failed runs still require a real event, and append-to-existing-run
 waiters still require sequence advancement. The focused oracle covers all four
 branches. Physical rerun remains required after the repaired bundle is served.
 
+Physical rerun against the repaired `main` bundle passed. The same signed build
+was terminated and relaunched through CoreDevice, restored the exact thread and
+terminal controls, then created a second fresh mobile turn. Cancel again won
+before provider event one. Production stored the exact turn as `interrupted`,
+event count zero, with a durable settlement time; mobile returned directly to
+Resume/Retry/Close with no reconciliation error. This proves process
+replacement plus the pre-event-cancel correction on physical iOS. The network-
+gap/offline queue and unlink/revocation row remain outstanding.
+
 ## Close decision
 
 #8689 and #8677 remain open. Deterministic rows 7–9 are implemented, the
