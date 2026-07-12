@@ -147,6 +147,7 @@ export type ComposerAttachmentSource = typeof ComposerAttachmentSource.Type
 
 export const ComposerAttachmentSurface = S.Literals([
   "desktop-local",
+  "native-local",
   "web-hosted",
 ])
 export type ComposerAttachmentSurface = typeof ComposerAttachmentSurface.Type
@@ -553,6 +554,14 @@ export const DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY: ComposerAttachmentU
   {
     surface: "desktop-local",
     maxSizeBytes: 50 * 1024 * 1024,
+    allowedMimeTypes: [],
+    allowedMimePrefixes: [],
+  }
+
+export const DEFAULT_NATIVE_LOCAL_ATTACHMENT_UPLOAD_POLICY: ComposerAttachmentUploadPolicy =
+  {
+    surface: "native-local",
+    maxSizeBytes: 25 * 1024 * 1024,
     allowedMimeTypes: [],
     allowedMimePrefixes: [],
   }

@@ -14,8 +14,10 @@ import type {
 } from "./coding/mobile-coding-navigation"
 import {
   openMobileCodingComposer,
+  type MobileCodingAttachmentUpdateResult,
   type MobileCodingComposerSession,
 } from "./coding/mobile-coding-composer"
+import { openExpoMobileCodingAttachmentPicker } from "./coding/expo-mobile-coding-attachment-picker"
 import {
   selectMobileConversation,
   type MobileConversationThread,
@@ -45,6 +47,9 @@ type MobileCodingHomeBinding = Readonly<{
     session: MobileCodingComposerSession,
     text: string,
   ) => Promise<MobileCodingComposerSession | null>
+  pickComposerAttachments: (
+    session: MobileCodingComposerSession,
+  ) => Promise<MobileCodingAttachmentUpdateResult>
 }>
 
 const selectAuthenticatedMobileExperience = async (
@@ -59,6 +64,7 @@ const selectAuthenticatedMobileExperience = async (
   const composer = draftStore === null
     ? null
     : openMobileCodingComposer({ drafts: draftStore, randomId: randomUUID })
+  const attachmentPicker = openExpoMobileCodingAttachmentPicker()
   const restored = await coding.restore()
   const preferredThreadRef = restored?.state === "ready"
     ? restored.session.threadRef
@@ -132,6 +138,26 @@ const selectAuthenticatedMobileExperience = async (
         const updated = await composer.updateText(session, text)
         if (updated !== null) activeComposer = updated
         return updated
+      },
+      pickComposerAttachments: async session => {
+        if (composer === null) {
+          return { status: "failed", error: "Private draft storage is unavailable." }
+        }
+        const picked = await attachmentPicker.pick()
+        if (picked.status !== "selected") return picked
+        const updated = await composer.addAttachments(session, picked.files)
+        if (updated === null) {
+          return {
+            status: "failed",
+            error: "Those files or images could not be added to this draft.",
+          }
+        }
+        activeComposer = updated
+        return {
+          status: "updated",
+          session: updated,
+          addedCount: picked.files.length,
+        }
       },
     },
   }

@@ -157,6 +157,11 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
         clearSelection: async () => undefined,
         selectSession: async () => ({ thread: initialThread, composer: activeComposer }),
         updateComposerText,
+        pickComposerAttachments: async session => ({
+          status: "updated",
+          session,
+          addedCount: 1,
+        }),
       },
     })
 
@@ -165,6 +170,15 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(initial).toContain("openagents · main")
     expect(initial).toContain("Claude · provider.claude · Model not selected · Account not selected")
     expect(initial).toContain("screen.png")
+    expect(initial).toContain("Add file or image")
+
+    program.coding.pickAttachments()
+    await Effect.runPromise(settle)
+    const attachmentReady = await Effect.runPromise(lastState(program))
+    expect(attachmentReady.codingAttachmentStatus).toEqual({
+      kind: "ready",
+      message: "1 attachment stored on this device.",
+    })
 
     program.khala.draftChanged("Edited on mobile")
     await Effect.runPromise(settle)
@@ -213,6 +227,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
         clearSelection: async () => undefined,
         selectSession: async () => ({ thread: initialThread, composer: activeComposer }),
         updateComposerText: async (session) => session,
+        pickComposerAttachments: async () => ({ status: "cancelled" }),
       },
     })
     const view = JSON.stringify(renderContentView(program.initialState))
@@ -258,6 +273,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
         },
         clearSelection: async () => undefined,
         updateComposerText: async () => null,
+        pickComposerAttachments: async () => ({ status: "cancelled" }),
         selectSession: async target => {
           selected.push(target)
           return { thread: initialThread, composer: null }

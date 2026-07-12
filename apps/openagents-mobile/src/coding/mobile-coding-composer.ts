@@ -1,13 +1,18 @@
 import {
+  applyComposerTransaction,
   decodeCodingComposerDraftSnapshot,
+  DEFAULT_NATIVE_LOCAL_ATTACHMENT_UPLOAD_POLICY,
   emptyComposerSelection,
   emptyComposerState,
   parseComposerMarkdown,
+  readyComposerAttachmentTransaction,
   serializeComposerMarkdown,
+  stageComposerAttachmentFiles,
   type CodingComposerDraftSnapshot,
   type CodingComposerTargetSelection,
   type ComposerAttachmentRefBlock,
   type ComposerDoc,
+  type ComposerState,
   type ConfirmedAgentRun,
   type KhalaSyncCodingComposerDrafts,
 } from "@openagentsinc/khala-sync-client"
@@ -25,6 +30,27 @@ export type MobileCodingComposerSession = Readonly<{
   targetLabel: string
 }>
 
+export const MAX_MOBILE_CODING_ATTACHMENT_FILES_PER_PICK = 8
+export const MAX_MOBILE_CODING_ATTACHMENTS_PER_DRAFT = 12
+export const MAX_MOBILE_CODING_ATTACHMENT_BYTES =
+  DEFAULT_NATIVE_LOCAL_ATTACHMENT_UPLOAD_POLICY.maxSizeBytes
+
+export type MobileCodingAttachmentFile = Readonly<{
+  name: string
+  mime: string
+  sizeBytes: number
+  digest: string
+}>
+
+export type MobileCodingAttachmentUpdateResult =
+  | Readonly<{ status: "cancelled" }>
+  | Readonly<{
+      status: "updated"
+      session: MobileCodingComposerSession
+      addedCount: number
+    }>
+  | Readonly<{ status: "failed"; error: string }>
+
 export type MobileCodingComposer = Readonly<{
   open: (input: Readonly<{
     target: MobileCodingTarget
@@ -34,6 +60,10 @@ export type MobileCodingComposer = Readonly<{
   updateText: (
     session: MobileCodingComposerSession,
     text: string,
+  ) => Promise<MobileCodingComposerSession | null>
+  addAttachments: (
+    session: MobileCodingComposerSession,
+    files: ReadonlyArray<MobileCodingAttachmentFile>,
   ) => Promise<MobileCodingComposerSession | null>
 }>
 
@@ -102,6 +132,26 @@ const attachmentBlocks = (
 ): ReadonlyArray<ComposerAttachmentRefBlock> => doc.blocks.filter(
   (block): block is ComposerAttachmentRefBlock => block.kind === "attachmentRef",
 )
+
+const validAttachmentFile = (
+  file: MobileCodingAttachmentFile,
+): boolean => file.name.trim().length > 0 &&
+  file.name.length <= 160 &&
+  file.mime.trim().length > 0 &&
+  file.mime.length <= 128 &&
+  Number.isSafeInteger(file.sizeBytes) &&
+  file.sizeBytes >= 0 &&
+  file.sizeBytes <= MAX_MOBILE_CODING_ATTACHMENT_BYTES &&
+  /^[a-f0-9]{64}$/u.test(file.digest)
+
+const composerStateForDraft = (
+  draft: CodingComposerDraftSnapshot,
+): ComposerState => ({
+  doc: draft.doc,
+  selection: draft.selection,
+  view: draft.view,
+  history: { done: [], undone: [] },
+})
 
 const saveSession = async (
   drafts: KhalaSyncCodingComposerDrafts,
@@ -178,6 +228,51 @@ export const openMobileCodingComposer = (input: Readonly<{
         revision: session.draft.revision + 1,
         doc,
         selection: emptyComposerSelection(firstBlock.id),
+        updatedAt,
+      })
+      return saveSession(input.drafts, { ...session, draft })
+    },
+    addAttachments: async (session, files) => {
+      if (session.draft.submission.status !== "editing" ||
+        files.length === 0 ||
+        files.length > MAX_MOBILE_CODING_ATTACHMENT_FILES_PER_PICK ||
+        files.some(file => !validAttachmentFile(file))) return null
+
+      let state = composerStateForDraft(session.draft)
+      for (const file of files) {
+        const staged = stageComposerAttachmentFiles([{
+          name: file.name,
+          type: file.mime,
+          size: file.sizeBytes,
+        }], {
+          source: "manual",
+          idPrefix: `mobile-${file.digest}`,
+        })
+        const inserted = applyComposerTransaction(state, staged.transaction)
+        if (!inserted.ok) return null
+        state = inserted.state
+        const attachment = staged.attachments[0]
+        if (attachment === undefined) return null
+        const ready = readyComposerAttachmentTransaction(state, attachment.id, {
+          surface: "native-local",
+          digest: file.digest,
+          time: Date.parse(now()),
+        })
+        if (ready === null) return null
+        const completed = applyComposerTransaction(state, ready)
+        if (!completed.ok) return null
+        state = completed.state
+      }
+      if (state.doc.attachments.length > MAX_MOBILE_CODING_ATTACHMENTS_PER_DRAFT) {
+        return null
+      }
+      const updatedAt = now()
+      const draft = decodeCodingComposerDraftSnapshot({
+        ...session.draft,
+        revision: session.draft.revision + 1,
+        doc: state.doc,
+        selection: state.selection,
+        view: state.view,
         updatedAt,
       })
       return saveSession(input.drafts, { ...session, draft })

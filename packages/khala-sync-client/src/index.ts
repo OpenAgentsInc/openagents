@@ -17,17 +17,23 @@
 // drafts. Re-export the exact canonical composer boundary they need so app
 // packages do not create a parallel draft model or a second dependency edge.
 export {
+  applyComposerTransaction,
   composerAttachmentId,
   composerBlockId,
   decodeCodingComposerDraftSnapshot,
+  DEFAULT_NATIVE_LOCAL_ATTACHMENT_UPLOAD_POLICY,
   emptyComposerSelection,
   emptyComposerState,
   parseComposerMarkdown,
+  readyComposerAttachmentTransaction,
   serializeComposerMarkdown,
+  stageComposerAttachmentFiles,
   type CodingComposerDraftSnapshot,
   type CodingComposerTargetSelection,
   type ComposerAttachmentRefBlock,
   type ComposerDoc,
+  type ComposerFileLike,
+  type ComposerState,
 } from "@openagentsinc/composer-state"
 
 // ---------------------------------------------------------------------------

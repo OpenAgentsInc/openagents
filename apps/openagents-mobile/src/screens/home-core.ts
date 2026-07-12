@@ -25,6 +25,7 @@ import type {
 } from "../coding/mobile-coding-navigation"
 import {
   mobileCodingComposerText,
+  type MobileCodingAttachmentUpdateResult,
   type MobileCodingComposerSession,
 } from "../coding/mobile-coding-composer"
 import type {
@@ -73,6 +74,11 @@ export interface HomeState {
   readonly activeThreadRef: string | null
   readonly codingDirectory: MobileCodingDirectory | null
   readonly codingComposer: MobileCodingComposerSession | null
+  readonly codingAttachmentPicking: boolean
+  readonly codingAttachmentStatus: Readonly<{
+    kind: "ready" | "failed"
+    message: string
+  }> | null
   readonly khala: KhalaState
 }
 
@@ -158,11 +164,13 @@ export const initialHomeState: HomeState = {
   activeThreadRef: null,
   codingDirectory: null,
   codingComposer: null,
+  codingAttachmentPicking: false,
+  codingAttachmentStatus: null,
   khala: initialKhalaState,
 }
 
 /** Visible embedded-binary tag; build 116 removes the named-persona front door. */
-export const BUNDLE_TAG = "2026-07-11.cut-01-effect-native"
+export const BUNDLE_TAG = "2026-07-11.cut-16-native-attachments"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -186,6 +194,10 @@ export const CodingSessionSelected = defineIntent(
     sessionRef: Schema.String,
     threadRef: Schema.String,
   }),
+)
+export const CodingComposerAttachmentsRequested = defineIntent(
+  "CodingComposerAttachmentsRequested",
+  EmptyPayload,
 )
 export const RuntimeInteractionOptionToggled = defineIntent(
   "RuntimeInteractionOptionToggled",
@@ -221,6 +233,7 @@ export const homeIntentDefinitions = [
   SurfaceModeSelected,
   ConversationThreadSelected,
   CodingSessionSelected,
+  CodingComposerAttachmentsRequested,
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
@@ -261,6 +274,8 @@ export const renderContentView = (state: HomeState): View =>
           state.khala,
           state.conversationAuthority,
           state.codingComposer,
+          state.codingAttachmentPicking,
+          state.codingAttachmentStatus,
         )]
       : [
           Spacer({ key: "openagents-top-space", size: "16" }),
@@ -435,6 +450,9 @@ export interface HomeProgramOptions {
       session: MobileCodingComposerSession,
       text: string,
     ) => Promise<MobileCodingComposerSession | null>
+    pickComposerAttachments: (
+      session: MobileCodingComposerSession,
+    ) => Promise<MobileCodingAttachmentUpdateResult>
   }>
 }
 
@@ -610,6 +628,8 @@ const makeSyncedConversationHandlers = (
       drawerOpen: false,
       surfaceMode: "khala" as const,
       codingComposer: null,
+      codingAttachmentPicking: false,
+      codingAttachmentStatus: null,
       khala: {
         ...current.khala,
         pending: true,
@@ -634,6 +654,8 @@ const makeSyncedConversationHandlers = (
       ...current,
       drawerOpen: false,
       codingComposer: null,
+      codingAttachmentPicking: false,
+      codingAttachmentStatus: null,
       khala: { ...current.khala, pending: true },
     }))
     const thread = yield* Effect.promise(() => host.openThread(payload.threadRef))
@@ -906,8 +928,60 @@ export const makeHomeHandlers = (
         drawerOpen: false,
         surfaceMode: "khala" as const,
         codingComposer: null,
+        codingAttachmentPicking: false,
+        codingAttachmentStatus: null,
         khala: initialKhalaState,
       }))),
+    CodingComposerAttachmentsRequested: options.coding === undefined
+      ? () => Effect.void
+      : () => Effect.gen(function* () {
+          const before = yield* SubscriptionRef.get(state)
+          const composer = before.codingComposer
+          if (composer === null || before.khala.pending || before.codingAttachmentPicking) return
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            codingAttachmentPicking: true,
+            codingAttachmentStatus: null,
+          }))
+          const result = yield* Effect.promise(async () => {
+            try {
+              return await options.coding!.pickComposerAttachments(composer)
+            } catch {
+              return {
+                status: "failed" as const,
+                error: "The file or image picker is unavailable right now.",
+              }
+            }
+          })
+          yield* SubscriptionRef.update(state, current => {
+            if (current.codingComposer?.draft.draftRef !== composer.draft.draftRef) {
+              return current
+            }
+            switch (result.status) {
+              case "cancelled":
+                return { ...current, codingAttachmentPicking: false }
+              case "failed":
+                return {
+                  ...current,
+                  codingAttachmentPicking: false,
+                  codingAttachmentStatus: {
+                    kind: "failed" as const,
+                    message: result.error,
+                  },
+                }
+              case "updated":
+                return {
+                  ...current,
+                  codingComposer: result.session,
+                  codingAttachmentPicking: false,
+                  codingAttachmentStatus: {
+                    kind: "ready" as const,
+                    message: `${result.addedCount} ${result.addedCount === 1 ? "attachment" : "attachments"} stored on this device.`,
+                  },
+                }
+            }
+          })
+        }),
     SettingsPressed: () => Effect.void,
     OpenAgentsSignInPressed: () => options.sessionActions === undefined
       ? Effect.void
@@ -928,6 +1002,8 @@ export const makeHomeHandlers = (
           yield* SubscriptionRef.update(state, current => ({
             ...current,
             drawerOpen: false,
+            codingAttachmentPicking: false,
+            codingAttachmentStatus: null,
             khala: { ...current.khala, pending: true },
           }))
           const selected = yield* Effect.promise(() => options.coding!.selectSession({
@@ -946,6 +1022,8 @@ export const makeHomeHandlers = (
             : {
                 ...withConfirmedThread(current, selected.thread),
                 codingComposer: selected.composer,
+                codingAttachmentPicking: false,
+                codingAttachmentStatus: null,
                 khala: {
                   ...withConfirmedThread(current, selected.thread).khala,
                   draft: selected.composer === null
@@ -999,6 +1077,7 @@ export interface HomeProgramHandle {
   }
   readonly coding: {
     readonly selectSession: (target: MobileCodingTarget) => void
+    readonly pickAttachments: () => void
   }
   readonly session: {
     readonly signIn: () => void
@@ -1070,6 +1149,9 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     syncPhase: phase,
                     conversationThreads: [],
                     activeThreadRef: null,
+                    codingComposer: null,
+                    codingAttachmentPicking: false,
+                    codingAttachmentStatus: null,
                     khala: initialKhalaState,
                   }
                 : { ...current, syncPhase: phase }))
@@ -1081,6 +1163,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             sessionRef: target.sessionRef,
             threadRef: target.threadRef,
           }))),
+          pickAttachments: fire("CodingComposerAttachmentsRequested"),
         },
         session: {
           signIn: fire("OpenAgentsSignInPressed"),

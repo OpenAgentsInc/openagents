@@ -182,9 +182,28 @@ describe("contract openagents_mobile.coding.canonical_composer_draft.v1", () => 
     const edited = await composer.updateText(opened!, "Inspect this diff\n\n```ts\nconst ready = true\n```")
     expect(edited?.draft.revision).toBe(1)
     expect(mobileCodingComposerText(edited!.draft)).toContain("Inspect this diff")
+    const attached = await composer.addAttachments(edited!, [{
+      name: "screen.png",
+      mime: "image/png",
+      sizeBytes: 3,
+      digest: "ab".repeat(32),
+    }])
+    expect(attached?.draft.revision).toBe(2)
+    expect(attached?.draft.doc.attachments[0]).toMatchObject({
+      kind: "image",
+      name: "screen.png",
+      mime: "image/png",
+      sizeBytes: 3,
+      source: "manual",
+      status: "ready",
+      digest: "ab".repeat(32),
+      contentRef: `attachment.native-local.sha256.${"ab".repeat(32)}.screen.png`,
+    })
+    expect(attached?.draft.doc.blocks.some(block => block.kind === "attachmentRef")).toBe(true)
     const restored = await composer.open({ target, resolution, runtime: "claude_code" })
     expect(restored?.draft.draftRef).toBe(opened?.draft.draftRef)
     expect(mobileCodingComposerText(restored!.draft)).toContain("const ready = true")
+    expect(restored?.draft.doc.attachments[0]?.name).toBe("screen.png")
   })
 
   test("preserves restored attachments and fails target readiness closed without a runtime lane", async () => {
@@ -253,6 +272,13 @@ describe("contract openagents_mobile.coding.canonical_composer_draft.v1", () => 
       const opened = await first.open({ target, resolution, runtime: "claude_code" })
       const edited = await first.updateText(opened!, "Survive process death")
       expect(edited).not.toBeNull()
+      const attached = await first.addAttachments(edited!, [{
+        name: "restart.pdf",
+        mime: "application/pdf",
+        sizeBytes: 7,
+        digest: "cd".repeat(32),
+      }])
+      expect(attached).not.toBeNull()
       Effect.runSync(firstStore.close())
 
       const restartedStore = openKhalaSyncStore(database)
@@ -277,6 +303,9 @@ describe("contract openagents_mobile.coding.canonical_composer_draft.v1", () => 
           "repository",
           "worktree",
         ])
+        expect(restored?.draft.doc.attachments[0]?.contentRef).toBe(
+          `attachment.native-local.sha256.${"cd".repeat(32)}.restart.pdf`,
+        )
       } finally {
         Effect.runSync(restartedStore.close())
       }

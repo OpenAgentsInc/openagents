@@ -5,6 +5,7 @@ import {
   ComposerInlineMark,
   ComposerListItem,
   DEFAULT_DESKTOP_LOCAL_ATTACHMENT_UPLOAD_POLICY,
+  DEFAULT_NATIVE_LOCAL_ATTACHMENT_UPLOAD_POLICY,
   DEFAULT_WEB_HOSTED_ATTACHMENT_UPLOAD_POLICY,
   applyComposerTransaction,
   composerAttachmentContentAddressedRef,
@@ -468,9 +469,21 @@ describe("composer state core", () => {
       digest: "sha256:feed",
       name: "notes.md",
     })
+    const nativeRef = composerAttachmentContentAddressedRef({
+      surface: "native-local",
+      digest: "sha256:cafe",
+      name: "Camera Roll.PNG",
+    })
     expect(localRef).toBe("attachment.desktop-local.sha256.feed.notes.md")
     expect(hostedRef).toBe("attachment.web-hosted.sha256.feed.notes.md")
+    expect(nativeRef).toBe("attachment.native-local.sha256.cafe.camera-roll.png")
     expect(localRef).not.toBe(hostedRef)
+    expect(DEFAULT_NATIVE_LOCAL_ATTACHMENT_UPLOAD_POLICY).toEqual({
+      surface: "native-local",
+      maxSizeBytes: 25 * 1024 * 1024,
+      allowedMimeTypes: [],
+      allowedMimePrefixes: [],
+    })
   })
 
   test("emits retry and removal receipts without local-only refs", () => {

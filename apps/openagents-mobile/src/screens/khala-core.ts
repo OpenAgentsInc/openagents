@@ -259,6 +259,11 @@ const runtimeControlViews = (state: KhalaState): ReadonlyArray<View> => {
 
 const codingComposerContextViews = (
   session: MobileCodingComposerSession | null,
+  attachmentStatus: Readonly<{
+    kind: "ready" | "failed"
+    message: string
+  }> | null = null,
+  attachmentPicking = false,
 ): ReadonlyArray<View> => {
   if (session === null) return []
   const target = session.draft.target
@@ -287,6 +292,21 @@ const codingComposerContextViews = (
         variant: "caption",
         color: target.readiness === "ready" ? "textMuted" : "warning",
       }),
+      ...(attachmentPicking
+        ? [Text({
+            key: "khala-coding-composer-attachment-picking",
+            content: "Choosing files or images…",
+            variant: "caption",
+            color: "textMuted",
+          })]
+        : attachmentStatus === null
+          ? []
+          : [Text({
+              key: "khala-coding-composer-attachment-status",
+              content: attachmentStatus.message,
+              variant: "caption",
+              color: attachmentStatus.kind === "failed" ? "danger" : "textMuted",
+            })]),
     ],
   )]
 }
@@ -358,6 +378,11 @@ export const renderKhalaSurface = (
   state: KhalaState,
   authority: "local" | "sync" = "local",
   codingComposer: MobileCodingComposerSession | null = null,
+  codingAttachmentPicking = false,
+  codingAttachmentStatus: Readonly<{
+    kind: "ready" | "failed"
+    message: string
+  }> | null = null,
 ): View =>
   Stack(
     {
@@ -399,7 +424,11 @@ export const renderKhalaSurface = (
         style: { width: "full", flex: 1 },
       }),
       ...runtimeControlViews(state),
-      ...codingComposerContextViews(codingComposer),
+      ...codingComposerContextViews(
+        codingComposer,
+        codingAttachmentStatus,
+        codingAttachmentPicking,
+      ),
       Stack(
         {
           key: "khala-composer-bar",
@@ -418,8 +447,18 @@ export const renderKhalaSurface = (
           IconButton({
             key: "khala-new-chat",
             icon: "Plus",
-            accessibilityLabel: "New chat",
-            onPress: IntentRef("NewChatPressed", StaticPayload({})),
+            accessibilityLabel: codingComposer === null
+              ? "New chat"
+              : codingAttachmentPicking
+                ? "Choosing files or images"
+                : "Add file or image",
+            disabled: state.pending || codingAttachmentPicking,
+            onPress: IntentRef(
+              codingComposer === null
+                ? "NewChatPressed"
+                : "CodingComposerAttachmentsRequested",
+              StaticPayload({}),
+            ),
             surface: "glass",
           }),
           Composer({

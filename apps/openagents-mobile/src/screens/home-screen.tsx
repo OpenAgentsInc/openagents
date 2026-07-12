@@ -9,7 +9,10 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { khalaTheme } from "@effect-native/tokens"
 
 import type { MobileCodingDirectory, MobileCodingTarget } from "../coding/mobile-coding-navigation"
-import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
+import type {
+  MobileCodingAttachmentUpdateResult,
+  MobileCodingComposerSession,
+} from "../coding/mobile-coding-composer"
 import type { MobileConversationSelection } from "../conversation/mobile-conversation"
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
@@ -49,6 +52,9 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
       session: MobileCodingComposerSession,
       text: string,
     ) => Promise<MobileCodingComposerSession | null>
+    pickComposerAttachments: (
+      session: MobileCodingComposerSession,
+    ) => Promise<MobileCodingAttachmentUpdateResult>
   }>
 }) => {
   const program = useMemo(

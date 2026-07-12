@@ -45,6 +45,8 @@ Attachments move through `staged`, `uploading`, `ready`, and `error` states.
 Upload plans separate authority by surface:
 
 - `desktop-local` registers a local attachment and keeps local-only refs local.
+- `native-local` registers a content-addressed file in the native app sandbox;
+  picker URIs and platform handles stay outside serialized composer state.
 - `web-hosted` uploads to hosted storage before scan, parse, and thumbnail work.
 
 `ComposerAttachmentUploadTask` may carry private executor refs such as

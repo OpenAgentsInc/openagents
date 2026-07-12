@@ -832,7 +832,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   account, path, editor, or diff content. Native restart recovery persists the
   canonical snapshot only under the immutable identity's device-local
   `local_entities` scope, with exact owner/draft binding, bounded size/count,
-  and stale/conflict/duplicate outcomes; it never enters hosted Sync.
+  and stale/conflict/duplicate outcomes; it never enters hosted Sync. Native
+  file/image acquisition is bounded before and after reading bytes, copies the
+  selected file into the app document sandbox under its SHA-256 digest, and
+  places only `attachment.native-local.sha256.*` metadata in the draft. Picker
+  URIs and platform file handles never enter the draft, receipt, transcript,
+  or hosted Sync.
 - Provider questions, tool approvals, and plan reviews use the private
   `openagents.runtime_interaction.v1` authority and `runtime_interaction` Sync
   entity. New requests must match authenticated owner, exact thread/turn,

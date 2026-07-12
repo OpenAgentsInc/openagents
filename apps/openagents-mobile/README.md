@@ -156,7 +156,12 @@ threads/messages in the existing Effect Native transcript, drawer, and
 renderer-lowered glass composer. Signed-out/not-live startup retains the public Khala
 orchestration path. These catalogs never merge; explicit auth transitions
 dispose and remount Home. Sync mutations use stable mobile refs, render drafts
-as pending, and replace them only after exact-ref confirmation. A private
+as pending, and replace them only after exact-ref confirmation. Selected coding
+sessions restore their canonical private draft and turn the composer's plus
+control into a native multi-file/image picker. Each selection is bounded,
+SHA-256 addressed, copied into the durable app document sandbox, and represented
+in the draft only by ready metadata plus an `attachment.native-local.sha256.*`
+ref; raw picker URIs never enter view state or Sync. A private
 Expo SQLite cache now supplies restart-stable local Khala Sync storage and an
 honest `Local Sync ready` state. Native session credentials now have a
 device-only SecureStore vault, but a recovered record remains visibly
