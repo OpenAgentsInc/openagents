@@ -20,12 +20,12 @@
 | SOL-DOC-04 — compact the canonical master | [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726) | **Closed 2026-07-12.** The master is one compact authority with durable decisions/gates/laws/non-goals, one live issue projection, and one next-ready sequence. Historical implementation diaries and the Fable pass are removed from its body. CUT dependency edges remain binding while their mutable status prose is historical. | `6bfe97fddb` — 2,189→557 lines; 22 decisions, 30 laws, R0–R7, D0–D6, C0–C3, live-issue equality, forbidden-history, link, diff, and repository fast pre-push checks pass. |
 | SOL-DOC-05 — normalize receipts and issue sources | [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727) | **Closed 2026-07-12.** One receipt index exposes final rungs for 25 root evidence files; every checked-in issue source is classified as live, closed proof, tombstone, or reference; ambiguous receipt headers now lead with final disposition. | `991f908b6b` — 43/43 unique issue-source coverage, live-state equality, stale-close, link, diff, and repository fast pre-push checks pass. |
 | SOL-DOC-06 — extract July 9 doctrine and prepare archive | [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728) | **Closed 2026-07-12.** Binding greenfield/Sarah-removal decisions and five live falsifiers have durable owners; the nine candidate files are pinned by hash, inbound links, destination, and cross-repo deletion gate. | `6e8b55b86e` — 9/9 hash equality, unchanged source bytes, migrated binding links, local links, diff, and repository fast pre-push checks pass. |
+| SOL-DOC-07 — archive July 9 corpus and remove sources | [#8729](https://github.com/OpenAgentsInc/openagents/issues/8729) | **Closed 2026-07-12.** Nine exact files were hash/line/byte verified and pushed to Backroom before their OpenAgents links migrated and source paths were removed. Both repositories record the commits. | Backroom import `dec8ae52`; OpenAgents removal `b62ad88136`; Backroom final note `b9645456`; OpenAgents completed manifest `c608527eda`. |
 
-**Next ordered chunk:** SOL-DOC-07 writes and pushes the exact manifested July
-9 payload to `OpenAgentsInc/backroom` first, migrates every remaining inbound
-link, removes the nine archived sources from `openagents`, and records both
-repository commits bidirectionally. No source deletion begins if the Backroom
-import is not pushed and hash-verified.
+**Next ordered chunk:** SOL-DOC-08 implements the documentation freshness and
+link-integrity guard: metadata/classification checks, active revision/queue
+rules, issue-source coverage, receipt final-disposition requirements, removed-
+path denial, master size budget, and offline-safe live-issue snapshot age.
 
 ## Executive decision
 
@@ -499,18 +499,22 @@ losing the reasoning.
 
 SOL-DOC-06 [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728)
 completed doctrine/falsifier extraction and the exact archive manifest at
-`6e8b55b86e`. Items 4–7 remain for the cross-repository SOL-DOC-07 issue.
+`6e8b55b86e`. SOL-DOC-07
+[#8729](https://github.com/OpenAgentsInc/openagents/issues/8729) then completed
+items 4–7 through the bidirectionally receipted Backroom archive and source
+removal.
 
 1. **Complete.** Promote live authority/trust conclusions into invariants/contracts.
 2. **Complete.** Promote still-live risk tests and the post-Sarah Effect Native falsifier
    into the challenge ledger.
 3. **Complete.** Preserve a compact greenfield/Sarah-removal decision and all non-revival
    tombstones.
-4. Build the first Backroom archive batch and manifest.
-5. Push the Backroom archive.
-6. Replace necessary inbound paths with minimal redirects; delete the remaining
+4. **Complete.** Build the first Backroom archive batch and manifest.
+5. **Complete.** Push the Backroom archive.
+6. **Complete.** Replace necessary inbound paths with current/archived authority; delete the remaining
    obsolete files from `openagents`.
-7. Schedule a second deletion review for transitional redirects after 90 days.
+7. **Complete for this batch.** No transitional redirect remains; the compact
+   decision and immutable Backroom URLs own discoverability.
 
 **Exit:** the July 9 narrative and obsolete delegation prose are discoverable
 in Backroom but absent from the normal `openagents` reading and search path.
