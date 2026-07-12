@@ -1,7 +1,7 @@
 {
   "name": "@openagentsinc/openagents-desktop",
   "productName": "OpenAgents",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "OpenAgents — Effect Native application on an Electron host (#8574).",
   "private": true,
   "type": "module",

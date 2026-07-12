@@ -31,6 +31,7 @@ describe("CUT-26 macOS artifact contract", () => {
       "EnableNodeCliInspectArguments]: false",
       "EnableEmbeddedAsarIntegrityValidation]: true",
       "OnlyLoadAppFromAsar]: true",
+      "LoadBrowserProcessSpecificV8Snapshot]: false",
       "strictlyRequireAllFuses: true",
     ]) expect(source).toContain(expected)
   })
