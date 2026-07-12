@@ -33,6 +33,12 @@ each source doc.
   day-to-day coding, each mapped to OpenAgents Desktop status with a code
   receipt, a 66-oracle UI+programmatic test/eval matrix for the follow-on
   lane, and the frequency-ranked missing-capability list.
+- [`2026-07-11-desktop-startup-speed-audit.md`](./2026-07-11-desktop-startup-speed-audit.md)
+  — operationalized OpenAgents Desktop startup-speed audit expanding
+  `docs/electron/optimization.md` into our real init path (main.ts / boot.ts
+  / build.ts with file:line receipts), a principle-by-principle follow/violate
+  audit, a repeatable `startup-bench` measurement harness, baseline + after
+  numbers, ranked optimizations, and the standing measure-constantly budgets.
 - [`2026-07-11-unverified-operational-directive-after-action.md`](./2026-07-11-unverified-operational-directive-after-action.md)
   — three-part after-action from the EP250 session: the fabricated script
   name (unverified operational directive), the presented-without-driving

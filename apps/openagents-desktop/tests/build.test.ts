@@ -41,12 +41,14 @@ describe("openagents-desktop build", () => {
     }
 
     // Electron stays external in the main bundle; the renderer bundle carries
-    // the vendored EN catalog and never references Electron.
+    // the vendored EN catalog and never references Electron. Match is
+    // whitespace-tolerant so the minified build (scripts/build.ts `minify`,
+    // which drops the space in `from "electron"`) still proves externalization.
     const main = readFileSync(path.join(dist, "main.js"), "utf8")
-    expect(main).toContain('from "electron"')
+    expect(main).toMatch(/from\s*"electron"/)
 
     const renderer = readFileSync(path.join(dist, "renderer/boot.js"), "utf8")
-    expect(renderer).not.toContain('require("electron")')
+    expect(renderer).not.toMatch(/require\(\s*"electron"\s*\)/)
     expect(renderer).toContain("openagents-desktop-root")
 
     const fingerprint = (icon: Buffer) => createHash("sha256").update(icon).digest("hex")

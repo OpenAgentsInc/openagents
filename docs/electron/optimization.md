@@ -1116,3 +1116,29 @@ The biggest breakthroughs are rarely microscopic CSS changes. They are usually a
 [1]: https://www.electronjs.org/docs/latest/tutorial/performance "Performance | Electron"
 [2]: https://www.electronjs.org/docs/latest/api/utility-process "utilityProcess | Electron"
 [3]: https://www.electronjs.org/docs/latest/tutorial/process-model "Process Model | Electron"
+
+---
+
+## Applied in OpenAgents Desktop (measure-constantly log)
+
+These principles are operationalized for `apps/openagents-desktop/` in
+`docs/fable/2026-07-11-desktop-startup-speed-audit.md`, with a repeatable
+harness (`apps/openagents-desktop/scripts/startup-bench.ts`, run via
+`bun run --cwd apps/openagents-desktop startup-bench`) that reports the
+milestone chain (process start → whenReady → window → first paint → interactive
+→ capability-ready) as median + p95, plus JSON receipts under
+`apps/openagents-desktop/benchmarks/startup/`.
+
+Landed 2026-07-11, proven with a drift-controlled interleaved A/B:
+
+- **Minify all build artifacts** (§2 above; `scripts/build.ts`): renderer
+  3.56 → 2.20 MB, main 2.22 → 1.12 MB, preload 1.34 → 0.64 MB. First paint
+  **−19 ms (−4.3%)**, interactive **−17 ms (−3.3%)**, capability-ready
+  **−19.8 ms (−3.8%)** median.
+- **Window-first startup** (§1 above) was tested and **reverted** — it landed
+  within run noise here because the `appWhenReady → windowCreated` gap is the
+  `BrowserWindow` constructor cost, not the (near-zero, fresh-`userData`)
+  service init. Recorded so it is not blindly re-tried.
+
+Next reducible chunks: shell-before-data renderer ordering, lazy main-process
+service construction, and renderer bundle-split (see the audit §6/§9).

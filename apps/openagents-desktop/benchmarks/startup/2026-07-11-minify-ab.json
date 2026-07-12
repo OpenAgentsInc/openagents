@@ -1,0 +1,190 @@
+{
+  "schema": "openagents-desktop-startup-bench-ab/v1",
+  "capturedAtIso": "2026-07-12T02:21:41.569818Z",
+  "method": "interleaved A/B, 4 rounds x 3 runs each condition, alternating unminified/minified builds to control for machine-load drift",
+  "unit": "ms-from-process-start",
+  "platform": "darwin-arm64",
+  "conditions": {
+    "unminified": {
+      "shellMounted": {
+        "median": 508.0,
+        "min": 489.55,
+        "max": 754.69,
+        "n": 12
+      },
+      "windowReadyToShow": {
+        "median": 438.33,
+        "min": 426.73,
+        "max": 667.69,
+        "n": 12
+      },
+      "capabilityReady": {
+        "median": 525.79,
+        "min": 508.55,
+        "max": 775.69,
+        "n": 12
+      }
+    },
+    "minified": {
+      "shellMounted": {
+        "median": 491.03,
+        "min": 475.42,
+        "max": 521.72,
+        "n": 12
+      },
+      "windowReadyToShow": {
+        "median": 419.32,
+        "min": 402.29,
+        "max": 436.41,
+        "n": 12
+      },
+      "capabilityReady": {
+        "median": 506.03,
+        "min": 489.29,
+        "max": 539.72,
+        "n": 12
+      }
+    }
+  },
+  "deltaMedianMinifiedMinusUnminified": {
+    "shellMounted": -16.97,
+    "windowReadyToShow": -19.01,
+    "capabilityReady": -19.76
+  },
+  "bundleBytes": {
+    "unminified": {
+      "boot.js": 3557644,
+      "main.js": 2221309,
+      "preload.cjs": 1336527
+    },
+    "minified": {
+      "boot.js": 2201550,
+      "main.js": 1119861,
+      "preload.cjs": 637955
+    }
+  },
+  "rawUnminified": [
+    {
+      "shellMounted": 754.69,
+      "windowReadyToShow": 667.69,
+      "capabilityReady": 775.69
+    },
+    {
+      "shellMounted": 518.34,
+      "windowReadyToShow": 452.34,
+      "capabilityReady": 536.34
+    },
+    {
+      "shellMounted": 506.42,
+      "windowReadyToShow": 435.42,
+      "capabilityReady": 523.42
+    },
+    {
+      "shellMounted": 524.32,
+      "windowReadyToShow": 457.32,
+      "capabilityReady": 542.32
+    },
+    {
+      "shellMounted": 507.32,
+      "windowReadyToShow": 429.32,
+      "capabilityReady": 525.32
+    },
+    {
+      "shellMounted": 509.23,
+      "windowReadyToShow": 441.23,
+      "capabilityReady": 527.23
+    },
+    {
+      "shellMounted": 517.73,
+      "windowReadyToShow": 450.73,
+      "capabilityReady": 535.73
+    },
+    {
+      "shellMounted": 508.25,
+      "windowReadyToShow": 441.25,
+      "capabilityReady": 526.25
+    },
+    {
+      "shellMounted": 497.44,
+      "windowReadyToShow": 430.44,
+      "capabilityReady": 515.44
+    },
+    {
+      "shellMounted": 507.76,
+      "windowReadyToShow": 432.76,
+      "capabilityReady": 518.76
+    },
+    {
+      "shellMounted": 497.73,
+      "windowReadyToShow": 426.73,
+      "capabilityReady": 509.73
+    },
+    {
+      "shellMounted": 489.55,
+      "windowReadyToShow": 427.55,
+      "capabilityReady": 508.55
+    }
+  ],
+  "rawMinified": [
+    {
+      "shellMounted": 477.29,
+      "windowReadyToShow": 402.29,
+      "capabilityReady": 489.29
+    },
+    {
+      "shellMounted": 506.42,
+      "windowReadyToShow": 424.42,
+      "capabilityReady": 524.42
+    },
+    {
+      "shellMounted": 493.01,
+      "windowReadyToShow": 420.01,
+      "capabilityReady": 504.01
+    },
+    {
+      "shellMounted": 495.76,
+      "windowReadyToShow": 428.76,
+      "capabilityReady": 512.76
+    },
+    {
+      "shellMounted": 489.06,
+      "windowReadyToShow": 412.06,
+      "capabilityReady": 508.06
+    },
+    {
+      "shellMounted": 475.42,
+      "windowReadyToShow": 413.42,
+      "capabilityReady": 492.42
+    },
+    {
+      "shellMounted": 521.72,
+      "windowReadyToShow": 421.72,
+      "capabilityReady": 539.72
+    },
+    {
+      "shellMounted": 477.59,
+      "windowReadyToShow": 407.59,
+      "capabilityReady": 494.59
+    },
+    {
+      "shellMounted": 500.25,
+      "windowReadyToShow": 421.25,
+      "capabilityReady": 518.25
+    },
+    {
+      "shellMounted": 485.64,
+      "windowReadyToShow": 418.64,
+      "capabilityReady": 497.64
+    },
+    {
+      "shellMounted": 475.59,
+      "windowReadyToShow": 408.59,
+      "capabilityReady": 493.59
+    },
+    {
+      "shellMounted": 509.41,
+      "windowReadyToShow": 436.41,
+      "capabilityReady": 521.41
+    }
+  ]
+}

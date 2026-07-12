@@ -8,6 +8,9 @@ import { cp, mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 
 const appRoot = path.resolve(import.meta.dir, "..")
+// Minification is on by default; set OA_DESKTOP_BUILD_MINIFY=0 for an A/B
+// unminified build (startup-bench comparison). See the startup-speed audit.
+const BUILD_MINIFY = process.env.OA_DESKTOP_BUILD_MINIFY !== "0"
 
 const assertSuccess = (label: string, result: Awaited<ReturnType<typeof Bun.build>>): void => {
   if (!result.success) {
@@ -28,6 +31,12 @@ export const buildDesktop = async (): Promise<string> => {
       outdir: dist,
       target: "node",
       format: "esm",
+      // Minify every artifact (startup-speed optimization; see
+      // docs/fable/2026-07-11-desktop-startup-speed-audit.md). The renderer
+      // (~3.6 MB unminified IIFE) and preload sit on the first-paint critical
+      // path, and the main bundle's parse precedes app.whenReady — smaller
+      // bytes parse faster. Measured with `bun run startup-bench`.
+      minify: BUILD_MINIFY,
       // The Claude Agent SDK must stay external: it resolves its bundled
       // native `claude` executable relative to its own installed package
       // (require.resolve from sdk.mjs) and is lazy-imported only when the
@@ -46,6 +55,7 @@ export const buildDesktop = async (): Promise<string> => {
       outdir: dist,
       target: "node",
       format: "esm",
+      minify: BUILD_MINIFY,
     }),
   )
 
@@ -56,6 +66,7 @@ export const buildDesktop = async (): Promise<string> => {
       outdir: dist,
       target: "node",
       format: "esm",
+      minify: BUILD_MINIFY,
     }),
   )
 
@@ -66,6 +77,7 @@ export const buildDesktop = async (): Promise<string> => {
       outdir: dist,
       target: "node",
       format: "cjs",
+      minify: BUILD_MINIFY,
       external: ["electron"],
     }),
   )
@@ -80,6 +92,7 @@ export const buildDesktop = async (): Promise<string> => {
       outdir: path.join(dist, "renderer"),
       target: "browser",
       format: "iife",
+      minify: BUILD_MINIFY,
     }),
   )
 
