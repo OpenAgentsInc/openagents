@@ -395,6 +395,9 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(drawer).toContain("drawer-coding-session-session.mobile")
     expect(drawer).toContain("openagents · 1 session")
     expect(drawer).toContain('"label":"Active"')
+    expect(drawer.indexOf("drawer-coding-title")).toBeLessThan(
+      drawer.indexOf(`drawer-thread-${initialThread.threadRef}`),
+    )
 
     program.coding.selectSession({
       schema: "openagents.mobile.coding_target.v1",

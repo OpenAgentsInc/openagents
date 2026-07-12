@@ -502,12 +502,6 @@ export const renderDrawerView = (state: HomeState): View =>
       Spacer({ key: "drawer-top-space", size: "10" }),
       drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
       drawerRow({ key: "drawer-khala", label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })), selected: state.surfaceMode === "khala" }, state.accessibility),
-      ...state.conversationThreads.map(thread => drawerRow({
-        key: `drawer-thread-${thread.threadRef}`,
-        label: thread.title,
-        onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: thread.threadRef })),
-        selected: state.activeThreadRef === thread.threadRef,
-      }, state.accessibility)),
       ...(state.codingDirectory?.authority === "confirmed" && state.codingDirectory.sessions.length > 0
         ? [
             Text({
@@ -538,6 +532,12 @@ export const renderDrawerView = (state: HomeState): View =>
             ]),
           ]
         : []),
+      ...state.conversationThreads.map(thread => drawerRow({
+        key: `drawer-thread-${thread.threadRef}`,
+        label: thread.title,
+        onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: thread.threadRef })),
+        selected: state.activeThreadRef === thread.threadRef,
+      }, state.accessibility)),
       ...codingOfflineCacheAccountingRows(state),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
