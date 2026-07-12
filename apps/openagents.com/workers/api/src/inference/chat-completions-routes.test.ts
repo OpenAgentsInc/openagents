@@ -442,6 +442,9 @@ describe('coding delegation default-on guard', () => {
     expect(response.headers.get('openagents-coding-assignment-ref')).toBe(
       'assignment.public.khala_coding.request_agent_owned',
     )
+    expect(response.headers.get('openagents-selected-pylon-ref')).toBe(
+      'pylon.owner.codex',
+    )
     const text = await response.text()
     expect(text).toContain(
       'Coding workflow delegated to linked Pylon pylon.owner.codex',
@@ -450,6 +453,32 @@ describe('coding delegation default-on guard', () => {
     // Exact Pylon/Codex downstream SDK usage arrives via
     // POST /api/pylon/codex/turns after the local Codex turn completes.
     expect(recorded).toHaveLength(0)
+  })
+
+  test('reports the admitted Pylon when delegation selects linked capacity', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: { workflowClass: 'codex_agent_task' },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: {} as AgentRegistrationStore,
+            pylonStore: codingPylonStore([codingPylonRegistration()]),
+            resolveOpenAuthUserId: async () => undefined,
+          },
+          newId: () => 'request_auto_selected',
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('openagents-selected-pylon-ref')).toBe(
+      'pylon.owner.codex',
+    )
   })
 
   test('direct agent-owned Pylon dispatch survives a transient OpenAuth link read failure', async () => {

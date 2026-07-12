@@ -114,6 +114,7 @@ export type PylonKhalaRequestResult = PylonKhalaStreamProjection & {
   model: typeof KHALA_REQUEST_MODEL
   ok: true
   schema: "openagents.pylon.khala_request.v1"
+  selectedPylonRef: string | null
   workflow: PylonKhalaWorkflow | null
 }
 
@@ -1208,12 +1209,20 @@ export async function issuePylonKhalaRequest(
     rawSse,
     response,
   })
+  const selectedPylonRef = response.headers.get("openagents-selected-pylon-ref")
+  if (selectedPylonRef !== null) {
+    if (!pylonRefPattern.test(selectedPylonRef)) {
+      throw new Error("pylon khala request returned an invalid selected Pylon ref")
+    }
+    assertPublicSafe(selectedPylonRef, "khala selected pylon ref")
+  }
   return {
     ...projection,
     assignmentRef: response.headers.get("openagents-coding-assignment-ref"),
     model: KHALA_REQUEST_MODEL,
     ok: true,
     schema: "openagents.pylon.khala_request.v1",
+    selectedPylonRef,
     workflow: input.workflow ?? null,
   }
 }

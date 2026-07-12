@@ -288,6 +288,7 @@ function khalaAutoRunServer(input: { activeCodexLease?: boolean } = {}) {
           headers: {
             "openagents-coding-assignment-ref": assignmentRef,
             "openagents-durable-stream-url": "/v1/chat/completions/durable/chatcmpl_auto_run",
+            "openagents-selected-pylon-ref": "pylon.owner.codex",
           },
         })
       }
@@ -524,6 +525,7 @@ describe("pylon khala requester API", () => {
       const output = JSON.parse(proc.stdout)
       expect(output).toMatchObject({
         assignmentRef: fake.assignmentRef,
+        selectedPylonRef: "pylon.owner.codex",
         assignmentLifecycleEvents: expect.arrayContaining([
           expect.objectContaining({
             event: "assignment_run.completed",
@@ -672,6 +674,7 @@ describe("pylon khala requester API", () => {
         headers: {
           "openagents-coding-assignment-ref": "assignment.public.one",
           "openagents-durable-stream-url": "/v1/chat/completions/durable/chatcmpl_123",
+          "openagents-selected-pylon-ref": "pylon.owner.codex",
         },
       })
     }
@@ -710,11 +713,41 @@ describe("pylon khala requester API", () => {
       model: "openagents/khala",
       ok: true,
       schema: "openagents.pylon.khala_request.v1",
+      selectedPylonRef: "pylon.owner.codex",
       streamClosed: true,
       text: "delegated",
       workflow: "codex_agent_task",
     })
     expect(Number(result.nextOffset)).toBeGreaterThan(0)
+  })
+
+  test("request preserves null when an older gateway omits the selected Pylon header", async () => {
+    const result = await issuePylonKhalaRequest(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: async () => new Response(sse("chatcmpl_legacy", "delegated")),
+      },
+      { prompt: "Run the fixture task" },
+    )
+
+    expect(result.selectedPylonRef).toBeNull()
+  })
+
+  test("request rejects a malformed selected Pylon response header", async () => {
+    await expect(
+      issuePylonKhalaRequest(
+        {
+          agentToken: "oa_agent_test",
+          baseUrl: "https://openagents.test",
+          fetch: async () =>
+            new Response(sse("chatcmpl_invalid", "delegated"), {
+              headers: { "openagents-selected-pylon-ref": "../../private" },
+            }),
+        },
+        { prompt: "Run the fixture task" },
+      ),
+    ).rejects.toThrow(/invalid selected Pylon ref/)
   })
 
   test("request requires the user agent token", async () => {

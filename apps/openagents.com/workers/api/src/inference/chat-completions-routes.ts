@@ -2894,6 +2894,7 @@ export const handleChatCompletions = (
             'openagents-coding-assignment-ref':
               delegation.assignment.assignmentRef,
             'openagents-durable-stream-url': delegation.durableStreamUrl,
+            'openagents-selected-pylon-ref': delegation.pylon.pylonRef,
             'stream-closed': 'true',
             'stream-next-offset': String(
               new TextEncoder().encode(streamBody).byteLength,

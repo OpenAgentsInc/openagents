@@ -358,6 +358,7 @@ const requestResult: PylonKhalaRequestResult = {
   ok: true,
   rawSse: "",
   schema: "openagents.pylon.khala_request.v1",
+  selectedPylonRef: "pylon.owner.codex",
   streamClosed: true,
   streamUpToDate: true,
   text: "",
