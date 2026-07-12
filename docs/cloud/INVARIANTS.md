@@ -139,6 +139,11 @@ design context only.
   reports metering, omits the skip reason, or names another reason fails the
   turn as `codex.owner_capacity_charge_disposition_invalid`; it cannot reach
   accepted closeout merely because token truth was recorded.
+- Agent Computer usage retry identity is server-derived from the immutable
+  owner/thread/turn/lane/provider/model tuple. Executor-supplied `usageRef` is
+  metadata, never idempotency authority: a lost-response retry with a fresh
+  client ref returns the same token event, inserts no second row, publishes no
+  second public-counter delta, and reports `tokensServedDelta: 0`.
 - Subscription capacity is never resold (`subscriptionCapacityResale: false`);
   these lanes serve only the owner the grant is scoped to.
 

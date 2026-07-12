@@ -17,10 +17,12 @@ import {
 } from './khala-cloud-runtime-usage-routes'
 import { readAgentBalance } from './payments-ledger'
 import { paymentsLedgerDbFromD1, type D1LikeDatabase } from './test/payments-ledger-sqlite'
+import { makeSqliteD1, TOKEN_LEDGER_D1_SCHEMA } from './test/sqlite-d1'
 import type {
   TokenUsageIngestResult,
   TokenUsageLedgerShape,
 } from './token-usage-ledger'
+import { makeD1TokenUsageLedger } from './token-usage-ledger'
 
 const nowIso = '2026-07-06T12:00:00.000Z'
 const agentToken = 'oa_agent_khala_cloud_runtime_usage_test'
@@ -385,6 +387,80 @@ describe('khala cloud runtime usage routes', () => {
     expect(secondJson.tokenChargeReceiptRef).toBe(firstJson.tokenChargeReceiptRef)
     const balance = await readAgentBalance(paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase), ownerAccountRef)
     expect(balance?.availableMsat).toBe(6_000)
+  })
+
+  test('records one exact usage fact and one delta across a lost-response retry', async () => {
+    const tokenHash = await sha256Hex(agentToken)
+    const sqlite = makeSqliteD1()
+    sqlite.exec(TOKEN_LEDGER_D1_SCHEMA)
+    const ledger = makeD1TokenUsageLedger(sqlite.db)
+    const publishedDeltas: Array<{ eventRef: string; tokensServedDelta: number }> = []
+    const routes = makeKhalaCloudRuntimeUsageRoutes({
+      agentStore: () => new MemoryAgentStore(tokenHash),
+      ledger: () => ledger,
+      nowIso: () => nowIso,
+      publishDelta: (_env, input) => {
+        publishedDeltas.push({
+          eventRef: input.eventRef,
+          tokensServedDelta: input.tokensServedDelta,
+        })
+        return Effect.void
+      },
+    })
+
+    try {
+      const first = await Effect.runPromise(
+        routes.handleKhalaCloudRuntimeUsageIngestApi(
+          post(
+            body({
+              lane: 'codex_app_server',
+              model: 'openagents/pylon-codex',
+              provider: 'pylon-codex-org-capacity',
+            }),
+          ),
+          {},
+        ),
+      )
+      const retry = await Effect.runPromise(
+        routes.handleKhalaCloudRuntimeUsageIngestApi(
+          post(
+            body({
+              lane: 'codex_app_server',
+              model: 'openagents/pylon-codex',
+              provider: 'pylon-codex-org-capacity',
+              usage: {
+                cacheReadInputTokens: 2,
+                inputTokens: 10,
+                outputTokens: 5,
+                reasoningTokens: 3,
+                totalTokens: 18,
+                usageRef: 'usage.runtime.fresh-client-retry-ref',
+              },
+            }),
+          ),
+          {},
+        ),
+      )
+      const firstJson = (await first.json()) as {
+        insertedTokenUsage: boolean
+        tokenUsageEventRef: string
+        tokensServedDelta: number
+      }
+      const retryJson = (await retry.json()) as typeof firstJson
+
+      expect(firstJson.insertedTokenUsage).toBe(true)
+      expect(firstJson.tokensServedDelta).toBe(18)
+      expect(retryJson.insertedTokenUsage).toBe(false)
+      expect(retryJson.tokensServedDelta).toBe(0)
+      expect(retryJson.tokenUsageEventRef).toBe(firstJson.tokenUsageEventRef)
+      expect(publishedDeltas).toEqual([
+        { eventRef: firstJson.tokenUsageEventRef, tokensServedDelta: 18 },
+      ])
+      const total = await Effect.runPromise(ledger.readPublicTokensServed())
+      expect(total.tokensServed).toBe(18)
+    } finally {
+      sqlite.close()
+    }
   })
 
   test('never lets a post-turn charge make the owner balance negative and publishes an insufficient-credit event', async () => {
