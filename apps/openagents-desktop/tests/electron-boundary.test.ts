@@ -164,7 +164,8 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
   })
 
   test("normal verification uses checked-in smoke history instead of ambient provider homes", () => {
-    expect(main).toContain('"tests", "fixtures", "codex-smoke", "sessions"')
+    expect(main).toContain('path.join(here, "..", "tests", "fixtures")')
+    expect(main).toContain('path.join(smokeFixtureRoot, "codex-smoke", "sessions")')
     expect(main).toContain("smokeMode")
   })
 

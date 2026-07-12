@@ -50,7 +50,7 @@ describe("local provider target contract", () => {
     expect(decodeFableLocalStartRequest(request({
       provider: "codex",
       accountRef: "codex",
-      model: "gpt-5.5",
+      model: "gpt-unknown",
     }))).toBeNull()
   })
 
