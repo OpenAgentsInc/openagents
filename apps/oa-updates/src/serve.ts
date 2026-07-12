@@ -6,6 +6,10 @@ import { seedDesktopReleases } from "./desktop-seed.ts"
 import { seedPylonReleases } from "./pylon-seed.ts"
 import { seedOpenAgentsDesktopRelease } from "./openagents-desktop-seed.ts"
 import {
+  LEGACY_DESKTOP_LOCKOUT_ENV,
+  resolveLegacyDesktopLockoutMode,
+} from "./legacy-desktop-lockout.ts"
+import {
   createUpdatesServer,
   type UpdatesServer,
 } from "./server.ts"
@@ -55,6 +59,11 @@ if (import.meta.main) {
   const server = createUpdatesServer({
     port,
     signingKeyPem: process.env.OA_SIGNING_KEY,
+    // CUT-26 legacy lockout: ARMED unless explicitly disarmed for archival
+    // read-only serving (see legacy-desktop-lockout.ts).
+    legacyDesktopLockout: resolveLegacyDesktopLockoutMode(
+      process.env[LEGACY_DESKTOP_LOCKOUT_ENV],
+    ),
   })
 
   if (process.env.OA_SEED_DIST) {

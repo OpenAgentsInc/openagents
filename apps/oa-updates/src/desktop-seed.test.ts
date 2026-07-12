@@ -43,7 +43,12 @@ describe("desktop release seeding", () => {
 
       return file
     }
-    const server = createUpdatesServer({ port: 8080 })
+    // Historical read-only serving: the CUT-26 legacy lockout (armed by
+    // default; see legacy-desktop-lockout.test.ts) is explicitly disarmed.
+    const server = createUpdatesServer({
+      port: 8080,
+      legacyDesktopLockout: "disarmed_historical_read_only",
+    })
 
     const seeded = await seedDesktopReleases({
       server,

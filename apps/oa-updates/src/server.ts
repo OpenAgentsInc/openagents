@@ -23,11 +23,24 @@ import {
   type PylonReleaseManifest,
 } from "./pylon-release.ts"
 import type { OpenAgentsDesktopRelease } from "./openagents-desktop-release.ts"
+import {
+  isLegacyLockedDesktopProduct,
+  LEGACY_DESKTOP_OTA_SURFACE,
+  legacyDesktopLockoutResponse,
+  type LegacyDesktopLockoutMode,
+} from "./legacy-desktop-lockout.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
   signingKeyPem?: string
   keyid?: string
+  /**
+   * Legacy Electrobun desktop lockout (CUT-26, openagents#8706). ARMED by
+   * default — the deprecated khala-code-desktop / autopilot-desktop feeds
+   * and OTA files answer with one typed 410 lockout document. Pass
+   * "disarmed_historical_read_only" only for archival inspection.
+   */
+  legacyDesktopLockout?: LegacyDesktopLockoutMode
 }
 
 export type UpdatesServer = {
@@ -127,6 +140,10 @@ export function createUpdatesServer(
   options: CreateUpdatesServerOptions = {},
 ): UpdatesServer {
   const port = options.port ?? defaultPort
+  // Fail closed: the legacy desktop lockout is armed unless explicitly and
+  // exactly disarmed for historical read-only serving.
+  const legacyLockoutArmed =
+    (options.legacyDesktopLockout ?? "armed") !== "disarmed_historical_read_only"
   const updates = new Map<string, Update>()
   const channelToBranch = new Map<string, string>()
   const desktopFeeds = new Map<string, DesktopUpdateManifest[]>()
@@ -149,16 +166,31 @@ export function createUpdatesServer(
 
       if (request.method === "GET") {
         const openAgentsDesktopMatch = url.pathname.match(
-          /^\/desktop\/openagents\/(stable|rc)\/(manifest|manifest\.sig)\.json$/,
+          /^\/desktop\/openagents\/(stable|rc)\/(manifest|manifest\.sig|release)\.json$/,
         )
         if (openAgentsDesktopMatch !== null) {
           const release = openAgentsDesktopReleases.get(openAgentsDesktopMatch[1])
           if (release === undefined) return new Response("Not found", { status: 404 })
-          return openAgentsDesktopMatch[2] === "manifest"
-            ? new Response(release.manifestBytes, {
-                headers: { "cache-control": "no-store", "content-type": "application/json" },
-              })
-            : jsonResponse(release.signature, { "cache-control": "no-store" })
+          if (openAgentsDesktopMatch[2] === "manifest") {
+            return new Response(release.manifestBytes, {
+              headers: { "cache-control": "no-store", "content-type": "application/json" },
+            })
+          }
+          if (openAgentsDesktopMatch[2] === "manifest.sig") {
+            return jsonResponse(release.signature, { "cache-control": "no-store" })
+          }
+          // release.json: artifact TRANSPORT discovery only. The client trusts
+          // exclusively the signed manifest bytes (name/sha256/byteLength) —
+          // this unsigned pointer can redirect the download, never the trust.
+          return jsonResponse(
+            {
+              channel: release.channel,
+              version: release.manifest.version,
+              artifactName: release.manifest.artifactName,
+              artifactUrl: release.artifactUrl,
+            },
+            { "cache-control": "no-store" },
+          )
         }
         const manifestMatch = url.pathname.match(/^\/([^/]+)\/manifest$/)
 
@@ -248,6 +280,9 @@ export function createUpdatesServer(
           } catch {
             return new Response("Unknown desktop product", { status: 404 })
           }
+          if (legacyLockoutArmed) {
+            return legacyDesktopLockoutResponse(product)
+          }
           const channel = productDesktopFeedMatch[2]
           return jsonResponse(
             sortDesktopFeed(desktopFeeds.get(desktopFeedKey(product, channel)) ?? []),
@@ -257,11 +292,32 @@ export function createUpdatesServer(
           )
         }
 
+        // Legacy product-scoped Electrobun OTA path: the deprecated
+        // khala-code-desktop updater polls
+        // /desktop/khala-code-desktop/<channel>-<os>-<arch>-update.json
+        // (release.baseUrl + flat file). When the lockout is armed this is
+        // the exact surface that must answer with the typed refusal.
+        const legacyProductOtaMatch = url.pathname.match(
+          /^\/desktop\/([^/]+)\/([^/]+)$/,
+        )
+        if (
+          legacyProductOtaMatch !== null &&
+          isLegacyLockedDesktopProduct(legacyProductOtaMatch[1])
+        ) {
+          if (legacyLockoutArmed) {
+            return legacyDesktopLockoutResponse(legacyProductOtaMatch[1])
+          }
+          return new Response("Not found", { status: 404 })
+        }
+
         const desktopFeedMatch = url.pathname.match(
           /^\/desktop\/([^/]+)\/feed\.json$/,
         )
 
         if (desktopFeedMatch !== null) {
+          if (legacyLockoutArmed) {
+            return legacyDesktopLockoutResponse(DEFAULT_DESKTOP_RELEASE_PRODUCT)
+          }
           const channel = desktopFeedMatch[1]
           return jsonResponse(
             sortDesktopFeed(
@@ -279,6 +335,9 @@ export function createUpdatesServer(
         // <prefix>-update.json and <prefix>-…tar.zst / .patch from release.baseUrl).
         const desktopOtaMatch = url.pathname.match(/^\/desktop\/([^/]+)$/)
         if (desktopOtaMatch !== null) {
+          if (legacyLockoutArmed) {
+            return legacyDesktopLockoutResponse(LEGACY_DESKTOP_OTA_SURFACE)
+          }
           const file = desktopOtaFiles.get(desktopOtaMatch[1])
           if (file !== undefined) {
             // update.json must not be cached (it's the freshness signal); the
@@ -398,7 +457,15 @@ export function createUpdatesServer(
 
 if (import.meta.main) {
   const port = Number(Bun.env.PORT ?? defaultPort)
-  const server = createUpdatesServer({ port })
+  const { resolveLegacyDesktopLockoutMode, LEGACY_DESKTOP_LOCKOUT_ENV } = await import(
+    "./legacy-desktop-lockout.ts"
+  )
+  const server = createUpdatesServer({
+    port,
+    legacyDesktopLockout: resolveLegacyDesktopLockoutMode(
+      Bun.env[LEGACY_DESKTOP_LOCKOUT_ENV],
+    ),
+  })
 
   Bun.serve({
     port,

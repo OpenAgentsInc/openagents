@@ -188,6 +188,36 @@ More specific invariant ledgers apply inside imported apps and packages.
   exists. Public download counters must be exact grouped
   `khala_code_download_events` rows or an explicit empty response with blocker
   refs; page views, feed presence, or planned artifacts are not install counts.
+- (CUT-26, #8706) The legacy Electrobun desktop serving lanes above are
+  historical: the **legacy desktop lockout**
+  (`apps/oa-updates/src/legacy-desktop-lockout.ts`) is ARMED BY DEFAULT, and
+  every legacy desktop feed/OTA route (`/desktop/<channel>/feed.json`,
+  `/desktop/{khala-code-desktop,autopilot-desktop}/...`, and the flat
+  Electrobun `/desktop/<file>` OTA route) answers one typed `410`
+  `openagents.desktop.legacy_lockout.v1` document instead of content. Only
+  the exact `OA_LEGACY_DESKTOP_LOCKOUT=disarmed-historical-read-only` value
+  re-enables archival read-only serving; every other value stays armed (fail
+  closed). Publishing new legacy releases remains refused independently
+  (`assertDesktopReleaseProductPublishable`), and the deprecated clients
+  receive no new features — including no remote kill-switch capability.
+- (CUT-26, #8706) OpenAgents Desktop releases publish ONLY through the
+  scripted flow (`apps/openagents-desktop/scripts/publish-release.ts`) into
+  the `openagents-desktop-release.json` descriptor + signed
+  `update_manifest.v1` shape served at
+  `/desktop/openagents/<channel>/manifest.json` + `manifest.sig.json` +
+  `release.json`. Version monotonicity and channel rules (strictly newer
+  only; no pre-release on stable; downgrades refused unconditionally) are
+  enforced at publish time, the signed bytes are self-verified through the
+  exact client verification seam before staging, the seed boundary re-checks
+  the manifest digest at boot, and the client verifies against its pinned
+  release key — all fail closed. The ed25519 release private key enters the
+  publisher only through the documented env seam
+  (`OPENAGENTS_RELEASE_SIGNING_PRIVATE_JWK_D` + `_KID` or
+  `OPENAGENTS_RELEASE_SECRETS_PATH`) and is never printed; tests use
+  in-process fixture keypairs only, and a key claiming the production kid
+  whose derived public key differs from the committed pin is refused at
+  publish time. The unsigned `artifactUrl` is transport only — the download
+  is gated by the SIGNED sha256/byteLength.
 - Khala Code outside-user run evidence is opt-in only. The desktop may offer a
   "post run receipt" control, but it must not phone home or submit evidence on
   startup, refresh, harness inspection, or page view. Public run receipts may

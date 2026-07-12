@@ -267,7 +267,11 @@ describe("updates server", () => {
   })
 
   test("serves desktop update feeds by channel", async () => {
-    const server = createUpdatesServer()
+    // Historical read-only serving: the CUT-26 legacy lockout (armed by
+    // default; see legacy-desktop-lockout.test.ts) is explicitly disarmed.
+    const server = createUpdatesServer({
+      legacyDesktopLockout: "disarmed_historical_read_only",
+    })
 
     server.registerDesktopUpdate("stable", {
       version: "1.2.0",
@@ -297,7 +301,11 @@ describe("updates server", () => {
   })
 
   test("serves Khala Code desktop feeds on a product-specific path", async () => {
-    const server = createUpdatesServer()
+    // Historical read-only serving: the CUT-26 legacy lockout (armed by
+    // default; see legacy-desktop-lockout.test.ts) is explicitly disarmed.
+    const server = createUpdatesServer({
+      legacyDesktopLockout: "disarmed_historical_read_only",
+    })
 
     server.registerDesktopUpdate(
       "rc",
