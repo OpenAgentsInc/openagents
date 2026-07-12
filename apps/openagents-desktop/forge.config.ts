@@ -50,7 +50,11 @@ const config: ForgeConfig = {
       // GrantFileProtocolExtraPrivileges disabled, Chromium does not admit the
       // top-level file URL through ASAR on the installed artifact even though
       // Electron's Node-side ASAR APIs can list it.
-      unpack: "{dist/renderer/**/*,**/node_modules/{@anthropic-ai/claude-agent-sdk*,@openai/codex*}/**/*}",
+      unpack: "**/node_modules/{@anthropic-ai/claude-agent-sdk*,@openai/codex*}/**/*",
+      // `unpack` glob matching is rooted differently by Electron Packager;
+      // the prior brace expression left these files inside app.asar. The
+      // dedicated directory option is the authoritative real-file boundary.
+      unpackDir: "dist/renderer",
     },
     // Forge's npm-oriented dependency walker cannot resolve Bun workspace
     // links. The release preflight/ASAR oracle enforces the artifact allowlist

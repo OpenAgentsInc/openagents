@@ -11,10 +11,10 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(OPENAGENTS_DESKTOP_BUNDLE_ID).toBe("com.openagents.desktop")
     expect(OPENAGENTS_DESKTOP_BUNDLE_ID).not.toContain("khala")
     expect(OPENAGENTS_DESKTOP_PROTOCOL).toBe("openagents")
-    const asar = config.packagerConfig?.asar as { unpack?: string }
+    const asar = config.packagerConfig?.asar as { unpack?: string; unpackDir?: string }
     expect(asar.unpack).toContain("claude-agent-sdk")
     expect(asar.unpack).toContain("@openai/codex")
-    expect(asar.unpack).toContain("dist/renderer")
+    expect(asar.unpackDir).toBe("dist/renderer")
     expect(config.makers).toHaveLength(2)
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }
     expect(manifest.scripts["make:mac"]).toContain("prepare-macos-maker.ts")
