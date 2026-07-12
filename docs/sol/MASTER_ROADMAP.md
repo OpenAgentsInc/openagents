@@ -3,7 +3,7 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete; CUT-16
+  CUT-13 complete; CUT-14 authenticated client receipts open; CUT-15 complete; CUT-16
   native draft persistence/Desktop gateway/mobile interaction and runtime-
   control UI active; mobile canonical rich-draft and native attachment
   acquisition active; CUT-17 workspace capability core/tree-watch-search host
@@ -658,9 +658,16 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   generations and late updates are fenced. Initial/live URLs and notification
   responses now enter a bounded serial queue, wait for verified live authority,
   and pass through the same exact target resolver; teardown removes both native
-  listeners. Only physical-iOS and Android-emulator process-death/reconnect
-receipts remain (owner decision 2026-07-12: no physical-Android gate)
-  open. See
+  listeners. A live counterexample found that the authenticated owner scope had
+  no coding rows because Desktop had no production publisher. Commit
+  `6ea8f2508f` adds authenticated `coding.publishCatalog`; production revision
+  `openagents-monolith-00088-t24` now serves it and the confirmed owner scope
+  holds three projects, repositories, worktrees, and sessions plus one
+  navigation row. An embedded iOS Simulator Release build reaches the real
+  account-link flow and verifies the repaired Effect Native Settings entry.
+  Authenticated iOS-simulator catalog/deep-link/process-death acceptance, the
+  deferred physical-iPhone confirmation, and the Android-emulator equivalent
+  remain open (owner decision 2026-07-12: no physical-Android gate). See
   [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 - CUT-15 now has one canonical Desktop registry carrying stable command id,
   typed intent, scope, readiness, authorization, arguments/results, default

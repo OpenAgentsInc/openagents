@@ -133,4 +133,15 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(serialized).not.toContain("Recents")
     expect(serialized).not.toContain("Sarah")
   })
+
+  test("drawer Settings opens the account and Sync surface", async () => {
+    const program = buildHomeProgram()
+    program.chrome.toggleDrawer()
+    program.chrome.pressSettings()
+    await Effect.runPromise(settle)
+    const state = await Effect.runPromise(lastState(program))
+    expect(state).toMatchObject({ drawerOpen: false, surfaceMode: "openagents" })
+    expect(JSON.stringify(renderContentView({ ...state, syncPhase: "local_ready" })))
+      .toContain("Link OpenAgents account")
+  })
 })

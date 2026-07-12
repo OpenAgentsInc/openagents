@@ -1198,7 +1198,11 @@ export const makeHomeHandlers = (
               ? current
               : { ...current, codingComposer: updated })
         }),
-    SettingsPressed: () => Effect.void,
+    SettingsPressed: () => SubscriptionRef.update(state, current => ({
+      ...current,
+      drawerOpen: false,
+      surfaceMode: surfaceModeOptions[0]?.id ?? current.surfaceMode,
+    })),
     OpenAgentsSignInPressed: () => options.sessionActions === undefined
       ? Effect.void
       : Effect.promise(options.sessionActions.signIn),
@@ -1287,6 +1291,7 @@ export interface HomeProgramHandle {
   readonly chrome: {
     readonly toggleDrawer: () => void
     readonly pressNewChat: () => void
+    readonly pressSettings: () => void
     readonly selectSurfaceMode: (mode: SurfaceMode) => void
   }
   readonly khala: {
@@ -1370,6 +1375,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         chrome: {
           toggleDrawer: fire("DrawerToggled"),
           pressNewChat: fire("NewChatPressed"),
+          pressSettings: fire("SettingsPressed"),
           selectSurfaceMode: (mode) => fireRef(IntentRef("SurfaceModeSelected", StaticPayload({ mode }))),
         },
         khala: {

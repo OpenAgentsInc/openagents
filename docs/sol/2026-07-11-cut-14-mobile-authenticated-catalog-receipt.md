@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694)
-- Status: deterministic catalog/navigation, visible Effect Native directory,
-  restart binding, and native URL/notification delivery active through
-  `5aeabdbb1e`; physical iOS/Android receipts remain open
+- Status: production catalog publication is live at `6ea8f2508f`; the iOS
+  simulator Release app reaches the real account-link flow and the remaining
+  authenticated simulator/device acceptance is owner-gated
 - Contract: `openagents_mobile.coding.authenticated_navigation.v1`
 
 ## Greenfield ownership
@@ -79,8 +79,38 @@ thread.
 - Full greenfield mobile after native delivery: 77 pass, 0 fail, 345
   expectations; typecheck and `expo config --type public` pass.
 
+## Production publication counterexample and repair
+
+The first authenticated-device pass disproved the earlier assumption that the
+Desktop-local CUT-13 catalog was already available through Sync. The owner
+scope contained zero coding post-images even though Desktop held three local
+sessions. Mobile therefore had nothing authoritative to list; this was a
+missing production publisher, not a device-rendering failure.
+
+Commit `6ea8f2508f` adds the bounded `coding.publishCatalog` mutation, enforces
+the authenticated personal-scope match on the server, and makes Desktop publish
+only stable catalog refs and metadata after connect and catalog changes. Raw
+paths remain in the mode-`0600` Desktop binding and never enter Sync. Production
+revision `openagents-monolith-00088-t24` serves the mutation at 100 percent.
+The confirmed production owner scope subsequently held three projects, three
+repositories, three worktrees, three sessions, and one navigation row, with the
+publisher mutation acknowledged.
+
+## iOS simulator Release receipt
+
+On 2026-07-12 an embedded Release build was installed on an iPhone 17 Pro iOS
+26.5 simulator. It loaded the exact current bundle without Metro or HMR, opened
+the Effect Native OpenAgents account/Sync surface from drawer Settings, and
+reached GitHub's real OpenAgents authorization form. This exposed and fixed a
+dead Settings handler and completed missing React Native lowerings for History,
+Branch, and InfoCircle icons. The simulator has no saved GitHub session, so the
+authenticated directory, exact deep link, and process-death restoration pass
+must follow an owner sign-in; credentials are not handled by the agent.
+
 ## Residual
 
-CUT-14 remains open only for physical iOS and Android process-death/reconnect
-receipts. Those are owner-deferred while the recording phone is not available;
-the deterministic and native-host implementation is complete.
+CUT-14 remains open for authenticated iOS-simulator catalog/deep-link/process-
+death acceptance, the deferred physical-iPhone confirmation, and the Android-
+emulator equivalent. Nothing gates on physical Android. The production
+publisher is live and confirmed; authentication, not catalog transport, is the
+current simulator handoff.

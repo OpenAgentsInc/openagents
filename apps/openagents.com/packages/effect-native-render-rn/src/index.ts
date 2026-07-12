@@ -1383,7 +1383,10 @@ const iconGlyphs: Record<IconName, string> = {
   Menu: "≡",
   Compose: "✎",
   Mic: "🎤",
-  Sparkles: "✦"
+  Sparkles: "✦",
+  History: "↶",
+  Branch: "⑂",
+  InfoCircle: "ⓘ"
 }
 
 const iconFontSize: Record<IconSize, number> = { sm: 16, md: 20, lg: 24 }
@@ -3824,7 +3827,10 @@ const sfSymbolForIcon: Record<IconName, string> = {
   Plane: "paperplane.fill",
   Settings: "gearshape",
   Terminal: "apple.terminal",
-  Tools: "wrench.and.screwdriver"
+  Tools: "wrench.and.screwdriver",
+  History: "clock.arrow.circlepath",
+  Branch: "arrow.triangle.branch",
+  InfoCircle: "info.circle"
 }
 
 // Resolved flat style (responsive variants applied, tokens NOT yet lowered) —
