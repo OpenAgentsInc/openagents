@@ -323,6 +323,8 @@ export const App = () => {
       syncHostRef.current = syncHost
       experienceReconciler = openMobileExperienceReconciler({
         currentMode: () => conversationSelectionRef.current?.mode ?? "local",
+        needsRefresh: () =>
+          codingBindingRef.current?.directory.authority !== "confirmed",
         // A non-null callable conversation host means a verified session is
         // connected and its personal scope is live — the exact precondition for
         // upgrading the local fallback to the confirmed sync surface.

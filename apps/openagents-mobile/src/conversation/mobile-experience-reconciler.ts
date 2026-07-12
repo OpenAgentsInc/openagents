@@ -39,6 +39,13 @@ export const openMobileExperienceReconciler = <
 >(
   input: Readonly<{
     currentMode: () => MobileConversationSelection["mode"]
+    /**
+     * A sync conversation can become current before another authenticated
+     * projection (for example the coding directory) finishes catching up.
+     * Keep reconciliation eligible until every binding in the selected
+     * experience is current.
+     */
+    needsRefresh?: () => boolean
     isAuthenticatedLive: () => boolean
     selectExperience: () => Promise<Experience>
     onUpgrade: (experience: Experience) => void
@@ -50,7 +57,7 @@ export const openMobileExperienceReconciler = <
     observePhase: phase => {
       if (closed || inFlight) return
       if (phase === undefined || !LIVE_PHASES.has(phase)) return
-      if (input.currentMode() === "sync") return
+      if (input.currentMode() === "sync" && input.needsRefresh?.() !== true) return
       if (!input.isAuthenticatedLive()) return
       inFlight = true
       void input.selectExperience().then(
@@ -59,7 +66,7 @@ export const openMobileExperienceReconciler = <
             if (
               !closed &&
               experience.conversation.mode === "sync" &&
-              input.currentMode() !== "sync"
+              (input.currentMode() !== "sync" || input.needsRefresh?.() === true)
             ) {
               input.onUpgrade(experience)
             }

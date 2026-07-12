@@ -174,4 +174,34 @@ describe("contract openagents_mobile.chat.post_auth_live_upgrade.v1", () => {
     expect(upgrades).toHaveLength(0)
     expect(state.selection).toEqual({ mode: "local" })
   })
+
+  test("refreshes a withheld coding binding after the conversation is already sync", async () => {
+    const fixture = makePhaseControlledConversation()
+    fixture.setPhase("live")
+    const syncSelection = await selectMobileConversation({ conversation: () => fixture.conversation })
+    expect(syncSelection.mode).toBe("sync")
+    let codingAuthority: "withheld" | "confirmed" = "withheld"
+    let selections = 0
+    const reconciler = openMobileExperienceReconciler({
+      currentMode: () => syncSelection.mode,
+      needsRefresh: () => codingAuthority !== "confirmed",
+      isAuthenticatedLive: () => true,
+      selectExperience: async () => {
+        selections += 1
+        return { conversation: syncSelection }
+      },
+      onUpgrade: () => {
+        codingAuthority = "confirmed"
+      },
+    })
+
+    reconciler.observePhase("live")
+    await flush()
+    expect(selections).toBe(1)
+    expect(codingAuthority as "withheld" | "confirmed").toBe("confirmed")
+
+    reconciler.observePhase("live")
+    await flush()
+    expect(selections).toBe(1)
+  })
 })
