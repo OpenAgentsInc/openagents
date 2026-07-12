@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
-import { lstatSync, realpathSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs"
+import { lstatSync, realpathSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from "node:fs"
 import path from "node:path"
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 
 import type {
   DesktopWorkspaceFile,
@@ -9,13 +9,21 @@ import type {
   DesktopWorkspaceGitDiff,
   DesktopWorkspaceGitStatus,
   DesktopWorkspaceSaveResult,
+  DesktopWorkspaceSearchPage,
   DesktopWorkspaceSnapshot,
+  DesktopWorkspaceTreePage,
+  DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
 
 const maxEntries = 120
 const maxBytes = 240_000
 const maxGitEntries = 120
 const maxGitDiffBytes = 120_000
+const maxTreePageEntries = 200
+const maxSearchResults = 100
+const maxSearchVisitedEntries = 20_000
+const maxSearchFileBytes = 1_000_000
+const maxSearchPreviewCharacters = 240
 
 const inside = (root: string, candidate: string): boolean => {
   const relative = path.relative(root, candidate)
@@ -24,6 +32,243 @@ const inside = (root: string, candidate: string): boolean => {
 
 const revisionFor = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex")
+
+const boundedInteger = (
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+): number => value === undefined || !Number.isFinite(value)
+  ? fallback
+  : Math.max(0, Math.min(maximum, Math.trunc(value)))
+
+const workspacePathRef = (value: string): string | null => {
+  if (value.includes("\0") || path.isAbsolute(value) || /^[A-Za-z]:[\\/]/u.test(value)) {
+    return null
+  }
+  const normalized = path.posix.normalize(value.replaceAll("\\", "/"))
+  if (normalized === ".") return ""
+  return normalized === ".." || normalized.startsWith("../") || normalized.length > 1_024
+    ? null
+    : normalized
+}
+
+const secretShapedName = (name: string): boolean =>
+  /^\.env(?:\.|$)|(?:^|[-_.])(?:id_rsa|id_ed25519|credentials|secrets?|tokens?|keychain)(?:[-_.]|$)|\.(?:key|p12|pem|pfx)$/iu.test(name)
+
+const defaultIgnoredName = (name: string): boolean =>
+  name.startsWith(".") || name === "node_modules"
+
+const canonicalDirectoryForRef = (root: string, directoryRef: string): string | null => {
+  const relative = workspacePathRef(directoryRef)
+  if (relative === null) return null
+  try {
+    const lexicalRoot = path.resolve(root)
+    const requested = path.resolve(lexicalRoot, relative)
+    if (!inside(lexicalRoot, requested)) return null
+    const stats = lstatSync(requested)
+    if (!stats.isDirectory() || stats.isSymbolicLink()) return null
+    const canonicalRoot = realpathSync(lexicalRoot)
+    const canonicalDirectory = realpathSync(requested)
+    return inside(canonicalRoot, canonicalDirectory) ? canonicalDirectory : null
+  } catch {
+    return null
+  }
+}
+
+const gitIgnoredPathRefs = (root: string, refs: ReadonlyArray<string>): Set<string> => {
+  if (refs.length === 0) return new Set()
+  const result = spawnSync(
+    "git",
+    ["-C", root, "check-ignore", "--no-index", "--stdin", "-z"],
+    {
+      encoding: "utf8",
+      input: `${refs.join("\0")}\0`,
+      maxBuffer: 1_000_000,
+      timeout: 2_000,
+    },
+  )
+  if (result.status !== 0 || typeof result.stdout !== "string") return new Set()
+  return new Set(result.stdout.split("\0").filter(value => value !== ""))
+}
+
+const safeDirectoryEntries = (
+  root: string,
+  directory: string,
+): ReadonlyArray<Readonly<{
+  absolutePath: string
+  name: string
+  pathRef: string
+  kind: "file" | "directory"
+  sizeBytes: number | null
+  revisionRef: string
+}>> => {
+  const candidates = readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    if (defaultIgnoredName(entry.name) || secretShapedName(entry.name)) return []
+    const absolutePath = path.join(directory, entry.name)
+    try {
+      const stats = lstatSync(absolutePath)
+      if (stats.isSymbolicLink() || (!stats.isFile() && !stats.isDirectory())) return []
+      const pathRef = path.relative(realpathSync(root), absolutePath).split(path.sep).join("/")
+      if (workspacePathRef(pathRef) === null) return []
+      const kind = stats.isDirectory() ? "directory" as const : "file" as const
+      const revisionRef = `workspace.entry.${createHash("sha256")
+        .update(`${pathRef}\0${stats.size}\0${stats.mtimeMs}\0${stats.mode}`)
+        .digest("hex")}`
+      return [{
+        absolutePath,
+        kind,
+        name: entry.name,
+        pathRef,
+        revisionRef,
+        sizeBytes: kind === "file" ? stats.size : null,
+      }]
+    } catch {
+      return []
+    }
+  })
+  const ignored = gitIgnoredPathRefs(root, candidates.map(value => value.pathRef))
+  return candidates
+    .filter(value => !ignored.has(value.pathRef))
+    .sort((left, right) =>
+      Number(right.kind === "directory") - Number(left.kind === "directory") ||
+      left.name.localeCompare(right.name))
+}
+
+const cacheFact = (key: string, epoch: number) => ({
+  key,
+  epoch,
+  freshness: "current" as const,
+})
+
+export const workspaceTreePage = (input: Readonly<{
+  root: string
+  grantRef: string
+  directoryRef: string
+  epoch?: number
+  offset?: number
+  limit?: number
+}>): DesktopWorkspaceTreePage => {
+  const directoryRef = workspacePathRef(input.directoryRef)
+  const directory = directoryRef === null
+    ? null
+    : canonicalDirectoryForRef(input.root, directoryRef)
+  if (directory === null || directoryRef === null) {
+    return { state: "unavailable", message: "This directory is not available in the selected workspace." }
+  }
+  try {
+    const entries = safeDirectoryEntries(input.root, directory)
+    const offset = boundedInteger(input.offset, 0, entries.length)
+    const limit = Math.max(1, boundedInteger(input.limit, 80, maxTreePageEntries))
+    const page = entries.slice(offset, offset + limit)
+    const epoch = Math.max(0, Math.trunc(input.epoch ?? 0))
+    return {
+      state: "available",
+      grantRef: input.grantRef,
+      directoryRef,
+      entries: page.map(entry => ({
+        name: entry.name,
+        pathRef: entry.pathRef,
+        kind: entry.kind,
+        expandable: entry.kind === "directory",
+        sizeBytes: entry.sizeBytes,
+        revisionRef: entry.revisionRef,
+      })),
+      nextOffset: offset + page.length < entries.length ? offset + page.length : null,
+      cache: cacheFact(`workspace.tree.${input.grantRef}.${revisionFor(Buffer.from(directoryRef))}`, epoch),
+    }
+  } catch {
+    return { state: "unavailable", message: "This directory could not be read." }
+  }
+}
+
+const privateSearchContent = (content: string): boolean =>
+  /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----|(?:github_pat|gh[pousr]_|sk-|AKIA)[A-Za-z0-9_\-]{8,}|authorization\s*:\s*bearer\s+\S+|(?:password|secret|token)\s*[:=]\s*[^\s]+/iu.test(content)
+
+export const searchWorkspace = (input: Readonly<{
+  root: string
+  grantRef: string
+  query: string
+  mode: "path" | "content"
+  epoch?: number
+  offset?: number
+  limit?: number
+}>): DesktopWorkspaceSearchPage => {
+  const query = input.query.trim().slice(0, 200)
+  if (query.length === 0) return { state: "unavailable", message: "Enter a search query." }
+  const root = canonicalDirectoryForRef(input.root, "")
+  if (root === null) return { state: "unavailable", message: "The selected workspace is unavailable." }
+  const offset = boundedInteger(input.offset, 0, maxSearchResults)
+  const limit = Math.max(1, boundedInteger(input.limit, 40, maxSearchResults))
+  const wanted = Math.min(maxSearchResults, offset + limit + 1)
+  const lowered = query.toLocaleLowerCase()
+  const matches: Array<{
+    pathRef: string
+    kind: "path" | "content"
+    line: number | null
+    preview: string | null
+  }> = []
+  const directories = [root]
+  let visited = 0
+  let truncated = false
+
+  while (directories.length > 0 && visited < maxSearchVisitedEntries && matches.length < wanted) {
+    const directory = directories.shift()!
+    let entries: ReturnType<typeof safeDirectoryEntries>
+    try { entries = safeDirectoryEntries(root, directory) } catch { continue }
+    for (const entry of entries) {
+      visited += 1
+      if (visited > maxSearchVisitedEntries) { truncated = true; break }
+      if (entry.kind === "directory") {
+        directories.push(entry.absolutePath)
+        if (input.mode === "path" && entry.pathRef.toLocaleLowerCase().includes(lowered)) {
+          matches.push({ pathRef: entry.pathRef, kind: "path", line: null, preview: null })
+        }
+        continue
+      }
+      if (input.mode === "path") {
+        if (entry.pathRef.toLocaleLowerCase().includes(lowered)) {
+          matches.push({ pathRef: entry.pathRef, kind: "path", line: null, preview: null })
+        }
+        continue
+      }
+      if ((entry.sizeBytes ?? maxSearchFileBytes + 1) > maxSearchFileBytes) continue
+      try {
+        const bytes = readFileSync(entry.absolutePath)
+        if (bytes.includes(0)) continue
+        const content = bytes.toString("utf8")
+        if (privateSearchContent(content)) continue
+        const lines = content.split(/\r?\n/u)
+        const lineIndex = lines.findIndex(line => line.toLocaleLowerCase().includes(lowered))
+        if (lineIndex >= 0) {
+          matches.push({
+            pathRef: entry.pathRef,
+            kind: "content",
+            line: lineIndex + 1,
+            preview: lines[lineIndex]!.trim().slice(0, maxSearchPreviewCharacters),
+          })
+        }
+      } catch { /* unreadable entries are omitted */ }
+      if (matches.length >= wanted) break
+    }
+  }
+  if (directories.length > 0 || visited >= maxSearchVisitedEntries || matches.length >= wanted) {
+    truncated = true
+  }
+  const page = matches.slice(offset, offset + limit)
+  const hasMore = matches.length > offset + page.length || truncated
+  const epoch = Math.max(0, Math.trunc(input.epoch ?? 0))
+  const queryKey = revisionFor(Buffer.from(`${input.mode}\0${query}`))
+  return {
+    state: "available",
+    grantRef: input.grantRef,
+    query,
+    mode: input.mode,
+    matches: page,
+    nextOffset: hasMore && page.length > 0 ? offset + page.length : null,
+    truncated,
+    cache: cacheFact(`workspace.search.${input.grantRef}.${queryKey}`, epoch),
+  }
+}
 
 /**
  * Resolve an existing regular file through the chosen root. `realpath` is
@@ -201,7 +446,12 @@ export const saveWorkspaceFile = (
 }
 
 export type DesktopWorkspaceService = Readonly<{
+  grantRef: string
   summary: () => DesktopWorkspaceSnapshot
+  tree: (input: Readonly<{ directoryRef: string; offset?: number; limit?: number }>) => DesktopWorkspaceTreePage
+  search: (input: Readonly<{ query: string; mode: "path" | "content"; offset?: number; limit?: number }>) => DesktopWorkspaceSearchPage
+  refresh: () => void
+  subscribe: (listener: (change: DesktopWorkspaceChange) => void) => Readonly<{ close: () => void }>
   read: (requestedPath: string) => DesktopWorkspaceFile | null
   save: (input: Readonly<{ path: string; content: string; expectedRevision: string }>) => DesktopWorkspaceSaveResult
   gitStatus: () => DesktopWorkspaceGitStatus
@@ -214,22 +464,128 @@ export type DesktopWorkspaceService = Readonly<{
  * root may replace this value after another directory-picker decision, but no
  * ambient cwd or process environment selects the root.
  */
-export const openWorkspaceService = (selectedRoot: string): DesktopWorkspaceService => {
+export const openWorkspaceService = (
+  selectedRoot: string,
+  options: Readonly<{
+    grantRef?: string
+    watchFactory?: (
+      root: string,
+      onChange: (pathRef: string | null) => void,
+    ) => Readonly<{ close: () => void }>
+  }> = {},
+): DesktopWorkspaceService => {
   const root = path.resolve(selectedRoot)
+  const grantRef = options.grantRef ?? `workspace.grant.${randomUUID()}`
   let disposed = false
+  let epoch = 0
+  let watcher: Readonly<{ close: () => void }> | null = null
+  const listeners = new Set<(change: DesktopWorkspaceChange) => void>()
+  const treeCache = new Map<string, DesktopWorkspaceTreePage>()
+  const searchCache = new Map<string, DesktopWorkspaceSearchPage>()
+  const notify = (kind: DesktopWorkspaceChange["kind"], changedPathRef: string | null) => {
+    epoch += 1
+    treeCache.clear()
+    searchCache.clear()
+    const change = { kind, pathRef: changedPathRef, epoch }
+    for (const listener of listeners) listener(change)
+  }
+  const defaultWatchFactory = (
+    watchedRoot: string,
+    onChange: (pathRef: string | null) => void,
+  ): Readonly<{ close: () => void }> => {
+    const native = watch(watchedRoot, { recursive: true }, (_event, filename) => {
+      const pathRef = filename === null ? null : workspacePathRef(filename.toString())
+      onChange(pathRef)
+    })
+    native.on("error", () => onChange(null))
+    return { close: () => native.close() }
+  }
+  const ensureWatcher = () => {
+    if (watcher !== null || disposed || listeners.size === 0) return
+    try {
+      watcher = (options.watchFactory ?? defaultWatchFactory)(root, pathRef => {
+        if (disposed) return
+        notify(pathRef === null ? "overflow" : "changed", pathRef)
+      })
+    } catch {
+      notify("overflow", null)
+    }
+  }
+  const closeWatcher = () => {
+    const active = watcher
+    watcher = null
+    active?.close()
+  }
   return {
+    grantRef,
     summary: () => {
       if (disposed) throw new Error("workspace_disposed")
       return inspectWorkspace(root)
     },
+    tree: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const directoryRef = workspacePathRef(request.directoryRef)
+      if (directoryRef === null) return { state: "unavailable", message: "This directory is not available in the selected workspace." }
+      const offset = boundedInteger(request.offset, 0, Number.MAX_SAFE_INTEGER)
+      const limit = Math.max(1, boundedInteger(request.limit, 80, maxTreePageEntries))
+      const key = `${directoryRef}\0${offset}\0${limit}\0${epoch}`
+      const cached = treeCache.get(key)
+      if (cached !== undefined) return cached
+      const page = workspaceTreePage({ root, grantRef, directoryRef, offset, limit, epoch })
+      treeCache.set(key, page)
+      return page
+    },
+    search: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const query = request.query.trim().slice(0, 200)
+      const offset = boundedInteger(request.offset, 0, maxSearchResults)
+      const limit = Math.max(1, boundedInteger(request.limit, 40, maxSearchResults))
+      const key = `${request.mode}\0${revisionFor(Buffer.from(query))}\0${offset}\0${limit}\0${epoch}`
+      const cached = searchCache.get(key)
+      if (cached !== undefined) return cached
+      const page = searchWorkspace({ root, grantRef, query, mode: request.mode, offset, limit, epoch })
+      searchCache.set(key, page)
+      return page
+    },
+    refresh: () => {
+      if (!disposed) notify("refresh", null)
+    },
+    subscribe: listener => {
+      if (disposed) return { close: () => undefined }
+      listeners.add(listener)
+      ensureWatcher()
+      let closed = false
+      return {
+        close: () => {
+          if (closed) return
+          closed = true
+          listeners.delete(listener)
+          if (listeners.size === 0) closeWatcher()
+        },
+      }
+    },
     read: requestedPath => disposed ? null : readWorkspaceFile(root, requestedPath),
     save: input => disposed
       ? { state: "unavailable", message: "The selected workspace has been disposed." }
-      : saveWorkspaceFile(root, input),
+      : (() => {
+          const result = saveWorkspaceFile(root, input)
+          if (result.state === "saved") {
+            const relative = path.relative(root, result.file.path).split(path.sep).join("/")
+            notify("changed", workspacePathRef(relative))
+          }
+          return result
+        })(),
     gitStatus: () => disposed ? { state: "unavailable" } : workspaceGitStatus(root),
     gitDiff: requestedPath => disposed
       ? { state: "unavailable", message: "The selected workspace has been disposed." }
       : workspaceGitDiff(root, requestedPath),
-    dispose: () => { disposed = true },
+    dispose: () => {
+      if (disposed) return
+      disposed = true
+      closeWatcher()
+      listeners.clear()
+      treeCache.clear()
+      searchCache.clear()
+    },
   }
 }

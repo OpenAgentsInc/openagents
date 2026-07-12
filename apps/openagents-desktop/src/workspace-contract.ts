@@ -8,6 +8,23 @@ export const DesktopWorkspaceSaveChannel = "openagents-desktop/workspace-save" a
 export const DesktopWorkspaceGitStatusChannel = "openagents-desktop/workspace-git-status" as const
 export const DesktopWorkspaceGitDiffChannel = "openagents-desktop/workspace-git-diff" as const
 
+export const DesktopWorkspacePathRefSchema = Schema.String.pipe(
+  Schema.check(Schema.isMaxLength(1_024)),
+)
+
+export const DesktopWorkspaceTreeRequestSchema = Schema.Struct({
+  directoryRef: DesktopWorkspacePathRefSchema,
+  offset: Schema.optional(Schema.Number),
+  limit: Schema.optional(Schema.Number),
+})
+
+export const DesktopWorkspaceSearchRequestSchema = Schema.Struct({
+  query: Schema.String,
+  mode: Schema.Literals(["path", "content"]),
+  offset: Schema.optional(Schema.Number),
+  limit: Schema.optional(Schema.Number),
+})
+
 export const DesktopWorkspaceFileRequestSchema = Schema.Struct({ path: Schema.String })
 export const DesktopWorkspaceSaveRequestSchema = Schema.Struct({
   path: Schema.String,
@@ -27,6 +44,58 @@ export type DesktopWorkspaceSnapshot = Readonly<{
   label: string
   entries: ReadonlyArray<DesktopWorkspaceEntry>
   git: "clean" | "changed" | "unavailable"
+}>
+
+export type DesktopWorkspaceCacheFact = Readonly<{
+  key: string
+  epoch: number
+  freshness: "current"
+}>
+
+export type DesktopWorkspaceTreeEntry = Readonly<{
+  name: string
+  pathRef: string
+  kind: "file" | "directory"
+  expandable: boolean
+  sizeBytes: number | null
+  revisionRef: string
+}>
+
+export type DesktopWorkspaceTreePage =
+  | Readonly<{
+      state: "available"
+      grantRef: string
+      directoryRef: string
+      entries: ReadonlyArray<DesktopWorkspaceTreeEntry>
+      nextOffset: number | null
+      cache: DesktopWorkspaceCacheFact
+    }>
+  | Readonly<{ state: "unavailable"; message: string }>
+
+export type DesktopWorkspaceSearchMatch = Readonly<{
+  pathRef: string
+  kind: "path" | "content"
+  line: number | null
+  preview: string | null
+}>
+
+export type DesktopWorkspaceSearchPage =
+  | Readonly<{
+      state: "available"
+      grantRef: string
+      query: string
+      mode: "path" | "content"
+      matches: ReadonlyArray<DesktopWorkspaceSearchMatch>
+      nextOffset: number | null
+      truncated: boolean
+      cache: DesktopWorkspaceCacheFact
+    }>
+  | Readonly<{ state: "unavailable"; message: string }>
+
+export type DesktopWorkspaceChange = Readonly<{
+  kind: "changed" | "overflow" | "refresh"
+  pathRef: string | null
+  epoch: number
 }>
 
 export type DesktopWorkspaceFile = Readonly<{
@@ -72,5 +141,19 @@ export const decodeWorkspaceGitDiffRequest = (
   value: unknown,
 ): { path: string } | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceGitDiffRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceTreeRequest = (
+  value: unknown,
+): { directoryRef: string; offset?: number; limit?: number } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceTreeRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceSearchRequest = (
+  value: unknown,
+): { query: string; mode: "path" | "content"; offset?: number; limit?: number } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }

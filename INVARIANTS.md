@@ -618,6 +618,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   regressions live in `packages/khala-sync-client/src/session.test.ts`,
   `packages/khala-sync-client/src/sqlite-store.test.ts`, and
   `apps/openagents-desktop/tests/native-timeline-fault-convergence.e2e.test.ts`.
+- A Desktop workspace exists only after an explicit directory-picker grant and
+  remains one WorkContext-owned main-process capability. The new recursive
+  tree/search projections carry the opaque grant ref, relative path refs,
+  bounded page/result counts, and a declared cache key/epoch/freshness fact;
+  they never carry the selected absolute root, a native handle, or an ambient
+  current directory. Hidden, Git-ignored, secret-shaped, binary, unreadable,
+  traversal, and symlink-escape entries are withheld. One recursive watcher is
+  opened only while subscribers exist; each change, explicit refresh, or
+  unlocated/overflow event advances the epoch and invalidates tree/search
+  caches, while subscriber close, WorkContext replacement, and app disposal
+  close it exactly once. The core boundary and adversarial fixtures live in
+  `apps/openagents-desktop/src/workspace-service.ts` and
+  `apps/openagents-desktop/tests/workspace-service.test.ts`; renderer/gateway
+  adoption and mutation controls remain CUT-17 work.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,
