@@ -177,7 +177,7 @@ describe('Khala delegation GEPA feedback', () => {
         blockerRefs: [
           'blocker.public.pylon_dispatch.no_available_codex_capacity',
           'blocker.public.pylon_dispatch.duplicate_active_assignment',
-          'evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat',
+          'evidence.khala_coding.target_pylon_ref.unavailable.heartbeat_stale',
           'blocker.public.khala_delegation.pr_conflicted',
           'blocker.public.khala_delegation.objective_too_vague',
         ],
@@ -207,7 +207,7 @@ describe('Khala delegation GEPA feedback', () => {
       [
         traceFor(
           'pylon_assignment_bad',
-          'verify_failed after stale_or_missing_heartbeat; pr_conflicted and objective_too_vague.',
+          'verify_failed after heartbeat_stale; pr_conflicted and objective_too_vague.',
         ),
       ],
     )

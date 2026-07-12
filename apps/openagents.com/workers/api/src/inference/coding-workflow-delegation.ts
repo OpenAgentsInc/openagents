@@ -635,28 +635,62 @@ const assignmentRequestFromInput = (
   ],
 })
 
-const hasFreshOnlineHeartbeat = (
+const onlineHeartbeatStatuses = ['available', 'healthy', 'idle', 'online', 'ready']
+
+type HeartbeatAdmissionSubCondition =
+  | 'heartbeat_missing'
+  | 'heartbeat_stale'
+  | 'heartbeat_status_unavailable'
+
+const heartbeatAgeSeconds = (
   registration: PylonApiRegistrationRecord,
   nowIso: string,
-): boolean => {
+): number | null => {
   if (registration.latestHeartbeatAt === null) {
-    return false
+    return null
+  }
+  const now = Date.parse(nowIso)
+  const heartbeat = Date.parse(registration.latestHeartbeatAt)
+  if (!Number.isFinite(now) || !Number.isFinite(heartbeat)) {
+    return null
+  }
+  return Math.max(0, Math.floor((now - heartbeat) / 1000))
+}
+
+const heartbeatAdmissionFailure = (
+  registration: PylonApiRegistrationRecord,
+  nowIso: string,
+): HeartbeatAdmissionSubCondition | null => {
+  if (registration.latestHeartbeatAt === null) {
+    return 'heartbeat_missing'
   }
 
   const now = Date.parse(nowIso)
   const heartbeat = Date.parse(registration.latestHeartbeatAt)
   const status = (registration.latestHeartbeatStatus ?? '').trim().toLowerCase()
 
+  if (!Number.isFinite(now) || !Number.isFinite(heartbeat)) {
+    return 'heartbeat_missing'
+  }
+  if (now - heartbeat > 5 * 60 * 1000) {
+    return 'heartbeat_stale'
+  }
+  if (!onlineHeartbeatStatuses.includes(status)) {
+    return 'heartbeat_status_unavailable'
+  }
+
+  return null
+}
+
+const hasFreshOnlineHeartbeat = (
+  registration: PylonApiRegistrationRecord,
+  nowIso: string,
+): boolean => {
   // The request timestamp is captured before the registration read. A Pylon
   // may write a newer heartbeat while that request is in flight, so a
   // future delta is freshness evidence rather than staleness. This matches the
   // canonical Pylon admission policy: only age beyond the TTL is stale.
-  return (
-    Number.isFinite(now) &&
-    Number.isFinite(heartbeat) &&
-    now - heartbeat <= 5 * 60 * 1000 &&
-    ['available', 'healthy', 'idle', 'online', 'ready'].includes(status)
-  )
+  return heartbeatAdmissionFailure(registration, nowIso) === null
 }
 
 const hasAgentCapability = (
@@ -747,7 +781,7 @@ const accountRefHashSelectionCandidates = (
 // the same diagnosis covers both the Codex and Claude lanes.
 type AgentAdmissionSubCondition =
   | 'not_active'
-  | 'stale_or_missing_heartbeat'
+  | HeartbeatAdmissionSubCondition
   | 'not_agent_capable'
   | 'no_available_agent_capacity'
 
@@ -761,8 +795,9 @@ const agentAdmissionFailures = (
   if (registration.status !== 'active') {
     failures.push('not_active')
   }
-  if (!hasFreshOnlineHeartbeat(registration, nowIso)) {
-    failures.push('stale_or_missing_heartbeat')
+  const heartbeatFailure = heartbeatAdmissionFailure(registration, nowIso)
+  if (heartbeatFailure !== null) {
+    failures.push(heartbeatFailure)
   }
   if (!hasAgentCapability(registration, profile)) {
     failures.push('not_agent_capable')
@@ -794,11 +829,36 @@ const diagnoseAgentUnavailability = (
   evidenceRefs: ReadonlyArray<string>
   reason: string
 }> => {
-  const reasonText: Record<AgentAdmissionSubCondition, string> = {
-    no_available_agent_capacity: `it is not advertising any available ${profile.label} capacity (heartbeat ${profile.capacityService} available=0)`,
-    not_active: 'it is not active',
-    not_agent_capable: `it is not ${profile.label}-capable (the heartbeat is not publishing the local ${profile.label} capability)`,
-    stale_or_missing_heartbeat: 'its online heartbeat is stale or missing',
+  const reasonText = (
+    failure: AgentAdmissionSubCondition,
+    registration: PylonApiRegistrationRecord | null,
+  ): string => {
+    switch (failure) {
+      case 'heartbeat_missing':
+        return 'this specific pinned Pylon has no recorded online heartbeat yet; another linked Pylon may be available, so omit --pylon-ref to use caller-scoped selection'
+      case 'heartbeat_stale': {
+        const ageSeconds =
+          registration === null ? null : heartbeatAgeSeconds(registration, nowIso)
+        return ageSeconds === null
+          ? 'this specific pinned Pylon heartbeat is stale; another linked Pylon may be available, so omit --pylon-ref to use caller-scoped selection'
+          : `this specific pinned Pylon last heartbeated ${ageSeconds}s ago, past the 300s freshness TTL; another linked Pylon may be available, so omit --pylon-ref to use caller-scoped selection`
+      }
+      case 'heartbeat_status_unavailable': {
+        const status =
+          registration?.latestHeartbeatStatus === null ||
+          registration?.latestHeartbeatStatus === undefined ||
+          registration.latestHeartbeatStatus.trim() === ''
+            ? 'unknown'
+            : registration.latestHeartbeatStatus.trim()
+        return `its latest heartbeat status is ${status}, not one of ${onlineHeartbeatStatuses.join(', ')}`
+      }
+      case 'no_available_agent_capacity':
+        return `it is not advertising any available ${profile.label} capacity (heartbeat ${profile.capacityService} available=0)`
+      case 'not_active':
+        return 'it is not active'
+      case 'not_agent_capable':
+        return `it is not ${profile.label}-capable (the heartbeat is not publishing the local ${profile.label} capability)`
+    }
   }
   const best =
     registrations.length === 0
@@ -811,6 +871,7 @@ const diagnoseAgentUnavailability = (
               profile,
               accountKey,
             ),
+            registration,
           }))
           .sort((left, right) => left.failures.length - right.failures.length)[0]
   const failures =
@@ -841,7 +902,7 @@ const diagnoseAgentUnavailability = (
     ],
     reason:
       `The requested linked Pylon cannot take a ${profile.label} coding assignment because ` +
-      `${failures.map(failure => reasonText[failure]).join('; ')}.`,
+      `${failures.map(failure => reasonText(failure, best?.registration ?? null)).join('; ')}.`,
   }
 }
 
