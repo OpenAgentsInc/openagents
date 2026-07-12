@@ -426,10 +426,20 @@ export const FableLocalEventEnvelopeSchema = Schema.Struct({
 })
 export type FableLocalEventEnvelope = typeof FableLocalEventEnvelopeSchema.Type
 
+export const CodexModelSchema = Schema.Literals(["gpt-5.6-sol", "gpt-5.5"])
+export type CodexModel = typeof CodexModelSchema.Type
+export const ClaudeModelSchema = Schema.Literals(["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"])
+export type ClaudeModel = typeof ClaudeModelSchema.Type
+export const LocalModelSchema = Schema.Union([CodexModelSchema, ClaudeModelSchema])
+export type LocalModel = typeof LocalModelSchema.Type
+export const isCodexModel = (model: LocalModel): model is CodexModel =>
+  model === "gpt-5.6-sol" || model === "gpt-5.5"
+export const isClaudeModel = (model: LocalModel): model is ClaudeModel => !isCodexModel(model)
+
 export const LocalProviderTargetSchema = Schema.Struct({
   provider: Schema.Literals(["codex", "claude_agent"]),
   accountRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
-  model: Schema.Literals(["gpt-5.6-sol", "claude-fable-5"]),
+  model: LocalModelSchema,
 })
 export type LocalProviderTarget = typeof LocalProviderTargetSchema.Type
 
@@ -462,6 +472,8 @@ export const FableLocalStartRequestSchema = Schema.Struct({
   permissionMode: Schema.optional(Schema.Literals(["owner_full", "plan_only"])),
   /** Owner-selected Codex reasoning effort; ignored by the Claude lane. */
   reasoningEffort: Schema.optional(CodexReasoningEffortSchema),
+  /** Exact owner-selected model. The runtime refuses provider substitution. */
+  model: Schema.optional(LocalModelSchema),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
 

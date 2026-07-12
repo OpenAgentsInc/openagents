@@ -46,7 +46,7 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import { compareDesktopThreadsByRecency, type DesktopMessageMeta, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
-import type { CodexReasoningEffort } from "../fable-local-contract.ts"
+import { isCodexModel, type ClaudeModel, type CodexModel, type CodexReasoningEffort, type LocalModel } from "../fable-local-contract.ts"
 import {
   contextGroupSummary,
   humanizeToolInvocation,
@@ -285,6 +285,9 @@ export type DesktopShellState = Readonly<{
   selectedHarness: DesktopHarnessName
   /** Requested Codex reasoning effort for subsequent turns. */
   codexReasoningEffort: CodexReasoningEffort
+  /** Provider-scoped model choices persist while switching provider. */
+  codexModel: CodexModel
+  claudeModel: ClaudeModel
   /** Exact named provider target retained independently for each conversation. */
   providerTargetsByThread: Readonly<Record<string, LocalProviderTarget>>
   permissionModeByThread: Readonly<Record<string, LocalPermissionMode>>
@@ -390,6 +393,8 @@ export const initialDesktopShellState = (
   notes: [],
   selectedHarness: "codex",
   codexReasoningEffort: "medium",
+  codexModel: "gpt-5.6-sol",
+  claudeModel: "claude-fable-5",
   providerTargetsByThread: {},
   permissionModeByThread: {},
   // Unproven until boot's availability probe lands (before first mount):
@@ -510,6 +515,10 @@ export const DesktopCodexReasoningSelected = defineIntent(
   "DesktopCodexReasoningSelected",
   Schema.Literals(["low", "medium", "high", "xhigh"]),
 )
+export const DesktopModelSelected = defineIntent(
+  "DesktopModelSelected",
+  Schema.Literals(["gpt-5.6-sol", "gpt-5.5", "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]),
+)
 export const DesktopProviderAccountSelected = defineIntent("DesktopProviderAccountSelected", Schema.String)
 export const DesktopPermissionModeSelected = defineIntent("DesktopPermissionModeSelected", Schema.Literals(["owner_full", "plan_only"]))
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
@@ -596,6 +605,7 @@ export const desktopShellIntents = [
   DesktopNewChat,
   DesktopHarnessSelected,
   DesktopCodexReasoningSelected,
+  DesktopModelSelected,
   DesktopProviderAccountSelected,
   DesktopPermissionModeSelected,
   DesktopChatSelected,
@@ -981,6 +991,7 @@ export type ChatHost = Readonly<{
     skill?: LocalSkillInvocation
     permissionMode?: LocalPermissionMode
     reasoningEffort?: CodexReasoningEffort
+    model?: LocalModel
     /** Optional image attachments threaded into the turn payload (capability I1). */
     images?: ReadonlyArray<FableLocalImageAttachment>
     onUpdate?: (thread: DesktopThread) => void
@@ -1541,6 +1552,7 @@ export const makeDesktopShellHandlers = (
         ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
         permissionMode: current.permissionModeByThread[current.activeThreadId!] ?? "owner_full",
         ...(current.selectedHarness === "codex" ? { reasoningEffort: current.codexReasoningEffort } : {}),
+        model: current.selectedHarness === "codex" ? current.codexModel : current.claudeModel,
         ...(images.length > 0 ? { images } : {}),
         onUpdate: thread => {
           Effect.runFork(SubscriptionRef.update(state, next =>
@@ -1616,6 +1628,10 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
   DesktopCodexReasoningSelected: (reasoningEffort) =>
     SubscriptionRef.update(state, (current) => ({ ...current, codexReasoningEffort: reasoningEffort })),
+  DesktopModelSelected: (model) =>
+    SubscriptionRef.update(state, (current) => isCodexModel(model)
+      ? { ...current, codexModel: model }
+      : { ...current, claudeModel: model }),
   DesktopProviderAccountSelected: (accountRef) =>
     SubscriptionRef.update(state, (current) => {
       if (current.activeThreadId === null) return current
@@ -1627,7 +1643,11 @@ export const makeDesktopShellHandlers = (
         ...current,
         providerTargetsByThread: {
           ...current.providerTargetsByThread,
-          [current.activeThreadId]: targetForHarness(current.selectedHarness, account.ref),
+          [current.activeThreadId]: targetForHarness(
+            current.selectedHarness,
+            account.ref,
+            current.selectedHarness === "codex" ? current.codexModel : current.claudeModel,
+          ),
         },
       }
     }),
@@ -2891,10 +2911,13 @@ export const withDisabledReason = (
       )
     : control
 
-const targetForHarness = (harness: DesktopHarnessName, accountRef: string): LocalProviderTarget =>
+const selectedModel = (state: DesktopShellState): LocalModel =>
+  state.selectedHarness === "codex" ? state.codexModel : state.claudeModel
+
+const targetForHarness = (harness: DesktopHarnessName, accountRef: string, model?: LocalModel): LocalProviderTarget =>
   harness === "codex"
-    ? { provider: "codex", accountRef, model: "gpt-5.6-sol" }
-    : { provider: "claude_agent", accountRef, model: "claude-fable-5" }
+    ? { provider: "codex", accountRef, model: model?.startsWith("gpt-") ? model : "gpt-5.6-sol" }
+    : { provider: "claude_agent", accountRef, model: model?.startsWith("claude-") ? model : "claude-fable-5" }
 
 export const providerTargetForThread = (state: DesktopShellState): LocalProviderTarget | null => {
   if (state.activeThreadId === null) return null
@@ -2903,7 +2926,7 @@ export const providerTargetForThread = (state: DesktopShellState): LocalProvider
   if (selected !== undefined && selected.provider === expectedProvider) return selected
   const account = state.fleet.accounts.find(candidate =>
     candidate.provider === expectedProvider && candidate.readiness === "ready")
-  return account === undefined ? null : targetForHarness(state.selectedHarness, account.ref)
+  return account === undefined ? null : targetForHarness(state.selectedHarness, account.ref, selectedModel(state))
 }
 
 /**
@@ -2916,9 +2939,10 @@ export const providerTargetForSubmission = (state: DesktopShellState): LocalProv
   if (state.activeThreadId === null) return null
   if (state.selectedHarness === "fable") {
     const selected = state.providerTargetsByThread[state.activeThreadId]
-    return selected?.provider === "claude_agent" ? selected : null
+    return selected?.provider === "claude_agent" ? { ...selected, model: state.claudeModel } : null
   }
-  return providerTargetForThread(state)
+  const target = providerTargetForThread(state)
+  return target === null ? null : { ...target, model: state.codexModel }
 }
 
 const providerAccountControl = (state: DesktopShellState): View | null => {
@@ -3183,6 +3207,7 @@ const composerAttachControl = (state: DesktopShellState): View => {
   return IconButton({
     key: "shell-attach-image",
     icon: "Plus",
+    size: "sm",
     accessibilityLabel: atLimit
       ? "Image limit reached (8 max)"
       : "Attach image",
@@ -3206,6 +3231,26 @@ const harnessSelect = (state: DesktopShellState): View => Select({
   onChange: IntentRef("DesktopHarnessSelected", ComponentValueBinding()),
   style: { borderWidth: 0, borderRadius: "md", typeScale: "label", backgroundColor: "background" },
   a11y: { label: `Provider: ${state.selectedHarness === "codex" ? "Codex" : "Claude"}` },
+})
+
+/** Model picker is provider-scoped and sits between provider and reasoning. */
+const modelSelect = (state: DesktopShellState): View => Select({
+  key: "shell-model-select",
+  value: selectedModel(state),
+  options: state.selectedHarness === "codex"
+    ? [
+        { value: "gpt-5.6-sol", label: "GPT-5.6" },
+        { value: "gpt-5.5", label: "GPT-5.5" },
+      ]
+    : [
+        { value: "claude-fable-5", label: "Fable" },
+        { value: "claude-opus-4-8", label: "Opus 4.8" },
+        { value: "claude-sonnet-5", label: "Sonnet 5" },
+      ],
+  disabled: state.pending,
+  onChange: IntentRef("DesktopModelSelected", ComponentValueBinding()),
+  style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", backgroundColor: "background" },
+  a11y: { label: `Model: ${selectedModel(state)}` },
 })
 
 const reasoningSelect = (state: DesktopShellState): View | null =>
@@ -3297,6 +3342,7 @@ const shellComposer = (state: DesktopShellState): View =>
           // Leading attach affordance (capability I1) — picker + drop/paste.
           composerAttachControl(state),
           harnessSelect(state),
+          modelSelect(state),
           ...(reasoningSelect(state) === null ? [] : [reasoningSelect(state)!]),
           // Provider-account + permission-mode controls kept from the old
           // harness row (landed after the restyle was cut) — same bar, same

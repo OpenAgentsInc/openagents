@@ -105,6 +105,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       skill?: LocalSkillInvocation
       permissionMode?: "owner_full" | "plan_only"
       reasoningEffort?: import("../fable-local-contract.ts").CodexReasoningEffort
+      model?: import("../fable-local-contract.ts").LocalModel
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
@@ -409,6 +410,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ...(send.skill === undefined ? {} : { skill: send.skill }),
         ...(send.permissionMode === undefined ? {} : { permissionMode: send.permissionMode }),
         ...(lane !== "codex" || send.reasoningEffort === undefined ? {} : { reasoningEffort: send.reasoningEffort }),
+        ...(send.model === undefined ? {} : { model: send.model }),
       })
       const result = decodeTurnResult(raw, laneLabel)
       // A3 queue-until-idle: a follow-up promoted at this turn's idle boundary
@@ -422,7 +424,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       // `= null` init and would otherwise make a `!== null` guard `never`).
       const promoted = promotedFollowup ?? ""
       if (promoted.trim() !== "" && result.ok) {
-        return runLaneTurn(lane, bridge, { id: send.id, message: promoted, onUpdate: send.onUpdate })
+        return runLaneTurn(lane, bridge, { ...send, message: promoted, images: undefined })
       }
       return result
     } finally {

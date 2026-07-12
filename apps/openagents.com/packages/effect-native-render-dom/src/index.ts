@@ -5221,12 +5221,13 @@ const renderIconButton = (
   element.style.display = "inline-flex"
   element.style.alignItems = "center"
   element.style.justifyContent = "center"
-  element.style.width = "44px"
-  element.style.height = "44px"
+  const controlPixels = view.size === "sm" ? 32 : 44
+  element.style.width = `${controlPixels}px`
+  element.style.height = `${controlPixels}px`
   element.style.borderRadius = "9999px"
   // Same closed glyph registry as Icon; the glyph is decorative because the
   // button itself carries the accessible name.
-  const px = iconSizePixels.md
+  const px = view.size === "sm" ? iconSizePixels.sm : iconSizePixels.md
   element.innerHTML = iconSvg(view.icon, px)
   state.addListener(element, "click", () => runReportedIntent(report, view.onPress))
   applySurfaceMergedStyle(element, view.style, view.surface, state)

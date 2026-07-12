@@ -481,11 +481,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         productArea: "chat input composer layout",
         enforcementTier: "test-sweep",
         blockerRefs: [],
-        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-11" },
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-12" },
         statement:
-          "edit our chat input composer to look exactly like the opencode desktop, and put our codex/claude toggle in that bar underneath it. find their css and adapt it to ours.",
+          "Between codex/claude and reasoning dropdowns we need model selector. Codex select between GPT-5.6 and GPT-5.5, Claude select between Fable, Opus 4.8, Sonnet 5. Also that plus button make it not a huge circle, must be icon only.",
         authorityBoundary:
-          "This is a re-layout + restyle of the SAME composer functionality into OpenCode's prompt-input shape (colors adapted to our Protoss-blue tokens; no OpenCode code vendored — provenance in docs/design-ports.md). ONE rounded container (radius \"xl\") holds a multiline text input on top and a bottom action bar below it inside the same card. The bottom bar carries the leading `+` attach affordance, the Fable|Codex harness toggle (owner: \"put our codex/claude toggle in that bar underneath it\"), a flexible spacer, and the trailing circular (radius \"full\") send / stop control. The send fills with accent when there is text or an image and dims to ghost when empty. No feature is removed or weakened: the attach picker + drop/paste, the harness toggle + Shift+Tab + evidence-gated availability, image thumbnails, the Stop-while-streaming swap, queue-until-idle, the disabled-reason hover popovers, and the DesktopInputChanged/DesktopNoteSubmitted wiring all survive, re-homed into the bar. Styling stays typed token style objects on the shared scales — no raw color/px literals in the renderer (the one composer dimension, the input min height, rides the documented dimension allowlist).",
+          "The single OpenCode-shaped composer card keeps its multiline input above one compact action bar. That bar orders compact icon-only Attach, Provider, provider-scoped Model, Codex-only Reasoning, account/permission controls, a flexible spacer, and circular Send/Stop. Exact model IDs are closed typed values and reach the corresponding provider launch field; no model is inferred from its display label and Claude refuses provider substitution before content. Attach uses the shared Effect Native IconButton's `sm` size (32px) with a required accessible label rather than inheriting the generic 44px circular action treatment. No attach, queue, stop, availability, or submission behavior is removed.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/docs/design-ports.md",
@@ -498,7 +498,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the composer card holds a multiline shell-input on top and a shell-composer-bar row beneath it, the bar containing the shell-attach-image control, the recessed shell-harness-row toggle, and the trailing circular send/stop control (borderRadius \"full\"), with the send accent-filled when the input carries text/images and dimmed to a ghost when blank.",
+              "Proves the composer card holds a multiline shell-input above a bar ordered Attach, Provider, Model, Codex Reasoning, spacer, and Send/Stop; model options change with provider, exact selected IDs ride the next send, and Attach is the shared compact icon-only control.",
           },
           {
             id: "opencode_composer_shape.token_conformance",
@@ -506,7 +506,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
             description:
-              "The design-conformance oracle holds on the re-laid-out composer: no raw color literals, spacing/radius values stay on the token scales, the harness track keeps its recessed segmented recipe, and the only new numeric dimension (the input min height) is on the documented allowlist.",
+              "The design-conformance oracle holds on the composer: no raw color literals, spacing/radius values stay on shared scales, and Provider, Model, and Reasoning are compact native Select components.",
           },
           {
             id: "opencode_composer_shape.smoke",
@@ -514,7 +514,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built-Electron smoke renders the composer in the new shape (input on top, action bar below with attach + harness toggle + circular send) and fails if the bar or its controls are missing.",
+              "The built-Electron smoke renders the composer with input above the action bar and fails if the typed controls or trailing Send are missing.",
           },
         ],
         verification:

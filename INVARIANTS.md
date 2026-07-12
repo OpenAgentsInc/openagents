@@ -779,9 +779,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   local-only mode.
 - Desktop composer provider selection defaults to Codex and remains explicit;
   availability evidence may disable a lane but never silently substitutes
-  Claude. The hotbar exposes one typed provider selector and, for Codex, one
-  typed reasoning-effort selector whose value reaches the spawned Codex
-  `model_reasoning_effort` argument.
+  Claude. The hotbar exposes typed provider, provider-scoped model, and (for
+  Codex) reasoning-effort selectors in that order. Codex permits exactly
+  `gpt-5.6-sol` and `gpt-5.5`; Claude permits exactly `claude-fable-5`,
+  `claude-opus-4-8`, and `claude-sonnet-5`. The selected model reaches the
+  exact Codex `-m` or Claude Agent SDK `Options.model` launch field, and a
+  provider-reported Claude substitution fails before content is surfaced.
+  Provider/model choices are disabled while a turn is pending.
+- The composer's leading add control remains a genuinely icon-only shared
+  Effect Native `IconButton` with a required accessible label. Its compact
+  `sm` size is 32px; it may not regress to the generic 44px circular action
+  treatment used for Send and Stop.
 - Desktop conversation navigation is globally ordered by descending
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration

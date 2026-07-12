@@ -535,6 +535,32 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5" })
   })
 
+  test("owner-selected Opus 4.8 and Sonnet 5 slugs reach SDK Options.model exactly", async () => {
+    for (const model of ["claude-opus-4-8", "claude-sonnet-5"] as const) {
+      const harness = makeRuntimeHarness({
+        script: async function* () {
+          yield { type: "system", subtype: "init", session_id: `session-${model}`, model }
+          yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+        },
+      })
+      const sink = collect()
+      const result = await harness.runtime.runTurn({
+        turnRef: `turn-${model}`,
+        threadRef: `thread-${model}`,
+        history: [],
+        message: "hi",
+        model,
+        emit: sink.emit,
+      })
+      expect(result.ok).toBe(true)
+      expect(harness.captured[0]!.options.model).toBe(model)
+      expect(sink.events.find(event => event.kind === "model_effective")).toEqual({
+        kind: "model_effective",
+        model,
+      })
+    }
+  })
+
   test("prefix-match tolerates versioned Fable model IDs and dedupes repeated init model reports", async () => {
     const harness = makeRuntimeHarness({
       script: async function* () {

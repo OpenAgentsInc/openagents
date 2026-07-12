@@ -46,7 +46,7 @@ export const CODEX_LOCAL_REASONING_EFFORT = CODEX_CHILD_REASONING_EFFORT
 
 /** The renderer-facing model caption value ("(requested)" = spawn-config
  * truth, never a provider echo — the exec stream has none). */
-export const codexLocalRequestedModelLabel = (): string => `${CODEX_LOCAL_MODEL} (requested)`
+export const codexLocalRequestedModelLabel = (model: string = CODEX_LOCAL_MODEL): string => `${model} (requested)`
 
 /** Effective-model caption trace line for codex turns ("Codex · gpt-5.6-sol
  * (requested)") — the lane-branded sibling of fableLocalModelNoteText. */

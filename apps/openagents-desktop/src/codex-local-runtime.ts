@@ -89,7 +89,7 @@ import {
   type FableLocalHistoryMessage,
 } from "./fable-local-runtime.ts"
 import type { CodexPreflight } from "./codex-preflight.ts"
-import type { CodexReasoningEffort } from "./fable-local-contract.ts"
+import type { CodexModel, CodexReasoningEffort } from "./fable-local-contract.ts"
 
 /** Wall clock per codex turn (host-side SIGTERM; exec has no timeout flag). */
 export const CODEX_LOCAL_TIMEOUT_MS = 240_000
@@ -100,6 +100,7 @@ export type CodexLocalTurnInput = Readonly<{
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
   accountRef?: string
+  model?: CodexModel
   reasoningEffort?: CodexReasoningEffort
   /**
    * Optional image attachments (capability I1). `codex exec` accepts images
@@ -278,6 +279,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     imagePaths: ReadonlyArray<string>
     resumeThreadId: string | null
     reasoningEffort?: CodexReasoningEffort
+    model: CodexModel
     emit: (event: FableLocalEvent) => void
     control: { interrupted: boolean; child: ChildLike | null }
   }>): Promise<ParsedTurnAttempt> =>
@@ -304,7 +306,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             "exec",
             "--json",
             "-m",
-            CODEX_LOCAL_MODEL,
+            input.model,
             "-c",
             `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
             "-s",
@@ -321,7 +323,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             input.resumeThreadId,
             "--json",
             "-m",
-            CODEX_LOCAL_MODEL,
+            input.model,
             "-c",
             `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
             "-c",
@@ -655,7 +657,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     activeTurns.set(input.turnRef, control)
     input.emit({ kind: "turn_started" })
     // Spawn-config truth caption (the exec stream echoes no model back).
-    input.emit({ kind: "model_effective", model: `${CODEX_LOCAL_MODEL} (requested)` })
+    const requestedModel = input.model ?? CODEX_LOCAL_MODEL
+    input.emit({ kind: "model_effective", model: `${requestedModel} (requested)` })
 
     try {
       let reconnectCount = 0
@@ -681,6 +684,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           emit: input.emit,
           control,
           reasoningEffort: input.reasoningEffort,
+          model: requestedModel,
         })
         if (attempt.outcome === "success") {
           health.recordSuccess(account.ref)

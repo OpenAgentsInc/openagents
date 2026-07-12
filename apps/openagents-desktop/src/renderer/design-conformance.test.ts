@@ -200,7 +200,7 @@ describe("design conformance (c): per-surface structural recipes", () => {
     expect(row?.style).toMatchObject({ borderRadius: "sm" })
   })
 
-  test("composer: radius capped at xl; provider and reasoning use compact native selects", () => {
+  test("composer: radius capped at xl; provider, model, and reasoning use compact native selects", () => {
     const state: DesktopShellState = {
       ...baseState(),
       harnessLanes: {
@@ -215,6 +215,9 @@ describe("design conformance (c): per-surface structural recipes", () => {
     expect(provider?._tag).toBe("Select")
     expect(provider?.value).toBe("codex")
     expect(provider?.style).toMatchObject({ backgroundColor: "background", borderRadius: "md" })
+    const model = byKey(view, "shell-model-select") as { _tag?: string; value?: string; style?: Record<string, unknown> }
+    expect(model?._tag).toBe("Select")
+    expect(model?.value).toBe("gpt-5.6-sol")
     const reasoning = byKey(view, "shell-reasoning-select") as { _tag?: string; value?: string; style?: Record<string, unknown> }
     expect(reasoning?._tag).toBe("Select")
     expect(reasoning?.value).toBe("medium")

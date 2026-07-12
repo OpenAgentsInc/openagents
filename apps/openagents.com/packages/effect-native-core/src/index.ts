@@ -2962,6 +2962,7 @@ export interface BlurredPopupView extends NodeBase {
 export interface IconButtonView extends NodeBase {
   readonly _tag: "IconButton"
   readonly icon: IconName
+  readonly size?: "sm" | "md"
   readonly accessibilityLabel: string
   readonly onPress: IntentRef
   readonly disabled?: boolean
@@ -4275,6 +4276,7 @@ export const IconButtonSchema: Schema.Codec<IconButtonView, IconButtonView> =
   Schema.TaggedStruct("IconButton", {
     ...CommonFields,
     icon: IconNameSchema,
+    size: Schema.Literals(["sm", "md"] as const).pipe(Schema.optionalKey),
     accessibilityLabel: Schema.NonEmptyString,
     onPress: IntentRefSchema,
     disabled: Schema.Boolean.pipe(Schema.optionalKey),

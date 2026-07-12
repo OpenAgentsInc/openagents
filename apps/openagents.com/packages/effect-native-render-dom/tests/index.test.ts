@@ -6,6 +6,7 @@ import {
   CodeEditor,
   decodeCodeEditorHostProps,
   Icon,
+  IconButton,
   IntentRef,
   List,
   SplitPane,
@@ -32,6 +33,27 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("compact icon buttons lower to a 32px icon-only accessible control", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      yield* makeDomRenderer({ document }).mount(root, Stream.succeed(IconButton({
+        key: "compact-add",
+        icon: "Plus",
+        size: "sm",
+        accessibilityLabel: "Attach image",
+        onPress: IntentRef("Attach"),
+      })), () => Effect.succeed(undefined))
+      const button = root.querySelector<HTMLButtonElement>('[data-en-key="compact-add"]')!
+      expect(button.style.width).toBe("32px")
+      expect(button.style.height).toBe("32px")
+      expect(button.getAttribute("aria-label")).toBe("Attach image")
+      expect(button.textContent).toBe("")
+    })))
+  })
+
   test("prepend anchoring corrects variable-height history before the next paint", async () => {
     const window = new Window({ url: "http://localhost/" })
     const document = window.document as unknown as Document

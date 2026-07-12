@@ -605,10 +605,15 @@ describe("desktopShellView (state -> component tree)", () => {
     const view = desktopShellView(baseState)
     const provider = nodeByKey(view, "shell-harness-select") as { _tag?: string; value?: string; onChange?: { name?: string }; options?: ReadonlyArray<{ value: string; label: string }> }
     const reasoning = nodeByKey(view, "shell-reasoning-select") as { _tag?: string; value?: string; onChange?: { name?: string } }
+    const model = nodeByKey(view, "shell-model-select") as { _tag?: string; value?: string; onChange?: { name?: string }; options?: ReadonlyArray<{ value: string; label: string }> }
     expect(provider?._tag).toBe("Select")
     expect(provider?.onChange?.name).toBe("DesktopHarnessSelected")
     expect(provider?.value).toBe("codex")
     expect(provider?.options?.map(option => option.label)).toEqual(["Codex", "Claude"])
+    expect(model?._tag).toBe("Select")
+    expect(model?.value).toBe("gpt-5.6-sol")
+    expect(model?.options?.map(option => option.label)).toEqual(["GPT-5.6", "GPT-5.5"])
+    expect(model?.onChange?.name).toBe("DesktopModelSelected")
     expect(reasoning?._tag).toBe("Select")
     expect(reasoning?.value).toBe("medium")
     expect(reasoning?.onChange?.name).toBe("DesktopCodexReasoningSelected")
@@ -616,10 +621,14 @@ describe("desktopShellView (state -> component tree)", () => {
 
     const fableSelected = desktopShellView({ ...baseState, selectedHarness: "fable" })
     expect(nodeByKey(fableSelected, "shell-harness-select")?.value).toBe("fable")
+    expect(nodeByKey(fableSelected, "shell-model-select")?.value).toBe("claude-fable-5")
+    expect((nodeByKey(fableSelected, "shell-model-select")?.options as ReadonlyArray<{ label: string }>).map(option => option.label))
+      .toEqual(["Fable", "Opus 4.8", "Sonnet 5"])
     expect(nodeByKey(fableSelected, "shell-reasoning-select")).toBeUndefined()
 
     const pending = desktopShellView(withPending(baseState, true))
     expect(nodeByKey(pending, "shell-harness-select")?.disabled).toBe(true)
+    expect(nodeByKey(pending, "shell-model-select")?.disabled).toBe(true)
     expect(nodeByKey(pending, "shell-reasoning-select")?.disabled).toBe(true)
   })
 
@@ -641,9 +650,10 @@ describe("desktopShellView (state -> component tree)", () => {
     const keys = (bar?.children ?? []).map((child) => child.key)
     expect(keys[0]).toBe("shell-attach-image")
     expect(keys[1]).toBe("shell-harness-select")
-    expect(keys[2]).toBe("shell-reasoning-select")
-    expect(bar?.children?.[3]?._tag).toBe("Spacer")
-    expect(bar?.children?.[3]?.flex).toBe(true)
+    expect(keys[2]).toBe("shell-model-select")
+    expect(keys[3]).toBe("shell-reasoning-select")
+    expect(bar?.children?.[4]?._tag).toBe("Spacer")
+    expect(bar?.children?.[4]?.flex).toBe(true)
     // The trailing send control is circular and dims to a ghost while blank.
     const blankSend = nodeByKey(view, "shell-note") as { style?: Record<string, unknown> }
     expect(blankSend?.style).toMatchObject({ backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" })
@@ -716,11 +726,12 @@ describe("composer image input (capability I1)", () => {
 
   test("renders the leading attach affordance in the composer", () => {
     const attach = nodeByKey(desktopShellView(baseState), "shell-attach-image") as {
-      _tag?: string; icon?: string; onPress?: { name?: string }; accessibilityLabel?: string; disabled?: boolean
+      _tag?: string; icon?: string; size?: string; onPress?: { name?: string }; accessibilityLabel?: string; disabled?: boolean
     }
     expect(attach?._tag).toBe("IconButton")
     expect(attach?.onPress?.name).toBe("DesktopComposerImagePickRequested")
     expect(attach?.accessibilityLabel).toBe("Attach image")
+    expect(attach?.size).toBe("sm")
     expect(attach?.disabled).toBe(false)
   })
 
@@ -1663,7 +1674,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
   test("harness selection dispatches through the registry and rides the next send", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const sent: Array<{ id: string; message: string; harness?: string; reasoningEffort?: string }> = []
+        const sent: Array<{ id: string; message: string; harness?: string; model?: string; reasoningEffort?: string }> = []
         const state = yield* SubscriptionRef.make(baseState)
         const registry = yield* makeIntentRegistry(
           desktopShellIntents,
@@ -1672,7 +1683,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
             newThread: async () => null,
             openThread: async () => null,
             sendMessage: async (input) => {
-              sent.push({ id: input.id, message: input.message, harness: input.harness, reasoningEffort: input.reasoningEffort })
+              sent.push({ id: input.id, message: input.message, harness: input.harness, model: input.model, reasoningEffort: input.reasoningEffort })
               return { ok: false, error: "Recorded only." }
             },
           }),
@@ -1684,11 +1695,15 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         yield* registry.dispatch(resolveIntentRef(provider.onChange, "fable"))
         expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("fable")
 
+        const claudeView = desktopShellView(yield* SubscriptionRef.get(state))
+        const claudeModel = nodeByKey(claudeView, "shell-model-select") as { onChange: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(claudeModel.onChange, "claude-opus-4-8"))
+
         const input = nodeByKey(view, "shell-input") as {
           onSubmit: Parameters<typeof resolveIntentRef>[0]
         }
         yield* registry.dispatch(resolveIntentRef(input.onSubmit, "route me"))
-        expect(sent).toEqual([{ id: testThread.id, message: "route me", harness: "fable", reasoningEffort: undefined }])
+        expect(sent).toEqual([{ id: testThread.id, message: "route me", harness: "fable", model: "claude-opus-4-8", reasoningEffort: undefined }])
 
         const codexProvider = nodeByKey(view, "shell-harness-select") as {
           onChange: Parameters<typeof resolveIntentRef>[0]
@@ -1696,10 +1711,12 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         yield* registry.dispatch(resolveIntentRef(codexProvider.onChange, "codex"))
         expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("codex")
         const codexView = desktopShellView(yield* SubscriptionRef.get(state))
+        const codexModel = nodeByKey(codexView, "shell-model-select") as { onChange: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(codexModel.onChange, "gpt-5.5"))
         const reasoning = nodeByKey(codexView, "shell-reasoning-select") as { onChange: Parameters<typeof resolveIntentRef>[0] }
         yield* registry.dispatch(resolveIntentRef(reasoning.onChange, "high"))
         yield* registry.dispatch(resolveIntentRef(input.onSubmit, "think harder"))
-        expect(sent.at(-1)).toEqual({ id: testThread.id, message: "think harder", harness: "codex", reasoningEffort: "high" })
+        expect(sent.at(-1)).toEqual({ id: testThread.id, message: "think harder", harness: "codex", model: "gpt-5.5", reasoningEffort: "high" })
       }),
     )
   })

@@ -68,6 +68,7 @@ import {
   type FableLocalAvailability,
   type FableLocalEvent,
   type FableLocalFailureReason,
+  type ClaudeModel,
   type FableLocalImageAttachment,
   type FableLocalMcpServerConfig,
   type FableLocalPlanEntry,
@@ -90,8 +91,6 @@ const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
  * model (seen live: claude-sonnet-4-6).
  */
 export const FABLE_LOCAL_MODEL = "claude-fable-5"
-/** Prefix-match tolerance for versioned Fable IDs (e.g. claude-fable-5-…). */
-export const FABLE_LOCAL_MODEL_FAMILY_PREFIX = "claude-fable"
 /**
  * Tools this headless lane strips from the model's context entirely (never
  * offered, not offered-then-denied — the model must not see tools that can
@@ -249,6 +248,7 @@ export type FableLocalTurnInput = Readonly<{
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
   accountRef?: string
+  model?: ClaudeModel
   /** Exact host-validated SDK skill name selected through explicit slash syntax. */
   skillName?: string
   /**
@@ -1189,6 +1189,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       }
 
       try {
+        const requestedModel = input.model ?? FABLE_LOCAL_MODEL
         const session = query({
           prompt,
           options: {
@@ -1214,7 +1215,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             abortController: abort,
             includePartialMessages: true,
             maxTurns: FABLE_LOCAL_MAX_TURNS,
-            model: FABLE_LOCAL_MODEL,
+            model: requestedModel,
             // Owner full-access lane, but NOT bypassPermissions: bypass
             // would "Bypass all permission checks" (sdk.d.ts) — including
             // the canUseTool handler AskUserQuestion parks on. Default mode
@@ -1266,11 +1267,11 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 announcedModel = effectiveModel
                 input.emit({ kind: "model_effective", model: bounded(effectiveModel, 120) })
               }
-              if (!effectiveModel.startsWith(FABLE_LOCAL_MODEL_FAMILY_PREFIX)) {
+              if (effectiveModel !== requestedModel && !effectiveModel.startsWith(`${requestedModel}-`)) {
                 abort.abort()
                 return finish(failure(
                   "model_substituted",
-                  `requested ${FABLE_LOCAL_MODEL}, effective ${effectiveModel}`,
+                  `requested ${requestedModel}, effective ${effectiveModel}`,
                 ))
               }
             }

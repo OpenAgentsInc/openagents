@@ -89,6 +89,8 @@ import {
   fableLocalModelNoteText,
   fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
+  isClaudeModel,
+  isCodexModel,
   startRequestHasContent,
 } from "./fable-local-contract.ts"
 import {
@@ -1565,8 +1567,8 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   if (request === null || !startRequestHasContent(request)) {
     return { ok: false, error: "That message could not be sent." }
   }
-  if (request.target !== undefined &&
-      (request.target.provider !== "claude_agent" || request.target.model !== FABLE_LOCAL_MODEL)) {
+  const requestedModel = request.model ?? request.target?.model ?? FABLE_LOCAL_MODEL
+  if ((request.target !== undefined && request.target.provider !== "claude_agent") || !isClaudeModel(requestedModel)) {
     return { ok: false, error: "That provider target is not available on the Claude lane." }
   }
   const selectedSkill = request.skill === undefined
@@ -1609,6 +1611,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     message: turnPromptText(request.message, request.images),
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
     ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
+    model: requestedModel,
     ...(selectedSkill === null ? {} : { skillName: selectedSkill.name }),
     ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
@@ -1641,7 +1644,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
         usageLedger.record({
           provider: "claude_agent",
           accountRef: turnEvent.accountRef,
-          requestedModel: FABLE_LOCAL_MODEL,
+          requestedModel,
           kind: "turn",
           usage: turnEvent.usage ?? (turnEvent.totalTokens === null
             ? null
@@ -1781,8 +1784,8 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   if (request === null || !startRequestHasContent(request)) {
     return { ok: false, error: "That message could not be sent." }
   }
-  if (request.target !== undefined &&
-      (request.target.provider !== "codex" || request.target.model !== CODEX_LOCAL_MODEL)) {
+  const requestedModel = request.model ?? request.target?.model ?? CODEX_LOCAL_MODEL
+  if ((request.target !== undefined && request.target.provider !== "codex") || !isCodexModel(requestedModel)) {
     return { ok: false, error: "That provider target is not available on the Codex lane." }
   }
   if (request.skill !== undefined) {
@@ -1816,18 +1819,20 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     history,
     message: turnPromptText(request.message, request.images),
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
+    model: requestedModel,
+    ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
       // CUT-11 (#8691): same one-callback graph fold as the fable lane.
       liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
       // Session usage ledger: exact usage from turn.completed, attributed to
-      // the Codex account with gpt-5.6-sol recorded as spawn-config truth.
+      // the Codex account with the owner-selected model as spawn-config truth.
       if (turnEvent.kind === "turn_completed" && turnEvent.accountRef !== undefined) {
         usageLedger.record({
           provider: "codex",
           accountRef: turnEvent.accountRef,
-          requestedModel: CODEX_CHILD_MODEL,
+          requestedModel,
           kind: "turn",
           usage: turnEvent.usage ?? (turnEvent.totalTokens === null
             ? null
@@ -1878,7 +1883,7 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     meta: {
       lane: "codex-local",
       turnRef: request.turnRef,
-      model: effectiveModel ?? codexLocalRequestedModelLabel(),
+      model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
       accountRef: result.accountRef,
       ...(result.threadId === null ? {} : { requestId: result.threadId }),
       totalTokens: result.totalTokens,

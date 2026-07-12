@@ -80,7 +80,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(captured[0]!.env.CODEX_HOME).toBeUndefined()
   })
 
-  test("fresh turn spawns the receipted chat recipe with the owner-selected reasoning effort", async () => {
+  test("fresh turn spawns the receipted chat recipe with the owner-selected model and reasoning effort", async () => {
     const captured: SpawnCapture[] = []
     const root = scratch()
     const runtime = makeCodexLocalRuntime({
@@ -99,6 +99,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       threadRef: "thread-1",
       history: [],
       message: "hello codex",
+      model: "gpt-5.5",
       reasoningEffort: "high",
       emit: sink.emit,
     })
@@ -108,7 +109,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       "exec",
       "--json",
       "-m",
-      "gpt-5.6-sol",
+      "gpt-5.5",
       "-c",
       "model_reasoning_effort=high",
       "-s",
@@ -123,6 +124,10 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(captured[0]!.args).not.toContain("--ephemeral")
     expect(captured[0]!.env.CODEX_HOME).toBe("/isolated/accounts/codex/codex")
     expect(captured[0]!.cwd).toBe(workspace)
+    expect(sink.events.find(event => event.kind === "model_effective")).toEqual({
+      kind: "model_effective",
+      model: "gpt-5.5 (requested)",
+    })
   })
 
   test("capability I1: attached images are written to the turn workspace and passed as `-i <path>` before the prompt positional", async () => {
