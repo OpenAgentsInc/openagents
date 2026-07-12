@@ -5,7 +5,7 @@ import type {
   DesktopRuntimeGatewayResponse,
 } from "./runtime-gateway-contract.ts"
 import { DesktopRuntimeGatewayProtocolVersion } from "./runtime-gateway-contract.ts"
-import type { CodexHistoryCatalog, CodexHistoryPage } from "./codex-history-contract.ts"
+import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "./codex-history-contract.ts"
 import type {
   ConfirmedAgentRun,
   ConfirmedAgentTimelineEvent,
@@ -80,6 +80,7 @@ export type DesktopRuntimeCommands = Readonly<{
 export type DesktopRuntimeCodexHistory = Readonly<{
   catalog: () => CodexHistoryCatalog | Promise<CodexHistoryCatalog>
   page: (threadRef: string, offset: number, limit: number) => CodexHistoryPage | null | Promise<CodexHistoryPage | null>
+  search: (query: string, limit: number) => CodexHistorySearchResponse | Promise<CodexHistorySearchResponse>
 }>
 
 export type DesktopRuntimeInteractions = Readonly<{
@@ -235,6 +236,11 @@ export const createDesktopRuntimeGateway = (
           const service = codexHistory()
           if (service === null) return { kind: "codex_history_unavailable", requestId: request.requestId, reason: "read_failed" }
           return Promise.resolve(service.page(request.query.threadRef, request.query.offset, request.query.limit)).then(page => page === null ? ({ kind: "codex_history_unavailable" as const, requestId: request.requestId, reason: "not_found" as const }) : ({ kind: "codex_history_page" as const, requestId: request.requestId, page })).catch(() => ({ kind: "codex_history_unavailable" as const, requestId: request.requestId, reason: "read_failed" as const }))
+        }
+        if (request.query.id === "codex.history.search") {
+          const service = codexHistory()
+          if (service === null) return { kind: "codex_history_unavailable", requestId: request.requestId, reason: "read_failed" }
+          return Promise.resolve(service.search(request.query.query, request.query.limit)).then(search => ({ kind: "codex_history_search" as const, requestId: request.requestId, search })).catch(() => ({ kind: "codex_history_unavailable" as const, requestId: request.requestId, reason: "read_failed" as const }))
         }
         if (request.query.id === "conversation.catalog") {
           const service = conversation()

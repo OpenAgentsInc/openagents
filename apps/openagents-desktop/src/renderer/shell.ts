@@ -105,8 +105,8 @@ import {
   type WorkspaceBrowserBridge,
   type WorkspaceBrowserState,
 } from "./workspace-browser.ts"
-import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyItemPageOffset, historyItemPageSize, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
-import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
+import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyItemPageOffset, historyItemPageSize, historySearchActive, historySearchField, historySearchResultSidebarItems, historySourceBadgeLabel, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
+import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "../codex-history-contract.ts"
 import {
   emptyDesktopCodingCatalogProjection,
   desktopWorkspaceForCodingFocus,
@@ -522,6 +522,7 @@ export const desktopShellIntents = [
 export type CodexHistoryHost = Readonly<{
   catalog: () => Promise<CodexHistoryCatalog | null>
   page: (threadRef: string, offset: number, limit: number) => Promise<CodexHistoryPage | null>
+  search?: (query: string, limit: number) => Promise<CodexHistorySearchResponse | null>
   save?: (value: Readonly<{ rootThreadRef: string; selectedThreadRef: string; offset: number; selectedItemRef: string | null; railCollapsed: boolean; anchorItemRef: string | null; expandedThreadRefs?:ReadonlyArray<string> }>) => void
 }>
 
@@ -1414,6 +1415,40 @@ export const makeDesktopShellHandlers = (
   HistoryInspectorToggled: () => SubscriptionRef.update(state, current => { const railCollapsed=!current.history.railCollapsed;const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:current.history.selectedItemRef,railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:current.history.expandedThreadRefs});return { ...current, history: { ...current.history, railCollapsed } } }),
   HistoryAgentExpandedToggled: (id) => SubscriptionRef.update(state,current=>{const expandedThreadRefs=current.history.expandedThreadRefs.includes(id)?current.history.expandedThreadRefs.filter(ref=>ref!==id):[...current.history.expandedThreadRefs,id];const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:current.history.selectedItemRef,railCollapsed:current.history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs});return {...current,history:{...current.history,expandedThreadRefs}}}),
   HistoryCatalogMoreRequested: () => SubscriptionRef.update(state,current=>({...current,history:{...current.history,visibleRootCount:Math.min(current.history.catalog.roots.length,current.history.visibleRootCount+historyCatalogPageSize)}})),
+  // Free-text session search (#8712 H4). The query drives the bounded local
+  // index cache; results replace the catalog list until cleared. Blank query
+  // clears. Never mutates the loss-accounted catalog/page truth.
+  HistorySearchChanged: (query) => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: query } }))
+    if (query.trim() === "") { yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchResults: [], searchTruncated: false } })); return }
+    if (historyHost.search === undefined) return
+    const response = yield* Effect.promise(() => historyHost.search!(query, 40))
+    yield* SubscriptionRef.update(state, current => current.history.searchQuery === query
+      ? { ...current, history: { ...current.history, searchResults: response?.results ?? [], searchTruncated: response?.truncated ?? false } }
+      : current)
+  }),
+  HistorySearchCleared: () => SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: "", searchResults: [], searchTruncated: false } })),
+  // Open a ranked result: window the session on its matching item (content
+  // result) or at its end (title result), reusing the bottom-anchored flow.
+  HistorySearchResultOpened: (threadRef) => Effect.gen(function* () {
+    const before = (yield* SubscriptionRef.get(state)).history
+    const result = before.searchResults.find(candidate => candidate.threadRef === threadRef)
+    if (result === undefined) return
+    yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, pendingThreadRef: threadRef } }))
+    const probe = yield* Effect.promise(() => historyHost.page(threadRef, 0, 1))
+    const anchorSequence = result.matchSequence
+    const offset = probe === null ? 0 : anchorSequence === null ? historyTailOffset(probe.totalItems) : historyItemPageOffset(anchorSequence)
+    const page = probe === null ? null : yield* Effect.promise(() => historyHost.page(threadRef, offset, historyItemPageSize))
+    if (page === null) { yield* SubscriptionRef.update(state, current => current.history.pendingThreadRef === threadRef ? ({ ...current, history: { ...current.history, pendingThreadRef: null } }) : current); return }
+    const selectedItemRef = result.matchItemRef !== null && page.items.some(item => item.itemRef === result.matchItemRef) ? result.matchItemRef : null
+    yield* SubscriptionRef.update(state, (current): DesktopShellState => {
+      if (current.history.pendingThreadRef !== threadRef) return current
+      const expandedThreadRefs = page.agents.filter(agent => agent.descendantCount > 0).map(agent => agent.threadRef)
+      const history = { ...current.history, page, selectedItemRef, expandedThreadRefs, pendingThreadRef: null, loadingEdge: null }
+      historyHost.save?.({ rootThreadRef: page.rootThreadRef, selectedThreadRef: page.selectedThreadRef, offset: page.offset, selectedItemRef, railCollapsed: history.railCollapsed, anchorItemRef: page.items[0]?.itemRef ?? null, expandedThreadRefs })
+      return { ...current, workspace: "chat", history }
+    })
+  }),
   DesktopWorkspaceSelected: (workspace) =>
     Effect.gen(function* () {
       yield* SubscriptionRef.update(state, (current) => withWorkspace(current, workspace))
@@ -2006,8 +2041,8 @@ const historySidebarItems = (state: DesktopShellState) => {
   const rows=roots.map((thread,index) => ({
     id:`sidebar-thread-${thread.threadRef}`,
     label:thread.title,
-    meta:state.historyShortcutHintsVisible ? (index < 9 ? String(index + 1) : "") : formatRelativeTimestamp(thread.updatedAt),
-    accessibilityLabel:`Open historical chat ${thread.title}, ${thread.descendantCount} descendant agents`,
+    meta:state.historyShortcutHintsVisible ? (index < 9 ? String(index + 1) : "") : `${historySourceBadgeLabel(thread.source)} · ${formatRelativeTimestamp(thread.updatedAt)}`,
+    accessibilityLabel:`Open ${historySourceBadgeLabel(thread.source)} chat ${thread.title}, ${thread.descendantCount} descendant agents`,
     onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
   }))
   return state.history.visibleRootCount>=state.history.catalog.roots.length?rows:[...rows,{
@@ -2058,12 +2093,16 @@ const shellSidebar = (state: DesktopShellState): View => {
             {id:"shell-command-palette-toggle",label:"Commands",icon:"Menu",accessibilityLabel:"Open command palette",onSelect:IntentRef("DesktopCommandPaletteToggled")},
             {id:"shell-settings-toggle",label:"Settings",icon:"Settings",selected:state.workspace==="settings",accessibilityLabel:state.workspace==="settings"?"Close Settings":"Open Settings",onSelect:IntentRef("DesktopSettingsToggled")},
           ]},
-          {id:"sidebar-history-list",label:"Codex history · all time",items:state.history.catalog.roots.length>0?historySidebarItems(state):localSidebarItems(state)},
+          historySearchActive(state.history)
+            ? {id:"sidebar-history-list",label:`Search · ${state.history.searchResults.length} result${state.history.searchResults.length===1?"":"s"}${state.history.searchTruncated?" (bounded)":""}`,items:historySearchResultSidebarItems(state.history)}
+            : {id:"sidebar-history-list",label:"Coding history · all time",items:state.history.catalog.roots.length>0?historySidebarItems(state):localSidebarItems(state)},
         ],
-        a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,state.history.catalog.roots.length)} of ${state.history.catalog.roots.length} Codex conversations`},
+        a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,state.history.catalog.roots.length)} of ${state.history.catalog.roots.length} sessions`},
         style:{flex:1,minHeight:0,width:"full"},
       }),
-      ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
+      historySearchField(state.history),
+      ...(historySearchActive(state.history) && state.history.searchResults.length === 0 ? [Text({ key: "sidebar-search-empty", content: "No sessions match.", variant: "caption", color: "textMuted" })] : []),
+      ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 && !historySearchActive(state.history) ? [Text({ key: "sidebar-chats-empty", content: "No local coding history found.", variant: "body", color: "textMuted" })] : []),
       ...(accountsBox === null ? [] : [accountsBox]),
     ],
   )

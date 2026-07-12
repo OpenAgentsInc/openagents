@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.39",
+    version: "2026-07-11.40",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -2182,6 +2182,86 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the windowed-loading unit suite; the Electron smoke bottom-anchored + prefetch steps are written but were not executed this session (owner watching a movie) — the coordinator runs the visual/smoke gate on integration.",
+      },
+      {
+        contractId: "openagents_desktop.history.claude_import.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "local coding-history import",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "capability-audit", statedBy: "agent", statedOn: "2026-07-11" },
+        statement:
+          "From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4 H3): History import/browse must import ~/.claude alongside ~/.codex — the desktop imported ~/.codex history only, with no ~/.claude importer, even though the window held 2,243 Claude files. OpenAgents Desktop discovers Claude Code parent sessions and subagent/workflow sidechains, reconstructs the same loss-accounted parent/child agent graph (edge = the invoking Agent tool call's structured toolUseResult.agentId, NOT parentUuid), and surfaces Claude sessions in the SAME history catalog as Codex, tagged by source.",
+        authorityBoundary:
+          "Read-only, owner-local, additive. The Claude importer (claude-history.ts) and the merged surface (merged-history.ts) return only the same schema-bounded, credential-redacted CodexHistory catalog/page projections the Codex importer returns, namespaced `claude:` so page/search routing is unambiguous. Import NEVER changes what counts: each source keeps its whole-conversation completeness equation source = rendered + redactions + gaps, and the ~3% Claude orphan class (a child file with no recoverable structured edge) is shown and counted as an explicit topology gap, never silently hidden. Raw prompts, thinking, tool arguments, command output, credentials, and file contents never reach the renderer beyond the existing bounded/redacted item fields; no filesystem authority, resume, or provider runtime authority enters the renderer.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/claude-history.ts",
+          "apps/openagents-desktop/src/merged-history.ts",
+          "apps/openagents-desktop/src/codex-history-contract.ts",
+          "docs/teardowns/2026-07-10-claude-subagents-rendering-analysis.md",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "claude_import.graph_and_loss_accounting",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/claude-history.test.ts",
+            description:
+              "Reconstructs the Agent-edge graph (source-tagged, namespaced refs), projects rich redacted items, links subagent previews, represents an unlinked child as an explicit orphan/topology gap, pages without overlap/omission, and holds source = rendered + redactions + gaps.",
+          },
+          {
+            id: "claude_import.merged_catalog_and_scale",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/tests/history-search.test.ts",
+            description:
+              "A mixed Codex+Claude catalog shows both sources tagged and routes pages by ref; the 100MiB/100-child scale oracle (claude-history-performance.e2e.test.ts) keeps discovery bounded and the completeness equation intact; the capability-evals headless oracle drives the merged catalog/page.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the Claude importer unit suite, the merged-catalog + search suite, the scale oracle, and the capability-evals headless H3 oracle.",
+      },
+      {
+        contractId: "openagents_desktop.history.free_text_search.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "local coding-history search",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "capability-audit", statedBy: "agent", statedOn: "2026-07-11" },
+        statement:
+          "From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4 H4 / §6 item 11): Session search must go beyond the structured project:/repository:/state: catalog grammar — the daily reality is 'find that conversation where…' across 3,262 session files, and nothing searched transcript content. OpenAgents Desktop adds free-text matching over session TITLES and a bounded per-session CONTENT index across Codex AND Claude sessions, ranked by match then recency, with a search box in the history workspace whose results open the session at the matching item.",
+        authorityBoundary:
+          "The content index is a REBUILDABLE LOCAL CACHE, never authority (per the audit's History/Discovery/Memory split, indexes are caches). It ranks over titles (always available from the loss-accounted catalog) and a bounded content projection of the most-recent sessions (bounded item cap; first search never blocks on the whole archive; response reports indexedSessions/truncated honestly). Search NEVER mutates catalog/page truth or the completeness equation. A content result carries the exact matching item ref so opening it windows the session on that item, reusing the bottom-anchored restore-to-item flow; a title result opens at the end. Matching is deterministic substring filtering of an owner-local corpus — not ad-hoc intent routing — and surfaces only the same bounded/redacted item text the projector already exposes.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/history-search.ts",
+          "apps/openagents-desktop/src/merged-history.ts",
+          "apps/openagents-desktop/src/renderer/history-workspace.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "free_text_search.ranking_and_open_at_item",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/tests/history-search.test.ts",
+            description:
+              "Title match, content match with the exact open-at-item ref, cross-source recency ranking, empty/no-match returns nothing, and the index is rebuildable (a fresh build yields identical ranked results); the pure ranking core proves titles outrank content and recency breaks ties.",
+          },
+          {
+            id: "free_text_search.ui",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/history-workspace.test.ts",
+            description:
+              "The search field renders a query-bound TextField; a non-blank query activates search; result rows carry the source badge and dispatch HistorySearchResultOpened with the threadRef; a content result opens at its matching item while a title result opens at the end.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the search ranking/open-at-item suite, the history-workspace search UI suite, and the capability-evals headless H4 oracle.",
       },
       {
         contractId: "openagents_desktop.chat.fable_local_runtime_capabilities.v1",

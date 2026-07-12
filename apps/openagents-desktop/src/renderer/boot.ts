@@ -75,7 +75,7 @@ import type {
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
-import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
+import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "../codex-history-contract.ts"
 import { historyAgentTraversalTarget, historyCatalogPageSize, historyItemPageSize, historyPrependScrollTop, historyShouldFetchNewer, historyShouldFetchOlder, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
 import {
   decodeDesktopCodingCatalogProjection,
@@ -577,6 +577,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         const response = await bridge.runtimeRequest({ kind: "query", requestId: `renderer-history-page-${++historyRequestSequence}`, query: { id: "codex.history.page", threadRef, offset, limit } })
         return response.kind === "codex_history_page" ? response.page : null
       },
+      search: async (query: string, limit: number): Promise<CodexHistorySearchResponse | null> => {
+        if (typeof bridge?.runtimeRequest !== "function") return null
+        const response = await bridge.runtimeRequest({ kind: "query", requestId: `renderer-history-search-${++historyRequestSequence}`, query: { id: "codex.history.search", query, limit } })
+        return response.kind === "codex_history_search" ? response.search : null
+      },
       save: (value: any): void => { try { localStorage.setItem("openagents.desktop.history.v1",JSON.stringify({...value,expandedThreadRefs:Array.isArray(value?.expandedThreadRefs)?value.expandedThreadRefs:[]})) } catch { /* restoration is best effort and contains refs only */ } },
     }
     const registry = yield* makeIntentRegistry(
@@ -760,10 +765,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       // Selection-driven history loads land bottom-anchored (EP250: "show
       // the most recent messages, starting at bottom").
       const shouldAnchorHistoryEnd = ref.name === "HistoryConversationSelected" || ref.name === "HistoryAgentSelected"
+      // Opening a search result windows on its matching item (content match) or
+      // the end (title match) — reuse the restore-to-item scroll flow (H4).
+      const shouldAnchorSearchOpen = ref.name === "HistorySearchResultOpened"
       return registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null)).pipe(
         Effect.ensuring(Effect.sync(() => {
           if (shouldFocus) focusComposer()
           if (shouldAnchorHistoryEnd) void anchorHistoryEnd()
+          if (shouldAnchorSearchOpen) void Effect.runPromise(SubscriptionRef.get(state)).then(current => { const itemRef = current.history.selectedItemRef; void (itemRef === null ? anchorHistoryEnd() : anchorHistoryItem(itemRef)) })
         })),
       )
     }

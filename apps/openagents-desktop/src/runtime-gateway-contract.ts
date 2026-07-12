@@ -20,7 +20,7 @@ import {
   RuntimeInteractionProjection as CanonicalRuntimeInteractionProjectionSchema,
   type RuntimeInteractionDecisionEnvelope,
 } from "@openagentsinc/khala-sync"
-import { CodexHistoryCatalogSchema, CodexHistoryPageSchema } from "./codex-history-contract.ts"
+import { CodexHistoryCatalogSchema, CodexHistoryPageSchema, CodexHistorySearchResponseSchema } from "./codex-history-contract.ts"
 import { DesktopOperationContextSchema } from "./desktop-operation-context.ts"
 
 export type { ConfirmedRuntimeInteraction } from "@openagentsinc/khala-sync-client"
@@ -125,6 +125,11 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     ...OperationContextField,
     kind: Schema.Literal("query"), requestId: Schema.String,
     query: Schema.Struct({ id: Schema.Literal("codex.history.page"), threadRef: PublicRefSchema, offset: NonNegativeIntSchema, limit: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 500 })) }),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("query"), requestId: Schema.String,
+    query: Schema.Struct({ id: Schema.Literal("codex.history.search"), query: Schema.String.check(Schema.isMaxLength(200)), limit: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 100 })) }),
   }),
   Schema.Struct({
     ...OperationContextField,
@@ -252,6 +257,7 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
   }),
   Schema.Struct({ ...OperationContextField, kind: Schema.Literal("codex_history_catalog"), requestId: Schema.String, catalog: CodexHistoryCatalogSchema }),
   Schema.Struct({ ...OperationContextField, kind: Schema.Literal("codex_history_page"), requestId: Schema.String, page: CodexHistoryPageSchema }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("codex_history_search"), requestId: Schema.String, search: CodexHistorySearchResponseSchema }),
   Schema.Struct({ ...OperationContextField, kind: Schema.Literal("codex_history_unavailable"), requestId: Schema.String, reason: Schema.Literals(["not_found", "read_failed"]) }),
   Schema.Struct({
     ...OperationContextField,

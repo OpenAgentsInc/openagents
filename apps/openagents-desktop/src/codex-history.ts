@@ -95,7 +95,10 @@ const boundedJsonLines = (file: string, includeMessages: boolean): unknown[] | n
           try {
             const head = Buffer.alloc(Math.min(summaryHeadBytes, size))
             readSync(descriptor, head, 0, head.length, 0)
-            return head.toString("utf8").replace(/[^\n]*$/u, "")
+            // lastIndexOf, NOT /[^\n]*$/ — that regex is O(L^2) on a long
+            // partial trailing line and can hang on a large head window.
+            const raw = head.toString("utf8")
+            return raw.slice(0, raw.lastIndexOf("\n") + 1)
           } finally { closeSync(descriptor) }
         })()
       : (() => {
@@ -267,7 +270,7 @@ export const buildCodexHistoryGraph = (sessionsRoot: string): CodexHistoryGraph 
   const descendants = (id: string, seen = new Set<string>()): number => { if (seen.has(id)) return 0; seen.add(id); return (children.get(id) ?? []).reduce((sum, child) => sum + 1 + descendants(child, seen), 0) }
   const agents = entries.map(entry => ({
     threadRef: entry.id, parentThreadRef: entry.parentId, title: titles.get(entry.id) ?? (entry.parentId === null ? "Untitled Codex chat" : entry.nickname ?? entry.role ?? "Subagent"),
-    status: inferredStatus(entry.file), createdAt: entry.createdAt, updatedAt: entry.updatedAt, depth: depthOf(entry), descendantCount: descendants(entry.id), model: entry.model, role: entry.role, nickname:entry.nickname,agentPath:entry.agentPath,sourceVersion:entry.sourceVersion,reasoning:entry.reasoning,
+    status: inferredStatus(entry.file), createdAt: entry.createdAt, updatedAt: entry.updatedAt, depth: depthOf(entry), descendantCount: descendants(entry.id), model: entry.model, role: entry.role, nickname:entry.nickname,agentPath:entry.agentPath,sourceVersion:entry.sourceVersion,reasoning:entry.reasoning,source:"codex" as const,
   })).sort((a,b) => a.createdAt.localeCompare(b.createdAt))
   return { entries, agents: agents.map(agent => ({ ...agent, title: agent.title || rootOf(byId.get(agent.threadRef)!) })) }
 }

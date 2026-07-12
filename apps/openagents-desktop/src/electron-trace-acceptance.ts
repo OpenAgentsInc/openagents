@@ -34,8 +34,18 @@ export const traceAcceptanceJourney = `(async () => {
   if (roots.some((root,index) => index > 0 && root.updatedAt > roots[index-1].updatedAt)) return {ok:false,reason:"catalog_order"}
   const sidebarRows = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')]
   const rootRefs = new Set(roots.map(root => root.threadRef))
-  const sidebarList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label')?.endsWith(' of ' + roots.length + ' Codex conversations'))
+  const sidebarList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label')?.endsWith(' of ' + roots.length + ' sessions'))
   if (!sidebarList || sidebarRows.length === 0 || sidebarRows.some(row => !rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))) return {ok:false,reason:"child_leaked_to_sidebar"}
+  // #8712 H3/H4: the merged catalog carries BOTH providers, and free-text
+  // search returns + opens a session at its matching item. Both are additive
+  // and must not disturb the loss-accounted flow asserted below.
+  if (!roots.some(root => root.source === "codex") || !roots.some(root => root.source === "claude")) return {ok:false,reason:"missing_source"}
+  const searchResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-search",query:{id:"codex.history.search",query:"peregrine",limit:10}})
+  if (searchResponse?.kind !== "codex_history_search") return {ok:false,reason:"search_unavailable"}
+  const contentHit = searchResponse.search.results.find(result => result.matchKind === "content" && result.source === "claude")
+  if (!contentHit || contentHit.matchItemRef === null || contentHit.matchSequence === null) return {ok:false,reason:"search_no_content_hit"}
+  const openedResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-search-open",query:{id:"codex.history.page",threadRef:contentHit.threadRef,offset:contentHit.matchSequence,limit:1}})
+  if (openedResponse?.kind !== "codex_history_page" || !openedResponse.page.items.some(item => item.itemRef === contentHit.matchItemRef)) return {ok:false,reason:"search_open_at_item_failed"}
   if ([...document.querySelectorAll('[data-en-key*="loading"]')].some(node => node.getClientRects().length > 0)) return {ok:false,reason:"stale_loading_copy"}
 
   const rootsWithTopology = roots.map(root => {

@@ -3,13 +3,16 @@ import { parentPort } from "node:worker_threads"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { buildCodexHistoryGraph, findRecentCodexThread, readCodexHistoryCatalog, readCodexHistoryPage, readRecentCodexHistory, recentCodexSessionFiles, type CodexHistoryGraph } from "./codex-history.ts"
+import { findRecentCodexThread, readRecentCodexHistory, recentCodexSessionFiles } from "./codex-history.ts"
+import { buildHistorySearchDocuments, buildMergedHistoryGraphs, readMergedHistoryCatalog, readMergedHistoryPage, searchMergedHistory, type MergedHistoryGraphs } from "./merged-history.ts"
+import type { HistorySearchDocument } from "./history-search.ts"
 
 type Request =
   | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
   | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>
-  | Readonly<{ kind: "history_catalog"; sessionsRoot: string }>
-  | Readonly<{ kind: "history_page"; sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>
+  | Readonly<{ kind: "history_catalog"; sessionsRoot: string; claudeRoot?: string | null }>
+  | Readonly<{ kind: "history_page"; sessionsRoot: string; threadRef: string; offset?: number; limit?: number; claudeRoot?: string | null }>
+  | Readonly<{ kind: "history_search"; sessionsRoot: string; claudeRoot?: string | null; query: string; limit?: number }>
 
 const names = (sessionsRoot: string): ReadonlyMap<string, string> => {
   try {
@@ -24,19 +27,25 @@ const names = (sessionsRoot: string): ReadonlyMap<string, string> => {
   } catch { return new Map() }
 }
 let sessionsRoot = ""
+let claudeRoot: string | null = null
 let titleIndex: ReadonlyMap<string, string> = new Map()
 let fileIndex: ReadonlyMap<string, string> = new Map()
-let historyGraph: CodexHistoryGraph | null = null
+let mergedGraphs: MergedHistoryGraphs | null = null
+// Rebuildable bounded content-index cache (H4). Reset whenever a root changes.
+let searchIndex: Readonly<{ documents: ReadonlyArray<HistorySearchDocument>; indexedSessions: number; truncated: boolean }> | null = null
 const withIndexedTitle = <T extends { id: string; title: string }>(thread: T): T => ({ ...thread, title: titleIndex.get(thread.id) ?? thread.title })
 parentPort?.on("message", (input: Readonly<{ id: number; request: Request }>) => {
   try {
     const request = input.request
-    if (sessionsRoot !== request.sessionsRoot) { sessionsRoot = request.sessionsRoot; titleIndex = names(sessionsRoot); fileIndex = new Map(); historyGraph = null }
-    if ((request.kind === "history_catalog" || request.kind === "history_page") && historyGraph === null) historyGraph = buildCodexHistoryGraph(request.sessionsRoot)
+    const nextClaudeRoot = "claudeRoot" in request ? request.claudeRoot ?? null : claudeRoot
+    if (sessionsRoot !== request.sessionsRoot || claudeRoot !== nextClaudeRoot) { sessionsRoot = request.sessionsRoot; claudeRoot = nextClaudeRoot; titleIndex = names(sessionsRoot); fileIndex = new Map(); mergedGraphs = null; searchIndex = null }
+    if ((request.kind === "history_catalog" || request.kind === "history_page" || request.kind === "history_search") && mergedGraphs === null) mergedGraphs = buildMergedHistoryGraphs(sessionsRoot, claudeRoot)
     const result = request.kind === "history_catalog"
-      ? readCodexHistoryCatalog(request.sessionsRoot, historyGraph!)
+      ? readMergedHistoryCatalog(sessionsRoot, claudeRoot, mergedGraphs!)
       : request.kind === "history_page"
-      ? readCodexHistoryPage(request, historyGraph!)
+      ? readMergedHistoryPage({ codexRoot: sessionsRoot, claudeRoot, threadRef: request.threadRef, offset: request.offset, limit: request.limit }, mergedGraphs!)
+      : request.kind === "history_search"
+      ? (() => { if (searchIndex === null) searchIndex = buildHistorySearchDocuments(sessionsRoot, claudeRoot, mergedGraphs!); return searchMergedHistory({ query: request.query, limit: request.limit }, searchIndex) })()
       : request.kind === "list"
       ? (() => { fileIndex = recentCodexSessionFiles(request.sessionsRoot); return readRecentCodexHistory({ sessionsRoot: request.sessionsRoot, includeMessages: false, limit: request.limit }).map(withIndexedTitle) })()
       : (() => { const thread = findRecentCodexThread({ sessionsRoot: request.sessionsRoot, id: request.id, messageLimit: request.messageLimit, file: fileIndex.get(request.id) }); return thread === null ? null : withIndexedTitle(thread) })()

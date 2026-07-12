@@ -1,6 +1,6 @@
-import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, SplitPane, Stack, StaticPayload, Table, Text, Timeline, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
+import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, SplitPane, Stack, StaticPayload, Table, Text, TextField, Timeline, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
 import { Schema } from "@effect-native/core/effect"
-import type { CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
+import type { CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage, CodexHistorySearchResult, CodexHistorySource } from "../codex-history-contract.ts"
 import { chatMarkdownBody } from "./markdown.ts"
 import { humanizeToolInvocation } from "./tool-cards.ts"
 
@@ -21,10 +21,19 @@ export type HistoryWorkspaceState = Readonly<{
   visibleRootCount: number
   /** Which window edge is fetching — drives the honest thin loading row. */
   loadingEdge: "top" | "bottom" | null
+  /**
+   * Free-text session search (#8712 H4). A cache over the loss-accounted
+   * catalog/page truth — never authority. `searchResults` is the ranked
+   * response for `searchQuery`; opening a content result windows the session
+   * on its matching item (reusing the bottom-anchored restore-to-item flow).
+   */
+  searchQuery: string
+  searchResults: ReadonlyArray<CodexHistorySearchResult>
+  searchTruncated: boolean
 }>
 export const historyCatalogPageSize = 40
 export const historyItemPageSize = 50
-export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [], pendingThreadRef: null, visibleRootCount: historyCatalogPageSize, loadingEdge: null })
+export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [], pendingThreadRef: null, visibleRootCount: historyCatalogPageSize, loadingEdge: null, searchQuery: "", searchResults: [], searchTruncated: false })
 
 export const HistoryConversationSelected = defineIntent("HistoryConversationSelected", Schema.String)
 export const HistoryAgentSelected = defineIntent("HistoryAgentSelected", Schema.String)
@@ -34,7 +43,45 @@ export const HistoryNewerRequested = defineIntent("HistoryNewerRequested", Schem
 export const HistoryInspectorToggled = defineIntent("HistoryInspectorToggled", Schema.Null)
 export const HistoryAgentExpandedToggled = defineIntent("HistoryAgentExpandedToggled", Schema.String)
 export const HistoryCatalogMoreRequested = defineIntent("HistoryCatalogMoreRequested", Schema.Null)
-export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryOlderRequested, HistoryNewerRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested] as const
+export const HistorySearchChanged = defineIntent("HistorySearchChanged", Schema.String)
+export const HistorySearchResultOpened = defineIntent("HistorySearchResultOpened", Schema.String)
+export const HistorySearchCleared = defineIntent("HistorySearchCleared", Schema.Null)
+export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryOlderRequested, HistoryNewerRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested, HistorySearchChanged, HistorySearchResultOpened, HistorySearchCleared] as const
+
+/** Human source badge for a merged catalog/search row (#8712 H3). */
+export const historySourceBadgeLabel = (source: CodexHistorySource): string => source === "claude" ? "Claude" : "Codex"
+
+/** Whether the search surface is active (non-blank query). */
+export const historySearchActive = (state: HistoryWorkspaceState): boolean => state.searchQuery.trim() !== ""
+
+/**
+ * The matching item to open a search result on — a content result windows on
+ * its exact item; a title result opens the session at its end. Returns the
+ * restore anchor the bottom-anchored fetch plan understands.
+ */
+export const historySearchOpenAnchor = (result: CodexHistorySearchResult): Readonly<{ kind: "item"; itemRef: string }> | Readonly<{ kind: "end" }> =>
+  result.matchItemRef === null ? { kind: "end" } : { kind: "item", itemRef: result.matchItemRef }
+
+/** Sidebar rows for the ranked search results (source-badged, open-at-item). */
+export const historySearchResultSidebarItems = (state: HistoryWorkspaceState): ReadonlyArray<Readonly<{ id: string; label: string; meta: string; accessibilityLabel: string; onSelect: ReturnType<typeof IntentRef> }>> =>
+  state.searchResults.map(result => ({
+    id: `sidebar-search-${result.threadRef}`,
+    label: result.title,
+    meta: historySourceBadgeLabel(result.source),
+    accessibilityLabel: `Open ${historySourceBadgeLabel(result.source)} session ${result.title}, ${result.matchKind === "title" ? "title match" : `matches: ${result.snippet}`}`,
+    onSelect: IntentRef("HistorySearchResultOpened", StaticPayload(result.threadRef)),
+  }))
+
+/** The search field view (shared by the sidebar host). */
+export const historySearchField = (state: HistoryWorkspaceState): View =>
+  TextField({
+    key: "history-search-field",
+    value: state.searchQuery,
+    placeholder: "Search all sessions…",
+    a11y: { label: "Search Codex and Claude session titles and content" },
+    onChange: IntentRef("HistorySearchChanged", ComponentValueBinding()),
+    style: { width: "full" },
+  })
 
 // ---------------------------------------------------------------------------
 // Bottom-anchored windowed loading (EP250 owner directive: "you need to show

@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import type { View } from "@effect-native/core"
-import { historyAgentTraversalTarget, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historyPrependScrollTop, historyShouldFetchNewer, historyShouldFetchOlder, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
+import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historyPrependScrollTop, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
+import type { CodexHistorySearchResult } from "../codex-history-contract.ts"
 import { historyRestoreFetchPlan } from "./history-restore.ts"
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 
-const page: CodexHistoryPage = { rootThreadRef:"root",selectedThreadRef:"child",offset:0,limit:200,totalItems:1,hasPrevious:false,hasNext:false,completeness:{source:1,rendered:1,redactions:0,gaps:0,complete:true},agents:[{threadRef:"root",parentThreadRef:null,title:"Root",status:"completed",createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth:0,descendantCount:1,model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null},{threadRef:"child",parentThreadRef:"root",title:"Worker",status:"running",createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth:1,descendantCount:0,model:"gpt",role:"worker",nickname:"worker",agentPath:"root/worker",sourceVersion:"v2",reasoning:null}],items:[{itemRef:"child:0",threadRef:"child",sequence:0,timestamp:"2026-07-10T00:00:00Z",kind:"tool_call",label:"exec",summary:"bun test",status:"running",fields:[{label:"input",value:"bun test"}],redacted:false,sourceType:"response_item/function_call"}] }
+const page: CodexHistoryPage = { rootThreadRef:"root",selectedThreadRef:"child",offset:0,limit:200,totalItems:1,hasPrevious:false,hasNext:false,completeness:{source:1,rendered:1,redactions:0,gaps:0,complete:true},agents:[{threadRef:"root",parentThreadRef:null,title:"Root",status:"completed",createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth:0,descendantCount:1,model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,source:"codex" as const},{threadRef:"child",parentThreadRef:"root",title:"Worker",status:"running",createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth:1,descendantCount:0,model:"gpt",role:"worker",nickname:"worker",agentPath:"root/worker",sourceVersion:"v2",reasoning:null,source:"codex" as const}],items:[{itemRef:"child:0",threadRef:"child",sequence:0,timestamp:"2026-07-10T00:00:00Z",kind:"tool_call",label:"exec",summary:"bun test",status:"running",fields:[{label:"input",value:"bun test"}],redacted:false,sourceType:"response_item/function_call"}] }
 const nodes=(view:View):any[]=>{const value=view as any; return [view,...(Array.isArray(value.children)?value.children.flatMap(nodes):[]),...(Array.isArray(value.items)?value.items.flatMap((item:any)=>item?._tag?nodes(item):[item]):[]),...(Array.isArray(value.sections)?value.sections.flatMap((section:any)=>[section,...(section.items??[])]):[]),...(Array.isArray(value.panes)?value.panes.flatMap((p:any)=>nodes(p.content)):[])]}
 const timelineEvents=(all:any[]):any[]=>all.filter(n=>n._tag==="Timeline").flatMap(n=>n.events)
 const item=(sequence:number,kind:CodexHistoryPage["items"][number]["kind"],label:string,summary:string,fields:CodexHistoryPage["items"][number]["fields"]=[]):CodexHistoryPage["items"][number]=>({itemRef:`child:${sequence}`,threadRef:"child",sequence,timestamp:"2026-07-10T00:00:00Z",kind,label,summary,status:"completed",fields,redacted:false,sourceType:`fixture/${kind}`})
-const stateWith=(pageValue:CodexHistoryPage,selectedItemRef:string|null=null):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:pageValue,selectedItemRef,railCollapsed:false,expandedThreadRefs:["root"],visibleRootCount:40,loadingEdge:null})
+const stateWith=(pageValue:CodexHistoryPage,selectedItemRef:string|null=null):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:pageValue,selectedItemRef,railCollapsed:false,expandedThreadRefs:["root"],visibleRootCount:40,loadingEdge:null,searchQuery:"",searchResults:[],searchTruncated:false})
 /** Generic walk over the typed markdown model (blocks + inlines). */
 const markdownWalk=(value:any,visit:(node:any)=>void):void=>{
   if(Array.isArray(value)){value.forEach(entry=>markdownWalk(entry,visit));return}
@@ -183,9 +184,9 @@ describe("history workspace",()=>{
   // EP250 owner contract: "just like command up and down scrolsl thru chats,
   // have command shift up and down go up and down the agents of a convo."
   describe("Cmd+Shift agent traversal walks the visible agent roster",()=>{
-    const agent=(threadRef:string,parentThreadRef:string|null,depth:number,descendantCount:number)=>({threadRef,parentThreadRef,title:threadRef,status:"completed" as const,createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth,descendantCount,model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null})
+    const agent=(threadRef:string,parentThreadRef:string|null,depth:number,descendantCount:number)=>({threadRef,parentThreadRef,title:threadRef,status:"completed" as const,createdAt:"2026-07-10T00:00:00Z",updatedAt:"2026-07-10T00:00:00Z",depth,descendantCount,model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,source:"codex" as const})
     const rosterPage:CodexHistoryPage={...page,selectedThreadRef:"b",agents:[agent("root",null,0,3),agent("a","root",1,0),agent("b","root",1,1),agent("b1","b",2,0)]}
-    const rosterState=(selected:string,expanded:ReadonlyArray<string>=["root","b"]):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:{...rosterPage,selectedThreadRef:selected},selectedItemRef:null,railCollapsed:false,expandedThreadRefs:expanded,visibleRootCount:40,loadingEdge:null})
+    const rosterState=(selected:string,expanded:ReadonlyArray<string>=["root","b"]):HistoryWorkspaceState=>({catalog:{roots:[],agents:[]},page:{...rosterPage,selectedThreadRef:selected},selectedItemRef:null,railCollapsed:false,expandedThreadRefs:expanded,visibleRootCount:40,loadingEdge:null,searchQuery:"",searchResults:[],searchTruncated:false})
     test("traverses down and up over the same roster the agent tree renders",()=>{
       expect(visibleHistoryAgents(rosterState("b")).map(a=>a.threadRef)).toEqual(["root","a","b","b1"])
       expect(historyAgentTraversalTarget(rosterState("b"),1)).toBe("b1")
@@ -199,7 +200,7 @@ describe("history workspace",()=>{
       expect(historyAgentTraversalTarget(rosterState("b1"),1)).toBeNull()
     })
     test("no-ops without an open conversation or roster",()=>{
-      expect(historyAgentTraversalTarget({catalog:{roots:[],agents:[]},page:null,selectedItemRef:null,railCollapsed:false,expandedThreadRefs:[],visibleRootCount:40,loadingEdge:null},1)).toBeNull()
+      expect(historyAgentTraversalTarget({catalog:{roots:[],agents:[]},page:null,selectedItemRef:null,railCollapsed:false,expandedThreadRefs:[],visibleRootCount:40,loadingEdge:null,searchQuery:"",searchResults:[],searchTruncated:false},1)).toBeNull()
       // Selected agent hidden by a collapsed subtree -> falls to the roster edge.
       expect(historyAgentTraversalTarget(rosterState("b",[]) ,1)).toBe("root")
     })
@@ -305,5 +306,42 @@ describe("history workspace",()=>{
       expect(merged.completeness).toEqual(tail.completeness)
       expect(merged.totalItems).toBe(1000)
     })
+  })
+})
+
+// --- H4 free-text session search UI (#8712) --------------------------------
+describe("history workspace search UI", () => {
+  const result = (over: Partial<CodexHistorySearchResult>): CodexHistorySearchResult => ({
+    threadRef: "claude:cl1", rootThreadRef: "claude:cl1", source: "claude", title: "Ship the inspector",
+    matchKind: "content", matchItemRef: "claude:cl1:7", matchSequence: 7, snippet: "…peregrine handler…",
+    updatedAt: "2026-07-10T11:00:00.000Z", score: 500000.4, ...over,
+  })
+
+  test("source badge labels each source", () => {
+    expect(historySourceBadgeLabel("codex")).toBe("Codex")
+    expect(historySourceBadgeLabel("claude")).toBe("Claude")
+  })
+
+  test("search is active only for a non-blank query", () => {
+    expect(historySearchActive({ ...emptyHistoryWorkspaceState(), searchQuery: "  " })).toBe(false)
+    expect(historySearchActive({ ...emptyHistoryWorkspaceState(), searchQuery: "kernel" })).toBe(true)
+  })
+
+  test("a content result opens at its matching item; a title result opens at the end", () => {
+    expect(historySearchOpenAnchor(result({}))).toEqual({ kind: "item", itemRef: "claude:cl1:7" })
+    expect(historySearchOpenAnchor(result({ matchKind: "title", matchItemRef: null, matchSequence: null }))).toEqual({ kind: "end" })
+  })
+
+  test("result rows carry the source badge and dispatch the open intent with the threadRef", () => {
+    const state: HistoryWorkspaceState = { ...emptyHistoryWorkspaceState(), searchQuery: "inspector", searchResults: [result({}), result({ threadRef: "cx9", rootThreadRef: "cx9", source: "codex", matchKind: "title", matchItemRef: null, matchSequence: null })] }
+    const items = historySearchResultSidebarItems(state)
+    expect(items.map(row => row.meta)).toEqual(["Claude", "Codex"])
+    expect(items[0]?.onSelect).toMatchObject({ name: "HistorySearchResultOpened", payload: { value: "claude:cl1" } })
+  })
+
+  test("the search field renders a TextField bound to the query", () => {
+    const field = historySearchField({ ...emptyHistoryWorkspaceState(), searchQuery: "photon" }) as any
+    expect(field._tag).toBe("TextField")
+    expect(field.value).toBe("photon")
   })
 })

@@ -17,6 +17,7 @@ const agent = (threadRef: string, parentThreadRef: string | null) => ({
   agentPath: null,
   sourceVersion: null,
   reasoning: null,
+  source: "codex" as const,
 })
 
 describe("Desktop history restoration", () => {

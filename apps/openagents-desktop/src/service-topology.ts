@@ -387,12 +387,15 @@ export const desktopServiceTopology = [
   },
   {
     id: "codex-history-reader",
-    label: "Read-only Codex history catalog and page projector",
+    label: "Read-only merged Codex + Claude history catalog, page, and search projector",
     owner: "electron-main",
     scope: "process",
     installedAt: "process",
     modules: [
       "apps/openagents-desktop/src/codex-history.ts",
+      "apps/openagents-desktop/src/claude-history.ts",
+      "apps/openagents-desktop/src/merged-history.ts",
+      "apps/openagents-desktop/src/history-search.ts",
       "apps/openagents-desktop/src/codex-history-host.ts",
       "apps/openagents-desktop/src/codex-history-worker.ts",
       "apps/openagents-desktop/src/codex-history-contract.ts",
@@ -404,9 +407,19 @@ export const desktopServiceTopology = [
         constructions: ["makeCodexHistoryHost"],
       },
       {
-        module: "apps/openagents-desktop/src/codex-history.ts",
+        module: "apps/openagents-desktop/src/merged-history.ts",
         compositionModule: "apps/openagents-desktop/src/codex-history-worker.ts",
+        constructions: ["readMergedHistoryCatalog", "readMergedHistoryPage", "searchMergedHistory"],
+      },
+      {
+        module: "apps/openagents-desktop/src/codex-history.ts",
+        compositionModule: "apps/openagents-desktop/src/merged-history.ts",
         constructions: ["readCodexHistoryCatalog", "readCodexHistoryPage"],
+      },
+      {
+        module: "apps/openagents-desktop/src/claude-history.ts",
+        compositionModule: "apps/openagents-desktop/src/merged-history.ts",
+        constructions: ["readClaudeHistoryCatalog", "readClaudeHistoryPage"],
       },
     ],
     dependsOn: [],
@@ -431,6 +444,10 @@ export const desktopServiceTopology = [
       },
       {
         name: "CodexHistoryPage",
+        module: "apps/openagents-desktop/src/codex-history-contract.ts",
+      },
+      {
+        name: "CodexHistorySearchResponse",
         module: "apps/openagents-desktop/src/codex-history-contract.ts",
       },
     ],

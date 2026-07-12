@@ -401,8 +401,9 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       Effect.runSync(service.snapshotForThread(threadRef)),
   }
 }, () => ({
-  catalog: () => hostLifecycle.history()!.run({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
-  page: (threadRef, offset, limit) => hostLifecycle.history()!.run({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
+  catalog: () => hostLifecycle.history()!.run({ kind: "history_catalog", sessionsRoot: codexSessionsRoot(), claudeRoot: claudeProjectsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
+  page: (threadRef, offset, limit) => hostLifecycle.history()!.run({ kind: "history_page", sessionsRoot: codexSessionsRoot(), claudeRoot: claudeProjectsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
+  search: (query, limit) => hostLifecycle.history()!.run({ kind: "history_search", sessionsRoot: codexSessionsRoot(), claudeRoot: claudeProjectsRoot(), query, limit }) as Promise<import("./codex-history-contract.ts").CodexHistorySearchResponse>,
 }),()=>hostLifecycle.sync()===null?"local_unavailable":hostLifecycle.sync()!.status().identityTier, () => {
   const service = hostLifecycle.sync()?.runtime() ?? null
   if (service === null && smokeMode) {
@@ -555,6 +556,17 @@ const codexSessionsRoot = () => path.resolve(
       : path.join(app.getPath("home"), ".codex", "sessions")
   ),
 )
+// Claude Code history projects tree (#8712 H3). Read-only, owner-local; imported
+// into the SAME catalog as Codex, tagged by source. Null disables the import.
+const claudeProjectsRoot = (): string | null => {
+  const explicit = process.env.OPENAGENTS_DESKTOP_CLAUDE_PROJECTS
+  if (explicit !== undefined) return explicit === "" ? null : path.resolve(explicit)
+  return path.resolve(
+    smokeMode
+      ? path.join(here, "..", "tests", "fixtures", "claude-smoke", "projects")
+      : path.join(app.getPath("home"), ".claude", "projects"),
+  )
+}
 const codexHistoryHost = makeCodexHistoryHost(new URL("./codex-history-worker.js", import.meta.url))
 const hostLifecycle = makeDesktopHostLifecycle({
   runtime: runtimeGateway,
@@ -1718,7 +1730,7 @@ const smokeCodexHistoryDetails = `(async () => {
   }
   const sidebar = document.querySelector('[data-en-key="sidebar-history-list"] > [data-en-role="section-label"]')
   const detail = document.querySelector('[data-en-key="history-workspace-split"]')
-  return { ok: sidebar?.textContent === "Codex history · all time" && detail !== null }
+  return { ok: sidebar?.textContent === "Coding history · all time" && detail !== null }
 })()`
 
 const smokeWaitForHostCommandPalette = `(async () => {

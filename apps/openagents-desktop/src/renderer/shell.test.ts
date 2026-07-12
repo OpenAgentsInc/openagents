@@ -209,7 +209,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(navItemById(view, "shell-command-palette-toggle")).toMatchObject({icon:"Menu",accessibilityLabel:"Open command palette"})
     expect(navItemById(view, "shell-settings-toggle")).toMatchObject({icon:"Settings",accessibilityLabel:"Open Settings"})
     expect(navItemById(view, "workspace-home")?.icon).toBe("Home")
-    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Codex history · all time")
+    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · all time")
     expect(navItemById(view, "sidebar-thread-test-thread")?.label).toBe("New chat")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
     expect(navItemById(view, "sidebar-thread-test-thread")?.meta).toBeDefined()
@@ -294,7 +294,7 @@ describe("desktopShellView (state -> component tree)", () => {
     const roots = Array.from({ length: 50 }, (_, index) => ({
       threadRef:`history-${index}`,parentThreadRef:null,title:`History ${index}`,status:"completed" as const,
       createdAt:"2026-07-10T18:04:00.000Z",updatedAt:"2026-07-10T18:04:00.000Z",depth:0,descendantCount:0,
-      model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,
+      model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,source:"codex" as const,
     }))
     const state:DesktopShellState={...baseState,history:{...baseState.history,catalog:{roots,agents:roots},pendingThreadRef:"history-7"}}
     const view=desktopShellView(state)
@@ -310,7 +310,7 @@ describe("desktopShellView (state -> component tree)", () => {
     const roots = Array.from({ length: 10 }, (_, index) => ({
       threadRef:`hint-${index}`,parentThreadRef:null,title:`History ${index}`,status:"completed" as const,
       createdAt:"2026-07-10T18:04:00.000Z",updatedAt:"2026-07-10T18:04:00.000Z",depth:0,descendantCount:0,
-      model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,
+      model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,source:"codex" as const,
     }))
     const view=desktopShellView({...baseState,historyShortcutHintsVisible:true,history:{...baseState.history,catalog:{roots,agents:roots}}})
     expect(navItemById(view,"sidebar-thread-hint-0")?.meta).toBe("1")

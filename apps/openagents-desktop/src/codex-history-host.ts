@@ -3,8 +3,9 @@ import { Worker } from "node:worker_threads"
 export type CodexHistoryRequest =
   | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
   | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>
-  | Readonly<{ kind: "history_catalog"; sessionsRoot: string }>
-  | Readonly<{ kind: "history_page"; sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>
+  | Readonly<{ kind: "history_catalog"; sessionsRoot: string; claudeRoot?: string | null }>
+  | Readonly<{ kind: "history_page"; sessionsRoot: string; threadRef: string; offset?: number; limit?: number; claudeRoot?: string | null }>
+  | Readonly<{ kind: "history_search"; sessionsRoot: string; claudeRoot?: string | null; query: string; limit?: number }>
 
 export type CodexHistoryHost = Readonly<{
   run: (request: CodexHistoryRequest) => Promise<unknown>

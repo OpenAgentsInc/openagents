@@ -87,8 +87,6 @@ const FABLE_RT = "apps/openagents-desktop/src/fable-local-runtime.test.ts"
 const FABLE_CAPS_RT = "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts"
 const RUNTIME_CARDS = "apps/openagents-desktop/src/renderer/runtime-cards.test.ts"
 const CODEX_CHILD_RT = "apps/openagents-desktop/src/codex-child-runtime.test.ts"
-const CODEX_HISTORY = "apps/openagents-desktop/tests/codex-history.test.ts"
-const CODING_CATALOG = "apps/openagents-desktop/tests/desktop-coding-catalog.test.ts"
 const FLEET = "apps/openagents-desktop/src/renderer/fleet-workspace.test.ts"
 const PROVIDER_ACCOUNTS = "apps/openagents-desktop/tests/provider-accounts.test.ts"
 const RUNTIME_GATEWAY = "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts"
@@ -339,16 +337,23 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   {
     id: "H3", group: "H", capability: "History import / browse", status: "partial",
     uiOracleRef: HISTORY_WORKSPACE, uiOracleWiring: "existing_suite",
-    programmaticOracleRef: CODEX_HISTORY, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: EVALS, programmaticOracleWiring: "headless_wired",
     rung: "fixture",
-    blocker: "audit H3: imports ~/.codex history only; no ~/.claude importer",
+    // ~/.claude import LANDED (claude-history.ts + merged-history.ts): Claude
+    // sessions surface in the SAME catalog as Codex, source-badged, with the
+    // same loss-accounted completeness equation and the ~3% orphan class shown
+    // as explicit topology gaps. Residual keeps this partial (not full browse):
+    blocker: "audit H3: ~/.claude import landed and merged with ~/.codex (source-tagged, loss-accounted, orphan-counted); residual — Claude workflow-journal edges and async background-agent lifecycle are surfaced as gap/unknown rather than fully reconstructed",
   },
   {
     id: "H4", group: "H", capability: "Session search", status: "partial",
     uiOracleRef: HISTORY_WORKSPACE, uiOracleWiring: "existing_suite",
-    programmaticOracleRef: CODING_CATALOG, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: EVALS, programmaticOracleWiring: "headless_wired",
     rung: "fixture",
-    blocker: "audit H4: structured catalog search only; no free-text transcript search",
+    // Free-text search LANDED (history-search.ts + merged-history.ts): ranked
+    // title + bounded content matching over Codex AND Claude sessions, opening
+    // a content result windowed on its matching item. Residual keeps partial:
+    blocker: "audit H4: free-text title + bounded content search landed (ranked by match then recency, opens at the matching item); residual — the rebuildable content index is bounded to the most-recent sessions, not the whole archive, and there is no fuzzy/semantic ranking",
   },
   {
     id: "H5", group: "H", capability: "Context compaction", status: "partial",

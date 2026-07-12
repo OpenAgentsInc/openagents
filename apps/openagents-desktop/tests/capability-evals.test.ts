@@ -22,7 +22,7 @@
  */
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -55,6 +55,7 @@ import {
   workspaceGitStatus,
 } from "../src/workspace-service.ts"
 import { makeUsageLedger } from "../src/usage-ledger.ts"
+import { buildHistorySearchDocuments, buildMergedHistoryGraphs, readMergedHistoryCatalog, readMergedHistoryPage, searchMergedHistory } from "../src/merged-history.ts"
 
 // The audit's §4 taxonomy row ids, in order. The meta-test asserts the
 // registry matches this set exactly (no drift in either direction).
@@ -416,6 +417,46 @@ describe("K2 usage / token observability (programmatic oracle)", () => {
     expect(codex?.children).toBe(1)
     expect(codex?.requestedModel).toBe("gpt-5.6-sol")
     ledger.dispose()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// H3/H4 headless oracles — the merged Codex+Claude history import and free-text
+// search surfaces driven in-process (no Electron window).
+// ---------------------------------------------------------------------------
+
+describe("H3 history import — merged Codex + Claude catalog (headless)", () => {
+  test("imports ~/.claude alongside ~/.codex, source-tagged and loss-accounted", () => {
+    const codex = path.join(mkdtempSync(path.join(tmpdir(), "cap-cx-")), "sessions"); mkdirSync(path.join(codex, "2026", "07", "10"), { recursive: true })
+    writeFileSync(path.join(codex, "2026", "07", "10", "cx1.jsonl"), [
+      JSON.stringify({ timestamp: "2026-07-10T09:00:00.000Z", type: "session_meta", payload: { id: "cx1", source: "cli" } }),
+      JSON.stringify({ timestamp: "2026-07-10T09:00:00.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "codex task" }] } }),
+    ].join("\n") + "\n")
+    const claudeProjects = path.join(mkdtempSync(path.join(tmpdir(), "cap-cl-")), "projects"); mkdirSync(path.join(claudeProjects, "proj"), { recursive: true })
+    writeFileSync(path.join(claudeProjects, "proj", "cl1.jsonl"), JSON.stringify({ type: "user", uuid: "u1", parentUuid: null, timestamp: "2026-07-10T11:00:00.000Z", sessionId: "cl1", message: { role: "user", content: "claude task" } }) + "\n")
+
+    const catalog = readMergedHistoryCatalog(codex, claudeProjects)
+    expect(new Set(catalog.roots.map(root => root.source))).toEqual(new Set(["codex", "claude"]))
+    const claudePage = readMergedHistoryPage({ codexRoot: codex, claudeRoot: claudeProjects, threadRef: "claude:cl1" })!
+    // Loss-accounting equation holds for the imported Claude source.
+    expect(claudePage.completeness.source).toBe(claudePage.completeness.rendered + claudePage.completeness.redactions + claudePage.completeness.gaps)
+  })
+})
+
+describe("H4 session search — free-text over titles + bounded content (headless)", () => {
+  test("ranks title and content matches and opens a content result at its item", () => {
+    const claudeProjects = path.join(mkdtempSync(path.join(tmpdir(), "cap-search-")), "projects"); mkdirSync(path.join(claudeProjects, "proj"), { recursive: true })
+    writeFileSync(path.join(claudeProjects, "proj", "cl1.jsonl"), [
+      JSON.stringify({ type: "user", uuid: "u1", parentUuid: null, timestamp: "2026-07-10T11:00:00.000Z", sessionId: "cl1", message: { role: "user", content: "Ship the inspector" } }),
+      JSON.stringify({ type: "assistant", uuid: "a1", parentUuid: "u1", timestamp: "2026-07-10T11:00:01.000Z", message: { role: "assistant", content: [{ type: "text", text: "wiring the peregrine handler" }] } }),
+    ].join("\n") + "\n")
+    const graphs = buildMergedHistoryGraphs("", claudeProjects)
+    const index = buildHistorySearchDocuments("", claudeProjects, graphs)
+    expect(searchMergedHistory({ query: "inspector" }, index).results[0]).toMatchObject({ matchKind: "title" })
+    const content = searchMergedHistory({ query: "peregrine" }, index).results[0]!
+    expect(content.matchKind).toBe("content")
+    expect(content.matchItemRef).toBe("claude:cl1:1")
+    expect(searchMergedHistory({ query: "" }, index).results).toEqual([])
   })
 })
 
