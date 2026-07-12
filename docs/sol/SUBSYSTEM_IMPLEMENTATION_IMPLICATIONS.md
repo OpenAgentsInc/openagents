@@ -266,6 +266,14 @@ fallback, no raw-audio retention by default, and no voice-only authority. Do
 not restore avatar/video/persona state or create a separate command system to
 implement it.
 
+#8733 is a bounded owner-dogfood exception to the broad no-retention default:
+an explicit click starts one visibly retained Desktop session, while capture,
+egress, retention, and playback remain separately visible; mute/stop/revocation
+end new retained-frame acceptance. AUDIO-1 #8734 freezes the shared contract,
+AUDIO-3 #8736 owns encrypted GCS plus Cloud SQL custody/delete/export receipts,
+and raw media never enters Runtime Gateway events or Khala Sync. This exception
+does not authorize ambient auto-start or a public retention default.
+
 Do not delete proven compatibility contracts merely to express closed scope.
 Security, privacy, data-loss, active-cost, production-outage, accessibility,
 and already-supported compatibility repairs remain allowed.

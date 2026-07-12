@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 94
+- Revision: 95
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -149,6 +149,24 @@ proof; dated plans and analyses are evidence only.
     transcript. Pointer and conflict-safe hotkeys use the same intents. Replay,
     reconnect, and movement never flatten, re-root, duplicate, or leave an old
     child accepting work.
+23. **Persistent voice is a separately tracked parallel audio program.**
+    [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) owns the
+    Desktop Google Cloud audio MVP under #8566/#8574 through bounded leaves
+    #8734–#8741. It may proceed at P1 in parallel with the P0 cutover and remote
+    workroom work after its shared contract freeze; it does not block CUT-27,
+    #8547, or #8636. It reuses the Runtime Gateway, registered commands,
+    conversation outcomes, identity, and release gates rather than widening
+    them independently. For this explicit owner-dogfood MVP, clicking Voice
+    accepts conspicuous retained-audio custody while the session is active;
+    capture, egress, retention, and playback remain separately visible, mute
+    stops new egress/retention, restart never auto-starts capture, raw media
+    never enters Sync, and voice/model output never becomes authority. The
+    detailed plan is
+    [`docs/voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md`](../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md).
+    The accepted implementation split keeps application/cloud authority in
+    Effect/TypeScript and permits one signed process-opaque Rust Desktop media
+    helper under the
+    [`Effect vs Rust decision`](../voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md).
 
 ## Product and authority model
 
@@ -389,10 +407,18 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   hard unconfigured placeholder, persist routing/fallback history through
   Sync, project capacity/claims, and enforce per-work-unit quota/cost/data-
   posture constraints. Portability, general broker,
-  owner-managed enrollment, provider-adapter breadth, any-host directory, and
-  voice need bounded leaves rather than silent expansion of those issues.
+  owner-managed enrollment, provider-adapter breadth, and any-host directory
+  need bounded leaves rather than silent expansion of those issues. Persistent
+  Desktop voice is now separately bounded by #8733–#8741.
 - Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
   receipt; it is not current work or a product-front-door decision.
+- #8733 is the separately tracked persistent-audio MVP. AUDIO-1 #8734 freezes
+  its hot schemas first. AUDIO-2 #8735 (Google STT gateway), AUDIO-3 #8736
+  (GCS/Cloud SQL retention), and AUDIO-4 #8737 (Desktop capture/transport) may
+  then run in parallel. AUDIO-5 #8738 (visible UX), AUDIO-6 #8739 (registered
+  actions), AUDIO-7 #8740 (Google TTS/barge-in), and AUDIO-8 #8741 (deployed
+  proof) converge afterward. Audio work must not silently broaden CUT, managed
+  workroom, Sync, command, behavior-contract, migration, or release authority.
 - `apps/pylon/src/orchestration` and `apps/pylon/src/node` remain protected
   load-bearing Fleet core during the open correctness proof. Streamlining is a
   separately bounded post-proof program under the
@@ -417,15 +443,15 @@ the currently unclaimed worker lease.
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | CUT-09 remaining lifecycle acceptance |
 | [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | CUT-26 distribution/update/rollback/legacy lockout |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
-| [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | AUDIO-0 persistent two-way Desktop voice epic; P1 parallel lane |
-| [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | AUDIO-1 wire/lifecycle/authority/retention contract freeze |
-| [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | AUDIO-2 authenticated Cloud Run + Google STT V2 gateway |
-| [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | AUDIO-3 opt-in retained-audio storage and deletion receipts |
-| [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | AUDIO-4 Desktop host microphone/playback/transport lifecycle |
-| [#8738](https://github.com/OpenAgentsInc/openagents/issues/8738) | AUDIO-5 Effect Native voice control and transcript HUD |
-| [#8739](https://github.com/OpenAgentsInc/openagents/issues/8739) | AUDIO-6 final speech through registered Desktop actions |
-| [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | AUDIO-7 streaming Chirp replies and qualified barge-in |
-| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 real-microphone deployed/live proof |
+| [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | P1-parallel persistent Desktop audio epic; Google STT/TTS, retained media, typed UI actions |
+| [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | AUDIO-1 shared voice wire/lifecycle/authority/retention contract freeze |
+| [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | AUDIO-2 private Cloud Run gateway and Google STT V2 streaming |
+| [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | AUDIO-3 encrypted GCS media and Cloud SQL retention manifests/receipts |
+| [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | AUDIO-4 host-owned Desktop capture/playback/persistent transport lifecycle |
+| [#8738](https://github.com/OpenAgentsInc/openagents/issues/8738) | AUDIO-5 Effect Native Voice control and transcript/status HUD |
+| [#8739](https://github.com/OpenAgentsInc/openagents/issues/8739) | AUDIO-6 final speech/control frames through registered Desktop actions |
+| [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | AUDIO-7 Google Chirp 3 HD replies and qualified barge-in |
+| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 deployed real-microphone fault/privacy/storage proof |
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 #8642, #8643, #8646, and #8650. They are not dormant queues.
@@ -453,12 +479,17 @@ Live issues and claims control exact selection. At this snapshot:
    #8547's accepted managed workroom before #8636's live hybrid-routing receipt.
    Keep metering, target custody, quota/cost/data posture, usage, writeback,
    reclaim, and fallback explicit.
-4. File bounded leaves for portable-session attachment/checkpoint authority,
+4. Run #8733 as a separate P1-parallel audio program: close AUDIO-1 #8734's
+   contract freeze first; then permit file/contract-disjoint AUDIO-2 #8735,
+   AUDIO-3 #8736, and AUDIO-4 #8737 work alongside the P0 lanes. AUDIO-5 through
+   AUDIO-8 converge only through their declared dependencies. Serialize any
+   overlap with Runtime Gateway versions, Desktop commands, behavior-contract
+   registry, Cloud SQL migrations, package catalogs, or release manifests.
+5. File bounded leaves for portable-session attachment/checkpoint authority,
    general capability broker, owner-managed targets, first audited provider
-   adapter, any-host directory, and persona-neutral mobile voice before
-   mutation. Serialize shared schemas, migrations, command IDs, catalogs, and
-   policy.
-5. Compose those substrates into remaining Desktop R5, mobile R6, and R7
+   adapter, and any-host directory before mutation. Mobile voice may later
+   consume #8734's shared contracts, but mobile capture is not part of #8733.
+6. Compose those substrates into remaining Desktop R5, mobile R6, and R7
    dogfood: local→managed→owner-managed movement, stable topology/cursors,
    cross-device control, voice follow-up, revocation, lost ACK, restart/update,
    failback, and reclaim with no fork, duplication, leak, orphan, or false
@@ -556,6 +587,13 @@ closed presentation backlog. Claims are refreshed before every mutation.
 30. **Fast interaction has one authority path.** Pointer, palette, menu, and
     conflict-safe hotkeys dispatch the same effective intent; local focus is
     view state, while controls receive policy and durable outcomes.
+31. **Persistent audio is media transport plus explicit custody.** The audio
+    socket and Google provider streams rotate beneath one generation-fenced
+    application session. Raw frames use the private media/storage plane, not
+    Runtime Gateway events or Khala Sync. For #8733 owner dogfood, retained
+    capture begins only after a visible click-through receipt and ends on mute,
+    stop, or revocation; every accepted sequence is durably stored or named as
+    an explicit gap. Broader defaults require a later owner/policy decision.
 
 ## Completion and reconciliation
 
@@ -593,6 +631,8 @@ evidence remains discoverable here:
 - [`Desktop architecture boundary`](./2026-07-10-openagents-desktop-product-architecture.md)
 - [`historical Desktop parity baseline`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
 - [`remote-first portable-session pathway`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
+- [`persistent Desktop voice/audio plan`](../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md)
+- [`Effect vs Rust audio architecture decision`](../voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md)
 - [`Sol receipts and dated analyses`](./README.md)
 
 Do not regrow this file into a landing diary. Promote policy here, keep live

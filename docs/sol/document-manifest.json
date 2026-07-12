@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "6d42305c95a4d2163bb89acae35c3b09c6a92d314fc198acfd5b6817fa286c01",
+  "sourceTreeSha256": "e253e8ef61f8ce383d6a4b50430da204c9e9d7b136323bcd923086f480306b9e",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md",
@@ -798,7 +798,7 @@
       "owner": "Sol proof / issue #8706",
       "disposition": "retain-evidence",
       "dispatch": false,
-      "sha256": "cabcfaf5337a795a4c191d877f9eb8d234d290c53f916cc40c4f39f41ef71029",
+      "sha256": "c274cc5638c6f2eb70b73a5c414f41a74a141be9a7d8cce9510c7888ccc9bc2c",
       "status": "retain-evidence",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1109,7 +1109,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "2671a0a239e5ab9c39fa9b1c8675a63c324fdb2fa4019af4e18418756474bcf9",
+      "sha256": "2a7dcf92f661882138bef9315303e2b9f17654ca79ebf7bf868ec5b0182500f5",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
@@ -1240,7 +1240,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-contract",
       "dispatch": false,
-      "sha256": "94c5009e7a36b1f6522b08a75c07b165d3c0a5cfc976ce4c144793827c4e0a85",
+      "sha256": "28b3062303115ae62cd0e6b3ff161dd6aff65c20a363710e67c36bc7c8099981",
       "status": "active, revision-independent subsystem boundary companion to",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
@@ -1251,7 +1251,10 @@
       ],
       "inboundSourceCount": 2,
       "issueLinks": [
-        8640
+        8640,
+        8733,
+        8734,
+        8736
       ]
     },
     {
@@ -1281,7 +1284,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "6ce3706c0341cded554e890859ca470143d2e6a4e01199ce956707ad00be86f7",
+      "sha256": "32d8835afe1cd819c6866b6c91b4bee916e00c11464e29a9ccd130cc9a73e0c4",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1356,7 +1359,7 @@
       "owner": "Sol issue #8574",
       "disposition": "retain-live-source",
       "dispatch": false,
-      "sha256": "8e16936b6cec0e3301d81a22726cab5bf95ef1290496ecc6d7467f3d8709d23e",
+      "sha256": "e26c3cb198dec841e0a1855fdedec10ed10e355b336c27c597a4450efac34bea",
       "status": "checked-in track source; refresh the live issue for current state",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1379,7 +1382,10 @@
         8677,
         8678,
         8683,
-        8684
+        8684,
+        8733,
+        8734,
+        8741
       ]
     },
     {
@@ -1453,7 +1459,7 @@
       "owner": "Sol issue #8566",
       "disposition": "retain-live-source",
       "dispatch": false,
-      "sha256": "9d7db9e137ab04e5acddc424ab49d017ea117cc140d25a9231634061c186c4b5",
+      "sha256": "e7afa2a07254c38042d4b27a68d29f6a3172f0aa8ee5d3195b1b12d355342a90",
       "status": "checked-in program source; refresh the live issue for current state",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1485,7 +1491,10 @@
         8681,
         8683,
         8691,
-        8707
+        8707,
+        8733,
+        8734,
+        8741
       ]
     },
     {

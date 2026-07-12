@@ -4,6 +4,9 @@
 - **Status:** vision and architecture plan; not implementation authority or a product promise
 - **Destination:** `apps/openagents-desktop`
 - **Related authority:** `docs/sol/MASTER_ROADMAP.md`
+- **Effect/Rust decision:** [`2026-07-12-effect-vs-rust-audio-architecture-decision.md`](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)
+- **Tracking epic:** [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
+- **Implementation leaves:** [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734)–[#8741](https://github.com/OpenAgentsInc/openagents/issues/8741)
 - **Historical inputs:** Sarah/Hydralisk records in `docs/sarah/` and their deleted source in Git history
 
 ## 0. Vision summary
@@ -38,15 +41,15 @@ The proposed mode must not be implemented as:
 - a voice-only command authority; or
 - an unqualified promise to save every frame in Cloud SQL.
 
-Recommended delivery split:
+Recommended delivery split, now tracked under #8733:
 
-1. Build the persistent transport and voice-session lifecycle with ephemeral
-   media first.
-2. Prove transcripts and a very small safe action set through existing command
-   authority.
-3. Add streaming TTS and barge-in.
-4. Only then run an explicit opt-in retained-audio experiment backed by object
-   storage, with SQL storing metadata and policy state rather than audio blobs.
+1. Freeze the shared session/frame/authority/retention contract.
+2. In parallel, build the Google realtime gateway, retained-audio custody, and
+   Desktop host capture/transport lifecycle.
+3. Render interim/final transcripts and truthful capture/egress/retention state
+   in the UI.
+4. Route a small safe action set through existing command authority.
+5. Add streaming Google TTS, barge-in, and deployed fault/privacy acceptance.
 
 ## 1. The OpenAgents voice lineage
 
@@ -295,20 +298,26 @@ The proposal touches nearly every reliability gate:
 | R6 | Text-equivalent voice follow-up and barge-in without phone/host authority expansion |
 | R7 | Signed build, privacy telemetry, suspend/restart/revocation and dogfood faults |
 
-### Retention decision still required
+### Owner direction for the retained-audio MVP
 
 The roadmap's persona-neutral voice direction is already aligned with Onyx and
 Commander: voice is a modality over real work, not a separate persona product.
-One detail remains undecided. The roadmap currently rejects ambient recording,
-raw-audio retention by default, and voice-only authority. Saving every audio
-frame therefore needs a specific retention decision rather than being buried
-inside transport implementation.
+The owner has now directed this bounded MVP to retain every accepted audio
+frame for later analysis. The product interpretation is explicit:
 
-Before retained audio ships, add a new owner decision that answers:
+- Voice does not start on launch or restart. The user clicks Voice and accepts
+  a conspicuous retained-audio disclosure for that session.
+- While connected and unmuted, accepted microphone frames are retained. The UI
+  separately shows microphone capture, network egress, retention, and
+  playback.
+- Mute stops new capture egress and retained-frame acceptance; Stop and
+  sign-out/revocation terminate the session and retention.
+- The MVP is owner dogfood until deletion/export, tenancy, custody, and
+  derived-data receipts are proven. This is not yet a broad public default or
+  product promise.
 
-- Is retention off by default, opt-in per session, or opt-in at account/org
-  policy level?
-- Does the indicator distinguish “microphone live” from “audio retained”?
+The implementation contract still needs exact answers for:
+
 - What are the default and maximum TTLs? Who can extend them or impose legal
   hold?
 - Can a user inspect, export, and delete audio and derived transcripts?
@@ -320,8 +329,10 @@ Before retained audio ships, add a new owner decision that answers:
 - Does free-tier data-sharing apply, or is voice governed by a distinct
   disclosure and training policy?
 
-Until those answers land, the only honest default is ephemeral raw audio with
-bounded in-memory buffering and separately governed transcript persistence.
+Until these policy details land, the live path is limited to owner dogfood with
+bounded quotas and no training/export beyond the explicit session custody
+contract. AUDIO-1 #8734 owns that freeze; AUDIO-3 #8736 owns enforcement and
+receipts.
 
 ## 4. Existing Desktop seams to extend
 
@@ -367,19 +378,24 @@ status, proposed command ID, and typed blocker. They must not include bearer
 tokens, socket credentials, raw audio, absolute audio paths, provider payloads,
 unredacted logs, or arbitrary control-frame bodies.
 
-### Host and utility-process boundary
+### Host and native media-helper boundary
 
 Electron main owns OS permission truth, session authorization, lifecycle,
-revocation, and the schema-decoded renderer projection. A dedicated utility
-process should own capture, resampling, VAD hints, packetization, encryption,
-reconnect, jitter/backpressure buffers, playback, and device changes. This
-keeps sustained audio work away from renderer responsiveness and follows the
-existing requirement to move CPU-heavy services behind a utility process.
+revocation, and the schema-decoded renderer projection. The accepted
+[Effect/Rust decision](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)
+uses a narrow packaged Rust helper, `crates/oa-desktop-audio`, for capture,
+resampling, packetization, the direct authenticated media socket,
+jitter/backpressure buffers, playback, device changes, and prompt buffer
+flush. Electron supervises it through a closed versioned control protocol;
+identity, policy, commands, transcripts, storage, receipts, and UI remain
+Effect/TypeScript. This keeps sustained raw media and native device callbacks
+out of the renderer and Electron application heap without creating a second
+application model.
 
 The Runtime Gateway may start/stop the voice scope and publish bounded state,
-but raw audio should not traverse its ordinary event IPC. Do not expose a raw
-`MessagePort`, generic IPC channel, localhost credential, or socket handle to
-the renderer.
+but raw audio should not traverse its ordinary event IPC or the local helper
+control channel. Do not expose a raw `MessagePort`, generic IPC channel,
+localhost credential, helper handle, or socket handle to the renderer.
 
 ### Authority boundary
 
@@ -502,6 +518,45 @@ state the exact classes and remaining lawful records.
 
 ## 7. Prior voice infrastructure patterns worth retaining
 
+### Current Google Cloud substrate
+
+The July 12 audit found a stronger starting point than the active monorepo alone
+suggests:
+
+- Google APIs `speech.googleapis.com` and `texttospeech.googleapis.com` are
+  already enabled in project `openagentsgemini`.
+- Historical OpenAgents commit `afae54bba9` contains a real Rust microphone →
+  WAV → Google Speech-to-Text V2 `chirp_3` recognition playground with typed
+  lifecycle state and tests. Commit `380e79ef1c` added Chirp 3 HD synthesis and
+  playback. They are extraction references, not code to restore wholesale:
+  STT was synchronous/batch, authentication shelled out to local `gcloud`, and
+  neither path was a persistent server session.
+- The current sibling Hydralisk repo has a tested provider-neutral TTS seam and
+  real `TextToSpeechAsyncClient.streaming_synthesize` adapter in
+  `hydralisk/tts/chirp.py`, with PCM/timing, normalization, text-free receipt,
+  and service tests. The audit ran its focused suite: 49 tests passed. There is
+  no current owned Google streaming STT adapter in Hydralisk or OpenAgents, and
+  its old Sarah GPU host is not the service destination.
+- `apps/khala-live-hub` is a useful Cloud Run/Bun WebSocket lifecycle,
+  authentication, bounded replay, test, and deploy-pattern reference. The
+  audio service remains a separate private media gateway because Google STT
+  streaming is gRPC and raw media does not belong in Khala Sync.
+
+Google's current constraints shape the MVP:
+
+- [Chirp 3 transcription](https://docs.cloud.google.com/speech-to-text/docs/models/chirp-3)
+  supports V2 streaming recognition, interim/final results, voice-activity
+  events, and endpointing sensitivity.
+- [Streaming recognition](https://docs.cloud.google.com/speech-to-text/docs/streaming-recognize)
+  is gRPC-only and limits each streaming message to 25 KB.
+- [Streaming Text-to-Speech](https://docs.cloud.google.com/text-to-speech/docs/create-audio-text-streaming)
+  is available with Chirp 3 HD voices.
+- [Cloud Run WebSockets](https://docs.cloud.google.com/run/docs/triggering/websockets)
+  are long HTTP requests with a maximum 60-minute timeout and no guarantee a
+  reconnect reaches the same instance. Google recognition streams and the
+  Cloud Run socket must rotate beneath one generation-fenced application
+  session.
+
 The recent Sarah/Hydralisk experiment is one technical reference among the
 broader Onyx/Commander lineage. Its product shell is retired, but it produced
 useful generic realtime lessons:
@@ -596,10 +651,35 @@ not contain raw audio or transcripts.
 
 ## 10. Ordered delivery plan
 
-### V0 — decision and contracts
+### Live issue program
 
-- Add the owner decision resolving ambient/persistent capture and raw-retention
-  defaults.
+[#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) is the master
+P1-parallel audio epic and a true sub-issue of the sole Sol program parent
+#8566. Its leaves are true GitHub sub-issues:
+
+| Issue | Outcome | Dependencies |
+| --- | --- | --- |
+| [#8734 AUDIO-1](https://github.com/OpenAgentsInc/openagents/issues/8734) | Freeze wire, lifecycle, authority, retention schemas and behavior oracles | none; shared-contract owner |
+| [#8735 AUDIO-2](https://github.com/OpenAgentsInc/openagents/issues/8735) | Private Cloud Run binary WebSocket gateway bridged to Google STT V2 streaming | AUDIO-1 |
+| [#8736 AUDIO-3](https://github.com/OpenAgentsInc/openagents/issues/8736) | Encrypted GCS audio segments plus Cloud SQL manifests/delete/export receipts | AUDIO-1; parallel with AUDIO-2/AUDIO-4 |
+| [#8737 AUDIO-4](https://github.com/OpenAgentsInc/openagents/issues/8737) | Host-owned Desktop mic/playback/transport lifecycle and bounded Gateway projection | AUDIO-1; parallel with AUDIO-2/AUDIO-3 |
+| [#8738 AUDIO-5](https://github.com/OpenAgentsInc/openagents/issues/8738) | Effect Native persistent Voice control, interim/final transcript, and truthful status HUD | AUDIO-4 |
+| [#8739 AUDIO-6](https://github.com/OpenAgentsInc/openagents/issues/8739) | Final speech/control frames through existing message/steer/interrupt/focus commands | AUDIO-2/AUDIO-4/AUDIO-5 |
+| [#8740 AUDIO-7](https://github.com/OpenAgentsInc/openagents/issues/8740) | Google Chirp 3 HD reply stream, host playback, and qualified barge-in | AUDIO-2/AUDIO-4; integrates AUDIO-6 |
+| [#8741 AUDIO-8](https://github.com/OpenAgentsInc/openagents/issues/8741) | Deployed real-mic fault/privacy/storage acceptance and owner receipt | AUDIO-2 through AUDIO-7 |
+
+The graph deliberately lets cloud STT, storage, and Desktop host work proceed
+in parallel after AUDIO-1, while one integration owner serializes shared frame,
+Runtime Gateway, command, behavior-contract, migration, and release contracts.
+The [Effect/Rust decision](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)
+assigns AUDIO-4's native media loop to a signed Rust helper while keeping the
+cloud gateway and every application/authority surface in Effect/TypeScript.
+
+### V0 — owner direction and contracts
+
+- Record the owner direction for explicit click-to-start persistent capture and
+  retained owner-dogfood audio; keep ambient auto-start and broad public
+  defaults out of scope.
 - Write privacy, consent, retention, deletion/export, training-use, tenancy,
   and regional custody contracts.
 - Register behavior contracts for visible mic/egress/retention truth, mute,
@@ -623,17 +703,19 @@ without a matching consent/policy receipt.
 **Exit:** fault injection produces no duplicate accepted chunk, inference turn,
 or action and no unbounded queue.
 
-### V2 — explicit persistent capture, ephemeral media
+### V2 — explicit persistent capture and retained-media custody
 
 - Add the Desktop toolbar control and bounded session projection.
 - Host/utility process owns OS permission, capture, resampling, packetization,
   and transport.
 - Start only after an explicit click; mute stops egress; suspend/restart does
   not silently reopen capture.
-- Retain raw audio only in bounded buffers required for realtime processing.
+- Send accepted frames into AUDIO-3's bounded encrypted segment/manifests path;
+  never SQL blobs or Sync media.
 
 **Exit:** packaged Desktop survives start/mute/device-change/suspend/network-
-change/revoke/stop with truthful indicators and zero retained raw audio.
+change/revoke/stop with truthful indicators; every accepted sequence is stored
+or named as an explicit manifest gap.
 
 ### V3 — VAD, ASR, and transcript truth
 
@@ -666,9 +748,9 @@ lost ACK/reconnect never duplicates execution.
 **Exit:** first-audible and interruption budgets pass; failed audio never hides
 text or command state.
 
-### V6 — opt-in retained-audio experiment
+### V6 — retention completeness and user custody
 
-- Begin only after V0's owner/privacy decision.
+- Enforce V0's click-to-start retained-session disclosure and policy receipt.
 - Store encrypted segments in object storage and manifests in SQL.
 - Implement TTL, delete/export, legal hold, access audit, cost limits, regional
   policy, and explicit retention receipts.
@@ -701,8 +783,8 @@ appears in Sync, logs, analytics, or support bundles.
 4. Is transcript review mandatory only for high-risk commands, or configurable
    for all messages?
 5. What is the first harmless UI command set beyond follow-up and interrupt?
-6. Is audio retention a paid/privacy tier, an eval-only experiment, an org
-   policy, or never a default product behavior?
+6. After owner dogfood, is retained audio a paid/privacy tier, an eval-only
+   program, an org policy, or never a broad default product behavior?
 7. Which exact raw and derived data classes may be used for later analysis or
    training, and under what revocable consent?
 8. What are the session duration, idle timeout, bandwidth, retained-byte, ASR,
@@ -710,14 +792,15 @@ appears in Sync, logs, analytics, or support bundles.
 
 ## 12. Recommendation
 
-Proceed with V0–V2 as a bounded persistent-transport program under the active
-Desktop architecture, with ephemeral audio and no action execution at first.
-That proves the genuinely new technical value without prematurely coupling it
-to permanent surveillance, model authority, or a storage policy.
+Proceed through #8733 by landing AUDIO-1 first, then running AUDIO-2 Google STT,
+AUDIO-3 retained storage, and AUDIO-4 Desktop capture in parallel before UI,
+actions, TTS, and final proof converge. Retained media is part of the requested
+owner-dogfood MVP, not a hidden side effect: it has a visible session
+disclosure, separate indicator, encrypted custody, bounded quota, and
+delete/export receipts.
 
-Treat retained audio as V6: an explicit opt-in data product with its own
-receipts. The north star is the old Onyx promise—say what you want and useful
-work happens—combined with Commander's Jarvis/StarCraft fleet surface and Sol's
+The north star is the old Onyx promise—say what you want and useful work
+happens—combined with Commander's Jarvis/StarCraft fleet surface and Sol's
 durable evidence. The durable invariant is simple: voice makes the whole
 OpenAgents system easier to command; it does not become an authority of its
 own.

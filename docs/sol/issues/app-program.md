@@ -47,10 +47,14 @@ remote coding + fleet                    full workbench + fleet
   full-host residual.
 - #8681–#8707 — ordered CUT-01–CUT-27 leaves for the installed local
   Codex/Claude coding cutover with physical mobile continuation/supervision.
+- #8733 with sub-issues #8734–#8741 — the separately tracked P1-parallel
+  persistent Desktop audio MVP: Google STT/TTS, retained-media custody, visible
+  Voice UI, registered actions, and deployed proof. It consumes this program's
+  identity/command/outcome laws without blocking CUT-27 or widening #8574.
 - later leaves at this snapshot — portable session authority, owner-managed and
-  managed-provider targets, the general broker, and any-host mobile/voice.
+  managed-provider targets, the general broker, and any-host mobile voice.
   Local live multi-agent supervision is now #8691/#8692. Do not overload
-  #8676/#8547/#8636 or CUT-27 with host-movement proof.
+  #8676/#8547/#8636, CUT-27, or #8733 with host-movement proof.
 
 The retired web/presentation/privacy-backlog records #8595, #8610, #8634,
 #8635, #8642, #8643, #8646, and #8650 are closed `wontfix` / not-planned.

@@ -796,6 +796,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   may not request microphone permission, start capture/transcription, touch a
   provider or network, or imply that audio is active. Pending turns disable
   the control and the typed handler independently refuses the toggle.
+- AUDIO-0 #8733 is a planned, not-yet-live exception for the future Mic path.
+  When AUDIO-4 #8737 lands, native capture/playback may run only in the signed
+  process-opaque `crates/oa-desktop-audio` Rust helper authorized by the
+  Effect/Rust audio decision. `packages/audio-contract` Effect Schema remains
+  canonical; Electron main supervises a closed public-safe control protocol;
+  raw media and the direct authenticated media socket stay inside the helper;
+  renderer, preload, Runtime Gateway events, Khala Sync, command authority,
+  storage policy, Google adapters, and UI remain Effect/TypeScript. This bullet
+  does not make today's Mic active: until the AUDIO-1 cross-language model/
+  golden-vector contract and AUDIO-4 packaged boundary tests land, the existing
+  `Voice unavailable` refusal above remains the runtime invariant.
 - Desktop conversation navigation is globally ordered by descending
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration

@@ -14,6 +14,11 @@
   [`../CLAIM_PROTOCOL.md`](../CLAIM_PROTOCOL.md)
 - Local coding cutover graph:
   [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
+- Parallel persistent-audio track:
+  [`../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md)
+  (#8733; leaves #8734–#8741)
+- Persistent-audio process split:
+  [`../../voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md`](../../voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md)
 - Closed P0 historical conversation/subagent slice:
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
@@ -27,6 +32,11 @@ Fleet cockpit on Effect Native with a hardened Electron host. Direct typed
 software controls are primary. Sarah is not a required relationship or
 steering surface; a future assistant may consume the same typed action registry
 under the same policy and approval boundaries.
+
+#8733 is now that bounded P1-parallel audio consumer. It may extend the
+host/renderer/media boundary only through its AUDIO-1 contract freeze and must
+reuse the existing Desktop command/outcome authority. It is not a D0–D6/CUT-27
+completion dependency.
 
 This is not a rename or in-place conversion of
 `clients/khala-code-desktop`. The Electrobun application remains a frozen

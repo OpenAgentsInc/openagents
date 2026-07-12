@@ -673,6 +673,17 @@ and local Codex auth out of reports.
   never link the crates directly; they use the Effect Schema mirrors in
   `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
   Worker, and Pylon logic stays on Bun/Effect/TypeScript.
+- **Narrow persistent-audio Rust exception (owner direction, 2026-07-12):**
+  AUDIO-0 #8733 may add `crates/oa-desktop-audio` as a process-opaque native
+  Desktop media helper. It owns microphone/playback device I/O, resampling,
+  bounded audio buffers, packetization, the direct authenticated media socket,
+  and prompt cancellation only. Effect Schema in `packages/audio-contract`
+  remains canonical; Electron/Runtime Gateway supervision, identity, policy,
+  commands, conversations, Sync, storage orchestration, Google adapters,
+  receipts, and all UI remain Effect/TypeScript. The helper never becomes a
+  Tauri/WGPUI shell, links into the renderer, or learns command/Sync/storage
+  authority. Binding rationale and reversal tests live in
+  `docs/voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md`.
 - **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
   no-Expo mandate for the framework; amended 2026-07-09):** the mobile
   destination is a new **OpenAgents** app at `apps/openagents-mobile`, built
