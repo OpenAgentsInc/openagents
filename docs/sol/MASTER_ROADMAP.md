@@ -8,8 +8,10 @@
   control UI active; mobile canonical rich-draft and native attachment
   acquisition active; CUT-17 workspace capability core/tree-watch-search host
   bridge/cancellable search worker/mutation core/scale receipt and standalone
-  bounded workspace-browser projection/handler loop/composition complete)
-- Revision: 71
+  bounded workspace-browser projection/handler loop/composition complete;
+  CUT-18 typed editor/document lifecycle, exclusive-create Save As, rename,
+  conflict, and ref-only reload recovery complete)
+- Revision: 72
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -728,6 +730,24 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   existing EP250 stages, and zero active owners at teardown. CUT-17 is
   complete; editing and Git remain the declared CUT-18/CUT-19 non-goals. See the
   [`CUT-17 closure receipt`](./2026-07-11-cut-17-workspace-capability-receipt.md).
+- CUT-18 is complete on the stack ending `091574d5bc`. Effect Native owns the
+  bounded document/tab model, language mode, authoritative selection, find,
+  undo/redo, dirty and save lifecycle, external-change reconciliation, and
+  inline conflict/close recovery. The replaceable `CodeEditor` foreign host
+  receives serializable props and emits typed runtime-bound events; adapter
+  substitution and exact disposal remain renderer-owned. Main/preload expose
+  only decoded grant-scoped open/save/create-only Save As operations over
+  relative refs. Save As never overwrites, including an `EEXIST` race; file and
+  directory renames retarget matching open tabs without dropping drafts.
+  Restart recovery stores only bounded relative refs/revisions/drafts under an
+  opaque coding-session ref, persists no root or grant, reopens through the
+  current WorkContext grant, and makes changed or missing files explicit
+  conflicts. The built Electron journey types a real draft, proves inline Save
+  As, reloads the renderer, restores that draft, keeps the Git review journey
+  green, and tears down with zero active owners. This is honest host-local
+  recovery, not Sync authority or portable workspace materialization. Git
+  review remains CUT-19. See the
+  [`CUT-18 closure receipt`](./2026-07-11-cut-18-conflict-safe-editor-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -1620,7 +1640,7 @@ an implicit Khala Sync upload.
 | D0 — truthful green baseline | Keep shared contracts green; remove or finish dormant Review/Terminal/Inbox/Fleet names and stale docs; isolate smoke state and distinguish live, unconfigured, and fixture receipts | Typecheck, tests, bundle, isolated first-run Electron smoke, and route/capability manifest are green and agree |
 | D1 — OpenAgents + Sync conversation runtime and loss-accounted history | Preserve closed #8673/#8674's confirmed timeline plus provider-native three-pane history workspace and closed #8675's predictable real-Electron acceptance; use #8676 to launch one provider-neutral real stream through the host-owned Runtime Gateway, attach canonical `chat_thread`/`chat_message` and run/timeline refs, render text/reasoning/tools/plan/questions/approvals/errors/usage with explicit lifecycle, and continue immediately on mobile; then prove live child-start/handoff/lifecycle/activity projections use the same causal card, complete graph, and independent transcript contract | #8675 proves fast stable named history, complete nested trace inspection, restoration, and the UX contract in real Electron; #8676 must prove one real authenticated stream survives renderer/host restart and continues on physical mobile with matching refs/versions/cursor/phase/outcome plus one safe follow-up or interrupt; the live multi-agent leaf must prove no flattened/orphaned descendants, duplicate launch cards, stale previews presented as outcomes, or inaccessible child transcripts across reconnect |
 | D2 — projects, sessions, commands and architecture freeze | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore; every click/tap supervision target and hotkey invokes the same typed action; closed #8683/#8684 complete #8678's source-coupled topology, substitution, disposal, correlation, and built-host architecture acceptance | Every global/session/workbench action uses the command registry or has an explicit bounded exception; rapid conversation/agent focus and inspection are equivalent by pointer and keyboard at scale; the completed topology oracle rejects every forbidden scope/authority/resource edge named by the residual acceptance contract |
-| D3 — coding workbench | Recursive lazy tree, capability grants, watcher/cache/search, edit/save/dirty/reload, file tabs and selected ranges, typed Git status/diff, review/comments/revert, interactive workspace-bounded PTY tabs with reconnect/teardown | Select a project, edit/save, review the diff, add context, run a bounded terminal, steer the work through a typed control, and resume after restart |
+| D3 — coding workbench | CUT-17 completes recursive lazy tree, capability grants, watcher/cache/search, and bounded mutations; CUT-18 completes typed tabs, language/selection/find/history, dirty/save/create-only Save As, external conflict/rename/deletion/revocation outcomes, and ref-only restart recovery through the replaceable editor host. CUT-19 still owns typed Git review/context, and CUT-20 owns workspace-bounded PTY tabs with reconnect/teardown. | Select a project, edit/save or recover a conflicted draft after restart, review the diff, add context, run a bounded terminal, steer the work through a typed control, and resume without leaking host authority |
 | D4 — runtime and settings | OpenAgents sign-in; provider account custody; runtime/model catalog and selection; MCP auth/enable state; enforced permissions; themes/fonts/shell/layout; locale/accessibility; notifications/sounds; diagnostics/recovery/support | Settings mutate real host/runtime state, unavailable actions explain why, and no credential/private payload reaches renderer logs or public evidence |
 | D5 — authoritative Fleet cockpit | Compose active FleetRun/work-unit/attempt/account/worker/approval/command/receipt state from current Pylon/Sync authority; Inbox attention and proof views; Desktop and mobile controls share typed intents | A run opens with matching Desktop/mobile state and controls; steering on either client converges to the same durable command outcomes and receipts |
 | D6 — desktop productization | Freeze independent identity; package with verified fuses; signing/notarization; update/release notes; public-safe debug export and crash/load/unresponsive recovery; clean install/update/rollback proof | Installable, updateable, recoverable app with an independent release lane; legacy Electrobun release/install paths are removed |
@@ -1748,7 +1768,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 open | Remaining CUT-09–CUT-27 graph; CUT-09/CUT-10 physical acceptance is owner-deferred, CUT-10 no-poll code is landed, and CUT-11 graph/schema/provider/Sync server contracts are active; CUT-01–CUT-08 and #8640 Phase A are closed |
+| **P0 local-coding leaves** | #8689–#8707 mixed | CUT-01–CUT-08, CUT-13, CUT-15, CUT-17, CUT-18, and CUT-22 are closed; CUT-09/CUT-10 physical acceptance is owner-deferred, CUT-10 no-poll code is landed, and CUT-11 graph/schema/provider/Sync server contracts are active; CUT-19 is the next D3 workbench leaf |
 | **P0 recording pull-forward** | #8712 | Bounded Episode 250 Fleet overview and harness-selector slice; active claim owns named Desktop gateway/composer/settings paths but does not claim CUT-16/CUT-21/CUT-25 exits |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |

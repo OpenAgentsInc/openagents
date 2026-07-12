@@ -147,6 +147,22 @@ The named real-worker scale receipt now covers a 20,000-file bounded traversal,
 current-epoch cache replay, and zero-active project close; it is host-capability
 evidence, not portable workspace materialization evidence.
 
+CUT-18 [#8698] now supplies the host-local editor state machine that future
+portable checkpoints can adopt without adopting host authority. Effect Native
+owns bounded relative tab refs, revision refs, drafts, selection, language,
+find/history, dirty/save state, and explicit external-change/conflict outcomes;
+the replaceable editor host receives only serializable props and emits typed
+events. Create-only Save As never overwrites, confirmed file/folder renames
+retarget matching open tabs without losing drafts, and revoked/missing/binary/
+large/encoding/permission outcomes remain explicit. Renderer-reload recovery is
+keyed by an opaque coding-session ref but deliberately persists only bounded
+relative refs, revisions, and drafts—never a workspace root or grant—and
+reopens every tab through the current WorkContext grant before deciding whether
+the draft is current, changed, or missing. This is the correct shape for a
+future secret-free portable editor checkpoint, but the current storage is
+device-local `localStorage`; it is not Khala Sync authority, cross-host
+materialization, or proof that a provider process moved.
+
 ### Episodes 248–249 calibration
 
 Remote-first must preserve the predictability and supervision target. Closed
@@ -236,6 +252,7 @@ OpenAgents refs and honest isolation/capability state.
 | Existing substrate | What it already contributes | Boundary that remains |
 | --- | --- | --- |
 | Khala Sync and Runtime Gateway | Stable cross-device refs, confirmed projections, durable commands/outcomes, cursor recovery, and tokenless clients. | Provider-native local history is not portable session authority; a host catalog and session attachment projection are still missing. |
+| CUT-17/CUT-18 WorkContext and editor recovery | Grant-scoped relative workspace capabilities; bounded tree/search/mutations; typed tabs/drafts/revisions/conflicts; current-grant reconciliation after renderer reload without persisting a root or grant. | Recovery remains device-local and assumes the same host WorkContext. Portable checkpoints still need Sync authority, materialization policy, attachment fencing, and target rebind. |
 | #8674/#8675 trace workspace plus subsequent inline-child refinement | Metadata-first shell; recent-first top-level catalog without an age ceiling; complete parent/child/grandchild graph; source-ordered child transcript; later causal inline child card with bounded latest activity; keyboard/accessibility and real-Electron history oracle. | This is owner-local read-only provider history. The #8675 receipt predates the inline-card refinement, and neither is Sync data, live child authority, or portable execution state until explicit adoption and a canonical live projection exist. |
 | #8676 native conversation handoff | Deterministic code path for one Desktop stream continuing on mobile with the same thread/run/message refs; the real named-account/physical-phone receipt remains open. | This is client handoff around one execution attachment, not execution migration or a completed live proof. |
 | `oa-workroomd codex session` | Multi-turn workspace preservation, event cursors, pause/continue/closeout/archive/destroy, and per-turn auth scrub on one host. | State is bound to one local `state-dir`; no export/import, attachment fencing, target rebind, or cross-host checkpoint contract exists. |
