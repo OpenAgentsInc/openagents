@@ -10,6 +10,7 @@ import {
   CodingNavigationEntity,
   LocalRevision,
   deviceLocalScope,
+  personalScope,
   decodeCodingNavigationEntity,
   decodeCodingProjectEntity,
   decodeCodingRepositoryEntity,
@@ -68,6 +69,14 @@ export type DesktopCodingCatalog = Readonly<{
   saveFocus: (sessionRef: string, focus: CodingNavigationFocus) => DesktopCodingCatalogSnapshot
   query: (query: CodingSessionCatalogQuery) => ReadonlyArray<CodingSessionEntity>
   selectedRoot: () => string | null
+  ownerScopedChangeSet: (ownerUserId: string) => Readonly<{
+    ownerScopeRef: string
+    projects: ReadonlyArray<CodingProjectEntity>
+    repositories: ReadonlyArray<CodingRepositoryEntity>
+    worktrees: ReadonlyArray<CodingWorktreeEntity>
+    sessions: ReadonlyArray<CodingSessionEntity>
+    navigation: CodingNavigationEntity | null
+  }>
 }>
 
 const safeRefPart = (value: string): string => {
@@ -354,6 +363,25 @@ export const openDesktopCodingCatalog = (input: Readonly<{
     return snapshot()
   }
 
+  const ownerScopedChangeSet = (ownerUserId: string) => {
+    const current = snapshot()
+    const ownerScopeRef = String(personalScope(ownerUserId))
+    return {
+      ownerScopeRef,
+      projects: current.catalog.projects.map(value =>
+        decodeCodingProjectEntity({ ...value, ownerScopeRef })),
+      repositories: current.catalog.repositories.map(value =>
+        decodeCodingRepositoryEntity({ ...value, ownerScopeRef })),
+      worktrees: current.catalog.worktrees.map(value =>
+        decodeCodingWorktreeEntity({ ...value, ownerScopeRef })),
+      sessions: current.catalog.sessions.map(value =>
+        decodeCodingSessionEntity({ ...value, ownerScopeRef })),
+      navigation: current.navigation === null
+        ? null
+        : decodeCodingNavigationEntity({ ...current.navigation, ownerScopeRef }),
+    }
+  }
+
   return {
     snapshot,
     selectWorkspace,
@@ -362,6 +390,7 @@ export const openDesktopCodingCatalog = (input: Readonly<{
     recoverSession,
     saveFocus,
     query: query => queryCodingSessions(snapshot().catalog, query),
+    ownerScopedChangeSet,
     selectedRoot: () => {
       const current = read()
       const selected = current.navigation?.selectedSessionRef === null || current.navigation === null

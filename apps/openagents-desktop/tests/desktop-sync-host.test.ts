@@ -6,9 +6,11 @@ import { Database } from "bun:sqlite"
 import {
   BootstrapResponse,
   LogPage,
+  MutationResult,
   PushResponse,
   SyncVersionWatermark,
   type BootstrapRequest,
+  type PushRequest,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
 import {
@@ -36,6 +38,7 @@ const waitFor = async (condition: () => boolean): Promise<void> => {
 const liveTransport = (input: Readonly<{
   bootstraps: Array<BootstrapRequest>
   lifecycle: Array<string>
+  pushes?: Array<PushRequest>
 }>): KhalaSyncTransport => ({
   bootstrap: request => Effect.sync(() => {
     input.bootstraps.push(request)
@@ -53,11 +56,17 @@ const liveTransport = (input: Readonly<{
     nextCursor: SyncVersionWatermark.make(cursor),
     upToDate: true,
   })),
-  push: () => Effect.succeed(new PushResponse({
-    protocolVersion: 1,
-    results: [],
-    lastMutationId: 0,
-  })),
+  push: request => Effect.sync(() => {
+    input.pushes?.push(request)
+    return new PushResponse({
+      protocolVersion: 1,
+      results: request.mutations.map(mutation => new MutationResult({
+        mutationId: mutation.mutationId,
+        status: "applied",
+      })),
+      lastMutationId: request.mutations.at(-1)?.mutationId ?? 0,
+    })
+  }),
   connectLive: () => Effect.succeed({
     close: () => input.lifecycle.push("session"),
   }),
@@ -209,6 +218,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
     const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-sync-auth-"))
     const lifecycle: Array<string> = []
     const bootstraps: Array<BootstrapRequest> = []
+    const pushes: Array<PushRequest> = []
     let token = "access.one"
     let capturedAuthToken: (() => string) | undefined
     const databasePath = path.join(root, "private", "sync.sqlite")
@@ -224,6 +234,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
     }
     try {
       const host = openDesktopSyncHost({ databasePath, randomId: () => "auth", openStore })
+      host.codingCatalog()?.selectWorkspace(root)
       host.connectAuthenticated({
         verification:"server_verified",
         baseUrl: "https://openagents.example",
@@ -231,15 +242,29 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
         authToken: () => token,
         createTransport: config => {
           capturedAuthToken = config.authToken
-          return liveTransport({ bootstraps, lifecycle })
+          return liveTransport({ bootstraps, lifecycle, pushes })
         },
         sessionOptions: { sleep: () => Promise.resolve(), random: () => 0 },
       })
       await waitFor(() => host.status().syncPhase === "live")
+      await waitFor(() => pushes.length > 0)
       expect(host.conversation()).not.toBeNull()
       expect(host.timeline()).not.toBeNull()
       expect(host.interactions()).not.toBeNull()
       expect(bootstraps.map(request => String(request.scope))).toEqual(["scope.user.user.desktop"])
+      const catalogMutation = pushes.flatMap(request => request.mutations)
+        .find(mutation => String(mutation.name) === "coding.publishCatalog")
+      expect(catalogMutation).toBeDefined()
+      const publishedCatalog = JSON.parse(catalogMutation?.argsJson ?? "null")
+      expect(publishedCatalog).toMatchObject({
+        ownerScopeRef: "scope.user.user.desktop",
+        projects: [{ ownerScopeRef: "scope.user.user.desktop" }],
+        repositories: [{ ownerScopeRef: "scope.user.user.desktop" }],
+        worktrees: [{ ownerScopeRef: "scope.user.user.desktop" }],
+        sessions: [{ ownerScopeRef: "scope.user.user.desktop" }],
+        navigation: { ownerScopeRef: "scope.user.user.desktop" },
+      })
+      expect(catalogMutation?.argsJson).not.toContain(root)
       expect(capturedAuthToken?.()).toBe("access.one")
       token = "access.two"
       expect(capturedAuthToken?.()).toBe("access.two")

@@ -989,8 +989,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   may persist in device-local `local_entities` for process-death recovery, but
   never confer hosted authority, contain paths/credentials, or cross an owner
   relink. Selection generations close prior thread leases and discard late
-  updates before a new scope/session can render. The deterministic enforcement
-  lives in `apps/openagents-mobile/tests/mobile-coding-navigation.test.ts` and
+  updates before a new scope/session can render. The hosted catalog is produced
+  only by the authenticated
+  `coding.publishCatalog` Sync mutator: Desktop re-encodes its validated
+  device-local catalog with the caller's exact personal scope, never publishes
+  the private worktree-path binding, and never treats the optimistic mutation
+  as hosted authority. The server rejects any owner-scope mismatch before a
+  changelog write. Mobile continues to consume only server-confirmed rows. The
+  deterministic enforcement lives in
+  `apps/openagents-mobile/tests/mobile-coding-navigation.test.ts` and
   `apps/openagents-mobile/tests/mobile-sync-host.test.ts`. The Effect Native
   drawer groups live sessions under confirmed repositories, and one typed
   session intent reopens the exact thread and binds a closeable conversation

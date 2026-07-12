@@ -5,6 +5,7 @@ import {
   CODING_SESSION_ENTITY_TYPE,
   CODING_WORKTREE_ENTITY_TYPE,
   CodingOwnerScopeRef,
+  MutatorName,
   decodeCodingNavigationEntity,
   decodeCodingProjectEntity,
   decodeCodingRepositoryEntity,
@@ -24,6 +25,7 @@ import {
 } from "@openagentsinc/khala-sync"
 import { Effect } from "effect"
 
+import type { ClientMutator } from "./overlay.js"
 import type { KhalaSyncSession, ScopeSyncState } from "./session.js"
 import type { ConfirmedEntity, KhalaSyncClientStoreError, KhalaSyncLocalStore } from "./store.js"
 
@@ -32,6 +34,24 @@ export const MAX_CONFIRMED_CODING_REPOSITORIES = 512
 export const MAX_CONFIRMED_CODING_WORKTREES = 1_024
 export const MAX_CONFIRMED_CODING_SESSIONS = 2_048
 export const MAX_CONFIRMED_CODING_NAVIGATIONS = 8
+export const CODING_PUBLISH_CATALOG_MUTATOR_NAME = "coding.publishCatalog"
+
+export type CodingCatalogPublishChangeSet = Readonly<{
+  ownerScopeRef: string
+  projects: ReadonlyArray<CodingProjectEntity>
+  repositories: ReadonlyArray<CodingRepositoryEntity>
+  worktrees: ReadonlyArray<CodingWorktreeEntity>
+  sessions: ReadonlyArray<CodingSessionEntity>
+  navigation: CodingNavigationEntity | null
+}>
+
+export const createCodingCatalogPublishMutator = (): ClientMutator<CodingCatalogPublishChangeSet> => ({
+  // Owner-scoped catalog publication is server-confirmed authority. Local
+  // device catalog rows remain separately device-local and are never
+  // optimistically reinterpreted as hosted rows.
+  apply: () => [],
+  name: MutatorName.make(CODING_PUBLISH_CATALOG_MUTATOR_NAME),
+})
 
 export type KhalaSyncCodingCatalogStatus = Readonly<{
   phase: ScopeSyncState["phase"]

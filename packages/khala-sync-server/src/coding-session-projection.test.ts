@@ -4,6 +4,7 @@ import type { ChangelogEntry } from "@openagentsinc/khala-sync"
 
 import {
   appendCodingCatalogChangeSet,
+  codingPublishCatalogMutator,
   decodeCodingCatalogChangeSet,
   projectCodingCatalogBestEffort,
 } from "./coding-session-projection.js"
@@ -153,6 +154,38 @@ describe("CUT-13 owner-scoped coding catalog projection", () => {
       sessions: [],
       navigation: null,
     }))).toThrow()
+  })
+
+  test("publish mutator binds the catalog to the authenticated personal scope", async () => {
+    const writes: AppendChangeInput[] = []
+    const writer = {
+      appendChange: async (input: AppendChangeInput) => {
+        writes.push(input)
+        return {} as ChangelogEntry
+      },
+    } as SyncTransactionWriter
+    const args = codingPublishCatalogMutator.decodeArgs(JSON.stringify(changeSet()))
+    const applied = await codingPublishCatalogMutator.execute(args, {
+      mutationId: 1,
+      mutationRef: "mutation.catalog.owner",
+      userId: "owner-1",
+      writer,
+    } as any)
+    expect(applied.status).toBe("applied")
+    expect(writes).toHaveLength(5)
+
+    writes.length = 0
+    const rejected = await codingPublishCatalogMutator.execute(args, {
+      mutationId: 2,
+      mutationRef: "mutation.catalog.foreign",
+      userId: "other-owner",
+      writer,
+    } as any)
+    expect(rejected).toMatchObject({
+      status: "rejected",
+      errorCode: "unauthorized_scope",
+    })
+    expect(writes).toHaveLength(0)
   })
 
   test("refuses raw placement or credential-shaped material before storage", async () => {

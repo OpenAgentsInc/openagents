@@ -761,6 +761,9 @@ const codingCatalogSnapshot = () => {
     ? emptyDesktopCodingCatalogProjection()
     : projectDesktopCodingCatalog(catalog.snapshot())
 }
+const publishCodingCatalog = (): void => {
+  hostLifecycle.sync()?.publishCodingCatalog()
+}
 // A workspace change revokes every terminal bound to the OUTGOING grant: its
 // owned process trees are killed exactly once before the new root is authorized.
 const revokeOutgoingWorkspaceTerminals = (): void => {
@@ -782,7 +785,10 @@ const chooseCodingWorkspace = async (registerCatalog = true) => {
   revokeOutgoingWorkspaceTerminals()
   hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
   rebindWorkspaceChangeSubscriptions()
-  if (registerCatalog) hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
+  if (registerCatalog) {
+    hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
+    publishCodingCatalog()
+  }
   return root
 }
 ipcMain.handle(DesktopWindowFullscreenChannel, (event) => {
@@ -924,6 +930,7 @@ ipcMain.handle(DesktopCodingCatalogOpenChannel, (_event, raw: unknown) => {
   const catalog = hostLifecycle.sync()?.codingCatalog()
   if (request === null || catalog === null || catalog === undefined) return codingCatalogSnapshot()
   const snapshot = catalog.openSession(request.sessionRef)
+  publishCodingCatalog()
   activateCodingCatalogRoot()
   return projectDesktopCodingCatalog(snapshot)
 })
@@ -932,6 +939,7 @@ ipcMain.handle(DesktopCodingCatalogArchiveChannel, (_event, raw: unknown) => {
   const catalog = hostLifecycle.sync()?.codingCatalog()
   if (request === null || catalog === null || catalog === undefined) return codingCatalogSnapshot()
   const snapshot = catalog.archiveSession(request.sessionRef)
+  publishCodingCatalog()
   activateCodingCatalogRoot()
   return projectDesktopCodingCatalog(snapshot)
 })
@@ -942,14 +950,22 @@ ipcMain.handle(DesktopCodingCatalogRecoverChannel, async (_event, raw: unknown) 
   const root = await chooseCodingWorkspace(false)
   return root === null
     ? codingCatalogSnapshot()
-    : projectDesktopCodingCatalog(catalog.recoverSession(request.sessionRef, root))
+    : (() => {
+        const snapshot = catalog.recoverSession(request.sessionRef, root)
+        publishCodingCatalog()
+        return projectDesktopCodingCatalog(snapshot)
+      })()
 })
 ipcMain.handle(DesktopCodingCatalogFocusChannel, (_event, raw: unknown) => {
   const request = decodeDesktopCodingFocusRequest(raw)
   const catalog = hostLifecycle.sync()?.codingCatalog()
   return request === null || catalog === null || catalog === undefined
     ? codingCatalogSnapshot()
-    : projectDesktopCodingCatalog(catalog.saveFocus(request.sessionRef, request.focus))
+    : (() => {
+        const snapshot = catalog.saveFocus(request.sessionRef, request.focus)
+        publishCodingCatalog()
+        return projectDesktopCodingCatalog(snapshot)
+      })()
 })
 ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
   const workspace = hostLifecycle.workspace()

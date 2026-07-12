@@ -18,6 +18,7 @@ import {
   createKhalaSyncAgentTimeline,
   createKhalaSyncLiveAgentGraph,
   createKhalaSyncCodingComposerDrafts,
+  createCodingCatalogPublishMutator,
   createKhalaSyncRuntimeInteractions,
   createKhalaSyncRuntimeCommands,
   createRuntimeInteractionClientMutator,
@@ -63,6 +64,7 @@ export type DesktopSyncHost = Readonly<{
   interactions: () => KhalaSyncRuntimeInteractions | null
   drafts: () => KhalaSyncCodingComposerDrafts | null
   codingCatalog: () => DesktopCodingCatalog | null
+  publishCodingCatalog: () => boolean
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   unlinkAccount:()=>void
@@ -106,10 +108,12 @@ export const openDesktopSyncHost = (input: Readonly<{
   let timeline: KhalaSyncAgentTimeline | null = null
   let agentGraph: KhalaSyncLiveAgentGraph | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
+  let authenticatedOwnerUserId: string | null = null
   let interactions: KhalaSyncRuntimeInteractions | null = null
   let drafts: KhalaSyncCodingComposerDrafts | null = null
   let codingCatalog: DesktopCodingCatalog | null = null
   let scope: SyncScope | null = null
+  const codingCatalogPublishMutator = createCodingCatalogPublishMutator()
   try {
     const persisted = Effect.runSync(store.identity())
     if (persisted === null) {
@@ -148,8 +152,21 @@ export const openDesktopSyncHost = (input: Readonly<{
     agentGraph = null
     runtime = null
     interactions = null
+    authenticatedOwnerUserId = null
     scope = null
     Effect.runSync(revoke ? closing.revoke() : closing.close())
+  }
+
+  const publishCodingCatalog = (): boolean => {
+    if (session === null || codingCatalog === null || authenticatedOwnerUserId === null) return false
+    const changeSet = codingCatalog.ownerScopedChangeSet(authenticatedOwnerUserId)
+    if (
+      changeSet.projects.length + changeSet.repositories.length +
+      changeSet.worktrees.length + changeSet.sessions.length +
+      Number(changeSet.navigation !== null) === 0
+    ) return false
+    Effect.runSync(session.mutate(codingCatalogPublishMutator, changeSet))
+    return true
   }
 
   return {
@@ -190,6 +207,7 @@ export const openDesktopSyncHost = (input: Readonly<{
         : null,
     drafts: () => closed ? null : drafts,
     codingCatalog: () => closed ? null : codingCatalog,
+    publishCodingCatalog,
     connectAuthenticated: connection => {
       if (closed) throw new Error("desktop Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
@@ -212,6 +230,7 @@ export const openDesktopSyncHost = (input: Readonly<{
         ...Object.values(mutators),
         ...Object.values(runtimeMutators),
         interactionMutator,
+        codingCatalogPublishMutator,
       ]))
       const transportConfig = {
         baseUrl: connection.baseUrl,
@@ -220,6 +239,7 @@ export const openDesktopSyncHost = (input: Readonly<{
       const transport = connection.createTransport?.(transportConfig) ??
         createHttpKhalaSyncTransport(transportConfig)
       scope = personalScope(ownerUserId)
+      authenticatedOwnerUserId = ownerUserId
       session = createKhalaSyncSession({
         baseUrl: connection.baseUrl,
         clientGroupId: identity.clientGroupId,
@@ -242,6 +262,7 @@ export const openDesktopSyncHost = (input: Readonly<{
         mutator: interactionMutator,
       })
       Effect.runSync(session.subscribe(scope))
+      publishCodingCatalog()
     },
     disconnectAuthenticated,
     unlinkAccount:()=>{try{disconnectAuthenticated(true)}finally{Effect.runSync(store.clearLocalAccountLink())}},

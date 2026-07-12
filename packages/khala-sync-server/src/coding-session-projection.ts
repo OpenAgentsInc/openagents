@@ -7,6 +7,9 @@ import {
   CodingOwnerScopeRef,
   EntityId,
   EntityType,
+  MutationResult,
+  MutatorName,
+  personalScope,
   SyncScope,
   canonicalJson,
   decodeCodingNavigationEntity,
@@ -24,10 +27,12 @@ import {
 } from "@openagentsinc/khala-sync"
 
 import { withSyncTransaction, type SyncTransactionWriter } from "./outbox-writer.js"
+import { defineMutator, type MutatorDefinition } from "./push-engine.js"
 import type { SyncSql } from "./sql.js"
 
 export const CODING_SESSION_PROJECTION_SYSTEM_REF =
   "system:coding_session_projection.catalog.v1"
+export const CODING_PUBLISH_CATALOG_MUTATOR_NAME = "coding.publishCatalog"
 
 const forbiddenPrivateMaterial =
   /"(?:token|apiKey|authorization|sessionToken|refreshToken|mnemonic|secret|localPath|hostname|processId|providerSessionId|transportHandle)"\s*:|(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|(?:\/Users\/|[A-Za-z]:\\Users\\)|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/i
@@ -149,6 +154,28 @@ export const appendCodingCatalogChangeSet = async (
   }
   return entries
 }
+
+export const codingPublishCatalogMutator: MutatorDefinition =
+  defineMutator<CodingCatalogChangeSet>({
+    name: MutatorName.make(CODING_PUBLISH_CATALOG_MUTATOR_NAME),
+    decodeArgs: argsJson => decodeCodingCatalogChangeSet(JSON.parse(argsJson) as unknown),
+    execute: async (args, ctx) => {
+      if (args.ownerScopeRef !== String(personalScope(ctx.userId))) {
+        return new MutationResult({
+          mutationId: ctx.mutationId,
+          status: "rejected",
+          errorCode: "unauthorized_scope",
+          errorMessageSafe: "coding catalog scope does not belong to the authenticated owner",
+        })
+      }
+      await appendCodingCatalogChangeSet(ctx.writer, args, ctx.mutationRef)
+      return new MutationResult({ mutationId: ctx.mutationId, status: "applied" })
+    },
+  })
+
+export const codingCatalogMutators: ReadonlyArray<MutatorDefinition> = [
+  codingPublishCatalogMutator,
+]
 
 export type CodingCatalogProjectionOutcome =
   | Readonly<{ ok: true; entries: ReadonlyArray<ChangelogEntry> }>

@@ -185,7 +185,10 @@ export {
 } from "./live-agent-graph-presentation.js"
 
 export {
+  CODING_PUBLISH_CATALOG_MUTATOR_NAME,
+  createCodingCatalogPublishMutator,
   createKhalaSyncCodingCatalog,
+  type CodingCatalogPublishChangeSet,
   type ConfirmedCodingCatalogSnapshot,
   type KhalaSyncCodingCatalog,
   type KhalaSyncCodingCatalogStatus,

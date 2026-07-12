@@ -28,6 +28,7 @@ import {
 } from '@openagentsinc/khala-sync'
 import {
   chatMutators,
+  codingCatalogMutators,
   defineMutator,
   fleetOperatorMutators,
   fleetSteeringMutators,
@@ -130,6 +131,7 @@ export const makeKhalaSyncWorkerMutatorRegistry = (): MutatorRegistry =>
   makeMutatorRegistry([
     debugEchoMutator,
     ...chatMutators,
+    ...codingCatalogMutators,
     ...runtimeMutators,
     ...fleetOperatorMutators,
     ...fleetSteeringMutators,
