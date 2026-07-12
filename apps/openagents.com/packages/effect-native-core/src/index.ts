@@ -4443,12 +4443,31 @@ export const Host = (props: HostProps): HostView =>
 // provided by the app as a per-renderer host driver whose lifecycle is bound to
 // the surface Scope; the framework owns the typed contract + driver seam, never
 // a bundled editor engine. No Monaco types appear in the public contract.
+const CodeEditorSelectionOffsetSchema = Schema.Number.check(
+  Schema.isInt({ title: "CodeEditorSelectionOffsetInteger" }),
+  Schema.isGreaterThanOrEqualTo(0, { title: "CodeEditorSelectionOffsetNonNegative" })
+)
+
+export interface CodeEditorSelection {
+  readonly start: number
+  readonly end: number
+  readonly version: number
+}
+export const CodeEditorSelectionSchema: Schema.Codec<CodeEditorSelection, CodeEditorSelection> = Schema.Struct({
+  start: CodeEditorSelectionOffsetSchema,
+  end: CodeEditorSelectionOffsetSchema,
+  version: CodeEditorSelectionOffsetSchema
+}) as unknown as Schema.Codec<CodeEditorSelection, CodeEditorSelection>
+
 export interface CodeEditorHostProps {
   readonly value: string
   readonly language: string
   readonly readOnly?: boolean
   readonly wordWrap?: boolean
   readonly minimap?: boolean
+  // Versioned so a renderer applies only model-authored selection commands;
+  // ordinary outward caret events do not get replayed after every keystroke.
+  readonly selection?: CodeEditorSelection
   // Font size from the token scale (never a raw pixel number).
   readonly fontScale?: TypeScaleToken
 }
@@ -4458,6 +4477,7 @@ export const CodeEditorHostPropsSchema: Schema.Codec<CodeEditorHostProps, CodeEd
   readOnly: Schema.Boolean.pipe(Schema.optionalKey),
   wordWrap: Schema.Boolean.pipe(Schema.optionalKey),
   minimap: Schema.Boolean.pipe(Schema.optionalKey),
+  selection: CodeEditorSelectionSchema.pipe(Schema.optionalKey),
   fontScale: TypeScaleTokenSchema.pipe(Schema.optionalKey)
 }) as unknown as Schema.Codec<CodeEditorHostProps, CodeEditorHostProps>
 export const decodeCodeEditorHostProps = Schema.decodeUnknownSync(CodeEditorHostPropsSchema)

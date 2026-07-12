@@ -180,9 +180,30 @@ export const makeStubCodeEditorDriver = (): DomHostDriver => ({
     textarea.style.height = "100%"
     textarea.style.fontFamily = "monospace"
     textarea.style.whiteSpace = initial.wordWrap === true ? "pre-wrap" : "pre"
+    textarea.style.fontSize = `var(--en-type-${initial.fontScale ?? "body"}-fontSize)`
+    textarea.style.lineHeight = `var(--en-type-${initial.fontScale ?? "body"}-lineHeight)`
+    textarea.setAttribute("data-en-minimap", initial.minimap === true ? "true" : "false")
+    let appliedSelectionVersion = -1
+    let applyingSelection = false
+    const applySelection = (nextProps: CodeEditorHostProps): void => {
+      const selection = nextProps.selection
+      if (selection === undefined || selection.version === appliedSelectionVersion) {
+        return
+      }
+      const start = Math.min(nextProps.value.length, selection.start)
+      const end = Math.max(start, Math.min(nextProps.value.length, selection.end))
+      applyingSelection = true
+      textarea.setSelectionRange(start, end)
+      applyingSelection = false
+      appliedSelectionVersion = selection.version
+    }
+    applySelection(initial)
     const onInput = () => context.emit({ type: "change", value: textarea.value })
-    const onSelect = () =>
-      context.emit({ type: "selection", start: textarea.selectionStart ?? 0, end: textarea.selectionEnd ?? 0 })
+    const onSelect = () => {
+      if (!applyingSelection) {
+        context.emit({ type: "selection", start: textarea.selectionStart ?? 0, end: textarea.selectionEnd ?? 0 })
+      }
+    }
     const onKeydown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault()
@@ -197,10 +218,16 @@ export const makeStubCodeEditorDriver = (): DomHostDriver => ({
     return {
       update: (next) => {
         const nextProps = next as CodeEditorHostProps
-        if (textarea.ownerDocument.activeElement !== textarea) textarea.value = nextProps.value
+        if (textarea.value !== nextProps.value) {
+          textarea.value = nextProps.value
+        }
         textarea.readOnly = nextProps.readOnly === true
         textarea.style.whiteSpace = nextProps.wordWrap === true ? "pre-wrap" : "pre"
+        textarea.style.fontSize = `var(--en-type-${nextProps.fontScale ?? "body"}-fontSize)`
+        textarea.style.lineHeight = `var(--en-type-${nextProps.fontScale ?? "body"}-lineHeight)`
         textarea.setAttribute("data-en-code-editor", nextProps.language)
+        textarea.setAttribute("data-en-minimap", nextProps.minimap === true ? "true" : "false")
+        applySelection(nextProps)
       },
       unmount: () => {
         if (disposed) return
@@ -353,6 +380,12 @@ export interface DomRendererOptions {
   // kind has no registered driver renders a loud error marker.
   readonly hostDrivers?: ReadonlyArray<DomHostDriver>
 }
+
+type DomHostInstanceBinding = Readonly<{
+  kind: HostKind
+  instance: DomHostInstance
+  eventBinding: { current: IntentRef | undefined }
+}>
 
 export interface DomMountedSurface extends MountedSurface {
   readonly root: HTMLElement
@@ -701,7 +734,8 @@ class DomRendererState {
   // Scheduled toast auto-dismiss timers, keyed by notification id (issue #40).
   readonly toastTimers = new Map<string, ReturnType<typeof setTimeout>>()
   readonly hostDrivers: Map<HostKind, DomHostDriver>
-  readonly hostInstances = new Map<string, { readonly kind: HostKind; readonly instance: DomHostInstance }>()
+  readonly hostInstances = new Map<string, DomHostInstanceBinding>()
+  readonly retainedHostInstanceKeys = new Set<string>()
 
   constructor(
     container: Element,
@@ -726,6 +760,7 @@ class DomRendererState {
       instance.unmount()
     }
     this.hostInstances.clear()
+    this.retainedHostInstanceKeys.clear()
     for (const cleanup of this.allListeners) {
       cleanup()
     }
@@ -736,6 +771,23 @@ class DomRendererState {
     }
     this.root.remove()
     this.styles.dispose()
+  }
+
+  beginHostRender(): void {
+    this.retainedHostInstanceKeys.clear()
+  }
+
+  retainHostInstance(instanceKey: string): void {
+    this.retainedHostInstanceKeys.add(instanceKey)
+  }
+
+  disposeUnretainedHostInstances(): void {
+    this.hostInstances.forEach((binding, instanceKey) => {
+      if (!this.retainedHostInstanceKeys.has(instanceKey)) {
+        binding.instance.unmount()
+        this.hostInstances.delete(instanceKey)
+      }
+    })
   }
 
   requestFocus(element: HTMLElement): void {
@@ -1816,22 +1868,26 @@ const renderHost = (view: HostView, state: DomRendererState, report: IntentRepor
 
   const existing = state.hostInstances.get(instanceKey)
   if (existing !== undefined && existing.kind === view.kind) {
+    existing.eventBinding.current = view.onEvent
     existing.instance.update(decoded)
+    state.retainHostInstance(instanceKey)
   } else {
     if (existing !== undefined) {
       existing.instance.unmount()
     }
+    const eventBinding: { current: IntentRef | undefined } = { current: view.onEvent }
     const context: DomHostContext = {
       document: element.ownerDocument,
       report,
       emit: (payload) => {
-        if (view.onEvent !== undefined) {
-          runReportedIntent(report, view.onEvent, payload)
+        if (eventBinding.current !== undefined) {
+          runReportedIntent(report, eventBinding.current, payload)
         }
       }
     }
     const instance = driver.mount(element, decoded, context)
-    state.hostInstances.set(instanceKey, { kind: view.kind, instance })
+    state.hostInstances.set(instanceKey, { kind: view.kind, instance, eventBinding })
+    state.retainHostInstance(instanceKey)
   }
 
   applyBaseStyle(element, view, state)
@@ -4096,8 +4152,10 @@ const commitView = (view: View, state: DomRendererState, report: IntentReporter)
   )
   state.clearFocusRequest()
   state.styles.beginRender()
+  state.beginHostRender()
   const element = renderView(view, state, report)
   state.root.replaceChildren(element)
+  state.disposeUnretainedHostInstances()
   for (const timeline of Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-role="timeline"][data-en-key]'))) {
     const position = timelineScrollPositions.get(timeline.getAttribute("data-en-key") ?? "")
     if (position !== undefined) {
