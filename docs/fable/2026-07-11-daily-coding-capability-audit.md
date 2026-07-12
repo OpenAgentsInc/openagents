@@ -3,6 +3,7 @@
 - **Date:** 2026-07-11
 - **Author:** Fable (agent)
 - **Status:** capability audit — not roadmap authority; sequencing stays `docs/sol/MASTER_ROADMAP.md`
+- **Status snapshot superseded:** per-capability statuses here are the 2026-07-11 snapshot; the live authority is `apps/openagents-desktop/src/capability-registry.ts`, and the refreshed status + switch runbook is [`2026-07-12-daily-coding-cutover-status-and-switch-runbook.md`](./2026-07-12-daily-coding-cutover-status-and-switch-runbook.md)
 - **Issue:** #8712 (EP250)
 - **Owner directive (verbatim):** "deeply research all of the chats we make now in ~/.claude and ~/.codex, for day to day coding, build tests/evals to ensure we can do ALL of those things via UI and programmatically via OpenAgents app only. first write a detailed audit in docs/fable/, commit and push."
 - **Sources:** local `~/.claude/projects` and `~/.codex/sessions` JSONL archives, mined 2026-06-11 → 2026-07-11 (30-day window, mtime-filtered); openagents source at `origin/main` HEAD `c95b260c22`
