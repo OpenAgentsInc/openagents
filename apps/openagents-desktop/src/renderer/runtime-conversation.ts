@@ -713,17 +713,14 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
       return [...hosted, ...local.filter(thread => !hostedRefs.has(thread.id))]
     },
     newThread: async () => {
-      const selected = await current()
-      const created = await selected.host.newThread()
-      if (created !== null) return remember(created, selected.mode)
-      // New Chat is a local-user navigation invariant, not permission to
-      // leave the current transcript stuck because the preferred Sync host
-      // could not confirm a create. Fall back to the other durable host and
-      // pin the resulting ref to that authority for every later operation.
-      const fallback = selected.mode === "runtime"
-        ? { host: input.local, mode: "local" as const }
-        : { host: runtime, mode: "runtime" as const }
-      return remember(await fallback.host.newThread(), fallback.mode)
+      // New Chat is local-first navigation. It must never wait behind live
+      // Sync's unbounded pending-reconciliation path: create durably in the
+      // app-owned store and pin the ref local before consulting the network.
+      const local = await input.local.newThread()
+      if (local !== null) return remember(local, "local")
+      // A missing/broken local bridge is the only reason to attempt the typed
+      // runtime host. This is degradation, not the normal critical path.
+      return remember(await runtime.newThread(), "runtime")
     },
     openThread: async threadRef => {
       const selected = await hostForThread(threadRef)

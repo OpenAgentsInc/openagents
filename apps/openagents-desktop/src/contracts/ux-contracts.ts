@@ -1864,7 +1864,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "New Chat and Command-N must always leave the old chat and open a fresh chat.",
         authorityBoundary:
-          "Every New Chat entry point dispatches the same DesktopNewChat intent. A live Sync host may create the durable thread first, but a null/unconfirmed Sync creation cannot become a silent navigation no-op: the converging chat host falls back to the app-owned durable local thread store, pins that thread ref to local authority, exits any loaded history page, mounts an empty transcript, and focuses the composer. No fake success is projected without a real thread from one of the two typed durable hosts.",
+          "Every New Chat entry point dispatches the same DesktopNewChat intent. Creation is local-first and must not enter live Sync's pending-reconciliation path: the converging chat host creates through the app-owned durable local thread store, pins that ref to local authority, exits any loaded history page, mounts an empty transcript, and focuses the composer. The typed runtime host is attempted only when the local durable bridge cannot create. No fake success is projected without a real thread from one of the two typed durable hosts.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/runtime-conversation.ts",
           "apps/openagents-desktop/src/renderer/shell.ts",
@@ -1872,12 +1872,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         oracles: [
           {
-            id: "new_chat_always.runtime_falls_back_local",
+            id: "new_chat_always.local_creation_bypasses_sync_reconciliation",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/runtime-conversation.test.ts",
             description:
-              "Proves a live-but-unconfirmable Sync create falls back exactly once to the durable local store and pins the resulting thread ref to local authority.",
+              "Proves New Chat creates exactly once through the durable local store, never enters live Sync reconciliation, and pins the resulting thread ref to local authority.",
           },
           {
             id: "new_chat_always.button_and_command_n_exit_history",

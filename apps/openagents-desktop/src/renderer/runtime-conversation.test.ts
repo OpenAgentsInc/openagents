@@ -274,7 +274,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     expect(catalogCalls).toBe(3)
   })
 
-  test("New Chat falls back to the durable local store when live Sync cannot confirm creation", async () => {
+  test("New Chat creates locally without entering live Sync reconciliation", async () => {
     const localThread: DesktopThread = {
       id: "thread.local.new-chat-fallback",
       title: "New chat",
@@ -300,9 +300,9 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     const host = makeConvergingDesktopChatHost({ local, request })
 
     expect(await host.newThread()).toEqual(localThread)
-    expect(runtimeCreates).toBe(1)
+    expect(runtimeCreates).toBe(0)
     expect(localCreates).toBe(1)
-    // The fallback ref is pinned local: opening it never probes Sync again.
+    // The new ref is pinned local: opening it never probes Sync.
     expect(await host.openThread(localThread.id)).toEqual(localThread)
   })
 
