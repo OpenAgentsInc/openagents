@@ -340,6 +340,17 @@ export const fixtureProviderAccountsListStdout = JSON.stringify({
   observedAt: "2026-07-11T00:00:00.000Z",
   accounts: [
     {
+      // The healthy codex account the composer's codex-local lane runs on
+      // (FIXTURE_CODEX_LOCAL_ACCOUNT shares this ref). Listed FIRST so the
+      // renderer's default exact-provider-target binding (#8701 CUT-21:
+      // first READY fleet account per provider) selects it — "codex" below
+      // keeps its child-observed reconnect-required fleet narrative and
+      // "codex-2" stays credentials_revoked.
+      provider: "codex",
+      accountRef: "codex-3",
+      readiness: { state: "ready" },
+    },
+    {
       provider: "codex",
       accountRef: "codex",
       readiness: { state: "ready" },

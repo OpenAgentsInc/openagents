@@ -788,7 +788,17 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
 
 export const FIXTURE_CODEX_LOCAL_TEXT = "Codex local **fixture** proof."
 export const FIXTURE_CODEX_LOCAL_ACCOUNT: CodexChildAccount = {
-  ref: "codex-local-fixture",
+  // Shares the fleet's first-READY codex account identity: the provider-accounts
+  // fixture advertises `codex-3` (this account) as ready and lists it before
+  // `codex`, whose fixture story is probe-revoked/reconnect-required. The
+  // exact-provider-target feature (#8701 CUT-21) binds the fleet-selected
+  // accountRef and the runtime filters discovered homes by it, so the smoke's
+  // fleet identity and the codex-local discover identity MUST be the same
+  // account — exactly the production invariant (the account you pick in the
+  // fleet is the account the turn runs on). It must NOT reuse ref `codex`,
+  // because this lane's probe/turn successes would erase that account's
+  // deliberate reconnect-required narrative in the fleet assertions.
+  ref: "codex-3",
   home: "/nonexistent/codex-local-fixture-home",
 }
 

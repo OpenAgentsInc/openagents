@@ -264,6 +264,7 @@ describe("makeProviderAccountsService", () => {
       ok: true,
       generatedAt,
       accounts: [
+        { ref: "codex-3", provider: "codex", email: null, readiness: "ready" },
         { ref: "codex", provider: "codex", email: null, readiness: "ready" },
         { ref: "codex-2", provider: "codex", email: null, readiness: "credentials-missing" },
         { ref: "claude-pylon-3", provider: "claude_agent", email: null, readiness: "ready" },

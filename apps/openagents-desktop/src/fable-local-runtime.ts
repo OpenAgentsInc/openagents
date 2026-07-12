@@ -1501,7 +1501,14 @@ const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
  */
 export const FABLE_LOCAL_FIXTURE_TEXT = "Fable local **streaming** proof."
 export const FABLE_LOCAL_FIXTURE_ACCOUNT: FableLocalAccountHome = {
-  ref: "claude-pylon-fixture",
+  // Shares the fleet's claude account identity (the provider-accounts fixture
+  // advertises `claude-pylon-3` as the ready claude_agent account). The
+  // exact-provider-target feature (#8701 CUT-21) binds the fleet-selected
+  // accountRef and the runtime filters discovered homes by it, so the smoke's
+  // fleet identity and the fable-local discover identity MUST be the same
+  // account — exactly the production invariant (the account you pick in the
+  // fleet is the account the turn runs on).
+  ref: "claude-pylon-3",
   home: "/nonexistent/fable-local-fixture-home",
 }
 

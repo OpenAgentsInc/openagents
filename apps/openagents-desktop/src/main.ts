@@ -3126,7 +3126,7 @@ const smokeMessageInspector = `(async () => {
   const text = inspector.textContent || ""
   const hasModel = text.includes("claude-fable-5")
   const hasLane = text.includes("fable-local")
-  const hasAccount = text.includes("claude-pylon-fixture")
+  const hasAccount = text.includes("claude-pylon-3")
   const hasTokens = text.includes("Tokens (total)") && text.includes("49")
   const close = document.querySelector('[data-en-key="chat-message-inspector-close"]')
   if (close === null) return { ok: false, reason: "inspector close affordance missing" }
@@ -3185,7 +3185,7 @@ const smokeOpenFleetWorkspace = `(async () => {
     await wait(50)
   }
   const panel = document.querySelector('[data-en-key="workspace-fleet-panel"]')
-  const expected = ["codex", "codex-2", "claude-pylon-3"]
+  const expected = ["codex-3", "codex", "codex-2", "claude-pylon-3"]
   const refs = expected.map((ref) =>
     document.querySelector('[data-en-key="fleet-ref-' + ref + '"]')?.textContent ?? null)
   const revoked = document.querySelector('[data-en-key="fleet-readiness-codex-2"]')
