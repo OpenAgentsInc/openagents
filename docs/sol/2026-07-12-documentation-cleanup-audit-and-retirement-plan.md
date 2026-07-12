@@ -19,12 +19,13 @@
 | SOL-DOC-03 — retire false dispatch artifacts | [#8725](https://github.com/OpenAgentsInc/openagents/issues/8725) | **Closed 2026-07-12.** The July 10 delegation diary is non-dispatch and its executable prompt is removed; active inbound links now use live authority. The CUT plan, CUT-27 audit, parity score, and Desktop delivery sequence are pinned historical evidence. | `7476316a69` — changed-file links resolve; active inbound-link and obsolete-prompt scans pass; snapshot-status assertions and repository fast pre-push guards pass. |
 | SOL-DOC-04 — compact the canonical master | [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726) | **Closed 2026-07-12.** The master is one compact authority with durable decisions/gates/laws/non-goals, one live issue projection, and one next-ready sequence. Historical implementation diaries and the Fable pass are removed from its body. CUT dependency edges remain binding while their mutable status prose is historical. | `6bfe97fddb` — 2,189→557 lines; 22 decisions, 30 laws, R0–R7, D0–D6, C0–C3, live-issue equality, forbidden-history, link, diff, and repository fast pre-push checks pass. |
 | SOL-DOC-05 — normalize receipts and issue sources | [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727) | **Closed 2026-07-12.** One receipt index exposes final rungs for 25 root evidence files; every checked-in issue source is classified as live, closed proof, tombstone, or reference; ambiguous receipt headers now lead with final disposition. | `991f908b6b` — 43/43 unique issue-source coverage, live-state equality, stale-close, link, diff, and repository fast pre-push checks pass. |
+| SOL-DOC-06 — extract July 9 doctrine and prepare archive | [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728) | **Closed 2026-07-12.** Binding greenfield/Sarah-removal decisions and five live falsifiers have durable owners; the nine candidate files are pinned by hash, inbound links, destination, and cross-repo deletion gate. | `6e8b55b86e` — 9/9 hash equality, unchanged source bytes, migrated binding links, local links, diff, and repository fast pre-push checks pass. |
 
-**Next ordered chunk:** SOL-DOC-06 extracts still-binding authority/trust rules,
-risk falsifiers, the post-Sarah Effect Native falsifier, and the compact
-greenfield/Sarah-removal decision into their durable owners. It produces the
-exact Backroom export manifest and inbound-link plan for the July 9 corpus but
-does not delete source files before the archive is pushed.
+**Next ordered chunk:** SOL-DOC-07 writes and pushes the exact manifested July
+9 payload to `OpenAgentsInc/backroom` first, migrates every remaining inbound
+link, removes the nine archived sources from `openagents`, and records both
+repository commits bidirectionally. No source deletion begins if the Backroom
+import is not pushed and hash-verified.
 
 ## Executive decision
 
@@ -496,10 +497,14 @@ rung can be confused with the final disposition from the file header.
 **Goal:** remove fully obsolete prose from the product repository without
 losing the reasoning.
 
-1. Promote live authority/trust conclusions into invariants/contracts.
-2. Promote still-live risk tests and the post-Sarah Effect Native falsifier
+SOL-DOC-06 [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728)
+completed doctrine/falsifier extraction and the exact archive manifest at
+`6e8b55b86e`. Items 4–7 remain for the cross-repository SOL-DOC-07 issue.
+
+1. **Complete.** Promote live authority/trust conclusions into invariants/contracts.
+2. **Complete.** Promote still-live risk tests and the post-Sarah Effect Native falsifier
    into the challenge ledger.
-3. Preserve a compact greenfield/Sarah-removal decision and all non-revival
+3. **Complete.** Preserve a compact greenfield/Sarah-removal decision and all non-revival
    tombstones.
 4. Build the first Backroom archive batch and manifest.
 5. Push the Backroom archive.

@@ -3,20 +3,23 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 89
+- Revision: 90
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: yes, together with live issues and
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
-- Documentation cleanup: SOL-DOC-01 through SOL-DOC-05 are closed.
+- Documentation cleanup: SOL-DOC-01 through SOL-DOC-06 are closed.
   SOL-DOC-04 [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726)
   compacted this authority from 2,189 to 557 lines at `6bfe97fddb` without
   changing product proof. SOL-DOC-05
   [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727) indexed
   receipts and classified every checked-in issue source at `991f908b6b`.
-  SOL-DOC-06 extracts retained doctrine before Backroom export. See the
+  SOL-DOC-06 [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728)
+  extracted the compact greenfield/Sarah-removal decision, live falsifiers,
+  and exact July 9 archive manifest at `6e8b55b86e`. SOL-DOC-07 performs the
+  Backroom-import-first source removal. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
 This file owns current product direction, durable gates and laws, the current
@@ -546,6 +549,8 @@ The Revision 86 pre-compaction body remains in Git at `4239689e24`. Dedicated
 evidence remains discoverable here:
 
 - [`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md)
+- [`greenfield clients and Sarah-removal decision`](./decisions/2026-07-10-greenfield-clients-and-sarah-removal.md)
+- [`July 9 Backroom archive manifest`](./2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md)
 - [`checked-in issue sources`](./issues/README.md)
 - [`receipt and evidence index`](./receipts/README.md)
 - [`binding CUT dependencies and historical status`](./2026-07-11-openagents-coding-cutover-issue-plan.md)
