@@ -324,6 +324,12 @@ $PYLON khala request \
   --json
 ```
 
+`khala request --prompt` is the public-safe objective summary and must be
+3-1000 characters after trimming. Put a longer full specification in a public
+issue comment, then use a short prompt that references that comment and the
+named verification, for example: `Implement Lane RE-C from issue #8712 comment
+issuecomment-4950243136 and run the pinned verification.`
+
 Keep this prompt public-safe and bounded: cite public issue numbers, public file
 paths, and public verification commands only. Do not include raw private prompts,
 secrets, local paths, provider payloads, wallet material, or private repo
@@ -549,9 +555,6 @@ Known public-safe steering gaps to keep visible:
   runner command that accepts several assignment refs, leases up to advertised
   capacity, and reports per-assignment closeouts. Manual background shells are
   too easy to misattribute.
-- `presence heartbeat` should exit cleanly after the heartbeat write. If a
-  runtime handle keeps the process alive, operators currently need an outer
-  timeout even though the heartbeat already succeeded.
 - The Khala request safety guard should support an explain/dry-run mode for
   public issue work. During this run, ordinary safety words in an issue-summary
   prompt were rejected without naming the offending field, and an unsupported

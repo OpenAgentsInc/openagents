@@ -771,7 +771,7 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   }, 30_000)
 
-  test("CLI one-shot presence heartbeat exits after JSON even when a runtime handle is left open", async () => {
+  test("CLI one-shot presence heartbeat exits after JSON even when a runtime handle is left open (#8712)", async () => {
     await withTempHome(async (home) => {
       const fake = fakePresenceCliServer()
       const result = await runPresenceCli({
@@ -779,6 +779,8 @@ describe("Pylon presence registration and heartbeat", () => {
         env: {
           PYLON_HOME: home,
           PYLON_OPENAGENTS_BASE_URL: fake.baseUrl,
+          // Models the Spark/Breez class of retained runtime handle. The CLI
+          // must publish complete JSON and exit without waiting for loop drain.
           PYLON_PRESENCE_ONESHOT_TEST_HOLD_HANDLE: "1",
         },
         timeoutMs: 5_000,

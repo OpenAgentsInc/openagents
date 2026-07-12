@@ -9,7 +9,7 @@ import { Database } from "bun:sqlite"
 // Windows `B:\~BUN\root\…`), shared with the embedded Spark WASM extraction.
 import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime.js"
 import { readFile } from "node:fs/promises"
-import { existsSync } from "node:fs"
+import { existsSync, writeSync } from "node:fs"
 import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
@@ -1413,10 +1413,13 @@ function parsePresenceOptions(args: string[]) {
   return parseCliOptions(args)
 }
 
-async function writeJsonAndExit(value: unknown, exitCode = 0): Promise<never> {
-  await new Promise<void>((resolve) => {
-    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`, () => resolve())
-  })
+function writeJsonAndExit(value: unknown, exitCode = 0): never {
+  // A presence one-shot may leave a wallet/runtime handle open. Do not enqueue
+  // the final JSON on the patched stdout stream and then wait on its callback:
+  // that callback is itself an event-loop dependency and has intermittently
+  // kept an otherwise-complete heartbeat alive. Write the small result directly
+  // to the stdout descriptor, then terminate regardless of retained handles.
+  writeSync(process.stdout.fd, `${JSON.stringify(value, null, 2)}\n`)
   process.exit(exitCode)
 }
 
@@ -3717,7 +3720,7 @@ async function main() {
       if (Bun.env.PYLON_PRESENCE_ONESHOT_TEST_HOLD_HANDLE === "1") {
         setInterval(() => undefined, 60_000)
       }
-      await writeJsonAndExit(result)
+      writeJsonAndExit(result)
     } catch (error) {
       process.stderr.write(`Pylon presence failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
