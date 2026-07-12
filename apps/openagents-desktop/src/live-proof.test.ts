@@ -14,8 +14,12 @@ import path from "node:path"
 import {
   liveProofStepTimeoutMs,
   liveProofSteps,
+  LIVE_PROOF_TURN_SETTLE_MS,
+  LIVE_PROOF_TEXT_SETTLE_MS,
+  liveProofTurnIsTerminal,
   liveProofTurnMessage,
   requiredLiveProofSteps,
+  resolveLiveProofAccountRef,
   resolveLiveProofConfig,
 } from "./live-proof.ts"
 
@@ -81,6 +85,39 @@ describe("live-proof step list (EP250 journey)", () => {
       "Episode 250 live proof: reply with one sentence confirming streaming works, then stop.",
     )
   })
+
+  test("waits for the finalized thread snapshot instead of false-failing at first idle", () => {
+    expect(liveProofTurnIsTerminal({
+      turnPending: false,
+      assistantGrew: false,
+      activityObserved: true,
+      idleForMs: LIVE_PROOF_TURN_SETTLE_MS - 1,
+    })).toBe(false)
+    expect(liveProofTurnIsTerminal({
+      turnPending: false,
+      assistantGrew: true,
+      activityObserved: true,
+      idleForMs: LIVE_PROOF_TEXT_SETTLE_MS - 1,
+    })).toBe(false)
+    expect(liveProofTurnIsTerminal({
+      turnPending: false,
+      assistantGrew: true,
+      activityObserved: true,
+      idleForMs: LIVE_PROOF_TEXT_SETTLE_MS,
+    })).toBe(true)
+    expect(liveProofTurnIsTerminal({
+      turnPending: false,
+      assistantGrew: false,
+      activityObserved: true,
+      idleForMs: LIVE_PROOF_TURN_SETTLE_MS,
+    })).toBe(true)
+    expect(liveProofTurnIsTerminal({
+      turnPending: true,
+      assistantGrew: true,
+      activityObserved: true,
+      idleForMs: LIVE_PROOF_TURN_SETTLE_MS,
+    })).toBe(false)
+  })
 })
 
 describe("live-proof config resolution", () => {
@@ -124,5 +161,18 @@ describe("live-proof config resolution", () => {
     const smokeOnly = resolveLiveProofConfig({ OPENAGENTS_DESKTOP_SMOKE: "1" }, userData)
     expect(smokeOnly.conflict).toBe(false)
     expect(smokeOnly.enabled).toBe(false)
+  })
+
+  test("accepts only bounded exact named-account targets per harness", () => {
+    const env = {
+      OPENAGENTS_DESKTOP_LIVE_PROOF_FABLE_ACCOUNT_REF: " claude-pylon-3 ",
+      OPENAGENTS_DESKTOP_LIVE_PROOF_CODEX_ACCOUNT_REF: "codex-5",
+    }
+    expect(resolveLiveProofAccountRef(env, "fable")).toBe("claude-pylon-3")
+    expect(resolveLiveProofAccountRef(env, "codex")).toBe("codex-5")
+    expect(resolveLiveProofAccountRef({
+      OPENAGENTS_DESKTOP_LIVE_PROOF_FABLE_ACCOUNT_REF: "bad ref with spaces",
+    }, "fable")).toBeNull()
+    expect(resolveLiveProofAccountRef({}, "codex")).toBeNull()
   })
 })

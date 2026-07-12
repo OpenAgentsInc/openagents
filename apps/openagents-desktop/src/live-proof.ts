@@ -113,9 +113,47 @@ export const resolveLiveProofConfig = (
   }
 }
 
+const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
+
+/**
+ * Optional exact named-account target for a live acceptance run. The driver
+ * still selects it through the rendered typed account control; this only
+ * states which row must be reached before the turn is submitted.
+ */
+export const resolveLiveProofAccountRef = (
+  env: Readonly<Record<string, string | undefined>>,
+  harness: "fable" | "codex",
+): string | null => {
+  const key = harness === "fable"
+    ? "OPENAGENTS_DESKTOP_LIVE_PROOF_FABLE_ACCOUNT_REF"
+    : "OPENAGENTS_DESKTOP_LIVE_PROOF_CODEX_ACCOUNT_REF"
+  const value = env[key]?.trim() ?? ""
+  return accountRefPattern.test(value) ? value : null
+}
+
 /** The exact real message both harness-lane turns send (EP250 step 6). */
 export const liveProofTurnMessage =
   "Episode 250 live proof: reply with one sentence confirming streaming works, then stop."
+
+export const LIVE_PROOF_TURN_SETTLE_MS = 5_000
+export const LIVE_PROOF_TEXT_SETTLE_MS = 500
+
+/**
+ * A provider start IPC can resolve (re-enabling the composer) just before the
+ * finalized authoritative thread snapshot reaches the renderer. Text is an
+ * immediate terminal success; a zero-text idle state must remain observable
+ * for a bounded settle window before it can be called a terminal failure.
+ */
+export const liveProofTurnIsTerminal = (input: Readonly<{
+  turnPending: boolean
+  assistantGrew: boolean
+  activityObserved: boolean
+  idleForMs: number
+}>): boolean =>
+  !input.turnPending && (
+    (input.assistantGrew && input.idleForMs >= LIVE_PROOF_TEXT_SETTLE_MS) ||
+    (input.activityObserved && input.idleForMs >= LIVE_PROOF_TURN_SETTLE_MS)
+  )
 
 // ---------------------------------------------------------------------------
 // Journal
@@ -236,22 +274,33 @@ const submitTurnScript = (message: string): string => `(() => {
 
 const probeTurnScript = `(() => {
   const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
-  const assistantRows = Array.from(document.querySelectorAll(
-    '[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]'
-  ))
+  const stop = document.querySelector('[data-en-key="shell-stop"]')
+  const messageRows = Array.from(document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]'))
+  const rowsForRole = (role) => messageRows.filter((row) =>
+    row.getAttribute('data-en-role') === role || row.querySelector('[data-en-role="' + role + '"]') !== null)
+  const assistantRows = rowsForRole('assistant')
   const assistantText = assistantRows
-    .map((row) => { const body = row.querySelector('[data-en-role="body"]'); return body === null ? "" : body.textContent || "" })
+    .map((row) => {
+      const body = row.querySelector('[data-en-role="assistant"] [data-en-key$="-text"]') ??
+        row.querySelector('[data-en-key$="-text"]') ??
+        row.querySelector('[data-en-role="assistant"] [data-en-role="body"]') ??
+        row.querySelector('[data-en-role="body"]')
+      return body === null ? "" : body.textContent || ""
+    })
     .join("")
-  const systemRows = Array.from(document.querySelectorAll(
-    '[data-en-key="shell-transcript"] [data-en-message][data-en-role="system"]'
-  )).map((row) => { const body = row.querySelector('[data-en-role="body"]'); return body === null ? "" : body.textContent || "" })
+  const systemRows = rowsForRole('system').map((row) => {
+    const body = row.querySelector('[data-en-role="system"] [data-en-role="body"]') ??
+      row.querySelector('[data-en-role="body"]')
+    return body === null ? "" : body.textContent || ""
+  })
   return {
     composerDisabled: input === null ? null : input.disabled === true,
+    turnPending: stop !== null,
     assistantLength: assistantText.length,
     assistantSnippet: assistantText.slice(0, 400),
     systemCount: systemRows.length,
     lastSystem: systemRows.length === 0 ? null : systemRows[systemRows.length - 1].slice(0, 300),
-    messageCount: document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length,
+    messageCount: messageRows.length,
   }
 })()`
 
@@ -605,8 +654,46 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
       liveProofStepTimeoutMs(stepName),
     )
     if (selected.ok) {
+      const requestedAccountRef = resolveLiveProofAccountRef(process.env, harness)
+      if (requestedAccountRef !== null) {
+        let accountRef = ""
+        let reached = false
+        // The existing typed control cycles the bounded ready-account list.
+        // Twelve attempts cover the product's current account bound while
+        // keeping a missing target deterministic and timeout-independent.
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+          const account = asRec(await evalIn(`(() => {
+            const control = document.querySelector('[data-en-key="shell-provider-account"]')
+            return { present: control !== null, label: control?.textContent?.trim() ?? "" }
+          })()`))
+          accountRef = typeof account["label"] === "string" ? account["label"] as string : ""
+          if (accountRef === requestedAccountRef) {
+            reached = true
+            break
+          }
+          if (account["present"] !== true) break
+          await evalIn(clickScript("shell-provider-account"))
+          await sleep(100)
+        }
+        if (!reached) {
+          await capture(`harness-${harness}-account-failed`)
+          record(stepName, false, {
+            reason: "requested named account is not selectable",
+            requestedAccountRef,
+            observedAccountRef: accountRef || null,
+          })
+          return false
+        }
+      }
       await capture(`harness-${harness}`)
-      record(stepName, true, { ariaLabel: selected.value["ariaLabel"], variant: selected.value["variant"] })
+      const account = asRec(await evalIn(`(() => ({
+        accountRef: document.querySelector('[data-en-key="shell-provider-account"]')?.textContent?.trim() ?? null
+      }))()`))
+      record(stepName, true, {
+        ariaLabel: selected.value["ariaLabel"],
+        variant: selected.value["variant"],
+        accountRef: account["accountRef"] ?? null,
+      })
       return true
     }
     await capture(`harness-${harness}-failed`)
@@ -634,10 +721,13 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
     let growthEvents = 0
     let maxAssistant = baselineAssistant
     let completed = false
+    let idleSince: number | null = null
     let last: Rec = {}
     while (Date.now() < deadline) {
       last = asRec(await evalIn(probeTurnScript))
-      const disabled = last["composerDisabled"] === true
+      // A live turn keeps the textarea enabled for queue-a-follow-up. The
+      // typed Stop control, not input.disabled, is the pending authority.
+      const disabled = last["turnPending"] === true
       const assistantLength = typeof last["assistantLength"] === "number" ? last["assistantLength"] as number : 0
       const messageCount = typeof last["messageCount"] === "number" ? last["messageCount"] as number : 0
       if (disabled) sawPending = true
@@ -654,9 +744,14 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
         await capture(`${harness}-midstream`)
       }
       const systemCount = typeof last["systemCount"] === "number" ? last["systemCount"] as number : 0
-      const terminal = last["composerDisabled"] === false && (
-        maxAssistant > baselineAssistant || systemCount > baselineSystem || sawPending
-      )
+      if (disabled) idleSince = null
+      else if (idleSince === null) idleSince = Date.now()
+      const terminal = liveProofTurnIsTerminal({
+        turnPending: disabled,
+        assistantGrew: maxAssistant > baselineAssistant,
+        activityObserved: systemCount > baselineSystem || sawPending,
+        idleForMs: idleSince === null ? 0 : Date.now() - idleSince,
+      })
       if (terminal) {
         completed = true
         break
