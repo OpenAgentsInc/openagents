@@ -102,6 +102,7 @@ describe("workspace editor state", () => {
     state = withWorkspaceEditorFindStep(state, 1)
     expect(state.tabs[0]?.findIndex).toBe(1)
     expect(state.tabs[0]?.selection).toEqual({ start: 34, end: 40 })
+    expect(state.tabs[0]?.selectionVersion).toBe(1)
     state = withWorkspaceEditorFindStep(state, 1)
     expect(state.tabs[0]?.findIndex).toBe(0)
   })
@@ -176,10 +177,26 @@ describe("workspace editor Effect Native view", () => {
       readOnly: false,
       wordWrap: false,
       minimap: false,
+      selection: { start: 0, end: 0, version: 0 },
     })
     expect((host?.onEvent as { name?: string }).name).toBe("WorkspaceEditorEventReceived")
     expect(JSON.stringify(view)).not.toContain("workspace.grant.editor")
     expect(JSON.stringify(view)).not.toContain("workspace.document.initial")
+  })
+
+  test("find and undo project versioned authoritative selections to the host", () => {
+    let state = withWorkspaceEditorFind(readyState(), "needle")
+    state = withWorkspaceEditorFindStep(state, 1)
+    let host = nodeByKey(workspaceEditorView(state), "workspace-editor-host-src/index.ts")
+    expect(host?.props).toMatchObject({ selection: { start: 34, end: 40, version: 1 } })
+
+    state = withWorkspaceEditorEvent(state, { type: "change", value: "edited" })
+    state = withWorkspaceEditorUndo(state)
+    host = nodeByKey(workspaceEditorView(state), "workspace-editor-host-src/index.ts")
+    expect(host?.props).toMatchObject({
+      value: document().content,
+      selection: { start: document().content.length, end: document().content.length, version: 2 },
+    })
   })
 
   test("tabs, find, save, and dirty close confirmation use familiar inline controls", () => {

@@ -43,6 +43,7 @@ export type WorkspaceEditorTab = Readonly<{
   externalDocument: DesktopWorkspaceDocument | null
   draft: string
   selection: Readonly<{ start: number; end: number }>
+  selectionVersion: number
   undo: ReadonlyArray<string>
   redo: ReadonlyArray<string>
   saveState: "idle" | "saving" | "saved" | "unavailable"
@@ -93,6 +94,7 @@ const emptyTab = (pathRef: string): WorkspaceEditorTab => ({
   externalDocument: null,
   draft: "",
   selection: { start: 0, end: 0 },
+  selectionVersion: 0,
   undo: [],
   redo: [],
   saveState: "idle",
@@ -137,6 +139,7 @@ export const withWorkspaceEditorOpened = (
     externalDocument: null,
     draft: result.document.content,
     selection: { start: 0, end: 0 },
+    selectionVersion: 0,
     undo: [],
     redo: [],
     saveState: "idle",
@@ -158,6 +161,9 @@ const findOffsets = (content: string, query: string): ReadonlyArray<number> => {
   }
   return matches
 }
+
+const nextSelectionVersion = (version: number): number =>
+  version >= Number.MAX_SAFE_INTEGER ? 0 : version + 1
 
 export const withWorkspaceEditorEvent = (
   state: WorkspaceEditorState,
@@ -195,6 +201,8 @@ export const withWorkspaceEditorUndo = (state: WorkspaceEditorState): WorkspaceE
     draft: value,
     undo: current.undo.slice(0, -1),
     redo: [...current.redo, current.draft].slice(-maxHistory),
+    selection: { start: value.length, end: value.length },
+    selectionVersion: nextSelectionVersion(current.selectionVersion),
     saveState: "idle",
     findMatches: findOffsets(value, current.findQuery),
     findIndex: 0,
@@ -210,6 +218,8 @@ export const withWorkspaceEditorRedo = (state: WorkspaceEditorState): WorkspaceE
     draft: value,
     undo: [...current.undo, current.draft].slice(-maxHistory),
     redo: current.redo.slice(0, -1),
+    selection: { start: value.length, end: value.length },
+    selectionVersion: nextSelectionVersion(current.selectionVersion),
     saveState: "idle",
     findMatches: findOffsets(value, current.findQuery),
     findIndex: 0,
@@ -243,6 +253,7 @@ export const withWorkspaceEditorFindStep = (
     ...current,
     findIndex,
     selection: { start, end: start + current.findQuery.length },
+    selectionVersion: nextSelectionVersion(current.selectionVersion),
   }))
 }
 
@@ -323,6 +334,7 @@ export const withWorkspaceEditorExternalResult = (
     externalDocument: null,
     draft: result.document.content,
     selection: { start: 0, end: 0 },
+    selectionVersion: nextSelectionVersion(tab.selectionVersion),
     undo: [],
     redo: [],
     saveState: "idle",
@@ -513,6 +525,8 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
         document: current.externalDocument,
         draft: current.externalDocument!.content,
         externalDocument: null,
+        selection: { start: 0, end: 0 },
+        selectionVersion: nextSelectionVersion(current.selectionVersion),
         undo: [],
         redo: [],
         saveState: "idle",
@@ -598,6 +612,7 @@ export const workspaceEditorView = (state: WorkspaceEditorState): View => {
             readOnly: tab.saveState === "saving",
             wordWrap: state.wordWrap,
             minimap: state.minimap,
+            selection: { ...tab.selection, version: tab.selectionVersion },
             fontScale: "body",
             onEvent: IntentRef("WorkspaceEditorEventReceived"),
             a11y: { role: "region", label: `Editor for ${tab.pathRef}` },
