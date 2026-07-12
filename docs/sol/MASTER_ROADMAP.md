@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 98
+- Revision: 99
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -339,6 +339,9 @@ Portable movement additionally requires:
 
 The detailed gap analysis is
 [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md).
+FC-4's bounded deployed-schema/registry proof is retained in the
+[`managed-cloud production readiness receipt`](./2026-07-12-fc4-managed-cloud-production-readiness-receipt.md);
+it does not advance C3 past the live managed-executor and cross-client gates.
 
 ## Mobile capability contract
 
@@ -379,7 +382,7 @@ worker closeout, or polished UI never manufactures live or owner acceptance.
 | C0 | Closed historical implementation baseline for the durable Fleet seam |
 | C1 | Closed/deployed minimum-safe run, claim, reconnect, and supervision substrate |
 | C2 | Closed #8640 simultaneous named Codex+Claude mixed-account proof; substrate only, never client cutover or Sarah authority |
-| C3 | Open product integration boundary: #8547 accepted managed workroom before #8636 owner-local plus managed-cloud receipt under one claim registry |
+| C3 | Open product integration boundary: #8636's schema and production claim-registry readiness are deployed and receipted; #8547 accepted managed workroom still precedes the real owner-local plus managed-cloud mobile/Desktop receipt |
 
 R7, not C2, is owner-facing software cutover. The historical C0–C3 evidence
 and fallback rules are archived in Backroom at

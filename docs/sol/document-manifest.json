@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "d1302c2f36dabac1963d8853937fb1f59926c4ff9c3e1c22359d6858e0759add",
+  "sourceTreeSha256": "152f99c6663a27dc4149984d8b46bb9b058a47f931f4c57facb1ab4cf1e802e6",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -981,6 +981,27 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-12-fc4-managed-cloud-production-readiness-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8547",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "fff7ea1e6945d62d0be25b2e416b51e782bc565eaad4673a01a6c4ebc5012fbb",
+      "status": "partial; #8636 remains open",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8547,
+        8636
+      ]
+    },
+    {
       "path": "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
       "class": "backroom-export",
       "owner": "Sol documentation cleanup",
@@ -1118,12 +1139,13 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "43430073f25ae191f73f7a3cbeae4920868c3cddcf7e9b02ab1e5aaceecb4d3c",
+      "sha256": "9230b954d189030e1a5740ced1c8bebd5e4b8e869e742673522c01a001e06008",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "README.md",
         "apps/openagents.com/AGENTS.md",
         "docs/fable/2026-07-09-fable-on-sol-analysis-and-questions.md",
         "docs/fable/2026-07-11-pylon-streamlining-audit.md",
@@ -1162,7 +1184,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 37,
+      "inboundSourceCount": 38,
       "issueLinks": [
         8547,
         8566,
@@ -2348,7 +2370,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "7c3b7cd1130fc3935709bc558c0d818703ade70be923129d1df48ee0efc37bee",
+      "sha256": "feb1c493b7e85a307a5de12e237d82b1c77a4f84b70006307b34a7aa3c0036c4",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2362,6 +2384,8 @@
       ],
       "inboundSourceCount": 5,
       "issueLinks": [
+        8547,
+        8636,
         8687,
         8688,
         8689,
