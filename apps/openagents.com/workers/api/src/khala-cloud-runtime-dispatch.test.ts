@@ -573,8 +573,10 @@ describe('makeCloudCodingAdapterLaunchSeam', () => {
   })
 
   const launchInput = {
+    authGrantRef: 'provider-auth-grant.g1',
     objective: 'seam-a',
     ownerUserId: 'github:14167547',
+    providerAccountRef: 'provider-account.codex.1',
     repoRef: 'repo:octocat/Hello-World',
     sessionId: 'ccs.turn_t1',
     threadRef: 'thread.t1',
@@ -611,6 +613,10 @@ describe('makeCloudCodingAdapterLaunchSeam', () => {
     expect(arg.lane).toBe('cloud-gcp')
     expect(arg.request.lane).toBe('cloud-gcp')
     expect(arg.request.options.workContextB64).toBe('eyJhIjoxfQ==')
+    expect(arg.request.options.authGrantRef).toBe('provider-auth-grant.g1')
+    expect(arg.request.options.providerAccountRef).toBe(
+      'provider-account.codex.1',
+    )
   })
 
   test('maps a typed adapter failure to ok:false with the adapter reason', async () => {

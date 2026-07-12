@@ -366,6 +366,8 @@ export type CloudGcpPlacementLaunchFn = (
     workContextRef: string
     objective: string
     workContextB64: string
+    authGrantRef?: string | undefined
+    providerAccountRef?: string | undefined
     timeoutSeconds: number
   }>,
 ) => Promise<CloudGcpPlacementResult>
@@ -744,13 +746,20 @@ export const dispatchCloudGcpRuntimeTurn = async (
       timeoutSeconds: DEFAULT_CLOUD_GCP_RUNTIME_TIMEOUT_SECONDS,
       workContextB64,
       workContextRef: authorizedTurn.workContextRef,
+      ...(authorizedTurn.codexContinuity === undefined
+        ? {}
+        : {
+            authGrantRef: authorizedTurn.codexContinuity.authGrantRef,
+            providerAccountRef:
+              authorizedTurn.codexContinuity.providerAccountRef,
+          }),
       ...(authorizedTurn.repoBindingRef === undefined ? {} : { repoBindingRef: authorizedTurn.repoBindingRef }),
     })
 
     if (!placement.ok) {
       // Launch refused: the guest never runs — revoke the token NOW.
       await record(
-        2,
+        nextMutationId,
         buildEvent(resolved, authorizedTurn, seq, {
           finishReason: 'error' satisfies KhalaRuntimeFinishReason,
           kind: 'turn.finished',
@@ -978,7 +987,15 @@ export const makeCloudCodingAdapterLaunchSeam = (
       adapter: adapterKind,
       lane: CLOUD_GCP_RUNTIME_LANE,
       objective: input.objective,
-      options: { workContextB64: input.workContextB64 },
+      options: {
+        workContextB64: input.workContextB64,
+        ...(input.authGrantRef === undefined
+          ? {}
+          : { authGrantRef: input.authGrantRef }),
+        ...(input.providerAccountRef === undefined
+          ? {}
+          : { providerAccountRef: input.providerAccountRef }),
+      },
       repoRef: input.repoRef,
       repoTrustTier,
       timeoutSeconds: input.timeoutSeconds,
