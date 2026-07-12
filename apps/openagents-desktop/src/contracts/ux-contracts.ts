@@ -1313,7 +1313,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "In local (not-signed-in) mode, selecting Fable runs a real streaming Claude turn on this machine with zero login on an isolated sibling Claude account home (never the default ~/.claude); selecting a harness never routes to the cloud gateway or another provider; an unavailable lane renders a disabled chip with its reason and a Send that does not accept the action.",
+          "In local (not-signed-in) mode, selecting Claude runs a real streaming turn on this machine with zero login: the default selection prefers the user's currently authenticated local Claude Code session, then falls back to ready isolated sibling Pylon Claude homes; explicitly selecting a named Pylon account pins it. Selecting a harness never routes to the cloud gateway or another provider; an unavailable lane renders a disabled chip with its reason and a Send that does not accept the action.",
         authorityBoundary:
           "The renderer receives only bounded, path-redacted typed stream events and typed availability/failure reasons — never tokens, account homes, credentials, raw SDK payloads, or provider error bodies. Main owns thread history; the renderer supplies only the new message.",
         evidenceRefs: [
@@ -1329,7 +1329,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
             description:
-              "Proves sibling-home discovery excludes the default ~/.claude, read-only headless SDK options, bounded/redacted event mapping, same-lane account rotation only before content, and that no ready account yields a typed unavailable result with the SDK never loaded.",
+              "Proves current local Claude session precedence, isolated Pylon fallback discovery, read-only headless SDK options, bounded/redacted event mapping, same-lane account rotation only before content, and that no ready account yields a typed unavailable result with the SDK never loaded.",
           },
           {
             id: "fable_local.renderer_no_silent_substitution",

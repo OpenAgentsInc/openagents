@@ -14,6 +14,7 @@ import {
   formatRelativeTimestamp,
   formatShellTimestamp,
   initialDesktopShellState,
+  providerTargetForSubmission,
   providerTargetForThread,
   makeDesktopShellHandlers,
   messageWithReviewContext,
@@ -131,6 +132,36 @@ test("provider target selection is exact and stable per conversation", () => {
       [testThread.id]: { provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" },
     },
   })).toEqual({ provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" })
+})
+
+test("Claude submission prefers the current local session until a Pylon account is explicitly selected", () => {
+  const fleet = {
+    ...baseState.fleet,
+    phase: "ready" as const,
+    accounts: [
+      { ref: "claude-pylon-3", provider: "claude_agent", email: null, readiness: "ready" as const },
+    ],
+  }
+  const implicit = { ...baseState, selectedHarness: "fable" as const, fleet }
+  expect(providerTargetForThread(implicit)).toEqual({
+    provider: "claude_agent", accountRef: "claude-pylon-3", model: "claude-fable-5",
+  })
+  expect(providerTargetForSubmission(implicit)).toBeNull()
+  expect(nodeByKey(desktopShellView(implicit), "shell-provider-account")?.label).toBe("Claude")
+
+  const explicit = {
+    ...implicit,
+    providerTargetsByThread: {
+      [testThread.id]: {
+        provider: "claude_agent" as const,
+        accountRef: "claude-pylon-3",
+        model: "claude-fable-5" as const,
+      },
+    },
+  }
+  expect(providerTargetForSubmission(explicit)).toEqual({
+    provider: "claude_agent", accountRef: "claude-pylon-3", model: "claude-fable-5",
+  })
 })
 
 test("Fable permission posture is explicit per conversation and absent from Codex chrome", () => {

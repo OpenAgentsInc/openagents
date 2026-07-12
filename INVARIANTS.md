@@ -789,12 +789,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   versions, and reports missing, malformed, or unverified updates without
   paths, raw output, credentials, or provider-home data. Version probing does
   not read or mutate default `~/.codex` or `~/.claude` homes. Provider turns
-  continue to receive only account-scoped isolated-home environments. An
+  use account-scoped isolated-home environments except the Claude composer's
+  explicit current-session lane, which delegates ordinary `~/.claude` auth
+  resolution to the pinned SDK without reading or mutating credential data. An
   explicit Desktop provider target is the exact provider, bundled model, and
   named account ref for that turn: the channel rejects cross-lane or unknown
   model pairings, and the runtime must fail on that account rather than rotate
   or silently substitute another account. An omitted target alone preserves
-  automatic health-ordered account selection and visible rotation.
+  automatic health-ordered account selection and visible rotation. For the
+  Claude composer, the omitted/default target prefers the currently
+  authenticated local Claude Code session and uses isolated Pylon Claude homes
+  only as fallback; explicitly selecting a named Pylon account pins it.
   User-local Claude plugins are host-owned capabilities: absolute plugin paths
   remain in the owner-only main-process registry, while preload/renderer expose
   only opaque plugin refs plus bounded provenance, scope, readiness, enablement,

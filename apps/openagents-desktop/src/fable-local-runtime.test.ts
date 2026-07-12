@@ -50,9 +50,8 @@ import {
 
 const makeAccountRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "fable-local-homes-"))
-  // Default `~/.claude` analogue: credentialed but MUST never be a candidate.
+  // Default `~/.claude` analogue; individual tests opt it into auth.
   mkdirSync(join(root, ".claude"))
-  writeFileSync(join(root, ".claude", "claude-oauth-token"), "sk-ant-oat01-default-home\n")
   // Sibling without a pooled token: discovered but not ready.
   mkdirSync(join(root, ".claude-pylon-a"))
   // Ready sibling.
@@ -64,13 +63,17 @@ const makeAccountRoot = (): string => {
 }
 
 describe("discoverReadyFableClaudeHomes", () => {
-  test("finds ready sibling Claude homes and never the default ~/.claude", async () => {
+  test("prefers the current Claude session before ready Pylon fallbacks", async () => {
     const root = makeAccountRoot()
+    writeFileSync(join(root, ".claude", ".credentials.json"), "{}\n")
     const ready = await discoverReadyFableClaudeHomes({ PYLON_ACCOUNT_HOME_ROOT: root })
-    expect(ready).toEqual([{ ref: "claude-pylon-b", home: join(root, ".claude-pylon-b") }])
+    expect(ready).toEqual([
+      { ref: "claude", home: join(root, ".claude"), source: "current_session" },
+      { ref: "claude-pylon-b", home: join(root, ".claude-pylon-b"), source: "pylon" },
+    ])
   })
 
-  test("returns empty when no sibling home carries a pooled token", async () => {
+  test("returns empty when neither a current session nor a Pylon token exists", async () => {
     const root = mkdtempSync(join(tmpdir(), "fable-local-empty-"))
     mkdirSync(join(root, ".claude-pylon-a"))
     expect(await discoverReadyFableClaudeHomes({ PYLON_ACCOUNT_HOME_ROOT: root })).toEqual([])

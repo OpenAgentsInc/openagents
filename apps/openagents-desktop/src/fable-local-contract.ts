@@ -7,9 +7,9 @@
  * carry that lane across the Electron boundary:
  *
  * - `openagents:fable-local:availability` (invoke, no args): typed lane
- *   availability, probed from the same isolated `~/.claude-pylon-*` sibling
- *   account homes the Pylon supervisor dispatches to. Never the default
- *   `~/.claude` home.
+ *   availability, probing the ordinary authenticated `~/.claude` session
+ *   first and the isolated `~/.claude-pylon-*` homes used by the Pylon
+ *   supervisor as fallback capacity.
  * - `openagents:fable-local:start` (invoke): starts one turn. Main appends
  *   the user message to its own thread store and reads prior history from
  *   that store — the renderer cannot inject synthetic history. Resolves with

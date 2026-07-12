@@ -3,15 +3,13 @@
  * machine, with zero login flow, for the desktop composer's "Fable" lane in
  * local (not-signed-in) mode.
  *
- * Reuses the Pylon account mechanics rather than reinventing them:
- * `discoverPylonSiblingAccountHomes` finds the isolated `~/.claude-pylon-*`
- * sibling homes (the same discovery `pylon accounts list` and the runtime
- * intent supervisor use), `pylonClaudeAccountHomeHasAuth` gates readiness on
- * the pooled `claude-oauth-token` file, and `pylonAccountEnvironment` builds
- * the per-account child env (`CLAUDE_CONFIG_DIR` + `CLAUDE_CODE_OAUTH_TOKEN`).
- * The DEFAULT `~/.claude` home is explicitly excluded and no login flow is
- * ever run: no ready sibling home means a typed unavailable result — never a
- * fall-through to the cloud gateway (the no-silent-substitution law).
+ * Prefers the user's ordinary authenticated Claude Code session in
+ * `~/.claude`, then reuses the Pylon account mechanics for fallback capacity:
+ * `discoverPylonSiblingAccountHomes` finds isolated `~/.claude-pylon-*`
+ * homes, `pylonClaudeAccountHomeHasAuth` gates them on the pooled OAuth token,
+ * and `pylonAccountEnvironment` builds their isolated child env. No login flow
+ * is ever run: no current session and no ready Pylon home yields a typed
+ * unavailable result — never a fall-through to a gateway or another provider.
  *
  * Permission posture (EP250 owner override, statement verbatim 2026-07-11:
  * "disallowing bash is retarded, give them full tools full permissions
@@ -44,7 +42,9 @@
  * IPC wiring lives in main.ts.
  */
 import { createHash } from "node:crypto"
+import { spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"
+import { access } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
@@ -282,7 +282,12 @@ export type FableLocalTurnResult =
     }>
   | Readonly<{ ok: false; reason: FableLocalFailureReason; detail: string }>
 
-export type FableLocalAccountHome = Readonly<{ ref: string; home: string }>
+export type FableLocalAccountHome = Readonly<{
+  ref: string
+  home: string
+  /** Ordinary Claude Code login first; isolated Pylon homes are fallback. */
+  source?: "current_session" | "pylon"
+}>
 
 /**
  * The Codex child executor behind the delegate tool (see
@@ -353,6 +358,30 @@ export type FableLocalRuntimeOptions = Readonly<{
 const bounded = (value: string, limit: number): string =>
   value.length > limit ? `${value.slice(0, limit - 1)}…` : value
 
+const currentClaudeSessionPresent = async (
+  home: string,
+  allowSystemKeychain: boolean,
+): Promise<boolean> => {
+  try {
+    await access(join(home, ".credentials.json"))
+    return true
+  } catch {
+    // Claude Code on macOS normally stores the active login in Keychain.
+  }
+  if (!allowSystemKeychain || process.platform !== "darwin") return false
+  return new Promise(resolve => {
+    try {
+      const child = spawn("security", ["find-generic-password", "-s", "Claude Code-credentials"], {
+        stdio: "ignore",
+      })
+      child.once("error", () => resolve(false))
+      child.once("close", code => resolve(code === 0))
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
 /**
  * Public-safe path redaction for everything crossing the event boundary:
  * the scratch workspace becomes `<workspace>` and any path under the user's
@@ -370,9 +399,9 @@ export const redactFableLocalText = (
 }
 
 /**
- * Ready Claude account homes, discovered exactly like the Pylon supervisor:
- * sibling `~/.claude-pylon-*`-style homes with a pooled OAuth token. The
- * default `~/.claude` home is never a candidate. Deterministic order (ref).
+ * Ready Claude account homes. The user's ordinary, currently authenticated
+ * Claude Code session is first when present; isolated Pylon homes remain
+ * deterministic fallback capacity.
  */
 export const discoverReadyFableClaudeHomes = async (
   env: Record<string, string | undefined> = process.env,
@@ -384,9 +413,12 @@ export const discoverReadyFableClaudeHomes = async (
     .filter(entry => entry.provider === "claude_agent" && entry.home !== defaultHome)
     .sort((left, right) => left.ref.localeCompare(right.ref))
   const ready: FableLocalAccountHome[] = []
+  if (await currentClaudeSessionPresent(defaultHome, root === homedir())) {
+    ready.push({ ref: "claude", home: defaultHome, source: "current_session" })
+  }
   for (const entry of candidates) {
     if (await pylonClaudeAccountHomeHasAuth(entry.home)) {
-      ready.push({ ref: entry.ref, home: entry.home })
+      ready.push({ ref: entry.ref, home: entry.home, source: "pylon" })
     }
   }
   return ready
@@ -1157,7 +1189,17 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
           options: {
             cwd: workspace,
             env: {
-              ...pylonAccountEnvironment(env, selection),
+              ...(account.source === "current_session"
+                ? (() => {
+                    // Resolve the same ordinary Claude Code login the user
+                    // most recently authenticated. Stale inherited Pylon
+                    // overrides must not shadow the current session.
+                    const current = { ...env }
+                    delete current.CLAUDE_CONFIG_DIR
+                    delete current.CLAUDE_CODE_OAUTH_TOKEN
+                    return current
+                  })()
+                : pylonAccountEnvironment(env, selection)),
               // Children run up to 240s; SDK MCP calls must not hit the CLI's
               // 60s stream-close default while a child is still working.
               ...(mcpServers === null

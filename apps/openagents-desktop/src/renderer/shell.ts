@@ -1486,7 +1486,7 @@ export const makeDesktopShellHandlers = (
         id: current.activeThreadId!,
         message: routedMessage,
         harness: current.selectedHarness,
-        ...(providerTargetForThread(current) === null ? {} : { target: providerTargetForThread(current)! }),
+        ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
         ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
         permissionMode: current.permissionModeByThread[current.activeThreadId!] ?? "owner_full",
         ...(images.length > 0 ? { images } : {}),
@@ -2810,7 +2810,40 @@ export const providerTargetForThread = (state: DesktopShellState): LocalProvider
   return account === undefined ? null : targetForHarness(state.selectedHarness, account.ref)
 }
 
+/**
+ * Claude's implicit/default selection is intentionally unpinned: main probes
+ * the currently authenticated local Claude Code session first, then falls
+ * back through Pylon capacity. A user click creates an explicit per-thread
+ * target and therefore still pins the named Pylon account exactly.
+ */
+export const providerTargetForSubmission = (state: DesktopShellState): LocalProviderTarget | null => {
+  if (state.activeThreadId === null) return null
+  if (state.selectedHarness === "fable") {
+    const selected = state.providerTargetsByThread[state.activeThreadId]
+    return selected?.provider === "claude_agent" ? selected : null
+  }
+  return providerTargetForThread(state)
+}
+
 const providerAccountControl = (state: DesktopShellState): View | null => {
+  if (state.selectedHarness === "fable" && state.activeThreadId !== null &&
+      state.providerTargetsByThread[state.activeThreadId] === undefined) {
+    const fallback = state.fleet.accounts.find(account =>
+      account.provider === "claude_agent" && account.readiness === "ready")
+    return Button({
+      key: "shell-provider-account",
+      label: "Claude",
+      variant: "ghost",
+      disabled: state.pending || fallback === undefined,
+      onPress: IntentRef("DesktopProviderAccountSelected", StaticPayload(fallback?.ref ?? "claude")),
+      style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", color: "textMuted" },
+      a11y: {
+        label: fallback === undefined
+          ? "Current Claude session selected"
+          : "Current Claude session selected. Choose a linked Pylon account",
+      },
+    })
+  }
   const target = providerTargetForThread(state)
   if (target === null) return null
   const candidates = state.fleet.accounts.filter(account =>
