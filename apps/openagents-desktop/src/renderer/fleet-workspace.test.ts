@@ -28,6 +28,7 @@ import {
   type FleetWorkspaceState,
 } from "./fleet-workspace.ts"
 import type { UsageLedgerSnapshot } from "../usage-ledger-contract.ts"
+import type { FleetCockpitCard } from "@openagentsinc/khala-sync-client"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
 
@@ -79,6 +80,29 @@ const readyState: FleetWorkspaceState = withFleetProjection(emptyFleetWorkspaceS
   generatedAt: "2026-07-11T12:00:00.000Z",
   accounts: [readyAccount, revokedAccount, unknownAccount],
 })
+
+const runningCockpitCard: FleetCockpitCard = {
+  threadRef: "thread.demo",
+  title: "Ship the portable session",
+  authority: "live",
+  runRef: "run.demo",
+  runVersion: 7,
+  status: "running",
+  provider: "codex",
+  workContextRef: "worktree.demo",
+  repositoryRef: "repo.openagents",
+  agentRefs: ["agent.builder"],
+  receiptRefs: ["receipt.test"],
+  attention: [{
+    interactionRef: "interaction.approval",
+    turnRef: "run.demo",
+    version: 3,
+    kind: "tool_approval",
+    title: "Approve filesystem write",
+    actions: ["approve", "deny"],
+  }],
+  actions: ["pause", "cancel"],
+}
 
 describe("fleetWorkspaceView (state -> component tree)", () => {
   test("loading phase shows the honest loading copy and a disabled refresh", () => {
@@ -133,6 +157,34 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
     expect(manage.onPress?.name).toBe("DesktopSettingsToggled")
     const newChat = nodeByKey(view, "fleet-new-chat") as { onPress?: { name?: string } }
     expect(newChat.onPress?.name).toBe("DesktopNewChat")
+  })
+
+  test("authoritative work exposes exact run identity and opens its canonical conversation", () => {
+    const state = {
+      ...readyState,
+      cockpitAuthority: "live" as const,
+      cockpitCards: [runningCockpitCard],
+    }
+    const view = fleetWorkspaceView(state)
+    expect(nodeByKey(view, "fleet-cockpit-title")?.content).toBe("Authoritative work")
+    expect(nodeByKey(view, "fleet-cockpit-run.demo-title")?.content).toBe("Ship the portable session")
+    expect(nodeByKey(view, "fleet-cockpit-run.demo-status")?.label).toBe("running")
+    expect(nodeByKey(view, "fleet-cockpit-run.demo-refs")?.content).toBe(
+      "worktree.demo · repo.openagents · agent.builder · receipt.test",
+    )
+    expect(nodeByKey(view, "fleet-cockpit-run.demo-attention")?.content).toBe("1 item needs attention")
+    const open = nodeByKey(view, "fleet-cockpit-run.demo-open") as { onPress?: { name?: string } }
+    expect(open.onPress?.name).toBe("DesktopChatSelected")
+    expect(JSON.stringify(open.onPress)).toContain("thread.demo")
+  })
+
+  test("non-live cockpit authority states honestly that controls are withheld", () => {
+    const view = fleetWorkspaceView({
+      ...readyState,
+      cockpitAuthority: "stale",
+      cockpitCards: [],
+    })
+    expect(nodeByKey(view, "fleet-cockpit-empty")?.content).toBe("Run authority stale; controls withheld.")
   })
 
   test("dots are a vertical flow of chips in the deterministic sort order (no horizontal strip)", () => {

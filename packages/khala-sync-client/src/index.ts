@@ -17,6 +17,20 @@
 // drafts. Re-export the exact canonical composer boundary they need so app
 // packages do not create a parallel draft model or a second dependency edge.
 export {
+  admitFleetAttentionCommand,
+  admitFleetRunCommand,
+  fleetRunActions,
+  projectFleetCockpitCard,
+  type FleetAttentionAction,
+  type FleetAttentionCommand,
+  type FleetAuthority,
+  type FleetCockpitCard,
+  type FleetCockpitSource,
+  type FleetRunAction,
+  type FleetRunCommand,
+} from "./fleet-cockpit.js"
+
+export {
   applyComposerTransaction,
   composerAttachmentId,
   composerBlockId,

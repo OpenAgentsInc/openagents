@@ -31,6 +31,7 @@ import {
   type UsageLedgerRow,
   type UsageLedgerSnapshot,
 } from "../usage-ledger-contract.ts"
+import type { FleetCockpitCard } from "@openagentsinc/khala-sync-client"
 
 export type FleetAccountReadiness = "ready" | "credentials-missing" | "unknown"
 
@@ -87,6 +88,8 @@ export type FleetWorkspaceState = Readonly<{
    * below (probe/child evidence supersedes presence-based "ready").
    */
   ledger: UsageLedgerSnapshot | null
+  cockpitCards: ReadonlyArray<FleetCockpitCard>
+  cockpitAuthority: "live" | "offline" | "stale" | "revoked" | "unknown"
 }>
 
 export const emptyFleetWorkspaceState = (): FleetWorkspaceState => ({
@@ -96,6 +99,8 @@ export const emptyFleetWorkspaceState = (): FleetWorkspaceState => ({
   usage: {},
   reason: null,
   ledger: null,
+  cockpitCards: [],
+  cockpitAuthority: "unknown",
 })
 
 // ---------------------------------------------------------------------------
@@ -216,6 +221,7 @@ export const withFleetProjection = (
 ): FleetWorkspaceState =>
   projection.ok
     ? {
+        ...fleet,
         phase: "ready",
         generatedAt: projection.generatedAt,
         accounts: projection.accounts,
@@ -284,6 +290,7 @@ export type FleetAccountsBridge = Readonly<{
   usage: (ref: string) => Promise<unknown>
   /** Session usage ledger snapshot (#8712 Lane C); optional for older hosts. */
   ledger?: () => Promise<unknown>
+  cockpit?: () => Promise<Readonly<{ authority: FleetWorkspaceState["cockpitAuthority"]; cards: ReadonlyArray<FleetCockpitCard> }>>
 }>
 
 export const unavailableFleetAccountsBridge: FleetAccountsBridge = {
@@ -325,6 +332,10 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       fleet: withFleetProjection(next.fleet, projection),
     }))
     yield* pullFleetLedger(state, bridge)
+    if (bridge.cockpit !== undefined) {
+      const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
+      yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))
+    }
   })
 
 export const makeFleetWorkspaceHandlers = <S extends FleetCapableState>(
@@ -741,7 +752,7 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
     ]
   }
   if (fleet.accounts.length === 0) {
-    return [Text({
+    return [...fleetCockpitSection(fleet), Text({
       key: "fleet-empty",
       content: "No provider accounts connected yet. Connect one in Settings.",
       variant: "body",
@@ -749,6 +760,7 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
     })]
   }
   return [
+    ...fleetCockpitSection(fleet),
     // Column flow (not a row): chips can never run off the right window edge.
     Stack(
       { key: "fleet-status-dots", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } },
@@ -756,6 +768,29 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
     ),
     fleetAccountsTable(fleet),
     ...sessionUsageSection(fleet),
+  ]
+}
+
+const fleetCockpitSection = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
+  if (fleet.cockpitCards.length === 0) {
+    return [Text({ key: "fleet-cockpit-empty", content: fleet.cockpitAuthority === "live" ? "No active or recent canonical runs." : `Run authority ${fleet.cockpitAuthority}; controls withheld.`, variant: "body", color: "textMuted" })]
+  }
+  return [
+    Text({ key: "fleet-cockpit-title", content: "Authoritative work", variant: "label", color: "textMuted" }),
+    ...fleet.cockpitCards.map(card => Stack(
+      { key: `fleet-cockpit-${card.runRef}`, direction: "column", gap: "1", style: { width: "full", backgroundColor: "surfaceRaised", borderRadius: "md", padding: "2" } },
+      [
+        Stack({ key: `fleet-cockpit-${card.runRef}-head`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+          Text({ key: `fleet-cockpit-${card.runRef}-title`, content: card.title, variant: "body", color: "textPrimary" }),
+          Badge({ key: `fleet-cockpit-${card.runRef}-provider`, label: card.provider, tone: "neutral", a11y: { label: `Provider ${card.provider}` } }),
+          Badge({ key: `fleet-cockpit-${card.runRef}-status`, label: card.status, tone: card.status === "running" ? "success" : card.status === "failed" ? "warn" : "neutral", a11y: { label: `Run ${card.status}` } }),
+          Spacer({ key: `fleet-cockpit-${card.runRef}-fill`, flex: true }),
+          Button({ key: `fleet-cockpit-${card.runRef}-open`, label: "Open", variant: "ghost", onPress: IntentRef("DesktopChatSelected", StaticPayload(card.threadRef)), a11y: { label: `Open conversation ${card.title}` } }),
+        ]),
+        Text({ key: `fleet-cockpit-${card.runRef}-refs`, content: [card.workContextRef, card.repositoryRef, ...card.agentRefs, ...card.receiptRefs].filter((value): value is string => value !== null).join(" · "), variant: "caption", color: "textMuted" }),
+        ...(card.attention.length === 0 ? [] : [Text({ key: `fleet-cockpit-${card.runRef}-attention`, content: `${card.attention.length} item${card.attention.length === 1 ? "" : "s"} ${card.attention.length === 1 ? "needs" : "need"} attention`, variant: "label", color: "warning" })]),
+      ],
+    )),
   ]
 }
 

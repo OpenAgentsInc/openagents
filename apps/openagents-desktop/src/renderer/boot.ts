@@ -18,6 +18,7 @@ import {
 } from "@effect-native/core"
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
 import { makeDomRenderer, makeStubCodeEditorDriver } from "@effect-native/render-dom"
+import { projectFleetCockpitCard, type FleetAuthority } from "@openagentsinc/khala-sync-client"
 
 import {
   unavailableCodexSettingsBridge,
@@ -325,6 +326,35 @@ const fleetAccountsBridge: FleetAccountsBridge = {
     return typeof bridge?.usageLedger?.snapshot === "function"
       ? bridge.usageLedger.snapshot()
       : Promise.resolve(null)
+  },
+  cockpit: async () => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return { authority: "unknown", cards: [] }
+    const catalog = await bridge.runtimeRequest({ kind: "query", requestId: `fleet-catalog-${Date.now()}`, query: { id: "conversation.catalog" } }).catch(() => null)
+    if (catalog === null || catalog.kind !== "conversation_catalog") return { authority: "unknown", cards: [] }
+    const authority: FleetAuthority = catalog.status.phase === "live" ? "live"
+      : catalog.status.phase === "denied" ? "revoked"
+        : catalog.status.phase === "idle" ? "unknown" : "stale"
+    const cards = (await Promise.all(catalog.threads.slice(0, 50).map(async (thread: { threadRef: string; title: string }) => {
+      const [timeline, interactions] = await Promise.all([
+        bridge.runtimeRequest!({ kind: "query", requestId: `fleet-timeline-${thread.threadRef}`, query: { id: "conversation.timeline", threadRef: thread.threadRef } }).catch(() => null),
+        bridge.runtimeRequest!({ kind: "query", requestId: `fleet-interactions-${thread.threadRef}`, query: { id: "runtime.interactions", threadRef: thread.threadRef } }).catch(() => null),
+      ])
+      if (timeline === null || timeline.kind !== "conversation_timeline" || timeline.run === null) return null
+      const agentRefs = timeline.events.flatMap((event: { item?: { kind?: string; agentRef?: string } | null }) => event.item?.kind === "agent" && typeof event.item.agentRef === "string" ? [event.item.agentRef] : [])
+      const receiptRefs = timeline.events.flatMap((event: { artifactRefs?: ReadonlyArray<string> }) => event.artifactRefs ?? [])
+      return projectFleetCockpitCard({
+        threadRef: thread.threadRef,
+        title: thread.title,
+        authority,
+        run: timeline.run,
+        interactions: interactions?.kind === "runtime_interactions" ? interactions.interactions : [],
+        agentRefs,
+        receiptRefs,
+        ...(timeline.run.workContextRef === undefined ? {} : { repositoryRef: timeline.run.workContextRef }),
+      })
+    }))).filter((card): card is NonNullable<typeof card> => card !== null)
+    return { authority, cards }
   },
 }
 
