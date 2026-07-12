@@ -8,6 +8,7 @@
  * `{ ok: false, reason }` values — never a thrown error across IPC.
  */
 import { Exit, Schema } from "@effect-native/core/effect"
+import { ProviderRuntimeCompatibilitySchema } from "./provider-runtime-compatibility.ts"
 
 export const ProviderAccountsListChannel = "openagents:provider-accounts:list" as const
 export const ProviderAccountsUsageChannel = "openagents:provider-accounts:usage" as const
@@ -33,6 +34,7 @@ export const ProviderAccountsListResultSchema = Schema.Union([
     /** ISO timestamp from the host clock at decode time — the "as of" caption. */
     generatedAt: Schema.String,
     accounts: Schema.Array(ProviderAccountEntrySchema),
+    runtimes: Schema.Array(ProviderRuntimeCompatibilitySchema).check(Schema.isMaxLength(2)).pipe(Schema.optionalKey),
   }),
   Schema.Struct({
     ok: Schema.Literal(false),
@@ -116,6 +118,7 @@ export const decodeProviderAccountsListResult = (value: unknown): ProviderAccoun
   if (!decoded.value.ok) return { ok: false, reason: decoded.value.reason.slice(0, 120) }
   // Defense-in-depth: drop entries whose ref does not fit the pylon grammar
   // and bound every projected string.
+  const runtimes = decoded.value.runtimes?.slice(0, 2)
   return {
     ok: true,
     generatedAt: decoded.value.generatedAt.slice(0, 40),
@@ -127,6 +130,7 @@ export const decodeProviderAccountsListResult = (value: unknown): ProviderAccoun
         email: account.email === null || account.email.length > 120 ? null : account.email,
         readiness: account.readiness,
       })),
+    ...(runtimes !== undefined && runtimes.length > 0 ? { runtimes } : {}),
   }
 }
 

@@ -16,6 +16,8 @@
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import path from "node:path"
+import { inspectProviderRuntimeCompatibility } from "./provider-runtime-host.ts"
+import type { ProviderRuntimeCompatibility } from "./provider-runtime-compatibility.ts"
 
 import {
   providerAccountRefPattern,
@@ -197,6 +199,7 @@ export type ProviderAccountsServiceDependencies = Readonly<{
   listTimeoutMs?: number
   usageTimeoutMs?: number
   now?: () => Date
+  inspectRuntimes?: () => Promise<ReadonlyArray<ProviderRuntimeCompatibility>>
 }>
 
 const repoRootFromHere = (here: string): string | null => {
@@ -238,6 +241,7 @@ export const makeProviderAccountsService = (
   const listTimeoutMs = dependencies.listTimeoutMs ?? 120_000
   const usageTimeoutMs = dependencies.usageTimeoutMs ?? 30_000
   const now = dependencies.now ?? (() => new Date())
+  const inspectRuntimes = dependencies.inspectRuntimes ?? inspectProviderRuntimeCompatibility
   let disposed = false
   const operations = new Set<Readonly<{ child: ChildLike; cancel: () => void }>>()
 
@@ -292,13 +296,17 @@ export const makeProviderAccountsService = (
     })
 
   return {
-    listProviderAccounts: () =>
-      runProjection({
+    listProviderAccounts: async () => {
+      const result = await runProjection({
         args: ["accounts", "list", "--json"],
         timeoutMs: listTimeoutMs,
         parse: (stdout) => parseProviderAccountsListJson(stdout, now().toISOString()),
         unavailable: unavailableProviderAccountsListResult,
-      }),
+      })
+      if (!result.ok) return result
+      const runtimes = await inspectRuntimes().catch(() => [])
+      return runtimes.length === 0 ? result : { ...result, runtimes: runtimes.slice(0, 2) }
+    },
     fetchProviderAccountUsage: (ref) => {
       if (!providerAccountRefPattern.test(ref)) {
         return Promise.resolve(unavailableProviderAccountUsageResult(ref, "invalid_account_ref"))

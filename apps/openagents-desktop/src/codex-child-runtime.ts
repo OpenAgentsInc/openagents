@@ -61,6 +61,7 @@ import {
   type ResolvedPylonAccountSelection,
 } from "@openagentsinc/pylon-core/custody/account-registry"
 import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
+import { resolveBundledCodexExecutable } from "./provider-runtime-host.ts"
 
 import {
   CODEX_CHILD_MODEL,
@@ -190,10 +191,12 @@ export type CodexChildSpawn = (input: Readonly<{
   cwd: string
 }>) => ChildLike | null
 
-/** Shared real `codex` spawn (children, the codex-local chat lane, probes). */
+/** Shared pinned bundled Codex spawn (children, local chat, and preflight). */
 export const defaultSpawnCodex: CodexChildSpawn = input => {
   try {
-    return spawn("codex", [...input.args], {
+    const executable = resolveBundledCodexExecutable()
+    if (executable === null) return null
+    return spawn(executable, [...input.args], {
       cwd: input.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: input.env as NodeJS.ProcessEnv,

@@ -701,6 +701,15 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
   linked Sync when the current gateway catalog is live, otherwise explicit
   local-only mode.
+- Desktop provider runtimes are package-owned, version-explicit capabilities.
+  Codex launches the native executable resolved from the exact pinned
+  `@openai/codex` optional platform package, never an ambient PATH executable;
+  Claude execution imports the exact pinned Agent SDK. The compatibility
+  catalog fails closed unless observed versions equal the bundled/tested lock
+  versions, and reports missing, malformed, or unverified updates without
+  paths, raw output, credentials, or provider-home data. Version probing does
+  not read or mutate default `~/.codex` or `~/.claude` homes. Provider turns
+  continue to receive only account-scoped isolated-home environments.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.

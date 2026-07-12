@@ -173,7 +173,7 @@
       "name": "@openagentsinc/openagents-desktop",
       "version": "0.0.1",
       "dependencies": {
-        "@anthropic-ai/claude-agent-sdk": "^0.3.172",
+        "@anthropic-ai/claude-agent-sdk": "0.3.172",
         "@effect-native/core": "workspace:*",
         "@effect-native/render-dom": "workspace:*",
         "@effect-native/tokens": "workspace:*",
@@ -181,6 +181,7 @@
         "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/khala-sync-client": "workspace:*",
         "@openagentsinc/pylon-core": "workspace:*",
+        "@openai/codex": "0.144.1",
         "effect": "catalog:",
       },
       "devDependencies": {

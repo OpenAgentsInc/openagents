@@ -27,6 +27,7 @@ import {
   FIXTURE_CODEX_CHILD_TEXT,
   FIXTURE_CODEX_SHORT_AUTH_MESSAGE,
   discoverRegisteredCodexAccounts,
+  defaultSpawnCodex,
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
   fixtureCodexShortAuthStdout,
@@ -49,6 +50,18 @@ const collect = () => {
   const events: CodexChildStreamEvent[] = []
   return { events, onEvent: (event: CodexChildStreamEvent) => events.push(event) }
 }
+
+test("default Codex launch uses the packaged native binary with ambient PATH disabled", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "openagents-codex-bundled-"))
+  const child = defaultSpawnCodex({ args: ["--version"], cwd, env: { PATH: "", CODEX_HOME: cwd } })
+  expect(child).not.toBeNull()
+  if (child === null) return
+  const code = await new Promise<number | null>(resolve => {
+    child.on("error", () => resolve(null))
+    child.on("close", (...args) => resolve(typeof args[0] === "number" ? args[0] : null))
+  })
+  expect(code).toBe(0)
+})
 
 describe("isCodexReconnectRequiredText (BROADENED, EP250)", () => {
   test("matches the LONG receipted revoked-token strings", () => {

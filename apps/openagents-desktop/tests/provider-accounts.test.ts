@@ -29,6 +29,7 @@ import {
   decodeFleetUsageEntry,
 } from "../src/renderer/fleet-workspace.ts"
 import type { ProviderAccountsServiceDependencies } from "../src/provider-accounts.ts"
+import { classifyProviderRuntimeCompatibility } from "../src/provider-runtime-compatibility.ts"
 
 const fixtureListStdout = readFileSync(
   path.join(import.meta.dir, "fixtures", "provider-accounts", "accounts-list.json"),
@@ -253,6 +254,10 @@ describe("makeProviderAccountsService", () => {
     const service = makeProviderAccountsService("/nonexistent", {
       spawnPylon: makeFixtureProviderAccountsSpawn(),
       now: () => new Date(generatedAt),
+      inspectRuntimes: async () => [
+        classifyProviderRuntimeCompatibility("codex_cli", "codex-cli 0.144.1"),
+        classifyProviderRuntimeCompatibility("claude_agent_sdk", "0.3.172"),
+      ],
     })
     const list = await service.listProviderAccounts()
     expect(list).toEqual({
@@ -262,6 +267,10 @@ describe("makeProviderAccountsService", () => {
         { ref: "codex", provider: "codex", email: null, readiness: "ready" },
         { ref: "codex-2", provider: "codex", email: null, readiness: "credentials-missing" },
         { ref: "claude-pylon-3", provider: "claude_agent", email: null, readiness: "ready" },
+      ],
+      runtimes: [
+        { kind: "codex_cli", state: "compatible", expectedVersion: "0.144.1", observedVersion: "0.144.1", reason: "verified" },
+        { kind: "claude_agent_sdk", state: "compatible", expectedVersion: "0.3.172", observedVersion: "0.3.172", reason: "verified" },
       ],
     })
     const usage = await service.fetchProviderAccountUsage("codex")
