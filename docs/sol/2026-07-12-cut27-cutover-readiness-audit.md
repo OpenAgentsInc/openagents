@@ -208,10 +208,15 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   permission-mode control (`Full tools` / `Plan only`, `bypassPermissions`
   rejected). Capabilities I3/J2/J3 now `ui_available`.
   [Receipt](./2026-07-12-cut-23-plugin-registry-receipt.md).
-- Rung: **fixture-proven** + built-Electron smoke.
-- Remaining gate: one real plugin/skill workflow **live** receipt on each
-  supported provider (Claude lane; Codex stays an explicit unsupported
-  fact).
+- Rung: **live-proven for the Claude plugin/skill lane**. On 2026-07-12 the
+  typed registry admitted the local Anthropic `skill-creator` plugin, resolved
+  its explicit skill grant, and named account `claude-pylon-3` streamed a real
+  `claude-fable-5` response with exact usage (330 input, 15,663 cached, 735
+  output, 16,728 total); no tools, files, or secrets were used.
+- Remaining gate: reconcile the issue's literal "one real MCP/skill workflow
+  on each provider" line with the landed explicit Codex-unsupported provider
+  fact: either prove a supported Codex MCP workflow or record an explicit
+  acceptance exception. The Claude live requirement has passed.
 
 ### CUT-24 #8704 — preferences, accessibility, notifications, diagnostics, recovery — CLOSED
 
