@@ -598,8 +598,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   generation before it can replace or advance durable state. Unsubscribe,
   close, and proven revocation invalidate that generation; a late push response
   cannot acknowledge or publish rejection state after revocation. On the
-  server, a runtime event must equal the turn's durable next `event_count` and
-  match its lifecycle state: only `turn.started` can leave `queued`, a second
+  server, a runtime event must equal the turn's durable next `event_count`
+  (the first event is sequence `0`; after `N` admitted events the next is
+  sequence `N`) and match its lifecycle state: only `turn.started` can leave `queued`, a second
   start cannot mutate `running`, and no provider event can mutate a completed,
   failed, interrupted, or closed turn. A stale hosted worker is settled as one
   durable `turn.interrupted` event and is never re-run through inference.

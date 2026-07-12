@@ -1495,7 +1495,7 @@ const makeEventSequence = (start = 0): Readonly<{
   next: () => number
 }> => {
   let value = start
-  return { current: () => value, next: () => { value += 1; return value } }
+  return { current: () => value, next: () => { const allocated = value; value += 1; return allocated } }
 }
 
 const pushFinishedEvent = async (input: {
@@ -2060,7 +2060,9 @@ const handleTurnStart = async (
       mutationId: turn.nextMutationId(),
     })
   } catch (error) {
-    // Sequence 1 is the durable single-winner claim. A duplicate generation
+    // Sequence 0 is the durable single-winner claim: the server admits an
+    // event only when its sequence equals the turn's current event_count.
+    // A duplicate generation
     // or an indeterminate write never proceeds to provider execution. Carry
     // the bounded push error so a systematic rejection (auth, schema, or an
     // id-collision class of bug) is distinguishable from a lost race in the

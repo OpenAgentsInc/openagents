@@ -797,6 +797,9 @@ describe("enforcePendingRuntimeIntents", () => {
         "turn.finished",
       ])
       const sequences = pushedEvents.map((e) => e.sequence)
+      // Production's durable turn starts at event_count=0, so its first
+      // admitted event is sequence 0 (not 1).
+      expect(sequences[0]).toBe(0)
       expect(sequences).toEqual([...sequences].sort((a, b) => a - b))
       expect(new Set(sequences).size).toBe(sequences.length)
       expect((pushedEvents[pushedEvents.length - 1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
@@ -810,7 +813,7 @@ describe("enforcePendingRuntimeIntents", () => {
   // characters, so every Desktop-origin `turn.desktop.<random>` turn produced
   // the SAME `event.runtime_claim.*` id — the first Desktop run dispatched and
   // every later one was rejected as already-recorded and never executed.
-  test("distinct turns sharing a long ref prefix produce distinct sequence-one claim ids and both dispatch", async () => {
+  test("distinct turns sharing a long ref prefix produce distinct sequence-zero claim ids and both dispatch", async () => {
     const store = memoryStore()
     const message: ChatMessageBody = {
       authorUserId: "user-1",
@@ -874,7 +877,7 @@ describe("enforcePendingRuntimeIntents", () => {
   })
 
   // Oracle for openagents_desktop.seam.runtime_gateway_conversation.v1.
-  test("two consumers race one turn but only the durable sequence-one winner invokes Codex", async () => {
+  test("two consumers race one turn but only the durable sequence-zero winner invokes Codex", async () => {
     const row = controlIntentRow({
       bodyRef: "chat_message.msg-race",
       intentId: "intent-race",
@@ -1717,11 +1720,11 @@ describe("enforcePendingRuntimeIntents", () => {
         "turn.finished",
       ])
       // Existing event_count was 3, so the FIRST pushed event's sequence must
-      // be 4, never restarting at 1 (which would collide with the earlier
-      // attempt's already-recorded sequences 1-3).
+      // be 3, never restarting at 0 (which would collide with the earlier
+      // attempt's already-recorded sequences 0-2).
       const sequences = pushedEvents.map((e) => e.sequence)
-      expect(sequences[0]).toBe(4)
-      expect(sequences).toEqual([4, 5, 6, 7, 8])
+      expect(sequences[0]).toBe(3)
+      expect(sequences).toEqual([3, 4, 5, 6, 7])
     } finally {
       await cleanup()
     }
