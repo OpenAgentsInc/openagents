@@ -72,6 +72,62 @@ Four recurring mechanisms appear:
 
 This suggests a more useful definition for the episode: **enshittification of software is the transfer of verification, navigation, and recovery costs from the vendor's system onto the user's attention, even as the vendor advertises greater capability.** The software does more, but the person must work harder to determine what it did, find the result, restore context, and decide whether any label can be trusted.
 
+## Verification economics: from Christian Catalini's paper to Blueprint
+
+The deeper economic frame already exists in our notes on Christian Catalini's paper *Some Simple Economics of AGI*. The workspace sources repeatedly summarize its central wedge this way: the cost of producing software and other machine-generated outputs is collapsing, while the cost of verifying that those outputs are correct remains comparatively linear. That creates a **measurability gap** between abundant generation and scarce confidence. In the Stillmark analysis, the shorthand is explicit: “generation cost collapses; verification stays linear; the gap is the market.” In the Andrew Trask conversation, Christopher connects that gap to economic damage: cheap production does not guarantee that a buyer received what was promised, so open verification mechanisms become part of the market infrastructure rather than optional QA.
+
+Internal source trail:
+
+- `workspace:docs/fable/stillmark-deck-analysis.md` — “Receipts and verification as the product”; accepted outcomes with receipt trails are framed as the AI-native extension of trust-minimized settlement.
+- `workspace:docs/fable/talking-points.md` — “Generation cost is collapsing; verification cost is not. The gap between them is our market.”
+- `workspace:docs/cloud/transcripts/Andrew-Trask-and-Christopher-David-6ab2bdff-c24c.md` at **02:24–02:48** — the paper is connected to a verification architecture, falling production cost, comparatively linear verification cost, and the resulting measurement gap.
+- `workspace:docs/cloud/transcripts/Chris-OpenAgents-x-Alyse-Vikash-Stillmark-9ed508a5-57cc.md` at **35:32** — the same thesis is connected to open-protocol verification, Nostr as an open signaling layer, and Bitcoin/Lightning settlement.
+- `workspace:docs/fable/FABLE.md`, section 12.2 — the verification strategy is expanded into six moves: **amortize, decompose, downshift, price, incentivize, eliminate**.
+
+Episodes 249 and 250 are small-scale demonstrations of Catalini's gap. Codex, Claude, and Fable make generation extremely cheap: they can survey a codebase, draft an architecture, produce patches, launch sub-agents, and narrate the result in minutes. But Christopher then has to determine whether the chat can be found, whether the child actually ran, whether the command exists, whether the selected model was served, whether credentials were really rejected, whether the file was pushed, and whether the screenshot appeared. Production accelerated; verification did not disappear. It moved onto the owner.
+
+The fabricated `start` command is almost a perfect unit example. Generating the instruction cost essentially nothing. Verifying it required reading `package.json`, resolving the script, optionally checking its flags, and running a bounded help or dry-run path. Because that verification step was skipped, a one-token substitution imposed a much larger recovery cost on the human. The same asymmetry appears in the Sonnet-as-Fable incident: producing an answer was cheap, while establishing the effective model required SDK events, transcript inspection, typed failure semantics, and a regression suite.
+
+### How Blueprint adapts the thesis
+
+Blueprint turns verification from a vague instruction—“be careful,” “double-check,” “don't hallucinate”—into a typed control system. A **Blueprint Signature** declares inputs, outputs, tool scopes, evidence requirements, receipt requirements, risk ceilings, and release gates. The gate is an ordered predicate list with an explicit state machine; only its terminal state unlocks the consequential claim or action. If a required evidence reference is absent, the system does not merely advise the model to stop. The unlocking state is structurally unreachable.
+
+The general Blueprint authority boundary is important here:
+
+- **Program Runs are evidence, not write authority.** A run can record what was observed and propose what should happen, but it cannot silently deploy, email, spend, or mutate source.
+- **Action Submissions are the external-write path.** They are proposal-only, evidence-backed, and approval-gated.
+- **Release Gates prevent self-promotion.** A prompt, module, optimizer output, or learned capability remains a candidate until independent evidence satisfies its gate.
+- **Context narrows authority; it never widens it.** More retrieved material does not grant more power.
+- **Public surfaces receive safe projections, not raw runner state.** The receipt can be inspected without leaking the underlying private execution material.
+
+The most direct adaptation to episode 250 is the `autonomous-ops-v1` Blueprint design in [Blueprint-Signature-Governed Autonomous Ops](../artanis/2026-06-28-blueprint-signature-governed-autonomous-ops.md). It defines two signatures aimed exactly at the failure on camera.
+
+**Signature 4, `command-execution-source-verified`,** requires the command source to be read and hashed, every proposed flag to be found in the real argument parser, and a dry-run or `--help` invocation to confirm the executable accepts those flags. Its state machine is:
+
+```text
+UNVERIFIED → SOURCE_READ → FLAGS_VERIFIED → RUNTIME_CONFIRMED → SAFE_TO_PROPOSE
+```
+
+The agent cannot recommend the command merely because it resembles a common Node script. The `start` guess never reaches `SOURCE_READ`, much less `SAFE_TO_PROPOSE`.
+
+**Signature 6, `operator-grounded-assertion`,** governs the earlier and more general step of naming a runnable artifact at all. Any command, file path, script, or API endpoint presented as real must carry evidence from the actual repository or published route registry. Its state machine is:
+
+```text
+UNGROUNDED → REFERENCED → LOOKED_UP → GROUNDED
+```
+
+Only `GROUNDED` permits the artifact to be presented as runnable. A missing file, unmatched command content, or unregistered endpoint remains ungrounded and must be labelled **SPECULATIVE** or omitted. The current operator implementation backs this with owner-scoped `repo_path_exists`, `repo_grep`, and `route_exists` tools. After the model composes its final reply, the operator loop audits every runnable artifact it named, correlates it with lookups actually performed during that turn, applies the shared Blueprint gate, and appends a typed speculative verdict for anything that failed grounding. This is not merely prompt language; S6 is enforced after generation.
+
+### Honest current boundary
+
+The Blueprint adaptation is real but incomplete, and the episode should say so. The S6 grounded-assertion gate is structurally applied to operator output today. S4 can attach source-read and flag-match evidence, but its terminal `RUNTIME_CONFIRMED` step still requires a real working-tree dry run that the headless Worker cannot perform. The broader autonomous-ops signatures, durable Action Submission evidence wiring, full Signature Lookup registration, overseer cycle packet, and GEPA optimization against “zero unforced errors” remain follow-up work. Blueprint supplies a concrete path out of the verification gap; it does not justify claiming that the gap has already been closed everywhere.
+
+### Verification as product and market
+
+The FABLE synthesis extends Catalini's observation beyond internal safety. Verification can be **amortized** by reusing accepted traces and solutions; **decomposed** into small typed units; **downshifted** to cheap validator supply; **priced** through specification entropy, verifiability horizon, residual risk, and confidence tiers; **incentivized** by paying verifier authors from the margin they create; and, for bounded deterministic work, potentially **eliminated** when an exact replayable execution trace is itself the receipt.
+
+That matters to the enshittification thesis because today's dominant software often makes verification an unpaid user task. OpenAgents' economic bet is the opposite: make verification visible in the product, explicit in the price, reusable across future work, and valuable enough that contributors compete to cheapen it. The product unit is not generated output. It is an **accepted outcome with a receipt trail**.
+
 ## OpenAgents counter-thesis: software that proves what it did
 
 The OpenAgents response should be demonstrated as a set of visible product laws:
@@ -95,8 +151,10 @@ The goal is not a purity claim. OpenAgents will fail too; episode 250 documents 
 4. **Claude Code — intelligence without grounded authority.** Reconstruct the `start` fabrication, Sonnet-as-Fable substitution, opaque Python execution, and foreground capture.
 5. **GitHub and Apple — incumbents failing at their original jobs.** The code forge cannot show the changed file; the integrated desktop cannot promptly show the screenshot.
 6. **Define enshittification for software.** Verification and recovery costs move from vendor systems to user attention while feature counts rise.
-7. **Build the counterexample.** Demonstrate typed intents, effective-model receipts, exact child transcripts, durable graphs, local-first acknowledgements, and behavior-contract smoke tests.
-8. **Close honestly.** OpenAgents is not exempt. The product earns the thesis only when every failure in episodes 249–251 becomes an executable promise that prevents recurrence.
+7. **Catalini's verification gap.** Explain why collapsing generation cost and comparatively linear verification cost create the measurability market—and why episodes 249 and 250 are operator-scale examples.
+8. **Blueprint as an adaptation, not a slogan.** Show the S4 and S6 state machines, grounded repository tools, evidence-only runs, and approval-gated actions; name what remains unimplemented.
+9. **Build the counterexample.** Demonstrate typed intents, effective-model receipts, exact child transcripts, durable graphs, local-first acknowledgements, and behavior-contract smoke tests.
+10. **Close honestly.** OpenAgents is not exempt. The product earns the thesis only when every failure in episodes 249–251 becomes an executable promise that prevents recurrence.
 
 ## Candidate lines for the recording
 
@@ -111,5 +169,9 @@ The goal is not a purity claim. OpenAgents will fail too; episode 250 documents 
 > GitHub can summarize a pull request with AI, but on camera I clicked a one-file commit and it could not show me the file.
 
 > Claude did not lack the ability to read the package script. It skipped the read, guessed the convention, and delivered the guess in the voice of a fact.
+
+> Catalini's gap is right here: generation took one token; verification took the owner, the terminal, the source file, and another engineering pass.
+
+> Blueprint is how we turn “please verify that” from advice into a state the system cannot pass without evidence.
 
 > The answer is not “trust our AI.” The answer is software that can show its work, name its gaps, and prove what it did.
