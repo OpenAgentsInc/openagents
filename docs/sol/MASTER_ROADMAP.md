@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 95
+- Revision: 96
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -386,14 +386,14 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 - The foundational local coding graph through CUT-25 is landed/closed except
   CUT-09's distinct lifecycle acceptance. CUT-16 is closed with physical-iOS
   VoiceOver; CUT-25 is closed with cross-client Fleet control.
-- CUT-26 retained two installed-artifact counterexamples: RC1 exposed a V8
-  snapshot-fuse boot failure; RC2 then failed hardened renderer admission
-  through `file:`/ASAR. RC5 is now Developer ID signed, Apple-notarized,
-  stapled, production-feed live, and exact downloaded-DMG smoke proven with
-  clean lifecycle teardown while preserving the strict fuse posture. The
-  remaining acceptance is real named-account coding plus update interruption/
-  resume, rollback/reinstall, uninstall, and diagnostics export on a clean
-  supported Mac.
+- CUT-26 is closed. RC1's V8 snapshot-fuse failure and RC2's hardened
+  renderer-admission failure became release regressions. The exact public RC5
+  DMG is Developer ID signed, Apple-notarized, stapled, production-feed live,
+  and installed-artifact accepted. Its final ceremony covered a resumed
+  interrupted download, production-feed rollback with client downgrade
+  refusal, uninstall/reinstall, diagnostics export, durable real-history
+  launch, and named isolated-account readiness without weakening the fuse
+  posture. See the [RC5 closure receipt](./2026-07-12-cut-26-rc5-installed-artifact-closure.md).
 - CUT-27 closes the bounded ordinary Codex/Claude-to-OpenAgents cutover only
   after its open dependencies and exception register reconcile. It does not
   manufacture remote-workroom, portability, broker, any-host, or voice proof.
@@ -441,7 +441,6 @@ the currently unclaimed worker lease.
 | [#8676](https://github.com/OpenAgentsInc/openagents/issues/8676) | Real streamed Desktop-to-physical-mobile continuation |
 | [#8677](https://github.com/OpenAgentsInc/openagents/issues/8677) | Command/event/lifecycle fault convergence |
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | CUT-09 remaining lifecycle acceptance |
-| [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | CUT-26 distribution/update/rollback/legacy lockout |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
 | [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | P1-parallel persistent Desktop audio epic; Google STT/TTS, retained media, typed UI actions |
 | [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | AUDIO-1 shared voice wire/lifecycle/authority/retention contract freeze |
@@ -463,11 +462,10 @@ Live issues and claims control exact selection. At this snapshot:
 1. In parallel, run the combined physical-iPhone journey for #8676 and CUT-09:
    same-ref named-Codex continuation,
    literal offline/network gap, exactly-once reconnect, then unlink/sign-out/
-   revocation denial without replay. Complete CUT-26's next monotonic RC and
-   clean-machine lifecycle independently.
+   revocation denial without replay.
 2. Close CUT-09, then #8677 when its full matrix/live rung reconciles; close
    #8676 only on its literal continuation/denial receipt. Close CUT-27 last for
-   the local cutover after #8676/#8677/CUT-09/CUT-26 and the exception register
+   the local cutover after #8676/#8677/CUT-09 and the exception register
    are satisfied. On the clean installed candidate, CUT-27 still proves one
    non-trivial named-Codex and one named-Claude repository task through
    project/session, composer/context, questions/approvals, edits, tests/
