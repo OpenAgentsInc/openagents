@@ -22,6 +22,7 @@ import {
   openExpoMobileCodingAttachmentPicker,
 } from "./coding/expo-mobile-coding-attachment-picker"
 import { prepareMobileCodingAttachmentDelivery } from "./coding/mobile-coding-attachment-delivery"
+import type { MobileExecutionTargetOption } from "./coding/mobile-execution-targets"
 import {
   selectMobileConversation,
   type MobileConversationThread,
@@ -43,6 +44,7 @@ import {
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
   activeComposer: () => MobileCodingComposerSession | null
+  executionTargets: ReadonlyArray<MobileExecutionTargetOption>
   clearSelection: () => Promise<void>
   selectSession: (
     target: MobileCodingTarget,
@@ -54,6 +56,10 @@ type MobileCodingHomeBinding = Readonly<{
   updateComposerText: (
     session: MobileCodingComposerSession,
     text: string,
+  ) => Promise<MobileCodingComposerSession | null>
+  selectComposerTarget: (
+    session: MobileCodingComposerSession,
+    target: MobileExecutionTargetOption,
   ) => Promise<MobileCodingComposerSession | null>
   pickComposerAttachments: (
     session: MobileCodingComposerSession,
@@ -96,6 +102,8 @@ const selectAuthenticatedMobileExperience = async (
   })
   const directory = await coding.directory()
   if (conversation.mode !== "sync") return { conversation }
+  const executionTargetCatalog = await syncHost.executionTargets()
+  const executionTargets = executionTargetCatalog?.options ?? []
   const host = conversation.host
   let activeComposer: MobileCodingComposerSession | null = null
   const bind = async (
@@ -132,6 +140,8 @@ const selectAuthenticatedMobileExperience = async (
           target,
           resolution,
           runtime: latest.timeline?.run?.runtime,
+          executionTargets,
+          effectiveExecutionTargetId: executionTargetCatalog?.effectiveTargetId,
         })
     activeComposer = composerSession
     onActiveThread?.(latest)
@@ -145,6 +155,7 @@ const selectAuthenticatedMobileExperience = async (
     coding: {
       directory,
       activeComposer: () => activeComposer,
+      executionTargets,
       clearSelection: async () => {
         activeComposer = null
         await coding.clearActive()
@@ -153,6 +164,14 @@ const selectAuthenticatedMobileExperience = async (
       updateComposerText: async (session, text) => {
         if (composer === null) return null
         const updated = await composer.updateText(session, text)
+        if (updated !== null) activeComposer = updated
+        return updated
+      },
+      selectComposerTarget: async (session, target) => {
+        if (composer === null ||
+          !executionTargets.some(option =>
+            option.targetId === target.targetId && option.readiness === "ready")) return null
+        const updated = await composer.selectTarget(session, target)
         if (updated !== null) activeComposer = updated
         return updated
       },

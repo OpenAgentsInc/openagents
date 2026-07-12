@@ -34,6 +34,7 @@ import {
   type MobileCodingComposerSession,
 } from "../coding/mobile-coding-composer"
 import type { MobileCodingAttachmentDeliveryResult } from "../coding/mobile-coding-attachment-delivery"
+import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
 import type {
   MobileConversationHost,
   MobileConversationSelection,
@@ -93,6 +94,8 @@ export interface HomeState {
   readonly activeThreadRef: string | null
   readonly codingDirectory: MobileCodingDirectory | null
   readonly codingComposer: MobileCodingComposerSession | null
+  readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
+  readonly codingExecutionTargetCatalogRequired: boolean
   readonly codingAttachmentPicking: boolean
   readonly codingAttachmentStatus: Readonly<{
     kind: "ready" | "failed"
@@ -210,6 +213,8 @@ export const initialHomeState: HomeState = {
   activeThreadRef: null,
   codingDirectory: null,
   codingComposer: null,
+  codingExecutionTargets: [],
+  codingExecutionTargetCatalogRequired: false,
   codingAttachmentPicking: false,
   codingAttachmentStatus: null,
   accessibility: defaultMobileAccessibilityProfile,
@@ -217,7 +222,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible embedded-binary tag; build 116 removes the named-persona front door. */
-export const BUNDLE_TAG = "2026-07-12.cut-16-durable-images"
+export const BUNDLE_TAG = "2026-07-12.cut-16-exact-target-selector"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -245,6 +250,10 @@ export const CodingSessionSelected = defineIntent(
 export const CodingComposerAttachmentsRequested = defineIntent(
   "CodingComposerAttachmentsRequested",
   EmptyPayload,
+)
+export const CodingExecutionTargetSelected = defineIntent(
+  "CodingExecutionTargetSelected",
+  Schema.Struct({ targetId: Schema.String }),
 )
 export const RuntimeInteractionOptionToggled = defineIntent(
   "RuntimeInteractionOptionToggled",
@@ -286,6 +295,7 @@ export const homeIntentDefinitions = [
   ConversationThreadSelected,
   CodingSessionSelected,
   CodingComposerAttachmentsRequested,
+  CodingExecutionTargetSelected,
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
@@ -331,6 +341,7 @@ export const renderContentView = (state: HomeState): View =>
           state.codingAttachmentPicking,
           state.codingAttachmentStatus,
           state.accessibility,
+          state.codingExecutionTargets,
         )]
       : [
           Spacer({ key: "openagents-top-space", size: "16" }),
@@ -545,6 +556,7 @@ export interface HomeProgramOptions {
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     activeComposer: () => MobileCodingComposerSession | null
+    executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,
@@ -556,6 +568,10 @@ export interface HomeProgramOptions {
     updateComposerText: (
       session: MobileCodingComposerSession,
       text: string,
+    ) => Promise<MobileCodingComposerSession | null>
+    selectComposerTarget?: (
+      session: MobileCodingComposerSession,
+      target: MobileExecutionTargetOption,
     ) => Promise<MobileCodingComposerSession | null>
     pickComposerAttachments: (
       session: MobileCodingComposerSession,
@@ -979,6 +995,23 @@ const makeSyncedConversationHandlers = (
     if (before.khala.pending) return
     if (before.codingComposer !== null &&
       before.codingComposer.draft.target.readiness !== "ready") return
+    const selectedExecutionTarget = before.codingComposer === null
+      ? undefined
+      : before.codingExecutionTargets.find(option =>
+          option.targetId === before.codingComposer!.draft.target.executionTargetRef &&
+          option.readiness === "ready")
+    if (before.codingComposer !== null &&
+      before.codingExecutionTargetCatalogRequired &&
+      selectedExecutionTarget === undefined) {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        codingAttachmentStatus: {
+          kind: "failed" as const,
+          message: "The selected execution target is no longer available. Your draft was kept.",
+        },
+      }))
+      return
+    }
     const prepared = before.codingComposer === null || coding === undefined
       ? { ok: true as const, body: message }
       : coding.prepareComposerSubmission === undefined
@@ -1043,6 +1076,9 @@ const makeSyncedConversationHandlers = (
       threadRef,
       body: prepared.body,
       ...(prepared.attachments === undefined ? {} : { attachments: prepared.attachments }),
+      ...(selectedExecutionTarget === undefined
+        ? {}
+        : { runtimeTarget: selectedExecutionTarget.runtimeTarget }),
       onUpdate: thread => {
         Effect.runFork(SubscriptionRef.update(state, current => {
           if (current.activeThreadRef !== thread.threadRef) return current
@@ -1142,6 +1178,25 @@ export const makeHomeHandlers = (
                 }
             }
           })
+        }),
+    CodingExecutionTargetSelected: options.coding === undefined
+      ? () => Effect.void
+      : payload => Effect.gen(function* () {
+          const before = yield* SubscriptionRef.get(state)
+          const composer = before.codingComposer
+          const target = options.coding!.executionTargets?.find(
+            option => option.targetId === payload.targetId,
+          )
+          if (composer === null || target === undefined ||
+            target.readiness !== "ready" || before.khala.pending ||
+            options.coding!.selectComposerTarget === undefined) return
+          const updated = yield* Effect.promise(() =>
+            options.coding!.selectComposerTarget!(composer, target))
+          if (updated === null) return
+          yield* SubscriptionRef.update(state, current =>
+            current.codingComposer?.draft.draftRef !== composer.draft.draftRef
+              ? current
+              : { ...current, codingComposer: updated })
         }),
     SettingsPressed: () => Effect.void,
     OpenAgentsSignInPressed: () => options.sessionActions === undefined
@@ -1264,6 +1319,7 @@ export interface HomeProgramHandle {
   readonly coding: {
     readonly selectSession: (target: MobileCodingTarget) => void
     readonly pickAttachments: () => void
+    readonly selectTarget: (targetId: string) => void
   }
   readonly session: {
     readonly signIn: () => void
@@ -1283,6 +1339,9 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         ...baseInitialState,
         codingDirectory: options.coding?.directory ?? null,
         codingComposer: activeComposer,
+        codingExecutionTargets: options.coding?.executionTargets ?? [],
+        codingExecutionTargetCatalogRequired:
+          options.coding?.executionTargets !== undefined,
         khala: activeComposer === null
           ? baseInitialState.khala
           : {
@@ -1366,6 +1425,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             threadRef: target.threadRef,
           }))),
           pickAttachments: fire("CodingComposerAttachmentsRequested"),
+          selectTarget: targetId => fireRef(IntentRef(
+            "CodingExecutionTargetSelected",
+            StaticPayload({ targetId }),
+          )),
         },
         session: {
           signIn: fire("OpenAgentsSignInPressed"),

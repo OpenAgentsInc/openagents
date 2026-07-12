@@ -13,6 +13,7 @@ import type {
   KhalaSyncLiveAgentGraph,
   KhalaSyncRuntimeCommands,
   KhalaSyncRuntimeInteractions,
+  RuntimeCommandTarget,
 } from "@openagentsinc/khala-sync-client"
 import {
   buildAppendUserMessageIntent,
@@ -60,6 +61,9 @@ export type MobileConversationHost = Readonly<{
     threadRef: string
     body: string
     attachments?: ReadonlyArray<ChatMessageImageAttachment>
+    /** Exact persisted composer target for a brand-new coding turn. Ignored
+     * while steering an already-confirmed active run, whose lane is fixed. */
+    runtimeTarget?: RuntimeCommandTarget
     onUpdate?: (thread: MobileConversationThread) => void
   }>) => Promise<MobileConversationMutationResult>
   interrupt?: (input: Readonly<{
@@ -627,13 +631,15 @@ export const makeMobileConversationHost = (
         expiresAtIso: new Date(createdAt.getTime() + commandTtlMs).toISOString(),
         nowIso: createdAt.toISOString(),
         surface: "mobile" as const,
-        target: {
-          lane: active?.runtime === "claude_code"
-            ? "claude_pylon" as const
-            : active?.runtime === "openagents_native"
-              ? "hosted_khala" as const
-              : "codex_app_server" as const,
-        },
+        target: continuingActiveRun
+          ? {
+              lane: active.runtime === "claude_code"
+                ? "claude_pylon" as const
+                : active.runtime === "openagents_native"
+                  ? "hosted_khala" as const
+                  : "codex_app_server" as const,
+            }
+          : input.runtimeTarget ?? { lane: "codex_app_server" as const },
       }
       const runtimeIntent = continuingActiveRun
         ? buildAppendUserMessageIntent({

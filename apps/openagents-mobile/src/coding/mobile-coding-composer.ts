@@ -22,6 +22,7 @@ import type {
   MobileCodingTarget,
   MobileCodingTargetResolution,
 } from "./mobile-coding-navigation"
+import type { MobileExecutionTargetOption } from "./mobile-execution-targets"
 
 export type MobileCodingComposerSession = Readonly<{
   draft: CodingComposerDraftSnapshot
@@ -56,7 +57,13 @@ export type MobileCodingComposer = Readonly<{
     target: MobileCodingTarget
     resolution: Extract<MobileCodingTargetResolution, { readonly state: "ready" }>
     runtime?: ConfirmedAgentRun["runtime"]
+    executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
+    effectiveExecutionTargetId?: string | null
   }>) => Promise<MobileCodingComposerSession | null>
+  selectTarget: (
+    session: MobileCodingComposerSession,
+    target: MobileExecutionTargetOption,
+  ) => Promise<MobileCodingComposerSession | null>
   updateText: (
     session: MobileCodingComposerSession,
     text: string,
@@ -106,6 +113,56 @@ const targetSelection = (
     },
   }
 }
+
+const reconciledCatalogTarget = (
+  stored: CodingComposerDraftSnapshot | undefined,
+  options: ReadonlyArray<MobileExecutionTargetOption>,
+  effectiveTargetId: string | null | undefined,
+): Readonly<{ selection: CodingComposerTargetSelection; label: string }> => {
+  const storedTargetId = stored?.target.executionTargetRef
+  const exact = storedTargetId === undefined
+    ? undefined
+    : options.find(option => option.targetId === storedTargetId)
+  if (exact !== undefined) {
+    return { label: exact.label, selection: composerSelectionForTarget(exact) }
+  }
+  if (stored !== undefined && storedTargetId !== undefined) {
+    return {
+      label: "Previously selected target unavailable",
+      selection: {
+        ...stored.target,
+        readiness: "unavailable",
+        reasonRef: "reason.execution_target_not_advertised",
+      },
+    }
+  }
+  const preferred = (effectiveTargetId === null || effectiveTargetId === undefined
+    ? undefined
+    : options.find(option => option.targetId === effectiveTargetId)) ??
+    options.find(option => option.readiness === "ready")
+  return preferred === undefined
+    ? {
+        label: "Runtime unavailable",
+        selection: {
+          laneRef: "lane.unselected",
+          readiness: "unavailable",
+          reasonRef: "reason.execution_target_catalog_unavailable",
+        },
+      }
+    : { label: preferred.label, selection: composerSelectionForTarget(preferred) }
+}
+
+const composerSelectionForTarget = (
+  target: MobileExecutionTargetOption,
+): CodingComposerTargetSelection => ({
+  laneRef: `lane.${target.runtimeTarget.lane}`,
+  providerRef: target.providerRef,
+  modelRef: target.modelRef,
+  ...(target.accountRef === undefined ? {} : { accountRef: target.accountRef }),
+  executionTargetRef: target.targetId,
+  readiness: target.readiness,
+  ...(target.reasonRef === undefined ? {} : { reasonRef: target.reasonRef }),
+})
 
 const canonicalContext = (
   resolution: Extract<MobileCodingTargetResolution, { readonly state: "ready" }>,
@@ -173,11 +230,17 @@ export const openMobileCodingComposer = (input: Readonly<{
 
   return {
     open: async request => {
-      const target = targetSelection(request.resolution, request.runtime)
       const context = canonicalContext(request.resolution)
       const stored = (await Effect.runPromise(input.drafts.list())).find(draft =>
         draft.sessionRef === request.target.sessionRef &&
         draft.threadRef === request.target.threadRef)
+      const target = request.executionTargets === undefined
+        ? targetSelection(request.resolution, request.runtime)
+        : reconciledCatalogTarget(
+            stored,
+            request.executionTargets,
+            request.effectiveExecutionTargetId,
+          )
       const updatedAt = now()
       const base = stored ?? (() => {
         const state = emptyComposerState()
@@ -212,6 +275,22 @@ export const openMobileCodingComposer = (input: Readonly<{
         draft,
         repositoryLabel: request.resolution.repository.displayName,
         worktreeLabel: request.resolution.worktree.displayName,
+        targetLabel: target.label,
+      })
+    },
+    selectTarget: async (session, target) => {
+      if (session.draft.submission.status !== "editing" ||
+        target.readiness !== "ready") return null
+      const updatedAt = now()
+      const draft = decodeCodingComposerDraftSnapshot({
+        ...session.draft,
+        revision: session.draft.revision + 1,
+        target: composerSelectionForTarget(target),
+        updatedAt,
+      })
+      return saveSession(input.drafts, {
+        ...session,
+        draft,
         targetLabel: target.label,
       })
     },

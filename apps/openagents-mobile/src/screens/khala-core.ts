@@ -16,6 +16,7 @@ import {
 } from "@effect-native/core"
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
 import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
+import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
 import {
   fleetRunActions,
   type LiveAgentGraphPresentation,
@@ -504,6 +505,8 @@ const codingComposerContextViews = (
     message: string
   }> | null = null,
   attachmentPicking = false,
+  accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
+  executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
 ): ReadonlyArray<View> => {
   if (session === null) return []
   const target = session.draft.target
@@ -532,6 +535,39 @@ const codingComposerContextViews = (
         variant: "caption",
         color: target.readiness === "ready" ? "textMuted" : "warning",
       }),
+      ...(executionTargets.length === 0
+        ? [Text({
+            key: "khala-coding-target-catalog-unavailable",
+            content: "Execution targets unavailable. Your draft is preserved.",
+            variant: "caption",
+            color: "warning",
+          })]
+        : [Stack(
+            {
+              key: "khala-coding-target-options",
+              direction: "row",
+              gap: "1",
+              style: { width: "full" },
+              a11y: { role: "group", label: "Execution target" },
+            },
+            executionTargets.map(option => {
+              const selected = target.executionTargetRef === option.targetId
+              return Button({
+                key: `khala-coding-target-${option.targetId}`,
+                label: option.label,
+                variant: selected ? "secondary" : "ghost",
+                disabled: option.readiness !== "ready",
+                onPress: IntentRef(
+                  "CodingExecutionTargetSelected",
+                  StaticPayload({ targetId: option.targetId }),
+                ),
+                a11y: {
+                  label: `${option.accessibilityLabel}${selected ? ", selected" : ""}`,
+                },
+                style: { flex: 1, ...mobileInteractiveStyle(accessibility) },
+              })
+            }),
+          )]),
       ...(attachmentPicking
         ? [Text({
             key: "khala-coding-composer-attachment-picking",
@@ -624,6 +660,7 @@ export const renderKhalaSurface = (
     message: string
   }> | null = null,
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
+  executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
 ): View =>
   Stack(
     {
@@ -678,6 +715,8 @@ export const renderKhalaSurface = (
         codingComposer,
         codingAttachmentStatus,
         codingAttachmentPicking,
+        accessibility,
+        executionTargets,
       ),
       Stack(
         {

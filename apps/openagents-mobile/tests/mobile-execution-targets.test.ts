@@ -56,13 +56,13 @@ describe("mobile execution-target catalog", () => {
     ])
     expect(catalog.options.find(option => option.targetId === "khala")).toMatchObject({
       providerRef: "provider.openagents.hosted",
-      modelRef: "model.openagents.khala",
+      modelRef: "model.gemini-3.5-flash",
       runtimeTarget: { lane: "hosted_khala", executionTargetId: "khala" },
     })
     expect(catalog.options.find(option => option.targetId.startsWith("codex:"))).toMatchObject({
       accountRef: codexRef,
       providerRef: "provider.openai.codex",
-      modelRef: "model.codex.configured",
+      modelRef: "model.gpt-5.6-sol",
       runtimeTarget: {
         lane: "codex_app_server",
         executionTargetId: `codex:${codexRef}`,
@@ -72,7 +72,7 @@ describe("mobile execution-target catalog", () => {
       accountRef: claudeRef,
       accessibilityLabel: "Your Claude, Claude, revoked",
       providerRef: "provider.anthropic.claude",
-      modelRef: "model.claude.configured",
+      modelRef: "model.claude-fable-5",
       readiness: "revoked",
       reasonRef: "reason.account_requires_reauth",
       runtimeTarget: {

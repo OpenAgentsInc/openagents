@@ -633,6 +633,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   URIs never enter Sync. The trusted Pylon reader may materialize an image only
   into a turn-scoped private scratch path and must delete it after dispatch;
   no public/view receipt projects base64 bytes.
+  Mobile coding execution targets come only from the strictly decoded,
+  authenticated personal target catalog. The canonical device-local composer
+  draft persists the exact lane/provider/model/account/execution-target refs;
+  a missing, stale, revoked, offline, or unadvertised selection preserves the
+  draft and withholds Send. A new turn carries that exact target, while an
+  already-running turn remains pinned to its confirmed lane. Neither path may
+  silently substitute another provider or account.
 - Native clients create one immutable device-local identity before OpenAuth.
   Its `scope.device_local.*` rows live in separate `local_entities` tables with
   `LocalRevision`; they are local Source Authority and are never readable as

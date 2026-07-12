@@ -15,6 +15,7 @@ import type {
   MobileCodingAttachmentUpdateResult,
   MobileCodingComposerSession,
 } from "../coding/mobile-coding-composer"
+import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
 import type { MobileConversationSelection } from "../conversation/mobile-conversation"
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
@@ -43,6 +44,7 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     activeComposer: () => MobileCodingComposerSession | null
+    executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,
@@ -54,6 +56,10 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
     updateComposerText: (
       session: MobileCodingComposerSession,
       text: string,
+    ) => Promise<MobileCodingComposerSession | null>
+    selectComposerTarget?: (
+      session: MobileCodingComposerSession,
+      target: MobileExecutionTargetOption,
     ) => Promise<MobileCodingComposerSession | null>
     pickComposerAttachments: (
       session: MobileCodingComposerSession,

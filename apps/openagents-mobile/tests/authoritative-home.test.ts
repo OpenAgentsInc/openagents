@@ -20,6 +20,7 @@ import type {
   MobileCodingTarget,
 } from "../src/coding/mobile-coding-navigation"
 import type { MobileCodingComposerSession } from "../src/coding/mobile-coding-composer"
+import type { MobileExecutionTargetOption } from "../src/coding/mobile-execution-targets"
 import {
   buildHomeProgram,
   chromeProps,
@@ -123,7 +124,80 @@ const codingComposerSession = (text: string): MobileCodingComposerSession => {
   }
 }
 
+const exactCodexTarget: MobileExecutionTargetOption = {
+  targetId: "codex:account.pylon.codex.ready1",
+  label: "Codex ready",
+  accessibilityLabel: "Codex ready, Codex, ready",
+  providerLabel: "Codex",
+  providerRef: "provider.openai.codex",
+  modelRef: "model.gpt-5.6-sol",
+  accountRef: "account.pylon.codex.ready1",
+  runtimeTarget: {
+    lane: "codex_app_server",
+    executionTargetId: "codex:account.pylon.codex.ready1",
+  },
+  readiness: "ready",
+}
+
 describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () => {
+  test("renders and sends the exact persisted Effect Native execution target", async () => {
+    let sentTarget: unknown = null
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      sendMessage: async input => {
+        sentTarget = input.runtimeTarget
+        return { ok: true, thread: initialThread }
+      },
+    }
+    const legacy = codingComposerSession("Use exact account")
+    const activeComposer: MobileCodingComposerSession = {
+      ...legacy,
+      targetLabel: exactCodexTarget.label,
+      draft: decodeCodingComposerDraftSnapshot({
+        ...legacy.draft,
+        target: {
+          laneRef: "lane.codex_app_server",
+          providerRef: exactCodexTarget.providerRef,
+          modelRef: exactCodexTarget.modelRef,
+          accountRef: exactCodexTarget.accountRef,
+          executionTargetRef: exactCodexTarget.targetId,
+          readiness: "ready",
+        },
+      }),
+    }
+    const program = buildHomeProgram({
+      conversation: selection(host),
+      coding: {
+        activeComposer: () => activeComposer,
+        directory: {
+          authority: "confirmed",
+          phase: "live",
+          cacheState: "current",
+          offlineCache: liveOfflineCache(0, 0),
+          repositories: [],
+          sessions: [],
+        },
+        executionTargets: [exactCodexTarget],
+        clearSelection: async () => undefined,
+        selectSession: async () => ({ thread: initialThread, composer: activeComposer }),
+        updateComposerText: async session => session,
+        selectComposerTarget: async session => session,
+        prepareComposerSubmission: async (_session, message) => ({ ok: true, body: message }),
+        clearComposer: async session => session,
+        pickComposerAttachments: async () => ({ status: "cancelled" }),
+      },
+    })
+
+    const rendered = JSON.stringify(renderContentView(program.initialState))
+    expect(rendered).toContain("khala-coding-target-codex:account.pylon.codex.ready1")
+    expect(rendered).toContain("Codex ready, Codex, ready, selected")
+    program.khala.submitTurn("Use exact account")
+    await Effect.runPromise(settle)
+    expect(sentTarget).toEqual(exactCodexTarget.runtimeTarget)
+  })
+
   test("restores, renders, edits, and accepted-clears the canonical coding draft", async () => {
     const host: MobileConversationHost = {
       listThreads: async () => [initialThread],

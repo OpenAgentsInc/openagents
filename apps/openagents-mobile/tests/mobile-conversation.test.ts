@@ -429,6 +429,10 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     const sent = await host.sendMessage({
       body: "Continue from mobile",
       threadRef: "thread.synced.1",
+      runtimeTarget: {
+        lane: "codex_app_server",
+        executionTargetId: "codex:account.pylon.codex.ready1",
+      },
     })
     expect(sent.ok).toBe(true)
     expect(intents[0]).toMatchObject({
@@ -436,6 +440,10 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
       kind: "turn.start",
       threadId: "thread.synced.1",
       turnId: "turn.mobile.runtime-turn",
+      target: {
+        lane: "codex_app_server",
+        executionTargetId: "codex:account.pylon.codex.ready1",
+      },
     })
 
     const retried = await host.controlTurn?.({

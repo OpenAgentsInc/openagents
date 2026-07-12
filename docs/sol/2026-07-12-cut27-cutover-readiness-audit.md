@@ -150,7 +150,10 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   removable relative-path/revision/language/current-draft mention and lowers
   it as bounded explicitly untrusted context through both local and durable
   ChatHost sends. H2 session fork is also UI-available. Remaining gates are
-  real selectors plus the named physical cross-client receipts. CUT-21 already
+  named physical cross-client receipts. Exact mobile target selection is
+  landed under [#8717](https://github.com/OpenAgentsInc/openagents/issues/8717):
+  authenticated catalog, accessible Effect Native controls, canonical exact
+  target persistence, and exact `runtime.startTurn` lowering. CUT-21 already
   supplies named Codex/Claude live streaming evidence.
 - CUT-16's own retained Codex daily-driver gate is now complete: the
   2026-07-12 `composer.run_stream` proof records 34 events, 7 commands, zero

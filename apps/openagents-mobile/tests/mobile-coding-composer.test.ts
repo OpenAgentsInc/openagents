@@ -30,6 +30,7 @@ import {
   MobileCodingTargetSchemaVersion,
   type MobileCodingTargetResolution,
 } from "../src/coding/mobile-coding-navigation"
+import type { MobileExecutionTargetOption } from "../src/coding/mobile-execution-targets"
 
 const at = "2026-07-11T20:00:00.000Z"
 const ownerScopeRef = String(personalScope("owner.composer"))
@@ -113,6 +114,36 @@ const resolution: Extract<MobileCodingTargetResolution, { state: "ready" }> = {
   session: codingSession,
 }
 
+const codexTarget: MobileExecutionTargetOption = {
+  targetId: "codex:account.pylon.codex.ready1",
+  label: "Codex work",
+  accessibilityLabel: "Codex work, Codex, ready",
+  providerLabel: "Codex",
+  providerRef: "provider.openai.codex",
+  modelRef: "model.gpt-5.6-sol",
+  accountRef: "account.pylon.codex.ready1",
+  runtimeTarget: {
+    lane: "codex_app_server",
+    executionTargetId: "codex:account.pylon.codex.ready1",
+  },
+  readiness: "ready",
+}
+
+const claudeTarget: MobileExecutionTargetOption = {
+  targetId: "claude:account.pylon.claude.ready2",
+  label: "Claude work",
+  accessibilityLabel: "Claude work, Claude, ready",
+  providerLabel: "Claude",
+  providerRef: "provider.anthropic.claude",
+  modelRef: "model.claude-fable-5",
+  accountRef: "account.pylon.claude.ready2",
+  runtimeTarget: {
+    lane: "claude_pylon",
+    executionTargetId: "claude:account.pylon.claude.ready2",
+  },
+  readiness: "ready",
+}
+
 const memoryDrafts = () => {
   let rows: Array<ReturnType<typeof decodeCodingComposerDraftSnapshot>> = []
   const drafts: KhalaSyncCodingComposerDrafts = {
@@ -144,6 +175,60 @@ const memoryDrafts = () => {
 }
 
 describe("contract openagents_mobile.coding.canonical_composer_draft.v1", () => {
+  test("persists an exact selected provider/model/account target and fails closed when it disappears", async () => {
+    const memory = memoryDrafts()
+    const composer = openMobileCodingComposer({
+      drafts: memory.drafts,
+      randomId: () => "target-fixture",
+      now: () => at,
+    })
+    const opened = await composer.open({
+      target,
+      resolution,
+      executionTargets: [codexTarget, claudeTarget],
+      effectiveExecutionTargetId: codexTarget.targetId,
+    })
+    expect(opened?.draft.target).toEqual({
+      laneRef: "lane.codex_app_server",
+      providerRef: "provider.openai.codex",
+      modelRef: "model.gpt-5.6-sol",
+      accountRef: "account.pylon.codex.ready1",
+      executionTargetRef: codexTarget.targetId,
+      readiness: "ready",
+    })
+
+    const selected = await composer.selectTarget(opened!, claudeTarget)
+    expect(selected?.draft.revision).toBe(opened!.draft.revision + 1)
+    expect(selected?.targetLabel).toBe("Claude work")
+    expect(selected?.draft.target).toMatchObject({
+      laneRef: "lane.claude_pylon",
+      providerRef: "provider.anthropic.claude",
+      modelRef: "model.claude-fable-5",
+      accountRef: "account.pylon.claude.ready2",
+      executionTargetRef: claudeTarget.targetId,
+      readiness: "ready",
+    })
+
+    const edited = await composer.updateText(selected!, "Keep this draft")
+    const missing = await composer.open({
+      target,
+      resolution,
+      executionTargets: [codexTarget],
+      effectiveExecutionTargetId: codexTarget.targetId,
+    })
+    expect(mobileCodingComposerText(missing!.draft)).toBe("Keep this draft")
+    expect(missing?.draft.target).toMatchObject({
+      executionTargetRef: claudeTarget.targetId,
+      readiness: "unavailable",
+      reasonRef: "reason.execution_target_not_advertised",
+    })
+    expect(await composer.selectTarget(edited!, {
+      ...claudeTarget,
+      readiness: "revoked",
+      reasonRef: "reason.account_requires_reauth",
+    })).toBeNull()
+  })
+
   test("opens, edits, and restores a ref-only exact-target draft", async () => {
     const memory = memoryDrafts()
     let sequence = 0

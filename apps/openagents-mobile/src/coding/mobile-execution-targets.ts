@@ -178,8 +178,8 @@ const accountOption = (
       ? "provider.openai.codex"
       : "provider.anthropic.claude",
     modelRef: provider === "codex"
-      ? "model.codex.configured"
-      : "model.claude.configured",
+      ? "model.gpt-5.6-sol"
+      : "model.claude-fable-5",
     accountRef: account.accountRefHash,
     runtimeTarget: {
       lane: provider === "codex" ? "codex_app_server" : "claude_pylon",
@@ -200,7 +200,7 @@ const hostedOption = (targetId: "gemini" | "khala"): MobileExecutionTargetOption
     accessibilityLabel: `${modelLabel}, OpenAgents, ready`,
     providerLabel: "OpenAgents",
     providerRef: "provider.openagents.hosted",
-    modelRef: `model.openagents.${targetId}`,
+    modelRef: "model.gemini-3.5-flash",
     runtimeTarget: { lane: "hosted_khala", executionTargetId: targetId },
     readiness: "ready",
   }

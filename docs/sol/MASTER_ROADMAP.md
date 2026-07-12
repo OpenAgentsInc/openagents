@@ -716,9 +716,12 @@ receipts remain (owner decision 2026-07-12: no physical-Android gate)
   `openagents-monolith-00087-5gn` are live: exact SHA-256 readback of an
   unlabeled red PNG was followed by the provider answer `red` and a metered
   successful terminal. Binary non-images and invalid payloads fail before
-  mutation and preserve the draft. The remaining product gap is real
-  provider/model/account selector authority. Physical accessibility remains
-  open. The named Codex
+  mutation and preserve the draft. Exact mobile provider/model/account
+  selection is now landed under [CUT-16A #8717](https://github.com/OpenAgentsInc/openagents/issues/8717):
+  the authenticated personal catalog drives accessible Effect Native controls,
+  the canonical draft persists exact refs, and `runtime.startTurn` carries the
+  selected `executionTargetId` without silent substitution. Physical
+  accessibility remains open. The named Codex
   composer receipt completed on 2026-07-12 with a retained redaction-clean
   proof. The trusted interaction authority is live on production Cloud Run
   revision `openagents-monolith-00085-k4v`; migrations 0061/0062 are applied

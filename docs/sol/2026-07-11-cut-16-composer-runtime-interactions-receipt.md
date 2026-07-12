@@ -333,5 +333,17 @@ The opt-in `HOSTED_CHAT_SMOKE_IMAGE_PATH` path in
 `hosted-chat-e2e-smoke.ts` makes this receipt repeatable without printing
 credentials or image bytes.
 
-CUT-16 now remains open for real provider/model/account selectors and physical
-cross-client/assistive-technology acceptance.
+## Addendum (2026-07-12): exact mobile execution-target selector
+
+[CUT-16A #8717](https://github.com/OpenAgentsInc/openagents/issues/8717)
+ports the already-live personal model-preference authority into the active
+Effect Native mobile app. Strict catalog decoding produces real Khala, Codex,
+and Claude choices with public-safe readiness. The canonical draft persists
+the selected provider, pinned model, opaque account, lane, and exact execution
+target; removed/revoked targets retain the draft but withhold Send. New turns
+carry the exact `executionTargetId`, while active-turn steering stays pinned to
+the confirmed lane. The retained sub-issue receipt is
+[`2026-07-12-cut-16a-mobile-execution-target-selector-receipt.md`](./2026-07-12-cut-16a-mobile-execution-target-selector-receipt.md).
+
+CUT-16 now remains open for physical cross-client/assistive-technology
+acceptance.
