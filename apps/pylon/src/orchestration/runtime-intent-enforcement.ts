@@ -1559,7 +1559,7 @@ const dispatchTurnStart = async (input: {
 }): Promise<void> => {
   const { options, store, intent, turnId, prompt, account, turn, source, lane, resumeRef } = input
   const pushEvent = options.pushEventImpl ?? defaultPushEvent(options.baseUrl, options.agentToken)
-  // `handleTurnStart` durably claims sequence 1 before provider execution.
+  // `handleTurnStart` durably claims sequence 0 before provider execution.
   // Provider-native started frames are therefore acknowledgement noise, not
   // a second lifecycle event.
   const turnStarted = { value: input.startedClaimed ?? false }
@@ -1720,6 +1720,7 @@ const dispatchTurnStart = async (input: {
           turnStarted,
         })
         for (const event of translated) {
+          if (input.startedClaimed === true && event.kind === "turn.started") continue
           if (event.kind === "turn.finished") finishedPushed = true
           await pushOne(event)
         }
@@ -1753,6 +1754,7 @@ const dispatchTurnStart = async (input: {
           turnStarted,
         })
         for (const event of translated) {
+          if (input.startedClaimed === true && event.kind === "turn.started") continue
           if (event.kind === "turn.finished") finishedPushed = true
           await pushOne(event)
         }
