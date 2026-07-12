@@ -14,6 +14,7 @@ export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents"
 
 const ignoredCheckoutPath = /^\/(src|scripts|tests|docs|receipts)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/
 const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"))
+const developerIdApplication = process.env.OA_DEVELOPER_ID_APPLICATION
 const notarizeCredentials = process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &&
   process.env.ASC_API_KEY_ID !== undefined && process.env.ASC_API_ISSUER_ID !== undefined
   ? {
@@ -56,8 +57,8 @@ const config: ForgeConfig = {
     icon: "dist/assets/openagents-icon.png",
     ignore: path => ignoredCheckoutPath.test(path),
     protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],
-    osxSign: process.env.OA_DEVELOPER_ID_APPLICATION === undefined ? undefined : {
-      identity: process.env.OA_DEVELOPER_ID_APPLICATION,
+    osxSign: developerIdApplication === undefined ? undefined : {
+      identity: developerIdApplication,
       optionsForFile: () => ({
         entitlements: "build/entitlements.mac.plist",
         hardenedRuntime: true,
@@ -80,7 +81,18 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerDMG({ format: "ULFO", overwrite: true }, ["darwin"]),
+    new MakerDMG({
+      format: "ULFO",
+      overwrite: true,
+      ...(developerIdApplication === undefined ? {} : {
+        additionalDMGOptions: {
+          "code-sign": {
+            "signing-identity": developerIdApplication,
+            identifier: OPENAGENTS_DESKTOP_BUNDLE_ID,
+          },
+        },
+      }),
+    }, ["darwin"]),
     new MakerZIP({}, ["darwin"]),
   ],
   plugins: [

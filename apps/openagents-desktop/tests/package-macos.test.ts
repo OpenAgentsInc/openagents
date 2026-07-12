@@ -16,7 +16,10 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(asar.unpack).toContain("@openai/codex")
     expect(config.makers).toHaveLength(2)
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }
-    expect(manifest.scripts["make:mac"]).toContain("npm rebuild macos-alias")
+    expect(manifest.scripts["make:mac"]).toContain("prepare-macos-maker.ts")
+    const makerPreparation = readFileSync(path.join(root, "scripts", "prepare-macos-maker.ts"), "utf8")
+    expect(makerPreparation).toContain('"macos-alias"')
+    expect(makerPreparation).toContain('"fs-xattr"')
   })
 
   test("locks the hardened Electron fuse posture", () => {
@@ -48,6 +51,8 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(source).toContain("ASC_API_PRIVATE_KEY_PATH")
     expect(source).toContain("ASC_API_KEY_ID")
     expect(source).toContain("ASC_API_ISSUER_ID")
+    expect(source).toContain('"code-sign"')
+    expect(source).toContain('"signing-identity"')
     expect(source).not.toContain("appleIdPassword")
     expect(source).not.toContain("@openagents.com")
   })
