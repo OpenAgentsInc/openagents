@@ -68,6 +68,7 @@ import {
   type FableLocalAvailability,
   type FableLocalEvent,
   type FableLocalFailureReason,
+  type FableLocalImageAttachment,
   type FableLocalMcpServerConfig,
   type FableLocalPlanEntry,
   type FableLocalQuestion,
@@ -173,10 +174,69 @@ export const FABLE_DELEGATE_TOOL_DESCRIPTION =
 export const FABLE_LOCAL_HISTORY_MESSAGES = 12
 export const FABLE_LOCAL_HISTORY_MESSAGE_LIMIT = 2_000
 
+/**
+ * The SDK image content block shape (capability I1). Matches the Anthropic
+ * `ImageBlockParam` with a `Base64ImageSource` (sdk.d.ts): a `{ type: "image",
+ * source: { type: "base64", media_type, data } }` block. Threaded into the
+ * user message content array so the model receives the screenshot.
+ */
+export type FableLocalSdkImageBlock = Readonly<{
+  type: "image"
+  source: Readonly<{ type: "base64"; media_type: FableLocalImageAttachment["mediaType"]; data: string }>
+}>
+
+/**
+ * A single streaming-input user message (capability I1). When a turn carries
+ * images the runtime switches `query({ prompt })` from a plain string to an
+ * `AsyncIterable<SDKUserMessage>` yielding exactly this shape — text block plus
+ * one image block per attachment — because a bare string prompt cannot carry an
+ * image (sdk.d.ts: image support requires the content-block array form).
+ */
+export type FableLocalSdkUserMessage = Readonly<{
+  type: "user"
+  message: Readonly<{
+    role: "user"
+    content: ReadonlyArray<Readonly<{ type: "text"; text: string }> | FableLocalSdkImageBlock>
+  }>
+  parent_tool_use_id: null
+}>
+
 export type FableLocalQuery = (input: {
-  prompt: string
+  prompt: string | AsyncIterable<FableLocalSdkUserMessage>
   options: Record<string, unknown>
 }) => AsyncIterable<unknown>
+
+/**
+ * Build the streaming-input user message for an image-carrying turn
+ * (capability I1): one text block (the same prompt string the no-image path
+ * would send) followed by one base64 image block per attachment. Yielding a
+ * single message and returning ends the input stream, so the SDK runs exactly
+ * one assistant turn — identical lifecycle to the string-prompt path.
+ */
+export const fableSdkUserMessageWithImages = (
+  text: string,
+  images: ReadonlyArray<FableLocalImageAttachment>,
+): FableLocalSdkUserMessage => ({
+  type: "user",
+  message: {
+    role: "user",
+    content: [
+      { type: "text", text },
+      ...images.map((image): FableLocalSdkImageBlock => ({
+        type: "image",
+        source: { type: "base64", media_type: image.mediaType, data: image.data },
+      })),
+    ],
+  },
+  parent_tool_use_id: null,
+})
+
+async function* fableImagePromptStream(
+  text: string,
+  images: ReadonlyArray<FableLocalImageAttachment>,
+): AsyncGenerator<FableLocalSdkUserMessage> {
+  yield fableSdkUserMessageWithImages(text, images)
+}
 
 export type FableLocalHistoryMessage = Readonly<{
   role: "user" | "assistant" | "system"
@@ -188,6 +248,13 @@ export type FableLocalTurnInput = Readonly<{
   threadRef: string
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
+  /**
+   * Optional image attachments (capability I1). When present the turn's SDK
+   * input becomes a streaming-input user message carrying the text plus one
+   * `type:"image"` base64 block per attachment. Absent/empty = the prior
+   * string-prompt behavior, byte-for-byte unchanged.
+   */
+  images?: ReadonlyArray<FableLocalImageAttachment>
   emit: (event: FableLocalEvent) => void
   /**
    * Opt-in plan mode (J2, EP250). Default off — current behavior unchanged.
@@ -1043,9 +1110,17 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         continuity !== undefined && continuity.accountRef === account.ref
           ? continuity.sessionId
           : undefined
-      const prompt = resumeSessionId === undefined
+      const promptText = resumeSessionId === undefined
         ? historyPrompt(input.history, input.message)
         : input.message
+      // Capability I1: a turn with images cannot use a bare string prompt (the
+      // SDK only carries an image in the content-block array of a streaming
+      // user message). Switch to an AsyncIterable that yields exactly one
+      // user message: the text block plus one base64 image block per
+      // attachment. No images = the unchanged string prompt.
+      const images = input.images ?? []
+      const prompt: string | AsyncIterable<FableLocalSdkUserMessage> =
+        images.length === 0 ? promptText : fableImagePromptStream(promptText, images)
 
       let sawContent = false
       let sessionId: string | null = null
@@ -1466,8 +1541,31 @@ export const FABLE_FIXTURE_DELEGATE_TASK = "Summarize the fixture delegation tas
  * tool_use/tool_result pair (the smoke's deterministic delegation proof).
  * Never used in normal runs; main.ts logs when it is active.
  */
+/** Marker the image-aware fixture appends so the smoke can prove the image
+ * content block reached the SDK query input (capability I1). */
+export const FABLE_LOCAL_FIXTURE_IMAGE_MARKER = (count: number): string =>
+  ` [fixture-received-images:${count}]`
+
 export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
   async function* fixture(input): AsyncGenerator<unknown> {
+    // Capability I1: when the turn carries images the prompt is a streaming
+    // AsyncIterable of user messages (not a string). Draining it — exactly
+    // what the real SDK does with streaming input — lets the fixture count the
+    // image content blocks and echo the count in its result, so the smoke can
+    // assert the image actually reached the query payload.
+    let imageCount = 0
+    const prompt: unknown = input.prompt
+    if (
+      typeof prompt !== "string" && prompt !== null && prompt !== undefined &&
+      typeof (prompt as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+    ) {
+      for await (const message of prompt as AsyncIterable<FableLocalSdkUserMessage>) {
+        const content = message?.message?.content
+        if (Array.isArray(content)) {
+          imageCount += content.filter((block) => block?.type === "image").length
+        }
+      }
+    }
     yield {
       type: "system",
       subtype: "init",
@@ -1564,7 +1662,9 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
       type: "result",
       subtype: "success",
       is_error: false,
-      result: FABLE_LOCAL_FIXTURE_TEXT,
+      result: imageCount > 0
+        ? FABLE_LOCAL_FIXTURE_TEXT + FABLE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)
+        : FABLE_LOCAL_FIXTURE_TEXT,
       usage: { input_tokens: 42, output_tokens: 7 },
     }
   }

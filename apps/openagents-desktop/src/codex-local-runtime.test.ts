@@ -9,7 +9,7 @@
  * usage), typed visible rotation, interrupt, and PROBE-VERIFIED availability.
  */
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -93,6 +93,49 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(captured[0]!.args).not.toContain("--ephemeral")
     expect(captured[0]!.env.CODEX_HOME).toBe("/isolated/accounts/codex/codex")
     expect(captured[0]!.cwd).toBe(workspace)
+  })
+
+  test("capability I1: attached images are written to the turn workspace and passed as `-i <path>` before the prompt positional", async () => {
+    const captured: SpawnCapture[] = []
+    const root = scratch()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => root,
+      env: { PATH: "/usr/bin" },
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: fixtureCodexLocalTurnStdout(), exitCode: 0 }],
+        input => captured.push(input),
+      ),
+      discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
+    })
+    const result = await runtime.runTurn({
+      turnRef: "turn-img",
+      threadRef: "thread-img",
+      history: [],
+      message: "review this screenshot",
+      images: [
+        { mediaType: "image/png", data: "aGVsbG8=", name: "shot.png" },
+        { mediaType: "image/jpeg", data: "d29ybGQ=" },
+      ],
+      emit: collect().emit,
+    })
+    if (!result.ok) throw new Error(`expected success, got ${result.reason}: ${result.detail}`)
+    const args = captured[0]!.args
+    // Two `-i <path>` flag pairs, each pointing at a real written file.
+    const imageArgs = args.filter((_, index) => args[index - 1] === "-i")
+    expect(imageArgs).toHaveLength(2)
+    expect(imageArgs[0]!.endsWith(".png")).toBe(true)
+    expect(imageArgs[1]!.endsWith(".jpg")).toBe(true)
+    for (const imagePath of imageArgs) {
+      expect(existsSync(imagePath)).toBe(true)
+    }
+    // The bytes on disk are the decoded base64 (not the base64 text).
+    expect(readFileSync(imageArgs[0]!).toString("utf8")).toBe("hello")
+    // The `-i` list is terminated by `-C` before the positional prompt so the
+    // variadic `--image` never swallows the prompt.
+    const dashC = args.indexOf("-C")
+    expect(dashC).toBeGreaterThan(args.lastIndexOf("-i"))
+    expect(args[args.length - 1]).toBe("review this screenshot")
   })
 
   test("streams the full mapping: model caption (spawn-config truth), reasoning line, Bash tool card pair, text delta, exact usage split", async () => {

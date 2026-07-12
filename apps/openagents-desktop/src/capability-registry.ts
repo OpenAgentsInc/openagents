@@ -14,8 +14,8 @@
  * the per-capability authority, since that is where each capability's status is
  * stated — contain FORTY capability rows (A1..K2) with the audit-time
  * distribution { ui_available: 15, programmatic_only: 4, partial: 13,
- * missing: 8 } (I2 has since flipped missing -> ui_available on the EP250
- * wave-2 lane, so the live registry is now { 16, 4, 13, 7 }). The
+ * missing: 8 } (I1 and I2 have since flipped missing -> ui_available on the
+ * EP250 wave-2 lanes, so the live registry is now { 17, 4, 13, 6 }). The
  * audit's prose "Totals" line and its "33 capabilities × 2 oracles" figure say
  * 33 with { 13, 4, 10, 6 }; those numbers are arithmetically inconsistent with
  * the audit's own tables (whose group sizes sum to 40, not 33). This registry
@@ -115,18 +115,21 @@ export const AUDIT_PROSE_SUMMARY = {
  */
 export const CAPABILITY_TABLE_DISTRIBUTION = {
   total: 40,
-  // I2 (user-configured MCP servers) flipped missing -> ui_available on the
-  // EP250 wave-2 lane that landed the settings UI + persistence host next to
-  // the already-landed runtime passthrough.
-  ui_available: 16,
+  // EP250 wave-2 flips from the audit-time { 15, 4, 13, 8 } baseline:
+  // I2 (user-configured MCP servers) landed settings UI + persistence host next
+  // to the runtime passthrough, and I1 (image input) landed composer
+  // attach/drop/paste + both-lane wiring (fixture-proven). Both flipped
+  // missing -> ui_available, so ui_available is now 17.
+  ui_available: 17,
   programmatic_only: 4,
   // EP250 wave-2 (#8712): the renderer surfaces landed for the queued follow-up
   // (A3), steer-a-running-child (G4), and task/todo progress (J4) capabilities,
   // so G4 and J4 move missing -> partial (A3 was already partial). Combined
-  // with I2 (missing -> ui_available on the MCP-settings lane): partial 13 ->
-  // 15, missing 8 -> 5.
+  // with I2 (missing -> ui_available on the MCP-settings lane) and I1 (image
+  // input, missing -> ui_available on this lane): from the audit-time
+  // { 15, 4, 13, 8 } baseline the live registry is now { 17, 4, 15, 4 }.
   partial: 15,
-  missing: 5,
+  missing: 4,
 } as const
 
 export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
@@ -357,11 +360,19 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
 
   // --- I. Context & inputs (all missing) ----------------------------------
   {
-    id: "I1", group: "I", capability: "Image input (screenshots)", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit I1: no composer image path; main.ts disallows webview attachments; fable-local input schema carries no image block",
+    id: "I1", group: "I", capability: "Image input (screenshots)", status: "ui_available",
+    uiOracleRef: SMOKE, uiOracleWiring: "smoke_step",
+    programmaticOracleRef: EVALS, programmaticOracleWiring: "headless_wired",
+    rung: "fixture",
+    // Composer image path landed in THIS lane: paperclip picker + drag-drop +
+    // paste (bounded ≤8, ≤10MB, PNG/JPEG/WebP/GIF) hold base64 in the renderer,
+    // thread through the additive fable-local start `images` field, and reach
+    // BOTH lanes — Fable as an SDK image content block (streaming-input user
+    // message), Codex as `codex exec -i <path>` files written to the turn
+    // workspace. Residual partial→ui_available: proven at fixture rung (smoke
+    // image-attach step + headless payload oracle); a real live provider image
+    // turn is deferred to a live-proof run.
+    blocker: "audit I1: image input now UI-driven via composer attach/drop/paste; Fable sends SDK base64 image blocks, Codex passes `-i <path>`; live provider image turn deferred to live-proof",
   },
   {
     // Landed EP250 wave-2: the MCP-config SETTINGS UI + persistence host now

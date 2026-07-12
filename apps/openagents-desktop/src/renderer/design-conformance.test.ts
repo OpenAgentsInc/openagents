@@ -120,6 +120,7 @@ describe("design conformance (b): style values come from the shared scales", () 
       240, // files list minimum width / 240px output cap dimension
       320, // files list maximum width
       4, // sidebar connected-accounts usage meter: thin 4px track height (EP250)
+      56, // composer image attachment thumbnail (capability I1)
     ])
     const offenders: Array<string> = []
     for (const [name, source] of rendererSources()) {

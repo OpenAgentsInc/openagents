@@ -33,6 +33,13 @@ export const FableLocalStartChannel = "openagents:fable-local:start" as const
 export const FableLocalInterruptChannel = "openagents:fable-local:interrupt" as const
 export const FableLocalEventChannel = "openagents:fable-local:event" as const
 /**
+ * Image file picker (capability I1). The renderer invokes this to open the
+ * native file dialog in MAIN (never a renderer filesystem read); main reads the
+ * chosen images, bounds and base64-encodes them, and returns the decoded
+ * attachments. Drop/paste `File` objects stay renderer-side (already in-memory).
+ */
+export const FableLocalPickImagesChannel = "openagents:fable-local:pick-images" as const
+/**
  * Interactive question flow (EP250): the renderer answers a pending
  * AskUserQuestion via this invoke channel (`fableLocal.answerQuestion`).
  * Resolves `true` when a pending question with that turnRef/questionRef
@@ -67,6 +74,48 @@ export const FABLE_LOCAL_PLAN_ENTRY_LIMIT = 64
 export const FABLE_LOCAL_MCP_SERVER_LIMIT = 16
 /** Bound on a queued follow-up message crossing the boundary. */
 export const FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT = 8_000
+/**
+ * Image input bounds (capability I1). The renderer holds each attachment as
+ * base64 (no `data:` prefix) and passes it across the start boundary; main
+ * threads it into the SDK image content block (Fable) or writes it to the turn
+ * workspace and passes `-i <path>` (Codex). The four media types are exactly
+ * the Anthropic `Base64ImageSource` set (sdk.d.ts `media_type`).
+ */
+export const FABLE_LOCAL_IMAGE_COUNT_LIMIT = 8
+/** Max decoded bytes per attachment (10 MB) — oversize is rejected honestly. */
+export const FABLE_LOCAL_IMAGE_BYTES_LIMIT = 10 * 1024 * 1024
+/**
+ * Bound on the base64 string crossing the boundary. Base64 expands ~4/3 over
+ * the raw bytes; this caps the encoded length with headroom so an oversize
+ * blob fails schema decode instead of silently crossing.
+ */
+export const FABLE_LOCAL_IMAGE_DATA_LIMIT =
+  Math.ceil((FABLE_LOCAL_IMAGE_BYTES_LIMIT * 4) / 3) + 1_024
+/** Accepted image media types (Anthropic Base64ImageSource + codex -i). */
+export const FABLE_LOCAL_IMAGE_MEDIA_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+] as const
+
+export const FableLocalImageMediaTypeSchema = Schema.Literals(FABLE_LOCAL_IMAGE_MEDIA_TYPES)
+export type FableLocalImageMediaType = typeof FableLocalImageMediaTypeSchema.Type
+
+/**
+ * One image attachment crossing the start boundary (capability I1). `data` is
+ * raw base64 (no `data:` URL prefix); `name` is a bounded display label only
+ * (never a filesystem path — the renderer never reads arbitrary files).
+ */
+export const FableLocalImageAttachmentSchema = Schema.Struct({
+  mediaType: FableLocalImageMediaTypeSchema,
+  data: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(FABLE_LOCAL_IMAGE_DATA_LIMIT),
+  ),
+  name: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
+})
+export type FableLocalImageAttachment = typeof FableLocalImageAttachmentSchema.Type
 
 export const FableLocalAvailabilitySchema = Schema.Union([
   Schema.Struct({
@@ -375,9 +424,33 @@ export type FableLocalEventEnvelope = typeof FableLocalEventEnvelopeSchema.Type
 export const FableLocalStartRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
-  message: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8_000)),
+  // Widened from min-length 1 to max-length only (capability I1): a turn may
+  // carry images with an empty message. This is a superset of the prior
+  // contract — every previously valid request (non-empty message) still
+  // decodes; images-only requests newly decode. Main still rejects a turn with
+  // neither text nor images (`startRequestHasContent`).
+  message: Schema.String.check(Schema.isMaxLength(8_000)),
+  /**
+   * Optional image attachments (capability I1). Bounded count; each bounded in
+   * size by the schema. Additive — absent on every pre-I1 caller.
+   */
+  images: Schema.optional(
+    Schema.Array(FableLocalImageAttachmentSchema).check(
+      Schema.isMaxLength(FABLE_LOCAL_IMAGE_COUNT_LIMIT),
+    ),
+  ),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
+
+/**
+ * A start request carries content iff it has non-empty message text OR at
+ * least one image. Main uses this to reject an empty turn now that the schema
+ * permits an empty message (images-only turns are valid; empty+imageless is
+ * not).
+ */
+export const startRequestHasContent = (
+  request: Readonly<{ message: string; images?: ReadonlyArray<unknown> }>,
+): boolean => request.message.trim() !== "" || (request.images?.length ?? 0) > 0
 
 export const FableLocalInterruptRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
@@ -407,6 +480,17 @@ export type FableLocalAnswerQuestionRequest = typeof FableLocalAnswerQuestionReq
 
 export const decodeFableLocalStartRequest = (value: unknown): FableLocalStartRequest | null =>
   decode(FableLocalStartRequestSchema, value) as FableLocalStartRequest | null
+
+/** Bounded array of picked image attachments (capability I1). */
+export const FableLocalPickedImagesSchema = Schema.Array(FableLocalImageAttachmentSchema).check(
+  Schema.isMaxLength(FABLE_LOCAL_IMAGE_COUNT_LIMIT),
+)
+export type FableLocalPickedImages = typeof FableLocalPickedImagesSchema.Type
+
+export const decodeFableLocalPickedImages = (
+  value: unknown,
+): ReadonlyArray<FableLocalImageAttachment> | null =>
+  decode(FableLocalPickedImagesSchema, value) as ReadonlyArray<FableLocalImageAttachment> | null
 
 export const decodeFableLocalInterruptRequest = (
   value: unknown,

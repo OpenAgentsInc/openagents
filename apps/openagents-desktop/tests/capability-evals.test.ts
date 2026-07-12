@@ -291,6 +291,46 @@ describe("A2 mid-turn interrupt (programmatic oracle) — openagents_desktop.cha
   })
 })
 
+describe("I1 image input (programmatic oracle) — openagents_desktop.chat.composer_image_input.v1", () => {
+  test("sendMessage threads composer images into the frozen start request", async () => {
+    let startedValue: unknown = null
+    const bridge: FableLocalRendererBridge = {
+      availability: async () => ({ state: "available", accountRef: "acct.capability-eval" }),
+      start: async (value: unknown) => {
+        startedValue = value
+        return { ok: true, thread: evalThread }
+      },
+      interrupt: async () => true,
+      onEvent: () => () => {},
+    }
+    const host = buildFableHost(bridge)
+    const images = [
+      { mediaType: "image/png" as const, data: "aGVsbG8=", name: "shot.png" },
+    ]
+    const result = await host.sendMessage({ id: evalThread.id, message: "what's wrong here?", harness: "fable", images })
+    expect(result.ok).toBe(true)
+    const started = startedValue as { message?: unknown; images?: ReadonlyArray<{ mediaType?: string; data?: string }> }
+    // The image rode the additive `images` field, not the text: the start
+    // request carries exactly the base64 block the composer held.
+    expect(started.images).toHaveLength(1)
+    expect(started.images?.[0]?.mediaType).toBe("image/png")
+    expect(started.images?.[0]?.data).toBe("aGVsbG8=")
+    expect(started.message).toBe("what's wrong here?")
+  })
+
+  test("a text-only turn carries no images field (additive, unchanged)", async () => {
+    let startedValue: unknown = null
+    const bridge: FableLocalRendererBridge = {
+      availability: async () => ({ state: "available", accountRef: "acct.capability-eval" }),
+      start: async (value: unknown) => { startedValue = value; return { ok: true, thread: evalThread } },
+      interrupt: async () => true,
+      onEvent: () => () => {},
+    }
+    await buildFableHost(bridge).sendMessage({ id: evalThread.id, message: "plain text", harness: "fable" })
+    expect((startedValue as { images?: unknown }).images).toBeUndefined()
+  })
+})
+
 describe("C3 human file edit + save (programmatic oracle)", () => {
   const roots: string[] = []
   const makeRoot = (): string => {
@@ -392,11 +432,13 @@ describe("capability gaps (skipped-with-reason: blocked until wired)", () => {
 
   test("the blocked set matches the audit's ranked gaps (documented, not silently absent)", () => {
     // These are the capabilities with NO wired oracle on either side today.
-    // EP250 wave-2 (#8712): I2 (MCP settings), A3 (queued follow-up), G4
-    // (steer/stop a running child), and J4 (task/todo progress) all landed
-    // wired oracles, so they leave the blocked set.
+    // EP250 wave-2 (#8712) landed wired oracles for I2 (MCP settings), A3
+    // (queued follow-up), G4 (steer/stop a running child), and J4 (task/todo
+    // progress); this image lane landed I1 (image input: composer
+    // attach/drop/paste + both-lane wiring, headless oracle + smoke step). All
+    // of those leave the blocked set, so only the still-unwired gaps remain.
     expect(blockedRows.map((row) => row.id).sort()).toEqual(
-      ["D3", "H2", "H5", "I1", "I3", "I4", "J2"].sort(),
+      ["D3", "H2", "H5", "I3", "I4", "J2"].sort(),
     )
   })
 

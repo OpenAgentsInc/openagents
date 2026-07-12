@@ -31,11 +31,14 @@ import {
   withNote,
   withPending,
   withTurnResult,
+  withComposerImageAdded,
+  withComposerImageNotice,
   type DesktopShellState,
   type CommandBindingHost,
   type HarnessLanes,
 } from "./shell.ts"
 import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspace-browser.ts"
+import type { ComposerImageAttachment } from "./composer-images.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
@@ -57,6 +60,7 @@ describe("EP250 chat contracts are registered and enforced (#8712)", () => {
       "openagents_desktop.chat.interactive_question_cards.v1",
       "openagents_desktop.chat.opencode_card_design_language.v1",
       "openagents_desktop.chat.composer_stop_button.v1",
+      "openagents_desktop.chat.composer_image_input.v1",
     ]) {
       expect(openAgentsDesktopUxContractRegistry.contracts.find(
         (contract) => contract.contractId === contractId,
@@ -472,6 +476,117 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(stop?.accessibilityLabel).toBe("Stop turn")
     // No stray Send while streaming.
     expect(nodeByKey(streaming, "shell-note")).toBeUndefined()
+  })
+})
+
+describe("composer image input (capability I1)", () => {
+  const png = (id: string): ComposerImageAttachment => ({
+    id, mediaType: "image/png", data: "aGVsbG8=", name: `${id}.png`, sizeBytes: 5,
+  })
+
+  test("renders the leading attach affordance in the composer", () => {
+    const attach = nodeByKey(desktopShellView(baseState), "shell-attach-image") as {
+      _tag?: string; icon?: string; onPress?: { name?: string }; accessibilityLabel?: string; disabled?: boolean
+    }
+    expect(attach?._tag).toBe("IconButton")
+    expect(attach?.onPress?.name).toBe("DesktopComposerImagePickRequested")
+    expect(attach?.accessibilityLabel).toBe("Attach image")
+    expect(attach?.disabled).toBe(false)
+  })
+
+  test("no attachments -> no thumbnail strip or notice", () => {
+    const view = desktopShellView(baseState)
+    expect(nodeByKey(view, "shell-composer-images")).toBeUndefined()
+    expect(nodeByKey(view, "shell-composer-image-notice")).toBeUndefined()
+  })
+
+  test("attachments render a thumbnail (Image) with a size caption and a remove control", () => {
+    const state = withComposerImageAdded(baseState, png("a1"))
+    const view = desktopShellView(state)
+    expect(nodeByKey(view, "shell-composer-images")?._tag).toBe("Stack")
+    const preview = nodeByKey(view, "composer-image-preview-a1") as { _tag?: string; source?: string; alt?: string }
+    expect(preview?._tag).toBe("Image")
+    expect(preview?.source).toBe("data:image/png;base64,aGVsbG8=")
+    expect(preview?.alt).toBe("a1.png")
+    const remove = nodeByKey(view, "composer-image-remove-a1") as { _tag?: string; onPress?: { name?: string; payload?: unknown } }
+    expect(remove?._tag).toBe("IconButton")
+    expect(remove?.onPress?.name).toBe("DesktopComposerImageRemoved")
+  })
+
+  test("a rejection notice renders (danger-toned, transient) when set", () => {
+    const state = withComposerImageNotice(baseState, "That image is larger than the 10 MB limit.")
+    const notice = nodeByKey(desktopShellView(state), "shell-composer-image-notice") as { _tag?: string; content?: string; color?: string }
+    expect(notice?._tag).toBe("Text")
+    expect(notice?.content).toContain("10 MB")
+    expect(notice?.color).toBe("danger")
+  })
+
+  test("the attach control disables at the 8-image limit with an accessible reason", () => {
+    let state = baseState
+    for (let i = 0; i < 8; i += 1) state = withComposerImageAdded(state, png(`a${i}`))
+    const attach = nodeByKey(desktopShellView(state), "shell-attach-image") as { disabled?: boolean; accessibilityLabel?: string }
+    expect(attach?.disabled).toBe(true)
+    expect(attach?.accessibilityLabel).toContain("limit")
+  })
+
+  test("add/remove intents and an images-carrying submit thread through the typed registry", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sent: Array<{ message: string; images?: ReadonlyArray<{ mediaType: string; data: string; name?: string }> }> = []
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async (input: { message: string; images?: ReadonlyArray<{ mediaType: string; data: string; name?: string }> }) => {
+            sent.push({ message: input.message, images: input.images })
+            return { ok: true as const, thread: testThread }
+          },
+        }
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        // Add two images through the real intent, then remove one.
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopComposerImageAdded", StaticPayload({ id: "i1", mediaType: "image/png", data: "aGVsbG8=", name: "a.png", sizeBytes: 5 }))))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopComposerImageAdded", StaticPayload({ id: "i2", mediaType: "image/webp", data: "d2VicA==", name: "b.webp", sizeBytes: 4 }))))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopComposerImageRemoved", StaticPayload("i1"))))
+        expect((yield* SubscriptionRef.get(state)).composerImages.map(image => image.id)).toEqual(["i2"])
+        // Submit with text + the remaining image.
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopInputChanged", StaticPayload("what is this?"))))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
+        expect(sent).toHaveLength(1)
+        expect(sent[0]!.message).toBe("what is this?")
+        expect(sent[0]!.images).toEqual([{ mediaType: "image/webp", data: "d2VicA==", name: "b.webp" }])
+        // The composer cleared its attachments after submit.
+        expect((yield* SubscriptionRef.get(state)).composerImages).toEqual([])
+      }),
+    )
+  })
+
+  test("an images-only turn (no text) is submittable and threads the image", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sent: Array<{ message: string; images?: ReadonlyArray<unknown> }> = []
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async (input: { message: string; images?: ReadonlyArray<unknown> }) => {
+            sent.push({ message: input.message, images: input.images })
+            return { ok: true as const, thread: testThread }
+          },
+        }
+        const state = yield* SubscriptionRef.make(withComposerImageAdded(baseState, png("only")))
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
+        expect(sent).toHaveLength(1)
+        expect(sent[0]!.images).toHaveLength(1)
+      }),
+    )
   })
 })
 

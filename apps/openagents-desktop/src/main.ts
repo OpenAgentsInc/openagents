@@ -12,7 +12,7 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import { rmSync } from "node:fs"
+import { readFileSync, rmSync, statSync } from "node:fs"
 import { BrowserWindow, Menu, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
 import { Effect } from "effect"
 import {
@@ -51,6 +51,10 @@ import {
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
   FableLocalInterruptChannel,
+  FABLE_LOCAL_IMAGE_BYTES_LIMIT,
+  FABLE_LOCAL_IMAGE_COUNT_LIMIT,
+  FABLE_LOCAL_IMAGE_MEDIA_TYPES,
+  FableLocalPickImagesChannel,
   FableLocalQueueFollowupChannel,
   FableLocalStartChannel,
   FableLocalSteerChildChannel,
@@ -63,6 +67,7 @@ import {
   fableLocalModelNoteText,
   fableLocalTraceNoteMeta,
   fableLocalTraceNoteText,
+  startRequestHasContent,
 } from "./fable-local-contract.ts"
 import {
   McpConfigAddChannel,
@@ -981,6 +986,42 @@ ipcMain.handle(McpConfigToggleChannel, (_event, value: unknown) => {
     : mcpConfigStore.toggle(request.name, request.enabled)
 })
 ipcMain.handle(FableLocalAvailabilityChannel, () => fableLocal.availability())
+// Image file picker (capability I1): open the native dialog in MAIN, read the
+// chosen images from disk here (never the renderer), bound size + count, and
+// return decoded base64 attachments matching the boundary contract. Smoke and
+// live-proof headless runs cannot open a dialog; the picker simply returns [].
+ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
+  if (smokeMode || liveProofDriverMode) return []
+  const window = BrowserWindow.fromWebContents(event.sender)
+  const extensions = FABLE_LOCAL_IMAGE_MEDIA_TYPES.map(type =>
+    type === "image/jpeg" ? "jpg" : type.slice("image/".length))
+  const result = await (window === null
+    ? dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: [...extensions, "jpeg"] }] })
+    : dialog.showOpenDialog(window, { properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: [...extensions, "jpeg"] }] }))
+  if (result.canceled) return []
+  const mediaTypeForPath = (filePath: string): (typeof FABLE_LOCAL_IMAGE_MEDIA_TYPES)[number] | null => {
+    const lower = filePath.toLowerCase()
+    if (lower.endsWith(".png")) return "image/png"
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg"
+    if (lower.endsWith(".webp")) return "image/webp"
+    if (lower.endsWith(".gif")) return "image/gif"
+    return null
+  }
+  const attachments: Array<{ mediaType: string; data: string; name: string }> = []
+  for (const filePath of result.filePaths.slice(0, FABLE_LOCAL_IMAGE_COUNT_LIMIT)) {
+    const mediaType = mediaTypeForPath(filePath)
+    if (mediaType === null) continue
+    try {
+      if (statSync(filePath).size > FABLE_LOCAL_IMAGE_BYTES_LIMIT) continue
+      const bytes = readFileSync(filePath)
+      if (bytes.length === 0 || bytes.length > FABLE_LOCAL_IMAGE_BYTES_LIMIT) continue
+      attachments.push({ mediaType, data: bytes.toString("base64"), name: path.basename(filePath).slice(0, 256) })
+    } catch {
+      // Skip an unreadable file rather than failing the whole pick.
+    }
+  }
+  return attachments
+})
 ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
   return request === null ? false : fableLocal.interrupt(request.turnRef)
@@ -1009,16 +1050,42 @@ ipcMain.handle(FableLocalQueueFollowupChannel, (_event, value: unknown) => {
     ? { ok: false, queued: false, reason: "no_active_turn" }
     : fableLocal.queueFollowup(request)
 })
+/**
+ * Persisted user-note text for a turn (capability I1). An images-only turn
+ * (empty message) gets an honest bounded placeholder so the transcript row is
+ * never blank; a turn with text keeps the user's text verbatim.
+ */
+const userNoteText = (message: string, images?: ReadonlyArray<unknown>): string => {
+  const trimmed = message.trim()
+  if (trimmed !== "") return trimmed
+  const count = images?.length ?? 0
+  return count === 1 ? "(1 image attached)" : `(${count} images attached)`
+}
+
+/**
+ * The text block sent to the model (capability I1). Images-only turns get a
+ * neutral instruction so the SDK/codex receive non-empty prompt text alongside
+ * the image; a turn with text keeps the user's text verbatim.
+ */
+const turnPromptText = (message: string, images?: ReadonlyArray<unknown>): string => {
+  const trimmed = message.trim()
+  if (trimmed !== "") return trimmed
+  const count = images?.length ?? 0
+  return count > 0
+    ? `Please look at the attached image${count === 1 ? "" : "s"}.`
+    : trimmed
+}
+
 ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
-  if (request === null || request.message.trim() === "") {
+  if (request === null || !startRequestHasContent(request)) {
     return { ok: false, error: "That message could not be sent." }
   }
   const store = threads()
   const user: DesktopMessage = {
     key: randomUUID(),
     role: "user",
-    text: request.message.trim(),
+    text: userNoteText(request.message, request.images),
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   }
   const saved = store.append(request.threadRef, user)
@@ -1041,7 +1108,8 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     turnRef: request.turnRef,
     threadRef: request.threadRef,
     history,
-    message: request.message.trim(),
+    message: turnPromptText(request.message, request.images),
+    ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
       // EP250 wave-2 J2/J4: remember the latest todo list; persist it once the
@@ -1204,14 +1272,14 @@ ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
 })
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)
-  if (request === null || request.message.trim() === "") {
+  if (request === null || !startRequestHasContent(request)) {
     return { ok: false, error: "That message could not be sent." }
   }
   const store = threads()
   const user: DesktopMessage = {
     key: randomUUID(),
     role: "user",
-    text: request.message.trim(),
+    text: userNoteText(request.message, request.images),
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   }
   const saved = store.append(request.threadRef, user)
@@ -1227,7 +1295,8 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     turnRef: request.turnRef,
     threadRef: request.threadRef,
     history,
-    message: request.message.trim(),
+    message: turnPromptText(request.message, request.images),
+    ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
       // Session usage ledger: exact usage from turn.completed, attributed to
@@ -2152,6 +2221,53 @@ const smokeFableLocalStreaming = `(async () => {
   }
 })()`
 
+// Capability I1 image attach: drop a fixture PNG onto the composer, assert the
+// thumbnail renders, submit a text+image turn, and assert the assistant reply
+// carries the fable fixture's image-received marker — proving the image
+// content block reached the SDK query payload end-to-end (the fable fixture
+// drains the streaming-input prompt and counts image blocks). Runs on a fresh
+// chat so its Read-triggered fixture question card does not collide with the
+// earlier question-card step. Fable-lane only (the fixture query is Fable's).
+const smokeFableImageAttach = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
+  if (fable !== null && fable.getAttribute("data-en-variant") !== "secondary") fable.click()
+  const composer = document.querySelector('[data-en-key="shell-composer"]')
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  if (composer === null || input === null) return { ok: false, reason: "composer not mounted" }
+  // A minimal in-renderer PNG File dropped on the composer (no filesystem read).
+  const bytes = new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x01])
+  const file = new File([bytes], "smoke.png", { type: "image/png" })
+  const dt = new DataTransfer()
+  dt.items.add(file)
+  input.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }))
+  const thumbDeadline = Date.now() + 5000
+  while (Date.now() < thumbDeadline && document.querySelector('[data-en-key^="composer-image-preview-"]') === null) {
+    await wait(50)
+  }
+  const thumb = document.querySelector('[data-en-key^="composer-image-preview-"]')
+  if (thumb === null) return { ok: false, reason: "thumbnail never rendered after drop" }
+  const thumbSourceOk = (thumb.getAttribute("src") || thumb.querySelector("img")?.getAttribute("src") || "").startsWith("data:image/png;base64,")
+  // Type + submit a text-with-image turn.
+  input.focus()
+  input.value = "What is in this screenshot?"
+  input.dispatchEvent(new Event("input", { bubbles: true }))
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+  const markerVisible = () => Array.from(
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"] [data-en-role="body"]')
+  ).some(row => (row.textContent || "").includes("fixture-received-images:1"))
+  const replyDeadline = Date.now() + 20000
+  while (Date.now() < replyDeadline && !markerVisible()) { await wait(100) }
+  // Thumbnails clear on submit (attachments moved into the turn payload).
+  const cleared = document.querySelector('[data-en-key^="composer-image-preview-"]') === null
+  return {
+    ok: thumbSourceOk && markerVisible() && cleared,
+    thumbSourceOk,
+    markerVisible: markerVisible(),
+    cleared,
+  }
+})()`
+
 // EP250 question cards: the smoke fixture persists one pending question note
 // after the Read tool completes. The REAL preload answerQuestion bridge is
 // live, so the card renders fully interactive (option buttons with label +
@@ -2631,6 +2747,11 @@ const runSmoke = (window: BrowserWindow): void => {
         await captureShot(window, "12-git-review-panel")
         // Cmd+N from the fleet workspace: fresh transcript + focused composer.
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
+        // Capability I1 image attach: on the fresh chat, drop a fixture PNG,
+        // assert the thumbnail, submit, and assert the image reached the SDK
+        // payload (fable fixture image-received marker).
+        await step("fable-image-attach-FIXTURE", smokeFableImageAttach)
+        await captureShot(window, "12-fable-image-attach")
         await step("coding-catalog-host-persistence", smokeCodingCatalog)
         await captureShot(window, "10-coding-catalog")
         tracePass = 1

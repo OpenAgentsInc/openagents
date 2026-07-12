@@ -45,7 +45,7 @@ const makeReadyRoot = (): string => {
   return root
 }
 
-type CapturedQuery = { prompt: string; options: Record<string, unknown> }
+type CapturedQuery = { prompt: string | AsyncIterable<unknown>; options: Record<string, unknown> }
 
 type Harness = {
   runtime: FableLocalRuntime

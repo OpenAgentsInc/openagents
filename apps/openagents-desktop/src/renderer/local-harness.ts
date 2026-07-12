@@ -26,6 +26,7 @@ import {
   fableLocalTraceNoteText,
   type FableLocalAvailability,
   type FableLocalEventEnvelope,
+  type FableLocalImageAttachment,
 } from "../fable-local-contract.ts"
 import {
   CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
@@ -97,6 +98,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     send: Readonly<{
       id: string
       message: string
+      images?: ReadonlyArray<FableLocalImageAttachment>
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
@@ -354,13 +356,20 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     })
     try {
       activeTurn = { bridge, turnRef }
-      const raw = await bridge.start({ turnRef, threadRef: send.id, message: send.message })
+      const raw = await bridge.start({
+        turnRef,
+        threadRef: send.id,
+        message: send.message,
+        // Capability I1: images ride the frozen start request additively.
+        ...(send.images !== undefined && send.images.length > 0 ? { images: send.images } : {}),
+      })
       const result = decodeTurnResult(raw, laneLabel)
       // A3 queue-until-idle: a follow-up promoted at this turn's idle boundary
       // becomes the NEXT turn (the runtime emits it but does not run it). Chain
       // it on the same lane/onUpdate and return its result so the shell's
       // withTurnResult applies the final thread; `pending` stays true across
-      // the chain because onUpdate keeps setting it.
+      // the chain because onUpdate keeps setting it. The promoted follow-up is
+      // text-only (no images re-ride the chained turn).
       // `?? ""` reads the closure-assigned value at runtime (the onEvent
       // assignment above is invisible to CFA, which linearly narrows the
       // `= null` init and would otherwise make a `!== null` guard `never`).

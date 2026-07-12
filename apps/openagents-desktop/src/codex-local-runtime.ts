@@ -40,7 +40,7 @@
  *
  * This module never imports `electron` (unit-testable under `bun test`).
  */
-import { mkdirSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import {
@@ -80,6 +80,7 @@ import {
   type FableChildUsage,
   type FableLocalEvent,
   type FableLocalFailureReason,
+  type FableLocalImageAttachment,
 } from "./fable-local-contract.ts"
 import {
   FABLE_LOCAL_HISTORY_MESSAGES,
@@ -97,6 +98,13 @@ export type CodexLocalTurnInput = Readonly<{
   threadRef: string
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
+  /**
+   * Optional image attachments (capability I1). `codex exec` accepts images
+   * via `-i, --image <FILE>...` (local file paths), so the runtime writes each
+   * attachment into a bounded per-turn subdir of the thread workspace and
+   * passes its path. Absent/empty = the prior no-image invocation, unchanged.
+   */
+  images?: ReadonlyArray<FableLocalImageAttachment>
   emit: (event: FableLocalEvent) => void
 }>
 
@@ -163,6 +171,32 @@ const historyPrompt = (
     ...window,
     `User: ${message}`,
   ].join("\n\n")
+}
+
+/** File extension for a supported image media type (`codex exec -i` path). */
+const codexImageExtension = (mediaType: FableLocalImageAttachment["mediaType"]): string =>
+  mediaType === "image/jpeg" ? "jpg" : mediaType.slice("image/".length)
+
+/**
+ * Write attached images (capability I1) into a bounded per-turn subdir of the
+ * thread workspace and return their absolute paths for `codex exec -i <path>`.
+ * The base64 is decoded in main (never a renderer filesystem read); the subdir
+ * is turn-scoped so parallel turns never collide.
+ */
+export const writeCodexTurnImages = (
+  workspace: string,
+  turnRef: string,
+  images: ReadonlyArray<FableLocalImageAttachment>,
+): ReadonlyArray<string> => {
+  if (images.length === 0) return []
+  const slug = turnRef.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120)
+  const dir = join(workspace, ".oa-image-attachments", slug)
+  mkdirSync(dir, { recursive: true })
+  return images.map((image, index) => {
+    const filePath = join(dir, `image-${index + 1}.${codexImageExtension(image.mediaType)}`)
+    writeFileSync(filePath, Buffer.from(image.data, "base64"))
+    return filePath
+  })
 }
 
 type ParsedTurnAttempt = Readonly<{
@@ -233,6 +267,11 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     turnRef: string
     workspace: string
     prompt: string
+    /**
+     * Absolute paths to images written to the turn workspace (capability I1);
+     * passed to `codex exec` as `-i <path>` flags. Empty = no image flags.
+     */
+    imagePaths: ReadonlyArray<string>
     resumeThreadId: string | null
     emit: (event: FableLocalEvent) => void
     control: { interrupted: boolean; child: ChildLike | null }
@@ -250,6 +289,11 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       // rollouts persist in the isolated home for resume + receipts).
       // Resumed turns use `exec resume <thread_id>`; resume has no -s/-C
       // flags, so the sandbox rides -c sandbox_mode (receipted).
+      // Capability I1: `-i <path>` per image. Each flag is placed so a
+      // non-variadic token (`-C` fresh, `--skip-git-repo-check` resume)
+      // terminates the variadic `--image` list before the positional prompt —
+      // otherwise the greedy `<FILE>...` arg would swallow the prompt.
+      const imageFlags = input.imagePaths.flatMap((imagePath) => ["-i", imagePath])
       const args = input.resumeThreadId === null
         ? [
             "exec",
@@ -261,6 +305,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             "-s",
             CODEX_CHILD_SANDBOX,
             "--skip-git-repo-check",
+            ...imageFlags,
             "-C",
             input.workspace,
             input.prompt,
@@ -276,6 +321,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             `model_reasoning_effort=${CODEX_LOCAL_REASONING_EFFORT}`,
             "-c",
             `sandbox_mode="${CODEX_CHILD_SANDBOX}"`,
+            ...imageFlags,
             "--skip-git-repo-check",
             input.prompt,
           ]
@@ -580,6 +626,17 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       return emitFailure(failure("session_failed", "thread workspace unavailable"))
     }
 
+    // Capability I1: write each attachment into a bounded per-turn subdir and
+    // collect its absolute path for `codex exec -i <path>`. A write failure is
+    // a turn failure (honest — the model would otherwise silently miss the
+    // image the user attached).
+    let imagePaths: ReadonlyArray<string>
+    try {
+      imagePaths = writeCodexTurnImages(workspace, input.turnRef, input.images ?? [])
+    } catch {
+      return emitFailure(failure("session_failed", "could not stage attached images"))
+    }
+
     const control = { interrupted: false, child: null as ChildLike | null }
     activeTurns.set(input.turnRef, control)
     input.emit({ kind: "turn_started" })
@@ -605,6 +662,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           turnRef: input.turnRef,
           workspace,
           prompt,
+          imagePaths,
           resumeThreadId,
           emit: input.emit,
           control,

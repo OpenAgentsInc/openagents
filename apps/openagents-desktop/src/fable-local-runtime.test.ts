@@ -85,7 +85,7 @@ describe("redactFableLocalText", () => {
   })
 })
 
-type CapturedQuery = { prompt: string; options: Record<string, unknown> }
+type CapturedQuery = { prompt: string | AsyncIterable<unknown>; options: Record<string, unknown> }
 
 const makeRuntimeHarness = (input: {
   script: (captured: CapturedQuery) => AsyncIterable<unknown>
@@ -211,6 +211,61 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(call.prompt).toContain("Conversation so far")
     expect(call.prompt).toContain("earlier question")
     expect(call.prompt).toContain("User: What now?")
+  })
+
+  test("capability I1: a turn with images lowers the prompt to an SDK base64 image content block", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-img" }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok", usage: null }
+      },
+    })
+    const sink = collect()
+    await harness.runtime.runTurn({
+      turnRef: "turn-img",
+      threadRef: "thread-img",
+      history: [],
+      message: "what's wrong in this screenshot?",
+      images: [
+        { mediaType: "image/png", data: "aGVsbG8=", name: "shot.png" },
+        { mediaType: "image/webp", data: "d2VicA==" },
+      ],
+      emit: sink.emit,
+    })
+    const call = harness.captured[0]!
+    // With images the prompt is an AsyncIterable (streaming input), NOT a
+    // string — a bare string prompt cannot carry an image (sdk.d.ts).
+    expect(typeof call.prompt).not.toBe("string")
+    const messages: Array<{ type: string; message: { role: string; content: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> } }> = []
+    for await (const message of call.prompt as AsyncIterable<typeof messages[number]>) messages.push(message)
+    expect(messages).toHaveLength(1)
+    const content = messages[0]!.message.content
+    // One text block (the user's message) + one image block per attachment.
+    expect(content.filter(block => block.type === "text").map(block => block.text)).toEqual([
+      "what's wrong in this screenshot?",
+    ])
+    const imageBlocks = content.filter(block => block.type === "image")
+    expect(imageBlocks).toHaveLength(2)
+    expect(imageBlocks[0]!.source).toEqual({ type: "base64", media_type: "image/png", data: "aGVsbG8=" })
+    expect(imageBlocks[1]!.source).toEqual({ type: "base64", media_type: "image/webp", data: "d2VicA==" })
+  })
+
+  test("capability I1: a turn without images keeps the plain string prompt (additive, unchanged)", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-noimg" }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok", usage: null }
+      },
+    })
+    await harness.runtime.runTurn({
+      turnRef: "turn-noimg",
+      threadRef: "thread-noimg",
+      history: [],
+      message: "plain text turn",
+      emit: collect().emit,
+    })
+    expect(typeof harness.captured[0]!.prompt).toBe("string")
+    expect(harness.captured[0]!.prompt).toBe("plain text turn")
   })
 
   test("second turn in the same thread resumes the SDK session instead of replaying history", async () => {

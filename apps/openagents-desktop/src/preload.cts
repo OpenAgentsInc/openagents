@@ -74,12 +74,14 @@ import {
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
   FableLocalInterruptChannel,
+  FableLocalPickImagesChannel,
   FableLocalQueueFollowupChannel,
   FableLocalStartChannel,
   FableLocalSteerChildChannel,
   decodeFableLocalAnswerQuestionRequest,
   decodeFableLocalEventEnvelope,
   decodeFableLocalInterruptRequest,
+  decodeFableLocalPickedImages,
   decodeFableLocalQueueFollowupRequest,
   decodeFableLocalStartRequest,
   decodeFableLocalSteerChildRequest,
@@ -330,6 +332,16 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     interrupt: (value: unknown) => {
       const request = decodeFableLocalInterruptRequest(value)
       return request === null ? Promise.resolve(false) : ipcRenderer.invoke(FableLocalInterruptChannel, request)
+    },
+    /**
+     * Image file picker (capability I1): opens the native dialog in main and
+     * returns decoded base64 attachments. The response is schema-decoded here
+     * so a malformed/oversize payload can never cross into the renderer; an
+     * invalid or absent response resolves to an empty array.
+     */
+    pickImages: async () => {
+      const raw = await ipcRenderer.invoke(FableLocalPickImagesChannel)
+      return decodeFableLocalPickedImages(raw) ?? []
     },
     /**
      * EP250 question flow: answers a pending AskUserQuestion

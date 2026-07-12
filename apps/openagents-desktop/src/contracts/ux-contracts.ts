@@ -340,6 +340,73 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "bun run --cwd apps/openagents-desktop verify runs the shell Stop-button suite and the capability-evals interrupt-path oracle; the interrupt-stop live-proof step is exercised by the live-proof driver run.",
       },
       {
+        contractId: "openagents_desktop.chat.composer_image_input.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer image input",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "capability-audit", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "attach a screenshot to a coding turn (image input)",
+        authorityBoundary:
+          "The composer carries a leading attach affordance plus drag-drop and paste-from-clipboard image attach. Accepted images are PNG/JPEG/WebP/GIF, bounded to at most 8 per message and 10 MB each; oversize or wrong-type files are rejected honestly with transient copy (no standing caption). The renderer holds each attachment as bounded base64 and NEVER reads an arbitrary filesystem path — bytes come only from an in-renderer drop/paste File or a main-mediated native file picker. Attachments thread through the additive fable-local start `images` field to BOTH lanes: Fable sends them as SDK base64 image content blocks in a streaming-input user message (a bare string prompt cannot carry an image), and Codex writes them into the turn workspace and passes `codex exec -i <path>`. Attaching grants no new authority: it starts no turn on its own, routes to no other lane, and reads no file the user did not hand the app.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/composer-images.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/codex-local-runtime.ts",
+          "apps/openagents-desktop/src/capability-registry.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "composer_image_input.decode_and_state",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/composer-images.test.ts",
+            description:
+              "Proves media-type/size classification with honest rejection copy, base64 decoding of an in-renderer File (drop/paste path), the ≤8 count bound, and the boundary projection that drops renderer-only fields.",
+          },
+          {
+            id: "composer_image_input.render_and_intent_loop",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the composer renders the attach affordance and thumbnails with remove, disables attach at the 8-image limit, surfaces the rejection notice, and that add/remove/submit through the real intent registry thread the base64 image into the chat host (including an images-only turn).",
+          },
+          {
+            id: "composer_image_input.fable_sdk_block",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            description:
+              "Drives the real Fable runtime prompt construction: a captured fake query proves an image turn lowers to an AsyncIterable user message whose content carries a { type:\"image\", source:{ type:\"base64\", media_type, data } } block (sdk.d.ts receipt), while a no-image turn keeps the plain string prompt.",
+          },
+          {
+            id: "composer_image_input.codex_image_flag",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
+            description:
+              "Proves the Codex lane writes each attachment into the turn workspace and passes it as `-i <path>`, terminated by `-C` before the positional prompt so the variadic --image never swallows the prompt.",
+          },
+          {
+            id: "composer_image_input.smoke_step",
+            kind: "visual-smoke",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The image-attach smoke step drops a fixture PNG onto the composer in the real Electron renderer, asserts the thumbnail renders, submits, and asserts the assistant reply carries the fixture's image-received marker — proving the image reached the SDK query payload end-to-end.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the composer-images, shell, fable-local-runtime, and codex-local-runtime suites plus the image-attach smoke step; a real live provider image turn is deferred to a live-proof run.",
+      },
+      {
         contractId: "openagents_desktop.chat.markdown_rendering.v1",
         state: "enforced",
         surface: "openagents-desktop",

@@ -23,6 +23,7 @@ import {
   Card,
   ComponentValueBinding,
   IconButton,
+  Image,
   IntentRef,
   Icon,
   NavRail,
@@ -130,6 +131,17 @@ import {
   type SettingsState,
 } from "./settings.ts"
 
+import {
+  addComposerImage,
+  canAttachMoreImages,
+  composerImageDataUrl,
+  formatImageSize,
+  removeComposerImage,
+  toStartImages,
+  type ComposerImageAttachment,
+} from "./composer-images.ts"
+import type { FableLocalImageAttachment } from "../fable-local-contract.ts"
+
 export type DesktopNoteEntry = Readonly<{
   key: string
   role: "user" | "assistant" | "system"
@@ -192,6 +204,18 @@ export type DesktopShellState = Readonly<{
   input: string
   /** True while a submission is in flight; the composer disables itself. */
   pending: boolean
+  /**
+   * Pending composer image attachments (capability I1): bounded base64 held in
+   * the renderer, shown as thumbnails with remove, threaded into the next
+   * turn's start payload. Cleared on submit.
+   */
+  composerImages: ReadonlyArray<ComposerImageAttachment>
+  /**
+   * Transient honest rejection copy for the last attach attempt (oversize /
+   * wrong type / count limit). Not a standing caption — cleared on the next
+   * successful attach or submit.
+   */
+  composerImageNotice: string | null
   notes: ReadonlyArray<DesktopNoteEntry>
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
   selectedHarness: DesktopHarnessName
@@ -280,6 +304,8 @@ export const initialDesktopShellState = (
   host,
   input: "",
   pending: false,
+  composerImages: [],
+  composerImageNotice: null,
   notes: [],
   selectedHarness: "codex",
   // Unproven until boot's availability probe lands (before first mount):
@@ -352,6 +378,27 @@ export const DesktopChildInterruptRequested = defineIntent(
   "DesktopChildInterruptRequested",
   Schema.Struct({ turnRef: Schema.String, childRef: Schema.String }),
 )
+/**
+ * Composer image attachment intents (capability I1). `DesktopComposerImageAdded`
+ * carries an already-decoded bounded attachment (the drop/paste/picker handlers
+ * decode the File in the renderer — never a filesystem read here);
+ * `DesktopComposerImageRemoved` drops one by id; `DesktopComposerImagesRejected`
+ * surfaces honest rejection copy; `DesktopComposerImagePickRequested` opens the
+ * main-mediated native file picker.
+ */
+export const DesktopComposerImageAdded = defineIntent(
+  "DesktopComposerImageAdded",
+  Schema.Struct({
+    id: Schema.String,
+    mediaType: Schema.Literals(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+    data: Schema.String,
+    name: Schema.String,
+    sizeBytes: Schema.Number,
+  }),
+)
+export const DesktopComposerImageRemoved = defineIntent("DesktopComposerImageRemoved", Schema.String)
+export const DesktopComposerImagesRejected = defineIntent("DesktopComposerImagesRejected", Schema.String)
+export const DesktopComposerImagePickRequested = defineIntent("DesktopComposerImagePickRequested", Schema.Null)
 export const DesktopLoopPinged = defineIntent("DesktopLoopPinged", Schema.Null)
 export const DesktopFleetDeskToggled = defineIntent("DesktopFleetDeskToggled", Schema.Null)
 export const DesktopFleetObjectiveChanged = defineIntent(
@@ -430,6 +477,10 @@ export const desktopShellIntents = [
   DesktopNoteSubmitted,
   DesktopTurnInterrupted,
   DesktopChildInterruptRequested,
+  DesktopComposerImageAdded,
+  DesktopComposerImageRemoved,
+  DesktopComposerImagesRejected,
+  DesktopComposerImagePickRequested,
   DesktopLoopPinged,
   DesktopFleetDeskToggled,
   DesktopFleetObjectiveChanged,
@@ -720,17 +771,51 @@ export const withNote = (
   timestamp: string,
 ): DesktopShellState => {
   const trimmed = text.trim()
-  if (trimmed === "") return state
+  // Capability I1: an images-only turn (empty text, ≥1 attachment) is valid;
+  // an empty turn with no images is a no-op. The persisted user-note text
+  // falls back to a bounded count label so the row is never blank.
+  const hasImages = state.composerImages.length > 0
+  if (trimmed === "" && !hasImages) return state
+  const noteText = trimmed !== ""
+    ? trimmed
+    : state.composerImages.length === 1
+      ? "(1 image attached)"
+      : `(${state.composerImages.length} images attached)`
   return {
     ...state,
     input: "",
     pending: true,
+    composerImages: [],
+    composerImageNotice: null,
     notes: [
       ...state.notes,
-      { key: `pending-${state.notes.length}`, role: "user", text: trimmed, timestamp },
+      { key: `pending-${state.notes.length}`, role: "user", text: noteText, timestamp },
     ],
   }
 }
+
+/** Add a decoded attachment (capability I1); bounded, clears the notice. */
+export const withComposerImageAdded = (
+  state: DesktopShellState,
+  attachment: ComposerImageAttachment,
+): DesktopShellState => ({
+  ...state,
+  composerImages: addComposerImage(state.composerImages, attachment),
+  composerImageNotice: null,
+})
+
+export const withComposerImageRemoved = (
+  state: DesktopShellState,
+  id: string,
+): DesktopShellState => ({
+  ...state,
+  composerImages: removeComposerImage(state.composerImages, id),
+})
+
+export const withComposerImageNotice = (
+  state: DesktopShellState,
+  notice: string | null,
+): DesktopShellState => ({ ...state, composerImageNotice: notice })
 
 /**
  * Applies probed lane evidence. If the currently selected lane just became
@@ -757,6 +842,8 @@ export type ChatHost = Readonly<{
     id: string
     message: string
     harness?: DesktopHarnessName
+    /** Optional image attachments threaded into the turn payload (capability I1). */
+    images?: ReadonlyArray<FableLocalImageAttachment>
     onUpdate?: (thread: DesktopThread) => void
   }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
   /**
@@ -803,6 +890,16 @@ export type QuestionHost = Readonly<{
         answers: ReadonlyArray<QuestionAnswer>
       }>) => Promise<unknown>)
     | null
+}>
+
+/**
+ * Main-mediated image file picker (capability I1). The attach affordance
+ * dispatches through this to open the native dialog in main; main reads the
+ * files (never the renderer) and returns decoded base64 attachments. An absent
+ * host resolves to no attachments (drop/paste still work in-renderer).
+ */
+export type ComposerImagePickerHost = Readonly<{
+  pick: () => Promise<ReadonlyArray<FableLocalImageAttachment>>
 }>
 
 export type WorkspaceHost = Readonly<{
@@ -953,6 +1050,7 @@ export const makeDesktopShellHandlers = (
   windowHost: DesktopWindowHost = { toggleFullScreen: async () => false },
   gitBridge: GitGithubBridge = unavailableGitGithubBridge,
   mcpConfigBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
+  imagePickerHost: ComposerImagePickerHost = { pick: async () => [] },
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
@@ -1056,13 +1154,15 @@ export const makeDesktopShellHandlers = (
       if (current.activeThreadId === null) return
       const message =
         typeof value === "string" && value.trim() !== "" ? value : current.input
-      if (message.trim() === "") return
       // A3 queue-until-idle (EP250 wave-2): the composer stays usable while a
-      // turn streams; a submit mid-turn ENQUEUES a follow-up instead of
+      // turn streams; a submit mid-turn ENQUEUES a text follow-up instead of
       // starting a new turn. Delivery is at the current turn's completion (the
       // runtime's followup_queued/followup_promoted events drive the chip and
-      // the promoted next turn). A host that cannot queue keeps the draft.
+      // the promoted next turn). A host that cannot queue keeps the draft. An
+      // empty follow-up is never queued; image attachments are not queued
+      // mid-turn (they ride the next started turn).
       if (current.pending) {
+        if (message.trim() === "") return
         if (chat.queueFollowup === undefined) return
         yield* SubscriptionRef.update(state, (next) => withInput(next, ""))
         yield* Effect.promise(() =>
@@ -1073,11 +1173,17 @@ export const makeDesktopShellHandlers = (
       // accept the action — the composer keeps the draft and the caption
       // already names the reason. Never substitute another lane silently.
       if (!current.harnessLanes[current.selectedHarness].available) return
+      // Capability I1: a turn is submittable with text OR ≥1 image; an empty
+      // turn with no images is a no-op (withNote returns state unchanged).
+      if (message.trim() === "" && current.composerImages.length === 0) return
+      // Capture the pending attachments BEFORE withNote clears them.
+      const images = toStartImages(current.composerImages)
       yield* SubscriptionRef.set(state, withNote(current, message, now()))
       const result = yield* Effect.promise(() => chat.sendMessage({
         id: current.activeThreadId!,
         message,
         harness: current.selectedHarness,
+        ...(images.length > 0 ? { images } : {}),
         onUpdate: thread => {
           Effect.runFork(SubscriptionRef.update(state, next =>
             next.activeThreadId === thread.id
@@ -1104,6 +1210,33 @@ export const makeDesktopShellHandlers = (
       const current = yield* SubscriptionRef.get(state)
       if (!current.pending || chat.steerChild === undefined) return
       yield* Effect.promise(() => chat.steerChild!({ turnRef, childRef }))
+    }),
+  DesktopComposerImageAdded: (attachment) =>
+    SubscriptionRef.update(state, (current) => withComposerImageAdded(current, attachment)),
+  DesktopComposerImageRemoved: (id) =>
+    SubscriptionRef.update(state, (current) => withComposerImageRemoved(current, id)),
+  DesktopComposerImagesRejected: (message) =>
+    SubscriptionRef.update(state, (current) => withComposerImageNotice(current, message)),
+  DesktopComposerImagePickRequested: () =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      if (current.pending || !canAttachMoreImages(current.composerImages)) return
+      const picked = yield* Effect.promise(() => imagePickerHost.pick())
+      if (picked.length === 0) return
+      yield* SubscriptionRef.update(state, (value) => {
+        let next = value
+        for (const image of picked) {
+          next = withComposerImageAdded(next, {
+            id: globalThis.crypto.randomUUID(),
+            mediaType: image.mediaType,
+            data: image.data,
+            name: image.name ?? "image",
+            // Decoded size for the caption; base64 length approximates it.
+            sizeBytes: Math.floor((image.data.length * 3) / 4),
+          })
+        }
+        return next
+      })
     }),
   DesktopLoopPinged: () =>
     SubscriptionRef.update(state, (current) => withLoopProof(current, now())),
@@ -2277,6 +2410,110 @@ const composerActionControl = (state: DesktopShellState): View => {
   )
 }
 
+/**
+ * One pending image attachment (capability I1): a bounded thumbnail with a
+ * remove affordance. The `source` is a renderer-only `data:` URL (CSP allows
+ * `img-src data:`); the base64 itself never renders as text.
+ */
+const composerImageThumbnail = (attachment: ComposerImageAttachment): View =>
+  Stack(
+    {
+      key: `composer-image-${attachment.id}`,
+      direction: "column",
+      gap: "0.5",
+      align: "center",
+      style: {
+        backgroundColor: "surfaceRaised",
+        borderRadius: "md",
+        borderColor: "border",
+        borderWidth: 1,
+        padding: "1",
+      },
+    },
+    [
+      Image({
+        key: `composer-image-preview-${attachment.id}`,
+        source: composerImageDataUrl(attachment),
+        alt: attachment.name,
+        width: 56,
+        height: 56,
+        fit: "cover",
+        style: { borderRadius: "sm" },
+      }),
+      Stack(
+        {
+          key: `composer-image-meta-${attachment.id}`,
+          direction: "row",
+          gap: "1",
+          align: "center",
+        },
+        [
+          Text({
+            key: `composer-image-size-${attachment.id}`,
+            content: formatImageSize(attachment.sizeBytes),
+            variant: "caption",
+            color: "textFaint",
+          }),
+          IconButton({
+            key: `composer-image-remove-${attachment.id}`,
+            icon: "X",
+            accessibilityLabel: `Remove ${attachment.name}`,
+            onPress: IntentRef("DesktopComposerImageRemoved", StaticPayload(attachment.id)),
+            style: { backgroundColor: "surface", color: "textMuted", borderRadius: "sm" },
+          }),
+        ],
+      ),
+    ],
+  )
+
+/** The composer attachments strip + transient rejection notice (capability I1). */
+const composerImageRegion = (state: DesktopShellState): ReadonlyArray<View> => {
+  const rows: View[] = []
+  if (state.composerImages.length > 0) {
+    rows.push(Stack(
+      {
+        key: "shell-composer-images",
+        direction: "row",
+        gap: "2",
+        align: "center",
+        style: { width: "full" },
+        a11y: { role: "list", label: "Attached images" },
+      },
+      state.composerImages.map(composerImageThumbnail),
+    ))
+  }
+  if (state.composerImageNotice !== null) {
+    rows.push(Text({
+      key: "shell-composer-image-notice",
+      content: state.composerImageNotice,
+      variant: "caption",
+      color: "danger",
+    }))
+  }
+  return rows
+}
+
+/**
+ * The composer's leading attach affordance (capability I1). Opens the native
+ * image picker in main; drag-drop and paste feed the same attachment state
+ * from boot.ts. Disabled while pending or at the count limit — the reason lives
+ * in the accessible label (no standing caption, per the composer contract).
+ */
+const composerAttachControl = (state: DesktopShellState): View => {
+  const atLimit = !canAttachMoreImages(state.composerImages)
+  const disabled = state.pending || atLimit
+  return IconButton({
+    key: "shell-attach-image",
+    icon: "Plus",
+    accessibilityLabel: atLimit
+      ? "Image limit reached (8 max)"
+      : "Attach image",
+    disabled,
+    onPress: IntentRef("DesktopComposerImagePickRequested"),
+    style: { backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "md" },
+  })
+}
+
 const shellComposer = (state: DesktopShellState): View =>
   Card(
     {
@@ -2314,6 +2551,9 @@ const shellComposer = (state: DesktopShellState): View =>
           harnessChip(state, "codex", "Codex"),
         ],
       ),
+      // Capability I1: pending image thumbnails + transient rejection notice
+      // sit above the input row (empty when nothing is attached).
+      ...composerImageRegion(state),
       Stack(
         {
           key: "shell-composer-row",
@@ -2323,6 +2563,8 @@ const shellComposer = (state: DesktopShellState): View =>
           style: { width: "full" },
         },
         [
+          // Leading attach affordance (capability I1) — picker + drop/paste.
+          composerAttachControl(state),
           TextField({
             key: "shell-input",
             value: state.input,
