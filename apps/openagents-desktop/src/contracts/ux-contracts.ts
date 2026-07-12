@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.36",
+    version: "2026-07-11.37",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -2182,6 +2182,68 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime capability suite (src/fable-local-runtime-caps.test.ts) as programmatic oracles; the renderer oracle is a planned wave-2 lane.",
+      },
+      {
+        contractId: "openagents_desktop.seam.typed_git_github_surface.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Git/GitHub review surface",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "capability-audit", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Commit, push, branch, and GitHub issue/PR flows work from OpenAgents Desktop through a TYPED Git/GitHub surface with receipts — not only via an agent's Bash tool. The review workspace has a Git panel: a status header (branch, ahead/behind, dirty state), a changed-files list with stage toggles, a commit box that shows the resulting SHA, a Push button with its pushed-ref receipt and typed failure classes, a branch switcher, and an issues/PRs section that can list and create (returning the item url). (EP250 capability audit §4E, §6.3, ranks E2–E5 commit/push/PR/issue as a daily habit with zero typed UI.)",
+        authorityBoundary:
+          "The renderer never supplies argv: the host (git-github-host.ts) runs a FIXED, closed operation set over the active canonicalized workspace root, with user strings only reaching git/gh as validated path/ref/message values that cannot be reinterpreted as flags. Every request and result is Effect-Schema decoded on both sides (git-github-contract.ts). Results are public-safe — a commit SHA, a pushed ref, an issue/PR number+url — never tokens, credentials, raw stderr, or absolute paths; failures are typed classes (no_upstream, non_fast_forward, auth_failed, blocked_by_hook, dirty_tree, gh_unavailable, gh_unauthenticated, …). Commit refuses an empty message or nothing-staged; checkout refuses a dirty tree; push applies a bounded fetch→rebase→push retry; gh operations never trigger an auth prompt. This is owner-local executor authority (this is the owner's machine); it adds no untrusted-labor or provider authority.",
+        seam: {
+          client: "apps/openagents-desktop/src/git-github-contract.ts",
+          server: "apps/openagents-desktop/src/git-github-host.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-desktop/src/git-github-host.ts",
+          "apps/openagents-desktop/src/git-github-contract.ts",
+          "apps/openagents-desktop/src/renderer/git-panel.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/preload.cts",
+          "docs/fable/2026-07-11-daily-coding-capability-audit.md",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "git_github_surface.host_real_repo",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/git-github-host.test.ts",
+            description:
+              "Against a REAL temp git repo (and a REAL local bare remote): status structure, stage/unstage, commit returns the real HEAD SHA, empty-message and nothing-staged refusals, branch list/create/checkout, dirty-tree checkout refusal, push returns the pushed ref/sha and advances the remote, no-upstream refusal, and the non-fast-forward fetch→rebase→push retry (success on non-conflict, typed non_fast_forward after aborting a conflicting rebase). The gh path is boundary-unit-tested plus one guarded real gh --version/auth-status test that skips honestly when gh is unavailable.",
+          },
+          {
+            id: "git_github_surface.contract_both_sides",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/git-github-contract.test.ts",
+            description:
+              "The closed operation set and every result variant (incl. the typed error) round-trip through decode on both sides; unknown ops and malformed params are rejected and excess keys stripped.",
+          },
+          {
+            id: "git_github_surface.panel_intent_loop",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/git-panel.test.ts",
+            description:
+              "The panel renders the status header, changed-files stage toggles, commit box, Push control, branch switcher, and issues/PRs section; disabled controls (commit with nothing staged / empty message, Push without upstream, gh Create when gh is unavailable) carry the hover-only Tooltip reason; and the real intent loop stages, commits (showing the SHA receipt), pushes (ref receipt), checks out branches, marks gh unavailable with a reason, and creates an issue (url receipt) — never a fabricated success.",
+          },
+          {
+            id: "git_github_surface.smoke_real_status",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke routes to the review workspace and asserts the typed Git panel rendered REAL read-only status of the app's own repo (status header, commit box, Push, branch switcher, issues/PRs section all present; branch label resolves to a real branch or detached HEAD) without committing or pushing.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the host real-repo suite, the contract both-sides suite, the panel intent-loop suite, and the Electron smoke git-review step.",
       },
     ],
   };

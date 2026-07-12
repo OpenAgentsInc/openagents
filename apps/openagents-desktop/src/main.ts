@@ -136,6 +136,8 @@ import {
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
+import { GitGithubChannel } from "./git-github-contract.ts"
+import { openGitGithubService } from "./git-github-host.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
@@ -688,6 +690,23 @@ ipcMain.handle(DesktopWorkspaceGitDiffChannel, (_event, value: unknown) => {
   if (workspace === null) return { state: "unavailable", message: "Choose a workspace folder before reviewing changes." }
   return workspace.gitDiff(request.path)
 })
+// Typed Git/GitHub surface (EP250 E2–E5, #8712): one namespaced invoke over
+// the closed operation set. The service re-reads the active workspace root per
+// call (in smoke it points at the app's own real repo — derived from the
+// bundle location, never ambient cwd — so the panel renders real read-only
+// status without a directory-picker). The renderer never supplies argv;
+// git-github-host.ts owns the fixed argument vectors.
+const smokeGitRoot = path.resolve(here, "..")
+const gitGithubService = openGitGithubService(
+  smokeMode
+    ? () => smokeGitRoot
+    : () => {
+        const workspace = hostLifecycle.workspace()
+        if (workspace === null) return null
+        try { return workspace.summary().root } catch { return null }
+      },
+)
+ipcMain.handle(GitGithubChannel, (_event, value: unknown) => gitGithubService.run(value))
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.
 ipcMain.handle(DesktopThreadsChannel, () => hostLifecycle.history()?.run({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }) ?? Promise.resolve(null))
@@ -1428,6 +1447,40 @@ const smokeOpenFleetDesk = `(async () => {
   return {
     ok: objective !== null && dispatch !== null && status !== null && status.textContent === "Draft",
     status: status === null ? null : status.textContent,
+  }
+})()`
+
+// Git/GitHub review panel (EP250 E2–E5, #8712): the review workspace mounts
+// the typed Git panel, which renders REAL read-only status of the app's own
+// repo (the git-github host points at the bundle's repo in smoke). Fixture-safe:
+// this step neither commits nor pushes — it asserts the status header, the
+// commit box, the Push control, the branch switcher, and the issues/PRs
+// section all render, and that the panel resolved real status.
+const smokeOpenGitReview = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const q = (key) => document.querySelector('[data-en-key="' + key + '"]')
+  // Wait for the panel to mount AND its async status refresh to resolve: the
+  // branch label leaves the placeholder "—" for a real branch / "detached
+  // HEAD", or the explicit git-unavailable message appears.
+  const deadline = Date.now() + 20000
+  const branchText = () => (q("git-status-branch")?.textContent ?? "").trim()
+  const resolved = () => (branchText() !== "" && branchText() !== "—") || q("git-unavailable") !== null
+  while (Date.now() < deadline && !(q("git-panel") !== null && resolved())) {
+    await wait(100)
+  }
+  const panel = q("git-panel")
+  const header = q("git-status-header")
+  const commitBox = q("git-commit-message")
+  const commitButton = q("git-commit")
+  const pushButton = q("git-push")
+  const branches = q("git-branches")
+  const issues = q("git-issues-prs")
+  const statusResolved = resolved()
+  return {
+    ok: panel !== null && header !== null && commitBox !== null && commitButton !== null &&
+      pushButton !== null && branches !== null && issues !== null && statusResolved,
+    branch: branchText().slice(0, 80),
+    statusResolved,
   }
 })()`
 
@@ -2299,6 +2352,18 @@ const runSmoke = (window: BrowserWindow): void => {
         await captureShot(window, "11-codex-local-streamed")
         await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
         await captureShot(window, "09-fleet-workspace")
+        // Git/GitHub review panel (EP250 E2–E5): route to the review workspace
+        // through the canonical command host, then assert the typed Git panel
+        // rendered real read-only status of the app's own repo (no commit/push).
+        const reviewCommand = desktopCanonicalCommandRegistry.find(command => command.id === "workspace.review")
+        if (reviewCommand === undefined) throw new Error("canonical workspace.review command missing")
+        desktopCommandHost.enqueue(deferredDesktopCommand(
+          reviewCommand,
+          "native_menu",
+          "command.desktop.smoke.git-review",
+        ))
+        await step("git-review-panel-real-status", smokeOpenGitReview)
+        await captureShot(window, "12-git-review-panel")
         // Cmd+N from the fleet workspace: fresh transcript + focused composer.
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
         await step("coding-catalog-host-persistence", smokeCodingCatalog)

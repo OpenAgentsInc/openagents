@@ -81,6 +81,16 @@ import {
   type FleetAccountsBridge,
   type FleetWorkspaceState,
 } from "./fleet-workspace.ts"
+import {
+  emptyGitPanelState,
+  gitPanelIntents,
+  gitPanelView,
+  makeGitPanelHandlers,
+  refreshGitPanel,
+  unavailableGitGithubBridge,
+  type GitGithubBridge,
+  type GitPanelState,
+} from "./git-panel.ts"
 import { sidebarAccountsView } from "./sidebar-accounts.ts"
 import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyItemPageOffset, historyItemPageSize, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
@@ -233,6 +243,8 @@ export type DesktopShellState = Readonly<{
   history: HistoryWorkspaceState
   /** Read-only fleet accounts projection (see ./fleet-workspace.ts). */
   fleet: FleetWorkspaceState
+  /** Typed Git/GitHub review panel (see ./git-panel.ts). */
+  git: GitPanelState
 }>
 
 /** "18:04" — display-string timestamps for the typed message contract. */
@@ -299,6 +311,7 @@ export const initialDesktopShellState = (
   settings: initialSettingsState(),
   history: emptyHistoryWorkspaceState(),
   fleet: emptyFleetWorkspaceState(),
+  git: emptyGitPanelState(),
 })
 
 // ---------------------------------------------------------------------------
@@ -444,6 +457,7 @@ export const desktopShellIntents = [
   ...settingsIntents,
   ...historyWorkspaceIntents,
   ...fleetWorkspaceIntents,
+  ...gitPanelIntents,
 ] as const
 
 export type CodexHistoryHost = Readonly<{
@@ -952,6 +966,7 @@ export const makeDesktopShellHandlers = (
   questionHost: QuestionHost = { answer: null },
   commandBindingHost: CommandBindingHost = unavailableCommandBindingHost,
   windowHost: DesktopWindowHost = { toggleFullScreen: async () => false },
+  gitBridge: GitGithubBridge = unavailableGitGithubBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge)
   /**
@@ -984,6 +999,7 @@ export const makeDesktopShellHandlers = (
   return ({
   ...settingsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
+  ...makeGitPanelHandlers(state, gitBridge),
   DesktopSettingsToggled: () => Effect.gen(function* () {
     yield* settingsHandlers.DesktopSettingsToggled()
     const bindings = yield* Effect.promise(commandBindingHost.snapshot)
@@ -1270,6 +1286,8 @@ export const makeDesktopShellHandlers = (
         if (workspace === "review") {
           const gitStatus = yield* Effect.promise(workspaceHost.gitStatus)
           yield* SubscriptionRef.update(state, (current) => ({ ...current, workspaceGitStatus: gitStatus }))
+          // Typed Git/GitHub panel (E2–E5): load its structured status + branches.
+          yield* refreshGitPanel(state, gitBridge)
         }
       }
     }),
@@ -2078,7 +2096,14 @@ const workspaceReview = (state: DesktopShellState): View => {
       : [Text({ key: "workspace-review-diff-unavailable", content: state.workspaceGitDiff.message, variant: "body", color: "warning" })]
   return Stack(
     { key: "workspace-review-panel", direction: "column", gap: "3", style: { width: "full", minWidth: 0, flex: 1, minHeight: 0 } },
-    [Text({ key: "workspace-review-title", content: "Changes", variant: "heading", color: "textPrimary" }), ...statusRows, ...diffRows],
+    [
+      // Typed Git/GitHub surface (E2–E5): commit/push/branch/issue/PR with
+      // receipts, mounted above the existing read-only diff viewer.
+      gitPanelView(state.git),
+      Text({ key: "workspace-review-title", content: "Changes", variant: "heading", color: "textPrimary" }),
+      ...statusRows,
+      ...diffRows,
+    ],
   )
 }
 

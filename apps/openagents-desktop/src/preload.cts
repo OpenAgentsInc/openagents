@@ -53,6 +53,7 @@ import {
   type DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
+import { GitGithubChannel, decodeGitGithubRequest, gitGithubError } from "./git-github-contract.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
@@ -225,6 +226,19 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     return request === null
       ? Promise.resolve({ state: "unavailable", message: "The diff request is invalid." })
       : ipcRenderer.invoke(DesktopWorkspaceGitDiffChannel, request)
+  },
+  /**
+   * Typed Git/GitHub surface (EP250 E2–E5): one narrow method over the closed
+   * operation set. The request is schema-decoded here before it crosses the
+   * bridge; a malformed request never reaches main. No raw ipcRenderer leaks.
+   */
+  gitGithub: {
+    run: (value: unknown) => {
+      const request = decodeGitGithubRequest(value)
+      return request === null
+        ? Promise.resolve(gitGithubError("status", "invalid_request", "The Git request could not be decoded."))
+        : ipcRenderer.invoke(GitGithubChannel, request)
+    },
   },
   /**
    * Codex account connect + reconnect (#8640 unblock; EP250 UI-owned

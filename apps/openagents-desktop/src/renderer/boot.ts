@@ -32,6 +32,10 @@ import {
   type FleetAccountsBridge,
 } from "./fleet-workspace.ts"
 import {
+  unavailableGitGithubBridge,
+  type GitGithubBridge,
+} from "./git-panel.ts"
+import {
   desktopShellIntents,
   desktopShellView,
   initialDesktopShellState,
@@ -154,6 +158,8 @@ type DesktopBridge = Readonly<{
     saveBinding?: (value: unknown) => Promise<unknown>
     resetBindings?: () => Promise<unknown>
   }>
+  /** Typed Git/GitHub surface (EP250 E2–E5): one namespaced invoke. */
+  gitGithub?: Readonly<{ run?: (value: unknown) => Promise<unknown> }>
 }>
 
 const readBridge = (): DesktopBridge | undefined =>
@@ -222,6 +228,21 @@ const fleetAccountsBridge: FleetAccountsBridge = {
     return typeof bridge?.usageLedger?.snapshot === "function"
       ? bridge.usageLedger.snapshot()
       : Promise.resolve(null)
+  },
+}
+
+/**
+ * Typed Git/GitHub bridge (#8712 E2–E5) over the preload gitGithub surface.
+ * A single namespaced invoke carries the closed operation set; the git-panel
+ * handlers schema-decode every response before it touches state. An absent
+ * bridge degrades to the typed no_workspace error.
+ */
+const gitGithubBridge: GitGithubBridge = {
+  run: (value: unknown) => {
+    const bridge = readBridge()
+    return typeof bridge?.gitGithub?.run === "function"
+      ? bridge.gitGithub.run(value)
+      : unavailableGitGithubBridge.run(value)
   },
 }
 
@@ -563,7 +584,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const raw = await (globalThis as { openagentsDesktop?: { toggleFullScreen?: () => Promise<boolean> } }).openagentsDesktop?.toggleFullScreen?.()
           return raw === true
         },
-      }),
+      }, gitGithubBridge),
     )
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).
