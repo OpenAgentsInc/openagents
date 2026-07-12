@@ -8,20 +8,30 @@ import { resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
+  buildMcpConfigFromDraft,
   connectStatusIsLive,
   decodeAccountsView,
   decodeClaudeAccountsView,
   decodeConnectStatusView,
   decodeOpenAgentsSessionView,
+  emptyMcpAddDraft,
+  initialMcpSettingsState,
   initialSettingsState,
+  makeSettingsHandlers,
+  parseMcpArgs,
+  parseMcpKeyValueLines,
   settingsView,
   withSettingsAccounts,
   withSettingsClaudeAccounts,
   withSettingsConnectStatus,
   type CodexSettingsBridge,
+  type McpConfigSettingsBridge,
+  type McpSettingsState,
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
+  type SettingsState,
 } from "./settings.ts"
+import type { McpConfigServerView } from "../mcp-config-contract.ts"
 import {
   desktopShellIntents,
   desktopShellView,
@@ -885,5 +895,230 @@ describe("reconnect intent loop end-to-end (EP250)", () => {
         expect((yield* SubscriptionRef.get(state)).settings.connect).toEqual({ state: "idle" })
       }),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// User-configured MCP servers (I2, EP250 wave-2). The UI oracle for behavior
+// contract openagents_desktop.settings.mcp_servers.v1: list render + status
+// chip, transport-specific Add form with client-side validation (happy + sad),
+// and the toggle/remove/add dispatch loop through a fake bridge.
+// ---------------------------------------------------------------------------
+
+const loadedMcp = (
+  servers: ReadonlyArray<McpConfigServerView>,
+  over: Partial<McpSettingsState> = {},
+): SettingsState => ({
+  ...initialSettingsState(),
+  mcp: {
+    ...initialMcpSettingsState(),
+    servers: { state: "loaded", servers, dropped: 0 },
+    ...over,
+  },
+})
+
+const stdioView = (over: Partial<McpConfigServerView> = {}): McpConfigServerView => ({
+  name: "docs",
+  transport: "stdio",
+  enabled: true,
+  command: "docs-mcp",
+  argsCount: 0,
+  envCount: 0,
+  headersCount: 0,
+  ...over,
+})
+
+describe("MCP servers — pure client-side validation", () => {
+  test("parseMcpArgs splits on whitespace/newlines, drops empties, caps at 64", () => {
+    expect(parseMcpArgs("--root /x\n--verbose")).toEqual(["--root", "/x", "--verbose"])
+    expect(parseMcpArgs("   ")).toEqual([])
+    expect(parseMcpArgs(Array.from({ length: 100 }, (_, i) => `a${i}`).join(" ")).length).toBe(64)
+  })
+
+  test("parseMcpKeyValueLines keeps later separators in the value; drops keyless lines", () => {
+    expect(parseMcpKeyValueLines("TOKEN=a=b\nEMPTY", "=")).toEqual({ TOKEN: "a=b" })
+    expect(parseMcpKeyValueLines("Authorization: Bearer x", ":")).toEqual({ Authorization: "Bearer x" })
+  })
+
+  test("buildMcpConfigFromDraft — happy stdio path yields a frozen config", () => {
+    const draft = { ...emptyMcpAddDraft(), name: "docs", command: "docs-mcp", argsText: "--root /x", envText: "TOKEN=secret" }
+    const built = buildMcpConfigFromDraft(draft, [])
+    expect(built.ok).toBe(true)
+    if (built.ok) {
+      expect(built.config).toEqual({
+        name: "docs", transport: "stdio", enabled: true, command: "docs-mcp",
+        args: ["--root", "/x"], env: { TOKEN: "secret" },
+      })
+    }
+  })
+
+  test("buildMcpConfigFromDraft — happy http path yields a frozen config", () => {
+    const draft = { ...emptyMcpAddDraft(), transport: "http" as const, name: "remote", url: "https://example.test/mcp", headersText: "Authorization: Bearer x" }
+    const built = buildMcpConfigFromDraft(draft, [])
+    expect(built.ok).toBe(true)
+    if (built.ok) {
+      expect(built.config).toEqual({
+        name: "remote", transport: "http", enabled: true, url: "https://example.test/mcp",
+        headers: { Authorization: "Bearer x" },
+      })
+    }
+  })
+
+  test("buildMcpConfigFromDraft — sad paths: empty/invalid/reserved/duplicate name, missing transport field", () => {
+    const base = emptyMcpAddDraft()
+    expect(buildMcpConfigFromDraft({ ...base, name: "" }, []).ok).toBe(false)
+    expect(buildMcpConfigFromDraft({ ...base, name: "bad name!" }, []).ok).toBe(false)
+    expect(buildMcpConfigFromDraft({ ...base, name: "codex", command: "x" }, []).ok).toBe(false)
+    expect(buildMcpConfigFromDraft({ ...base, name: "docs", command: "x" }, ["docs"]).ok).toBe(false)
+    expect(buildMcpConfigFromDraft({ ...base, name: "docs" }, []).ok).toBe(false) // stdio, no command
+    expect(buildMcpConfigFromDraft({ ...base, transport: "http", name: "r", url: "ftp://x" }, []).ok).toBe(false)
+  })
+})
+
+describe("MCP servers — view rendering", () => {
+  test("loaded servers render name, transport badge, enabled toggle, and a Remove button", () => {
+    const view = settingsView(loadedMcp([
+      stdioView({ name: "docs", command: "docs-mcp" }),
+      { name: "remote", transport: "http", enabled: false, url: "https://x.test", argsCount: 0, envCount: 0, headersCount: 1 },
+    ]))
+    expect(nodeByKey(view, "settings-mcp-server-docs-name")?.content).toBe("docs")
+    expect(nodeByKey(view, "settings-mcp-server-docs-transport")?.label).toBe("stdio")
+    const toggle = nodeByKey(view, "settings-mcp-server-docs-toggle")
+    expect(toggle?._tag).toBe("Toggle")
+    expect(toggle?.value).toBe(true)
+    expect(nodeByKey(view, "settings-mcp-server-remote-toggle")?.value).toBe(false)
+    expect(nodeByKey(view, "settings-mcp-server-remote-remove")?._tag).toBe("Button")
+  })
+
+  test("a runtime-reported unavailable status renders a warn chip", () => {
+    const view = settingsView(loadedMcp([stdioView({ name: "docs" })], { status: { docs: "failed: needs auth" } }))
+    const chip = nodeByKey(view, "settings-mcp-server-docs-status")
+    expect(chip?.label).toBe("unavailable")
+    expect(chip?.tone).toBe("warn")
+  })
+
+  test("empty and unavailable server states render honest placeholders", () => {
+    expect(nodeByKey(settingsView(loadedMcp([])), "settings-mcp-empty")).toBeDefined()
+    const unavailable = settingsView({
+      ...initialSettingsState(),
+      mcp: { ...initialMcpSettingsState(), servers: { state: "unavailable", message: "nope" } },
+    })
+    expect(nodeByKey(unavailable, "settings-mcp-unavailable")?.content).toBe("nope")
+  })
+
+  test("Add form shows stdio fields by default and http fields when transport is http", () => {
+    const stdioForm = settingsView(initialSettingsState())
+    expect(nodeByKey(stdioForm, "settings-mcp-field-command")).toBeDefined()
+    expect(nodeByKey(stdioForm, "settings-mcp-field-url")).toBeUndefined()
+    const httpForm = settingsView({
+      ...initialSettingsState(),
+      mcp: { ...initialMcpSettingsState(), draft: { ...emptyMcpAddDraft(), transport: "http" } },
+    })
+    expect(nodeByKey(httpForm, "settings-mcp-field-url")).toBeDefined()
+    expect(nodeByKey(httpForm, "settings-mcp-field-command")).toBeUndefined()
+  })
+
+  test("the transport RadioGroup reflects the draft and offers stdio + http", () => {
+    const radio = nodeByKey(settingsView(initialSettingsState()), "settings-mcp-field-transport") as {
+      value?: string
+      options?: ReadonlyArray<{ value: string }>
+    }
+    expect(radio?.value).toBe("stdio")
+    expect(radio?.options?.map((o) => o.value)).toEqual(["stdio", "http"])
+  })
+})
+
+describe("MCP servers — typed intent loop (fake bridge)", () => {
+  const makeMcpBridge = (calls: Array<string>, servers: Array<McpConfigServerView>): McpConfigSettingsBridge => ({
+    list: async () => ({ state: "ok", dropped: 0, servers }),
+    add: async (config) => {
+      calls.push(`add:${config.name}`)
+      const view = { name: config.name, transport: config.transport, enabled: config.enabled, argsCount: 0, envCount: 0, headersCount: 0 }
+      servers.push(view)
+      return { state: "ok", dropped: 0, servers }
+    },
+    remove: async (name) => {
+      calls.push(`remove:${name}`)
+      const next = servers.filter((s) => s.name !== name)
+      return { state: "ok", dropped: 0, servers: next }
+    },
+    toggle: async (name, enabled) => {
+      calls.push(`toggle:${name}:${enabled}`)
+      return { state: "ok", dropped: 0, servers: servers.map((s) => (s.name === name ? { ...s, enabled } : s)) }
+    },
+  })
+
+  const runMcp = <A>(effect: (h: ReturnType<typeof makeSettingsHandlers>, state: SubscriptionRef.SubscriptionRef<{ workspace: string; settings: SettingsState }>) => Effect.Effect<A>, bridge: McpConfigSettingsBridge, seed: Partial<SettingsState> = {}) =>
+    Effect.runPromise(Effect.gen(function* () {
+      const state = yield* SubscriptionRef.make<{ workspace: string; settings: SettingsState }>({
+        workspace: "settings",
+        settings: { ...initialSettingsState(), ...seed },
+      })
+      const handlers = makeSettingsHandlers(state, undefined, undefined, undefined, undefined, undefined, bridge)
+      return yield* effect(handlers, state)
+    }))
+
+  test("field-change intents update the draft and clear a prior form error", async () => {
+    const result = await runMcp((h, state) => Effect.gen(function* () {
+      yield* h.DesktopMcpNameChanged("docs")
+      yield* h.DesktopMcpCommandChanged("docs-mcp")
+      yield* h.DesktopMcpTransportChanged("http")
+      return (yield* SubscriptionRef.get(state)).settings.mcp.draft
+    }), makeMcpBridge([], []))
+    expect(result.name).toBe("docs")
+    expect(result.command).toBe("docs-mcp")
+    expect(result.transport).toBe("http")
+  })
+
+  test("Add happy path calls the bridge, lists the new server, and resets the draft", async () => {
+    const calls: Array<string> = []
+    const bridge = makeMcpBridge(calls, [])
+    const after = await runMcp((h, state) => Effect.gen(function* () {
+      yield* h.DesktopMcpNameChanged("docs")
+      yield* h.DesktopMcpCommandChanged("docs-mcp")
+      yield* h.DesktopMcpAddRequested()
+      return (yield* SubscriptionRef.get(state)).settings.mcp
+    }), bridge, { mcp: { ...initialMcpSettingsState(), servers: { state: "loaded", servers: [], dropped: 0 } } })
+    expect(calls).toEqual(["add:docs"])
+    expect(after.servers.state).toBe("loaded")
+    if (after.servers.state === "loaded") expect(after.servers.servers.map((s) => s.name)).toEqual(["docs"])
+    expect(after.draft.name).toBe("")
+    expect(after.formError).toBeNull()
+  })
+
+  test("Add sad path (reserved name) sets an inline formError and never calls the bridge", async () => {
+    const calls: Array<string> = []
+    const after = await runMcp((h, state) => Effect.gen(function* () {
+      yield* h.DesktopMcpNameChanged("codex")
+      yield* h.DesktopMcpCommandChanged("x")
+      yield* h.DesktopMcpAddRequested()
+      return (yield* SubscriptionRef.get(state)).settings.mcp
+    }), makeMcpBridge(calls, []), { mcp: { ...initialMcpSettingsState(), servers: { state: "loaded", servers: [], dropped: 0 } } })
+    expect(calls).toEqual([])
+    expect(after.formError).toContain("reserved")
+    // The inline error also renders in the view.
+    expect(nodeByKey(settingsView({ ...initialSettingsState(), mcp: after }), "settings-mcp-form-error")?.content).toContain("reserved")
+  })
+
+  test("toggle dispatch flips enabled through the bridge; remove drops the row", async () => {
+    const calls: Array<string> = []
+    const seedServers = [stdioView({ name: "docs", enabled: true })]
+    const bridge = makeMcpBridge(calls, [...seedServers])
+    const after = await runMcp((h, state) => Effect.gen(function* () {
+      yield* h.DesktopMcpToggleRequested("docs")
+      yield* h.DesktopMcpRemoveRequested("docs")
+      return (yield* SubscriptionRef.get(state)).settings.mcp
+    }), bridge, { mcp: { ...initialMcpSettingsState(), servers: { state: "loaded", servers: seedServers, dropped: 0 } } })
+    expect(calls).toEqual(["toggle:docs:false", "remove:docs"])
+    if (after.servers.state === "loaded") expect(after.servers.servers).toEqual([])
+  })
+
+  test("remove/toggle for a name not displayed are ignored (renderer-side guard)", async () => {
+    const calls: Array<string> = []
+    await runMcp((h) => Effect.gen(function* () {
+      yield* h.DesktopMcpToggleRequested("ghost")
+      yield* h.DesktopMcpRemoveRequested("ghost")
+    }), makeMcpBridge(calls, []), { mcp: { ...initialMcpSettingsState(), servers: { state: "loaded", servers: [], dropped: 0 } } })
+    expect(calls).toEqual([])
   })
 })

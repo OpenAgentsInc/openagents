@@ -101,6 +101,15 @@ import {
   CodexLocalStartChannel,
 } from "./codex-local-contract.ts"
 import {
+  McpConfigAddChannel,
+  McpConfigListChannel,
+  McpConfigRemoveChannel,
+  McpConfigToggleChannel,
+  decodeMcpConfigAddRequest,
+  decodeMcpConfigNameRequest,
+  decodeMcpConfigToggleRequest,
+} from "./mcp-config-contract.ts"
+import {
   UsageLedgerEventChannel,
   UsageLedgerSnapshotChannel,
   decodeUsageLedgerSnapshot,
@@ -465,6 +474,34 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return decodeDesktopCodingCatalogProjection(
         await ipcRenderer.invoke(DesktopCodingCatalogFocusChannel, request),
       ) ?? emptyDesktopCodingCatalogProjection()
+    },
+  },
+  /**
+   * User-configured MCP servers (I2, EP250 wave-2). The renderer sends the
+   * Add form's typed config (schema-checked here) and only ever receives the
+   * public-safe projection back — names/transport/enabled/command/url and
+   * arg/env/header COUNTS, never secret values. Remove/toggle carry a
+   * schema-validated name; main re-validates against the frozen schema.
+   */
+  mcpConfig: {
+    list: () => ipcRenderer.invoke(McpConfigListChannel),
+    add: (value: unknown) => {
+      const request = decodeMcpConfigAddRequest(value)
+      return request === null
+        ? Promise.resolve({ state: "rejected", reason: "invalid server config" })
+        : ipcRenderer.invoke(McpConfigAddChannel, request)
+    },
+    remove: (value: unknown) => {
+      const request = decodeMcpConfigNameRequest(value)
+      return request === null
+        ? Promise.resolve({ state: "rejected", reason: "invalid server name" })
+        : ipcRenderer.invoke(McpConfigRemoveChannel, request)
+    },
+    toggle: (value: unknown) => {
+      const request = decodeMcpConfigToggleRequest(value)
+      return request === null
+        ? Promise.resolve({ state: "rejected", reason: "invalid toggle request" })
+        : ipcRenderer.invoke(McpConfigToggleChannel, request)
     },
   },
   commands: {

@@ -108,9 +108,11 @@ import {
   settingsIntents,
   settingsView,
   unavailableCodexSettingsBridge,
+  unavailableMcpConfigSettingsBridge,
   unavailableOpenAgentsSessionSettingsBridge,
   unavailableProviderAccountsSettingsBridge,
   type CodexSettingsBridge,
+  type McpConfigSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
   type SettingsState,
@@ -967,8 +969,9 @@ export const makeDesktopShellHandlers = (
   commandBindingHost: CommandBindingHost = unavailableCommandBindingHost,
   windowHost: DesktopWindowHost = { toggleFullScreen: async () => false },
   gitBridge: GitGithubBridge = unavailableGitGithubBridge,
+  mcpConfigBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
-  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge)
+  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge)
   /**
    * Hands one completed answer set to the typed bridge. The card collapses
    * only after the bridge confirms success. This preserves the frozen local

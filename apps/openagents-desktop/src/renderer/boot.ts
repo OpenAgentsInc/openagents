@@ -21,12 +21,15 @@ import { makeDomRenderer } from "@effect-native/render-dom"
 
 import {
   unavailableCodexSettingsBridge,
+  unavailableMcpConfigSettingsBridge,
   unavailableProviderAccountsSettingsBridge,
   decodeOpenAgentsSessionView,
   type CodexSettingsBridge,
+  type McpConfigSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
 } from "./settings.ts"
+import type { FableLocalMcpServerConfig } from "../fable-local-contract.ts"
 import {
   unavailableFleetAccountsBridge,
   type FleetAccountsBridge,
@@ -160,6 +163,12 @@ type DesktopBridge = Readonly<{
   }>
   /** Typed Git/GitHub surface (EP250 E2–E5): one namespaced invoke. */
   gitGithub?: Readonly<{ run?: (value: unknown) => Promise<unknown> }>
+  mcpConfig?: Readonly<{
+    list?: () => Promise<unknown>
+    add?: (value: unknown) => Promise<unknown>
+    remove?: (value: unknown) => Promise<unknown>
+    toggle?: (value: unknown) => Promise<unknown>
+  }>
 }>
 
 const readBridge = (): DesktopBridge | undefined =>
@@ -257,6 +266,39 @@ const providerAccountsSettingsBridge: ProviderAccountsSettingsBridge = {
     return typeof bridge?.providerAccounts?.list === "function"
       ? bridge.providerAccounts.list()
       : unavailableProviderAccountsSettingsBridge.list()
+  },
+}
+
+/**
+ * User-configured MCP servers bridge (I2, EP250 wave-2) over the preload
+ * surface. Add sends the typed config to main (secret values cross once);
+ * every response is schema-decoded in the settings handlers before it touches
+ * state, and the projection carries no secret values back.
+ */
+const mcpConfigSettingsBridge: McpConfigSettingsBridge = {
+  list: () => {
+    const bridge = readBridge()
+    return typeof bridge?.mcpConfig?.list === "function"
+      ? bridge.mcpConfig.list()
+      : unavailableMcpConfigSettingsBridge.list()
+  },
+  add: (config: FableLocalMcpServerConfig) => {
+    const bridge = readBridge()
+    return typeof bridge?.mcpConfig?.add === "function"
+      ? bridge.mcpConfig.add(config)
+      : unavailableMcpConfigSettingsBridge.add(config)
+  },
+  remove: (name: string) => {
+    const bridge = readBridge()
+    return typeof bridge?.mcpConfig?.remove === "function"
+      ? bridge.mcpConfig.remove({ name })
+      : unavailableMcpConfigSettingsBridge.remove(name)
+  },
+  toggle: (name: string, enabled: boolean) => {
+    const bridge = readBridge()
+    return typeof bridge?.mcpConfig?.toggle === "function"
+      ? bridge.mcpConfig.toggle({ name, enabled })
+      : unavailableMcpConfigSettingsBridge.toggle(name, enabled)
   },
 }
 
@@ -584,7 +626,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const raw = await (globalThis as { openagentsDesktop?: { toggleFullScreen?: () => Promise<boolean> } }).openagentsDesktop?.toggleFullScreen?.()
           return raw === true
         },
-      }, gitGithubBridge),
+      }, gitGithubBridge, mcpConfigSettingsBridge),
     )
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).

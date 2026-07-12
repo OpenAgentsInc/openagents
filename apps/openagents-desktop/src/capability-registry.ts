@@ -12,8 +12,10 @@
  *
  * SOURCE-OF-TRUTH NOTE (honest discrepancy). The audit's §4 taxonomy tables —
  * the per-capability authority, since that is where each capability's status is
- * stated — contain FORTY capability rows (A1..K2) with the distribution
- * { ui_available: 15, programmatic_only: 4, partial: 13, missing: 8 }. The
+ * stated — contain FORTY capability rows (A1..K2) with the audit-time
+ * distribution { ui_available: 15, programmatic_only: 4, partial: 13,
+ * missing: 8 } (I2 has since flipped missing -> ui_available on the EP250
+ * wave-2 lane, so the live registry is now { 16, 4, 13, 7 }). The
  * audit's prose "Totals" line and its "33 capabilities × 2 oracles" figure say
  * 33 with { 13, 4, 10, 6 }; those numbers are arithmetically inconsistent with
  * the audit's own tables (whose group sizes sum to 40, not 33). This registry
@@ -93,6 +95,8 @@ const HISTORY_WORKSPACE = "apps/openagents-desktop/src/renderer/history-workspac
 const COMMAND_HOST = "apps/openagents-desktop/tests/desktop-command-host.test.ts"
 const SMOKE = "apps/openagents-desktop/src/main.ts"
 const LIVE_PROOF = "apps/openagents-desktop/src/live-proof.ts"
+const MCP_SETTINGS = "apps/openagents-desktop/src/renderer/settings.test.ts"
+const MCP_HOST = "apps/openagents-desktop/src/mcp-config-host.test.ts"
 
 /** The audit's prose-summary figures — recorded, and flagged as inconsistent. */
 export const AUDIT_PROSE_SUMMARY = {
@@ -109,10 +113,13 @@ export const AUDIT_PROSE_SUMMARY = {
  */
 export const CAPABILITY_TABLE_DISTRIBUTION = {
   total: 40,
-  ui_available: 15,
+  // I2 (user-configured MCP servers) flipped missing -> ui_available on the
+  // EP250 wave-2 lane that landed the settings UI + persistence host next to
+  // the already-landed runtime passthrough.
+  ui_available: 16,
   programmatic_only: 4,
   partial: 13,
-  missing: 8,
+  missing: 7,
 } as const
 
 export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
@@ -340,11 +347,12 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     blocker: "audit I1: no composer image path; main.ts disallows webview attachments; fable-local input schema carries no image block",
   },
   {
-    id: "I2", group: "I", capability: "User-configured MCP servers", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit I2: only the internal delegate SDK-MCP server exists; no MCP config UI",
+    // Landed EP250 wave-2: the MCP-config SETTINGS UI + persistence host now
+    // exist alongside the runtime passthrough, so I2 flips off `missing`.
+    id: "I2", group: "I", capability: "User-configured MCP servers", status: "ui_available",
+    uiOracleRef: MCP_SETTINGS, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: MCP_HOST, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
   },
   {
     id: "I3", group: "I", capability: "Skills / slash commands", status: "missing",

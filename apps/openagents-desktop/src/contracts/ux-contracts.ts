@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.37",
+    version: "2026-07-11.38",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -2244,6 +2244,64 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the host real-repo suite, the contract both-sides suite, the panel intent-loop suite, and the Electron smoke git-review step.",
+      },
+      // =====================================================================
+      // I2 (#8712 EP250 wave-2) — the MCP-config SETTINGS surface, landing the
+      // renderer half that the runtime-capabilities contract left as a planned
+      // wave-2 oracle. Realizes audit gap §6.5.
+      // =====================================================================
+      {
+        contractId: "openagents_desktop.settings.mcp_servers.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "settings — user-configured MCP servers",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "capability-audit",
+          statedBy: "agent",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "User-configured MCP servers — ~858 calls across Stripe/Expo/Apollo/docs/design servers. No config surface; only the internal delegate server exists. (missing, I2)",
+        authorityBoundary:
+          "The Settings screen gains an 'MCP servers' section (apps-sdk chrome + shared token styles only — the design-conformance oracle) that lists configured servers (name, transport chip, enable/disable Toggle, Remove) and an Add form whose stdio/http fields switch on a transport RadioGroup. Client-side validation mirrors the FROZEN FableLocalMcpServerConfig bounds (name charset/length, reserved 'codex', duplicate names, transport-specific required field, arg/env/header value bounds) and shows a single inline error before anything crosses to main. Persistence is a main-process host writing a private JSON file under userData mode 0600; env/header/arg VALUES are user-provided and may be sensitive, so they are persisted and handed to the fable-local runtime's userMcpServers getter (main-only) but are NEVER logged and NEVER cross back to the renderer — the projection carries name/transport/enabled/command/url and arg/env/header COUNTS only. Stored rows are re-validated against the frozen schema on read; invalid rows are dropped and counted, never crashing. A runtime-reported mcp_server_unavailable status renders a warn chip when threaded to settings; until that thread lands the section shows config state. This surface adds no new primitive: it composes the shared catalog TextField/RadioGroup/Toggle/Button/Badge only.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/settings.ts",
+          "apps/openagents-desktop/src/mcp-config-host.ts",
+          "apps/openagents-desktop/src/mcp-config-contract.ts",
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "docs/fable/2026-07-11-daily-coding-capability-audit.md",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "mcp_servers.settings_render_and_intent_loop",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/settings.test.ts",
+            description:
+              "The MCP servers section lists configured servers with a transport badge, enable/disable Toggle, and Remove; the Add form shows stdio vs http fields by transport; client-side validation rejects empty/invalid/reserved/duplicate names and missing transport fields with an inline error; and the add/toggle/remove intent loop drives a fake bridge, resets the draft on success, and ignores names not displayed.",
+          },
+          {
+            id: "mcp_servers.persistence_host",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/mcp-config-host.test.ts",
+            description:
+              "The persistence host round-trips configs to a mode-0600 file, drops-and-counts schema-invalid stored rows without crashing, enforces the reserved/duplicate/transport/list-cap rules on add, and returns a renderer projection that never contains secret env/header values.",
+          },
+          {
+            id: "mcp_servers.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke opens Settings, asserts the MCP servers section renders, adds a fixture stdio server through the real Add form + typed IPC, and asserts it persists and lists — without spawning a real MCP server (the fable query is a fixture in smoke).",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the settings renderer suite and the persistence-host suite as programmatic/UI oracles, plus the Electron smoke MCP add-and-list step.",
       },
     ],
   };

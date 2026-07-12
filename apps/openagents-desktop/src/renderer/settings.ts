@@ -13,16 +13,31 @@ import {
   Badge,
   Button,
   Card,
+  ComponentValueBinding,
+  Divider,
   IntentRef,
+  RadioGroup,
   Spacer,
   Stack,
   StaticPayload,
   Text,
+  TextField,
+  Toggle,
   Tooltip,
   defineIntent,
   type View,
 } from "@effect-native/core"
 import { Effect, Exit, Schema, SubscriptionRef } from "@effect-native/core/effect"
+
+import {
+  decodeMcpConfigListResult,
+  decodeMcpConfigMutationResult,
+  mcpReservedServerName,
+  mcpServerListCap,
+  mcpServerNamePattern,
+  type McpConfigServerView,
+} from "../mcp-config-contract.ts"
+import type { FableLocalMcpServerConfig } from "../fable-local-contract.ts"
 
 // ---------------------------------------------------------------------------
 // Renderer-side bridge decoding (Effect Schema; mirrors the main-process
@@ -61,7 +76,65 @@ export type SettingsState = Readonly<{
    */
   connectTarget: string | null
   openAgentsSession: DesktopOpenAgentsSessionView
+  /** User-configured MCP servers (I2, EP250 wave-2). */
+  mcp: McpSettingsState
 }>
+
+// ---------------------------------------------------------------------------
+// User-configured MCP servers (I2, EP250 wave-2). All view-model state; the
+// runtime substrate + FROZEN config schema landed on a prior lane. The Add
+// form draft is client-validated against the same schema bounds before it
+// ever crosses to main, and main re-validates against the frozen schema.
+// ---------------------------------------------------------------------------
+
+export type McpServersView =
+  | Readonly<{ state: "loading" }>
+  | Readonly<{ state: "loaded"; servers: ReadonlyArray<McpConfigServerView>; dropped: number }>
+  | Readonly<{ state: "unavailable"; message: string }>
+
+export type McpAddDraft = Readonly<{
+  name: string
+  transport: "stdio" | "http"
+  command: string
+  /** Whitespace/newline-separated argv (stdio). */
+  argsText: string
+  /** `KEY=value` per line (stdio). */
+  envText: string
+  url: string
+  /** `Key: Value` per line (http). */
+  headersText: string
+}>
+
+export type McpSettingsState = Readonly<{
+  servers: McpServersView
+  draft: McpAddDraft
+  /** Inline Add-form error (client validation OR main's typed rejection). */
+  formError: string | null
+  /**
+   * Optional runtime-reported unavailability by server name. The runtime emits
+   * `mcp_server_unavailable` during a turn; threading that live status into
+   * settings is a separate lane, so this defaults to none and the UI shows
+   * config state (enabled/disabled) until it is wired.
+   */
+  status: Readonly<Record<string, string>>
+}>
+
+export const emptyMcpAddDraft = (): McpAddDraft => ({
+  name: "",
+  transport: "stdio",
+  command: "",
+  argsText: "",
+  envText: "",
+  url: "",
+  headersText: "",
+})
+
+export const initialMcpSettingsState = (): McpSettingsState => ({
+  servers: { state: "loading" },
+  draft: emptyMcpAddDraft(),
+  formError: null,
+  status: {},
+})
 
 export type DesktopOpenAgentsSessionView =
   | "loading"
@@ -78,10 +151,119 @@ export const initialSettingsState = (): SettingsState => ({
   connect: { state: "idle" },
   connectTarget: null,
   openAgentsSession: "loading",
+  mcp: initialMcpSettingsState(),
 })
 
 const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
 const userCodePattern = /^[A-Z0-9]{4}-[A-Z0-9]{4,6}$/
+
+// Frozen-schema field bounds (fable-local-contract.ts) mirrored client-side so
+// the Add form fails fast with an inline reason before anything crosses to
+// main; main re-validates against the same frozen schema regardless.
+const MCP_NAME_MAX = 64
+const MCP_COMMAND_MAX = 512
+const MCP_ARG_MAX = 1_024
+const MCP_ARGS_COUNT_MAX = 64
+const MCP_URL_MAX = 2_048
+const MCP_ENV_VALUE_MAX = 4_096
+const MCP_HEADER_VALUE_MAX = 4_096
+
+/**
+ * Bounded, deterministic argv parse (whitespace/newline-separated). This runs
+ * only AFTER the "add an MCP server" route is already chosen — a bounded-field
+ * parser, not an intent router.
+ */
+export const parseMcpArgs = (text: string): ReadonlyArray<string> =>
+  text
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+    .slice(0, MCP_ARGS_COUNT_MAX)
+
+/** `KEY=value` per line → record (first `=` splits; later `=`s stay in value). */
+export const parseMcpKeyValueLines = (text: string, separator: "=" | ":"): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed === "") continue
+    const index = trimmed.indexOf(separator)
+    if (index <= 0) continue
+    const key = trimmed.slice(0, index).trim()
+    const value = trimmed.slice(index + 1).trim()
+    if (key === "") continue
+    out[key] = value
+  }
+  return out
+}
+
+/**
+ * Client-side build+validate of one Add-form draft into a frozen config, or a
+ * single inline error reason. Mirrors the frozen schema bounds and the
+ * reserved/duplicate/transport rules exactly. Newly added servers default
+ * `enabled: true` so they take effect on the next turn.
+ */
+export const buildMcpConfigFromDraft = (
+  draft: McpAddDraft,
+  existingNames: ReadonlyArray<string>,
+): { readonly ok: true; readonly config: FableLocalMcpServerConfig } | {
+  readonly ok: false
+  readonly error: string
+} => {
+  const name = draft.name.trim()
+  if (name === "") return { ok: false, error: "Name is required." }
+  if (name.length > MCP_NAME_MAX) return { ok: false, error: `Name must be at most ${MCP_NAME_MAX} characters.` }
+  if (!mcpServerNamePattern.test(name)) {
+    return { ok: false, error: "Name may use letters, digits, _ or -, and cannot start or end with a separator." }
+  }
+  if (name === mcpReservedServerName) {
+    return { ok: false, error: `"${mcpReservedServerName}" is reserved for the internal delegate server.` }
+  }
+  if (existingNames.includes(name)) return { ok: false, error: "A server with that name already exists." }
+
+  if (draft.transport === "stdio") {
+    const command = draft.command.trim()
+    if (command === "") return { ok: false, error: "A stdio server needs a command." }
+    if (command.length > MCP_COMMAND_MAX) return { ok: false, error: `Command must be at most ${MCP_COMMAND_MAX} characters.` }
+    const args = parseMcpArgs(draft.argsText)
+    if (args.some((arg) => arg.length > MCP_ARG_MAX)) {
+      return { ok: false, error: `Each argument must be at most ${MCP_ARG_MAX} characters.` }
+    }
+    const env = parseMcpKeyValueLines(draft.envText, "=")
+    if (Object.values(env).some((value) => value.length > MCP_ENV_VALUE_MAX)) {
+      return { ok: false, error: `Each environment value must be at most ${MCP_ENV_VALUE_MAX} characters.` }
+    }
+    return {
+      ok: true,
+      config: {
+        name,
+        transport: "stdio",
+        enabled: true,
+        command,
+        ...(args.length > 0 ? { args: [...args] } : {}),
+        ...(Object.keys(env).length > 0 ? { env } : {}),
+      },
+    }
+  }
+
+  const url = draft.url.trim()
+  if (url === "") return { ok: false, error: "An http server needs a URL." }
+  if (url.length > MCP_URL_MAX) return { ok: false, error: `URL must be at most ${MCP_URL_MAX} characters.` }
+  if (!/^https?:\/\//i.test(url)) return { ok: false, error: "URL must start with http:// or https://." }
+  const headers = parseMcpKeyValueLines(draft.headersText, ":")
+  if (Object.values(headers).some((value) => value.length > MCP_HEADER_VALUE_MAX)) {
+    return { ok: false, error: `Each header value must be at most ${MCP_HEADER_VALUE_MAX} characters.` }
+  }
+  return {
+    ok: true,
+    config: {
+      name,
+      transport: "http",
+      enabled: true,
+      url,
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    },
+  }
+}
 
 const RendererAccountsResultSchema = Schema.Union([
   Schema.Struct({
@@ -243,6 +425,27 @@ export const unavailableOpenAgentsSessionSettingsBridge: OpenAgentsSessionSettin
   signOut: async () => null,
 }
 
+export type McpConfigSettingsBridge = Readonly<{
+  list: () => Promise<unknown>
+  add: (config: FableLocalMcpServerConfig) => Promise<unknown>
+  remove: (name: string) => Promise<unknown>
+  toggle: (name: string, enabled: boolean) => Promise<unknown>
+}>
+
+export const unavailableMcpConfigSettingsBridge: McpConfigSettingsBridge = {
+  list: async () => ({ state: "unavailable", message: "MCP server configuration is unavailable on this build." }),
+  add: async () => ({ state: "unavailable", message: "MCP server configuration is unavailable on this build." }),
+  remove: async () => ({ state: "unavailable", message: "MCP server configuration is unavailable on this build." }),
+  toggle: async () => ({ state: "unavailable", message: "MCP server configuration is unavailable on this build." }),
+}
+
+export const mcpServersViewFromListResult = (value: unknown): McpServersView => {
+  const result = decodeMcpConfigListResult(value)
+  return result.state === "unavailable"
+    ? { state: "unavailable", message: result.message }
+    : { state: "loaded", servers: result.servers, dropped: result.dropped }
+}
+
 // ---------------------------------------------------------------------------
 // Pure transitions
 // ---------------------------------------------------------------------------
@@ -297,6 +500,20 @@ export const DesktopOpenAgentsSignOutRequested = defineIntent(
   Schema.Null,
 )
 
+// User-configured MCP servers (I2, EP250 wave-2). Field edits carry the raw
+// component string (ComponentValueBinding); the add/remove/toggle actions
+// carry a name or nothing and re-read the authoritative value from state/main.
+export const DesktopMcpNameChanged = defineIntent("DesktopMcpNameChanged", Schema.String)
+export const DesktopMcpTransportChanged = defineIntent("DesktopMcpTransportChanged", Schema.String)
+export const DesktopMcpCommandChanged = defineIntent("DesktopMcpCommandChanged", Schema.String)
+export const DesktopMcpArgsChanged = defineIntent("DesktopMcpArgsChanged", Schema.String)
+export const DesktopMcpEnvChanged = defineIntent("DesktopMcpEnvChanged", Schema.String)
+export const DesktopMcpUrlChanged = defineIntent("DesktopMcpUrlChanged", Schema.String)
+export const DesktopMcpHeadersChanged = defineIntent("DesktopMcpHeadersChanged", Schema.String)
+export const DesktopMcpAddRequested = defineIntent("DesktopMcpAddRequested", Schema.Null)
+export const DesktopMcpRemoveRequested = defineIntent("DesktopMcpRemoveRequested", Schema.String)
+export const DesktopMcpToggleRequested = defineIntent("DesktopMcpToggleRequested", Schema.String)
+
 export const settingsIntents = [
   DesktopSettingsToggled,
   DesktopCodexConnectRequested,
@@ -304,6 +521,16 @@ export const settingsIntents = [
   DesktopCodexVerificationOpened,
   DesktopOpenAgentsSignInRequested,
   DesktopOpenAgentsSignOutRequested,
+  DesktopMcpNameChanged,
+  DesktopMcpTransportChanged,
+  DesktopMcpCommandChanged,
+  DesktopMcpArgsChanged,
+  DesktopMcpEnvChanged,
+  DesktopMcpUrlChanged,
+  DesktopMcpHeadersChanged,
+  DesktopMcpAddRequested,
+  DesktopMcpRemoveRequested,
+  DesktopMcpToggleRequested,
 ] as const
 
 /**
@@ -324,8 +551,30 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
   sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   maxPolls = 1_300, // ~15 minutes at 700ms — matches main's device-auth timeout
   providerAccountsBridge: ProviderAccountsSettingsBridge = unavailableProviderAccountsSettingsBridge,
+  mcpBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
 ) => {
   const update = (transform: (current: S) => S) => SubscriptionRef.update(state, transform)
+
+  /** Re-read the MCP server list through the bridge into state. */
+  const refreshMcpServers = Effect.gen(function* () {
+    const servers = mcpServersViewFromListResult(
+      yield* Effect.promise(() => mcpBridge.list().catch(() => null)),
+    )
+    yield* update((next) => ({
+      ...next,
+      settings: { ...next.settings, mcp: { ...next.settings.mcp, servers } },
+    }))
+  })
+
+  /** Immutably patch the MCP add-form draft, bounding each stored field. */
+  const updateMcpDraft = (patch: Partial<McpAddDraft>) =>
+    update((next) => ({
+      ...next,
+      settings: {
+        ...next.settings,
+        mcp: { ...next.settings.mcp, draft: { ...next.settings.mcp.draft, ...patch }, formError: null },
+      },
+    }))
 
   /**
    * Re-read the accounts projection through the bridge. Runs after EVERY
@@ -407,10 +656,13 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
         yield* update((next) => ({
           ...next,
           workspace: "settings",
-          settings: withSettingsClaudeAccounts(
-            withSettingsAccounts(next.settings, { state: "loading" }),
-            { state: "loading" },
-          ),
+          settings: {
+            ...withSettingsClaudeAccounts(
+              withSettingsAccounts(next.settings, { state: "loading" }),
+              { state: "loading" },
+            ),
+            mcp: { ...next.settings.mcp, servers: { state: "loading" } },
+          },
         } as S))
         const accounts = decodeAccountsView(
           yield* Effect.promise(() => bridge.listAccounts().catch(() => null)),
@@ -431,6 +683,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
             openAgentsSession,
           },
         }))
+        yield* refreshMcpServers
       }),
     DesktopCodexConnectRequested: () => runConnectFlow(null, () => bridge.connectStart()),
     DesktopCodexReconnectRequested: (ref: string) =>
@@ -489,6 +742,104 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
           ...next,
           settings: { ...next.settings, openAgentsSession: phase },
         }))
+      }),
+    // -----------------------------------------------------------------------
+    // User-configured MCP servers (I2, EP250 wave-2).
+    // -----------------------------------------------------------------------
+    DesktopMcpNameChanged: (value: string) => updateMcpDraft({ name: value.slice(0, MCP_NAME_MAX) }),
+    DesktopMcpTransportChanged: (value: string) =>
+      value === "stdio" || value === "http" ? updateMcpDraft({ transport: value }) : Effect.void,
+    DesktopMcpCommandChanged: (value: string) => updateMcpDraft({ command: value.slice(0, MCP_COMMAND_MAX) }),
+    DesktopMcpArgsChanged: (value: string) => updateMcpDraft({ argsText: value.slice(0, 8_192) }),
+    DesktopMcpEnvChanged: (value: string) => updateMcpDraft({ envText: value.slice(0, 16_384) }),
+    DesktopMcpUrlChanged: (value: string) => updateMcpDraft({ url: value.slice(0, MCP_URL_MAX) }),
+    DesktopMcpHeadersChanged: (value: string) => updateMcpDraft({ headersText: value.slice(0, 16_384) }),
+    DesktopMcpAddRequested: () =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        const mcp = current.settings.mcp
+        const existingNames = mcp.servers.state === "loaded"
+          ? mcp.servers.servers.map((server) => server.name)
+          : []
+        const built = buildMcpConfigFromDraft(mcp.draft, existingNames)
+        if (!built.ok) {
+          yield* update((next) => ({
+            ...next,
+            settings: { ...next.settings, mcp: { ...next.settings.mcp, formError: built.error } },
+          }))
+          return
+        }
+        const result = decodeMcpConfigMutationResult(
+          yield* Effect.promise(() => mcpBridge.add(built.config).catch(() => null)),
+        )
+        if (result.state === "ok") {
+          yield* update((next) => ({
+            ...next,
+            settings: {
+              ...next.settings,
+              mcp: {
+                ...next.settings.mcp,
+                servers: { state: "loaded", servers: result.servers, dropped: result.dropped },
+                draft: emptyMcpAddDraft(),
+                formError: null,
+              },
+            },
+          }))
+          return
+        }
+        const message = result.state === "rejected" ? result.reason : result.message
+        yield* update((next) => ({
+          ...next,
+          settings: { ...next.settings, mcp: { ...next.settings.mcp, formError: message } },
+        }))
+      }),
+    DesktopMcpRemoveRequested: (name: string) =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        const mcp = current.settings.mcp
+        // The renderer may only remove a name it is actually displaying; main
+        // re-validates against its own stored list regardless.
+        if (mcp.servers.state !== "loaded" || !mcp.servers.servers.some((server) => server.name === name)) {
+          return
+        }
+        const result = decodeMcpConfigMutationResult(
+          yield* Effect.promise(() => mcpBridge.remove(name).catch(() => null)),
+        )
+        if (result.state === "ok") {
+          yield* update((next) => ({
+            ...next,
+            settings: {
+              ...next.settings,
+              mcp: {
+                ...next.settings.mcp,
+                servers: { state: "loaded", servers: result.servers, dropped: result.dropped },
+              },
+            },
+          }))
+        }
+      }),
+    DesktopMcpToggleRequested: (name: string) =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        const mcp = current.settings.mcp
+        if (mcp.servers.state !== "loaded") return
+        const server = mcp.servers.servers.find((entry) => entry.name === name)
+        if (server === undefined) return
+        const result = decodeMcpConfigMutationResult(
+          yield* Effect.promise(() => mcpBridge.toggle(name, !server.enabled).catch(() => null)),
+        )
+        if (result.state === "ok") {
+          yield* update((next) => ({
+            ...next,
+            settings: {
+              ...next.settings,
+              mcp: {
+                ...next.settings.mcp,
+                servers: { state: "loaded", servers: result.servers, dropped: result.dropped },
+              },
+            },
+          }))
+        }
       }),
   }
 }
@@ -763,6 +1114,256 @@ const openAgentsSessionSection = (
   ]
 }
 
+// ---------------------------------------------------------------------------
+// User-configured MCP servers (I2, EP250 wave-2) — pure view.
+// ---------------------------------------------------------------------------
+
+const mcpTransportLabel = (transport: "stdio" | "http"): string =>
+  transport === "stdio" ? "stdio" : "http"
+
+const mcpServerRow = (status: Readonly<Record<string, string>>) => (
+  server: McpConfigServerView,
+): View => {
+  const unavailable = status[server.name]
+  const detail = server.transport === "stdio"
+    ? server.command ?? ""
+    : server.url ?? ""
+  const extras = [
+    server.argsCount > 0 ? `${server.argsCount} arg${server.argsCount === 1 ? "" : "s"}` : null,
+    server.envCount > 0 ? `${server.envCount} env` : null,
+    server.headersCount > 0 ? `${server.headersCount} header${server.headersCount === 1 ? "" : "s"}` : null,
+  ].filter((value): value is string => value !== null)
+  return Stack(
+    {
+      key: `settings-mcp-server-${server.name}`,
+      direction: "column",
+      gap: "1",
+      style: { width: "full" },
+    },
+    [
+      Stack(
+        {
+          key: `settings-mcp-server-${server.name}-head`,
+          direction: "row",
+          gap: "2",
+          align: "center",
+          style: { width: "full" },
+        },
+        [
+          Text({
+            key: `settings-mcp-server-${server.name}-name`,
+            content: server.name,
+            variant: "body",
+            color: "textPrimary",
+          }),
+          Badge({
+            key: `settings-mcp-server-${server.name}-transport`,
+            label: mcpTransportLabel(server.transport),
+            tone: "neutral",
+            a11y: { label: `${server.name} transport: ${mcpTransportLabel(server.transport)}` },
+          }),
+          ...(unavailable === undefined
+            ? []
+            : [
+                Badge({
+                  key: `settings-mcp-server-${server.name}-status`,
+                  label: "unavailable",
+                  tone: "warn",
+                  a11y: { label: `${server.name} reported unavailable: ${unavailable}` },
+                }),
+              ]),
+          Spacer({ key: `settings-mcp-server-${server.name}-fill`, flex: true }),
+          Toggle({
+            key: `settings-mcp-server-${server.name}-toggle`,
+            value: server.enabled,
+            label: server.enabled ? "Enabled" : "Disabled",
+            onChange: IntentRef("DesktopMcpToggleRequested", StaticPayload(server.name)),
+            a11y: {
+              label: server.enabled
+                ? `Disable MCP server ${server.name}`
+                : `Enable MCP server ${server.name}`,
+            },
+          }),
+          Button({
+            key: `settings-mcp-server-${server.name}-remove`,
+            label: "Remove",
+            variant: "ghost",
+            onPress: IntentRef("DesktopMcpRemoveRequested", StaticPayload(server.name)),
+            a11y: { label: `Remove MCP server ${server.name}` },
+          }),
+        ],
+      ),
+      ...(detail === "" && extras.length === 0
+        ? []
+        : [
+            Text({
+              key: `settings-mcp-server-${server.name}-detail`,
+              content: [detail, ...extras].filter((value) => value !== "").join(" · "),
+              variant: "label",
+              color: "textMuted",
+            }),
+          ]),
+    ],
+  )
+}
+
+const mcpServersSection = (mcp: McpSettingsState): ReadonlyArray<View> => {
+  const servers = mcp.servers
+  if (servers.state === "loading") {
+    return [
+      Text({
+        key: "settings-mcp-loading",
+        content: "Loading MCP servers…",
+        variant: "body",
+        color: "textMuted",
+      }),
+    ]
+  }
+  if (servers.state === "unavailable") {
+    return [
+      Text({
+        key: "settings-mcp-unavailable",
+        content: servers.message,
+        variant: "body",
+        color: "textMuted",
+      }),
+    ]
+  }
+  if (servers.servers.length === 0) {
+    return [
+      Text({
+        key: "settings-mcp-empty",
+        content: "No MCP servers configured yet. Add one below to expose its tools as mcp__<name>__<tool>.",
+        variant: "body",
+        color: "textMuted",
+      }),
+    ]
+  }
+  const rows = servers.servers.map(mcpServerRow(mcp.status))
+  return servers.dropped > 0
+    ? [
+        Text({
+          key: "settings-mcp-dropped",
+          content: `${servers.dropped} stored server${servers.dropped === 1 ? "" : "s"} were dropped as invalid.`,
+          variant: "label",
+          color: "textMuted",
+        }),
+        ...rows,
+      ]
+    : rows
+}
+
+const mcpAddForm = (mcp: McpSettingsState): ReadonlyArray<View> => {
+  const draft = mcp.draft
+  const transportFields = draft.transport === "stdio"
+    ? [
+        TextField({
+          key: "settings-mcp-field-command",
+          value: draft.command,
+          placeholder: "Command (e.g. npx)",
+          label: "Command",
+          onChange: IntentRef("DesktopMcpCommandChanged", ComponentValueBinding()),
+          a11y: { label: "MCP server command" },
+        }),
+        TextField({
+          key: "settings-mcp-field-args",
+          value: draft.argsText,
+          multiline: true,
+          placeholder: "Arguments (space or newline separated)",
+          label: "Arguments",
+          onChange: IntentRef("DesktopMcpArgsChanged", ComponentValueBinding()),
+          a11y: { label: "MCP server arguments" },
+        }),
+        TextField({
+          key: "settings-mcp-field-env",
+          value: draft.envText,
+          multiline: true,
+          placeholder: "Environment (KEY=value per line)",
+          label: "Environment",
+          onChange: IntentRef("DesktopMcpEnvChanged", ComponentValueBinding()),
+          a11y: { label: "MCP server environment variables" },
+        }),
+      ]
+    : [
+        TextField({
+          key: "settings-mcp-field-url",
+          value: draft.url,
+          placeholder: "https://…",
+          label: "URL",
+          onChange: IntentRef("DesktopMcpUrlChanged", ComponentValueBinding()),
+          a11y: { label: "MCP server URL" },
+        }),
+        TextField({
+          key: "settings-mcp-field-headers",
+          value: draft.headersText,
+          multiline: true,
+          placeholder: "Headers (Key: Value per line)",
+          label: "Headers",
+          onChange: IntentRef("DesktopMcpHeadersChanged", ComponentValueBinding()),
+          a11y: { label: "MCP server request headers" },
+        }),
+      ]
+  return [
+    Divider({ key: "settings-mcp-add-divider" }),
+    Text({
+      key: "settings-mcp-add-title",
+      content: "Add MCP server",
+      variant: "label",
+      color: "textMuted",
+    }),
+    TextField({
+      key: "settings-mcp-field-name",
+      value: draft.name,
+      placeholder: "Name (letters, digits, _ or -)",
+      label: "Name",
+      onChange: IntentRef("DesktopMcpNameChanged", ComponentValueBinding()),
+      a11y: { label: "MCP server name" },
+    }),
+    RadioGroup({
+      key: "settings-mcp-field-transport",
+      name: "mcp-transport",
+      value: draft.transport,
+      orientation: "horizontal",
+      label: "Transport",
+      options: [
+        { value: "stdio", label: "stdio" },
+        { value: "http", label: "http" },
+      ],
+      onChange: IntentRef("DesktopMcpTransportChanged", ComponentValueBinding()),
+      a11y: { label: "MCP server transport" },
+    }),
+    ...transportFields,
+    ...(mcp.formError === null
+      ? []
+      : [
+          Text({
+            key: "settings-mcp-form-error",
+            content: mcp.formError,
+            variant: "body",
+            color: "danger",
+          }),
+        ]),
+    Button({
+      key: "settings-mcp-add",
+      label: "Add server",
+      variant: "primary",
+      onPress: IntentRef("DesktopMcpAddRequested"),
+      a11y: { label: "Add this MCP server to the configuration" },
+    }),
+  ]
+}
+
+const mcpSection = (mcp: McpSettingsState): ReadonlyArray<View> => [
+  Text({
+    key: "settings-mcp-title",
+    content: "MCP servers",
+    variant: "label",
+    color: "textMuted",
+  }),
+  ...mcpServersSection(mcp),
+  ...mcpAddForm(mcp),
+]
+
 export const settingsView = (settings: SettingsState): View => {
   const connectLive = connectStatusIsLive(settings.connect)
   return Card(
@@ -835,6 +1436,7 @@ export const settingsView = (settings: SettingsState): View => {
           color: "textMuted",
         }),
         ...claudeAccountsSection(settings.claudeAccounts),
+        ...mcpSection(settings.mcp),
       ]),
     ],
   )

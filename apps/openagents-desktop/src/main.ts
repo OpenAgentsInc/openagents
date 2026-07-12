@@ -65,6 +65,16 @@ import {
   fableLocalTraceNoteText,
 } from "./fable-local-contract.ts"
 import {
+  McpConfigAddChannel,
+  McpConfigListChannel,
+  McpConfigRemoveChannel,
+  McpConfigToggleChannel,
+  decodeMcpConfigAddRequest,
+  decodeMcpConfigNameRequest,
+  decodeMcpConfigToggleRequest,
+} from "./mcp-config-contract.ts"
+import { openMcpConfigStore } from "./mcp-config-host.ts"
+import {
   FABLE_LOCAL_FIXTURE_ACCOUNT,
   FABLE_LOCAL_MODEL,
   makeFableLocalRuntime,
@@ -927,9 +937,19 @@ const codexLocal = makeCodexLocalRuntime({
       }
     : {}),
 })
+// User-configured MCP servers (I2, EP250 wave-2). The persistence host owns
+// the private JSON file under userData (mode 0600; secret env/header values
+// never logged); the settings UI edits it through additive IPC. The runtime
+// reads the ENABLED entries fresh per turn via this getter — no restart needed
+// for config edits to take effect. In smoke the fable query is a fixture that
+// never constructs real SDK MCP servers, so no MCP server is ever spawned.
+const mcpConfigStore = openMcpConfigStore(
+  path.join(app.getPath("userData"), "mcp", "servers.json"),
+)
 const fableLocal = makeFableLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   delegate: codexChildren,
+  userMcpServers: () => mcpConfigStore.servers(),
   ...(smokeMode
     ? {
         queryImpl: async () => makeFixtureFableLocalQuery(),
@@ -937,6 +957,28 @@ const fableLocal = makeFableLocalRuntime({
         mcpImpl: async () => makeFixtureFableMcpFactory(),
       }
     : {}),
+})
+// Additive MCP-config IPC (I2). Every request is schema-decoded; an invalid
+// payload degrades to a typed rejection and never throws. The renderer only
+// ever receives the public-safe projection (no secret values).
+ipcMain.handle(McpConfigListChannel, () => mcpConfigStore.list())
+ipcMain.handle(McpConfigAddChannel, (_event, value: unknown) => {
+  const request = decodeMcpConfigAddRequest(value)
+  return request === null
+    ? { state: "rejected", reason: "invalid server config" }
+    : mcpConfigStore.add(request)
+})
+ipcMain.handle(McpConfigRemoveChannel, (_event, value: unknown) => {
+  const request = decodeMcpConfigNameRequest(value)
+  return request === null
+    ? { state: "rejected", reason: "invalid server name" }
+    : mcpConfigStore.remove(request.name)
+})
+ipcMain.handle(McpConfigToggleChannel, (_event, value: unknown) => {
+  const request = decodeMcpConfigToggleRequest(value)
+  return request === null
+    ? { state: "rejected", reason: "invalid toggle request" }
+    : mcpConfigStore.toggle(request.name, request.enabled)
 })
 ipcMain.handle(FableLocalAvailabilityChannel, () => fableLocal.availability())
 ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
@@ -1715,6 +1757,57 @@ const smokeConnectCodex = `(async () => {
   }
 })()`
 
+// Behavior contract openagents_desktop.settings.mcp_servers.v1 (I2, EP250
+// wave-2): the built-Electron settings screen renders the MCP servers section,
+// and adding a fixture stdio server through the REAL Add form + typed IPC
+// persists it to the real userData store and lists it. No MCP server is ever
+// spawned — the fable query is a fixture in smoke.
+const smokeMcpAddServer = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const title = document.querySelector('[data-en-key="settings-mcp-title"]')
+  if (title === null) return { ok: false, reason: "MCP servers section never mounted" }
+  const fieldInput = (key) => {
+    const host = document.querySelector('[data-en-key="' + key + '"]')
+    if (host === null) return null
+    if (host.localName === "input" || host.localName === "textarea") return host
+    return host.querySelector("input, textarea")
+  }
+  const setField = (key, value) => {
+    const input = fieldInput(key)
+    if (input === null) return false
+    input.value = value
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    return true
+  }
+  if (!setField("settings-mcp-field-name", "smoke-docs")) return { ok: false, reason: "name field missing" }
+  await wait(30)
+  if (!setField("settings-mcp-field-command", "docs-mcp")) return { ok: false, reason: "command field missing" }
+  await wait(30)
+  const add = document.querySelector('[data-en-key="settings-mcp-add"]')
+  if (add === null) return { ok: false, reason: "Add button missing" }
+  add.click()
+  const deadline = Date.now() + 5000
+  while (
+    Date.now() < deadline &&
+    document.querySelector('[data-en-key="settings-mcp-server-smoke-docs-name"]') === null
+  ) {
+    await wait(50)
+  }
+  const row = document.querySelector('[data-en-key="settings-mcp-server-smoke-docs-name"]')
+  const transport = document.querySelector('[data-en-key="settings-mcp-server-smoke-docs-transport"]')
+  const toggle = document.querySelector('[data-en-key="settings-mcp-server-smoke-docs-toggle"]')
+  // The draft resets on success (name field cleared).
+  const nameAfter = fieldInput("settings-mcp-field-name")
+  return {
+    ok: row !== null && row.textContent === "smoke-docs" &&
+      transport !== null && transport.textContent === "stdio" &&
+      toggle !== null &&
+      nameAfter !== null && nameAfter.value === "",
+    listed: row !== null,
+    transport: transport === null ? null : transport.textContent,
+  }
+})()`
+
 const smokeCloseSettings = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const button = document.querySelector('[data-en-key="settings-back"]')
@@ -2429,6 +2522,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // the awaiting_browser receipt below shows scripted fixture data.
         await step("settings-open-accounts", smokeOpenSettings)
         await captureShot(window, "04-settings-accounts")
+        // I2 (EP250 wave-2): add a fixture stdio MCP server through the real
+        // form + IPC; it persists to the real userData store and lists.
+        await step("settings-mcp-add-and-list", smokeMcpAddServer)
+        await captureShot(window, "04b-settings-mcp-server")
         await step("settings-connect-awaiting-browser-FIXTURE", smokeConnectCodex)
         await captureShot(window, "05-settings-awaiting-browser-fixture")
         await step("settings-back-to-chat", smokeCloseSettings)
