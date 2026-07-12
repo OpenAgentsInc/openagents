@@ -137,14 +137,18 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   ([receipt](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md));
   mobile native multi-file/image attachment acquisition at `c3ad8bee34`
   (bounded, hashed, sandbox-copied, `attachment.native-local.sha256` refs;
-  simulator native-link/render smoke only).
+  simulator native-link/render smoke only), plus verified UTF-8 attachment
+  lowering into the exact authoritative message. The submission boundary
+  rechecks bytes/size/digest and fails closed before mutation for images,
+  binary, changed, unreadable, or oversized content instead of reporting a
+  text-only send as attachment success.
 - Rung: **fixture-proven**; the attachment tranche is code-landed +
   fixture-proven, explicitly *not* a picker-tap or physical receipt.
 - Desktop I4 is now **`ui_available`**: the grant-scoped editor attaches a
   removable relative-path/revision/language/current-draft mention and lowers
   it as bounded explicitly untrusted context through both local and durable
   ChatHost sends. H2 session fork is also UI-available. Remaining gates are
-  mobile attachment-bearing runtime submission/delivery and selectors, plus
+  mobile image/binary byte-bearing runtime delivery and real selectors, plus
   the named physical cross-client receipts. CUT-21 already supplies named
   Codex/Claude live streaming evidence.
 
@@ -338,8 +342,9 @@ still distinguish code/fixture/live/distribution/owner-acceptance rungs.
 
 ### (a) Code work
 
-1. CUT-16: mobile attachment-bearing runtime submission/delivery and real
-   selector adoption; Desktop I4 and H2 are code-landed with typed oracles.
+1. CUT-16: mobile image/binary byte-bearing runtime delivery and real selector
+   adoption; verified text-file delivery plus Desktop I4/H2 are code-landed
+   with typed oracles.
 2. CUT-26: publish the verified DMG/ZIP through the deployed signed-feed seam
    and enforce legacy lockout for the proven scope.
 3. CUT-27 declaration artifacts: loss/exception register,

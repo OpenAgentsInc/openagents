@@ -270,3 +270,28 @@ build, built-Electron smoke, and lifecycle teardown (`active: 0`) pass.
 This is not a mobile picker or physical-device receipt. CUT-16 remains open for
 mobile attachment-bearing runtime delivery/selectors, deployed trusted
 authority acceptance, and the physical cross-client/assistive-technology row.
+
+## Addendum (2026-07-12): mobile attachment submission truth boundary
+
+Mobile no longer treats an attachment-bearing draft as a successful text-only
+send. At submission, the native host re-opens each digest-addressed sandbox
+file, verifies its exact byte count and SHA-256 against the canonical draft,
+and, for bounded UTF-8 text, lowers the actual bytes into the same authoritative
+`chat.appendMessage` body referenced by the runtime intent. Provider-visible
+begin/end markers identify the payload as untrusted data; neither native URI
+nor sandbox path crosses the boundary. File-only turns use an explicit review
+request.
+
+Unsupported image/binary payloads, changed or unreadable files, invalid UTF-8,
+and content that would exceed the 20,000-byte chat authority fail before any
+Sync mutation. The exact draft remains visible and durable with a bounded
+reason. After confirmed acceptance the complete submitted document is cleared,
+including attachment refs; a failed send preserves it. Deterministic coverage
+proves byte/digest verification, untrusted lowering, binary fail-closed
+behavior, and whole-document accepted clearing. Full mobile verification is
+112 pass / 0 fail / 599 assertions with typecheck green.
+
+This closes verified mobile text-file delivery, not image modality. CUT-16
+remains open for a real byte-bearing image/binary runtime transport, real
+provider/model/account selectors, deployed authority acceptance, and physical
+cross-client/assistive-technology receipts.

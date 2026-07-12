@@ -5,12 +5,26 @@ import {
   openMobileCodingAttachmentPicker,
   type MobileCodingAttachmentPicker,
 } from "./mobile-coding-attachment-picker"
+import type { MobileCodingAttachmentDeliveryPort } from "./mobile-coding-attachment-delivery"
 
 const hex = (buffer: ArrayBuffer): string =>
   Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, "0")).join("")
 
+const attachmentDirectory = (): Directory =>
+  new Directory(Paths.document, "openagents-coding-attachments")
+
+const sha256 = async (bytes: Uint8Array): Promise<string> => hex(await digest(
+  CryptoDigestAlgorithm.SHA256,
+  Uint8Array.from(bytes).buffer,
+))
+
+export const openExpoMobileCodingAttachmentDelivery = (): MobileCodingAttachmentDeliveryPort => ({
+  read: digest => new File(attachmentDirectory(), digest).bytes(),
+  sha256,
+})
+
 export const openExpoMobileCodingAttachmentPicker = (): MobileCodingAttachmentPicker => {
-  const attachments = new Directory(Paths.document, "openagents-coding-attachments")
+  const attachments = attachmentDirectory()
   return openMobileCodingAttachmentPicker({
     pickFiles: async () => {
       const result = await File.pickFileAsync({
@@ -33,9 +47,6 @@ export const openExpoMobileCodingAttachmentPicker = (): MobileCodingAttachmentPi
         })),
       }
     },
-    sha256: async bytes => hex(await digest(
-      CryptoDigestAlgorithm.SHA256,
-      Uint8Array.from(bytes).buffer,
-    )),
+    sha256,
   })
 }

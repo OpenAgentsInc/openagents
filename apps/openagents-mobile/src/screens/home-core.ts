@@ -33,6 +33,7 @@ import {
   type MobileCodingAttachmentUpdateResult,
   type MobileCodingComposerSession,
 } from "../coding/mobile-coding-composer"
+import type { MobileCodingAttachmentDeliveryResult } from "../coding/mobile-coding-attachment-delivery"
 import type {
   MobileConversationHost,
   MobileConversationSelection,
@@ -559,6 +560,13 @@ export interface HomeProgramOptions {
     pickComposerAttachments: (
       session: MobileCodingComposerSession,
     ) => Promise<MobileCodingAttachmentUpdateResult>
+    prepareComposerSubmission?: (
+      session: MobileCodingComposerSession,
+      message: string,
+    ) => Promise<MobileCodingAttachmentDeliveryResult>
+    clearComposer?: (
+      session: MobileCodingComposerSession,
+    ) => Promise<MobileCodingComposerSession | null>
   }>
 }
 
@@ -966,20 +974,31 @@ const makeSyncedConversationHandlers = (
   }),
   KhalaTurnSubmitted: (raw: string) => Effect.gen(function* () {
     const message = raw.trim()
-    if (message === "") return
     const before = yield* SubscriptionRef.get(state)
+    if (message === "" && (before.codingComposer?.draft.doc.attachments.length ?? 0) === 0) return
     if (before.khala.pending) return
     if (before.codingComposer !== null &&
       before.codingComposer.draft.target.readiness !== "ready") return
+    const prepared = before.codingComposer === null || coding === undefined
+      ? { ok: true as const, body: message }
+      : coding.prepareComposerSubmission === undefined
+        ? before.codingComposer.draft.doc.attachments.length === 0
+          ? { ok: true as const, body: message }
+          : { ok: false as const, error: "Attachment delivery is unavailable. The draft was kept." }
+        : yield* Effect.promise(() => coding.prepareComposerSubmission!(
+            before.codingComposer!,
+            message,
+          ))
+    if (!prepared.ok) {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        codingAttachmentStatus: { kind: "failed" as const, message: prepared.error },
+      }))
+      return
+    }
     const turn = before.khala.turnCounter + 1
-    const clearedComposer = before.codingComposer === null || coding === undefined
-      ? before.codingComposer
-      : yield* Effect.promise(() =>
-          coding.updateComposerText(before.codingComposer!, ""))
-    if (before.codingComposer !== null && clearedComposer === null) return
     yield* SubscriptionRef.update(state, current => ({
       ...current,
-      codingComposer: clearedComposer,
       khala: {
         ...current.khala,
         draft: "",
@@ -1022,7 +1041,7 @@ const makeSyncedConversationHandlers = (
 
     const result = yield* Effect.promise(() => host.sendMessage({
       threadRef,
-      body: message,
+      body: prepared.body,
       onUpdate: thread => {
         Effect.runFork(SubscriptionRef.update(state, current => {
           if (current.activeThreadRef !== thread.threadRef) return current
@@ -1034,19 +1053,21 @@ const makeSyncedConversationHandlers = (
         }))
       },
     }))
-    const restoredComposer = result.ok || clearedComposer === null || coding === undefined
-      ? clearedComposer
-      : yield* Effect.promise(() => coding.updateComposerText(clearedComposer, message))
+    const settledComposer = !result.ok || before.codingComposer === null || coding === undefined
+      ? before.codingComposer
+      : coding.clearComposer === undefined
+        ? yield* Effect.promise(() => coding.updateComposerText(before.codingComposer!, ""))
+        : yield* Effect.promise(() => coding.clearComposer!(before.codingComposer!))
     yield* SubscriptionRef.update(state, current => result.ok
-      ? withConfirmedThread(current, result.thread)
+      ? { ...withConfirmedThread(current, result.thread), codingComposer: settledComposer }
       : {
           ...failedConversationState(current, result.error),
-          codingComposer: restoredComposer,
+          codingComposer: settledComposer,
           khala: {
             ...failedConversationState(current, result.error).khala,
-            draft: restoredComposer === null
+            draft: settledComposer === null
               ? message
-              : mobileCodingComposerText(restoredComposer.draft),
+              : mobileCodingComposerText(settledComposer.draft),
           },
         })
   }),

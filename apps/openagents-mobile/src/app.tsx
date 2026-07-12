@@ -17,7 +17,11 @@ import {
   type MobileCodingAttachmentUpdateResult,
   type MobileCodingComposerSession,
 } from "./coding/mobile-coding-composer"
-import { openExpoMobileCodingAttachmentPicker } from "./coding/expo-mobile-coding-attachment-picker"
+import {
+  openExpoMobileCodingAttachmentDelivery,
+  openExpoMobileCodingAttachmentPicker,
+} from "./coding/expo-mobile-coding-attachment-picker"
+import { prepareMobileCodingAttachmentDelivery } from "./coding/mobile-coding-attachment-delivery"
 import {
   selectMobileConversation,
   type MobileConversationThread,
@@ -54,6 +58,13 @@ type MobileCodingHomeBinding = Readonly<{
   pickComposerAttachments: (
     session: MobileCodingComposerSession,
   ) => Promise<MobileCodingAttachmentUpdateResult>
+  prepareComposerSubmission: (
+    session: MobileCodingComposerSession,
+    message: string,
+  ) => ReturnType<typeof prepareMobileCodingAttachmentDelivery>
+  clearComposer: (
+    session: MobileCodingComposerSession,
+  ) => Promise<MobileCodingComposerSession | null>
 }>
 
 const selectAuthenticatedMobileExperience = async (
@@ -69,6 +80,7 @@ const selectAuthenticatedMobileExperience = async (
     ? null
     : openMobileCodingComposer({ drafts: draftStore, randomId: randomUUID })
   const attachmentPicker = openExpoMobileCodingAttachmentPicker()
+  const attachmentDelivery = openExpoMobileCodingAttachmentDelivery()
   const restored = await coding.restore()
   const preferredThreadRef = restored?.state === "ready"
     ? restored.session.threadRef
@@ -141,6 +153,18 @@ const selectAuthenticatedMobileExperience = async (
       updateComposerText: async (session, text) => {
         if (composer === null) return null
         const updated = await composer.updateText(session, text)
+        if (updated !== null) activeComposer = updated
+        return updated
+      },
+      prepareComposerSubmission: (session, message) =>
+        prepareMobileCodingAttachmentDelivery({
+          message,
+          attachments: session.draft.doc.attachments,
+          port: attachmentDelivery,
+        }),
+      clearComposer: async session => {
+        if (composer === null) return null
+        const updated = await composer.clear(session)
         if (updated !== null) activeComposer = updated
         return updated
       },

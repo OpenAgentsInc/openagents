@@ -706,9 +706,15 @@ receipts remain (owner decision 2026-07-12: no physical-Android gate)
   sandbox, and applies canonical stage/ready transactions carrying only
   `attachment.native-local.sha256.*` refs. The shared Composer renders the
   restored metadata and reports the device-local result without exposing a
-  picker URI. This landed at `c3ad8bee34`; an attachment-bearing runtime send
-  and receipt is still required before claiming end-to-end file/image turns.
-  Remaining product gaps are that delivery rung, real provider/model/account
+  picker URI. The next truth boundary re-reads native-local UTF-8 files at
+  submit, verifies exact size and SHA-256, and lowers their bytes into the
+  authoritative chat/runtime message as explicitly delimited untrusted data.
+  Changed, unreadable, oversized, image, and binary payloads fail before any
+  Sync mutation and preserve the canonical draft; accepted sends clear the
+  complete submitted document rather than retaining stale attachment refs.
+  A real byte-bearing image/binary transport and receipt is still required
+  before claiming end-to-end image turns. Remaining product gaps are that
+  image/binary delivery rung, real provider/model/account
   selectors, editor/diff context capture, and equivalent full Desktop rich-
   composer adoption. Physical accessibility, deployed-authority, and named
   Codex receipts also remain open. See

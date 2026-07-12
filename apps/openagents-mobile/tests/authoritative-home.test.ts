@@ -173,6 +173,21 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
         clearSelection: async () => undefined,
         selectSession: async () => ({ thread: initialThread, composer: activeComposer }),
         updateComposerText,
+        prepareComposerSubmission: async (_session, message) => ({
+          ok: true,
+          body: `verified attachment\n${message}`,
+        }),
+        clearComposer: async session => ({
+          ...session,
+          draft: decodeCodingComposerDraftSnapshot({
+            ...session.draft,
+            revision: session.draft.revision + 1,
+            doc: emptyComposerState().doc,
+            selection: emptyComposerState().selection,
+            view: emptyComposerState().view,
+            updatedAt: now,
+          }),
+        }),
         pickComposerAttachments: async session => ({
           status: "updated",
           session,
@@ -206,9 +221,9 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     await Effect.runPromise(settle)
     await Effect.runPromise(settle)
     const accepted = await Effect.runPromise(lastState(program))
-    expect(writes).toEqual(["Edited on mobile", ""])
+    expect(writes).toEqual(["Edited on mobile"])
     expect(accepted.khala.draft).toBe("")
-    expect(accepted.codingComposer?.draft.doc.attachments[0]?.name).toBe("screen.png")
+    expect(accepted.codingComposer?.draft.doc.attachments).toEqual([])
   })
 
   test("keeps an unavailable-target draft editable but withholds Send authority", async () => {

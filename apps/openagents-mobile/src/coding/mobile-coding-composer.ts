@@ -65,6 +65,9 @@ export type MobileCodingComposer = Readonly<{
     session: MobileCodingComposerSession,
     files: ReadonlyArray<MobileCodingAttachmentFile>,
   ) => Promise<MobileCodingComposerSession | null>
+  clear: (
+    session: MobileCodingComposerSession,
+  ) => Promise<MobileCodingComposerSession | null>
 }>
 
 const safeTimestampRef = (prefix: string, timestamp: string): string =>
@@ -274,6 +277,19 @@ export const openMobileCodingComposer = (input: Readonly<{
         selection: state.selection,
         view: state.view,
         updatedAt,
+      })
+      return saveSession(input.drafts, { ...session, draft })
+    },
+    clear: async session => {
+      if (session.draft.submission.status !== "editing") return null
+      const state = emptyComposerState()
+      const draft = decodeCodingComposerDraftSnapshot({
+        ...session.draft,
+        revision: session.draft.revision + 1,
+        doc: state.doc,
+        selection: state.selection,
+        view: state.view,
+        updatedAt: now(),
       })
       return saveSession(input.drafts, { ...session, draft })
     },
