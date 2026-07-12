@@ -222,7 +222,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible embedded-binary tag; build 116 removes the named-persona front door. */
-export const BUNDLE_TAG = "2026-07-12.cut-09-offline-runtime-fifo"
+export const BUNDLE_TAG = "2026-07-12.cut-09-runtime-selector-atomic"
 
 const EmptyPayload = Schema.Struct({})
 
