@@ -601,7 +601,9 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   post-image, uses one bounded subscription to hydrate an existing thread,
   exposes the same hierarchy/inspector through typed pointer, keyboard, and
   screen-reader actions, and bounds it to 200 rows without adding a poller.
-  Only physical iOS/Android receipts remain open.
+  Only physical-iOS and Android-emulator receipts remain open (owner
+  decision 2026-07-12: nothing gates on physical Android; emulator
+  evidence satisfies every Android leg).
 - CUT-13 now has one provider-neutral `openagents.coding_catalog.v1` contract
   for stable project, repository, worktree, coding-session, and persisted
   navigation identities. Session identity is structurally separate from host,
@@ -637,7 +639,8 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   generations and late updates are fenced. Initial/live URLs and notification
   responses now enter a bounded serial queue, wait for verified live authority,
   and pass through the same exact target resolver; teardown removes both native
-  listeners. Only physical iOS/Android process-death/reconnect receipts remain
+  listeners. Only physical-iOS and Android-emulator process-death/reconnect
+receipts remain (owner decision 2026-07-12: no physical-Android gate)
   open. See
   [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 - CUT-15 now has one canonical Desktop registry carrying stable command id,
@@ -930,7 +933,7 @@ generic IPC authority.
 | R3 — fleet, targets, and remote-workroom operations | Start from pinned work; choose named worker/account/capacity/execution target; create/resume/stop/reclaim a typed remote workroom; enroll/select owner-managed remote, OpenAgents-managed, or audited provider-adapter targets; inspect plan/claim/assignment/attempt; steer, approve/reject, pause/resume/drain/stop; surface unavailable/quota/policy/isolation states; show exact or `not_measured` usage and verification/closeout | One real Codex+Claude run is managed from both clients, including at least one remote-workroom unit; owner-local, owner-managed remote, and managed target choices use one claim registry and every command has one durable outcome with zero duplicate claims or silent provider/target/isolation substitution |
 | R4 — interruption, migration, and recovery | Offline mutation queue with bounded eligibility; foreground/background transitions; dropped acknowledgements; replay deduplication; out-of-order/duplicate events; stale leases; server/device restart; explicit merge/refetch rules; host-independent session identity; stable agent graph and per-child cursors; exclusive attachment generations; secret-free checkpoint; quiesce/detach/attach/move/failback | Fault injection plus a real local-to-managed-to-owner-remote move prove no lost accepted intent, two live attachment generations, double execution, orphaned source child, flattened/re-rooted topology, secret-bearing checkpoint, false LIVE/success state, or indefinite spinner; stale clients/hosts converge or fail closed |
 | R5 — Desktop everyday workbench | Complete D0–D6 below: streamed sessions and live agent topology, composer/context, projects/files/editor, Git review, bounded terminal, commands/keybindings, runtimes/models/MCP/permissions, settings/diagnostics, Fleet cockpit, lifecycle/distribution | The practical OpenCode-parity workflow completes through the hardened Effect Native/Electron app; click and conflict-safe hotkeys provide the same fast typed supervision actions, and restart/reconnect retains authoritative Sync/Fleet/agent-graph state |
-| R6 — mobile any-host coding and fleet control | Activity/fleet home; authorized host/session directory with compact nested agent supervision; repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; stop/checkpoint/move/resume/failback; run/work/attempt detail; compact plan/files/changes/terminal/preview/artifact surfaces; safe writeback; push/deep link/handoff; explicit persona-neutral ASR/TTS/barge-in over typed commands; accessible loading/error/offline states | On physical iOS and Android, access every authorized session across enrolled host classes, inspect an inline child activity edge and its independent transcript, use text or voice to follow up/interrupt and request one move, inspect/change/review/run/preview/write back, and supervise the R3 run without raw filesystem, shell, vendor API, credential, or voice-only authority |
+| R6 — mobile any-host coding and fleet control | Activity/fleet home; authorized host/session directory with compact nested agent supervision; repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; stop/checkpoint/move/resume/failback; run/work/attempt detail; compact plan/files/changes/terminal/preview/artifact surfaces; safe writeback; push/deep link/handoff; explicit persona-neutral ASR/TTS/barge-in over typed commands; accessible loading/error/offline states | On physical iOS and Android emulator (owner decision 2026-07-12: nothing gates on physical Android), access every authorized session across enrolled host classes, inspect an inline child activity edge and its independent transcript, use text or voice to follow up/interrupt and request one move, inspect/change/review/run/preview/write back, and supervise the R3 run without raw filesystem, shell, vendor API, credential, or voice-only authority |
 | R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility; migration/rollback; public-safe diagnostics; telemetry for Sync, agent-graph replay, attachment/checkpoint/move, broker lease/revocation, command latency, reconnect, conflicts, and duplicate suppression | Sustained owner dogfood cold-opens to shell/recent metadata before detail hydration, starts on one host class, moves the same session and agent graph through at least one other host class, continues on Desktop/mobile, includes a mobile voice follow-up or interrupt, exercises secret revocation plus upgrade/restart/offline/lost-ACK faults, and ends with no forked identity, duplicate execution, leaked secret, orphaned source/child, data loss, or false authority |
 
 ### R1-LOCAL — local-first identity (implemented, #8666)
@@ -1870,7 +1873,8 @@ around and after that narrower installed-Desktop milestone.
    behind the same contract. Compose the accepted Fleet, workroom, target, and
    portability substrates into Desktop/mobile D5/R3/R6 controls and receipts.
 9. Complete Desktop D4–D6/R5 and mobile R6: runtime/settings/isolated
-   extensions, accessibility, diagnostics, packaging, physical iOS/Android
+   extensions, accessibility, diagnostics, packaging, physical-iOS and
+   Android-emulator
    proof, push, deep links, any-host stop/checkpoint/move/resume, safe writeback,
    and persona-neutral conversational voice. Reuse native STT and voice
    lifecycle test knowledge from deprecated clients without importing or

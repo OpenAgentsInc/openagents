@@ -10,6 +10,12 @@
 - Rung vocabulary: the six proof rungs of `MASTER_ROADMAP.md` §"Proof status
   is six distinct rungs" — code-landed → fixture-proven → deployed →
   live-proven → owner-accepted → closed. No rung implies the next.
+- **Amendment (owner decision, 2026-07-12, verbatim: "make nothing at all
+  gated on physical android. i dont care. emulator is fine"):** every
+  Android requirement in this audit and in the CUT program is satisfiable
+  with Android **emulator** evidence. No gate anywhere blocks on physical
+  Android hardware. Physical iOS gates are unchanged. Android references
+  below are annotated accordingly.
 
 ## Method
 
@@ -95,9 +101,10 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   suites green at landing.
   [Receipt](./2026-07-11-cut-12-live-agent-supervision-ui-receipt.md).
 - Rung: **fixture-proven** + built-Electron smoke.
-- Remaining gate: physical iOS **and Android** interaction receipts.
-  Owner-gated (physical). Note: no Android-hardware evidence exists anywhere
-  in the CUT program yet.
+- Remaining gate: physical iOS interaction receipts (owner-gated) and the
+  Android interaction receipts, which per the 2026-07-12 owner decision are
+  satisfiable on **emulator** (no physical Android gate). No Android
+  evidence of either kind exists in the CUT program yet.
 
 ### CUT-13 #8693 — canonical project/repository/session navigation — CLOSED
 
@@ -112,9 +119,10 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   loss-accounted offline cache accounting at `ff8cc0699b` (contract
   `openagents_mobile.seam.coding_offline_cache_accounting.v1`).
 - Rung: **fixture-proven** (real-SQLite oracles; simulator-level evidence).
-- Remaining gate: physical iOS/Android process-death/reconnect and
-  deep-link/notification receipts required by the close rule. Owner-gated
-  (physical).
+- Remaining gate: physical-iOS plus Android-**emulator** (owner decision
+  2026-07-12) process-death/reconnect and deep-link/notification receipts
+  required by the close rule. The iOS half stays owner-gated (physical);
+  the Android half is automatable.
 
 ### CUT-15 #8695 — typed commands/keybindings/menus/deep links — CLOSED
 
@@ -282,9 +290,9 @@ loss/exception register explicitly.
    closed (CUT-17–CUT-20).
 2. **Physical iOS and Android reconnect/continuation/attention/interruption
    convergence during each task** — NOT met. iOS: build installed, journeys
-   pending (CUT-09/10/12/14 physical rows, #8676). Android: **no physical
-   Android evidence exists anywhere in the program yet** — this is the
-   least-started criterion.
+   pending (CUT-09/10/12/14 physical rows, #8676). Android: no evidence
+   exists yet, but per the 2026-07-12 owner decision this leg is satisfied
+   by **emulator** receipts — it is automatable and no longer owner-gated.
 3. **Run accepted #8676 handoff and #8677/#8678/#8640 parent receipts;
    every cutover leaf closed; no waived P0** — NOT met. #8678/#8640 closed;
    #8676/#8677 open; 10 CUT leaves open (09, 10, 11, 12, 14, 16, 21, 23,
@@ -345,9 +353,11 @@ loss/exception register explicitly.
    run the CUT-09 network-gap/restart journey — closes #8689 and #8677.
 3. Paired iPhone: CUT-10 continuation, CUT-12 supervision interaction, and
    CUT-14 process-death/reconnect + deep-link receipts.
-4. **Physical Android device**: acquire/enroll and run the CUT-12/CUT-14
-   and criterion-2 journeys — currently the program's largest unstarted
-   surface.
+4. ~~Physical Android device~~ **Reclassified (owner decision 2026-07-12):
+   Android journeys run on emulator and are NOT owner-gated** — the
+   CUT-12/CUT-14 and criterion-2 Android legs move to bucket (b) as
+   automatable live-proof runs. Still the program's largest unstarted
+   surface, but no hardware acquisition is required.
 5. CUT-24 residual: VoiceOver/TalkBack live-device accessibility QA.
 6. CUT-26: owner-held Developer ID identity for signing; clean-machine
    acceptance transcript/video.
@@ -365,6 +375,7 @@ mobile suites, real-Postgres projections, and built-Electron smokes wired
 into a main-push guard. What separates today's state from an honest
 declaration is concentrated, not diffuse: two live named-provider turns, one
 signed installer journey, one iPhone journey set on an already-installed
-build, an entirely-missing Android leg, and the small CUT-11/CUT-16 code
-residuals. Nothing reviewed here justifies declaring the cutover now, and
+build, an entirely-missing Android leg (emulator-satisfiable per the
+2026-07-12 owner decision — no physical Android gate), and the small
+CUT-11/CUT-16 code residuals. Nothing reviewed here justifies declaring the cutover now, and
 nothing suggests the remaining gates require new architecture.
