@@ -133,7 +133,17 @@ Object.assign(vars, {
   // Cloud coding sessions (the org cloud executor control plane) — the URL
   // is a public service address; the bearer rides Secret Manager.
   CLOUD_CODING_SESSIONS_ENABLED: 'true',
-  OA_CLOUD_CONTROL_URL: 'https://oa-cloud-run-bridge-ezxz4mgdsq-uc.a.run.app',
+  OA_CLOUD_CONTROL_URL:
+    process.env.OA_CLOUD_CONTROL_URL ??
+    'https://oa-cloud-run-bridge-ezxz4mgdsq-uc.a.run.app',
+  ...(target === 'production'
+    ? {
+        // Agent Computer is advertised only after the authenticated readiness
+        // probe proves that this URL is backed by the live KVM provisioner.
+        // The runtime therefore remains fail-closed if control is unavailable.
+        OA_CODEX_GCE_PROVISIONER: 'live',
+      }
+    : {}),
   // AC-1 (#8503): staging serves Khala on the Fireworks lane so the org-cloud
   // microVM inference path has a working 200 supply. Prod keeps its
   // wrangler.jsonc KHALA_BACKING_MODEL (the Hydralisk GLM fleet); staging pins
@@ -143,11 +153,12 @@ Object.assign(vars, {
   ...(target === 'staging'
     ? {
         KHALA_BACKING_MODEL: 'deepseek-v4-flash',
-        // AC-1 (#8503) Seam A: ARM the cloud-gcp microVM lane on STAGING ONLY.
+        // AC-1 (#8503) Seam A: arm the cloud-gcp microVM lane on staging.
         // `live` flips isCloudGceProvisioningArmed(...)=true so the admin
         // dispatch trigger (/api/admin/khala/cloud/runtime-dispatch) actually
         // mints a token + POSTs a placement instead of failing closed 409.
-        // PROD deliberately omits this (fail-closed default-off).
+        // Production is also armed above for Agent Computer, but its mobile
+        // catalog remains fail-closed behind authenticated live readiness.
         OA_CODEX_GCE_PROVISIONER: 'live',
         // The microVM's ONE /v1/chat/completions turn must hit the SAME
         // monolith that minted the short-lived owner-linked execution token
