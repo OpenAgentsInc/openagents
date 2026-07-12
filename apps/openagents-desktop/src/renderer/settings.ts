@@ -38,6 +38,7 @@ import {
   type McpConfigServerView,
 } from "../mcp-config-contract.ts"
 import type { FableLocalMcpServerConfig } from "../fable-local-contract.ts"
+import { PluginRefSchema, decodePluginConfigResult, type PluginConfigView, type PluginRef } from "../plugin-config-contract.ts"
 
 // ---------------------------------------------------------------------------
 // Renderer-side bridge decoding (Effect Schema; mirrors the main-process
@@ -78,6 +79,14 @@ export type SettingsState = Readonly<{
   openAgentsSession: DesktopOpenAgentsSessionView
   /** User-configured MCP servers (I2, EP250 wave-2). */
   mcp: McpSettingsState
+  plugins: PluginSettingsState
+}>
+
+export type PluginSettingsState = Readonly<{
+  state: "loading" | "loaded" | "unavailable"
+  plugins: ReadonlyArray<PluginConfigView>
+  dropped: number
+  message: string | null
 }>
 
 // ---------------------------------------------------------------------------
@@ -152,6 +161,7 @@ export const initialSettingsState = (): SettingsState => ({
   connectTarget: null,
   openAgentsSession: "loading",
   mcp: initialMcpSettingsState(),
+  plugins: { state: "loading", plugins: [], dropped: 0, message: null },
 })
 
 const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
@@ -431,6 +441,18 @@ export type McpConfigSettingsBridge = Readonly<{
   remove: (name: string) => Promise<unknown>
   toggle: (name: string, enabled: boolean) => Promise<unknown>
 }>
+export type PluginConfigSettingsBridge = Readonly<{
+  list: () => Promise<unknown>
+  choose: () => Promise<unknown>
+  toggle: (ref: PluginRef, enabled: boolean) => Promise<unknown>
+  remove: (ref: PluginRef) => Promise<unknown>
+}>
+export const unavailablePluginConfigSettingsBridge: PluginConfigSettingsBridge = {
+  list: async () => ({ state: "unavailable", message: "Local plugin configuration is unavailable." }),
+  choose: async () => ({ state: "unavailable", message: "Local plugin configuration is unavailable." }),
+  toggle: async () => ({ state: "unavailable", message: "Local plugin configuration is unavailable." }),
+  remove: async () => ({ state: "unavailable", message: "Local plugin configuration is unavailable." }),
+}
 
 export const unavailableMcpConfigSettingsBridge: McpConfigSettingsBridge = {
   list: async () => ({ state: "unavailable", message: "MCP server configuration is unavailable on this build." }),
@@ -513,6 +535,9 @@ export const DesktopMcpHeadersChanged = defineIntent("DesktopMcpHeadersChanged",
 export const DesktopMcpAddRequested = defineIntent("DesktopMcpAddRequested", Schema.Null)
 export const DesktopMcpRemoveRequested = defineIntent("DesktopMcpRemoveRequested", Schema.String)
 export const DesktopMcpToggleRequested = defineIntent("DesktopMcpToggleRequested", Schema.String)
+export const DesktopPluginChooseRequested = defineIntent("DesktopPluginChooseRequested", Schema.Null)
+export const DesktopPluginToggleRequested = defineIntent("DesktopPluginToggleRequested", PluginRefSchema)
+export const DesktopPluginRemoveRequested = defineIntent("DesktopPluginRemoveRequested", PluginRefSchema)
 
 export const settingsIntents = [
   DesktopSettingsToggled,
@@ -531,6 +556,9 @@ export const settingsIntents = [
   DesktopMcpAddRequested,
   DesktopMcpRemoveRequested,
   DesktopMcpToggleRequested,
+  DesktopPluginChooseRequested,
+  DesktopPluginToggleRequested,
+  DesktopPluginRemoveRequested,
 ] as const
 
 /**
@@ -552,6 +580,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
   maxPolls = 1_300, // ~15 minutes at 700ms — matches main's device-auth timeout
   providerAccountsBridge: ProviderAccountsSettingsBridge = unavailableProviderAccountsSettingsBridge,
   mcpBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
+  pluginBridge: PluginConfigSettingsBridge = unavailablePluginConfigSettingsBridge,
 ) => {
   const update = (transform: (current: S) => S) => SubscriptionRef.update(state, transform)
 
@@ -563,6 +592,18 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
     yield* update((next) => ({
       ...next,
       settings: { ...next.settings, mcp: { ...next.settings.mcp, servers } },
+    }))
+  })
+  const refreshPlugins = Effect.gen(function* () {
+    const result = decodePluginConfigResult(yield* Effect.promise(() => pluginBridge.list().catch(() => null)))
+    yield* update(next => ({
+      ...next,
+      settings: {
+        ...next.settings,
+        plugins: result.state === "ok"
+          ? { state: "loaded", plugins: result.plugins, dropped: result.dropped, message: null }
+          : { state: "unavailable", plugins: [], dropped: 0, message: result.state === "unavailable" ? result.message : "Local plugins unavailable." },
+      },
     }))
   })
 
@@ -662,6 +703,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
               { state: "loading" },
             ),
             mcp: { ...next.settings.mcp, servers: { state: "loading" } },
+            plugins: { state: "loading", plugins: [], dropped: 0, message: null },
           },
         } as S))
         const accounts = decodeAccountsView(
@@ -684,6 +726,7 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
           },
         }))
         yield* refreshMcpServers
+        yield* refreshPlugins
       }),
     DesktopCodexConnectRequested: () => runConnectFlow(null, () => bridge.connectStart()),
     DesktopCodexReconnectRequested: (ref: string) =>
@@ -841,6 +884,23 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
           }))
         }
       }),
+    DesktopPluginChooseRequested: () => Effect.gen(function* () {
+      const result = decodePluginConfigResult(yield* Effect.promise(() => pluginBridge.choose().catch(() => null)))
+      if (result.state === "ok") yield* update(next => ({ ...next, settings: { ...next.settings, plugins: { state: "loaded", plugins: result.plugins, dropped: result.dropped, message: null } } }))
+    }),
+    DesktopPluginToggleRequested: (ref: PluginRef) => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const plugin = current.settings.plugins.plugins.find(item => item.ref === ref)
+      if (plugin === undefined) return
+      const result = decodePluginConfigResult(yield* Effect.promise(() => pluginBridge.toggle(ref, !plugin.enabled).catch(() => null)))
+      if (result.state === "ok") yield* update(next => ({ ...next, settings: { ...next.settings, plugins: { state: "loaded", plugins: result.plugins, dropped: result.dropped, message: null } } }))
+    }),
+    DesktopPluginRemoveRequested: (ref: PluginRef) => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      if (!current.settings.plugins.plugins.some(item => item.ref === ref)) return
+      const result = decodePluginConfigResult(yield* Effect.promise(() => pluginBridge.remove(ref).catch(() => null)))
+      if (result.state === "ok") yield* update(next => ({ ...next, settings: { ...next.settings, plugins: { state: "loaded", plugins: result.plugins, dropped: result.dropped, message: null } } }))
+    }),
   }
 }
 
@@ -1364,6 +1424,29 @@ const mcpSection = (mcp: McpSettingsState): ReadonlyArray<View> => [
   ...mcpAddForm(mcp),
 ]
 
+const pluginSection = (plugins: PluginSettingsState): ReadonlyArray<View> => [
+  Divider({ key: "settings-plugins-divider" }),
+  Text({ key: "settings-plugins-title", content: "Local Claude plugins", variant: "label", color: "textMuted" }),
+  ...(plugins.state === "loading"
+    ? [Text({ key: "settings-plugins-loading", content: "Loading local plugins…", variant: "body", color: "textMuted" })]
+    : plugins.state === "unavailable"
+      ? [Text({ key: "settings-plugins-unavailable", content: plugins.message ?? "Local plugins unavailable.", variant: "body", color: "textMuted" })]
+      : plugins.plugins.length === 0
+        ? [Text({ key: "settings-plugins-empty", content: "No local plugins registered.", variant: "body", color: "textMuted" })]
+        : plugins.plugins.map(plugin => Stack(
+            { key: `settings-plugin-${plugin.ref}`, direction: "row", gap: "2", align: "center", style: { width: "full" } },
+            [
+              Text({ key: `settings-plugin-${plugin.ref}-name`, content: plugin.name, variant: "body", color: "textPrimary" }),
+              Badge({ key: `settings-plugin-${plugin.ref}-status`, label: plugin.readiness, tone: plugin.readiness === "ready" ? "success" : "warn", a11y: { label: `${plugin.name} is ${plugin.readiness}` } }),
+              Text({ key: `settings-plugin-${plugin.ref}-scope`, content: "Claude · app scope · next turn", variant: "label", color: "textMuted" }),
+              Spacer({ key: `settings-plugin-${plugin.ref}-fill`, flex: true }),
+              Toggle({ key: `settings-plugin-${plugin.ref}-toggle`, value: plugin.enabled, label: plugin.enabled ? "Enabled" : "Disabled", onChange: IntentRef("DesktopPluginToggleRequested", StaticPayload(plugin.ref)), a11y: { label: `${plugin.enabled ? "Disable" : "Enable"} plugin ${plugin.name}` } }),
+              Button({ key: `settings-plugin-${plugin.ref}-remove`, label: "Remove", variant: "ghost", onPress: IntentRef("DesktopPluginRemoveRequested", StaticPayload(plugin.ref)), a11y: { label: `Remove plugin ${plugin.name}` } }),
+            ],
+          ))),
+  Button({ key: "settings-plugin-add", label: "Add local plugin", variant: "secondary", onPress: IntentRef("DesktopPluginChooseRequested"), a11y: { label: "Choose a local Claude plugin directory" } }),
+]
+
 export const settingsView = (settings: SettingsState): View => {
   const connectLive = connectStatusIsLive(settings.connect)
   return Card(
@@ -1437,6 +1520,7 @@ export const settingsView = (settings: SettingsState): View => {
         }),
         ...claudeAccountsSection(settings.claudeAccounts),
         ...mcpSection(settings.mcp),
+        ...pluginSection(settings.plugins),
       ]),
     ],
   )

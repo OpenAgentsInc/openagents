@@ -341,6 +341,8 @@ export type FableLocalRuntimeOptions = Readonly<{
    * edits take effect on the next turn without a runtime restart.
    */
   userMcpServers?: () => ReadonlyArray<FableLocalMcpServerConfig>
+  /** Main-owned, validated local Claude plugin directories offered on the next turn. */
+  userPlugins?: () => ReadonlyArray<string>
   timeoutMs?: number
   /** Pending-question window override (tests). Default 10 minutes. */
   questionTimeoutMs?: number
@@ -1183,6 +1185,9 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             canUseTool,
             skills: [],
             settingSources: [],
+            ...(options.userPlugins === undefined
+              ? {}
+              : { plugins: options.userPlugins().map(pluginPath => ({ type: "local" as const, path: pluginPath })) }),
             ...(mcpServers === null ? {} : { mcpServers }),
             ...(resumeSessionId === undefined ? {} : { resume: resumeSessionId }),
           },

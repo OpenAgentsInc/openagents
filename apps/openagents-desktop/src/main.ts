@@ -81,6 +81,15 @@ import {
 } from "./mcp-config-contract.ts"
 import { openMcpConfigStore } from "./mcp-config-host.ts"
 import {
+  PluginConfigChooseChannel,
+  PluginConfigListChannel,
+  PluginConfigRemoveChannel,
+  PluginConfigToggleChannel,
+  decodePluginRefRequest,
+  decodePluginToggleRequest,
+} from "./plugin-config-contract.ts"
+import { openPluginConfigStore } from "./plugin-config-host.ts"
+import {
   DiagnosticsActionChannel,
   DiagnosticsExportChannel,
   DiagnosticsGatherChannel,
@@ -1153,10 +1162,14 @@ const codexLocal = makeCodexLocalRuntime({
 const mcpConfigStore = openMcpConfigStore(
   path.join(app.getPath("userData"), "mcp", "servers.json"),
 )
+const pluginConfigStore = openPluginConfigStore(
+  path.join(app.getPath("userData"), "plugins", "registry.json"),
+)
 const fableLocal = makeFableLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   delegate: codexChildren,
   userMcpServers: () => mcpConfigStore.servers(),
+  userPlugins: () => pluginConfigStore.enabledPaths(),
   ...(smokeMode
     ? {
         queryImpl: async () => makeFixtureFableLocalQuery(),
@@ -1164,6 +1177,24 @@ const fableLocal = makeFableLocalRuntime({
         mcpImpl: async () => makeFixtureFableMcpFactory(),
       }
     : {}),
+})
+ipcMain.handle(PluginConfigListChannel, () => pluginConfigStore.list())
+ipcMain.handle(PluginConfigChooseChannel, async () => {
+  if (liveProofDriverMode || smokeMode) return { state: "cancelled" }
+  const selection = await dialog.showOpenDialog({
+    title: "Add local Claude plugin",
+    properties: ["openDirectory"],
+  })
+  const pluginPath = selection.canceled ? undefined : selection.filePaths[0]
+  return pluginPath === undefined ? { state: "cancelled" } : pluginConfigStore.addPath(pluginPath)
+})
+ipcMain.handle(PluginConfigToggleChannel, (_event, value: unknown) => {
+  const request = decodePluginToggleRequest(value)
+  return request === null ? { state: "rejected", reason: "invalid plugin toggle" } : pluginConfigStore.toggle(request.ref, request.enabled)
+})
+ipcMain.handle(PluginConfigRemoveChannel, (_event, value: unknown) => {
+  const request = decodePluginRefRequest(value)
+  return request === null ? { state: "rejected", reason: "invalid plugin ref" } : pluginConfigStore.remove(request.ref)
 })
 // Additive MCP-config IPC (I2). Every request is schema-decoded; an invalid
 // payload degrades to a typed rejection and never throws. The renderer only

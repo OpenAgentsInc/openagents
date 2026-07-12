@@ -83,6 +83,29 @@ const loadedAccounts = withSettingsAccounts(initialSettingsState(), {
 })
 
 describe("settingsView (state -> component tree)", () => {
+  test("local plugins expose opaque lifecycle state and typed controls", () => {
+    const ref = "plugin.local.0123456789abcdef01234567" as const
+    const view = settingsView({
+      ...initialSettingsState(),
+      plugins: {
+        state: "loaded",
+        dropped: 0,
+        message: null,
+        plugins: [{
+          ref, name: "review-tools", provider: "claude_agent", provenance: "user_local",
+          scope: "app", readiness: "ready", enabled: true, restartRequired: false,
+          perSessionUse: "next_turn", capabilities: ["commands", "skills"],
+        }],
+      },
+    })
+    expect(nodeByKey(view, `settings-plugin-${ref}-name`)?.content).toBe("review-tools")
+    expect(nodeByKey(view, `settings-plugin-${ref}-status`)?.label).toBe("ready")
+    expect((nodeByKey(view, `settings-plugin-${ref}-toggle`)?.onChange as { name?: string })?.name)
+      .toBe("DesktopPluginToggleRequested")
+    expect((nodeByKey(view, "settings-plugin-add")?.onPress as { name?: string })?.name)
+      .toBe("DesktopPluginChooseRequested")
+    expect(JSON.stringify(view)).not.toContain("/Users/")
+  })
   test("renders honest OpenAgents session phases and typed actions", () => {
     const signedOut = settingsView({
       ...initialSettingsState(),

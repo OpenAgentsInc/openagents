@@ -150,6 +150,8 @@ import {
   unavailableProviderAccountsSettingsBridge,
   type CodexSettingsBridge,
   type McpConfigSettingsBridge,
+  type PluginConfigSettingsBridge,
+  unavailablePluginConfigSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
   type SettingsState,
@@ -1146,6 +1148,7 @@ export const makeDesktopShellHandlers = (
   windowHost: DesktopWindowHost = { toggleFullScreen: async () => false },
   gitBridge: GitGithubBridge = unavailableGitGithubBridge,
   mcpConfigBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
+  pluginConfigBridge: PluginConfigSettingsBridge = unavailablePluginConfigSettingsBridge,
   imagePickerHost: ComposerImagePickerHost = { pick: async () => [] },
   terminalBridge: TerminalRendererBridge = unavailableTerminalBridge,
   // Shared transient command-notice controller. Boot creates one instance and
@@ -1154,7 +1157,7 @@ export const makeDesktopShellHandlers = (
   noticeController: CommandNoticeController = makeCommandNoticeController(state),
   diagnosticsBridge: DiagnosticsBridge = unavailableDiagnosticsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
-  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge)
+  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
     state,

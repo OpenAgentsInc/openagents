@@ -132,6 +132,14 @@ import {
   decodeMcpConfigToggleRequest,
 } from "./mcp-config-contract.ts"
 import {
+  PluginConfigChooseChannel,
+  PluginConfigListChannel,
+  PluginConfigRemoveChannel,
+  PluginConfigToggleChannel,
+  decodePluginRefRequest,
+  decodePluginToggleRequest,
+} from "./plugin-config-contract.ts"
+import {
   DiagnosticsActionChannel,
   DiagnosticsExportChannel,
   DiagnosticsGatherChannel,
@@ -602,6 +610,22 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return request === null
         ? Promise.resolve({ state: "rejected", reason: "invalid toggle request" })
         : ipcRenderer.invoke(McpConfigToggleChannel, request)
+    },
+  },
+  pluginConfig: {
+    list: () => ipcRenderer.invoke(PluginConfigListChannel),
+    choose: () => ipcRenderer.invoke(PluginConfigChooseChannel),
+    toggle: (value: unknown) => {
+      const request = decodePluginToggleRequest(value)
+      return request === null
+        ? Promise.resolve({ state: "rejected", reason: "invalid plugin toggle" })
+        : ipcRenderer.invoke(PluginConfigToggleChannel, request)
+    },
+    remove: (value: unknown) => {
+      const request = decodePluginRefRequest(value)
+      return request === null
+        ? Promise.resolve({ state: "rejected", reason: "invalid plugin ref" })
+        : ipcRenderer.invoke(PluginConfigRemoveChannel, request)
     },
   },
   /**

@@ -715,6 +715,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   model pairings, and the runtime must fail on that account rather than rotate
   or silently substitute another account. An omitted target alone preserves
   automatic health-ordered account selection and visible rotation.
+  User-local Claude plugins are host-owned capabilities: absolute plugin paths
+  remain in the owner-only main-process registry, while preload/renderer expose
+  only opaque plugin refs plus bounded provenance, scope, readiness, enablement,
+  restart, next-turn-use, and capability metadata. Only enabled directories
+  with a valid `.claude-plugin/plugin.json` may enter the pinned Agent SDK
+  options; missing, invalid, duplicate, unknown-ref, and disabled entries fail
+  closed and cannot be substituted by a provider-default plugin source.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.

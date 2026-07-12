@@ -213,6 +213,26 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(call.prompt).toContain("User: What now?")
   })
 
+  test("offers only main-validated local plugins to the Claude SDK on the next turn", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-plugin" }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok", usage: null }
+      },
+    })
+    const runtime = makeFableLocalRuntime({
+      scratchRoot: () => harness.scratch,
+      env: { PYLON_ACCOUNT_HOME_ROOT: harness.root },
+      queryImpl: async () => (call => { harness.captured.push(call); return (async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-plugin" }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok", usage: null }
+      })() }),
+      userPlugins: () => ["/private/plugin-a"],
+    })
+    await runtime.runTurn({ turnRef: "turn-plugin", threadRef: "thread-plugin", history: [], message: "go", emit: collect().emit })
+    expect(harness.captured[0]!.options.plugins).toEqual([{ type: "local", path: "/private/plugin-a" }])
+  })
+
   test("capability I1: a turn with images lowers the prompt to an SDK base64 image content block", async () => {
     const harness = makeRuntimeHarness({
       script: async function* () {

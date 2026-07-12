@@ -26,6 +26,8 @@ import {
   decodeOpenAgentsSessionView,
   type CodexSettingsBridge,
   type McpConfigSettingsBridge,
+  unavailablePluginConfigSettingsBridge,
+  type PluginConfigSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
 } from "./settings.ts"
@@ -210,6 +212,12 @@ type DesktopBridge = Readonly<{
     remove?: (value: unknown) => Promise<unknown>
     toggle?: (value: unknown) => Promise<unknown>
   }>
+  pluginConfig?: Readonly<{
+    list?: () => Promise<unknown>
+    choose?: () => Promise<unknown>
+    toggle?: (value: unknown) => Promise<unknown>
+    remove?: (value: unknown) => Promise<unknown>
+  }>
   /** Typed durable preferences (CUT-24 #8704). */
   preferences?: Readonly<{
     get?: () => Promise<unknown>
@@ -390,6 +398,12 @@ const mcpConfigSettingsBridge: McpConfigSettingsBridge = {
       ? bridge.mcpConfig.toggle({ name, enabled })
       : unavailableMcpConfigSettingsBridge.toggle(name, enabled)
   },
+}
+const pluginConfigSettingsBridge: PluginConfigSettingsBridge = {
+  list: () => readBridge()?.pluginConfig?.list?.() ?? unavailablePluginConfigSettingsBridge.list(),
+  choose: () => readBridge()?.pluginConfig?.choose?.() ?? unavailablePluginConfigSettingsBridge.choose(),
+  toggle: (ref, enabled) => readBridge()?.pluginConfig?.toggle?.({ ref, enabled }) ?? unavailablePluginConfigSettingsBridge.toggle(ref, enabled),
+  remove: ref => readBridge()?.pluginConfig?.remove?.({ ref }) ?? unavailablePluginConfigSettingsBridge.remove(ref),
 }
 
 let sessionRequestSequence = 0
@@ -720,7 +734,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const raw = await (globalThis as { openagentsDesktop?: { toggleFullScreen?: () => Promise<boolean> } }).openagentsDesktop?.toggleFullScreen?.()
           return raw === true
         },
-      }, gitGithubBridge, mcpConfigSettingsBridge, {
+      }, gitGithubBridge, mcpConfigSettingsBridge, pluginConfigSettingsBridge, {
         // Image file picker (capability I1): main-mediated native dialog. Absent
         // bridge degrades to no attachments (drop/paste still work in-renderer).
         pick: async () => {

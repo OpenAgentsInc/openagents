@@ -975,6 +975,15 @@ provider.
 Non-goals: an extension marketplace.  
 Close rule: merge with redacted configuration and audit receipts.
 
+### 2026-07-12 residual status
+
+MCP is complete. The provider-neutral local plugin registry and Claude Agent
+SDK passthrough are now implemented with host-private paths, opaque renderer
+refs, typed lifecycle controls, and explicit provider disagreement; see
+`docs/sol/2026-07-12-cut-23-plugin-registry-receipt.md`. CUT-23 remains open
+for R1 skills/slash and R3 local permission-mode controls plus the named real
+provider workflows.
+
 ---
 
 <!-- issue:CUT-24 -->
