@@ -660,8 +660,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   in `apps/openagents-desktop/tests/workspace-service.test.ts`. Fixed decoded
   create/rename/delete/reveal main-preload operations now cross only for the
   trusted top-level bundled renderer; Electron main injects reveal authority
-  into each selected WorkContext and no absolute path returns. Effect Native UI
-  remains CUT-17 work.
+  into each selected WorkContext and no absolute path returns. Desktop Files
+  composes the accessible relative tree/search/mutation surface; preload reduces
+  native-picker completion to a boolean and exposes none of the legacy root
+  summary/list/read/save/Git-diff methods. The real Electron smoke clicks Files,
+  proves no selected-root text or legacy editor, and tears down with zero active
+  owners. CUT-18 document open/save core operations echo the exact workspace
+  grant plus a relative path ref, return only bounded UTF-8 content and a
+  content revision, classify invalid/missing/directory/binary/large/encoding/
+  permission/revoked outcomes, and atomically refuse stale revisions. They
+  never return the selected root or accept ambient/absolute renderer paths.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

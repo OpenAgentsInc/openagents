@@ -92,6 +92,55 @@ export const DesktopWorkspaceRevealRequestSchema = Schema.Struct({
   pathRef: DesktopWorkspacePathRefSchema,
 })
 
+export const DesktopWorkspaceDocumentUnavailableReasonSchema = Schema.Literals([
+  "invalid_ref",
+  "unavailable",
+  "missing",
+  "directory",
+  "binary",
+  "too_large",
+  "unsupported_encoding",
+  "permission_denied",
+  "grant_revoked",
+])
+
+export const DesktopWorkspaceDocumentRequestSchema = Schema.Struct({
+  grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+  pathRef: DesktopWorkspacePathRefSchema,
+})
+
+export const DesktopWorkspaceDocumentSaveRequestSchema = Schema.Struct({
+  grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+  pathRef: DesktopWorkspacePathRefSchema,
+  content: Schema.String.check(Schema.isMaxLength(1_000_000)),
+  expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+})
+
+export const DesktopWorkspaceDocumentSchema = Schema.Struct({
+  grantRef: Schema.String,
+  pathRef: DesktopWorkspacePathRefSchema,
+  content: Schema.String.check(Schema.isMaxLength(1_000_000)),
+  revisionRef: Schema.String,
+  languageMode: Schema.Literals([
+    "typescript", "javascript", "json", "markdown", "rust", "python",
+    "shell", "toml", "yaml", "css", "html", "plaintext",
+  ]),
+  encoding: Schema.Literals(["utf-8", "utf-8-bom"]),
+  lineEnding: Schema.Literals(["lf", "crlf", "mixed", "none"]),
+  sizeBytes: Schema.Number,
+})
+
+export const DesktopWorkspaceDocumentResultSchema = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("available"), document: DesktopWorkspaceDocumentSchema }),
+  Schema.Struct({ state: Schema.Literal("saved"), document: DesktopWorkspaceDocumentSchema }),
+  Schema.Struct({ state: Schema.Literal("conflict"), current: DesktopWorkspaceDocumentSchema }),
+  Schema.Struct({
+    state: Schema.Literal("unavailable"),
+    reason: DesktopWorkspaceDocumentUnavailableReasonSchema,
+    message: Schema.String.check(Schema.isMaxLength(400)),
+  }),
+])
+
 export const DesktopWorkspaceCacheFactSchema = Schema.Struct({
   key: Schema.String,
   epoch: Schema.Number,
@@ -269,6 +318,38 @@ export type DesktopWorkspaceOperationResult =
   | Readonly<{ state: "permission_denied"; message: string }>
   | Readonly<{ state: "unavailable"; message: string }>
 
+export type DesktopWorkspaceDocumentUnavailableReason =
+  | "invalid_ref"
+  | "unavailable"
+  | "missing"
+  | "directory"
+  | "binary"
+  | "too_large"
+  | "unsupported_encoding"
+  | "permission_denied"
+  | "grant_revoked"
+
+export type DesktopWorkspaceDocument = Readonly<{
+  grantRef: string
+  pathRef: string
+  content: string
+  revisionRef: string
+  languageMode: "typescript" | "javascript" | "json" | "markdown" | "rust" | "python" | "shell" | "toml" | "yaml" | "css" | "html" | "plaintext"
+  encoding: "utf-8" | "utf-8-bom"
+  lineEnding: "lf" | "crlf" | "mixed" | "none"
+  sizeBytes: number
+}>
+
+export type DesktopWorkspaceDocumentResult =
+  | Readonly<{ state: "available"; document: DesktopWorkspaceDocument }>
+  | Readonly<{ state: "saved"; document: DesktopWorkspaceDocument }>
+  | Readonly<{ state: "conflict"; current: DesktopWorkspaceDocument }>
+  | Readonly<{
+      state: "unavailable"
+      reason: DesktopWorkspaceDocumentUnavailableReason
+      message: string
+    }>
+
 export type DesktopWorkspaceChange = Readonly<{
   kind: "changed" | "overflow" | "refresh"
   pathRef: string | null
@@ -391,6 +472,20 @@ export const decodeWorkspaceRevealRequest = (
   return Exit.isSuccess(result) ? result.value : null
 }
 
+export const decodeWorkspaceDocumentRequest = (
+  value: unknown,
+): { grantRef: string; pathRef: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceDocumentSaveRequest = (
+  value: unknown,
+): { grantRef: string; pathRef: string; content: string; expectedRevisionRef: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentSaveRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
 export const decodeWorkspaceTreePage = (
   value: unknown,
 ): DesktopWorkspaceTreePage | null => {
@@ -434,5 +529,12 @@ export const decodeWorkspaceOperationResult = (
   value: unknown,
 ): DesktopWorkspaceOperationResult | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceOperationResultSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceDocumentResult = (
+  value: unknown,
+): DesktopWorkspaceDocumentResult | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentResultSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }

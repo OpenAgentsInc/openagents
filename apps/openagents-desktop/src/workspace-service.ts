@@ -4,6 +4,8 @@ import path from "node:path"
 import { execFileSync, spawnSync } from "node:child_process"
 
 import type {
+  DesktopWorkspaceDocument,
+  DesktopWorkspaceDocumentResult,
   DesktopWorkspaceFile,
   DesktopWorkspaceGitChange,
   DesktopWorkspaceGitDiff,
@@ -30,6 +32,7 @@ const maxSearchResults = 100
 const maxSearchVisitedEntries = 20_000
 const maxSearchFileBytes = 1_000_000
 const maxSearchPreviewCharacters = 240
+const maxDocumentBytes = 1_000_000
 
 const inside = (root: string, candidate: string): boolean => {
   const relative = path.relative(root, candidate)
@@ -471,6 +474,212 @@ export const searchWorkspace = (input: Readonly<{
   }
 }
 
+export type WorkspaceDocumentIo = Readonly<{
+  read: (absolutePath: string) => Buffer
+  replace: (absolutePath: string, bytes: Buffer) => void
+}>
+
+const defaultWorkspaceDocumentIo: WorkspaceDocumentIo = {
+  read: absolutePath => readFileSync(absolutePath),
+  replace: (absolutePath, bytes) => {
+    const temporary = path.join(
+      path.dirname(absolutePath),
+      `.${path.basename(absolutePath)}.${randomUUID()}.tmp`,
+    )
+    try {
+      writeFileSync(temporary, bytes, {
+        flag: "wx",
+        mode: statSync(absolutePath).mode,
+      })
+      renameSync(temporary, absolutePath)
+    } catch (error) {
+      try { unlinkSync(temporary) } catch { /* best-effort cleanup only */ }
+      throw error
+    }
+  },
+}
+
+const documentUnavailable = (
+  reason: Extract<DesktopWorkspaceDocumentResult, { state: "unavailable" }>["reason"],
+  message: string,
+): DesktopWorkspaceDocumentResult => ({ state: "unavailable", reason, message })
+
+const documentLanguageMode = (pathRef: string): DesktopWorkspaceDocument["languageMode"] => {
+  const extension = path.posix.extname(pathRef).toLocaleLowerCase()
+  if (extension === ".ts" || extension === ".tsx" || extension === ".mts" || extension === ".cts") return "typescript"
+  if (extension === ".js" || extension === ".jsx" || extension === ".mjs" || extension === ".cjs") return "javascript"
+  if (extension === ".json" || extension === ".jsonl") return "json"
+  if (extension === ".md" || extension === ".mdx") return "markdown"
+  if (extension === ".rs") return "rust"
+  if (extension === ".py") return "python"
+  if (extension === ".sh" || extension === ".bash" || extension === ".zsh") return "shell"
+  if (extension === ".toml") return "toml"
+  if (extension === ".yaml" || extension === ".yml") return "yaml"
+  if (extension === ".css") return "css"
+  if (extension === ".html" || extension === ".htm") return "html"
+  return "plaintext"
+}
+
+const documentLineEnding = (content: string): DesktopWorkspaceDocument["lineEnding"] => {
+  const hasCrlf = content.includes("\r\n")
+  const hasLf = /(^|[^\r])\n/u.test(content)
+  if (hasCrlf && hasLf) return "mixed"
+  if (hasCrlf) return "crlf"
+  if (hasLf) return "lf"
+  return "none"
+}
+
+const documentEntry = (
+  root: string,
+  requestedRef: string,
+): SafeWorkspaceEntry | DesktopWorkspaceDocumentResult => {
+  const pathRef = workspacePathRef(requestedRef)
+  if (pathRef === null || pathRef === "") {
+    return documentUnavailable("invalid_ref", "That document reference is invalid.")
+  }
+  const name = path.posix.basename(pathRef)
+  if (defaultIgnoredName(name) || secretShapedName(name) ||
+      gitIgnoredPathRefs(root, [pathRef]).has(pathRef)) {
+    return documentUnavailable("unavailable", "That document is not available from this workspace surface.")
+  }
+  const parentRef = path.posix.dirname(pathRef) === "." ? "" : path.posix.dirname(pathRef)
+  let parent: string | null
+  try {
+    parent = canonicalDirectoryForRef(root, parentRef, true)
+  } catch (error) {
+    return permissionError(error)
+      ? documentUnavailable("permission_denied", "The selected workspace no longer permits reading that document.")
+      : documentUnavailable("unavailable", "That document is not available from this workspace surface.")
+  }
+  if (parent === null) return documentUnavailable("missing", "That document no longer exists in the selected workspace.")
+  const absolutePath = path.join(parent, name)
+  try {
+    const stats = lstatSync(absolutePath)
+    if (stats.isDirectory()) return documentUnavailable("directory", "Folders cannot be opened as documents.")
+    if (!stats.isFile() || stats.isSymbolicLink()) {
+      return documentUnavailable("unavailable", "That document is not available from this workspace surface.")
+    }
+    const canonicalRoot = realpathSync(root)
+    const canonicalFile = realpathSync(absolutePath)
+    if (!inside(canonicalRoot, canonicalFile)) {
+      return documentUnavailable("unavailable", "That document is not available from this workspace surface.")
+    }
+    return {
+      absolutePath: canonicalFile,
+      name,
+      pathRef,
+      kind: "file",
+      sizeBytes: stats.size,
+      revisionRef: `workspace.entry.${createHash("sha256")
+        .update(`${pathRef}\0${stats.size}\0${stats.mtimeMs}\0${stats.mode}`)
+        .digest("hex")}`,
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+      return documentUnavailable("missing", "That document no longer exists in the selected workspace.")
+    }
+    return permissionError(error)
+      ? documentUnavailable("permission_denied", "The selected workspace no longer permits reading that document.")
+      : documentUnavailable("unavailable", "That document is not available from this workspace surface.")
+  }
+}
+
+const projectWorkspaceDocument = (
+  root: string,
+  grantRef: string,
+  pathRef: string,
+  io: WorkspaceDocumentIo,
+): DesktopWorkspaceDocumentResult => {
+  const entry = documentEntry(root, pathRef)
+  if ("state" in entry) return entry
+  let bytes: Buffer
+  try {
+    bytes = io.read(entry.absolutePath)
+  } catch (error) {
+    return permissionError(error)
+      ? documentUnavailable("permission_denied", "The selected workspace no longer permits reading that document.")
+      : documentUnavailable("unavailable", "That document could not be read.")
+  }
+  if (bytes.length > maxDocumentBytes) {
+    return documentUnavailable("too_large", "That document exceeds the 1 MB editor limit.")
+  }
+  if (bytes.includes(0)) return documentUnavailable("binary", "Binary files cannot be opened in the text editor.")
+  const hasUtf8Bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+  const textBytes = hasUtf8Bom ? bytes.subarray(3) : bytes
+  let content: string
+  try {
+    content = new TextDecoder("utf-8", { fatal: true }).decode(textBytes)
+  } catch {
+    return documentUnavailable("unsupported_encoding", "Only UTF-8 documents can be opened in the editor.")
+  }
+  return {
+    state: "available",
+    document: {
+      grantRef,
+      pathRef: entry.pathRef,
+      content,
+      revisionRef: `workspace.document.${revisionFor(bytes)}`,
+      languageMode: documentLanguageMode(entry.pathRef),
+      encoding: hasUtf8Bom ? "utf-8-bom" : "utf-8",
+      lineEnding: documentLineEnding(content),
+      sizeBytes: bytes.length,
+    },
+  }
+}
+
+export const openWorkspaceDocument = (
+  root: string,
+  currentGrantRef: string,
+  input: Readonly<{ grantRef: string; pathRef: string }>,
+  io: WorkspaceDocumentIo = defaultWorkspaceDocumentIo,
+): DesktopWorkspaceDocumentResult => input.grantRef !== currentGrantRef
+  ? documentUnavailable("grant_revoked", "The workspace grant changed before that document could be opened.")
+  : projectWorkspaceDocument(root, currentGrantRef, input.pathRef, io)
+
+export const saveWorkspaceDocument = (
+  root: string,
+  currentGrantRef: string,
+  input: Readonly<{
+    grantRef: string
+    pathRef: string
+    content: string
+    expectedRevisionRef: string
+  }>,
+  io: WorkspaceDocumentIo = defaultWorkspaceDocumentIo,
+): DesktopWorkspaceDocumentResult => {
+  if (input.grantRef !== currentGrantRef) {
+    return documentUnavailable("grant_revoked", "The workspace grant changed before that document could be saved.")
+  }
+  const current = projectWorkspaceDocument(root, currentGrantRef, input.pathRef, io)
+  if (current.state !== "available") return current
+  if (current.document.revisionRef !== input.expectedRevisionRef) {
+    return { state: "conflict", current: current.document }
+  }
+  const contentBytes = Buffer.from(input.content, "utf8")
+  const bytes = current.document.encoding === "utf-8-bom"
+    ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), contentBytes])
+    : contentBytes
+  if (bytes.length > maxDocumentBytes) {
+    return documentUnavailable("too_large", "The edited document exceeds the 1 MB editor limit.")
+  }
+  if (bytes.includes(0)) {
+    return documentUnavailable("binary", "Binary content cannot be saved through the text editor.")
+  }
+  const entry = documentEntry(root, input.pathRef)
+  if ("state" in entry) return entry
+  try {
+    io.replace(entry.absolutePath, bytes)
+  } catch (error) {
+    return permissionError(error)
+      ? documentUnavailable("permission_denied", "The selected workspace no longer permits saving that document.")
+      : documentUnavailable("unavailable", "That document could not be saved.")
+  }
+  const saved = projectWorkspaceDocument(root, currentGrantRef, input.pathRef, io)
+  return saved.state === "available"
+    ? { state: "saved", document: saved.document }
+    : saved
+}
+
 /**
  * Resolve an existing regular file through the chosen root. `realpath` is
  * deliberately checked after lexical containment: a symlinked parent or file
@@ -655,6 +864,8 @@ export type DesktopWorkspaceService = Readonly<{
   renameEntry: (input: Readonly<{ pathRef: string; name: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
   deleteEntry: (input: Readonly<{ pathRef: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
   revealEntry: (input: Readonly<{ pathRef: string }>) => Promise<DesktopWorkspaceOperationResult>
+  openDocument: (input: Readonly<{ grantRef: string; pathRef: string }>) => DesktopWorkspaceDocumentResult
+  saveDocument: (input: Readonly<{ grantRef: string; pathRef: string; content: string; expectedRevisionRef: string }>) => DesktopWorkspaceDocumentResult
   refresh: () => void
   subscribe: (listener: (change: DesktopWorkspaceChange) => void) => Readonly<{ close: () => void }>
   read: (requestedPath: string) => DesktopWorkspaceFile | null
@@ -679,6 +890,7 @@ export const openWorkspaceService = (
     ) => Readonly<{ close: () => void }>
     searchHostFactory?: (root: string, grantRef: string) => WorkspaceSearchHost
     mutationIo?: WorkspaceMutationIo
+    documentIo?: WorkspaceDocumentIo
     reveal?: (absolutePath: string) => Promise<boolean> | boolean
   }> = {},
 ): DesktopWorkspaceService => {
@@ -794,6 +1006,15 @@ export const openWorkspaceService = (
     revealEntry: request => disposed
       ? Promise.resolve({ state: "unavailable", message: "The selected workspace has been disposed." })
       : revealWorkspaceEntry(root, request, options.reveal),
+    openDocument: request => disposed
+      ? documentUnavailable("grant_revoked", "The selected workspace has been disposed.")
+      : openWorkspaceDocument(root, grantRef, request, options.documentIo),
+    saveDocument: request => {
+      if (disposed) return documentUnavailable("grant_revoked", "The selected workspace has been disposed.")
+      const result = saveWorkspaceDocument(root, grantRef, request, options.documentIo)
+      if (result.state === "saved") notify("changed", result.document.pathRef)
+      return result
+    },
     refresh: () => {
       if (!disposed) notify("refresh", null)
     },

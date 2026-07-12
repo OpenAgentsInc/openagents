@@ -8,6 +8,9 @@ import {
   decodeWorkspaceChange,
   decodeWorkspaceCreateRequest,
   decodeWorkspaceDeleteRequest,
+  decodeWorkspaceDocumentRequest,
+  decodeWorkspaceDocumentResult,
+  decodeWorkspaceDocumentSaveRequest,
   decodeWorkspaceOperationResult,
   decodeWorkspaceRenameRequest,
   decodeWorkspaceRevealRequest,
@@ -20,10 +23,12 @@ import {
 
 import {
   openWorkspaceService,
+  openWorkspaceDocument,
   createWorkspaceEntry,
   deleteWorkspaceEntry,
   readWorkspaceFile,
   saveWorkspaceFile,
+  saveWorkspaceDocument,
   renameWorkspaceEntry,
   revealWorkspaceEntry,
   searchWorkspace,
@@ -31,6 +36,7 @@ import {
   workspaceGitStatus,
   workspaceTreePage,
   type WorkspaceMutationIo,
+  type WorkspaceDocumentIo,
 } from "../src/workspace-service.ts"
 import type {
   WorkspaceSearchHost,
@@ -49,6 +55,180 @@ afterEach(() => {
 })
 
 describe("Desktop bounded workspace service", () => {
+  test("decodes only grant-scoped relative document requests and bounded results", () => {
+    expect(decodeWorkspaceDocumentRequest({
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/index.ts",
+      root: "/private/root",
+    })).toEqual({ grantRef: "workspace.grant.docs", pathRef: "src/index.ts" })
+    expect(decodeWorkspaceDocumentRequest({ grantRef: "workspace.grant.docs", pathRef: "../private" })).toBeNull()
+    expect(decodeWorkspaceDocumentSaveRequest({
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/index.ts",
+      content: "next",
+      expectedRevisionRef: "workspace.document.revision",
+    })).toEqual({
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/index.ts",
+      content: "next",
+      expectedRevisionRef: "workspace.document.revision",
+    })
+    expect(decodeWorkspaceDocumentResult({
+      state: "unavailable",
+      reason: "binary",
+      message: "Binary files cannot be opened.",
+      root: "/private/root",
+    })).toEqual({ state: "unavailable", reason: "binary", message: "Binary files cannot be opened." })
+  })
+
+  test("opens UTF-8 documents through an exact grant and projects no absolute root", () => {
+    const root = makeRoot()
+    mkdirSync(path.join(root, "src"))
+    writeFileSync(path.join(root, "src", "index.ts"), "const ready = true\r\n")
+    const result = openWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/index.ts",
+    })
+    expect(result).toMatchObject({
+      state: "available",
+      document: {
+        grantRef: "workspace.grant.docs",
+        pathRef: "src/index.ts",
+        content: "const ready = true\r\n",
+        languageMode: "typescript",
+        encoding: "utf-8",
+        lineEnding: "crlf",
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain(root)
+    expect(openWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.stale",
+      pathRef: "src/index.ts",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+
+    const bomFile = path.join(root, "README.md")
+    writeFileSync(bomFile, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("hello\n")]))
+    const bom = openWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "README.md",
+    })
+    expect(bom).toMatchObject({ state: "available", document: { content: "hello\n", encoding: "utf-8-bom" } })
+    if (bom.state !== "available") throw new Error("expected BOM document")
+    const savedBom = saveWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "README.md",
+      content: "updated\n",
+      expectedRevisionRef: bom.document.revisionRef,
+    })
+    expect(savedBom).toMatchObject({ state: "saved", document: { encoding: "utf-8-bom" } })
+    expect(readFileSync(bomFile).subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]))
+  })
+
+  test("classifies missing, directory, binary, oversized, encoding, ignored, and escape outcomes", () => {
+    const root = makeRoot()
+    const outside = makeRoot()
+    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n")
+    mkdirSync(path.join(root, "src"))
+    writeFileSync(path.join(root, "binary.bin"), Buffer.from([0, 1, 2]))
+    writeFileSync(path.join(root, "large.txt"), "x".repeat(1_000_001))
+    writeFileSync(path.join(root, "latin.txt"), Buffer.from([0xff, 0xfe, 0x61]))
+    writeFileSync(path.join(root, "ignored.txt"), "hidden")
+    writeFileSync(path.join(root, ".env"), "SECRET=value")
+    writeFileSync(path.join(outside, "private.txt"), "outside")
+    symlinkSync(path.join(outside, "private.txt"), path.join(root, "linked.txt"))
+    const open = (pathRef: string) => openWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef,
+    })
+    expect(open("missing.txt")).toMatchObject({ state: "unavailable", reason: "missing" })
+    expect(open("src")).toMatchObject({ state: "unavailable", reason: "directory" })
+    expect(open("binary.bin")).toMatchObject({ state: "unavailable", reason: "binary" })
+    expect(open("large.txt")).toMatchObject({ state: "unavailable", reason: "too_large" })
+    expect(open("latin.txt")).toMatchObject({ state: "unavailable", reason: "unsupported_encoding" })
+    expect(open("ignored.txt")).toMatchObject({ state: "unavailable", reason: "unavailable" })
+    expect(open(".env")).toMatchObject({ state: "unavailable", reason: "unavailable" })
+    expect(open("linked.txt")).toMatchObject({ state: "unavailable", reason: "unavailable" })
+    expect(open("../private.txt")).toMatchObject({ state: "unavailable", reason: "invalid_ref" })
+  })
+
+  test("saves atomically with a revision receipt and refuses stale editors", () => {
+    const root = makeRoot()
+    const pathRef = "README.md"
+    const file = path.join(root, pathRef)
+    writeFileSync(file, "before\n")
+    const opened = openWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef,
+    })
+    if (opened.state !== "available") throw new Error("expected document")
+    writeFileSync(file, "changed elsewhere\n")
+    const conflict = saveWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef,
+      content: "stale editor\n",
+      expectedRevisionRef: opened.document.revisionRef,
+    })
+    expect(conflict).toMatchObject({ state: "conflict", current: { content: "changed elsewhere\n" } })
+    expect(readFileSync(file, "utf8")).toBe("changed elsewhere\n")
+    if (conflict.state !== "conflict") throw new Error("expected conflict")
+    const saved = saveWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef,
+      content: "resolved\n",
+      expectedRevisionRef: conflict.current.revisionRef,
+    })
+    expect(saved).toMatchObject({ state: "saved", document: { content: "resolved\n", pathRef } })
+    expect(readFileSync(file, "utf8")).toBe("resolved\n")
+    if (saved.state !== "saved") throw new Error("expected saved")
+    expect(saved.document.revisionRef).not.toBe(conflict.current.revisionRef)
+  })
+
+  test("surfaces injected document permission loss and WorkContext disposal without root leakage", () => {
+    const root = makeRoot()
+    writeFileSync(path.join(root, "README.md"), "before")
+    const denied = Object.assign(new Error("private operating-system detail"), { code: "EACCES" })
+    const deniedIo: WorkspaceDocumentIo = {
+      read: () => { throw denied },
+      replace: () => { throw denied },
+    }
+    const deniedOpen = openWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "README.md",
+    }, deniedIo)
+    expect(deniedOpen).toMatchObject({ state: "unavailable", reason: "permission_denied" })
+    expect(JSON.stringify(deniedOpen)).not.toContain(root)
+    expect(JSON.stringify(deniedOpen)).not.toContain("private operating-system detail")
+
+    const opened = openWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "README.md",
+    })
+    if (opened.state !== "available") throw new Error("expected document")
+    const deniedSave = saveWorkspaceDocument(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "README.md",
+      content: "after",
+      expectedRevisionRef: opened.document.revisionRef,
+    }, {
+      read: absolutePath => readFileSync(absolutePath),
+      replace: () => { throw denied },
+    })
+    expect(deniedSave).toMatchObject({ state: "unavailable", reason: "permission_denied" })
+    expect(readFileSync(path.join(root, "README.md"), "utf8")).toBe("before")
+
+    const workspace = openWorkspaceService(root, { grantRef: "workspace.grant.docs" })
+    workspace.dispose()
+    expect(workspace.openDocument({ grantRef: "workspace.grant.docs", pathRef: "README.md" }))
+      .toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(workspace.saveDocument({
+      grantRef: "workspace.grant.docs",
+      pathRef: "README.md",
+      content: "after",
+      expectedRevisionRef: "workspace.document.stale",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+  })
+
   test("binds one selected root into an explicit WorkContext service", () => {
     const root = makeRoot()
     const outside = makeRoot()
