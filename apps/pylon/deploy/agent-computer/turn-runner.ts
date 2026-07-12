@@ -59,6 +59,7 @@ import {
 } from '../../src/workspace-materializer.js'
 
 const ARTIFACT_DIR = process.env.OA_ARTIFACT_DIR ?? '/qa/artifacts'
+let activeFailureReasonRef: string | null = null
 const CACHE_ROOT = process.env.OA_CACHE_ROOT ?? '/root/.agent-computer/turns'
 
 // The exact ingest contract this runtime posts to. Canonical source of truth:
@@ -1661,6 +1662,7 @@ async function main() {
 
   let codexProviderAuth: CodexProviderAuthMaterialization | null = null
   if (wc.providerAuth !== undefined) {
+    activeFailureReasonRef = 'codex.provider_auth_materialization_failed'
     emit({
       kind: 'tool.call',
       turnId,
@@ -1692,6 +1694,7 @@ async function main() {
       authGrantRef: codexProviderAuth.authGrantRef,
       homeIsolation: 'scratch_per_turn',
     })
+    activeFailureReasonRef = null
   }
 
   if (codexContinuity !== null) {
@@ -2110,7 +2113,7 @@ async function main() {
 if (import.meta.main) {
   main().catch(async (error) => {
     const errorText = String(error)
-    const failureReasonRef =
+    const failureReasonRef = activeFailureReasonRef ??
       /(?:codex|workspace)\.[A-Za-z0-9._:-]+/.exec(errorText)?.[0] ??
       'agent_computer.turn_failed'
     const full = {
