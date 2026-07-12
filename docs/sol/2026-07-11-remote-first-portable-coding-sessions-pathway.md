@@ -134,8 +134,10 @@ declared cache epochs, ignore/secret/binary/symlink filtering, and exactly-owned
 watcher invalidation. Fixed decoded tree/refresh/watch main-preload operations
 now carry that boundary to the trusted bundled renderer and rebind on explicit
 WorkContext replacement. This is host-capability evidence only: Effect Native
-UI, cancellable search transport, and portable workspace materialization remain
-separate rungs.
+UI and portable workspace materialization remain separate rungs. Bounded
+path/content search now executes in a WorkContext-owned cancellable worker per
+task, with stale-epoch fencing and relative-ref-only decoded results; its fixed
+main/preload operations and UI remain the next host rung.
 
 ### Episodes 248–249 calibration
 

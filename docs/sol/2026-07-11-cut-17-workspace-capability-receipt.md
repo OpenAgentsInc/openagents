@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697)
-- Status: capability core and tree/watch host bridge landed; UI, search worker,
-  mutations, and closure evidence remain open
-- Implementations: `4bbf0c7758`, `37372f30e2`
+- Status: capability core, tree/watch host bridge, and cancellable search worker
+  landed; search IPC/UI, mutations, and closure evidence remain open
+- Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`
 
 ## Landed boundary
 
@@ -38,13 +38,23 @@ listeners over one reference-counted decoded event handler. No root, handle,
 arbitrary channel, or filesystem API crosses. The current legacy root summary/
 read/save/Git renderer path is intentionally unchanged until UI migration.
 
+Bounded path/content search now executes in one isolated worker per request.
+The WorkContext owns every task, terminates stale work before a watch or refresh
+epoch advances, caches only a result from the unchanged epoch, and settles
+cancel/error/exit/project-close races exactly once. The worker result crosses a
+bounded schema decoder and contains only the opaque grant plus relative refs.
+No search IPC or renderer UI is claimed by this rung.
+
 ## Verification
 
-- focused workspace/electron boundary suite: 34 pass, 0 fail, 440 assertions;
-- full Desktop suite: 589 pass, 0 fail, 3,265 assertions, with 11 existing
+- focused worker/workspace/topology/build suite: 32 pass, 0 fail, 244 assertions;
+- full Desktop suite: 592 pass, 0 fail, 3,302 assertions, with 11 existing
   capability-gap skips retained and named;
 - Desktop typecheck: pass;
 - Desktop production bundle: pass;
+- real bundled-worker test: built `workspace-search-worker.js`, searched a
+  temporary fixture at epoch 7, returned the relative `README.md` match, and
+  exposed no selected root;
 - built Electron smoke: relative tree page passed through preload, explicit
   refresh produced a decoded newer-epoch event, unsubscribe completed, every
   existing EP250 step remained green, and lifecycle teardown reported
@@ -60,8 +70,8 @@ No tree/search UI or scale-benchmark receipt is claimed.
 
 ## Remaining before CUT-17 closure
 
-- add cancellable owned content-search transport without blocking Electron main,
-  with project close settling each search task exactly once;
+- add fixed schema-decoded search/start-cancel main/preload operations and bind
+  their ownership to the requesting webContents;
 - migrate the Files workspace to the new relative-ref boundary and ship the
   recursive accessible Effect Native tree/search experience;
 - add reveal plus create/rename/delete capability operations with explicit
