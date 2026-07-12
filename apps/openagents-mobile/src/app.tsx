@@ -23,6 +23,10 @@ import {
   type MobileConversationThread,
   type MobileConversationSelection,
 } from "./conversation/mobile-conversation"
+import {
+  openMobileExperienceReconciler,
+  type MobileExperienceReconciler,
+} from "./conversation/mobile-experience-reconciler"
 import type { MobileSyncPhase } from "./screens/home-core"
 import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileNativeSyncHost } from "./sync/mobile-sync-host"
@@ -185,6 +189,13 @@ export const App = () => {
   useEffect(() => {
     syncPhaseRef.current = syncPhase
   }, [syncPhase])
+  // The pre-live conversation read (in signIn/boot hydration) is necessarily
+  // the local fallback; this ref lets the phase poller re-evaluate the choice
+  // once the scope reaches live without re-running a single-shot read.
+  const conversationSelectionRef = useRef<MobileConversationSelection | null>(null)
+  useEffect(() => {
+    conversationSelectionRef.current = conversationSelection
+  }, [conversationSelection])
   const applyActiveThread = (thread: MobileConversationThread): void => {
     setConversationSelection(current => current?.mode !== "sync"
       ? current
@@ -260,10 +271,27 @@ export const App = () => {
     let linkSubscription: ReturnType<typeof Linking.addEventListener> | undefined
     let notificationSubscription: Readonly<{ remove: () => void }> | undefined
     let targetDelivery: NativeCodingTargetDelivery | undefined
+    let experienceReconciler: MobileExperienceReconciler | undefined
     let localStoreReady = false
     try {
       syncHost = openMobileSyncHost()
       syncHostRef.current = syncHost
+      experienceReconciler = openMobileExperienceReconciler({
+        currentMode: () => conversationSelectionRef.current?.mode ?? "local",
+        // A non-null callable conversation host means a verified session is
+        // connected and its personal scope is live — the exact precondition for
+        // upgrading the local fallback to the confirmed sync surface.
+        isAuthenticatedLive: () => syncHost?.conversation() != null,
+        selectExperience: () =>
+          selectAuthenticatedMobileExperience(syncHost!, applyActiveThread),
+        onUpgrade: experience => {
+          conversationSelectionRef.current = experience.conversation
+          setConversationSelection(experience.conversation)
+          publishCodingBinding(experience.coding)
+          setConversationRevision(current => current + 1)
+          setSyncPhase("live")
+        },
+      })
       targetDelivery = openNativeCodingTargetDelivery({
         resolve: candidate => syncHost!.coding().accept(candidate),
         activate: async target => {
@@ -357,6 +385,10 @@ export const App = () => {
         phase === "must_refetch" || phase === "denied"
       ) setSyncPhase(phase)
       if (phase === "live") void targetDelivery?.flush()
+      // Re-evaluate local vs sync once the scope reaches live: the pre-live
+      // read fell back to local, and this upgrades it to the confirmed sync
+      // surface (authority "sync", "Continue conversation") exactly once.
+      experienceReconciler?.observePhase(phase === "closed" ? undefined : phase)
     }, 250)
     const handle = startOtaPolling({
       isEnabled: Updates.isEnabled,
@@ -369,6 +401,7 @@ export const App = () => {
     return () => {
       stopped = true
       if (syncStatusTimer !== undefined) clearInterval(syncStatusTimer)
+      experienceReconciler?.close()
       handle.stop()
       linkSubscription?.remove()
       notificationSubscription?.remove()

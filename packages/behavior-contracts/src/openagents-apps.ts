@@ -759,7 +759,52 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the signed-in identity line, the fallback chain, the different-email guidance, and the /logout affordance on the empty state; the #8652 reopen receipts carry the deployed browser screenshots (logged out, logged in without engagement, logged in with engagement).",
     },
+    {
+      authorityBoundary:
+        "Re-evaluation only reads confirmed personal-scope rows once the scope reports the live phase; it never fabricates a conversation, never creates or duplicates a thread, and does not make cached or pre-live state authoritative. The account control is a phase-derived affordance, not an authorization decision.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.chat.post_auth_live_upgrade.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/app.tsx",
+        "apps/openagents-mobile/src/conversation/mobile-experience-reconciler.ts",
+        "apps/openagents-mobile/src/screens/home-core.ts",
+        "github:OpenAgentsInc/openagents#8676",
+        "github:OpenAgentsInc/openagents#8689",
+        "github:OpenAgentsInc/openagents#8677",
+      ],
+      oracles: [
+        {
+          description:
+            "Proves the pre-live read stays local, a live scope upgrades the selection to sync exactly once (authority sync, 'OpenAgents' pill, 'Continue conversation' composer) with no duplicate conversation, the genuine local fallback is preserved when the scope never becomes live, and a closed reconciler never upgrades.",
+          id: "openagents_mobile.chat.post_auth_live_upgrade.reconciler",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/mobile-experience-reconciler.test.ts",
+        },
+        {
+          description:
+            "Proves every confirmed post-authentication phase (session_ready, bootstrapping, catching_up, live, must_refetch, stale) renders 'Sign out', genuinely unauthenticated phases render 'Link OpenAgents account', and an in-flight authenticating step renders neither.",
+          id: "openagents_mobile.chat.post_auth_live_upgrade.account_control",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/mobile-account-control.test.ts",
+        },
+      ],
+      productArea: "mobile cross-device conversation continuity",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "enforced",
+      statement:
+        "Owner, 2026-07-11, after seeing the mobile app stuck on the local 'Message Khala' Khala surface with a 'Link OpenAgents account' button while the OpenAgents status surface already read 'Sync live': the visible conversation authority must re-evaluate when the verified personal scope reaches the live phase — upgrading the Khala surface from the pre-live local fallback to the confirmed sync conversation (title 'OpenAgents', 'Continue conversation' composer) exactly once and without inventing or duplicating a conversation — while a scope that never becomes live stays local; and the OpenAgents account control must read 'Sign out' for every confirmed post-authentication phase (session_ready, bootstrapping, catching_up, live, must_refetch, stale) and read 'Link OpenAgents account' only for genuinely unauthenticated phases.",
+      surface: "openagents-mobile",
+      verification:
+        "bun test --cwd apps/openagents-mobile runs the reconciler and account-control oracles in the normal mobile sweep; mobile typecheck plus behavior-contract coverage guard the phase-to-authority and phase-to-account-control boundaries.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-11.1",
+  version: "2026-07-12.1",
 }

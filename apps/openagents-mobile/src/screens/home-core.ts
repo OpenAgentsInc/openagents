@@ -173,6 +173,32 @@ const syncStatusCopyByPhase: Record<MobileSyncPhase, SyncStatusCopy> = {
 
 export const syncStatusCopy = (phase: MobileSyncPhase): SyncStatusCopy => syncStatusCopyByPhase[phase]
 
+export type MobileAccountControl = "sign_in" | "sign_out" | "none"
+
+/**
+ * Every confirmed post-authentication phase — a verified session that has
+ * connected and is bootstrapping/catching up/live, plus the degraded-but-still-
+ * linked stale/must-refetch states — is a linked account and shows "Sign out".
+ * Only genuinely unauthenticated phases (never linked, signed out, denied, or
+ * unverified) show the "Link OpenAgents account" sign-in control, and an
+ * in-flight browser step shows neither.
+ */
+const authenticatedAccountPhases: ReadonlySet<MobileSyncPhase> = new Set<MobileSyncPhase>([
+  "session_ready",
+  "bootstrapping",
+  "catching_up",
+  "live",
+  "must_refetch",
+  "stale",
+])
+
+export const mobileAccountControl = (phase: MobileSyncPhase): MobileAccountControl =>
+  phase === "authenticating"
+    ? "none"
+    : authenticatedAccountPhases.has(phase)
+      ? "sign_out"
+      : "sign_in"
+
 export const initialHomeState: HomeState = {
   drawerOpen: false,
   surfaceMode: "khala",
@@ -320,16 +346,16 @@ export const renderContentView = (state: HomeState): View =>
             variant: "body",
             color: "textMuted",
           }),
-          ...(state.syncPhase === "session_ready"
-            ? [Button({
-              key: "openagents-sign-out",
-              label: "Sign out",
-              variant: "secondary",
-              onPress: IntentRef("OpenAgentsSignOutPressed", StaticPayload({})),
-              style: mobileInteractiveStyle(state.accessibility),
-            })]
-            : state.syncPhase === "authenticating"
-              ? []
+          ...(mobileAccountControl(state.syncPhase) === "none"
+            ? []
+            : mobileAccountControl(state.syncPhase) === "sign_out"
+              ? [Button({
+                  key: "openagents-sign-out",
+                  label: "Sign out",
+                  variant: "secondary",
+                  onPress: IntentRef("OpenAgentsSignOutPressed", StaticPayload({})),
+                  style: mobileInteractiveStyle(state.accessibility),
+                })]
               : [Button({
                   key: "openagents-sign-in",
                   label: "Link OpenAgents account",
