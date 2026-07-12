@@ -20,6 +20,7 @@ import {
   makeSettingsHandlers,
   parseMcpArgs,
   parseMcpKeyValueLines,
+  settingsExtensionAudit,
   settingsView,
   withSettingsAccounts,
   withSettingsClaudeAccounts,
@@ -105,6 +106,61 @@ describe("settingsView (state -> component tree)", () => {
     expect((nodeByKey(view, "settings-plugin-add")?.onPress as { name?: string })?.name)
       .toBe("DesktopPluginChooseRequested")
     expect(JSON.stringify(view)).not.toContain("/Users/")
+  })
+  test("extension lifecycle audit unifies MCP/plugin/skill grants over loaded state (CUT-23)", () => {
+    const ref = "plugin.local.0123456789abcdef01234567" as const
+    const view = settingsView({
+      ...initialSettingsState(),
+      mcp: {
+        ...initialMcpSettingsState(),
+        servers: {
+          state: "loaded",
+          dropped: 1,
+          servers: [{
+            name: "search", transport: "stdio", enabled: false, command: "search-mcp",
+            argsCount: 0, envCount: 2, headersCount: 0,
+          }],
+        },
+      },
+      plugins: {
+        state: "loaded",
+        dropped: 0,
+        message: null,
+        plugins: [{
+          ref, name: "review-tools", provider: "claude_agent", provenance: "user_local",
+          scope: "app", readiness: "ready", enabled: true, restartRequired: false,
+          perSessionUse: "next_turn", capabilities: ["skills"], skills: ["review"],
+        }],
+      },
+    })
+    // Summary tallies: plugin + its skill granted; the disabled server revoked;
+    // the host-dropped invalid row surfaces honestly.
+    expect(nodeByKey(view, "settings-lifecycle-summary")?.content).toBe(
+      "2 granted · 1 revoked · 1 invalid dropped",
+    )
+    expect(nodeByKey(view, "settings-lifecycle-partial")).toBeUndefined()
+    // Revoked MCP server row: stage badge + withdrawn grant caption.
+    expect(nodeByKey(view, "settings-lifecycle-mcp_server-search-stage")?.label).toBe("revoked")
+    expect(nodeByKey(view, "settings-lifecycle-mcp_server-search-grant")?.content).toBe("grant revoked")
+    // Skill grant is scoped under its parent plugin and requires explicit /skill use.
+    expect(nodeByKey(view, `settings-lifecycle-skill-${ref}/review-stage`)?.label).toBe("granted")
+    expect(nodeByKey(view, `settings-lifecycle-skill-${ref}/review-grant`)?.content).toBe(
+      "granted · explicit /skill",
+    )
+    // Provider disagreement is explicit on every row.
+    expect(nodeByKey(view, `settings-lifecycle-plugin-${ref}-provider`)?.content).toBe("Claude only")
+    // The audit never leaks secret-bearing fields or absolute paths.
+    expect(JSON.stringify(view)).not.toContain("/Users/")
+  })
+  test("extension lifecycle audit is honestly partial while a registry is unavailable", () => {
+    const view = settingsView(initialSettingsState())
+    expect(nodeByKey(view, "settings-lifecycle-partial")?.content).toBe(
+      "Some registries are still loading or unavailable — this audit is partial.",
+    )
+    expect(nodeByKey(view, "settings-lifecycle-empty")).toBeUndefined()
+    const audit = settingsExtensionAudit(initialSettingsState())
+    expect(audit.partial).toBe(true)
+    expect(audit.entries).toEqual([])
   })
   test("renders honest OpenAgents session phases and typed actions", () => {
     const signedOut = settingsView({

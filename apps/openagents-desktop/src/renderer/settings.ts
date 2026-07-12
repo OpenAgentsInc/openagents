@@ -39,6 +39,11 @@ import {
 } from "../mcp-config-contract.ts"
 import type { FableLocalMcpServerConfig } from "../fable-local-contract.ts"
 import { PluginRefSchema, decodePluginConfigResult, type PluginConfigView, type PluginRef } from "../plugin-config-contract.ts"
+import {
+  unifiedExtensionLifecycle,
+  type ExtensionLifecycleAudit,
+  type ExtensionLifecycleEntry,
+} from "../extension-lifecycle-contract.ts"
 
 // ---------------------------------------------------------------------------
 // Renderer-side bridge decoding (Effect Schema; mirrors the main-process
@@ -1448,6 +1453,128 @@ const pluginSection = (plugins: PluginSettingsState): ReadonlyArray<View> => [
   Button({ key: "settings-plugin-add", label: "Add local plugin", variant: "secondary", onPress: IntentRef("DesktopPluginChooseRequested"), a11y: { label: "Choose a local Claude plugin directory" } }),
 ]
 
+// ---------------------------------------------------------------------------
+// Unified extension lifecycle audit (CUT-23 #8703): one derived view of
+// declare → validate → enable → run → revoke across MCP servers, plugins,
+// and skills. PURE derivation over state this screen already holds — no new
+// IPC, no parallel registry; the per-surface sections above stay the only
+// mutation (grant/revoke) controls.
+// ---------------------------------------------------------------------------
+
+export const settingsExtensionAudit = (settings: SettingsState): ExtensionLifecycleAudit =>
+  unifiedExtensionLifecycle({
+    mcpServers: settings.mcp.servers.state === "loaded" ? settings.mcp.servers.servers : null,
+    mcpDropped: settings.mcp.servers.state === "loaded" ? settings.mcp.servers.dropped : 0,
+    plugins: settings.plugins.state === "loaded" ? settings.plugins.plugins : null,
+    pluginsDropped: settings.plugins.state === "loaded" ? settings.plugins.dropped : 0,
+  })
+
+const lifecycleStageTone = (stage: ExtensionLifecycleEntry["stage"]): "success" | "warn" | "neutral" =>
+  stage === "granted" ? "success" : stage === "invalid" ? "warn" : "neutral"
+
+const lifecycleKindLabel: Readonly<Record<ExtensionLifecycleEntry["kind"], string>> = {
+  mcp_server: "MCP server",
+  plugin: "Plugin",
+  skill: "Skill",
+}
+
+const lifecycleGrantCaption = (entry: ExtensionLifecycleEntry): string => {
+  const use = entry.grant.use === "next_turn" ? "next turn" : "explicit /skill"
+  const grant = entry.grant.state === "active"
+    ? `granted · ${use}`
+    : entry.grant.state === "revoked"
+      ? "grant revoked"
+      : "grant blocked"
+  return entry.duplicateLabel ? `${grant} · duplicate name` : grant
+}
+
+const lifecycleEntryRow = (entry: ExtensionLifecycleEntry): View =>
+  Stack(
+    {
+      key: `settings-lifecycle-${entry.kind}-${entry.id}`,
+      direction: "row",
+      gap: "2",
+      align: "center",
+      style: { width: "full" },
+    },
+    [
+      Text({
+        key: `settings-lifecycle-${entry.kind}-${entry.id}-kind`,
+        content: lifecycleKindLabel[entry.kind],
+        variant: "label",
+        color: "textMuted",
+      }),
+      Text({
+        key: `settings-lifecycle-${entry.kind}-${entry.id}-label`,
+        content: entry.label,
+        variant: "body",
+        color: "textPrimary",
+      }),
+      Badge({
+        key: `settings-lifecycle-${entry.kind}-${entry.id}-stage`,
+        label: entry.stage,
+        tone: lifecycleStageTone(entry.stage),
+        a11y: { label: `${lifecycleKindLabel[entry.kind]} ${entry.label} lifecycle stage: ${entry.stage}` },
+      }),
+      Text({
+        key: `settings-lifecycle-${entry.kind}-${entry.id}-grant`,
+        content: lifecycleGrantCaption(entry),
+        variant: "label",
+        color: "textMuted",
+      }),
+      Spacer({ key: `settings-lifecycle-${entry.kind}-${entry.id}-fill`, flex: true }),
+      // Provider disagreement stays explicit — never emulated.
+      Text({
+        key: `settings-lifecycle-${entry.kind}-${entry.id}-provider`,
+        content: entry.providerSupport.codex === "supported" ? "Claude · Codex" : "Claude only",
+        variant: "label",
+        color: "textMuted",
+      }),
+    ],
+  )
+
+const extensionLifecycleSection = (settings: SettingsState): ReadonlyArray<View> => {
+  const audit = settingsExtensionAudit(settings)
+  const dropped = audit.droppedInvalid.mcpServers + audit.droppedInvalid.plugins
+  const summary = [
+    `${audit.granted} granted`,
+    `${audit.revoked} revoked`,
+    ...(audit.blocked > 0 ? [`${audit.blocked} blocked`] : []),
+    ...(dropped > 0 ? [`${dropped} invalid dropped`] : []),
+  ].join(" · ")
+  return [
+    Divider({ key: "settings-lifecycle-divider" }),
+    Text({
+      key: "settings-lifecycle-title",
+      content: "Extension lifecycle",
+      variant: "label",
+      color: "textMuted",
+    }),
+    Text({
+      key: "settings-lifecycle-summary",
+      content: summary,
+      variant: "label",
+      color: "textMuted",
+    }),
+    ...(audit.partial
+      ? [Text({
+          key: "settings-lifecycle-partial",
+          content: "Some registries are still loading or unavailable — this audit is partial.",
+          variant: "body",
+          color: "textMuted",
+        })]
+      : []),
+    ...(audit.entries.length === 0 && !audit.partial
+      ? [Text({
+          key: "settings-lifecycle-empty",
+          content: "No MCP servers, plugins, or skills registered.",
+          variant: "body",
+          color: "textMuted",
+        })]
+      : audit.entries.map(lifecycleEntryRow)),
+  ]
+}
+
 export const settingsView = (settings: SettingsState): View => {
   const connectLive = connectStatusIsLive(settings.connect)
   return Card(
@@ -1522,6 +1649,7 @@ export const settingsView = (settings: SettingsState): View => {
         ...claudeAccountsSection(settings.claudeAccounts),
         ...mcpSection(settings.mcp),
         ...pluginSection(settings.plugins),
+        ...extensionLifecycleSection(settings),
       ]),
     ],
   )
