@@ -21,11 +21,17 @@ import {
   type KeyedView,
   type View,
 } from "@effect-native/core"
-import { Schema } from "@effect-native/core/effect"
+import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
+  DesktopWorkspaceChangeSchema,
   DesktopWorkspacePathRefSchema,
+  decodeWorkspaceOperationResult,
+  decodeWorkspaceSearchResponse,
+  decodeWorkspaceTreePage,
+  type DesktopWorkspaceChange,
   type DesktopWorkspaceOperationResult,
+  type DesktopWorkspaceSearchResponse,
   type DesktopWorkspaceSearchPage,
   type DesktopWorkspaceTreeEntry,
   type DesktopWorkspaceTreePage,
@@ -138,18 +144,35 @@ export const withWorkspaceBrowserToggled = (
 
 export const withWorkspaceBrowserSearchStarted = (
   state: WorkspaceBrowserState,
+  preservePage = false,
 ): WorkspaceBrowserState => ({
   ...state,
   searchState: "searching",
-  searchPage: null,
+  searchPage: preservePage ? state.searchPage : null,
   operation: null,
 })
 
 export const withWorkspaceBrowserSearch = (
   state: WorkspaceBrowserState,
   page: DesktopWorkspaceSearchPage,
+  append = false,
 ): WorkspaceBrowserState => page.state === "available" && page.grantRef === state.grantRef
-  ? { ...state, searchState: "ready", searchPage: page }
+  ? {
+      ...state,
+      searchState: "ready",
+      searchPage: append && state.searchPage?.state === "available" &&
+        state.searchPage.grantRef === page.grantRef &&
+        state.searchPage.query === page.query &&
+        state.searchPage.mode === page.mode
+        ? {
+            ...page,
+            matches: [...new Map(
+              [...state.searchPage.matches, ...page.matches]
+                .map(match => [`${match.kind}:${match.pathRef}:${match.line ?? ""}`, match]),
+            ).values()],
+          }
+        : page,
+    }
   : {
       ...state,
       searchState: "unavailable",
@@ -239,6 +262,7 @@ export const WorkspaceBrowserDeleteRequested = defineIntent("WorkspaceBrowserDel
 export const WorkspaceBrowserDeleteConfirmed = defineIntent("WorkspaceBrowserDeleteConfirmed", WorkspaceRevisionPayloadSchema)
 export const WorkspaceBrowserDeleteCancelled = defineIntent("WorkspaceBrowserDeleteCancelled", Schema.Null)
 export const WorkspaceBrowserRevealRequested = defineIntent("WorkspaceBrowserRevealRequested", DesktopWorkspacePathRefSchema)
+export const WorkspaceBrowserChangeReceived = defineIntent("WorkspaceBrowserChangeReceived", DesktopWorkspaceChangeSchema)
 
 export const workspaceBrowserIntents = [
   WorkspaceBrowserRefreshRequested,
@@ -259,7 +283,270 @@ export const workspaceBrowserIntents = [
   WorkspaceBrowserDeleteConfirmed,
   WorkspaceBrowserDeleteCancelled,
   WorkspaceBrowserRevealRequested,
+  WorkspaceBrowserChangeReceived,
 ] as const
+
+export type WorkspaceBrowserCapableState = Readonly<{
+  workspaceBrowser: WorkspaceBrowserState
+}>
+
+export type WorkspaceBrowserBridge = Readonly<{
+  workspaceTree: (value: unknown) => Promise<unknown>
+  workspaceSearch: (value: unknown) => Promise<unknown>
+  cancelWorkspaceSearch: (value: unknown) => Promise<unknown>
+  createWorkspaceEntry: (value: unknown) => Promise<unknown>
+  renameWorkspaceEntry: (value: unknown) => Promise<unknown>
+  deleteWorkspaceEntry: (value: unknown) => Promise<unknown>
+  revealWorkspaceEntry: (value: unknown) => Promise<unknown>
+  refreshWorkspace: () => Promise<unknown>
+}>
+
+const unavailableWorkspaceBrowserBridge: WorkspaceBrowserBridge = {
+  workspaceTree: async () => ({ state: "unavailable", message: "Workspace files are unavailable." }),
+  workspaceSearch: async (value) => ({
+    requestRef: typeof value === "object" && value !== null && typeof (value as { requestRef?: unknown }).requestRef === "string"
+      ? (value as { requestRef: string }).requestRef
+      : "workspace.search.request.unavailable",
+    page: { state: "unavailable", message: "Workspace search is unavailable." },
+  }),
+  cancelWorkspaceSearch: async (value) => ({
+    requestRef: typeof value === "object" && value !== null && typeof (value as { requestRef?: unknown }).requestRef === "string"
+      ? (value as { requestRef: string }).requestRef
+      : "workspace.search.request.unavailable",
+    cancelled: false,
+  }),
+  createWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
+  renameWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
+  deleteWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
+  revealWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace reveal is unavailable." }),
+  refreshWorkspace: async () => false,
+}
+
+const unavailablePage = (message: string): DesktopWorkspaceTreePage => ({ state: "unavailable", message })
+const unavailableOperation = (message: string): DesktopWorkspaceOperationResult => ({ state: "unavailable", message })
+
+const treePageFrom = async (
+  bridge: WorkspaceBrowserBridge,
+  directoryRef: string,
+  offset = 0,
+): Promise<DesktopWorkspaceTreePage> => decodeWorkspaceTreePage(
+  await bridge.workspaceTree({ directoryRef, offset, limit: 200 }).catch(() => null),
+) ?? unavailablePage("The workspace tree response could not be read.")
+
+const operationFrom = async (
+  call: () => Promise<unknown>,
+): Promise<DesktopWorkspaceOperationResult> => decodeWorkspaceOperationResult(
+  await call().catch(() => null),
+) ?? unavailableOperation("The workspace operation response could not be read.")
+
+const entryForRef = (
+  state: WorkspaceBrowserState,
+  pathRef: string,
+): DesktopWorkspaceTreeEntry | null => {
+  for (const page of Object.values(state.pages)) {
+    const found = page.entries.find(entry => entry.pathRef === pathRef)
+    if (found !== undefined) return found
+  }
+  return null
+}
+
+export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableState>(
+  state: SubscriptionRef.SubscriptionRef<S>,
+  bridge: WorkspaceBrowserBridge = unavailableWorkspaceBrowserBridge,
+) => {
+  let searchSequence = 0
+  let activeSearchRef: string | null = null
+
+  const setBrowser = (mutate: (browser: WorkspaceBrowserState) => WorkspaceBrowserState) =>
+    SubscriptionRef.update(state, next => ({ ...next, workspaceBrowser: mutate(next.workspaceBrowser) }))
+
+  const cancelActiveSearch = Effect.gen(function* () {
+    const requestRef = activeSearchRef
+    if (requestRef === null) return
+    activeSearchRef = null
+    yield* setBrowser(browser => ({ ...browser, searchState: "idle", searchPage: null }))
+    yield* Effect.promise(() => bridge.cancelWorkspaceSearch({ requestRef }).catch(() => null))
+  })
+
+  const loadRoot = (operation: DesktopWorkspaceOperationResult | null = null) =>
+    Effect.gen(function* () {
+      const page = yield* Effect.promise(() => treePageFrom(bridge, ""))
+      yield* setBrowser(browser => ({ ...withWorkspaceBrowserRoot(browser, page), operation }))
+    })
+
+  const refresh = Effect.gen(function* () {
+    yield* cancelActiveSearch
+    yield* setBrowser(withWorkspaceBrowserLoading)
+    const refreshed = yield* Effect.promise(() => bridge.refreshWorkspace().catch(() => false))
+    if (refreshed !== true) {
+      yield* setBrowser(browser => withWorkspaceBrowserRoot(browser, unavailablePage("The selected workspace could not be refreshed.")))
+      return
+    }
+    yield* loadRoot()
+  })
+
+  const reloadFromChange = Effect.gen(function* () {
+    yield* cancelActiveSearch
+    yield* setBrowser(withWorkspaceBrowserLoading)
+    yield* loadRoot()
+  })
+
+  const runSearch = (offset: number, append: boolean) =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const query = current.workspaceBrowser.query.trim()
+      if (current.workspaceBrowser.phase !== "ready" || query === "") return
+      yield* cancelActiveSearch
+      const requestRef = `workspace.search.request.renderer-${++searchSequence}`
+      activeSearchRef = requestRef
+      yield* setBrowser(browser => withWorkspaceBrowserSearchStarted(browser, append))
+      const raw = yield* Effect.promise(() => bridge.workspaceSearch({
+        requestRef,
+        query,
+        mode: current.workspaceBrowser.searchMode,
+        offset,
+        limit: 100,
+      }).catch(() => null))
+      if (activeSearchRef !== requestRef) return
+      activeSearchRef = null
+      const response: DesktopWorkspaceSearchResponse | null = decodeWorkspaceSearchResponse(raw)
+      if (response === null || response.requestRef !== requestRef) {
+        yield* setBrowser(browser => withWorkspaceBrowserSearch(browser, {
+          state: "unavailable",
+          message: "The workspace search response could not be read.",
+        }))
+        return
+      }
+      yield* setBrowser(browser => withWorkspaceBrowserSearch(browser, response.page, append))
+    })
+
+  const reloadAfterOperation = (result: DesktopWorkspaceOperationResult) =>
+    result.state === "created" || result.state === "renamed" || result.state === "deleted"
+      ? loadRoot(result)
+      : setBrowser(browser => withWorkspaceBrowserOperation(browser, result))
+
+  return {
+    WorkspaceBrowserRefreshRequested: () => refresh,
+
+    WorkspaceBrowserTreeToggled: (directoryRef: string) =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        const entry = entryForRef(current.workspaceBrowser, directoryRef)
+        if (entry?.kind !== "directory") return
+        const expanding = !current.workspaceBrowser.expandedRefs.includes(directoryRef)
+        const needsPage = expanding && current.workspaceBrowser.pages[directoryRef] === undefined
+        yield* setBrowser(browser => withWorkspaceBrowserToggled(browser, directoryRef))
+        if (!needsPage) return
+        const page = yield* Effect.promise(() => treePageFrom(bridge, directoryRef))
+        yield* setBrowser(browser => withWorkspaceBrowserPage(browser, page))
+      }),
+
+    WorkspaceBrowserTreeMoreRequested: (directoryRef: string) =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        const offset = current.workspaceBrowser.pages[directoryRef]?.nextOffset
+        if (offset === null || offset === undefined) return
+        const page = yield* Effect.promise(() => treePageFrom(bridge, directoryRef, offset))
+        yield* setBrowser(browser => withWorkspaceBrowserPage(browser, page))
+      }),
+
+    WorkspaceBrowserEntrySelected: (pathRef: string) =>
+      setBrowser(browser => entryForRef(browser, pathRef) === null
+        ? browser
+        : { ...browser, selectedRef: pathRef, editor: null, deleteConfirmRef: null, operation: null }),
+
+    WorkspaceBrowserQueryChanged: (query: string) =>
+      setBrowser(browser => ({ ...browser, query: query.slice(0, 200) })),
+
+    WorkspaceBrowserSearchModeSelected: (mode: "path" | "content") =>
+      Effect.gen(function* () {
+        yield* cancelActiveSearch
+        yield* setBrowser(browser => ({ ...browser, searchMode: mode, searchState: "idle", searchPage: null }))
+      }),
+
+    WorkspaceBrowserSearchRequested: () => runSearch(0, false),
+    WorkspaceBrowserSearchCancelled: () => cancelActiveSearch,
+
+    WorkspaceBrowserSearchMoreRequested: () =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        const offset = current.workspaceBrowser.searchPage?.state === "available"
+          ? current.workspaceBrowser.searchPage.nextOffset
+          : null
+        if (offset === null) return
+        yield* runSearch(offset, true)
+      }),
+
+    WorkspaceBrowserCreateStarted: (payload: { parentRef: string; kind: "file" | "directory" }) =>
+      setBrowser(browser => browser.phase !== "ready" ||
+        (payload.parentRef !== "" && entryForRef(browser, payload.parentRef)?.kind !== "directory")
+        ? browser
+        : withWorkspaceBrowserEditor(browser, {
+            kind: payload.kind === "file" ? "create_file" : "create_directory",
+            parentRef: payload.parentRef,
+            value: "",
+          })),
+
+    WorkspaceBrowserRenameStarted: (payload: { pathRef: string; name: string; expectedRevisionRef: string }) =>
+      setBrowser(browser => entryForRef(browser, payload.pathRef)?.revisionRef !== payload.expectedRevisionRef
+        ? browser
+        : withWorkspaceBrowserEditor(browser, { kind: "rename", ...payload, value: payload.name })),
+
+    WorkspaceBrowserEditorChanged: (value: string) =>
+      setBrowser(browser => browser.editor === null
+        ? browser
+        : { ...browser, editor: { ...browser.editor, value: value.slice(0, 120) }, operation: null }),
+
+    WorkspaceBrowserEditorSubmitted: () =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        const editor = current.workspaceBrowser.editor
+        if (editor === null || editor.value.trim() === "") return
+        const name = editor.value.trim()
+        const result = editor.kind === "rename"
+          ? yield* Effect.promise(() => operationFrom(() => bridge.renameWorkspaceEntry({
+              pathRef: editor.pathRef,
+              name,
+              expectedRevisionRef: editor.expectedRevisionRef,
+            })))
+          : yield* Effect.promise(() => operationFrom(() => bridge.createWorkspaceEntry({
+              parentRef: editor.parentRef,
+              name,
+              kind: editor.kind === "create_file" ? "file" : "directory",
+            })))
+        yield* reloadAfterOperation(result)
+      }),
+
+    WorkspaceBrowserEditorCancelled: () => setBrowser(browser => withWorkspaceBrowserEditor(browser, null)),
+
+    WorkspaceBrowserDeleteRequested: (payload: { pathRef: string; expectedRevisionRef: string }) =>
+      setBrowser(browser => entryForRef(browser, payload.pathRef)?.revisionRef !== payload.expectedRevisionRef
+        ? browser
+        : { ...browser, deleteConfirmRef: payload.pathRef, editor: null, operation: null }),
+
+    WorkspaceBrowserDeleteConfirmed: (payload: { pathRef: string; expectedRevisionRef: string }) =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        if (current.workspaceBrowser.deleteConfirmRef !== payload.pathRef ||
+            entryForRef(current.workspaceBrowser, payload.pathRef)?.revisionRef !== payload.expectedRevisionRef) return
+        const result = yield* Effect.promise(() => operationFrom(() => bridge.deleteWorkspaceEntry(payload)))
+        yield* reloadAfterOperation(result)
+      }),
+
+    WorkspaceBrowserDeleteCancelled: () =>
+      setBrowser(browser => ({ ...browser, deleteConfirmRef: null })),
+
+    WorkspaceBrowserRevealRequested: (pathRef: string) =>
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        if (entryForRef(current.workspaceBrowser, pathRef) === null) return
+        const result = yield* Effect.promise(() => operationFrom(() => bridge.revealWorkspaceEntry({ pathRef })))
+        yield* setBrowser(browser => withWorkspaceBrowserOperation(browser, result))
+      }),
+
+    WorkspaceBrowserChangeReceived: (_change: DesktopWorkspaceChange) => reloadFromChange,
+  }
+}
 
 const parentRefFor = (entry: DesktopWorkspaceTreeEntry | null): string => {
   if (entry === null) return ""
@@ -366,8 +653,10 @@ const treeRow = (state: WorkspaceBrowserState, row: WorkspaceBrowserRow): View =
         onPress: IntentRef("WorkspaceBrowserEntrySelected", StaticPayload(entry.pathRef)),
         style: { flex: 1, minWidth: 0 },
         a11y: {
+          role: "treeitem",
           label: `${entry.kind === "directory" ? "Folder" : "File"} ${entry.pathRef}`,
           selected: state.selectedRef === entry.pathRef,
+          level: depth + 1,
         },
       }),
       ...(loading ? [Text({ key: `workspace-browser-loading-${entry.pathRef}`, content: "Loading…", variant: "caption", color: "textMuted" })] : []),
@@ -411,7 +700,7 @@ const treeView = (state: WorkspaceBrowserState): View => {
     { key: "workspace-browser-tree", direction: "column", gap: "1", style: { minWidth: 240, maxWidth: 360, flex: 1, minHeight: 0 } },
     [
       Text({ key: "workspace-browser-tree-title", content: "Workspace", variant: "caption", color: "textMuted" }),
-      List({ key: "workspace-browser-tree-list", virtualize: true, estimatedItemSize: 36, style: { flex: 1, minHeight: 0 } }, items),
+      List({ key: "workspace-browser-tree-list", virtualize: true, estimatedItemSize: 36, a11y: { role: "tree", label: "Workspace files" }, style: { flex: 1, minHeight: 0 } }, items),
     ],
   )
 }
@@ -432,9 +721,9 @@ const searchResultsView = (state: WorkspaceBrowserState): View => {
     [
       Text({ key: "workspace-browser-search-count", content: `${page.matches.length} result${page.matches.length === 1 ? "" : "s"}`, variant: "caption", color: "textMuted" }),
       List(
-        { key: "workspace-browser-search-list", virtualize: true, estimatedItemSize: 48, style: { flex: 1, minHeight: 0 } },
+        { key: "workspace-browser-search-list", virtualize: true, estimatedItemSize: 48, a11y: { role: "list", label: "Workspace search results" }, style: { flex: 1, minHeight: 0 } },
         page.matches.map((match, index) => Stack(
-          { key: `workspace-browser-search-${match.pathRef}-${index}`, direction: "column", gap: "1", style: { width: "full" } },
+          { key: `workspace-browser-search-${match.pathRef}-${index}`, direction: "column", gap: "1", a11y: { role: "listitem" }, style: { width: "full" } },
           [
             Button({
               key: `workspace-browser-search-select-${match.pathRef}-${index}`,
