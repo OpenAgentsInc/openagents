@@ -18,6 +18,8 @@ describe("request decoding", () => {
   test("accepts each op with its typed params", () => {
     const valid: ReadonlyArray<unknown> = [
       { op: "status" },
+      { op: "diff", repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1", path: "a.txt", source: "unstaged" },
+      { op: "discard", repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1", path: "a.txt" },
       { op: "stage", paths: ["a.txt", "dir/b.ts"] },
       { op: "unstage", paths: ["a.txt"] },
       { op: "commit", message: "feat: x" },
@@ -47,6 +49,7 @@ describe("request decoding", () => {
       { op: "commit" }, // missing message
       { op: "stage" }, // missing paths
       { op: "stage", paths: "a.txt" }, // paths not an array
+      { op: "diff", repositoryRef: "r", statusRef: "s", path: "a.txt", source: "working" },
       { op: "branchCreate", name: "x" }, // missing checkout
       { op: "issueView", number: "8712" }, // number not a number
     ]
@@ -75,7 +78,22 @@ describe("result decoding", () => {
       unstaged: [],
       untracked: [{ path: "b.txt", status: "untracked" }],
       truncated: false,
+      repositoryRef: "workspace.repository.1",
+      statusRef: "workspace.git-status.1",
+      headRef: "a".repeat(40),
     },
+    {
+      ok: true,
+      op: "diff",
+      repositoryRef: "workspace.repository.1",
+      statusRef: "workspace.git-status.1",
+      path: "a.txt",
+      source: "unstaged",
+      content: "@@ -1 +1 @@\n-old\n+new\n",
+      hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "@@ -1 +1 @@\n-old\n+new\n" }],
+      truncated: false,
+    },
+    { ok: true, op: "discard", repositoryRef: "workspace.repository.1", path: "a.txt", statusRef: "workspace.git-status.2" },
     { ok: true, op: "stage", paths: ["a.txt"] },
     { ok: true, op: "commit", sha: "0".repeat(40), shortSha: "0000000", summary: "feat: x" },
     { ok: true, op: "push", ref: "main", remote: "origin", sha: "a".repeat(40) },
@@ -108,8 +126,10 @@ describe("closed enums", () => {
   test("op and error-code sets are stable and complete", () => {
     expect(gitGithubOps).toContain("commit")
     expect(gitGithubOps).toContain("prCreate")
+    expect(gitGithubOps).toContain("discard")
     expect(gitGithubErrorCodes).toContain("no_upstream")
     expect(gitGithubErrorCodes).toContain("gh_unauthenticated")
+    expect(gitGithubErrorCodes).toContain("stale_status")
   })
 
   test("gitGithubError produces a decodable typed error", () => {

@@ -677,6 +677,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   or grant, reopens through the current grant, and surfaces changed or missing
   files as explicit conflicts before any save. These paths never return the
   selected root or accept ambient/absolute renderer paths.
+- Desktop Git review requests are closed typed operations over the current
+  canonical WorkContext repository. Status projects only relative paths plus
+  opaque repository, HEAD, and exact status snapshot refs. Diff and discard
+  requests must echo the matching repository/status refs; any concurrent HEAD,
+  index, or tracked-worktree change makes the request stale. Diff projection is
+  bounded to 120 KB and rejects binary, secret-shaped, and unavailable output
+  before renderer or provider context. Discard is confirmation-gated, applies
+  only to an unstaged tracked non-conflicted path, and uses fixed
+  `git restore --worktree -- <relative-path>` semantics—never reset, checkout,
+  untracked deletion, arbitrary argv, or automated commit/push/PR publication.
+  Composer review context is one explicit removable next-turn attachment,
+  labeled untrusted before provider delivery and cleared on accepted submit;
+  receipts never contain its path or diff content.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

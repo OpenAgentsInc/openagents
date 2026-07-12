@@ -19,6 +19,7 @@
 import {
   Badge,
   Button,
+  DiffView,
   Icon,
   IntentRef,
   Spacer,
@@ -40,6 +41,7 @@ import {
   type GitFileEntry,
   type GitGithubErrorCode,
   type GitGithubResult,
+  type GitDiffResult,
   type GitHubIssueRef,
   type GitHubPrRef,
   type GitStatusResult,
@@ -81,6 +83,9 @@ export type GitPanelState = Readonly<{
   create: GitPanelCreateKind
   createTitle: string
   createBody: string
+  diff: GitDiffResult | null
+  diffLoading: boolean
+  discardConfirmPath: string | null
 }>
 
 export const emptyGitPanelState = (): GitPanelState => ({
@@ -104,6 +109,9 @@ export const emptyGitPanelState = (): GitPanelState => ({
   create: "none",
   createTitle: "",
   createBody: "",
+  diff: null,
+  diffLoading: false,
+  discardConfirmPath: null,
 })
 
 export type GitPanelCapableState = Readonly<{ git: GitPanelState }>
@@ -175,6 +183,15 @@ export const GitPanelCreateFormChanged = defineIntent(
 export const GitPanelCreateTitleChanged = defineIntent("GitPanelCreateTitleChanged", Schema.String)
 export const GitPanelCreateBodyChanged = defineIntent("GitPanelCreateBodyChanged", Schema.String)
 export const GitPanelCreateSubmitted = defineIntent("GitPanelCreateSubmitted", Schema.Null)
+export const GitPanelDiffRequested = defineIntent("GitPanelDiffRequested", Schema.Struct({
+  path: Schema.String,
+  source: Schema.Literals(["staged", "unstaged"]),
+}))
+export const GitPanelDiffClosed = defineIntent("GitPanelDiffClosed", Schema.Null)
+export const GitPanelDiscardRequested = defineIntent("GitPanelDiscardRequested", Schema.String)
+export const GitPanelDiscardConfirmed = defineIntent("GitPanelDiscardConfirmed", Schema.Null)
+export const GitPanelDiscardCancelled = defineIntent("GitPanelDiscardCancelled", Schema.Null)
+export const GitPanelContextAttached = defineIntent("GitPanelContextAttached", Schema.Null)
 
 export const gitPanelIntents = [
   GitPanelRefreshRequested,
@@ -191,6 +208,12 @@ export const gitPanelIntents = [
   GitPanelCreateTitleChanged,
   GitPanelCreateBodyChanged,
   GitPanelCreateSubmitted,
+  GitPanelDiffRequested,
+  GitPanelDiffClosed,
+  GitPanelDiscardRequested,
+  GitPanelDiscardConfirmed,
+  GitPanelDiscardCancelled,
+  GitPanelContextAttached,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -212,6 +235,7 @@ export const refreshGitPanel = <S extends GitPanelCapableState>(
 export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: GitGithubBridge = unavailableGitGithubBridge,
+  attachContext?: (diff: GitDiffResult) => Effect.Effect<void, unknown>,
 ) => {
   const setGit = (mut: (git: GitPanelState) => GitPanelState) =>
     SubscriptionRef.update(state, (next) => ({ ...next, git: mut(next.git) }))
@@ -372,6 +396,61 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
           }))
         }
       }),
+
+    GitPanelDiffRequested: ({ path, source }: { path: string; source: "staged" | "unstaged" }) =>
+      Effect.gen(function* () {
+        const status = (yield* SubscriptionRef.get(state)).git.status
+        if (status === null) return
+        yield* setGit(git => ({ ...git, diffLoading: true, actionError: null, discardConfirmPath: null }))
+        const result = yield* Effect.promise(() => runOp(bridge, {
+          op: "diff",
+          repositoryRef: status.repositoryRef,
+          statusRef: status.statusRef,
+          path,
+          source,
+        }))
+        if (result.ok && result.op === "diff") {
+          yield* setGit(git => ({ ...git, diff: result, diffLoading: false, actionError: null }))
+        } else if (!result.ok) {
+          yield* setGit(git => ({ ...git, diff: null, diffLoading: false, actionError: result.message }))
+          if (result.error === "stale_status") yield* refreshGitPanel(state, bridge)
+        }
+      }),
+
+    GitPanelDiffClosed: () => setGit(git => ({ ...git, diff: null, discardConfirmPath: null })),
+
+    GitPanelDiscardRequested: (path: string) => setGit(git => ({
+      ...git,
+      discardConfirmPath: git.status?.unstaged.some(entry => entry.path === path && entry.status !== "unmerged") === true
+        ? path
+        : null,
+    })),
+
+    GitPanelDiscardCancelled: () => setGit(git => ({ ...git, discardConfirmPath: null })),
+
+    GitPanelDiscardConfirmed: () => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const status = current.git.status
+      const path = current.git.discardConfirmPath
+      if (status === null || path === null) return
+      const result = yield* Effect.promise(() => runOp(bridge, {
+        op: "discard",
+        repositoryRef: status.repositoryRef,
+        statusRef: status.statusRef,
+        path,
+      }))
+      if (!result.ok) {
+        yield* setGit(git => ({ ...git, discardConfirmPath: null, actionError: result.message }))
+      } else {
+        yield* setGit(git => ({ ...git, discardConfirmPath: null, diff: null, actionError: null }))
+      }
+      yield* refreshGitPanel(state, bridge)
+    }),
+
+    GitPanelContextAttached: () => Effect.gen(function* () {
+      const diff = (yield* SubscriptionRef.get(state)).git.diff
+      if (diff !== null && attachContext !== undefined) yield* attachContext(diff)
+    }),
   }
 }
 
@@ -403,6 +482,20 @@ const changeRow = (entry: GitFileEntry, staged: boolean): View =>
       }),
       Text({ key: `git-change-path-${staged ? "s" : "u"}-${entry.path}`, content: entry.path, variant: "caption", color: "textPrimary" }),
       Spacer({ key: `git-change-fill-${staged ? "s" : "u"}-${entry.path}`, flex: true }),
+      ...(entry.status === "untracked" ? [] : [Button({
+        key: `git-review-${staged ? "s" : "u"}-${entry.path}`,
+        label: "Review",
+        variant: "ghost",
+        onPress: IntentRef("GitPanelDiffRequested", StaticPayload({ path: entry.path, source: staged ? "staged" : "unstaged" })),
+        a11y: { label: `Review ${staged ? "staged" : "unstaged"} diff for ${entry.path}` },
+      })]),
+      ...(!staged && entry.status !== "untracked" && entry.status !== "unmerged" ? [Button({
+        key: `git-discard-${entry.path}`,
+        label: "Discard…",
+        variant: "ghost",
+        onPress: IntentRef("GitPanelDiscardRequested", StaticPayload(entry.path)),
+        a11y: { label: `Discard unstaged changes in ${entry.path}` },
+      })] : []),
       Button({
         key: `git-stage-toggle-${staged ? "s" : "u"}-${entry.path}`,
         label: staged ? "Unstage" : "Stage",
@@ -468,6 +561,48 @@ const changesSection = (git: GitPanelState): ReadonlyArray<View> => {
     rows.push(Text({ key: "git-no-changes", content: "No local changes", variant: "body", color: "textMuted" }))
   }
   return [Stack({ key: "git-changes", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } }, rows)]
+}
+
+const diffRows = (content: string): ReadonlyArray<{ kind: "context" | "add" | "remove"; tokens: ReadonlyArray<{ kind: "plain"; text: string }> }> =>
+  content.split("\n").map(line => ({
+    kind: line.startsWith("+") && !line.startsWith("+++")
+      ? "add" as const
+      : line.startsWith("-") && !line.startsWith("---")
+        ? "remove" as const
+        : "context" as const,
+    tokens: [{ kind: "plain" as const, text: line }],
+  }))
+
+const reviewSection = (git: GitPanelState): ReadonlyArray<View> => {
+  const diff = git.diff
+  const confirmation = git.discardConfirmPath === null ? [] : [Stack(
+    { key: "git-discard-confirmation", direction: "row", gap: "2", align: "center", style: { width: "full" } },
+    [
+      Text({ key: "git-discard-warning", content: `Discard unstaged changes in ${git.discardConfirmPath}? This cannot be undone.`, variant: "body", color: "warning" }),
+      Button({ key: "git-discard-confirm", label: "Discard changes", variant: "primary", onPress: IntentRef("GitPanelDiscardConfirmed"), style: { color: "danger" } }),
+      Button({ key: "git-discard-cancel", label: "Cancel", variant: "ghost", onPress: IntentRef("GitPanelDiscardCancelled") }),
+    ],
+  )]
+  if (diff === null) return confirmation
+  return [...confirmation, Stack(
+    { key: "git-review-diff", direction: "column", gap: "2", style: { width: "full", minWidth: 0 } },
+    [
+      Stack({ key: "git-review-heading", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+        Text({ key: "git-review-path", content: `${diff.path} · ${diff.source}`, variant: "label", color: "textPrimary" }),
+        Text({ key: "git-review-hunks", content: `${diff.hunks.length} ${diff.hunks.length === 1 ? "hunk" : "hunks"}`, variant: "caption", color: "textMuted" }),
+        Spacer({ key: "git-review-fill", flex: true }),
+        Button({ key: "git-review-attach", label: "Add to composer", variant: "primary", onPress: IntentRef("GitPanelContextAttached"), a11y: { label: `Add the reviewed diff for ${diff.path} to composer context` } }),
+        Button({ key: "git-review-close", label: "Close", variant: "ghost", onPress: IntentRef("GitPanelDiffClosed") }),
+      ]),
+      DiffView({
+        key: "git-review-diff-view",
+        language: diff.path.split(".").at(-1) ?? "text",
+        layout: "unified",
+        hunks: diff.hunks.map(hunk => ({ header: hunk.header, rows: diffRows(hunk.content) })),
+        style: { width: "full", minWidth: 0 },
+      }),
+    ],
+  )]
 }
 
 const commitBox = (git: GitPanelState): View => {
@@ -667,6 +802,7 @@ export const gitPanelView = (git: GitPanelState): View => {
     }))
   } else {
     body.push(...changesSection(git))
+    body.push(...reviewSection(git))
     body.push(commitBox(git))
     body.push(...receiptRow(git))
     body.push(branchSwitcher(git))

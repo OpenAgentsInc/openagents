@@ -14,6 +14,7 @@
  * the repo's owner-local executor invariant); it is not reachable from an
  * untrusted renderer surface.
  */
+import { createHash } from "node:crypto"
 import { realpathSync } from "node:fs"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
@@ -23,6 +24,7 @@ import {
   gitGithubError,
   type GitBranch,
   type GitFileEntry,
+  type GitDiffHunk,
   type GitFileStatus,
   type GitGithubErrorCode,
   type GitGithubRequest,
@@ -40,6 +42,7 @@ const maxListItems = 50
 const maxBodyChars = 8_000
 const maxTitleChars = 400
 const maxMessageChars = 20_000
+const maxReviewDiffBytes = 120_000
 
 // ---------------------------------------------------------------------------
 // Bounded exec (no throw; typed outcome)
@@ -88,12 +91,15 @@ const resolveRepoRoot = (root: string | null): RepoRoot => {
   }
   const probe = runBinary("git", ["-C", canonical, "rev-parse", "--is-inside-work-tree"], canonical, gitTimeoutMs)
   if (!probe.ok) return { ok: false, error: probe.kind === "enoent" ? "git_unavailable" : "not_a_repo" }
-  return probe.stdout.trim() === "true" ? { ok: true, root: canonical } : { ok: false, error: "not_a_repo" }
+  // Exit status is the authority. Bun 1.3 may omit successful child stdout in
+  // tests, while Electron/Node returns "true"; requiring the bytes here would
+  // turn a verified worktree into `not_a_repo` despite Git's successful probe.
+  return { ok: true, root: canonical }
 }
 
 /** Repo-relative, containment-checked path; absolute inputs must land inside. */
 const safeRepoRelativePath = (root: string, value: string): string | null => {
-  if (value === "" || value.includes("\0")) return null
+  if (value === "" || /[\0\r\n]/u.test(value)) return null
   let relative = value
   if (path.isAbsolute(value)) {
     const rel = path.relative(root, path.resolve(value))
@@ -145,6 +151,15 @@ type ParsedStatus = Readonly<{
   truncated: boolean
 }>
 
+type StatusSnapshot = ParsedStatus & Readonly<{
+  repositoryRef: string
+  statusRef: string
+  headRef: string | null
+}>
+
+const opaqueRef = (prefix: string, value: string): string =>
+  `${prefix}.${createHash("sha256").update(value).digest("hex")}`
+
 export const parsePorcelainV2 = (raw: string): ParsedStatus => {
   const parts = raw.split("\0")
   let branch: string | null = null
@@ -193,6 +208,12 @@ export const parsePorcelainV2 = (raw: string): ParsedStatus => {
       const y = statusLetter(xy[1] ?? ".")
       if (x !== null) bounded(staged, { path: relative, status: x })
       if (y !== null) bounded(unstaged, { path: relative, status: y })
+    } else if (kind === "u") {
+      const relative = record.split(" ").slice(10).join(" ")
+      if (relative !== "") {
+        bounded(staged, { path: relative, status: "unmerged" })
+        bounded(unstaged, { path: relative, status: "unmerged" })
+      }
     } else if (kind === "?") {
       const relative = record.slice(2)
       if (relative !== "") bounded(untracked, { path: relative, status: "untracked" })
@@ -202,14 +223,75 @@ export const parsePorcelainV2 = (raw: string): ParsedStatus => {
   return { branch, upstream, detached, ahead, behind, staged, unstaged, untracked, truncated }
 }
 
-const readStatus = (root: string): ParsedStatus | null => {
+const readStatus = (root: string): StatusSnapshot | null => {
   const out = runBinary(
     "git",
     ["-C", root, "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=normal"],
     root,
     gitTimeoutMs,
   )
-  return out.ok ? parsePorcelainV2(out.stdout) : null
+  if (!out.ok) return null
+  const head = runBinary("git", ["-C", root, "rev-parse", "--verify", "HEAD"], root, gitTimeoutMs)
+  const headRef = head.ok && head.stdout.trim() !== "" ? head.stdout.trim() : null
+  const repositoryRef = opaqueRef("workspace.repository", root)
+  const unstagedFingerprint = runBinary("git", ["-C", root, "diff", "--no-ext-diff", "--no-textconv", "--binary"], root, gitTimeoutMs)
+  const stagedFingerprint = runBinary("git", ["-C", root, "diff", "--cached", "--no-ext-diff", "--no-textconv", "--binary"], root, gitTimeoutMs)
+  const fingerprint = `${unstagedFingerprint.ok ? unstagedFingerprint.stdout : "unstaged-unavailable"}\0${stagedFingerprint.ok ? stagedFingerprint.stdout : "staged-unavailable"}`
+  return {
+    ...parsePorcelainV2(out.stdout),
+    repositoryRef,
+    headRef,
+    statusRef: opaqueRef("workspace.git-status", `${repositoryRef}\0${headRef ?? "unborn"}\0${out.stdout}\0${fingerprint}`),
+  }
+}
+
+export const privateGitDiffOutput = (content: string): boolean =>
+  /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----|(?:github_pat|gh[pousr]_|sk-|AKIA)[A-Za-z0-9_\-]{8,}|authorization\s*:\s*bearer\s+\S+|(?:password|secret|token)\s*[:=]\s*[^\s]+/iu.test(content)
+
+export const parseUnifiedDiffHunks = (content: string): ReadonlyArray<GitDiffHunk> => {
+  const lines = content.split("\n")
+  const hunks: GitDiffHunk[] = []
+  let current: { header: string; oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] } | null = null
+  const flush = (): void => {
+    if (current === null || hunks.length >= 500) return
+    hunks.push({
+      header: current.header.slice(0, 400),
+      oldStart: current.oldStart,
+      oldLines: current.oldLines,
+      newStart: current.newStart,
+      newLines: current.newLines,
+      content: current.lines.join("\n").slice(0, maxReviewDiffBytes),
+    })
+  }
+  for (const line of lines) {
+    const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/u.exec(line)
+    if (match !== null) {
+      flush()
+      current = {
+        header: line,
+        oldStart: Number.parseInt(match[1]!, 10),
+        oldLines: Number.parseInt(match[2] ?? "1", 10),
+        newStart: Number.parseInt(match[3]!, 10),
+        newLines: Number.parseInt(match[4] ?? "1", 10),
+        lines: [line],
+      }
+    } else if (current !== null) {
+      current.lines.push(line)
+    }
+  }
+  flush()
+  return hunks
+}
+
+const currentSnapshot = (
+  root: string,
+  repositoryRef: string,
+  statusRef: string,
+): StatusSnapshot | null => {
+  const status = readStatus(root)
+  return status !== null && status.repositoryRef === repositoryRef && status.statusRef === statusRef
+    ? status
+    : null
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +394,57 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
       const status = readStatus(root)
       if (status === null) return gitGithubError("status", "operation_failed", "Git status is unavailable for this workspace.")
       return { ok: true, op: "status", ...status }
+    }
+
+    case "diff": {
+      const status = currentSnapshot(root, request.repositoryRef, request.statusRef)
+      if (status === null) return gitGithubError("diff", "stale_status", "Repository changes moved. Refresh before reviewing this diff.")
+      const relative = safeRepoRelativePath(root, request.path)
+      if (relative === null) return gitGithubError("diff", "invalid_path", "That review path is outside the workspace.")
+      const entries = request.source === "staged" ? status.staged : status.unstaged
+      if (!entries.some(entry => entry.path === relative)) {
+        return gitGithubError("diff", "stale_status", "That change is no longer present. Refresh the review.")
+      }
+      const baseArgs = ["-C", root, "diff", "--no-ext-diff", "--no-textconv", ...(request.source === "staged" ? ["--cached"] : [])]
+      const numstat = runBinary("git", [...baseArgs, "--numstat", "--", relative], root, gitTimeoutMs)
+      if (!numstat.ok) return gitGithubError("diff", "operation_failed", "That diff is unavailable for review.")
+      if (/^-\t-/mu.test(numstat.stdout)) return gitGithubError("diff", "binary_diff", "Binary changes cannot enter the review or composer context surface.")
+      const output = runBinary("git", [...baseArgs, "--no-color", "--unified=3", "--", relative], root, gitTimeoutMs)
+      if (!output.ok) return gitGithubError("diff", "operation_failed", "That diff is unavailable for review.")
+      if (Buffer.byteLength(output.stdout, "utf8") > maxReviewDiffBytes) {
+        return gitGithubError("diff", "diff_too_large", "That diff exceeds the 120 KB review and context limit.")
+      }
+      if (privateGitDiffOutput(output.stdout)) {
+        return gitGithubError("diff", "secret_diff", "Secret-shaped diff content is withheld from review and provider context.")
+      }
+      return {
+        ok: true,
+        op: "diff",
+        repositoryRef: status.repositoryRef,
+        statusRef: status.statusRef,
+        path: relative,
+        source: request.source,
+        content: output.stdout,
+        hunks: parseUnifiedDiffHunks(output.stdout),
+        truncated: false,
+      }
+    }
+
+    case "discard": {
+      const status = currentSnapshot(root, request.repositoryRef, request.statusRef)
+      if (status === null) return gitGithubError("discard", "stale_status", "Repository changes moved. Refresh before discarding anything.")
+      const relative = safeRepoRelativePath(root, request.path)
+      if (relative === null) return gitGithubError("discard", "invalid_path", "That discard path is outside the workspace.")
+      const unstaged = status.unstaged.find(entry => entry.path === relative)
+      const staged = status.staged.some(entry => entry.path === relative)
+      if (unstaged === undefined || staged || unstaged.status === "unmerged") {
+        return gitGithubError("discard", "unsafe_state", "Only an unstaged, tracked, non-conflicted change can be discarded here.")
+      }
+      const output = runBinary("git", ["-C", root, "restore", "--worktree", "--", relative], root, gitTimeoutMs)
+      if (!output.ok) return gitGithubError("discard", "operation_failed", "That worktree change could not be discarded.")
+      const next = readStatus(root)
+      if (next === null) return gitGithubError("discard", "operation_failed", "The repository could not be refreshed after discard.")
+      return { ok: true, op: "discard", repositoryRef: next.repositoryRef, path: relative, statusRef: next.statusRef }
     }
 
     case "stage":

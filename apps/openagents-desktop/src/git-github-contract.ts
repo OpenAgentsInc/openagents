@@ -21,6 +21,8 @@ export const GitGithubChannel = "openagents-desktop/git-github" as const
 /** The closed operation set. A renderer can request nothing else. */
 export const gitGithubOps = [
   "status",
+  "diff",
+  "discard",
   "stage",
   "unstage",
   "commit",
@@ -54,6 +56,11 @@ export const gitGithubErrorCodes = [
   "auth_failed",
   "blocked_by_hook",
   "dirty_tree",
+  "stale_status",
+  "unsafe_state",
+  "binary_diff",
+  "secret_diff",
+  "diff_too_large",
   "branch_exists",
   "invalid_branch_name",
   "invalid_path",
@@ -69,6 +76,21 @@ export type GitGithubErrorCode = (typeof gitGithubErrorCodes)[number]
 // ---------------------------------------------------------------------------
 
 const StatusRequestSchema = Schema.Struct({ op: Schema.Literal("status") })
+const GitReviewPathSchema = Schema.String.check(Schema.isMaxLength(1_024))
+const GitReviewIdentitySchema = Schema.String.check(Schema.isMaxLength(160))
+const DiffRequestSchema = Schema.Struct({
+  op: Schema.Literal("diff"),
+  repositoryRef: GitReviewIdentitySchema,
+  statusRef: GitReviewIdentitySchema,
+  path: GitReviewPathSchema,
+  source: Schema.Literals(["staged", "unstaged"]),
+})
+const DiscardRequestSchema = Schema.Struct({
+  op: Schema.Literal("discard"),
+  repositoryRef: GitReviewIdentitySchema,
+  statusRef: GitReviewIdentitySchema,
+  path: GitReviewPathSchema,
+})
 const StageRequestSchema = Schema.Struct({ op: Schema.Literal("stage"), paths: Schema.Array(Schema.String) })
 const UnstageRequestSchema = Schema.Struct({ op: Schema.Literal("unstage"), paths: Schema.Array(Schema.String) })
 const CommitRequestSchema = Schema.Struct({ op: Schema.Literal("commit"), message: Schema.String })
@@ -105,6 +127,8 @@ const PrCreateRequestSchema = Schema.Struct({
 
 export const GitGithubRequestSchema = Schema.Union([
   StatusRequestSchema,
+  DiffRequestSchema,
+  DiscardRequestSchema,
   StageRequestSchema,
   UnstageRequestSchema,
   CommitRequestSchema,
@@ -155,8 +179,44 @@ const StatusResultSchema = Schema.Struct({
   unstaged: Schema.Array(GitFileEntrySchema),
   untracked: Schema.Array(GitFileEntrySchema),
   truncated: Schema.Boolean,
+  /** Opaque canonical-worktree identity; never the root itself. */
+  repositoryRef: GitReviewIdentitySchema,
+  /** Exact HEAD + porcelain snapshot fence for review and mutation requests. */
+  statusRef: GitReviewIdentitySchema,
+  headRef: Schema.NullOr(GitReviewIdentitySchema),
 })
 export type GitStatusResult = Schema.Schema.Type<typeof StatusResultSchema>
+
+const GitDiffHunkSchema = Schema.Struct({
+  header: Schema.String.check(Schema.isMaxLength(400)),
+  oldStart: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  oldLines: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  newStart: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  newLines: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  content: Schema.String.check(Schema.isMaxLength(120_000)),
+})
+export type GitDiffHunk = Schema.Schema.Type<typeof GitDiffHunkSchema>
+
+const DiffResultSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  op: Schema.Literal("diff"),
+  repositoryRef: GitReviewIdentitySchema,
+  statusRef: GitReviewIdentitySchema,
+  path: GitReviewPathSchema,
+  source: Schema.Literals(["staged", "unstaged"]),
+  content: Schema.String.check(Schema.isMaxLength(120_000)),
+  hunks: Schema.Array(GitDiffHunkSchema).check(Schema.isMaxLength(500)),
+  truncated: Schema.Literal(false),
+})
+export type GitDiffResult = Schema.Schema.Type<typeof DiffResultSchema>
+
+const DiscardResultSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  op: Schema.Literal("discard"),
+  repositoryRef: GitReviewIdentitySchema,
+  path: GitReviewPathSchema,
+  statusRef: GitReviewIdentitySchema,
+})
 
 const PathsResultSchema = Schema.Struct({
   ok: Schema.Literal(true),
@@ -292,6 +352,8 @@ export type GitGithubErrorResult = Schema.Schema.Type<typeof ErrorResultSchema>
 
 export const GitGithubResultSchema = Schema.Union([
   StatusResultSchema,
+  DiffResultSchema,
+  DiscardResultSchema,
   PathsResultSchema,
   CommitResultSchema,
   PushResultSchema,

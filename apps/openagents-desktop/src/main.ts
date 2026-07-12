@@ -12,7 +12,8 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import { readFileSync, rmSync, statSync } from "node:fs"
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { BrowserWindow, Menu, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
 import { Effect } from "effect"
 import {
@@ -837,7 +838,20 @@ ipcMain.handle(DesktopWorkspaceGitDiffChannel, (_event, value: unknown) => {
 // bundle location, never ambient cwd — so the panel renders real read-only
 // status without a directory-picker). The renderer never supplies argv;
 // git-github-host.ts owns the fixed argument vectors.
-const smokeGitRoot = path.resolve(here, "..")
+const prepareSmokeGitRoot = (): string => {
+  const root = path.join(app.getPath("userData"), "git-review-smoke")
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(root, { recursive: true })
+  execFileSync("git", ["-C", root, "init", "--quiet", "-b", "main"])
+  execFileSync("git", ["-C", root, "config", "user.email", "desktop-smoke@openagents.test"])
+  execFileSync("git", ["-C", root, "config", "user.name", "OpenAgents Desktop Smoke"])
+  writeFileSync(path.join(root, "review-smoke.txt"), "base\n")
+  execFileSync("git", ["-C", root, "add", "review-smoke.txt"])
+  execFileSync("git", ["-C", root, "commit", "--quiet", "-m", "smoke base"])
+  writeFileSync(path.join(root, "review-smoke.txt"), "base\nreview change\n")
+  return root
+}
+const smokeGitRoot = smokeMode ? prepareSmokeGitRoot() : path.resolve(here, "..")
 const gitGithubService = openGitGithubService(
   smokeMode
     ? () => smokeGitRoot
@@ -1899,11 +1913,31 @@ const smokeOpenGitReview = `(async () => {
   const branches = q("git-branches")
   const issues = q("git-issues-prs")
   const statusResolved = resolved()
+  const branch = branchText().slice(0, 80)
+  const review = document.querySelector('[data-en-key^="git-review-u-"]')
+  review?.click()
+  while (Date.now() < deadline && q("git-review-diff-view") === null && q("git-action-error") === null) {
+    await wait(50)
+  }
+  const diff = q("git-review-diff-view")
+  const discard = document.querySelector('[data-en-key^="git-discard-"]:not([data-en-key="git-discard-confirm"]):not([data-en-key="git-discard-cancel"])')
+  discard?.click()
+  await wait(50)
+  const discardConfirmation = q("git-discard-confirmation")
+  q("git-discard-cancel")?.click()
+  q("git-review-attach")?.click()
+  while (Date.now() < deadline && q("shell-composer-review-context") === null) await wait(50)
+  const composerContext = q("shell-composer-review-context")
+  q("shell-composer-review-remove")?.click()
   return {
     ok: panel !== null && header !== null && commitBox !== null && commitButton !== null &&
-      pushButton !== null && branches !== null && issues !== null && statusResolved,
-    branch: branchText().slice(0, 80),
+      pushButton !== null && branches !== null && issues !== null && statusResolved &&
+      review !== null && diff !== null && discard !== null && discardConfirmation !== null && composerContext !== null,
+    branch,
     statusResolved,
+    diff: diff !== null,
+    discardConfirmation: discardConfirmation !== null,
+    composerContext: composerContext !== null,
   }
 })()`
 

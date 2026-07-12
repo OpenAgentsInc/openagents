@@ -53,6 +53,9 @@ const readyStatus = (over: Partial<GitPanelState["status"] & object> = {}): GitG
   unstaged: [{ path: "b.txt", status: "modified" }],
   untracked: [{ path: "c.txt", status: "untracked" }],
   truncated: false,
+  repositoryRef: "workspace.repository.test",
+  statusRef: "workspace.git-status.test",
+  headRef: "a".repeat(40),
   ...over,
 })
 
@@ -61,6 +64,18 @@ const readyState = (over: Partial<GitPanelState> = {}): GitPanelState => ({
   phase: "ready",
   status: readyStatus() as GitPanelState["status"],
   ...over,
+})
+
+const readyDiff = (): Extract<GitGithubResult, { op: "diff" }> => ({
+  ok: true,
+  op: "diff",
+  repositoryRef: "workspace.repository.test",
+  statusRef: "workspace.git-status.test",
+  path: "b.txt",
+  source: "unstaged",
+  content: "@@ -1 +1 @@\n-old\n+new\n",
+  hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "@@ -1 +1 @@\n-old\n+new\n" }],
+  truncated: false,
 })
 
 // ---------------------------------------------------------------------------
@@ -89,6 +104,16 @@ describe("git panel view", () => {
     expect(nodeByKey(view, "git-stage-toggle-s-a.txt")).toBeDefined() // staged Unstage
     expect(nodeByKey(view, "git-stage-toggle-u-b.txt")).toBeDefined() // unstaged Stage
     expect(nodeByKey(view, "git-stage-toggle-u-c.txt")).toBeDefined() // untracked Stage
+    expect(nodeByKey(view, "git-review-u-b.txt")).toBeDefined()
+    expect(nodeByKey(view, "git-discard-b.txt")).toBeDefined()
+    expect(nodeByKey(view, "git-review-u-c.txt")).toBeUndefined()
+  })
+
+  test("reviewed typed hunks render with composer attachment and close controls", () => {
+    const view = gitPanelView(readyState({ diff: readyDiff() as Extract<GitPanelState["diff"], object> }))
+    expect(nodeByKey(view, "git-review-diff-view")?._tag).toBe("DiffView")
+    expect(nodeByKey(view, "git-review-attach")).toBeDefined()
+    expect(nodeByKey(view, "git-review-close")).toBeDefined()
   })
 
   test("commit is disabled with a hover reason when nothing is staged", () => {
@@ -154,10 +179,14 @@ const makeFakeBridge = (
   return { bridge, calls }
 }
 
-const harness = (bridge: GitGithubBridge, initial: GitPanelState = emptyGitPanelState()) =>
+const harness = (
+  bridge: GitGithubBridge,
+  initial: GitPanelState = emptyGitPanelState(),
+  onAttach?: (diff: ReturnType<typeof readyDiff>) => Effect.Effect<void, unknown>,
+) =>
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make({ git: initial })
-    const registry = yield* makeIntentRegistry(gitPanelIntents, makeGitPanelHandlers(state, bridge))
+    const registry = yield* makeIntentRegistry(gitPanelIntents, makeGitPanelHandlers(state, bridge, onAttach))
     return { state, registry }
   })
 
@@ -296,6 +325,54 @@ describe("git panel intent loop", () => {
       yield* registry.dispatch(pressIntent(view, "git-branch-feature/x"))
       expect(checkedOut).toEqual(["feature/x"])
       expect((yield* SubscriptionRef.get(state)).git.currentBranch).toBe("feature/x")
+    }))
+  })
+
+  test("review and composer attachment use the exact repository/status snapshot", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const attached: Array<ReturnType<typeof readyDiff>> = []
+      const { bridge, calls } = makeFakeBridge({ diff: () => readyDiff() })
+      const { state, registry } = yield* harness(
+        bridge,
+        readyState(),
+        diff => Effect.sync(() => { attached.push(diff as ReturnType<typeof readyDiff>) }),
+      )
+      let view = gitPanelView((yield* SubscriptionRef.get(state)).git)
+      yield* registry.dispatch(pressIntent(view, "git-review-u-b.txt"))
+      expect(calls[0]).toEqual({
+        op: "diff",
+        repositoryRef: "workspace.repository.test",
+        statusRef: "workspace.git-status.test",
+        path: "b.txt",
+        source: "unstaged",
+      })
+      view = gitPanelView((yield* SubscriptionRef.get(state)).git)
+      yield* registry.dispatch(pressIntent(view, "git-review-attach"))
+      expect(attached).toHaveLength(1)
+      expect(attached[0]?.path).toBe("b.txt")
+    }))
+  })
+
+  test("discard requires inline confirmation and sends the exact fenced request", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const { bridge, calls } = makeFakeBridge({
+        discard: () => ({ ok: true, op: "discard", repositoryRef: "workspace.repository.test", path: "b.txt", statusRef: "workspace.git-status.next" }),
+        status: () => readyStatus({ unstaged: [] }),
+        branchList: () => ({ ok: true, op: "branchList", current: "main", branches: [], truncated: false }),
+      })
+      const { state, registry } = yield* harness(bridge, readyState())
+      let view = gitPanelView((yield* SubscriptionRef.get(state)).git)
+      yield* registry.dispatch(pressIntent(view, "git-discard-b.txt"))
+      view = gitPanelView((yield* SubscriptionRef.get(state)).git)
+      expect(nodeByKey(view, "git-discard-confirmation")).toBeDefined()
+      yield* registry.dispatch(pressIntent(view, "git-discard-confirm"))
+      expect(calls[0]).toEqual({
+        op: "discard",
+        repositoryRef: "workspace.repository.test",
+        statusRef: "workspace.git-status.test",
+        path: "b.txt",
+      })
+      expect((yield* SubscriptionRef.get(state)).git.discardConfirmPath).toBeNull()
     }))
   })
 })
