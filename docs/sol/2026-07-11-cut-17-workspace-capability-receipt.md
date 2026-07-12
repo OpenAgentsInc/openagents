@@ -4,10 +4,10 @@
 - Issue: [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697)
 - Status: capability core, tree/watch/search/mutation host bridge, cancellable
   search worker, mutation core, scale/lifecycle receipt, and standalone bounded
-  Effect Native browser projection landed; handler/shell composition and legacy
-  projection migration remain open
+  Effect Native browser projection plus typed bridge handler loop landed;
+  shell/boot composition and legacy projection migration remain open
 - Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`, `36725a91df`,
-  `57488904c5`, `9f957a6d76`, `60369f3009`, `96692a6672`
+  `57488904c5`, `9f957a6d76`, `60369f3009`, `96692a6672`, `e6b2469e2e`
 
 ## Landed boundary
 
@@ -67,9 +67,17 @@ truncated states, and inline create/rename/two-step delete/reveal affordances.
 The pure state transitions discard prior pages and search results when root
 authority ends, reject child pages or results from a different grant, dedupe
 paged entries, and cap the visible hierarchy at 500 rows with in-flow
-disclosure. This commit does not register bridge handlers or compose the view
-into the shell, so it is not evidence that Desktop users can reach the new
-boundary yet.
+disclosure.
+
+The typed handler loop now decodes every host result before state, owns one
+exact renderer search request at a time, cancels and fences late results, and
+preserves/dedupes only matching paged results. Lazy tree pages, explicit manual
+refresh, watcher-triggered reload without recursive refresh events, and
+create/rename/delete/reveal calls use the same bridge boundary. Renderer guards
+refuse unseen create parents and stale rename/delete revisions before dispatch;
+confirmed mutations reload the root before projecting a receipt. Neither the
+handler nor the view is composed into the shell yet, so this is still not
+evidence that Desktop users can reach the new boundary.
 
 ## Verification
 
@@ -106,13 +114,14 @@ boundary yet.
   mutation confirmation; and
 - post-rebase integrated Desktop suite at `96692a6672`: 685 pass / 3,781
   assertions, 10 named capability-gap skips, typecheck, and production build.
+- focused typed browser handler loop at `e6b2469e2e`: 19 pass / 80 assertions;
+  post-rebase integrated Desktop suite: 707 pass / 3,864 assertions with seven
+  named capability-gap skips, plus typecheck and production build.
 
 No composed or user-reachable tree/search/mutation UI is claimed.
 
 ## Remaining before CUT-17 closure
 
-- connect the standalone workspace-browser intents to the fixed decoded bridge
-  with project-scoped cancellation/refresh handling;
 - compose that browser into the Files workspace and remove the prior flat
   root/read/save projection from its renderer consumers;
 - remove the legacy absolute-root renderer projection only after its consumers
