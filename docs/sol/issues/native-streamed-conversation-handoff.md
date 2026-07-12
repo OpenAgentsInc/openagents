@@ -95,9 +95,12 @@ one real, ready, named isolated Codex account (never default `~/.codex`), the
 built Electron app signed into the same deployed OpenAgents owner as the Expo
 app, and a physical phone.
 
-Current prerequisite check (2026-07-11): the named isolated `codex` account is
-ready, but the paired physical iPhone is offline in Xcode device discovery.
-That blocks only the live receipt; it is not replaced by a simulator claim.
+Current prerequisite check (2026-07-12): the named isolated `codex` account is
+ready, and the paired physical iPhone is back in Xcode/CoreDevice discovery
+with the signed development build installed on it (see the physical-device
+signed-install rung in the CUT-09 receipt). The remaining gate is the
+on-device unlock/sign-in plus the authenticated journey below; it is not
+replaced by a simulator claim.
 The built Electron Runtime Gateway v7 smoke now passes bootstrap, four-stage
 operation correlation, reload restoration, and lifecycle teardown; CUT-09's
 deterministic restart/revocation/interrupted-finalization evidence is recorded

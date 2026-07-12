@@ -117,7 +117,40 @@ refs, event-kind counts, terminal/reconciliation verdicts, and restart/revoke
 verdicts—never prompt/output text, owner/device identifiers, paths, provider
 metadata, raw rows/events, or credentials.
 
+### Physical-device signed-install rung — 2026-07-12
+
+The paired physical iPhone returned to both Tailnet and Xcode/CoreDevice
+discovery on 2026-07-12 (paired, developer mode enabled, device tunnel
+connected), and the owner released it for this work. From a clean detached
+worktree at `origin/main` commit `83efc87477`:
+
+- `expo prebuild --platform ios` and CocoaPods regenerated the owned native
+  project cleanly with no tracked-configuration changes;
+- Xcode built the Debug `com.openagents.app` for the physical arm64 device
+  class with the owned Apple team's automatic development signing; the managed
+  provisioning profile covers the paired device;
+- the signed app **installed successfully onto the paired physical iPhone**
+  via CoreDevice — the first physical-hardware install of the greenfield
+  mobile app (the first attempt raced a transient device reconnect; the
+  immediate retry succeeded);
+- the development JS bundle compiled and is served on the local network, so
+  first launch does not wait on a cold bundler;
+- launch was then refused by the OS with the lock-screen error only ("device
+  was not, or could not be, unlocked"). No signing, pairing, developer-mode,
+  provisioning, or tunnel error remains.
+
+The Desktop counterpart is staged in the same clean worktree: the Desktop
+bundle builds green, an encrypted native session vault is already present in
+the dev profile, the standing runtime-intent supervisor process is alive, and
+multiple named isolated Codex accounts report ready credentials. The hosted
+sync/API surface answered healthy at preparation time.
+
+The remaining gate is therefore exactly the physical-touch set: unlock the
+phone, launch and sign in on-device, and run the authenticated 4-step
+cross-device fault journey above. Nothing hardware- or build-shaped remains.
+
 ## Close decision
 
-#8689 and #8677 remain open. Deterministic rows 7–9 are implemented, but their
-explicit live physical-device acceptance row is still pending.
+#8689 and #8677 remain open. Deterministic rows 7–9 are implemented and the
+physical phone now carries the signed build, but the explicit live
+physical-device acceptance journey is still pending.
