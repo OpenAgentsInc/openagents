@@ -7,8 +7,10 @@
 - Destination repository: `OpenAgentsInc/backroom`
 - Proposed destination:
   `archive/openagents-sol-docs-2026-07-12/july9/`
-- Status: Backroom import pushed at `dec8ae52`; OpenAgents source-removal
-  commit pending this change
+- Status: archive/import/link migration/source removal complete
+- Backroom import: `dec8ae52`
+- OpenAgents link migration and source removal: `b62ad88136`
+- Backroom final bidirectional receipt: `b9645456`
 - Dispatch: no
 
 ## Purpose
@@ -18,8 +20,10 @@ July 9 Sol documents have durable owners before their full narrative moves out
 of the product repository. It pins exact source bytes, known inbound links,
 destination paths, and removal conditions. SOL-DOC-06 does not modify the nine
 candidate files; SOL-DOC-07 must push the Backroom archive before removing any
-source. Backroom import is now verifiably present at
-[`dec8ae52`](https://github.com/OpenAgentsInc/backroom/tree/dec8ae52/archive/openagents-sol-docs-2026-07-12).
+source. Backroom import is verifiably present at
+[`dec8ae52`](https://github.com/OpenAgentsInc/backroom/tree/dec8ae52/archive/openagents-sol-docs-2026-07-12),
+and its final archive note records the OpenAgents removal at
+[`b9645456`](https://github.com/OpenAgentsInc/backroom/blob/b9645456/archive/openagents-sol-docs-2026-07-12/ARCHIVE_NOTE.md).
 
 ## Exact candidate set
 
@@ -107,6 +111,7 @@ not the archive receipt; the destination must be discoverable and pushed.
 
 - Backroom exact-byte import: `OpenAgentsInc/backroom@dec8ae52` (pushed to
   `main` before source deletion).
-- OpenAgents link migration/source removal: pending the SOL-DOC-07 removal
-  commit.
-- Backroom final note with OpenAgents removal commit: pending.
+- OpenAgents link migration/source removal:
+  `OpenAgentsInc/openagents@b62ad88136`.
+- Backroom final note containing both receipts:
+  `OpenAgentsInc/backroom@b9645456`.
