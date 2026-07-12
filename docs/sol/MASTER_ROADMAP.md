@@ -666,7 +666,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   navigation row. A native iOS Simulator debug build now loads the exact
   current Metro bundle without the former split-bundle HMR rejection and
   verifies the repaired Effect Native Settings/account entry; 26 focused
-  account/session tests and mobile typecheck pass.
+  account/session tests and mobile typecheck pass. The API 35 Android emulator
+  now has the current native debug APK too. Its live counterexample showed the
+  native client still requested lazy split bundles, so `a533b4ccf2` forces
+  one-bundle mode at Metro's request boundary; a cold restart now renders the
+  same account surface with no HMR, fatal, or React Native JS error.
   Authenticated iOS-simulator catalog/deep-link/process-death acceptance, the
   deferred physical-iPhone confirmation, and the Android-emulator equivalent
   remain open (owner decision 2026-07-12: no physical-Android gate). See

@@ -116,8 +116,23 @@ must follow an owner sign-in; credentials are not handled by the agent.
 
 ## Residual
 
-CUT-14 remains open for authenticated iOS-simulator catalog/deep-link/process-
-death acceptance, the deferred physical-iPhone confirmation, and the Android-
-emulator equivalent. Nothing gates on physical Android. The production
-publisher is live and confirmed; authentication, not catalog transport, is the
-current simulator handoff.
+CUT-14 remains open for authenticated iOS- and Android-emulator catalog/deep-
+link/process-death acceptance plus the deferred physical-iPhone confirmation.
+Nothing gates on physical Android. The production publisher is live and
+confirmed; authentication, not catalog transport, is the current simulator
+handoff.
+
+## Android emulator debug receipt
+
+An API 35 `khala_test` Pixel emulator now has the current native debug APK.
+The first launch proved the native client requested Metro lazy bundles even
+after the async-require override, reproducing the same HMR setup rejection.
+Commit `a533b4ccf2` forces `lazy=false` at Metro's bundle request boundary for
+the plain debug host. A cold app restart then loaded the full current bundle,
+logged `Running "main"`, rendered the Khala home, opened drawer Settings, and
+rendered `Local device ready` with the `Link OpenAgents account` action. The
+post-fix log contains no HMR, fatal, or React Native JS error.
+
+Authenticated catalog/deep-link/process-death acceptance remains pending the
+same one-time owner OAuth sign-in. The Android emulator and Metro remain
+available for that handoff; no physical Android is required.
