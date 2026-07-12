@@ -691,10 +691,20 @@ textarea {
 }
 
 /* Hover-revealed affordances (150ms): details toggles surface on row
-   hover or keyboard focus; they never reserve visual weight at rest. */
+   hover or keyboard focus; they never reserve visual weight at rest.
+
+   The RESTING opacity:0 is keyed on the affordance ITSELF — it deliberately
+   does NOT require the [data-en-message] ancestor. Visibility is therefore a
+   pure function of pointer/focus, never of DOM position or re-render timing: a
+   momentary detach during reconciliation (or any unrelated re-commit) cannot
+   expose the affordance, because the resting rule keeps matching. Only the
+   REVEAL depends on the ancestor's :hover / :focus-within. Paired with the
+   render-dom commit-idempotency fix (persisted, never-re-parented keyed
+   content), the opacity transition can only ever run on a genuine
+   pointer/focus change — never on a keystroke elsewhere. */
 /* !important deliberately: the renderer sets inline opacity on buttons. */
-[data-en-message] [data-en-key^="note-details-"],
-[data-en-message] [data-en-key^="tool-details-"] {
+[data-en-key^="note-details-"],
+[data-en-key^="tool-details-"] {
   opacity: 0 !important;
   transition: opacity var(--en-motion-fast) var(--en-ease-basic);
 }

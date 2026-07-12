@@ -439,6 +439,33 @@ unbounded history hydration.
 Contract:
 `openagents_desktop.chat.thread_first_content_under_50ms.v1`.
 
+### Transient-visibility affordances are pointer/focus-driven and commit-idempotent
+
+A hover/focus-reveal affordance (the per-message **details** toggle, and any
+opacity-0-at-rest reveal) is visible strictly as a function of pointer/focus —
+never of composer input, global state, or re-render timing.
+
+- The resting `opacity: 0` is keyed on the affordance itself and does **not**
+  depend on any ancestor, so a momentary DOM detach during reconciliation
+  cannot expose it. Only the reveal to `opacity: 1` depends on the row's
+  `:hover` / `:focus-within`.
+- The shared Effect Native DOM renderer commit is **idempotent**: re-committing
+  an unchanged keyed subtree performs zero DOM moves of persisted content.
+  Transcript message wrappers are persisted and reconciled in place, and
+  children are inserted/moved/removed by diff rather than unconditionally
+  re-appended. Detaching and re-attaching a node restarts its CSS
+  transition/animation, so an unrelated re-render (a keystroke elsewhere) can no
+  longer replay a hover-reveal transition, a running-tool title shimmer, or a
+  disabled-reason popover animation.
+- The Electron smoke types into the composer while not hovering a message row
+  and fails if the details affordance's computed opacity ever rises above 0, or
+  if its DOM node is replaced or re-parented. A provider-agnostic render-dom
+  unit guard proves the persisted affordance is never moved when only a sibling
+  changes.
+
+Contract:
+`openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1`.
+
 ## Desktop safety boundary
 
 The normal desktop test sweep also mechanically enforces these host boundaries:

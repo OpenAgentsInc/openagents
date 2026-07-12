@@ -57,6 +57,7 @@ describe("EP250 chat contracts are registered and enforced (#8712)", () => {
       "openagents_desktop.chat.no_composer_disabled_caption.v1",
       "openagents_desktop.chat.markdown_rendering.v1",
       "openagents_desktop.chat.compact_message_details_affordance.v1",
+      "openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1",
       "openagents_desktop.chat.typed_tool_call_cards.v1",
       "openagents_desktop.chat.interactive_question_cards.v1",
       "openagents_desktop.chat.opencode_card_design_language.v1",

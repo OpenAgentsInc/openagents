@@ -2467,6 +2467,70 @@ const smokeCodexLocalStreaming = `(async () => {
 // persisted host metadata (lane, SDK-reported effective model, account ref,
 // turn ref, exact token total, duration); Close dismisses it through the
 // same typed intent.
+// Owner bug (verbatim): "the 'details' thing under message ... flashes back in
+// every time i type something in the input, WHY??? WHY IS IT CONNECTED TO
+// ANOTHER COMPONENT". The per-message details affordance is a hover/focus
+// reveal (opacity-0 at rest). Its visibility must be a pure function of
+// pointer/focus — never of composer input or any unrelated re-render. This
+// asserts that typing in the composer (while NOT hovering the row) does not
+// change the affordance's computed opacity and does not replace/re-parent its
+// DOM node (a re-parent is what restarted the CSS transition -> the flash).
+const smokeDetailsAffordanceStableOnInput = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+  const last = rows[rows.length - 1]
+  if (last === undefined) return { ok: false, reason: "no assistant message row for the details-flash check" }
+  const details = last.querySelector('[data-en-key^="note-details-"]')
+  if (details === null) return { ok: false, reason: "details affordance never mounted" }
+  // Make sure we are in the resting (un-hovered) state.
+  last.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }))
+  details.blur?.()
+  await wait(200) // allow any (bugged) transition to settle
+  const restingOpacity = getComputedStyle(details).opacity
+  if (restingOpacity !== "0") {
+    return { ok: false, reason: "details affordance is not hidden at rest: opacity=" + restingOpacity }
+  }
+  // Tag the exact node + parent so we can detect replacement / re-parenting.
+  details.dataset.enFlashProbe = "1"
+  const parentBefore = details.parentElement
+  // Type in the composer — the exact "type something in the input" scenario.
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  if (input === null) return { ok: false, reason: "composer input never mounted" }
+  input.focus()
+  let maxOpacityDuringTyping = 0
+  for (const value of ["details-flash-probe a", "details-flash-probe ab", "details-flash-probe abc"]) {
+    input.value = value
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    // Sample opacity across the frames a replayed 150ms transition would occupy.
+    for (let i = 0; i < 8; i += 1) {
+      await wait(20)
+      const now = last.querySelector('[data-en-key^="note-details-"]')
+      if (now !== null) {
+        maxOpacityDuringTyping = Math.max(maxOpacityDuringTyping, Number(getComputedStyle(now).opacity) || 0)
+      }
+    }
+  }
+  const detailsAfter = last.querySelector('[data-en-key^="note-details-"]')
+  if (detailsAfter === null) return { ok: false, reason: "details affordance disappeared after typing" }
+  // Restore the composer so later smoke steps start from an empty input.
+  input.value = ""
+  input.dispatchEvent(new Event("input", { bubbles: true }))
+  const sameNode = detailsAfter === details && detailsAfter.dataset.enFlashProbe === "1"
+  const sameParent = detailsAfter.parentElement === parentBefore
+  const finalOpacity = getComputedStyle(detailsAfter).opacity
+  return {
+    ok: sameNode && sameParent && finalOpacity === "0" && maxOpacityDuringTyping < 0.01,
+    reason: sameNode && sameParent && finalOpacity === "0" && maxOpacityDuringTyping < 0.01
+      ? undefined
+      : "details flashed / re-parented on composer input",
+    sameNode,
+    sameParent,
+    restingOpacity,
+    finalOpacity,
+    maxOpacityDuringTyping,
+  }
+})()`
+
 const smokeMessageInspector = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
@@ -2784,6 +2848,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // EP250 (#8712): click a message -> right-side metadata inspector
         // (model/lane/account/tokens), close through the same typed intent,
         // then re-open once for the pixel receipt.
+        // Owner details-flash fix: typing in the composer must not change the
+        // per-message details affordance's visibility (run before the inspector
+        // step consumes the affordance by clicking it).
+        await step("details-affordance-stable-on-composer-input", smokeDetailsAffordanceStableOnInput)
         await step("message-metadata-inspector", smokeMessageInspector)
         await step("message-metadata-inspector-reopen", smokeReopenMessageInspector)
         await captureShot(window, "08-message-inspector")

@@ -6,8 +6,46 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.40",
+    version: "2026-07-11.41",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript chrome",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "the 'details' thing under message, when i hover it or its visible or whatever, it flashes back in every time i type something in the input, WHY??? WHY IS IT CONNECTED TO ANOTHER COMPONENT - fix it - and ensure that category of error wont happen anywhere else in codebase",
+        authorityBoundary:
+          "The per-message details affordance is a hover/focus reveal (opacity-0 at rest). Its visibility must be a pure function of pointer/focus ONLY — never of composer input, global state, or re-render timing. Root cause: the pure state->View re-render on every keystroke re-parented the persisted keyed affordance in the DOM renderer (Transcript wrappers were rebuilt from scratch and Stack children were unconditionally re-appended via replaceChildren); detaching + re-attaching a node restarts its CSS opacity transition, flashing it visible. Fix is structural, not cosmetic: (1) the resting opacity:0 is keyed on the affordance itself and no longer requires the [data-en-message] ancestor, so a momentary detach cannot expose it; (2) the shared render-dom commit is now idempotent — persisted keyed content is never re-parented on an unrelated re-render, killing the whole transition-replay category (also fixes the tool-title shimmer and disabled-reason popover).",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/app.css",
+          "apps/openagents.com/packages/effect-native-render-dom/src/index.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+        ],
+        oracles: [
+          {
+            id: "details_affordance.stable_on_composer_input.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke types into the composer while NOT hovering the message row and fails if the details affordance's computed opacity ever rises above 0, or if its DOM node is replaced or re-parented (sameNode/sameParent/restingOpacity=0/finalOpacity=0/maxOpacityDuringTyping=0).",
+          },
+          {
+            id: "details_affordance.commit_idempotent_no_reparent",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents.com/packages/effect-native-render-dom/tests/index.test.ts",
+            description:
+              "Provider-agnostic render-dom guard: re-committing a Transcript whose only change is a sibling (the composer value) performs ZERO DOM moves of the persisted keyed hover-reveal affordance, so its CSS transition can never replay from an unrelated re-render.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the details-affordance-stable-on-composer-input Electron smoke step; bun test at apps/openagents.com/packages/effect-native-render-dom runs the commit-idempotency guard.",
+      },
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
         state: "enforced",

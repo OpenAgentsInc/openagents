@@ -873,6 +873,19 @@ class DomRendererState {
     }
     return element
   }
+
+  // Persist a renderer-internal wrapper element across commits under an
+  // explicit string key. Used for structural DOM the catalog does not key
+  // itself (e.g. Transcript message wrappers) so their persisted keyed body
+  // content is never re-parented on an unrelated re-render — the same
+  // commit-idempotency guarantee reconcileChildren gives keyed children.
+  keyedInternal(key: string, tagName: string): HTMLElement {
+    const existing = this.keyed.get(key)
+    if (existing !== undefined && existing.localName === tagName) return existing
+    const element = this.root.ownerDocument.createElement(tagName)
+    this.keyed.set(key, element)
+    return element
+  }
 }
 
 const runReportedIntent = (
@@ -1079,14 +1092,44 @@ const applyScrollRegion = (
   })
 }
 
+// Commit-idempotent child reconciliation (issue: details-affordance flash).
+//
+// `element.replaceChildren(...rendered)` unconditionally removes and re-appends
+// EVERY child on every commit — even keyed children that are already present in
+// the correct position. Detaching and re-attaching a node restarts any CSS
+// transition/animation on it (and on its subtree), so an unrelated re-render
+// (e.g. a composer keystroke rebuilding the pure state->View) replayed the
+// hover-reveal opacity transition on the per-message "details" affordance,
+// flashing it visible. This is the same commit-idempotency category as the
+// scroll-preservation fix in renderTimeline/renderStack.
+//
+// This reconcile only touches nodes that actually changed: a child already at
+// its target index is left in place (no detach), so re-committing an unchanged
+// subtree performs zero DOM mutations and cannot replay a transition.
+const reconcileChildren = (element: HTMLElement, rendered: ReadonlyArray<Node>): void => {
+  const desired = new Set<Node>(rendered)
+  // Remove any current child that is not part of the next render.
+  for (const existing of Array.from(element.childNodes)) {
+    if (!desired.has(existing)) element.removeChild(existing)
+  }
+  // Insert/move only what is out of position; identical, in-order nodes are
+  // never touched (no detach => no transition replay).
+  for (let index = 0; index < rendered.length; index += 1) {
+    const node = rendered[index]!
+    const current = element.childNodes[index]
+    if (current !== node) {
+      element.insertBefore(node, current ?? null)
+    }
+  }
+}
+
 const renderChildren = (
   element: HTMLElement,
   children: ReadonlyArray<View>,
   state: DomRendererState,
   report: IntentReporter
 ): void => {
-  const rendered = children.map((child) => renderView(child, state, report))
-  element.replaceChildren(...rendered)
+  reconcileChildren(element, children.map((child) => renderView(child, state, report)))
 }
 
 const renderStack = (view: StackView, state: DomRendererState, report: IntentReporter): HTMLElement => {
@@ -2524,7 +2567,14 @@ const renderTooltip = (view: TooltipView, state: DomRendererState, report: Inten
   const tooltipId = `en-tooltip-${cssEscape(view.key ?? view.content)}`
   const target = renderView(view.children[0]!, state, report)
   target.setAttribute("aria-describedby", tooltipId)
-  const bubble = document.createElement("span")
+  // Persist the bubble across commits and only initialize its hidden state on
+  // first creation. The bubble's visibility is a pure function of pointer/focus
+  // (the listeners below); resetting hidden=true on every commit — or
+  // recreating/re-parenting the bubble — would let an unrelated re-render
+  // (a composer keystroke) dismiss a shown popover or replay its enter
+  // animation. Same transient-visibility category as the details affordance.
+  const bubble = state.keyedInternal(`Tooltip-bubble:${tooltipId}`, "span")
+  const freshBubble = bubble.parentNode === null
   bubble.id = tooltipId
   bubble.setAttribute("role", "tooltip")
   bubble.setAttribute("data-en-role", "tooltip")
@@ -2532,7 +2582,7 @@ const renderTooltip = (view: TooltipView, state: DomRendererState, report: Inten
     bubble.setAttribute("data-en-placement", `${view.placement.side}:${view.placement.align}`)
   }
   bubble.textContent = view.content
-  bubble.hidden = true
+  if (freshBubble) bubble.hidden = true
   bubble.style.position = "absolute"
   bubble.style.pointerEvents = "none"
   bubble.style.background = "var(--en-color-surfaceRaised)"
@@ -2545,7 +2595,7 @@ const renderTooltip = (view: TooltipView, state: DomRendererState, report: Inten
   state.addListener(element, "pointerleave", hide)
   state.addListener(element, "focusin", show)
   state.addListener(element, "focusout", hide)
-  element.replaceChildren(target, bubble)
+  reconcileChildren(element, [target, bubble])
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
   return element
@@ -3540,8 +3590,13 @@ const renderTranscript = (view: TranscriptView, state: DomRendererState, report:
   element.style.flexDirection = "column"
   element.style.gap = "var(--en-spacing-2)"
   const document = element.ownerDocument
+  const transcriptKey = view.key ?? "transcript"
   const messages = view.messages.map((message) => {
-    const messageEl = document.createElement("div")
+    // Persisted wrappers (commit idempotency): reusing the message wrapper and
+    // body across commits means the persisted keyed body content — e.g. the
+    // hover-reveal "details" affordance — is never re-parented on an unrelated
+    // re-render, so its CSS opacity transition can never replay (the flash).
+    const messageEl = state.keyedInternal(`Transcript-msg:${transcriptKey}:${message.key}`, "div")
     messageEl.setAttribute("data-en-message", message.key)
     messageEl.setAttribute("data-en-role", message.role)
     // Role-differentiated row treatment (v29, #72), after the Khala Code
@@ -3556,17 +3611,23 @@ const renderTranscript = (view: TranscriptView, state: DomRendererState, report:
       messageEl.style.maxWidth = "min(82%, 34rem)"
     } else if (message.role === "tool") {
       messageEl.style.alignSelf = "flex-start"
+      messageEl.style.alignItems = ""
       messageEl.style.maxWidth = "40rem"
     } else {
       messageEl.style.alignSelf = "flex-start"
+      messageEl.style.alignItems = ""
       messageEl.style.maxWidth = "min(100%, 44rem)"
     }
+    const wrapperChildren: Array<Node> = []
     if (message.senderLabel !== undefined || message.timestamp !== undefined || message.status !== undefined) {
-      const meta = document.createElement("div")
+      const meta = state.keyedInternal(`Transcript-meta:${transcriptKey}:${message.key}`, "div")
       meta.setAttribute("data-en-role", "meta")
       meta.style.display = "flex"
       meta.style.alignItems = "baseline"
       meta.style.gap = "var(--en-spacing-2)"
+      // Meta spans carry no transitions/hover-reveals, so rebuilding them each
+      // commit is safe; only the persisted body must keep node identity.
+      const metaChildren: Array<Node> = []
       if (message.senderLabel !== undefined) {
         const sender = document.createElement("span")
         sender.setAttribute("data-en-role", "sender")
@@ -3576,7 +3637,7 @@ const renderTranscript = (view: TranscriptView, state: DomRendererState, report:
         sender.style.letterSpacing = "0.08em"
         sender.style.textTransform = "uppercase"
         sender.style.color = message.role === "user" ? colorValue("accent") : colorValue("textMuted")
-        meta.appendChild(sender)
+        metaChildren.push(sender)
       }
       if (message.timestamp !== undefined) {
         const time = document.createElement("span")
@@ -3584,35 +3645,45 @@ const renderTranscript = (view: TranscriptView, state: DomRendererState, report:
         time.textContent = message.timestamp
         time.style.fontSize = "11px"
         time.style.color = colorValue("textMuted")
-        meta.appendChild(time)
+        metaChildren.push(time)
       }
       if (message.status !== undefined) {
-        messageEl.setAttribute("data-en-status", message.status)
         const indicator = document.createElement("span")
         indicator.setAttribute("data-en-role", "status")
         indicator.setAttribute("aria-label", message.status)
         if (message.status === "streaming" || message.status === "thinking") {
           indicator.setAttribute("aria-busy", "true")
         }
-        meta.appendChild(indicator)
+        metaChildren.push(indicator)
       }
-      messageEl.appendChild(meta)
+      meta.replaceChildren(...metaChildren)
+      wrapperChildren.push(meta)
     }
-    const body = document.createElement("div")
+    if (message.status !== undefined) {
+      messageEl.setAttribute("data-en-status", message.status)
+    } else {
+      messageEl.removeAttribute("data-en-status")
+    }
+    const body = state.keyedInternal(`Transcript-body:${transcriptKey}:${message.key}`, "div")
     body.setAttribute("data-en-role", "body")
     if (message.role === "user") {
       body.style.background = colorValue("surfaceRaised")
       body.style.border = `1px solid ${colorValue("border")}`
       body.style.borderRadius = "8px"
       body.style.padding = "var(--en-spacing-2) var(--en-spacing-3)"
-    } else if (message.role === "system" || message.role === "tool") {
-      body.style.color = colorValue("textMuted")
+    } else {
+      body.style.background = ""
+      body.style.border = ""
+      body.style.borderRadius = ""
+      body.style.padding = ""
+      body.style.color = message.role === "system" || message.role === "tool" ? colorValue("textMuted") : ""
     }
-    body.append(...message.body.map((child) => renderView(child, state, report)))
-    messageEl.appendChild(body)
+    reconcileChildren(body, message.body.map((child) => renderView(child, state, report)))
+    wrapperChildren.push(body)
+    reconcileChildren(messageEl, wrapperChildren)
     return messageEl
   })
-  element.replaceChildren(...messages)
+  reconcileChildren(element, messages)
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
   applyScrollRegion(element, view, state, report)

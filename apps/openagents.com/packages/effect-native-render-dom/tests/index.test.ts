@@ -10,6 +10,7 @@ import {
   SplitPane,
   Stack,
   Text,
+  Transcript,
   UnknownIntentError,
   iconNames,
   type IntentReporter
@@ -373,6 +374,88 @@ describe("DOM renderer host boundaries", () => {
       expect(unmounted).toBe(1)
       yield* surface.unmount
       expect(unmounted).toBe(1)
+    })))
+  })
+})
+
+// Commit idempotency guard (category-killer for the "details affordance flashes
+// on every keystroke" bug). A transient-visibility affordance (opacity-0 at
+// rest, revealed on :hover/:focus-within via a CSS transition) must NOT have
+// that transition replayed by an unrelated re-render. The mechanism was that
+// `replaceChildren` / freshly-created Transcript message wrappers re-parented
+// the persisted keyed affordance on every commit; detaching + re-attaching a
+// node restarts its CSS transition, flashing it visible. This guard proves that
+// re-committing an unchanged keyed subtree performs ZERO DOM moves of that
+// persisted node — so no transition/animation can replay from an unrelated
+// state change. It is provider-agnostic: it does not depend on the desktop app,
+// only on the render-dom commit contract.
+describe("commit idempotency: unrelated re-render never re-parents persisted keyed content", () => {
+  const transcriptFrame = (composerLabel: string) =>
+    Stack({ key: "shell", direction: "column" }, [
+      Transcript({ key: "shell-transcript", messages: [
+        {
+          key: "m1",
+          role: "assistant",
+          timestamp: "12:00",
+          body: [
+            Text({ key: "m1-text", content: "hello", variant: "body" }),
+            Stack({ key: "note-meta-row-m1", direction: "row" }, [
+              Button({
+                key: "note-details-m1",
+                label: "details",
+                variant: "ghost",
+                onPress: IntentRef("DesktopMessageSelected")
+              })
+            ])
+          ]
+        }
+      ] }),
+      // The sibling that changes on every keystroke (composer value binding).
+      Text({ key: "shell-composer", content: composerLabel, variant: "body" })
+    ])
+
+  test("the hover-reveal details affordance is not moved when only a sibling changes", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    const report: IntentReporter = () => Effect.succeed(undefined)
+
+    // Count MOVES of the persisted details button across commits. A move
+    // (re-parent of an already-attached node) is exactly what restarts the CSS
+    // opacity transition; the initial mount attach (parentNode === null) is not
+    // a move. With the pre-fix renderer this was > 0 on the second commit.
+    const isDetails = (n: unknown): n is Element =>
+      typeof (n as Element)?.getAttribute === "function" &&
+      (n as Element).getAttribute("data-en-key") === "note-details-m1"
+    let detailsMoves = 0
+    const proto = (window as unknown as { Node: { prototype: Record<string, (...a: Array<unknown>) => unknown> } }).Node.prototype
+    for (const method of ["appendChild", "append", "insertBefore"] as const) {
+      const real = proto[method]
+      proto[method] = function (this: Node, ...args: Array<unknown>) {
+        for (const arg of args) {
+          if (isDetails(arg) && (arg as Node).parentNode != null && (arg as Node).parentNode !== this) {
+            detailsMoves += 1
+          }
+        }
+        return real.apply(this, args)
+      }
+    }
+
+    await Effect.runPromise(Effect.scoped(Effect.gen(function*() {
+      yield* makeDomRenderer({ document }).mount(
+        root,
+        // Two commits: identical transcript, only the composer sibling changes —
+        // exactly the "type a character in the input" scenario.
+        Stream.make(transcriptFrame("a"), transcriptFrame("ab")),
+        report
+      )
+      yield* nextTask
+      const button = root.querySelector('[data-en-key="note-details-m1"]')
+      expect(button).not.toBeNull()
+      // The affordance survived both commits without being re-parented, so its
+      // hover-reveal transition can never replay from an unrelated re-render.
+      expect(detailsMoves).toBe(0)
     })))
   })
 })
