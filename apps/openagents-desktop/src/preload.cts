@@ -68,6 +68,28 @@ import {
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { GitGithubChannel, decodeGitGithubRequest, gitGithubError } from "./git-github-contract.ts"
 import {
+  TerminalCloseChannel,
+  TerminalCreateChannel,
+  TerminalEventChannel,
+  TerminalInputChannel,
+  TerminalInterruptChannel,
+  TerminalPreviewOpenChannel,
+  TerminalResizeChannel,
+  TerminalRestartChannel,
+  TerminalSnapshotChannel,
+  decodeTerminalCreateRequest,
+  decodeTerminalCreateResult,
+  decodeTerminalAckResult,
+  decodeTerminalEvent,
+  decodeTerminalInputRequest,
+  decodeTerminalPreviewOpenRequest,
+  decodeTerminalPreviewOpenResult,
+  decodeTerminalResizeRequest,
+  decodeTerminalSessionRequest,
+  decodeTerminalSnapshot,
+  type TerminalEvent,
+} from "./terminal-contract.ts"
+import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
   decodeDesktopRuntimeGatewayEvent,
@@ -323,6 +345,61 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
    * (including the verification URL it opens); the renderer only receives
    * public-safe typed projections it schema-checks.
    */
+  /**
+   * Workspace-bounded PTY terminals (CUT-20, #8700). Every op is a typed
+   * intent schema-decoded HERE before it crosses the bridge — the renderer
+   * sends a session ref and, for input/resize, bounded data / integer geometry.
+   * It never sends a shell, an argv, a cwd, or an env: main binds those to the
+   * authorized workspace. Output arrives as bounded, pre-redacted typed events.
+   */
+  terminal: {
+    create: async (value: unknown) => {
+      const request = decodeTerminalCreateRequest(value ?? {})
+      if (request === null) {
+        return { ok: false, reason: "invalid_request", message: "The terminal request is invalid." }
+      }
+      return decodeTerminalCreateResult(await ipcRenderer.invoke(TerminalCreateChannel, request))
+    },
+    input: async (value: unknown) => {
+      const request = decodeTerminalInputRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request" }
+      return decodeTerminalAckResult(await ipcRenderer.invoke(TerminalInputChannel, request))
+    },
+    resize: async (value: unknown) => {
+      const request = decodeTerminalResizeRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request" }
+      return decodeTerminalAckResult(await ipcRenderer.invoke(TerminalResizeChannel, request))
+    },
+    interrupt: async (value: unknown) => {
+      const request = decodeTerminalSessionRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request" }
+      return decodeTerminalAckResult(await ipcRenderer.invoke(TerminalInterruptChannel, request))
+    },
+    restart: async (value: unknown) => {
+      const request = decodeTerminalSessionRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request" }
+      return decodeTerminalAckResult(await ipcRenderer.invoke(TerminalRestartChannel, request))
+    },
+    close: async (value: unknown) => {
+      const request = decodeTerminalSessionRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request" }
+      return decodeTerminalAckResult(await ipcRenderer.invoke(TerminalCloseChannel, request))
+    },
+    snapshot: async () => decodeTerminalSnapshot(await ipcRenderer.invoke(TerminalSnapshotChannel)) ?? { sessions: [] },
+    openPreview: async (value: unknown) => {
+      const request = decodeTerminalPreviewOpenRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request" }
+      return decodeTerminalPreviewOpenResult(await ipcRenderer.invoke(TerminalPreviewOpenChannel, request))
+    },
+    onEvent: (listener: (event: TerminalEvent) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeTerminalEvent(value)
+        if (decoded !== null) listener(decoded)
+      }
+      ipcRenderer.on(TerminalEventChannel, handler)
+      return () => ipcRenderer.removeListener(TerminalEventChannel, handler)
+    },
+  },
   codexAccounts: () => ipcRenderer.invoke(CodexAccountsChannel),
   codexConnectStart: () => ipcRenderer.invoke(CodexConnectStartChannel),
   codexReconnectStart: (ref: string) => ipcRenderer.invoke(CodexReconnectStartChannel, ref),

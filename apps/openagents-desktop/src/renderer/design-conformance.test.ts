@@ -118,7 +118,9 @@ describe("design conformance (b): style values come from the shared scales", () 
       480, // inspector pane maximum
       336, // inspector pane default size
       240, // files list minimum width / 240px output cap dimension
-      320, // files list maximum width
+      320, // files list maximum width / files browser pane minimum
+      560, // files browser pane maximum width (workspace-files SplitPane)
+      400, // files browser pane default size (workspace-files SplitPane)
       4, // sidebar connected-accounts usage meter: thin 4px track height (EP250)
       56, // composer image attachment thumbnail (capability I1)
     ])

@@ -2548,5 +2548,55 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the settings renderer suite and the persistence-host suite as programmatic/UI oracles, plus the Electron smoke MCP add-and-list step.",
       },
+      {
+        contractId: "openagents_desktop.terminal.workspace_bounded_pty.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "workspace terminal / execution",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "audit", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Interactive terminal / stdin steering — the audit's #1 daily-coding gap (8,333 write_stdin observations, capability D3). Ordinary build/test/dev-server work must run in scoped Desktop terminals with an explicit local-preview lifecycle and no renderer ambient process authority. (CUT-20, #8700)",
+        authorityBoundary:
+          "The renderer holds no shell and no process: every terminal operation is a typed intent (create/input/resize/interrupt/restart/close/preview-open) schema-decoded on both sides of the sandbox. Main alone binds each session to the currently authorized workspace root + a bounded environment; the renderer sends a session ref and, for input/resize, bounded data / integer geometry — never a shell, argv, cwd, or env, so a compromised renderer can steer stdin but never chooses WHAT is spawned or WHERE. Output crossing to the renderer is BOUNDED (a byte-capped ring, loss-accounted with a gap flag) and REDACTED (secret-named/secret-shaped env VALUES and token-shaped literals are scrubbed in main before any chunk is sent). On project/workspace close the OWNED process tree is killed exactly once (SIGTERM then SIGKILL against the process group; a second close is a no-op). A bounded tail persists (mode 0600) and is reloaded as an explicitly recovered, gap-marked session after an app restart. Local preview discovers an EXPLICIT announced port parsed from the session's OWN output (never a port scan), shows readiness, and stops with its owning session; opening it is out-of-process (external browser) behind a confirmation — never arbitrary in-app navigation. The shipped backend is a child-process-group terminal (zero native deps, runs under bun test AND Electron); node-pty pseudo-TTY + xterm.js are a documented TerminalBackend swap deferred to the #8574 packaging lane. The terminal UI (bounded monospace output + a typed input line + interrupt/restart) composes only shared catalog primitives on the design-conformance token scales.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/terminal-host.ts",
+          "apps/openagents-desktop/src/terminal-contract.ts",
+          "apps/openagents-desktop/src/renderer/terminal-workspace.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/preload.cts",
+          "docs/fable/2026-07-11-daily-coding-capability-audit.md",
+          "github:OpenAgentsInc/openagents#8700",
+        ],
+        oracles: [
+          {
+            id: "terminal.adversarial_and_built_host_receipt",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/terminal-host.test.ts",
+            description:
+              "The adversarial PTY suite — shell injection (renderer input never becomes argv; the spawn argv stays fixed and workspace-bound), secret environment (bound secret values redacted in the streamed chunk AND the tail), runaway output (ring buffer holds the byte cap and marks gap), orphan children (closing a session reaps a REAL backgrounded grandchild via process-group kill — the disposal evidence), duplicate start, port collision (typed error on a second live session claiming the same announced port), and revoked grants — plus the built-host receipt (a real /bin/sh runs a stdin command, output captured, exit code observed, tree disposed) and the dev-preview receipt (a real server's announced port is detected + reachable, then freed when the session stops).",
+          },
+          {
+            id: "terminal.renderer_intent_loop",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/terminal-workspace.test.ts",
+            description:
+              "The terminal workspace transitions (ready/output/exit/preview/closed/error + snapshot recovery) and the typed intent loop through the real registry with a fake bridge: create adds the returned session, submit writes the input line to stdin with a newline and clears the field, interrupt/restart target the active session, and a failed preview-open surfaces a typed notice — all on the design-conformance token scales.",
+          },
+          {
+            id: "terminal.smoke_built_electron_pty_receipt",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke routes to the terminal workspace through the canonical workspace.terminal command, then runs a REAL bounded command through the real preload bridge + real main PTY host (bound to the app's own repo in smoke), asserts the ready + redacted output events, closes the session, and the lifecycle-teardown asserts zero live terminal sessions remain.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the adversarial PTY host suite and the renderer intent-loop suite as programmatic/UI oracles, plus the built-Electron smoke terminal PTY receipt step and its lifecycle-teardown disposal check.",
+      },
     ],
   };

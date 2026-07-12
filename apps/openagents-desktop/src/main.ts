@@ -172,6 +172,24 @@ import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import { GitGithubChannel } from "./git-github-contract.ts"
 import { openGitGithubService } from "./git-github-host.ts"
+import {
+  TerminalCloseChannel,
+  TerminalCreateChannel,
+  TerminalEventChannel,
+  TerminalInputChannel,
+  TerminalInterruptChannel,
+  TerminalPreviewOpenChannel,
+  TerminalResizeChannel,
+  TerminalRestartChannel,
+  TerminalSnapshotChannel,
+  decodeTerminalCreateRequest,
+  decodeTerminalInputRequest,
+  decodeTerminalPreviewOpenRequest,
+  decodeTerminalResizeRequest,
+  decodeTerminalSessionRequest,
+  type TerminalEvent,
+} from "./terminal-contract.ts"
+import { makeTerminalHost } from "./terminal-host.ts"
 import { makeWorkspaceSearchRegistry } from "./workspace-search-registry.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
@@ -628,9 +646,16 @@ const codingCatalogSnapshot = () => {
     ? emptyDesktopCodingCatalogProjection()
     : projectDesktopCodingCatalog(catalog.snapshot())
 }
+// A workspace change revokes every terminal bound to the OUTGOING grant: its
+// owned process trees are killed exactly once before the new root is authorized.
+const revokeOutgoingWorkspaceTerminals = (): void => {
+  const outgoing = hostLifecycle.workspace()?.grantRef ?? null
+  if (outgoing !== null) terminalHost.revokeWorkspace(outgoing)
+}
 const activateCodingCatalogRoot = () => {
   const root = hostLifecycle.sync()?.codingCatalog()?.selectedRoot() ?? null
   if (root !== null) {
+    revokeOutgoingWorkspaceTerminals()
     hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
     rebindWorkspaceChangeSubscriptions()
   }
@@ -639,6 +664,7 @@ const chooseCodingWorkspace = async (registerCatalog = true) => {
   const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
   if (result.canceled || result.filePaths[0] === undefined) return null
   const root = result.filePaths[0]
+  revokeOutgoingWorkspaceTerminals()
   hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
   rebindWorkspaceChangeSubscriptions()
   if (registerCatalog) hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
@@ -862,6 +888,87 @@ const gitGithubService = openGitGithubService(
       },
 )
 ipcMain.handle(GitGithubChannel, (_event, value: unknown) => gitGithubService.run(value))
+
+// --- Workspace-bounded PTY terminals (CUT-20, #8700) -----------------------
+// A main-only PTY host: each session binds to the currently authorized
+// workspace root + a bounded environment. The renderer steers stdin through
+// typed intents only; it never chooses the shell, argv, cwd, or env. Output is
+// bounded (ring buffer) and redacted (secret env values scrubbed) before it is
+// broadcast to the renderer. In smoke it binds to the app's own repo so the
+// journey can run a real bounded command without a directory-picker.
+const terminalWorkspaceBinding = (): { root: string; grantRef: string } | null => {
+  const workspace = hostLifecycle.workspace()
+  if (workspace !== null) {
+    try {
+      return { root: workspace.summary().root, grantRef: workspace.grantRef }
+    } catch {
+      return null
+    }
+  }
+  return smokeMode ? { root: smokeGitRoot, grantRef: "workspace.grant.smoke" } : null
+}
+const broadcastTerminalEvent = (event: TerminalEvent): void => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(TerminalEventChannel, event)
+  }
+}
+const confirmTerminalPreview = async (url: string): Promise<boolean> => {
+  const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed()) ?? null
+  const options = {
+    type: "question" as const,
+    buttons: ["Cancel", "Open in browser"],
+    defaultId: 1,
+    cancelId: 0,
+    message: "Open local preview",
+    detail: `Open ${url}? Only local preview URLs this terminal announced can be opened, and they open in your default browser — never inside the app.`,
+  }
+  const result = window === null
+    ? await dialog.showMessageBox(options)
+    : await dialog.showMessageBox(window, options)
+  if (result.response !== 1) return false
+  await shell.openExternal(url)
+  return true
+}
+const terminalHost = makeTerminalHost({
+  workspace: terminalWorkspaceBinding,
+  emit: broadcastTerminalEvent,
+  persistencePath: path.join(app.getPath("userData"), "terminals.json"),
+  openPreview: confirmTerminalPreview,
+})
+ipcMain.handle(TerminalCreateChannel, (_event, value: unknown) => {
+  const request = decodeTerminalCreateRequest(value)
+  return request === null
+    ? { ok: false, reason: "invalid_request", message: "The terminal request is invalid." }
+    : terminalHost.create(request)
+})
+ipcMain.handle(TerminalInputChannel, (_event, value: unknown) => {
+  const request = decodeTerminalInputRequest(value)
+  return request === null ? { ok: false, reason: "invalid_request" } : terminalHost.input(request.sessionRef, request.data)
+})
+ipcMain.handle(TerminalResizeChannel, (_event, value: unknown) => {
+  const request = decodeTerminalResizeRequest(value)
+  return request === null ? { ok: false, reason: "invalid_request" } : terminalHost.resize(request.sessionRef, request.cols, request.rows)
+})
+ipcMain.handle(TerminalInterruptChannel, (_event, value: unknown) => {
+  const request = decodeTerminalSessionRequest(value)
+  return request === null ? { ok: false, reason: "invalid_request" } : terminalHost.interrupt(request.sessionRef)
+})
+ipcMain.handle(TerminalRestartChannel, (_event, value: unknown) => {
+  const request = decodeTerminalSessionRequest(value)
+  return request === null ? { ok: false, reason: "invalid_request" } : terminalHost.restart(request.sessionRef)
+})
+ipcMain.handle(TerminalCloseChannel, (_event, value: unknown) => {
+  const request = decodeTerminalSessionRequest(value)
+  return request === null ? { ok: false, reason: "invalid_request" } : terminalHost.close(request.sessionRef)
+})
+ipcMain.handle(TerminalSnapshotChannel, () => terminalHost.snapshot())
+ipcMain.handle(TerminalPreviewOpenChannel, (_event, value: unknown) => {
+  const request = decodeTerminalPreviewOpenRequest(value)
+  return request === null
+    ? Promise.resolve({ ok: false, reason: "invalid_request" })
+    : terminalHost.openPreview(request.sessionRef, request.port)
+})
+
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.
 ipcMain.handle(DesktopThreadsChannel, () => hostLifecycle.history()?.run({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }) ?? Promise.resolve(null))
@@ -1941,6 +2048,46 @@ const smokeOpenGitReview = `(async () => {
   }
 })()`
 
+// Workspace-bounded PTY terminal (CUT-20, #8700): the terminal workspace mounts
+// (routed by the canonical workspace.terminal command), then a REAL PTY host
+// session runs a bounded command through the real preload bridge + real main
+// host (bound to the app's own repo in smoke), captures its redacted output,
+// and disposes the owned process tree. Built-Electron proof of the D3 seam.
+const smokeTerminalWorkspace = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const terminal = window.openagentsDesktop && window.openagentsDesktop.terminal
+  if (!terminal || typeof terminal.create !== "function") return { ok: false, reason: "terminal bridge missing" }
+  const panelDeadline = Date.now() + 10000
+  while (Date.now() < panelDeadline && document.querySelector('[data-en-key="workspace-terminal-panel"]') === null) {
+    await wait(50)
+  }
+  if (document.querySelector('[data-en-key="workspace-terminal-panel"]') === null) {
+    return { ok: false, reason: "terminal panel never mounted" }
+  }
+  let sawReady = false, sawOutput = false, sawClosed = false
+  const kinds = []
+  const off = terminal.onEvent((event) => {
+    kinds.push(event.kind)
+    if (event.kind === "ready") sawReady = true
+    if (event.kind === "output" && String(event.chunk || "").indexOf("smoke-terminal-echo") !== -1) sawOutput = true
+    if (event.kind === "closed") sawClosed = true
+  })
+  const created = await terminal.create({})
+  if (!created || created.ok !== true) { off(); return { ok: false, reason: "create", created } }
+  const sessionRef = created.sessionRef
+  await terminal.input({ sessionRef, data: "echo smoke-terminal-echo\\n" })
+  const outputDeadline = Date.now() + 10000
+  while (Date.now() < outputDeadline && !sawOutput) await wait(50)
+  const closed = await terminal.close({ sessionRef })
+  await wait(250)
+  off()
+  return {
+    ok: sawReady && sawOutput && !!closed && closed.ok === true,
+    sawReady, sawOutput, sawClosed,
+    kinds: kinds.slice(0, 12),
+  }
+})()`
+
 const smokeSubmitComposer = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const input = document.querySelector('[data-en-key="shell-input"] input')
@@ -2878,11 +3025,12 @@ const launchSmokeSecondInstance = async (): Promise<void> => {
 const runSmoke = (window: BrowserWindow): void => {
   const finish = (code: 0 | 1): void => {
     workspaceSearchRegistry.dispose()
+    terminalHost.dispose()
     hostLifecycle.dispose()
     const snapshot = hostLifecycle.snapshot()
     const active = Number(snapshot.runtime) + Number(snapshot.workspace) + Number(snapshot.sync) +
       Number(snapshot.account) + Number(snapshot.history) + snapshot.windowCount +
-      workspaceSearchRegistry.activeCount()
+      workspaceSearchRegistry.activeCount() + terminalHost.liveSessionCount()
     const ok = snapshot.disposed && active === 0
     console.log("[openagents-desktop smoke] lifecycle-teardown", JSON.stringify({ ok, active }))
     desktopCorrelationJournal.dispose()
@@ -3005,6 +3153,18 @@ const runSmoke = (window: BrowserWindow): void => {
         ))
         await step("git-review-panel-real-status", smokeOpenGitReview)
         await captureShot(window, "12-git-review-panel")
+        // Workspace-bounded PTY terminal (CUT-20, #8700): route to the terminal
+        // workspace through the canonical command host, then run a real bounded
+        // command through the real PTY host and assert output + tree disposal.
+        const terminalCommand = desktopCanonicalCommandRegistry.find(command => command.id === "workspace.terminal")
+        if (terminalCommand === undefined) throw new Error("canonical workspace.terminal command missing")
+        desktopCommandHost.enqueue(deferredDesktopCommand(
+          terminalCommand,
+          "native_menu",
+          "command.desktop.smoke.terminal",
+        ))
+        await step("terminal-workspace-host-pty-receipt", smokeTerminalWorkspace)
+        await captureShot(window, "13-terminal-workspace")
         // Cmd+N from the fleet workspace: fresh transcript + focused composer.
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
         // Capability I1 image attach: on the fresh chat, drop a fixture PNG,
@@ -3133,6 +3293,7 @@ void app.whenReady().then(async () => {
       preflight: () => codexPreflight.probeAll("live_proof"),
       exit: (code) => {
         workspaceSearchRegistry.dispose()
+        terminalHost.dispose()
         hostLifecycle.dispose()
         providerAccounts.dispose()
         desktopCorrelationJournal.dispose()
@@ -3150,6 +3311,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   workspaceSearchRegistry.dispose()
+  terminalHost.dispose()
   hostLifecycle.dispose()
   providerAccounts.dispose()
   fableLocal.dispose()

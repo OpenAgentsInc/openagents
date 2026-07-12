@@ -35,6 +35,11 @@ import {
   type FleetAccountsBridge,
 } from "./fleet-workspace.ts"
 import {
+  unavailableTerminalBridge,
+  type TerminalRendererBridge,
+} from "./terminal-workspace.ts"
+import type { TerminalEvent } from "../terminal-contract.ts"
+import {
   unavailableGitGithubBridge,
   type GitGithubBridge,
 } from "./git-panel.ts"
@@ -183,6 +188,17 @@ type DesktopBridge = Readonly<{
   }>
   /** Typed Git/GitHub surface (EP250 E2–E5): one namespaced invoke. */
   gitGithub?: Readonly<{ run?: (value: unknown) => Promise<unknown> }>
+  /** Workspace-bounded PTY terminals (CUT-20, #8700). */
+  terminal?: Readonly<{
+    create?: (value: unknown) => Promise<unknown>
+    input?: (value: unknown) => Promise<unknown>
+    interrupt?: (value: unknown) => Promise<unknown>
+    restart?: (value: unknown) => Promise<unknown>
+    close?: (value: unknown) => Promise<unknown>
+    snapshot?: () => Promise<unknown>
+    openPreview?: (value: unknown) => Promise<unknown>
+    onEvent?: (listener: (event: TerminalEvent) => void) => () => void
+  }>
   mcpConfig?: Readonly<{
     list?: () => Promise<unknown>
     add?: (value: unknown) => Promise<unknown>
@@ -290,6 +306,16 @@ const gitGithubBridge: GitGithubBridge = {
       ? bridge.gitGithub.run(value)
       : unavailableGitGithubBridge.run(value)
   },
+}
+
+const terminalRendererBridge: TerminalRendererBridge = {
+  create: (value) => readBridge()?.terminal?.create?.(value) ?? unavailableTerminalBridge.create(value),
+  input: (value) => readBridge()?.terminal?.input?.(value) ?? unavailableTerminalBridge.input(value),
+  interrupt: (value) => readBridge()?.terminal?.interrupt?.(value) ?? unavailableTerminalBridge.interrupt(value),
+  restart: (value) => readBridge()?.terminal?.restart?.(value) ?? unavailableTerminalBridge.restart(value),
+  close: (value) => readBridge()?.terminal?.close?.(value) ?? unavailableTerminalBridge.close(value),
+  snapshot: () => readBridge()?.terminal?.snapshot?.() ?? unavailableTerminalBridge.snapshot(),
+  openPreview: (value) => readBridge()?.terminal?.openPreview?.(value) ?? unavailableTerminalBridge.openPreview(value),
 }
 
 /**
@@ -668,7 +694,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const pick = readBridge()?.fableLocal?.pickImages
           return typeof pick === "function" ? await pick() : []
         },
-      }),
+      }, terminalRendererBridge),
     )
     if (typeof bridge?.workspaceSubscribe === "function") {
       const unsubscribeWorkspace = bridge.workspaceSubscribe(change => {
@@ -680,6 +706,22 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         )
       })
       window.addEventListener("pagehide", () => unsubscribeWorkspace(), { once: true })
+    }
+    // Workspace-bounded PTY terminals (CUT-20, #8700): stream every host event
+    // into the terminal workspace state (schema-decoded in the handler), and
+    // pull the snapshot once so a persisted tail is recovered after a restart.
+    if (typeof bridge?.terminal?.onEvent === "function") {
+      const unsubscribeTerminal = bridge.terminal.onEvent((event) => {
+        void Effect.runPromise(
+          registry.dispatch(resolveIntentRef(IntentRef("TerminalEventReceived", StaticPayload(event)))),
+        )
+      })
+      window.addEventListener("pagehide", () => unsubscribeTerminal(), { once: true })
+    }
+    if (typeof bridge?.terminal?.snapshot === "function") {
+      void Effect.runPromise(
+        registry.dispatch(resolveIntentRef(IntentRef("TerminalRefreshRequested", StaticPayload(null)))),
+      )
     }
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).

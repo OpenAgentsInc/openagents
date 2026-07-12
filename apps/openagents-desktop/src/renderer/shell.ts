@@ -86,6 +86,15 @@ import {
   type FleetWorkspaceState,
 } from "./fleet-workspace.ts"
 import {
+  emptyTerminalWorkspaceState,
+  makeTerminalWorkspaceHandlers,
+  terminalWorkspaceIntents,
+  terminalWorkspaceView,
+  unavailableTerminalBridge,
+  type TerminalRendererBridge,
+  type TerminalWorkspaceState,
+} from "./terminal-workspace.ts"
+import {
   emptyGitPanelState,
   gitPanelIntents,
   gitPanelView,
@@ -303,6 +312,8 @@ export type DesktopShellState = Readonly<{
   history: HistoryWorkspaceState
   /** Read-only fleet accounts projection (see ./fleet-workspace.ts). */
   fleet: FleetWorkspaceState
+  /** Workspace-bounded PTY terminals (see ./terminal-workspace.ts, #8700). */
+  terminal: TerminalWorkspaceState
   /** Typed Git/GitHub review panel (see ./git-panel.ts). */
   git: GitPanelState
 }>
@@ -369,6 +380,7 @@ export const initialDesktopShellState = (
   settings: initialSettingsState(),
   history: emptyHistoryWorkspaceState(),
   fleet: emptyFleetWorkspaceState(),
+  terminal: emptyTerminalWorkspaceState(),
   git: emptyGitPanelState(),
 })
 
@@ -545,6 +557,7 @@ export const desktopShellIntents = [
   ...settingsIntents,
   ...historyWorkspaceIntents,
   ...fleetWorkspaceIntents,
+  ...terminalWorkspaceIntents,
   ...gitPanelIntents,
   ...workspaceBrowserIntents,
   ...workspaceEditorIntents,
@@ -1109,6 +1122,7 @@ export const makeDesktopShellHandlers = (
   gitBridge: GitGithubBridge = unavailableGitGithubBridge,
   mcpConfigBridge: McpConfigSettingsBridge = unavailableMcpConfigSettingsBridge,
   imagePickerHost: ComposerImagePickerHost = { pick: async () => [] },
+  terminalBridge: TerminalRendererBridge = unavailableTerminalBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
@@ -1183,6 +1197,7 @@ export const makeDesktopShellHandlers = (
   return ({
   ...settingsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
+  ...makeTerminalWorkspaceHandlers(state, terminalBridge),
   ...gitPanelHandlers,
   ...workspaceBrowserHandlers,
   ...workspaceEditorHandlers,
@@ -3095,7 +3110,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
         ],
       ),
     ],

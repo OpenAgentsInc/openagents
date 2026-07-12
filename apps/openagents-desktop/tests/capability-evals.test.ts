@@ -483,9 +483,11 @@ describe("capability gaps (skipped-with-reason: blocked until wired)", () => {
     // of those leave the blocked set, so only the still-unwired gaps remain.
     // The Git/GitHub UI reconciliation (E2/E4/E5 -> ui_available, E3 -> partial)
     // does not touch this set: those E rows always carried a wired programmatic
-    // oracle, so they were never in the both-pending blocked set.
+    // oracle, so they were never in the both-pending blocked set. CUT-20 (#8700)
+    // wired BOTH D3 oracles (built-Electron smoke UI oracle + the adversarial
+    // host suite programmatic oracle), so D3 leaves the blocked set.
     expect(blockedRows.map((row) => row.id).sort()).toEqual(
-      ["D3", "H2", "H5", "I3", "I4", "J2"].sort(),
+      ["H2", "H5", "I3", "I4", "J2"].sort(),
     )
   })
 

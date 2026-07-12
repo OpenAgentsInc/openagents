@@ -99,6 +99,7 @@ const MCP_SETTINGS = "apps/openagents-desktop/src/renderer/settings.test.ts"
 const MCP_HOST = "apps/openagents-desktop/src/mcp-config-host.test.ts"
 const GIT_PANEL = "apps/openagents-desktop/src/renderer/git-panel.test.ts"
 const GIT_HOST = "apps/openagents-desktop/src/git-github-host.test.ts"
+const TERMINAL_HOST = "apps/openagents-desktop/src/terminal-host.test.ts"
 
 /** The audit's prose-summary figures — recorded, and flagged as inconsistent. */
 export const AUDIT_PROSE_SUMMARY = {
@@ -123,7 +124,11 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // (git-github-host.ts + git-panel.ts + git-review smoke step, both oracles):
   // E2 (commit/push), E4 (gh issue), and E5 (gh pr) flip programmatic_only ->
   // ui_available, taking ui_available from 17 to 20.
-  ui_available: 20,
+  // CUT-20 (#8700): D3 (interactive terminal / stdin steering) flipped
+  // partial -> ui_available (typed workspace-bounded PTY host + bounded/redacted
+  // terminal UI + adversarial suite + built-host/dev-preview receipts), taking
+  // ui_available from 20 to 21 and partial from 16 to 15.
+  ui_available: 21,
   // The Git/GitHub UI surface emptied the programmatic_only bucket: E2/E4/E5
   // are now ui_available and E3 (worktree/branch isolation) is partial (branch
   // UI wired, worktree creation still agent-only), so programmatic_only is 0.
@@ -131,10 +136,10 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // EP250 wave-2 (#8712): the renderer surfaces landed for the queued follow-up
   // (A3), steer-a-running-child (G4), and task/todo progress (J4) capabilities,
   // so G4 and J4 moved missing -> partial (A3 was already partial). Combined
-  // with I2/I1 (missing -> ui_available) and now E3 (programmatic_only ->
-  // partial): from the audit-time { 15, 4, 13, 8 } baseline the live registry
-  // is now { 20, 0, 16, 4 }.
-  partial: 16,
+  // with I2/I1 (missing -> ui_available), E3 (programmatic_only -> partial), and
+  // CUT-20's D3 (partial -> ui_available): from the audit-time { 15, 4, 13, 8 }
+  // baseline the live registry is now { 21, 0, 15, 4 }.
+  partial: 15,
   missing: 4,
 } as const
 
@@ -230,11 +235,29 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     blocker: "audit D2: delegate children run async with caps, but there is no general background-process surface/indicator",
   },
   {
-    id: "D3", group: "D", capability: "Interactive terminal / stdin steering", status: "partial",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit D3: workspace.terminal command exists but there is no agent-attached PTY stdin seam",
+    id: "D3", group: "D", capability: "Interactive terminal / stdin steering", status: "ui_available",
+    // CUT-20 (#8700): a workspace-bounded PTY host landed (terminal-host.ts +
+    // terminal-contract.ts) with a typed create/input/resize/interrupt/restart/
+    // close lifecycle bound to the authorized workspace, bounded+redacted ring
+    // buffers, exactly-once process-tree disposal, restart recovery, and a local
+    // preview lifecycle. The renderer terminal workspace (terminal-workspace.ts,
+    // mounted in the 'terminal' switch) gives a bounded text terminal with a
+    // typed input line + interrupt/restart. UI oracle: the built-Electron smoke
+    // routes to the terminal workspace and runs a REAL command through the real
+    // PTY host (output captured, tree disposed). Programmatic oracle: the
+    // adversarial suite (shell injection, secret env, runaway output, orphan
+    // children with real process-tree kill, duplicate start, port collision,
+    // revoked grants) + built-host + dev-preview receipts.
+    uiOracleRef: SMOKE, uiOracleWiring: "smoke_step",
+    programmaticOracleRef: TERMINAL_HOST, programmaticOracleWiring: "existing_suite",
+    rung: "live",
+    // Honest residual: the shipped backend is a child-process-group terminal
+    // (real stdin steering + real tree kill, zero native deps, runs under bun
+    // test AND Electron). The node-pty pseudo-TTY (line editing / colors /
+    // isatty) is a documented one-file TerminalBackend swap, deferred because
+    // node-pty fails to spawn under Bun and needs electron-rebuild in the #8574
+    // packaging lane; a full xterm.js render is the follow-up UI enhancement.
+    blocker: "audit D3: typed PTY stdin seam + bounded/redacted terminal UI landed and proven (adversarial suite + built-host + dev-preview receipts); residual — node-pty pseudo-TTY + xterm.js render deferred to the packaging lane (documented TerminalBackend swap)",
   },
 
   // --- E. Git & GitHub ----------------------------------------------------
