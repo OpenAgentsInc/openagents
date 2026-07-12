@@ -1828,7 +1828,7 @@ not require a protected-core change.
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
 | **P0 local-coding leaves** | #8689–#8707 mixed | CUT-01–CUT-08, CUT-13, CUT-15, CUT-17–CUT-19, and CUT-22 are closed; CUT-09/CUT-10 physical acceptance is owner-deferred, CUT-10 no-poll code is landed, and CUT-11 graph/schema/provider/Sync server contracts are active; CUT-20 is the next D3 workbench leaf |
-| **P0 recording pull-forward** | #8712 | Bounded Episode 250 Fleet overview and harness-selector slice; #8718 now makes the actually admitted Pylon explicit in Khala request results, while the parent still does not claim CUT-16/CUT-21/CUT-25 exits |
+| **P0 recording pull-forward** | #8712 | Bounded Episode 250 Fleet overview and harness-selector slice; #8718 reports the admitted Pylon, and the 2026-07-12 integrated rerun now fails honestly on unavailable Codex capacity plus organization-disabled Claude access instead of returning a false-zero proof result |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 

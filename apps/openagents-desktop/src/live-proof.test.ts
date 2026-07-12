@@ -22,6 +22,34 @@ import {
   resolveLiveProofAccountRef,
   resolveLiveProofConfig,
 } from "./live-proof.ts"
+import { liveProofJournalVerdict } from "./live-proof-verdict.ts"
+
+describe("live-proof persisted journal verdict", () => {
+  const successfulJournal = requiredLiveProofSteps().map(step => ({
+    detail: "passed",
+    ok: true,
+    step,
+  }))
+
+  test("accepts only when every required step has a successful receipt", () => {
+    expect(liveProofJournalVerdict(successfulJournal)).toEqual({
+      failed: [],
+      missing: [],
+      ok: true,
+    })
+  })
+
+  test("rejects failed and missing required steps even after a clean child exit", () => {
+    const journal = successfulJournal
+      .filter(entry => entry.step !== "codex-turn")
+      .map(entry => entry.step === "fable-turn" ? { ...entry, ok: false } : entry)
+    expect(liveProofJournalVerdict(journal)).toEqual({
+      failed: ["fable-turn"],
+      missing: ["codex-turn"],
+      ok: false,
+    })
+  })
+})
 
 describe("live-proof step list (EP250 journey)", () => {
   test("walks the journey in the episode order (EP250 preflight is step 0)", () => {
