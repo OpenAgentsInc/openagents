@@ -57,6 +57,12 @@
       "disposition": "retain-evidence",
       "dispatch": false
     },
+    "docs/sol/2026-07-12-cut-26-rc5-installed-artifact-closure.md": {
+      "class": "receipt",
+      "owner": "Sol coding cutover",
+      "disposition": "retain-evidence",
+      "dispatch": false
+    },
     "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md": {
       "class": "current-status",
       "owner": "Sol documentation cleanup",

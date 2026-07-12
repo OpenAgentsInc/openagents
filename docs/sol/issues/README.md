@@ -73,6 +73,8 @@ queue.
 These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
 
+- [`CUT-26 RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md) — #8706
+
 - [`confirmed-agent-timeline.md`](./confirmed-agent-timeline.md) — #8672
 - [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md) — #8674
 - [`desktop-codex-trace-acceptance.md`](./desktop-codex-trace-acceptance.md) — #8675

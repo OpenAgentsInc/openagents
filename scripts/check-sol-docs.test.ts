@@ -14,7 +14,6 @@ import {
   validateMaster,
   validatePolicy,
   validatePreparedArchiveManifest,
-  validatePreparedArchiveManifest,
   validateQueueOwnership,
   validateReceiptIndex,
   validateRevisionPins,
