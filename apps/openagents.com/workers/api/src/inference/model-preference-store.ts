@@ -54,6 +54,7 @@ export const DEFAULT_MODEL_PREFERENCE_ID = 'gemini' as const
 export const DEFAULT_EXECUTION_TARGET_ID = DEFAULT_MODEL_PREFERENCE_ID
 export const AUTO_EXECUTION_TARGET_ID = 'auto' as const
 export const KHALA_EXECUTION_TARGET_ID = 'khala' as const
+export const AGENT_COMPUTER_EXECUTION_TARGET_ID = 'agent-computer' as const
 
 // ----------------------------------------------------------------------------
 // Availability: only lanes actually armed in THIS deployment
@@ -144,6 +145,7 @@ export const resolveAvailableExecutionTargetIds = (
     availableModelIds: ReadonlyArray<string>
     codexAccountRefHashes?: ReadonlyArray<string>
     claudeAccountRefHashes?: ReadonlyArray<string>
+    managedCloudReady?: boolean
   }>,
 ): ReadonlyArray<string> => {
   const ids = new Set<string>()
@@ -153,6 +155,9 @@ export const resolveAvailableExecutionTargetIds = (
   }
   if (isModelIdAvailable(KHALA_MODEL_ID, input.availableModelIds)) {
     ids.add(KHALA_EXECUTION_TARGET_ID)
+  }
+  if (input.managedCloudReady === true) {
+    ids.add(AGENT_COMPUTER_EXECUTION_TARGET_ID)
   }
   for (const accountRefHash of input.codexAccountRefHashes ?? []) {
     const trimmed = accountRefHash.trim()

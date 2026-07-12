@@ -76,6 +76,7 @@ export const CLOUD_GCP_RUNTIME_LANE = 'cloud-gcp'
 
 /** Default valid runtime-event lane stamped on the streamed events. */
 export const CLOUD_GCP_RUNTIME_EVENT_LANE: KhalaRuntimeLane = 'hosted_khala'
+export const MANAGED_CLOUD_RUNTIME_LANE: KhalaRuntimeLane = 'managed_cloud'
 
 /** Provider ref stamped on the streamed events' source. */
 export const CLOUD_GCP_RUNTIME_PROVIDER_REF = 'openagents-agent-computer'
@@ -156,6 +157,56 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
   /** CX-7 (#8551): non-secret account hash selected for non-continuity turns. */
   accountRefHash?: string | undefined
 }>
+
+type ManagedCloudQueueRow = Readonly<{
+  event_count: string | number
+  goal_body: string
+  owner_user_id: string
+  repository_name: string
+  repository_owner: string
+  repository_ref: string
+  thread_id: string
+  turn_id: string
+  work_context_ref: string
+}>
+
+/** Reads only repository-bound managed-cloud turns. The start mutator rejects
+ * this lane on an unbound thread, so this query never invents repo authority. */
+export const readQueuedManagedCloudTurns = async (
+  sql: SyncSql,
+  limit: number,
+): Promise<ReadonlyArray<CloudGcpAdmittedWorkContext>> => {
+  const rows: Array<ManagedCloudQueueRow> = await sql`
+    SELECT t.turn_id, t.thread_id, t.owner_user_id, t.event_count,
+           t.work_context_ref, t.repository_owner, t.repository_name,
+           t.repository_ref, m.body AS goal_body
+    FROM khala_sync_runtime_turns t
+    JOIN khala_sync_chat_messages m
+      ON m.message_id = t.goal_message_id AND m.thread_id = t.thread_id
+    WHERE t.status = 'queued'
+      AND t.lane = ${MANAGED_CLOUD_RUNTIME_LANE}
+      AND t.work_context_ref IS NOT NULL
+      AND t.repository_owner IS NOT NULL
+      AND t.repository_name IS NOT NULL
+      AND t.repository_ref IS NOT NULL
+    ORDER BY t.created_at ASC
+    LIMIT ${limit}
+  `
+  return rows.map(row => ({
+    branch: row.repository_ref,
+    commit: row.repository_ref,
+    eventCount: Number(row.event_count),
+    objective: row.goal_body,
+    ownerUserId: row.owner_user_id,
+    repo: `${row.repository_owner}/${row.repository_name}`,
+    repoBindingRef: `repo-binding.thread.${refPart(row.thread_id)}`,
+    runtimeLane: MANAGED_CLOUD_RUNTIME_LANE,
+    threadId: row.thread_id,
+    turnId: row.turn_id,
+    workContextRef: row.work_context_ref,
+    writeback: { mode: 'pull_request' },
+  }))
+}
 
 export type CloudGcpAccountDispatchDecision =
   | Readonly<{
@@ -352,6 +403,12 @@ export type CloudGcpRuntimeDispatchDependencies = Readonly<{
   /** Reads admitted work-contexts (batch runner only). */
   readAdmitted?:
     | ((sql: SyncSql, limit: number) => Promise<ReadonlyArray<CloudGcpAdmittedWorkContext>>)
+    | undefined
+  /** Runs only after the durable `turn.started` claim wins. Production uses
+   * this seam to issue one owner-scoped provider grant without minting grants
+   * for overlapping/losing queue readers. */
+  prepareAfterClaim?:
+    | ((turn: CloudGcpAdmittedWorkContext) => Promise<CloudGcpAdmittedWorkContext>)
     | undefined
   activeAccountRefHashes?: ReadonlyArray<string> | undefined
   accountStates?: ReadonlyArray<CloudGcpRuntimeAccountState> | undefined
@@ -559,7 +616,11 @@ export const dispatchCloudGcpRuntimeTurn = async (
   // live credential we lost track of).
   let minted: MintedExecutionToken | undefined
   const messageId = `msg.${resolved.uuid()}`
+  let nextMutationId = 2
   try {
+    const authorizedTurn = deps.prepareAfterClaim === undefined
+      ? turn
+      : await deps.prepareAfterClaim(turn)
     minted = await resolved.mint(resolved.sql, {
       ownerUserId: ownerId,
       ...(resolved.inference.ttlSeconds === undefined
@@ -588,54 +649,67 @@ export const dispatchCloudGcpRuntimeTurn = async (
         : { noMeterSecret: resolved.inference.noMeterSecret }),
     })
     const writebackConfig =
-      turn.writeback === undefined
+      authorizedTurn.writeback === undefined
         ? undefined
         : buildCloudRuntimeWritebackConfig({
-            repositoryFullName: turn.repo,
-            turnId: turn.turnId,
-            baseBranch: turn.branch ?? undefined,
-            ...(turn.writeback.branch === undefined
+            repositoryFullName: authorizedTurn.repo,
+            turnId: authorizedTurn.turnId,
+            baseBranch: authorizedTurn.branch ?? undefined,
+            ...(authorizedTurn.writeback.branch === undefined
               ? {}
-              : { branch: turn.writeback.branch }),
-            ...(turn.writeback.baseBranch === undefined
+              : { branch: authorizedTurn.writeback.branch }),
+            ...(authorizedTurn.writeback.baseBranch === undefined
               ? {}
-              : { baseBranch: turn.writeback.baseBranch }),
-            ...(turn.writeback.mode === undefined
+              : { baseBranch: authorizedTurn.writeback.baseBranch }),
+            ...(authorizedTurn.writeback.mode === undefined
               ? {}
-              : { mode: turn.writeback.mode }),
+              : { mode: authorizedTurn.writeback.mode }),
           })
     const providerAuthConfig =
-      turn.codexContinuity === undefined
+      authorizedTurn.codexContinuity === undefined
         ? undefined
         : {
             agentToken: minted.rawToken,
-            authGrantRef: turn.codexContinuity.authGrantRef,
+            authGrantRef: authorizedTurn.codexContinuity.authGrantRef,
             baseUrl: resolved.inference.baseUrl,
-            providerAccountRef: turn.codexContinuity.providerAccountRef,
+            providerAccountRef: authorizedTurn.codexContinuity.providerAccountRef,
           }
     const codexContinuityConfig =
-      turn.codexContinuity === undefined
+      authorizedTurn.codexContinuity === undefined
         ? undefined
         : {
             maxReplayMessages:
-              turn.codexContinuity.maxReplayMessages ??
+              authorizedTurn.codexContinuity.maxReplayMessages ??
               DEFAULT_CODEX_CONTINUITY_REPLAY_MESSAGES,
             persistedCodexHome: false as const,
-            ...(turn.codexContinuity.previousTurnCount === undefined
+            ...(authorizedTurn.codexContinuity.previousTurnCount === undefined
               ? {}
-              : { previousTurnCount: turn.codexContinuity.previousTurnCount }),
+              : { previousTurnCount: authorizedTurn.codexContinuity.previousTurnCount }),
             strategy: 'khala_sync_history_reprime' as const,
           }
+    const codexTurnConfig =
+      providerAuthConfig === undefined
+        ? undefined
+        : {
+            agentToken: minted.rawToken,
+            baseUrl: resolved.inference.baseUrl,
+            ownerUserId: ownerId,
+            ...(resolved.inference.pylonRef === undefined
+              ? {}
+              : { pylonRef: resolved.inference.pylonRef }),
+          }
     const workContext = buildCloudRuntimeWorkContext({
-      commit: turn.commit,
-      inference: inferenceConfig,
-      repo: turn.repo,
-      threadRef: turn.threadId,
-      turnId: turn.turnId,
-      workContextRef: turn.workContextRef,
-      ...(turn.branch === undefined ? {} : { branch: turn.branch }),
-      ...(turn.objective === undefined ? {} : { objective: turn.objective }),
+      commit: authorizedTurn.commit,
+      repo: authorizedTurn.repo,
+      threadRef: authorizedTurn.threadId,
+      turnId: authorizedTurn.turnId,
+      workContextRef: authorizedTurn.workContextRef,
+      ...(authorizedTurn.branch === undefined ? {} : { branch: authorizedTurn.branch }),
+      ...(authorizedTurn.objective === undefined ? {} : { objective: authorizedTurn.objective }),
       ...(writebackConfig === undefined ? {} : { writeback: writebackConfig }),
+      ...(codexTurnConfig === undefined
+        ? { inference: inferenceConfig }
+        : { codexTurn: codexTurnConfig }),
       ...(providerAuthConfig === undefined ? {} : { providerAuth: providerAuthConfig }),
       ...(codexContinuityConfig === undefined
         ? {}
@@ -643,15 +717,14 @@ export const dispatchCloudGcpRuntimeTurn = async (
     })
     const workContextB64 = encodeWorkContextB64(workContext)
 
-    let nextMutationId = 2
-    if (turn.codexContinuity !== undefined) {
+    if (authorizedTurn.codexContinuity !== undefined) {
       await record(
         nextMutationId,
-        buildEvent(resolved, turn, seq, {
+        buildEvent(resolved, authorizedTurn, seq, {
           authority: runtimeToolAuthority('codex.continuity.reprime'),
           kind: 'tool.result',
           providerExecuted: false,
-          resultRef: `continuity.codex.${refPart(turn.threadId)}.${refPart(turn.turnId)}`,
+          resultRef: `continuity.codex.${refPart(authorizedTurn.threadId)}.${refPart(authorizedTurn.turnId)}`,
           toolCallId: `tool.${resolved.uuid()}`,
           toolName: 'codex.continuity.rebuilt',
         }),
@@ -661,24 +734,24 @@ export const dispatchCloudGcpRuntimeTurn = async (
     }
 
     // 4. POST the placement through the adapter (forwards work_context_b64).
-    const sessionId = `ccs.${refPart(turn.turnId)}`
+    const sessionId = `ccs.${refPart(authorizedTurn.turnId)}`
     const placement = await resolved.launch({
       objective: workContext.objective,
       ownerUserId: ownerId,
-      repoRef: turn.repo,
+      repoRef: authorizedTurn.repo,
       sessionId,
-      threadRef: turn.threadId,
+      threadRef: authorizedTurn.threadId,
       timeoutSeconds: DEFAULT_CLOUD_GCP_RUNTIME_TIMEOUT_SECONDS,
       workContextB64,
-      workContextRef: turn.workContextRef,
-      ...(turn.repoBindingRef === undefined ? {} : { repoBindingRef: turn.repoBindingRef }),
+      workContextRef: authorizedTurn.workContextRef,
+      ...(authorizedTurn.repoBindingRef === undefined ? {} : { repoBindingRef: authorizedTurn.repoBindingRef }),
     })
 
     if (!placement.ok) {
       // Launch refused: the guest never runs — revoke the token NOW.
       await record(
         2,
-        buildEvent(resolved, turn, seq, {
+        buildEvent(resolved, authorizedTurn, seq, {
           finishReason: 'error' satisfies KhalaRuntimeFinishReason,
           kind: 'turn.finished',
         }),
@@ -686,7 +759,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
       await resolved.revoke(resolved.sql, { credentialId: minted.credentialId })
       resolved.log('cloud_gcp_runtime_dispatch_launch_refused', {
         reason: placement.reason,
-        turnId: turn.turnId,
+        turnId: authorizedTurn.turnId,
       })
       return {
         credentialId: minted.credentialId,
@@ -702,10 +775,10 @@ export const dispatchCloudGcpRuntimeTurn = async (
     // completion sweep revokes it once the lifecycle terminal is observed.
     const statusText =
       `Launched an OpenAgents Agent Computer microVM turn for ` +
-      `${turn.repo}@${turn.commit.slice(0, 12)}.`
+      `${authorizedTurn.repo}@${authorizedTurn.commit.slice(0, 12)}.`
     await record(
       nextMutationId,
-      buildEvent(resolved, turn, seq, {
+      buildEvent(resolved, authorizedTurn, seq, {
         chunkId: `chunk.${resolved.uuid()}`,
         kind: 'text.delta',
         messageId,
@@ -716,13 +789,13 @@ export const dispatchCloudGcpRuntimeTurn = async (
     seq += 1
     await record(
       nextMutationId,
-      buildEvent(resolved, turn, seq, { kind: 'text.completed', messageId }),
+      buildEvent(resolved, authorizedTurn, seq, { kind: 'text.completed', messageId }),
     )
     nextMutationId += 1
     seq += 1
     await record(
       nextMutationId,
-      buildEvent(resolved, turn, seq, {
+      buildEvent(resolved, authorizedTurn, seq, {
         finishReason: 'stop' satisfies KhalaRuntimeFinishReason,
         kind: 'turn.finished',
       }),
@@ -730,7 +803,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
     resolved.log('cloud_gcp_runtime_dispatch_launched', {
       agentComputerState: placement.agentComputerState,
       placementRef: placement.placementRef,
-      turnId: turn.turnId,
+      turnId: authorizedTurn.turnId,
     })
     return {
       credentialId: minted.credentialId,
@@ -750,6 +823,18 @@ export const dispatchCloudGcpRuntimeTurn = async (
       } catch {
         tokenRevoked = false
       }
+    }
+    try {
+      await record(
+        nextMutationId,
+        buildEvent(resolved, turn, seq, {
+          finishReason: 'error' satisfies KhalaRuntimeFinishReason,
+          kind: 'turn.finished',
+        }),
+      )
+    } catch {
+      // The original error remains the authoritative failure; a racing
+      // terminal writer may already have settled the turn.
     }
     resolved.log('cloud_gcp_runtime_dispatch_threw', {
       detail: error instanceof Error ? error.message : 'unknown',

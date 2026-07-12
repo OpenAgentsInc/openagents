@@ -171,6 +171,17 @@ describe('execution target selection (CX-4, #8548)', () => {
     expect(isExecutionTargetIdAvailable('claude:missing', availableTargetIds)).toBe(false)
   })
 
+  test('advertises Agent Computer only under server-proven managed-cloud readiness', () => {
+    expect(resolveAvailableExecutionTargetIds({
+      availableModelIds: ['gemini'],
+      managedCloudReady: true,
+    })).toContain('agent-computer')
+    expect(resolveAvailableExecutionTargetIds({
+      availableModelIds: ['gemini'],
+      managedCloudReady: false,
+    })).not.toContain('agent-computer')
+  })
+
   test('defaults to gemini when no target is set and gemini is available', () => {
     expect(
       resolveExecutionTargetPreference({

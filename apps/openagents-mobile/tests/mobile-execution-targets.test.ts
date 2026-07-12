@@ -16,6 +16,7 @@ const catalogFixture = () => ({
     "gemini",
     "auto",
     "khala",
+    "agent-computer",
     `codex:${codexRef}`,
     `claude:${claudeRef}`,
   ],
@@ -51,6 +52,7 @@ describe("mobile execution-target catalog", () => {
     expect(catalog.options.map(option => option.targetId)).toEqual([
       "khala",
       "gemini",
+      "agent-computer",
       `codex:${codexRef}`,
       `claude:${claudeRef}`,
     ])
@@ -58,6 +60,12 @@ describe("mobile execution-target catalog", () => {
       providerRef: "provider.openagents.hosted",
       modelRef: "model.gemini-3.5-flash",
       runtimeTarget: { lane: "hosted_khala", executionTargetId: "khala" },
+    })
+    expect(catalog.options.find(option => option.targetId === "agent-computer")).toMatchObject({
+      accessibilityLabel: "Agent Computer, OpenAgents, ready",
+      modelRef: "model.gpt-5.6-sol",
+      providerRef: "provider.openagents.agent-computer",
+      runtimeTarget: { lane: "managed_cloud", executionTargetId: "agent-computer" },
     })
     expect(catalog.options.find(option => option.targetId.startsWith("codex:"))).toMatchObject({
       accountRef: codexRef,

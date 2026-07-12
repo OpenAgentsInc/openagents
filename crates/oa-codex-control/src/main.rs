@@ -753,6 +753,19 @@ fn handle_get_route(
     path: &str,
     query: Option<&str>,
 ) -> Result<(), String> {
+    if path == "/v1/cloud-vm/readiness" {
+        let (_, effective_kind) =
+            cloud_vm::provisioner_for(config.cloud_vm_provisioner_kind);
+        return write_response(
+            stream,
+            200,
+            &serde_json::json!({
+                "contractVersion": "openagents.agent_computer_readiness.v1",
+                "ready": effective_kind == cloud_vm::ProvisionerKind::Live,
+                "provisionerKind": effective_kind.as_str(),
+            }),
+        );
+    }
     let Some(rest) = path.strip_prefix("/v1/codex-runs/") else {
         return write_not_found(stream);
     };

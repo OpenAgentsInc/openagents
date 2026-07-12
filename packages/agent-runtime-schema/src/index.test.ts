@@ -453,6 +453,7 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       "ai_sdk_harness_sandbox",
       "khala_sync_mobile_control",
       "hosted_khala",
+      "managed_cloud",
       "test_fixture",
     ])
     expect(khalaRuntimeEventKinds).toHaveLength(23)

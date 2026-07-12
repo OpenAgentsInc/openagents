@@ -566,7 +566,7 @@ const controlIntentRow = (input: {
   kind: "turn.start" | "turn.interrupt" | "message.append" | "turn.continue" | "turn.retry" | "turn.close"
   bodyRef?: string
   ownerUserId?: string
-  targetLane?: "codex_app_server" | "claude_pylon" | "ai_sdk_core" | "hosted_khala"
+  targetLane?: "codex_app_server" | "claude_pylon" | "ai_sdk_core" | "hosted_khala" | "managed_cloud"
   executionTargetId?: string
 }): RuntimeControlIntentRow =>
   decodeRuntimeControlIntentRow({
@@ -1351,6 +1351,36 @@ describe("enforcePendingRuntimeIntents", () => {
       if (result.ok) {
         expect(result.outcomes[0]!.outcome).toBe("failed")
         expect(result.outcomes[0]!.detail).toContain("ai_sdk_core")
+      }
+      expect(options.activeTurns.size).toBe(0)
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.start targeting managed_cloud is left untouched for server Agent Computer dispatch", async () => {
+    const store = memoryStore()
+    const { options, cleanup } = await baseOptions({
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-managed",
+          intentId: "intent-managed-cloud",
+          kind: "turn.start",
+          seq: 1,
+          targetLane: "managed_cloud",
+          threadId: "thread-managed-cloud",
+          turnId: "turn-managed-cloud",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]).toMatchObject({
+          outcome: "skipped_stale",
+          detail: expect.stringContaining("server-owned"),
+        })
       }
       expect(options.activeTurns.size).toBe(0)
     } finally {

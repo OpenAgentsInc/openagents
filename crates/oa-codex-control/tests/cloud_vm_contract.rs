@@ -312,3 +312,34 @@ fn cloud_vm_session_route_requires_authorization() {
     .expect("http request");
     assert_eq!(status, 401, "unauthorized cloud-vm request must be refused");
 }
+
+#[test]
+fn cloud_vm_readiness_is_authenticated_and_never_claims_fake_capacity() {
+    let daemon = start_daemon("cloud-vm-readiness");
+    let (unauthorized, _) = http_request(
+        &daemon.addr,
+        "GET",
+        "/v1/cloud-vm/readiness",
+        None,
+        None,
+    )
+    .expect("unauthorized readiness request");
+    assert_eq!(unauthorized, 401);
+
+    let (status, body) = http_request(
+        &daemon.addr,
+        "GET",
+        "/v1/cloud-vm/readiness",
+        None,
+        Some(TOKEN),
+    )
+    .expect("authorized readiness request");
+    assert_eq!(status, 200);
+    let response: Value = serde_json::from_slice(&body).expect("readiness json");
+    assert_eq!(
+        response["contractVersion"],
+        "openagents.agent_computer_readiness.v1"
+    );
+    assert_eq!(response["ready"], false);
+    assert_eq!(response["provisionerKind"], "fake");
+}

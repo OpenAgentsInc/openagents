@@ -52,6 +52,7 @@ import {
   RUNTIME_EXPIRE_INTERACTION_MUTATOR_NAME,
   RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
   RUNTIME_INTENT_EXPIRY_REJECTION,
+  RUNTIME_MANAGED_CLOUD_REPOSITORY_REJECTION,
   RUNTIME_INTERACTION_CONFLICT_REJECTION,
   RUNTIME_INTERACTION_DECISION_REJECTION,
   RUNTIME_INTERACTION_EXPIRY_REJECTION,
@@ -122,7 +123,7 @@ const controlIntent = (
     promptRef?: string | undefined
     reasonRef?: string | undefined
     expiresAt?: string | undefined
-    lane?: "codex_app_server" | "claude_pylon" | undefined
+    lane?: "codex_app_server" | "claude_pylon" | "managed_cloud" | undefined
   }>,
 ) => ({
   schema: KhalaRuntimeControlIntentSchemaLiteral,
@@ -138,7 +139,12 @@ const controlIntent = (
   },
   redactionClass: "private_ref",
   target: {
-    adapterKind: input.lane === "claude_pylon" ? "claude_code" : "codex",
+    adapterKind:
+      input.lane === "claude_pylon"
+        ? "claude_code"
+        : input.lane === "managed_cloud"
+          ? "openagents_native"
+          : "codex",
     lane: input.lane ?? "codex_app_server",
   },
   threadId: input.threadId,
@@ -716,6 +722,39 @@ describe.skipIf(!hasLocalPostgres())(
         SELECT count(*)::int AS count
         FROM khala_sync_runtime_control_intents
         WHERE intent_id = ${invalid.intentId}
+      `
+      expect(rows[0]!.count).toBe(0)
+    })
+
+    test("managed cloud start refuses an unbound thread before creating a turn", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.managed-cloud.unbound"
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, {
+            threadId,
+            title: "Managed Cloud",
+          }),
+          envelope(2, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.managed-cloud.unbound",
+            kind: "turn.start",
+            lane: "managed_cloud",
+            threadId,
+            turnId: "runtime-turn.managed-cloud.unbound",
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(response.results[1]!.status).toBe("rejected")
+      expect(response.results[1]!.errorCode).toBe(
+        RUNTIME_MANAGED_CLOUD_REPOSITORY_REJECTION,
+      )
+      const rows: Array<{ count: number }> = await sql`
+        SELECT count(*)::int AS count
+        FROM khala_sync_runtime_turns
+        WHERE turn_id = 'runtime-turn.managed-cloud.unbound'
       `
       expect(rows[0]!.count).toBe(0)
     })

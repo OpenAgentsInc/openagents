@@ -206,6 +206,20 @@ const hostedOption = (targetId: "gemini" | "khala"): MobileExecutionTargetOption
   }
 }
 
+const agentComputerOption = (): MobileExecutionTargetOption => ({
+  targetId: "agent-computer",
+  label: "Agent Computer",
+  accessibilityLabel: "Agent Computer, OpenAgents, ready",
+  providerLabel: "OpenAgents",
+  providerRef: "provider.openagents.agent-computer",
+  modelRef: "model.gpt-5.6-sol",
+  runtimeTarget: {
+    lane: "managed_cloud",
+    executionTargetId: "agent-computer",
+  },
+  readiness: "ready",
+})
+
 const concreteTargetId = (
   wire: MobileExecutionTargetCatalogWire,
   targetId: string | null,
@@ -236,6 +250,7 @@ const catalogFromWire = (
   const options: MobileExecutionTargetOption[] = []
   if (advertised.has("khala")) options.push(hostedOption("khala"))
   if (advertised.has("gemini")) options.push(hostedOption("gemini"))
+  if (advertised.has("agent-computer")) options.push(agentComputerOption())
 
   for (const account of wire.codexAccounts) {
     const option = accountOption("codex", account)

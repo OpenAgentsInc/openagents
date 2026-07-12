@@ -517,6 +517,17 @@ This is the invariant ledger for `openagents`.
   Pylon, runner, or user-capacity selectors. User-owned Pylon dispatch remains
   on the owner-self path; org-cloud admission may route only to OpenAgents-owned
   Agent Computer capacity.
+- Mobile may advertise the `agent-computer` execution target only when an
+  authenticated control-plane readiness probe reports the exact
+  `openagents.agent_computer_readiness.v1` contract with an effective `live`
+  Firecracker provisioner, and the owner has both a connected healthy Codex
+  account and a usable scoped GitHub write connection. A configured URL,
+  legacy/fake control node, or caller label is not capacity evidence.
+- `managed_cloud` is a server-owned runtime lane. Its start mutator requires a
+  repository-bound thread, and its queue consumer issues the owner-scoped
+  provider grant only after winning the durable `turn.started` claim. A lost
+  claim issues no grant; missing Codex/GitHub authority settles the claimed
+  turn as an error and never falls back to hosted or owner-local execution.
 - Public Worker projections may expose only refs: placement refs, Agent
   Computer refs, work-context refs, lifecycle receipt refs, resource usage
   receipt refs, and content-addressed artifact refs. They must never expose raw

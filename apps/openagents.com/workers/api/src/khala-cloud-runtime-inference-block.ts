@@ -54,6 +54,15 @@ export type CloudRuntimeCodexProviderAuthConfig = Readonly<{
   authGrantRef: string
 }>
 
+export type CloudRuntimeCodexTurnConfig = Readonly<{
+  baseUrl: string
+  agentToken: string
+  ownerUserId: string
+  pylonRef?: string | undefined
+  model?: string | undefined
+  maxTurnSeconds?: number | undefined
+}>
+
 /**
  * CX-6 (#8550) continuity strategy (a): fresh Codex provision, re-prime from
  * custody, then bounded Khala Sync history replay. Persisted CODEX_HOME
@@ -75,7 +84,8 @@ export type CloudRuntimeWorkContext = Readonly<{
   commit: string
   branch: string
   objective: string
-  inference: CloudRuntimeInferenceConfig
+  inference?: CloudRuntimeInferenceConfig
+  codexTurn?: CloudRuntimeCodexTurnConfig
   writeback?: CloudRuntimeWritebackConfig
   providerAuth?: CloudRuntimeCodexProviderAuthConfig
   codexContinuity?: CloudRuntimeCodexContinuityConfig
@@ -179,7 +189,8 @@ export type BuildWorkContextInput = Readonly<{
   commit: string
   branch?: string | undefined
   objective?: string | undefined
-  inference: CloudRuntimeInferenceConfig
+  inference?: CloudRuntimeInferenceConfig | undefined
+  codexTurn?: CloudRuntimeCodexTurnConfig | undefined
   writeback?: CloudRuntimeWritebackConfig | undefined
   providerAuth?: CloudRuntimeCodexProviderAuthConfig | undefined
   codexContinuity?: CloudRuntimeCodexContinuityConfig | undefined
@@ -191,7 +202,6 @@ export const buildCloudRuntimeWorkContext = (
 ): CloudRuntimeWorkContext => ({
   branch: input.branch ?? CLOUD_RUNTIME_DEFAULT_BRANCH,
   commit: input.commit,
-  inference: input.inference,
   objective:
     input.objective ??
     `agent-computer turn ${input.repo}@${input.commit.slice(0, 12)}`,
@@ -199,6 +209,8 @@ export const buildCloudRuntimeWorkContext = (
   threadRef: input.threadRef,
   turnId: input.turnId,
   workContextRef: input.workContextRef,
+  ...(input.inference === undefined ? {} : { inference: input.inference }),
+  ...(input.codexTurn === undefined ? {} : { codexTurn: input.codexTurn }),
   ...(input.writeback === undefined ? {} : { writeback: input.writeback }),
   ...(input.providerAuth === undefined ? {} : { providerAuth: input.providerAuth }),
   ...(input.codexContinuity === undefined ? {} : { codexContinuity: input.codexContinuity }),

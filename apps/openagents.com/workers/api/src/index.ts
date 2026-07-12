@@ -421,7 +421,7 @@ import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // OA_CLOUD_CONTROL_URL/TOKEN are configured. The promise STAYS red until a real
 // desktop-originated GCE run produces artifact + receipt evidence.
 import {
-  configuredAgentComputerCapacitySnapshot,
+  probeAgentComputerCapacitySnapshot,
   isCloudGceProvisioningArmed,
   isCloudCodingSessionsEnabled,
   makeCloudControlCloudCodingAdapter,
@@ -552,6 +552,7 @@ import {
   githubWriteConnectionRef,
   githubWriteSecretKey,
   githubWriteSecretRef,
+  hasRequiredGitHubWriteScopes,
   listGitHubWriteConnectionsForUser,
   recordGitHubWriteConnectionConnected,
   requireGitHubWriteCallbackAccount,
@@ -1156,6 +1157,7 @@ import {
   type CodexOAuthAuth,
   type ProviderAccountBundle,
   type PublicProviderAccount,
+  issueProviderAccountGrant,
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
 } from './provider-accounts'
@@ -1219,6 +1221,8 @@ import {
 import {
   dispatchCloudGcpRuntimeTurn,
   makeCloudCodingAdapterLaunchSeam,
+  readQueuedManagedCloudTurns,
+  runCloudGcpRuntimeDispatch,
 } from './khala-cloud-runtime-dispatch'
 import {
   handleCloudGcpRuntimeDispatchAdminRoute,
@@ -5488,10 +5492,23 @@ const handleMobileModelPreferenceApi = async (
   }
 
   const db = openAgentsDatabase(env)
-  const providerAccountBundle = await listProviderAccountsForUser(
-    makeD1ProviderAccountRepository(db),
-    session.user.userId,
-  )
+  const [providerAccountBundle, githubConnection, agentComputerCapacity] =
+    await Promise.all([
+      listProviderAccountsForUser(
+        makeD1ProviderAccountRepository(db),
+        session.user.userId,
+      ),
+      makeGitHubWriteRepositoryForEnv(env).findUsableConnectionForUser(
+        session.user.userId,
+      ),
+      probeAgentComputerCapacitySnapshot({
+        baseUrl: env.OA_CLOUD_CONTROL_URL,
+        bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
+        gceProvisioningArmed:
+          isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED) &&
+          isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
+      }),
+    ])
   const codexAccounts = mobileExecutionTargetAccountSummaries(
     providerAccountBundle.accounts,
     CHATGPT_CODEX_PROVIDER,
@@ -5507,6 +5524,14 @@ const handleMobileModelPreferenceApi = async (
     availableModelIds,
     claudeAccountRefHashes: claudeAccounts.map(account => account.accountRefHash),
     codexAccountRefHashes: codexAccounts.map(account => account.accountRefHash),
+    managedCloudReady:
+      agentComputerCapacity.available &&
+      providerAccountBundle.accounts.some(account =>
+        account.provider === CHATGPT_CODEX_PROVIDER &&
+        account.publicStatus === 'connected' &&
+        account.health === 'healthy') &&
+      githubConnection !== undefined &&
+      hasRequiredGitHubWriteScopes(githubConnection.scopes),
   })
 
   if (request.method === 'PUT') {
@@ -8402,6 +8427,97 @@ const runHostedRuntimeTurnDispatchForEnv = async (
         scanned: summary.scanned,
         skipped: summary.skipped,
       })
+    }
+  } finally {
+    await client.end()
+  }
+}
+
+const runManagedCloudRuntimeTurnDispatchForEnv = async (
+  env: OpenAgentsWorkerEnv,
+): Promise<void> => {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined || connectionString.length === 0) return
+  const capacity = await probeAgentComputerCapacitySnapshot({
+    baseUrl: env.OA_CLOUD_CONTROL_URL,
+    bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
+    gceProvisioningArmed:
+      isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED) &&
+      isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
+  })
+  if (!capacity.available) return
+
+  const accountRepository = makeProviderAccountRepositoryForEnv(env)
+  const githubRepository = makeGitHubWriteRepositoryForEnv(env)
+  const inferenceBaseUrl =
+    env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL !== undefined &&
+    env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL.length > 0
+      ? env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL
+      : getAppOrigin(env)
+  const launch = makeCloudCodingAdapterLaunchSeam(
+    makeCloudControlCloudCodingAdapter({
+      baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
+      bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',
+      gceProvisioningArmed: true,
+    }),
+  )
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  try {
+    const summary = await runCloudGcpRuntimeDispatch({
+      armed: true,
+      inference: {
+        baseUrl: inferenceBaseUrl,
+        model: 'openagents/pylon-codex',
+        pylonRef: 'pylon.agent-computer.managed-cloud',
+      },
+      launch,
+      log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+      prepareAfterClaim: async turn => {
+        const [accounts, githubConnection] = await Promise.all([
+          listProviderAccountsForUser(accountRepository, turn.ownerUserId),
+          githubRepository.findUsableConnectionForUser(turn.ownerUserId),
+        ])
+        const account = accounts.accounts.find(candidate =>
+          candidate.provider === CHATGPT_CODEX_PROVIDER &&
+          candidate.publicStatus === 'connected' &&
+          candidate.health === 'healthy')
+        if (account === undefined) {
+          throw new Error('managed_cloud_owner_codex_grant_unavailable')
+        }
+        if (
+          githubConnection === undefined ||
+          !hasRequiredGitHubWriteScopes(githubConnection.scopes)
+        ) {
+          throw new Error('managed_cloud_github_write_authority_unavailable')
+        }
+        const grant = await issueProviderAccountGrant(accountRepository, {
+          providerAccountRef: account.providerAccountRef,
+          requestedAction: 'agent_computer_codex_turn',
+          runnerSessionId: turn.turnId,
+          threadId: turn.threadId,
+          userId: turn.ownerUserId,
+          workroomId: turn.workContextRef,
+        })
+        if (grant === undefined) {
+          throw new Error('managed_cloud_owner_codex_grant_unavailable')
+        }
+        return {
+          ...turn,
+          accountRefHash: account.providerAccountRef,
+          codexContinuity: {
+            accountRefHash: account.providerAccountRef,
+            authGrantRef: grant.grantRef,
+            maxReplayMessages: 24,
+            providerAccountRef: grant.providerAccountRef,
+          },
+        }
+      },
+      readAdmitted: readQueuedManagedCloudTurns,
+      registry: khalaSyncMutatorRegistry,
+      sql: client.sql,
+    })
+    if (summary.scanned > 0) {
+      logWorkerRouteWarning('managed_cloud_runtime_dispatch_tick', summary)
     }
   } finally {
     await client.end()
@@ -16223,7 +16339,7 @@ const routeRequest = makeWorkerRouteRequest({
       },
       admissionGate: makeD1CloudCodingAdmissionGate({
         capacity: async () =>
-          configuredAgentComputerCapacitySnapshot({
+          probeAgentComputerCapacitySnapshot({
             baseUrl: env.OA_CLOUD_CONTROL_URL,
             bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
             gceProvisioningArmed: isCloudGceProvisioningArmed(
@@ -17459,6 +17575,10 @@ export default {
       observedEffect(
         'HostedRuntimeTurnDispatch.tick',
         Effect.promise(() => runHostedRuntimeTurnDispatchForEnv(env)),
+      ),
+      observedEffect(
+        'ManagedCloudRuntimeTurnDispatch.tick',
+        Effect.promise(() => runManagedCloudRuntimeTurnDispatchForEnv(env)),
       ),
       observedEffect(
         'PylonCapacityFunnel.recordSnapshots',

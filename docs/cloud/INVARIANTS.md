@@ -104,6 +104,19 @@ design context only.
 
 ## Agent Computer In-VM Provider Execution (CX-3, #8547)
 
+- Production readiness is an authenticated runtime fact, not configuration
+  inference. `oa-codex-control` reports
+  `openagents.agent_computer_readiness.v1` and `ready:true` only when its
+  effective provisioner is live; fake/non-KVM nodes report unavailable. Mobile
+  target catalogs and admission gates must consume this proof before exposing
+  or launching Agent Computer capacity.
+- A mobile `managed_cloud` turn is admitted only from a repository-bound
+  thread. Server dispatch issues its owner-scoped Codex grant after the
+  durable start claim succeeds, then sends a real `codexTurn` plus broker refs
+  to the guest. It never sends both the Codex block and the old hosted
+  inference block, never issues grants for a losing queue reader, and never
+  silently substitutes another execution target.
+
 - The in-VM Codex turn (`apps/pylon/deploy/agent-computer/turn-runner.ts`,
   work-context `codexTurn` block) executes ONLY under a broker-redeemed,
   owner-scoped provider grant materialized into a per-turn scratch

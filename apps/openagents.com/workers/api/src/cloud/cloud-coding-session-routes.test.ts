@@ -23,6 +23,7 @@ import {
   isCloudCodingSessionsEnabled,
   makeCloudControlCloudCodingAdapter,
   makeLedgerCloudCodingMeteringHook,
+  probeAgentComputerCapacitySnapshot,
   routeCloudCodingSessionRequest,
   stubCloudCodingAdapter,
 } from './cloud-coding-session-routes'
@@ -219,6 +220,39 @@ describe('agent computer admission policy', () => {
       availableSlots: 0,
       capacityRef: 'capacity.agent_computer.control_plane.unavailable',
     })
+  })
+
+  test('probes authenticated effective live capacity and rejects fake or malformed claims', async () => {
+    let authorization = ''
+    const live = await probeAgentComputerCapacitySnapshot({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'private-control-token',
+      gceProvisioningArmed: true,
+      fetch: async (_request, init) => {
+        authorization = new Headers(init?.headers).get('authorization') ?? ''
+        return Response.json({
+          contractVersion: 'openagents.agent_computer_readiness.v1',
+          provisionerKind: 'live',
+          ready: true,
+        })
+      },
+    })
+    expect(authorization).toBe('Bearer private-control-token')
+    expect(live).toEqual({
+      available: true,
+      availableSlots: 1,
+      capacityRef: 'capacity.agent_computer.control_plane.live',
+    })
+    expect(await probeAgentComputerCapacitySnapshot({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'private-control-token',
+      gceProvisioningArmed: true,
+      fetch: async () => Response.json({
+        contractVersion: 'openagents.agent_computer_readiness.v1',
+        provisionerKind: 'fake',
+        ready: false,
+      }),
+    })).toMatchObject({ available: false, availableSlots: 0 })
   })
 })
 

@@ -566,6 +566,7 @@ export const KhalaRuntimeLane = S.Literals([
   "ai_sdk_harness_sandbox",
   "khala_sync_mobile_control",
   "hosted_khala",
+  "managed_cloud",
   "test_fixture",
 ])
 export type KhalaRuntimeLane = typeof KhalaRuntimeLane.Type
@@ -577,6 +578,7 @@ export const khalaRuntimeLanes: ReadonlyArray<KhalaRuntimeLane> = [
   "ai_sdk_harness_sandbox",
   "khala_sync_mobile_control",
   "hosted_khala",
+  "managed_cloud",
   "test_fixture",
 ]
 

@@ -486,6 +486,65 @@ describe('runCloudGcpRuntimeDispatch', () => {
       authGrantRef: 'grant.fallback',
       providerAccountRef: 'provider.fallback',
     })
+    expect(wc.codexTurn).toMatchObject({
+      ownerUserId: admitted.ownerUserId,
+    })
+    expect(wc.inference).toBeUndefined()
+  })
+
+  test('issues managed authority only after winning the durable claim', async () => {
+    reset()
+    let prepared = 0
+    const rejected = makeRecordingExecutePush(event =>
+      event.kind === 'turn.started' ? 'rejected' : 'applied')
+    const skipped = await dispatchCloudGcpRuntimeTurn(baseDeps({
+      executePush: rejected.executePush,
+      prepareAfterClaim: turn => {
+        prepared += 1
+        return Promise.resolve(withPinnedAccount(turn, 'acct_owner'))
+      },
+    }), admitted)
+    expect(skipped.outcome).toBe('skipped')
+    expect(prepared).toBe(0)
+
+    const applied = makeRecordingExecutePush()
+    const captured: { b64?: string } = {}
+    const launched = await dispatchCloudGcpRuntimeTurn(baseDeps({
+      executePush: applied.executePush,
+      launch: okLaunch(captured),
+      prepareAfterClaim: turn => {
+        prepared += 1
+        return Promise.resolve(withPinnedAccount(turn, 'acct_owner'))
+      },
+    }), admitted)
+    expect(launched.outcome).toBe('launched')
+    expect(prepared).toBe(1)
+    expect(decodeWorkContextB64(captured.b64!).providerAuth).toMatchObject({
+      authGrantRef: 'grant.acct_owner',
+      providerAccountRef: 'provider.acct_owner',
+    })
+  })
+
+  test('a post-claim grant refusal settles error and never mints or launches', async () => {
+    reset()
+    let launched = false
+    const push = makeRecordingExecutePush()
+    const outcome = await dispatchCloudGcpRuntimeTurn(baseDeps({
+      executePush: push.executePush,
+      launch: input => {
+        launched = true
+        return okLaunch()(input)
+      },
+      prepareAfterClaim: () => Promise.reject(new Error('grant_unavailable')),
+    }), admitted)
+    expect(outcome.outcome).toBe('failed')
+    expect(mintCalls).toHaveLength(0)
+    expect(launched).toBe(false)
+    expect(push.recorded.map(event => event.kind)).toEqual([
+      'turn.started',
+      'turn.finished',
+    ])
+    expect(push.recorded.at(-1)?.finishReason).toBe('error')
   })
 })
 

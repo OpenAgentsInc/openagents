@@ -443,6 +443,48 @@ export const configuredAgentComputerCapacitySnapshot = (
   }
 }
 
+export const probeAgentComputerCapacitySnapshot = async (
+  input: Readonly<{
+    baseUrl: string | undefined
+    bearerToken: string | undefined
+    gceProvisioningArmed: boolean
+    fetch?: typeof globalThis.fetch
+  }>,
+): Promise<AgentComputerCapacitySnapshot> => {
+  const configured = configuredAgentComputerCapacitySnapshot(input)
+  if (!configured.available) return configured
+  try {
+    const response = await (input.fetch ?? globalThis.fetch)(
+      new URL('/v1/cloud-vm/readiness', input.baseUrl),
+      {
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${input.bearerToken}`,
+        },
+      },
+    )
+    if (!response.ok) throw new Error('agent computer readiness refused')
+    const body = await response.json() as Record<string, unknown>
+    const available =
+      body['contractVersion'] === 'openagents.agent_computer_readiness.v1' &&
+      body['ready'] === true &&
+      body['provisionerKind'] === 'live'
+    return {
+      available,
+      availableSlots: available ? 1 : 0,
+      capacityRef: available
+        ? 'capacity.agent_computer.control_plane.live'
+        : 'capacity.agent_computer.control_plane.unavailable',
+    }
+  } catch {
+    return {
+      available: false,
+      availableSlots: 0,
+      capacityRef: 'capacity.agent_computer.control_plane.unavailable',
+    }
+  }
+}
+
 export type CloudCodingAdmissionLedgerDeps = Readonly<{
   capacity: () => Promise<AgentComputerCapacitySnapshot>
   // Admission events/reservations stay on D1 (their tables are not part of

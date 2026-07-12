@@ -93,6 +93,8 @@ export const RUNTIME_TURN_NOT_FOUND_REJECTION = "runtime_turn_not_found"
 export const RUNTIME_INTENT_CONFLICT_REJECTION = "runtime_intent_conflict"
 export const RUNTIME_INTENT_EXPIRY_REJECTION = "runtime_intent_expiry_invalid"
 export const RUNTIME_TARGET_LANE_REJECTION = "runtime_target_lane_mismatch"
+export const RUNTIME_MANAGED_CLOUD_REPOSITORY_REJECTION =
+  "runtime_managed_cloud_repository_required"
 /** @deprecated exact retries now reconcile; use the conflict code. */
 export const RUNTIME_INTENT_EXISTS_REJECTION = RUNTIME_INTENT_CONFLICT_REJECTION
 export const RUNTIME_MESSAGE_REQUIRED_REJECTION = "runtime_message_required"
@@ -1622,6 +1624,22 @@ export const runtimeStartTurnMutator: MutatorDefinition =
 
       const ownerRejection = await ensureRuntimeThreadOwner(ctx, intent.threadId)
       if (ownerRejection !== null) return ownerRejection
+
+      if (intent.target.lane === "managed_cloud") {
+        const thread = await readRuntimeThreadContext(ctx, intent.threadId)
+        if (
+          thread?.repo_binding_owner === null ||
+          thread?.repo_binding_owner === undefined ||
+          thread.repo_binding_name === null ||
+          thread.repo_binding_default_branch === null
+        ) {
+          return reject(
+            ctx,
+            RUNTIME_MANAGED_CLOUD_REPOSITORY_REJECTION,
+            "Agent Computer turns require a repository-bound thread",
+          )
+        }
+      }
 
       const nowIso = await transactionNowIso(ctx)
       const expired = await expireControlIntentIfDue(ctx, intent, nowIso)

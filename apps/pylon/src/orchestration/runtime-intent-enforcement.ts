@@ -1899,6 +1899,7 @@ const SUPPORTED_DISPATCH_LANES: ReadonlyArray<KhalaRuntimeLane> = [
   "claude_pylon",
   "hosted_khala",
 ]
+const SERVER_OWNED_MANAGED_CLOUD_LANE: KhalaRuntimeLane = "managed_cloud"
 
 const providerForLane = (lane: KhalaRuntimeLane): "codex" | "claude_agent" =>
   lane === "claude_pylon" ? "claude_agent" : "codex"
@@ -2071,6 +2072,12 @@ const handleTurnStart = async (
   }
 
   const targetLane = row.intent.target.lane
+  if (targetLane === SERVER_OWNED_MANAGED_CLOUD_LANE) {
+    return {
+      detail: "managed_cloud is server-owned; local Pylon leaves it for Agent Computer dispatch",
+      outcome: "skipped_stale",
+    }
+  }
   if (!SUPPORTED_DISPATCH_LANES.includes(targetLane)) {
     return {
       detail:
@@ -2570,6 +2577,12 @@ const handleTurnContinueOrRetry = async (
   }
 
   const targetLane = row.intent.target.lane
+  if (targetLane === SERVER_OWNED_MANAGED_CLOUD_LANE) {
+    return {
+      detail: "managed_cloud is server-owned; local Pylon leaves it for Agent Computer dispatch",
+      outcome: "skipped_stale",
+    }
+  }
   if (!SUPPORTED_DISPATCH_LANES.includes(targetLane)) {
     return {
       detail:

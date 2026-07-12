@@ -3013,7 +3013,7 @@ const schemaComponents = (): JsonSchema => ({
         type: 'array',
         items: { type: 'string' },
         description:
-          'Execution targets the Settings picker may choose right now: `gemini`, `auto`, hosted lanes such as `khala`, and account-backed ids such as `codex:<accountRefHash>` or `claude:<accountRefHash>`.',
+          'Execution targets the Settings picker may choose right now: `gemini`, `auto`, hosted lanes such as `khala`, account-backed ids such as `codex:<accountRefHash>` or `claude:<accountRefHash>`, and `agent-computer` only when exact live Firecracker plus owner Codex/GitHub authority is ready.',
       },
       updatedAt: {
         type: ['string', 'null'],
@@ -3031,7 +3031,7 @@ const schemaComponents = (): JsonSchema => ({
       targetId: {
         type: 'string',
         description:
-          'An execution target id from the current GET response’s availableTargetIds (for example `gemini`, `auto`, `khala`, `codex:<accountRefHash>`, or `claude:<accountRefHash>`). An unavailable target is rejected with 409 target_unavailable, never silently substituted.',
+          'An execution target id from the current GET response’s availableTargetIds (for example `gemini`, `auto`, `khala`, `agent-computer`, `codex:<accountRefHash>`, or `claude:<accountRefHash>`). An unavailable target is rejected with 409 target_unavailable, never silently substituted.',
       },
       modelId: {
         type: 'string',
