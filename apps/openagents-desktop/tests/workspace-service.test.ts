@@ -6,6 +6,8 @@ import path from "node:path"
 
 import {
   decodeWorkspaceChange,
+  decodeWorkspaceSearchPage,
+  decodeWorkspaceSearchRequest,
   decodeWorkspaceTreePage,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
@@ -20,6 +22,10 @@ import {
   workspaceGitStatus,
   workspaceTreePage,
 } from "../src/workspace-service.ts"
+import type {
+  WorkspaceSearchHost,
+  WorkspaceSearchRequest,
+} from "../src/workspace-search-host.ts"
 
 const roots: string[] = []
 const makeRoot = (): string => {
@@ -287,7 +293,7 @@ describe("Desktop bounded workspace service", () => {
     })
   })
 
-  test("declares cache epochs, invalidates once per watcher event, and disposes watchers exactly once", () => {
+  test("declares cache epochs, invalidates once per watcher event, and disposes watchers exactly once", async () => {
     const root = makeRoot()
     writeFileSync(path.join(root, "README.md"), "before")
     const watcherCallbacks: Array<(pathRef: string | null) => void> = []
@@ -334,7 +340,92 @@ describe("Desktop bounded workspace service", () => {
     workspace.dispose()
     expect(watchCloses).toBe(1)
     expect(workspace.tree({ directoryRef: "" }).state).toBe("unavailable")
-    expect(workspace.search({ query: "readme", mode: "path" }).state).toBe("unavailable")
+    expect((await workspace.search({ query: "readme", mode: "path" }).result).state).toBe("unavailable")
+  })
+
+  test("owns asynchronous search tasks, caches only current results, and cancels them on epoch change or close", async () => {
+    const root = makeRoot()
+    const started: Array<Readonly<{
+      request: WorkspaceSearchRequest
+      resolve: (page: ReturnType<typeof searchWorkspace>) => void
+    }>> = []
+    let cancelAlls = 0
+    let disposals = 0
+    let disposed = false
+    const active = new Set<(page: ReturnType<typeof searchWorkspace>) => void>()
+    const searchHost: WorkspaceSearchHost = {
+      start: request => {
+        if (disposed) {
+          return {
+            taskRef: "workspace.search.task.disposed",
+            result: Promise.resolve({ state: "unavailable", message: "The selected workspace has been disposed." }),
+            cancel: () => undefined,
+          }
+        }
+        let resolveResult!: (page: ReturnType<typeof searchWorkspace>) => void
+        const result = new Promise<ReturnType<typeof searchWorkspace>>(resolve => {
+          resolveResult = page => {
+            active.delete(resolveResult)
+            resolve(page)
+          }
+        })
+        active.add(resolveResult)
+        started.push({ request, resolve: resolveResult })
+        return {
+          taskRef: `workspace.search.task.${started.length}`,
+          result,
+          cancel: () => resolveResult({ state: "unavailable", message: "Workspace search was cancelled." }),
+        }
+      },
+      cancelAll: () => {
+        cancelAlls += 1
+        for (const resolve of [...active]) resolve({ state: "unavailable", message: "Workspace search was cancelled." })
+      },
+      activeCount: () => active.size,
+      dispose: () => {
+        if (disposed) return
+        disposed = true
+        disposals += 1
+        for (const resolve of [...active]) resolve({ state: "unavailable", message: "The selected workspace has been disposed." })
+      },
+    }
+    const workspace = openWorkspaceService(root, {
+      grantRef: "workspace.grant.async",
+      searchHostFactory: (selectedRoot, grantRef) => {
+        expect(selectedRoot).toBe(root)
+        expect(grantRef).toBe("workspace.grant.async")
+        return searchHost
+      },
+    })
+
+    const stale = workspace.search({ query: "needle", mode: "content", limit: 12 })
+    expect(started[0]?.request).toEqual({ query: "needle", mode: "content", offset: 0, limit: 12, epoch: 0 })
+    workspace.refresh()
+    expect(await stale.result).toEqual({ state: "unavailable", message: "Workspace search was cancelled." })
+    expect(cancelAlls).toBe(1)
+
+    const current = workspace.search({ query: "needle", mode: "content", limit: 12 })
+    const currentPage = searchWorkspace({
+      root,
+      grantRef: "workspace.grant.async",
+      query: "needle",
+      mode: "content",
+      limit: 12,
+      epoch: 1,
+    })
+    started[1]!.resolve(currentPage)
+    expect(await current.result).toEqual(currentPage)
+    const cached = workspace.search({ query: "needle", mode: "content", limit: 12 })
+    expect(cached.taskRef).toStartWith("workspace.search.cache.")
+    expect(await cached.result).toEqual(currentPage)
+    expect(started).toHaveLength(2)
+
+    const closing = workspace.search({ query: "other", mode: "path" })
+    workspace.dispose()
+    workspace.dispose()
+    expect(await closing.result).toEqual({ state: "unavailable", message: "The selected workspace has been disposed." })
+    expect(disposals).toBe(1)
+    expect(searchHost.activeCount()).toBe(0)
   })
 
   test("paginates a large root behind the fixed tree bound", () => {
@@ -363,7 +454,7 @@ describe("Desktop bounded workspace service", () => {
     expect(second.state === "available" ? second.nextOffset : -1).toBeNull()
   })
 
-  test("decodes only the fixed tree/watch bridge request and event shapes", () => {
+  test("decodes only the fixed tree/search/watch request, page, and event shapes", () => {
     expect(decodeWorkspaceTreeRequest({ directoryRef: "src", offset: 0, limit: 80 })).toEqual({
       directoryRef: "src",
       offset: 0,
@@ -389,5 +480,18 @@ describe("Desktop bounded workspace service", () => {
     })
     expect(decodeWorkspaceTreePage(page)).toEqual(page)
     expect(decodeWorkspaceTreePage({ state: "available", root })).toBeNull()
+    expect(decodeWorkspaceSearchRequest({ query: "needle", mode: "content", limit: 40 })).toEqual({
+      query: "needle",
+      mode: "content",
+      limit: 40,
+    })
+    const search = searchWorkspace({
+      root,
+      grantRef: "workspace.grant.decode",
+      query: "readme",
+      mode: "path",
+    })
+    expect(decodeWorkspaceSearchPage(search)).toEqual(search)
+    expect(decodeWorkspaceSearchPage({ state: "available", root })).toBeNull()
   })
 })

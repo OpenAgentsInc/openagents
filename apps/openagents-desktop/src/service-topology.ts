@@ -134,6 +134,11 @@ const workspaceSchemas = [
   "DesktopWorkspaceFileRequest",
   "DesktopWorkspaceSaveRequest",
   "DesktopWorkspaceGitDiffRequest",
+  "DesktopWorkspaceTreeRequest",
+  "DesktopWorkspaceTreePage",
+  "DesktopWorkspaceSearchRequest",
+  "DesktopWorkspaceSearchPage",
+  "DesktopWorkspaceChange",
 ]
 
 export const desktopServiceTopology = [
@@ -333,12 +338,26 @@ export const desktopServiceTopology = [
     modules: [
       "apps/openagents-desktop/src/workspace-service.ts",
       "apps/openagents-desktop/src/workspace-contract.ts",
+      "apps/openagents-desktop/src/workspace-search-host.ts",
+      "apps/openagents-desktop/src/workspace-search-worker.ts",
     ],
-    sourceEvidence: [{
-      module: "apps/openagents-desktop/src/workspace-service.ts",
-      compositionModule: "apps/openagents-desktop/src/main.ts",
-      constructions: ["openWorkspaceService"],
-    }],
+    sourceEvidence: [
+      {
+        module: "apps/openagents-desktop/src/workspace-service.ts",
+        compositionModule: "apps/openagents-desktop/src/main.ts",
+        constructions: ["openWorkspaceService"],
+      },
+      {
+        module: "apps/openagents-desktop/src/workspace-search-host.ts",
+        compositionModule: "apps/openagents-desktop/src/workspace-service.ts",
+        constructions: ["makeWorkspaceSearchHost"],
+      },
+      {
+        module: "apps/openagents-desktop/src/workspace-service.ts",
+        compositionModule: "apps/openagents-desktop/src/workspace-search-worker.ts",
+        constructions: ["searchWorkspace"],
+      },
+    ],
     dependsOn: [],
     authority: ["filesystem", "policy", "process"],
     cacheKey: {
@@ -348,7 +367,7 @@ export const desktopServiceTopology = [
     freshness: {
       source: "request_response",
       maxAge: "request_lifetime",
-      invalidatesOn: ["workspace-select", "file-save", "git-refresh"],
+      invalidatesOn: ["workspace-select", "file-save", "watch-change", "explicit-refresh"],
     },
     disposal: {
       disposesWith: "work_context",
@@ -358,6 +377,7 @@ export const desktopServiceTopology = [
       name,
       module: "apps/openagents-desktop/src/workspace-contract.ts",
     })),
+    ownedResources: [{ kind: "native_handle", disposesWith: "work_context" }],
     failureTaxonomy: "recoverable_domain_refusal",
   },
   {

@@ -50,6 +50,16 @@ export const buildDesktop = async (): Promise<string> => {
   )
 
   assertSuccess(
+    "workspace-search-worker",
+    await Bun.build({
+      entrypoints: [path.join(appRoot, "src/workspace-search-worker.ts")],
+      outdir: dist,
+      target: "node",
+      format: "esm",
+    }),
+  )
+
+  assertSuccess(
     "preload",
     await Bun.build({
       entrypoints: [path.join(appRoot, "src/preload.cts")],
@@ -88,5 +98,5 @@ export const buildDesktop = async (): Promise<string> => {
 
 if (import.meta.main) {
   await buildDesktop()
-  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, renderer/)")
+  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer/)")
 }

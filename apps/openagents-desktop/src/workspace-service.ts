@@ -14,6 +14,11 @@ import type {
   DesktopWorkspaceTreePage,
   DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
+import {
+  makeWorkspaceSearchHost,
+  type WorkspaceSearchHost,
+  type WorkspaceSearchTask,
+} from "./workspace-search-host.ts"
 
 const maxEntries = 120
 const maxBytes = 240_000
@@ -449,7 +454,7 @@ export type DesktopWorkspaceService = Readonly<{
   grantRef: string
   summary: () => DesktopWorkspaceSnapshot
   tree: (input: Readonly<{ directoryRef: string; offset?: number; limit?: number }>) => DesktopWorkspaceTreePage
-  search: (input: Readonly<{ query: string; mode: "path" | "content"; offset?: number; limit?: number }>) => DesktopWorkspaceSearchPage
+  search: (input: Readonly<{ query: string; mode: "path" | "content"; offset?: number; limit?: number }>) => WorkspaceSearchTask
   refresh: () => void
   subscribe: (listener: (change: DesktopWorkspaceChange) => void) => Readonly<{ close: () => void }>
   read: (requestedPath: string) => DesktopWorkspaceFile | null
@@ -472,10 +477,16 @@ export const openWorkspaceService = (
       root: string,
       onChange: (pathRef: string | null) => void,
     ) => Readonly<{ close: () => void }>
+    searchHostFactory?: (root: string, grantRef: string) => WorkspaceSearchHost
   }> = {},
 ): DesktopWorkspaceService => {
   const root = path.resolve(selectedRoot)
   const grantRef = options.grantRef ?? `workspace.grant.${randomUUID()}`
+  const searchHost = options.searchHostFactory?.(root, grantRef) ?? makeWorkspaceSearchHost(
+    root,
+    grantRef,
+    new URL("./workspace-search-worker.js", import.meta.url),
+  )
   let disposed = false
   let epoch = 0
   let watcher: Readonly<{ close: () => void }> | null = null
@@ -484,6 +495,7 @@ export const openWorkspaceService = (
   const searchCache = new Map<string, DesktopWorkspaceSearchPage>()
   const notify = (kind: DesktopWorkspaceChange["kind"], changedPathRef: string | null) => {
     epoch += 1
+    searchHost.cancelAll()
     treeCache.clear()
     searchCache.clear()
     const change = { kind, pathRef: changedPathRef, epoch }
@@ -536,16 +548,28 @@ export const openWorkspaceService = (
       return page
     },
     search: request => {
-      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      if (disposed) return searchHost.start({ query: "", mode: request.mode, epoch })
       const query = request.query.trim().slice(0, 200)
       const offset = boundedInteger(request.offset, 0, maxSearchResults)
       const limit = Math.max(1, boundedInteger(request.limit, 40, maxSearchResults))
       const key = `${request.mode}\0${revisionFor(Buffer.from(query))}\0${offset}\0${limit}\0${epoch}`
       const cached = searchCache.get(key)
-      if (cached !== undefined) return cached
-      const page = searchWorkspace({ root, grantRef, query, mode: request.mode, offset, limit, epoch })
-      searchCache.set(key, page)
-      return page
+      if (cached !== undefined) {
+        return {
+          taskRef: `workspace.search.cache.${revisionFor(Buffer.from(key))}`,
+          result: Promise.resolve(cached),
+          cancel: () => undefined,
+        }
+      }
+      const startedEpoch = epoch
+      const task = searchHost.start({ query, mode: request.mode, offset, limit, epoch: startedEpoch })
+      return {
+        ...task,
+        result: task.result.then(page => {
+          if (!disposed && epoch === startedEpoch && page.state === "available") searchCache.set(key, page)
+          return page
+        }),
+      }
     },
     refresh: () => {
       if (!disposed) notify("refresh", null)
@@ -586,6 +610,7 @@ export const openWorkspaceService = (
       listeners.clear()
       treeCache.clear()
       searchCache.clear()
+      searchHost.dispose()
     },
   }
 }

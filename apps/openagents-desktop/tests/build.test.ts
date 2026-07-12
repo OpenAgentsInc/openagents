@@ -5,13 +5,15 @@
  */
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import path from "node:path"
+import { Worker } from "node:worker_threads"
 
 const appRoot = path.resolve(import.meta.dir, "..")
 
 describe("openagents-desktop build", () => {
-  test("bundles main, preload, and the EN renderer into dist/", () => {
+  test("bundles main, workers, preload, and the EN renderer into dist/", async () => {
     // Run the real build in its own process with the app as cwd — module
     // resolution for the vendored EN workspace packages is cwd-sensitive
     // when Bun.build runs inside `bun test` from the repo root.
@@ -27,6 +29,8 @@ describe("openagents-desktop build", () => {
 
     for (const artifact of [
       "main.js",
+      "codex-history-worker.js",
+      "workspace-search-worker.js",
       "preload.cjs",
       "renderer/boot.js",
       "renderer/index.html",
@@ -49,5 +53,33 @@ describe("openagents-desktop build", () => {
     const mobileIcon = readFileSync(path.join(appRoot, "..", "openagents-mobile", "assets", "images", "icon.png"))
     const desktopIcon = readFileSync(path.join(dist, "assets", "openagents-icon.png"))
     expect(fingerprint(desktopIcon)).toBe(fingerprint(mobileIcon))
+
+    const workspaceRoot = mkdtempSync(path.join(tmpdir(), "openagents-workspace-search-build-"))
+    try {
+      writeFileSync(path.join(workspaceRoot, "README.md"), "built worker needle")
+      const workerResult = await new Promise<unknown>((resolve, reject) => {
+        const worker = new Worker(path.join(dist, "workspace-search-worker.js"), {
+          workerData: {
+            root: workspaceRoot,
+            grantRef: "workspace.grant.build-test",
+            request: { query: "needle", mode: "content", epoch: 7 },
+          },
+        })
+        worker.once("message", resolve)
+        worker.once("error", reject)
+      })
+      expect(workerResult).toMatchObject({
+        ok: true,
+        result: {
+          state: "available",
+          grantRef: "workspace.grant.build-test",
+          matches: [{ pathRef: "README.md", kind: "content", line: 1 }],
+          cache: { epoch: 7, freshness: "current" },
+        },
+      })
+      expect(JSON.stringify(workerResult)).not.toContain(workspaceRoot)
+    } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true })
+    }
   }, 60_000)
 })

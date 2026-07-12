@@ -23,10 +23,16 @@ export const DesktopWorkspaceTreeRequestSchema = Schema.Struct({
 })
 
 export const DesktopWorkspaceSearchRequestSchema = Schema.Struct({
-  query: Schema.String,
+  query: Schema.String.check(Schema.isMaxLength(200)),
   mode: Schema.Literals(["path", "content"]),
-  offset: Schema.optional(Schema.Number),
-  limit: Schema.optional(Schema.Number),
+  offset: Schema.optional(Schema.Number.check(
+    Schema.isInt(),
+    Schema.isBetween({ minimum: 0, maximum: 100 }),
+  )),
+  limit: Schema.optional(Schema.Number.check(
+    Schema.isInt(),
+    Schema.isBetween({ minimum: 1, maximum: 100 }),
+  )),
 })
 
 export const DesktopWorkspaceWatchRequestSchema = Schema.Struct({
@@ -55,6 +61,33 @@ export const DesktopWorkspaceTreePageSchema = Schema.Union([
     directoryRef: DesktopWorkspacePathRefSchema,
     entries: Schema.Array(DesktopWorkspaceTreeEntrySchema),
     nextOffset: Schema.NullOr(Schema.Number),
+    cache: DesktopWorkspaceCacheFactSchema,
+  }),
+  Schema.Struct({
+    state: Schema.Literal("unavailable"),
+    message: Schema.String,
+  }),
+])
+
+export const DesktopWorkspaceSearchMatchSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  kind: Schema.Literals(["path", "content"]),
+  line: Schema.NullOr(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
+  preview: Schema.NullOr(Schema.String.check(Schema.isMaxLength(240))),
+})
+
+export const DesktopWorkspaceSearchPageSchema = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("available"),
+    grantRef: Schema.String,
+    query: Schema.String.check(Schema.isMaxLength(200)),
+    mode: Schema.Literals(["path", "content"]),
+    matches: Schema.Array(DesktopWorkspaceSearchMatchSchema).check(Schema.isMaxLength(100)),
+    nextOffset: Schema.NullOr(Schema.Number.check(
+      Schema.isInt(),
+      Schema.isBetween({ minimum: 1, maximum: 100 }),
+    )),
+    truncated: Schema.Boolean,
     cache: DesktopWorkspaceCacheFactSchema,
   }),
   Schema.Struct({
@@ -213,6 +246,13 @@ export const decodeWorkspaceTreePage = (
   value: unknown,
 ): DesktopWorkspaceTreePage | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceTreePageSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceSearchPage = (
+  value: unknown,
+): DesktopWorkspaceSearchPage | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchPageSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
