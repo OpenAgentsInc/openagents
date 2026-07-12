@@ -167,7 +167,7 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   built-host + dev-preview receipts, process-tree disposal, capability D3
   flipped to `ui_available` at the **live** rung.
 
-### CUT-21 #8701 — provider-neutral named Codex/Claude accounts, models, runtimes — OPEN
+### CUT-21 #8701 — provider-neutral named Codex/Claude accounts, models, runtimes — CLOSED
 
 - Landed on main: fail-closed Codex 0.144.1 / Claude Agent SDK 0.3.172
   compatibility contract `ff222f367b`; bundled runtime resolution + host
@@ -177,20 +177,21 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   per-conversation exact target delivery `25b35b4d24`. A follow-up P0 fix
   `e7fb41623e` restored fable+codex **fixture** streaming under exact
   targets.
-- Rung: **live-proven for named Claude**, fixture-proven + built-Electron
-  smoke for Codex. The initial Claude 0-character receipt was a driver false
+- Rung: **live-proven for both named providers**. The initial Claude
+  0-character receipt was a driver false
   negative: the authoritative built-app thread store contained the completed
   assistant note while the driver treated the queue-enabled textarea as an
   idle signal. `716955d5ac` made provider steps exit-driving; `5e701a93b7`
   added exact named-account selection and Stop-authoritative settle logic. A
   built-app run then selected `claude-pylon-3`, reported effective model
   `claude-fable-5`, captured midstream/final PNGs, and completed with visible
-  assistant text. Seven named Codex homes still probe 0 verified with typed
-  `reconnect_required`.
-- Remaining gates: (owner) reconnect at least one named Codex account
-  through the isolated-account Settings flow; (live) one public-safe named
-  Codex `gpt-5.6-sol` turn on the built app. The equivalent Claude gate has
-  passed.
+  assistant text. The owner then completed the isolated device authorization
+  for `codex-2`; the real preflight observed exactly one verified account.
+  One fail-closed built-app run selected `claude-pylon-3` / effective
+  `claude-fable-5` and `codex-2` / requested `gpt-5.6-sol`, captured
+  midstream and final PNGs for both, observed streaming for both, and exited
+  0 with no required failures. Other revoked Codex homes remain visibly
+  `reconnect_required` and never substitute for the exact selected account.
 
 ### CUT-22 #8702 — Claude Code history import, loss-accounted — CLOSED
 
@@ -303,17 +304,17 @@ loss/exception register explicitly.
 1. **Clean installed build, one real non-trivial task each with named Codex
    and named Claude** — NOT met. A signed/notarized installer has been
    verified locally but is not published or clean-machine accepted. Blocked
-   by: CUT-21's owner Codex reconnect + named live turn; CUT-16 residuals for
+   by: CUT-26 clean-install publication/acceptance and CUT-16 residuals for
    the full composer loop. All in-app workbench legs (files/editor/Git/PTY/preview) are
    closed (CUT-17–CUT-20).
 2. **Physical iOS and Android reconnect/continuation/attention/interruption
    convergence during each task** — NOT met. iOS: build installed, journeys
    pending (CUT-09/10/12/14 physical rows, #8676). Android: no evidence
-   exists yet, but per the 2026-07-12 owner decision this leg is satisfied
-   by **emulator** receipts — it is automatable and no longer owner-gated.
+   now has fresh-install, cold-launch, offline restart, and fail-closed deep-link
+   emulator evidence; authenticated restoration/deep-link legs remain.
 3. **Run accepted #8676 handoff and #8677/#8678/#8640 parent receipts;
    every cutover leaf closed; no waived P0** — NOT met. #8678/#8640 closed;
-   #8676/#8677 open; 9 CUT leaves open (09, 10, 11, 12, 14, 16, 21, 25,
+   #8676/#8677 open; 8 CUT leaves open (09, 10, 11, 12, 14, 16, 25,
    26). The owner's 2026-07-11 phone deferral explicitly did NOT waive
    any acceptance gate.
 4. **Publish loss/exception register, accessibility/privacy/security
@@ -351,14 +352,11 @@ loss/exception register explicitly.
 
 ### (b) Live-proof runs (no owner hardware, but some need (c)-item 1 first)
 
-1. CUT-21: one named Codex `gpt-5.6-sol` live turn after owner reconnect.
-   Named Claude `claude-fable-5` streaming passed on the built app at
-   `5e701a93b7`.
-2. CUT-26: publish the locally verified signed/notarized artifact, then run
+1. CUT-26: publish the locally verified signed/notarized artifact, then run
    install/update/interruption/rollback/uninstall acceptance.
-3. CUT-25: live operator acceptance of the Fleet cockpit with named
+2. CUT-25: live operator acceptance of the Fleet cockpit with named
    simultaneous Codex+Claude work.
-4. #8676: the full streamed Desktop conversation with mobile continuation
+3. #8676: the full streamed Desktop conversation with mobile continuation
    run end-to-end (also the CUT-27 criterion-1/2 spine).
 
 ### (c) Owner-gated physical/manual acceptance
@@ -383,14 +381,14 @@ loss/exception register explicitly.
 
 ## Honest summary
 
-17 of 27 CUT leaves are closed (01–08, 13, 15, 17, 18, 19, 20, 22–24);
-9 are open (09, 10, 11, 12, 14, 16, 21, 25, 26) plus CUT-27 itself.
+18 of 27 CUT leaves are closed (01–08, 13, 15, 17, 18, 19, 20–24);
+8 are open (09, 10, 11, 12, 14, 16, 25, 26) plus CUT-27 itself.
 The deterministic/fixture spine of
 the cutover is substantially complete and enforced by ~900+ Desktop tests,
 mobile suites, real-Postgres projections, and built-Electron smokes wired
 into a main-push guard. What separates today's state from an honest
-declaration is concentrated, not diffuse: one live named Codex turn, one
-signed installer journey, one iPhone journey set on an already-installed
+declaration is concentrated, not diffuse: one signed installer journey, one
+iPhone journey set on an already-installed
 build, the authenticated Android emulator leg, and the small
 CUT-11/CUT-16 code residuals. Nothing reviewed here justifies declaring the cutover now, and
 nothing suggests the remaining gates require new architecture.
