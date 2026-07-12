@@ -1,8 +1,10 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Platform,
   View as RNView,
+  useWindowDimensions,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
@@ -19,6 +21,7 @@ import { EffectNativeHost } from "../effect-native/effect-native-host"
 import { sendKhalaTurn } from "../khala/khala-client"
 import {
   buildHomeProgram,
+  normalizeMobileAccessibilityProfile,
   renderHomeView,
   type MobileSyncPhase,
 } from "./home-core"
@@ -57,10 +60,39 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
     ) => Promise<MobileCodingAttachmentUpdateResult>
   }>
 }) => {
+  const { fontScale } = useWindowDimensions()
+  const [reduceMotion, setReduceMotion] = useState(false)
+  const accessibility = useMemo(
+    () => normalizeMobileAccessibilityProfile({ fontScale, reduceMotion }),
+    [fontScale, reduceMotion],
+  )
   const program = useMemo(
-    () => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn }, sessionActions, conversation, coding }),
+    () => buildHomeProgram({
+      khalaTurn: { sendTurn: sendKhalaTurn },
+      sessionActions,
+      conversation,
+      accessibility,
+      coding,
+    }),
     [sessionActions, conversation, coding],
   )
+  useEffect(() => {
+    let active = true
+    void AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
+      if (active) setReduceMotion(enabled)
+    })
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReduceMotion,
+    )
+    return () => {
+      active = false
+      subscription.remove()
+    }
+  }, [])
+  useEffect(() => {
+    program.accessibility.setProfile(accessibility)
+  }, [program, accessibility])
   useEffect(() => {
     program.sync.setPhase(syncPhase)
   }, [program, syncPhase])
@@ -77,7 +109,7 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
             report={program.report}
             theme={khalaTheme}
             platform={enPlatform}
-            initialView={renderHomeView(program.initialState)}
+            initialView={renderHomeView({ ...program.initialState, accessibility })}
           />
         </SafeAreaView>
       </KeyboardAvoidingView>
