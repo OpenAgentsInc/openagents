@@ -2,9 +2,11 @@
 
 - Date: 2026-07-11
 - Issue: [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692)
-- Status: complete; shared presentation model plus OpenAgents Mobile and
+- Final disposition: **closed 2026-07-12.** Shared presentation plus Mobile and
   OpenAgents Desktop integration are device-proven on physical iOS and the
-  accepted Android emulator lane
+  accepted Android-emulator lane.
+- Chronology: earlier body statements retain intermediate UI/device rungs and
+  do not override this final disposition.
 - Contracts: `khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v1`,
   `openagents_desktop.agent_graph.pointer_keyboard_focus_equivalence.v1`
 

@@ -2,7 +2,7 @@
 
 - Issue: #8668
 - Parent tracks: #8574 and #8597
-- Status: implemented; close after the main receipt is posted
+- Status: closed; historical checked-in issue source
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md) R2/D1 and
   [`../2026-07-10-r1-r2-identity-sync-contract.md`](../2026-07-10-r1-r2-identity-sync-contract.md)
 

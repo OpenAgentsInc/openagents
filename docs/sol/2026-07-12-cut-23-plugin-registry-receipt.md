@@ -1,10 +1,15 @@
 # CUT-23 local plugin registry receipt
 
-Date: 2026-07-12  
-Issue: [#8703](https://github.com/OpenAgentsInc/openagents/issues/8703)
+- Date: 2026-07-12
+- Issue: [#8703](https://github.com/OpenAgentsInc/openagents/issues/8703)
+- Final disposition: **closed 2026-07-12.** The supported Claude local-plugin
+  and explicit-skill workflow passed live; Codex is recorded as an unsupported
+  provider disagreement rather than incomplete permission work.
+- Chronology: the opening scope statement and later tranches preserve
+  intermediate rungs; they do not override this disposition.
 
-This receipt covers CUT-23 residual R2 and the subsequent R1 skills/slash
-tranche without claiming permission-mode work complete.
+This receipt began with CUT-23 residual R2 and the subsequent R1 skills/slash
+tranche before the final live closure recorded above.
 
 ## Landed contract
 

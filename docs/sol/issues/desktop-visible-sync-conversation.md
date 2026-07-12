@@ -2,7 +2,7 @@
 
 - Issue: #8670
 - Parent track: #8574
-- Status: implemented; close after the main receipt is posted
+- Status: closed; historical checked-in issue source
 - Depends on: closed #8668 and #8669
 
 ## Landed boundary

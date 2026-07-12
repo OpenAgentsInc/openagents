@@ -2,8 +2,11 @@
 
 - Date: 2026-07-11
 - Issue: [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694)
-- Status: closed — authenticated physical iOS and Android-emulator directory,
+- Final disposition: **closed 2026-07-12.** Authenticated physical-iOS and
+  Android-emulator directory,
   exact session activation, deep-link resolution, and process-death restore pass
+- Chronology: earlier body statements retain intermediate simulator/emulator,
+  auth, catalog, and device rungs; they do not override this disposition.
 - Contract: `openagents_mobile.coding.authenticated_navigation.v1`
 
 ## Greenfield ownership

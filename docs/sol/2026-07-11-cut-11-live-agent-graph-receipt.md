@@ -2,12 +2,11 @@
 
 - Date: 2026-07-11
 - Issue: [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691)
-- Status: shared schema/replay, provider normalization, Khala Sync entity,
-  named server writer, live Codex/Claude root transaction binding, and confirmed
-  Runtime Gateway v8 delivery/reconnect complete; real Claude child topology is
-  active and redacted named-provider source traces exist for both providers,
-  while Codex child transport convergence and a named end-to-end reconnect
-  trace remain pending
+- Final disposition: **closed 2026-07-12.** Canonical graph, both named
+  provider sources, durable Sync/Runtime Gateway delivery, exact target
+  selection, and production reconnect were accepted on #8691.
+- Chronology: intermediate sections below retain earlier pending transport and
+  reconnect rungs; they do not override this final disposition.
 - Contract: `openagents.live_agent_graph.v1`
 
 ## Registered graph facts
