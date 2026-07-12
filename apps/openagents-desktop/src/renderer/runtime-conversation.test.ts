@@ -274,6 +274,38 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     expect(catalogCalls).toBe(3)
   })
 
+  test("New Chat falls back to the durable local store when live Sync cannot confirm creation", async () => {
+    const localThread: DesktopThread = {
+      id: "thread.local.new-chat-fallback",
+      title: "New chat",
+      updatedAt: now,
+      notes: [],
+    }
+    let localCreates = 0
+    let runtimeCreates = 0
+    const local: ChatHost = {
+      listThreads: async () => [],
+      newThread: async () => { localCreates += 1; return localThread },
+      openThread: async id => id === localThread.id ? localThread : null,
+      sendMessage: async () => ({ ok: true, thread: localThread }),
+    }
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as { requestId?: string; query?: { id?: string }; command?: { id?: string } }
+      if (value.query?.id === "conversation.catalog") {
+        return { kind: "conversation_catalog", requestId: value.requestId!, status, threads: [] }
+      }
+      if (value.command?.id === "conversation.create") runtimeCreates += 1
+      return { kind: "request_rejected", reason: "invalid_request" }
+    }
+    const host = makeConvergingDesktopChatHost({ local, request })
+
+    expect(await host.newThread()).toEqual(localThread)
+    expect(runtimeCreates).toBe(1)
+    expect(localCreates).toBe(1)
+    // The fallback ref is pinned local: opening it never probes Sync again.
+    expect(await host.openThread(localThread.id)).toEqual(localThread)
+  })
+
   test("maps confirmed threads/messages and waits for exact mutation refs", async () => {
     const threads = new Map<string, { title: string; messages: Array<{ ref: string; body: string }> }>([
       ["thread.synced.1", { title: "Synced", messages: [{ ref: "message.synced.1", body: "Confirmed" }] }],

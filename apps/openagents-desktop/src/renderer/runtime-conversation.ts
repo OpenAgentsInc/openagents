@@ -714,7 +714,16 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
     },
     newThread: async () => {
       const selected = await current()
-      return remember(await selected.host.newThread(), selected.mode)
+      const created = await selected.host.newThread()
+      if (created !== null) return remember(created, selected.mode)
+      // New Chat is a local-user navigation invariant, not permission to
+      // leave the current transcript stuck because the preferred Sync host
+      // could not confirm a create. Fall back to the other durable host and
+      // pin the resulting ref to that authority for every later operation.
+      const fallback = selected.mode === "runtime"
+        ? { host: input.local, mode: "local" as const }
+        : { host: runtime, mode: "runtime" as const }
+      return remember(await fallback.host.newThread(), fallback.mode)
     },
     openThread: async threadRef => {
       const selected = await hostForThread(threadRef)

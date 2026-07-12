@@ -1854,6 +1854,44 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "bun run --cwd apps/openagents-desktop verify runs the palette-registry assertions and the Electron smoke new-chat + cmd-n focus steps.",
       },
       {
+        contractId: "openagents_desktop.chat.new_chat_always_exits_history.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat navigation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-live-review", statedBy: "owner", statedOn: "2026-07-12" },
+        statement:
+          "New Chat and Command-N must always leave the old chat and open a fresh chat.",
+        authorityBoundary:
+          "Every New Chat entry point dispatches the same DesktopNewChat intent. A live Sync host may create the durable thread first, but a null/unconfirmed Sync creation cannot become a silent navigation no-op: the converging chat host falls back to the app-owned durable local thread store, pins that thread ref to local authority, exits any loaded history page, mounts an empty transcript, and focuses the composer. No fake success is projected without a real thread from one of the two typed durable hosts.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/runtime-conversation.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+        ],
+        oracles: [
+          {
+            id: "new_chat_always.runtime_falls_back_local",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-conversation.test.ts",
+            description:
+              "Proves a live-but-unconfirmable Sync create falls back exactly once to the durable local store and pins the resulting thread ref to local authority.",
+          },
+          {
+            id: "new_chat_always.button_and_command_n_exit_history",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke proves both the dock button and platform Command-N leave loaded history, mount a fresh empty transcript, and focus the composer.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the converging-host fallback unit test and both built-Electron New Chat paths.",
+      },
+      {
         contractId: "openagents_desktop.chrome.disabled_control_reason_popover.v1",
         state: "enforced",
         surface: "openagents-desktop",

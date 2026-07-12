@@ -766,6 +766,14 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
   linked Sync when the current gateway catalog is live, otherwise explicit
   local-only mode.
+- Desktop New Chat is never a silent no-op. The dock action, command palette,
+  and platform Command-N chord dispatch one typed `DesktopNewChat` intent. A
+  live Sync create may win, but if it cannot return a confirmed durable thread,
+  the converging host falls back to the app-owned durable local thread store
+  and pins that ref to local authority. Only a real thread may clear the loaded
+  history page; success always mounts an empty transcript and focuses the
+  composer. This is enforced by the `new_chat_always_exits_history` UX
+  contract, converging-host unit coverage, and both built-Electron input paths.
 - Desktop provider runtimes are package-owned, version-explicit capabilities.
   Codex launches the native executable resolved from the exact pinned
   `@openai/codex` optional platform package, never an ambient PATH executable;
