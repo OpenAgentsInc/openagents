@@ -126,6 +126,14 @@ the same durable authority through the trusted Worker seam and runs Claude's
 deployed-authority, and physical receipts remain open. Provider defaults remain
 unchanged when that authority is absent.
 
+CUT-17 [#8697] now starts the local workspace capability layer remote-first
+sessions will depend on without confusing a host path for portable identity.
+The main-process WorkContext exposes new recursive tree and search projections
+only through an opaque grant ref and relative path refs, with bounded results,
+declared cache epochs, ignore/secret/binary/symlink filtering, and exactly-owned
+watcher invalidation. This is capability-core evidence only: gateway/UI
+adoption and portable workspace materialization remain separate rungs.
+
 ### Episodes 248–249 calibration
 
 Remote-first must preserve the predictability and supervision target. Closed

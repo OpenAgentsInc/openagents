@@ -6,8 +6,8 @@
   CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete; CUT-16
   native draft persistence/Desktop gateway/mobile interaction and runtime-
   control UI active; mobile canonical rich-draft and native attachment
-  acquisition active)
-- Revision: 61
+  acquisition active; CUT-17 workspace capability core active)
+- Revision: 62
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -688,6 +688,19 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   composer adoption. Physical accessibility, deployed-authority, and named
   Codex receipts also remain open. See
   [`CUT-16 receipt`](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md).
+- CUT-17 now has a main-process WorkContext capability core at `4bbf0c7758`.
+  Its new lazy tree and path/content search projections carry only an opaque
+  grant ref, relative path refs, bounded pages/results, and declared cache
+  key/epoch/freshness facts. Hidden, Git-ignored, secret-shaped, binary,
+  traversal, and symlink-escape entries are withheld. A single recursive
+  watcher exists only while subscribed; change, refresh, and unlocated/
+  overflow events advance the epoch and invalidate caches, and close/dispose
+  is exactly once. The legacy root-summary renderer path remains unchanged for
+  compatibility and is not evidence that the new boundary is wired. Fixed
+  gateway/preload operations, Effect Native tree/search UI, reveal and
+  create/rename/delete controls, permission-loss acceptance, and the scale
+  benchmark remain before closure. See the
+  [`CUT-17 foundation receipt`](./2026-07-11-cut-17-workspace-capability-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
