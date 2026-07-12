@@ -9,6 +9,8 @@
   "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
+    "package:mac": "electron-forge package --platform=darwin --arch=arm64",
+    "make:mac": "electron-forge make --platform=darwin --arch=arm64",
     "dev": "bun scripts/build.ts && electron .",
     "live-proof": "bun scripts/build.ts && OPENAGENTS_DESKTOP_LIVE_PROOF=1 electron .",
     "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
@@ -19,17 +21,24 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.172",
-    "@openai/codex": "0.144.1",
-    "@openagentsinc/behavior-contracts": "workspace:*",
-    "@openagentsinc/pylon-core": "workspace:*",
-    "@openagentsinc/khala-sync": "workspace:*",
-    "@openagentsinc/khala-sync-client": "workspace:*",
     "@effect-native/core": "workspace:*",
     "@effect-native/render-dom": "workspace:*",
     "@effect-native/tokens": "workspace:*",
+    "@openagentsinc/behavior-contracts": "workspace:*",
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-client": "workspace:*",
+    "@openagentsinc/pylon-core": "workspace:*",
+    "@openai/codex": "0.144.1",
+    "@openai/codex-darwin-arm64": "npm:@openai/codex@0.144.1-darwin-arm64",
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-dmg": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
+    "@electron-forge/plugin-fuses": "7.11.2",
+    "@electron-forge/shared-types": "7.11.2",
+    "@electron/fuses": "2.1.3",
     "bun-types": "^1.0.0",
     "electron": "^43.1.0",
     "typescript": "catalog:"

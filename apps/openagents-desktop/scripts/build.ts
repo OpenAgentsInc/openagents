@@ -6,8 +6,9 @@
  */
 import { cp, mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 // Minification is on by default; set OA_DESKTOP_BUILD_MINIFY=0 for an A/B
 // unminified build (startup-bench comparison). See the startup-speed audit.
 const BUILD_MINIFY = process.env.OA_DESKTOP_BUILD_MINIFY !== "0"
