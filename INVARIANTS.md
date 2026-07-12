@@ -646,8 +646,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   webContents, rebinds it after an explicit WorkContext replacement, and
   closes it with the window/app lifecycle. The built Electron smoke proves a
   relative tree page, a newer refresh event, unsubscribe, and zero active host
-  slots. Fixed search IPC, Effect Native UI, and mutation controls remain
-  CUT-17 work.
+  slots. Fixed decoded search/start-cancel operations also cross only that
+  bridge. Main owns at most one active search per webContents: replacement
+  cancels the prior task, an exact request ref cannot cancel another window or
+  request, and window/app teardown closes the owner. The built smoke proves a
+  real relative-ref worker result at the refreshed epoch plus fail-closed
+  foreign cancellation. Effect Native UI and mutation controls remain CUT-17
+  work.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

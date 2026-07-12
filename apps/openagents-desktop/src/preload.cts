@@ -40,6 +40,8 @@ import {
   DesktopWorkspaceSaveChannel,
   DesktopWorkspaceSummaryChannel,
   DesktopWorkspaceTreeChannel,
+  DesktopWorkspaceSearchChannel,
+  DesktopWorkspaceSearchCancelChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
@@ -47,6 +49,10 @@ import {
   decodeWorkspaceFileRequest,
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
+  decodeWorkspaceSearchBridgeRequest,
+  decodeWorkspaceSearchCancelRequest,
+  decodeWorkspaceSearchCancelResult,
+  decodeWorkspaceSearchResponse,
   decodeWorkspaceTreePage,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
@@ -205,6 +211,31 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     return decodeWorkspaceTreePage(response) ?? {
       state: "unavailable",
       message: "The workspace tree response is invalid.",
+    }
+  },
+  workspaceSearch: async (value: unknown) => {
+    const request = decodeWorkspaceSearchBridgeRequest(value)
+    if (request === null) {
+      return {
+        requestRef: "workspace.search.request.invalid",
+        page: { state: "unavailable", message: "The workspace search request is invalid." },
+      }
+    }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceSearchChannel, request)
+    return decodeWorkspaceSearchResponse(response) ?? {
+      requestRef: request.requestRef,
+      page: { state: "unavailable", message: "The workspace search response is invalid." },
+    }
+  },
+  cancelWorkspaceSearch: async (value: unknown) => {
+    const request = decodeWorkspaceSearchCancelRequest(value)
+    if (request === null) {
+      return { requestRef: "workspace.search.request.invalid", cancelled: false }
+    }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceSearchCancelChannel, request)
+    return decodeWorkspaceSearchCancelResult(response) ?? {
+      requestRef: request.requestRef,
+      cancelled: false,
     }
   },
   refreshWorkspace: async (): Promise<boolean> =>

@@ -125,12 +125,16 @@ import {
   DesktopWorkspaceSaveChannel,
   DesktopWorkspaceSummaryChannel,
   DesktopWorkspaceTreeChannel,
+  DesktopWorkspaceSearchChannel,
+  DesktopWorkspaceSearchCancelChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
   decodeWorkspaceFileRequest,
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
+  decodeWorkspaceSearchBridgeRequest,
+  decodeWorkspaceSearchCancelRequest,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
 } from "./workspace-contract.ts"
@@ -138,6 +142,7 @@ import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import { GitGithubChannel } from "./git-github-contract.ts"
 import { openGitGithubService } from "./git-github-host.ts"
+import { makeWorkspaceSearchRegistry } from "./workspace-search-registry.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
@@ -529,6 +534,9 @@ const hostLifecycle = makeDesktopHostLifecycle({
   account: codexConnect,
   history: codexHistoryHost,
 })
+const workspaceSearchRegistry = makeWorkspaceSearchRegistry(() => hostLifecycle.workspace())
+const workspaceSearchOwnerRef = (webContentsId: number): string =>
+  `webContents.${webContentsId}`
 const requestedWorkspaceChangeWindows = new Set<number>()
 const workspaceChangeSubscriptions = new Map<number, () => void>()
 const closeWorkspaceChangeSubscription = (windowId: number): void => {
@@ -606,6 +614,30 @@ ipcMain.handle(DesktopWorkspaceTreeChannel, (event, value: unknown) => {
   return request === null || workspace === null
     ? { state: "unavailable", message: "Choose a workspace folder before browsing files." }
     : workspace.tree(request)
+})
+ipcMain.handle(DesktopWorkspaceSearchChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return {
+      requestRef: "workspace.search.request.invalid",
+      page: { state: "unavailable", message: "Workspace search is unavailable." },
+    }
+  }
+  const request = decodeWorkspaceSearchBridgeRequest(value)
+  return request === null
+    ? {
+        requestRef: "workspace.search.request.invalid",
+        page: { state: "unavailable", message: "The workspace search request is invalid." },
+      }
+    : workspaceSearchRegistry.start(workspaceSearchOwnerRef(event.sender.id), request)
+})
+ipcMain.handle(DesktopWorkspaceSearchCancelChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { requestRef: "workspace.search.request.invalid", cancelled: false }
+  }
+  const request = decodeWorkspaceSearchCancelRequest(value)
+  return request === null
+    ? { requestRef: "workspace.search.request.invalid", cancelled: false }
+    : workspaceSearchRegistry.cancel(workspaceSearchOwnerRef(event.sender.id), request.requestRef)
 })
 ipcMain.handle(DesktopWorkspaceRefreshChannel, event => {
   if (!isTrustedRuntimeGatewaySender(event)) return false
@@ -1252,7 +1284,9 @@ const createWindow = (): BrowserWindow => {
   const unsubscribeRuntime = runtimeGateway.subscribe(event => {
     if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
   })
+  const searchOwnerRef = workspaceSearchOwnerRef(window.webContents.id)
   const closeWindowScope = hostLifecycle.registerWindow(`window.${window.id}`, () => {
+    workspaceSearchRegistry.closeOwner(searchOwnerRef)
     disableWorkspaceChangeSubscription(window.id)
     unsubscribeRuntime()
   })
@@ -1316,6 +1350,8 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
 const smokeWorkspaceTreeBridge = `(async () => {
   const bridge = globalThis.openagentsDesktop
   if (typeof bridge?.workspaceTree !== "function" ||
+      typeof bridge?.workspaceSearch !== "function" ||
+      typeof bridge?.cancelWorkspaceSearch !== "function" ||
       typeof bridge?.refreshWorkspace !== "function" ||
       typeof bridge?.workspaceSubscribe !== "function") {
     throw new Error("workspace capability bridge unavailable")
@@ -1340,7 +1376,36 @@ const smokeWorkspaceTreeBridge = `(async () => {
     if (refresh === undefined || refresh.pathRef !== null || refresh.epoch <= page.cache.epoch) {
       throw new Error("workspace refresh event missing")
     }
-    return { ok: true, entryCount: page.entries.length, epoch: refresh.epoch }
+    const requestRef = "workspace.search.request.smoke"
+    const search = await bridge.workspaceSearch({
+      requestRef,
+      query: "session_index",
+      mode: "path",
+      offset: 0,
+      limit: 20,
+    })
+    if (search?.requestRef !== requestRef || search?.page?.state !== "available" ||
+        search.page.cache.epoch !== refresh.epoch ||
+        !search.page.matches.some((match) => match.pathRef === "session_index.jsonl")) {
+      throw new Error("workspace search result missing")
+    }
+    if (JSON.stringify(search).includes("tests/fixtures/codex-smoke") ||
+        search.page.matches.some((match) => String(match.pathRef).startsWith("/"))) {
+      throw new Error("workspace search leaked its selected root")
+    }
+    const foreignCancel = await bridge.cancelWorkspaceSearch({
+      requestRef: "workspace.search.request.foreign",
+    })
+    if (foreignCancel?.requestRef !== "workspace.search.request.foreign" || foreignCancel.cancelled !== false) {
+      throw new Error("workspace search cancel fencing failed")
+    }
+    return {
+      ok: true,
+      entryCount: page.entries.length,
+      matchCount: search.page.matches.length,
+      epoch: refresh.epoch,
+      foreignCancel: foreignCancel.cancelled,
+    }
   } finally {
     unsubscribe()
   }
@@ -2248,10 +2313,12 @@ const launchSmokeSecondInstance = async (): Promise<void> => {
 
 const runSmoke = (window: BrowserWindow): void => {
   const finish = (code: 0 | 1): void => {
+    workspaceSearchRegistry.dispose()
     hostLifecycle.dispose()
     const snapshot = hostLifecycle.snapshot()
     const active = Number(snapshot.runtime) + Number(snapshot.workspace) + Number(snapshot.sync) +
-      Number(snapshot.account) + Number(snapshot.history) + snapshot.windowCount
+      Number(snapshot.account) + Number(snapshot.history) + snapshot.windowCount +
+      workspaceSearchRegistry.activeCount()
     const ok = snapshot.disposed && active === 0
     console.log("[openagents-desktop smoke] lifecycle-teardown", JSON.stringify({ ok, active }))
     desktopCorrelationJournal.dispose()
@@ -2486,6 +2553,7 @@ void app.whenReady().then(async () => {
       // per-account verified/broken journal entries with reasons.
       preflight: () => codexPreflight.probeAll("live_proof"),
       exit: (code) => {
+        workspaceSearchRegistry.dispose()
         hostLifecycle.dispose()
         providerAccounts.dispose()
         desktopCorrelationJournal.dispose()
@@ -2502,6 +2570,7 @@ app.on("window-all-closed", () => {
 })
 
 app.on("before-quit", () => {
+  workspaceSearchRegistry.dispose()
   hostLifecycle.dispose()
   providerAccounts.dispose()
   fableLocal.dispose()

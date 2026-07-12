@@ -8,6 +8,8 @@ export const DesktopWorkspaceSaveChannel = "openagents-desktop/workspace-save" a
 export const DesktopWorkspaceGitStatusChannel = "openagents-desktop/workspace-git-status" as const
 export const DesktopWorkspaceGitDiffChannel = "openagents-desktop/workspace-git-diff" as const
 export const DesktopWorkspaceTreeChannel = "openagents-desktop/workspace-tree" as const
+export const DesktopWorkspaceSearchChannel = "openagents-desktop/workspace-search" as const
+export const DesktopWorkspaceSearchCancelChannel = "openagents-desktop/workspace-search-cancel" as const
 export const DesktopWorkspaceRefreshChannel = "openagents-desktop/workspace-refresh" as const
 export const DesktopWorkspaceWatchChannel = "openagents-desktop/workspace-watch" as const
 export const DesktopWorkspaceChangeChannel = "openagents-desktop/workspace-change" as const
@@ -33,6 +35,29 @@ export const DesktopWorkspaceSearchRequestSchema = Schema.Struct({
     Schema.isInt(),
     Schema.isBetween({ minimum: 1, maximum: 100 }),
   )),
+})
+
+export const DesktopWorkspaceSearchRequestRefSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(160),
+)
+
+export const DesktopWorkspaceSearchBridgeRequestSchema = Schema.Struct({
+  requestRef: DesktopWorkspaceSearchRequestRefSchema,
+  query: Schema.String.check(Schema.isMaxLength(200)),
+  mode: Schema.Literals(["path", "content"]),
+  offset: Schema.optional(Schema.Number.check(
+    Schema.isInt(),
+    Schema.isBetween({ minimum: 0, maximum: 100 }),
+  )),
+  limit: Schema.optional(Schema.Number.check(
+    Schema.isInt(),
+    Schema.isBetween({ minimum: 1, maximum: 100 }),
+  )),
+})
+
+export const DesktopWorkspaceSearchCancelRequestSchema = Schema.Struct({
+  requestRef: DesktopWorkspaceSearchRequestRefSchema,
 })
 
 export const DesktopWorkspaceWatchRequestSchema = Schema.Struct({
@@ -95,6 +120,16 @@ export const DesktopWorkspaceSearchPageSchema = Schema.Union([
     message: Schema.String,
   }),
 ])
+
+export const DesktopWorkspaceSearchResponseSchema = Schema.Struct({
+  requestRef: DesktopWorkspaceSearchRequestRefSchema,
+  page: DesktopWorkspaceSearchPageSchema,
+})
+
+export const DesktopWorkspaceSearchCancelResultSchema = Schema.Struct({
+  requestRef: DesktopWorkspaceSearchRequestRefSchema,
+  cancelled: Schema.Boolean,
+})
 
 export const DesktopWorkspaceChangeSchema = Schema.Struct({
   kind: Schema.Literals(["changed", "overflow", "refresh"]),
@@ -169,6 +204,24 @@ export type DesktopWorkspaceSearchPage =
     }>
   | Readonly<{ state: "unavailable"; message: string }>
 
+export type DesktopWorkspaceSearchBridgeRequest = Readonly<{
+  requestRef: string
+  query: string
+  mode: "path" | "content"
+  offset?: number
+  limit?: number
+}>
+
+export type DesktopWorkspaceSearchResponse = Readonly<{
+  requestRef: string
+  page: DesktopWorkspaceSearchPage
+}>
+
+export type DesktopWorkspaceSearchCancelResult = Readonly<{
+  requestRef: string
+  cancelled: boolean
+}>
+
 export type DesktopWorkspaceChange = Readonly<{
   kind: "changed" | "overflow" | "refresh"
   pathRef: string | null
@@ -235,6 +288,27 @@ export const decodeWorkspaceSearchRequest = (
   return Exit.isSuccess(result) ? result.value : null
 }
 
+const validWorkspaceSearchRequestRef = (value: string): boolean =>
+  /^workspace\.search\.request\.[A-Za-z0-9._-]{1,120}$/u.test(value)
+
+export const decodeWorkspaceSearchBridgeRequest = (
+  value: unknown,
+): DesktopWorkspaceSearchBridgeRequest | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchBridgeRequestSchema)(value)
+  return Exit.isSuccess(result) && validWorkspaceSearchRequestRef(result.value.requestRef)
+    ? result.value
+    : null
+}
+
+export const decodeWorkspaceSearchCancelRequest = (
+  value: unknown,
+): { requestRef: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchCancelRequestSchema)(value)
+  return Exit.isSuccess(result) && validWorkspaceSearchRequestRef(result.value.requestRef)
+    ? result.value
+    : null
+}
+
 export const decodeWorkspaceWatchRequest = (
   value: unknown,
 ): { active: boolean } | null => {
@@ -254,6 +328,24 @@ export const decodeWorkspaceSearchPage = (
 ): DesktopWorkspaceSearchPage | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchPageSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceSearchResponse = (
+  value: unknown,
+): DesktopWorkspaceSearchResponse | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchResponseSchema)(value)
+  return Exit.isSuccess(result) && validWorkspaceSearchRequestRef(result.value.requestRef)
+    ? result.value
+    : null
+}
+
+export const decodeWorkspaceSearchCancelResult = (
+  value: unknown,
+): DesktopWorkspaceSearchCancelResult | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchCancelResultSchema)(value)
+  return Exit.isSuccess(result) && validWorkspaceSearchRequestRef(result.value.requestRef)
+    ? result.value
+    : null
 }
 
 export const decodeWorkspaceChange = (
