@@ -14,6 +14,7 @@ import { Effect } from "effect"
 
 import {
   makeMobileConversationHost,
+  runtimeOutcomeIsConfirmed,
   selectMobileConversation,
 } from "../src/conversation/mobile-conversation"
 
@@ -141,6 +142,41 @@ const makeConversation = (input: Readonly<{
 }
 
 describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
+  test("settles an exact new run canceled before provider event one without weakening append fencing", () => {
+    expect(runtimeOutcomeIsConfirmed({
+      activeRunRef: "turn.mobile.pre-event-cancel",
+      activeRunStatus: "canceled",
+      afterSequence: 0,
+      allowPreEventCancel: true,
+      latestSequence: 0,
+      runRef: "turn.mobile.pre-event-cancel",
+    })).toBe(true)
+    expect(runtimeOutcomeIsConfirmed({
+      activeRunRef: "turn.mobile.pre-event-cancel",
+      activeRunStatus: "canceled",
+      afterSequence: 0,
+      allowPreEventCancel: false,
+      latestSequence: 0,
+      runRef: "turn.mobile.pre-event-cancel",
+    })).toBe(false)
+    expect(runtimeOutcomeIsConfirmed({
+      activeRunRef: "turn.mobile.pre-event-cancel",
+      activeRunStatus: "completed",
+      afterSequence: 0,
+      allowPreEventCancel: true,
+      latestSequence: 0,
+      runRef: "turn.mobile.pre-event-cancel",
+    })).toBe(false)
+    expect(runtimeOutcomeIsConfirmed({
+      activeRunRef: "turn.mobile.pre-event-cancel",
+      activeRunStatus: "failed",
+      afterSequence: 0,
+      allowPreEventCancel: false,
+      latestSequence: 1,
+      runRef: "turn.mobile.pre-event-cancel",
+    })).toBe(true)
+  })
+
   test("production conversation reconciliation contains no interval polling loop", async () => {
     const source = await Bun.file(new URL(
       "../src/conversation/mobile-conversation.ts",

@@ -43,6 +43,30 @@ export type MobileConversationMutationResult =
   | Readonly<{ ok: true; thread: MobileConversationThread }>
   | Readonly<{ ok: false; error: string }>
 
+export const runtimeOutcomeIsConfirmed = (input: Readonly<{
+  activeRunRef: string | null
+  activeRunStatus: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled" | null
+  afterSequence: number
+  allowPreEventCancel: boolean
+  latestSequence: number
+  runRef: string
+}>): boolean =>
+  input.activeRunRef === input.runRef &&
+  (
+    input.activeRunStatus === "completed" ||
+    input.activeRunStatus === "failed" ||
+    input.activeRunStatus === "canceled"
+  ) &&
+  (
+    input.latestSequence > input.afterSequence ||
+    (
+      input.allowPreEventCancel &&
+      input.activeRunStatus === "canceled" &&
+      input.afterSequence === 0 &&
+      input.latestSequence === 0
+    )
+  )
+
 export type MobileRuntimeControlAction =
   | "cancel"
   | "close"
@@ -236,6 +260,7 @@ export const makeMobileConversationHost = (
     threadRef: string
     runRef: string
     afterSequence: number
+    allowPreEventCancel: boolean
     onUpdate?: (thread: MobileConversationThread) => void
   }>): Promise<
     | Readonly<{ kind: "settled"; thread: MobileConversationThread }>
@@ -268,12 +293,14 @@ export const makeMobileConversationHost = (
         0,
         ...(timeline?.events.map(event => event.sequence) ?? []),
       )
-      if (
-        thread !== null &&
-        activeRun?.runRef === input.runRef &&
-        latestSequence > input.afterSequence &&
-        (activeRun.status === "completed" || activeRun.status === "failed" || activeRun.status === "canceled")
-      ) return { kind: "settled", thread }
+      if (thread !== null && runtimeOutcomeIsConfirmed({
+        activeRunRef: activeRun?.runRef ?? null,
+        activeRunStatus: activeRun?.status ?? null,
+        afterSequence: input.afterSequence,
+        allowPreEventCancel: input.allowPreEventCancel,
+        latestSequence,
+        runRef: input.runRef,
+      })) return { kind: "settled", thread }
       return null
     }
 
@@ -666,6 +693,7 @@ export const makeMobileConversationHost = (
       const expectedRunRef = continuingActiveRun ? active.runRef : turnRef
       const settled = await confirmedRuntimeOutcome({
         afterSequence: continuingActiveRun ? previousSequence : 0,
+        allowPreEventCancel: !continuingActiveRun,
         intentId: runtimeIntent.intentId,
         onUpdate: input.onUpdate,
         runRef: expectedRunRef,

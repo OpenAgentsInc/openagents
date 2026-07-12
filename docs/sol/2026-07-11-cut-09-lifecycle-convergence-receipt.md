@@ -203,6 +203,30 @@ Still pending (unchanged): on-device sign-in and the physical mobile
 continuation/interrupt, the real network-gap offline queue, and
 unlink/revocation without replay — the owner-touch half of the journey.
 
+### Physical authenticated pre-event interrupt counterexample — 2026-07-12
+
+The owner released the phone after recording. Build 117 restored its verified
+native session and the exact Desktop-created thread on first launch. Mobile
+submitted one continuation and exposed Cancel while its new Codex turn was
+still queued. Cancel was accepted. Production truth then converged correctly:
+the exact runtime turn became `interrupted` with a durable settlement time,
+the agent-run projection became `canceled`, the canonical live graph ended,
+and thread-scope changelog version 7 carried all of those post-images. Because
+the runtime had not produced provider event one, the turn's event count
+correctly remained zero.
+
+The client nevertheless displayed `Runtime outcome is still pending
+reconciliation.` Its new-turn send waiter required a runtime-event sequence
+advance even when the exact new run had already reached the authoritative
+canceled post-image. That requirement is valid for appending to a pre-existing
+run, but impossible for a turn canceled before its first provider event.
+
+The repair accepts only this exact bounded case: the newly-created run ref,
+terminal `canceled` status, initial sequence zero, and zero current events.
+Completed/failed runs still require a real event, and append-to-existing-run
+waiters still require sequence advancement. The focused oracle covers all four
+branches. Physical rerun remains required after the repaired bundle is served.
+
 ## Close decision
 
 #8689 and #8677 remain open. Deterministic rows 7–9 are implemented, the
