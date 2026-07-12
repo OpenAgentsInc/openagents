@@ -241,13 +241,20 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   loss-free interruption); hardened macOS arm64 Forge artifact
   `4315500bff` (frozen identity, strict Electron fuses, hardened-runtime
   entitlements, provider runtimes outside ASAR, real unsigned package
-  receipt at 582 MB); API-key notarization wiring `844220af45`. A repo
-  guard now gates main pushes touching the Desktop app on the built
-  Electron smoke (`375a8997ff`).
-- Rung: **fixture-proven** + local unsigned-package receipt (partially
-  deployed: artifact built, not signed/published).
-- Remaining gates: (live/owner) Developer ID signing + notarization run from
-  the owner-held identity; DMG/ZIP make + publish; clean-machine
+  receipt at 582 MB); API-key notarization wiring `844220af45`; native DMG
+  maker preparation `dce7c749c3`. A real Developer ID signed and Apple-
+  notarized app, DMG, and ZIP were then produced locally: deep strict
+  `codesign`, stapler, and Gatekeeper all passed; Apple submission
+  `7f06b92a-99ae-4bb1-8c87-5d16eb728326` was accepted. The unpublished
+  artifacts were removed after verification. Independent signed-feed and
+  asset-preserving deploy seams landed through `a0419ffd13`; Cloud Build
+  `f8c2c6e5-f362-4b67-9f9d-4816215504d8` passed and Cloud Run revision
+  `oa-updates-00093-g22` serves the fail-closed feed boundary while
+  preserving the existing mobile release. A repo guard gates main pushes
+  touching the Desktop app on the built Electron smoke (`375a8997ff`).
+- Rung: **deployed** for the update-service seam and **live-proven** for local
+  signing/notarization verification; no Desktop artifact is published.
+- Remaining gates: DMG/ZIP publish; clean-machine
   install → update → interruption → rollback → uninstall acceptance
   transcript/video; and **legacy lockout** (marking direct Codex/Claude
   Code UI unsupported for the proven scope) has no landed evidence yet —
@@ -283,8 +290,9 @@ loss/exception register explicitly.
 ## #8707 completion criteria, one by one
 
 1. **Clean installed build, one real non-trivial task each with named Codex
-   and named Claude** — NOT met. Blocked by: CUT-26 signed/notarized
-   installer; CUT-21 live named-account receipts (owner Codex reconnect +
+   and named Claude** — NOT met. A signed/notarized installer has been
+   verified locally but is not published or clean-machine accepted. Blocked
+   by: CUT-21 live named-account receipts (owner Codex reconnect +
    a Claude turn with real output); CUT-16 residuals for the full composer
    loop. All in-app workbench legs (files/editor/Git/PTY/preview) are
    closed (CUT-17–CUT-20).
@@ -325,8 +333,8 @@ loss/exception register explicitly.
 2. CUT-16: attachment-bearing runtime submission/delivery end-to-end;
    Desktop attachments/mentions (I4); decide H2 session fork (build it or
    register it as an explicit exception).
-3. CUT-26: DMG/ZIP make+publish path and legacy-lockout enforcement for the
-   proven scope.
+3. CUT-26: publish the verified DMG/ZIP through the deployed signed-feed seam
+   and enforce legacy lockout for the proven scope.
 4. CUT-27 declaration artifacts: loss/exception register,
    provenance/rollback/a11y/privacy/security results bundle, and the
    default-surface docs flip (authorable only after (b)/(c) pass).
@@ -338,8 +346,8 @@ loss/exception register explicitly.
    the built app.
 2. CUT-23: one real plugin/skill workflow live receipt on the Claude lane
    (Codex recorded as an explicit unsupported fact).
-3. CUT-26: signed + notarized artifact via the landed API-key wiring; then
-   install/update/interruption/rollback/uninstall run.
+3. CUT-26: publish the locally verified signed/notarized artifact, then run
+   install/update/interruption/rollback/uninstall acceptance.
 4. CUT-25: live operator acceptance of the Fleet cockpit with named
    simultaneous Codex+Claude work.
 5. #8676: the full streamed Desktop conversation with mobile continuation
@@ -359,8 +367,8 @@ loss/exception register explicitly.
    automatable live-proof runs. Still the program's largest unstarted
    surface, but no hardware acquisition is required.
 5. CUT-24 residual: VoiceOver/TalkBack live-device accessibility QA.
-6. CUT-26: owner-held Developer ID identity for signing; clean-machine
-   acceptance transcript/video.
+6. CUT-26: clean-machine acceptance transcript/video (the owner-held
+   Developer ID signing/notarization gate passed locally on 2026-07-12).
 7. Final owner review/acceptance of the #8676 handoff and the CUT-27
    evidence bundle; only then close #8574's ordinary local-coding scope
    (never #8566/#8597, whose remote-first outcomes stay open).

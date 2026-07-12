@@ -1711,6 +1711,11 @@ disappear.
 - The full cross-platform app/protocol/data/update/OAuth identity freezes before
   the first packaged build. Packaged fuses, signing/notarization, clean-machine
   smoke, update, and rollback are required before distribution.
+- CUT-26 has now passed the local Developer ID signing, Apple notarization,
+  stapling, and Gatekeeper rung, and its independent signed update-feed seam is
+  deployed fail-closed. Distribution remains blocked on deliberate artifact
+  publication and the clean-machine install/update/interruption/rollback/
+  uninstall acceptance journey; a successful notarization is not that journey.
 - The live #8574 claim is the coordination authority for each leaf and every
   shared Effect Native hot contract.
 
