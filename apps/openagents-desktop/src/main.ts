@@ -1403,6 +1403,12 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
       (request.target.provider !== "claude_agent" || request.target.model !== FABLE_LOCAL_MODEL)) {
     return { ok: false, error: "That provider target is not available on the Fable lane." }
   }
+  const selectedSkill = request.skill === undefined
+    ? null
+    : pluginConfigStore.resolveSkill(request.skill.pluginRef, request.skill.name)
+  if (request.skill !== undefined && selectedSkill === null) {
+    return { ok: false, error: "That local skill is unavailable or disabled." }
+  }
   const store = threads()
   const user: DesktopMessage = {
     key: randomUUID(),
@@ -1432,6 +1438,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     history,
     message: turnPromptText(request.message, request.images),
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
+    ...(selectedSkill === null ? {} : { skillName: selectedSkill.name }),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
@@ -1601,6 +1608,9 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   if (request.target !== undefined &&
       (request.target.provider !== "codex" || request.target.model !== CODEX_LOCAL_MODEL)) {
     return { ok: false, error: "That provider target is not available on the Codex lane." }
+  }
+  if (request.skill !== undefined) {
+    return { ok: false, error: "Local Claude skills are not available on the Codex lane." }
   }
   const store = threads()
   const user: DesktopMessage = {

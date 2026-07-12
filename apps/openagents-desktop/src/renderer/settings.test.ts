@@ -94,7 +94,7 @@ describe("settingsView (state -> component tree)", () => {
         plugins: [{
           ref, name: "review-tools", provider: "claude_agent", provenance: "user_local",
           scope: "app", readiness: "ready", enabled: true, restartRequired: false,
-          perSessionUse: "next_turn", capabilities: ["commands", "skills"],
+          perSessionUse: "next_turn", capabilities: ["commands", "skills"], skills: ["review"],
         }],
       },
     })

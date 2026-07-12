@@ -10,6 +10,8 @@ const fixture = () => {
   const plugin = join(root, "fixture-plugin")
   mkdirSync(join(plugin, ".claude-plugin"), { recursive: true })
   writeFileSync(join(plugin, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "fixture" }))
+  mkdirSync(join(plugin, "skills", "review"), { recursive: true })
+  writeFileSync(join(plugin, "skills", "review", "SKILL.md"), "# Review\n")
   return { root, plugin, store: openPluginConfigStore(join(root, "plugins.json")) }
 }
 
@@ -23,10 +25,12 @@ describe("local plugin registry", () => {
       name: "fixture-plugin", provider: "claude_agent", provenance: "user_local",
       scope: "app", readiness: "ready", enabled: true, restartRequired: false,
       perSessionUse: "next_turn",
+      skills: ["review"],
     })
     expect(JSON.stringify(added)).not.toContain(root)
     expect(readFileSync(join(root, "plugins.json"), "utf8")).toContain(plugin)
     expect(store.enabledPaths()).toEqual([plugin])
+    expect(store.resolveSkill(added.plugins[0]!.ref, "review")).toEqual({ pluginPath: plugin, name: "review" })
   })
 
   test("toggle/remove are ref-bound and duplicate/invalid paths fail closed", () => {
@@ -49,5 +53,6 @@ describe("local plugin registry", () => {
     rmSync(plugin, { recursive: true })
     expect(store.list()).toMatchObject({ state: "ok", plugins: [{ readiness: "missing" }] })
     expect(store.enabledPaths()).toEqual([])
+    expect(store.resolveSkill(added.plugins[0]!.ref, "review")).toBeNull()
   })
 })

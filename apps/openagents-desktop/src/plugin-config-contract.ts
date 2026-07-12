@@ -11,6 +11,11 @@ export const PluginRefSchema = Schema.String.check(
   Schema.isPattern(/^plugin\.local\.[a-f0-9]{24}$/),
 )
 export type PluginRef = typeof PluginRefSchema.Type
+export const LocalSkillInvocationSchema = Schema.Struct({
+  pluginRef: PluginRefSchema,
+  name: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/)),
+})
+export type LocalSkillInvocation = typeof LocalSkillInvocationSchema.Type
 
 export const PluginConfigViewSchema = Schema.Struct({
   ref: PluginRefSchema,
@@ -23,6 +28,7 @@ export const PluginConfigViewSchema = Schema.Struct({
   restartRequired: Schema.Literal(false),
   perSessionUse: Schema.Literal("next_turn"),
   capabilities: Schema.Array(Schema.Literals(["commands", "agents", "skills", "hooks", "mcp"])),
+  skills: Schema.Array(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/))),
 })
 export type PluginConfigView = typeof PluginConfigViewSchema.Type
 

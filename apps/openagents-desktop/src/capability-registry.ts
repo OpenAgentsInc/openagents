@@ -97,6 +97,8 @@ const SMOKE = "apps/openagents-desktop/src/main.ts"
 const LIVE_PROOF = "apps/openagents-desktop/src/live-proof.ts"
 const MCP_SETTINGS = "apps/openagents-desktop/src/renderer/settings.test.ts"
 const MCP_HOST = "apps/openagents-desktop/src/mcp-config-host.test.ts"
+const SKILL_UI = "apps/openagents-desktop/src/renderer/skill-invocation.test.ts"
+const SKILL_HOST = "apps/openagents-desktop/tests/plugin-config.test.ts"
 const GIT_PANEL = "apps/openagents-desktop/src/renderer/git-panel.test.ts"
 const GIT_HOST = "apps/openagents-desktop/src/git-github-host.test.ts"
 const TERMINAL_HOST = "apps/openagents-desktop/src/terminal-host.test.ts"
@@ -128,7 +130,7 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // partial -> ui_available (typed workspace-bounded PTY host + bounded/redacted
   // terminal UI + adversarial suite + built-host/dev-preview receipts), taking
   // ui_available from 20 to 21 and partial from 16 to 15.
-  ui_available: 21,
+  ui_available: 22,
   // The Git/GitHub UI surface emptied the programmatic_only bucket: E2/E4/E5
   // are now ui_available and E3 (worktree/branch isolation) is partial (branch
   // UI wired, worktree creation still agent-only), so programmatic_only is 0.
@@ -138,9 +140,11 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // so G4 and J4 moved missing -> partial (A3 was already partial). Combined
   // with I2/I1 (missing -> ui_available), E3 (programmatic_only -> partial), and
   // CUT-20's D3 (partial -> ui_available): from the audit-time { 15, 4, 13, 8 }
-  // baseline the live registry is now { 21, 0, 15, 4 }.
+  // baseline the live registry became { 21, 0, 15, 4 }. CUT-23 R1 then wired
+  // I3's explicit slash grammar + host-validated SDK skill catalog, moving it
+  // missing -> ui_available: { 22, 0, 15, 3 }.
   partial: 15,
-  missing: 4,
+  missing: 3,
 } as const
 
 export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
@@ -428,11 +432,10 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     rung: "fixture",
   },
   {
-    id: "I3", group: "I", capability: "Skills / slash commands", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit I3: Skill is in FABLE_LOCAL_DISALLOWED_TOOLS and skills is []; no slash/skill invocation path",
+    id: "I3", group: "I", capability: "Skills / slash commands", status: "ui_available",
+    uiOracleRef: SKILL_UI, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: SKILL_HOST, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
   },
   {
     id: "I4", group: "I", capability: "File attachments / mentions", status: "missing",

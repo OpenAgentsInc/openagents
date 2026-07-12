@@ -177,6 +177,8 @@ import {
   type ComposerImageAttachment,
 } from "./composer-images.ts"
 import type { FableLocalImageAttachment, LocalProviderTarget } from "../fable-local-contract.ts"
+import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
+import { parseExplicitSkillInvocation } from "./skill-invocation.ts"
 
 export type DesktopNoteEntry = Readonly<{
   key: string
@@ -918,6 +920,7 @@ export type ChatHost = Readonly<{
     message: string
     harness?: DesktopHarnessName
     target?: LocalProviderTarget
+    skill?: LocalSkillInvocation
     /** Optional image attachments threaded into the turn payload (capability I1). */
     images?: ReadonlyArray<FableLocalImageAttachment>
     onUpdate?: (thread: DesktopThread) => void
@@ -1368,12 +1371,16 @@ export const makeDesktopShellHandlers = (
       // Capture the pending attachments BEFORE withNote clears them.
       const images = toStartImages(current.composerImages)
       const providerMessage = messageWithReviewContext(message, current.composerReviewContext)
+      const skillSelection = parseExplicitSkillInvocation(providerMessage, current.settings.plugins.plugins)
+      if (skillSelection.kind === "invalid") return
+      const routedMessage = skillSelection.message
       yield* SubscriptionRef.set(state, withNote(current, message, now()))
       const result = yield* Effect.promise(() => chat.sendMessage({
         id: current.activeThreadId!,
-        message: providerMessage,
+        message: routedMessage,
         harness: current.selectedHarness,
         ...(providerTargetForThread(current) === null ? {} : { target: providerTargetForThread(current)! }),
+        ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
         ...(images.length > 0 ? { images } : {}),
         onUpdate: thread => {
           Effect.runFork(SubscriptionRef.update(state, next =>

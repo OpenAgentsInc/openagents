@@ -229,8 +229,10 @@ describe("makeFableLocalRuntime.runTurn", () => {
       })() }),
       userPlugins: () => ["/private/plugin-a"],
     })
-    await runtime.runTurn({ turnRef: "turn-plugin", threadRef: "thread-plugin", history: [], message: "go", emit: collect().emit })
+    await runtime.runTurn({ turnRef: "turn-plugin", threadRef: "thread-plugin", history: [], message: "go", skillName: "review", emit: collect().emit })
     expect(harness.captured[0]!.options.plugins).toEqual([{ type: "local", path: "/private/plugin-a" }])
+    expect(harness.captured[0]!.options.skills).toEqual(["review"])
+    expect(harness.captured[0]!.options.disallowedTools).not.toContain("Skill")
   })
 
   test("capability I1: a turn with images lowers the prompt to an SDK base64 image content block", async () => {

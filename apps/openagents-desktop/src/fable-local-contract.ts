@@ -27,6 +27,7 @@ import {
   decode,
   type DesktopToolTrace,
 } from "./chat-contract.ts"
+import { LocalSkillInvocationSchema } from "./plugin-config-contract.ts"
 
 export const FableLocalAvailabilityChannel = "openagents:fable-local:availability" as const
 export const FableLocalStartChannel = "openagents:fable-local:start" as const
@@ -448,6 +449,8 @@ export const FableLocalStartRequestSchema = Schema.Struct({
   ),
   /** Exact owner-selected target; absent preserves automatic health ordering. */
   target: Schema.optional(LocalProviderTargetSchema),
+  /** Explicit `/skill` selection; main verifies it against the enabled host registry. */
+  skill: Schema.optional(LocalSkillInvocationSchema),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
 

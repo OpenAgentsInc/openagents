@@ -66,4 +66,14 @@ describe("local provider target contract", () => {
       model: "gpt-5.6-sol",
     })
   })
+
+  test("accepts only bounded explicit local skill selections", () => {
+    const value = {
+      ...request({ provider: "claude_agent", accountRef: "claude-pylon-2", model: "claude-fable-5" }),
+      skill: { pluginRef: "plugin.local.0123456789abcdef01234567", name: "review" },
+    }
+    expect(decodeFableLocalStartRequest(value)?.skill).toEqual(value.skill)
+    expect(decodeFableLocalStartRequest({ ...value, skill: { ...value.skill, name: "../escape" } })).toBeNull()
+    expect(decodeFableLocalStartRequest({ ...value, skill: { ...value.skill, pluginRef: "raw-path" } })).toBeNull()
+  })
 })

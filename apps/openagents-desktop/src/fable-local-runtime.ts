@@ -249,6 +249,8 @@ export type FableLocalTurnInput = Readonly<{
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
   accountRef?: string
+  /** Exact host-validated SDK skill name selected through explicit slash syntax. */
+  skillName?: string
   /**
    * Optional image attachments (capability I1). When present the turn's SDK
    * input becomes a streaming-input user message carrying the text plus one
@@ -1177,13 +1179,14 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             ...(delegateOffered ? { allowedTools: [FABLE_DELEGATE_TOOL_NAME] } : {}),
             // Plan mode allows ExitPlanMode so the model can present a plan;
             // otherwise the interactive-only plan tools stay disallowed.
-            disallowedTools: planMode
-              ? FABLE_LOCAL_DISALLOWED_TOOLS.filter(tool => tool !== "ExitPlanMode")
-              : [...FABLE_LOCAL_DISALLOWED_TOOLS],
+            disallowedTools: FABLE_LOCAL_DISALLOWED_TOOLS.filter(tool =>
+              (planMode && tool === "ExitPlanMode") || (input.skillName !== undefined && tool === "Skill")
+                ? false
+                : true),
             // AskUserQuestion answers + allow-everything-else (owner
             // full-access override; no PreToolUse containment guard).
             canUseTool,
-            skills: [],
+            skills: input.skillName === undefined ? [] : [input.skillName],
             settingSources: [],
             ...(options.userPlugins === undefined
               ? {}

@@ -3,8 +3,8 @@
 Date: 2026-07-12  
 Issue: [#8703](https://github.com/OpenAgentsInc/openagents/issues/8703)
 
-This tranche closes CUT-23 residual R2 without claiming the remaining
-skills/slash or permission-mode work complete.
+This receipt covers CUT-23 residual R2 and the subsequent R1 skills/slash
+tranche without claiming permission-mode work complete.
 
 ## Landed contract
 
@@ -35,9 +35,24 @@ disagreement is explicit, not silently emulated.
 - Built Electron smoke passed every required stage and ended with lifecycle
   teardown `active=0`.
 
+## R1 explicit skills/slash follow-up
+
+The host now discovers only `skills/<name>/SKILL.md` entries inside enabled,
+valid registered plugins and projects their bounded names. Settings shows the
+exact `/skill <plugin>/<skill>` command. The composer recognizes only the
+modeled leading `/skill <plugin>/<skill> <prompt>` grammar; ordinary prose is
+never keyword-routed. Renderer sends the matching opaque plugin ref and skill
+name, main re-resolves both against the current private registry, and only then
+does the runtime remove `Skill` from its disallowed set and pass exactly one
+SDK `skills` entry for that turn. Invalid, empty, stale, disabled, missing, and
+Codex-lane selections fail closed without an unskilled substitute execution.
+
+The R1 integrated verification passed with 907 tests, four unrelated
+capability skips, 4,730 assertions, and the full built-Electron smoke with
+`active=0`. Capability I3 is now honestly `ui_available` rather than `missing`.
+
 ## Remaining CUT-23 scope
 
-- R1: skills/slash invocation and lifecycle (I3).
 - R3: local permission-mode UI and runtime enforcement (J3).
 - One real plugin/skill workflow on each supported provider remains an exit
   receipt; unsupported provider capability must stay explicit.

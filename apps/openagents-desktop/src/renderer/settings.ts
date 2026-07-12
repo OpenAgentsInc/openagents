@@ -1439,6 +1439,7 @@ const pluginSection = (plugins: PluginSettingsState): ReadonlyArray<View> => [
               Text({ key: `settings-plugin-${plugin.ref}-name`, content: plugin.name, variant: "body", color: "textPrimary" }),
               Badge({ key: `settings-plugin-${plugin.ref}-status`, label: plugin.readiness, tone: plugin.readiness === "ready" ? "success" : "warn", a11y: { label: `${plugin.name} is ${plugin.readiness}` } }),
               Text({ key: `settings-plugin-${plugin.ref}-scope`, content: "Claude · app scope · next turn", variant: "label", color: "textMuted" }),
+              ...(plugin.skills.length === 0 ? [] : [Text({ key: `settings-plugin-${plugin.ref}-skills`, content: plugin.skills.map(name => `/skill ${plugin.name}/${name}`).join(" · "), variant: "label", color: "textMuted" })]),
               Spacer({ key: `settings-plugin-${plugin.ref}-fill`, flex: true }),
               Toggle({ key: `settings-plugin-${plugin.ref}-toggle`, value: plugin.enabled, label: plugin.enabled ? "Enabled" : "Disabled", onChange: IntentRef("DesktopPluginToggleRequested", StaticPayload(plugin.ref)), a11y: { label: `${plugin.enabled ? "Disable" : "Enable"} plugin ${plugin.name}` } }),
               Button({ key: `settings-plugin-${plugin.ref}-remove`, label: "Remove", variant: "ghost", onPress: IntentRef("DesktopPluginRemoveRequested", StaticPayload(plugin.ref)), a11y: { label: `Remove plugin ${plugin.name}` } }),

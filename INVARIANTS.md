@@ -722,6 +722,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   with a valid `.claude-plugin/plugin.json` may enter the pinned Agent SDK
   options; missing, invalid, duplicate, unknown-ref, and disabled entries fail
   closed and cannot be substituted by a provider-default plugin source.
+  Skills never auto-route from prose or keywords. Only the modeled leading
+  `/skill <plugin>/<skill> <prompt>` grammar can select a skill already present
+  in the typed enabled-plugin catalog; main re-resolves its opaque plugin ref
+  and exact `skills/<name>/SKILL.md` before enabling the SDK Skill tool for
+  that turn. Malformed, missing, disabled, duplicate-name, empty-prompt, and
+  stale selections fail closed without running an unskilled substitute turn.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.
