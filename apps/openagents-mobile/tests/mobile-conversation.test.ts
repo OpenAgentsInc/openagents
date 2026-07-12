@@ -195,6 +195,16 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     expect(selection).toEqual({ mode: "local" })
   })
 
+  test("refuses a message-only Sync host while the configured runtime service reconnects", async () => {
+    const fixture = makeConversation()
+    const selection = await selectMobileConversation({
+      conversation: () => fixture.conversation,
+      runtime: () => null,
+    })
+
+    expect(selection).toEqual({ mode: "local" })
+  })
+
   test("selects live Sync and reconstructs the confirmed initial thread", async () => {
     const fixture = makeConversation()
     const selection = await selectMobileConversation({

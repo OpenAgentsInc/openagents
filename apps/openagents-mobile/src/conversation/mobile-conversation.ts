@@ -765,7 +765,17 @@ export const selectMobileConversation = async (input: Readonly<{
   const agentGraph = input.agentGraph?.() ?? undefined
   const runtime = input.runtime?.() ?? undefined
   const interactions = input.interactions?.() ?? undefined
-  if (conversation === null || conversation.personalStatus().phase !== "live") {
+  // An authenticated selector that advertises Runtime commands must never
+  // publish a message-only Sync host. Reconnect can replace the underlying
+  // session between these service reads: the old conversation may still say
+  // `live` while the new session has not exposed its Runtime service yet.
+  // Falling back keeps the experience reconciler eligible to select again
+  // once one coherent live service set exists.
+  if (
+    conversation === null ||
+    conversation.personalStatus().phase !== "live" ||
+    (input.runtime !== undefined && runtime === undefined)
+  ) {
     return { mode: "local" }
   }
   const host = makeMobileConversationHost({
