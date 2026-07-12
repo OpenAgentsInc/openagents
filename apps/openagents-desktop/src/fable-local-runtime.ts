@@ -1651,12 +1651,12 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
     }
     yield {
       type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "Fable local " } },
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "Fable local **stream" } },
     }
     await sleep(150)
     yield {
       type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "**streaming" } },
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "ing**" } },
     }
     await sleep(150)
     yield {
@@ -1733,7 +1733,15 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
     await sleep(150)
     yield {
       type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "** proof." } },
+      event: {
+        type: "content_block_delta",
+        delta: {
+          type: "text_delta",
+          text: imageCount > 0
+            ? `proof.${FABLE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)}`
+            : "proof.",
+        },
+      },
     }
     yield {
       type: "result",

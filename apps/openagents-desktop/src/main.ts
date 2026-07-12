@@ -239,6 +239,7 @@ import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import { GitGithubChannel } from "./git-github-contract.ts"
 import { openGitGithubService } from "./git-github-host.ts"
+import { workspaceGitEnvironment } from "./git-process-environment.ts"
 import {
   TerminalCloseChannel,
   TerminalCreateChannel,
@@ -1104,12 +1105,18 @@ const prepareSmokeGitRoot = (): string => {
   const root = path.join(app.getPath("userData"), "git-review-smoke")
   rmSync(root, { recursive: true, force: true })
   mkdirSync(root, { recursive: true })
-  execFileSync("git", ["-C", root, "init", "--quiet", "-b", "main"])
-  execFileSync("git", ["-C", root, "config", "user.email", "desktop-smoke@openagents.test"])
-  execFileSync("git", ["-C", root, "config", "user.name", "OpenAgents Desktop Smoke"])
+  const runGit = (...args: ReadonlyArray<string>): void => {
+    execFileSync("git", ["-C", root, ...args], {
+      env: workspaceGitEnvironment(),
+      stdio: "ignore",
+    })
+  }
+  runGit("init", "--quiet", "-b", "main")
+  runGit("config", "user.email", "desktop-smoke@openagents.test")
+  runGit("config", "user.name", "OpenAgents Desktop Smoke")
   writeFileSync(path.join(root, "review-smoke.txt"), "base\n")
-  execFileSync("git", ["-C", root, "add", "review-smoke.txt"])
-  execFileSync("git", ["-C", root, "commit", "--quiet", "-m", "smoke base"])
+  runGit("add", "review-smoke.txt")
+  runGit("commit", "--quiet", "-m", "smoke base")
   writeFileSync(path.join(root, "review-smoke.txt"), "base\nreview change\n")
   return root
 }
@@ -3030,21 +3037,23 @@ const smokeFableLocalStreaming = `(async () => {
   input.focus()
   input.value = "Stream a fable-local proof"
   input.dispatchEvent(new Event("input", { bubbles: true }))
-  const assistantBody = () => {
+  const assistantBodies = () => {
     const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
-    const last = rows[rows.length - 1]
-    return last === undefined ? null : last.querySelector('[data-en-role="body"]')
+    return Array.from(rows)
+      .map((row) => row.querySelector('[data-en-role="body"]'))
+      .filter((body) => body !== null)
   }
   const assistantText = () => {
-    const body = assistantBody()
-    if (body === null) return ""
-    // Exclude the compact details affordance (a real text Button now) and
-    // any wrapper row that only hosts it.
-    return Array.from(body.childNodes)
-      .filter((node) => !(node instanceof HTMLElement &&
-        (node.tagName === "BUTTON" || node.querySelector("button") !== null)))
-      .map((node) => node.textContent ?? "")
-      .join("")
+    // Provider events are rendered in arrival order, so tool events close the
+    // current assistant segment and later text opens another one. Reconstruct
+    // the turn text across those ordered assistant segments while excluding
+    // each compact details affordance.
+    return assistantBodies().map((body) => Array.from(body.childNodes)
+        .filter((node) => !(node instanceof HTMLElement &&
+          (node.tagName === "BUTTON" || node.querySelector("button") !== null)))
+        .map((node) => node.textContent ?? "")
+        .join(""))
+      .join(" ")
   }
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
   const finalText = "Fable local streaming proof."
@@ -3090,8 +3099,9 @@ const smokeFableLocalStreaming = `(async () => {
     !toolText(planCards[0]).includes('{"todos"')
   const noSystemToolLabel = toolRows().every((row) => row.querySelector('[data-en-role="sender"]') === null)
   const toolTimestamps = toolRows().every((row) => row.querySelector('[data-en-role="timestamp"]') !== null)
-  const body = assistantBody()
-  const strong = body === null ? null : body.querySelector("strong")
+  const strong = assistantBodies()
+    .map((body) => body.querySelector("strong"))
+    .find((candidate) => candidate !== null) ?? null
   const markdownRendered = strong !== null && strong.textContent === "streaming" &&
     !assistantText().includes("**")
   const assistantRows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
