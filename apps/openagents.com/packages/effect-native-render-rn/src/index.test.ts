@@ -118,7 +118,7 @@ describe("React Native renderer host boundaries", () => {
     expect(host.type).toBe("SwiftHost")
     const component = host.props.children as ReactElementLike
     if (typeof component.type !== "function") throw new Error("expected native composer component")
-    const native = component.type({}) as ReactElementLike
+    const native = component.type(component.props) as ReactElementLike
     const nativeChildren = native.props.children as ReadonlyArray<ReactElementLike>
     const field = nativeChildren[0]!
     const submit = nativeChildren[1]!
@@ -134,6 +134,55 @@ describe("React Native renderer host boundaries", () => {
     expect(nativeState.get()).toBe("")
     if (typeof lifecycleRef === "function") lifecycleRef(null)
     for (const cleanup of cleanups) cleanup()
+  })
+
+  test("keeps the iOS glass composer component identity stable across draft emissions", () => {
+    const dependencies: ReactNativeDependencies = {
+      React: { createElement, useEffect: () => undefined },
+      ReactNative: { ...reactNative, Platform: { OS: "ios", Version: 26 } }
+    }
+    const expoUi: ExpoUiSwiftUiRuntime = {
+      Host: "SwiftHost",
+      HStack: "SwiftHStack",
+      VStack: "SwiftVStack",
+      Button: "SwiftButton",
+      Image: "SwiftImage",
+      Text: "SwiftText",
+      Spacer: "SwiftSpacer",
+      TextField: "SwiftTextField",
+      useNativeState: <Value>(initialValue: Value) => ({
+        get: () => initialValue,
+        set: () => undefined
+      }),
+      modifiers: {
+        glassEffect: (value) => ({ kind: "glass", value }),
+        foregroundStyle: (value) => ({ kind: "foreground", value }),
+        frame: (value) => ({ kind: "frame", value })
+      }
+    }
+    const render = (text: string): ReactElementLike => renderReactNativeView(
+      Composer({
+        key: "composer",
+        doc: [{ kind: "text", text }],
+        mode: "normal",
+        placeholder: "Message",
+        onChange: IntentRef("Changed"),
+        onSubmit: IntentRef("Submitted"),
+        style: { surface: "glass" }
+      }),
+      dependencies,
+      () => Effect.succeed(undefined),
+      { expoUi, platform: "ios" }
+    )
+    const firstHost = render("a").props.children as ReactElementLike
+    const secondHost = render("ab").props.children as ReactElementLike
+    const firstComposer = firstHost.props.children as ReactElementLike
+    const secondComposer = secondHost.props.children as ReactElementLike
+
+    expect(firstComposer.key).toBe("composer")
+    expect(secondComposer.key).toBe("composer")
+    expect(secondComposer.type).toBe(firstComposer.type)
+    expect(secondComposer.props.view).not.toBe(firstComposer.props.view)
   })
 
   test("keeps the accessible RN composer fallback on Android", () => {

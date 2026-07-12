@@ -1371,6 +1371,7 @@ const iconGlyphs: Record<IconName, string> = {
   Folder: "□",
   NotificationBell: "♢",
   Plane: "➤",
+  ArrowUp: "↑",
   Settings: "⚙",
   Terminal: ">_",
   Tools: "⌘",
@@ -3833,6 +3834,7 @@ const sfSymbolForIcon: Record<IconName, string> = {
   Folder: "folder",
   NotificationBell: "bell",
   Plane: "paperplane.fill",
+  ArrowUp: "arrow.up",
   Settings: "gearshape",
   Terminal: "apple.terminal",
   Tools: "wrench.and.screwdriver",
@@ -4191,6 +4193,87 @@ const renderExpoUiGlassContainer = (
 // button; controlled app resets synchronize through the Scope-bound React
 // lifecycle. Android, older iOS, and missing-module hosts use the RN fallback
 // in renderComposer with the same intents and accessibility labels.
+interface ExpoUiNativeComposerProps {
+  readonly view: ComposerView
+  readonly expoUi: ExpoUiSwiftUiRuntime & Required<Pick<ExpoUiSwiftUiRuntime, "TextField" | "useNativeState">>
+  readonly dependencies: ReactNativeDependencies
+  readonly report: IntentReporter
+  readonly theme: Theme
+  readonly useEffect: NonNullable<ReactRuntime["useEffect"]>
+}
+
+// Keep this component at module scope. Defining it inside
+// `renderExpoUiComposer` creates a new React component type for every emitted
+// Effect Native view. A controlled draft emits after every character, so that
+// old shape remounted the SwiftUI TextField and dismissed the iOS keyboard.
+const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLike => {
+  const { view, expoUi, dependencies, report, theme, useEffect } = props
+  const controlledValue = composerPlainText(view.doc)
+  const textState = expoUi.useNativeState(controlledValue)
+  useEffect(() => {
+    if (textState.get() !== controlledValue) {
+      textState.set(controlledValue)
+    }
+  }, [controlledValue, textState])
+  const submitDisabled = view.disabled === true || view.submitting === true ||
+    view.onSubmit === undefined
+  const submit = (): void => {
+    if (submitDisabled || view.onSubmit === undefined) return
+    const value = textState.get()
+    runReportedIntent(report, view.onSubmit, value)
+    if (view.clearOnSubmit === true) textState.set("")
+  }
+  return createElement(
+    dependencies,
+    expoUi.HStack,
+    {
+      spacing: spacingValue(theme, "2"),
+      modifiers: [
+        expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 }),
+        expoUi.modifiers.glassEffect({
+          glass: { variant: "regular", interactive: true },
+          shape: "capsule"
+        })
+      ]
+    },
+    createElement(dependencies, expoUi.TextField, {
+      key: "control",
+      text: textState,
+      placeholder: view.placeholder,
+      axis: "vertical",
+      accessibilityLabel: view.placeholder,
+      onTextChange: (value: string) => {
+        if (view.disabled !== true && view.onChange !== undefined) {
+          runReportedIntent(report, view.onChange, value)
+        }
+      },
+      modifiers: [expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 })]
+    }),
+    createElement(
+      dependencies,
+      expoUi.Button,
+      {
+        key: "submit",
+        accessibilityLabel: view.onSubmit === undefined
+          ? "Send unavailable"
+          : view.submitting === true ? "Message is sending" : "Send message",
+        onPress: submit,
+        modifiers: [
+          expoUi.modifiers.frame({ width: 44, height: 44 }),
+          ...(submitDisabled && expoUi.modifiers.disabled !== undefined
+            ? [expoUi.modifiers.disabled(true)]
+            : [])
+        ]
+      },
+      createElement(dependencies, expoUi.Image, {
+        systemName: view.submitting === true ? "ellipsis" : "arrow.up",
+        size: 17,
+        color: colorValue(theme, submitDisabled ? "textMuted" : "accent")
+      })
+    )
+  )
+}
+
 const renderExpoUiComposer = (
   view: ComposerView,
   expoUi: ExpoUiSwiftUiRuntime,
@@ -4205,72 +4288,6 @@ const renderExpoUiComposer = (
     throw new Error("@expo/ui composer lowering requires TextField, useNativeState, and React.useEffect")
   }
   const theme = options.theme ?? defaultTheme
-  const controlledValue = composerPlainText(view.doc)
-  const NativeComposer = (): ReactElementLike => {
-    const textState = useNativeState(controlledValue)
-    useEffect(() => {
-      if (textState.get() !== controlledValue) {
-        textState.set(controlledValue)
-      }
-    }, [controlledValue, textState])
-    const submitDisabled = view.disabled === true || view.submitting === true ||
-      view.onSubmit === undefined
-    const submit = (): void => {
-      if (submitDisabled || view.onSubmit === undefined) return
-      const value = textState.get()
-      runReportedIntent(report, view.onSubmit, value)
-      if (view.clearOnSubmit === true) textState.set("")
-    }
-    return createElement(
-      dependencies,
-      expoUi.HStack,
-      {
-        spacing: spacingValue(theme, "2"),
-        modifiers: [
-          expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 }),
-          expoUi.modifiers.glassEffect({
-            glass: { variant: "regular", interactive: true },
-            shape: "capsule"
-          })
-        ]
-      },
-      createElement(dependencies, TextField, {
-        key: "control",
-        text: textState,
-        placeholder: view.placeholder,
-        axis: "vertical",
-        accessibilityLabel: view.placeholder,
-        onTextChange: (value: string) => {
-          if (view.disabled !== true && view.onChange !== undefined) {
-            runReportedIntent(report, view.onChange, value)
-          }
-        },
-        modifiers: [expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 })]
-      }),
-      createElement(
-        dependencies,
-        expoUi.Button,
-        {
-          key: "submit",
-          accessibilityLabel: view.onSubmit === undefined
-            ? "Send unavailable"
-            : view.submitting === true ? "Message is sending" : "Send message",
-          onPress: submit,
-          modifiers: [
-            expoUi.modifiers.frame({ width: 44, height: 44 }),
-            ...(submitDisabled && expoUi.modifiers.disabled !== undefined
-              ? [expoUi.modifiers.disabled(true)]
-              : [])
-          ]
-        },
-        createElement(dependencies, expoUi.Image, {
-          systemName: view.submitting === true ? "ellipsis" : "arrow.up",
-          size: 17,
-          color: colorValue(theme, submitDisabled ? "textMuted" : "accent")
-        })
-      )
-    )
-  }
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
@@ -4283,7 +4300,15 @@ const renderExpoUiComposer = (
       dependencies,
       expoUi.Host,
       { key: "host", style: { flex: 1 } },
-      createElement(dependencies, NativeComposer, { key: "composer" })
+      createElement(dependencies, ExpoUiNativeComposer, {
+        key: "composer",
+        view,
+        expoUi: { ...expoUi, TextField, useNativeState },
+        dependencies,
+        report,
+        theme,
+        useEffect
+      })
     )
   )
 }
