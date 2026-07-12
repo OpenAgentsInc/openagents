@@ -1,7 +1,7 @@
 # Sol challenge and falsifier ledger
 
 - Date: 2026-07-09
-- Updated: 2026-07-10 (Desktop/mobile reliability reset)
+- Updated: 2026-07-12 (July 9 falsifier extraction)
 - Status: active roadmap-governance ledger
 - Canonical roadmap: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 
@@ -25,6 +25,11 @@ revisit as an accepted one.
 | Blueprint facts need correction, deletion, and provenance export. | Deferred until R7, with an automatic privacy/data-integrity tripwire. | #8642 | First real user requests correction/deletion, or a privacy incident shows an incorrect/over-broad projection. | Immediately on tripwire; otherwise after R7. |
 | Named colleagues/roles can regrow persona-first scope. | Paused. Any future automation consumes the same typed action/authority contracts; no role expansion during R0–R7. | #8643 | Owner explicitly reactivates after R7 with evidence of a distinct authority/scope/responsibility boundary. | Post-R7 only. |
 | Fixture-proven Blueprint or fleet work may be described as done before deployment/live acceptance. | Accepted; six-rung status vocabulary is mandatory. | All roadmap issues | Any report compresses code-landed, fixture-proven, deployed, live-proven, owner-accepted, and closed. | Every closeout/reconciliation. |
+| Effect Native can become an elegant framework bottleneck instead of product leverage after Sarah removal. | Accepted. Shared semantics/intents must be pulled by real Desktop/mobile consumers; renderer fidelity stays behind typed hosts. | #8566, #8574, #8597 | The second/third renderer costs more than a bounded platform implementation; consumer teams add local primitives/state; vendored versions drift; migration changes lines without deleting duplicate authority; or framework work lacks a two-renderer consumer. | Every shared-component migration; monthly while Effect Native is an active gate. |
+| Unified orchestration can hide custody, capacity, account, cost, or fallback rails. | Accepted. One claim system does not mean one undifferentiated authority/economic pool. | #8547, #8636 | `auto` changes rail silently; account/target refs disappear; owner subscription is called marketplace supply; org-cloud and local failures collapse; or fallback crosses owner/data/isolation boundaries. | Every target/broker/fallback change and R3/R7 receipt. |
+| Exact receipts can still be unusable trust projections. | Accepted. Preserve exact backend evidence while making the bounded projection answer the user's decision. | #8566, #8574, #8597 | A non-developer cannot determine what happened, why it is credible, what it cost, and what to do next in under one minute without raw refs, SQL, or logs. | Every D5/R3 receipt surface and R7 dogfood. |
+| High issue/commit velocity can create integration and documentation debt instead of complete loops. | Accepted. Measure completed user loops, deleted alternate paths, live receipts, and authority freshness—not volume alone. | Sol roadmap; #8566 | Closed issues rise while owner gates accumulate; no alternate path is deleted; roadmap/index/issue prose contradicts live state; or no weekly result reduces the systems a user must mentally join. | Weekly during P0 and every documentation-cleanup closeout. |
+| A temporary named compatibility adapter can become permanent product authority. | Accepted. `/api/sarah/fleet-runs` is a temporary typed adapter only; neutral clients/contracts are the destination and every bridge needs an owner, expiry, and deletion/rename gate. | #8566 | New client state depends on the Sarah name; no neutral route/contract owner exists; the adapter survives the next release gate without a dated decision; or it is used to revive Sarah UI/sequencing. | Every R7/release reconciliation until deleted or explicitly renamed. |
 
 New material disagreements append rows. `MASTER_ROADMAP.md` remains concise;
 this ledger carries the falsifier history.

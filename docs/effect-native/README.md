@@ -90,7 +90,7 @@ adopted greenfield-first: new surfaces are built on it immediately. Retained
 shipping surfaces migrate incrementally, while the owner-directed 2026-07-09
 mobile and desktop replacements are explicitly greenfield applications rather
 than in-place rewrites. The binding app decision is
-[`../sol/2026-07-09-greenfield-mobile-desktop-decision.md`](../sol/2026-07-09-greenfield-mobile-desktop-decision.md).
+[`../sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md`](../sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md).
 
 ## Documents in this folder
 

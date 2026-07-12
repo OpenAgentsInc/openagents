@@ -77,4 +77,4 @@ lineage and help parity; it cannot prove a greenfield app behavior, a store or
 desktop release, cross-device continuity, or safe Electron authority.
 
 The binding app decision and exact cutover gates live in
-[`../sol/2026-07-09-greenfield-mobile-desktop-decision.md`](../sol/2026-07-09-greenfield-mobile-desktop-decision.md).
+[`../sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md`](../sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md).
