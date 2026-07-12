@@ -1721,8 +1721,9 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
 })
 
 // Codex local lane (EP250 codex-first-class): a REAL `codex exec --json`
-// turn on this machine in local mode, on the isolated registry homes —
-// never the default ~/.codex, never the cloud gateway. Availability is
+// turn on this machine in local mode. The ordinary authenticated ~/.codex
+// session is preferred; isolated registry homes are fallback capacity. The
+// cloud gateway is never used. Availability is
 // PROBE-VERIFIED evidence (see codexPreflight above). Events reuse the
 // frozen fable-local envelope over the codex-local channels.
 // SMOKE sequencing gate: the built-Electron journey must assert BOTH chip

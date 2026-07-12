@@ -1,8 +1,8 @@
 /**
  * Codex child runtime (#8712 Lane C): runs ONE bounded `codex exec --json`
  * sub-agent per call, pinned to gpt-5.6-sol / medium reasoning, against the
- * pylon account registry's isolated Codex homes — NEVER the default
- * `~/.codex` home.
+ * user's ordinary authenticated `~/.codex` session first, with the Pylon
+ * account registry's isolated Codex homes as fallback capacity.
  *
  * Receipted spawn recipe (codex-cli 0.144.1, 2026-07-11):
  *
@@ -50,6 +50,7 @@
  */
 import { spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"
+import { access } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
@@ -79,7 +80,11 @@ import {
   type CodexChildUsage,
 } from "./codex-child-contract.ts"
 
-export type CodexChildAccount = Readonly<{ ref: string; home: string }>
+export type CodexChildAccount = Readonly<{
+  ref: string
+  home: string
+  source?: "current_session" | "pylon"
+}>
 
 // ---------------------------------------------------------------------------
 // In-process account health memory (EP250 rotation fix). Module-level =
@@ -156,20 +161,28 @@ export const redactChildText = (value: string, workspace: string, home = homedir
 export const discoverRegisteredCodexAccounts = async (
   env: Record<string, string | undefined> = process.env,
 ): Promise<ReadonlyArray<CodexChildAccount>> => {
+  const ownerHome = (env.HOME ?? "").trim() || homedir()
+  const currentHome = join(ownerHome, ".codex")
+  const accounts: CodexChildAccount[] = []
+  try {
+    await access(join(currentHome, "auth.json"))
+    accounts.push({ ref: "codex-current", home: currentHome, source: "current_session" })
+  } catch {
+    // No ordinary Codex session; isolated Pylon capacity remains available.
+  }
   const summary = { paths: { config: resolvePylonHome(env as NodeJS.ProcessEnv).config } }
   const registry = await loadPylonAccountRegistry(summary)
   const refs = registry
     .filter(entry => entry.provider === "codex" && entry.paused !== true)
     .map(entry => entry.ref)
     .sort((left, right) => left.localeCompare(right))
-  const accounts: CodexChildAccount[] = []
   for (const ref of refs) {
     try {
       const selection = await resolvePylonAccountSelection(summary, {
         provider: "codex",
         accountRef: ref,
       })
-      if (selection !== null) accounts.push({ ref, home: selection.home })
+      if (selection !== null) accounts.push({ ref, home: selection.home, source: "pylon" })
     } catch {
       // account home missing — skip, never a hard failure for the whole pool
     }
@@ -336,7 +349,13 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
           "--ephemeral",
           input.prompt,
         ],
-        env: pylonAccountEnvironment(env, selection),
+        env: input.account.source === "current_session"
+          ? (() => {
+              const current = { ...env }
+              delete current.CODEX_HOME
+              return current
+            })()
+          : pylonAccountEnvironment(env, selection),
         cwd: input.workspace,
       })
       if (child === null) {
@@ -516,7 +535,7 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
     if (accounts.length === 0) {
       return failure(
         "no_codex_account",
-        "no Codex account is registered in the pylon account registry",
+        "no authenticated local Codex session or registered Pylon Codex account is available",
         null,
       )
     }
@@ -595,13 +614,13 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
     if (preContentCount === 0) {
       return failure(
         "account_reconnect_required",
-        `all ${reconnectCount} registered Codex account(s) need reconnect (credentials rejected); reconnect with khala fleet connect`,
+        `all ${reconnectCount} available Codex session(s) need reconnect (credentials rejected)`,
         null,
       )
     }
     return failure(
       "child_failed",
-      `all ${ordered.length} registered Codex account(s) failed before producing content` +
+      `all ${ordered.length} available Codex session(s) failed before producing content` +
         ` (${reconnectCount} need reconnect, ${preContentCount} other pre-content failure(s));` +
         ` last: ${lastPreContentDetail}`,
       null,

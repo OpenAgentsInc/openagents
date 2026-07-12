@@ -572,7 +572,11 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
         if (terminalRootStatuses.has(child.status)) {
           return refuse("after_terminal", `activity for settled child ${event.childRef}`, at)
         }
-        return commit(at, [advanceNode(child, at, {})])
+        return commit(at, [advanceNode(child, at, {
+          ...(event.accountRef === undefined
+            ? {}
+            : { provider: knownProvider("codex", event.accountRef) }),
+        })])
       }
       case "child_completed":
       case "child_failed": {
@@ -583,7 +587,11 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
           return refuse("after_terminal", `child ${event.childRef} already settled`, at)
         }
         const accountRef = event.accountRef
-        const provider = accountRef === null || accountRef === undefined
+        // Provider identity is stable once observed. A later terminal account
+        // can differ after rotation, but exact terminal account attribution is
+        // carried separately by the usage ledger and must not rewrite the
+        // already-rendered live identity.
+        const provider = child.provider.state === "known" || accountRef === null || accountRef === undefined
           ? child.provider
           : knownProvider("codex", accountRef)
         const settled = event.kind === "child_completed"

@@ -236,7 +236,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     const verifiedRefs = new Set(options.preflight?.verifiedRefs() ?? [])
     return {
       accounts,
-      verified: accounts.filter(account => verifiedRefs.has(account.ref)),
+      verified: accounts.filter(account =>
+        account.source === "current_session" || verifiedRefs.has(account.ref)),
     }
   }
 
@@ -328,7 +329,13 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           ]
       const child = spawnCodex({
         args,
-        env: pylonAccountEnvironment(env, selection),
+        env: input.account.source === "current_session"
+          ? (() => {
+              const current = { ...env }
+              delete current.CODEX_HOME
+              return current
+            })()
+          : pylonAccountEnvironment(env, selection),
         cwd: input.workspace,
       })
       if (child === null) {
@@ -746,12 +753,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       if (otherFailures === 0) {
         return emitFailure(failure(
           "account_reconnect_required",
-          `all ${reconnectCount} registered Codex account(s) need reconnect (credentials rejected)`,
+          `all ${reconnectCount} available Codex session(s) need reconnect (credentials rejected)`,
         ))
       }
       return emitFailure(failure(
         "session_failed",
-        `all ${accounts.length} registered Codex account(s) failed before producing content` +
+        `all ${accounts.length} available Codex session(s) failed before producing content` +
           ` (${reconnectCount} need reconnect, ${otherFailures} other failure(s)); last: ${lastDetail}`,
       ))
     } finally {

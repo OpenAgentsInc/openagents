@@ -1138,7 +1138,7 @@ describe("Codex delegation through the Fable lane", () => {
     expect(failed.detail).toContain("reconnect")
     expect(toolResults[0]!.isError).toBe(true)
     const text = (toolResults[0]!.content as Array<{ text: string }>)[0]!.text
-    expect(text).toContain("all 2 registered Codex account(s) need reconnect")
+    expect(text).toContain("all 2 available Codex session(s) need reconnect")
     expect(text).toContain("No Codex child produced output.")
     // Both revoked accounts surfaced typed activity events (never silent).
     expect(sink.events.filter(event =>

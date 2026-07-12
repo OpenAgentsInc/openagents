@@ -139,11 +139,34 @@ describe("makeCodexChildRuntime.runChild", () => {
       "Summarize this\n\nContext:\nextra context",
     ])
     expect(CODEX_CHILD_SANDBOX).toBe("danger-full-access")
-    // pylonAccountEnvironment (provider codex): CODEX_HOME only — never the
-    // default ~/.codex, never any other provider-home mutation.
+    // Pylon fallback: CODEX_HOME only, never another provider-home mutation.
     expect(spawn.env.CODEX_HOME).toBe("/isolated/accounts/codex/codex")
     expect(spawn.env.PATH).toBe("/usr/bin")
     expect(spawn.cwd).toBe(join(scratch, "codex-children", "child-1"))
+  })
+
+  test("prefers the ordinary authenticated Codex session and clears a stale inherited CODEX_HOME", async () => {
+    const captured: SpawnCapture[] = []
+    const runtime = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-current-")),
+      env: { HOME: "/owner", CODEX_HOME: "/stale/pylon-home", PATH: "/usr/bin" },
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: fixtureCodexSuccessStdout(), exitCode: 0 }],
+        input => captured.push(input),
+      ),
+      discoverImpl: async () => [
+        { ref: "codex-current", home: "/owner/.codex", source: "current_session" },
+        accounts[0]!,
+      ],
+      health: makeCodexAccountHealth(),
+    })
+
+    const result = await runtime.runChild({ childRef: "child-current", task: "go", onEvent: () => {} })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.accountRef).toBe("codex-current")
+    expect(captured[0]!.env.HOME).toBe("/owner")
+    expect(captured[0]!.env.CODEX_HOME).toBeUndefined()
   })
 
   test("single child success carries exact usage totals from turn.completed (total = input+output+reasoning)", async () => {
@@ -241,8 +264,7 @@ describe("makeCodexChildRuntime.runChild", () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe("account_reconnect_required")
-    expect(result.detail).toContain("all 2 registered Codex account(s) need reconnect")
-    expect(result.detail).toContain("khala fleet connect")
+    expect(result.detail).toContain("all 2 available Codex session(s) need reconnect")
     expect(sink.events.filter(event => event.kind === "account_reconnect_required")).toHaveLength(2)
   })
 
@@ -326,7 +348,7 @@ describe("makeCodexChildRuntime.runChild", () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe("child_failed")
-    expect(result.detail).toContain("all 2 registered Codex account(s) failed before producing content")
+    expect(result.detail).toContain("all 2 available Codex session(s) failed before producing content")
     expect(result.detail).toContain("1 need reconnect")
     expect(result.detail).toContain("1 other pre-content failure(s)")
     expect(result.detail).toContain("stream disconnected")
@@ -560,7 +582,9 @@ describe("discoverRegisteredCodexAccounts (real registry read)", () => {
       )
     }
     writeConfig([{ ref: "codex", home: homeA }])
-    const env = { PYLON_HOME: pylonHome }
+    const ownerHome = join(pylonHome, "owner")
+    mkdirSync(ownerHome, { recursive: true })
+    const env = { HOME: ownerHome, PYLON_HOME: pylonHome }
 
     const before = await discoverRegisteredCodexAccounts(env)
     expect(before.map(account => account.ref)).toEqual(["codex"])
@@ -572,5 +596,24 @@ describe("discoverRegisteredCodexAccounts (real registry read)", () => {
 
     const after = await discoverRegisteredCodexAccounts(env)
     expect(after.map(account => account.ref)).toEqual(["codex", "codex-5"])
+  })
+
+  test("puts an ordinary authenticated ~/.codex session before Pylon fallbacks", async () => {
+    const pylonHome = mkdtempSync(join(tmpdir(), "codex-child-current-registry-"))
+    const ownerHome = join(pylonHome, "owner")
+    const currentHome = join(ownerHome, ".codex")
+    const fallbackHome = join(pylonHome, "accounts", "codex", "codex")
+    mkdirSync(currentHome, { recursive: true })
+    mkdirSync(fallbackHome, { recursive: true })
+    writeFileSync(join(currentHome, "auth.json"), "{}")
+    writeFileSync(join(pylonHome, "config.json"), JSON.stringify({
+      dev: { accounts: [{ provider: "codex", ref: "codex", home: fallbackHome }] },
+    }))
+
+    const found = await discoverRegisteredCodexAccounts({ HOME: ownerHome, PYLON_HOME: pylonHome })
+    expect(found.map(account => [account.ref, account.source])).toEqual([
+      ["codex-current", "current_session"],
+      ["codex", "pylon"],
+    ])
   })
 })

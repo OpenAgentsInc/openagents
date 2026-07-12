@@ -800,6 +800,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   Claude composer, the omitted/default target prefers the currently
   authenticated local Claude Code session and uses isolated Pylon Claude homes
   only as fallback; explicitly selecting a named Pylon account pins it.
+  The Codex composer and delegated Codex children follow the same precedence:
+  an omitted/default target prefers the ordinary authenticated local Codex
+  session, then uses isolated Pylon Codex homes as fallback; explicitly
+  selecting a named Pylon account pins it. Current-session launches must clear
+  an inherited `CODEX_HOME` so stale Pylon selection cannot override `~/.codex`.
   User-local Claude plugins are host-owned capabilities: absolute plugin paths
   remain in the owner-only main-process registry, while preload/renderer expose
   only opaque plugin refs plus bounded provenance, scope, readiness, enablement,

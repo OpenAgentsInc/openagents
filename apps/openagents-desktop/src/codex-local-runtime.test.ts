@@ -51,6 +51,35 @@ const verifiedPreflight = (refs: ReadonlyArray<string>) => ({
 })
 
 describe("makeCodexLocalRuntime.runTurn", () => {
+  test("prefers the ordinary Codex session without inheriting a stale Pylon CODEX_HOME", async () => {
+    const captured: SpawnCapture[] = []
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      env: { HOME: "/owner", CODEX_HOME: "/stale/pylon-home", PATH: "/usr/bin" },
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: fixtureCodexLocalTurnStdout(), exitCode: 0 }],
+        input => captured.push(input),
+      ),
+      discoverImpl: async () => [
+        { ref: "codex-current", home: "/owner/.codex", source: "current_session" },
+        accounts[0]!,
+      ],
+      health: makeCodexAccountHealth(),
+    })
+    const result = await runtime.runTurn({
+      turnRef: "turn-current",
+      threadRef: "thread-current",
+      history: [],
+      message: "hello",
+      emit: () => {},
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.accountRef).toBe("codex-current")
+    expect(captured[0]!.env.HOME).toBe("/owner")
+    expect(captured[0]!.env.CODEX_HOME).toBeUndefined()
+  })
+
   test("fresh turn spawns the receipted chat recipe: exec --json, pinned model/effort, danger-full-access, thread workspace cwd, NO --ephemeral", async () => {
     const captured: SpawnCapture[] = []
     const root = scratch()
@@ -366,7 +395,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.reason).toBe("account_reconnect_required")
-      expect(result.detail).toContain("all 2 registered Codex account(s) need reconnect")
+      expect(result.detail).toContain("all 2 available Codex session(s) need reconnect")
     }
     // Typed evidence flowed per rotated account (fleet/ledger feed).
     expect(evidences).toEqual([
@@ -435,6 +464,24 @@ describe("makeCodexLocalRuntime.runTurn", () => {
 })
 
 describe("makeCodexLocalRuntime.availability (chip-verified-evidence rule)", () => {
+  test("the ordinary authenticated session is available without a Pylon preflight receipt", async () => {
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      spawnImpl: makeFixtureCodexChildSpawn([{ stdout: "", exitCode: 0 }]),
+      discoverImpl: async () => [
+        { ref: "codex-current", home: "/owner/.codex", source: "current_session" },
+        accounts[0]!,
+      ],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight([]),
+    })
+    expect(await runtime.availability()).toEqual({
+      state: "available",
+      accountRef: "codex-current",
+      verifiedCount: 1,
+    })
+  })
+
   test("without a preflight there is NO verified evidence — unavailable even with registered accounts", async () => {
     const runtime = makeCodexLocalRuntime({
       scratchRoot: scratch,

@@ -87,12 +87,18 @@ describe("createLocalAgentGraphAssembler", () => {
       kind: "child_activity",
       childRef: "child.codex.turn-1.1",
       activity: "item",
-      summary: "agent_message: working",
+      accountRef: "codex-current",
+      summary: "using current Codex session",
     }, 5))
+    expect(nodeOf(assembler, "agent.local.turn-1.child.child.codex.turn-1.1").provider).toEqual({
+      state: "known",
+      kind: "codex",
+      providerRef: "account.codex.codex-current",
+    })
     expectApplied(apply(assembler, "turn-1", {
       kind: "child_completed",
       childRef: "child.codex.turn-1.1",
-      accountRef: "codex-2",
+      accountRef: "codex-current",
       summary: "done",
       usage: usageFixture,
       durationMs: 42_000,
@@ -157,7 +163,7 @@ describe("createLocalAgentGraphAssembler", () => {
     expect(childOne.provider).toEqual({
       state: "known",
       kind: "codex",
-      providerRef: "account.codex.codex-2",
+      providerRef: "account.codex.codex-current",
     })
     expect(childOne.runtime).toEqual({
       state: "known",
@@ -196,7 +202,7 @@ describe("createLocalAgentGraphAssembler", () => {
       agentRef: childOneRef,
       childRef: "child.codex.turn-1.1",
       provider: "codex",
-      accountRef: "codex-2",
+      accountRef: "codex-current",
       usageTruth: "exact",
       usage: usageFixture,
     })
