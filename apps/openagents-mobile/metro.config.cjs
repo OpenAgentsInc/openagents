@@ -3,6 +3,7 @@ const { createRequire } = require("node:module")
 
 const config = getDefaultConfig(__dirname)
 const defaultResolveRequest = config.resolver.resolveRequest
+const defaultRewriteRequestUrl = config.server.rewriteRequestUrl
 const expoRequire = createRequire(require.resolve("expo/metro-config"))
 
 // This app uses a plain React Native debug host rather than expo-dev-client.
@@ -11,6 +12,20 @@ const expoRequire = createRequire(require.resolve("expo/metro-config"))
 config.transformer.asyncRequireModulePath = expoRequire.resolve(
   "metro-runtime/src/modules/asyncRequire.js",
 )
+config.server.rewriteRequestUrl = (url) => {
+  const rewritten = typeof defaultRewriteRequestUrl === "function"
+    ? defaultRewriteRequestUrl(url)
+    : url
+  const absolute = rewritten.startsWith("/")
+    ? new URL(rewritten, "http://localhost")
+    : new URL(rewritten)
+  if (absolute.pathname.endsWith(".bundle")) {
+    absolute.searchParams.set("lazy", "false")
+  }
+  return rewritten.startsWith("/")
+    ? `${absolute.pathname}${absolute.search}`
+    : absolute.toString()
+}
 
 // Shared NodeNext packages use explicit `.js` specifiers so their emitted ESM
 // is valid. Metro consumes their TypeScript source directly, so map only those
