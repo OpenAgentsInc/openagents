@@ -1159,6 +1159,15 @@ ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   const user: DesktopMessage = { key: randomUUID(), role: "user", text: request.message.trim(), timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
   const saved = store.append(request.id, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  const selectedSessionRef = catalog?.snapshot().navigation?.selectedSessionRef ?? null
+  if (catalog !== null && catalog !== undefined && selectedSessionRef !== null) {
+    catalog.saveFocus(selectedSessionRef, {
+      kind: "conversation",
+      conversationRef: request.id,
+    })
+    publishCodingCatalog()
+  }
   try {
     const text = await completeChatTurn(saved.notes)
     const thread = store.append(saved.id, { key: randomUUID(), role: "assistant", text, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })

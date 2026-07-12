@@ -358,8 +358,26 @@ export const openDesktopCodingCatalog = (input: Readonly<{
 
   const saveFocus = (sessionRef: string, focus: CodingNavigationFocus): DesktopCodingCatalogSnapshot => {
     const current = snapshot()
-    if (!current.catalog.sessions.some(value => value.sessionRef === sessionRef)) return current
-    persistNavigation(current.catalog, sessionRef, focus, [sessionRef, ...(current.navigation?.openSessionRefs ?? [])])
+    const selected = current.catalog.sessions.find(value => value.sessionRef === sessionRef)
+    if (selected === undefined) return current
+    if (focus.kind === "conversation" &&
+      (selected.threadRef !== focus.conversationRef || selected.conversationRef !== focus.conversationRef)) {
+      const updatedAt = now()
+      const rebound = decodeCodingSessionEntity({
+        ...selected,
+        threadRef: focus.conversationRef,
+        conversationRef: focus.conversationRef,
+        updatedAt,
+        lastActiveAt: updatedAt,
+      })
+      persist([{
+        entityType: CODING_SESSION_ENTITY_TYPE,
+        entityId: sessionRef,
+        postImageJson: JSON.stringify(encodeCodingSessionEntity(rebound)),
+      }])
+    }
+    const next = snapshot()
+    persistNavigation(next.catalog, sessionRef, focus, [sessionRef, ...(current.navigation?.openSessionRefs ?? [])])
     return snapshot()
   }
 

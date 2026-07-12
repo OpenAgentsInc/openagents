@@ -112,6 +112,31 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
     }
   })
 
+  test("conversation focus rebinds the selected coding session to the exact chat thread", () => {
+    const h = fixture()
+    try {
+      const catalog = h.open()
+      const selected = catalog.selectWorkspace(h.firstWorkspace).catalog.sessions[0]!
+      const threadRef = "thread.desktop.real-chat"
+      const rebound = catalog.saveFocus(selected.sessionRef, {
+        kind: "conversation",
+        conversationRef: threadRef,
+      })
+      expect(rebound.catalog.sessions[0]).toMatchObject({
+        sessionRef: selected.sessionRef,
+        threadRef,
+        conversationRef: threadRef,
+      })
+      expect(rebound.navigation?.focus).toEqual({
+        kind: "conversation",
+        conversationRef: threadRef,
+      })
+    } finally {
+      Effect.runSync(h.store.close())
+      rmSync(h.root, { recursive: true, force: true })
+    }
+  })
+
   test("open, focus, recent sort, and archive survive as typed navigation", () => {
     const h = fixture()
     try {
