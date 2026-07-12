@@ -325,6 +325,7 @@ struct JobEvent {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PlacementResponse {
+    agent_computer_isolation_policy: Option<serde_json::Value>,
     binding: RunnerBinding,
     external_run_id: String,
     run: ControlRun,
@@ -1508,6 +1509,7 @@ fn start_placement_async(
     events.extend(run_response.events);
 
     Ok(PlacementResponse {
+        agent_computer_isolation_policy: assignment.agent_computer_isolation_policy.clone(),
         binding: binding.clone(),
         external_run_id: binding.external_run_id.clone(),
         run: ControlRun {
@@ -1632,6 +1634,7 @@ fn start_org_cloud_microvm_placement(
     });
 
     Ok(PlacementResponse {
+        agent_computer_isolation_policy: assignment.agent_computer_isolation_policy.clone(),
         binding: binding.clone(),
         external_run_id: external_run_id.clone(),
         run: ControlRun {
@@ -4809,6 +4812,7 @@ mod tests {
     fn placement_assignment(lane: ComputeLane) -> PlacementAssignment {
         PlacementAssignment {
             contract_version: openagents_cloud_contract::PLACEMENT_ASSIGNMENT_VERSION.to_string(),
+            agent_computer_isolation_policy: None,
             run_id: "agent_run_99".to_string(),
             owner_ref: "owner://sha256/example".to_string(),
             provider_account_ref: "provider-account_abc123".to_string(),

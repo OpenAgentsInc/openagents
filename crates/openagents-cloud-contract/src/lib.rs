@@ -2143,6 +2143,10 @@ impl Default for ComputeQuotaCaps {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PlacementAssignment {
     pub contract_version: String,
+    /// Caller-supplied isolation contract that the control plane must echo in
+    /// its placement response for fail-closed acceptance by the caller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_computer_isolation_policy: Option<serde_json::Value>,
     /// Stable run id assigned by the caller.
     pub run_id: String,
     /// Redacted owner ref used for per-owner quota evaluation.
@@ -3141,6 +3145,7 @@ mod tests {
     fn placement_fixture(lane: ComputeLane) -> PlacementAssignment {
         PlacementAssignment {
             contract_version: PLACEMENT_ASSIGNMENT_VERSION.to_string(),
+            agent_computer_isolation_policy: None,
             run_id: "agent_run_42".to_string(),
             owner_ref: "owner://sha256/example".to_string(),
             provider_account_ref: "provider-account_abc123".to_string(),
