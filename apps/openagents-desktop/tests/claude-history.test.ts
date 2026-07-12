@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -107,5 +107,66 @@ describe("claude history import (#8712 H3)", () => {
     const root = projectsRoot(); writeParent(root, "proj", "S", [{ nope: true }, "{bad"])
     // A session with no user text still surfaces with a fallback title.
     expect(readClaudeHistoryCatalog(root).roots[0]).toMatchObject({ title: "Untitled Claude chat", source: "claude" })
+  })
+})
+
+// Criterion 3 (#8702 CUT-22): each named bounded edge case gets an explicit
+// oracle. Malformed (a broken JSON line -> gap) and huge/scale (the 100 MiB
+// e2e oracle) and account-removal (absent root -> [], absent session root ->
+// orphan) are covered above / in claude-history-performance.e2e.test.ts; the
+// duplicate, truncated-record, and schema-drift cases are pinned here.
+describe("claude history import — bounded edge cases (#8702 criterion 3)", () => {
+  test("duplicate session id (resumed/appears twice) collapses to one node, newest wins", () => {
+    const root = projectsRoot()
+    // Same session id `S` materialized in two project dirs (a resumed session
+    // recorded twice). Distinguish by first-user title.
+    writeParent(root, "proj-old", "S", [user("u1", null, "Older copy of the session")])
+    writeParent(root, "proj-new", "S", [user("u1", null, "Newer copy of the session")])
+    // Force a deterministic mtime ordering: proj-new is strictly newer.
+    utimesSync(path.join(root, "proj-old", "S.jsonl"), new Date("2026-07-10T00:00:00Z"), new Date("2026-07-10T00:00:00Z"))
+    utimesSync(path.join(root, "proj-new", "S.jsonl"), new Date("2026-07-11T00:00:00Z"), new Date("2026-07-11T00:00:00Z"))
+    const catalog = readClaudeHistoryCatalog(root)
+    // Exactly one node for the id — no duplicate ref inflates the catalog.
+    const forS = catalog.agents.filter(agent => agent.threadRef === "claude:S")
+    expect(forS).toHaveLength(1)
+    expect(new Set(catalog.agents.map(agent => agent.threadRef)).size).toBe(catalog.agents.length)
+    // The newest file wins the dedup.
+    expect(forS[0]!.title).toBe("Newer copy of the session")
+    expect(decodeCodexHistoryCatalog(catalog)).not.toBeNull()
+  })
+
+  test("a truncated trailing record is bounded and loss-accounted as a gap, never a crash", () => {
+    const root = projectsRoot()
+    const dir = path.join(root, "proj"); mkdirSync(dir, { recursive: true })
+    // Valid first record, then a large UNTERMINATED partial JSON record with NO
+    // trailing newline — exactly the truncated-tail shape the O(L^2) head-strip
+    // fix guards. Must not hang and must project the partial as a gap.
+    const truncated = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"" + "z".repeat(4096)
+    writeFileSync(path.join(dir, "S.jsonl"), line(user("u1", null, "Good first record")) + "\n" + truncated)
+    // Catalog still builds with the recovered title.
+    expect(readClaudeHistoryCatalog(root).roots[0]).toMatchObject({ threadRef: "claude:S", title: "Good first record" })
+    const page = readClaudeHistoryPage({ projectsRoot: root, threadRef: "claude:S", limit: 200 })!
+    expect(page.items.at(-1)!.kind).toBe("gap")
+    expect(page.completeness.gaps).toBeGreaterThanOrEqual(1)
+    expect(page.completeness.source).toBe(page.completeness.rendered + page.completeness.redactions + page.completeness.gaps)
+    expect(decodeCodexHistoryPage(page)).not.toBeNull()
+  })
+
+  test("an unknown/future record type (schema drift) is bounded as a gap, not a crash", () => {
+    const root = projectsRoot()
+    writeParent(root, "proj", "S", [
+      user("u1", null, "Real turn"),
+      { type: "telemetry_v9_future", uuid: "x1", parentUuid: "u1", timestamp: "2026-07-10T00:00:05.000Z", metric: { latencyMs: 42 } },
+    ])
+    // The catalog still builds from the known record.
+    expect(readClaudeHistoryCatalog(root).roots[0]).toMatchObject({ threadRef: "claude:S", title: "Real turn" })
+    const page = readClaudeHistoryPage({ projectsRoot: root, threadRef: "claude:S", limit: 200 })!
+    // The unknown type is preserved as an explicit gap (value/unknown/loss),
+    // not silently dropped and not crashing the projector.
+    const drift = page.items.find(item => item.sourceType === "telemetry_v9_future")!
+    expect(drift.kind).toBe("gap")
+    expect(page.completeness.gaps).toBeGreaterThanOrEqual(1)
+    expect(page.completeness.source).toBe(page.completeness.rendered + page.completeness.redactions + page.completeness.gaps)
+    expect(decodeCodexHistoryPage(page)).not.toBeNull()
   })
 })
