@@ -143,6 +143,9 @@ the next host rung. Root-private relative-ref create/rename/non-recursive-delete
 and reveal capabilities now also exist with revision and permission fencing;
 their fixed decoded bridge is host-active with main-only reveal authority. The
 UI remains separate from portable materialization.
+The named real-worker scale receipt now covers a 20,000-file bounded traversal,
+current-epoch cache replay, and zero-active project close; it is host-capability
+evidence, not portable workspace materialization evidence.
 
 ### Episodes 248–249 calibration
 

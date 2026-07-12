@@ -7,8 +7,8 @@
   native draft persistence/Desktop gateway/mobile interaction and runtime-
   control UI active; mobile canonical rich-draft and native attachment
   acquisition active; CUT-17 workspace capability core/tree-watch-search host
-  bridge/cancellable search worker/mutation core active)
-- Revision: 67
+  bridge/cancellable search worker/mutation core/scale receipt active)
+- Revision: 68
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -710,8 +710,10 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   delete/reveal landed at `57488904c5`, including revision conflicts, permission
   denial, invisible-path refusal, and success-only epoch invalidation. Fixed
   decoded mutation/reveal IPC landed at `9f957a6d76`, with reveal authority
-  injected only in Electron main. Effect Native tree/search/mutation UI and the
-  scale benchmark remain before closure. See the
+  injected only in Electron main. The `60369f3009` real-worker scale receipt
+  bounds 20,000 files in 1.41 seconds, replays the epoch cache in 0.03 ms, and
+  closes watcher/search ownership at zero. Effect Native tree/search/mutation
+  UI and legacy absolute-root migration remain before closure. See the
   [`CUT-17 foundation receipt`](./2026-07-11-cut-17-workspace-capability-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402

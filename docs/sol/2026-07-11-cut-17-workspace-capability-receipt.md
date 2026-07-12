@@ -3,9 +3,10 @@
 - Date: 2026-07-11
 - Issue: [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697)
 - Status: capability core, tree/watch/search/mutation host bridge, cancellable
-  search worker, and mutation core landed; UI and closure evidence remain open
+  search worker, mutation core, and scale/lifecycle receipt landed; UI and
+  legacy projection migration remain open
 - Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`, `36725a91df`,
-  `57488904c5`, `9f957a6d76`
+  `57488904c5`, `9f957a6d76`, `60369f3009`
 
 ## Landed boundary
 
@@ -78,18 +79,22 @@ WorkContext; no absolute path returns. No mutation UI is claimed.
 - fixtures cover lexical traversal, file and directory symlink escape,
   `.gitignore`, hidden/secret filenames, secret-shaped content, binary data,
   large-root pagination, cache identity/invalidation, watcher overflow,
-  duplicate close, and terminal disposal; and
+  duplicate close, and terminal disposal;
 - every new tree/search projection is asserted not to contain the selected
-  absolute root.
+  absolute root; and
+- named scale/lifecycle receipt: the real bundled worker searched a synthetic
+  20,000-file repository to the declared visit cap in 1.41 seconds, returned a
+  truncated relative-ref-only result, replayed the current-epoch cache in
+  0.03 ms, then project close settled the pending worker, closed the watcher
+  once, and reported zero active searches. The integrated suite with this test
+  is 645 pass / 3,573 assertions plus the 11 existing named skips.
 
-No tree/search UI or scale-benchmark receipt is claimed.
+No tree/search/mutation UI is claimed.
 
 ## Remaining before CUT-17 closure
 
 - migrate the Files workspace to the new relative-ref boundary and ship the
   recursive accessible Effect Native tree/search experience;
 - add the renderer mutation/reveal controls;
-- run the required large-repository scale benchmark and built-host lifecycle
-  receipt; and
 - remove the legacy absolute-root renderer projection only after its consumers
   have migrated.
