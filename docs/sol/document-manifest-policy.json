@@ -3,12 +3,6 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
-    "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md": {
-      "class": "historical-analysis",
-      "owner": "Sol roadmap archive",
-      "disposition": "archive-candidate",
-      "dispatch": false
-    },
     "docs/sol/2026-07-10-episode-195-followup-analysis.md": {
       "class": "historical-analysis",
       "owner": "Sol product analysis",

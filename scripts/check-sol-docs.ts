@@ -27,6 +27,11 @@ export const REMOVED_JULY_9_PATHS = [
   "docs/sol/2026-07-09-sarah-first-product-architecture.md",
 ] as const
 
+export const REMOVED_SOL_ARCHIVE_PATHS = [
+  ...REMOVED_JULY_9_PATHS,
+  "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md",
+] as const
+
 export type RoadmapIssue = {
   number: number
   title: string
@@ -400,15 +405,28 @@ export function validatePreparedArchiveManifest(manifest: string): string[] {
     "Source repository: `OpenAgentsInc/openagents`",
     "Destination repository: `OpenAgentsInc/backroom`",
     "archive/openagents-sol-docs-2026-07-12/july10-delegation/",
-    "Status: prepared; no archive import or source deletion in SOL-DOC-09",
     "`2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`",
     "`177c38a9b41c5817c13fcf69ae529c55d8a60a0f2d039740bb81593b80abed2a`",
     "| 769 | 41044 |",
     "[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)",
     "[`2026-07-12-documentation-cleanup-audit-and-retirement-plan.md`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md)",
+    "Backroom import: `9c710a93`",
   ]
   for (const token of required) {
     if (!manifest.includes(token)) errors.push(`prepared archive manifest is missing: ${token}`)
+  }
+  const pending = /Status: Backroom import complete; OpenAgents source removal pending/.test(manifest)
+  const complete = /Status: archive\/import\/link migration\/source removal complete/.test(manifest)
+  if (!pending && !complete) {
+    errors.push("delegation archive manifest must declare pending-removal or completed state")
+  }
+  if (complete) {
+    for (const pattern of [
+      /OpenAgents link migration and source removal: `[0-9a-f]{8,40}`/,
+      /Backroom final bidirectional receipt: `[0-9a-f]{8,40}`/,
+    ]) {
+      if (!pattern.test(manifest)) errors.push("completed delegation archive manifest lacks final commit provenance")
+    }
   }
   const candidateRows = manifest.split("\n").filter((line) =>
     line.startsWith("| `2026-07-10-") && /`[a-f0-9]{64}`/.test(line),
@@ -419,7 +437,10 @@ export function validatePreparedArchiveManifest(manifest: string): string[] {
   if (!/Receipts, failures, decisions, transcripts,\s+tombstones, issue sources, and the cutover dependency contract are excluded\./m.test(manifest)) {
     errors.push("prepared archive manifest must explicitly exclude retained evidence and contracts")
   }
-  if (!/Backroom import is not pushed and hash-verified, no OpenAgents source\s+deletion begins/m.test(manifest)) {
+  if (
+    !/Backroom import is not pushed and hash-verified, no OpenAgents source\s+deletion begins/m.test(manifest)
+    && !/Backroom import `9c710a93` is pushed and hash-verified/m.test(manifest)
+  ) {
     errors.push("prepared archive manifest must retain the Backroom-first deletion gate")
   }
   return errors
@@ -459,7 +480,7 @@ export async function validateMarkdownLinks(root: string, files: string[]): Prom
         errors.push(`${relative(root, file)} links outside the repository: ${rawTarget}`)
         continue
       }
-      if (REMOVED_JULY_9_PATHS.includes(repoRelative as typeof REMOVED_JULY_9_PATHS[number])) {
+      if (REMOVED_SOL_ARCHIVE_PATHS.includes(repoRelative as typeof REMOVED_SOL_ARCHIVE_PATHS[number])) {
         errors.push(`${relative(root, file)} links to removed archive source ${repoRelative}`)
         continue
       }
@@ -586,10 +607,10 @@ export async function collectSolDocErrors(options: CheckOptions): Promise<string
   } catch (error) {
     errors.push(`document manifest validation failed: ${error instanceof Error ? error.message : String(error)}`)
   }
-  for (const path of REMOVED_JULY_9_PATHS) {
+  for (const path of REMOVED_SOL_ARCHIVE_PATHS) {
     try {
       await stat(join(root, path))
-      errors.push(`removed July 9 source exists in product repository: ${path}`)
+      errors.push(`removed archived source exists in product repository: ${path}`)
     } catch {
       // Absence is the required state.
     }

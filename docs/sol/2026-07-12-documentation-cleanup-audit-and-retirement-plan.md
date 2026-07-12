@@ -160,7 +160,7 @@ contradiction safer but makes the file globally less legible.
 
 ### 5. The largest executable packet is historical but still dispatchable
 
-[`2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+[`retired July 10 delegation diary`](https://github.com/OpenAgentsInc/backroom/blob/9c710a93/archive/openagents-sol-docs-2026-07-12/july10-delegation/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
 is a 793-line execution diary that claims executable authority under Revision
 25. It contains stale claim narration, old issue dispositions, and a reusable
 prompt directing agents to Revision 25. It has multiple inbound references.

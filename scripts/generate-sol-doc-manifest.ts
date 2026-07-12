@@ -218,6 +218,7 @@ export function buildSolDocumentManifest(root: string): SolDocumentManifest {
   }
 
   const allMarkdown = gitMarkdownFiles(absoluteRoot)
+    .filter((path) => existsSync(resolve(absoluteRoot, path)))
   const solDocuments = allMarkdown.filter((path) => path.startsWith("docs/sol/"))
   const issueClasses = classifiedIssuePaths(absoluteRoot)
   const receipts = receiptPaths(absoluteRoot)

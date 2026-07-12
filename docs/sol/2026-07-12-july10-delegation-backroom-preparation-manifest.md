@@ -5,9 +5,13 @@
 - Source repository: `OpenAgentsInc/openagents`
 - Source snapshot: `39a4c9177b`
 - Destination repository: `OpenAgentsInc/backroom`
-- Proposed destination:
+- Destination:
   `archive/openagents-sol-docs-2026-07-12/july10-delegation/`
-- Status: prepared; no archive import or source deletion in SOL-DOC-09
+- Status: Backroom import complete; OpenAgents source removal pending this
+  commit
+- Backroom import: `9c710a93`
+- OpenAgents link migration and source removal: pending
+- Backroom final bidirectional receipt: pending
 - Dispatch: no
 - Owner: Sol documentation cleanup
 
@@ -15,18 +19,18 @@
 
 | Source path under `docs/sol/` | SHA-256 | Lines | Bytes | Disposition after a pushed archive |
 | --- | --- | ---: | ---: | --- |
-| `2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md` | `177c38a9b41c5817c13fcf69ae529c55d8a60a0f2d039740bb81593b80abed2a` | 769 | 41044 | Migrate two inbound links; remove exact source path |
+| `2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md` | `177c38a9b41c5817c13fcf69ae529c55d8a60a0f2d039740bb81593b80abed2a` | 769 | 41044 | Exact bytes pushed to Backroom; link migration/source removal in SOL-DOC-10 |
 
 No other July 10 analysis, architecture, contract, capability ledger, or Terra
 amendment is in this batch. Receipts, failures, decisions, transcripts,
 tombstones, issue sources, and the cutover dependency contract are excluded.
 
-## Live inbound links at preparation time
+## Live inbound links at preparation time and migration
 
 | Inbound document | Replacement after archive push |
 | --- | --- |
-| [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) | Link the immutable Backroom blob only from the historical-detail index |
-| [`2026-07-12-documentation-cleanup-audit-and-retirement-plan.md`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md) | Link this manifest and the pushed Backroom archive receipt |
+| [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) | Migrated to immutable Backroom import `9c710a93` |
+| [`2026-07-12-documentation-cleanup-audit-and-retirement-plan.md`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md) | Migrated to immutable Backroom import `9c710a93`; this manifest retains provenance |
 
 Repository-wide Markdown search found no other inbound link. The source's own
 heading/path occurrence is not an inbound dependency.
@@ -62,6 +66,7 @@ chronology and obsolete queue.
    and record both repositories' commits in this manifest and the cleanup
    ledger.
 
-If the Backroom import is not pushed and hash-verified, no OpenAgents source
-deletion begins. SOL-DOC-09 prepares this gate only; the move requires a new
-cross-repository issue.
+Backroom import `9c710a93` is pushed and hash-verified. SOL-DOC-10 may therefore
+remove exactly the one manifested source after the two link migrations pass;
+the OpenAgents removal and final Backroom receipt remain pending until their
+commits exist on `main`.

@@ -627,7 +627,7 @@ evidence remains discoverable here:
 - [`receipt and evidence index`](./receipts/README.md)
 - [`binding CUT dependencies and historical status`](./2026-07-11-openagents-coding-cutover-issue-plan.md)
 - [`historical CUT-27 readiness audit`](./2026-07-12-cut27-cutover-readiness-audit.md)
-- [`retired July 10 execution diary`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- [`retired July 10 execution diary`](https://github.com/OpenAgentsInc/backroom/blob/9c710a93/archive/openagents-sol-docs-2026-07-12/july10-delegation/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
 - [`Desktop architecture boundary`](./2026-07-10-openagents-desktop-product-architecture.md)
 - [`historical Desktop parity baseline`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
 - [`remote-first portable-session pathway`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
