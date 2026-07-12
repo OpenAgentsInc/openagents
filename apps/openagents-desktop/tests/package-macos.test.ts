@@ -15,6 +15,9 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(asar.unpack).toContain("claude-agent-sdk")
     expect(asar.unpack).toContain("@openai/codex")
     expect(asar.unpackDir).toBe("dist/renderer")
+    const ignore = config.packagerConfig?.ignore
+    expect(typeof ignore).toBe("function")
+    expect(typeof ignore === "function" && ignore("/node_modules/effect/index.js")).toBe(true)
     expect(config.makers).toHaveLength(2)
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }
     expect(manifest.scripts["make:mac"]).toContain("prepare-macos-maker.ts")

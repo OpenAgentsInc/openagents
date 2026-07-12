@@ -12,7 +12,7 @@ import { createRequire } from "node:module"
 export const OPENAGENTS_DESKTOP_BUNDLE_ID = "com.openagents.desktop"
 export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents"
 
-const ignoredCheckoutPath = /^\/(src|scripts|tests|docs|receipts)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/
+const ignoredCheckoutPath = /^\/(src|scripts|tests|docs|receipts|node_modules)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/
 const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"))
 const developerIdApplication = process.env.OA_DEVELOPER_ID_APPLICATION
 const notarizeCredentials = process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &&
@@ -57,9 +57,11 @@ const config: ForgeConfig = {
       unpackDir: "dist/renderer",
     },
     // Forge's npm-oriented dependency walker cannot resolve Bun workspace
-    // links. The release preflight/ASAR oracle enforces the artifact allowlist
-    // after copying; disabling the broken prune avoids silently dropping a
-    // provider package or one of its platform executables.
+    // links. Ignore the workspace node_modules tree entirely: the application
+    // bundle already contains ordinary dependencies, and packageAfterCopy
+    // materializes only the provider packages/native executables that must
+    // remain external. This avoids a large, racy copy that is deleted anyway.
+    // The release preflight/ASAR oracle enforces the resulting allowlist.
     prune: false,
     derefSymlinks: true,
     icon: "dist/assets/openagents-icon.png",
