@@ -1677,6 +1677,7 @@ fn microvm_turn_runner_command(work_context_b64: &str) -> Vec<String> {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MicrovmTurnResult {
+    failure_reason_ref: Option<String>,
     model: Option<String>,
     model_token_receipt: Option<MicrovmModelReceipt>,
 }
@@ -1907,6 +1908,7 @@ fn run_org_cloud_microvm_worker(
                 "exitCode": exit_code,
                 "failureClass": failure_class,
                 "failureReasonRef": failure_reason_ref,
+                "guestFailureReasonRef": result.failure_reason_ref,
             }))?),
             detail: Some("Agent Computer microVM turn finished.".to_string()),
             digest: None,

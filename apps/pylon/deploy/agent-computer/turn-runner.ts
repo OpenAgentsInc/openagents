@@ -2086,15 +2086,27 @@ async function main() {
 }
 
 if (import.meta.main) {
-  main().catch((error) => {
+  main().catch(async (error) => {
+    const errorText = String(error)
+    const failureReasonRef =
+      /(?:codex|workspace)\.[A-Za-z0-9._:-]+/.exec(errorText)?.[0] ??
+      'agent_computer.turn_failed'
     const full = {
       schema: 'openagents.khala_runtime_event.v1',
       at: nowIso(),
       kind: 'turn.finished',
       turnId: 'turn-1',
       status: 'failed',
-      error: String(error),
+      error: failureReasonRef,
     }
+    await mkdir(ARTIFACT_DIR, { recursive: true })
+    await writeFile(
+      join(ARTIFACT_DIR, 'result.json'),
+      JSON.stringify({
+        schemaVersion: 'openagents.agent_computer.turn_result.v1',
+        failureReasonRef,
+      }),
+    )
     process.stdout.write(`${JSON.stringify(full)}\n`)
     process.exit(1)
   })
