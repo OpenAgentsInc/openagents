@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import {
   decodeFleetAccountEntity,
@@ -343,8 +343,16 @@ export const chatMessageIdFromBodyRef = (bodyRef: string | undefined): string | 
 
 export type CodexRawEvent = Record<string, unknown> & { type?: unknown }
 
+// Deterministic per-seed id. MUST be collision-resistant across distinct
+// seeds: the previous `hex(seed).slice(0, 24)` form kept only the first 12
+// seed characters, so every Desktop-origin turn (`turn.desktop.<random>`)
+// produced the SAME `event.runtime_claim.*` id and every run after the first
+// was rejected as "already recorded" and never dispatched (found live during
+// the #8676/#8689 physical receipt journey, 2026-07-12). A truncated SHA-256
+// keeps the id deterministic for exact-retry idempotency while making
+// distinct seeds produce distinct ids.
 const stableId = (prefix: string, seed: string): string =>
-  `${prefix}.${Buffer.from(seed).toString("hex").slice(0, 24) || randomUUID().replace(/-/g, "").slice(0, 24)}`
+  `${prefix}.${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`
 
 const runtimeOwnerLocalToolAuthority = (toolName: string): KhalaRuntimeToolAuthority => ({
   allowed: true,
@@ -2051,11 +2059,18 @@ const handleTurnStart = async (
       event: claimEvent,
       mutationId: turn.nextMutationId(),
     })
-  } catch {
+  } catch (error) {
     // Sequence 1 is the durable single-winner claim. A duplicate generation
-    // or an indeterminate write never proceeds to provider execution.
+    // or an indeterminate write never proceeds to provider execution. Carry
+    // the bounded push error so a systematic rejection (auth, schema, or an
+    // id-collision class of bug) is distinguishable from a lost race in the
+    // supervisor log instead of being silently swallowed.
     return {
-      detail: "runtime turn claim was not newly admitted; provider dispatch skipped",
+      detail: boundedDetail(
+        `runtime turn claim was not newly admitted; provider dispatch skipped (${
+          error instanceof Error ? error.message : String(error)
+        })`,
+      ),
       outcome: "skipped_stale",
     }
   }

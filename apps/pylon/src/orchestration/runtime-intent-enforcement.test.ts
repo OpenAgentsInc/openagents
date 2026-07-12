@@ -805,6 +805,74 @@ describe("enforcePendingRuntimeIntents", () => {
     }
   })
 
+  // Regression for the live #8676/#8689 physical-receipt counterexample
+  // (2026-07-12): the claim id derivation truncated the seed to its first 12
+  // characters, so every Desktop-origin `turn.desktop.<random>` turn produced
+  // the SAME `event.runtime_claim.*` id — the first Desktop run dispatched and
+  // every later one was rejected as already-recorded and never executed.
+  test("distinct turns sharing a long ref prefix produce distinct sequence-one claim ids and both dispatch", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "please say hello",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-1",
+      threadId: "thread-desktop-prefix",
+      updatedAt: iso,
+    }
+    const pushedClaims: Array<KhalaRuntimeEvent> = []
+    let finishCount = 0
+    let allFinished: (() => void) | undefined
+    const finished = new Promise<void>((resolve) => {
+      allFinished = resolve
+    })
+    const { options, cleanup } = await baseOptions({
+      codexThreadRunner: fakeCodexRunner([
+        { type: "turn.started" },
+        { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1, reasoning_output_tokens: 0 } },
+      ]),
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      pushEventImpl: async (input) => {
+        if (input.event.kind === "turn.started") pushedClaims.push(input.event)
+        if (input.event.kind === "turn.finished" && ++finishCount === 2) allFinished?.()
+      },
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-prefix-1",
+          kind: "turn.start",
+          seq: 1,
+          threadId: "thread-desktop-prefix",
+          turnId: "turn.desktop.aaaaaaaa1111",
+        }),
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-prefix-2",
+          kind: "turn.start",
+          seq: 2,
+          threadId: "thread-desktop-prefix",
+          turnId: "turn.desktop.bbbbbbbb2222",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes.map((o) => o.outcome)).toEqual(["applied", "applied"])
+      }
+      await finished
+      expect(pushedClaims).toHaveLength(2)
+      const claimIds = pushedClaims.map((e) => e.eventId)
+      expect(new Set(claimIds).size).toBe(2)
+      const claimTurns = new Set(pushedClaims.map((e) => e.turnId))
+      expect(claimTurns).toEqual(new Set(["turn.desktop.aaaaaaaa1111", "turn.desktop.bbbbbbbb2222"]))
+    } finally {
+      await cleanup()
+    }
+  })
+
   // Oracle for openagents_desktop.seam.runtime_gateway_conversation.v1.
   test("two consumers race one turn but only the durable sequence-one winner invokes Codex", async () => {
     const row = controlIntentRow({

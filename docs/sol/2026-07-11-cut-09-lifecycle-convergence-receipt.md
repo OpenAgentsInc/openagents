@@ -149,8 +149,64 @@ The remaining gate is therefore exactly the physical-touch set: unlock the
 phone, launch and sign in on-device, and run the authenticated 4-step
 cross-device fault journey above. Nothing hardware- or build-shaped remains.
 
+### Live Desktop rungs and a real counterexample — 2026-07-12 (owner unlocked the phone)
+
+After the owner unlocked the phone, the installed signed build launched on the
+physical iPhone via CoreDevice, fetched its development bundle over the local
+network, and reached the running app process. On-device sign-in remains the
+owner's step.
+
+The Desktop half of the journey then ran LIVE against the deployed hosted
+sync/API surface from the built Electron app (driven through the same
+registered Runtime Gateway v7 command/query contract the renderer UI issues,
+via devtools automation in the built renderer):
+
+- One real hosted conversation thread (`thread.desktop.ump71pzbbd`) was
+  created, a message appended, and a run started on the `codex_app_server`
+  lane. The standing runtime-intent consumer dispatched it against a named
+  isolated Codex account and the canonical stream settled `completed` with
+  exactly nine `openagents.khala_runtime_event.v1` events in dense sequence
+  1–9: `turn.started`, `text.delta`, `text.completed`, `tool.call`,
+  `tool.result`, `text.delta`, `text.completed`, `usage.recorded`,
+  `turn.finished(stop)` — text plus tool lifecycle plus usage plus one
+  terminal, exactly the required shape.
+- Host restart: after settlement the Electron host was fully restarted; the
+  same thread/run refs reconstructed the identical completed terminal
+  projection (nine events, same typed item ladder) from durable Sync state.
+- Renderer reload mid-stream: a later run (`turn.desktop.80ltpz1ez6`) was
+  reloaded while `running`; after reload the same runRef continued and settled
+  `completed` with the same dense unique 1–9 ladder — no duplicate sequence,
+  no second thread, no invented completion.
+
+**Live counterexample found and fixed.** The second and every subsequent
+Desktop-origin run was never dispatched: the consumer's durable sequence-one
+claim id (`stableId`) truncated its seed to the first 12 characters, so every
+`turn.desktop.<random>` turn produced the SAME `event.runtime_claim.*` id and
+the server correctly rejected each later claim as already recorded — misfiled
+as `skipped_stale` with the underlying error swallowed. Fixed in the same
+change: `stableId` now derives a truncated SHA-256 (deterministic for exact
+retry, distinct across turns), the swallowed claim-push error is surfaced in
+the bounded outcome detail, and a regression test drives two turns sharing a
+long ref prefix through dispatch and asserts distinct claim ids and both
+`applied`. The full orchestration suite (180 tests) passes.
+
+Two additional live observations recorded for follow-up, not fixed here:
+the standing launchd runtime supervisor was polling with a stale owner-user
+id from the pre-identity-migration universe (its poll feed no longer matched
+the identity current sessions resolve to, so hosted Desktop/mobile turns were
+invisible to it until a correctly-scoped consumer was run), and the Desktop
+renderer's boot-time chat-host selection can race the main-process Sync
+bootstrap and silently fall back to the local harness for the whole renderer
+session (relevant to #8690's synchronized live-event rework).
+
+Still pending (unchanged): on-device sign-in and the physical mobile
+continuation/interrupt, the real network-gap offline queue, and
+unlink/revocation without replay — the owner-touch half of the journey.
+
 ## Close decision
 
-#8689 and #8677 remain open. Deterministic rows 7–9 are implemented and the
-physical phone now carries the signed build, but the explicit live
-physical-device acceptance journey is still pending.
+#8689 and #8677 remain open. Deterministic rows 7–9 are implemented, the
+physical phone carries the signed build with the app launched, and the live
+Desktop stream/reload/restart rungs are now receipted against the deployed
+surface — but the physical mobile continuation, network-gap, and revocation
+rungs still await the owner's on-device sign-in and touch steps.
