@@ -781,6 +781,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration
   defensively reapplies it, with deterministic thread-ref tie-breaking.
+- Desktop chat context rails are genuinely pointer-resizable from 280–480px.
+  The shared SplitPane renderer targets the explicitly sized pane adjacent to
+  a divider (including a trailing/right pane), and the renderer-owned typed
+  resize intent persists that width across rerenders.
 - Desktop New Chat is never a silent no-op. The dock action, command palette,
   and platform Command-N chord dispatch one typed `DesktopNewChat` intent. A
   new thread is created first through the app-owned durable local store and

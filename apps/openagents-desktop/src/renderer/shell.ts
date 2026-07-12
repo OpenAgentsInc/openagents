@@ -319,6 +319,8 @@ export type DesktopShellState = Readonly<{
   agentGraph: LiveAgentGraphPresentation | null
   agentGraphExpanded: boolean
   selectedAgentRef: string | null
+  /** User-resized width of the live/message context rail. */
+  chatContextWidth: number
   codingCatalog: DesktopCodingCatalogProjection
   codingSessionFilter: CodingSessionFilter
   codingSessionQuery: string
@@ -403,6 +405,7 @@ export const initialDesktopShellState = (
   agentGraph: null,
   agentGraphExpanded: false,
   selectedAgentRef: null,
+  chatContextWidth: 336,
   codingCatalog: emptyDesktopCodingCatalogProjection(),
   codingSessionFilter: "active",
   codingSessionQuery: "",
@@ -536,6 +539,10 @@ export const DesktopQuestionOptionSelected = defineIntent(
 )
 export const DesktopQuestionSubmitted = defineIntent("DesktopQuestionSubmitted", Schema.String)
 export const DesktopAgentGraphToggled = defineIntent("DesktopAgentGraphToggled", Schema.Null)
+export const DesktopChatContextResized = defineIntent("DesktopChatContextResized", Schema.Struct({
+  paneId: Schema.String,
+  size: Schema.Number,
+}))
 export const DesktopAgentAction = defineIntent("DesktopAgentAction", Schema.Struct({
   kind: Schema.Literals(["inspect_agent", "focus_agent"]),
   agentRef: Schema.String,
@@ -594,6 +601,7 @@ export const desktopShellIntents = [
   DesktopQuestionOptionSelected,
   DesktopQuestionSubmitted,
   DesktopAgentGraphToggled,
+  DesktopChatContextResized,
   DesktopAgentAction,
   DesktopCodingCatalogFilterSelected,
   DesktopCodingCatalogQueryChanged,
@@ -1660,6 +1668,13 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, current => current.agentGraph === null
       ? current
       : { ...current, agentGraphExpanded: !current.agentGraphExpanded }),
+  DesktopChatContextResized: ({ paneId, size }) =>
+    paneId !== "chat-context-pane"
+      ? Effect.void
+      : SubscriptionRef.update(state, current => ({
+          ...current,
+          chatContextWidth: Math.min(480, Math.max(280, Math.round(size))),
+        })),
   DesktopAgentAction: ({ kind, agentRef }) =>
     SubscriptionRef.update(state, current => {
       if (current.agentGraph === null) return current
@@ -3455,6 +3470,7 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
   return [SplitPane({
     key: "chat-context-split",
     orientation: "row",
+    onResize: IntentRef("DesktopChatContextResized", ComponentValueBinding()),
     style: { flex: 1, minWidth: 0, minHeight: 0 },
     interactions: {
       onKey: [{ key: "Escape", preventDefault: true, intent: IntentRef("DesktopMessageSelected", StaticPayload("")) }],
@@ -3468,7 +3484,7 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
           [transcript, shellComposer(state)],
         ),
       },
-      { id: "chat-context-pane", min: 280, max: 480, size: 336, content: rightRail },
+      { id: "chat-context-pane", min: 280, max: 480, size: state.chatContextWidth, content: rightRail },
     ],
   })]
 }

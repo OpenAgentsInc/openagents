@@ -2183,19 +2183,22 @@ const renderSplitPane = (view: SplitPaneView, state: DomRendererState, report: I
       divider.tabIndex = 0
       divider.style.flex = "0 0 auto"
       divider.style[axis.sizeField] = "6px"
-      divider.style.cursor = axis.cursor
+      divider.style.cursor = view.onResize === undefined ? "default" : axis.cursor
       divider.style.background = colorValue("border")
       state.resetListeners(divider)
       const onResize = view.onResize
       if (onResize !== undefined) {
+        const nextPane = view.panes[index + 1]
+        const targetPane = pane.size !== undefined || nextPane?.size === undefined ? pane : nextPane
+        const deltaDirection = targetPane === pane ? 1 : -1
         let dragging = false
         let startCoord = 0
         let startSize = 0
         const move = (event: PointerEvent) => {
           if (!dragging) return
-          const delta = event[axis.clientAxis] - startCoord
-          const size = clampSize(startSize + delta, pane.min, pane.max, state.theme)
-          runReportedIntent(report, onResize, { paneId: pane.id, size })
+          const delta = (event[axis.clientAxis] - startCoord) * deltaDirection
+          const size = clampSize(startSize + delta, targetPane.min, targetPane.max, state.theme)
+          runReportedIntent(report, onResize, { paneId: targetPane.id, size })
         }
         const up = () => {
           dragging = false
@@ -2203,12 +2206,15 @@ const renderSplitPane = (view: SplitPaneView, state: DomRendererState, report: I
           element.ownerDocument.removeEventListener("pointerup", up as EventListener)
         }
         state.addListener(divider, "pointerdown", (event) => {
+          event.preventDefault()
           dragging = true
           startCoord = (event as PointerEvent)[axis.clientAxis]
-          const rect = paneEl.getBoundingClientRect?.()
+          const configuredSize = targetPane.size ?? 0
+          const rect = targetPane === pane ? paneEl.getBoundingClientRect?.() : undefined
           startSize = rect === undefined
-            ? (typeof pane.size === "number" ? pane.size : dimensionPixels(pane.size ?? 0, state.theme))
+            ? (typeof configuredSize === "number" ? configuredSize : dimensionPixels(configuredSize, state.theme))
             : rect[axis.sizeField]
+          ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.((event as PointerEvent).pointerId)
           element.ownerDocument.addEventListener("pointermove", move as EventListener)
           element.ownerDocument.addEventListener("pointerup", up as EventListener)
         })

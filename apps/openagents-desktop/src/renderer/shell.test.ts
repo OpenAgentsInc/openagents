@@ -1940,6 +1940,8 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     const open = desktopShellView(withMessageSelected(notesState, "assistant-1"))
     const split = nodeByKey(open, "chat-context-split")
     expect(split?._tag).toBe("SplitPane")
+    expect((split?.onResize as { name?: string })?.name).toBe("DesktopChatContextResized")
+    expect((split?.panes as ReadonlyArray<{ id: string; size?: number }>).find(pane => pane.id === "chat-context-pane")?.size).toBe(336)
     // Escape deselects through the same typed intent.
     const escape = (split?.interactions as { onKey?: Array<{ key: string; intent: { name?: string } }> })?.onKey?.[0]
     expect(escape?.key).toBe("Escape")
@@ -1958,6 +1960,20 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     // A dangling key (message no longer projected) renders no inspector.
     const dangling = desktopShellView({ ...notesState, selectedMessageKey: "gone" })
     expect(nodeByKey(dangling, "chat-message-inspector")).toBeUndefined()
+  })
+
+  test("right sidebar resize intent persists a bounded pane width", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const open = withMessageSelected(notesState, "assistant-1")
+      const state = yield* SubscriptionRef.make(open)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow))
+      const split = nodeByKey(desktopShellView(open), "chat-context-split") as { onResize: Parameters<typeof resolveIntentRef>[0] }
+      yield* registry.dispatch(resolveIntentRef(split.onResize, { paneId: "chat-context-pane", size: 420 }))
+      const resized = yield* SubscriptionRef.get(state)
+      expect(resized.chatContextWidth).toBe(420)
+      const rerendered = nodeByKey(desktopShellView(resized), "chat-context-split")
+      expect((rerendered?.panes as ReadonlyArray<{ id: string; size?: number }>).find(pane => pane.id === "chat-context-pane")?.size).toBe(420)
+    }))
   })
 
   test("the live sub-agent graph occupies the chat right sidebar", () => {

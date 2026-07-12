@@ -31,6 +31,35 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("split pane drag resizes a fixed trailing inspector pane", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    const reported: Array<unknown> = []
+    const report: IntentReporter = (_ref, runtimeValue) => {
+      reported.push(runtimeValue)
+      return Effect.succeed(undefined)
+    }
+    await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      yield* makeDomRenderer({ document }).mount(root, Stream.succeed(SplitPane({
+        key: "split-resizable",
+        orientation: "row",
+        onResize: IntentRef("ResizePane"),
+        panes: [
+          { id: "center", min: 360, content: Stack({ key: "center-resizable", direction: "column" }, []) },
+          { id: "inspector", min: 280, max: 480, size: 336, content: Stack({ key: "inspector-resizable", direction: "column" }, []) },
+        ],
+      })), report)
+      const divider = root.querySelector<HTMLElement>('[data-en-role="divider"]')!
+      divider.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, clientX: 500, pointerId: 1 }))
+      document.dispatchEvent(new window.PointerEvent("pointermove", { bubbles: true, clientX: 450, pointerId: 1 }))
+      document.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true, clientX: 450, pointerId: 1 }))
+      yield* nextTask
+      expect(reported).toContainEqual({ paneId: "inspector", size: 386 })
+    })))
+  })
+
   test("split panes establish a bounded flex viewport for scrolling children", async () => {
     const window=new Window({url:"http://localhost/"});const document=window.document as unknown as Document;const root=document.createElement("div");document.body.appendChild(root)
     await Effect.runPromise(Effect.scoped(Effect.gen(function*(){yield* makeDomRenderer({document}).mount(root,Stream.succeed(SplitPane({key:"split",orientation:"row",panes:[{id:"center",content:Stack({key:"center",direction:"column",style:{flex:1,minHeight:0}},[])}]})),()=>Effect.succeed(undefined));const pane=root.querySelector<HTMLElement>('[data-en-pane="center"]')!;const content=root.querySelector<HTMLElement>('[data-en-key="center"]')!;expect(pane.style.display).toBe("flex");expect(pane.style.minHeight).toBe("0");expect(content.style.flex).not.toBe("") })))
