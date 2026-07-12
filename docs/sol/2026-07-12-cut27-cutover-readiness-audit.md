@@ -251,7 +251,7 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   physical VoiceOver/TalkBack live-device QA — owner-gated manual
   acceptance.
 
-### CUT-25 #8705 — Fleet as authoritative cockpit + mobile attention surface — OPEN
+### CUT-25 #8705 — Fleet as authoritative cockpit + mobile attention surface — CLOSED
 
 - Landed on main: authoritative work cockpit `cc9cead0e1`; confirmed
   generation-bound interrupt/continue/retry/close controls over Runtime
@@ -259,13 +259,13 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   Approve/Deny pending-interaction controls `83efc87477`. Mobile derives
   from the same shared closed action table (pause deliberately filtered on
   mobile pending a distinct transport — a loss-register candidate).
-- Rung: **fixture-proven** (Desktop 912 pass / 3 documented skips at
-  landing; mobile 96 pass).
-- Remaining gate: live/physical operator acceptance including a successful
-  named-provider receipt — blocked behind CUT-21's live receipts and the
-  physical-device set. Its issue criterion "named simultaneous Codex+Claude
-  work with mobile attention/approval and Desktop acknowledgement" is the
-  same journey CUT-27 criterion 2 needs.
+- Rung: **closed**. Closed #8640 retains accepted simultaneous named Codex plus
+  Claude work, and CUT-21 retains successful named built-app receipts. The
+  owner-authenticated Android client then received a Desktop-issued retry,
+  canceled the exact canonical run, and converged to Resume/Retry/Close;
+  authenticated Desktop refreshed the same stable work-context card from
+  completed to canceled without an optimistic flip. See
+  [`2026-07-12-cut-25-cross-client-fleet-receipt.md`](./2026-07-12-cut-25-cross-client-fleet-receipt.md).
 
 ### CUT-26 #8706 — hardened distribution, updates, rollback, legacy lockout — OPEN
 

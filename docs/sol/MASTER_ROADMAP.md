@@ -7,9 +7,9 @@
   the physical authenticated catalog now visibly lists hosted Gemini plus
   three owner Codex targets and exact hosted-Gemini selection survives process
   replacement; CUT-26 publish/legacy-lockout
-  code complete; remaining local-cutover leaves are acceptance-gated CUT-09,
-  CUT-16, CUT-25, CUT-26, and CUT-27)
-- Revision: 80
+  code complete; CUT-25 cross-client Fleet control is closed; remaining
+  local-cutover leaves are acceptance-gated CUT-09, CUT-16, CUT-26, and CUT-27)
+- Revision: 81
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -1816,9 +1816,10 @@ universe.
 
 ## Canonical open issue set
 
-There are **12 open `roadmap:sol` records** as of 2026-07-12: #8547, #8566,
-#8574, #8597, #8636, #8676, #8677; open CUT leaves #8689, #8696, #8705,
-#8706, and #8707. CUT-14 #8694 is closed with authenticated physical iOS and
+There are **11 open `roadmap:sol` records** as of 2026-07-12: #8547, #8566,
+#8574, #8597, #8636, #8676, #8677; open CUT leaves #8689, #8696, #8706,
+and #8707. CUT-25 #8705 is closed with canonical Android control and built
+Desktop acknowledgement. CUT-14 #8694 is closed with authenticated physical iOS and
 Android-emulator directory, exact deep-link, and process-death receipts.
 Episode 250 slice #8712 is closed with its
 retained on-camera owner acceptance. #8566 remains the sole program epic. No new Agent Computer child
@@ -1863,7 +1864,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-16, CUT-25, CUT-26, and CUT-27 remain open. CUT-10 and CUT-14 are closed with their required physical receipts; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-16 now awaits only physical-iOS VoiceOver; CUT-25 awaits the simultaneous cross-client operator receipt; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
+| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-16, CUT-26, and CUT-27 remain open. CUT-10, CUT-14, and CUT-25 are closed with their required live/physical receipts; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-16 now awaits only physical-iOS VoiceOver; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
 | **Closed P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; Episode 250 transcript 250 retains the on-camera owner acceptance and explicit mechanics-win verdict. Do not add implementation children or treat later provider-capacity changes as invalidating the historical named-provider receipt. |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
