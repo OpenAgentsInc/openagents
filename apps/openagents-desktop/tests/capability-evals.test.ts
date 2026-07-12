@@ -98,12 +98,15 @@ describe("capability registry (EP250 audit §4 taxonomy)", () => {
 
   test("the audit's prose 'Totals' line is a KNOWN inconsistency, superseded by the tables", () => {
     // The audit summary prose says 33 / 13-4-10-6; its own §4 tables sum to
-    // 40 / 15-4-13-8. We follow the tables (the per-capability authority) and
-    // record the prose figure here so the discrepancy is explicit, not hidden.
+    // 40 / 15-4-13-8, and the live registry has since moved to 40 / 20-0-16-4.
+    // We follow the tables (the per-capability authority) and record the prose
+    // figure here so the discrepancy is explicit, not hidden.
     expect(AUDIT_PROSE_SUMMARY.total).not.toBe(CAPABILITY_TABLE_DISTRIBUTION.total)
     expect(AUDIT_PROSE_SUMMARY.ui_available).not.toBe(CAPABILITY_TABLE_DISTRIBUTION.ui_available)
-    // programmatic_only happens to agree (4); the rest diverge.
-    expect(AUDIT_PROSE_SUMMARY.programmatic_only).toBe(CAPABILITY_TABLE_DISTRIBUTION.programmatic_only)
+    // programmatic_only agreed at audit time (4), but the typed Git/GitHub UI
+    // surface emptied that bucket (E2/E4/E5 -> ui_available, E3 -> partial), so
+    // the live figure is now 0 and every field diverges from the stale prose.
+    expect(AUDIT_PROSE_SUMMARY.programmatic_only).not.toBe(CAPABILITY_TABLE_DISTRIBUTION.programmatic_only)
   })
 
   test("ui_available capabilities name BOTH oracles and neither is pending", () => {
@@ -478,6 +481,9 @@ describe("capability gaps (skipped-with-reason: blocked until wired)", () => {
     // progress); this image lane landed I1 (image input: composer
     // attach/drop/paste + both-lane wiring, headless oracle + smoke step). All
     // of those leave the blocked set, so only the still-unwired gaps remain.
+    // The Git/GitHub UI reconciliation (E2/E4/E5 -> ui_available, E3 -> partial)
+    // does not touch this set: those E rows always carried a wired programmatic
+    // oracle, so they were never in the both-pending blocked set.
     expect(blockedRows.map((row) => row.id).sort()).toEqual(
       ["D3", "H2", "H5", "I3", "I4", "J2"].sort(),
     )

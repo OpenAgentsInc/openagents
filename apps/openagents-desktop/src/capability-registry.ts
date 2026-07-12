@@ -97,6 +97,8 @@ const SMOKE = "apps/openagents-desktop/src/main.ts"
 const LIVE_PROOF = "apps/openagents-desktop/src/live-proof.ts"
 const MCP_SETTINGS = "apps/openagents-desktop/src/renderer/settings.test.ts"
 const MCP_HOST = "apps/openagents-desktop/src/mcp-config-host.test.ts"
+const GIT_PANEL = "apps/openagents-desktop/src/renderer/git-panel.test.ts"
+const GIT_HOST = "apps/openagents-desktop/src/git-github-host.test.ts"
 
 /** The audit's prose-summary figures — recorded, and flagged as inconsistent. */
 export const AUDIT_PROSE_SUMMARY = {
@@ -117,16 +119,22 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // I2 (user-configured MCP servers) landed settings UI + persistence host next
   // to the runtime passthrough, and I1 (image input) landed composer
   // attach/drop/paste + both-lane wiring (fixture-proven). Both flipped
-  // missing -> ui_available, so ui_available is now 17.
-  ui_available: 17,
-  programmatic_only: 4,
+  // missing -> ui_available. Then the typed Git/GitHub UI surface landed
+  // (git-github-host.ts + git-panel.ts + git-review smoke step, both oracles):
+  // E2 (commit/push), E4 (gh issue), and E5 (gh pr) flip programmatic_only ->
+  // ui_available, taking ui_available from 17 to 20.
+  ui_available: 20,
+  // The Git/GitHub UI surface emptied the programmatic_only bucket: E2/E4/E5
+  // are now ui_available and E3 (worktree/branch isolation) is partial (branch
+  // UI wired, worktree creation still agent-only), so programmatic_only is 0.
+  programmatic_only: 0,
   // EP250 wave-2 (#8712): the renderer surfaces landed for the queued follow-up
   // (A3), steer-a-running-child (G4), and task/todo progress (J4) capabilities,
-  // so G4 and J4 move missing -> partial (A3 was already partial). Combined
-  // with I2 (missing -> ui_available on the MCP-settings lane) and I1 (image
-  // input, missing -> ui_available on this lane): from the audit-time
-  // { 15, 4, 13, 8 } baseline the live registry is now { 17, 4, 15, 4 }.
-  partial: 15,
+  // so G4 and J4 moved missing -> partial (A3 was already partial). Combined
+  // with I2/I1 (missing -> ui_available) and now E3 (programmatic_only ->
+  // partial): from the audit-time { 15, 4, 13, 8 } baseline the live registry
+  // is now { 20, 0, 16, 4 }.
+  partial: 16,
   missing: 4,
 } as const
 
@@ -237,32 +245,41 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     rung: "live",
   },
   {
-    id: "E2", group: "E", capability: "Commit / push (fetch-rebase-push retry)", status: "programmatic_only",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: TOOLCARDS, programmaticOracleWiring: "existing_suite",
-    rung: "pending",
-    blocker: "audit E2: agent-mediated Bash only; no commit/push UI or gateway command (live commit-push rung blocked)",
+    id: "E2", group: "E", capability: "Commit / push (fetch-rebase-push retry)", status: "ui_available",
+    // EP250 (#8712): a typed Git/GitHub UI surface landed — git-panel.ts renders
+    // the commit box + push button with SHA/push receipts, and git-github-host.ts
+    // runs the real commit/push path against a real local bare remote (no mocks).
+    uiOracleRef: GIT_PANEL, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: GIT_HOST, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
   },
   {
-    id: "E3", group: "E", capability: "Worktree / branch isolation", status: "programmatic_only",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: TOOLCARDS, programmaticOracleWiring: "existing_suite",
+    id: "E3", group: "E", capability: "Worktree / branch isolation", status: "partial",
+    // EP250 (#8712): the branch list/create/checkout UI shipped (git-panel branch
+    // switcher; git-github-host branch-name validation + listing). Residual gap
+    // keeps this partial: worktree CREATION is still agent-only (no typed surface).
+    uiOracleRef: GIT_PANEL, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: GIT_HOST, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
-    blocker: "audit E3: worktree/branch isolation is agent-driven Bash only; no typed surface",
+    blocker: "audit E3: branch list/create/checkout UI is wired, but worktree CREATION is still agent-driven Bash only (no typed surface)",
   },
   {
-    id: "E4", group: "E", capability: "GitHub issues (gh issue)", status: "programmatic_only",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: TOOLCARDS, programmaticOracleWiring: "existing_suite",
+    id: "E4", group: "E", capability: "GitHub issues (gh issue)", status: "ui_available",
+    // EP250 (#8712): git-panel renders the issues/PRs section with a gh Create
+    // affordance + issue-create URL receipt; git-github-host parses the gh issue
+    // list and gates it behind the typed gh-unavailable reason.
+    uiOracleRef: GIT_PANEL, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: GIT_HOST, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
-    blocker: "audit E4: gh issue via agent Bash only; no UI (one live gh receipt rung pending)",
   },
   {
-    id: "E5", group: "E", capability: "GitHub PRs (gh pr)", status: "programmatic_only",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: TOOLCARDS, programmaticOracleWiring: "existing_suite",
+    id: "E5", group: "E", capability: "GitHub PRs (gh pr)", status: "ui_available",
+    // EP250 (#8712): git-panel renders the issues/PRs section with the gh Create
+    // affordance + receipt; git-github-host runs the gh pr path behind the typed
+    // gh-availability gate.
+    uiOracleRef: GIT_PANEL, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: GIT_HOST, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
-    blocker: "audit E5: gh pr via agent Bash only; no UI (one live gh receipt rung pending)",
   },
 
   // --- F. Web research ----------------------------------------------------
