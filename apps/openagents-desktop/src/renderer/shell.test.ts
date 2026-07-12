@@ -36,6 +36,7 @@ import {
   withNote,
   withPending,
   withTurnResult,
+  withThreads,
   withComposerImageAdded,
   withComposerImageNotice,
   type DesktopShellState,
@@ -816,6 +817,16 @@ describe("composer image input (capability I1)", () => {
 })
 
 describe("pure transitions", () => {
+  test("thread hydration defensively keeps the newest conversation first", () => {
+    const newest = { id: "newest", title: "Newest", updatedAt: "2026-07-12T18:22:45.258Z", notes: [] } as const
+    const oldest = { id: "oldest", title: "Oldest", updatedAt: "2026-07-12T16:00:00.000Z", notes: [] } as const
+
+    const next = withThreads({ ...baseState, activeThreadId: null }, [oldest, newest])
+
+    expect(next.threads.map(thread => thread.id)).toEqual(["newest", "oldest"])
+    expect(next.activeThreadId).toBe("newest")
+  })
+
   test("review context is visible, removable, and sent as bounded untrusted provider context", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const context = {

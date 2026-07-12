@@ -1,4 +1,4 @@
-import type { DesktopThread } from "../chat-contract.ts"
+import { compareDesktopThreadsByRecency, type DesktopThread } from "../chat-contract.ts"
 import {
   newestLiveAgentGraph,
   projectLiveAgentGraphPresentation,
@@ -711,6 +711,7 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
       }
       const hostedRefs = new Set(hosted.map(thread => thread.id))
       return [...hosted, ...local.filter(thread => !hostedRefs.has(thread.id))]
+        .sort(compareDesktopThreadsByRecency)
     },
     newThread: async () => {
       // New Chat is local-first navigation. It must never wait behind live

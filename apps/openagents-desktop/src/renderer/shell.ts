@@ -44,7 +44,7 @@ import {
   type View,
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
-import type { DesktopMessageMeta, DesktopQuestionCard, DesktopRuntimeCard, DesktopThread } from "../chat-contract.ts"
+import { compareDesktopThreadsByRecency, type DesktopMessageMeta, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
 import {
   contextGroupSummary,
   humanizeToolInvocation,
@@ -1100,12 +1100,13 @@ const unavailableCommandBindingHost: CommandBindingHost = {
 }
 
 export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
-  const active = state.activeThreadId === null ? threads[0] : threads.find((thread) => thread.id === state.activeThreadId)
+  const orderedThreads = [...threads].sort(compareDesktopThreadsByRecency)
+  const active = state.activeThreadId === null ? orderedThreads[0] : orderedThreads.find((thread) => thread.id === state.activeThreadId)
   return active === undefined
-    ? { ...state, threads: threads.slice(0, 5) }
+    ? { ...state, threads: orderedThreads.slice(0, 5) }
     : {
         ...state,
-        threads: threads.slice(0, 5),
+        threads: orderedThreads.slice(0, 5),
         activeThreadId: active.id,
         notes: active.notes,
         agentGraph: active.agentGraph ?? null,

@@ -772,6 +772,10 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
   linked Sync when the current gateway catalog is live, otherwise explicit
   local-only mode.
+- Desktop conversation navigation is globally ordered by descending
+  `updatedAt` across hosted and app-local threads, never grouped by source.
+  The converging host owns the canonical merge order and renderer hydration
+  defensively reapplies it, with deterministic thread-ref tie-breaking.
 - Desktop New Chat is never a silent no-op. The dock action, command palette,
   and platform Command-N chord dispatch one typed `DesktopNewChat` intent. A
   new thread is created first through the app-owned durable local store and

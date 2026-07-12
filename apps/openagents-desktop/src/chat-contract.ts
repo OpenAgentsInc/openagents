@@ -1,6 +1,14 @@
 import { Exit, Schema } from "@effect-native/core/effect"
 import type { LiveAgentGraphPresentation } from "./agent-graph-presentation.ts"
 
+/**
+ * Canonical conversation ordering: newest activity first across every host.
+ * ISO timestamps compare lexically, while the id tie-break keeps projections
+ * deterministic when two sources report the same update instant.
+ */
+export const compareDesktopThreadsByRecency = (left: DesktopThread, right: DesktopThread): number =>
+  right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
+
 export const DesktopThreadsChannel = "openagents-desktop/threads" as const
 export const DesktopNewThreadChannel = "openagents-desktop/thread-new" as const
 export const DesktopOpenThreadChannel = "openagents-desktop/thread-open" as const
