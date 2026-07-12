@@ -15,7 +15,6 @@ scope, and rung. Live issue state and the
 | Work | Evidence snapshot | Proof rung | Final disposition |
 | --- | --- | --- | --- |
 | CUT-09 [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`2026-07-11-cut-09-lifecycle-convergence-receipt.md`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) | fixture/built-host proven | Issue open for literal physical-iOS network-gap, reconnect, unlink/revocation, and no-replay acceptance |
-| CUT-26 [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | [`2026-07-12-cut-26-desktop-rc-publication-receipt.md`](../2026-07-12-cut-26-desktop-rc-publication-receipt.md) | distributed candidate; installed RC1 counterexample retained | Issue open for the next monotonic candidate and clean-machine coding/update/rollback/reinstall/uninstall/diagnostics lifecycle |
 | CUT-27 [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`2026-07-12-cut27-cutover-readiness-audit.md`](../2026-07-12-cut27-cutover-readiness-audit.md) | historical additive readiness snapshot | Issue open; the audit's earlier blocker tables are not current authority |
 
 ## Closed CUT proof
@@ -36,6 +35,7 @@ scope, and rung. Live issue state and the
 | CUT-19 #8699 | [`2026-07-11-cut-19-git-review-context-receipt.md`](../2026-07-11-cut-19-git-review-context-receipt.md) | closed | Git review and composer context accepted |
 | CUT-23 #8703 | [`2026-07-12-cut-23-plugin-registry-receipt.md`](../2026-07-12-cut-23-plugin-registry-receipt.md) | closed | Typed plugin/skill lifecycle accepted for Claude; Codex disagreement recorded as unsupported, not incomplete |
 | CUT-25 #8705 | [`2026-07-12-cut-25-cross-client-fleet-receipt.md`](../2026-07-12-cut-25-cross-client-fleet-receipt.md) | closed | Cross-client authoritative Fleet attention/control accepted |
+| CUT-26 #8706 | [`RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md); [`publication chronology`](../2026-07-12-cut-26-desktop-rc-publication-receipt.md) | closed/installed-artifact accepted | Hardened notarized RC5, interruption/resume, rollback refusal, uninstall/reinstall, diagnostics, and packaged smoke accepted |
 
 ## Closed supporting leaves and owner evidence
 

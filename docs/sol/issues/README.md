@@ -38,7 +38,6 @@ must equal the pinned product-issue projection.
 | Live issue | Current evidence |
 | --- | --- |
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) |
-| [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | [`CUT-26 publication receipt`](../2026-07-12-cut-26-desktop-rc-publication-receipt.md) |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
 | [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) master epic |
 | [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | Same plan: AUDIO-1 shared contract freeze |

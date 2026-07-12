@@ -7,11 +7,10 @@
 - Destination repository: `OpenAgentsInc/backroom`
 - Destination:
   `archive/openagents-sol-docs-2026-07-12/july10-delegation/`
-- Status: Backroom import complete; OpenAgents source removal pending this
-  commit
+- Status: archive/import/link migration/source removal complete
 - Backroom import: `9c710a93`
-- OpenAgents link migration and source removal: pending
-- Backroom final bidirectional receipt: pending
+- OpenAgents link migration and source removal: `03135f5d61`
+- Backroom final bidirectional receipt: `d7993ef5`
 - Dispatch: no
 - Owner: Sol documentation cleanup
 
@@ -66,7 +65,8 @@ chronology and obsolete queue.
    and record both repositories' commits in this manifest and the cleanup
    ledger.
 
-Backroom import `9c710a93` is pushed and hash-verified. SOL-DOC-10 may therefore
-remove exactly the one manifested source after the two link migrations pass;
-the OpenAgents removal and final Backroom receipt remain pending until their
-commits exist on `main`.
+Backroom import `9c710a93` was pushed and hash-verified before OpenAgents
+removal `03135f5d61`. Backroom final note `d7993ef5` records that removal and
+the exact retained payload. The batch is complete: the source is absent and
+permanently denied in OpenAgents, while this manifest and Backroom retain
+bidirectional provenance.

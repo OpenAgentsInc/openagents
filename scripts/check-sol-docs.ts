@@ -439,7 +439,7 @@ export function validatePreparedArchiveManifest(manifest: string): string[] {
   }
   if (
     !/Backroom import is not pushed and hash-verified, no OpenAgents source\s+deletion begins/m.test(manifest)
-    && !/Backroom import `9c710a93` is pushed and hash-verified/m.test(manifest)
+    && !/Backroom import `9c710a93` (?:is|was) pushed and hash-verified/m.test(manifest)
   ) {
     errors.push("prepared archive manifest must retain the Backroom-first deletion gate")
   }

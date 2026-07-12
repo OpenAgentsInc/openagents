@@ -46,11 +46,12 @@ bounded entry path contains the required facts and denies known stale routes.
   master product direction, live issues/claims, and current implementation
   evidence each own a distinct kind of truth.
 - The pinned product set is #8547, #8566, #8574, #8597, #8636, #8676, #8677,
-  #8689, #8706, #8707, and the P1-parallel AUDIO-0…AUDIO-8 lane
+  #8689, #8707, and the P1-parallel AUDIO-0…AUDIO-8 lane
   (#8733–#8741). The product projection intentionally excludes
   `area:docs`; it is not a claim that the snapshot replaces live GitHub.
-- The next-ready structure is a partial order: #8676/CUT-09 and CUT-26 may run
-  in parallel; CUT-09 precedes #8677; CUT-27 closes after those local cutover
+- The next-ready structure is a partial order: #8676 and CUT-09 may run in
+  parallel while closed CUT-26 remains evidence; CUT-09 precedes #8677;
+  CUT-27 closes after those local cutover
   dependencies; #8547 acceptance precedes #8636's live hybrid receipt.
 - The six proof rungs remain code-landed, fixture-proven,
   deployed/distributed, live-proven, owner-accepted, and closed.

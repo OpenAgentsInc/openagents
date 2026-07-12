@@ -492,14 +492,6 @@ Live issues and claims control exact selection. At this snapshot:
    cross-device control, voice follow-up, revocation, lost ACK, restart/update,
    failback, and reclaim with no fork, duplication, leak, orphan, or false
    authority.
-6. In a file/contract-disjoint P1 lane, freeze AUDIO-1 before implementation;
-   then compose AUDIO-2 and AUDIO-4, keep AUDIO-3 retained audio separately
-   opt-in and deletion-receipted, land AUDIO-5/AUDIO-6/AUDIO-7 through the
-   ordinary typed action/approval path, and close AUDIO-0 only after AUDIO-8
-   proves a real microphone/deployed lifecycle. This lane cannot preempt the
-   P0 local-cutover, fault, distribution, or managed-workroom exits and cannot
-   revive Sarah/persona authority.
-
 Owner or external gates shift capacity to another ready R0–R7 slice, never to
 closed presentation backlog. Claims are refreshed before every mutation.
 

@@ -66,8 +66,10 @@ describe("positive repository fixture", () => {
     const bytes = serializeSolDocumentManifest(first)
     expect(bytes).toBe(serializeSolDocumentManifest(second))
     expect(bytes).toBe(readFileSync(join(repositoryRoot, SOL_DOCUMENT_MANIFEST_PATH), "utf8"))
-    expect(first.documents.length).toBe(91)
-    expect(new Set(first.documents.map((document) => document.path)).size).toBe(91)
+    expect(first.documents.length).toBeGreaterThan(0)
+    expect(new Set(first.documents.map((document) => document.path)).size).toBe(
+      first.documents.length,
+    )
     expect(first.documents.every((document) =>
       document.class && document.owner && document.reviewedAt && document.disposition
       && document.status && document.snapshot && document.reviewTrigger

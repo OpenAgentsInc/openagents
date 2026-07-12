@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-12T20:06:42.617Z",
+  "generatedAt": "2026-07-12T20:11:43.022Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -115,18 +115,6 @@
       "state": "OPEN",
       "title": "CUT-09 — Converge restart, stale generation, revocation, and interrupted finalization",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8689"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "effect",
-        "area:desktop",
-        "roadmap:sol"
-      ],
-      "number": 8706,
-      "state": "OPEN",
-      "title": "CUT-26 — Ship hardened Desktop distribution, updates, rollback, and legacy lockout",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8706"
     },
     {
       "labels": [
