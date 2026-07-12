@@ -141,7 +141,8 @@ main/preload search/cancel operations now bind one task to the exact
 webContents/request ref and close with that owner; the Effect Native UI remains
 the next host rung. Root-private relative-ref create/rename/non-recursive-delete
 and reveal capabilities now also exist with revision and permission fencing;
-their fixed bridge and UI remain separate from portable materialization.
+their fixed decoded bridge is host-active with main-only reveal authority. The
+UI remains separate from portable materialization.
 
 ### Episodes 248–249 calibration
 

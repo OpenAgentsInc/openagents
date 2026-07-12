@@ -55,7 +55,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) — deterministic/native implementation complete through `5aeabdbb1e`; authenticated directory, exact restore, live fence, and URL/notification delivery landed; physical receipts pending | M1 / mobile binding | CUT-01, CUT-13 |
 | 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) — closed `5d36b73ad2`; canonical registry, owner-private bindings, native/deferred routing, and built-host receipt | D2 / commands | CUT-13 |
 | 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) — interaction authority + both native UIs + mobile runtime controls/canonical draft restore/native acquisition landed; attachment delivery, selectors/Desktop adoption, named Codex/deploy, and physical receipts pending | D1-D2 / interaction | CUT-12, CUT-15 |
-| 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) — capability core `4bbf0c7758` + tree/watch bridge `37372f30e2` + search worker/IPC `efe7738ff1`/`36725a91df` + mutation core `57488904c5`; UI/mutation IPC/scale pending | D3 / workspace | CUT-13 |
+| 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) — capability core `4bbf0c7758` + tree/watch bridge `37372f30e2` + search worker/IPC `efe7738ff1`/`36725a91df` + mutation core/IPC `57488904c5`/`9f957a6d76`; UI/scale pending | D3 / workspace | CUT-13 |
 | 18 | CUT-18 | [#8698](https://github.com/OpenAgentsInc/openagents/issues/8698) | D3 / editor | CUT-17 |
 | 19 | CUT-19 | [#8699](https://github.com/OpenAgentsInc/openagents/issues/8699) | D3 / Git | CUT-18 |
 | 20 | CUT-20 | [#8700](https://github.com/OpenAgentsInc/openagents/issues/8700) | D3 / terminal-preview | CUT-17 |
@@ -771,8 +771,9 @@ cancellable worker per task and proves the real bundled artifact. `36725a91df`
 wires fixed search/cancel IPC with exact webContents/request fencing and a real
 built-host relative match. Effect Native tree/search UI is not wired;
 `57488904c5` adds the root-private revision-bound mutation/reveal core with typed
-conflict and permission outcomes. Fixed mutation IPC, Effect Native tree/search/
-mutation UI, and the required scale/lifecycle receipt remain.
+conflict and permission outcomes; `9f957a6d76` wires its fixed decoded bridge
+with main-only reveal authority. Effect Native tree/search/mutation UI and the
+required scale/lifecycle receipt remain.
 
 ---
 
