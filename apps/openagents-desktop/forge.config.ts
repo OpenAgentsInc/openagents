@@ -24,6 +24,21 @@ const notarizeCredentials = process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &
     }
   : undefined
 
+const macCodeSignableBasenames = new Set([
+  "OpenAgents",
+  "OpenAgents Helper",
+  "Electron Framework",
+  "chrome_crashpad_handler",
+  "codex",
+  "codex-code-mode-host",
+  "rg",
+  "zsh",
+])
+
+const isMacCodeSignablePath = (file: string): boolean =>
+  /\.(?:app|framework|dylib|node)$/u.test(file) ||
+  macCodeSignableBasenames.has(path.basename(file))
+
 const copyRuntimePackage = async (
   buildPath: string,
   packageName: string,
@@ -74,7 +89,7 @@ const config: ForgeConfig = {
       // codesign to reopen a path already rewritten through the other view.
       ignore: file =>
         file.includes("/Electron Framework.framework/Versions/Current/") ||
-        file.endsWith(".pak"),
+        !isMacCodeSignablePath(file),
       optionsForFile: () => ({
         entitlements: "build/entitlements.mac.plist",
         hardenedRuntime: true,
