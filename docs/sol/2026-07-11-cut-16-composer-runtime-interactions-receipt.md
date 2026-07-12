@@ -247,3 +247,26 @@ rich-draft UI adoption, real provider/model/account selectors, editor/diff
 capture, attachment-bearing runtime delivery, chat-surface resume/retry/close
 parity (the fleet cockpit carries those controls today), named Codex receipt,
 deployed trusted authority, and physical assistive-technology acceptance.
+
+## Addendum (2026-07-12): grant-scoped Desktop file mentions close I4
+
+The Desktop editor can now attach its active ready document to chat without
+granting the renderer ambient filesystem authority. The chip carries only the
+workspace-relative path ref, document revision, language mode, bounded current
+draft (including an explicit dirty marker), and a remove action. Submission
+lowers that payload through the shared ChatHost boundary for both local
+Fable/Codex and durable hosted conversations. The provider boundary labels it
+untrusted data, instructs the model not to treat file contents as instructions,
+and uses explicit begin/end delimiters. Skill parsing still examines only the
+raw user message, so attached content cannot invoke a skill.
+
+Capability I4 therefore moves from `missing` to `ui_available`; its UI and
+programmatic oracles cover attach, visible/remove state, local/durable delivery,
+clear-after-send, and absence of the action when the shell has not supplied the
+typed intent. Verification: focused 129 pass / 1 existing H5 skip / 0 fail;
+full Desktop 1,021 pass / 1 H5 skip / 0 fail / 5,503 assertions; typecheck,
+build, built-Electron smoke, and lifecycle teardown (`active: 0`) pass.
+
+This is not a mobile picker or physical-device receipt. CUT-16 remains open for
+mobile attachment-bearing runtime delivery/selectors, deployed trusted
+authority acceptance, and the physical cross-client/assistive-technology row.

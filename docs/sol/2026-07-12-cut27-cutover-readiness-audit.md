@@ -143,12 +143,13 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   simulator native-link/render smoke only).
 - Rung: **fixture-proven**; the attachment tranche is code-landed +
   fixture-proven, explicitly *not* a picker-tap or physical receipt.
-- Remaining gates: (code) attachment-bearing runtime submission/delivery
-  end-to-end; Desktop file attachments/mentions (capability **I4 is still
-  `missing`** in the registry); session fork (**H2 `missing`**) if it stays
-  in scope rather than the loss register; (live) real provider/model/account
-  selection exercised in a live turn (couples to CUT-21); (physical) the
-  named cross-client receipts.
+- Desktop I4 is now **`ui_available`**: the grant-scoped editor attaches a
+  removable relative-path/revision/language/current-draft mention and lowers
+  it as bounded explicitly untrusted context through both local and durable
+  ChatHost sends. H2 session fork is also UI-available. Remaining gates are
+  mobile attachment-bearing runtime submission/delivery and selectors, plus
+  the named physical cross-client receipts. CUT-21 already supplies named
+  Codex/Claude live streaming evidence.
 
 ### CUT-17 #8697 — grant-scoped workspace tree/watch/cache/search — CLOSED
 
@@ -294,14 +295,13 @@ reconciliation input only.
   requires; the signed build is now installed on the paired iPhone, so this
   is runnable at owner convenience.
 
-## Capability scoreboard snapshot (registry @ `375a8997ff`)
+## Capability scoreboard snapshot (registry after CUT-16 I4 convergence)
 
-41 rows in `apps/openagents-desktop/src/capability-registry.ts`, enforced by
-`tests/capability-evals.test.ts`: **24 `ui_available` / 14 `partial` /
-2 `missing` (H2 session fork, I4 file attachments-mentions)**; rungs:
-9 `live`, 27 `fixture`, 4 `pending` (H1 resume picker, H2, H5 context
-compaction, I4). A declaration must either close these or name them in the
-loss/exception register explicitly.
+40 rows in `apps/openagents-desktop/src/capability-registry.ts`, enforced by
+`tests/capability-evals.test.ts`: **27 `ui_available` / 13 `partial` /
+0 `missing`**. H2 and I4 now have typed UI and programmatic oracles. H5 context
+compaction remains the sole skipped-with-reason evaluation. A declaration must
+still distinguish code/fixture/live/distribution/owner-acceptance rungs.
 
 ## #8707 completion criteria, one by one
 
@@ -329,8 +329,8 @@ loss/exception register explicitly.
    run; the later-remote-work boundary is already drafted in
    [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
    and the roadmap's Revision 31 non-goals. The register itself is
-   declaration-time authoring (candidates already visible: H2, I4, H1/H5
-   pendings, mobile pause transport, Codex plan-mode/extension
+   declaration-time authoring (candidates already visible: H1/H5 residuals,
+   mobile pause transport, Codex plan-mode/extension
    unsupported facts, Codex child-activity encoder gap if still open).
 5. **Docs/runbook/roadmap flip: Desktop default local coding surface,
    direct Codex/Claude Code UI fallback unsupported for the proven scope** —
@@ -345,9 +345,8 @@ loss/exception register explicitly.
    (bundled binary fails pre-frame; PATH `--experimental-json` omits child
    records), wire desktop main-process live graph emission, and support the
    named confirmed-reconnect trace.
-2. CUT-16: attachment-bearing runtime submission/delivery end-to-end;
-   Desktop attachments/mentions (I4); decide H2 session fork (build it or
-   register it as an explicit exception).
+2. CUT-16: mobile attachment-bearing runtime submission/delivery and real
+   selector adoption; Desktop I4 and H2 are code-landed with typed oracles.
 3. CUT-26: publish the verified DMG/ZIP through the deployed signed-feed seam
    and enforce legacy lockout for the proven scope.
 4. CUT-27 declaration artifacts: loss/exception register,

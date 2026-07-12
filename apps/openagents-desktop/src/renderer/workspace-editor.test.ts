@@ -279,6 +279,19 @@ describe("workspace editor Effect Native view", () => {
     expect(nodeByKey(view, "workspace-editor-close-cancel")?.label).toBe("Keep editing")
   })
 
+  test("offers a typed Mention in chat action only when the shell supplies it", () => {
+    expect(nodeByKey(workspaceEditorView(readyState()), "workspace-editor-attach-chat")).toBeUndefined()
+    const view = workspaceEditorView(readyState(), {
+      attachToChat: IntentRef("DesktopEditorFileAttached"),
+    })
+    const attach = nodeByKey(view, "workspace-editor-attach-chat")
+    expect(attach).toMatchObject({
+      label: "Mention in chat",
+      disabled: false,
+      a11y: { label: expect.stringContaining("src/index.ts") },
+    })
+  })
+
   test("Save As uses an inline relative-path form", () => {
     const state = { ...readyState(), saveAsPathRef: "src/index-copy.ts" }
     const view = workspaceEditorView(state)

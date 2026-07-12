@@ -725,11 +725,15 @@ attachment rendering, and fail-closed Send authority; its built iPhone
 simulator smoke is green. The issue is not closeable: mobile file/image
 acquisition landed at `c3ad8bee34` through a bounded SDK picker, durable
 content-addressed app-sandbox copy, canonical stage/ready transactions, and a
-second green built-simulator smoke. Attachment-bearing runtime delivery and
-real provider/model/account selectors, equivalent Desktop canonical-draft
-adoption, and editor/diff capture remain. A named Codex turn,
-deployed trusted-authority route, and physical assistive-technology receipt
-also remain.
+second green built-simulator smoke. Attachment-bearing mobile runtime delivery
+and real mobile provider/model/account selectors remain. Desktop now has
+grant-scoped editor file mentions: the active relative path, revision,
+language, and bounded current draft lower through the same ChatHost boundary
+to local and durable conversations as explicitly untrusted context, with a
+removable composer chip. This closes Desktop I4 and editor capture;
+review-diff capture was already landed by CUT-19. A deployed trusted-authority
+route and physical assistive-technology/cross-client receipts also remain.
+Named Codex and Claude live streaming are proven by CUT-21.
 
 ---
 

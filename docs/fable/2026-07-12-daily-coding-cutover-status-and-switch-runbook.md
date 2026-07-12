@@ -85,11 +85,11 @@ I1–I3, J1–J3, K2) are `ui_available` with both oracles named. What remains:
 | G4 | Message running children | partial | interrupt is UI-driven; messaging blocked (codex exec non-interactive; no per-subagent SDK message API) |
 | G5 | Scheduled automation | partial | fleet workspace + pylon registry exist; no local scheduling / `/loop` equivalent |
 | H1 | Resume | partial | SDK resume automatic per thread; no resume picker; Codex children never resume; live rung pending |
-| H2 | Session fork | **missing** | no fork surface or seam |
+| H2 | Session fork | ui_available | typed local fork surface creates a distinct seeded thread without mutating its source |
 | H3 | History import | partial | landed; Claude workflow-journal edges and async background-agent lifecycle surface as explicit gap/unknown |
 | H4 | Session search | partial | landed; content index bounded to most-recent sessions, not whole archive |
 | H5 | Compaction | partial | SDK auto-compacts; no UI marker/control, no boundary-integrity harness |
-| I4 | File attachments / @-mentions | **missing** | no composer attachment or mention path |
+| I4 | File attachments / @-mentions | ui_available | images plus grant-scoped editor file mentions; relative ref/revision/language/current draft lower as bounded untrusted context |
 | J4 | Task/todo tracking | partial | live plan/todo card renders; plan-mode toggle/review residual |
 | K1 | Multi-workspace | partial | `workspace.choose` exists; single active workspace, no switching between concurrent roots |
 

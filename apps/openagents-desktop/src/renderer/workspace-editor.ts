@@ -777,7 +777,10 @@ const tabLabel = (tab: WorkspaceEditorTab): string => {
   return workspaceEditorTabDirty(tab) ? `${name} •` : name
 }
 
-export const workspaceEditorView = (state: WorkspaceEditorState): View => {
+export const workspaceEditorView = (
+  state: WorkspaceEditorState,
+  options: Readonly<{ attachToChat?: ReturnType<typeof IntentRef> }> = {},
+): View => {
   const tab = activeTab(state)
   if (tab === null) {
     return Stack({ key: "workspace-editor-empty", direction: "column", gap: "2", style: { flex: 1, minHeight: 0 } }, [
@@ -810,6 +813,18 @@ export const workspaceEditorView = (state: WorkspaceEditorState): View => {
       Button({ key: "workspace-editor-redo", label: "Redo", variant: "ghost", disabled: tab.redo.length === 0, onPress: IntentRef("WorkspaceEditorRedoRequested") }),
       Button({ key: "workspace-editor-wrap", label: "Wrap", variant: state.wordWrap ? "secondary" : "ghost", onPress: IntentRef("WorkspaceEditorWordWrapToggled"), a11y: { selected: state.wordWrap } }),
       Button({ key: "workspace-editor-minimap", label: "Minimap", variant: state.minimap ? "secondary" : "ghost", onPress: IntentRef("WorkspaceEditorMinimapToggled"), a11y: { selected: state.minimap } }),
+      ...(options.attachToChat === undefined ? [] : [Button({
+        key: "workspace-editor-attach-chat",
+        label: "Mention in chat",
+        variant: "secondary",
+        disabled: tab.document === null || tab.phase !== "ready" || tab.draft.length > 200_000,
+        onPress: options.attachToChat,
+        a11y: {
+          label: tab.draft.length > 200_000
+            ? `Cannot mention ${tab.pathRef}; file exceeds the 200,000 character context limit`
+            : `Mention ${tab.pathRef} in the next chat turn`,
+        },
+      })]),
       Button({ key: "workspace-editor-save", label: tab.saveState === "saving" ? "Saving…" : tab.saveState === "saved" ? "Saved" : "Save", variant: "primary", disabled: !workspaceEditorTabDirty(tab) || tab.saveState === "saving" || tab.phase === "unavailable", onPress: IntentRef("WorkspaceEditorSaveRequested"), a11y: { label: `Save ${tab.pathRef}` } }),
       Button({ key: "workspace-editor-save-as", label: "Save As", variant: "secondary", disabled: tab.saveState === "saving" || tab.phase === "unavailable", onPress: IntentRef("WorkspaceEditorSaveAsStarted"), a11y: { label: `Save ${tab.pathRef} as a new file` } }),
     ]),

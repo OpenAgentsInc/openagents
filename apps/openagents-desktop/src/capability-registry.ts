@@ -81,6 +81,7 @@ const TOOLCARDS = "apps/openagents-desktop/src/renderer/tool-cards.test.ts"
 const LOCAL_HARNESS = "apps/openagents-desktop/src/renderer/local-harness.test.ts"
 const MARKDOWN = "apps/openagents-desktop/src/renderer/markdown.test.ts"
 const WORKSPACE = "apps/openagents-desktop/tests/workspace-service.test.ts"
+const WORKSPACE_EDITOR = "apps/openagents-desktop/src/renderer/workspace-editor.test.ts"
 const USAGE = "apps/openagents-desktop/src/usage-ledger.test.ts"
 const FABLE_RT = "apps/openagents-desktop/src/fable-local-runtime.test.ts"
 const FABLE_CAPS_RT = "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts"
@@ -133,8 +134,10 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // ui_available from 20 to 21 and partial from 16 to 15.
   // #8712 H1/H2: history now offers a typed local-thread resume picker and a
   // refs-only fork-from-here action backed by a bounded host re-read. Both
-  // carry renderer and programmatic oracles, taking UI from 24 to 26.
-  ui_available: 26,
+  // carry renderer and programmatic oracles, taking UI from 24 to 26. CUT-16
+  // then wires I4's grant-scoped editor Mention-in-chat path through the
+  // shared ChatHost boundary, taking UI to 27 and missing to zero.
+  ui_available: 27,
   // The Git/GitHub UI surface emptied the programmatic_only bucket: E2/E4/E5
   // are now ui_available and E3 (worktree/branch isolation) is partial (branch
   // UI wired, worktree creation still agent-only), so programmatic_only is 0.
@@ -148,7 +151,7 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // I3's explicit slash grammar + host-validated SDK skill catalog, moving it
   // missing -> ui_available: { 22, 0, 15, 3 }.
   partial: 13,
-  missing: 1,
+  missing: 0,
 } as const
 
 export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
@@ -440,11 +443,10 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     rung: "fixture",
   },
   {
-    id: "I4", group: "I", capability: "File attachments / mentions", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit I4: no attachment or @-mention path in the composer",
+    id: "I4", group: "I", capability: "File attachments / mentions", status: "ui_available",
+    uiOracleRef: WORKSPACE_EDITOR, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: SHELL, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
   },
 
   // --- J. Interactive control ---------------------------------------------
