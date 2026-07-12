@@ -1605,6 +1605,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     history,
     message: turnPromptText(request.message, request.images),
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
+    ...(request.reasoningEffort === undefined ? {} : { reasoningEffort: request.reasoningEffort }),
     ...(selectedSkill === null ? {} : { skillName: selectedSkill.name }),
     ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),

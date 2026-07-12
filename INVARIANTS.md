@@ -772,6 +772,11 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
   linked Sync when the current gateway catalog is live, otherwise explicit
   local-only mode.
+- Desktop composer provider selection defaults to Codex and remains explicit;
+  availability evidence may disable a lane but never silently substitutes
+  Claude. The hotbar exposes one typed provider selector and, for Codex, one
+  typed reasoning-effort selector whose value reaches the spawned Codex
+  `model_reasoning_effort` argument.
 - Desktop conversation navigation is globally ordered by descending
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration

@@ -80,7 +80,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(captured[0]!.env.CODEX_HOME).toBeUndefined()
   })
 
-  test("fresh turn spawns the receipted chat recipe: exec --json, pinned model/effort, danger-full-access, thread workspace cwd, NO --ephemeral", async () => {
+  test("fresh turn spawns the receipted chat recipe with the owner-selected reasoning effort", async () => {
     const captured: SpawnCapture[] = []
     const root = scratch()
     const runtime = makeCodexLocalRuntime({
@@ -99,6 +99,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       threadRef: "thread-1",
       history: [],
       message: "hello codex",
+      reasoningEffort: "high",
       emit: sink.emit,
     })
     if (!result.ok) throw new Error(`expected success, got ${result.reason}: ${result.detail}`)
@@ -109,7 +110,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       "-m",
       "gpt-5.6-sol",
       "-c",
-      "model_reasoning_effort=medium",
+      "model_reasoning_effort=high",
       "-s",
       "danger-full-access",
       "--skip-git-repo-check",

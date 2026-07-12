@@ -569,21 +569,24 @@ describe("desktopShellView (state -> component tree)", () => {
 
   test("composer carries the harness selector with Codex selected by default", () => {
     const view = desktopShellView(baseState)
-    const fable = nodeByKey(view, "shell-harness-fable") as { onPress?: { name?: string }; variant?: string; disabled?: boolean }
-    const codex = nodeByKey(view, "shell-harness-codex") as { onPress?: { name?: string }; variant?: string }
-    expect(fable?.onPress?.name).toBe("DesktopHarnessSelected")
-    expect(codex?.onPress?.name).toBe("DesktopHarnessSelected")
-    expect(codex?.variant).toBe("secondary")
-    expect(fable?.variant).toBe("ghost")
+    const provider = nodeByKey(view, "shell-harness-select") as { _tag?: string; value?: string; onChange?: { name?: string }; options?: ReadonlyArray<{ value: string; label: string }> }
+    const reasoning = nodeByKey(view, "shell-reasoning-select") as { _tag?: string; value?: string; onChange?: { name?: string } }
+    expect(provider?._tag).toBe("Select")
+    expect(provider?.onChange?.name).toBe("DesktopHarnessSelected")
+    expect(provider?.value).toBe("codex")
+    expect(provider?.options?.map(option => option.label)).toEqual(["Codex", "Claude"])
+    expect(reasoning?._tag).toBe("Select")
+    expect(reasoning?.value).toBe("medium")
+    expect(reasoning?.onChange?.name).toBe("DesktopCodexReasoningSelected")
     expect(baseState.selectedHarness).toBe("codex")
 
     const fableSelected = desktopShellView({ ...baseState, selectedHarness: "fable" })
-    expect((nodeByKey(fableSelected, "shell-harness-fable") as { variant?: string }).variant).toBe("secondary")
-    expect((nodeByKey(fableSelected, "shell-harness-codex") as { variant?: string }).variant).toBe("ghost")
+    expect(nodeByKey(fableSelected, "shell-harness-select")?.value).toBe("fable")
+    expect(nodeByKey(fableSelected, "shell-reasoning-select")).toBeUndefined()
 
     const pending = desktopShellView(withPending(baseState, true))
-    expect(nodeByKey(pending, "shell-harness-fable")?.disabled).toBe(true)
-    expect(nodeByKey(pending, "shell-harness-codex")?.disabled).toBe(true)
+    expect(nodeByKey(pending, "shell-harness-select")?.disabled).toBe(true)
+    expect(nodeByKey(pending, "shell-reasoning-select")?.disabled).toBe(true)
   })
 
   test("EP250 OpenCode composer shape: multiline input on top; bottom bar carries attach + harness toggle + spacer + circular send", () => {
@@ -603,9 +606,10 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(bar?.direction).toBe("row")
     const keys = (bar?.children ?? []).map((child) => child.key)
     expect(keys[0]).toBe("shell-attach-image")
-    expect(keys[1]).toBe("shell-harness-row")
-    expect(bar?.children?.[2]?._tag).toBe("Spacer")
-    expect(bar?.children?.[2]?.flex).toBe(true)
+    expect(keys[1]).toBe("shell-harness-select")
+    expect(keys[2]).toBe("shell-reasoning-select")
+    expect(bar?.children?.[3]?._tag).toBe("Spacer")
+    expect(bar?.children?.[3]?.flex).toBe(true)
     // The trailing send control is circular and dims to a ghost while blank.
     const blankSend = nodeByKey(view, "shell-note") as { style?: Record<string, unknown> }
     expect(blankSend?.style).toMatchObject({ backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" })
@@ -1625,7 +1629,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
   test("harness selection dispatches through the registry and rides the next send", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const sent: Array<{ id: string; message: string; harness?: string }> = []
+        const sent: Array<{ id: string; message: string; harness?: string; reasoningEffort?: string }> = []
         const state = yield* SubscriptionRef.make(baseState)
         const registry = yield* makeIntentRegistry(
           desktopShellIntents,
@@ -1634,29 +1638,34 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
             newThread: async () => null,
             openThread: async () => null,
             sendMessage: async (input) => {
-              sent.push({ id: input.id, message: input.message, harness: input.harness })
+              sent.push({ id: input.id, message: input.message, harness: input.harness, reasoningEffort: input.reasoningEffort })
               return { ok: false, error: "Recorded only." }
             },
           }),
         )
         const view = desktopShellView(baseState)
-        const fable = nodeByKey(view, "shell-harness-fable") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
+        const provider = nodeByKey(view, "shell-harness-select") as {
+          onChange: Parameters<typeof resolveIntentRef>[0]
         }
-        yield* registry.dispatch(resolveIntentRef(fable.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(provider.onChange, "fable"))
         expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("fable")
 
         const input = nodeByKey(view, "shell-input") as {
           onSubmit: Parameters<typeof resolveIntentRef>[0]
         }
         yield* registry.dispatch(resolveIntentRef(input.onSubmit, "route me"))
-        expect(sent).toEqual([{ id: testThread.id, message: "route me", harness: "fable" }])
+        expect(sent).toEqual([{ id: testThread.id, message: "route me", harness: "fable", reasoningEffort: undefined }])
 
-        const codex = nodeByKey(view, "shell-harness-codex") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
+        const codexProvider = nodeByKey(view, "shell-harness-select") as {
+          onChange: Parameters<typeof resolveIntentRef>[0]
         }
-        yield* registry.dispatch(resolveIntentRef(codex.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(codexProvider.onChange, "codex"))
         expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("codex")
+        const codexView = desktopShellView(yield* SubscriptionRef.get(state))
+        const reasoning = nodeByKey(codexView, "shell-reasoning-select") as { onChange: Parameters<typeof resolveIntentRef>[0] }
+        yield* registry.dispatch(resolveIntentRef(reasoning.onChange, "high"))
+        yield* registry.dispatch(resolveIntentRef(input.onSubmit, "think harder"))
+        expect(sent.at(-1)).toEqual({ id: testThread.id, message: "think harder", harness: "codex", reasoningEffort: "high" })
       }),
     )
   })
@@ -1797,14 +1806,12 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
     expect(initial.harnessLanes.codex.available).toBe(false)
   })
 
-  test("withHarnessLanes moves the selection off a dead default onto the available lane", () => {
+  test("withHarnessLanes never silently replaces the Codex default with Claude", () => {
     const next = withHarnessLanes(baseState, localModeLanes)
     expect(baseState.selectedHarness).toBe("codex")
-    expect(next.selectedHarness).toBe("fable")
-    // But it never abandons an available selection…
+    expect(next.selectedHarness).toBe("codex")
     const kept = withHarnessLanes({ ...baseState, selectedHarness: "fable" }, localModeLanes)
     expect(kept.selectedHarness).toBe("fable")
-    // …and with nothing available the selection just stays put.
     expect(withHarnessLanes(baseState, noLanes).selectedHarness).toBe("codex")
   })
 
@@ -1814,8 +1821,9 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
     // Remove that."
     const state = withHarnessLanes(baseState, localModeLanes)
     const view = desktopShellView(state)
-    expect(nodeByKey(view, "shell-harness-fable")?.disabled).toBe(false)
-    expect(nodeByKey(view, "shell-harness-codex")?.disabled).toBe(true)
+    const provider = nodeByKey(view, "shell-harness-select") as { options?: ReadonlyArray<{ value: string; disabled?: boolean }> }
+    expect(provider.options?.find(option => option.value === "fable")?.disabled).toBe(false)
+    expect(provider.options?.find(option => option.value === "codex")?.disabled).toBe(true)
     // The caption node no longer exists in ANY lane state…
     expect(nodeByKey(view, "shell-harness-caption")).toBeUndefined()
     // …and no visible Text inside the composer carries the reason string.
@@ -1825,18 +1833,20 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
       .map((node) => String(node.content ?? ""))
     expect(composerTexts.some((content) => content.includes("requires OpenAgents session"))).toBe(false)
     expect(composerTexts.some((content) => content.includes("unavailable"))).toBe(false)
-    // The reason survives as the disabled chip's accessible label only.
-    expect((nodeByKey(view, "shell-harness-codex")?.a11y as { label?: string })?.label)
+    // The reason survives on the selected lane's disabled Send affordance.
+    expect(nodeByKey(view, "shell-note")?.accessibilityLabel)
       .toBe("Codex — requires OpenAgents session")
-    // Selected lane (fable) is available, so Send stays enabled.
-    expect(nodeByKey(view, "shell-note")?.disabled).toBe(false)
+    // Codex remains the explicit default, so Send stays disabled until that
+    // lane is available instead of silently routing through Claude.
+    expect(nodeByKey(view, "shell-note")?.disabled).toBe(true)
 
     const dead = desktopShellView(withHarnessLanes(baseState, noLanes))
-    expect(nodeByKey(dead, "shell-harness-fable")?.disabled).toBe(true)
+    const deadProvider = nodeByKey(dead, "shell-harness-select") as { options?: ReadonlyArray<{ value: string; disabled?: boolean }> }
+    expect(deadProvider.options?.every(option => option.disabled)).toBe(true)
     expect(nodeByKey(dead, "shell-note")?.disabled).toBe(true)
     expect(nodeByKey(dead, "shell-harness-caption")).toBeUndefined()
-    expect((nodeByKey(dead, "shell-harness-fable")?.a11y as { label?: string })?.label)
-      .toBe("Fable — unavailable: no linked Claude account")
+    expect(nodeByKey(dead, "shell-note")?.accessibilityLabel)
+      .toBe("Codex — requires OpenAgents session")
   })
 
   test("submit on an unavailable selected lane is refused: draft kept, no sendMessage call", async () => {

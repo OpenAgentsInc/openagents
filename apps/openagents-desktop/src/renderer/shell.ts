@@ -27,6 +27,7 @@ import {
   IntentRef,
   Icon,
   NavRail,
+  Select,
   Spacer,
   SplitPane,
   Stack,
@@ -45,6 +46,7 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import { compareDesktopThreadsByRecency, type DesktopMessageMeta, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
+import type { CodexReasoningEffort } from "../fable-local-contract.ts"
 import {
   contextGroupSummary,
   humanizeToolInvocation,
@@ -281,6 +283,8 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
   selectedHarness: DesktopHarnessName
+  /** Requested Codex reasoning effort for subsequent turns. */
+  codexReasoningEffort: CodexReasoningEffort
   /** Exact named provider target retained independently for each conversation. */
   providerTargetsByThread: Readonly<Record<string, LocalProviderTarget>>
   permissionModeByThread: Readonly<Record<string, LocalPermissionMode>>
@@ -381,6 +385,7 @@ export const initialDesktopShellState = (
   composerFileContext: null,
   notes: [],
   selectedHarness: "codex",
+  codexReasoningEffort: "medium",
   providerTargetsByThread: {},
   permissionModeByThread: {},
   // Unproven until boot's availability probe lands (before first mount):
@@ -495,6 +500,10 @@ export const DesktopHarnessSelected = defineIntent(
   "DesktopHarnessSelected",
   Schema.Literals(desktopHarnessNames),
 )
+export const DesktopCodexReasoningSelected = defineIntent(
+  "DesktopCodexReasoningSelected",
+  Schema.Literals(["low", "medium", "high", "xhigh"]),
+)
 export const DesktopProviderAccountSelected = defineIntent("DesktopProviderAccountSelected", Schema.String)
 export const DesktopPermissionModeSelected = defineIntent("DesktopPermissionModeSelected", Schema.Literals(["owner_full", "plan_only"]))
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
@@ -575,6 +584,7 @@ export const desktopShellIntents = [
   DesktopFleetDeploymentRequested,
   DesktopNewChat,
   DesktopHarnessSelected,
+  DesktopCodexReasoningSelected,
   DesktopProviderAccountSelected,
   DesktopPermissionModeSelected,
   DesktopChatSelected,
@@ -935,18 +945,14 @@ export const withComposerImageNotice = (
 
 /**
  * Applies probed lane evidence. If the currently selected lane just became
- * unavailable while the other lane can act, selection moves to the available
- * lane — the composer must never park the user on a dead default.
+ * unavailable. Selection remains explicit: Codex is the product default and
+ * availability evidence may disable it, but must never silently choose Claude.
  */
 export const withHarnessLanes = (
   state: DesktopShellState,
   harnessLanes: HarnessLanes,
 ): DesktopShellState => {
-  const selected = state.selectedHarness
-  const other: DesktopHarnessName = selected === "fable" ? "codex" : "fable"
-  const selectedHarness =
-    !harnessLanes[selected].available && harnessLanes[other].available ? other : selected
-  return { ...state, harnessLanes, selectedHarness }
+  return { ...state, harnessLanes }
 }
 
 export type ChatHost = Readonly<{
@@ -961,6 +967,7 @@ export type ChatHost = Readonly<{
     target?: LocalProviderTarget
     skill?: LocalSkillInvocation
     permissionMode?: LocalPermissionMode
+    reasoningEffort?: CodexReasoningEffort
     /** Optional image attachments threaded into the turn payload (capability I1). */
     images?: ReadonlyArray<FableLocalImageAttachment>
     onUpdate?: (thread: DesktopThread) => void
@@ -1520,6 +1527,7 @@ export const makeDesktopShellHandlers = (
         ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
         ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
         permissionMode: current.permissionModeByThread[current.activeThreadId!] ?? "owner_full",
+        ...(current.selectedHarness === "codex" ? { reasoningEffort: current.codexReasoningEffort } : {}),
         ...(images.length > 0 ? { images } : {}),
         onUpdate: thread => {
           Effect.runFork(SubscriptionRef.update(state, next =>
@@ -1593,6 +1601,8 @@ export const makeDesktopShellHandlers = (
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
   DesktopHarnessSelected: (harness) =>
     SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
+  DesktopCodexReasoningSelected: (reasoningEffort) =>
+    SubscriptionRef.update(state, (current) => ({ ...current, codexReasoningEffort: reasoningEffort })),
   DesktopProviderAccountSelected: (accountRef) =>
     SubscriptionRef.update(state, (current) => {
       if (current.activeThreadId === null) return current
@@ -2831,36 +2841,6 @@ export const withDisabledReason = (
       )
     : control
 
-const harnessChip = (
-  state: DesktopShellState,
-  harness: DesktopHarnessName,
-  label: string,
-): View => {
-  const selected = state.selectedHarness === harness
-  const lane = state.harnessLanes[harness]
-  const chip = Button({
-    key: `shell-harness-${harness}`,
-    label,
-    variant: selected ? "secondary" : "ghost",
-    style: selected
-      ? { backgroundColor: "surfaceRaised", borderWidth: 0, borderRadius: "md", typeScale: "label", color: "textPrimary" }
-      : { borderWidth: 0, borderRadius: "md", typeScale: "label", color: "textMuted" },
-    disabled: state.pending || !lane.available,
-    onPress: IntentRef("DesktopHarnessSelected", StaticPayload(harness)),
-    a11y: {
-      label: !lane.available
-        ? lane.reason ?? `${label} — unavailable`
-        : selected ? `${label} harness selected` : `Target new turns at ${label}`,
-    },
-  })
-  return withDisabledReason(
-    `shell-harness-${harness}`,
-    state.pending || !lane.available,
-    lane.available ? null : lane.reason,
-    chip,
-  )
-}
-
 const targetForHarness = (harness: DesktopHarnessName, accountRef: string): LocalProviderTarget =>
   harness === "codex"
     ? { provider: "codex", accountRef, model: "gpt-5.6-sol" }
@@ -3162,31 +3142,37 @@ const composerAttachControl = (state: DesktopShellState): View => {
   })
 }
 
-/**
- * The recessed segmented harness track (Fable | Codex). EP250 OpenCode restyle
- * relocates it INTO the composer's bottom action bar (owner: "put our
- * codex/claude toggle in that bar underneath it"). The track keeps its
- * apps-sdk recessed styling: it sits BELOW the surface (`background` fill) with
- * a 2px gutter and radius "lg"; the nested-radius rule gives the chips "md".
- */
-const harnessTrack = (state: DesktopShellState): View =>
-  Stack(
-    {
-      key: "shell-harness-row",
-      direction: "row",
-      gap: "0.5",
-      align: "center",
-      style: {
-        backgroundColor: "background",
-        borderRadius: "lg",
-        padding: "0.5",
-      },
-    },
-    [
-      harnessChip(state, "fable", "Claude"),
-      harnessChip(state, "codex", "Codex"),
+/** Provider picker in the composer hotbar, matching mobile's compact surface
+ * selector pattern. Codex remains selected even while verification is pending;
+ * unavailable choices explain themselves through the native option state. */
+const harnessSelect = (state: DesktopShellState): View => Select({
+  key: "shell-harness-select",
+  value: state.selectedHarness,
+  options: [
+    { value: "codex", label: "Codex", disabled: !state.harnessLanes.codex.available },
+    { value: "fable", label: "Claude", disabled: !state.harnessLanes.fable.available },
+  ],
+  disabled: state.pending,
+  onChange: IntentRef("DesktopHarnessSelected", ComponentValueBinding()),
+  style: { borderWidth: 0, borderRadius: "md", typeScale: "label", backgroundColor: "background" },
+  a11y: { label: `Provider: ${state.selectedHarness === "codex" ? "Codex" : "Claude"}` },
+})
+
+const reasoningSelect = (state: DesktopShellState): View | null =>
+  state.selectedHarness !== "codex" ? null : Select({
+    key: "shell-reasoning-select",
+    value: state.codexReasoningEffort,
+    options: [
+      { value: "low", label: "Low" },
+      { value: "medium", label: "Medium" },
+      { value: "high", label: "High" },
+      { value: "xhigh", label: "Extra high" },
     ],
-  )
+    disabled: state.pending,
+    onChange: IntentRef("DesktopCodexReasoningSelected", ComponentValueBinding()),
+    style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", backgroundColor: "background" },
+    a11y: { label: `Reasoning effort: ${state.codexReasoningEffort}` },
+  })
 
 /**
  * The chat composer, re-laid-out to OpenCode's prompt-input shape (EP250 owner
@@ -3260,8 +3246,8 @@ const shellComposer = (state: DesktopShellState): View =>
         [
           // Leading attach affordance (capability I1) — picker + drop/paste.
           composerAttachControl(state),
-          // The Fable|Codex toggle, now living in the bar (owner directive).
-          harnessTrack(state),
+          harnessSelect(state),
+          ...(reasoningSelect(state) === null ? [] : [reasoningSelect(state)!]),
           // Provider-account + permission-mode controls kept from the old
           // harness row (landed after the restyle was cut) — same bar, same
           // null-collapse behavior.

@@ -433,6 +433,9 @@ export const LocalProviderTargetSchema = Schema.Struct({
 })
 export type LocalProviderTarget = typeof LocalProviderTargetSchema.Type
 
+export const CodexReasoningEffortSchema = Schema.Literals(["low", "medium", "high", "xhigh"])
+export type CodexReasoningEffort = typeof CodexReasoningEffortSchema.Type
+
 export const FableLocalStartRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
@@ -457,6 +460,8 @@ export const FableLocalStartRequestSchema = Schema.Struct({
   skill: Schema.optional(LocalSkillInvocationSchema),
   /** Explicit local authority posture; absent preserves owner-full default. */
   permissionMode: Schema.optional(Schema.Literals(["owner_full", "plan_only"])),
+  /** Owner-selected Codex reasoning effort; ignored by the Claude lane. */
+  reasoningEffort: Schema.optional(CodexReasoningEffortSchema),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
 

@@ -89,6 +89,7 @@ import {
   type FableLocalHistoryMessage,
 } from "./fable-local-runtime.ts"
 import type { CodexPreflight } from "./codex-preflight.ts"
+import type { CodexReasoningEffort } from "./fable-local-contract.ts"
 
 /** Wall clock per codex turn (host-side SIGTERM; exec has no timeout flag). */
 export const CODEX_LOCAL_TIMEOUT_MS = 240_000
@@ -99,6 +100,7 @@ export type CodexLocalTurnInput = Readonly<{
   history: ReadonlyArray<FableLocalHistoryMessage>
   message: string
   accountRef?: string
+  reasoningEffort?: CodexReasoningEffort
   /**
    * Optional image attachments (capability I1). `codex exec` accepts images
    * via `-i, --image <FILE>...` (local file paths), so the runtime writes each
@@ -275,6 +277,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
      */
     imagePaths: ReadonlyArray<string>
     resumeThreadId: string | null
+    reasoningEffort?: CodexReasoningEffort
     emit: (event: FableLocalEvent) => void
     control: { interrupted: boolean; child: ChildLike | null }
   }>): Promise<ParsedTurnAttempt> =>
@@ -303,7 +306,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             "-m",
             CODEX_LOCAL_MODEL,
             "-c",
-            `model_reasoning_effort=${CODEX_LOCAL_REASONING_EFFORT}`,
+            `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
             "-s",
             CODEX_CHILD_SANDBOX,
             "--skip-git-repo-check",
@@ -320,7 +323,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             "-m",
             CODEX_LOCAL_MODEL,
             "-c",
-            `model_reasoning_effort=${CODEX_LOCAL_REASONING_EFFORT}`,
+            `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
             "-c",
             `sandbox_mode="${CODEX_CHILD_SANDBOX}"`,
             ...imageFlags,
@@ -677,6 +680,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           resumeThreadId,
           emit: input.emit,
           control,
+          reasoningEffort: input.reasoningEffort,
         })
         if (attempt.outcome === "success") {
           health.recordSuccess(account.ref)

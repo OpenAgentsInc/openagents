@@ -200,7 +200,7 @@ describe("design conformance (c): per-surface structural recipes", () => {
     expect(row?.style).toMatchObject({ borderRadius: "sm" })
   })
 
-  test("composer: radius capped at xl; recessed segmented harness track with elevated selected thumb", () => {
+  test("composer: radius capped at xl; provider and reasoning use compact native selects", () => {
     const state: DesktopShellState = {
       ...baseState(),
       harnessLanes: {
@@ -211,29 +211,20 @@ describe("design conformance (c): per-surface structural recipes", () => {
     const view = desktopShellView(state)
     const composer = byKey(view, "shell-composer") as { radius?: string }
     expect(composer?.radius).toBe("xl")
-    const track = byKey(view, "shell-harness-row") as { style?: Record<string, unknown>; gap?: string }
-    expect(track?.style).toMatchObject({
-      backgroundColor: "background",
-      borderRadius: "lg",
-      padding: "0.5",
-    })
-    const selected = byKey(view, "shell-harness-codex") as { style?: Record<string, unknown> }
-    expect(selected?.style).toMatchObject({ backgroundColor: "surfaceRaised", borderRadius: "md" })
-    const idle = byKey(view, "shell-harness-fable") as { style?: Record<string, unknown> }
-    expect(idle?.style).toMatchObject({ borderRadius: "md", color: "textMuted" })
+    const provider = byKey(view, "shell-harness-select") as { _tag?: string; value?: string; style?: Record<string, unknown> }
+    expect(provider?._tag).toBe("Select")
+    expect(provider?.value).toBe("codex")
+    expect(provider?.style).toMatchObject({ backgroundColor: "background", borderRadius: "md" })
+    const reasoning = byKey(view, "shell-reasoning-select") as { _tag?: string; value?: string; style?: Record<string, unknown> }
+    expect(reasoning?._tag).toBe("Select")
+    expect(reasoning?.value).toBe("medium")
   })
 
-  test("disabled-control reason popover: a disabled harness chip with a reason is wrapped in a Tooltip carrying that exact reason", () => {
+  test("disabled provider options stay unavailable and Send carries the exact reason tooltip", () => {
     const state = baseState() // codex lane starts unavailable with a reason
     const view = desktopShellView(state)
-    const tooltip = byKey(view, "shell-harness-codex-reason") as {
-      _tag?: string
-      content?: string
-      children?: ReadonlyArray<AnyNode>
-    }
-    expect(tooltip?._tag).toBe("Tooltip")
-    expect(tooltip?.content).toBe(state.harnessLanes.codex.reason ?? "")
-    expect(tooltip?.children?.[0]?.key).toBe("shell-harness-codex")
+    const provider = byKey(view, "shell-harness-select") as { options?: ReadonlyArray<{ value: string; disabled?: boolean }> }
+    expect(provider.options?.find(option => option.value === "codex")?.disabled).toBe(true)
     // The Send button is equally explained while the selected lane cannot act.
     const sendReason = byKey(view, "shell-note-reason") as { _tag?: string; content?: string }
     expect(sendReason?._tag).toBe("Tooltip")
@@ -248,7 +239,7 @@ describe("design conformance (c): per-surface structural recipes", () => {
       },
     }
     const availableView = desktopShellView(available)
-    expect(byKey(availableView, "shell-harness-codex-reason")).toBeUndefined()
+    expect((byKey(availableView, "shell-harness-select") as { options?: ReadonlyArray<{ value: string; disabled?: boolean }> }).options?.find(option => option.value === "codex")?.disabled).toBe(false)
     expect(byKey(availableView, "shell-note-reason")).toBeUndefined()
   })
 
