@@ -177,15 +177,20 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   per-conversation exact target delivery `25b35b4d24`. A follow-up P0 fix
   `e7fb41623e` restored fable+codex **fixture** streaming under exact
   targets.
-- Rung: **fixture-proven** + built-Electron smoke. A real live-proof attempt
-  on 2026-07-11 was an **honest failure receipt**: 7 named Codex homes
-  probed, 0 verified (typed `reconnect_required`, correctly fail-closed);
-  the Claude turn selected `claude-fable-5` but produced 0 assistant
-  characters — a failed live receipt, not a pass.
+- Rung: **live-proven for named Claude**, fixture-proven + built-Electron
+  smoke for Codex. The initial Claude 0-character receipt was a driver false
+  negative: the authoritative built-app thread store contained the completed
+  assistant note while the driver treated the queue-enabled textarea as an
+  idle signal. `716955d5ac` made provider steps exit-driving; `5e701a93b7`
+  added exact named-account selection and Stop-authoritative settle logic. A
+  built-app run then selected `claude-pylon-3`, reported effective model
+  `claude-fable-5`, captured midstream/final PNGs, and completed with visible
+  assistant text. Seven named Codex homes still probe 0 verified with typed
+  `reconnect_required`.
 - Remaining gates: (owner) reconnect at least one named Codex account
   through the isolated-account Settings flow; (live) one public-safe named
-  Codex `gpt-5.6-sol` turn and one Claude `claude-fable-5` turn with real
-  output on the built app.
+  Codex `gpt-5.6-sol` turn on the built app. The equivalent Claude gate has
+  passed.
 
 ### CUT-22 #8702 — Claude Code history import, loss-accounted — CLOSED
 
@@ -292,9 +297,8 @@ loss/exception register explicitly.
 1. **Clean installed build, one real non-trivial task each with named Codex
    and named Claude** — NOT met. A signed/notarized installer has been
    verified locally but is not published or clean-machine accepted. Blocked
-   by: CUT-21 live named-account receipts (owner Codex reconnect +
-   a Claude turn with real output); CUT-16 residuals for the full composer
-   loop. All in-app workbench legs (files/editor/Git/PTY/preview) are
+   by: CUT-21's owner Codex reconnect + named live turn; CUT-16 residuals for
+   the full composer loop. All in-app workbench legs (files/editor/Git/PTY/preview) are
    closed (CUT-17–CUT-20).
 2. **Physical iOS and Android reconnect/continuation/attention/interruption
    convergence during each task** — NOT met. iOS: build installed, journeys
@@ -341,9 +345,9 @@ loss/exception register explicitly.
 
 ### (b) Live-proof runs (no owner hardware, but some need (c)-item 1 first)
 
-1. CUT-21: one named Codex `gpt-5.6-sol` live turn (after owner reconnect)
-   and one Claude `claude-fable-5` live turn with real streamed output on
-   the built app.
+1. CUT-21: one named Codex `gpt-5.6-sol` live turn after owner reconnect.
+   Named Claude `claude-fable-5` streaming passed on the built app at
+   `5e701a93b7`.
 2. CUT-23: one real plugin/skill workflow live receipt on the Claude lane
    (Codex recorded as an explicit unsupported fact).
 3. CUT-26: publish the locally verified signed/notarized artifact, then run
