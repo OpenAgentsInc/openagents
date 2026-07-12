@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 
+declare const require: (id: string) => unknown
+
 import {
   clearNativeSessionCredential,
   loadNativeSessionCredential,
@@ -36,7 +38,7 @@ type FetchLike = (
 ) => Promise<Pick<Response, "json" | "ok" | "status">>
 
 const nativeFetch: FetchLike = async (input, init) => {
-  const { fetch } = await import("expo/fetch")
+  const { fetch } = require("expo/fetch") as typeof import("expo/fetch")
   return fetch(input, init)
 }
 

@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 
+declare const require: (id: string) => unknown
+
 import {
   clearNativeSessionCredential,
   loadNativeSessionCredential,
@@ -70,12 +72,12 @@ const RevokedSessionSchema = Schema.Struct({
 })
 
 const nativeFetch: FetchLike = async (input, init) => {
-  const { fetch } = await import("expo/fetch")
+  const { fetch } = require("expo/fetch") as typeof import("expo/fetch")
   return fetch(input, init)
 }
 
 const createNativeAuthRequest = async (): Promise<AuthRequestLike> => {
-  const { AuthRequest, CodeChallengeMethod } = await import("expo-auth-session")
+  const { AuthRequest, CodeChallengeMethod } = require("expo-auth-session") as typeof import("expo-auth-session")
   return new AuthRequest({
     ...OPENAGENTS_MOBILE_OPENAUTH_REQUEST,
     codeChallengeMethod: CodeChallengeMethod.S256,
@@ -91,7 +93,7 @@ const exchangeNativeCode = async (
   }>,
   discovery: typeof OPENAGENTS_MOBILE_OPENAUTH_DISCOVERY,
 ): Promise<TokenResponseLike> => {
-  const { exchangeCodeAsync } = await import("expo-auth-session")
+  const { exchangeCodeAsync } = require("expo-auth-session") as typeof import("expo-auth-session")
   return exchangeCodeAsync(config, discovery)
 }
 

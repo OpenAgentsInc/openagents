@@ -114,13 +114,28 @@ mobile typecheck passes. The simulator has no saved GitHub session, so the
 authenticated directory, exact deep link, and process-death restoration pass
 must follow an owner sign-in; credentials are not handled by the agent.
 
+## Android emulator Release receipt
+
+The existing `khala_test` AVD was restored with an Android 15/API 35 ARM image
+and received a clean embedded Release APK. The exact bundle opened the Khala
+home, drawer, repaired Settings route, and OpenAgents account surface. The
+first account-link attempt exposed that native auth, notification, fetch, and
+secure-store modules were still split through dynamic imports; an embedded
+Release host could silently return home instead of opening authorization. Those
+native modules now load from the main bundle. After a clean reinstall, account
+linking opened Chrome Custom Tabs at GitHub's real “continue to OpenAgents”
+sign-in form. Local OTA loading was disabled only in the ignored generated host
+so the acceptance run could not substitute a published bundle for the source
+under test.
+
 ## Residual
 
 CUT-14 remains open for authenticated iOS- and Android-emulator catalog/deep-
 link/process-death acceptance plus the deferred physical-iPhone confirmation.
+Both embedded Release hosts now reach GitHub's real OpenAgents sign-in boundary.
 Nothing gates on physical Android. The production publisher is live and
-confirmed; authentication, not catalog transport, is the current simulator
-handoff.
+confirmed; owner authentication, not catalog transport or native account entry,
+is the current simulator handoff.
 
 ## Android emulator debug receipt
 

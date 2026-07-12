@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Linking } from "react-native"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
+declare const require: (id: string) => unknown
+
 import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
 import { signInNativeSession, signOutNativeSession } from "./auth/native-session-pkce"
 import type {
@@ -355,7 +357,8 @@ export const App = () => {
       void Linking.getInitialURL().then(url => {
         if (url !== null) enqueue({ source: "deep_link", url })
       })
-      void import("expo-notifications").then(async Notifications => {
+      void Promise.resolve().then(async () => {
+        const Notifications = require("expo-notifications") as typeof import("expo-notifications")
         if (stopped) return
         notificationSubscription = Notifications.addNotificationResponseReceivedListener(response => {
           enqueue({ source: "notification", payload: response.notification.request.content.data })

@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 
+declare const require: (id: string) => unknown
+
 export const OPENAGENTS_NATIVE_SESSION_KEYCHAIN_SERVICE =
   "com.openagents.mobile.session"
 export const OPENAGENTS_NATIVE_SESSION_KEY = "openagents.native.session"
@@ -59,7 +61,7 @@ export class NativeSessionVaultError extends Error {
 }
 
 const loadSecureStore = async (): Promise<SecureStoreLike> =>
-  (await import("expo-secure-store")) as SecureStoreLike
+  require("expo-secure-store") as SecureStoreLike
 
 const secureStoreOptions = (store: SecureStoreLike): SecureStoreOptions => ({
   keychainService: OPENAGENTS_NATIVE_SESSION_KEYCHAIN_SERVICE,

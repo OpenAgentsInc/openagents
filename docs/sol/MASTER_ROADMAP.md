@@ -670,10 +670,14 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   now has the current native debug APK too. Its live counterexample showed the
   native client still requested lazy split bundles, so `a533b4ccf2` forces
   one-bundle mode at Metro's request boundary; a cold restart now renders the
-  same account surface with no HMR, fatal, or React Native JS error.
-  Authenticated iOS-simulator catalog/deep-link/process-death acceptance, the
-  deferred physical-iPhone confirmation, and the Android-emulator equivalent
-  remain open (owner decision 2026-07-12: no physical-Android gate). See
+  same account surface with no HMR, fatal, or React Native JS error. A clean
+  Android 15/API 35 Release install now reaches GitHub's real OpenAgents sign-in
+  boundary; that pass also moved
+  native auth, notification, fetch, and secure-store modules out of split
+  dynamic imports and into the embedded main bundle. Authenticated emulator
+  catalog/deep-link/process-death acceptance and the deferred physical-iPhone
+  confirmation remain open (owner decision 2026-07-12: no physical-Android
+  gate). See
   [`CUT-14 receipt`](./2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md).
 - CUT-15 now has one canonical Desktop registry carrying stable command id,
   typed intent, scope, readiness, authorization, arguments/results, default
