@@ -16,6 +16,7 @@ build/
 coverage/
 target/
 var/
+apps/openagents-desktop/out/
 *.tsbuildinfo
 *.log
 *.tgz
