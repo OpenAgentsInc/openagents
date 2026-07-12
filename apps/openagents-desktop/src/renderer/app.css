@@ -293,6 +293,26 @@ textarea {
   border-radius: var(--en-radius-lg) !important;
 }
 
+/* Message details is an inline glyph, not toolbar chrome. The shared
+   IconButton deliberately defaults to a 44px circle; this scoped history
+   affordance keeps its semantic button/focus target while removing that
+   fill, border, radius, and oversized footprint. */
+[data-en-key^="history-item-details-"][data-en-variant="icon"] {
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--en-color-textFaint) !important;
+}
+
+[data-en-key^="history-item-details-"][data-en-variant="icon"]:hover,
+[data-en-key^="history-item-details-"][data-en-variant="icon"]:active {
+  background: transparent !important;
+}
+
 [data-en-key="history-center"] {
   position: relative;
 }

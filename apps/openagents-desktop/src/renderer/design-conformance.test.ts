@@ -282,6 +282,17 @@ describe("design conformance (c): per-surface structural recipes", () => {
     expect(close?.style).toMatchObject({ color: "textFaint", typeScale: "label" })
   })
 
+  test("history details is a bare compact icon, never the generic filled 44px circle", () => {
+    const css = readFileSync(path.join(rendererDir, "app.css"), "utf8")
+    const rule = css.match(/\[data-en-key\^="history-item-details-"\]\[data-en-variant="icon"\] \{([^}]+)\}/)?.[1] ?? ""
+    expect(rule).toContain("width: 24px !important")
+    expect(rule).toContain("height: 24px !important")
+    expect(rule).toContain("border: 0 !important")
+    expect(rule).toContain("border-radius: 0 !important")
+    expect(rule).toContain("background: transparent !important")
+    expect(rule).toContain("box-shadow: none !important")
+  })
+
   test("tool cards: running titles carry the shimmer key; raw wells cap at the 240px dimension; dim ladder uses textFaint", () => {
     const running = toolCardMessage(
       { key: "r1", toolName: "Bash", timestamp: "18:02", status: "running", argsSummary: '{"command":"ls"}', resultSummary: null },
