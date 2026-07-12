@@ -50,8 +50,11 @@ type FakeTables = {
   runningTurns?: ReadonlyArray<QueueRow>
   /** turnId -> intent_json (or absent). */
   startIntents: Record<string, unknown>
-  /** messageId -> body (or absent). */
-  chatMessages: Record<string, string>
+  /** messageId -> body/attachments (or absent). */
+  chatMessages: Record<string, string | Readonly<{
+    body: string
+    attachments: ReadonlyArray<Record<string, unknown>>
+  }>>
 }
 
 const makeFakeSql = (tables: FakeTables): SyncSql => {
@@ -73,14 +76,15 @@ const makeFakeSql = (tables: FakeTables): SyncSql => {
     }
     if (text.includes('FROM khala_sync_chat_messages')) {
       const messageId = values[0] as string
-      const body = tables.chatMessages[messageId]
+      const value = tables.chatMessages[messageId]
       return Promise.resolve(
-        body === undefined
+        value === undefined
           ? []
           : [
               {
+                attachments_json: typeof value === 'string' ? [] : value.attachments,
                 author_user_id: 'github:1',
-                body,
+                body: typeof value === 'string' ? value : value.body,
                 created_at: '2026-07-06T00:00:00.000Z',
                 deleted_at: null,
                 message_id: messageId,
@@ -322,6 +326,33 @@ describe('dispatchHostedRuntimeTurn', () => {
     expect(delta?.text).toBe('Here is the answer.')
     const finished = push.recorded.find(r => r.kind === 'turn.finished')
     expect(finished?.finishReason).toBe('stop')
+  })
+
+  test('passes authoritative image bytes to hosted inference', async () => {
+    const push = makeRecordingExecutePush()
+    const image = {
+      dataBase64: 'iVBORw0KGgo=',
+      mediaType: 'image/png',
+      name: 'pixel.png',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 8,
+    }
+    let seenImages: ReadonlyArray<Record<string, unknown>> | undefined
+    const complete: HostedRuntimeCompleteFn = input => {
+      seenImages = input.images
+      return Promise.resolve({ ok: true, text: 'red' })
+    }
+    const outcome = await dispatchHostedRuntimeTurn(
+      baseDeps({
+        ...oneQueuedTurn,
+        chatMessages: {
+          'msg.1': { attachments: [image], body: 'What color is the image?' },
+        },
+      }, push, complete),
+      turn,
+    )
+    expect(outcome).toBe('answered')
+    expect(seenImages).toEqual([image])
   })
 
   test('inference failure still settles the turn as finished(error)', async () => {

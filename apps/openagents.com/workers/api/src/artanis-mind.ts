@@ -75,9 +75,27 @@ type GeminiCandidateText =
 export const ArtanisMindDefaultMaxOutputTokens = 4096
 export const ArtanisMindEscalatedMaxOutputTokens = 8192
 
-const geminiBody = (system: string, prompt: string, maxOutputTokens: number) =>
+export type ArtanisMindImage = Readonly<{
+  dataBase64: string
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+}>
+
+const geminiBody = (
+  system: string,
+  prompt: string,
+  maxOutputTokens: number,
+  images: ReadonlyArray<ArtanisMindImage> = [],
+) =>
   JSON.stringify({
-    contents: [{ parts: [{ text: prompt }], role: 'user' }],
+    contents: [{
+      parts: [
+        { text: prompt },
+        ...images.map(image => ({
+          inlineData: { data: image.dataBase64, mimeType: image.mediaType },
+        })),
+      ],
+      role: 'user',
+    }],
     // gemini-3.5-flash spends "thinking" tokens from the same output
     // budget; without disabling it a 1024 cap leaves ~90 chars of text
     // (live truncation incident, topic 479e4480, 2026-06-10).
@@ -152,11 +170,17 @@ const artanisMindCompleteOnce = async (input: Readonly<{
   prompt: string
   system: string
   maxOutputTokens: number
+  images?: ReadonlyArray<ArtanisMindImage> | undefined
 }>): Promise<
   | { ok: true; result: ArtanisMindResult }
   | { ok: false; truncated: boolean; failure: ArtanisMindFailure }
 > => {
-  const body = geminiBody(input.system, input.prompt, input.maxOutputTokens)
+  const body = geminiBody(
+    input.system,
+    input.prompt,
+    input.maxOutputTokens,
+    input.images,
+  )
   const attempts: Array<{ path: string; status: number; detail: string }> = []
   // Skip the Cloudflare AI Gateway entirely when no `cf-aig` token is
   // available: the gateway 401s without it, and we are exiting Cloudflare
@@ -279,6 +303,7 @@ export const artanisMindComplete = async (input: Readonly<{
   prompt: string
   system: string
   maxOutputTokens?: number | undefined
+  images?: ReadonlyArray<ArtanisMindImage> | undefined
 }>): Promise<ArtanisMindResult | ArtanisMindFailure> => {
   const fetchImpl = input.fetchImpl ?? fetch
   const model = input.model ?? ArtanisMindModelDefault
@@ -293,6 +318,7 @@ export const artanisMindComplete = async (input: Readonly<{
     model,
     prompt: input.prompt,
     system: input.system,
+    images: input.images,
   })
   if (first.ok) return first.result
 
@@ -310,6 +336,7 @@ export const artanisMindComplete = async (input: Readonly<{
       model,
       prompt: input.prompt,
       system: input.system,
+      images: input.images,
     })
     if (escalated.ok) return escalated.result
     return escalated.failure

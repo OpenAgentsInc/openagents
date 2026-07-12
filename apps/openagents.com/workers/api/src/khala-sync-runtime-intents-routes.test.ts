@@ -390,6 +390,7 @@ describe('handleKhalaSyncChatMessageRead', () => {
 
   test('returns the message when found', async () => {
     const message: RuntimeChatMessageRow = {
+      attachments: [],
       authorUserId: 'user-1',
       body: 'real prompt text',
       createdAt: '2026-07-05T15:20:11.412Z',

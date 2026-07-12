@@ -33,6 +33,7 @@
  *     HOSTED_CHAT_SMOKE_EXPECT=Paris bun .../hosted-chat-e2e-smoke.ts
  */
 
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -44,6 +45,7 @@ const POLL_MS = Number(process.env.HOSTED_CHAT_SMOKE_POLL_MS ?? 5_000)
 // the prompt itself, so a match proves the REPLY (not an echo of the send).
 const PROMPT = process.env.HOSTED_CHAT_SMOKE_PROMPT ?? 'What is the capital of France? Answer with only the city name.'
 const EXPECT = process.env.HOSTED_CHAT_SMOKE_EXPECT ?? 'Paris'
+const IMAGE_PATH = process.env.HOSTED_CHAT_SMOKE_IMAGE_PATH
 
 const fail = (message: string): never => {
   console.error(`FAIL: ${message}`)
@@ -103,7 +105,16 @@ type RuntimeEvent = {
   sequence?: number
 }
 
-const readThreadEvents = async (turnId: string): Promise<RuntimeEvent[]> => {
+type ReadThreadResult = {
+  events: RuntimeEvent[]
+  imageReadbackVerified: boolean
+}
+
+const readThread = async (
+  turnId: string,
+  messageId: string,
+  expectedImageSha256: string | undefined,
+): Promise<ReadThreadResult> => {
   const snap = await post('/api/sync/bootstrap', {
     clientGroupId: `hosted-chat-smoke-read-${Date.now()}`,
     protocolVersion: 1,
@@ -112,7 +123,23 @@ const readThreadEvents = async (turnId: string): Promise<RuntimeEvent[]> => {
   })
   const entities = (snap.entities as Array<{ entityType?: string; postImageJson?: string }>) ?? []
   const events: RuntimeEvent[] = []
+  let imageReadbackVerified = expectedImageSha256 === undefined
   for (const entity of entities) {
+    if (entity.entityType === 'chat_message' && entity.postImageJson !== undefined) {
+      try {
+        const message = JSON.parse(entity.postImageJson) as {
+          messageId?: string
+          attachments?: Array<{ dataBase64?: string; sha256?: string }>
+        }
+        const image = message.messageId === messageId ? message.attachments?.[0] : undefined
+        if (image?.sha256 === expectedImageSha256 && image.dataBase64 !== undefined) {
+          const bytes = Buffer.from(image.dataBase64, 'base64')
+          imageReadbackVerified = createHash('sha256').update(bytes).digest('hex') === expectedImageSha256
+        }
+      } catch {
+        // Keep polling until an exact authoritative readback is visible.
+      }
+    }
     if (entity.entityType !== 'runtime_event' || entity.postImageJson === undefined) continue
     try {
       // The runtime_event entity's postImage wraps the KhalaRuntimeEvent under
@@ -124,7 +151,10 @@ const readThreadEvents = async (turnId: string): Promise<RuntimeEvent[]> => {
       // ignore malformed rows; the poll simply keeps waiting.
     }
   }
-  return events.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+  return {
+    events: events.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0)),
+    imageReadbackVerified,
+  }
 }
 
 const main = async () => {
@@ -133,6 +163,17 @@ const main = async () => {
   const nowIso = new Date().toISOString()
   const clientGroupId = `hosted-chat-smoke-${Date.now()}`
   const clientId = `${clientGroupId}.send`
+  const imageBytes = IMAGE_PATH === undefined ? undefined : readFileSync(IMAGE_PATH)
+  const imageSha256 = imageBytes === undefined
+    ? undefined
+    : createHash('sha256').update(imageBytes).digest('hex')
+  const attachments = imageBytes === undefined ? undefined : [{
+    dataBase64: imageBytes.toString('base64'),
+    mediaType: 'image/png',
+    name: 'hosted-chat-live-proof.png',
+    sha256: imageSha256!,
+    sizeBytes: imageBytes.byteLength,
+  }]
 
   console.log(`[hosted-chat-e2e-smoke] base=${BASE_URL} thread=${THREAD_ID}`)
   console.log(`[hosted-chat-e2e-smoke] sending turn=${turnId} prompt=${JSON.stringify(PROMPT)}`)
@@ -142,7 +183,12 @@ const main = async () => {
     clientId,
     mutations: [
       {
-        argsJson: JSON.stringify({ body: PROMPT, messageId, threadId: THREAD_ID }),
+        argsJson: JSON.stringify({
+          ...(attachments === undefined ? {} : { attachments }),
+          body: PROMPT,
+          messageId,
+          threadId: THREAD_ID,
+        }),
         mutationId: 1,
         name: 'chat.appendMessage',
       },
@@ -174,7 +220,8 @@ const main = async () => {
   const deadline = Date.now() + TIMEOUT_MS
   while (Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, POLL_MS))
-    const events = await readThreadEvents(turnId)
+    const readback = await readThread(turnId, messageId, imageSha256)
+    const events = readback.events
     const kinds = events.map(event => event.kind)
     const finished = events.find(event => event.kind === 'turn.finished')
     const replyText = events
@@ -183,6 +230,9 @@ const main = async () => {
       .join('')
 
     if (finished !== undefined) {
+      if (!readback.imageReadbackVerified) {
+        return fail('turn finished before the attached image passed exact SHA-256 readback verification')
+      }
       if (finished.finishReason === 'error') {
         return fail(
           `turn settled as finishReason:"error" — no assistant reply. events=${JSON.stringify(kinds)}`,
@@ -194,6 +244,9 @@ const main = async () => {
       const matched = replyText.toLowerCase().includes(EXPECT.toLowerCase())
       console.log(`[hosted-chat-e2e-smoke] reply: ${JSON.stringify(replyText.slice(0, 400))}`)
       console.log(`[hosted-chat-e2e-smoke] events: ${JSON.stringify(kinds)}`)
+      if (imageSha256 !== undefined) {
+        console.log('[hosted-chat-e2e-smoke] attached image passed exact owner-private SHA-256 readback')
+      }
       if (!matched) {
         console.log(
           `[hosted-chat-e2e-smoke] note: reply did not contain expected token ${JSON.stringify(EXPECT)}, ` +

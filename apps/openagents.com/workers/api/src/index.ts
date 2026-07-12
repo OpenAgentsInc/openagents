@@ -8310,7 +8310,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
     return
   }
   const gatewayToken = (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN
-  const complete: HostedRuntimeCompleteFn = async ({ prompt, system }) => {
+  const complete: HostedRuntimeCompleteFn = async ({ images, prompt, system }) => {
     const result = await artanisMindComplete({
       apiKey,
       ...(gatewayToken === undefined || gatewayToken === ''
@@ -8319,6 +8319,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       model: DEFAULT_HOSTED_RUNTIME_MODEL,
       prompt,
       system,
+      ...(images === undefined ? {} : { images }),
     })
     if ('error' in result) {
       // Surface the real reason (path/status/detail) instead of an opaque

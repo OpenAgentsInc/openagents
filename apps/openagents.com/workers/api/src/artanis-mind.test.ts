@@ -22,6 +22,29 @@ const geminiTruncated = JSON.stringify({
 })
 
 describe('artanis cloud mind', () => {
+  test('lowers image bytes as Gemini inlineData alongside the user text', async () => {
+    let requestBody: Record<string, unknown> | undefined
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(geminiOk, { status: 200 })
+    }
+    const result = await artanisMindComplete({
+      apiKey: 'k',
+      fetchImpl,
+      images: [{ dataBase64: 'AQID', mediaType: 'image/png' }],
+      prompt: 'What color?',
+      system: 's',
+    })
+    expect('error' in result).toBe(false)
+    const contents = requestBody?.contents as Array<{
+      parts: Array<Record<string, unknown>>
+    }>
+    expect(contents[0]?.parts).toEqual([
+      { text: 'What color?' },
+      { inlineData: { data: 'AQID', mimeType: 'image/png' } },
+    ])
+  })
+
   test('serves via the AI gateway when a gateway resolves', async () => {
     const fetchImpl: typeof fetch = async input => {
       const url = String(input)

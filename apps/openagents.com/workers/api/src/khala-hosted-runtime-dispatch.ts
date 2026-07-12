@@ -62,6 +62,7 @@
 import {
   decodeKhalaRuntimeEvent,
   decodePushRequest,
+  type ChatMessageImageAttachment,
   type KhalaRuntimeEvent,
   type KhalaRuntimeFinishReason,
   type MutationResult,
@@ -173,6 +174,7 @@ export type HostedRuntimeRecordUsageFn = (
 export type HostedRuntimeCompleteFn = (input: {
   readonly system: string
   readonly prompt: string
+  readonly images?: ReadonlyArray<ChatMessageImageAttachment>
 }) => Promise<HostedRuntimeCompletion>
 
 /** Injectable push-engine seam so tests never need the real engine. */
@@ -359,10 +361,13 @@ export const readTurnStartBodyRef = async (
  * `null` when the ref is missing/malformed or the message does not exist —
  * the caller treats that as a dispatch failure, never a silent skip.
  */
-export const resolveHostedTurnPrompt = async (
+export const resolveHostedTurnMessage = async (
   sql: SyncSql,
   turn: QueuedHostedTurn,
-): Promise<string | null> => {
+): Promise<Readonly<{
+  prompt: string
+  images?: ReadonlyArray<ChatMessageImageAttachment>
+}> | null> => {
   const bodyRef = await readTurnStartBodyRef(sql, turn.turnId)
   if (bodyRef === null || !bodyRef.startsWith(CHAT_MESSAGE_BODY_REF_PREFIX)) {
     return null
@@ -375,8 +380,20 @@ export const resolveHostedTurnPrompt = async (
   })
   if (message === null) return null
   const body = message.body
-  return typeof body === 'string' && body.length > 0 ? body : null
+  if (typeof body !== 'string' || body.length === 0) return null
+  return {
+    prompt: body,
+    ...(message.attachments === undefined || message.attachments.length === 0
+      ? {}
+      : { images: message.attachments as ReadonlyArray<ChatMessageImageAttachment> }),
+  }
 }
+
+/** Backward-compatible text-only projection used by existing callers/tests. */
+export const resolveHostedTurnPrompt = async (
+  sql: SyncSql,
+  turn: QueuedHostedTurn,
+): Promise<string | null> => (await resolveHostedTurnMessage(sql, turn))?.prompt ?? null
 
 const runtimeSource = (model: string) =>
   ({
@@ -559,13 +576,14 @@ export const dispatchHostedRuntimeTurn = async (
   // 2. Resolve the prompt and drive inference.
   let completion: HostedRuntimeCompletion
   try {
-    const prompt = await resolveHostedTurnPrompt(resolved.sql, turn)
-    if (prompt === null) {
+    const message = await resolveHostedTurnMessage(resolved.sql, turn)
+    if (message === null) {
       completion = { detail: 'prompt_unresolved', ok: false }
     } else {
       completion = await resolved.complete({
-        prompt,
+        prompt: message.prompt,
         system: resolved.systemPrompt,
+        ...(message.images === undefined ? {} : { images: message.images }),
       })
     }
   } catch (error) {
