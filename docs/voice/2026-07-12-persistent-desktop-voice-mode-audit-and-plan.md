@@ -10,6 +10,9 @@
 - **AUDIO-1 contract freeze:** implemented by `packages/audio-contract`, the
   media-only `crates/oa-desktop-audio` mirror, and their shared golden corpus;
   the remaining leaves build on this authority boundary.
+- **AUDIO-2 Google STT gateway:** implemented and live-smoked on private Cloud
+  Run revision `openagents-audio-staging-00002-7x4`; see
+  [`evidence/2026-07-12-audio-2-google-stt-staging-receipt.md`](./evidence/2026-07-12-audio-2-google-stt-staging-receipt.md).
 - **Historical inputs:** Sarah/Hydralisk records in `docs/sarah/` and their deleted source in Git history
 
 ## 0. Vision summary

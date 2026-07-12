@@ -6,6 +6,11 @@ contract is `packages/audio-contract`; the media-only Rust mirror is
 `fixtures/audio-contract/media-v1.json`. Later audio leaves may extend those
 surfaces but may not widen Rust into application or policy authority.
 
+**Measured AUDIO-2 result (#8735):** the Effect/Bun gateway packaged the
+official Google Node gRPC client and completed a real Chirp 3 streaming smoke
+on private Cloud Run. Its cancellation/runtime threshold passed, so the ADR's
+Rust-gateway fallback is not activated.
+
 - **Date:** 2026-07-12
 - **Status:** accepted planning decision for [AUDIO-0 #8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
 - **Owner direction:** Rust is permitted for this track when it is the better systems boundary; do not force the whole feature into Effect

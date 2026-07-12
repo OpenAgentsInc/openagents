@@ -1,0 +1,19 @@
+{
+  "name": "@openagentsinc/openagents-audio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/main.ts",
+    "test": "bun test src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:cloudrun": "bun build src/main.ts --target=bun --outdir dist --entry-naming server.js",
+    "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh"
+  },
+  "dependencies": {
+    "@google-cloud/speech": "^7.2.1",
+    "@openagentsinc/audio-contract": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": { "bun-types": "^1.0.0", "typescript": "catalog:" }
+}
