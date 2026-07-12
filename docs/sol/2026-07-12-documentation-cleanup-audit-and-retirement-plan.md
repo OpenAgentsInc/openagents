@@ -27,13 +27,13 @@
 | SOL-DOC-07 — archive July 9 corpus and remove sources | [#8729](https://github.com/OpenAgentsInc/openagents/issues/8729) | **Closed 2026-07-12.** Nine exact files were hash/line/byte verified and pushed to Backroom before their OpenAgents links migrated and source paths were removed. Both repositories record the commits. | Backroom import `dec8ae52`; OpenAgents removal `b62ad88136`; Backroom final note `b9645456`; OpenAgents completed manifest `c608527eda`. |
 | SOL-DOC-08 — automate freshness and link integrity | [#8730](https://github.com/OpenAgentsInc/openagents/issues/8730) | **Closed 2026-07-12.** A seven-day schema-versioned product-issue snapshot, explicit live refresh/comparison, active-policy/classification/receipt/archive/link/size checks, and negative regression fixtures now fail concrete drift offline before push. | `1e46778733` — 10 live product issues equal GitHub; 43/43 issue sources; 25 receipt rows; nine removed paths; 13/13 regressions; all Sol links; 571/800 master lines. |
 | SOL-DOC-09 — full inventory and next archive preparation | [#8731](https://github.com/OpenAgentsInc/openagents/issues/8731) | **Closed 2026-07-12.** Every Sol Markdown file has a reproducible class/owner/hash/status/snapshot/review/dispatch/inbound/issue/disposition row; the one-hop clean-reader contract is receipted; one retired July 10 diary is the sole next archive candidate. Duplicate #8732 was closed without a second implementation lane. | `7f1bc65e4a` — 92/92 documents, nine controlled classes, one dispatch owner, one exact archive candidate, 19 live product issues, 15/15 regressions, 596/800 master lines. |
+| SOL-DOC-10 — archive retired July 10 delegation diary | [#8742](https://github.com/OpenAgentsInc/openagents/issues/8742) | **Closed 2026-07-12.** Exact diary bytes were pushed to Backroom before two live links migrated and exactly one OpenAgents source was removed. The generated manifest has no remaining archive candidate and the path is permanently denied. | Backroom import `9c710a93`; OpenAgents removal `03135f5d61`; Backroom final note `d7993ef5`; OpenAgents completed manifest `a2e3b64f3b`. |
 
-**Next ordered chunk:** SOL-DOC-10 performs the import-first cross-repository
-move of the one exact candidate in the
-[`July 10 preparation manifest`](./2026-07-12-july10-delegation-backroom-preparation-manifest.md):
-push exact bytes/provenance to Backroom, migrate its two inbound links, remove
-only that source, and record both repositories' commits before a final cleanup
-completion audit.
+**Next ordered chunk:** SOL-DOC-11 audits every P0–P6 item, deletion/retention
+test, verification row, and success measure against current generated/live
+state. It either records a complete program receipt and converts this ledger
+to maintained status, or opens the narrow remaining implementation chunk; it
+cannot close on prose assertion alone.
 
 ## Executive decision
 
@@ -530,11 +530,11 @@ removal.
 7. **Complete for this batch.** No transitional redirect remains; the compact
    decision and immutable Backroom URLs own discoverability.
 
-**Exit for the completed first archive batch:** the July 9 narrative is
+**Exit for the completed archive batches:** the July 9 narrative and retired
+July 10 delegation diary are
 discoverable in Backroom but absent from the normal `openagents` reading and
-search path. The retired July 10 delegation diary is non-dispatch but remains
-in the product repo; SOL-DOC-09 must classify it in the next exact archive
-batch before the broader P5 exit can be called complete.
+search path. Current authority, contracts, receipts, failures, decisions,
+transcripts, tombstones, and issue sources remain in the product repo.
 
 ### P6 — Automate freshness and link integrity
 
@@ -668,12 +668,13 @@ move files. It makes incorrect dispatch structurally harder.
 
 ## Current recommendation
 
-The first seven changesets and the automated guard are landed. Do not restart
+The initial changesets, automated guard, full inventory, clean-reader receipt,
+and two Backroom batches are landed. Do not restart
 the completed entry-point, contract, master-compaction, receipt-index, or July
 9 archive work. Close the remaining P0 inventory gap with one generated full-
-tree manifest, use that inventory to define the next exact Backroom batch for
-the retired July 10 delegation/execution prose, and receipt the clean-agent
-reading test before claiming the ordered cleanup complete.
+tree manifest or archive another file by implication. Run the final P0–P6 and
+success-measure audit against generated/live state before claiming the ordered
+cleanup complete.
 
 Use Backroom aggressively for material that is truly dead, but only after
 conclusion extraction and link inventory. Keep proof close to the product;

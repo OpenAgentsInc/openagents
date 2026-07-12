@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 96
+- Revision: 97
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -11,7 +11,7 @@
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
-- Documentation cleanup: SOL-DOC-01 through SOL-DOC-09 are closed.
+- Documentation cleanup: SOL-DOC-01 through SOL-DOC-10 are closed.
   SOL-DOC-04 [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726)
   compacted this authority from 2,189 to 557 lines at `6bfe97fddb` without
   changing product proof. SOL-DOC-05
@@ -30,7 +30,11 @@
   [#8731](https://github.com/OpenAgentsInc/openagents/issues/8731) generated
   the 92-document disposition manifest, receipted the bounded clean-reader
   path, and pinned the next exact archive candidate at `7f1bc65e4a`.
-  SOL-DOC-10 performs that import-first cross-repository move. See the
+  SOL-DOC-10 [#8742](https://github.com/OpenAgentsInc/openagents/issues/8742)
+  archived that exact diary to Backroom first (`9c710a93`), removed its product
+  source at `03135f5d61`, and closed the bidirectional receipt at Backroom
+  `d7993ef5` and OpenAgents `a2e3b64f3b`. SOL-DOC-11 is the final P0–P6 and
+  success-measure completion audit. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
 This file owns current product direction, durable gates and laws, the current
