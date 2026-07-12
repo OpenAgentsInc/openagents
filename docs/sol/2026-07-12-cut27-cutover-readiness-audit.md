@@ -151,6 +151,9 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   mobile image/binary byte-bearing runtime delivery and real selectors, plus
   the named physical cross-client receipts. CUT-21 already supplies named
   Codex/Claude live streaming evidence.
+- CUT-16's own retained Codex daily-driver gate is now complete: the
+  2026-07-12 `composer.run_stream` proof records 34 events, 7 commands, zero
+  edits, exact usage, passed focused verification, and a clean redaction scan.
 
 ### CUT-17 #8697 — grant-scoped workspace tree/watch/cache/search — CLOSED
 

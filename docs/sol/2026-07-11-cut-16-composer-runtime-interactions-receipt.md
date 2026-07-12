@@ -172,11 +172,12 @@ Named-provider live evidence:
   artifact is
   [`2026-07-11-claude-agent-daily-driver-proof.json`](../../apps/pylon/docs/proofs/2026-07-11-claude-agent-daily-driver-proof.json).
 - Codex: the first real attempt exposed the pinned `0.139.0` SDK as too old
-  for `gpt-5.6-sol`; `e4d903c602` upgrades all owned consumers to `0.144.1`
-  and its focused executor/composer suites pass. Both ready local subscription
-  accounts then reached the provider but were quota-limited until the
-  provider-reported 20:31 CDT reset; no API-key fallback is configured. A
-  completed named Codex receipt remains required after reset.
+  for `gpt-5.6-sol`; `e4d903c602` upgraded all owned consumers to `0.144.1`.
+  After device authorization/quota recovery, a real retained Codex composer
+  turn completed on 2026-07-12 through `composer.run_stream`: 34 events,
+  7 commands, zero edits, 443,773 exact reported tokens, passed focused
+  verification, and a clean house redaction scan. The refs-only artifact is
+  [`2026-07-12-codex-daily-driver-proof.json`](../../apps/pylon/docs/proofs/2026-07-12-codex-daily-driver-proof.json).
 - Deployment: the safe pipeline passed local architecture/type/test gates but
   Cloudflare refused staging D1 migration with account storage-limit code
   7500. The new authority route therefore remains undeployed; no staging gate
@@ -188,8 +189,7 @@ mobile native file/image acquisition is landed, but attachment-bearing runtime
 submission/delivery is not yet proven; real provider/model/account selection
 remains, Desktop still needs full canonical rich-draft UI adoption, and editor/
 diff capture is not yet wired end to end in both hosts. The
-remaining external receipts are a named Codex turn after provider quota reset,
-deployment of the trusted authority route after the Cloudflare staging storage
+remaining external receipts are deployment of the trusted authority route after the Cloudflare staging storage
 limit is remediated, and physical-device/assistive-technology acceptance.
 Restart, revocation, provider injection, expiry, mobile runtime controls, and
 mobile canonical draft restoration are covered deterministically; those proofs
@@ -245,8 +245,8 @@ control expectation; full Desktop suite 992 pass / 3 env skips / 0 fail /
 Still open after this slice (unchanged residuals): Desktop full canonical
 rich-draft UI adoption, real provider/model/account selectors, editor/diff
 capture, attachment-bearing runtime delivery, chat-surface resume/retry/close
-parity (the fleet cockpit carries those controls today), named Codex receipt,
-deployed trusted authority, and physical assistive-technology acceptance.
+parity (the fleet cockpit carries those controls today), deployed trusted
+authority, and physical assistive-technology acceptance.
 
 ## Addendum (2026-07-12): grant-scoped Desktop file mentions close I4
 
