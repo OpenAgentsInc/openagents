@@ -2,9 +2,11 @@
 
 - Date: 2026-07-11
 - Issue: [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697)
-- Status: capability core, tree/watch/search host bridge, and cancellable search
-  worker landed; UI, mutations, and closure evidence remain open
-- Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`, `36725a91df`
+- Status: capability core, tree/watch/search host bridge, cancellable search
+  worker, and mutation core landed; UI/mutation IPC and closure evidence remain
+  open
+- Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`, `36725a91df`,
+  `57488904c5`
 
 ## Landed boundary
 
@@ -48,11 +50,18 @@ boundary. Main owns one active request per webContents; replacement cancels the
 prior task, exact cancellation is fenced by both owner and request ref, and
 window/app teardown closes the owner. No renderer search UI is claimed.
 
+The root-private mutation core now supports create file/directory,
+revision-bound rename, revision-bound non-recursive delete, and host-injected
+reveal. It rejects traversal, symlinks, hidden/secret/Git-ignored names, stale
+revisions, existing targets, non-empty directory deletion, and permission loss
+with typed outcomes. Only confirmed mutations advance the WorkContext epoch.
+No mutation IPC or UI is claimed.
+
 ## Verification
 
 - focused search/worker/workspace/electron suite: 41 pass, 0 fail, 509 assertions;
-- full integrated Desktop suite after rebasing the concurrent Git/GitHub
-  surface: 642 pass, 0 fail, 3,515 assertions, with 11 existing
+- focused mutation/workspace/topology suite: 35 pass, 0 fail, 270 assertions;
+- full integrated Desktop suite: 644 pass, 0 fail, 3,548 assertions, with 11 existing
   capability-gap skips retained and named;
 - Desktop typecheck: pass;
 - Desktop production bundle: pass;
@@ -77,8 +86,7 @@ No tree/search UI or scale-benchmark receipt is claimed.
 
 - migrate the Files workspace to the new relative-ref boundary and ship the
   recursive accessible Effect Native tree/search experience;
-- add reveal plus create/rename/delete capability operations with explicit
-  conflict and permission-loss outcomes;
+- add the fixed mutation/reveal main-preload operations and renderer controls;
 - run the required large-repository scale benchmark and built-host lifecycle
   receipt; and
 - remove the legacy absolute-root renderer projection only after its consumers

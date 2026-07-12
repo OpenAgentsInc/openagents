@@ -139,7 +139,9 @@ path/content search now executes in a WorkContext-owned cancellable worker per
 task, with stale-epoch fencing and relative-ref-only decoded results. Fixed
 main/preload search/cancel operations now bind one task to the exact
 webContents/request ref and close with that owner; the Effect Native UI remains
-the next host rung.
+the next host rung. Root-private relative-ref create/rename/non-recursive-delete
+and reveal capabilities now also exist with revision and permission fencing;
+their fixed bridge and UI remain separate from portable materialization.
 
 ### Episodes 248–249 calibration
 
