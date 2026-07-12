@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+app_dir="$(cd "$script_dir/.." && pwd)"
+
 # Deploy OpenAgents Updates to Cloud Run from the oa-updates app directory.
 #
 # Required before running:
@@ -56,7 +59,7 @@ env_csv="$(IFS=,; echo "${env_vars[*]}")"
 
 args=(
   run deploy oa-updates
-  --source apps/oa-updates \
+  --source .
   --region us-central1 \
   --allow-unauthenticated \
   --port 8080 \
@@ -71,4 +74,4 @@ if [[ -n "$signing_secret" ]]; then
   args+=(--set-secrets "OA_SIGNING_KEY=${signing_secret}")
 fi
 
-gcloud "${args[@]}"
+(cd "$app_dir" && gcloud "${args[@]}")
