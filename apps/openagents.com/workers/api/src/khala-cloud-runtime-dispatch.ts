@@ -77,6 +77,26 @@ export const CLOUD_GCP_RUNTIME_LANE = 'cloud-gcp'
 /** Default valid runtime-event lane stamped on the streamed events. */
 export const CLOUD_GCP_RUNTIME_EVENT_LANE: KhalaRuntimeLane = 'hosted_khala'
 export const MANAGED_CLOUD_RUNTIME_LANE: KhalaRuntimeLane = 'managed_cloud'
+const IMMUTABLE_GIT_SHA = /^[0-9a-f]{40}$/i
+
+export const resolveManagedCloudRepositoryCommit = async (
+  repo: string,
+  commitOrRef: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | null> => {
+  if (IMMUTABLE_GIT_SHA.test(commitOrRef)) return commitOrRef
+  const [owner, name] = repo.split('/')
+  if (owner === undefined || name === undefined || owner === '' || name === '') return null
+  const response = await fetchImpl(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(commitOrRef)}`,
+    { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'OpenAgents-Agent-Computer' } },
+  ).catch(() => null)
+  if (response === null || !response.ok) return null
+  const body = await response.json().catch((): unknown => null)
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return null
+  const sha = (body as { sha?: unknown }).sha
+  return typeof sha === 'string' && IMMUTABLE_GIT_SHA.test(sha) ? sha : null
+}
 
 /** Provider ref stamped on the streamed events' source. */
 export const CLOUD_GCP_RUNTIME_PROVIDER_REF = 'openagents-agent-computer'

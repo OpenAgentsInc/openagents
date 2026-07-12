@@ -15,6 +15,7 @@ import {
   makeCloudCodingAdapterLaunchSeam,
   planCloudGcpRuntimeAccountDispatch,
   runCloudGcpRuntimeDispatch,
+  resolveManagedCloudRepositoryCommit,
   type CloudGcpAdmittedWorkContext,
   type CloudGcpMintFn,
   type CloudGcpPlacementLaunchFn,
@@ -25,6 +26,32 @@ import { decodeWorkContextB64 } from './khala-cloud-runtime-inference-block'
 // A no-op SQL (mint/revoke are faked, executePush is faked; the SQL handle is
 // only passed through, never queried directly in these tests).
 const noopSql = (() => Promise.resolve([])) as unknown as SyncSql
+
+describe('managed cloud repository commit resolution', () => {
+  test('preserves SHAs and resolves branch refs to immutable GitHub commits', async () => {
+    const sha = 'a'.repeat(40)
+    expect(await resolveManagedCloudRepositoryCommit('OpenAgentsInc/openagents', sha)).toBe(sha)
+    const seen: string[] = []
+    const resolved = await resolveManagedCloudRepositoryCommit(
+      'OpenAgentsInc/openagents',
+      'main',
+      (async input => {
+        seen.push(String(input))
+        return new Response(JSON.stringify({ sha: 'b'.repeat(40) }))
+      }) as typeof fetch,
+    )
+    expect(resolved).toBe('b'.repeat(40))
+    expect(seen[0]).toContain('/commits/main')
+  })
+
+  test('fails closed on malformed or unavailable refs', async () => {
+    expect(await resolveManagedCloudRepositoryCommit('invalid', 'main')).toBeNull()
+    expect(await resolveManagedCloudRepositoryCommit(
+      'OpenAgentsInc/openagents', 'missing',
+      (async () => new Response(null, { status: 404 })) as typeof fetch,
+    )).toBeNull()
+  })
+})
 
 type RecordedEvent = {
   userId: string

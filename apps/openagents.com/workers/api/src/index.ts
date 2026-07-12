@@ -1225,6 +1225,7 @@ import {
   makeCloudCodingAdapterLaunchSeam,
   readQueuedManagedCloudTurns,
   runCloudGcpRuntimeDispatch,
+  resolveManagedCloudRepositoryCommit,
 } from './khala-cloud-runtime-dispatch'
 import {
   handleCloudGcpRuntimeDispatchAdminRoute,
@@ -8480,6 +8481,13 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
       launch,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
       prepareAfterClaim: async turn => {
+        const resolvedCommit = await resolveManagedCloudRepositoryCommit(
+          turn.repo,
+          turn.commit,
+        )
+        if (resolvedCommit === null) {
+          throw new Error('managed_cloud_repository_ref_unresolved')
+        }
         const [accounts, githubConnection] = await Promise.all([
           listProviderAccountsForUser(accountRepository, turn.ownerUserId),
           githubRepository.findUsableConnectionForUser(turn.ownerUserId),
@@ -8510,6 +8518,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
         }
         return {
           ...turn,
+          commit: resolvedCommit,
           accountRefHash: account.providerAccountRef,
           codexContinuity: {
             accountRefHash: account.providerAccountRef,
