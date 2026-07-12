@@ -4,7 +4,7 @@ import { createDesktopVoiceHost, type VoiceNativeMedia, type VoiceNativeMediaSes
 const identity = { ownerRef: "owner", deviceRef: "device", threadRef: "thread", sessionRef: "session", generation: 1 }
 const harness = (now = 1_000) => {
   const events: string[] = []; let callbacks: Parameters<VoiceNativeMedia["open"]>[0] | null = null
-  const media: VoiceNativeMedia = { open: input => { callbacks = input; events.push("open"); return { setCaptureEnabled: enabled => events.push(enabled ? "capture:on" : "capture:off"), close: reason => events.push(`close:${reason}`) } satisfies VoiceNativeMediaSession } }
+  const media: VoiceNativeMedia = { open: input => { callbacks = input; events.push("open"); return { setCaptureEnabled: enabled => events.push(enabled ? "capture:on" : "capture:off"), speak: async value => { events.push(`speak:${value.speechRef}`); return true }, close: reason => events.push(`close:${reason}`) } satisfies VoiceNativeMediaSession } }
   const host = createDesktopVoiceHost({ resolveIdentity: ({ generation }) => ({ ...identity, generation }), permission: () => "granted", requestPermission: () => "granted", media, now: () => now })
   return { host, events, callbacks: () => callbacks! }
 }
@@ -48,5 +48,10 @@ describe("Desktop host-owned persistent voice lifecycle", () => {
     expect(h.host.state().proposal?.state).toBe("refused")
     h.callbacks().onControl({ ...proposal, proposalRef: "p3", expiresAtMs: 999 })
     expect(h.host.state().proposal?.state).toBe("refused")
+  })
+  test("canonical assistant text reaches the active media session through a closed speak command", async () => {
+    const { host, callbacks, events } = harness(); await host.command({ protocolVersion: 1, id: "voice.start", threadRef: "thread", sessionRef: "session", disclosureRef: "disclosure" }); callbacks().onState("live")
+    await host.command({ protocolVersion: 1, id: "voice.speak", turnRef: "turn.1", speechRef: "speech.1", messageRef: "message.1", text: "Canonical assistant reply" })
+    expect(events).toContain("speak:speech.1")
   })
 })

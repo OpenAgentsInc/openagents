@@ -777,6 +777,7 @@ const voiceMedia: VoiceNativeMedia = smokeMode
         })
         return {
           setCaptureEnabled: enabled => { captureEnabled = enabled; void captureEnabled },
+          speak: async () => true,
           close: () => { captureEnabled = false },
         }
       },

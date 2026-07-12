@@ -4,7 +4,7 @@ import { createDesktopVoiceHost, type VoiceNativeMedia } from "../src/voice-host
 
 test("Runtime Gateway admits only bounded voice commands and public-safe projections", async () => {
   let callbacks: Parameters<VoiceNativeMedia["open"]>[0] | null = null
-  const host = createDesktopVoiceHost({ resolveIdentity: ({ threadRef, sessionRef, generation }) => ({ ownerRef: "owner", deviceRef: "device", threadRef, sessionRef, generation }), permission: () => "granted", requestPermission: () => "granted", media: { open: input => { callbacks = input; return { setCaptureEnabled: () => undefined, close: () => undefined } } } })
+  const host = createDesktopVoiceHost({ resolveIdentity: ({ threadRef, sessionRef, generation }) => ({ ownerRef: "owner", deviceRef: "device", threadRef, sessionRef, generation }), permission: () => "granted", requestPermission: () => "granted", media: { open: input => { callbacks = input; return { setCaptureEnabled: () => undefined, speak: async () => true, close: () => undefined } } } })
   const gateway = createDesktopRuntimeGateway(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => host)
   const events: unknown[] = []; gateway.subscribe(event => events.push(event)); gateway.start()
   const started = await gateway.request({ kind: "command", commandId: "voice-1", command: { id: "voice.start", protocolVersion: 1, threadRef: "thread", sessionRef: "session", disclosureRef: "disclosure.v1" } })

@@ -1577,6 +1577,16 @@ export const makeDesktopShellHandlers = (
         },
       }))
       yield* SubscriptionRef.update(state, (next) => withTurnResult(next, result, now()))
+      if (result.ok && result.thread) {
+        const previousKeys = new Set(current.notes.map(note => note.key))
+        const reply = [...result.thread.notes].reverse().find(note => note.role === "assistant" && note.text.trim() !== "" && !previousKeys.has(note.key))
+        const latest = yield* SubscriptionRef.get(state)
+        if (reply !== undefined && voiceActive(latest.voice)) {
+          const messageRef = (reply.key.trim() || `message.${Date.now()}`).slice(0, 256)
+          const turnRef = (reply.meta?.turnRef?.trim() || `turn.${messageRef}`).slice(0, 256)
+          yield* Effect.promise(() => voiceHost.command({ id: "voice.speak", protocolVersion: 1, turnRef, speechRef: `speech.${messageRef}`.slice(0, 256), messageRef, text: reply.text.slice(0, 16_384) }))
+        }
+      }
     }),
   DesktopTurnInterrupted: () =>
     Effect.gen(function* () {

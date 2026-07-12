@@ -2,8 +2,8 @@
 
 - **Date:** 2026-07-12
 - **Status:** AUDIO-1 through AUDIO-7 are closed; AUDIO-8 has deployed lower-rung
-  evidence and remains pending owner recording/release acceptance. This is not
-  yet a public product promise.
+  evidence and owner review. A signed release containing AUDIO-8 remains the
+  epic closeout rung. This is not yet a public product promise.
 - **Destination:** `apps/openagents-desktop`
 - **Related authority:** `docs/sol/MASTER_ROADMAP.md`
 - **Effect/Rust decision:** [`2026-07-12-effect-vs-rust-audio-architecture-decision.md`](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)

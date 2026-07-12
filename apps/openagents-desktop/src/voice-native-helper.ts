@@ -66,6 +66,15 @@ export const createPackagedVoiceNativeMedia = (input: Readonly<{
     child.stdin.write(JSON.stringify({ command: "start", protocol_version: 1, identity: request.identity, disclosure_ref: request.disclosureRef, gateway_url: connection.gatewayUrl, application_grant: connection.grant }) + "\n")
     return {
       setCaptureEnabled: enabled => { if (!closed) child.stdin.write(JSON.stringify({ command: "set_capture", enabled }) + "\n") },
+      speak: async value => {
+        if (closed) return false
+        const url = connection.gatewayUrl.replace(/^wss:/u, "https:").replace(/\/v1\/stream$/u, "/v1/speak")
+        if (!url.startsWith("https://") || url === connection.gatewayUrl) return false
+        try {
+          const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-openagents-audio-grant": connection.grant }, body: JSON.stringify(value) })
+          return response.ok
+        } catch { return false }
+      },
       close: reason => {
         if (closed) return
         closed = true

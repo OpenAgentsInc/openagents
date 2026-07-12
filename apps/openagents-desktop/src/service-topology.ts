@@ -660,7 +660,7 @@ export const desktopServiceTopology = [
     installedAt: "process",
     modules: ["apps/openagents-desktop/src/voice-native-helper.ts"],
     sourceEvidence: [{ module: "apps/openagents-desktop/src/voice-native-helper.ts", compositionModule: "apps/openagents-desktop/src/voice-native-helper.ts", constructions: ["verifyVoiceHelper", "spawnVoiceHelper"] }],
-    dependsOn: [], authority: ["filesystem", "process"],
+    dependsOn: [], authority: ["filesystem", "process", "network"],
     cacheKey: { scope: "process", parts: ["helper_version", "helper_digest", "host_architecture"] },
     freshness: { source: "static_manifest", maxAge: "process_lifetime", invalidatesOn: ["app-restart", "helper-upgrade"] },
     disposal: { disposesWith: "process", invalidatesOn: ["parent-exit", "app-shutdown", "helper-crash"] },

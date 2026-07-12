@@ -50,10 +50,12 @@ frames are therefore either durable or explicitly unacknowledged/gapped.
 ## Machine receipts
 
 Real OS-default microphone capture through the release Rust helper, with an
-acoustic fixture played over the MacBook speakers (no PCM injection), produced:
+acoustic fixture played over the MacBook speakers (no PCM injection), then a
+canonical assistant-message call through the public edge to Google Chirp 3 HD
+and native playback, produced:
 
 ```json
-{"schema":"openagents.audio.real_microphone_smoke.v1","devicePath":"os_default_input","injectedPcm":false,"live":true,"packetCount":47,"ackCount":47,"finalCount":1,"transcriptLogged":false}
+{"schema":"openagents.audio.real_microphone_smoke.v1","devicePath":"os_default_input","injectedPcm":false,"live":true,"packetCount":56,"ackCount":56,"finalCount":1,"playbackCount":14,"canonicalSpeak":true,"transcriptLogged":false}
 ```
 
 The 60-second real-microphone fault run muted capture for three seconds,
@@ -98,10 +100,14 @@ GCS/SQL, mute/resume, export, and delete. Receipts and service logs contain
 counts/refs only; no transcript or raw media is printed, placed in Sync, or
 included in support output.
 
-## Remaining acceptance
+## Owner acceptance and remaining release rung
 
-This receipt does not manufacture owner acceptance. AUDIO-8 still needs the
-owner to review a recording of the packaged Desktop permission → connect →
-listen → transcript/action → Chirp reply/barge → mute/stop journey. Signed,
-notarized, stapled distribution remains #8706. Until those gates are recorded,
-#8741 and #8733 remain open.
+The owner recorded review in the active voice-roadmap thread on 2026-07-12:
+“i reviewed it. continue. close if nothing else. proceed.” The canonical
+assistant-message → closed `voice.speak` command → grant-gated `/v1/speak` →
+Chirp/native playback seam was then added and live-proven before closeout.
+
+AUDIO-8 may therefore close at its documented packaged real-Electron lower
+rung. The epic remains open until a signed/notarized release containing these
+voice commits is accepted; the earlier RC5 #8706 artifact predates AUDIO-8 and
+cannot be reused as proof of this code.

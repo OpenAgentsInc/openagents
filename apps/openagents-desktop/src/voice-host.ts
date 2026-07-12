@@ -4,9 +4,11 @@ import type { VoiceIdentity } from "@openagentsinc/audio-contract"
 export const DesktopVoiceHostProtocolVersion = 1 as const
 
 const Ref = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))
+const SpokenText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(16_384))
 export const DesktopVoiceCommandSchema = Schema.Union([
   Schema.Struct({ protocolVersion: Schema.Literal(1), id: Schema.Literal("voice.start"), threadRef: Ref, sessionRef: Ref, disclosureRef: Ref }),
   Schema.Struct({ protocolVersion: Schema.Literal(1), id: Schema.Literals(["voice.stop", "voice.mute", "voice.unmute", "voice.suspend", "voice.resume", "voice.revoke"]) }),
+  Schema.Struct({ protocolVersion: Schema.Literal(1), id: Schema.Literal("voice.speak"), turnRef: Ref, speechRef: Ref, messageRef: Ref, text: SpokenText }),
 ])
 export type DesktopVoiceCommand = typeof DesktopVoiceCommandSchema.Type
 
@@ -30,6 +32,7 @@ export type DesktopVoiceState = Readonly<{
 export type VoiceMediaPacket = Readonly<{ sequence: number; generation: number; payloadLength: number; sha256: string }>
 export type VoiceNativeMediaSession = Readonly<{
   setCaptureEnabled: (enabled: boolean) => void
+  speak: (input: Readonly<{ turnRef: string; speechRef: string; messageRef: string; text: string }>) => Promise<boolean>
   close: (reason: "stop" | "revoke" | "replace" | "suspend" | "shutdown") => void
 }>
 export type VoiceNativeMedia = Readonly<{
@@ -78,6 +81,10 @@ export const createDesktopVoiceHost = (input: Readonly<{
 
   const command = async (command: DesktopVoiceCommand): Promise<DesktopVoiceState> => {
     if (disposed) return current
+    if (command.id === "voice.speak") {
+      if (session !== null && (current.phase === "live" || current.phase === "muted")) await session.speak({ turnRef: command.turnRef, speechRef: command.speechRef, messageRef: command.messageRef, text: command.text })
+      return current
+    }
     if (command.id === "voice.start") {
       close("replace")
       const generation = current.generation + 1

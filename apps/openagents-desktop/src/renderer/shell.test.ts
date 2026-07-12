@@ -731,6 +731,22 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((await Effect.runPromise(SubscriptionRef.get(pendingState))).voice.host.phase).toBe("idle")
   })
 
+  test("a completed canonical assistant message invokes the active voice session TTS", async () => {
+    const live: DesktopVoiceState = { protocolVersion: 1, phase: "live", generation: 1, nextSequence: 2, acknowledgedSequence: 1, capture: true, egress: true, playback: false, retainedAudio: true, activity: "listening" }
+    const initial: DesktopShellState = { ...baseState, voice: { ...baseState.voice, sessionRef: "voice.1", disclosureAccepted: true, host: live } }
+    const state = await Effect.runPromise(SubscriptionRef.make(initial))
+    const commands: Array<Readonly<Record<string, unknown>>> = []
+    const voiceHost = { command: async (command: Readonly<Record<string, unknown>>) => { commands.push(command); return live } }
+    const completed = { ...testThread, notes: [
+      { key: "user.1", role: "user" as const, text: "Status?", timestamp: "18:04" },
+      { key: "assistant.1", role: "assistant" as const, text: "The deployment is healthy.", timestamp: "18:05", meta: { turnRef: "turn.1" } },
+    ] }
+    const chatHost = { listThreads: async () => [testThread], newThread: async () => null, openThread: async () => testThread, sendMessage: async () => ({ ok: true as const, thread: completed }) }
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, voiceHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Status?")))))
+    expect(commands).toContainEqual({ id: "voice.speak", protocolVersion: 1, turnRef: "turn.1", speechRef: "speech.assistant.1", messageRef: "assistant.1", text: "The deployment is healthy." })
+  })
+
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {
     const idle = nodeByKey(desktopShellView(baseState), "shell-input") as {
       clearOnSubmit?: boolean
