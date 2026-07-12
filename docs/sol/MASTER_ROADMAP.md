@@ -595,8 +595,10 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   forbidden parentage sources and the exec encoder's receiver-less record
   yields nothing. Desktop main-process live graph emission is also wired: the
   local assembler now runs on the real fable-local/codex-local emit path with
-  bounded snapshot/push IPC delivery. A named confirmed-reconnect trace
-  remains open.
+  bounded snapshot/push IPC delivery. CUT-11 is closed: deployed named Claude
+  completed and Codex usage-limited terminal traces both preserve exact graph
+  identity/status across confirmed cursor reconnect, complementing the earlier
+  successful Codex child-source trace.
 - CUT-12 now has one shared graph-presentation model plus live Khala Mobile and
   OpenAgents Desktop thread surfaces. Canonical nodes become deterministic
   hierarchy rows with typed status/action/attention/elapsed/terminal and

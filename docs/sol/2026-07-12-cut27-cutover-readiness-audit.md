@@ -85,16 +85,13 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   assembler folding fable-local/codex-local streams through the shared
   reducer at `0f475ce89b`.
   [Receipt](./2026-07-11-cut-11-live-agent-graph-receipt.md).
-- Rung: **fixture-proven** for the schema/reducer/projection; **partial
-  live probes** — redacted named-account probes prove the live Claude child
-  lifecycle and the Codex `subAgentActivity` typed source.
-- Remaining gates (code): (1) the Codex child-activity source gap — the
-  SDK-bundled binary fails before a frame and the PATH binary's
-  `--experimental-json` encoder omits the child activity record; Pylon must
-  converge that typed app-server source (tools/history remain forbidden
-  parentage sources); (2) desktop main-process live emission wiring
-  (explicit residual — main.ts was hot); (3) a named confirmed-reconnect
-  live trace.
+- Rung: **closed/live-proven**. Production revision
+  `openagents-monolith-00085-k4v` emits confirmed graph post-images. Fresh
+  named Claude-completed and Codex-usage-limited terminal scopes both preserve
+  graph identity/status across exact-cursor reconnect; the earlier Codex
+  source trace proves real child activity. Pylon app-server convergence and
+  Desktop main-process emission are landed. Redacted receipt:
+  [`2026-07-12-cut11-named-confirmed-reconnect.json`](../../apps/pylon/docs/proofs/2026-07-12-cut11-named-confirmed-reconnect.json).
 
 ### CUT-12 #8692 — equivalent Desktop/mobile live-agent supervision UI — OPEN
 
@@ -341,15 +338,11 @@ still distinguish code/fixture/live/distribution/owner-acceptance rungs.
 
 ### (a) Code work
 
-1. CUT-11: converge the Codex typed app-server child-activity source
-   (bundled binary fails pre-frame; PATH `--experimental-json` omits child
-   records), wire desktop main-process live graph emission, and support the
-   named confirmed-reconnect trace.
-2. CUT-16: mobile attachment-bearing runtime submission/delivery and real
+1. CUT-16: mobile attachment-bearing runtime submission/delivery and real
    selector adoption; Desktop I4 and H2 are code-landed with typed oracles.
-3. CUT-26: publish the verified DMG/ZIP through the deployed signed-feed seam
+2. CUT-26: publish the verified DMG/ZIP through the deployed signed-feed seam
    and enforce legacy lockout for the proven scope.
-4. CUT-27 declaration artifacts: loss/exception register,
+3. CUT-27 declaration artifacts: loss/exception register,
    provenance/rollback/a11y/privacy/security results bundle, and the
    default-surface docs flip (authorable only after (b)/(c) pass).
 

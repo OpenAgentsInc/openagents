@@ -322,13 +322,29 @@ produced no `live_agent_graph` changelog rows to reconnect against (the
 binding is proven by real-Postgres server tests on `main`). The remaining
 residual is therefore deploy-gated, not code-gated.
 
-## Residual
+## 2026-07-12 closure: deployed named confirmed reconnects
 
-One CUT-11 residual remains: after the next production API deploy picks up
-the server graph binding, carry one redacted NAMED-account execution
-through confirmed Sync/Gateway reconnect for both providers (the Codex leg
-should run through the app-server-first source above so the child records
-are live). All CUT-11 code paths — schema, adapters, server projection,
-Gateway v8 delivery, desktop live wiring, and the Pylon app-server child
-source — are landed and deterministically verified. Graph presentation
-remains CUT-12.
+Production revision `openagents-monolith-00085-k4v` serves 100% of traffic;
+health, the Cloud Run document, and its exact hashed JavaScript asset returned
+200. Fresh private thread scopes then carried both named provider lanes through
+the deployed `live_agent_graph` writer and a new exact-cursor reader:
+
+- Claude completed at scope version 8 with one completed root, graph cursor 5,
+  and reconnect cursor 8/up-to-date.
+- Codex reached the real app-server and settled failed at scope version 5 with
+  one failed root, graph cursor 2, and reconnect cursor 5/up-to-date. The
+  provider terminal was `usage_limited` with a provider-reported reset at
+  05:00 local time. This is a real failure lifecycle trace, not a successful
+  inference claim. The earlier named Codex source receipt above already proves
+  successful app-server child activity.
+
+The live pass found and fixed three production-only convergence defects:
+Pylon allocated sequence 1 while the server correctly expected first sequence
+0; the consumer ignored the already-typed exact account target; and Codex
+app-server expects sandbox variant `dangerFullAccess`, not the CLI spelling.
+Regression oracles now pin all three. The redacted refs-only receipt is
+[`2026-07-12-cut11-named-confirmed-reconnect.json`](../../apps/pylon/docs/proofs/2026-07-12-cut11-named-confirmed-reconnect.json).
+No prompt, credential, account name, provider payload, or host path is retained.
+
+CUT-11 has no remaining code or trace criterion. Graph presentation remains
+CUT-12.

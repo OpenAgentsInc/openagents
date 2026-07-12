@@ -1,0 +1,58 @@
+{
+  "schema": "openagents.cut11.named_confirmed_reconnect_receipt.v1",
+  "observedAt": "2026-07-12T07:20:00.000Z",
+  "deployment": {
+    "service": "openagents-monolith",
+    "revision": "openagents-monolith-00085-k4v",
+    "trafficPercent": 100,
+    "health": "ok",
+    "documentStatus": 200,
+    "hashedAssetStatus": 200
+  },
+  "providers": [
+    {
+      "lane": "claude_pylon",
+      "scope": "scope.thread.cut11.claude_pylon.512b70d1-e979-44ad-80c0-59e29cd82fa2",
+      "turnRef": "turn.512b70d1-e979-44ad-80c0-59e29cd82fa2",
+      "turnStatus": "completed",
+      "graphRef": "graph.runtime.turn.512b70d1-e979-44ad-80c0-59e29cd82fa2",
+      "graphCursor": 5,
+      "scopeVersion": 8,
+      "reconnectNextCursor": 8,
+      "reconnectUpToDate": true,
+      "nodeCount": 1,
+      "nodeStatuses": ["completed"]
+    },
+    {
+      "lane": "codex_app_server",
+      "scope": "scope.thread.cut11.codex_app_server.ea12265c-123f-47be-9173-e772d75268c3",
+      "turnRef": "turn.ea12265c-123f-47be-9173-e772d75268c3",
+      "turnStatus": "failed",
+      "terminalClass": "usage_limited",
+      "graphRef": "graph.runtime.turn.ea12265c-123f-47be-9173-e772d75268c3",
+      "graphCursor": 2,
+      "scopeVersion": 5,
+      "reconnectNextCursor": 5,
+      "reconnectUpToDate": true,
+      "nodeCount": 1,
+      "nodeStatuses": ["failed"]
+    }
+  ],
+  "entityTypesObserved": [
+    "agent_run",
+    "agent_run_event",
+    "chat_message",
+    "chat_thread",
+    "live_agent_graph",
+    "runtime_control_intent",
+    "runtime_event",
+    "runtime_turn"
+  ],
+  "redaction": {
+    "promptRetained": false,
+    "credentialRetained": false,
+    "providerPayloadRetained": false,
+    "accountNameRetained": false,
+    "hostPathRetained": false
+  }
+}
