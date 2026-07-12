@@ -1,7 +1,16 @@
 const { getDefaultConfig } = require("expo/metro-config")
+const { createRequire } = require("node:module")
 
 const config = getDefaultConfig(__dirname)
 const defaultResolveRequest = config.resolver.resolveRequest
+const expoRequire = createRequire(require.resolve("expo/metro-config"))
+
+// This app uses a plain React Native debug host rather than expo-dev-client.
+// Keep dynamic native-module imports in the main bundle so Expo's split-bundle
+// loader does not attempt to register an HMR client that this host never sets up.
+config.transformer.asyncRequireModulePath = expoRequire.resolve(
+  "metro-runtime/src/modules/asyncRequire.js",
+)
 
 // Shared NodeNext packages use explicit `.js` specifiers so their emitted ESM
 // is valid. Metro consumes their TypeScript source directly, so map only those
