@@ -15,7 +15,8 @@ and [`CLAIM_PROTOCOL.md`](../CLAIM_PROTOCOL.md).
 
 ## Live issue sources
 
-These files correspond to open issues at this index snapshot. Their bodies may
+These files correspond to open issues in the schema-versioned
+[`product-issue snapshot`](../live-roadmap-issues.json). Their bodies may
 contain historical status; refresh the live issue/comments before dispatch.
 
 | Source | Live issue | Durable role |
@@ -39,6 +40,25 @@ must equal the pinned product-issue projection.
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) |
 | [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | [`CUT-26 publication receipt`](../2026-07-12-cut-26-desktop-rc-publication-receipt.md) |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
+
+## Live issues represented by an owning plan
+
+The P1-parallel persistent-voice lane is specified outside the issue-source
+directory. Its live issues and claims remain operational authority; the plan
+owns lineage, boundaries, and dependency design without becoming a second
+queue.
+
+| Live issue | Owning plan role |
+| --- | --- |
+| [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | [`AUDIO-0 epic`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | [`AUDIO-1 contract freeze`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | [`AUDIO-2 gateway`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | [`AUDIO-3 retained-audio experiment`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | [`AUDIO-4 Desktop media host`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8738](https://github.com/OpenAgentsInc/openagents/issues/8738) | [`AUDIO-5 voice HUD`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8739](https://github.com/OpenAgentsInc/openagents/issues/8739) | [`AUDIO-6 typed action routing`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | [`AUDIO-7 TTS/barge-in`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
+| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | [`AUDIO-8 live proof`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) |
 
 ## Closed proof and implementation sources
 

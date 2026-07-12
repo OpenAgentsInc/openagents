@@ -2,6 +2,10 @@
 
 - Issue: [#8712](https://github.com/OpenAgentsInc/openagents/issues/8712)
 - Date: 2026-07-12
+- Class: receipt
+- Final disposition: retained counterexample; later owner-accepted receipt closed #8712
+- Dispatch: no
+- Owner: Sol Episode 250 proof
 - Base: `b2339bfcb9`
 
 ## Outcome

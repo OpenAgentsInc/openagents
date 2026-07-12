@@ -1,6 +1,9 @@
 # Remote-first portable coding sessions: pathway and roadmap gap analysis
 
 - Date: 2026-07-11
+- Class: contract
+- Dispatch: no current queue; use the master, live issues, and claims
+- Owner: Sol portable sessions
 - Status: owner-directed product-path amendment; implementation pending
 - Program parent: [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566)
 - Canonical sequencing: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
@@ -43,7 +46,7 @@ them completely.
 | Stop on one machine and continue on another | **Partial.** Khala Sync, #8676, R2/R4, and the workroom session runner cover cross-device client continuity, durable replay, restart, and multi-turn work on one host. | A host-independent coding-session identity, exclusive execution attachment, portable checkpoint, detach/attach/move/failback state machine, and cross-host acceptance proof. |
 | Own cloud or managed cloud | **Partial.** Owner-local Pylons and OpenAgents-managed Agent Computers are P0; `oa-node` already models owned/org-owned machines. | A supported homelab/customer-cloud enrollment path, a provider-neutral target adapter, and a separately audited managed-provider adapter such as Daytona. |
 | Brokered secrets | **Partial.** Codex account grants, SCM grant refs, link-local gateways, broker-only Agent Computer policy, and the BYO credential design are strong narrow substrate. | One production general secret-capability lease across provider, SCM, MCP/tool, and API credentials, with target re-redemption, revocation, and wipe proof on every target class. |
-| Mobile access to any host with voice | **Split.** Mobile remote coding and supervision are central to R6/R7. Revision 29 closed voice broadly; Revisions 30–31 narrowly reauthorize session-neutral voice. | An authorized global session/host catalog and attach/move controls plus executable ASR/TTS/barge-in acceptance without reviving Sarah/avatar/video. |
+| Mobile access to any host with voice | **Split.** Mobile remote coding and supervision are central to R6/R7. Earlier owner direction closed persona/presentation work broadly; current direction narrowly authorizes session-neutral voice. | An authorized global session/host catalog and attach/move controls plus executable ASR/TTS/barge-in acceptance without reviving Sarah/avatar/video. |
 
 The existing roadmap is therefore the right foundation, but not the complete
 pathway. The new work is a portability layer over the current Thread/Turn/Item,
@@ -631,7 +634,7 @@ Implementation must register and test these before claiming portability:
 
 ## Roadmap and issue reconciliation status
 
-Master Roadmap Revision 30 incorporated the original remote-first additions:
+The master roadmap incorporated the original remote-first additions:
 
 - distinguish client continuation from execution-session portability;
 - make host-independent session identity and checkpoint/attachment fencing an
@@ -643,7 +646,7 @@ Master Roadmap Revision 30 incorporated the original remote-first additions:
 - carve persona-neutral conversational voice out of the Sarah/avatar/video
   wontdo boundary.
 
-Revision 31 adds the episode-249 consequence: the canonical agent graph,
+The subsequent reconciliation adds the episode-249 consequence: the canonical agent graph,
 independent child transcripts/activity cursors, and the fast click/tap/hotkey
 supervision contract survive live streaming and host movement. #8691/#8692 now
 own the local live-graph contract/UI and closed #8683/#8684 complete #8678's
@@ -653,7 +656,7 @@ issue ledger, not roadmap prose:
 - create bounded leaves for portable session authority, owner-managed/provider
   targets, the general broker, and any-host mobile/voice rather than overloading
   #8676/#8547/#8636 or CUT-27;
-- reconcile live #8566/#8574/#8597 bodies that still cite Revision 29, name
+- reconcile live #8566/#8574/#8597 bodies that still cite superseded voice scope, name
   closed work as future, or classify all voice as a non-goal.
 
 The mobile port ledger must likewise move native PTT/STT from “paused” to a

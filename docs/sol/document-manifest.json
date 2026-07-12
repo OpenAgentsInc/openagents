@@ -1,0 +1,2364 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "docs/sol",
+  "inventoryReviewDate": "2026-07-12",
+  "sourceTreeSha256": "260cb66f88a4fb86c458167a138b442ab8d11d4557fac6ea7ed56d746b1a2866",
+  "documents": [
+    {
+      "path": "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md",
+      "class": "historical-analysis",
+      "owner": "Sol roadmap archive",
+      "disposition": "archive-candidate",
+      "dispatch": false,
+      "sha256": "177c38a9b41c5817c13fcf69ae529c55d8a60a0f2d039740bb81593b80abed2a",
+      "status": "retired; non-dispatch",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "before archive import, link migration, or deletion",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/MASTER_ROADMAP.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8595,
+        8597,
+        8610,
+        8634,
+        8635,
+        8636,
+        8638,
+        8640,
+        8642,
+        8643,
+        8646,
+        8650,
+        8652
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
+      "class": "historical-analysis",
+      "owner": "Sol product analysis",
+      "disposition": "retain-historical",
+      "dispatch": false,
+      "sha256": "f305f83225fc0df6e57fe82a719879a21de4ff306990bd476b649e4b3567f48a",
+      "status": "recommendation analysis; not roadmap or issue authority until",
+      "snapshot": "2026-07-10",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/README.md",
+        "docs/teardowns/2026-07-11-cursor-product-teardown.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8566,
+        8674
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md",
+      "class": "historical-analysis",
+      "owner": "Sol mobile track",
+      "disposition": "retain-historical",
+      "dispatch": false,
+      "sha256": "83c6ee30e4d119a512e77e38d683188b8250b4116b9ce1ff9f3c4916966b8c45",
+      "status": "pinned migration evidence; current acceptance and sequence live in",
+      "snapshot": "2026-07-10",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md",
+        "docs/sol/2026-07-10-opencode-khala-openagents-desktop-parity-audit.md",
+        "docs/sol/2026-07-10-terra-execution-lane.md",
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/OPERATING_MODEL.md",
+        "docs/sol/README.md",
+        "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md",
+        "docs/sol/issues/app-mobile.md",
+        "docs/sol/issues/glass-ui-and-sarah-mobile.md"
+      ],
+      "inboundSourceCount": 11,
+      "issueLinks": [
+        8547,
+        8566,
+        8597,
+        8636,
+        8638
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-10-openagents-desktop-product-architecture.md",
+      "class": "contract",
+      "owner": "Sol Desktop track",
+      "disposition": "retain-contract",
+      "dispatch": false,
+      "sha256": "46fc325640039ea870abfa453f0b52712498a8bf4ac810d575cbe401870dbf93",
+      "status": "topology/authority decisions remain binding where enforced by current",
+      "snapshot": "2026-07-10",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "apps/openagents-desktop/README.md",
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/issues/app-desktop.md",
+        "docs/sol/issues/desktop-runtime-gateway.md"
+      ],
+      "inboundSourceCount": 6,
+      "issueLinks": [
+        8673,
+        8674
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-10-opencode-khala-openagents-desktop-parity-audit.md",
+      "class": "historical-analysis",
+      "owner": "Sol Desktop track",
+      "disposition": "retain-historical",
+      "dispatch": false,
+      "sha256": "d7d3897e1ce39d3bf2952e0cb7d65eb8f2b70f142a59dc66234bc7e7661eb607",
+      "status": "retain-historical",
+      "snapshot": "2026-07-10",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-10-openagents-desktop-product-architecture.md",
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md",
+        "docs/sol/issues/app-desktop.md"
+      ],
+      "inboundSourceCount": 6,
+      "issueLinks": [
+        8566,
+        8574
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
+      "class": "contract",
+      "owner": "Sol identity and Sync boundary",
+      "disposition": "retain-contract",
+      "dispatch": false,
+      "sha256": "3d293abca2774c6b6208a1bf3907ca6bcf6b628e957b61679709ce32f637cc92",
+      "status": "**published senior contract freeze** for the R1–R2 gates",
+      "snapshot": "2026-07-10",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-10-openagents-desktop-product-architecture.md",
+        "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/issues/desktop-session-controls.md",
+        "docs/sol/issues/desktop-session-loopback-policy.md",
+        "docs/sol/issues/desktop-session-pkce.md",
+        "docs/sol/issues/desktop-session-recovery.md",
+        "docs/sol/issues/desktop-session-vault.md",
+        "docs/sol/issues/desktop-sync-host.md",
+        "docs/sol/issues/mobile-session-pkce.md",
+        "docs/sol/issues/mobile-session-recovery.md",
+        "docs/sol/issues/mobile-session-vault.md",
+        "docs/sol/issues/mobile-sync-host.md",
+        "docs/sol/issues/native-authenticated-sync-hosts.md",
+        "docs/sol/issues/native-conversation-continuation.md"
+      ],
+      "inboundSourceCount": 16,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8597,
+        8637,
+        8638,
+        8639,
+        8657,
+        8658,
+        8659,
+        8660,
+        8661,
+        8662,
+        8663,
+        8664,
+        8665,
+        8666,
+        8667,
+        8668
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-10-terra-execution-lane.md",
+      "class": "contract",
+      "owner": "Sol and Terra coordination",
+      "disposition": "retain-contract",
+      "dispatch": false,
+      "sha256": "8655d83734554abbc1632c936dc0d8ebdabfe6500d53485ac3d2af6f4ba22e71",
+      "status": "active operating amendment",
+      "snapshot": "2026-07-10 (mobile remote-workroom fold-in)",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
+        "docs/sol/CLAIM_PROTOCOL.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/OPERATING_MODEL.md",
+        "docs/terra/DESKTOP_PARITY.md",
+        "docs/terra/NEXT.md",
+        "docs/terra/README.md"
+      ],
+      "inboundSourceCount": 7,
+      "issueLinks": [
+        8547,
+        8574,
+        8597,
+        8640
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-07-command-convergence-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8687",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "75110bc91484553018eb72b258c58f23215143ea24a8492c0fe1a12599150b54",
+      "status": "accepted; CUT-07 complete, parent remains open for CUT-08/CUT-09",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/issues/conversation-fault-convergence.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 5,
+      "issueLinks": [
+        8677,
+        8687,
+        8688,
+        8689
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-08-event-store-convergence-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8688",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "de8d115ce14bcedbeb3bc00ad4f3ef3ed11c92d72db0175557f4aa77cd9f5f80",
+      "status": "accepted; CUT-08 complete, parent remains open for CUT-09",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/issues/conversation-fault-convergence.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        8677,
+        8688,
+        8689,
+        8711
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-09-lifecycle-convergence-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8689",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "f7187e8215834ab07768782e4ad039ff132fc0bc94be61090511fd22e2fd77c0",
+      "status": "retain-evidence",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/issues/README.md",
+        "docs/sol/issues/conversation-fault-convergence.md",
+        "docs/sol/issues/native-streamed-conversation-handoff.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 6,
+      "issueLinks": [
+        8677,
+        8689,
+        8690
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-10-live-event-convergence-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8690",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "dbf7fe92538070f1e7ae2c673e857694446bc842a37dd4a7840ddda87f6515ac",
+      "status": "complete; shared/mobile and Desktop host/wire/renderer no-poll path",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": [
+        8677,
+        8690,
+        8712
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-11-live-agent-graph-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8691",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "6084dd27495747fcdd8c30cc4ba9d3545364bfda8edae1759506397c07bb25dd",
+      "status": "**closed 2026-07-12.** Canonical graph, both named",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": [
+        8691
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-12-live-agent-supervision-ui-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8692",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "2fa7950b62a6c58400c68824ca1d3cb2702195cc3d91d32f0bbf9d651f2960e3",
+      "status": "**closed 2026-07-12.** Shared presentation plus Mobile and",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-cut-10-live-event-convergence-receipt.md",
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        8692
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-13-canonical-coding-session-catalog-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8693",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "3055ca59a3f318c294d3ec90b48329af8906bb5ffb8057b9f1cde1fd2a0e5e2d",
+      "status": "complete and closed at `0c49648217`; shared contract, bounded restart",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": [
+        8693
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8694",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "9de550d4305b5694fb4f5dfd8566577313f1f9c4fecc99929faac201a931665f",
+      "status": "**closed 2026-07-12.** Authenticated physical-iOS and",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": [
+        8694
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-15-canonical-command-registry-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8695",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "886f8a6e04a180b9e71c7054a111b1294f33fb02fbfe68381e52e5c8a180f7ec",
+      "status": "complete on `main`",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": [
+        8695
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-16-composer-runtime-interactions-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8696",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "abab2d9fa57d32bea8b85536cf8f89700560efdbc7d44c5af075fee8b58f87ad",
+      "status": "shared authority, native persistence, both native interaction UIs,",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8696,
+        8717
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-17-workspace-capability-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8697",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "29972d9b6e8ebb55d9897138a5b6fa53e808bc10428778632c4474197661d665",
+      "status": "complete — capability core, tree/watch/search/mutation host bridge,",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8697
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-18-conflict-safe-editor-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8698",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "de736c75ed381f96da7c99c19fa5a14cbed3546295da7f252ce94fee3fc9f6aa",
+      "status": "complete on `main`",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8566,
+        8574,
+        8698
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-cut-19-git-review-context-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8699",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "13fd373960ac95707ea4a379c01b0338ca26556861386aa3a02337dadde8c14f",
+      "status": "complete on `main`",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8566,
+        8574,
+        8699,
+        8712
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+      "class": "contract",
+      "owner": "Sol coding cutover",
+      "disposition": "retain-contract",
+      "dispatch": false,
+      "sha256": "9afeca9010846cb0e7dc6cfe1107403a0ea75220957f8c1f9ae73adc5f97b662",
+      "status": "dependency edges and acceptance criteria bind through CUT-27;",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/fable/2026-07-11-pylon-streamlining-audit.md",
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/issues/app-desktop.md",
+        "docs/sol/issues/app-mobile.md",
+        "docs/sol/issues/app-program.md"
+      ],
+      "inboundSourceCount": 8,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8597,
+        8636,
+        8640,
+        8676,
+        8677,
+        8678,
+        8681,
+        8682,
+        8683,
+        8684,
+        8685,
+        8686,
+        8687,
+        8688,
+        8689,
+        8690,
+        8691,
+        8692,
+        8693,
+        8694,
+        8695,
+        8696,
+        8697,
+        8698,
+        8699,
+        8700,
+        8701,
+        8702,
+        8703,
+        8704,
+        8705,
+        8706,
+        8707,
+        8712
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+      "class": "contract",
+      "owner": "Sol portable sessions",
+      "disposition": "retain-decision",
+      "dispatch": false,
+      "sha256": "087ce1c835d1adf180f67fb5b400c233070e5f3ccfd941924dfef79a5eed55e2",
+      "status": "owner-directed product-path amendment; implementation pending",
+      "snapshot": "2026-07-11",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/cloud/README.md",
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/teardowns/README.md"
+      ],
+      "inboundSourceCount": 5,
+      "issueLinks": [
+        8547,
+        8566,
+        8636,
+        8674,
+        8675,
+        8676,
+        8678,
+        8681,
+        8683,
+        8687,
+        8688,
+        8689,
+        8691,
+        8695,
+        8696,
+        8697,
+        8698,
+        8699,
+        8707
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-ac1-owner-capacity-charge-disposition-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8719",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "9113e0cf02859e3ccc443041c8fc8f6a23aa6a286e3f02869d7e0fa1d85d50d9",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8719
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-ac2-exact-once-usage-retry-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8720",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "97af1b00bdfd74f941e73f6d2a9f5d68303eaaa66cb815ff67a04bbffc5021ec",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8720
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-ac3-broker-authorized-owner-capacity-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8721",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "37ba67a565d21a44499e274b633cc80c184f5d15326f7d3305be9e79af3e581f",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8721
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-android-emulator-receipts.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "7c669b7c4188b948e3d3ae44bee5f1677de3b1db7fa6565045dda8c92ed9769b",
+      "status": "this document is the CUT program's FIRST Android evidence of any",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8692,
+        8694,
+        8707
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-clean-agent-reading-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "2c975489a88888536c2920732ead44a90b9f5355cbcca6e6cc3f6dfb8bf43666",
+      "status": "passed; retained as a regression gate",
+      "snapshot": "`39a4c9177b` plus the schema-versioned product-issue artifact",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8597,
+        8636,
+        8676,
+        8677,
+        8689,
+        8706,
+        8707,
+        8733,
+        8741
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-cut-16a-mobile-execution-target-selector-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8717",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "214d7534f1079746b85cace31525f911b5907019c895334d8536d6fc229a27f4",
+      "status": "retain-evidence",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-cut-16-composer-runtime-interactions-receipt.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8696,
+        8717
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-cut-23-plugin-registry-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8703",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "d6d888fc000743d4f1a87b64bf24556b3f2264ba09535b4d64e4203f27d004b3",
+      "status": "**closed 2026-07-12.** The supported Claude local-plugin",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8703
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-cut-25-cross-client-fleet-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8705",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "3ec7b3d427af8456d13d2b1a1a9819b799c712318b258cb1161fd5a7f3f997aa",
+      "status": "closed",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8640,
+        8705
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-cut-26-desktop-rc-publication-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8706",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "cabcfaf5337a795a4c191d877f9eb8d234d290c53f916cc40c4f39f41ef71029",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8706
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+      "class": "receipt",
+      "owner": "Sol coding cutover",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "9b238af822134c48577660f0266df089f4911f39b82e50773c74f8bc7b04433e",
+      "status": "pinned additive snapshot; non-dispatch",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-android-emulator-receipts.md",
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/issues/README.md",
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 6,
+      "issueLinks": [
+        8566,
+        8574,
+        8597,
+        8636,
+        8640,
+        8676,
+        8677,
+        8678,
+        8681,
+        8682,
+        8683,
+        8684,
+        8685,
+        8686,
+        8687,
+        8688,
+        8689,
+        8690,
+        8691,
+        8692,
+        8693,
+        8694,
+        8695,
+        8696,
+        8697,
+        8698,
+        8699,
+        8700,
+        8701,
+        8702,
+        8703,
+        8704,
+        8705,
+        8706,
+        8707,
+        8712,
+        8717
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+      "class": "current-status",
+      "owner": "Sol documentation cleanup",
+      "disposition": "retain-execution-ledger",
+      "dispatch": false,
+      "sha256": "14add93bc77e2c6468d7a97a0c201ab5688330cd2ccb329ce7ea11d714155152",
+      "status": "active cleanup execution ledger and historical source audit; not",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8597,
+        8636,
+        8640,
+        8676,
+        8677,
+        8689,
+        8696,
+        8705,
+        8706,
+        8707,
+        8723,
+        8724,
+        8725,
+        8726,
+        8727,
+        8728,
+        8729,
+        8730
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-ep250-claude-readiness-truth-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8712",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "759a448926cf5f8e1826e9c2d38fbc9bfdd6ee3e19cb6f0a66d592529c262330",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8712
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-ep250-live-proof-rerun-and-exit-honesty.md",
+      "class": "receipt",
+      "owner": "Sol Episode 250 proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "f1716438fed041decad4fc21b39eb656dfef083c8978141ad6ca4db5718f6356",
+      "status": "retained counterexample; later owner-accepted receipt closed #8712",
+      "snapshot": "`b2339bfcb9`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        8712
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-ep250a-selected-pylon-admission-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8718",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "b816472c8e21ceaf37541898864b2a952fef68cd7c104c0c046e5c93edd6d74d",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8718
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+      "class": "backroom-export",
+      "owner": "Sol documentation cleanup",
+      "disposition": "retain-archive-manifest",
+      "dispatch": false,
+      "sha256": "650f092aa68200446274925180c00083a4770b19f54300acb9c0862f90cbc6fd",
+      "status": "prepared; no archive import or source deletion in SOL-DOC-09",
+      "snapshot": "`39a4c9177b`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "before any governed archive transition",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md",
+      "class": "backroom-export",
+      "owner": "Sol documentation cleanup",
+      "disposition": "retain-archive-manifest",
+      "dispatch": false,
+      "sha256": "a799df6f6ca0f637037a8fbfc450d21f6ae3d38ae67d2d29d45467066dea30e6",
+      "status": "archive/import/link migration/source removal complete",
+      "snapshot": "`bf70f8922c`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "before any governed archive transition",
+      "inboundLinks": [
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/2026-07-12-new-chat-live-sync-false-completion-after-action.md",
+      "class": "receipt",
+      "owner": "Sol Sync correctness",
+      "disposition": "retain-failure-evidence",
+      "dispatch": false,
+      "sha256": "831073b13387b31fcdbebf5976a0dae2c33d527ad37a6b2a5a8dd8897ab31305",
+      "status": "retain-failure-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/CHALLENGE_LEDGER.md",
+      "class": "contract",
+      "owner": "Sol roadmap",
+      "disposition": "retain-active-ledger",
+      "dispatch": false,
+      "sha256": "d17006be64d06d3773206d92a8e038507019673c287f65916de73b269161a714",
+      "status": "active roadmap-governance ledger",
+      "snapshot": "2026-07-12 (July 9 falsifier extraction)",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/OPERATING_MODEL.md",
+        "docs/sol/README.md"
+      ],
+      "inboundSourceCount": 5,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8597,
+        8610,
+        8636,
+        8638,
+        8642,
+        8643,
+        8646,
+        8650
+      ]
+    },
+    {
+      "path": "docs/sol/CLAIM_PROTOCOL.md",
+      "class": "contract",
+      "owner": "Sol roadmap",
+      "disposition": "retain-contract",
+      "dispatch": false,
+      "sha256": "f58cb80a6134ea3646adbca8f2c1833560661ef449a5a77e3eb7858559843d75",
+      "status": "active coordination contract",
+      "snapshot": "2026-07-09",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md",
+        "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
+        "docs/sol/2026-07-10-terra-execution-lane.md",
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/IMPLEMENTATION_ROADMAP.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/OPERATING_MODEL.md",
+        "docs/sol/README.md",
+        "docs/sol/issues/README.md",
+        "docs/sol/issues/app-desktop.md",
+        "docs/sol/issues/app-mobile.md",
+        "docs/sol/issues/app-program.md",
+        "docs/sol/issues/fc-substrate.md"
+      ],
+      "inboundSourceCount": 14,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/IMPLEMENTATION_ROADMAP.md",
+      "class": "redirect",
+      "owner": "Sol roadmap",
+      "disposition": "retain-redirect",
+      "dispatch": false,
+      "sha256": "8918152705b1f1df3041f1a0e480d6e39f499963ad8108186056a09b3e45a883",
+      "status": "historical filename retained for inbound links",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever its replacement target changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/MASTER_ROADMAP.md",
+      "class": "authority",
+      "owner": "Sol roadmap",
+      "disposition": "retain-active-authority",
+      "dispatch": true,
+      "sha256": "ee63aec112fb0964f9ef54e6e221cc6f403bc208f2f7881ec4c6991a39a13b89",
+      "status": "canonical OpenAgents implementation roadmap",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "apps/openagents.com/AGENTS.md",
+        "docs/fable/2026-07-09-fable-on-sol-analysis-and-questions.md",
+        "docs/fable/2026-07-11-pylon-streamlining-audit.md",
+        "docs/fable/MASTER_ROADMAP.md",
+        "docs/fable/README.md",
+        "docs/grok/README.md",
+        "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md",
+        "docs/sol/2026-07-10-episode-195-followup-analysis.md",
+        "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
+        "docs/sol/2026-07-10-terra-execution-lane.md",
+        "docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md",
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/CHALLENGE_LEDGER.md",
+        "docs/sol/CLAIM_PROTOCOL.md",
+        "docs/sol/IMPLEMENTATION_ROADMAP.md",
+        "docs/sol/OPERATING_MODEL.md",
+        "docs/sol/README.md",
+        "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md",
+        "docs/sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md",
+        "docs/sol/issues/README.md",
+        "docs/sol/issues/app-desktop.md",
+        "docs/sol/issues/app-forum.md",
+        "docs/sol/issues/app-landing.md",
+        "docs/sol/issues/app-mobile.md",
+        "docs/sol/issues/app-program.md",
+        "docs/sol/issues/app-web-consolidation.md",
+        "docs/sol/issues/fc-4-hybrid-cloud.md",
+        "docs/sol/issues/fc-5-dogfood.md",
+        "docs/sol/issues/fc-cloud-codex.md",
+        "docs/sol/issues/fc-substrate.md",
+        "docs/sol/issues/native-conversation-continuation.md",
+        "docs/sol/receipts/README.md",
+        "docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md",
+        "docs/teardowns/README.md",
+        "docs/terra/NEXT.md",
+        "docs/terra/README.md"
+      ],
+      "inboundSourceCount": 38,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8595,
+        8597,
+        8610,
+        8634,
+        8635,
+        8636,
+        8640,
+        8642,
+        8643,
+        8646,
+        8650,
+        8676,
+        8677,
+        8689,
+        8706,
+        8707,
+        8726,
+        8727,
+        8728,
+        8729,
+        8730,
+        8733,
+        8734,
+        8735,
+        8736,
+        8737,
+        8738,
+        8739,
+        8740,
+        8741
+      ]
+    },
+    {
+      "path": "docs/sol/OPERATING_MODEL.md",
+      "class": "contract",
+      "owner": "Sol roadmap",
+      "disposition": "retain-contract",
+      "dispatch": false,
+      "sha256": "f609584a8ca75097e21202921deb8069cbfa759972ab5f0413c5f6184d9b432a",
+      "status": "active, revision-independent working contract",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8640
+      ]
+    },
+    {
+      "path": "docs/sol/README.md",
+      "class": "index",
+      "owner": "Sol roadmap",
+      "disposition": "retain-active-index",
+      "dispatch": false,
+      "sha256": "cb418eb3ae02c0d3048777d65403f7ff08965ee29ea6937b4ac3ff432bfe45db",
+      "status": "current",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever indexed membership, path, or classification changes",
+      "inboundLinks": [
+        "docs/fable/README.md",
+        "docs/sol/2026-07-12-clean-agent-reading-receipt.md",
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/IMPLEMENTATION_ROADMAP.md",
+        "docs/sol/MASTER_ROADMAP.md"
+      ],
+      "inboundSourceCount": 6,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md",
+      "class": "contract",
+      "owner": "Sol roadmap",
+      "disposition": "retain-contract",
+      "dispatch": false,
+      "sha256": "94c5009e7a36b1f6522b08a75c07b165d3c0a5cfc976ce4c144793827c4e0a85",
+      "status": "active, revision-independent subsystem boundary companion to",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8640
+      ]
+    },
+    {
+      "path": "docs/sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md",
+      "class": "contract",
+      "owner": "Sol owner decisions",
+      "disposition": "retain-decision",
+      "dispatch": false,
+      "sha256": "e232eaace8f931c88c09dd5925c3b3f160e713fa6e5652ec3277461185b74f81",
+      "status": "current binding decision record",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/RETIRED.md",
+        "docs/effect-native/README.md",
+        "docs/promises/2026-07-09-khala-code-app-retirement-and-openagents-successors.md",
+        "docs/sol/2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md",
+        "docs/sol/MASTER_ROADMAP.md"
+      ],
+      "inboundSourceCount": 5,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/issues/README.md",
+      "class": "index",
+      "owner": "Sol roadmap",
+      "disposition": "retain-active-index",
+      "dispatch": false,
+      "sha256": "6ce3706c0341cded554e890859ca470143d2e6a4e01199ce956707ad00be86f7",
+      "status": "current classification index",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever indexed membership, path, or classification changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/OPERATING_MODEL.md",
+        "docs/sol/README.md"
+      ],
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8595,
+        8597,
+        8600,
+        8610,
+        8633,
+        8634,
+        8635,
+        8636,
+        8637,
+        8638,
+        8639,
+        8640,
+        8642,
+        8643,
+        8646,
+        8655,
+        8656,
+        8657,
+        8658,
+        8659,
+        8660,
+        8661,
+        8662,
+        8663,
+        8664,
+        8665,
+        8666,
+        8667,
+        8668,
+        8669,
+        8670,
+        8671,
+        8672,
+        8673,
+        8674,
+        8675,
+        8676,
+        8677,
+        8678,
+        8689,
+        8706,
+        8707,
+        8733,
+        8734,
+        8735,
+        8736,
+        8737,
+        8738,
+        8739,
+        8740,
+        8741
+      ]
+    },
+    {
+      "path": "docs/sol/issues/app-desktop.md",
+      "class": "contract",
+      "owner": "Sol issue #8574",
+      "disposition": "retain-live-source",
+      "dispatch": false,
+      "sha256": "8e16936b6cec0e3301d81a22726cab5bf95ef1290496ecc6d7467f3d8709d23e",
+      "status": "checked-in track source; refresh the live issue for current state",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-10-opencode-khala-openagents-desktop-parity-audit.md",
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8566,
+        8574,
+        8670,
+        8671,
+        8672,
+        8673,
+        8674,
+        8675,
+        8676,
+        8677,
+        8678,
+        8683,
+        8684
+      ]
+    },
+    {
+      "path": "docs/sol/issues/app-forum.md",
+      "class": "tombstone",
+      "owner": "Sol issue #8635",
+      "disposition": "retain-tombstone",
+      "dispatch": false,
+      "sha256": "98d8e336bec2afba7349705234414071217d9b8c38efee3fab843217dc40ae69",
+      "status": "retain-tombstone",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on explicit owner revival",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8635
+      ]
+    },
+    {
+      "path": "docs/sol/issues/app-landing.md",
+      "class": "tombstone",
+      "owner": "Sol issue #8595",
+      "disposition": "retain-tombstone",
+      "dispatch": false,
+      "sha256": "0d04d9426b1d96b81f983d7238b613b1173da7d9426532891f4d9e4d29575117",
+      "status": "retain-tombstone",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on explicit owner revival",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8595
+      ]
+    },
+    {
+      "path": "docs/sol/issues/app-mobile.md",
+      "class": "contract",
+      "owner": "Sol issue #8597",
+      "disposition": "retain-live-source",
+      "dispatch": false,
+      "sha256": "78414b58ce2cea53ab86164decb6beeed471df7168290c1e474c9f6efb35ae53",
+      "status": "checked-in track source; refresh the live issue for current state",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/issues/README.md",
+        "docs/sol/issues/glass-ui-and-sarah-mobile.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8566,
+        8597,
+        8671,
+        8676,
+        8677,
+        8681,
+        8707
+      ]
+    },
+    {
+      "path": "docs/sol/issues/app-program.md",
+      "class": "contract",
+      "owner": "Sol issue #8566",
+      "disposition": "retain-live-source",
+      "dispatch": false,
+      "sha256": "9d7db9e137ab04e5acddc424ab49d017ea117cc140d25a9231634061c186c4b5",
+      "status": "checked-in program source; refresh the live issue for current state",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8595,
+        8597,
+        8610,
+        8634,
+        8635,
+        8636,
+        8638,
+        8640,
+        8642,
+        8643,
+        8646,
+        8650,
+        8675,
+        8676,
+        8677,
+        8678,
+        8681,
+        8683,
+        8691,
+        8707
+      ]
+    },
+    {
+      "path": "docs/sol/issues/app-web-consolidation.md",
+      "class": "tombstone",
+      "owner": "Sol issue #8634",
+      "disposition": "retain-tombstone",
+      "dispatch": false,
+      "sha256": "57dbc215e5192a88255d936cd27d2a49517e9d6f7ae15a6a926072c8bd2b1f9f",
+      "status": "retain-tombstone",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on explicit owner revival",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8634
+      ]
+    },
+    {
+      "path": "docs/sol/issues/blueprint-correction.md",
+      "class": "tombstone",
+      "owner": "Sol issue #8642",
+      "disposition": "retain-tombstone",
+      "dispatch": false,
+      "sha256": "24d0e1748abb018bf7b51cda45af30b1cca9dbe355a763bf991d0fe43ed68031",
+      "status": "retain-tombstone",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on explicit owner revival",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8642
+      ]
+    },
+    {
+      "path": "docs/sol/issues/confirmed-agent-timeline.md",
+      "class": "receipt",
+      "owner": "Sol issue #8672",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "3cdd2fa8dac17424031e3d9aacbf7cf59d432cee243414611358ae88d36da60c",
+      "status": "closed; historical checked-in issue source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8574,
+        8597,
+        8670,
+        8671,
+        8672
+      ]
+    },
+    {
+      "path": "docs/sol/issues/conversation-fault-convergence.md",
+      "class": "contract",
+      "owner": "Sol issue #8677",
+      "disposition": "retain-live-source",
+      "dispatch": false,
+      "sha256": "46eced257d7152dd04ce686f66f84ddfb5b5471d58d981ce91f5ed22faf0ba11",
+      "status": "retain-live-source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8574,
+        8597,
+        8676,
+        8677,
+        8687,
+        8688,
+        8689
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-codex-subagent-history.md",
+      "class": "receipt",
+      "owner": "Sol issue #8674",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "60befb42cf0b0b3f4ed0dd2f2b70bd46d63fc563d7870035d65120feacf872f5",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/issues/README.md",
+        "docs/sol/issues/app-desktop.md"
+      ],
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        8566,
+        8574,
+        8673,
+        8674
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-codex-trace-acceptance.md",
+      "class": "receipt",
+      "owner": "Sol issue #8675",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "81c417dd66b192f1a29e4ac36bce3d338484e326f20bc0bca93a6d3def1169c7",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8566,
+        8574,
+        8674,
+        8675
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-effect-scope-topology.md",
+      "class": "receipt",
+      "owner": "Sol issue #8678",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "db5ed8530071c0035d1832fd111a5e37fbc6ea4b0253d0dd9298e8d629b69a66",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8574,
+        8676,
+        8677,
+        8678,
+        8679,
+        8683,
+        8684
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-runtime-agent-timeline.md",
+      "class": "receipt",
+      "owner": "Sol issue #8673",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "939e86d6140125631450ec7640762d99d0d599141fdab2066a59c5aff665c510",
+      "status": "closed; historical checked-in issue source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8574,
+        8672,
+        8673
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-runtime-conversation.md",
+      "class": "receipt",
+      "owner": "Sol issue #8669",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "99ff903d834c0cb9fbd8463605bb6cb96234c2600946800bd8af6de17f371ce7",
+      "status": "closed; historical checked-in issue source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8667,
+        8668,
+        8669,
+        8670
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-runtime-gateway.md",
+      "class": "receipt",
+      "owner": "Sol issue #8655",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "be8bd47b4e9b108ae1093083f71facbdbce59b6b35ed63e51ae2a608013c95d3",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8655
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-session-controls.md",
+      "class": "receipt",
+      "owner": "Sol issue #8665",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "175cdd9a8c6b5cd2c8542419fb3d99b704376bdf4d9b183f8223e88a00f230e0",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8661,
+        8664,
+        8665
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-session-loopback-policy.md",
+      "class": "receipt",
+      "owner": "Sol issue #8663",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "201951ab4f0ed68cc3c26ceb5bd15256bb301802a383babe506f6a284757518b",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8661,
+        8662,
+        8663
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-session-pkce.md",
+      "class": "receipt",
+      "owner": "Sol issue #8664",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "a615aa6c0dea30ca2b99eafc72416c5f86a8c170e382483358dc2ee37d358097",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8661,
+        8663,
+        8664
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-session-recovery.md",
+      "class": "receipt",
+      "owner": "Sol issue #8662",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "849bc5bd2413b7bd74c6633d0645e7fd833e0fb6332812b020c6ef379d27a3fd",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8659,
+        8661,
+        8662
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-session-vault.md",
+      "class": "receipt",
+      "owner": "Sol issue #8661",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "9ae0029fe579330dd612564fc662f049aa5b11a3b054239fca65ce8f63b68718",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8655,
+        8656,
+        8661
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-sync-host.md",
+      "class": "receipt",
+      "owner": "Sol issue #8656",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "563b1d36172d4e1a9615943b2117d817b4066e3f04229295734a32acca46181b",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8655,
+        8656
+      ]
+    },
+    {
+      "path": "docs/sol/issues/desktop-visible-sync-conversation.md",
+      "class": "receipt",
+      "owner": "Sol issue #8670",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "7619ad7d55dc7acd7afa124dd80d1434f2839529e2ee35ac6325bf5f97106360",
+      "status": "closed; historical checked-in issue source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8668,
+        8669,
+        8670
+      ]
+    },
+    {
+      "path": "docs/sol/issues/effect-native-electron-host.md",
+      "class": "historical-analysis",
+      "owner": "Sol issue source",
+      "disposition": "retain-reference",
+      "dispatch": false,
+      "sha256": "6e0d5abfb17d249333712bf0e2b953a37ba6293b0d63e2e049521d60f122387a",
+      "status": "retain-reference",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/issues/fc-1-run-contract.md",
+      "class": "receipt",
+      "owner": "Sol issue #8637",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "e53369ddb3a01a70cac1ab2b3ad164662809e16d15fb8a29e7abd43128cb87a3",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8637,
+        8638
+      ]
+    },
+    {
+      "path": "docs/sol/issues/fc-2-local-executor.md",
+      "class": "receipt",
+      "owner": "Sol issue #8633",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "5a9f21e4638bcb5629381e33ff8710f14524e456a17af994ab63d70f58dd5c1b",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8633,
+        8638,
+        8639,
+        8640
+      ]
+    },
+    {
+      "path": "docs/sol/issues/fc-3-supervision.md",
+      "class": "receipt",
+      "owner": "Sol issue #8639",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "149660d842abb0bd6dbd81dc32e3fb31f055722a049bdd6ecb961a3ee00917f9",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8638,
+        8639,
+        8640
+      ]
+    },
+    {
+      "path": "docs/sol/issues/fc-4-hybrid-cloud.md",
+      "class": "contract",
+      "owner": "Sol issue #8636",
+      "disposition": "retain-live-source",
+      "dispatch": false,
+      "sha256": "e846acd6fc5c95e87b667e00d3be364c82e8b4fa52bafe62d6baf579ae8f0add",
+      "status": "active P0 target/workroom contract; advanced placement follows R7",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8597,
+        8636,
+        8638
+      ]
+    },
+    {
+      "path": "docs/sol/issues/fc-5-dogfood.md",
+      "class": "receipt",
+      "owner": "Sol issue #8640",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "226e8da2150e3e8c2b81e372f39dcd978817f66dfa614d8789964aa128ad6c55",
+      "status": "closed — accepted production receipt on 2026-07-11",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8574,
+        8637,
+        8640,
+        8676,
+        8677,
+        8685,
+        8686
+      ]
+    },
+    {
+      "path": "docs/sol/issues/fc-cloud-codex.md",
+      "class": "contract",
+      "owner": "Sol issue #8547",
+      "disposition": "retain-live-source",
+      "dispatch": false,
+      "sha256": "aad871130218fdbfd233f1274df0ff4eadd32f08b8050f24dfad92faf7152051",
+      "status": "active P0 minimum remote-workroom path; advanced capacity follows R7",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8597,
+        8636
+      ]
+    },
+    {
+      "path": "docs/sol/issues/fc-khala-inference.md",
+      "class": "receipt",
+      "owner": "Sol issue #8600",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "dc17f4506b3e26fb3f34f58dc34f22cc72d0c9ca6d13d100fec01f84407761f1",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8600
+      ]
+    },
+    {
+      "path": "docs/sol/issues/fc-substrate.md",
+      "class": "receipt",
+      "owner": "Sol issue #8638",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "4c404ddbb7bf7cb92070979f78a0058abe3c6362d4da1338e12e47f8291b1d36",
+      "status": "closed completed; landed shared substrate consumed by the client tracks",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8566,
+        8574,
+        8597,
+        8633,
+        8636,
+        8637,
+        8638,
+        8639,
+        8640
+      ]
+    },
+    {
+      "path": "docs/sol/issues/glass-ui-and-sarah-mobile.md",
+      "class": "tombstone",
+      "owner": "Sol issue #8646",
+      "disposition": "retain-tombstone",
+      "dispatch": false,
+      "sha256": "04c662e37cc791616b493342677858e01737be28ee4f03b11d278ed2a3d45e34",
+      "status": "retain-tombstone",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on explicit owner revival",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8597,
+        8646,
+        8647,
+        8648,
+        8649,
+        8650
+      ]
+    },
+    {
+      "path": "docs/sol/issues/local-first-identity.md",
+      "class": "receipt",
+      "owner": "Sol issue #8666",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "82c31d9337ecb824b62b21d4b930bdc9ad25c120bd1fced086a105323e373d12",
+      "status": "implemented",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8666
+      ]
+    },
+    {
+      "path": "docs/sol/issues/mobile-session-pkce.md",
+      "class": "receipt",
+      "owner": "Sol issue #8660",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "c4ce0fa2d60006bf0937b7d0feda475846908443e69d8b464c8b0a2afe38803b",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8597,
+        8658,
+        8659,
+        8660
+      ]
+    },
+    {
+      "path": "docs/sol/issues/mobile-session-recovery.md",
+      "class": "receipt",
+      "owner": "Sol issue #8659",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "1522e0572bcecc0925b77f742ff1eeda70116288b567467f89e2b557166772ee",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8597,
+        8658,
+        8659
+      ]
+    },
+    {
+      "path": "docs/sol/issues/mobile-session-vault.md",
+      "class": "receipt",
+      "owner": "Sol issue #8658",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "5d6452317daa0f1c0ca646e383ceb61a906b6d907509f02b9232c7c585924d4e",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8597,
+        8657,
+        8658
+      ]
+    },
+    {
+      "path": "docs/sol/issues/mobile-sync-host.md",
+      "class": "receipt",
+      "owner": "Sol issue #8657",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "3d4a9b970fee1e1c58cc17939f0e0ca09e097fa2c2314625739f13bb2ddf2d14",
+      "status": "closed after the main receipt recorded on the live issue",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8597,
+        8657,
+        8667
+      ]
+    },
+    {
+      "path": "docs/sol/issues/mobile-visible-sync-conversation.md",
+      "class": "receipt",
+      "owner": "Sol issue #8671",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "e45a665b83261db4d796292b3a2f7888985cc22f8bd1477f446e03cd7dfb2ce8",
+      "status": "closed; historical checked-in issue source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8566,
+        8597,
+        8667,
+        8668,
+        8671
+      ]
+    },
+    {
+      "path": "docs/sol/issues/native-authenticated-sync-hosts.md",
+      "class": "receipt",
+      "owner": "Sol issue #8667",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "810fb62a6da1196e75c9f0e80ad2adcf2576dbbdcc52393093eef90c67b314cd",
+      "status": "closed; historical checked-in issue source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8597,
+        8667
+      ]
+    },
+    {
+      "path": "docs/sol/issues/native-conversation-continuation.md",
+      "class": "receipt",
+      "owner": "Sol issue #8668",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "bfbd48b21cf2eece64fcb248b2ef4b08a9e7d15ad163a6b8babc49a63625a743",
+      "status": "closed; historical checked-in issue source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8574,
+        8597,
+        8668
+      ]
+    },
+    {
+      "path": "docs/sol/issues/native-streamed-conversation-handoff.md",
+      "class": "contract",
+      "owner": "Sol issue #8676",
+      "disposition": "retain-live-source",
+      "dispatch": false,
+      "sha256": "52a48c1752e86ed13a274f3ed837b45337b696ffae724580aea0dc4718d9f3da",
+      "status": "retain-live-source",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-11-cut-09-lifecycle-convergence-receipt.md",
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 2,
+      "issueLinks": [
+        8566,
+        8574,
+        8597,
+        8670,
+        8674,
+        8675,
+        8676
+      ]
+    },
+    {
+      "path": "docs/sol/issues/role-programs-and-colleagues.md",
+      "class": "tombstone",
+      "owner": "Sol issue #8643",
+      "disposition": "retain-tombstone",
+      "dispatch": false,
+      "sha256": "fd525dff2b3485d3ac79ce163873e3b7b2ab58ef8f466e93556ee1072c890ccf",
+      "status": "retain-tombstone",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on explicit owner revival",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8643
+      ]
+    },
+    {
+      "path": "docs/sol/issues/sarah-presentation.md",
+      "class": "tombstone",
+      "owner": "Sol issue #8610",
+      "disposition": "retain-tombstone",
+      "dispatch": false,
+      "sha256": "4b1bfdf137a29878a881f8d6850d355b268269cd28efcbc9a78f33a847049fef",
+      "status": "retain-tombstone",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on explicit owner revival",
+      "inboundLinks": [
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8610
+      ]
+    },
+    {
+      "path": "docs/sol/receipts/README.md",
+      "class": "index",
+      "owner": "Sol proof",
+      "disposition": "retain-active-index",
+      "dispatch": false,
+      "sha256": "c6b511d1d8d897e38a3da6007584dc68d78f7e19c7e7100b5dcba4e90aff0fe6",
+      "status": "current classification index",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever indexed membership, path, or classification changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        8687,
+        8688,
+        8689,
+        8690,
+        8691,
+        8692,
+        8693,
+        8694,
+        8695,
+        8696,
+        8697,
+        8698,
+        8699,
+        8703,
+        8705,
+        8706,
+        8707,
+        8712,
+        8717,
+        8718,
+        8719,
+        8720,
+        8721
+      ]
+    }
+  ]
+}

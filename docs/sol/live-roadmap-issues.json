@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-12T19:44:25.083Z",
+  "generatedAt": "2026-07-12T19:59:44.234Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -144,6 +144,137 @@
       "state": "OPEN",
       "title": "CUT-27 — Prove and declare the Codex/Claude-to-OpenAgents coding cutover",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8707"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:desktop",
+        "runtime",
+        "gcp",
+        "tracking",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8733,
+      "state": "OPEN",
+      "title": "AUDIO-0 EPIC: persistent two-way Desktop voice mode on Google Cloud",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8733"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:security",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8734,
+      "state": "OPEN",
+      "title": "AUDIO-1: freeze voice wire, lifecycle, authority, and retention contracts",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8734"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:infra",
+        "runtime",
+        "gcp",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8735,
+      "state": "OPEN",
+      "title": "AUDIO-2: build authenticated Cloud Run gateway with Google STT V2 streaming",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8735"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:infra",
+        "area:security",
+        "gcp",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8736,
+      "state": "OPEN",
+      "title": "AUDIO-3: retain audio in GCS with Cloud SQL manifests and deletion receipts",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8736"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:desktop",
+        "runtime",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8737,
+      "state": "OPEN",
+      "title": "AUDIO-4: add Desktop host microphone, playback, and persistent transport lifecycle",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8737"
+    },
+    {
+      "labels": [
+        "ui",
+        "effect",
+        "area:desktop",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8738,
+      "state": "OPEN",
+      "title": "AUDIO-5: ship the Effect Native persistent voice control and transcript HUD",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8738"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:desktop",
+        "runtime",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8739,
+      "state": "OPEN",
+      "title": "AUDIO-6: route final speech and controls through registered Desktop actions",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8739"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:desktop",
+        "gcp",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8740,
+      "state": "OPEN",
+      "title": "AUDIO-7: stream Google Chirp 3 HD replies with qualified barge-in",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8740"
+    },
+    {
+      "labels": [
+        "effect",
+        "area:desktop",
+        "area:infra",
+        "gcp",
+        "type:proof",
+        "roadmap:sol",
+        "priority:P1-parallel",
+        "track:audio"
+      ],
+      "number": 8741,
+      "state": "OPEN",
+      "title": "AUDIO-8: deploy and prove the real-microphone persistent voice MVP",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8741"
     }
   ]
 }

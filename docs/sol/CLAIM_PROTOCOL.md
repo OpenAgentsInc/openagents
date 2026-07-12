@@ -1,6 +1,9 @@
 # Sol implementation claim protocol
 
 - Date: 2026-07-09
+- Class: contract
+- Dispatch: ownership and collision control only; live issues select work
+- Owner: Sol roadmap
 - Status: active coordination contract
 - Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 - Dispatch sources: live `roadmap:sol` issues and their comments; this contract

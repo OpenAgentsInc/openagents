@@ -1,6 +1,6 @@
 # July 9 doctrine extraction and Backroom archive manifest
 
-- Class: archive manifest and deletion gate
+- Class: backroom-export
 - Date: 2026-07-12
 - Source repository: `OpenAgentsInc/openagents`
 - Source snapshot: `bf70f8922c`

@@ -30,7 +30,7 @@ host/lowering boundaries rather than alternate application architectures.
 
 The graph deliberately does **not** make remote workrooms, cloud host moves,
 Daytona, elastic placement, or voice prerequisites for the local coding
-cutover. Those remain later Revision 31 outcomes under #8547, #8636, and the
+cutover. Those remain later portable-session outcomes under #8547, #8636, and the
 remote-first pathway. Finishing this graph can close the ordinary local-coding
 scope of #8574 and its bounded reliability parents; it does not manufacture
 proof for those later remote outcomes or automatically close #8566/#8597.
@@ -1138,6 +1138,6 @@ Verification: public-safe evidence bundle with issue links, commit/artifact
 identities, device/OS/app versions, stable refs, commands, timestamps, failures,
 and recovery outcomes.  
 Non-goals: remote workrooms, host movement, Daytona, elastic placement, or
-voice; those retain their own open Revision 31 proof.  
+voice; those retain their own open proof.
 Close rule: close #8574's ordinary local-coding scope only after acceptance;
 do not close #8566/#8597 while their remote-first outcomes remain unproved.

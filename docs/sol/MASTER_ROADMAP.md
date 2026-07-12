@@ -394,7 +394,12 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   separately bounded post-proof program under the
   [`Pylon streamlining audit`](../fable/2026-07-11-pylon-streamlining-audit.md).
 
-### Canonical open issue projection
+### Canonical open product issue projection
+
+This offline projection excludes `area:docs` maintenance issues to avoid
+self-referential queue churn. Refresh live `roadmap:sol` issues and claims
+before operational selection; the table owns product dependency order, not
+the currently unclaimed worker lease.
 
 | Issue | Current role |
 | --- | --- |
@@ -408,6 +413,15 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | CUT-09 remaining lifecycle acceptance |
 | [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | CUT-26 distribution/update/rollback/legacy lockout |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
+| [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | AUDIO-0 persistent two-way Desktop voice epic; P1 parallel lane |
+| [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734) | AUDIO-1 wire/lifecycle/authority/retention contract freeze |
+| [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | AUDIO-2 authenticated Cloud Run + Google STT V2 gateway |
+| [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | AUDIO-3 opt-in retained-audio storage and deletion receipts |
+| [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | AUDIO-4 Desktop host microphone/playback/transport lifecycle |
+| [#8738](https://github.com/OpenAgentsInc/openagents/issues/8738) | AUDIO-5 Effect Native voice control and transcript HUD |
+| [#8739](https://github.com/OpenAgentsInc/openagents/issues/8739) | AUDIO-6 final speech through registered Desktop actions |
+| [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | AUDIO-7 streaming Chirp replies and qualified barge-in |
+| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 real-microphone deployed/live proof |
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 #8642, #8643, #8646, and #8650. They are not dormant queues.
@@ -445,6 +459,13 @@ Live issues and claims control exact selection. At this snapshot:
    cross-device control, voice follow-up, revocation, lost ACK, restart/update,
    failback, and reclaim with no fork, duplication, leak, orphan, or false
    authority.
+6. In a file/contract-disjoint P1 lane, freeze AUDIO-1 before implementation;
+   then compose AUDIO-2 and AUDIO-4, keep AUDIO-3 retained audio separately
+   opt-in and deletion-receipted, land AUDIO-5/AUDIO-6/AUDIO-7 through the
+   ordinary typed action/approval path, and close AUDIO-0 only after AUDIO-8
+   proves a real microphone/deployed lifecycle. This lane cannot preempt the
+   P0 local-cutover, fault, distribution, or managed-workroom exits and cannot
+   revive Sarah/persona authority.
 
 Owner or external gates shift capacity to another ready R0–R7 slice, never to
 closed presentation backlog. Claims are refreshed before every mutation.

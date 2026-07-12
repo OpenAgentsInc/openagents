@@ -54,6 +54,7 @@ scope, and rung. Live issue state and the
 | --- | --- | --- |
 | [`2026-07-12-android-emulator-receipts.md`](../2026-07-12-android-emulator-receipts.md) | supporting device evidence | First CUT Android-emulator evidence and later acceptance chronology; does not reopen closed CUTs or create a physical-Android gate |
 | [`2026-07-12-new-chat-live-sync-false-completion-after-action.md`](../2026-07-12-new-chat-live-sync-false-completion-after-action.md) | failure/after-action | Retained counterexample for false completion and unreachable fallback; not a success receipt |
+| [`2026-07-12-clean-agent-reading-receipt.md`](../2026-07-12-clean-agent-reading-receipt.md) | deterministic documentation-policy proof | Bounded README-to-authority reading contract passes and remains a regression gate |
 
 ## Reading rule
 

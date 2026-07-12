@@ -40,6 +40,8 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   claims, hot-contract coordination, staleness audit, and release receipts.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,
   tripwires, and review points.
+- [`receipts/README.md`](./receipts/README.md) — indexed proof snapshots, rungs,
+  and final dispositions; evidence never selects the current queue.
 - [`OPERATING_MODEL.md`](./OPERATING_MODEL.md) — bounded implementation and
   proof discipline. Its durable rules apply; transient status must be checked
   against the master and live issues.

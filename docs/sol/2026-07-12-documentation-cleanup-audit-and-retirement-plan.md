@@ -1,6 +1,9 @@
 # Sol documentation cleanup audit and ordered retirement plan
 
 - Date: 2026-07-12
+- Class: current-status
+- Dispatch: no; the master and live issues select work
+- Owner: Sol documentation cleanup
 - Repository snapshot: `b2ba1035c9f1bd466b4ac1121eaf0fdee426ab57`
 - Canonical roadmap inspected: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md),
   Revision 82

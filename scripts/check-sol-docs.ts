@@ -3,11 +3,17 @@
 import { spawnSync } from "node:child_process"
 import { readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve, sep } from "node:path"
+import {
+  buildSolDocumentManifest,
+  serializeSolDocumentManifest,
+  SOL_DOCUMENT_MANIFEST_PATH,
+} from "./generate-sol-doc-manifest"
 
 export const SNAPSHOT_PATH = "docs/sol/live-roadmap-issues.json"
 export const SNAPSHOT_SCHEMA_VERSION = 1
 export const MASTER_LINE_BUDGET = 800
 export const SNAPSHOT_MAX_AGE_HOURS = 7 * 24
+export const CANONICAL_PRODUCT_PROJECTION_HEADING = "### Canonical open product issue projection"
 
 export const REMOVED_JULY_9_PATHS = [
   "docs/sol/2026-07-09-authority-trust-and-economics.md",
@@ -176,9 +182,9 @@ export function validateMaster(master: string, snapshot: RoadmapIssueSnapshot): 
   if ((master.match(/^- Revision: \d+$/gm) ?? []).length !== 1) {
     errors.push("master must declare exactly one numeric Revision metadata field")
   }
-  const projection = extractSection(master, "### Canonical open issue projection")
+  const projection = extractSection(master, CANONICAL_PRODUCT_PROJECTION_HEADING)
   if (!projection) {
-    errors.push("master is missing the canonical open issue projection")
+    errors.push("master is missing the canonical open product issue projection")
   } else {
     const actual = extractIssueTableNumbers(projection)
     const expected = snapshot.issues.map((issue) => issue.number)
@@ -201,11 +207,11 @@ export function validateRevisionPins(activeDocuments: Record<string, string>): s
 
 export function validateQueueOwnership(documents: Record<string, string>): string[] {
   const owners = Object.entries(documents).filter(([, markdown]) =>
-    markdown.includes("### Canonical open issue projection"),
+    markdown.includes(CANONICAL_PRODUCT_PROJECTION_HEADING),
   )
   const errors: string[] = []
   if (owners.length !== 1 || owners[0]?.[0] !== "docs/sol/MASTER_ROADMAP.md") {
-    errors.push(`canonical open issue projection must be owned only by docs/sol/MASTER_ROADMAP.md; found ${owners.map(([path]) => path).join(", ") || "none"}`)
+    errors.push(`canonical open product issue projection must be owned only by docs/sol/MASTER_ROADMAP.md; found ${owners.map(([path]) => path).join(", ") || "none"}`)
   }
   for (const [path, markdown] of Object.entries(documents)) {
     const header = markdown.split("\n").slice(0, 20).join("\n")
@@ -227,6 +233,45 @@ export function validateQueueOwnership(documents: Record<string, string>): strin
       }
     }
   }
+  return errors
+}
+
+export function validateCleanAgentReading(
+  documents: Record<string, string>,
+  snapshot: RoadmapIssueSnapshot,
+): string[] {
+  const errors: string[] = []
+  const index = documents["docs/sol/README.md"] ?? ""
+  const directTargets = new Set(sectionLocalMarkdownTargets(index))
+  for (const target of ["MASTER_ROADMAP.md", "CLAIM_PROTOCOL.md", "receipts/README.md"]) {
+    if (!directTargets.has(target)) errors.push(`clean-agent index cannot reach ${target} in one link`)
+  }
+
+  const master = documents["docs/sol/MASTER_ROADMAP.md"] ?? ""
+  for (const heading of [
+    "## Owner decisions",
+    "## Non-goals and non-revival boundary",
+    "## Proof vocabulary",
+    "## Current execution order",
+  ]) {
+    if (!extractSection(master, heading)) errors.push(`clean-agent master is missing ${heading}`)
+  }
+  const projection = extractIssueTableNumbers(
+    extractSection(master, CANONICAL_PRODUCT_PROJECTION_HEADING),
+  )
+  if (!equalNumbers(projection, snapshot.issues.map((issue) => issue.number))) {
+    errors.push("clean-agent product issue set differs from the pinned artifact")
+  }
+  const proof = extractSection(master, "## Proof vocabulary")
+  for (const rung of ["code-landed", "fixture-proven", "deployed/distributed", "live-proven", "owner-accepted", "closed"]) {
+    if (!proof.includes(rung)) errors.push(`clean-agent proof vocabulary is missing ${rung}`)
+  }
+  const order = extractSection(master, "## Current execution order")
+  if (!/#\d{3,}/.test(order)) errors.push("clean-agent current execution order has no issue-backed next action")
+
+  const claims = documents["docs/sol/CLAIM_PROTOCOL.md"] ?? ""
+  if (!/```text\nCLAIM\n/.test(claims)) errors.push("clean-agent claim protocol lacks CLAIM shape")
+  if (!/```text\nCLAIM-RELEASE\n/.test(claims)) errors.push("clean-agent claim protocol lacks CLAIM-RELEASE shape")
   return errors
 }
 
@@ -260,7 +305,8 @@ export function validateIssueIndex(
 
   const sourceIssues = extractIssueNumbers(extractSection(index, "## Live issue sources"))
   const receiptIssues = extractIssueNumbers(extractSection(index, "## Live issues represented by receipts"))
-  const actual = uniqueSorted([...sourceIssues, ...receiptIssues])
+  const planIssues = extractIssueNumbers(extractSection(index, "## Live issues represented by an owning plan"))
+  const actual = uniqueSorted([...sourceIssues, ...receiptIssues, ...planIssues])
   const expected = snapshot.issues.map((issue) => issue.number)
   if (!equalNumbers(actual, expected)) {
     errors.push(`issue index live set ${formatNumbers(actual)} differs from snapshot ${formatNumbers(expected)}`)
@@ -470,12 +516,39 @@ export async function collectSolDocErrors(options: CheckOptions): Promise<string
     ...validateMaster(master, snapshot),
     ...validateRevisionPins(activeDocuments),
     ...validateQueueOwnership(allDocuments),
+    ...validateCleanAgentReading(allDocuments, snapshot),
     ...validateIssueIndex(issueIndex, issueSourceFiles, snapshot),
     ...validatePolicy({ "docs/sol/MASTER_ROADMAP.md": master, ...activeDocuments }),
     ...validateReceiptIndex(receiptIndex),
     ...validateArchiveManifest(archiveManifest),
     ...await validateMarkdownLinks(root, allMarkdownFiles),
   ]
+  try {
+    const expectedManifest = buildSolDocumentManifest(root)
+    const expectedBytes = serializeSolDocumentManifest(expectedManifest)
+    const actualBytes = await readFile(join(root, SOL_DOCUMENT_MANIFEST_PATH), "utf8")
+    if (actualBytes !== expectedBytes) {
+      errors.push(`${SOL_DOCUMENT_MANIFEST_PATH} differs from deterministic generation`)
+    }
+    const dispatchOwners = expectedManifest.documents.filter((document) => document.dispatch)
+    if (dispatchOwners.length !== 1 || dispatchOwners[0]?.path !== "docs/sol/MASTER_ROADMAP.md") {
+      errors.push("document manifest must mark only the master as dispatch-capable")
+    }
+    for (const document of expectedManifest.documents) {
+      if (
+        !document.path || !document.class || !document.owner || !document.reviewedAt
+        || !document.disposition || !document.status || !document.snapshot
+        || !document.reviewTrigger || !/^[0-9a-f]{64}$/.test(document.sha256)
+      ) {
+        errors.push(`document manifest has an incomplete row for ${document.path || "unknown path"}`)
+      }
+      if (!Array.isArray(document.inboundLinks) || !Array.isArray(document.issueLinks)) {
+        errors.push(`document manifest has invalid link lists for ${document.path}`)
+      }
+    }
+  } catch (error) {
+    errors.push(`document manifest validation failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
   for (const path of REMOVED_JULY_9_PATHS) {
     try {
       await stat(join(root, path))

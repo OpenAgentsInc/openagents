@@ -1,6 +1,9 @@
 # Terra execution lane under the Sol roadmap
 
 - Date: 2026-07-10
+- Class: contract
+- Dispatch: ownership rules only; live issues and claims select current work
+- Owner: Sol and Terra coordination
 - Updated: 2026-07-10 (mobile remote-workroom fold-in)
 - Status: active operating amendment
 - Authority: owner direction, [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md),

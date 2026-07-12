@@ -1,6 +1,9 @@
 # Sol challenge and falsifier ledger
 
 - Date: 2026-07-09
+- Class: contract
+- Dispatch: no; challenges inform current authority but do not select work
+- Owner: Sol roadmap
 - Updated: 2026-07-12 (July 9 falsifier extraction)
 - Status: active roadmap-governance ledger
 - Canonical roadmap: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)

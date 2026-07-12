@@ -1,5 +1,6 @@
 # FC-2: real mixed-harness Pylon supervisor and standing parallel executor
 
+- Issue: #8633
 Parent: #8638
 
 Status: **implementation complete; closure transfers the live-account receipt

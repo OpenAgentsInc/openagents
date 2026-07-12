@@ -1,5 +1,6 @@
 # FC-3: Sarah fleet supervision — canvas, progress, approvals, and steering
 
+- Issue: #8639
 Parent: #8638
 
 Status: **closed** at `1d84386cb5`; fixture-proven and deployed on 2026-07-10.

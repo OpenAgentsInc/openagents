@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import {
@@ -8,6 +8,7 @@ import {
   type RoadmapIssue,
   type RoadmapIssueSnapshot,
   validateArchiveManifest,
+  validateCleanAgentReading,
   validateIssueIndex,
   validateMarkdownLinks,
   validateMaster,
@@ -17,6 +18,11 @@ import {
   validateRevisionPins,
   validateSnapshot,
 } from "./check-sol-docs"
+import {
+  buildSolDocumentManifest,
+  serializeSolDocumentManifest,
+  SOL_DOCUMENT_MANIFEST_PATH,
+} from "./generate-sol-doc-manifest"
 
 const repositoryRoot = resolve(import.meta.dir, "..")
 const generatedAt = "2026-07-12T20:45:00.000Z"
@@ -51,6 +57,51 @@ describe("positive repository fixture", () => {
     })
     expect(errors).toEqual([])
   })
+
+  test("the full document manifest is exact, complete, and deterministic", () => {
+    const first = buildSolDocumentManifest(repositoryRoot)
+    const second = buildSolDocumentManifest(repositoryRoot)
+    const bytes = serializeSolDocumentManifest(first)
+    expect(bytes).toBe(serializeSolDocumentManifest(second))
+    expect(bytes).toBe(readFileSync(join(repositoryRoot, SOL_DOCUMENT_MANIFEST_PATH), "utf8"))
+    expect(first.documents.length).toBe(92)
+    expect(new Set(first.documents.map((document) => document.path)).size).toBe(92)
+    expect(first.documents.every((document) =>
+      document.class && document.owner && document.reviewedAt && document.disposition
+      && document.status && document.snapshot && document.reviewTrigger
+      && /^[0-9a-f]{64}$/.test(document.sha256)
+      && Array.isArray(document.inboundLinks) && Array.isArray(document.issueLinks)
+    )).toBe(true)
+    expect(first.documents.filter((document) => document.dispatch).map((document) => document.path)).toEqual([
+      "docs/sol/MASTER_ROADMAP.md",
+    ])
+    expect(first.documents.every((document) => !document.issueLinks.includes(2026))).toBe(true)
+  })
+
+  test("a clean reader reaches complete current truth within one hop", () => {
+    const documents = Object.fromEntries(
+      ["README.md", "MASTER_ROADMAP.md", "CLAIM_PROTOCOL.md", "receipts/README.md"].map((path) => [
+        `docs/sol/${path}`,
+        readFileSync(join(repositoryRoot, "docs/sol", path), "utf8"),
+      ]),
+    )
+    const pinned = JSON.parse(
+      readFileSync(join(repositoryRoot, "docs/sol/live-roadmap-issues.json"), "utf8"),
+    ) as RoadmapIssueSnapshot
+    expect(validateCleanAgentReading(documents, pinned)).toEqual([])
+    expect(
+      validateCleanAgentReading(
+        {
+          ...documents,
+          "docs/sol/MASTER_ROADMAP.md": documents["docs/sol/MASTER_ROADMAP.md"].replace(
+            "## Owner decisions",
+            "## Historical choices",
+          ),
+        },
+        pinned,
+      ).join("\n"),
+    ).toContain("Owner decisions")
+  })
 })
 
 describe("snapshot freshness and connected equality", () => {
@@ -71,7 +122,7 @@ describe("snapshot freshness and connected equality", () => {
 })
 
 describe("authority, queue, and issue classification regressions", () => {
-  const master = "# Master\n\n- Revision: 1\n\n### Canonical open issue projection\n\n| Issue | Role |\n| --- | --- |\n| [#1001](https://github.com/OpenAgentsInc/openagents/issues/1001) | current |\n"
+  const master = "# Master\n\n- Revision: 1\n\n### Canonical open product issue projection\n\n| Issue | Role |\n| --- | --- |\n| [#1001](https://github.com/OpenAgentsInc/openagents/issues/1001) | current |\n"
 
   test("rejects master projection drift and size overflow", () => {
     expect(validateMaster(master.replaceAll("issues/1001", "issues/1002"), snapshot()).join("\n")).toContain("differs")
@@ -86,7 +137,7 @@ describe("authority, queue, and issue classification regressions", () => {
     const documents = {
       "docs/sol/MASTER_ROADMAP.md": master,
       "docs/sol/README.md": "## Dispatch-safe reading order\n\n1. [Master](./MASTER_ROADMAP.md)",
-      "docs/sol/other.md": "### Canonical open issue projection",
+      "docs/sol/other.md": "### Canonical open product issue projection",
     }
     expect(validateQueueOwnership(documents).join("\n")).toContain("owned only")
   })
@@ -103,7 +154,7 @@ describe("authority, queue, and issue classification regressions", () => {
   })
 
   test("rejects missing classification, live-set drift, and open-as-closed", () => {
-    const index = "# Issues\n\n## Live issue sources\n\n| Source | Live issue |\n| --- | --- |\n| [source](./source.md) | #1001 |\n\n## Live issues represented by receipts\n\nNo receipt-only issues.\n\n## Closed proof and implementation sources\n\n- [closed](./closed.md) — #1001\n\n## Closed non-revival tombstones\n\nNo tombstones.\n\n## Architecture reference\n\nNo references.\n"
+    const index = "# Issues\n\n## Live issue sources\n\n| Source | Live issue |\n| --- | --- |\n| [source](./source.md) | #1001 |\n\n## Live issues represented by receipts\n\nNo receipt-only issues.\n\n## Live issues represented by an owning plan\n\nNo plan-only issues.\n\n## Closed proof and implementation sources\n\n- [closed](./closed.md) — #1001\n\n## Closed non-revival tombstones\n\nNo tombstones.\n\n## Architecture reference\n\nNo references.\n"
     const result = validateIssueIndex(index, ["source.md", "closed.md", "missing.md"], snapshot()).join("\n")
     expect(result).toContain("missing.md is classified 0 times")
     expect(result).toContain("#1001 is classified as closed")

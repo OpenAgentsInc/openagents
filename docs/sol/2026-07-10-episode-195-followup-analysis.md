@@ -1,6 +1,9 @@
 # Episode 195 follow-up — the missing product layer above reliable Desktop/mobile
 
 - Date: 2026-07-10
+- Class: historical-analysis
+- Dispatch: no; promoted conclusions live in the current master and issues
+- Owner: Sol product analysis
 - Source: [`docs/transcripts/195.md`](../transcripts/195.md)
 - Source recording date: 2025-11-11
 - Compared against: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 28

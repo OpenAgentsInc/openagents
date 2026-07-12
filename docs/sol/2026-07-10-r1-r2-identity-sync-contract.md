@@ -8,6 +8,8 @@
 > linking is additive/reversible and never deletes local rows.
 
 - Date: 2026-07-10
+- Class: contract
+- Dispatch: contract only; live issues and claims select current work
 - Status: **published senior contract freeze** for the R1–R2 gates
   and the owner decisions named by the current master roadmap. Sections are
   individually marked **SETTLED** (frozen — build against
