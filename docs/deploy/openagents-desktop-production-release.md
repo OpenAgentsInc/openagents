@@ -10,6 +10,7 @@ The first frozen release identity is:
 - channels: `rc`, then `stable`
 - tags: `openagents-desktop-v*`
 - first RC: `0.1.0-rc.1`
+- first downloaded-artifact smoke to pass: `0.1.0-rc.5`
 
 Never reuse the retired Khala Code or Autopilot Desktop identities or feeds.
 
@@ -49,9 +50,9 @@ bun run --cwd apps/openagents-desktop build
 bun apps/openagents-desktop/scripts/release-preflight.ts --channel rc --json
 ```
 
-Electron Forge's DMG tool currently reaches two native addons through Bun's
-isolated dependency store. If a fresh install lacks their binaries, build them
-before `make:mac`:
+Electron Forge's DMG tool reaches two native addons through Bun's isolated
+dependency store. `make:mac` runs `prepare-macos-maker.ts`, which builds both
+before Forge starts. For a manual diagnosis, the equivalent commands are:
 
 ```sh
 (cd node_modules/.bun/macos-alias@0.2.12/node_modules/macos-alias && \
@@ -159,8 +160,28 @@ Only after both candidate feeds pass, move 100% traffic to the candidate
 revision and repeat the checks through `https://updates.openagents.com`.
 
 Download the public DMG to a new path, verify its SHA-256 against the signed
-manifest, mount it, and run the clean-install lifecycle. Record first launch,
-account readiness, a coding turn, update interruption/resume, rollback,
+manifest, mount it, and run the packaged smoke from a pristine user-data root
+before any wider lifecycle acceptance:
+
+```sh
+mkdir -p /tmp/openagents-release-mount
+hdiutil attach /tmp/OpenAgents-<version>-arm64.dmg -nobrowse \
+  -mountpoint /tmp/openagents-release-mount
+rm -rf /tmp/openagents-release-smoke
+OPENAGENTS_DESKTOP_SMOKE=1 \
+OPENAGENTS_DESKTOP_USER_DATA=/tmp/openagents-release-smoke \
+  /tmp/openagents-release-mount/OpenAgents.app/Contents/MacOS/OpenAgents
+```
+
+The smoke must reach `[openagents-desktop smoke] OK` and lifecycle teardown
+`{"ok":true,"active":0}`. In particular, verify the packaged renderer exists
+under `app.asar.unpacked/dist/renderer`; RC1 failed on a browser-specific V8
+snapshot fuse and RC2 failed because Chromium could not admit the renderer from
+inside ASAR while the hardened file-protocol fuse was disabled. Never relax
+`GrantFileProtocolExtraPrivileges=false` to repair this.
+
+Then run the clean-install lifecycle and record first launch, account
+readiness, a coding turn, update interruption/resume, rollback,
 uninstall/reinstall, and diagnostics export.
 
 If the feed deploy is unhealthy, route Cloud Run traffic back to the previous
