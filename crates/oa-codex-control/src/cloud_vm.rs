@@ -540,9 +540,15 @@ impl CloudVmProvisioner for LiveFirecrackerProvisioner {
         // teardown kill (there is no jailer chroot to remove it for us here).
         let launch = command.spawn();
         let healthy = match launch {
-            Ok(child) => {
+            Ok(mut child) => {
                 std::fs::write(jail_dir.join("fc.pid"), child.id().to_string()).ok();
-                std::mem::forget(child); // do not reap on drop; teardown kills by pid
+                // Keep an asynchronous waiter for the detached microVM. Teardown
+                // still targets the recorded pid, while this waiter reaps the
+                // exited child so a long-lived control host does not accumulate
+                // defunct Firecracker processes after successful reclaim.
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
                 wait_guest_ready(&jail_dir)
             }
             Err(error) => {

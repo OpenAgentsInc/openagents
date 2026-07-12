@@ -1,0 +1,24 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env:
+      - DOCKER_BUILDKIT=1
+    args:
+      - build
+      - --file
+      - docker/cloud/oa-codex-control.Dockerfile
+      - --tag
+      - ${_IMAGE}
+      - --build-arg
+      - IMAGE_REVISION=${_REVISION}
+      - .
+images:
+  - ${_IMAGE}
+
+substitutions:
+  _IMAGE: us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/oa-codex-control:dev
+  _REVISION: unknown
+
+options:
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s

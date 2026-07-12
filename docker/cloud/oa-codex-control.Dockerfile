@@ -37,6 +37,8 @@ RUN apt-get update \
       ca-certificates \
       curl \
       git \
+      iproute2 \
+      iptables \
       python3 \
       apt-transport-https \
       gnupg \
