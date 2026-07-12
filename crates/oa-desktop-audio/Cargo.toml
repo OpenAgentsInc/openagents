@@ -12,3 +12,4 @@ sha2 = "0.10"
 cpal = "0.15"
 crossbeam-channel = "0.5"
 tungstenite = { version = "0.28", default-features = false, features = ["handshake", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

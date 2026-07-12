@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "deploy": "wrangler deploy", "test": "vitest run ../openagents.com/workers/api/src/audio-edge-proxy.test.ts" },
-  "devDependencies": { "wrangler": "^4.107.0", "vitest": "catalog:" }
+  "scripts": {
+    "build": "bun build src/cloudrun.ts --target=bun --outfile=dist/server.js",
+    "deploy": "bash deploy-cloudrun.sh"
+  }
 }

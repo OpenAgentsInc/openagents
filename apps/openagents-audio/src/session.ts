@@ -8,11 +8,25 @@ import { DEFAULT_CHIRP_VOICE, normalizeSpoken, trimLeadingSilencePcm, type TtsAd
 export const MAX_BUFFERED_AUDIO_BYTES = 256 * 1024
 export const ROTATE_AFTER_AUDIO_BYTES = 16_000 * 2 * 240
 export type AudioSocket = Readonly<{ sendText: (value: unknown) => boolean; sendBinary?: (value: Uint8Array) => boolean; close: (code: number, reason: string) => void }>
+export type AcceptedAudioFrame = Readonly<{
+  sequence: number
+  payload: Uint8Array
+  codec: "pcm_s16le" | "opus"
+  sampleRateHz: 16_000 | 24_000 | 48_000
+  sha256: string
+}>
+export type AudioRetention = Readonly<{
+  accept: (frame: AcceptedAudioFrame) => Promise<void>
+  gap: (firstSequence: number, lastSequence: number) => Promise<void>
+}>
 const sameIdentity = (a: VoiceIdentity, b: VoiceIdentity) => a.ownerRef === b.ownerRef && a.deviceRef === b.deviceRef && a.threadRef === b.threadRef && a.sessionRef === b.sessionRef && a.generation === b.generation
 
 export class AudioSession {
   private stream: SttStream
-  private lastClientSequence = 0
+  // AUDIO-1 media generations are zero-based (the Rust golden corpus and
+  // helper both emit sequence 0 first). -1 is internal-only and is never put
+  // on the wire.
+  private lastClientSequence = -1
   private serverSequence = 0
   private audioBytes = 0
   private finalIndex = 0
@@ -25,10 +39,11 @@ export class AudioSession {
     adapter: TtsAdapter; voiceRef?: string; languageCode?: string; now?: () => number
     receipt?: (receipt: TtsReceipt) => void
     onBargeIn?: (input: Readonly<{ identity: VoiceIdentity; turnRef: string; speechRef: string }>) => Promise<string>
-  }>) { this.stream = this.openStream() }
+  }>, private readonly retention?: AudioRetention) { this.stream = this.openStream() }
   private send(frame: Record<string, unknown>): void {
     if (!this.socket.sendText({ schema: "openagents.audio.v1", identity: this.identity, sequence: ++this.serverSequence, ...frame })) this.fail("backpressure")
   }
+  announceRetention(receipt: Record<string, unknown>): void { this.send({ _tag: "retention_receipt", receipt }) }
   private openStream(): SttStream { return this.adapter.open({ onEvent: (e) => this.onSttEvent(e), onDrain: () => this.flush() }) }
   private onSttEvent(event: SttEvent): void {
     if (this.closed) return
@@ -84,13 +99,20 @@ export class AudioSession {
     const receipt = { schema: "openagents.audio.tts_receipt.v1" as const, adapterRef: this.tts.adapter.adapterRef, voiceRef: this.tts.voiceRef ?? DEFAULT_CHIRP_VOICE, charsIn: input.text.length, synthTtfbMs: firstAt === null ? null : firstAt - startedAt, totalMs: now() - startedAt, chunksOut, bytesOut, outcome }
     this.tts.receipt?.(receipt); this.send({ _tag: "tts_state", turnRef: input.turnRef, speechRef: input.speechRef, state: outcome }); return receipt
   }
-  receive(raw: Uint8Array): void {
+  async receive(raw: Uint8Array): Promise<void> {
     if (this.closed) throw new Error("audio_session_closed")
     const frame = decodeBinaryMediaFrame(raw)
     if (!sameIdentity(frame.header.identity, this.identity)) return this.fail("identity_or_generation")
     const sequence = frame.header.sequence
     if (sequence <= this.lastClientSequence) { this.send({ _tag: "ack", acknowledgedClientSequence: this.lastClientSequence }); return }
-    if (sequence !== this.lastClientSequence + 1) { this.send({ _tag: "gap", expectedClientSequence: this.lastClientSequence + 1 }); return }
+    if (sequence !== this.lastClientSequence + 1) {
+      await this.retention?.gap(this.lastClientSequence + 1, sequence - 1)
+      this.send({ _tag: "gap", expectedClientSequence: this.lastClientSequence + 1 }); return
+    }
+    // The ACK is a durable-acceptance receipt, not merely a socket-read
+    // receipt. Retention must commit the encrypted object and SQL manifest
+    // before STT or the client watermark advances.
+    await this.retention?.accept({ sequence, payload: frame.payload, codec: frame.header.codec, sampleRateHz: frame.header.sampleRateHz, sha256: frame.header.sha256 })
     this.lastClientSequence = sequence
     if (this.audioBytes + frame.payload.byteLength >= ROTATE_AFTER_AUDIO_BYTES) {
       this.stream.close(); this.stream = this.openStream(); this.audioBytes = 0

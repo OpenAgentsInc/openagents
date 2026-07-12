@@ -11,8 +11,8 @@ test("real WebSocket refuses auth and accepts bounded binary AUDIO-1 frames", as
   expect((await fetch(`http://127.0.0.1:${running.port}/v1/stream`)).status).toBe(426)
   const token = mintAudioGrant({ identity, expiresAtMs: Date.now() + 60_000 }, secret)
   const socket = new WebSocket(`ws://127.0.0.1:${running.port}/v1/stream?token=${token}`)
-  const result = await new Promise<any>((resolve, reject) => { socket.onopen = () => socket.send(Buffer.from(mediaFrame(1))); socket.onmessage = (e) => resolve(JSON.parse(String(e.data))); socket.onerror = reject })
-  expect(result).toMatchObject({ _tag: "ack", acknowledgedClientSequence: 1, identity }); socket.close()
+  const result = await new Promise<any>((resolve, reject) => { socket.onopen = () => socket.send(Buffer.from(mediaFrame(0))); socket.onmessage = (e) => resolve(JSON.parse(String(e.data))); socket.onerror = reject })
+  expect(result).toMatchObject({ _tag: "ack", acknowledgedClientSequence: 0, identity }); socket.close()
 })
 test("real WebSocket refuses an invalid application grant", async () => {
   const running = startAudioServer({ tokenSecret: "q".repeat(32), adapter: new FakeSttAdapter(), port: 0 }); stop = running.stop
@@ -36,4 +36,18 @@ test("canonical speak route streams identity/turn/speech-bound PCM and returns t
   expect(decodeMediaHeader(JSON.parse(Buffer.from(binary.subarray(8, 8 + headerLength)).toString("utf8")))).toMatchObject({ identity, turnRef: "turn.1", speechRef: "speech.1" })
   expect(received.filter(value => typeof value === "string").map(value => JSON.parse(value as string)._tag)).toContain("assistant_text")
   socket.close()
+})
+test("retained sessions announce policy and ACK only after the durable accept hook", async () => {
+  const secret = "r".repeat(32); let release!: () => void; const durable = new Promise<void>(resolve => { release = resolve }); let accepted = 0
+  const running = startAudioServer({ tokenSecret: secret, adapter: new FakeSttAdapter(), port: 0, retention: {
+    admit: async () => ({ receipt: { receiptRef: "retained.1", expiresAtMs: Date.now() + 60_000 }, accept: async () => { accepted++; await durable }, gap: async () => {}, stop: async () => {} }),
+    reconcile: async () => ({}), exportSession: async () => ({}), deleteSession: async () => ({}), close: async () => {},
+  } }); stop = running.stop
+  const token = mintAudioGrant({ identity, expiresAtMs: Date.now() + 60_000 }, secret)
+  const socket = new WebSocket(`ws://127.0.0.1:${running.port}/v1/stream?token=${token}`); const frames: any[] = []
+  await new Promise<void>((resolve, reject) => { socket.onopen = () => resolve(); socket.onerror = reject })
+  socket.onmessage = event => frames.push(JSON.parse(String(event.data)))
+  await Bun.sleep(5); socket.send(Buffer.from(mediaFrame(0))); await Bun.sleep(5)
+  expect(frames[0]).toMatchObject({ _tag: "retention_receipt", receipt: { receiptRef: "retained.1" } }); expect(accepted).toBe(1); expect(frames.some(frame => frame._tag === "ack")).toBeFalse()
+  release(); await Bun.sleep(5); expect(frames.at(-1)).toMatchObject({ _tag: "ack", acknowledgedClientSequence: 0 }); socket.close()
 })

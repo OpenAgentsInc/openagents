@@ -165,8 +165,9 @@ export class AudioRetentionService {
       const orphanObjects = [...actual].filter((ref) => !expected.has(ref)).sort()
       const covered = new Set<number>()
       for (const item of [...manifests, ...service.gaps.filter((gap) => gap.sessionRef === sessionRef)]) for (let sequence = item.firstSequence; sequence <= item.lastSequence; sequence++) covered.add(sequence)
+      const first = Math.min(...covered)
       const last = Math.max(-1, ...covered)
-      const uncoveredSequences = Array.from({ length: last + 1 }, (_, sequence) => sequence).filter((sequence) => !covered.has(sequence))
+      const uncoveredSequences = covered.size === 0 ? [] : Array.from({ length: last - first + 1 }, (_, offset) => first + offset).filter((sequence) => !covered.has(sequence))
       return { missingObjects, orphanObjects, uncoveredSequences }
     })
   }

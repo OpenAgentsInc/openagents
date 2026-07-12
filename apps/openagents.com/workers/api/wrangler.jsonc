@@ -37,7 +37,6 @@
     },
   ],
   "vars": {
-    "OPENAGENTS_AUDIO_GATEWAY_URL": "wss://openagents.com/v1/stream",
     // CFG-8 (#8523): GCS bucket replacing the account-disabled R2
     // `ARTIFACTS` binding (#8516). Resolved by `src/artifacts-binding.ts`
     // together with the `ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID` /

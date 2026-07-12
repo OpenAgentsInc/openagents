@@ -1,7 +1,9 @@
 # Persistent Desktop voice mode — lineage, vision, architecture, and delivery plan
 
 - **Date:** 2026-07-12
-- **Status:** vision and architecture plan; not implementation authority or a product promise
+- **Status:** AUDIO-1 through AUDIO-7 are closed; AUDIO-8 has deployed lower-rung
+  evidence and remains pending owner recording/release acceptance. This is not
+  yet a public product promise.
 - **Destination:** `apps/openagents-desktop`
 - **Related authority:** `docs/sol/MASTER_ROADMAP.md`
 - **Effect/Rust decision:** [`2026-07-12-effect-vs-rust-audio-architecture-decision.md`](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)
@@ -20,6 +22,14 @@
   `0b91925886`, `f59cbd741b`, `5b243319d6`, and `65ad1fca1e`: Electron owns
   permissions/finalizers and a signed Rust helper owns capture, conversion,
   authenticated transport, bounded reconnect/backpressure, and playback.
+- **AUDIO-5 through AUDIO-7:** the Effect Native HUD, registered semantic
+  actions, Google Chirp 3 HD playback, and qualified barge-in are on `main`.
+- **AUDIO-8 deployed proof:** private audio revision
+  `openagents-audio-staging-00012-bbs` is reached only through public,
+  grant-gated edge revision `openagents-audio-edge-staging-00001-frh`; real
+  microphone, durable ACK, 60-second mute/reconcile/export/delete, full Desktop
+  verification, and packaged-app lower-rung evidence are recorded in
+  [`evidence/2026-07-12-audio-8-deployed-real-microphone-receipt.md`](./evidence/2026-07-12-audio-8-deployed-real-microphone-receipt.md).
 - **Historical inputs:** Sarah/Hydralisk records in `docs/sarah/` and their deleted source in Git history
 
 ## 0. Vision summary
@@ -859,14 +869,16 @@ appears in Sync, logs, analytics, or support bundles.
 8. What are the session duration, idle timeout, bandwidth, retained-byte, ASR,
    TTS, and inference caps?
 
-## 12. Recommendation
+## 12. Current closeout recommendation
 
-Proceed through #8733 by landing AUDIO-1 first, then running AUDIO-2 Google STT,
-AUDIO-3 retained storage, and AUDIO-4 Desktop capture in parallel before UI,
-actions, TTS, and final proof converge. Retained media is part of the requested
-owner-dogfood MVP, not a hidden side effect: it has a visible session
-disclosure, separate indicator, encrypted custody, bounded quota, and
-delete/export receipts.
+Keep the implemented hybrid boundary: Rust owns bounded native media and
+Effect owns policy, UI, Google adapters, retention, commands, and receipts.
+The deployed owner-dogfood path now proves real microphone capture and exact
+retention disposition. Close AUDIO-8 only after the owner reviews the named
+recording; close the epic only after that acceptance and the signed-release
+rung are either proven or explicitly accepted at the issue's documented lower
+rung. Retained media remains an explicit, visible dogfood policy rather than a
+hidden side effect.
 
 The north star is the old Onyx promise—say what you want and useful work
 happens—combined with Commander's Jarvis/StarCraft fleet surface and Sol's

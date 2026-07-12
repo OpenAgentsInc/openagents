@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::VecDeque,
     io::ErrorKind,
-    net::TcpStream,
+    net::{TcpStream, ToSocketAddrs},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -19,13 +19,28 @@ use std::{
     time::Duration,
 };
 use tungstenite::{
-    client::IntoClientRequest, connect, stream::MaybeTlsStream, Error as WsError, Message,
+    client::IntoClientRequest, client_tls, stream::MaybeTlsStream, Error as WsError, Message,
     WebSocket,
 };
+
+fn connect_bounded_ipv4(request: tungstenite::http::Request<()>) -> Result<(WebSocket<MaybeTlsStream<TcpStream>>, tungstenite::handshake::client::Response), String> {
+    let host = request.uri().host().ok_or("gateway_host_invalid")?;
+    let port = request.uri().port_u16().unwrap_or(if request.uri().scheme_str() == Some("wss") { 443 } else { 80 });
+    let addresses = (host, port).to_socket_addrs().map_err(|_| "gateway_dns_failed")?.filter(|address| address.is_ipv4());
+    for address in addresses {
+        if let Ok(stream) = TcpStream::connect_timeout(&address, Duration::from_secs(3)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+            return client_tls(request, stream).map_err(|_| "gateway_handshake_failed".into());
+        }
+    }
+    Err("gateway_connect_failed".into())
+}
 
 pub const GOOGLE_AUDIO_CHUNK_LIMIT: usize = 15_360;
 const CAPTURE_QUEUE_PACKETS: usize = 32;
 const PLAYBACK_QUEUE_SAMPLES: usize = 48_000 * 2;
+const CAPTURE_PACKET_SAMPLES: usize = 1_600; // 100 ms at the canonical 16 kHz
 
 #[derive(Clone)]
 pub struct NativeTransportConfig {
@@ -157,10 +172,14 @@ fn send_capture(
     sender: &Sender<Vec<u8>>,
     samples: Vec<i16>,
     events: &Sender<NativeTransportEvent>,
+    pending: &Arc<Mutex<Vec<i16>>>,
 ) {
-    for chunk in samples.chunks(GOOGLE_AUDIO_CHUNK_LIMIT / 2) {
+    let mut pending = pending.lock().unwrap();
+    pending.extend(samples);
+    while pending.len() >= CAPTURE_PACKET_SAMPLES {
+        let chunk: Vec<i16> = pending.drain(..CAPTURE_PACKET_SAMPLES).collect();
         let mut bytes = Vec::with_capacity(chunk.len() * 2);
-        for sample in chunk {
+        for sample in &chunk {
             bytes.extend_from_slice(&sample.to_le_bytes());
         }
         if sender.try_send(bytes).is_err() {
@@ -183,6 +202,7 @@ fn build_input_stream(
     let channels = config.channels as usize;
     let rate = config.sample_rate.0;
     let resampler = Arc::new(Mutex::new(MonoResampler::default()));
+    let pending = Arc::new(Mutex::new(Vec::with_capacity(CAPTURE_PACKET_SAMPLES * 2)));
     let on_error = {
         let events = events.clone();
         move |_| {
@@ -192,6 +212,7 @@ fn build_input_stream(
     let stream = match supported.sample_format() {
         cpal::SampleFormat::F32 => {
             let resampler = resampler.clone();
+            let pending = pending.clone();
             let events = events.clone();
             device.build_input_stream(
                 &config,
@@ -203,6 +224,7 @@ fn build_input_stream(
                             .unwrap()
                             .convert_f32(data, channels, rate, 16_000),
                         &events,
+                        &pending,
                     )
                 },
                 on_error,
@@ -211,6 +233,7 @@ fn build_input_stream(
         }
         cpal::SampleFormat::I16 => {
             let resampler = resampler.clone();
+            let pending = pending.clone();
             let events = events.clone();
             device.build_input_stream(
                 &config,
@@ -224,6 +247,7 @@ fn build_input_stream(
                             .unwrap()
                             .convert_f32(&values, channels, rate, 16_000),
                         &events,
+                        &pending,
                     )
                 },
                 on_error,
@@ -232,6 +256,7 @@ fn build_input_stream(
         }
         cpal::SampleFormat::U16 => {
             let resampler = resampler.clone();
+            let pending = pending.clone();
             let events = events.clone();
             device.build_input_stream(
                 &config,
@@ -247,6 +272,7 @@ fn build_input_stream(
                             .unwrap()
                             .convert_f32(&values, channels, rate, 16_000),
                         &events,
+                        &pending,
                     )
                 },
                 on_error,
@@ -447,7 +473,7 @@ fn worker_once(
     request
         .headers_mut()
         .insert("x-openagents-audio-grant", grant);
-    let (mut socket, _) = match connect(request) {
+    let (mut socket, _) = match connect_bounded_ipv4(request) {
         Ok(value) => value,
         Err(_) => {
             let _ = events.send(NativeTransportEvent::Offline);
@@ -644,6 +670,11 @@ pub fn start_native_transport(
     config: NativeTransportConfig,
     identity: VoiceIdentity,
 ) -> Result<(NativeTransportHandle, Receiver<NativeTransportEvent>), String> {
+    // The workspace graph can enable more than one rustls provider. Native
+    // helpers must choose deterministically before the first TLS handshake;
+    // otherwise rustls panics on its worker thread and capture silently loses
+    // its transport owner.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     if !config.gateway_url.starts_with("wss://")
         && !config.gateway_url.starts_with("ws://127.0.0.1:")
     {
