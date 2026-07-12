@@ -107,7 +107,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
-    const laneLabel = lane === "fable" ? "Fable" : "Codex"
+    const laneLabel = lane === "fable" ? "Claude" : "Codex"
     const turnRef = `turn.${lane}.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
     let baseThread: DesktopThread | null = null
     const traceNotes: DesktopMessage[] = []

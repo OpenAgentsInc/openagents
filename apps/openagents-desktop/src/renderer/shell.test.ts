@@ -2014,7 +2014,7 @@ describe("EP250 typed tool-call cards (owner: 'not these JSON blobs')", () => {
 
   test("ordinary system notes (model caption, errors) stay SYSTEM rows — only trace notes become cards", () => {
     const view = desktopShellView({ ...traceState, notes: [
-      { key: "m1", role: "system" as const, text: "Fable · claude-fable-5", timestamp: "18:05" },
+      { key: "m1", role: "system" as const, text: "Claude · claude-fable-5", timestamp: "18:05" },
       { key: "e1", role: "system" as const, text: "The model request failed.", timestamp: "18:05" },
     ] })
     const transcript = nodeByKey(view, "shell-transcript") as unknown as {

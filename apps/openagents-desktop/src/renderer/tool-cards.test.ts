@@ -46,7 +46,7 @@ describe("parseFableLocalTraceNoteText (deterministic inverse of the serializer)
   })
 
   test("non-trace system text never parses as a tool trace", () => {
-    expect(parseFableLocalTraceNoteText("Fable · claude-fable-5")).toBeNull()
+    expect(parseFableLocalTraceNoteText("Claude · claude-fable-5")).toBeNull()
     expect(parseFableLocalTraceNoteText("The model request failed.")).toBeNull()
     expect(parseFableLocalTraceNoteText("hello")).toBeNull()
   })
@@ -181,7 +181,7 @@ describe("projectTranscriptEntries (started + completion = ONE updating card)", 
         questions: [{ question: "Which path?", header: "Fixture", multiSelect: false, options: [{ label: "A" }] }],
       },
     })
-    const entries = projectTranscriptEntries([question, note({ key: "m", text: "Fable · claude-fable-5" })])
+    const entries = projectTranscriptEntries([question, note({ key: "m", text: "Claude · claude-fable-5" })])
     expect(entries.map((entry) => entry.kind)).toEqual(["question", "note"])
   })
 })

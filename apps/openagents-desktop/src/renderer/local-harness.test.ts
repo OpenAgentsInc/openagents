@@ -131,7 +131,7 @@ describe("makeLocalHarnessChatHost", () => {
     })
     await settle()
     // Effective-model visibility: the SDK-reported model renders as a caption
-    // trace line ("Fable · claude-fable-5") — model identity never comes from
+    // trace line ("Claude · claude-fable-5") — model identity never comes from
     // the lane brand alone.
     harness.emit({
       turnRef: "turn.fable.fixed",
@@ -159,7 +159,7 @@ describe("makeLocalHarnessChatHost", () => {
     // finalized persisted thread carries.
     expect(bodies).toEqual([
       "user:hello fable",
-      "system:Fable · claude-fable-5",
+      "system:Claude · claude-fable-5",
       "system:Read · started · notes.md",
       "system:Read · ok",
       "assistant:Hello world",
@@ -317,7 +317,7 @@ describe("makeLocalHarnessChatHost", () => {
     await settle()
     harness.resolveStart("garbage")
     const result = await pending
-    expect(result).toEqual({ ok: false, error: "The local Fable lane returned an invalid response." })
+    expect(result).toEqual({ ok: false, error: "The local Claude lane returned an invalid response." })
   })
 
   test("steerChild routes an interrupt to the active lane by exact ref (EP250 wave-2 G4)", async () => {

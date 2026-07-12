@@ -1364,7 +1364,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "IT HAS TO BE FABLE: the local Fable lane requests model claude-fable-5 with skills removed from the lane (disallowed, never offered-then-denied); if the SDK init reports an effective model outside the claude-fable family the turn fails typed as model_substituted naming requested vs effective, no substituted output is ever streamed or persisted as Fable, and the lane never rotates accounts on a model mismatch; the effective model is emitted as a typed event and displayed with the reply (e.g. Fable · claude-fable-5), never asserted from the brand alone.",
+          "MODEL PIN (user-facing brand is \"Claude\" per owner 2026-07-12, because Fable may not always be the available model; the pinned model is unchanged): the local Claude lane requests model claude-fable-5 with skills removed from the lane (disallowed, never offered-then-denied); if the SDK init reports an effective model outside the claude-fable family the turn fails typed as model_substituted naming requested vs effective, no substituted output is ever streamed or persisted as Claude, and the lane never rotates accounts on a model mismatch; the effective model is emitted as a typed event and displayed with the reply (e.g. Claude · claude-fable-5), never asserted from the brand alone.",
         authorityBoundary:
           "Model identity crossing the Electron boundary is only the bounded SDK-reported effective-model string and the typed model_substituted reason with a bounded requested-vs-effective detail — never raw SDK payloads, account homes, or provider error bodies. Model-level refusal grants no rotation, retry, or gateway-fallback authority.",
         evidenceRefs: [
@@ -1388,7 +1388,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
             description:
-              "Proves the renderer displays the SDK-reported effective model as the Fable · <model> transcript caption from the typed model_effective event, positioned with the trace lines the persisted thread also carries.",
+              "Proves the renderer displays the SDK-reported effective model as the Claude · <model> transcript caption from the typed model_effective event, positioned with the trace lines the persisted thread also carries.",
           },
         ],
         verification:

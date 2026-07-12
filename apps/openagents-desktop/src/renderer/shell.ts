@@ -3084,7 +3084,7 @@ const harnessTrack = (state: DesktopShellState): View =>
       },
     },
     [
-      harnessChip(state, "fable", "Fable"),
+      harnessChip(state, "fable", "Claude"),
       harnessChip(state, "codex", "Codex"),
     ],
   )

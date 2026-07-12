@@ -236,8 +236,8 @@ describe("A1 multi-turn streaming chat + A4 effective model (programmatic oracle
     const last = updates[updates.length - 1]!
     // A1: streamed deltas assembled into the assistant bubble.
     expect(last.notes.some((note) => note.role === "assistant" && note.text === "Hello world")).toBe(true)
-    // A4: the SDK-reported effective model surfaces as a caption ("Fable · <model>").
-    expect(last.notes.some((note) => note.role === "system" && note.text === "Fable · claude-fable-5")).toBe(true)
+    // A4: the SDK-reported effective model surfaces as a caption ("Claude · <model>").
+    expect(last.notes.some((note) => note.role === "system" && note.text === "Claude · claude-fable-5")).toBe(true)
   })
 
   test("A4: a substituted model is a typed failure, never streamed as Fable", () => {
@@ -279,7 +279,7 @@ describe("A2 mid-turn interrupt (programmatic oracle) — openagents_desktop.cha
     expect(startedTurnRef).not.toBeNull()
     expect(interruptedTurnRef).toBe(startedTurnRef) // exact-ref interrupt
     expect(result.ok).toBe(false)
-    expect(result.error).toBe("The local Fable turn was interrupted.")
+    expect(result.error).toBe("The local Claude turn was interrupted.")
     expect(subscribed).toBe(true) // the lane subscribed to events before starting
   })
 

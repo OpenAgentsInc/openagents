@@ -729,11 +729,11 @@ export const parseFableLocalTraceNoteText = (text: string): DesktopToolTrace | n
 
 /**
  * Effective-model caption rendered as a transcript trace line above the
- * assistant reply (e.g. "Fable · claude-fable-5"). The model half is the
+ * assistant reply (e.g. "Claude · claude-fable-5"). The model half is the
  * SDK-reported effective model, so the caption is capability-truthful even
  * though it also carries the lane brand.
  */
-export const fableLocalModelNoteText = (model: string): string => `Fable · ${model}`
+export const fableLocalModelNoteText = (model: string): string => `Claude · ${model}`
 
 /** Renderer-facing copy for a typed lane failure — no provider text leaks. */
 export const fableLocalFailureMessage = (
@@ -743,19 +743,19 @@ export const fableLocalFailureMessage = (
   const suffix = detail.trim() === "" ? "" : ` (${detail.trim()})`
   switch (reason) {
     case "no_claude_account":
-      return "Fable is unavailable: no linked Claude account home found on this machine. No message was routed to any other lane."
+      return "The local Claude lane is unavailable: no linked Claude account home found on this machine. No message was routed to any other lane."
     case "sdk_unavailable":
       return `The local Claude runtime could not start${suffix}. No message was routed to any other lane.`
     case "budget_exceeded":
-      return "The local Fable turn hit its turn budget before finishing."
+      return "The local Claude turn hit its turn budget before finishing."
     case "interrupted":
-      return "The local Fable turn was interrupted."
+      return "The local Claude turn was interrupted."
     case "timeout":
-      return "The local Fable turn timed out."
+      return "The local Claude turn timed out."
     case "session_failed":
-      return `The local Fable turn failed${suffix}.`
+      return `The local Claude turn failed${suffix}.`
     case "model_substituted":
-      return `Fable refused a substituted model${suffix}. No substituted output was shown as Fable.`
+      return `The Claude lane refused a substituted model${suffix}. No substituted output was shown as Claude.`
     // Codex-local reasons never reach this fable-branded formatter in the
     // renderer (the codex lane formats through codexLocalFailureMessage), but
     // the switch stays exhaustive over the shared reason set.

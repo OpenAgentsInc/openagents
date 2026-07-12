@@ -1523,7 +1523,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   }
   if (request.target !== undefined &&
       (request.target.provider !== "claude_agent" || request.target.model !== FABLE_LOCAL_MODEL)) {
-    return { ok: false, error: "That provider target is not available on the Fable lane." }
+    return { ok: false, error: "That provider target is not available on the Claude lane." }
   }
   const selectedSkill = request.skill === undefined
     ? null
