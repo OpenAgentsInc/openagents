@@ -127,6 +127,10 @@ import {
   DesktopWorkspaceTreeChannel,
   DesktopWorkspaceSearchChannel,
   DesktopWorkspaceSearchCancelChannel,
+  DesktopWorkspaceCreateChannel,
+  DesktopWorkspaceRenameChannel,
+  DesktopWorkspaceDeleteChannel,
+  DesktopWorkspaceRevealChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
@@ -135,6 +139,10 @@ import {
   decodeWorkspaceSaveRequest,
   decodeWorkspaceSearchBridgeRequest,
   decodeWorkspaceSearchCancelRequest,
+  decodeWorkspaceCreateRequest,
+  decodeWorkspaceRenameRequest,
+  decodeWorkspaceDeleteRequest,
+  decodeWorkspaceRevealRequest,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
 } from "./workspace-contract.ts"
@@ -574,6 +582,12 @@ const workspaceSnapshot = () => {
   if (workspace === null) return null
   try { return workspace.summary() } catch { return null }
 }
+const openSelectedWorkspace = (root: string) => openWorkspaceService(root, {
+  reveal: absolutePath => {
+    shell.showItemInFolder(absolutePath)
+    return true
+  },
+})
 const codingCatalogSnapshot = () => {
   const catalog = hostLifecycle.sync()?.codingCatalog()
   return catalog === null || catalog === undefined
@@ -583,7 +597,7 @@ const codingCatalogSnapshot = () => {
 const activateCodingCatalogRoot = () => {
   const root = hostLifecycle.sync()?.codingCatalog()?.selectedRoot() ?? null
   if (root !== null) {
-    hostLifecycle.replaceWorkspace(openWorkspaceService(root))
+    hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
     rebindWorkspaceChangeSubscriptions()
   }
 }
@@ -591,7 +605,7 @@ const chooseCodingWorkspace = async (registerCatalog = true) => {
   const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
   if (result.canceled || result.filePaths[0] === undefined) return null
   const root = result.filePaths[0]
-  hostLifecycle.replaceWorkspace(openWorkspaceService(root))
+  hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
   rebindWorkspaceChangeSubscriptions()
   if (registerCatalog) hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
   return root
@@ -638,6 +652,38 @@ ipcMain.handle(DesktopWorkspaceSearchCancelChannel, (event, value: unknown) => {
   return request === null
     ? { requestRef: "workspace.search.request.invalid", cancelled: false }
     : workspaceSearchRegistry.cancel(workspaceSearchOwnerRef(event.sender.id), request.requestRef)
+})
+ipcMain.handle(DesktopWorkspaceCreateChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace create is unavailable." }
+  const request = decodeWorkspaceCreateRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before creating entries." }
+    : workspace.createEntry(request)
+})
+ipcMain.handle(DesktopWorkspaceRenameChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace rename is unavailable." }
+  const request = decodeWorkspaceRenameRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before renaming entries." }
+    : workspace.renameEntry(request)
+})
+ipcMain.handle(DesktopWorkspaceDeleteChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace delete is unavailable." }
+  const request = decodeWorkspaceDeleteRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before deleting entries." }
+    : workspace.deleteEntry(request)
+})
+ipcMain.handle(DesktopWorkspaceRevealChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace reveal is unavailable." }
+  const request = decodeWorkspaceRevealRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before revealing entries." }
+    : workspace.revealEntry(request)
 })
 ipcMain.handle(DesktopWorkspaceRefreshChannel, event => {
   if (!isTrustedRuntimeGatewaySender(event)) return false
@@ -2507,7 +2553,7 @@ void app.whenReady().then(async () => {
       syncHost.codingCatalog()?.selectWorkspace(path.join(here, "..", "tests", "fixtures", "codex-smoke"))
     }
     const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
-    if (restoredRoot !== null) hostLifecycle.replaceWorkspace(openWorkspaceService(restoredRoot))
+    if (restoredRoot !== null) hostLifecycle.replaceWorkspace(openSelectedWorkspace(restoredRoot))
   } catch {
     console.error("[openagents-desktop] local Sync persistence unavailable")
   }

@@ -657,8 +657,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   Git-ignored, traversal, symlink, stale-revision, existing-target, non-empty-
   directory, and permission-loss cases fail with typed outcomes; only confirmed
   mutations advance the WorkContext epoch. Their adversarial core fixtures live
-  in `apps/openagents-desktop/tests/workspace-service.test.ts`. Effect Native UI
-  and fixed mutation IPC remain CUT-17 work.
+  in `apps/openagents-desktop/tests/workspace-service.test.ts`. Fixed decoded
+  create/rename/delete/reveal main-preload operations now cross only for the
+  trusted top-level bundled renderer; Electron main injects reveal authority
+  into each selected WorkContext and no absolute path returns. Effect Native UI
+  remains CUT-17 work.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

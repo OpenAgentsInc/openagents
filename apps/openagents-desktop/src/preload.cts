@@ -42,6 +42,10 @@ import {
   DesktopWorkspaceTreeChannel,
   DesktopWorkspaceSearchChannel,
   DesktopWorkspaceSearchCancelChannel,
+  DesktopWorkspaceCreateChannel,
+  DesktopWorkspaceRenameChannel,
+  DesktopWorkspaceDeleteChannel,
+  DesktopWorkspaceRevealChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
@@ -53,6 +57,11 @@ import {
   decodeWorkspaceSearchCancelRequest,
   decodeWorkspaceSearchCancelResult,
   decodeWorkspaceSearchResponse,
+  decodeWorkspaceCreateRequest,
+  decodeWorkspaceRenameRequest,
+  decodeWorkspaceDeleteRequest,
+  decodeWorkspaceRevealRequest,
+  decodeWorkspaceOperationResult,
   decodeWorkspaceTreePage,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
@@ -237,6 +246,30 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       requestRef: request.requestRef,
       cancelled: false,
     }
+  },
+  createWorkspaceEntry: async (value: unknown) => {
+    const request = decodeWorkspaceCreateRequest(value)
+    if (request === null) return { state: "unavailable", message: "The create request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceCreateChannel, request)
+    return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The create response is invalid." }
+  },
+  renameWorkspaceEntry: async (value: unknown) => {
+    const request = decodeWorkspaceRenameRequest(value)
+    if (request === null) return { state: "unavailable", message: "The rename request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceRenameChannel, request)
+    return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The rename response is invalid." }
+  },
+  deleteWorkspaceEntry: async (value: unknown) => {
+    const request = decodeWorkspaceDeleteRequest(value)
+    if (request === null) return { state: "unavailable", message: "The delete request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceDeleteChannel, request)
+    return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The delete response is invalid." }
+  },
+  revealWorkspaceEntry: async (value: unknown) => {
+    const request = decodeWorkspaceRevealRequest(value)
+    if (request === null) return { state: "unavailable", message: "The reveal request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceRevealChannel, request)
+    return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The reveal response is invalid." }
   },
   refreshWorkspace: async (): Promise<boolean> =>
     (await ipcRenderer.invoke(DesktopWorkspaceRefreshChannel)) === true,
