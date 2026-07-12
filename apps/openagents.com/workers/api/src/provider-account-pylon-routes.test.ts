@@ -422,10 +422,21 @@ describe('provider account Pylon device-login routes', () => {
   test('issues access-only Codex auth material from custody for linked Pylons', async () => {
     const token = 'oa_agent_auth_material_token'
     const calls: Array<{ ownerUserId: string; providerAccountRef: string }> = []
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push({
+      id: 'grant-id', providerAccountId: 'account-id', userId: 'openauth-user-owner',
+      teamId: null, threadId: null, workroomId: null, runnerSessionId: 'turn-1',
+      provider: 'chatgpt_codex', providerAccountRef: 'provider_account_codex_owner',
+      providerSecretRef: 'codex-auth://provider_account_codex_owner',
+      grantRef: 'codex-auth-grant-1', status: 'issued', requestedAction: null,
+      metadataJson: '{}', createdAt: '2026-07-12T20:00:00.000Z',
+      updatedAt: '2026-07-12T20:00:00.000Z', expiresAt: '2099-07-12T20:00:00.000Z',
+      usedAt: null, revokedAt: null, failedAt: null,
+    })
     const handlers = makeProviderAccountPylonHandlers({
       agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
       deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
-      makeProviderAccountRepository: () => new MemoryProviderAccountRepository(),
+      makeProviderAccountRepository: () => repository,
       readConnectedCodexAuthMaterial: (_env, ownerUserId, providerAccountRef) => {
         calls.push({ ownerUserId, providerAccountRef })
         return Promise.resolve({
@@ -455,6 +466,7 @@ describe('provider account Pylon device-login routes', () => {
           },
           body: JSON.stringify({
             providerAccountRef: 'provider_account_codex_owner',
+            authGrantRef: 'codex-auth-grant-1',
           }),
         },
       ),
@@ -473,6 +485,7 @@ describe('provider account Pylon device-login routes', () => {
     }
 
     expect(response.status).toBe(200)
+    expect(repository.grants[0]?.status).toBe('used')
     expect(body.status).toBe('issued')
     expect(body.pylonLink).toEqual({ owner: 'openauth', status: 'linked' })
     expect(calls).toEqual([

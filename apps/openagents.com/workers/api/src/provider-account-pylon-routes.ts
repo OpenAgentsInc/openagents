@@ -29,6 +29,7 @@ import {
   makeD1ProviderAccountRepository,
   pollOpenAiCodexDeviceLogin,
   refreshChatGptCodexDeviceLoginForUser,
+  resolveProviderAccountGrant,
   startChatGptCodexDeviceLogin,
   startOpenAiCodexDeviceLogin,
 } from './provider-accounts'
@@ -69,6 +70,7 @@ type ProviderAccountPylonDependencies<
     kv: AuthKvStore,
   ) => DeleteStartedCodexDeviceLogin
   makeProviderAccountRepository?: (db: D1Database) => ProviderAccountRepository
+  providerGrantRepository?: (env: Bindings) => ProviderAccountRepository
   nowIso?: () => string
   pollDeviceLogin?: PollCodexDeviceLogin
   readConnectedCodexAuthMaterial: (
@@ -342,6 +344,7 @@ export const makeProviderAccountPylonHandlers = <
       (): Record<string, unknown> => ({}),
     )
     const providerAccountRef = optionalString(body.providerAccountRef)
+    const authGrantRef = optionalString(body.authGrantRef)
     if (providerAccountRef === undefined) {
       return noStoreJsonResponse(
         {
@@ -352,8 +355,30 @@ export const makeProviderAccountPylonHandlers = <
         { status: 400 },
       )
     }
+    if (authGrantRef === undefined) {
+      return noStoreJsonResponse(
+        { error: 'provider_auth_grant_required' },
+        { status: 400 },
+      )
+    }
 
     try {
+      const grantRepository =
+        dependencies.providerGrantRepository?.(env) ??
+        routeProviderAccountRepository(dependencies, env)
+      const candidateGrant = await grantRepository.findGrantByRef(authGrantRef)
+      if (candidateGrant === undefined || candidateGrant.userId !== userId) {
+        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+      }
+      await observedPromise(
+        'ProviderAccountPylon.resolveProviderAccountGrantForMaterialization',
+        () =>
+          resolveProviderAccountGrant(grantRepository, {
+            actorId: session.credential.id,
+            grantRef: authGrantRef,
+            providerAccountRef,
+          }),
+      )
       const authMaterial = await observedPromise(
         'ProviderAccountPylon.readConnectedCodexAuthMaterial',
         () =>

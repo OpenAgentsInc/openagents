@@ -8989,6 +8989,16 @@ const providerAccountPylonHandlers =
   makeProviderAccountPylonHandlers<OpenAgentsWorkerEnv>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   deleteStartedCodexDeviceLogin,
+  providerGrantRepository: env => {
+    const postgres = postgresIdentityAuthStoreForEnv(env)
+    if (postgres === undefined) {
+      throw new Error('authoritative_postgres_provider_grant_repository_unavailable')
+    }
+    return makeAuthoritativePostgresProviderGrantRepository(
+      makeProviderAccountRepositoryForEnv(env),
+      postgres.queryRows,
+    )
+  },
   readConnectedClaudeAuthMaterial: (env, _ownerUserId, providerAccountRef) =>
     readConnectedClaudeAuthMaterial(authKvStoreForEnv(env), providerAccountRef),
   readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
