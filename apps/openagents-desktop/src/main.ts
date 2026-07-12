@@ -761,18 +761,33 @@ const codingCatalogSnapshot = () => {
     ? emptyDesktopCodingCatalogProjection()
     : projectDesktopCodingCatalog(catalog.snapshot())
 }
+const codingThreadCreationAttempted = new Set<string>()
 const publishCodingCatalog = (): void => {
-  hostLifecycle.sync()?.publishCodingCatalog()
-}
-const bindSelectedCodingSessionToThread = (threadRef: string): void => {
-  const catalog = hostLifecycle.sync()?.codingCatalog()
-  const selectedSessionRef = catalog?.snapshot().navigation?.selectedSessionRef ?? null
-  if (catalog === null || catalog === undefined || selectedSessionRef === null) return
-  catalog.saveFocus(selectedSessionRef, {
-    kind: "conversation",
-    conversationRef: threadRef,
-  })
-  publishCodingCatalog()
+  const sync = hostLifecycle.sync()
+  const catalog = sync?.codingCatalog()
+  const conversation = sync?.conversation()
+  if (catalog !== null && catalog !== undefined && conversation !== null && conversation !== undefined) {
+    const snapshot = catalog.snapshot()
+    const confirmedThreadRefs = new Set(
+      Effect.runSync(conversation.listConfirmedThreads()).map(thread => thread.threadRef),
+    )
+    for (const session of snapshot.catalog.sessions) {
+      if (session.state === "archived" || confirmedThreadRefs.has(session.threadRef) ||
+        codingThreadCreationAttempted.has(session.threadRef)) continue
+      codingThreadCreationAttempted.add(session.threadRef)
+      const repository = snapshot.catalog.repositories.find(value =>
+        value.repositoryRef === session.repositoryRef)
+      try {
+        Effect.runSync(conversation.createThread({
+          threadId: session.threadRef,
+          title: repository === undefined ? "Coding session" : `Coding · ${repository.displayName}`,
+        }))
+      } catch {
+        codingThreadCreationAttempted.delete(session.threadRef)
+      }
+    }
+  }
+  sync?.publishCodingCatalog()
 }
 // A workspace change revokes every terminal bound to the OUTGOING grant: its
 // owned process trees are killed exactly once before the new root is authorized.
@@ -1169,7 +1184,6 @@ ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   const user: DesktopMessage = { key: randomUUID(), role: "user", text: request.message.trim(), timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
   const saved = store.append(request.id, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
-  bindSelectedCodingSessionToThread(request.id)
   try {
     const text = await completeChatTurn(saved.notes)
     const thread = store.append(saved.id, { key: randomUUID(), role: "assistant", text, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })
@@ -1567,7 +1581,6 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   }
   const saved = store.append(request.threadRef, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
-  bindSelectedCodingSessionToThread(request.threadRef)
   // History authority is main's own thread store — the renderer supplies only
   // the new message. The just-appended user note is the prompt, not history.
   const history = saved.notes.slice(0, -1).map(note => ({ role: note.role, text: note.text }))
@@ -1783,7 +1796,6 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   }
   const saved = store.append(request.threadRef, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
-  bindSelectedCodingSessionToThread(request.threadRef)
   const history = saved.notes.slice(0, -1).map(note => ({ role: note.role, text: note.text }))
   const sender = event.sender
   // Message metadata (#8712 pattern): lane, spawn-config-truth model,
