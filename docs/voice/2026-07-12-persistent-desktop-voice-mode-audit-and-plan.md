@@ -1,18 +1,33 @@
-# Persistent Desktop voice mode — architecture audit and delivery plan
+# Persistent Desktop voice mode — lineage, vision, architecture, and delivery plan
 
 - **Date:** 2026-07-12
-- **Status:** proposed, challenged expansion; not implementation authority or a product promise
+- **Status:** vision and architecture plan; not implementation authority or a product promise
 - **Destination:** `apps/openagents-desktop`
 - **Related authority:** `docs/sol/MASTER_ROADMAP.md`
 - **Historical inputs:** Sarah/Hydralisk records in `docs/sarah/` and their deleted source in Git history
 
-## 0. Decision summary
+## 0. Vision summary
 
 OpenAgents Desktop can support a user-opened, long-lived, full-duplex voice
 session that remains connected while the user works. The right shape is a
 dedicated authenticated media plane owned by the Desktop host and server, with
 voice-derived actions entering the same typed command, approval, idempotency,
 outcome, receipt, and Sync paths as keyboard or pointer actions.
+
+This is the current form of an idea that has run through OpenAgents for years:
+the computer should be something you can talk to at the level of intent, not a
+pile of forms and text boxes. Onyx put that idea in a pocket: speak a wish,
+watch agents work, and inspect details only when needed. Commander moved it to
+the desktop and made the aspiration explicit: a Jarvis-like command surface for
+a fleet of agents, closer to a strategy-game HUD than a conventional IDE.
+
+Persistent voice mode should join those two strands. Desktop supplies the
+high-density visual field, local capabilities, agent topology, files, diffs,
+terminals, and approvals. Voice supplies a continuous low-friction way to
+direct attention and express intent while the user's eyes and hands are doing
+something else. The server supplies comprehension, orchestration, and spoken
+response. The result is not merely hands-free chat; it is a conversational
+operating layer over the whole OpenAgents workbench.
 
 The proposed mode must not be implemented as:
 
@@ -23,15 +38,7 @@ The proposed mode must not be implemented as:
 - a voice-only command authority; or
 - an unqualified promise to save every frame in Cloud SQL.
 
-There is one blocking product-policy conflict. The current Sol roadmap permits
-explicit persona-neutral ASR, TTS, and barge-in, but says **no ambient recording
-and no raw-audio retention by default**. A persistent open microphone plus
-automatic retention of every frame materially expands that decision. It needs
-an explicit owner decision, privacy/threat model, consent contract, retention
-tiers, deletion/export behavior, and a bounded implementation issue before the
-retention lane begins.
-
-Recommended split:
+Recommended delivery split:
 
 1. Build the persistent transport and voice-session lifecycle with ephemeral
    media first.
@@ -41,7 +48,205 @@ Recommended split:
 4. Only then run an explicit opt-in retained-audio experiment backed by object
    storage, with SQL storing metadata and policy state rather than audio blobs.
 
-## 1. Product intent
+## 1. The OpenAgents voice lineage
+
+The transcript archive in `docs/transcripts/` shows a consistent product idea
+expressed through several generations of software. The names and technical
+stacks changed; the desired human-computer relationship did not.
+
+### 1.1 Before Onyx: one simple wish into an inspectable agent system
+
+The earliest OpenAgents arcs established the ingredients that voice would later
+compose: agents with plans and actions, inspectable execution graphs, streamed
+status, plugins/tools, payments, memory, and a coding-agent HUD. By episodes
+103–117, AutoDev was already becoming a pair programmer whose work could be
+observed through plans, artifacts, diffs, and a heads-up display. The important
+pattern was **simple intent in, structured and inspectable work out**.
+
+Voice was never envisioned as replacing those artifacts. It was a faster front
+door to them. A spoken request could be loose and human; the system behind it
+still needed plans, tools, progress, evidence, and a place for the user to
+intervene.
+
+The Jarvis shorthand predates Onyx. Episode
+[`111`](../transcripts/111.md), *Heads-Up Display*, imagined telling the
+computer to find the relevant files and then acting on the result inside the
+HUD. Episode [`117`](../transcripts/117.md) described the panes, diffs,
+notifications, and build state as an agent operating system and explicitly
+wanted voice restored so it would feel like Jarvis. Episode
+[`127`](../transcripts/127.md) carried the same image into agentic site
+building: spoken intent causes the right code and status windows to appear and
+fade as the work advances. From the beginning, the envisioned response to
+speech was **visible work**, not only spoken prose.
+
+### 1.2 Onyx: “say what you want and stuff should happen”
+
+Episode [`139`](../transcripts/139.md), *Going Mobile*, asked what the proper
+form factor for a personal AI agent should be. The answer was not another
+dedicated gadget or a dashboard full of controls. It was the phone already in
+the user's hand: one obvious control, a spoken wish, and a feed of agents doing
+work. The user could drill into providers, budgets, events, and details when
+desired, but should not have to micromanage the machinery.
+
+That episode also connected voice to a much larger system:
+
+- a personal agent coordinating other agents and services;
+- an event feed showing background work rather than blocking on one chat turn;
+- shared skills, tools, and knowledge;
+- local and remote compute;
+- user-defined budgets and inspectable activity; and
+- an open market in which requests could discover capable providers.
+
+Episode [`140`](../transcripts/140.md), *Open-Sourcing Onyx*, compressed the
+interaction model to “you say it, Onyx does it.” The important word is **does**.
+The aspiration was an agent that becomes more capable through tools and the
+network, not a voice skin over question answering.
+
+Episode [`141`](../transcripts/141.md), *One Market*, made Onyx the human
+gateway into a global market of AI capabilities. Speech could become
+transcription, inference, a tool call, a local/private operation, or a paid
+network job. Discovery, negotiation, and payment were meant to happen behind a
+simple conversational surface, while remaining open and inspectable.
+
+Episode [`144`](../transcripts/144.md) paired Onyx with Pylon. The phone could
+reach files, Git, databases, models, and tools on a trusted computer through an
+open capability protocol. This established an enduring topology: the voice
+client does not need to hold every capability itself; it can be a safe control
+surface for powerful runtimes elsewhere.
+
+Episode [`145`](../transcripts/145.md), *Going Local*, pushed the idea toward a
+“Jarvis-y Onyx.” The user could walk around the house, talk to the phone, reach
+a trusted desktop model over a persistent connection, inspect files, and
+eventually direct coding agents by voice. It also introduced a choice that
+still matters: route each part locally, to a trusted owner machine, to a cloud
+API, or to a market provider according to privacy, latency, capability, and
+cost.
+
+Episodes [`149`](../transcripts/149.md) and
+[`150`](../transcripts/150.md) sharpened the durable personal-agent idea. The
+user would establish an ongoing relationship with one agent, progressively
+grant it GitHub, knowledge, data, model, and market capabilities, and prefer
+private/local execution where appropriate. Onyx was described as an open
+“Jarvis in your pocket”: persistent and extensible, not a disposable voice
+call tied to one model vendor.
+
+### 1.3 Speak to Onyx: the conversational loop becomes real
+
+Episode [`151`](../transcripts/151.md), *Speak to Onyx*, demonstrated fast
+hosted Whisper transcription and near-instant model response. Its near-term
+roadmap—memory, tools, wallet, and marketplace—again treated voice as the
+entrance to growing capability rather than the destination.
+
+Episode [`152`](../transcripts/152.md), *Code by Voice*, supplied the strongest
+direct ancestor of this plan. A detailed spoken instruction selected a repo,
+described a UI bug, located context through a repo map, invoked write tools,
+and produced a working change. The motivation was practical: work without
+typing, code away from the desk, and reduce the physical cost of constant
+keyboard use. It also exposed the enduring safety model: start read-only,
+enable write tools deliberately, bind work to the right repository/branch, and
+inspect the result.
+
+Episodes [`159`](../transcripts/159.md)–[`163`](../transcripts/163.md) expanded
+the coding loop from one tool call into repo maps, relevant-file selection,
+plans, actions, reasoning streams, tests, and repeatable issue-to-PR work.
+Episode [`160`](../transcripts/160.md) imagined Onyx sending a push notification
+when an agent became stuck and accepting a spoken follow-up. That is an early
+version of today's attention loop: agents work asynchronously; voice lets the
+human resolve the few moments that need judgment.
+
+### 1.4 Commander: Jarvis meets the agent fleet
+
+Episode [`170`](../transcripts/170.md), *Commander*, made the Jarvis comparison
+explicit. The imagined 2030 interface was not a VS Code fork. It was closer to
+StarCraft: multiple agents working in parallel, hotkeys and macros for groups,
+voice and other high-level inputs, live environments and patches, and a HUD
+that surfaces only what needs attention.
+
+This adds an important dimension to the Onyx vision:
+
+- **Onyx:** one conversational front door from anywhere;
+- **Commander:** one visual command center for many concurrent agents; and
+- **persistent Desktop voice:** a continuous bridge between speech and that
+  visual command center.
+
+Episode [`175`](../transcripts/175.md) grounded Commander as a local desktop app
+with local inference and future agent/network surfaces. Episode
+[`179`](../transcripts/179.md), *Claude Code Commander*, showed multiple coding
+sessions and histories in one interface and again named voice and gestures as
+the next layer of Jarvis-style interaction.
+
+The StarCraft analogy should guide product behavior. A good commander does not
+dictate shell syntax or narrate every token. They set objectives, select a
+unit/session/target, redirect work, approve consequential choices, ask for a
+status summary, and inspect the battlefield when something is uncertain.
+Voice mode should optimize those verbs.
+
+The spatial-HUD synthesis in
+`docs/game/2026-06-16-spatial-hud-agentic-mmo-wow-direction.md` preserves the
+same desired grammar: configurable panes, in-context diffs, parallel agents,
+live cost, hotkeys/macros, and hand plus voice input. Voice should be able to
+focus or rearrange attention, ask what changed, select a group, spawn or
+interrupt work, and open the exact proposal that needs approval. It should not
+make the visual cockpit disappear.
+
+### 1.5 Later product lessons: ambient input plus durable evidence
+
+Later episodes used tools such as Aqua Voice to dictate rich requirements into
+coding agents (for example [`188`](../transcripts/188.md) and
+[`248`](../transcripts/248.md)). This proved the everyday value of speech even
+before OpenAgents owned the whole audio stack: spoken language is excellent for
+high-bandwidth intent, corrections, and qualitative product direction.
+
+At the same time, the product evolved toward Sync, durable conversations,
+receipts, behavior contracts, agent topology, and cross-device continuation.
+Those systems answer the weakness of a pure Jarvis fantasy: speech is fleeting
+and ambiguous, while important work needs durable identity and evidence. The
+modern opportunity is to combine the naturalness of Onyx/Commander with the
+reliability program now captured in Sol.
+
+Episodes [`183`](../transcripts/183.md) and
+[`184`](../transcripts/184.md) are useful guardrails. They explored a native
+voice/TTS prototype and natural control of remote work, but explicitly treated
+voice as first-class rather than making the entire product voice-centric.
+StarCraft-style visual updates and push notifications remained peers to
+speech. Episodes [`187`](../transcripts/187.md),
+[`192`](../transcripts/192.md), and [`193`](../transcripts/193.md) then added
+the cross-device shape: synchronized desktop/mobile sessions, phone control of
+Codex or Claude running on a desktop, visible remote logs, and the ability to
+walk around while work continues. The durable work session survives whichever
+screen or microphone is currently attached.
+
+The old Pro operator-canvas audit at
+`docs/pro/2026-06-24-pro-operator-ui-revival-audit.md` adds another useful
+interaction pattern: natural language mounts contextual HUD panes; sensitive
+actions move through dry-run, step-up authentication, approvals, and decision
+traces; assistant audio supports barge-in. The current Desktop can recover that
+grammar without recovering the obsolete product shell.
+
+### 1.6 The product thesis for persistent voice
+
+The strongest version of voice mode has five jobs:
+
+1. **Capture intent with low friction.** Let the user think out loud, give a
+   detailed brief, make a correction, or redirect a running agent without
+   changing physical context.
+2. **Maintain shared situational awareness.** The system can speak concise
+   updates about the currently selected conversation, agent group, diff,
+   blocker, approval, or outcome while the visual UI shows the full evidence.
+3. **Command the fleet.** Spoken verbs select and steer exact sessions,
+   children, targets, and work—not a generic assistant detached from the live
+   workbench.
+4. **Handle the attention loop.** Agents can ask for clarification or approval;
+   the user can answer immediately, defer it, or open the relevant UI context.
+5. **Learn from real work, with consent.** Retained audio and its corrections
+   can eventually improve endpointing, transcription, routing, and UX, but only
+   through an explicit data contract rather than invisible ambient capture.
+
+This is closer to an operating system input mode than a chat feature. The
+voice session should know the current WorkContext and visible selection, but it
+must also make that binding explicit whenever ambiguity could affect authority.
+
+## 2. Product intent
 
 The Desktop toolbar exposes a Voice control. Clicking it opens an explicit,
 visible, persistent two-way session:
@@ -67,7 +272,7 @@ The control must always display distinct state for microphone capture, network
 egress, server listening, audio retention, and server playback. Muting capture
 must stop egress, not merely hide a waveform.
 
-## 2. Current Sol fit and conflict
+## 3. How the vision fits the current Sol architecture
 
 ### What the roadmap already authorizes
 
@@ -90,11 +295,14 @@ The proposal touches nearly every reliability gate:
 | R6 | Text-equivalent voice follow-up and barge-in without phone/host authority expansion |
 | R7 | Signed build, privacy telemetry, suspend/restart/revocation and dogfood faults |
 
-### What it conflicts with
+### Retention decision still required
 
-The same decision explicitly rejects ambient recording, raw-audio retention by
-default, and voice-only authority. The proposed “save all audio frames” policy
-is therefore a challenged roadmap expansion, not an implementation detail.
+The roadmap's persona-neutral voice direction is already aligned with Onyx and
+Commander: voice is a modality over real work, not a separate persona product.
+One detail remains undecided. The roadmap currently rejects ambient recording,
+raw-audio retention by default, and voice-only authority. Saving every audio
+frame therefore needs a specific retention decision rather than being buried
+inside transport implementation.
 
 Before retained audio ships, add a new owner decision that answers:
 
@@ -115,7 +323,7 @@ Before retained audio ships, add a new owner decision that answers:
 Until those answers land, the only honest default is ephemeral raw audio with
 bounded in-memory buffering and separately governed transcript persistence.
 
-## 3. Existing Desktop seams to extend
+## 4. Existing Desktop seams to extend
 
 The active destination is the greenfield Effect Native/Electron app at
 `apps/openagents-desktop`, not the legacy `apps/autopilot-desktop`,
@@ -191,7 +399,7 @@ Each proposal is decoded against the Desktop command contract and bound to:
 Raw audio, ASR text, TTS speech, and model prose never prove that an action was
 accepted or completed. A timeout remains `unknown_pending_reconcile`.
 
-## 4. Realtime protocol proposal
+## 5. Realtime protocol proposal
 
 Use a dedicated bidirectional media transport. WebRTC is attractive for
 audio/jitter/codec/NAT behavior and matches Hydralisk experience; an
@@ -250,7 +458,7 @@ replay across sessions or generations. Unknown frame versions fail closed.
 - Generation fencing prevents an old resumed connection from accepting audio,
   playback, or decisions after a new connection becomes active.
 
-## 5. Storage and data model
+## 6. Storage and data model
 
 “Cloud SQL etc.” should become a split storage design:
 
@@ -292,13 +500,11 @@ copies, command receipts, and aggregate metrics. Deleting raw audio does not
 implicitly prove all derived copies were removed; the deletion receipt must
 state the exact classes and remaining lawful records.
 
-## 6. Sarah and Hydralisk: what to reuse
+## 7. Prior voice infrastructure patterns worth retaining
 
-Sarah was deliberately removed at commit `13bc1e7443`; `/sarah/*` is a 404
-tombstone and its GPU host serves nothing. Git history is an archive, not a
-package to restore.
-
-Useful generic patterns from the deleted source include:
+The recent Sarah/Hydralisk experiment is one technical reference among the
+broader Onyx/Commander lineage. Its product shell is retired, but it produced
+useful generic realtime lessons:
 
 - `voice-stream-coordinator.ts`: authenticated exact scope, one executing
   stream per scope, linked cancellation, delivery-only replay, public-safe
@@ -324,16 +530,16 @@ Useful Hydralisk/Pipecat-derived infrastructure patterns:
 - tracked task ownership, heartbeat, cancellation, and close; and
 - ICE restart/renegotiation concepts if WebRTC wins the transport spike.
 
-Do not adopt the old browser final-only SpeechRecognition path. It caused
-fragmenting and delayed barge-in. Do not colocate sustained ASR/VAD or GPU
-inference with a latency-sensitive event loop: Hydralisk froze until blocking
-render work moved off-loop and gained watchdog/silence-passthrough protection.
+Avoid the old browser final-only SpeechRecognition path; it fragmented turns
+and delayed barge-in. Keep sustained ASR/VAD or GPU inference away from a
+latency-sensitive event loop; the prior renderer needed off-loop work,
+watchdogs, and silence-passthrough protection.
 
 The reusable quality gates are decoded-frame media truth, bounded LIVE leases,
 session eviction, authoritative stop, stale-generation fencing, and text
 control remaining usable when media fails.
 
-## 7. Threat, privacy, and abuse audit
+## 8. Threat, privacy, and abuse audit
 
 Persistent voice increases the sensitivity and attack surface beyond Sarah's
 text transcript flow. The threat model must cover:
@@ -367,7 +573,7 @@ No speaker recognition should be treated as authentication. No semantic model
 should bypass the registered command selector or invent commands through
 keyword matching.
 
-## 8. Reliability and observability budgets
+## 9. Reliability and observability budgets
 
 Freeze exact budgets during the protocol spike. Initial targets to test:
 
@@ -388,7 +594,7 @@ byte, TTFA, playback underrun, interruption, reconnect, retained bytes,
 deletion lag, and per-session cost. Metrics use refs and aggregates; logs do
 not contain raw audio or transcripts.
 
-## 9. Ordered delivery plan
+## 10. Ordered delivery plan
 
 ### V0 — decision and contracts
 
@@ -484,7 +690,7 @@ appears in Sync, logs, analytics, or support bundles.
   duplicate command, stale playback, leaked media, false outcome, unbounded
   cost, or undeletable retained data.
 
-## 10. Open decisions
+## 11. Open decisions
 
 1. Is persistent mode explicit click-to-open only, or may a wake word activate
    capture? Recommendation: explicit click only for the first release.
@@ -502,16 +708,16 @@ appears in Sync, logs, analytics, or support bundles.
 8. What are the session duration, idle timeout, bandwidth, retained-byte, ASR,
    TTS, and inference caps?
 
-## 11. Recommendation
+## 12. Recommendation
 
 Proceed with V0–V2 as a bounded persistent-transport program under the active
 Desktop architecture, with ephemeral audio and no action execution at first.
 That proves the genuinely new technical value without prematurely coupling it
 to permanent surveillance, model authority, or a storage policy.
 
-Treat retained audio as V6: a separately authorized, explicit opt-in data
-product with its own receipts. Reuse Sarah/Hydralisk's hard-won frame,
-cancellation, fanout, media-truth, and operational lessons, while keeping its
-deleted product surface dead. The durable invariant is simple: voice is a
-modality into OpenAgents' existing authority system, never an authority of its
+Treat retained audio as V6: an explicit opt-in data product with its own
+receipts. The north star is the old Onyx promise—say what you want and useful
+work happens—combined with Commander's Jarvis/StarCraft fleet surface and Sol's
+durable evidence. The durable invariant is simple: voice makes the whole
+OpenAgents system easier to command; it does not become an authority of its
 own.
