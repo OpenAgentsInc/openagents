@@ -14,8 +14,10 @@
  * a failure screenshot and journals `{ step, ok: false, detail }` instead of
  * crashing; the harness-lane steps (Fable/Codex) degrade to journaled failure
  * when a lane is absent or disabled — the driver never fakes a receipt. The
- * process exits nonzero only when a REQUIRED step (shell, fleet, new chat)
- * failed. Screenshots are public-safe by construction: the shell renders
+ * process exits nonzero when the structural shell spine or either named
+ * provider acceptance lane fails. A zero exit is therefore a real CUT-21
+ * provider receipt, never merely proof that the window mounted. Screenshots
+ * are public-safe by construction: the shell renders
  * account refs and readiness only — never tokens, emails beyond the pylon
  * projection's own public-safe field, or credential material.
  */
@@ -53,7 +55,7 @@ export type LiveProofStepName =
 
 export type LiveProofStep = Readonly<{
   name: LiveProofStepName
-  /** Required steps decide the process exit code (EP250 steps 1, 2, 4). */
+  /** Required steps decide the process exit code. */
   required: boolean
   timeoutMs: number
 }>
@@ -63,17 +65,17 @@ export const liveProofSteps: ReadonlyArray<LiveProofStep> = [
   // Step 0 (EP250 preflight): the real per-account validity probe round over
   // the real registry. Probes run concurrently (each ~30s-bounded); the step
   // bound covers a slow cold round without ever hanging the journey.
-  { name: "account-preflight", required: false, timeoutMs: 240_000 },
+  { name: "account-preflight", required: true, timeoutMs: 240_000 },
   { name: "shell-mounted", required: true, timeoutMs: 30_000 },
   // The real pylon CLI list spawn (bun + registry read) can be slow on a
   // cold machine; the provider-accounts list timeout itself is 120s.
   { name: "fleet-workspace", required: true, timeoutMs: 150_000 },
   { name: "fleet-usage-check", required: false, timeoutMs: 60_000 },
   { name: "new-chat", required: true, timeoutMs: 30_000 },
-  { name: "fable-chip", required: false, timeoutMs: 15_000 },
-  { name: "fable-turn", required: false, timeoutMs: 180_000 },
-  { name: "codex-chip", required: false, timeoutMs: 15_000 },
-  { name: "codex-turn", required: false, timeoutMs: 180_000 },
+  { name: "fable-chip", required: true, timeoutMs: 15_000 },
+  { name: "fable-turn", required: true, timeoutMs: 180_000 },
+  { name: "codex-chip", required: true, timeoutMs: 15_000 },
+  { name: "codex-turn", required: true, timeoutMs: 180_000 },
   // EP250 capability-eval rung-4 UI receipts. All optional: a missing lane or
   // workspace journals an honest failure without failing the whole journey.
   { name: "interrupt-stop", required: false, timeoutMs: 180_000 },

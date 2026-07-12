@@ -39,8 +39,17 @@ describe("live-proof step list (EP250 journey)", () => {
     ])
   })
 
-  test("exactly steps 1, 2, and 4 are required (shell, fleet, new chat)", () => {
-    expect(requiredLiveProofSteps()).toEqual(["shell-mounted", "fleet-workspace", "new-chat"])
+  test("the structural spine and both named-provider acceptance lanes are required", () => {
+    expect(requiredLiveProofSteps()).toEqual([
+      "account-preflight",
+      "shell-mounted",
+      "fleet-workspace",
+      "new-chat",
+      "fable-chip",
+      "fable-turn",
+      "codex-chip",
+      "codex-turn",
+    ])
   })
 
   test("the EP250 capability-eval steps (interrupt-stop/file-save/git-review) are optional and bounded", () => {
