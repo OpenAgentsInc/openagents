@@ -159,6 +159,12 @@ import {
 } from "./codex-local-runtime.ts"
 import { makeCodexPreflight, type CodexProbeResult } from "./codex-preflight.ts"
 import {
+  LiveAgentGraphSnapshotChannel,
+  LiveAgentGraphUpdateChannel,
+  type LiveAgentGraphUpdateWire,
+} from "./live-agent-graph-contract.ts"
+import { makeLiveAgentGraphHost } from "./live-agent-graph-host.ts"
+import {
   UsageLedgerEventChannel,
   UsageLedgerSnapshotChannel,
 } from "./usage-ledger-contract.ts"
@@ -1158,6 +1164,17 @@ if (smokeMode) {
 // for local Fable turns and Codex delegate children. Main-owned; the
 // renderer sees only the typed snapshot ("session ledger" evidence label).
 const usageLedger = makeUsageLedger()
+// CUT-11 (#8691): canonical desktop-local live agent graph. The host folds
+// the SAME typed envelopes the renderer stream receives (one applyEvent line
+// inside each lane's existing emit callback) into validated
+// openagents.live_agent_graph.v1 post-images through the shared reducer,
+// broadcast on change and snapshot on invoke. Presentation stays CUT-12.
+const broadcastLiveAgentGraphUpdate = (update: LiveAgentGraphUpdateWire): void => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(LiveAgentGraphUpdateChannel, update)
+  }
+}
+const liveAgentGraph = makeLiveAgentGraphHost({ emit: broadcastLiveAgentGraphUpdate })
 // Codex delegate children (#8712 Lane C). Smoke uses the scout's receipted
 // scripted streams through the REAL parser: the first registered account
 // fails with the exact revoked-refresh-token shape (typed rotation), the
@@ -1537,6 +1554,10 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   // state persists into the finalized transcript (the live in-place plan card
   // is renderer-only). One persisted plan card, latest wins.
   let latestPlanEntries: ReadonlyArray<{ step: string; status: "pending" | "in_progress" | "completed" }> | null = null
+  // CUT-11 (#8691): register the root turn on the canonical live agent
+  // graph before its stream events arrive (duplicate turn refs refuse typed
+  // inside the assembler; the chat turn itself is never blocked).
+  liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "fable_claude" })
   const result = await fableLocal.runTurn({
     turnRef: request.turnRef,
     threadRef: request.threadRef,
@@ -1547,6 +1568,9 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
+      // CUT-11 (#8691): fold the SAME typed envelope the renderer receives
+      // into the canonical live agent graph (root + codex delegate children).
+      liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
       // EP250 wave-2 J2/J4: remember the latest todo list; persist it once the
       // turn completes so the finalized transcript keeps a plan/todo card.
@@ -1737,6 +1761,9 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   // thread id (session-receipt continuity) in requestId.
   const startedAt = Date.now()
   let effectiveModel: string | null = null
+  // CUT-11 (#8691): the codex-local root turn joins the same canonical
+  // live agent graph contract on its own thread graph.
+  liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "codex_local" })
   const result = await codexLocal.runTurn({
     turnRef: request.turnRef,
     threadRef: request.threadRef,
@@ -1745,6 +1772,8 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
+      // CUT-11 (#8691): same one-callback graph fold as the fable lane.
+      liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
       // Session usage ledger: exact usage from turn.completed, attributed to
       // the Codex account with gpt-5.6-sol recorded as spawn-config truth.
@@ -1848,6 +1877,11 @@ ipcMain.handle(CodexConnectOpenChannel, () => hostLifecycle.account()?.openVerif
 // Renderer-argument-free; the snapshot carries only refs, provider names,
 // requested models (spawn-config truth), counts, and token totals.
 ipcMain.handle(UsageLedgerSnapshotChannel, () => usageLedger.snapshot())
+
+// CUT-11 (#8691): canonical live agent graph snapshot — renderer-argument
+// free; returns the retained encoded openagents.live_agent_graph.v1
+// post-images per thread. Updates push over LiveAgentGraphUpdateChannel.
+ipcMain.handle(LiveAgentGraphSnapshotChannel, () => liveAgentGraph.snapshot())
 
 // Provider-neutral fleet accounts (#8712): read-only projections. List takes
 // no renderer arguments; usage validates the account ref on both sides of the

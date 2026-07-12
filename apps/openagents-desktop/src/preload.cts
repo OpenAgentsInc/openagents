@@ -171,6 +171,14 @@ import {
   type UsageLedgerSnapshot,
 } from "./usage-ledger-contract.ts"
 import {
+  LiveAgentGraphSnapshotChannel,
+  LiveAgentGraphUpdateChannel,
+  decodeLiveAgentGraphHostSnapshot,
+  decodeLiveAgentGraphUpdate,
+  type LiveAgentGraphHostSnapshot,
+  type LiveAgentGraphUpdate,
+} from "./live-agent-graph-contract.ts"
+import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
   DesktopCodingCatalogFocusChannel,
@@ -572,6 +580,25 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(UsageLedgerEventChannel, handler)
       return () => ipcRenderer.removeListener(UsageLedgerEventChannel, handler)
+    },
+  },
+  /**
+   * CUT-11 (#8691): canonical desktop-local live agent graph — validated
+   * openagents.live_agent_graph.v1 post-images per thread (fable roots,
+   * codex delegate children, codex-local roots), snapshot on invoke and
+   * push on change. Presentation stays CUT-12; this only delivers the
+   * canonical contract.
+   */
+  liveAgentGraph: {
+    snapshot: async (): Promise<LiveAgentGraphHostSnapshot | null> =>
+      decodeLiveAgentGraphHostSnapshot(await ipcRenderer.invoke(LiveAgentGraphSnapshotChannel)),
+    onUpdate: (listener: (update: LiveAgentGraphUpdate) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeLiveAgentGraphUpdate(value)
+        if (decoded !== null) listener(decoded)
+      }
+      ipcRenderer.on(LiveAgentGraphUpdateChannel, handler)
+      return () => ipcRenderer.removeListener(LiveAgentGraphUpdateChannel, handler)
     },
   },
   codingCatalog: {
