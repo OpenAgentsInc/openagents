@@ -149,32 +149,32 @@ describe("makeLocalHarnessChatHost", () => {
       turnRef: "turn.fable.fixed",
       event: { kind: "tool_result", toolName: "Read", ok: true, summary: "" },
     })
+    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "Done." } })
     // A foreign turn's events never touch this stream.
     harness.emit({ turnRef: "turn.fable.other", event: { kind: "text_delta", text: "IGNORED" } })
     await settle()
 
     const last = updates.at(-1)!
     const bodies = last.notes.map(note => `${note.role}:${note.text}`)
-    // Trace lines precede the growing assistant bubble — the same order the
-    // finalized persisted thread carries.
+    // Arrival order is exact: text before the tool stays before it, and text
+    // after the tool starts a new assistant segment after the tool pair.
     expect(bodies).toEqual([
       "user:hello fable",
       "system:Claude · claude-fable-5",
+      "assistant:Hello world",
       "system:Read · started · notes.md",
       "system:Read · ok",
-      "assistant:Hello world",
+      "assistant:Done.",
     ])
     // Progressive: an earlier snapshot carried the partial assistant text.
     expect(updates.some(update =>
       update.notes.some(note => note.role === "assistant" && note.text === "Hello "))).toBe(true)
     // Streaming metadata (#8712 message inspector): the growing assistant
     // note already carries lane/turn/effective-model facts.
-    const streamedAssistant = last.notes.find(note => note.role === "assistant")
-    expect(streamedAssistant?.meta).toEqual({
-      lane: "fable-local",
-      turnRef: "turn.fable.fixed",
-      model: "claude-fable-5",
-    })
+    const streamedAssistants = last.notes.filter(note => note.role === "assistant")
+    expect(streamedAssistants).toHaveLength(2)
+    expect(streamedAssistants.every(note => note.meta?.lane === "fable-local" &&
+      note.meta.turnRef === "turn.fable.fixed" && note.meta.model === "claude-fable-5")).toBe(true)
     expect(updates.every(update => update.notes.every(note => !note.text.includes("IGNORED")))).toBe(true)
     // Typed trace facts (EP250 tool cards): trace notes carry the same
     // bounded payload as their text line, so the shell builds typed cards

@@ -6,8 +6,46 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.3",
+    version: "2026-07-12.4",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.provider_event_interleaving.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript event ordering",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-12" },
+        statement:
+          "the assistant message there at end is out of order like the tool calls appeared BEFORE that, i need everything interleaved sequentially in the order we get it. fix it and push",
+        authorityBoundary:
+          "The renderer and durable local thread store project display-bearing provider events in their exact arrival order. Consecutive text deltas coalesce into one assistant segment only until a non-text event arrives; that boundary closes the segment, the event is inserted next, and later text opens a new assistant segment after it. A tool result updates its matching invocation card in place at the invocation's original position. Final usage/model metadata may enrich the last assistant segment through a keyed in-place upsert but may never append or move that segment past intervening tool, model, reasoning, or lane events. No event gains new renderer, filesystem, provider, or persistence authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/thread-store.ts",
+        ],
+        oracles: [
+          {
+            id: "provider_event_interleaving.live_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
+            description:
+              "Streams model, assistant text, tool use, tool result, then more assistant text and proves the transcript notes retain that exact relative sequence with two correctly attributed assistant segments.",
+          },
+          {
+            id: "provider_event_interleaving.durable_upsert_position",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/thread-store.test.ts",
+            description:
+              "Proves final assistant metadata/text enrichment replaces the exact keyed durable note in place without moving it after a later tool note.",
+          },
+        ],
+        verification:
+          "bun test apps/openagents-desktop/src/renderer/local-harness.test.ts apps/openagents-desktop/src/renderer/shell.test.ts apps/openagents-desktop/src/thread-store.test.ts plus Desktop typecheck and build cover live projection, tool-card folding, durable keyed replacement, and host integration.",
+      },
       {
         contractId: "openagents_desktop.chrome.command_notice_is_transient_toast.v1",
         state: "enforced",

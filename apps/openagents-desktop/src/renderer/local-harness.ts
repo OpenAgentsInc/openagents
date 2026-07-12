@@ -112,8 +112,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     const laneLabel = lane === "fable" ? "Claude" : "Codex"
     const turnRef = `turn.${lane}.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
     let baseThread: DesktopThread | null = null
-    const traceNotes: DesktopMessage[] = []
-    let assistantNote: DesktopMessage | null = null
+    const orderedNotes: DesktopMessage[] = []
+    let activeAssistantIndex: number | null = null
+    let assistantSequence = 0
     let effectiveModel: string | null = null
     const laneName = lane === "fable" ? "fable-local" : "codex-local"
 
@@ -123,14 +124,16 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ...baseThread,
         notes: [
           ...baseThread.notes,
-          ...traceNotes,
-          ...(assistantNote === null ? [] : [assistantNote]),
+          ...orderedNotes,
         ],
       })
     }
+    const closeAssistantSegment = (): void => {
+      activeAssistantIndex = null
+    }
     const pushSystemNote = (text: string): void => {
-      traceNotes.push({
-        key: `${turnRef}-trace-${traceNotes.length}`,
+      orderedNotes.push({
+        key: `${turnRef}-trace-${orderedNotes.length}`,
         role: "system",
         text,
         timestamp: noteTimestamp(now()),
@@ -146,18 +149,18 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       runtime: NonNullable<DesktopMessage["runtime"]>,
       text: string,
     ): void => {
-      const index = traceNotes.findIndex(entry => entry.key === key)
+      const index = orderedNotes.findIndex(entry => entry.key === key)
       if (index === -1) {
-        traceNotes.push({ key, role: "system", text, timestamp: noteTimestamp(now()), runtime })
+        orderedNotes.push({ key, role: "system", text, timestamp: noteTimestamp(now()), runtime })
       } else {
-        traceNotes[index] = { ...traceNotes[index]!, runtime, text }
+        orderedNotes[index] = { ...orderedNotes[index]!, runtime, text }
       }
       project()
     }
     const removeRuntimeNote = (key: string): void => {
-      const index = traceNotes.findIndex(entry => entry.key === key)
+      const index = orderedNotes.findIndex(entry => entry.key === key)
       if (index !== -1) {
-        traceNotes.splice(index, 1)
+        orderedNotes.splice(index, 1)
         project()
       }
     }
@@ -166,7 +169,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       NonNullable<DesktopMessage["runtime"]>,
       { kind: "child" }
     > | null => {
-      const found = traceNotes.find(entry => entry.key === childNoteKey(childRef))?.runtime
+      const found = orderedNotes.find(entry => entry.key === childNoteKey(childRef))?.runtime
       return found !== undefined && found.kind === "child" ? found : null
     }
     // A3: a follow-up promoted at the idle boundary becomes the next turn.
@@ -185,9 +188,10 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         return
       }
       if (event.kind === "text_delta") {
-        assistantNote = assistantNote === null
-          ? {
-              key: `${turnRef}-assistant`,
+        if (activeAssistantIndex === null) {
+          activeAssistantIndex = orderedNotes.length
+          orderedNotes.push({
+              key: `${turnRef}-assistant-${assistantSequence++}`,
               role: "assistant",
               text: event.text,
               timestamp: noteTimestamp(now()),
@@ -195,8 +199,11 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
               // effective model joins when its typed event lands. The
               // persisted note from main carries the authoritative meta.
               meta: { lane: laneName, turnRef, ...(effectiveModel === null ? {} : { model: effectiveModel }) },
-            }
-          : { ...assistantNote, text: assistantNote.text + event.text }
+            })
+        } else {
+          const active = orderedNotes[activeAssistantIndex]!
+          orderedNotes[activeAssistantIndex] = { ...active, text: active.text + event.text }
+        }
         project()
         return
       }
@@ -207,20 +214,26 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         // and arrives already "(requested)"-labeled. Main persists the same
         // line, so finalize does not reshuffle the transcript.
         effectiveModel = event.model
-        if (assistantNote !== null) {
-          assistantNote = {
-            ...assistantNote,
-            meta: { ...assistantNote.meta, lane: laneName, turnRef, model: event.model },
+        if (activeAssistantIndex !== null) {
+          const active = orderedNotes[activeAssistantIndex]!
+          orderedNotes[activeAssistantIndex] = {
+            ...active,
+            meta: { ...active.meta, lane: laneName, turnRef, model: event.model },
           }
         }
+        closeAssistantSegment()
         pushSystemNote(lane === "fable"
           ? fableLocalModelNoteText(event.model)
           : codexLocalModelNoteText(event.model))
         return
       }
+      // Every non-text event is an ordering boundary. A later text delta
+      // starts a new assistant segment after this event instead of mutating an
+      // earlier bubble and teleporting it to the end of the transcript.
+      closeAssistantSegment()
       if (event.kind === "tool_use" || event.kind === "tool_result") {
-        traceNotes.push({
-          key: `${turnRef}-trace-${traceNotes.length}`,
+        orderedNotes.push({
+          key: `${turnRef}-trace-${orderedNotes.length}`,
           role: "system",
           text: fableLocalTraceNoteText(event),
           timestamp: noteTimestamp(now()),
@@ -247,7 +260,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       // interactive card note; question_resolved updates it in place with
       // the runtime-authoritative outcome.
       if (event.kind === "question_pending") {
-        traceNotes.push({
+        orderedNotes.push({
           key: `${turnRef}-question-${event.questionRef}`,
           role: "system",
           text: event.questions[0]?.question ?? "Question",
@@ -263,12 +276,12 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         return
       }
       if (event.kind === "question_resolved") {
-        const index = traceNotes.findIndex(
+        const index = orderedNotes.findIndex(
           note => note.question?.questionRef === event.questionRef,
         )
-        const existing = index === -1 ? undefined : traceNotes[index]
+        const existing = index === -1 ? undefined : orderedNotes[index]
         if (existing?.question !== undefined) {
-          traceNotes[index] = {
+          orderedNotes[index] = {
             ...existing,
             question: { ...existing.question, status: event.outcome },
           }

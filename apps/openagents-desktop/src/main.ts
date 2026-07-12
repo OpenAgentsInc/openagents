@@ -1636,6 +1636,26 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   // total, and wall-clock duration. Bounded public-safe strings only.
   const startedAt = Date.now()
   let effectiveModel: string | null = null
+  let assistantSegmentText = ""
+  let assistantSegmentSequence = 0
+  let lastAssistantSegmentKey: string | null = null
+  const flushAssistantSegment = (): void => {
+    if (assistantSegmentText === "") return
+    const key = `${request.turnRef}-assistant-${assistantSegmentSequence++}`
+    store.append(request.threadRef, {
+      key,
+      role: "assistant",
+      text: assistantSegmentText.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      meta: {
+        lane: "fable-local",
+        turnRef: request.turnRef,
+        ...(effectiveModel === null ? {} : { model: effectiveModel }),
+      },
+    })
+    lastAssistantSegmentKey = key
+    assistantSegmentText = ""
+  }
   // EP250 wave-2 (J2/J4): track the latest plan/todo list so the FINAL plan
   // state persists into the finalized transcript (the live in-place plan card
   // is renderer-only). One persisted plan card, latest wins.
@@ -1660,6 +1680,8 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
       // into the canonical live agent graph (root + codex delegate children).
       liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
+      if (turnEvent.kind === "text_delta") assistantSegmentText += turnEvent.text
+      else flushAssistantSegment()
       // EP250 wave-2 J2/J4: remember the latest todo list; persist it once the
       // turn completes so the finalized transcript keeps a plan/todo card.
       if (turnEvent.kind === "plan_updated") {
@@ -1773,20 +1795,24 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     },
   })
   if (!result.ok) return { ok: false, error: fableLocalFailureMessage(result.reason, result.detail) }
-  const thread = store.append(request.threadRef, {
-    key: randomUUID(),
-    role: "assistant",
-    text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
-    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    meta: {
-      lane: "fable-local",
-      turnRef: request.turnRef,
-      ...(effectiveModel === null ? {} : { model: effectiveModel }),
-      ...(result.accountRef === undefined ? {} : { accountRef: result.accountRef }),
-      totalTokens: result.totalTokens,
-      durationMs: Date.now() - startedAt,
-    },
-  })
+  flushAssistantSegment()
+  const finalMeta = {
+    lane: "fable-local" as const,
+    turnRef: request.turnRef,
+    ...(effectiveModel === null ? {} : { model: effectiveModel }),
+    ...(result.accountRef === undefined ? {} : { accountRef: result.accountRef }),
+    totalTokens: result.totalTokens,
+    durationMs: Date.now() - startedAt,
+  }
+  const lastAssistant = lastAssistantSegmentKey === null
+    ? undefined
+    : store.open(request.threadRef)?.notes.find(note => note.key === lastAssistantSegmentKey)
+  const thread = lastAssistant === undefined
+    ? store.append(request.threadRef, {
+        key: randomUUID(), role: "assistant", text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), meta: finalMeta,
+      })
+    : store.upsert(request.threadRef, { ...lastAssistant, meta: finalMeta })
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
     : { ok: true, thread }
@@ -1850,6 +1876,26 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   // thread id (session-receipt continuity) in requestId.
   const startedAt = Date.now()
   let effectiveModel: string | null = null
+  let assistantSegmentText = ""
+  let assistantSegmentSequence = 0
+  let lastAssistantSegmentKey: string | null = null
+  const flushAssistantSegment = (): void => {
+    if (assistantSegmentText === "") return
+    const key = `${request.turnRef}-assistant-${assistantSegmentSequence++}`
+    store.append(request.threadRef, {
+      key,
+      role: "assistant",
+      text: assistantSegmentText.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      meta: {
+        lane: "codex-local",
+        turnRef: request.turnRef,
+        model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
+      },
+    })
+    lastAssistantSegmentKey = key
+    assistantSegmentText = ""
+  }
   // CUT-11 (#8691): the codex-local root turn joins the same canonical
   // live agent graph contract on its own thread graph.
   liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "codex_local" })
@@ -1866,6 +1912,8 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
       // CUT-11 (#8691): same one-callback graph fold as the fable lane.
       liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
+      if (turnEvent.kind === "text_delta") assistantSegmentText += turnEvent.text
+      else flushAssistantSegment()
       // Session usage ledger: exact usage from turn.completed, attributed to
       // the Codex account with the owner-selected model as spawn-config truth.
       if (turnEvent.kind === "turn_completed" && turnEvent.accountRef !== undefined) {
@@ -1915,21 +1963,25 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     },
   })
   if (!result.ok) return { ok: false, error: codexLocalFailureMessage(result.reason, result.detail) }
-  const thread = store.append(request.threadRef, {
-    key: randomUUID(),
-    role: "assistant",
-    text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
-    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    meta: {
-      lane: "codex-local",
-      turnRef: request.turnRef,
-      model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
-      accountRef: result.accountRef,
-      ...(result.threadId === null ? {} : { requestId: result.threadId }),
-      totalTokens: result.totalTokens,
-      durationMs: Date.now() - startedAt,
-    },
-  })
+  flushAssistantSegment()
+  const finalMeta = {
+    lane: "codex-local" as const,
+    turnRef: request.turnRef,
+    model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
+    accountRef: result.accountRef,
+    ...(result.threadId === null ? {} : { requestId: result.threadId }),
+    totalTokens: result.totalTokens,
+    durationMs: Date.now() - startedAt,
+  }
+  const lastAssistant = lastAssistantSegmentKey === null
+    ? undefined
+    : store.open(request.threadRef)?.notes.find(note => note.key === lastAssistantSegmentKey)
+  const thread = lastAssistant === undefined
+    ? store.append(request.threadRef, {
+        key: randomUUID(), role: "assistant", text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), meta: finalMeta,
+      })
+    : store.upsert(request.threadRef, { ...lastAssistant, meta: finalMeta })
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
     : { ok: true, thread }

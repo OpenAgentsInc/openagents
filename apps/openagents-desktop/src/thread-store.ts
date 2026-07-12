@@ -58,5 +58,21 @@ export const makeThreadStore = (file: string) => {
       write([next, ...read().filter((thread) => thread.id !== id)])
       return next
     },
+    /** Replace one exact keyed note in place without changing transcript order. */
+    upsert: (id: string, message: DesktopMessage): DesktopThread | null => {
+      const found = read().find((thread) => thread.id === id)
+      if (!found) return null
+      const index = found.notes.findIndex(note => note.key === message.key)
+      const notes = index === -1
+        ? [...found.notes, message].slice(-maxNotes)
+        : found.notes.map((note, noteIndex) => noteIndex === index ? message : note)
+      const next: DesktopThread = {
+        ...found,
+        updatedAt: new Date().toISOString(),
+        notes,
+      }
+      write([next, ...read().filter((thread) => thread.id !== id)])
+      return next
+    },
   }
 }

@@ -800,6 +800,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration
   defensively reapplies it, with deterministic thread-ref tie-breaking.
+- Desktop local-lane transcript notes preserve provider event arrival order
+  both while streaming and after durable reload. Consecutive assistant text
+  deltas may coalesce only until the next display-bearing non-text event; that
+  event closes the assistant segment, and later text starts a new segment
+  after it. Tool results update the matching invocation card in place at the
+  invocation's original position rather than moving the card or surrounding
+  assistant text. Persisted model, reasoning, lane, tool, and assistant notes
+  must reopen in the same relative sequence the user saw live.
 - Desktop's mixed runtime/provider conversation sidebar has one canonical
   target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
   numbering never restarts at a source boundary. Selecting a runtime/app-local

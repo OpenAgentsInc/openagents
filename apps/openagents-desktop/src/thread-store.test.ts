@@ -23,4 +23,18 @@ describe("H2 local thread fork persistence", () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  test("upsert replaces a keyed note in place without moving it", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-upsert-"))
+    try {
+      const store = makeThreadStore(path.join(root, "threads.json"))
+      const thread = store.newThread()
+      store.append(thread.id, { key: "a", role: "assistant", text: "before", timestamp: "10:00" })
+      store.append(thread.id, { key: "tool", role: "system", text: "tool", timestamp: "10:01" })
+      const updated = store.upsert(thread.id, { key: "a", role: "assistant", text: "after", timestamp: "10:00" })
+      expect(updated?.notes.map(note => `${note.key}:${note.text}`)).toEqual(["a:after", "tool:tool"])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })
