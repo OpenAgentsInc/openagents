@@ -72,6 +72,7 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(source).toContain('"/Electron Framework.framework/Versions/Current/"')
     expect(source).toContain("isMacCodeSignablePath")
     expect(source).toContain('"chrome_crashpad_handler"')
+    expect(source).toContain('"ShipIt"')
     expect(source).not.toContain("appleIdPassword")
     expect(source).not.toContain("@openagents.com")
   })

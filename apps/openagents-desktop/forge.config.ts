@@ -32,6 +32,7 @@ const macCodeSignableBasenames = new Set([
   "codex",
   "codex-code-mode-host",
   "rg",
+  "ShipIt",
   "zsh",
 ])
 
