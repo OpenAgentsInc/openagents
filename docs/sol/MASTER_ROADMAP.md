@@ -716,9 +716,12 @@ receipts remain (owner decision 2026-07-12: no physical-Android gate)
   before claiming end-to-end image turns. Remaining product gaps are that
   image/binary delivery rung, real provider/model/account
   selectors, editor/diff context capture, and equivalent full Desktop rich-
-  composer adoption. Physical accessibility and deployed-authority receipts
-  also remain open. The named Codex composer receipt completed on 2026-07-12
-  with a retained redaction-clean proof. See
+  composer adoption. Physical accessibility remains open. The named Codex
+  composer receipt completed on 2026-07-12 with a retained redaction-clean
+  proof. The trusted interaction authority is live on production Cloud Run
+  revision `openagents-monolith-00085-k4v`; migrations 0061/0062 are applied
+  to Cloud SQL and an authenticated exact-ref read returned the typed v1 route
+  receipt. See
   [`CUT-16 receipt`](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md).
 - CUT-17 now has a main-process WorkContext capability core at `4bbf0c7758`.
   Its new lazy tree and path/content search projections carry only an opaque

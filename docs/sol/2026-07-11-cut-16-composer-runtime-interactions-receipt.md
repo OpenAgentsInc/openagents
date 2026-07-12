@@ -178,19 +178,23 @@ Named-provider live evidence:
   7 commands, zero edits, 443,773 exact reported tokens, passed focused
   verification, and a clean house redaction scan. The refs-only artifact is
   [`2026-07-12-codex-daily-driver-proof.json`](../../apps/pylon/docs/proofs/2026-07-12-codex-daily-driver-proof.json).
-- Deployment: the safe pipeline passed local architecture/type/test gates but
-  Cloudflare refused staging D1 migration with account storage-limit code
-  7500. The new authority route therefore remains undeployed; no staging gate
-  was bypassed and no remote data was deleted. Deployed-authority evidence
-  remains required after the quota is raised or storage is remediated.
+- Deployment: the original Cloudflare staging D1 attempt failed safely with
+  storage-limit code 7500. The authority subsequently moved with the monolith
+  to Cloud Run/Cloud SQL. Production revision
+  `openagents-monolith-00085-k4v` serves 100% of traffic; the direct migration
+  runner applied pending migrations `0061_runtime_control_intent_expiry.sql`
+  and `0062_runtime_interactions.sql` to `khala_sync_prod` under the dedicated
+  migration role. An unauthenticated request returned the required 401, then
+  an authenticated exact-ref null read returned HTTP 200 with
+  `route.internal.khala_sync.runtime_interaction.v1`, `ok: true`, and
+  `interaction: null`. The deployed trusted-authority gate is complete.
 
 CUT-16 remains open. The completion audit still finds literal composer gaps:
 mobile native file/image acquisition is landed, but attachment-bearing runtime
 submission/delivery is not yet proven; real provider/model/account selection
 remains, Desktop still needs full canonical rich-draft UI adoption, and editor/
 diff capture is not yet wired end to end in both hosts. The
-remaining external receipts are deployment of the trusted authority route after the Cloudflare staging storage
-limit is remediated, and physical-device/assistive-technology acceptance.
+remaining external receipt is physical-device/assistive-technology acceptance.
 Restart, revocation, provider injection, expiry, mobile runtime controls, and
 mobile canonical draft restoration are covered deterministically; those proofs
 and the simulator launch do not substitute for the remaining receipts.
@@ -245,8 +249,8 @@ control expectation; full Desktop suite 992 pass / 3 env skips / 0 fail /
 Still open after this slice (unchanged residuals): Desktop full canonical
 rich-draft UI adoption, real provider/model/account selectors, editor/diff
 capture, attachment-bearing runtime delivery, chat-surface resume/retry/close
-parity (the fleet cockpit carries those controls today), deployed trusted
-authority, and physical assistive-technology acceptance.
+parity (the fleet cockpit carries those controls today) and physical
+assistive-technology acceptance.
 
 ## Addendum (2026-07-12): grant-scoped Desktop file mentions close I4
 
@@ -268,8 +272,8 @@ full Desktop 1,021 pass / 1 H5 skip / 0 fail / 5,503 assertions; typecheck,
 build, built-Electron smoke, and lifecycle teardown (`active: 0`) pass.
 
 This is not a mobile picker or physical-device receipt. CUT-16 remains open for
-mobile attachment-bearing runtime delivery/selectors, deployed trusted
-authority acceptance, and the physical cross-client/assistive-technology row.
+mobile attachment-bearing runtime delivery/selectors and the physical
+cross-client/assistive-technology row.
 
 ## Addendum (2026-07-12): mobile attachment submission truth boundary
 
@@ -293,5 +297,5 @@ behavior, and whole-document accepted clearing. Full mobile verification is
 
 This closes verified mobile text-file delivery, not image modality. CUT-16
 remains open for a real byte-bearing image/binary runtime transport, real
-provider/model/account selectors, deployed authority acceptance, and physical
+provider/model/account selectors, and physical
 cross-client/assistive-technology receipts.

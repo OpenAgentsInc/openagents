@@ -154,6 +154,10 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
 - CUT-16's own retained Codex daily-driver gate is now complete: the
   2026-07-12 `composer.run_stream` proof records 34 events, 7 commands, zero
   edits, exact usage, passed focused verification, and a clean redaction scan.
+- The trusted interaction authority is production-proven on Cloud Run revision
+  `openagents-monolith-00085-k4v`: direct migrations 0061/0062 are recorded in
+  Cloud SQL, unauthenticated access fails 401, and an authenticated exact-ref
+  read returns HTTP 200 with the typed v1 route receipt and null result.
 
 ### CUT-17 #8697 — grant-scoped workspace tree/watch/cache/search — CLOSED
 
