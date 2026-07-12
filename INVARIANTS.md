@@ -899,7 +899,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   through that shared model, hydrates through one bounded subscription rather
   than a timeline/graph poller, and dispatches pointer, keyboard, and screen-
   reader inspect/focus actions through one schema-checked intent carrying the
-  stable agent ref. Historical graphs remain inspection-only on both clients.
+  stable agent ref. Desktop-local Claude/Fable and Codex turns consume their
+  schema-decoded preload graph snapshot plus push stream through the same
+  presentation model, fence stale cursors, retain the graph on the matching
+  local thread, and render it in the chat's right context rail. Historical
+  graphs remain inspection-only on both clients.
   The greenfield OpenAgents Mobile app now carries the same boundary: its Sync
   host exposes the confirmed thread-scope graph reader, the conversation
   adapter forwards `live_agent_graph` post-images into the thread snapshot, and

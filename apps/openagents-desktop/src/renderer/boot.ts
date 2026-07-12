@@ -61,6 +61,7 @@ import {
   desktopShellView,
   initialDesktopShellState,
   makeDesktopShellHandlers,
+  withLiveAgentGraph,
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
 import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
@@ -89,6 +90,8 @@ import {
   type CodexLocalAvailability,
 } from "../codex-local-contract.ts"
 import { type DesktopThread } from "../chat-contract.ts"
+import type { LiveAgentGraphHostSnapshot, LiveAgentGraphUpdate } from "../live-agent-graph-contract.ts"
+import { projectLiveAgentGraphPresentation } from "../agent-graph-presentation.ts"
 import type { DesktopWorkspaceChange } from "../workspace-contract.ts"
 import type {
   DesktopRuntimeGatewayEvent,
@@ -184,6 +187,10 @@ type DesktopBridge = Readonly<{
   usageLedger?: Readonly<{
     snapshot?: () => Promise<unknown>
     onEvent?: (listener: (snapshot: unknown) => void) => () => void
+  }>
+  liveAgentGraph?: Readonly<{
+    snapshot?: () => Promise<LiveAgentGraphHostSnapshot | null>
+    onUpdate?: (listener: (update: LiveAgentGraphUpdate) => void) => () => void
   }>
   codingCatalog?: Readonly<{
     snapshot?: () => Promise<unknown>
@@ -888,6 +895,30 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       })
       window.addEventListener("pagehide", () => unsubscribeLedger(), { once: true })
     }
+    // Desktop-local Claude/Codex turns publish the same canonical graph as
+    // confirmed Runtime Gateway chats, but over the local preload bridge.
+    // Subscribe before taking the snapshot, retain the newest cursor per
+    // thread, and project through the shared presentation model.
+    const localGraphs = new Map<string, LiveAgentGraphUpdate>()
+    const applyLocalGraph = (update: LiveAgentGraphUpdate): void => {
+      const previous = localGraphs.get(update.threadRef)
+      if (previous !== undefined && previous.graph.cursor > update.graph.cursor) return
+      localGraphs.set(update.threadRef, update)
+      void Effect.runPromise(SubscriptionRef.update(state, current =>
+        withLiveAgentGraph(
+          current,
+          update.threadRef,
+          projectLiveAgentGraphPresentation(update.graph, { maxRows: 200 }),
+        )))
+    }
+    if (typeof bridge?.liveAgentGraph?.onUpdate === "function") {
+      const unsubscribeGraph = bridge.liveAgentGraph.onUpdate(applyLocalGraph)
+      window.addEventListener("pagehide", () => unsubscribeGraph(), { once: true })
+    }
+    if (typeof bridge?.liveAgentGraph?.snapshot === "function") {
+      const snapshot = yield* Effect.promise(() => bridge.liveAgentGraph!.snapshot!().catch(() => null))
+      for (const update of snapshot?.graphs ?? []) applyLocalGraph(update)
+    }
     const [historyCatalog, localHistoryThreads] = yield* Effect.all([
       Effect.promise(historyHost.catalog),
       Effect.promise(historyHost.localThreads),
@@ -933,6 +964,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         notes: [],
       }))
     }
+    // Snapshot/update delivery can precede the initial local-thread catalog;
+    // replay retained newest post-images once those thread rows exist.
+    for (const update of localGraphs.values()) applyLocalGraph(update)
     const sessionView = decodeOpenAgentsSessionView(
       yield* Effect.promise(openAgentsSessionSettingsBridge.status),
     )

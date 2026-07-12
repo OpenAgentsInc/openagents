@@ -28,6 +28,7 @@ import {
   withNewChat,
   withChatSelected,
   withLoopProof,
+  withLiveAgentGraph,
   withWorkspace,
   withCommandPalette,
   withHarnessLanes,
@@ -176,6 +177,13 @@ test("Fable permission posture is explicit per conversation and absent from Code
   })
   expect(nodeByKey(planned, "shell-permission-mode")?.label).toBe("Plan only")
   expect(nodeByKey(desktopShellView(baseState), "shell-permission-mode")).toBeUndefined()
+})
+
+test("local live-agent graph updates attach to the matching thread and active right rail", () => {
+  const next = withLiveAgentGraph(baseState, testThread.id, agentGraphFixture)
+  expect(next.agentGraph?.graphRef).toBe(agentGraphFixture.graphRef)
+  expect(next.threads[0]?.agentGraph?.graphRef).toBe(agentGraphFixture.graphRef)
+  expect(next.agentGraphExpanded).toBe(true)
 })
 const agentGraphFixture: NonNullable<DesktopShellState["agentGraph"]> = {
   authority: "live",
@@ -362,6 +370,36 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((item?.onSelect as {name?:string})?.name).toBe("DesktopChatSelected")
   })
 
+  test("local Claude/Fable chats remain visible beside imported Codex and Claude history", () => {
+    const imported = {
+      threadRef: "history-imported",
+      parentThreadRef: null,
+      title: "Imported Claude chat",
+      status: "completed" as const,
+      createdAt: "2026-07-10T18:04:00.000Z",
+      updatedAt: "2026-07-10T18:04:00.000Z",
+      depth: 0,
+      descendantCount: 0,
+      model: null,
+      role: null,
+      nickname: null,
+      agentPath: null,
+      sourceVersion: null,
+      reasoning: null,
+      source: "claude" as const,
+    }
+    const view = desktopShellView({
+      ...baseState,
+      history: { ...baseState.history, catalog: { roots: [imported], agents: [imported] } },
+    })
+    expect(navItemById(view, `sidebar-thread-${testThread.id}`)?.label).toBe("New chat")
+    expect((navItemById(view, `sidebar-thread-${testThread.id}`)?.onSelect as { name?: string })?.name)
+      .toBe("DesktopChatSelected")
+    expect(navItemById(view, "sidebar-thread-history-imported")?.label).toBe("Imported Claude chat")
+    expect((navItemById(view, "sidebar-thread-history-imported")?.onSelect as { name?: string })?.name)
+      .toBe("HistoryConversationSelected")
+  })
+
   test("large Codex catalogs use one virtual scroll owner and pending selection is active immediately", () => {
     const roots = Array.from({ length: 50 }, (_, index) => ({
       threadRef:`history-${index}`,parentThreadRef:null,title:`History ${index}`,status:"completed" as const,
@@ -373,7 +411,7 @@ describe("desktopShellView (state -> component tree)", () => {
     const nav=nodeByKey(view,"sidebar-navigation")
     const history=(nav?.sections as Array<AnyNode>)[1]
     expect(history?.id).toBe("sidebar-history-list")
-    expect((history?.items as Array<unknown>)).toHaveLength(41)
+    expect((history?.items as Array<unknown>)).toHaveLength(42)
     expect(navItemById(view,"sidebar-history-load-more")).toMatchObject({label:"Load 10 more"})
     expect(nav?.activeId).toBe("sidebar-thread-history-7")
   })
@@ -1828,12 +1866,12 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
   test("no selection renders no inspector; a selected message opens the right-side rail with its metadata", () => {
     const closed = desktopShellView(notesState)
     expect(nodeByKey(closed, "chat-message-inspector")).toBeUndefined()
-    expect(nodeByKey(closed, "chat-message-inspector-split")).toBeUndefined()
+    expect(nodeByKey(closed, "chat-context-split")).toBeUndefined()
     expect(nodeByKey(closed, "shell-transcript")).toBeDefined()
     expect(nodeByKey(closed, "shell-composer")).toBeDefined()
 
     const open = desktopShellView(withMessageSelected(notesState, "assistant-1"))
-    const split = nodeByKey(open, "chat-message-inspector-split")
+    const split = nodeByKey(open, "chat-context-split")
     expect(split?._tag).toBe("SplitPane")
     // Escape deselects through the same typed intent.
     const escape = (split?.interactions as { onKey?: Array<{ key: string; intent: { name?: string } }> })?.onKey?.[0]
@@ -1853,6 +1891,20 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     // A dangling key (message no longer projected) renders no inspector.
     const dangling = desktopShellView({ ...notesState, selectedMessageKey: "gone" })
     expect(nodeByKey(dangling, "chat-message-inspector")).toBeUndefined()
+  })
+
+  test("the live sub-agent graph occupies the chat right sidebar", () => {
+    const view = desktopShellView({
+      ...notesState,
+      agentGraph: agentGraphFixture,
+      agentGraphExpanded: true,
+    })
+    const split = nodeByKey(view, "chat-context-split")
+    expect(split?._tag).toBe("SplitPane")
+    const panes = split?.panes as Array<{ id: string; content: unknown }>
+    expect(panes.map(pane => pane.id)).toEqual(["chat-center", "chat-context-pane"])
+    expect(nodeByKey(panes[1]?.content as View, "runtime-agent-graph")).toBeDefined()
+    expect(nodeByKey(panes[0]?.content as View, "runtime-agent-graph")).toBeUndefined()
   })
 
   test("click -> typed intent -> inspector opens; Close deselects (full registry loop)", async () => {

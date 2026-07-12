@@ -1109,13 +1109,34 @@ export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<Des
       }
 }
 
+export const withLiveAgentGraph = (
+  state: DesktopShellState,
+  threadRef: string,
+  agentGraph: LiveAgentGraphPresentation,
+): DesktopShellState => {
+  const threads = state.threads.map(thread =>
+    thread.id === threadRef ? { ...thread, agentGraph } : thread)
+  if (state.activeThreadId !== threadRef) return { ...state, threads }
+  return {
+    ...state,
+    threads,
+    agentGraph,
+    agentGraphExpanded:
+      state.agentGraphExpanded || agentGraph.attentionCount > 0 || agentGraph.totalCount <= 8,
+    selectedAgentRef: resolveLiveAgentGraphSelection(agentGraph, state.selectedAgentRef),
+  }
+}
+
 export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnType<ChatHost["sendMessage"]>>, timestamp: string): DesktopShellState => {
   if (result.ok && result.thread) {
-    const selected = withChatSelected(state, result.thread)
+    const completedThread = result.thread.id === state.activeThreadId && state.agentGraph !== null
+      ? { ...result.thread, agentGraph: state.agentGraph }
+      : result.thread
+    const selected = withChatSelected(state, completedThread)
     return {
       ...selected,
       pending: false,
-      threads: [result.thread, ...state.threads.filter((thread) => thread.id !== result.thread!.id)].slice(0, 5),
+      threads: [completedThread, ...state.threads.filter((thread) => thread.id !== completedThread.id)].slice(0, 5),
       // A successful Fable turn just established/renewed this exact thread's
       // runtime continuity entry. Record it as an H1 picker candidate without
       // adding an asynchronous refresh to history navigation.
@@ -2428,6 +2449,12 @@ const localSidebarItems = (state: DesktopShellState) => state.threads.map((threa
   onSelect:IntentRef("DesktopChatSelected",StaticPayload(thread.id)),
 }))
 
+const sidebarConversationItems = (state: DesktopShellState) => {
+  const local = localSidebarItems(state)
+  const localIds = new Set(local.map(item => item.id))
+  return [...local, ...historySidebarItems(state).filter(item => !localIds.has(item.id))]
+}
+
 const shellSidebar = (state: DesktopShellState): View => {
   // Connected-accounts bottom box (EP250 owner contract verbatim: "in the
   // left sidebar, in a bottom box, like letting the chats flex up but show
@@ -2462,7 +2489,7 @@ const shellSidebar = (state: DesktopShellState): View => {
           ]},
           historySearchActive(state.history)
             ? {id:"sidebar-history-list",label:`Search · ${state.history.searchResults.length} result${state.history.searchResults.length===1?"":"s"}${state.history.searchTruncated?" (bounded)":""}`,items:historySearchResultSidebarItems(state.history)}
-            : {id:"sidebar-history-list",label:"Coding history · all time",items:state.history.catalog.roots.length>0?historySidebarItems(state):localSidebarItems(state)},
+            : {id:"sidebar-history-list",label:"Coding history · all time",items:sidebarConversationItems(state)},
         ],
         a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,state.history.catalog.roots.length)} of ${state.history.catalog.roots.length} sessions`},
         style:{flex:1,minHeight:0,width:"full"},
@@ -3346,13 +3373,6 @@ const chatMessageInspector = (entry: DesktopNoteEntry): View => {
  * Escape anywhere inside deselects through the same typed intent.
  */
 const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
-  const graph = state.agentGraph === null
-    ? []
-    : [runtimeAgentGraphView({
-        graph: state.agentGraph,
-        expanded: state.agentGraphExpanded,
-        selectedAgentRef: state.selectedAgentRef,
-      })]
   // EP250 tool/question cards: system trace notes fold into typed cards
   // (one updating card per tool invocation); everything else stays a note.
   const transcript = Transcript({
@@ -3391,9 +3411,23 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
   const selected = state.selectedMessageKey === null
     ? undefined
     : state.notes.find((note) => note.key === state.selectedMessageKey)
-  if (selected === undefined) return [...graph, transcript, shellComposer(state)]
+  const graph = state.agentGraph === null
+    ? null
+    : runtimeAgentGraphView({
+        graph: state.agentGraph,
+        expanded: state.agentGraphExpanded,
+        selectedAgentRef: state.selectedAgentRef,
+      })
+  if (selected === undefined && graph === null) return [transcript, shellComposer(state)]
+  const rightRail = Stack(
+    { key: "chat-right-rail", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } },
+    [
+      ...(graph === null ? [] : [graph]),
+      ...(selected === undefined ? [] : [chatMessageInspector(selected)]),
+    ],
+  )
   return [SplitPane({
-    key: "chat-message-inspector-split",
+    key: "chat-context-split",
     orientation: "row",
     style: { flex: 1, minWidth: 0, minHeight: 0 },
     interactions: {
@@ -3405,10 +3439,10 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
         min: 360,
         content: Stack(
           { key: "chat-center-column", direction: "column", gap: "3", style: { flex: 1, minWidth: 0, minHeight: 0 } },
-          [...graph, transcript, shellComposer(state)],
+          [transcript, shellComposer(state)],
         ),
       },
-      { id: "chat-message-inspector-pane", min: 280, max: 480, size: 336, content: chatMessageInspector(selected) },
+      { id: "chat-context-pane", min: 280, max: 480, size: 336, content: rightRail },
     ],
   })]
 }
