@@ -2,22 +2,21 @@
 
 Date: 2026-07-12  
 Issue: #8706  
-Version source: `a74cb24ef9`
+Current version source: `4c4bd8e2c5` plus subsequent packaging hardening
 
 ## Published candidate
 
-- identity/version: `OpenAgents` / `com.openagents.desktop` / `0.1.0-rc.1`
-- artifact: `OpenAgents-0.1.0-rc.1-arm64.dmg`
-- final post-staple bytes: `235069166`
+- identity/version: `OpenAgents` / `com.openagents.desktop` / `0.1.0-rc.5`
+- artifact: `OpenAgents-0.1.0-rc.5-arm64.dmg`
+- final post-staple bytes: `234540944`
 - final SHA-256:
-  `ab6b075fb8a6eae27c95f4d90ca380f7902e06bd52c7b55db33d1d4a7a95a962`
+  `cf17f5d987f26f4fda732e48fd86e662b3c9a54ac5d0f39d189a18b0753e8f2b`
 - Developer ID: `OpenAgents, Inc. (HQWSG26L43)`
 - Apple notarization: accepted; DMG staple and validation passed
 - update-manifest key: production kid `2dbe811d19f67528`
 - public RC feed:
   `https://updates.openagents.com/desktop/openagents/rc/manifest.json`
-- Cloud Run: `oa-updates-00101-kov`, 100% traffic
-- incremental build: `537eb006-7662-4cbc-ad4a-9ddba38753ac`
+- Cloud Run: `oa-updates-00107-rob`, 100% traffic
 
 The live manifest and detached signature are exact with the production-signed
 seed and describe the final public GCS object size and hash.
@@ -36,12 +35,28 @@ manifest returned 404. Traffic was immediately restored to
 Before traffic moved, its tagged candidate returned the exact Desktop manifest
 and a 200, 1918-byte mobile Expo manifest for runtime
 `44f4fbd0b8ab6bdd1aa410467e6df96f572762b2`. Both checks passed again after
-100% traffic moved to `oa-updates-00101-kov`.
+100% traffic moved to the current RC5 revision.
+
+Installed-artifact testing then found two additional counterexamples rather
+than accepting publication as proof. RC1 requested a browser-specific V8
+snapshot Electron did not ship. RC2 reached main but could not admit its
+renderer from inside ASAR while `GrantFileProtocolExtraPrivileges=false`.
+The repair keeps that security fuse disabled, materializes only the bounded
+renderer under `app.asar.unpacked/dist/renderer`, excludes the redundant
+workspace dependency copy, and signs only executable/bundle paths including
+Squirrel `ShipIt`.
+
+The exact mounted, stapled RC5 DMG completed the full packaged smoke through
+shell mount, Runtime Gateway bootstrap, workspace/editor/reload recovery,
+typed provider turns, Fleet, terminal, Git review, settings/diagnostics, image
+attachment, and second-instance deep link. It ended with
+`[openagents-desktop smoke] OK` and lifecycle teardown
+`{"ok":true,"active":0}`. The production manifest is exact, mobile OTA remains
+HTTP 200 (1918 bytes), and both deprecated Desktop feeds remain typed 410.
 
 ## Remaining close gate
 
-Publication is complete. CUT-26 remains open until the public DMG completes the
-installed-artifact lifecycle on a clean supported Mac: install/first run,
-named-account readiness, coding smoke, interrupted update/resume, rollback,
-uninstall/reinstall, and diagnostics export. No release-code or publication
-gate remains.
+Publication and the downloaded-artifact packaged smoke are complete. CUT-26
+remains open only for the broader clean-supported-Mac lifecycle: real named-
+account readiness/coding, interrupted update/resume, rollback,
+uninstall/reinstall, and diagnostics export.

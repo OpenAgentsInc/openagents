@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 93
+- Revision: 94
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -369,12 +369,13 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   CUT-09's distinct lifecycle acceptance. CUT-16 is closed with physical-iOS
   VoiceOver; CUT-25 is closed with cross-client Fleet control.
 - CUT-26 retained two installed-artifact counterexamples: RC1 exposed a V8
-  snapshot-fuse boot failure; RC2 then reached main but failed hardened
-  renderer admission through `file:`/ASAR. Both fixes are on `main`; the next
-  monotonic candidate must finish packaging/notarization and pass downloaded-
-  artifact clean-machine first run, named-account readiness, a real coding
-  smoke, update/interruption/resume, rollback/reinstall, uninstall, and
-  diagnostics export without weakening the fuse posture.
+  snapshot-fuse boot failure; RC2 then failed hardened renderer admission
+  through `file:`/ASAR. RC5 is now Developer ID signed, Apple-notarized,
+  stapled, production-feed live, and exact downloaded-DMG smoke proven with
+  clean lifecycle teardown while preserving the strict fuse posture. The
+  remaining acceptance is real named-account coding plus update interruption/
+  resume, rollback/reinstall, uninstall, and diagnostics export on a clean
+  supported Mac.
 - CUT-27 closes the bounded ordinary Codex/Claude-to-OpenAgents cutover only
   after its open dependencies and exception register reconcile. It does not
   manufacture remote-workroom, portability, broker, any-host, or voice proof.
