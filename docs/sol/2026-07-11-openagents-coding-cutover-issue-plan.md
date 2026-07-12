@@ -1,18 +1,21 @@
 # OpenAgents coding cutover issue plan
 
-- Class: historical dependency and acceptance plan
-- Status: pinned 2026-07-11 snapshot; non-dispatch
-- Dispatch: no; use the master roadmap, live issues, and claims
+- Class: binding dependency/acceptance contract with historical status snapshot
+- Status: dependency edges and acceptance criteria bind through CUT-27;
+  mutable status prose is pinned to its dated updates
+- Dispatch: use the master roadmap, live issues, and claims for current
+  selection; never bypass a dependency edge here without an explicit owner
+  exception
 - Date: 2026-07-11
 - Program parent: [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566)
 - Desktop track: [#8574](https://github.com/OpenAgentsInc/openagents/issues/8574)
 - Mobile track: [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597)
 - Ordering authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 
-> **Historical status warning (2026-07-12):** The dependency graph and leaf
-> acceptance designs below remain useful evidence. Its status cells and
-> “current” paragraphs are chronological snapshots and are not reconciled to
-> every later closure. This file is not the current queue. Refresh the
+> **Status warning (2026-07-12):** The dependency edges and leaf acceptance
+> designs below remain binding until CUT-27 closes. Status cells and “current”
+> paragraphs are chronological snapshots and are not reconciled to every later
+> closure; they cannot select the current queue. Refresh the
 > [`master roadmap`](./MASTER_ROADMAP.md),
 > [live `roadmap:sol` issues](https://github.com/OpenAgentsInc/openagents/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap%3Asol),
 > claims, and dedicated receipts before acting.
@@ -32,7 +35,7 @@ remote-first pathway. Finishing this graph can close the ordinary local-coding
 scope of #8574 and its bounded reliability parents; it does not manufacture
 proof for those later remote outcomes or automatically close #8566/#8597.
 
-## Historical graph rules
+## Binding graph rules
 
 - Work in numeric order when an issue names a dependency.
 - Issues in the same parallel lane may run concurrently only when their claimed
