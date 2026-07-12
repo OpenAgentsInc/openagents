@@ -54,7 +54,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) — closed `0c49648217`; canonical shared/hosted/device-local catalog, typed Desktop navigation, and restart/reload recovery receipt | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) — deterministic/native implementation complete through `5aeabdbb1e`; authenticated directory, exact restore, live fence, and URL/notification delivery landed; physical receipts pending | M1 / mobile binding | CUT-01, CUT-13 |
 | 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) — closed `5d36b73ad2`; canonical registry, owner-private bindings, native/deferred routing, and built-host receipt | D2 / commands | CUT-13 |
-| 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) — interaction authority + both native UIs + mobile runtime controls/canonical draft restore landed; attachment acquisition, selectors/Desktop adoption, named Codex/deploy, and physical receipts pending | D1-D2 / interaction | CUT-12, CUT-15 |
+| 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) — interaction authority + both native UIs + mobile runtime controls/canonical draft restore/native acquisition landed; attachment delivery, selectors/Desktop adoption, named Codex/deploy, and physical receipts pending | D1-D2 / interaction | CUT-12, CUT-15 |
 | 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) | D3 / workspace | CUT-13 |
 | 18 | CUT-18 | [#8698](https://github.com/OpenAgentsInc/openagents/issues/8698) | D3 / editor | CUT-17 |
 | 19 | CUT-19 | [#8699](https://github.com/OpenAgentsInc/openagents/issues/8699) | D3 / Git | CUT-18 |
@@ -723,8 +723,11 @@ then binds selected mobile coding sessions to restart-restored canonical drafts,
 ref-only repository/worktree context, known runtime target readiness, restored
 attachment rendering, and fail-closed Send authority; its built iPhone
 simulator smoke is green. The issue is not closeable: mobile file/image
-acquisition and real provider/model/account selectors, equivalent Desktop
-canonical-draft adoption, and editor/diff capture remain. A named Codex turn,
+acquisition landed at `c3ad8bee34` through a bounded SDK picker, durable
+content-addressed app-sandbox copy, canonical stage/ready transactions, and a
+second green built-simulator smoke. Attachment-bearing runtime delivery and
+real provider/model/account selectors, equivalent Desktop canonical-draft
+adoption, and editor/diff capture remain. A named Codex turn,
 deployed trusted-authority route, and physical assistive-technology receipt
 also remain.
 

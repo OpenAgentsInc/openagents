@@ -115,9 +115,12 @@ proven portable: the canonical rich draft is not yet fully adopted by both host
 UIs. Mobile now restores it by exact session/thread identity, refreshes ref-only
 repository/worktree context and confirmed runtime target readiness, renders
 restored attachment metadata, persists edits/accepted clears, and withholds
-Send without disabling offline editing when the target is unavailable. Native
-file/image acquisition, real provider/model/account selectors, editor/diff
-capture, and equivalent Desktop adoption remain. Owner-local Pylon now requests
+Send without disabling offline editing when the target is unavailable. Mobile
+native file/image acquisition now uses the SDK picker, bounds and hashes bytes,
+copies them into the durable app sandbox, and places only content-addressed
+ready metadata in the canonical draft. Attachment-bearing runtime delivery,
+real provider/model/account selectors, editor/diff capture, and equivalent
+Desktop adoption remain. Owner-local Pylon now requests
 the same durable authority through the trusted Worker seam and runs Claude's
 `canUseTool` only under explicit confirmed supervision, but named Codex,
 deployed-authority, and physical receipts remain open. Provider defaults remain

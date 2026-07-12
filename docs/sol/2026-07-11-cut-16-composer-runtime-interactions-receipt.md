@@ -4,15 +4,15 @@
 - Issue: [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696)
 - Status: shared authority, native persistence, both native interaction UIs,
   mobile runtime-control and canonical draft UI, Desktop gateway, and Claude
-  provider injection active; attachment acquisition/selectors and live
-  acceptance remain open
+  provider injection active; mobile native attachment acquisition active;
+  attachment delivery/selectors and live acceptance remain open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
   `97f90832bb`, `21d56199bd`, `88f692fe00`, `400c649904`, `600228f230`, and
   `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, `4a9db8347b`, `23a190905f`,
   `d2d9ee8907`, `e4d903c602`, `4b20fe2b67`, `9fa76c3b09`, and
-  `94deab6705`
+  `94deab6705`, and `c3ad8bee34`
 
 CUT-16 now builds on the existing rich `@openagentsinc/composer-state` kernel
 instead of creating a second composer. The additive private coding-draft
@@ -80,6 +80,18 @@ Unavailable-target drafts remain editable but omit submit authority; both RN
 and SwiftUI lowerings disable and announce Send unavailable when `onSubmit` is
 absent.
 
+Mobile native acquisition now uses the SDK 57 `expo-file-system` multi-file
+picker. It refuses more than eight selections or any file above 25 MiB before
+reading, checks the byte bound again after reading, computes SHA-256, and copies
+the content into the app document sandbox under that digest. The picker URI and
+platform file handle remain inside the native adapter closure. The canonical
+draft receives only manual attachment metadata plus a ready
+`attachment.native-local.sha256.*` ref through the shared stage/apply/ready
+transactions. Duplicate content is coalesced, cancellation is inert, failures
+are public-safe, and the Effect Native plus control is disabled while the
+picker reconciles. The UI says only that the attachment is stored on this
+device; it does not claim hosted upload or runtime delivery.
+
 Desktop now consumes the confirmed projection as Effect Native question,
 tool-approval, and plan-review cards. It preserves canonical thread, turn,
 interaction, question, and option identities; refuses missing or ambiguous
@@ -103,7 +115,7 @@ deny decision.
 
 Verification:
 
-- composer-state: 23 pass, 0 fail, 161 assertions; shared composer UI: 7 pass,
+- composer-state: 23 pass, 0 fail, 163 assertions; shared composer UI: 7 pass,
   0 fail, 69 assertions;
 - agent-runtime-schema: 40 pass, 0 fail, 275 assertions;
 - Khala Sync schema: 191 pass, 0 fail, 2,705 assertions;
@@ -116,19 +128,21 @@ Verification:
   composition/host focused: 51 pass, 0 fail, 445 assertions; Desktop typecheck
   and build pass; after authoritative Desktop interaction controls, the full
   Desktop suite is 468 pass, 0 fail, 2,487 assertions;
-- mobile full suite after canonical draft adoption: 88 pass, 0 fail, 432
-  assertions; canonical composer/Home focused contracts: 13 pass, 0 fail, 79
-  assertions; mobile typecheck passes;
+- mobile full suite after native attachment acquisition: 91 pass, 0 fail, 452
+  assertions; focused composer/picker/Home plus composer-state contracts: 35
+  pass, 0 fail, 236 assertions; mobile typecheck passes;
 - Effect Native RN renderer: 9 pass, 0 fail, 26 assertions and project
   typecheck (existing Effect advisories only). The optional-submit regression
   proves the input remains editable while Send is disabled and announced
   unavailable;
-- built iOS simulator: Expo/Xcode built and signed the Debug iPhone-simulator
-  app with 0 errors (one duplicate-library warning), installed and launched it
-  on the booted iPhone 17 Pro simulator, Metro bundled the current tree, and
-  the Khala/Effect Native composer rendered without a red screen or runtime
-  error. The physical iPhone still reported offline, so this is not the issue's
-  physical-device receipt.
+- built iOS simulator after native attachment acquisition: Expo/Xcode built and
+  signed the Debug iPhone-simulator app with 0 errors and 0 warnings, including
+  the `ExpoFileSystem` native pod, installed and launched it on the booted
+  iPhone 17 Pro simulator, Metro bundled 1,328 modules, and the Khala/Effect
+  Native composer rendered without a red screen. The simulator had no
+  authenticated coding session, so this is a native-link/render smoke rather
+  than a claimed picker-tap receipt. The physical iPhone still reported
+  offline, so this is not the issue's physical-device receipt.
 - Pylon typecheck and full suite pass; focused HTTP-authority/runtime-dispatch
   coverage is 59 pass, 0 fail, 208 assertions. The API Worker typecheck and
   focused authority/route-manifest suite pass (6 tests). The runtime mutator
@@ -169,10 +183,11 @@ Named-provider live evidence:
   was bypassed and no remote data was deleted. Deployed-authority evidence
   remains required after the quota is raised or storage is remediated.
 
-CUT-16 remains open. The completion audit still finds a literal composer gap:
-mobile still needs native file/image acquisition and real provider/model/
-account selection, while Desktop still needs full canonical rich-draft UI
-adoption; editor/diff capture is not yet wired end to end in both hosts. The
+CUT-16 remains open. The completion audit still finds literal composer gaps:
+mobile native file/image acquisition is landed, but attachment-bearing runtime
+submission/delivery is not yet proven; real provider/model/account selection
+remains, Desktop still needs full canonical rich-draft UI adoption, and editor/
+diff capture is not yet wired end to end in both hosts. The
 remaining external receipts are a named Codex turn after provider quota reset,
 deployment of the trusted authority route after the Cloudflare staging storage
 limit is remediated, and physical-device/assistive-technology acceptance.

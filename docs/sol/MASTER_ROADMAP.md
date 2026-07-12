@@ -5,8 +5,9 @@
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
   CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete; CUT-16
   native draft persistence/Desktop gateway/mobile interaction and runtime-
-  control UI active; mobile canonical rich-draft adoption active)
-- Revision: 60
+  control UI active; mobile canonical rich-draft and native attachment
+  acquisition active)
+- Revision: 61
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -674,8 +675,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   worktree context and typed runtime target readiness, render restored
   attachments through the shared Composer, persist edits/accepted clears, and
   withhold Send while an unavailable target remains editable. A real SQLite
-  close/reopen and a built iPhone simulator launch prove that rung. Remaining
-  product gaps are native file/image acquisition, real provider/model/account
+  close/reopen and a built iPhone simulator launch prove that rung. Mobile now
+  also opens the SDK-native multi-file/image picker, bounds selections to eight
+  files and 25 MiB each, hashes and copies bytes into the durable app document
+  sandbox, and applies canonical stage/ready transactions carrying only
+  `attachment.native-local.sha256.*` refs. The shared Composer renders the
+  restored metadata and reports the device-local result without exposing a
+  picker URI. This landed at `c3ad8bee34`; an attachment-bearing runtime send
+  and receipt is still required before claiming end-to-end file/image turns.
+  Remaining product gaps are that delivery rung, real provider/model/account
   selectors, editor/diff context capture, and equivalent full Desktop rich-
   composer adoption. Physical accessibility, deployed-authority, and named
   Codex receipts also remain open. See
