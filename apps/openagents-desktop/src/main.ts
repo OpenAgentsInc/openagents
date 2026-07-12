@@ -498,7 +498,11 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     }
   }
   if (service === null) return null
-  const context = (lane: "codex_app_server" | "claude_pylon" = "codex_app_server") => {
+  // CUT-16: control intents must carry the exact confirmed turn lane — the
+  // durable lane fence rejects a mismatched target (runtime_target_lane_mismatch),
+  // so interrupt/continue/retry/close thread the caller-derived lane through
+  // instead of hard-coding the Codex default.
+  const context = (lane: "codex_app_server" | "claude_pylon" | "hosted_khala" = "codex_app_server") => {
     const createdAt = new Date()
     return {
       expiresAtIso: new Date(createdAt.getTime() + 5 * 60_000).toISOString(),
@@ -527,7 +531,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
       return Number(Effect.runSync(service.interruptTurn(buildInterruptTurnIntent({
         commandRef: input.commandRef,
-        context: context(),
+        context: context(input.lane),
         correlationRefs: operationContext === undefined ? [] : [
           operationContext.operationRef,
           operationContext.sessionRef,
@@ -541,7 +545,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
       return Number(Effect.runSync(service.continueTurn(buildContinueTurnIntent({
         commandRef: input.commandRef,
-        context: context(),
+        context: context(input.lane),
         correlationRefs: operationContext === undefined ? [] : [operationContext.operationRef, operationContext.sessionRef, operationContext.correlationRef],
         threadRef: input.threadRef,
         turnRef: input.runRef,
@@ -551,7 +555,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
       return Number(Effect.runSync(service.retryTurn(buildRetryTurnIntent({
         commandRef: input.commandRef,
-        context: context(),
+        context: context(input.lane),
         correlationRefs: operationContext === undefined ? [] : [operationContext.operationRef, operationContext.sessionRef, operationContext.correlationRef],
         threadRef: input.threadRef,
         turnRef: input.runRef,
@@ -561,7 +565,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
       return Number(Effect.runSync(service.closeTurn(buildCloseTurnIntent({
         commandRef: input.commandRef,
-        context: context(),
+        context: context(input.lane),
         correlationRefs: operationContext === undefined ? [] : [operationContext.operationRef, operationContext.sessionRef, operationContext.correlationRef],
         threadRef: input.threadRef,
         turnRef: input.runRef,

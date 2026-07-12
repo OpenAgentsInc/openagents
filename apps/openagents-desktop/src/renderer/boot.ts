@@ -371,6 +371,10 @@ const fleetAccountsBridge: FleetAccountsBridge = {
         commandRef: `fleet.${command.action}.${command.runRef}.${command.expectedVersion}`,
         threadRef: command.threadRef,
         runRef: command.runRef,
+        // CUT-16: carry the confirmed provider lane so the durable lane fence
+        // admits controls on Claude/hosted turns instead of rejecting the
+        // hard-coded Codex default.
+        ...(command.lane === undefined ? {} : { lane: command.lane }),
         expectedVersion: command.expectedVersion,
       },
     })

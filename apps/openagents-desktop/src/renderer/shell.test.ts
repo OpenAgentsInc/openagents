@@ -662,6 +662,40 @@ describe("composer image input (capability I1)", () => {
       }),
     )
   })
+
+  test("a refused mid-turn queue restores the cleared draft; an accepted queue keeps it cleared (CUT-16)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const queueAttempts: Array<{ threadRef: string; message: string }> = []
+        let queueResult: { ok: boolean; queued: boolean } = { ok: false, queued: false }
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async () => ({ ok: true as const, thread: testThread }),
+          queueFollowup: async (input: { threadRef: string; message: string }) => {
+            queueAttempts.push(input)
+            return queueResult
+          },
+        }
+        const state = yield* SubscriptionRef.make({ ...baseState, pending: true, input: "keep me" })
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        // Refused enqueue (CUT-16): the cleared draft is restored, never dropped.
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
+        expect(queueAttempts).toEqual([{ threadRef: testThread.id, message: "keep me" }])
+        expect((yield* SubscriptionRef.get(state)).input).toBe("keep me")
+
+        // Accepted enqueue: the composer stays cleared for the next thought.
+        queueResult = { ok: true, queued: true }
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
+        expect(queueAttempts).toHaveLength(2)
+        expect((yield* SubscriptionRef.get(state)).input).toBe("")
+      }),
+    )
+  })
 })
 
 describe("pure transitions", () => {

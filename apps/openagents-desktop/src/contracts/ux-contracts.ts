@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.2",
+    version: "2026-07-12.3",
     contracts: [
       {
         contractId: "openagents_desktop.chrome.command_notice_is_transient_toast.v1",
@@ -416,6 +416,63 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the shell Stop-button suite and the capability-evals interrupt-path oracle; the interrupt-stop live-proof step is exercised by the live-proof driver run.",
+      },
+      {
+        contractId: "openagents_desktop.chat.durable_runtime_turn_controls.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "durable runtime turn controls",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "issue-completion-criteria", statedBy: "owner", statedOn: "2026-07-12" },
+        statement:
+          "Provider questions, permission/tool approvals, plan/review transitions, interrupt, resume, retry, and cancel are first-class typed timeline items.",
+        authorityBoundary:
+          "CUT-16 (#8696) Desktop slice for the durable Khala runtime path. (1) The composer Stop button now also interrupts a DURABLE turn: the runtime conversation host implements interruptActive over the exact confirmed thread/run this renderer has in flight, dispatching conversation.interrupt through the protocol-v10 gateway with the confirmed run's expectedVersion. The acknowledgement is admission truth only — the confirmed canceled terminal (never the Stop handler) finalizes the turn and reverts the composer; a host with no in-flight durable send returns false and sends nothing. (2) Queue-until-idle now works on the durable path: a mid-turn submit enqueues a text follow-up that is promoted only at the previous turn's CONFIRMED terminal, as a real conversation.append plus conversation.start on the same lane; a refused enqueue restores the cleared draft instead of dropping text. (3) Every control intent (chat Stop and fleet-cockpit pause/cancel/resume/retry/close) carries the EXACT confirmed run lane (claude_code→claude_pylon, codex/opencode_codex→codex_app_server, openagents_native→hosted_khala) as an additive optional gateway field threaded into the shared control-intent builders, because the durable authority's lane fence (runtime_target_lane_mismatch) rejects a mismatched target — the previous hard-coded Codex default made Claude/hosted turn controls unadmittable from Desktop. No schema, migration, server, or intent-contract change: openagents.khala_runtime_control_intent.v1 and protocol v10 are unchanged apart from the additive optional lane field.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/runtime-conversation.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/fleet-workspace.ts",
+          "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "github:OpenAgentsInc/openagents#8696",
+        ],
+        oracles: [
+          {
+            id: "durable_runtime_turn_controls.interrupt_lane_exact",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-conversation.test.ts",
+            description:
+              "Proves interruptActive during an in-flight durable send dispatches conversation.interrupt with the exact threadRef/runRef, the lane derived from the confirmed run runtime (claude_code→claude_pylon), and the confirmed run version; returns true only on an admitted outcome; and returns false with no command when no durable send is in flight or the confirmed run is already terminal.",
+          },
+          {
+            id: "durable_runtime_turn_controls.queue_until_idle_confirmed_drain",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/runtime-conversation.test.ts",
+            description:
+              "Proves a follow-up queued mid-turn is promoted only after the first run's confirmed terminal as a real append + start on the same lane, that the final thread carries both confirmed user messages, and that queueFollowup without an in-flight durable send reports queued:false and sends nothing.",
+          },
+          {
+            id: "durable_runtime_turn_controls.queue_refusal_restores_draft",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the DesktopNoteSubmitted pending branch restores the cleared composer draft when the host reports queued:false, and leaves newer user input untouched.",
+          },
+          {
+            id: "durable_runtime_turn_controls.gateway_lane_passthrough",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts",
+            description:
+              "Proves the protocol-v10 gateway decodes the additive optional lane on conversation.interrupt/continue/retry/close, hands it to the runtime command service unchanged, rejects an unknown lane literal as invalid_request, and that main's control adapters thread input.lane into the shared control-intent context instead of the hard-coded Codex default (source oracle).",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the runtime-conversation control suite, the shell queue-refusal suite, and the gateway lane pass-through oracle in the normal sweep.",
       },
       {
         contractId: "openagents_desktop.chat.opencode_composer_shape.v1",

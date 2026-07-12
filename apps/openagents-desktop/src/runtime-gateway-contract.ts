@@ -86,6 +86,18 @@ const NonNegativeIntSchema = Schema.Number.check(
 )
 const OperationContextField = { context: Schema.optional(DesktopOperationContextSchema) }
 
+/**
+ * Exact confirmed-run lanes a Desktop control intent may target (CUT-16).
+ * These mirror the mobile confirmed-runtime derivation; the durable authority
+ * rejects a control intent whose lane mismatches the stored turn lane.
+ */
+export const DesktopRuntimeControlLaneSchema = Schema.Literals([
+  "codex_app_server",
+  "claude_pylon",
+  "hosted_khala",
+])
+export type DesktopRuntimeControlLane = typeof DesktopRuntimeControlLaneSchema.Type
+
 export const DesktopRuntimeCapabilityIdSchema = Schema.Literals([
   "agent-timeline",
   "agent-graph",
@@ -187,6 +199,10 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
         commandRef: PublicRefSchema,
         threadRef: PublicRefSchema,
         runRef: PublicRefSchema,
+        // Additive (CUT-16): the durable lane fence rejects control intents
+        // whose target lane mismatches the stored turn lane, so callers pass
+        // the exact confirmed run lane instead of relying on the host default.
+        lane: Schema.optional(DesktopRuntimeControlLaneSchema),
         expectedVersion: Schema.optional(NonNegativeIntSchema),
       }),
       Schema.Struct({
@@ -194,6 +210,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
         commandRef: PublicRefSchema,
         threadRef: PublicRefSchema,
         runRef: PublicRefSchema,
+        lane: Schema.optional(DesktopRuntimeControlLaneSchema),
         expectedVersion: NonNegativeIntSchema,
       }),
       Schema.Struct({

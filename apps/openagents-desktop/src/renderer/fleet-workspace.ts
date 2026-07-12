@@ -310,9 +310,31 @@ export type FleetAccountsBridge = Readonly<{
   /** Session usage ledger snapshot (#8712 Lane C); optional for older hosts. */
   ledger?: () => Promise<unknown>
   cockpit?: () => Promise<Readonly<{ authority: FleetWorkspaceState["cockpitAuthority"]; cards: ReadonlyArray<FleetCockpitCard> }>>
-  control?: (command: FleetRunCommand) => Promise<unknown>
+  control?: (command: FleetControlDispatch) => Promise<unknown>
   decideAttention?: (command: FleetAttentionCommand) => Promise<unknown>
 }>
+
+/**
+ * The shared admitted run command plus the exact confirmed provider lane
+ * (CUT-16): the durable lane fence rejects control intents whose target lane
+ * mismatches the stored turn lane, so cockpit controls carry the card's
+ * confirmed lane instead of letting the host default to Codex. An unknown
+ * provider omits the lane.
+ */
+export type FleetControlDispatch = FleetRunCommand & Readonly<{
+  lane?: "codex_app_server" | "claude_pylon" | "hosted_khala"
+}>
+
+export const fleetControlLaneForProvider = (
+  provider: FleetCockpitCard["provider"],
+): NonNullable<FleetControlDispatch["lane"]> | null =>
+  provider === "codex"
+    ? "codex_app_server"
+    : provider === "claude"
+      ? "claude_pylon"
+      : provider === "openagents"
+        ? "hosted_khala"
+        : null
 
 export const unavailableFleetAccountsBridge: FleetAccountsBridge = {
   list: async () => ({ ok: false, reason: "pylon_runtime_unavailable" }),
@@ -393,7 +415,11 @@ export const makeFleetWorkspaceHandlers = <S extends FleetCapableState>(
       if (card === undefined) return
       const command = admitFleetRunCommand(card, payload.action)
       if (command === null) return
-      yield* Effect.promise(() => bridge.control!(command).catch(() => null))
+      const lane = fleetControlLaneForProvider(card.provider)
+      yield* Effect.promise(() => bridge.control!({
+        ...command,
+        ...(lane === null ? {} : { lane }),
+      }).catch(() => null))
       if (bridge.cockpit === undefined) return
       const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))

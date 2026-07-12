@@ -1363,8 +1363,15 @@ export const makeDesktopShellHandlers = (
         if (message.trim() === "") return
         if (chat.queueFollowup === undefined) return
         yield* SubscriptionRef.update(state, (next) => withInput(next, ""))
-        yield* Effect.promise(() =>
+        const queued = yield* Effect.promise(() =>
           chat.queueFollowup!({ threadRef: current.activeThreadId!, message: message.trim() }))
+        // CUT-16: a refused queue (host raced past its in-flight send, or the
+        // runtime rejected the enqueue) must not silently drop the text — the
+        // draft is restored unless the user already typed something new.
+        if (!queued.queued) {
+          yield* SubscriptionRef.update(state, (next) =>
+            next.input === "" ? withInput(next, message) : next)
+        }
         return
       }
       // Evidence-gated send (#8712): an unavailable selected lane must not

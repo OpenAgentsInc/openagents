@@ -5,6 +5,7 @@ import type {
   DesktopRuntimeGatewayResponse,
 } from "./runtime-gateway-contract.ts"
 import { DesktopRuntimeGatewayProtocolVersion } from "./runtime-gateway-contract.ts"
+import type { DesktopRuntimeControlLane } from "./runtime-gateway-contract.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "./codex-history-contract.ts"
 import type {
   ConfirmedAgentRun,
@@ -73,10 +74,10 @@ export type DesktopRuntimeAgentTimeline = Readonly<{
 
 export type DesktopRuntimeCommands = Readonly<{
   start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string; lane?: "codex_app_server" | "claude_pylon" }>, context?: DesktopOperationContext) => number
-  interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion?: number }>, context?: DesktopOperationContext) => number
-  continue?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion: number }>, context?: DesktopOperationContext) => number
-  retry?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion: number }>, context?: DesktopOperationContext) => number
-  close?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; expectedVersion: number }>, context?: DesktopOperationContext) => number
+  interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; lane?: DesktopRuntimeControlLane; expectedVersion?: number }>, context?: DesktopOperationContext) => number
+  continue?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; lane?: DesktopRuntimeControlLane; expectedVersion: number }>, context?: DesktopOperationContext) => number
+  retry?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; lane?: DesktopRuntimeControlLane; expectedVersion: number }>, context?: DesktopOperationContext) => number
+  close?: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string; lane?: DesktopRuntimeControlLane; expectedVersion: number }>, context?: DesktopOperationContext) => number
   outcome: (input: Readonly<{ intentId: string; threadRef: string }>) => RuntimeCommandOutcome | null
 }>
 

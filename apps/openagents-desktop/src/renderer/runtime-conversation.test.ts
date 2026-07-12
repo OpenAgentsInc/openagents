@@ -818,3 +818,244 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     })
   })
 })
+
+describe("durable runtime turn controls (CUT-16)", () => {
+  test("registers the enforced durable-runtime-controls contract", () => {
+    expect(validateBehaviorContractRegistry(openAgentsDesktopUxContractRegistry).ok).toBe(true)
+    expect(openAgentsDesktopUxContractRegistry.contracts.find(
+      contract => contract.contractId === "openagents_desktop.chat.durable_runtime_turn_controls.v1",
+    )?.state).toBe("enforced")
+  })
+
+  const until = async (predicate: () => boolean): Promise<void> => {
+    for (let attempt = 0; attempt < 2000 && !predicate(); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1))
+    }
+    expect(predicate()).toBe(true)
+  }
+
+  /**
+   * Scripted durable fixture: a live subscription whose confirmed run stays
+   * `running` (with an exact provider runtime) until the test terminalizes it,
+   * so Stop and queue-until-idle can be exercised mid-flight.
+   */
+  const makeDurableControlFixture = (runtime: "claude_code" | "codex" | undefined) => {
+    const threadRef = "thread.control.1"
+    const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
+    const commands: Array<Record<string, unknown>> = []
+    const messages: Array<{ messageRef: string; body: string }> = []
+    let currentRun: { runRef: string; status: "running" | "completed" | "failed" | "canceled"; version: number } | null = null
+    let subscriptionRef: string | null = null
+    let sequence = 0
+
+    const runProjection = () => currentRun === null ? null : {
+      runRef: currentRun.runRef,
+      routeRef: threadRef,
+      ...(runtime === undefined ? {} : { runtime }),
+      status: currentRun.status,
+      createdAt: now,
+      updatedAt: now,
+      startedAt: now,
+      completedAt: currentRun.status === "completed" ? now : null,
+      failedAt: currentRun.status === "failed" ? now : null,
+      canceledAt: currentRun.status === "canceled" ? now : null,
+      version: currentRun.version,
+    }
+    const emit = (): void => {
+      if (subscriptionRef === null) return
+      sequence += 1
+      const event: DesktopRuntimeGatewayEvent = {
+        kind: "conversation.live.update",
+        envelope: {
+          kind: "conversation.live",
+          delivery: "confirmed",
+          subscriptionRef,
+          generation: 1,
+          sequence,
+          threadRef,
+          cursor: 5 + sequence,
+          recovery: sequence === 1 ? "initial" : "resumed",
+          messageRefs: messages.map(message => message.messageRef),
+          eventRefs: [],
+          graphRefs: [],
+        },
+        snapshot: {
+          status: { phase: "live", cursor: 5 + sequence, pendingMutationCount: 0 },
+          thread: {
+            threadRef,
+            title: "Controls",
+            messageCount: messages.length,
+            lastMessageAt: messages.length === 0 ? null : now,
+            updatedAt: now,
+            version: sequence,
+          },
+          messages: messages.map((message, index) => ({
+            messageRef: message.messageRef,
+            threadRef,
+            body: message.body,
+            createdAt: now,
+            updatedAt: now,
+            version: index + 1,
+          })),
+          timeline: currentRun === null ? null : {
+            status: { phase: "live", cursor: 5 + sequence, pendingMutationCount: 0 },
+            run: runProjection()!,
+            events: [],
+          },
+          graphs: [],
+        },
+      }
+      for (const listener of [...listeners]) listener(event)
+    }
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as {
+        command?: Record<string, string | number>
+        commandId?: string
+        query?: { id: string; intentId?: string; threadRef?: string }
+        requestId?: string
+      }
+      if (value.query?.id === "conversation.catalog") {
+        return {
+          kind: "conversation_catalog",
+          requestId: value.requestId!,
+          status,
+          threads: [{ threadRef, title: "Controls", messageCount: messages.length, lastMessageAt: messages.length === 0 ? null : now, updatedAt: now, version: 1 }],
+        }
+      }
+      if (value.query?.id === "conversation.thread") {
+        return {
+          kind: "conversation_thread",
+          requestId: value.requestId!,
+          threadRef,
+          status,
+          messages: messages.map((message, index) => ({ messageRef: message.messageRef, threadRef, body: message.body, createdAt: now, updatedAt: now, version: index + 1 })),
+        }
+      }
+      if (value.query?.id === "conversation.timeline") {
+        return { kind: "conversation_timeline", requestId: value.requestId!, threadRef, status, run: runProjection(), events: [] }
+      }
+      if (value.query?.id === "runtime.interactions") {
+        return { kind: "runtime_interactions", requestId: value.requestId!, threadRef, interactions: [] }
+      }
+      if (value.query?.id === "conversation.commandOutcome") {
+        return { kind: "runtime_command_status", requestId: value.requestId!, commandRef: value.query.intentId!, threadRef, runRef: currentRun?.runRef ?? null, status: "settled", mutationId: 1, version: 3, updatedAt: now }
+      }
+      const command = value.command!
+      commands.push(command)
+      if (command.id === "conversation.subscribe") {
+        subscriptionRef = String(command.subscriptionRef)
+        emit()
+        return { kind: "conversation_subscription_outcome", commandId: value.commandId!, subscriptionRef: subscriptionRef!, generation: Number(command.generation), status: "subscribed" }
+      }
+      if (command.id === "conversation.unsubscribe") {
+        return { kind: "conversation_subscription_outcome", commandId: value.commandId!, subscriptionRef: String(command.subscriptionRef), generation: Number(command.generation), status: "unsubscribed" }
+      }
+      if (command.id === "conversation.append") {
+        messages.push({ messageRef: String(command.messageRef), body: String(command.body) })
+        queueMicrotask(emit)
+        return { kind: "conversation_mutation_outcome", commandId: value.commandId!, status: "pending_reconcile", mutationId: commands.length }
+      }
+      if (command.id === "conversation.start") {
+        currentRun = { runRef: String(command.runRef), status: "running", version: 3 }
+        queueMicrotask(emit)
+        return { kind: "runtime_command_outcome", commandId: value.commandId!, threadRef, runRef: String(command.runRef), messageRef: String(command.messageRef), status: "accepted", mutationId: commands.length }
+      }
+      if (command.id === "conversation.interrupt") {
+        return { kind: "runtime_command_outcome", commandId: value.commandId!, threadRef, runRef: String(command.runRef), status: "unknown_pending_reconcile", mutationId: commands.length }
+      }
+      throw new Error(`unexpected command ${String(command.id)}`)
+    }
+    let nextId = 0
+    const chat = makeRuntimeConversationChatHost({
+      request,
+      subscribe: listener => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+      randomId: () => `control-${++nextId}`,
+      liveTimeoutMs: 4000,
+    })
+    return {
+      chat,
+      commands,
+      threadRef,
+      terminalize: (terminal: "completed" | "failed" | "canceled") => {
+        if (currentRun !== null) {
+          currentRun = { ...currentRun, status: terminal, version: currentRun.version + 1 }
+          emit()
+        }
+      },
+      startedRunRefs: () => commands.filter(command => command.id === "conversation.start").map(command => String(command.runRef)),
+    }
+  }
+
+  test("Stop interrupts the in-flight durable turn with the exact confirmed refs and lane", async () => {
+    const fixture = makeDurableControlFixture("claude_code")
+    // No harness given: the lane must come from the CONFIRMED run runtime.
+    const sendPromise = fixture.chat.sendMessage({ id: fixture.threadRef, message: "First" })
+    await until(() => fixture.commands.some(command => command.id === "conversation.start"))
+    // Wait until the observer has seen the confirmed running timeline.
+    await until(() => fixture.commands.length >= 3)
+    await new Promise(resolve => setTimeout(resolve, 5))
+
+    expect(await fixture.chat.interruptActive!()).toBe(true)
+    const interrupt = fixture.commands.find(command => command.id === "conversation.interrupt")
+    const runRef = fixture.startedRunRefs()[0]!
+    expect(interrupt).toEqual({
+      id: "conversation.interrupt",
+      commandRef: `desktop.interrupt.${runRef}`,
+      threadRef: fixture.threadRef,
+      runRef,
+      lane: "claude_pylon",
+      expectedVersion: 3,
+    })
+
+    // Admission truth only: the CONFIRMED canceled terminal finalizes the turn.
+    fixture.terminalize("canceled")
+    const result = await sendPromise
+    expect(result.ok).toBe(true)
+    // The send is settled, so Stop no longer has an in-flight durable target.
+    expect(await fixture.chat.interruptActive!()).toBe(false)
+    expect(fixture.commands.filter(command => command.id === "conversation.interrupt")).toHaveLength(1)
+  })
+
+  test("Stop without an in-flight durable send is a no-op that sends nothing", async () => {
+    const fixture = makeDurableControlFixture("codex")
+    expect(await fixture.chat.interruptActive!()).toBe(false)
+    expect(fixture.commands).toEqual([])
+  })
+
+  test("queue-until-idle promotes the follow-up only at the confirmed terminal on the same lane", async () => {
+    const fixture = makeDurableControlFixture("codex")
+    const sendPromise = fixture.chat.sendMessage({ id: fixture.threadRef, message: "First", harness: "codex" })
+    await until(() => fixture.commands.some(command => command.id === "conversation.start"))
+
+    expect(await fixture.chat.queueFollowup!({ threadRef: fixture.threadRef, message: "Queued follow-up" }))
+      .toEqual({ ok: true, queued: true })
+    // Nothing is appended while the first turn still streams.
+    expect(fixture.commands.filter(command => command.id === "conversation.append")).toHaveLength(1)
+
+    fixture.terminalize("completed")
+    await until(() => fixture.startedRunRefs().length === 2)
+    fixture.terminalize("completed")
+
+    const result = await sendPromise
+    expect(result.ok).toBe(true)
+    const appends = fixture.commands
+      .filter(command => command.id === "conversation.append")
+      .map(command => command.body)
+    expect(appends).toEqual(["First", "Queued follow-up"])
+    const starts = fixture.commands.filter(command => command.id === "conversation.start")
+    expect(starts.map(command => command.lane)).toEqual(["codex_app_server", "codex_app_server"])
+    expect(new Set(fixture.startedRunRefs()).size).toBe(2)
+    expect(result.thread?.notes.filter(note => note.role === "user").map(note => note.text))
+      .toEqual(["First", "Queued follow-up"])
+  })
+
+  test("queueFollowup without an in-flight durable send reports queued:false and sends nothing", async () => {
+    const fixture = makeDurableControlFixture("codex")
+    expect(await fixture.chat.queueFollowup!({ threadRef: fixture.threadRef, message: "Orphaned" }))
+      .toEqual({ ok: false, queued: false })
+    expect(fixture.commands).toEqual([])
+  })
+})

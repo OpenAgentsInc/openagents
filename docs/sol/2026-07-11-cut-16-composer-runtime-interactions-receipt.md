@@ -196,3 +196,54 @@ mobile canonical draft restoration are covered deterministically; those proofs
 and the simulator launch do not substitute for the remaining receipts.
 The default non-interactive provider safety policy must not be weakened merely
 to manufacture an approval receipt.
+
+## Addendum (2026-07-12): Desktop durable runtime controls — Stop, queue-until-idle, lane-exact control intents
+
+The Desktop chat surface previously exposed Stop and queue-until-idle only on
+the local Fable/Codex IPC lanes: the authoritative runtime conversation host
+omitted `interruptActive` and `queueFollowup`, so while signed in both
+affordances silently no-oped on durable turns. Separately, the Desktop control
+wire hard-coded `target.lane = codex_app_server` for interrupt/continue/
+retry/close control intents in Electron main, which the durable lane fence
+(`runtime_target_lane_mismatch`, landed `11a8d2481a`) rejects for Claude and
+hosted turns — Desktop fleet-cockpit controls on a Claude turn were
+unadmittable.
+
+Landed in this slice:
+
+- additive optional `lane` (`codex_app_server | claude_pylon | hosted_khala`)
+  on the protocol-v10 gateway `conversation.interrupt/continue/retry/close`
+  commands (same additive-optional precedent as `conversation.start.lane`; no
+  protocol version bump), threaded by main into the shared control-intent
+  builders instead of the hard-coded Codex default;
+- the runtime conversation host now implements `interruptActive`: Stop acts
+  only on the exact durable thread/run this renderer has in flight, derives
+  the lane from the confirmed run runtime (falling back to the dispatched
+  harness lane), sends the confirmed run `expectedVersion`, and treats the
+  acknowledgement as admission truth only — the confirmed canceled terminal
+  finalizes the turn and reverts the composer;
+- the runtime conversation host now implements `queueFollowup`: a mid-turn
+  submit enqueues a follow-up that is promoted only at the previous turn's
+  confirmed terminal, as a real `conversation.append` plus
+  `conversation.start` on the same lane; a failed promotion reports honestly
+  instead of dropping text;
+- the shell restores the cleared draft when an enqueue reports `queued:false`;
+- fleet-cockpit run controls carry the card's exact confirmed provider lane.
+
+Contract: new enforced
+`openagents_desktop.chat.durable_runtime_turn_controls.v1` in the Desktop UX
+registry (version `2026-07-12.3`); the existing composer-stop-button,
+OpenCode-composer-shape, and queue-chip oracles are unchanged and still pass.
+
+Verification: Desktop typecheck pass; focused runtime-conversation controls
+17 pass / 0 fail / 60 assertions; shell 82 pass / 476 assertions; gateway
+e2e (lane pass-through + decode + main source oracle) 22 pass / 91
+assertions; fleet workspace suites pass with the strengthened lane-bearing
+control expectation; full Desktop suite 992 pass / 3 env skips / 0 fail /
+5,309 assertions; built Electron smoke green (see the landing commit).
+
+Still open after this slice (unchanged residuals): Desktop full canonical
+rich-draft UI adoption, real provider/model/account selectors, editor/diff
+capture, attachment-bearing runtime delivery, chat-surface resume/retry/close
+parity (the fleet cockpit carries those controls today), named Codex receipt,
+deployed trusted authority, and physical assistive-technology acceptance.

@@ -12,6 +12,7 @@ import {
   decodeFleetAccountsProjection,
   decodeFleetUsageEntry,
   emptyFleetWorkspaceState,
+  fleetControlLaneForProvider,
   fleetDotEvidence,
   fleetReconnectRequired,
   fleetWorkspaceIntents,
@@ -659,10 +660,19 @@ describe("typed fleet intent loop (registry -> state -> re-render)", () => {
       }))
       const pause = nodeByKey(fleetWorkspaceView((yield* SubscriptionRef.get(state)).fleet), "fleet-cockpit-run.demo-pause") as { onPress: Parameters<typeof resolveIntentRef>[0] }
       yield* registry.dispatch(resolveIntentRef(pause.onPress, null))
-      expect(submitted).toEqual([{ action: "pause", threadRef: "thread.demo", runRef: "run.demo", expectedVersion: 7 }])
+      // CUT-16: the control carries the card's exact confirmed provider lane
+      // so the durable lane fence admits it (codex → codex_app_server).
+      expect(submitted).toEqual([{ action: "pause", threadRef: "thread.demo", runRef: "run.demo", expectedVersion: 7, lane: "codex_app_server" }])
       expect((yield* SubscriptionRef.get(state)).fleet.cockpitCards[0]?.runVersion).toBe(8)
       expect((yield* SubscriptionRef.get(state)).fleet.cockpitCards[0]?.status).toBe("canceled")
     }))
+  })
+
+  test("run controls map every confirmed provider to its exact lane and omit unknown (CUT-16)", () => {
+    expect(fleetControlLaneForProvider("codex")).toBe("codex_app_server")
+    expect(fleetControlLaneForProvider("claude")).toBe("claude_pylon")
+    expect(fleetControlLaneForProvider("openagents")).toBe("hosted_khala")
+    expect(fleetControlLaneForProvider("unknown")).toBeNull()
   })
 
   test("attention decision carries exact interaction and run generations", async () => {

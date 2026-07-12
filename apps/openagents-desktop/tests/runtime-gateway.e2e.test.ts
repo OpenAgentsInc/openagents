@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { emptyLiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import type { KhalaConversationLiveUpdate } from "@openagentsinc/khala-sync-client"
+import { readFileSync } from "node:fs"
 
 import {
   decodeDesktopRuntimeGatewayEvent,
@@ -513,12 +514,15 @@ describe("Desktop Runtime Gateway", () => {
         commandRef: "control.gateway.1",
         threadRef: "thread.gateway.1",
         runRef: "run.gateway.1",
+        // CUT-16: the exact confirmed run lane rides the control command so
+        // the durable lane fence admits Claude/hosted turn controls.
+        lane: "claude_pylon",
       },
     })
-    for (const [id, commandId] of [
-      ["conversation.continue", "continue-1"],
-      ["conversation.retry", "retry-1"],
-      ["conversation.close", "close-1"],
+    for (const [id, commandId, lane] of [
+      ["conversation.continue", "continue-1", "claude_pylon"],
+      ["conversation.retry", "retry-1", "hosted_khala"],
+      ["conversation.close", "close-1", undefined],
     ] as const) {
       expect(await gateway.request({
         kind: "command",
@@ -528,6 +532,7 @@ describe("Desktop Runtime Gateway", () => {
           commandRef: `control.gateway.${commandId}`,
           threadRef: "thread.gateway.1",
           runRef: "run.gateway.1",
+          ...(lane === undefined ? {} : { lane }),
           expectedVersion: 2,
         },
       })).toMatchObject({
@@ -539,11 +544,56 @@ describe("Desktop Runtime Gateway", () => {
     expect(calls).toEqual([
       { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.1", runRef: "run.gateway.1" },
       { id: "conversation.start", threadRef: "thread.gateway.1", messageRef: "message.gateway.2", runRef: "run.gateway.2", lane: "claude_pylon" },
-      { id: "conversation.interrupt", commandRef: "control.gateway.1", threadRef: "thread.gateway.1", runRef: "run.gateway.1" },
-      { id: "conversation.continue", commandRef: "control.gateway.continue-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", expectedVersion: 2 },
-      { id: "conversation.retry", commandRef: "control.gateway.retry-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", expectedVersion: 2 },
+      { id: "conversation.interrupt", commandRef: "control.gateway.1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", lane: "claude_pylon" },
+      { id: "conversation.continue", commandRef: "control.gateway.continue-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", lane: "claude_pylon", expectedVersion: 2 },
+      { id: "conversation.retry", commandRef: "control.gateway.retry-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", lane: "hosted_khala", expectedVersion: 2 },
       { id: "conversation.close", commandRef: "control.gateway.close-1", threadRef: "thread.gateway.1", runRef: "run.gateway.1", expectedVersion: 2 },
     ])
+  })
+
+  test("control-command lane decodes only exact known lanes and main threads it into the intent context (CUT-16)", () => {
+    const base = {
+      kind: "command" as const,
+      commandId: "lane-decode-1",
+      command: {
+        id: "conversation.interrupt" as const,
+        commandRef: "control.lane.1",
+        threadRef: "thread.gateway.1",
+        runRef: "run.gateway.1",
+      },
+    }
+    // Additive optional field: present-and-known decodes, absent decodes,
+    // unknown lane literals reject at the schema boundary.
+    expect(decodeDesktopRuntimeGatewayRequest(base)).not.toBeNull()
+    for (const lane of ["codex_app_server", "claude_pylon", "hosted_khala"]) {
+      expect(decodeDesktopRuntimeGatewayRequest({
+        ...base,
+        command: { ...base.command, lane },
+      })).not.toBeNull()
+    }
+    expect(decodeDesktopRuntimeGatewayRequest({
+      ...base,
+      command: { ...base.command, lane: "another_owner_lane" },
+    })).toBeNull()
+    expect(decodeDesktopRuntimeGatewayRequest({
+      ...base,
+      command: {
+        id: "conversation.retry",
+        commandRef: "control.lane.2",
+        threadRef: "thread.gateway.1",
+        runRef: "run.gateway.1",
+        lane: "hosted_khala",
+        expectedVersion: 2,
+      },
+    })).not.toBeNull()
+
+    // Source oracle: main's interrupt/continue/retry/close adapters thread the
+    // caller-derived lane into the shared control-intent context instead of
+    // the hard-coded Codex default (the durable lane fence rejects mismatches).
+    // Five adapters: start plus the four turn controls all pass input.lane.
+    const mainSource = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8")
+    expect(mainSource.match(/context: context\(input\.lane\)/g) ?? []).toHaveLength(5)
+    expect(mainSource).not.toContain("context: context(),")
   })
 
   test("queries confirmed interactions and queues exact decisions without optimistic resolution", async () => {
