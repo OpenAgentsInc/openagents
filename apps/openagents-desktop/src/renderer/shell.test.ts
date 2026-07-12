@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
+import type { DesktopVoiceState } from "../voice-host.ts"
 
 import {
   chatMessageMetadataFields,
@@ -670,31 +671,52 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(stop?.style).toMatchObject({ borderRadius: "full" })
   })
 
-  test("microphone toggles an honest unavailable voice-mode placeholder", async () => {
+  test("microphone drives persistent voice, exposes independent truth, and fails closed on mute", async () => {
     const idle = desktopShellView(baseState)
     const mic = nodeByKey(idle, "shell-voice-toggle") as {
       _tag?: string; icon?: string; size?: string; disabled?: boolean
       onPress: Parameters<typeof resolveIntentRef>[0]
     }
     expect(mic).toMatchObject({ _tag: "IconButton", icon: "Mic", size: "sm", disabled: false })
-    expect(nodeByKey(idle, "shell-voice-unavailable")).toBeUndefined()
+    expect(nodeByKey(idle, "shell-voice-hud")).toBeUndefined()
 
     const state = await Effect.runPromise(SubscriptionRef.make(baseState))
+    const commands: Array<Readonly<Record<string, unknown>>> = []
+    const live: DesktopVoiceState = {
+      protocolVersion: 1, phase: "live", generation: 1, nextSequence: 0,
+      acknowledgedSequence: 0, capture: true, egress: true, playback: false,
+      retainedAudio: false, activity: "listening",
+      transcript: { utteranceRef: "utterance.1", text: "Open the project", final: false },
+    }
+    const voiceHost = { command: async (command: Readonly<Record<string, unknown>>) => {
+      commands.push(command)
+      return command.id === "voice.stop" ? { ...live, phase: "idle" as const, capture: false, egress: false, activity: "stopped" as const }
+        : command.id === "voice.mute" ? { ...live, phase: "muted" as const, capture: false, egress: false, activity: "muted" as const }
+        : live
+    } }
     const registry = await Effect.runPromise(makeIntentRegistry(
       desktopShellIntents,
-      makeDesktopShellHandlers(state, fixedNow),
+      makeDesktopShellHandlers(state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, voiceHost),
     ))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(mic.onPress, null)))
     const requested = await Effect.runPromise(SubscriptionRef.get(state))
-    expect(requested.voiceModeRequested).toBe(true)
+    expect(requested.voice.host.phase).toBe("live")
+    expect(commands[0]).toMatchObject({ id: "voice.start", protocolVersion: 1, disclosureRef: "openagents.voice-disclosure.v1" })
     const requestedView = desktopShellView(requested)
-    expect(nodeByKey(requestedView, "shell-voice-unavailable")).toMatchObject({
-      _tag: "Badge",
-      label: "Voice unavailable",
-    })
+    expect(nodeByKey(requestedView, "shell-voice-capture")).toMatchObject({ label: "Mic capturing" })
+    expect(nodeByKey(requestedView, "shell-voice-egress")).toMatchObject({ label: "Audio sending" })
+    expect(nodeByKey(requestedView, "shell-voice-retention")).toMatchObject({ label: "Not retained" })
+    expect(nodeByKey(requestedView, "shell-voice-playback")).toMatchObject({ label: "Playback off" })
+    expect(nodeByKey(requestedView, "shell-voice-transcript-state")).toMatchObject({ label: "Interim" })
+
+    const mute = nodeByKey(requestedView, "shell-voice-mute") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(mute.onPress, null)))
+    const mutedView = desktopShellView(await Effect.runPromise(SubscriptionRef.get(state)))
+    expect(nodeByKey(mutedView, "shell-voice-capture")).toMatchObject({ label: "Mic off" })
+    expect(nodeByKey(mutedView, "shell-voice-egress")).toMatchObject({ label: "Not sending" })
 
     await Effect.runPromise(registry.dispatch(resolveIntentRef(mic.onPress, null)))
-    expect((await Effect.runPromise(SubscriptionRef.get(state))).voiceModeRequested).toBe(false)
+    expect((await Effect.runPromise(SubscriptionRef.get(state))).voice.host.phase).toBe("idle")
 
     const pendingState = await Effect.runPromise(SubscriptionRef.make(withPending(baseState, true)))
     const pendingRegistry = await Effect.runPromise(makeIntentRegistry(
@@ -706,7 +728,7 @@ describe("desktopShellView (state -> component tree)", () => {
     }
     expect(pendingMic.disabled).toBe(true)
     await Effect.runPromise(pendingRegistry.dispatch(resolveIntentRef(pendingMic.onPress, null)))
-    expect((await Effect.runPromise(SubscriptionRef.get(pendingState))).voiceModeRequested).toBe(false)
+    expect((await Effect.runPromise(SubscriptionRef.get(pendingState))).voice.host.phase).toBe("idle")
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {

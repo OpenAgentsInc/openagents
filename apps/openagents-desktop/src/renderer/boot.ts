@@ -65,6 +65,7 @@ import {
   withLiveAgentGraph,
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
+import { withVoiceHostState } from "./voice-mode.ts"
 import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
 import {
   migrateDesktopPreferences,
@@ -800,6 +801,18 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // clear fiber can never fire after the renderer unmounts.
     const noticeController = makeCommandNoticeController(state)
     yield* Effect.addFinalizer(() => noticeController.shutdown)
+    let voiceCommandSequence = 0
+    const voiceHost = {
+      command: async (command: Readonly<Record<string, unknown>>) => {
+        if (typeof bridge?.runtimeRequest !== "function") return null
+        const response = await bridge.runtimeRequest({
+          kind: "command",
+          commandId: `renderer-voice-${++voiceCommandSequence}`,
+          command,
+        })
+        return response.kind === "voice_state" ? response.state : null
+      },
+    }
     const registry = yield* makeIntentRegistry(
       desktopShellIntents,
       makeDesktopShellHandlers(state, undefined, async (input) => {
@@ -857,8 +870,31 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         gather: () => readBridge()?.diagnostics?.gather?.() ?? Promise.resolve(null),
         runAction: (action) => readBridge()?.diagnostics?.runAction?.(action) ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
         exportRedacted: () => readBridge()?.diagnostics?.exportRedacted?.() ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
-      }),
+      }, voiceHost),
     )
+    if (typeof bridge?.runtimeRequest === "function") {
+      const response = yield* Effect.promise(() => bridge.runtimeRequest!({
+        kind: "query",
+        requestId: "renderer-voice-initial",
+        query: { id: "voice.state" },
+      }))
+      if (response.kind === "voice_state") {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          voice: withVoiceHostState(current.voice, response.state),
+        }))
+      }
+    }
+    if (typeof bridge?.runtimeSubscribe === "function") {
+      const unsubscribeVoice = bridge.runtimeSubscribe(event => {
+        if (event.kind !== "voice.lifecycle") return
+        void Effect.runPromise(SubscriptionRef.update(state, current => ({
+          ...current,
+          voice: withVoiceHostState(current.voice, event.state),
+        })))
+      })
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribeVoice))
+    }
     if (typeof bridge?.workspaceSubscribe === "function") {
       const unsubscribeWorkspace = bridge.workspaceSubscribe(change => {
         void Effect.runPromise(

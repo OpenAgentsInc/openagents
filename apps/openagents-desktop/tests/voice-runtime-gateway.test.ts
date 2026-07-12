@@ -4,10 +4,10 @@ import { createDesktopVoiceHost, type VoiceNativeMedia } from "../src/voice-host
 
 test("Runtime Gateway admits only bounded voice commands and public-safe projections", async () => {
   let callbacks: Parameters<VoiceNativeMedia["open"]>[0] | null = null
-  const host = createDesktopVoiceHost({ permission: () => "granted", requestPermission: () => "granted", media: { open: input => { callbacks = input; return { setCaptureEnabled: () => undefined, close: () => undefined } } } })
+  const host = createDesktopVoiceHost({ resolveIdentity: ({ threadRef, sessionRef, generation }) => ({ ownerRef: "owner", deviceRef: "device", threadRef, sessionRef, generation }), permission: () => "granted", requestPermission: () => "granted", media: { open: input => { callbacks = input; return { setCaptureEnabled: () => undefined, close: () => undefined } } } })
   const gateway = createDesktopRuntimeGateway(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => host)
   const events: unknown[] = []; gateway.subscribe(event => events.push(event)); gateway.start()
-  const started = await gateway.request({ kind: "command", commandId: "voice-1", command: { id: "voice.start", protocolVersion: 1, identity: { ownerRef: "owner", deviceRef: "device", threadRef: "thread", sessionRef: "session", generation: 1 }, disclosureRef: "disclosure.v1" } })
+  const started = await gateway.request({ kind: "command", commandId: "voice-1", command: { id: "voice.start", protocolVersion: 1, threadRef: "thread", sessionRef: "session", disclosureRef: "disclosure.v1" } })
   expect(started).toMatchObject({ kind: "voice_state", state: { phase: "connecting", generation: 1 } })
   callbacks!.onState("live")
   expect(events.at(-1)).toMatchObject({ kind: "voice.lifecycle", state: { phase: "live" } })

@@ -85,15 +85,15 @@ const NonNegativeIntSchema = Schema.Number.check(
   Schema.isGreaterThanOrEqualTo(0),
 )
 const OperationContextField = { context: Schema.optional(DesktopOperationContextSchema) }
-const DesktopVoiceIdentitySchema = Schema.Struct({
-  ownerRef: PublicRefSchema, deviceRef: PublicRefSchema, threadRef: PublicRefSchema,
-  sessionRef: PublicRefSchema, generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
-})
 export const DesktopVoiceStateSchema = Schema.Struct({
   protocolVersion: Schema.Literal(1),
   phase: Schema.Literals(["idle", "requesting_permission", "connecting", "live", "muted", "suspended", "denied", "offline", "backpressured", "device_changed", "revoked", "failed"]),
   generation: NonNegativeIntSchema, nextSequence: NonNegativeIntSchema, acknowledgedSequence: NonNegativeIntSchema,
   capture: Schema.Boolean, egress: Schema.Boolean, playback: Schema.Boolean,
+  retainedAudio: Schema.Boolean,
+  activity: Schema.Literals(["stopped", "permission", "connecting", "listening", "speech_detected", "transcribing", "awaiting_confirmation", "executing", "speaking", "muted", "reconnecting", "degraded", "revoked"]),
+  transcript: Schema.optional(Schema.Struct({ utteranceRef: PublicRefSchema, text: Schema.String.check(Schema.isMaxLength(16_384)), final: Schema.Boolean })),
+  proposal: Schema.optional(Schema.Struct({ proposalRef: PublicRefSchema, targetRef: PublicRefSchema, state: Schema.Literals(["proposed", "applied", "refused"]) })),
   reason: Schema.optional(Schema.Literals(["permission_denied", "network_lost", "gateway_revoked", "helper_crashed", "stale_generation", "backpressure", "device_changed"])),
 })
 
@@ -252,7 +252,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
       }),
       Schema.Struct({ id: Schema.Literal("session.sign_in") }),
       Schema.Struct({ id: Schema.Literal("session.sign_out") }),
-      Schema.Struct({ id: Schema.Literal("voice.start"), protocolVersion: Schema.Literal(1), identity: DesktopVoiceIdentitySchema, disclosureRef: PublicRefSchema }),
+      Schema.Struct({ id: Schema.Literal("voice.start"), protocolVersion: Schema.Literal(1), threadRef: PublicRefSchema, sessionRef: PublicRefSchema, disclosureRef: PublicRefSchema }),
       Schema.Struct({ id: Schema.Literals(["voice.stop", "voice.mute", "voice.unmute", "voice.suspend", "voice.resume", "voice.revoke"]), protocolVersion: Schema.Literal(1) }),
       Schema.Struct({
         id: Schema.Literal("conversation.subscribe"),

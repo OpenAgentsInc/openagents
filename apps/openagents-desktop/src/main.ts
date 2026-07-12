@@ -197,7 +197,7 @@ import {
 } from "./coding-catalog-contract.ts"
 import { makeCodexHistoryHost } from "./codex-history-host.ts"
 import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
-import { createDesktopVoiceHost } from "./voice-host.ts"
+import { createDesktopVoiceHost, type VoiceNativeMedia } from "./voice-host.ts"
 import { createPackagedVoiceNativeMedia } from "./voice-native-helper.ts"
 import {
   DesktopWorkspaceChooseChannel,
@@ -762,33 +762,63 @@ const hostLifecycle = makeDesktopHostLifecycle({
   account: codexConnect,
   history: codexHistoryHost,
 })
+const voiceMedia: VoiceNativeMedia = smokeMode
+  ? {
+      open: input => {
+        let captureEnabled = true
+        queueMicrotask(() => {
+          input.onState("live")
+          input.onControl({ kind: "activity", activity: "listening" })
+          input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open the project", final: false })
+          setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open the project", final: true }), 80)
+          setTimeout(() => input.onControl({ kind: "activity", activity: "speaking" }), 120)
+        })
+        return {
+          setCaptureEnabled: enabled => { captureEnabled = enabled; void captureEnabled },
+          close: () => { captureEnabled = false },
+        }
+      },
+    }
+  : createPackagedVoiceNativeMedia({
+      resourcesPath: app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "dist"),
+      verifySignature: absolutePath => {
+        if (!app.isPackaged) return true
+        try { execFileSync("/usr/bin/codesign", ["--verify", "--strict", absolutePath], { stdio: "ignore" }); return true } catch { return false }
+      },
+      connection: async (identity, disclosureRef) => {
+        const credential = desktopSessionVault?.load()
+        if (credential === null || credential === undefined) throw new Error("voice_session_unavailable")
+        const response = await fetch(`${process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com"}/api/desktop/audio/grant`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${credential.accessToken}`, "content-type": "application/json", "x-openagents-desktop-device-ref": identity.deviceRef },
+          body: JSON.stringify({ schema: "openagents.audio.grant.request.v1", identity, disclosureRef }),
+        })
+        if (!response.ok) throw new Error("voice_grant_refused")
+        const value = await response.json() as Record<string, unknown>
+        if (value.schema !== "openagents.audio.grant.v1" || value.disclosureRef !== disclosureRef || typeof value.gatewayUrl !== "string" || !value.gatewayUrl.startsWith("wss://") || typeof value.grant !== "string" || value.grant.length < 16 || value.grant.length > 4096 || typeof value.expiresAtMs !== "number" || !Number.isSafeInteger(value.expiresAtMs) || value.expiresAtMs <= Date.now() || value.expiresAtMs > Date.now() + 5 * 60_000) throw new Error("voice_grant_invalid")
+        return { gatewayUrl: value.gatewayUrl, grant: value.grant }
+      },
+    })
 hostLifecycle.replaceVoice(createDesktopVoiceHost({
+  resolveIdentity: ({ threadRef, sessionRef, generation }) => {
+    if (smokeMode) return { ownerRef: "owner.smoke", deviceRef: desktopOperationSessionRef, threadRef, sessionRef, generation }
+    const credential = desktopSessionVault?.load()
+    return credential === null || credential === undefined ? null : {
+      ownerRef: credential.ownerUserId,
+      deviceRef: desktopOperationSessionRef,
+      threadRef,
+      sessionRef,
+      generation,
+    }
+  },
   permission: () => {
+    if (smokeMode) return "granted"
     if (process.platform !== "darwin") return "denied"
     const status = systemPreferences.getMediaAccessStatus("microphone")
     return status === "granted" ? "granted" : status === "not-determined" ? "not_determined" : "denied"
   },
-  requestPermission: async () => process.platform === "darwin" && await systemPreferences.askForMediaAccess("microphone") ? "granted" : "denied",
-  media: createPackagedVoiceNativeMedia({
-    resourcesPath: app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "dist"),
-    verifySignature: absolutePath => {
-      if (!app.isPackaged) return true
-      try { execFileSync("/usr/bin/codesign", ["--verify", "--strict", absolutePath], { stdio: "ignore" }); return true } catch { return false }
-    },
-    connection: async (identity, disclosureRef) => {
-      const credential = desktopSessionVault?.load()
-      if (credential === null || credential === undefined) throw new Error("voice_session_unavailable")
-      const response = await fetch(`${process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com"}/api/desktop/audio/grant`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${credential.accessToken}`, "content-type": "application/json", "x-openagents-desktop-device-ref": identity.deviceRef },
-        body: JSON.stringify({ schema: "openagents.audio.grant.request.v1", identity, disclosureRef }),
-      })
-      if (!response.ok) throw new Error("voice_grant_refused")
-      const value = await response.json() as Record<string, unknown>
-      if (value.schema !== "openagents.audio.grant.v1" || value.disclosureRef !== disclosureRef || typeof value.gatewayUrl !== "string" || !value.gatewayUrl.startsWith("wss://") || typeof value.grant !== "string" || value.grant.length < 16 || value.grant.length > 4096 || typeof value.expiresAtMs !== "number" || !Number.isSafeInteger(value.expiresAtMs) || value.expiresAtMs <= Date.now() || value.expiresAtMs > Date.now() + 5 * 60_000) throw new Error("voice_grant_invalid")
-      return { gatewayUrl: value.gatewayUrl, grant: value.grant }
-    },
-  }),
+  requestPermission: async () => smokeMode || process.platform === "darwin" && await systemPreferences.askForMediaAccess("microphone") ? "granted" : "denied",
+  media: voiceMedia,
 }))
 const workspaceSearchRegistry = makeWorkspaceSearchRegistry(() => hostLifecycle.workspace())
 const workspaceSearchOwnerRef = (webContentsId: number): string =>
@@ -2992,6 +3022,24 @@ const smokeComposerGestures = `(async () => {
   return { ok: true, iconOnlySend: true, toggledBoth: true, outsideUntouched: true }
 })()`
 
+const smokeVoiceMode = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const find = (key) => document.querySelector('[data-en-key="' + key + '"]')
+  const mic = find("shell-voice-toggle")
+  if (!(mic instanceof HTMLElement)) return { ok: false, reason: "voice control missing" }
+  mic.click()
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && find("shell-voice-transcript-state")?.textContent !== "Final") await wait(25)
+  const truth = ["shell-voice-capture", "shell-voice-egress", "shell-voice-retention", "shell-voice-playback"].map(key => find(key)?.textContent ?? "")
+  if (find("shell-voice-transcript-state")?.textContent !== "Final") return { ok: false, reason: "final transcript missing" }
+  const mute = find("shell-voice-mute")
+  if (!(mute instanceof HTMLElement)) return { ok: false, reason: "mute control missing" }
+  mute.click(); await wait(50)
+  const muted = find("shell-voice-capture")?.textContent === "Mic off" && find("shell-voice-egress")?.textContent === "Not sending"
+  mic.click(); await wait(50)
+  return { ok: muted && truth.includes("Not retained") && find("shell-voice-hud") === null, truth, muted, stopped: find("shell-voice-hud") === null }
+})()`
+
 // Fable local streaming journey (#8712, EP250 owner fixes): from the fresh
 // chat, the Fable chip must be enabled (fixture account) and Codex visibly
 // disabled with its reason ONLY in the accessible label — NO caption text
@@ -3810,6 +3858,8 @@ const runSmoke = (window: BrowserWindow): void => {
         // session; a scripted delta sequence flows through the real mapping).
         await step("fable-local-streamed-turn-FIXTURE", smokeFableLocalStreaming)
         await captureShot(window, "07-fable-local-streamed")
+        await step("persistent-voice-mode-FIXTURE", smokeVoiceMode)
+        await captureShot(window, "07b-persistent-voice")
         // Release the codex availability gate: the popover assertions above
         // ran against the deterministic disabled/"verifying" chip; from here
         // the fixture PROBE-VERIFIED evidence lights the chip for the

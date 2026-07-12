@@ -110,6 +110,8 @@ import {
   type GitPanelState,
 } from "./git-panel.ts"
 import { sidebarAccountsView } from "./sidebar-accounts.ts"
+import { idleVoiceModeState, voiceActive, voiceIndicatorText, withVoiceHostState, type VoiceModeState } from "./voice-mode.ts"
+import type { DesktopVoiceState } from "../voice-host.ts"
 import type { GitDiffResult } from "../git-github-contract.ts"
 import {
   emptyWorkspaceBrowserState,
@@ -324,8 +326,8 @@ export type DesktopShellState = Readonly<{
   selectedAgentRef: string | null
   /** User-resized width of the live/message context rail. */
   chatContextWidth: number
-  /** Presentation-only voice-mode request; capture is not implemented yet. */
-  voiceModeRequested: boolean
+  /** Public-safe host voice projection; raw media and credentials never enter renderer. */
+  voice: VoiceModeState
   codingCatalog: DesktopCodingCatalogProjection
   codingSessionFilter: CodingSessionFilter
   codingSessionQuery: string
@@ -415,7 +417,7 @@ export const initialDesktopShellState = (
   agentGraphExpanded: false,
   selectedAgentRef: null,
   chatContextWidth: 336,
-  voiceModeRequested: false,
+  voice: idleVoiceModeState(),
   codingCatalog: emptyDesktopCodingCatalogProjection(),
   codingSessionFilter: "active",
   codingSessionQuery: "",
@@ -523,6 +525,8 @@ export const DesktopModelSelected = defineIntent(
   Schema.Literals(["gpt-5.6-sol", "gpt-5.5", "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]),
 )
 export const DesktopVoiceModeToggled = defineIntent("DesktopVoiceModeToggled", Schema.Null)
+export const DesktopVoiceMuteToggled = defineIntent("DesktopVoiceMuteToggled", Schema.Null)
+export const DesktopVoiceTranscriptAccepted = defineIntent("DesktopVoiceTranscriptAccepted", Schema.Null)
 export const DesktopProviderAccountSelected = defineIntent("DesktopProviderAccountSelected", Schema.String)
 export const DesktopPermissionModeSelected = defineIntent("DesktopPermissionModeSelected", Schema.Literals(["owner_full", "plan_only"]))
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
@@ -611,6 +615,8 @@ export const desktopShellIntents = [
   DesktopCodexReasoningSelected,
   DesktopModelSelected,
   DesktopVoiceModeToggled,
+  DesktopVoiceMuteToggled,
+  DesktopVoiceTranscriptAccepted,
   DesktopProviderAccountSelected,
   DesktopPermissionModeSelected,
   DesktopChatSelected,
@@ -1259,6 +1265,9 @@ export const withLoopProof = (state: DesktopShellState, timestamp: string): Desk
 
 /** Host seam for window-level controls (fullscreen toggle). */
 export type DesktopWindowHost = { readonly toggleFullScreen: () => Promise<boolean> }
+export type DesktopVoiceRendererHost = Readonly<{
+  command: (command: Readonly<Record<string, unknown>>) => Promise<DesktopVoiceState | null>
+}>
 
 export const makeDesktopShellHandlers = (
   state: SubscriptionRef.SubscriptionRef<DesktopShellState>,
@@ -1295,6 +1304,7 @@ export const makeDesktopShellHandlers = (
   // rejection and a keybinding notice cancel one another's pending auto-clear.
   noticeController: CommandNoticeController = makeCommandNoticeController(state),
   diagnosticsBridge: DiagnosticsBridge = unavailableDiagnosticsBridge,
+  voiceHost: DesktopVoiceRendererHost = { command: async () => null },
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
@@ -1637,10 +1647,29 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => isCodexModel(model)
       ? { ...current, codexModel: model }
       : { ...current, claudeModel: model }),
-  DesktopVoiceModeToggled: () =>
-    SubscriptionRef.update(state, (current) => current.pending
-      ? current
-      : { ...current, voiceModeRequested: !current.voiceModeRequested }),
+  DesktopVoiceModeToggled: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.pending) return
+    const active = voiceActive(current.voice)
+    const sessionRef = current.voice.sessionRef ?? `voice.desktop.${Date.now()}`
+    const threadRef = current.activeThreadId ?? "thread.voice.primary"
+    if (!active) yield* SubscriptionRef.update(state, value => ({ ...value, voice: { ...value.voice, sessionRef, disclosureAccepted: true } }))
+    const projected = yield* Effect.promise(() => voiceHost.command(active
+      ? { id: "voice.stop", protocolVersion: 1 }
+      : { id: "voice.start", protocolVersion: 1, threadRef, sessionRef, disclosureRef: "openagents.voice-disclosure.v1" }))
+    if (projected !== null) yield* SubscriptionRef.update(state, value => ({ ...value, voice: withVoiceHostState(value.voice, projected) }))
+    else if (!active) yield* SubscriptionRef.update(state, value => ({ ...value, voice: { ...value.voice, errorText: "Voice is unavailable. Text remains available." } }))
+  }),
+  DesktopVoiceMuteToggled: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (!voiceActive(current.voice)) return
+    const projected = yield* Effect.promise(() => voiceHost.command({ id: current.voice.host.phase === "muted" ? "voice.unmute" : "voice.mute", protocolVersion: 1 }))
+    if (projected !== null) yield* SubscriptionRef.update(state, value => ({ ...value, voice: withVoiceHostState(value.voice, projected) }))
+  }),
+  DesktopVoiceTranscriptAccepted: () =>
+    SubscriptionRef.update(state, current => current.voice.host.transcript?.final === true
+      ? { ...current, input: current.voice.host.transcript.text }
+      : current),
   DesktopProviderAccountSelected: (accountRef) =>
     SubscriptionRef.update(state, (current) => {
       if (current.activeThreadId === null) return current
@@ -3067,29 +3096,56 @@ const composerActionControl = (state: DesktopShellState): View => {
   )
 }
 
-/**
- * Voice is intentionally presentation-only until capture/transcription exists.
- * The typed toggle exposes an honest unavailable state and starts no device,
- * permission, network, or provider action.
- */
+const voiceHud = (state: DesktopShellState): View | null => {
+  if (state.voice.host.phase === "idle" && state.voice.errorText === null) return null
+  const indicators = voiceIndicatorText(state.voice)
+  const transcript = state.voice.host.transcript
+  const proposal = state.voice.host.proposal
+  return Stack({
+    key: "shell-voice-hud",
+    direction: "column",
+    gap: "1.5",
+    style: { width: "full", backgroundColor: "surfaceRaised", borderRadius: "md", padding: "2" },
+    a11y: { role: "group", label: `Voice status: ${indicators.status}. ${indicators.capture}. ${indicators.egress}. ${indicators.retention}. ${indicators.playback}.` },
+  }, [
+    Stack({ key: "shell-voice-status-row", direction: "row", gap: "1", align: "center", style: { width: "full" } }, [
+      Icon({ key: "shell-voice-status-icon", name: "Mic", size: "sm", color: state.voice.host.capture ? "info" : "textMuted", label: indicators.status }),
+      Text({ key: "shell-voice-status", content: indicators.status, variant: "label", color: "textPrimary" }),
+      Spacer({ key: "shell-voice-status-fill", flex: true }),
+      Button({ key: "shell-voice-mute", label: state.voice.host.phase === "muted" ? "Unmute" : "Mute", variant: "ghost", disabled: !voiceActive(state.voice), onPress: IntentRef("DesktopVoiceMuteToggled"), a11y: { label: state.voice.host.phase === "muted" ? "Unmute microphone and resume sending audio" : "Mute microphone and stop sending audio" } }),
+    ]),
+    Stack({ key: "shell-voice-indicators", direction: "row", gap: "1", align: "center", style: { width: "full" } }, [
+      Badge({ key: "shell-voice-capture", label: indicators.capture, tone: state.voice.host.capture ? "info" : "neutral" }),
+      Badge({ key: "shell-voice-egress", label: indicators.egress, tone: state.voice.host.egress ? "info" : "neutral" }),
+      Badge({ key: "shell-voice-retention", label: indicators.retention, tone: state.voice.host.retainedAudio ? "warn" : "neutral" }),
+      Badge({ key: "shell-voice-playback", label: indicators.playback, tone: state.voice.host.playback ? "success" : "neutral" }),
+    ]),
+    ...(transcript === undefined ? [] : [Stack({ key: "shell-voice-transcript", direction: "row", gap: "1", align: "center", style: { width: "full" }, a11y: { role: "group", label: transcript.final ? "Final voice transcript" : "Provisional voice transcript" } }, [
+      Badge({ key: "shell-voice-transcript-state", label: transcript.final ? "Final" : "Interim", tone: transcript.final ? "success" : "neutral" }),
+      Text({ key: "shell-voice-transcript-text", content: transcript.text, variant: "body", color: transcript.final ? "textPrimary" : "textMuted" }),
+      Spacer({ key: "shell-voice-transcript-fill", flex: true }),
+      ...(transcript.final ? [Button({ key: "shell-voice-transcript-use", label: "Edit in composer", variant: "ghost", onPress: IntentRef("DesktopVoiceTranscriptAccepted") })] : []),
+    ])]),
+    ...(proposal === undefined ? [] : [Stack({ key: "shell-voice-proposal", direction: "row", gap: "1", align: "center", style: { width: "full" }, a11y: { role: "group", label: `Voice proposed ${proposal.targetRef}; not applied` } }, [
+      Badge({ key: "shell-voice-proposal-state", label: proposal.state === "proposed" ? "Proposed" : proposal.state === "applied" ? "Applied" : "Refused", tone: proposal.state === "applied" ? "success" : proposal.state === "refused" ? "danger" : "warn" }),
+      Text({ key: "shell-voice-proposal-target", content: proposal.targetRef, variant: "caption", color: "textPrimary" }),
+      ...(proposal.state === "proposed" ? [Text({ key: "shell-voice-proposal-truth", content: "Not applied", variant: "caption", color: "textMuted" })] : []),
+    ])]),
+    ...(state.voice.errorText === null ? [] : [Text({ key: "shell-voice-error", content: state.voice.errorText, variant: "caption", color: "danger", a11y: { role: "region", label: `Voice error: ${state.voice.errorText}` } })]),
+  ])
+}
+
 const composerVoiceControls = (state: DesktopShellState): ReadonlyArray<View> => [
-  ...(state.voiceModeRequested ? [Badge({
-    key: "shell-voice-unavailable",
-    label: "Voice unavailable",
-    tone: "neutral",
-  })] : []),
   IconButton({
     key: "shell-voice-toggle",
     icon: "Mic",
     size: "sm",
-    accessibilityLabel: state.voiceModeRequested
-      ? "Voice mode unavailable; turn off voice mode"
-      : "Turn on voice mode; voice is not available yet",
+    accessibilityLabel: voiceActive(state.voice) ? "Stop voice mode" : "Start voice mode",
     disabled: state.pending,
     onPress: IntentRef("DesktopVoiceModeToggled"),
     style: {
-      backgroundColor: state.voiceModeRequested ? "stateSelected" : "surfaceRaised",
-      color: state.voiceModeRequested ? "info" : "textMuted",
+      backgroundColor: voiceActive(state.voice) ? "stateSelected" : "surfaceRaised",
+      color: voiceActive(state.voice) ? "info" : "textMuted",
       borderRadius: "md",
     },
   }),
@@ -3345,6 +3401,7 @@ const shellComposer = (state: DesktopShellState): View =>
       ...composerImageRegion(state),
       ...composerReviewContextRegion(state),
       ...composerFileContextRegion(state),
+      ...(voiceHud(state) === null ? [] : [voiceHud(state)!]),
       // Multiline text input on TOP — grows/wraps with content (textarea).
       TextField({
         key: "shell-input",

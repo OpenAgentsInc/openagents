@@ -688,6 +688,23 @@ The [Effect/Rust decision](./2026-07-12-effect-vs-rust-audio-architecture-decisi
 assigns AUDIO-4's native media loop to a signed Rust helper while keeping the
 cloud gateway and every application/authority surface in Effect/TypeScript.
 
+### AUDIO-5 implementation receipt
+
+The Desktop renderer now consumes the host-owned voice projection through the
+existing Runtime Gateway rather than owning a microphone or websocket. Its
+compact Effect Native HUD independently reports capture, egress, retention,
+and playback; renders provisional and final transcripts differently; keeps a
+final transcript editable in the text composer; and labels command proposals
+as proposals until a later registered-command receipt proves application.
+Permission, connection, device, backpressure, revocation, and media failures
+leave the ordinary text surface available. Static token-driven presentation
+adds no motion dependency, so reduced-motion operation is identical.
+
+This validates the architecture decision with implementation evidence: Rust is
+valuable for the long-lived native capture/playback loop, but moving renderer
+state, command policy, session identity, or cloud orchestration into Rust would
+duplicate existing Effect authorities without improving realtime media.
+
 ### V0 — owner direction and contracts
 
 - Record the owner direction for explicit click-to-start persistent capture and
