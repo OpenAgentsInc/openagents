@@ -28,7 +28,8 @@
  *
  * Sandbox/approval posture matches the owner-local executor invariant the
  * SDK path already uses: `approvalPolicy: "never"`, sandbox
- * `danger-full-access` (`runWithRealCodexSdk`'s constants). Any unexpected
+ * app-server `dangerFullAccess` (`runWithRealCodexSdk`'s
+ * `danger-full-access` equivalent). Any unexpected
  * server->client request is answered with a JSON-RPC error (fail-closed) so
  * the connection can never hang on an approval this posture should not
  * receive.
@@ -287,7 +288,7 @@ export const makeCodexAppServerRunner = (
     const method = message.method
     if (typeof method === "string" && typeof id === "number") {
       // Server -> client request. The owner-local posture (approvalPolicy
-      // never, danger-full-access) should produce none; refuse fail-closed
+      // never, dangerFullAccess) should produce none; refuse fail-closed
       // so the connection can never hang on an unanswerable elicitation.
       send({ error: { code: -32601, message: `unsupported client method: ${method}` }, id })
       return
@@ -373,7 +374,7 @@ export const makeCodexAppServerRunner = (
       // Owner-local dispatch always runs full access with network enabled
       // (the dispatch call site pins networkAccessEnabled: true); mirrors
       // CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE on the SDK path.
-      sandboxPolicy: { type: "danger-full-access" },
+      sandboxPolicy: { type: "dangerFullAccess" },
       threadId,
       ...(input.model === undefined ? {} : { model: input.model }),
     })

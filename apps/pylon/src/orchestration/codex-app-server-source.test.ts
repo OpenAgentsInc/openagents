@@ -215,7 +215,7 @@ describe("makeCodexAppServerRunner", () => {
     ])
     const turnStart = fake.written[3]!.params as JsonRecord
     expect(turnStart.approvalPolicy).toBe("never")
-    expect(turnStart.sandboxPolicy).toEqual({ type: "danger-full-access" })
+    expect(turnStart.sandboxPolicy).toEqual({ type: "dangerFullAccess" })
     expect(turnStart.input).toEqual([{ text: "run the fixture task", type: "text" }])
     expect(fake.spawned[0]!.args).toEqual(["app-server"])
     expect(fake.wasKilled()).toBe(true)
