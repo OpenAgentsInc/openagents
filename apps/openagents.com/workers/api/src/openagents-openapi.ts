@@ -4328,6 +4328,141 @@ const schemaComponents = (): JsonSchema => ({
   OperatorRlmTracesProjection: objectSummary(
     'Operator-only RLM trace projection with redacted/ref-only Recursive Language Model trace metadata, Blueprint signature refs, evidence refs, and authority flags. It never returns raw trajectory JSON or executor payloads.',
   ),
+  BusinessOutreachTemplateApprovalRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['approvalReceiptRef', 'approvedByRef', 'templateVersionRef'],
+    properties: {
+      approvalReceiptRef: {
+        type: 'string',
+        description:
+          'Public-safe operator LG-4 approval receipt ref recorded for the template version.',
+      },
+      approvedByRef: {
+        type: 'string',
+        description: 'Public-safe owner/operator ref that approved the template.',
+      },
+      sourceRef: {
+        type: 'string',
+        description:
+          'Optional public-safe source ref for the approval decision. Defaults to the LG-4 issue ref.',
+      },
+      templateVersionRef: {
+        type: 'string',
+        description: 'Public-safe outreach template version ref being approved.',
+      },
+    },
+  },
+  BusinessOutreachTemplateApproval: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'approvalReceiptRef',
+      'approvedByRef',
+      'createdAt',
+      'sourceRef',
+      'templateVersionRef',
+    ],
+    properties: {
+      approvalReceiptRef: { type: 'string' },
+      approvedByRef: { type: 'string' },
+      createdAt: { type: 'string' },
+      sourceRef: { type: 'string' },
+      templateVersionRef: { type: 'string' },
+    },
+  },
+  BusinessOutreachTemplateApprovalEnvelope: envelope(
+    'approval',
+    '#/components/schemas/BusinessOutreachTemplateApproval',
+  ),
+  BusinessOutreachSendRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['draftRef', 'mailboxRef', 'sourceRef'],
+    properties: {
+      approvalReceiptRef: {
+        type: 'string',
+        description:
+          'Optional public-safe approval receipt ref to pin the send to a specific prior template approval. When omitted, the route uses the latest stored approval for the draft template.',
+      },
+      channel: {
+        type: 'string',
+        enum: ['email', 'apollo_sequence'],
+      },
+      dailyMailboxSendCap: {
+        type: 'integer',
+        minimum: 1,
+        description:
+          'Per-mailbox cap enforced before recording the send receipt.',
+      },
+      draftRef: {
+        type: 'string',
+        description: 'Public-safe business outreach draft ref.',
+      },
+      mailboxRef: {
+        type: 'string',
+        description: 'Public-safe mailbox or provider-lane ref.',
+      },
+      sendRef: {
+        type: 'string',
+        description:
+          'Optional idempotent public-safe send ref. The send receipt is derived from this ref when supplied.',
+      },
+      sentAt: {
+        type: 'string',
+        description:
+          'Optional public-safe send timestamp. Defaults to server time.',
+      },
+      sourceRef: {
+        type: 'string',
+        description: 'Public-safe source ref for the outreach send.',
+      },
+    },
+  },
+  BusinessOutreachSend: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'approvalReceiptRef',
+      'channel',
+      'createdAt',
+      'draftRef',
+      'mailboxRef',
+      'pipelineRef',
+      'sendReceiptRef',
+      'sendRef',
+      'sentAt',
+      'sourceRef',
+      'subjectRef',
+      'templateVersionRef',
+    ],
+    properties: {
+      approvalReceiptRef: { type: 'string' },
+      channel: { type: 'string', enum: ['email', 'apollo_sequence'] },
+      createdAt: { type: 'string' },
+      draftRef: { type: 'string' },
+      mailboxRef: { type: 'string' },
+      pipelineRef: { type: 'string' },
+      sendReceiptRef: { type: 'string' },
+      sendRef: { type: 'string' },
+      sentAt: { type: 'string' },
+      sourceRef: { type: 'string' },
+      subjectRef: { type: 'string' },
+      templateVersionRef: { type: 'string' },
+    },
+  },
+  BusinessOutreachSendEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pipelineReceiptRefs', 'send'],
+    properties: {
+      pipelineReceiptRefs: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      send: { $ref: '#/components/schemas/BusinessOutreachSend' },
+    },
+  },
   CrmApprovalQueueEnvelope: {
     type: 'object',
     additionalProperties: false,
@@ -15675,6 +15810,52 @@ const paths = (): JsonSchema => ({
           'Forum tip settlement claim.',
           '#/components/schemas/ForumTipSettlementClaimResponse',
         ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/business/outreach/template-approvals': {
+    post: operation({
+      operationId: 'approveOperatorBusinessOutreachTemplate',
+      summary: 'Approve a business outreach template',
+      description:
+        'Admin-bearer operator action that records a public-safe owner approval receipt for an outreach template version. This is the operator LG-4 approval route anchor used by Autopilot Lead Gen, but it does not send outreach, reveal contacts, spend Apollo credits, publish content, settle money, or clear the Lead Gen live-send/customer-result blockers by itself.',
+      tags: ['Operator', 'Business'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/BusinessOutreachTemplateApprovalRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Template approval receipt.',
+          '#/components/schemas/BusinessOutreachTemplateApprovalEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/business/pipeline/{pipelineRef}/outreach-sends': {
+    post: operation({
+      operationId: 'recordOperatorBusinessOutreachSend',
+      summary: 'Record an approval-gated business outreach send',
+      description:
+        'Admin-bearer operator action that records an outreach send only after the draft template has an owner approval receipt, appends the individual send receipt to the pipeline, and enforces the mailbox send cap. This is the operator send route anchor paired with the LG-4 approval receipt; it is not independent bulk-send authority and does not create customer-result, payment, payout, settlement, or promise-green authority.',
+      tags: ['Operator', 'Business'],
+      security: adminBearer,
+      parameters: [
+        pathParam('pipelineRef', 'Public-safe business pipeline ref.'),
+      ],
+      requestBody: jsonContent('#/components/schemas/BusinessOutreachSendRequest'),
+      responses: {
+        '201': okJson(
+          'Recorded outreach send and pipeline receipt refs.',
+          '#/components/schemas/BusinessOutreachSendEnvelope',
+        ),
+        '409': {
+          description:
+            'The outreach send was refused by the approval, lint, suppression, or mailbox-cap gate.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
         ...errorResponses(),
       },
     }),
