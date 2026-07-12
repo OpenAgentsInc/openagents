@@ -345,8 +345,8 @@ worker closeout, or polished UI never manufactures live or owner acceptance.
 | C3 | Open product integration boundary: #8547 accepted managed workroom before #8636 owner-local plus managed-cloud receipt under one claim registry |
 
 R7, not C2, is owner-facing software cutover. The historical C0–C3 evidence
-and fallback rules remain in the
-[`fleet cutover analysis`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
+and fallback rules are archived in Backroom at
+[`dec8ae52`](https://github.com/OpenAgentsInc/backroom/blob/dec8ae52/archive/openagents-sol-docs-2026-07-12/july9/2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
 
 ## Current implementation and issue truth
 

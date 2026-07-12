@@ -6,8 +6,8 @@
 - Status: current binding decision record
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), owner decisions
   2–7 and 13
-- Supersedes as current authority:
-  [`../2026-07-09-greenfield-mobile-desktop-decision.md`](../2026-07-09-greenfield-mobile-desktop-decision.md)
+- Supersedes as current authority the
+  [archived July 9 greenfield decision](https://github.com/OpenAgentsInc/backroom/blob/dec8ae52/archive/openagents-sol-docs-2026-07-12/july9/2026-07-09-greenfield-mobile-desktop-decision.md)
 
 ## Decision
 
@@ -58,8 +58,7 @@ normal typed session modality, not Sarah revival.
 
 ## Evidence and history
 
-The superseded July 9 document preserves the original greenfield reasoning and
+The archived July 9 document preserves the original greenfield reasoning and
 the later-invalidated “Sarah is home” premise. It is historical evidence, not
-current authority, and is scheduled for provenance-preserving Backroom export
-under the
+current authority. Its provenance and removal gate are in the
 [`July 9 archive manifest`](../2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md).

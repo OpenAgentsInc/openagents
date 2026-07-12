@@ -67,8 +67,10 @@ integration owner explicitly.
 or current work item. Direct Desktop/mobile acceptance follows the current
 roadmap gates and receipts. A retained legacy Sarah-named route may remain a
 bounded authority adapter while its explicit deletion/rename gate is open; it
-does not own product sequencing. Historical C0–C3 reasoning is in
-[`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
+does not own product sequencing. Current C0–C3 boundaries are in the
+[`master roadmap`](./MASTER_ROADMAP.md#cutover-proof-boundaries); the original
+reasoning is archived in
+[`Backroom`](https://github.com/OpenAgentsInc/backroom/blob/dec8ae52/archive/openagents-sol-docs-2026-07-12/july9/2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
 
 ## Sol and Terra execution split
 
