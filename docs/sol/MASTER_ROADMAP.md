@@ -583,12 +583,20 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   and retain stable child nodes/parent edges through root settlement and retry
   fencing. Redacted named-account probes now prove the live Claude child
   lifecycle and the current Codex app-server's typed `subAgentActivity` child
-  source. They also isolate the remaining Codex gap: the SDK's bundled binary
-  fails before a frame, while the current PATH binary's
-  `--experimental-json` encoder omits the child activity record. Pylon must
-  converge that typed app-server source through the streamlining audit's one
-  conversation service; tools/history remain forbidden parentage sources. A
-  named confirmed-reconnect trace remains open.
+  source. They also isolated the Codex gap: the SDK's bundled binary fails
+  before a frame, while the current PATH binary's `--experimental-json`
+  encoder omits the child activity record. Pylon has now converged on the
+  typed app-server source through the streamlining audit's one conversation
+  service: an app-server-first `RuntimeCodexThreadRunner` (JSONL JSON-RPC
+  client with a single typed pre-frame fallback to the exec SDK) feeds the
+  SAME `codexRawEventToRuntimeEvents` translation, which normalizes
+  `subAgentActivity` and receiver-bearing `collabAgentToolCall` items into
+  the shared body-free `agent.child.*` contract; tools/history remain
+  forbidden parentage sources and the exec encoder's receiver-less record
+  yields nothing. Desktop main-process live graph emission is also wired: the
+  local assembler now runs on the real fable-local/codex-local emit path with
+  bounded snapshot/push IPC delivery. A named confirmed-reconnect trace
+  remains open.
 - CUT-12 now has one shared graph-presentation model plus live Khala Mobile and
   OpenAgents Desktop thread surfaces. Canonical nodes become deterministic
   hierarchy rows with typed status/action/attention/elapsed/terminal and

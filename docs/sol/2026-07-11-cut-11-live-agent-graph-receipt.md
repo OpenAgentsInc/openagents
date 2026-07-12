@@ -243,10 +243,60 @@ Codex/Claude trace.
   exact-replay conflict, gap, stale generation, cursor/timestamp regression,
   terminal mismatch/reopen, missing/mismatched parent, orphan tool, and cycle.
 
+## 2026-07-12 update: app-server source convergence and desktop live wiring
+
+Two of the three remaining residuals landed on `main` (session
+`cut11-main-wiring-20260712`):
+
+Desktop main-process live emission is wired. `live-agent-graph-host.ts` owns
+per-thread `createLocalAgentGraphAssembler` instances and is fed by exactly
+the one-callback wiring the assembler landing named: `beginTurn` before each
+fable-local / codex-local `runTurn` plus one `applyEvent` line inside each
+lane's existing emit callback, so the canonical graph is assembled from the
+SAME typed envelopes the renderer stream receives. Delivery is additive IPC
+on the established seams — broadcast push on change
+(`openagents:live-agent-graph:update`) and renderer-argument-free snapshot on
+invoke (`openagents:live-agent-graph:snapshot`) — with shared-law
+revalidation (`decodeLiveAgentGraphEntity`) on the renderer side of the
+preload. Retention is bounded to eight thread graphs; a graph with a running
+turn is never evicted. Tests drive the REAL emit path: an actual
+`makeFableLocalRuntime` turn with a REAL `makeCodexChildRuntime` delegate
+child on fixture spawns, and an actual `makeCodexLocalRuntime` turn on
+fixture exec stdout.
+
+Pylon converged on the typed Codex app-server child source through the one
+conversation service. `codex-app-server-source.ts` is a minimal JSONL
+JSON-RPC client for `codex app-server` (initialize/initialized,
+`thread/start` or `thread/resume`, `turn/start` with the same owner-local
+never/danger-full-access posture as the SDK path) that adapts v2
+notifications into the SAME `CodexRawEvent` stream shape the exec encoder
+produces — while preserving the typed `subAgentActivity` and
+receiver-bearing `collabAgentToolCall` items the exec encoder drops.
+`codexRawEventToRuntimeEvents` now accepts both item-type spellings and
+normalizes those child records into the shared body-free `agent.child.*`
+contract (stable ids keyed by the provider child thread id, nested
+sender-parenting, terminal collab-state finish reasons). The dispatch
+default is app-server-first with EXACTLY one fallback to the exec SDK on a
+typed pre-frame failure (spawn/handshake/typed pre-turn error — the
+probe-located bundled-binary failure mode); post-frame failures never
+re-execute, `turn/start` timeouts stay fatal, and unexpected server->client
+requests are refused fail-closed. The exec encoder's receiver-less
+`collab_tool_call` record still yields nothing: no receiver id, no honest
+child identity, and tools/history remain forbidden parentage sources.
+
+Verification: focused app-server source corpus (7 pass, 22 expectations,
+including one end-to-end fold of the adapted stream through the REAL
+translation producing `agent.child.started`/`agent.child.finished`);
+enforcement translation corpus extended for both spellings, the
+subAgentActivity lifecycle, collab receivers, nested parenting, and the
+receiver-less negative (64 pass, 223 expectations); Pylon and Desktop
+typechecks and full suites green at landing (exact counts in the landing
+commits on #8691).
+
 ## Residual
 
-This receipt does not claim Codex live child/subagent topology in the Pylon
-runtime transaction or a named-account end-to-end reconnect. The remaining
-CUT-11 work must converge Pylon on the typed Codex app-server child source and
-carry one redacted named execution through confirmed Sync/Gateway reconnect.
-Graph presentation remains CUT-12.
+One CUT-11 residual remains: a redacted NAMED-account execution carried
+through confirmed Sync/Gateway reconnect for both providers. The desktop
+wiring and the Pylon app-server child source above are deterministic-fixture
+and probe-grounded; the named confirmed-reconnect trace requires a ready
+named account at run time. Graph presentation remains CUT-12.

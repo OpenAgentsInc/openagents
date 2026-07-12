@@ -103,6 +103,7 @@ describe("codexRawEventToRuntimeEvents", () => {
         return n
       }
     })(),
+    childThreads: new Map(),
     nowIso: () => "2026-07-05T12:00:00.000Z",
     source: { adapterKind: "codex" as const, lane: "codex_app_server" as const, surface: "server" as const },
     threadId: "thread-1",
@@ -168,6 +169,170 @@ describe("codexRawEventToRuntimeEvents", () => {
 
   test("unrecognized event types are ignored", () => {
     expect(codexRawEventToRuntimeEvents({ type: "thread.started" }, ctx())).toEqual([])
+  })
+
+  // CUT-11 (#8691): typed app-server child records converge through the same
+  // one-conversation-service translation. camelCase item spellings are the
+  // typed app-server source; the exec encoder's receiver-less collab record
+  // must yield NOTHING (no honest child identity).
+  test("app-server camelCase items map identically to exec snake_case items", () => {
+    const text = codexRawEventToRuntimeEvents(
+      { item: { id: "i1", text: "hi", type: "agentMessage" }, type: "item.completed" },
+      ctx(),
+    )
+    expect(text.map((e) => e.kind)).toEqual(["text.delta", "text.completed"])
+    const tool = codexRawEventToRuntimeEvents(
+      { item: { exitCode: 1, id: "i2", status: "failed", type: "commandExecution" }, type: "item.completed" },
+      ctx(),
+    )
+    expect(tool.map((e) => e.kind)).toEqual(["tool.call", "tool.error"])
+    const reasoning = codexRawEventToRuntimeEvents(
+      { item: { id: "i3", summary: ["thinking", "more"], type: "reasoning" }, type: "item.completed" },
+      ctx(),
+    )
+    expect((reasoning[0]! as Extract<KhalaRuntimeEvent, { kind: "reasoning.delta" }>).text).toBe("thinking\nmore")
+  })
+
+  test("subAgentActivity started/interacted/interrupted becomes the agent.child lifecycle with stable ids", () => {
+    const c = ctx()
+    const started = codexRawEventToRuntimeEvents(
+      {
+        item: { agentPath: "root/child-a", agentThreadId: "child-thread-a", id: "s1", kind: "started", type: "subAgentActivity" },
+        type: "item.completed",
+      },
+      c,
+    )
+    expect(started.map((e) => e.kind)).toEqual(["agent.child.started"])
+    const startedEvent = started[0]! as Extract<KhalaRuntimeEvent, { kind: "agent.child.started" }>
+    expect(startedEvent.parentAgentId).toBe("turn-1")
+
+    const interacted = codexRawEventToRuntimeEvents(
+      {
+        item: { agentPath: "root/child-a", agentThreadId: "child-thread-a", id: "s2", kind: "interacted", type: "subAgentActivity" },
+        type: "item.completed",
+      },
+      c,
+    )
+    expect(interacted.map((e) => e.kind)).toEqual(["agent.child.progress"])
+    const progressEvent = interacted[0]! as Extract<KhalaRuntimeEvent, { kind: "agent.child.progress" }>
+    expect(progressEvent.childAgentId).toBe(startedEvent.childAgentId)
+    expect(progressEvent.taskRef).toBe(startedEvent.taskRef)
+
+    const interrupted = codexRawEventToRuntimeEvents(
+      {
+        item: { agentPath: "root/child-a", agentThreadId: "child-thread-a", id: "s3", kind: "interrupted", type: "subAgentActivity" },
+        type: "item.completed",
+      },
+      c,
+    )
+    expect(interrupted.map((e) => e.kind)).toEqual(["agent.child.finished"])
+    const finishedEvent = interrupted[0]! as Extract<KhalaRuntimeEvent, { kind: "agent.child.finished" }>
+    expect(finishedEvent.childAgentId).toBe(startedEvent.childAgentId)
+    expect(finishedEvent.finishReason).toBe("interrupted")
+  })
+
+  test("an unobserved-start interacted record auto-starts (loss-tolerant, still typed-source-only)", () => {
+    const events = codexRawEventToRuntimeEvents(
+      {
+        item: { agentPath: "root/child-b", agentThreadId: "child-thread-b", id: "s1", kind: "interacted", type: "subAgentActivity" },
+        type: "item.completed",
+      },
+      ctx(),
+    )
+    expect(events.map((e) => e.kind)).toEqual(["agent.child.started", "agent.child.progress"])
+  })
+
+  test("an interrupted record for an untracked child yields nothing (no fabricated lifecycle)", () => {
+    const events = codexRawEventToRuntimeEvents(
+      {
+        item: { agentPath: "root/child-x", agentThreadId: "child-thread-x", id: "s1", kind: "interrupted", type: "subAgentActivity" },
+        type: "item.completed",
+      },
+      ctx(),
+    )
+    expect(events).toEqual([])
+  })
+
+  test("collabAgentToolCall receivers start/progress/finish children from typed agent states", () => {
+    const c = ctx()
+    const spawned = codexRawEventToRuntimeEvents(
+      {
+        item: {
+          agentsStates: { "child-thread-c": { message: null, status: "running" } },
+          id: "c1",
+          receiverThreadIds: ["child-thread-c"],
+          senderThreadId: "root-thread",
+          status: "completed",
+          tool: "spawnAgent",
+          type: "collabAgentToolCall",
+        },
+        type: "item.completed",
+      },
+      c,
+    )
+    expect(spawned.map((e) => e.kind)).toEqual(["agent.child.started", "agent.child.progress"])
+    const startedEvent = spawned[0]! as Extract<KhalaRuntimeEvent, { kind: "agent.child.started" }>
+    expect(startedEvent.parentAgentId).toBe("turn-1")
+
+    const settled = codexRawEventToRuntimeEvents(
+      {
+        item: {
+          agentsStates: { "child-thread-c": { message: null, status: "completed" } },
+          id: "c2",
+          receiverThreadIds: ["child-thread-c"],
+          senderThreadId: "root-thread",
+          status: "completed",
+          tool: "wait",
+          type: "collabAgentToolCall",
+        },
+        type: "item.completed",
+      },
+      c,
+    )
+    expect(settled.map((e) => e.kind)).toEqual(["agent.child.finished"])
+    const finishedEvent = settled[0]! as Extract<KhalaRuntimeEvent, { kind: "agent.child.finished" }>
+    expect(finishedEvent.childAgentId).toBe(startedEvent.childAgentId)
+    expect(finishedEvent.finishReason).toBe("stop")
+  })
+
+  test("a receiver spawned by a tracked child parents to that child (nested topology)", () => {
+    const c = ctx()
+    const first = codexRawEventToRuntimeEvents(
+      {
+        item: { agentPath: "root/child-a", agentThreadId: "child-thread-a", id: "s1", kind: "started", type: "subAgentActivity" },
+        type: "item.completed",
+      },
+      c,
+    )
+    const parent = first[0]! as Extract<KhalaRuntimeEvent, { kind: "agent.child.started" }>
+    const nested = codexRawEventToRuntimeEvents(
+      {
+        item: {
+          agentsStates: {},
+          id: "c1",
+          receiverThreadIds: ["child-thread-nested"],
+          senderThreadId: "child-thread-a",
+          status: "completed",
+          tool: "spawnAgent",
+          type: "collabAgentToolCall",
+        },
+        type: "item.completed",
+      },
+      c,
+    )
+    const nestedStarted = nested[0]! as Extract<KhalaRuntimeEvent, { kind: "agent.child.started" }>
+    expect(nestedStarted.parentAgentId).toBe(parent.childAgentId)
+  })
+
+  test("the exec encoder's receiver-less collab record yields nothing", () => {
+    const events = codexRawEventToRuntimeEvents(
+      {
+        item: { id: "c1", status: "completed", tool: "wait", type: "collab_agent_tool_call" },
+        type: "item.completed",
+      },
+      ctx(),
+    )
+    expect(events).toEqual([])
   })
 })
 

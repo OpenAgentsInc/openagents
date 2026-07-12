@@ -22,6 +22,10 @@ import {
   CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
 } from "../codex-agent-executor.js"
 import { CODEX_AGENT_SDK_PACKAGE } from "../codex-agent.js"
+import {
+  isCodexAppServerPreFrameFailure,
+  makeCodexAppServerRunner,
+} from "./codex-app-server-source.js"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../claude-agent.js"
 import {
   admitClaudePermission,
@@ -186,10 +190,16 @@ import type {
  *   rather than silently falling back to one provider.
  * - Claude Agent SDK `task_started` / `task_progress` / `task_notification`
  *   records for real subagent tasks are normalized into body-free
- *   `agent.child.*` events and retained by the canonical live graph. The
- *   installed Codex SDK 0.139.0 public event union exposes no child/subagent
- *   item, so Codex child production remains explicitly unsupported here; no
- *   tool-name or transcript-text heuristic fabricates parentage.
+ *   `agent.child.*` events and retained by the canonical live graph. Codex
+ *   child production (CUT-11 #8691) converges on the typed app-server
+ *   source: `subAgentActivity` and receiver-bearing `collabAgentToolCall`
+ *   thread items are normalized into the SAME body-free `agent.child.*`
+ *   events through this one conversation-service translation
+ *   (`codexRawEventToRuntimeEvents`), fed by the app-server-first runner in
+ *   `codex-app-server-source.ts` (pre-frame fallback to the exec SDK). The
+ *   exec encoder still drops `subAgentActivity` and emits receiver-less
+ *   `collab_tool_call`, which yields NOTHING here — no tool-name or
+ *   transcript-text heuristic ever fabricates parentage.
  * - Cross-turn context continuity (`resumeThreadId` for Codex,
  *   `resumeSessionId` for Claude) is reinforced, but still not GUARANTEED,
  *   for both providers by the per-thread account pin described above: if the
@@ -346,12 +356,33 @@ const runtimeOwnerLocalToolAuthority = (toolName: string): KhalaRuntimeToolAutho
   toolRef: toolName,
 })
 
+/**
+ * Canonical (exec-encoder snake_case) spelling for a Codex thread-item type.
+ * The typed app-server source (CUT-11 #8691) delivers the SAME items with
+ * camelCase `type` discriminators (`agentMessage`, `commandExecution`, …);
+ * one conversation-service translation handles both spellings so the
+ * app-server transport does not need a parallel item pipeline.
+ */
+const codexItemTypeAliases: Record<string, string> = {
+  agentMessage: "agent_message",
+  commandExecution: "command_execution",
+  fileChange: "file_change",
+  mcpToolCall: "mcp_tool_call",
+  webSearch: "web_search",
+  subAgentActivity: "sub_agent_activity",
+  collabAgentToolCall: "collab_agent_tool_call",
+}
+
+const canonicalCodexItemType = (itemType: string): string =>
+  codexItemTypeAliases[itemType] ?? itemType
+
 const codexToolName = (itemType: string, item: Record<string, unknown>): string => {
   if (itemType === "command_execution") return "commandExecution"
   if (itemType === "file_change") return "fileChange"
   if (itemType === "web_search") return "webSearch"
   if (itemType === "mcp_tool_call") {
-    const toolName = item.tool_name ?? item.name
+    // exec encoder: `tool_name`; app-server v2 item: `tool` (+ `server`).
+    const toolName = item.tool_name ?? item.tool ?? item.name
     return typeof toolName === "string" && toolName.length > 0 ? toolName : "mcpTool"
   }
   return itemType
@@ -359,6 +390,7 @@ const codexToolName = (itemType: string, item: Record<string, unknown>): string 
 
 const codexItemFailed = (item: Record<string, unknown>): boolean => {
   if (typeof item.exit_code === "number" && item.exit_code !== 0) return true
+  if (typeof item.exitCode === "number" && item.exitCode !== 0) return true
   return item.status === "failed"
 }
 
@@ -373,15 +405,67 @@ export type RuntimeEventTranslationContext = {
 }
 
 /**
+ * Stable correlation facts for one REAL Codex child/sub-agent thread
+ * (CUT-11 #8691). Keyed by the provider's own child thread id — the ONLY
+ * honest Codex parentage source (typed `subAgentActivity` /
+ * `collabAgentToolCall` records from the app-server); tool names, history,
+ * and transcript text are forbidden parentage sources.
+ */
+type CodexChildThreadFacts = Readonly<{
+  childAgentId: string
+  childRunId: string
+  parentAgentId: string
+  taskRef: string
+}>
+
+export type CodexRuntimeEventTranslationContext = RuntimeEventTranslationContext & {
+  /**
+   * Mutable per-turn map from a Codex child THREAD id to its stable child
+   * facts (mirrors Claude's `childTasks`). Populated only from typed child
+   * records carrying a real child thread id; the exec encoder's
+   * receiver-less `collab_tool_call` records can never populate it.
+   */
+  readonly childThreads: Map<string, CodexChildThreadFacts>
+}
+
+const codexChildThreadFacts = (
+  agentThreadId: string,
+  parentAgentId: string,
+): CodexChildThreadFacts => ({
+  childAgentId: stableId("child.codex", agentThreadId),
+  childRunId: stableId("run.child.codex", agentThreadId),
+  parentAgentId,
+  taskRef: stableId("task.codex", agentThreadId),
+})
+
+/** Terminal finish reason for a typed collab agent state, if terminal. */
+const codexCollabTerminalFinishReason = (
+  status: unknown,
+): KhalaRuntimeFinishReason | null => {
+  if (status === "completed" || status === "shutdown") return "stop"
+  if (status === "errored") return "error"
+  if (status === "interrupted") return "interrupted"
+  return null
+}
+
+/**
  * Translates ONE raw Codex thread event into zero or more
  * `KhalaRuntimeEvent`s. Pure given its context's `allocateSequence`/
  * `nowIso`/`turnStarted` seams — real production calls thread a live
  * sequence counter and clock through them; tests inject deterministic
  * fakes.
+ *
+ * Accepts BOTH Codex event sources through one conversation-service seam
+ * (CUT-11 #8691): the exec-encoder stream (snake_case item types) and the
+ * typed app-server stream (camelCase item types). Child/sub-agent facts are
+ * emitted ONLY from typed records naming a real child thread id
+ * (`subAgentActivity`, `collabAgentToolCall` receivers) — the exec encoder
+ * currently drops those records, which is exactly why the app-server source
+ * exists; nothing here infers parentage from tool names or text.
  */
 export const codexRawEventToRuntimeEvents = (
   raw: CodexRawEvent,
-  ctx: RuntimeEventTranslationContext,
+  ctx: CodexRuntimeEventTranslationContext,
 ): ReadonlyArray<KhalaRuntimeEvent> => {
   const type = typeof raw.type === "string" ? raw.type : undefined
   const base = (kind: string, extra: Record<string, unknown>): KhalaRuntimeEvent =>
@@ -408,8 +492,91 @@ export const codexRawEventToRuntimeEvents = (
 
   if (type === "item.completed") {
     const item = raw.item as Record<string, unknown> | undefined
-    const itemType = typeof item?.type === "string" ? item.type : undefined
-    if (item === undefined || itemType === undefined) return []
+    const rawItemType = typeof item?.type === "string" ? item.type : undefined
+    if (item === undefined || rawItemType === undefined) return []
+    const itemType = canonicalCodexItemType(rawItemType)
+
+    if (itemType === "sub_agent_activity") {
+      // Typed app-server child lifecycle record: { kind, agentThreadId }.
+      const agentThreadId = typeof item.agentThreadId === "string" && item.agentThreadId.length > 0
+        ? item.agentThreadId
+        : typeof item.agent_thread_id === "string" && item.agent_thread_id.length > 0
+          ? item.agent_thread_id
+          : null
+      if (agentThreadId === null) return []
+      const kind = item.kind
+      if (kind === "started") {
+        if (ctx.childThreads.has(agentThreadId)) return []
+        const facts = codexChildThreadFacts(agentThreadId, ctx.turnId)
+        ctx.childThreads.set(agentThreadId, facts)
+        return [base("agent.child.started", facts)]
+      }
+      if (kind === "interacted") {
+        const events: KhalaRuntimeEvent[] = []
+        let facts = ctx.childThreads.get(agentThreadId)
+        if (facts === undefined) {
+          // Loss-tolerant: the start record was not observed, but the typed
+          // record still names the real child thread (mirrors Claude's
+          // task_progress auto-start) — never fabricated from tool names.
+          facts = codexChildThreadFacts(agentThreadId, ctx.turnId)
+          ctx.childThreads.set(agentThreadId, facts)
+          events.push(base("agent.child.started", facts))
+        }
+        events.push(base("agent.child.progress", facts))
+        return events
+      }
+      if (kind === "interrupted") {
+        const facts = ctx.childThreads.get(agentThreadId)
+        if (facts === undefined) return []
+        ctx.childThreads.delete(agentThreadId)
+        return [base("agent.child.finished", {
+          ...facts,
+          finishReason: "interrupted" satisfies KhalaRuntimeFinishReason,
+        })]
+      }
+      return []
+    }
+
+    if (itemType === "collab_agent_tool_call") {
+      // Typed collab lifecycle: receivers are real child thread ids; the
+      // per-agent states carry lifecycle truth. A record WITHOUT receiver
+      // ids (the current exec encoder's shape) yields nothing — no receiver
+      // id, no honest child identity.
+      const receiversRaw = item.receiverThreadIds ?? item.receiver_thread_ids
+      const receivers = Array.isArray(receiversRaw)
+        ? receiversRaw.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+        : []
+      if (receivers.length === 0) return []
+      const senderThreadId = typeof item.senderThreadId === "string"
+        ? item.senderThreadId
+        : typeof item.sender_thread_id === "string"
+          ? item.sender_thread_id
+          : null
+      // Nested topology: a receiver spawned by a TRACKED child parents to
+      // that child; otherwise the root turn is the parent.
+      const parentAgentId = senderThreadId === null
+        ? ctx.turnId
+        : ctx.childThreads.get(senderThreadId)?.childAgentId ?? ctx.turnId
+      const states = (item.agentsStates ?? item.agents_states) as Record<string, unknown> | undefined
+      const events: KhalaRuntimeEvent[] = []
+      for (const receiverThreadId of receivers) {
+        let facts = ctx.childThreads.get(receiverThreadId)
+        if (facts === undefined) {
+          facts = codexChildThreadFacts(receiverThreadId, parentAgentId)
+          ctx.childThreads.set(receiverThreadId, facts)
+          events.push(base("agent.child.started", facts))
+        }
+        const state = states?.[receiverThreadId] as Record<string, unknown> | undefined
+        const finishReason = codexCollabTerminalFinishReason(state?.status)
+        if (finishReason !== null) {
+          ctx.childThreads.delete(receiverThreadId)
+          events.push(base("agent.child.finished", { ...facts, finishReason }))
+        } else {
+          events.push(base("agent.child.progress", facts))
+        }
+      }
+      return events
+    }
 
     if (itemType === "agent_message") {
       const text = typeof item.text === "string" ? item.text : ""
@@ -420,7 +587,12 @@ export const codexRawEventToRuntimeEvents = (
       ]
     }
     if (itemType === "reasoning") {
-      const text = typeof item.text === "string" ? item.text : ""
+      // exec encoder: `text`; app-server v2 item: `summary` string sections.
+      const text = typeof item.text === "string"
+        ? item.text
+        : Array.isArray(item.summary)
+          ? item.summary.filter((entry): entry is string => typeof entry === "string").join("\n")
+          : ""
       const messageId = randomUUID()
       return [
         base("reasoning.delta", { chunkId: randomUUID(), messageId, text }),
@@ -801,6 +973,24 @@ export type RuntimeCodexThreadRunner = (input: {
  * (`Codex#resumeThread`) instead of starting a fresh one, so a follow-up
  * turn in the same Khala Sync chat thread keeps the model's prior context.
  */
+/**
+ * Default Codex event source (CUT-11 #8691): the typed app-server transport
+ * first — the only source that carries `subAgentActivity` /
+ * receiver-bearing `collabAgentToolCall` child records — with exactly one
+ * fallback to the exec SDK runner when the app-server fails BEFORE any
+ * event frame (spawn/handshake/typed pre-turn error; the probe-located
+ * bundled-binary failure mode). Post-frame failures never re-execute.
+ */
+export const runWithCodexAppServerFirst: RuntimeCodexThreadRunner = async (input) => {
+  const appServer = makeCodexAppServerRunner()
+  try {
+    return await appServer(input)
+  } catch (error) {
+    if (!isCodexAppServerPreFrameFailure(error)) throw error
+    return runWithRealCodexSdk(input)
+  }
+}
+
 export const runWithRealCodexSdk: RuntimeCodexThreadRunner = async (input) => {
   const sdk = (await import(CODEX_AGENT_SDK_PACKAGE)) as {
     Codex: new (options?: { env?: Record<string, string | undefined> }) => {
@@ -1531,7 +1721,9 @@ const dispatchTurnStart = async (input: {
         throw new Error("Codex runtime dispatch requires a resolved account")
       }
       const env = pylonAccountEnvironment(process.env as Record<string, string | undefined>, account)
-      const runCodexThread = options.codexThreadRunner ?? runWithRealCodexSdk
+      // CUT-11 (#8691): default to the typed app-server source (the only
+      // honest Codex child-record transport), pre-frame fallback to the SDK.
+      const runCodexThread = options.codexThreadRunner ?? runWithCodexAppServerFirst
       const { events } = await runCodexThread({
         cwd,
         env,
@@ -1540,10 +1732,12 @@ const dispatchTurnStart = async (input: {
         signal: turn.abortController.signal,
         ...(resumeRef === undefined ? {} : { resumeThreadId: resumeRef }),
       })
+      const childThreads = new Map<string, CodexChildThreadFacts>()
       for await (const raw of events) {
         captureCodexThreadId(raw)
         const translated = codexRawEventToRuntimeEvents(raw, {
           allocateSequence: turn.nextEventSequence,
+          childThreads,
           nowIso: () => new Date().toISOString(),
           source,
           threadId: intent.threadId,
