@@ -47,6 +47,10 @@ if [[ -n "${OA_DESKTOP_RELEASES_DIST:-}" ]]; then
   env_vars+=("OA_DESKTOP_RELEASES_DIST=${OA_DESKTOP_RELEASES_DIST}")
 fi
 
+if [[ -n "${OA_OPENAGENTS_DESKTOP_RELEASE_DIST:-}" ]]; then
+  env_vars+=("OA_OPENAGENTS_DESKTOP_RELEASE_DIST=${OA_OPENAGENTS_DESKTOP_RELEASE_DIST}")
+fi
+
 env_csv="$(IFS=,; echo "${env_vars[*]}")"
 
 args=(

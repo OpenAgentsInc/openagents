@@ -4,6 +4,7 @@ import type { PublishExportResult } from "./publish.ts"
 import type { Platform } from "./publish-builder.ts"
 import { seedDesktopReleases } from "./desktop-seed.ts"
 import { seedPylonReleases } from "./pylon-seed.ts"
+import { seedOpenAgentsDesktopRelease } from "./openagents-desktop-seed.ts"
 import {
   createUpdatesServer,
   type UpdatesServer,
@@ -105,6 +106,13 @@ if (import.meta.main) {
       // Binaries are served from GCS (Cloud Run caps responses at 32 MiB);
       // the feed JSON stays on this service, artifactUrls point at OA_ASSET_BASE_URL.
       ...(process.env.OA_ASSET_BASE_URL ? { assetBaseUrl: process.env.OA_ASSET_BASE_URL } : {}),
+    })
+  }
+
+  if (process.env.OA_OPENAGENTS_DESKTOP_RELEASE_DIST) {
+    await seedOpenAgentsDesktopRelease({
+      server,
+      distDir: process.env.OA_OPENAGENTS_DESKTOP_RELEASE_DIST,
     })
   }
 

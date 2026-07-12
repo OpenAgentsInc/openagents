@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { verifyManifestSignature } from "./code-signing.ts"
 import { createUpdatesServer } from "./server.ts"
 import type { Update } from "./manifest-resolver.ts"
+import { admitOpenAgentsDesktopRelease, sha256 } from "./openagents-desktop-release.ts"
 
 // Parse a named part out of an expo-updates multipart/mixed response: returns
 // the part's JSON body + its part headers. Mirrors what expo-updates does.
@@ -47,6 +48,45 @@ const manifestRequest = (runtimeVersion: string): Request =>
   })
 
 describe("updates server", () => {
+  test("serves the independent OpenAgents Desktop manifest bytes and detached signature", async () => {
+    const server = createUpdatesServer()
+    const manifest = {
+      schema: "openagents.desktop.update_manifest.v1",
+      app: "openagents-desktop",
+      channel: "rc",
+      version: "0.1.0-rc.1",
+      artifactName: "OpenAgents-0.1.0-rc.1-arm64.zip",
+      artifactSha256: "a".repeat(64),
+      artifactByteLength: 123,
+      releasedAt: "2026-07-12T06:00:00.000Z",
+    }
+    const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest))
+    const signature = {
+      alg: "ed25519" as const,
+      kid: "release.1",
+      sha256: sha256(manifestBytes),
+      signature: "fixture",
+    }
+    server.registerOpenAgentsDesktopRelease(admitOpenAgentsDesktopRelease({
+      manifestBytes,
+      signature,
+      artifactUrl: "https://updates.openagents.com/assets/abc",
+    }))
+
+    const manifestResponse = await server.fetch(new Request(
+      "https://updates.openagents.com/desktop/openagents/rc/manifest.json",
+    ))
+    expect(manifestResponse.status).toBe(200)
+    expect(manifestResponse.headers.get("cache-control")).toBe("no-store")
+    expect(new Uint8Array(await manifestResponse.arrayBuffer())).toEqual(manifestBytes)
+    const signatureResponse = await server.fetch(new Request(
+      "https://updates.openagents.com/desktop/openagents/rc/manifest.sig.json",
+    ))
+    expect(await signatureResponse.json()).toEqual(signature)
+    expect((await server.fetch(new Request(
+      "https://updates.openagents.com/desktop/openagents/stable/manifest.json",
+    ))).status).toBe(404)
+  })
   test("serves a resolved manifest from registered updates", async () => {
     const server = createUpdatesServer({ port: 4321 })
     const launchBytes = new TextEncoder().encode("console.log('launch')")

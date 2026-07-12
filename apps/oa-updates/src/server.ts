@@ -22,6 +22,7 @@ import {
   type PylonPlatform,
   type PylonReleaseManifest,
 } from "./pylon-release.ts"
+import type { OpenAgentsDesktopRelease } from "./openagents-desktop-release.ts"
 
 type CreateUpdatesServerOptions = {
   port?: number
@@ -38,6 +39,7 @@ export type UpdatesServer = {
     product?: DesktopReleaseProduct,
   ) => void
   registerPylonUpdate: (manifest: PylonReleaseManifest) => void
+  registerOpenAgentsDesktopRelease: (release: OpenAgentsDesktopRelease) => void
   // Serve a large asset (e.g. a Pylon binary) straight from disk by hash,
   // streamed — so the seed never loads hundreds of MB into memory at boot.
   registerDiskAsset: (hash: string, path: string, contentType?: string) => void
@@ -128,6 +130,7 @@ export function createUpdatesServer(
   const updates = new Map<string, Update>()
   const channelToBranch = new Map<string, string>()
   const desktopFeeds = new Map<string, DesktopUpdateManifest[]>()
+  const openAgentsDesktopReleases = new Map<string, OpenAgentsDesktopRelease>()
   // key: `${channel}/${platform}` -> releases (latest first)
   const pylonFeeds = new Map<string, PylonReleaseManifest[]>()
   // hash -> on-disk file served by streaming (large binaries never held in memory)
@@ -145,6 +148,18 @@ export function createUpdatesServer(
       const url = new URL(request.url)
 
       if (request.method === "GET") {
+        const openAgentsDesktopMatch = url.pathname.match(
+          /^\/desktop\/openagents\/(stable|rc)\/(manifest|manifest\.sig)\.json$/,
+        )
+        if (openAgentsDesktopMatch !== null) {
+          const release = openAgentsDesktopReleases.get(openAgentsDesktopMatch[1])
+          if (release === undefined) return new Response("Not found", { status: 404 })
+          return openAgentsDesktopMatch[2] === "manifest"
+            ? new Response(release.manifestBytes, {
+                headers: { "cache-control": "no-store", "content-type": "application/json" },
+              })
+            : jsonResponse(release.signature, { "cache-control": "no-store" })
+        }
         const manifestMatch = url.pathname.match(/^\/([^/]+)\/manifest$/)
 
         if (manifestMatch !== null) {
@@ -364,6 +379,10 @@ export function createUpdatesServer(
         manifest,
         ...current.filter((candidate) => candidate.version !== manifest.version),
       ])
+    },
+
+    registerOpenAgentsDesktopRelease(release) {
+      openAgentsDesktopReleases.set(release.channel, release)
     },
 
     async putAsset(bytes, contentType) {
