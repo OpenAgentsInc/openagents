@@ -9,8 +9,8 @@
   Revision 82
 - Source analysis:
   [`2026-07-11-sol-and-teardowns-longform-analysis.md`](../fable/2026-07-11-sol-and-teardowns-longform-analysis.md)
-- Status: active cleanup execution ledger and historical source audit; not
-  roadmap authority
+- Status: one-time cleanup complete; maintained execution ledger and historical
+  source audit; not roadmap authority
 - Scope: `docs/sol/`, its direct dependencies, and the use of the separate
   `OpenAgentsInc/backroom` repository for fully obsolete material
 
@@ -28,12 +28,13 @@
 | SOL-DOC-08 — automate freshness and link integrity | [#8730](https://github.com/OpenAgentsInc/openagents/issues/8730) | **Closed 2026-07-12.** A seven-day schema-versioned product-issue snapshot, explicit live refresh/comparison, active-policy/classification/receipt/archive/link/size checks, and negative regression fixtures now fail concrete drift offline before push. | `1e46778733` — 10 live product issues equal GitHub; 43/43 issue sources; 25 receipt rows; nine removed paths; 13/13 regressions; all Sol links; 571/800 master lines. |
 | SOL-DOC-09 — full inventory and next archive preparation | [#8731](https://github.com/OpenAgentsInc/openagents/issues/8731) | **Closed 2026-07-12.** Every Sol Markdown file has a reproducible class/owner/hash/status/snapshot/review/dispatch/inbound/issue/disposition row; the one-hop clean-reader contract is receipted; one retired July 10 diary is the sole next archive candidate. Duplicate #8732 was closed without a second implementation lane. | `7f1bc65e4a` — 92/92 documents, nine controlled classes, one dispatch owner, one exact archive candidate, 19 live product issues, 15/15 regressions, 596/800 master lines. |
 | SOL-DOC-10 — archive retired July 10 delegation diary | [#8742](https://github.com/OpenAgentsInc/openagents/issues/8742) | **Closed 2026-07-12.** Exact diary bytes were pushed to Backroom before two live links migrated and exactly one OpenAgents source was removed. The generated manifest has no remaining archive candidate and the path is permanently denied. | Backroom import `9c710a93`; OpenAgents removal `03135f5d61`; Backroom final note `d7993ef5`; OpenAgents completed manifest `a2e3b64f3b`. |
+| SOL-DOC-11 — prove ordered cleanup complete | [#8743](https://github.com/OpenAgentsInc/openagents/issues/8743) | **Closed 2026-07-12.** Requirement-by-requirement audit passed every P0–P6 exit, deletion/retention test, verification-matrix row, and first-pass success measure; AUDIO-1 closure and duplicate live coverage were reconciled during the audit. | `9ae6f9e837` — 93/93 generated rows, one dispatch owner, zero archive candidates, 17 live product issues, 43 issue sources, 27 indexed evidence rows, 17/17 regressions, all links/policies/archive checks green. |
 
-**Next ordered chunk:** SOL-DOC-11 audits every P0–P6 item, deletion/retention
-test, verification row, and success measure against current generated/live
-state. It either records a complete program receipt and converts this ledger
-to maintained status, or opens the narrow remaining implementation chunk; it
-cannot close on prose assertion alone.
+**Next ordered chunk:** none. The one-time cleanup is complete. Recurring work
+is maintenance: refresh the live issue artifact within 168 hours or on label
+change, regenerate the document manifest on Sol/inbound-link changes, keep the
+guard green, and open a new bounded issue only for a concrete future drift or
+reviewed archive candidate.
 
 ## Executive decision
 
@@ -666,15 +667,13 @@ unowned documents, unlinked receipts, master-roadmap churn per landing, and the
 age of the generated issue projection. A successful cleanup does not merely
 move files. It makes incorrect dispatch structurally harder.
 
-## Current recommendation
+## Maintained state
 
-The initial changesets, automated guard, full inventory, clean-reader receipt,
-and two Backroom batches are landed. Do not restart
-the completed entry-point, contract, master-compaction, receipt-index, or July
-9 archive work. Close the remaining P0 inventory gap with one generated full-
-tree manifest or archive another file by implication. Run the final P0–P6 and
-success-measure audit against generated/live state before claiming the ordered
-cleanup complete.
+The entry-point, contract, master-compaction, receipt/index, full-inventory,
+clean-reader, automated-guard, and two Backroom batches are landed and audited
+complete. Do not restart them or archive another file by implication. Use the
+generated review triggers, live artifact age, explicit archive-candidate
+disposition, and failing guards to decide future bounded maintenance.
 
 Use Backroom aggressively for material that is truly dead, but only after
 conclusion extraction and link inventory. Keep proof close to the product;
