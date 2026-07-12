@@ -807,6 +807,31 @@ More specific invariant ledgers apply inside imported apps and packages.
   does not make today's Mic active: until the AUDIO-1 cross-language model/
   golden-vector contract and AUDIO-4 packaged boundary tests land, the existing
   `Voice unavailable` refusal above remains the runtime invariant.
+
+### Persistent Voice and Raw Media
+
+- A voice generation starts only after an explicit, versioned disclosure; stop,
+  revoke, and restart fail closed, and restart never silently resumes capture.
+- Capture, network egress, retention, and playback are separate authoritative
+  facts. Mute synchronously stops capture and egress; it never implies deletion
+  or retention, and no preference alone enables retention.
+- Every frame is fenced by exact owner, device, thread, session, generation,
+  and monotonic sequence. ACKs never regress or acknowledge unsent data.
+- Reconnect replay is delivery-only. It cannot rerun ASR, inference, writes,
+  final publication, proposals, confirmation, execution, or outcomes.
+- Raw audio retention requires a matching unexpired disclosure/policy receipt
+  for the exact generation. A prior-generation or cross-session receipt fails.
+- ASR hypotheses, transcripts, assistant/model prose, and TTS are display or
+  delivery data, never command proposal, confirmation, execution, or outcome
+  authority. Only typed actions and durable outcome refs carry that truth.
+- Raw media never enters Runtime Gateway projections, Khala Sync, logs,
+  analytics, traces, or support bundles.
+- Rust may own native capture/playback and the bounded media envelope only. It
+  owns no transcript, command, Sync, storage, retention-policy, or outcome
+  schema; the Effect audio contract is canonical.
+- The executable regressions live in
+  `packages/audio-contract/src/lifecycle-model.test.ts`, with shared
+  Effect/Rust accept/reject vectors in `fixtures/audio-contract/media-v1.json`.
 - Desktop conversation navigation is globally ordered by descending
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration

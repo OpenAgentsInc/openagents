@@ -1,0 +1,30 @@
+{
+  "schema": "openagents.audio.golden.v1",
+  "cases": [
+    {
+      "name": "valid-client-pcm",
+      "accept": true,
+      "header": { "schema": "openagents.audio.v1", "kind": "client_audio", "identity": { "ownerRef": "owner:1", "deviceRef": "device:1", "threadRef": "thread:1", "sessionRef": "session:1", "generation": 1 }, "sequence": 1, "codec": "pcm_s16le", "sampleRateHz": 16000, "channels": 1, "payloadLength": 4, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+    },
+    {
+      "name": "valid-server-opus",
+      "accept": true,
+      "header": { "schema": "openagents.audio.v1", "kind": "server_tts", "identity": { "ownerRef": "owner:1", "deviceRef": "device:1", "threadRef": "thread:1", "sessionRef": "session:1", "generation": 1 }, "sequence": 2, "speechRef": "speech:1", "codec": "opus", "sampleRateHz": 48000, "channels": 1, "payloadLength": 120, "sha256": "1111111111111111111111111111111111111111111111111111111111111111" }
+    },
+    {
+      "name": "reject-version",
+      "accept": false,
+      "header": { "schema": "openagents.audio.v2", "kind": "client_audio", "identity": { "ownerRef": "owner:1", "deviceRef": "device:1", "threadRef": "thread:1", "sessionRef": "session:1", "generation": 1 }, "sequence": 1, "codec": "pcm_s16le", "sampleRateHz": 16000, "channels": 1, "payloadLength": 4, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+    },
+    {
+      "name": "reject-oversize",
+      "accept": false,
+      "header": { "schema": "openagents.audio.v1", "kind": "client_audio", "identity": { "ownerRef": "owner:1", "deviceRef": "device:1", "threadRef": "thread:1", "sessionRef": "session:1", "generation": 1 }, "sequence": 1, "codec": "pcm_s16le", "sampleRateHz": 16000, "channels": 1, "payloadLength": 24001, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+    },
+    {
+      "name": "reject-excess-secret",
+      "accept": false,
+      "header": { "schema": "openagents.audio.v1", "kind": "client_audio", "identity": { "ownerRef": "owner:1", "deviceRef": "device:1", "threadRef": "thread:1", "sessionRef": "session:1", "generation": 1 }, "sequence": 1, "codec": "pcm_s16le", "sampleRateHz": 16000, "channels": 1, "payloadLength": 4, "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "token": "forbidden" }
+    }
+  ]
+}

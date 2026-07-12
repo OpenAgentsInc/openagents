@@ -2,6 +2,7 @@ import {
   BehaviorContractSchemaVersion,
   type BehaviorContractRegistryDocument,
 } from "./contract"
+import { audioBehaviorContracts } from "./audio"
 
 /**
  * Pending owner contracts for the greenfield OpenAgents mobile/desktop apps.
@@ -11,6 +12,7 @@ import {
  */
 export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = {
   contracts: [
+    ...audioBehaviorContracts,
     {
       authorityBoundary:
         "This selects the product shell and host; it does not authorize release before #8574's signing, security, migration, and clean-machine gates pass.",
@@ -806,5 +808,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-12.1",
+  version: "2026-07-12.2",
 }

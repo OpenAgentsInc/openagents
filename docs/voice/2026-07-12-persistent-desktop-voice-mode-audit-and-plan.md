@@ -7,6 +7,9 @@
 - **Effect/Rust decision:** [`2026-07-12-effect-vs-rust-audio-architecture-decision.md`](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)
 - **Tracking epic:** [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
 - **Implementation leaves:** [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734)–[#8741](https://github.com/OpenAgentsInc/openagents/issues/8741)
+- **AUDIO-1 contract freeze:** implemented by `packages/audio-contract`, the
+  media-only `crates/oa-desktop-audio` mirror, and their shared golden corpus;
+  the remaining leaves build on this authority boundary.
 - **Historical inputs:** Sarah/Hydralisk records in `docs/sarah/` and their deleted source in Git history
 
 ## 0. Vision summary

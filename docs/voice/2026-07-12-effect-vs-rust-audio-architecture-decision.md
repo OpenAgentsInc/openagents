@@ -1,5 +1,11 @@
 # Effect vs Rust for persistent audio — architecture decision
 
+**Implementation status (AUDIO-1, #8734):** accepted. The canonical Effect
+contract is `packages/audio-contract`; the media-only Rust mirror is
+`crates/oa-desktop-audio`; both consume
+`fixtures/audio-contract/media-v1.json`. Later audio leaves may extend those
+surfaces but may not widen Rust into application or policy authority.
+
 - **Date:** 2026-07-12
 - **Status:** accepted planning decision for [AUDIO-0 #8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
 - **Owner direction:** Rust is permitted for this track when it is the better systems boundary; do not force the whole feature into Effect

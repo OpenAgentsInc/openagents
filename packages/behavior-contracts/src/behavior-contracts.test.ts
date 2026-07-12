@@ -140,9 +140,9 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(21)
+    expect(decoded.contracts).toHaveLength(28)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
-    expect(pending).toHaveLength(8)
+    expect(pending).toHaveLength(10)
     expect(
       decoded.contracts.find(
         contract =>
