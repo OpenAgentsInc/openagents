@@ -240,6 +240,13 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
         authority: "confirmed",
         phase: "live",
         cacheState: "current",
+        offlineCache: {
+          accounting: "live_confirmed",
+          ownerScopeRef: "scope.user.user.mobile",
+          cachedRepositoryCount: 0,
+          cachedSessionCount: 0,
+          lastConfirmedCursor: null,
+        },
         repositories: [],
         sessions: [],
       })
@@ -257,6 +264,13 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       expect(await host.coding().directory()).toMatchObject({
         authority: "withheld",
         phase: "signed_out",
+        offlineCache: {
+          accounting: "unaccounted_signed_out",
+          ownerScopeRef: null,
+          cachedRepositoryCount: 0,
+          cachedSessionCount: 0,
+          lastConfirmedCursor: null,
+        },
         repositories: [],
         sessions: [],
       })

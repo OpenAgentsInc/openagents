@@ -14,7 +14,11 @@ import type {
   MobileConversationSelection,
   MobileConversationThread,
 } from "../src/conversation/mobile-conversation"
-import type { MobileCodingTarget } from "../src/coding/mobile-coding-navigation"
+import type {
+  MobileCodingDirectory,
+  MobileCodingOfflineCacheAccounting,
+  MobileCodingTarget,
+} from "../src/coding/mobile-coding-navigation"
 import type { MobileCodingComposerSession } from "../src/coding/mobile-coding-composer"
 import {
   buildHomeProgram,
@@ -57,6 +61,17 @@ const selection = (host: MobileConversationHost): Extract<MobileConversationSele
   host,
   threads: [initialThread],
   activeThread: initialThread,
+})
+
+const liveOfflineCache = (
+  cachedRepositoryCount: number,
+  cachedSessionCount: number,
+): MobileCodingOfflineCacheAccounting => ({
+  accounting: "live_confirmed",
+  ownerScopeRef: "scope.user.owner.fixture",
+  cachedRepositoryCount,
+  cachedSessionCount,
+  lastConfirmedCursor: 4,
 })
 
 const codingComposerSession = (text: string): MobileCodingComposerSession => {
@@ -151,6 +166,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
           authority: "confirmed",
           phase: "live",
           cacheState: "current",
+          offlineCache: liveOfflineCache(0, 0),
           repositories: [],
           sessions: [],
         },
@@ -223,7 +239,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       conversation: selection(host),
       coding: {
         activeComposer: () => activeComposer,
-        directory: { authority: "confirmed", phase: "live", cacheState: "current", repositories: [], sessions: [] },
+        directory: { authority: "confirmed", phase: "live", cacheState: "current", offlineCache: liveOfflineCache(0, 0), repositories: [], sessions: [] },
         clearSelection: async () => undefined,
         selectSession: async () => ({ thread: initialThread, composer: activeComposer }),
         updateComposerText: async (session) => session,
@@ -257,6 +273,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
           authority: "confirmed",
           phase: "live",
           cacheState: "current",
+          offlineCache: liveOfflineCache(1, 1),
           repositories: [{
             repositoryRef: "repository.mobile",
             projectRef: "project.mobile",
@@ -307,6 +324,88 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     const current = await Effect.runPromise(lastState(program))
     expect(current.activeThreadRef).toBe(initialThread.threadRef)
     expect(current.khala.pending).toBe(false)
+  })
+
+  test("names the loss-accounted withheld coding cache without exposing cached refs", async () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      sendMessage: async () => ({ ok: true, thread: initialThread }),
+    }
+    const withheldDirectory: MobileCodingDirectory = {
+      authority: "withheld",
+      phase: "must_refetch",
+      cacheState: "hidden_until_reconnect",
+      offlineCache: {
+        accounting: "withheld_counted",
+        ownerScopeRef: "scope.user.owner.fixture",
+        cachedRepositoryCount: 2,
+        cachedSessionCount: 3,
+        lastConfirmedCursor: 9,
+      },
+      repositories: [],
+      sessions: [],
+    }
+    const coding = {
+      activeComposer: () => null,
+      clearSelection: async () => undefined,
+      selectSession: async () => null,
+      updateComposerText: async () => null,
+      pickComposerAttachments: async () => ({ status: "cancelled" as const }),
+    }
+    const withheldProgram = buildHomeProgram({
+      conversation: selection(host),
+      coding: { ...coding, directory: withheldDirectory },
+    })
+    const withheldDrawer = JSON.stringify(renderDrawerView({
+      ...withheldProgram.initialState,
+      drawerOpen: true,
+    }))
+    expect(withheldDrawer).toContain("Coding cache · 2 repositories · 3 sessions hidden until reconnect")
+    expect(withheldDrawer).not.toContain("Coding sessions")
+    expect(withheldDrawer).not.toContain("scope.user.owner.fixture")
+
+    const deniedProgram = buildHomeProgram({
+      conversation: selection(host),
+      coding: {
+        ...coding,
+        directory: {
+          ...withheldDirectory,
+          phase: "denied",
+          cacheState: "purged_after_denial",
+          offlineCache: { ...withheldDirectory.offlineCache, cachedRepositoryCount: 1, cachedSessionCount: 1 },
+        },
+      },
+    })
+    const deniedDrawer = JSON.stringify(renderDrawerView({
+      ...deniedProgram.initialState,
+      drawerOpen: true,
+    }))
+    expect(deniedDrawer).toContain("Coding cache · 1 repository · 1 session withheld after denial")
+
+    const unaccountedProgram = buildHomeProgram({
+      conversation: selection(host),
+      coding: {
+        ...coding,
+        directory: {
+          ...withheldDirectory,
+          phase: "signed_out",
+          offlineCache: {
+            accounting: "unaccounted_signed_out",
+            ownerScopeRef: null,
+            cachedRepositoryCount: 0,
+            cachedSessionCount: 0,
+            lastConfirmedCursor: null,
+          },
+        },
+      },
+    })
+    const unaccountedDrawer = JSON.stringify(renderDrawerView({
+      ...unaccountedProgram.initialState,
+      drawerOpen: true,
+    }))
+    expect(unaccountedDrawer).not.toContain("Coding cache")
   })
 
   test("boots from confirmed refs/versions and exposes confirmed thread navigation", () => {

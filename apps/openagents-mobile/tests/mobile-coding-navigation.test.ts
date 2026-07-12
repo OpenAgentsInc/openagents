@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import {
+  CODING_REPOSITORY_ENTITY_TYPE,
+  CODING_SESSION_ENTITY_TYPE,
   LocalIdentityRef,
+  SyncVersion,
   deviceLocalScope,
   decodeCodingProjectEntity,
   decodeCodingRepositoryEntity,
@@ -155,6 +158,7 @@ const withNavigation = async <Value>(
     navigation: ReturnType<typeof openMobileCodingNavigation>
     setCatalog: (value: KhalaSyncCodingCatalog | null) => void
     setOwnerScope: (value: SyncScope | null) => void
+    store: ReturnType<typeof openExpoKhalaSyncStore>
     databaseName: string
   }>) => Promise<Value>,
 ): Promise<Value> => {
@@ -176,6 +180,7 @@ const withNavigation = async <Value>(
       navigation,
       setCatalog: value => { currentCatalog = value },
       setOwnerScope: value => { currentOwnerScope = value },
+      store,
       databaseName,
     })
   } finally {
@@ -192,6 +197,13 @@ describe("contract openagents_mobile.coding.authenticated_navigation.v1", () => 
         authority: "confirmed",
         phase: "live",
         cacheState: "current",
+        offlineCache: {
+          accounting: "live_confirmed",
+          ownerScopeRef,
+          cachedRepositoryCount: 0,
+          cachedSessionCount: 0,
+          lastConfirmedCursor: null,
+        },
         repositories: [{
           repositoryRef: "repository.mobile",
           projectRef: "project.mobile",
@@ -212,6 +224,13 @@ describe("contract openagents_mobile.coding.authenticated_navigation.v1", () => 
         authority: "withheld",
         phase: "must_refetch",
         cacheState: "hidden_until_reconnect",
+        offlineCache: {
+          accounting: "withheld_counted",
+          ownerScopeRef,
+          cachedRepositoryCount: 0,
+          cachedSessionCount: 0,
+          lastConfirmedCursor: null,
+        },
         repositories: [],
         sessions: [],
       })
@@ -221,8 +240,103 @@ describe("contract openagents_mobile.coding.authenticated_navigation.v1", () => 
       expect(await navigation.directory()).toMatchObject({
         authority: "withheld",
         phase: "signed_out",
+        offlineCache: {
+          accounting: "unaccounted_signed_out",
+          ownerScopeRef: null,
+          cachedRepositoryCount: 0,
+          cachedSessionCount: 0,
+          lastConfirmedCursor: null,
+        },
         repositories: [],
         sessions: [],
+      })
+    })
+  })
+
+  test("loss-accounts the withheld offline cache from real confirmed rows without exposing content", async () => {
+    await withNavigation(async ({ navigation, setCatalog, setOwnerScope, store }) => {
+      const foreignSession = decodeCodingSessionEntity({
+        ...session,
+        sessionRef: "session.foreign",
+        threadRef: "thread.foreign",
+        conversationRef: "conversation.foreign",
+        workContextRef: "context.foreign",
+        ownerScopeRef: String(personalScope("other.owner")),
+      })
+      await Effect.runPromise(store.resetScope(ownerScope, [
+        {
+          entityType: CODING_REPOSITORY_ENTITY_TYPE,
+          entityId: repository.repositoryRef,
+          postImageJson: JSON.stringify(repository),
+          version: SyncVersion.make(7),
+        },
+        {
+          entityType: CODING_SESSION_ENTITY_TYPE,
+          entityId: session.sessionRef,
+          postImageJson: JSON.stringify(session),
+          version: SyncVersion.make(8),
+        },
+        {
+          entityType: CODING_SESSION_ENTITY_TYPE,
+          entityId: foreignSession.sessionRef,
+          postImageJson: JSON.stringify(foreignSession),
+          version: SyncVersion.make(9),
+        },
+        {
+          entityType: CODING_SESSION_ENTITY_TYPE,
+          entityId: "session.malformed",
+          postImageJson: "{\"schema\":\"not-a-coding-session\"}",
+          version: SyncVersion.make(10),
+        },
+      ], SyncVersion.make(11)))
+
+      setCatalog(catalog(snapshot("must_refetch")))
+      const withheld = await navigation.directory()
+      expect(withheld).toEqual({
+        authority: "withheld",
+        phase: "must_refetch",
+        cacheState: "hidden_until_reconnect",
+        offlineCache: {
+          accounting: "withheld_counted",
+          ownerScopeRef,
+          cachedRepositoryCount: 1,
+          cachedSessionCount: 1,
+          lastConfirmedCursor: 11,
+        },
+        repositories: [],
+        sessions: [],
+      })
+      expect(JSON.stringify(withheld)).not.toContain("repository.mobile")
+      expect(JSON.stringify(withheld)).not.toContain("session.mobile")
+
+      setCatalog(catalog(snapshot("denied")))
+      expect(await navigation.directory()).toMatchObject({
+        cacheState: "purged_after_denial",
+        offlineCache: {
+          accounting: "withheld_counted",
+          cachedRepositoryCount: 1,
+          cachedSessionCount: 1,
+          lastConfirmedCursor: 11,
+        },
+      })
+
+      setCatalog(catalog(snapshot("live")))
+      expect((await navigation.directory()).offlineCache).toEqual({
+        accounting: "live_confirmed",
+        ownerScopeRef,
+        cachedRepositoryCount: 1,
+        cachedSessionCount: 1,
+        lastConfirmedCursor: 11,
+      })
+
+      setCatalog(null)
+      setOwnerScope(null)
+      expect((await navigation.directory()).offlineCache).toEqual({
+        accounting: "unaccounted_signed_out",
+        ownerScopeRef: null,
+        cachedRepositoryCount: 0,
+        cachedSessionCount: 0,
+        lastConfirmedCursor: null,
       })
     })
   })

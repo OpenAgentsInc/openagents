@@ -5,7 +5,7 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.2",
+    version: "2026-07-12.3",
     contracts: [
       {
         contractId: "openagents_mobile.seam.identity.local_first_account_link.v1",
@@ -180,6 +180,52 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         ],
         verification:
           "Mobile accessibility oracle, Home/Khala focused suites, mobile typecheck, and app test sweep. Manual VoiceOver/TalkBack and physical device receipts remain intentionally unclaimed.",
+      },
+      {
+        contractId: "openagents_mobile.seam.coding_offline_cache_accounting.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "authenticated coding continuity",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "sol-roadmap",
+          statedBy: "owner",
+          statedOn: "2026-07-12",
+        },
+        statement:
+          "While hosted coding authority is withheld, the mobile directory loss-accounts the device-local confirmed cache: it names exactly how many confirmed repository and session rows stay cached-but-hidden for the current owner scope plus the durable cursor they were confirmed through, exposes none of the cached row content, and signed-out state stays explicitly unaccounted so no owner's cache is read without a live owner-scope handle.",
+        authorityBoundary:
+          "Accounting reads only confirmed rows and the durable cursor of the currently authenticated owner scope through the shared Sync store and shared catalog decoders. Counts and cursor are the only projection; refs, names, paths, threads, and bodies of withheld rows never reach the view program, and an offline directory never renders as an empty account without the withheld counts.",
+        seam: {
+          client: "apps/openagents-mobile/src/screens/home-core.ts",
+          server: "apps/openagents-mobile/src/coding/mobile-coding-navigation.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-mobile/src/coding/mobile-coding-navigation.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "github:OpenAgentsInc/openagents#8694",
+        ],
+        oracles: [
+          {
+            id: "mobile_coding_offline_cache_accounting",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-coding-navigation.test.ts",
+            description:
+              "Proves real-SQLite withheld/live/signed-out cache accounting with exact counts and cursor, cross-owner and malformed row exclusion, and no cached ref leakage.",
+          },
+          {
+            id: "mobile_coding_offline_cache_drawer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves the drawer renders the loss-accounted withheld cache line, distinguishes denial from reconnect wording, and hides it when live or unaccounted.",
+          },
+        ],
+        verification:
+          "Mobile coding navigation, authoritative Home, sync-host, full app, and typecheck suites; physical iOS/Android receipts remain open on #8694.",
       },
     ],
   };

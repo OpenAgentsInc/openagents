@@ -413,6 +413,35 @@ const codingSessionStateLabel = (state: MobileCodingDirectory["sessions"][number
   }
 }
 
+/**
+ * Loss-accounted offline cache line: while hosted coding authority is
+ * withheld, name exactly how many confirmed rows stay cached-but-hidden so
+ * an offline directory never silently masquerades as an empty account.
+ */
+export const codingOfflineCacheLabel = (directory: MobileCodingDirectory): string => {
+  const { cachedRepositoryCount, cachedSessionCount } = directory.offlineCache
+  const counts = `${cachedRepositoryCount} ${cachedRepositoryCount === 1 ? "repository" : "repositories"} · ${cachedSessionCount} ${cachedSessionCount === 1 ? "session" : "sessions"}`
+  return directory.cacheState === "purged_after_denial"
+    ? `Coding cache · ${counts} withheld after denial`
+    : `Coding cache · ${counts} hidden until reconnect`
+}
+
+const codingOfflineCacheAccountingRows = (state: HomeState): ReadonlyArray<View> =>
+  state.codingDirectory !== null &&
+    state.codingDirectory.authority === "withheld" &&
+    state.codingDirectory.offlineCache.accounting === "withheld_counted" &&
+    (state.codingDirectory.offlineCache.cachedRepositoryCount > 0 ||
+      state.codingDirectory.offlineCache.cachedSessionCount > 0)
+    ? [
+        Text({
+          key: "drawer-coding-offline-cache",
+          content: codingOfflineCacheLabel(state.codingDirectory),
+          variant: "caption",
+          color: "textMuted",
+        }),
+      ]
+    : []
+
 export const renderDrawerView = (state: HomeState): View =>
   Stack(
     { key: "drawer-root", direction: "column", gap: "2", padding: "4", style: { width: "full", height: "full", backgroundColor: "surface" } },
@@ -456,6 +485,7 @@ export const renderDrawerView = (state: HomeState): View =>
             ]),
           ]
         : []),
+      ...codingOfflineCacheAccountingRows(state),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
       Text({ key: "drawer-bundle", content: `Bundle ${BUNDLE_TAG}`, variant: "caption", color: "textMuted" }),

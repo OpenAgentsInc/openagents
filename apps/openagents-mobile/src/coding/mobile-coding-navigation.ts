@@ -1,8 +1,12 @@
 import {
+  CODING_REPOSITORY_ENTITY_TYPE,
+  CODING_SESSION_ENTITY_TYPE,
   CodingNavigationEntity,
   CodingOwnerScopeRef,
   CodingRef,
   LocalRevision,
+  decodeCodingRepositoryEntity,
+  decodeCodingSessionEntity,
   resolveCodingNavigation,
   type CodingRepositoryEntity,
   type CodingSessionEntity,
@@ -48,10 +52,35 @@ export type MobileCodingSelection = typeof MobileCodingSelection.Type
 const decodeTarget = Schema.decodeUnknownSync(MobileCodingTarget)
 const decodeSelection = Schema.decodeUnknownSync(MobileCodingSelection)
 
+/**
+ * Loss accounting for the device-local confirmed coding cache. While hosted
+ * authority is withheld, the directory names exactly how many confirmed
+ * repository/session rows remain cached for the current owner scope and the
+ * durable cursor they were confirmed through, without exposing row content.
+ * Signed-out state is explicitly unaccounted: no owner's cache is read
+ * without a live owner-scope handle.
+ */
+export type MobileCodingOfflineCacheAccounting = Readonly<{
+  accounting: "live_confirmed" | "withheld_counted" | "unaccounted_signed_out"
+  ownerScopeRef: string | null
+  cachedRepositoryCount: number
+  cachedSessionCount: number
+  lastConfirmedCursor: number | null
+}>
+
+export const UNACCOUNTED_SIGNED_OUT_OFFLINE_CACHE: MobileCodingOfflineCacheAccounting = {
+  accounting: "unaccounted_signed_out",
+  ownerScopeRef: null,
+  cachedRepositoryCount: 0,
+  cachedSessionCount: 0,
+  lastConfirmedCursor: null,
+}
+
 export type MobileCodingDirectory = Readonly<{
   authority: "confirmed" | "withheld"
   phase: ScopeSyncState["phase"] | "signed_out"
   cacheState: "current" | "hidden_until_reconnect" | "purged_after_denial"
+  offlineCache: MobileCodingOfflineCacheAccounting
   repositories: ReadonlyArray<Readonly<{
     repositoryRef: string
     projectRef: string
@@ -124,10 +153,12 @@ export type MobileCodingNavigation = Readonly<{
 
 const emptyDirectory = (
   phase: MobileCodingDirectory["phase"],
+  offlineCache: MobileCodingOfflineCacheAccounting,
 ): MobileCodingDirectory => ({
   authority: "withheld",
   phase,
   cacheState: phase === "denied" ? "purged_after_denial" : "hidden_until_reconnect",
+  offlineCache,
   repositories: [],
   sessions: [],
 })
@@ -138,8 +169,9 @@ const grantEligible = (grant: CodingRepositoryEntity["grant"]): boolean =>
 
 const directoryFromSnapshot = (
   snapshot: ConfirmedCodingCatalogSnapshot,
+  offlineCache: MobileCodingOfflineCacheAccounting,
 ): MobileCodingDirectory => {
-  if (snapshot.status.phase !== "live") return emptyDirectory(snapshot.status.phase)
+  if (snapshot.status.phase !== "live") return emptyDirectory(snapshot.status.phase, offlineCache)
   const repositories = snapshot.catalog.repositories.filter(repository =>
     repository.availability.state === "available" && grantEligible(repository.grant)
   )
@@ -151,6 +183,7 @@ const directoryFromSnapshot = (
     authority: "confirmed",
     phase: "live",
     cacheState: "current",
+    offlineCache,
     repositories: repositories
       .map(repository => ({
         repositoryRef: repository.repositoryRef,
@@ -286,6 +319,49 @@ export const openMobileCodingNavigation = (input: Readonly<{
     return catalog === null ? null : Effect.runPromise(catalog.snapshot())
   }
 
+  const countDecodableCachedRows = <Entity extends Readonly<{ ownerScopeRef: string }>>(
+    ownerScopeRef: string,
+    rows: ReadonlyArray<Readonly<{ entityId: string; postImageJson: string }>>,
+    decode: (raw: unknown) => Entity,
+    refOf: (entity: Entity) => string,
+  ): number =>
+    rows.filter(row => {
+      try {
+        const entity = decode(JSON.parse(row.postImageJson))
+        return refOf(entity) === row.entityId && entity.ownerScopeRef === ownerScopeRef
+      } catch {
+        return false
+      }
+    }).length
+
+  const accountOfflineCache = async (live: boolean): Promise<MobileCodingOfflineCacheAccounting> => {
+    const ownerScope = input.ownerScope()
+    if (ownerScope === null) return UNACCOUNTED_SIGNED_OUT_OFFLINE_CACHE
+    const ownerScopeRef = String(CodingOwnerScopeRef.make(String(ownerScope)))
+    const [repositoryRows, sessionRows, cursor] = await Effect.runPromise(Effect.all([
+      input.store.readEntities(ownerScope, CODING_REPOSITORY_ENTITY_TYPE),
+      input.store.readEntities(ownerScope, CODING_SESSION_ENTITY_TYPE),
+      input.store.cursor(ownerScope),
+    ]))
+    return {
+      accounting: live ? "live_confirmed" : "withheld_counted",
+      ownerScopeRef,
+      cachedRepositoryCount: countDecodableCachedRows(
+        ownerScopeRef,
+        repositoryRows,
+        decodeCodingRepositoryEntity,
+        entity => entity.repositoryRef,
+      ),
+      cachedSessionCount: countDecodableCachedRows(
+        ownerScopeRef,
+        sessionRows,
+        decodeCodingSessionEntity,
+        entity => entity.sessionRef,
+      ),
+      lastConfirmedCursor: cursor === null ? null : Number(cursor),
+    }
+  }
+
   const resolve = async (target: MobileCodingTarget): Promise<MobileCodingTargetResolution> => {
     const ownerScope = input.ownerScope()
     const current = await snapshot()
@@ -297,8 +373,9 @@ export const openMobileCodingNavigation = (input: Readonly<{
   return {
     directory: async () => {
       const catalog = input.catalog()
-      if (catalog === null) return emptyDirectory("signed_out")
-      return directoryFromSnapshot(await Effect.runPromise(catalog.snapshot()))
+      if (catalog === null) return emptyDirectory("signed_out", UNACCOUNTED_SIGNED_OUT_OFFLINE_CACHE)
+      const current = await Effect.runPromise(catalog.snapshot())
+      return directoryFromSnapshot(current, await accountOfflineCache(current.status.phase === "live"))
     },
     resolve,
     accept: async candidate => {
