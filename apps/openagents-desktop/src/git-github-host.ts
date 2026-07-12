@@ -18,6 +18,7 @@ import { createHash } from "node:crypto"
 import { realpathSync } from "node:fs"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
+import { workspaceGitEnvironment } from "./git-process-environment.ts"
 
 import {
   decodeGitGithubRequest,
@@ -61,7 +62,12 @@ const runBinary = (bin: string, args: ReadonlyArray<string>, cwd: string, timeou
     // A hung credential prompt must never wedge the host: git/gh run with no
     // inherited stdin, and gh is told never to prompt.
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1" },
+    env: {
+      ...workspaceGitEnvironment(),
+      GIT_TERMINAL_PROMPT: "0",
+      GH_PROMPT_DISABLED: "1",
+      GH_NO_UPDATE_NOTIFIER: "1",
+    },
   })
   if (proc.error) {
     const err = proc.error as NodeJS.ErrnoException

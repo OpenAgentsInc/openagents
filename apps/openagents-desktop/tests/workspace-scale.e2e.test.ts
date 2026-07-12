@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test"
-import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -8,6 +7,7 @@ import { pathToFileURL } from "node:url"
 
 import { makeWorkspaceSearchHost } from "../src/workspace-search-host.ts"
 import { openWorkspaceService } from "../src/workspace-service.ts"
+import { runGitFixture } from "./git-fixture.ts"
 
 const appRoot = path.resolve(import.meta.dir, "..")
 
@@ -15,7 +15,7 @@ test("CUT-17 real worker bounds a 20k-entry repository and project close drains 
   const root = mkdtempSync(path.join(tmpdir(), "openagents-workspace-scale-"))
   const workerOut = mkdtempSync(path.join(tmpdir(), "openagents-workspace-worker-"))
   try {
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
     for (let directory = 0; directory < 100; directory++) {
       const directoryPath = path.join(root, `src-${String(directory).padStart(3, "0")}`)
       mkdirSync(directoryPath)

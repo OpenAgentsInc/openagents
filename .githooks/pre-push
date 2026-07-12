@@ -25,6 +25,23 @@ done
 
 root="$(git rev-parse --show-toplevel)"
 zero_sha="0000000000000000000000000000000000000000"
+guard_head_before="$(git rev-parse HEAD)"
+guard_readme_before="$(git hash-object "$root/README.md")"
+
+verify_repository_stability() {
+  if [ "$(git rev-parse HEAD)" != "$guard_head_before" ]; then
+    echo "[pre-push guard] BLOCKED: a verification command mutated repository HEAD." >&2
+    return 1
+  fi
+  if [ "$(git hash-object "$root/README.md")" != "$guard_readme_before" ]; then
+    echo "[pre-push guard] BLOCKED: a verification command mutated the root README." >&2
+    return 1
+  fi
+  if [ "$(sed -n '1p' "$root/README.md")" != "# OpenAgents" ] || [ "$(wc -l < "$root/README.md")" -lt 100 ]; then
+    echo "[pre-push guard] BLOCKED: root README integrity check failed." >&2
+    return 1
+  fi
+}
 
 is_enabled() {
   case "${1:-}" in
@@ -37,6 +54,8 @@ if [ "$main_local_sha" = "$zero_sha" ]; then
   echo "[pre-push guard] BLOCKED: refusing to delete main." >&2
   exit 1
 fi
+
+verify_repository_stability || exit 1
 
 echo "[pre-push guard] push to main -> running fast policy checks..." >&2
 
@@ -127,5 +146,6 @@ if is_enabled "${OPENAGENTS_PRE_PUSH_QA:-}" || is_enabled "${OPENAGENTS_PRE_PUSH
   fi
 fi
 
+verify_repository_stability || exit 1
 echo "[pre-push guard] fast main guard green — push allowed." >&2
 exit 0

@@ -22,6 +22,7 @@ import {
   type WorkspaceSearchHost,
   type WorkspaceSearchTask,
 } from "./workspace-search-host.ts"
+import { workspaceGitEnvironment } from "./git-process-environment.ts"
 
 const maxEntries = 120
 const maxBytes = 240_000
@@ -97,6 +98,7 @@ const canonicalDirectoryForRef = (
 const gitIgnoredPathRefs = (root: string, refs: ReadonlyArray<string>): Set<string> => {
   const repositoryProbe = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
     cwd: root,
+    env: workspaceGitEnvironment(),
     stdio: "ignore",
     timeout: 10_000,
   })
@@ -106,6 +108,7 @@ const gitIgnoredPathRefs = (root: string, refs: ReadonlyArray<string>): Set<stri
     if (candidates.length === 0) return
     const result = spawnSync("git", ["check-ignore", "--no-index", "--", ...candidates], {
       cwd: root,
+      env: workspaceGitEnvironment(),
       stdio: "ignore",
       timeout: 10_000,
     })
@@ -803,7 +806,11 @@ const projectWorkspaceFile = (resolved: string): DesktopWorkspaceFile | null => 
 
 const gitState = (root: string): DesktopWorkspaceSnapshot["git"] => {
   try {
-    return execFileSync("git", ["-C", root, "status", "--porcelain"], { encoding: "utf8", timeout: 2_000 }).trim() === "" ? "clean" : "changed"
+    return execFileSync("git", ["-C", root, "status", "--porcelain"], {
+      encoding: "utf8",
+      env: workspaceGitEnvironment(),
+      timeout: 2_000,
+    }).trim() === "" ? "clean" : "changed"
   } catch { return "unavailable" }
 }
 
@@ -812,6 +819,7 @@ const gitOutput = (root: string, args: ReadonlyArray<string>): string | null => 
     const canonicalRoot = realpathSync(root)
     return execFileSync("git", ["-C", canonicalRoot, ...args], {
       encoding: "utf8",
+      env: workspaceGitEnvironment(),
       timeout: 2_000,
       maxBuffer: maxGitDiffBytes + 1,
     })

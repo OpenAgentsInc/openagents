@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
-import { execFileSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -44,6 +43,7 @@ import type {
   WorkspaceSearchHost,
   WorkspaceSearchRequest,
 } from "../src/workspace-search-host.ts"
+import { isolatedGitEnvironment, runGitFixture } from "./git-fixture.ts"
 
 const roots: string[] = []
 const makeRoot = (): string => {
@@ -57,6 +57,18 @@ afterEach(() => {
 })
 
 describe("Desktop bounded workspace service", () => {
+  test("strips inherited Git hook context from fixture repositories", () => {
+    const environment = isolatedGitEnvironment({
+      PATH: process.env.PATH,
+      GIT_DIR: "/private/real-repository/.git",
+      GIT_WORK_TREE: "/private/real-repository",
+      GIT_INDEX_FILE: "/private/real-repository/.git/index",
+    })
+    expect(environment.PATH).toBe(process.env.PATH)
+    expect(environment.GIT_DIR).toBeUndefined()
+    expect(environment.GIT_WORK_TREE).toBeUndefined()
+    expect(environment.GIT_INDEX_FILE).toBeUndefined()
+  })
   test("decodes only grant-scoped relative document requests and bounded results", () => {
     expect(decodeWorkspaceDocumentRequest({
       grantRef: "workspace.grant.docs",
@@ -144,7 +156,7 @@ describe("Desktop bounded workspace service", () => {
   test("classifies missing, directory, binary, oversized, encoding, ignored, and escape outcomes", () => {
     const root = makeRoot()
     const outside = makeRoot()
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
     writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n")
     mkdirSync(path.join(root, "src"))
     writeFileSync(path.join(root, "binary.bin"), Buffer.from([0, 1, 2]))
@@ -234,7 +246,7 @@ describe("Desktop bounded workspace service", () => {
 
   test("Save As fails closed for revoked, hidden, ignored, missing-parent, race, and permission targets", () => {
     const root = makeRoot()
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
     writeFileSync(path.join(root, ".gitignore"), "ignored.ts\n")
     const input = { grantRef: "workspace.grant.docs", pathRef: "copy.ts", content: "copy" }
     expect(saveWorkspaceDocumentAs(root, "workspace.grant.other", input))
@@ -323,7 +335,7 @@ describe("Desktop bounded workspace service", () => {
     const outside = makeRoot()
     const file = path.join(root, "README.md")
     const outsideFile = path.join(outside, "private.txt")
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
     writeFileSync(file, "inside")
     writeFileSync(outsideFile, "outside")
 
@@ -431,13 +443,13 @@ describe("Desktop bounded workspace service", () => {
 
   test("projects only bounded typed Git status and a selected non-binary diff", () => {
     const root = makeRoot()
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
-    execFileSync("git", ["config", "user.email", "fixture@example.test"], { cwd: root })
-    execFileSync("git", ["config", "user.name", "Fixture"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
+    runGitFixture(root, ["config", "user.email", "fixture@example.test"])
+    runGitFixture(root, ["config", "user.name", "Fixture"])
     const file = path.join(root, "README.md")
     writeFileSync(file, "before\n")
-    execFileSync("git", ["add", "README.md"], { cwd: root })
-    execFileSync("git", ["commit", "--quiet", "-m", "initial"], { cwd: root })
+    runGitFixture(root, ["add", "README.md"])
+    runGitFixture(root, ["commit", "--quiet", "-m", "initial"])
     writeFileSync(file, "after\n")
     writeFileSync(path.join(root, "new.txt"), "new")
 
@@ -460,13 +472,13 @@ describe("Desktop bounded workspace service", () => {
 
   test("never projects binary, secret-shaped, escape, or non-Git diff output", () => {
     const root = makeRoot()
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
-    execFileSync("git", ["config", "user.email", "fixture@example.test"], { cwd: root })
-    execFileSync("git", ["config", "user.name", "Fixture"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
+    runGitFixture(root, ["config", "user.email", "fixture@example.test"])
+    runGitFixture(root, ["config", "user.name", "Fixture"])
     const file = path.join(root, "config.txt")
     writeFileSync(file, "safe\n")
-    execFileSync("git", ["add", "config.txt"], { cwd: root })
-    execFileSync("git", ["commit", "--quiet", "-m", "initial"], { cwd: root })
+    runGitFixture(root, ["add", "config.txt"])
+    runGitFixture(root, ["commit", "--quiet", "-m", "initial"])
 
     writeFileSync(file, "token=sk-abcdefghijklmnop\n")
     expect(workspaceGitDiff(root, file).state).toBe("unavailable")
@@ -478,7 +490,7 @@ describe("Desktop bounded workspace service", () => {
   test("pages a lazy relative tree while omitting ignored, secret, hidden, and symlink entries", () => {
     const root = makeRoot()
     const outside = makeRoot()
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
     writeFileSync(path.join(root, ".gitignore"), "ignored/\n*.log\n")
     mkdirSync(path.join(root, "src"))
     mkdirSync(path.join(root, "ignored"))
@@ -533,7 +545,7 @@ describe("Desktop bounded workspace service", () => {
 
   test("bounds path/content search and withholds binary, secret, ignored, and raw-root data", () => {
     const root = makeRoot()
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
     writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n")
     mkdirSync(path.join(root, "src"))
     writeFileSync(path.join(root, "src", "alpha.ts"), "first\nneedle in safe content\nlast")
@@ -575,7 +587,7 @@ describe("Desktop bounded workspace service", () => {
   test("creates, revision-renames, reveals, and non-recursively deletes only visible relative entries", async () => {
     const root = makeRoot()
     const outside = makeRoot()
-    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    runGitFixture(root, ["init", "--quiet"])
     writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n")
     const revealed: string[] = []
     const changes: unknown[] = []

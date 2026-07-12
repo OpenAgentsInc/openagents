@@ -23,9 +23,9 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { execFileSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import path from "node:path"
+import { runGitFixture } from "./git-fixture.ts"
 
 import {
   AUDIT_PROSE_SUMMARY,
@@ -368,13 +368,13 @@ describe("E1 repo inspection: status/diff (programmatic oracle)", () => {
   test("workspaceGitStatus reports the dirty file and workspaceGitDiff projects a bounded hunk", () => {
     const root = mkdtempSync(path.join(tmpdir(), "capability-eval-git-"))
     try {
-      execFileSync("git", ["init", "--quiet"], { cwd: root })
-      execFileSync("git", ["config", "user.email", "fixture@example.test"], { cwd: root })
-      execFileSync("git", ["config", "user.name", "Fixture"], { cwd: root })
+      runGitFixture(root, ["init", "--quiet"])
+      runGitFixture(root, ["config", "user.email", "fixture@example.test"])
+      runGitFixture(root, ["config", "user.name", "Fixture"])
       const file = path.join(root, "README.md")
       writeFileSync(file, "before\n")
-      execFileSync("git", ["add", "README.md"], { cwd: root })
-      execFileSync("git", ["commit", "--quiet", "-m", "initial"], { cwd: root })
+      runGitFixture(root, ["add", "README.md"])
+      runGitFixture(root, ["commit", "--quiet", "-m", "initial"])
       writeFileSync(file, "after\n")
 
       const status = workspaceGitStatus(root)

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict"
-import { execFileSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
 
 import { openGitGithubService } from "./git-github-host.ts"
+import { runGitFixture } from "../tests/git-fixture.ts"
 
 const roots: string[] = []
 const temp = (prefix: string): string => {
@@ -14,7 +14,7 @@ const temp = (prefix: string): string => {
   return root
 }
 const git = (root: string, args: ReadonlyArray<string>): string =>
-  execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  runGitFixture(root, args)
 const write = (root: string, relative: string, content: string | Buffer): void =>
   writeFileSync(path.join(root, relative), content)
 const repo = (): string => {
