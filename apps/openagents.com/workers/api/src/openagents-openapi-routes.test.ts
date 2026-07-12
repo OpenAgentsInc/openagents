@@ -1652,6 +1652,16 @@ describe('OpenAgents OpenAPI route', () => {
       schemaProperties(body, 'BusinessOutreachSendRequest')
         .dailyMailboxSendCap,
     ).toEqual(expect.objectContaining({ minimum: 1 }))
+    expect(
+      schemaProperties(body, 'BusinessOutreachSendRequest').channel,
+    ).toEqual({
+      type: 'string',
+      enum: ['apollo_sequence', 'customer_mailbox', 'manual'],
+    })
+    expect(schemaProperties(body, 'BusinessOutreachSend').channel).toEqual({
+      type: 'string',
+      enum: ['apollo_sequence', 'customer_mailbox', 'manual'],
+    })
     expect(schemaProperties(body, 'CrmReplyInboundRequest').fromEmail).toEqual(
       expect.objectContaining({ format: 'email' }),
     )

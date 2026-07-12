@@ -4387,7 +4387,7 @@ const schemaComponents = (): JsonSchema => ({
       },
       channel: {
         type: 'string',
-        enum: ['email', 'apollo_sequence'],
+        enum: ['apollo_sequence', 'customer_mailbox', 'manual'],
       },
       dailyMailboxSendCap: {
         type: 'integer',
@@ -4438,7 +4438,10 @@ const schemaComponents = (): JsonSchema => ({
     ],
     properties: {
       approvalReceiptRef: { type: 'string' },
-      channel: { type: 'string', enum: ['email', 'apollo_sequence'] },
+      channel: {
+        type: 'string',
+        enum: ['apollo_sequence', 'customer_mailbox', 'manual'],
+      },
       createdAt: { type: 'string' },
       draftRef: { type: 'string' },
       mailboxRef: { type: 'string' },
