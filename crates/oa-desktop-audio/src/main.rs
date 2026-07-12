@@ -57,6 +57,13 @@ fn main() {
                                         } => {
                                             serde_json::json!({"state":"packet","generation":generation,"sequence":sequence,"payloadLength":payload_length,"sha256":sha256})
                                         }
+                                        NativeTransportEvent::Playback {
+                                            generation,
+                                            sequence,
+                                            payload_length,
+                                        } => {
+                                            serde_json::json!({"state":"playback","generation":generation,"sequence":sequence,"payloadLength":payload_length})
+                                        }
                                         NativeTransportEvent::Backpressured => {
                                             serde_json::json!({"state":"backpressured"})
                                         }

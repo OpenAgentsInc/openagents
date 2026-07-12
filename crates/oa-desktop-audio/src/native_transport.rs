@@ -55,6 +55,11 @@ pub enum NativeTransportEvent {
         payload_length: usize,
         sha256: String,
     },
+    Playback {
+        generation: u32,
+        sequence: u64,
+        payload_length: usize,
+    },
     Backpressured,
     DeviceChanged,
     Offline,
@@ -325,27 +330,27 @@ fn enqueue_tts(
     queue: &Arc<Mutex<VecDeque<f32>>>,
     output_rate: u32,
     resampler: &mut MonoResampler,
-) {
+) -> Option<(u64, usize)> {
     if frame.len() < 8 || &frame[..4] != b"OAA1" {
-        return;
+        return None;
     }
     let header_len = u32::from_be_bytes(frame[4..8].try_into().unwrap()) as usize;
     if header_len > 8_192 || frame.len() < 8 + header_len {
-        return;
+        return None;
     }
     let Ok(header) = serde_json::from_slice::<Value>(&frame[8..8 + header_len]) else {
-        return;
+        return None;
     };
     if header.get("kind").and_then(Value::as_str) != Some("server_tts") {
-        return;
+        return None;
     }
     let payload = &frame[8 + header_len..];
     if payload.len() > MAX_AUDIO_PAYLOAD_BYTES as usize || !payload.len().is_multiple_of(2) {
-        return;
+        return None;
     }
     let digest = format!("{:x}", Sha256::digest(payload));
     if header.get("sha256").and_then(Value::as_str) != Some(&digest) {
-        return;
+        return None;
     }
     let input_rate = header
         .get("sampleRateHz")
@@ -353,7 +358,7 @@ fn enqueue_tts(
         .and_then(|value| u32::try_from(value).ok())
         .unwrap_or(0);
     if !matches!(input_rate, 24_000 | 48_000) {
-        return;
+        return None;
     }
     let input: Vec<f32> = payload
         .chunks_exact(2)
@@ -367,6 +372,10 @@ fn enqueue_tts(
         }
         queue.push_back(sample as f32 / i16::MAX as f32);
     }
+    Some((
+        header.get("sequence").and_then(Value::as_u64).unwrap_or(0),
+        payload.len(),
+    ))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -470,7 +479,15 @@ fn worker_once(
                     }
                 }
                 Ok(Message::Binary(frame)) => {
-                    enqueue_tts(&frame, playback, playback_rate, playback_resampler)
+                    if let Some((sequence, payload_length)) =
+                        enqueue_tts(&frame, playback, playback_rate, playback_resampler)
+                    {
+                        let _ = events.try_send(NativeTransportEvent::Playback {
+                            generation: identity.generation,
+                            sequence,
+                            payload_length,
+                        });
+                    }
                 }
                 Ok(Message::Close(_)) => {
                     let _ = events.send(NativeTransportEvent::Revoked);
@@ -728,12 +745,18 @@ mod tests {
         frame.extend_from_slice(&header);
         frame.extend_from_slice(&payload);
         let queue = Arc::new(Mutex::new(VecDeque::new()));
-        enqueue_tts(&frame, &queue, 48_000, &mut MonoResampler::default());
+        assert_eq!(
+            enqueue_tts(&frame, &queue, 48_000, &mut MonoResampler::default()),
+            Some((0, payload.len()))
+        );
         assert_eq!(queue.lock().unwrap().len(), 8);
         let mut corrupt = frame;
         *corrupt.last_mut().unwrap() ^= 1;
         let before = queue.lock().unwrap().len();
-        enqueue_tts(&corrupt, &queue, 48_000, &mut MonoResampler::default());
+        assert_eq!(
+            enqueue_tts(&corrupt, &queue, 48_000, &mut MonoResampler::default()),
+            None
+        );
         assert_eq!(queue.lock().unwrap().len(), before);
     }
     #[test]
