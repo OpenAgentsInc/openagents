@@ -139,6 +139,13 @@ describe("child card render (G4)", () => {
       steered: null,
     }
     const message = childCardMessage(note({ key: "c1", runtime }), runtime)
+    const open = byKey(message.body, "child-open-c1") as {
+      label?: string
+      onPress?: { name?: string; payload?: unknown }
+    }
+    expect(open?.label).toBe("Summarize the task")
+    expect(open?.onPress?.name).toBe("DesktopAgentAction")
+    expect(JSON.stringify(open?.onPress)).toContain("agent.local.turn.fable.7.child.child.9")
     const interrupt = byKey(message.body, "child-interrupt-c1") as {
       label?: string
       onPress?: { name?: string; payload?: unknown }

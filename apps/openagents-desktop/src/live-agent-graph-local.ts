@@ -156,6 +156,10 @@ export const sanitizeLocalRefSegment = (value: string): string => {
   return `${base}.${fnv1a(value)}`
 }
 
+/** Exact canonical child ref shared by graph assembly and card navigation. */
+export const localDelegateAgentRef = (turnRef: string, childRef: string): string =>
+  `agent.local.${sanitizeLocalRefSegment(turnRef)}.child.${sanitizeLocalRefSegment(childRef)}`
+
 const terminalRootStatuses: ReadonlySet<CanonicalNode["status"]> = new Set([
   "completed",
   "failed",
@@ -415,7 +419,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
     const existing = turn.children.get(childRef)
     if (existing !== undefined) return { agentRef: existing, created: null, edge: null }
     const childSegment = sanitizeLocalRefSegment(childRef)
-    const agentRef = `${turn.rootAgentRef}.child.${childSegment}`
+    const agentRef = localDelegateAgentRef(turnRef, childRef)
     turn.children.set(childRef, agentRef)
     const node = makeNode(agentRef, {
       parent: { kind: "agent", agentRef: turn.rootAgentRef },

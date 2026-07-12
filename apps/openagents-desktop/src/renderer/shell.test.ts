@@ -217,6 +217,23 @@ const agentGraphFixture: NonNullable<DesktopShellState["agentGraph"]> = {
   terminalCount: 0,
   updatedAt: "2026-07-11T18:05:00.000Z",
 }
+
+test("same-thread streaming transcript updates cannot close the live agent sidebar", () => {
+  const graphed = withLiveAgentGraph(baseState, testThread.id, agentGraphFixture)
+  const streaming = withChatSelected(graphed, {
+    ...testThread,
+    notes: [{ key: "streaming", role: "assistant", text: "Working…", timestamp: "18:05" }],
+  })
+  expect(streaming.agentGraph?.graphRef).toBe(agentGraphFixture.graphRef)
+  expect(nodeByKey(desktopShellView(streaming), "chat-context-split")).toBeDefined()
+  expect(nodeByKey(desktopShellView(streaming), "runtime-agent-graph")).toBeDefined()
+
+  const switched = withChatSelected(graphed, {
+    ...testThread,
+    id: "another-thread",
+  })
+  expect(switched.agentGraph).toBeNull()
+})
 const codingCatalogFixture: DesktopShellState["codingCatalog"] = {
   authority: "device_local",
   authorityLabel: "This Mac",

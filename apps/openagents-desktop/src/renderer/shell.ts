@@ -70,6 +70,7 @@ import {
 } from "../agent-graph-presentation.ts"
 import { chatMarkdownBody } from "./markdown.ts"
 import { runtimeAgentGraphView } from "./runtime-agent-graph.ts"
+import { localDelegateAgentRef } from "../live-agent-graph-local.ts"
 import { desktopCommandRegistry, formatCommandChord } from "./command-registry.ts"
 import { makeCommandNoticeController, type CommandNoticeController } from "./command-notice.ts"
 import {
@@ -683,36 +684,44 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   commandPaletteOpen: false,
 })
 
-export const withChatSelected = (state: DesktopShellState, thread: DesktopThread): DesktopShellState => ({
-  ...state,
-  notes: thread.notes,
-  activeThreadId: thread.id,
-  questionCards: state.activeThreadId === thread.id
-    ? pruneQuestionCards(state.questionCards, thread.notes)
-    : {},
-  // Keep an open inspector only while its message still exists in the
-  // projected transcript (streaming keys are replaced at finalize).
-  selectedMessageKey: state.activeThreadId === thread.id &&
-    state.selectedMessageKey !== null &&
-    thread.notes.some((note) => note.key === state.selectedMessageKey)
-    ? state.selectedMessageKey
-    : null,
-  agentGraph: thread.agentGraph ?? null,
-  agentGraphExpanded: thread.agentGraph === undefined
-    ? false
-    : state.activeThreadId === thread.id
-      ? state.agentGraphExpanded || thread.agentGraph.attentionCount > 0
-      : thread.agentGraph.totalCount <= 8 || thread.agentGraph.attentionCount > 0,
-  selectedAgentRef: thread.agentGraph === undefined
-    ? null
-    : resolveLiveAgentGraphSelection(
-        thread.agentGraph,
-        state.activeThreadId === thread.id ? state.selectedAgentRef : null,
-      ),
-  fleetDeskOpen: false,
-  workspace: "chat",
-  commandPaletteOpen: false,
-})
+export const withChatSelected = (state: DesktopShellState, thread: DesktopThread): DesktopShellState => {
+  // Streaming local-harness thread projections carry transcript notes only.
+  // They race with the independent canonical live-graph push stream, so a
+  // same-thread graphless projection must not erase the newer graph. A real
+  // thread switch still clears it unless the destination owns a graph.
+  const agentGraph = thread.agentGraph ??
+    (state.activeThreadId === thread.id ? state.agentGraph ?? undefined : undefined)
+  return {
+    ...state,
+    notes: thread.notes,
+    activeThreadId: thread.id,
+    questionCards: state.activeThreadId === thread.id
+      ? pruneQuestionCards(state.questionCards, thread.notes)
+      : {},
+    // Keep an open inspector only while its message still exists in the
+    // projected transcript (streaming keys are replaced at finalize).
+    selectedMessageKey: state.activeThreadId === thread.id &&
+      state.selectedMessageKey !== null &&
+      thread.notes.some((note) => note.key === state.selectedMessageKey)
+      ? state.selectedMessageKey
+      : null,
+    agentGraph: agentGraph ?? null,
+    agentGraphExpanded: agentGraph === undefined
+      ? false
+      : state.activeThreadId === thread.id
+        ? state.agentGraphExpanded || agentGraph.attentionCount > 0
+        : agentGraph.totalCount <= 8 || agentGraph.attentionCount > 0,
+    selectedAgentRef: agentGraph === undefined
+      ? null
+      : resolveLiveAgentGraphSelection(
+          agentGraph,
+          state.activeThreadId === thread.id ? state.selectedAgentRef : null,
+        ),
+    fleetDeskOpen: false,
+    workspace: "chat",
+    commandPaletteOpen: false,
+  }
+}
 
 /** Toggle-style message inspector selection ("" or same key deselects). */
 export const withMessageSelected = (
@@ -1648,7 +1657,11 @@ export const makeDesktopShellHandlers = (
         : resolveLiveAgentGraphSelection(current.agentGraph, agentRef)
       return selectedAgentRef === current.selectedAgentRef
         ? current
-        : { ...current, selectedAgentRef }
+        : {
+            ...current,
+            selectedAgentRef,
+            agentGraphExpanded: selectedAgentRef === null ? current.agentGraphExpanded : true,
+          }
     }),
   DesktopCodingCatalogFilterSelected: (filter) =>
     SubscriptionRef.update(state, current => ({ ...current, codingSessionFilter: filter })),
@@ -2362,7 +2375,17 @@ export const childCardMessage = (note: DesktopNoteEntry, child: RuntimeChildCard
             { key: `child-header-${note.key}`, direction: "row", gap: "2", align: "center" },
             [
               Icon({ key: `child-icon-${note.key}`, name: "Agent", size: "sm", color: "accent" }),
-              Text({ key: `child-title-${note.key}`, content: child.title === "" ? "Delegate child" : child.title, variant: "label", color: "textPrimary", weight: "medium" }),
+              Button({
+                key: `child-open-${note.key}`,
+                label: child.title === "" ? "Delegate child" : child.title,
+                variant: "ghost",
+                style: { padding: "0", borderWidth: 0, typeScale: "label", color: "textPrimary" },
+                onPress: IntentRef("DesktopAgentAction", StaticPayload({
+                  kind: "inspect_agent",
+                  agentRef: localDelegateAgentRef(child.turnRef, child.childRef),
+                })),
+                a11y: { label: `Open delegated sub-agent ${child.childRef}` },
+              }),
               Badge({ key: `child-status-${note.key}`, label: chip.label, tone: chip.tone, a11y: { label: `Delegate child ${chip.label}` } }),
               ...(childInterruptable(child)
                 ? [Button({
