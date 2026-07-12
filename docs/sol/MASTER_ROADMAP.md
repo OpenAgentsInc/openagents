@@ -9,8 +9,16 @@
   replacement; CUT-26 publish/legacy-lockout
   code complete; CUT-25 cross-client Fleet control is closed; remaining
   local-cutover leaves are acceptance-gated CUT-09, CUT-16, CUT-26, and CUT-27)
-- Revision: 82
+- Revision: 83
 - Status: canonical OpenAgents implementation roadmap
+- Documentation cleanup: SOL-DOC-01
+  [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723) is closed at
+  `9d432817e9`; the Sol entry index, checked-in issue-source index, and legacy
+  implementation-roadmap redirect now route revision-independently to current
+  authority. The next bounded cleanup is operating/subsystem reconciliation;
+  master compaction, receipt moves, and Backroom export remain later chunks in
+  the
+  [`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
 - Triage receipt: [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md)

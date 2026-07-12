@@ -10,6 +10,17 @@
 - Scope: `docs/sol/`, its direct dependencies, and the use of the separate
   `OpenAgentsInc/backroom` repository for fully obsolete material
 
+## Execution ledger
+
+| Chunk | Live issue | Final state | Landed receipt |
+| --- | --- | --- | --- |
+| SOL-DOC-01 — truthful, revision-independent entry points | [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723) | **Closed 2026-07-12.** `docs/sol/README.md`, `docs/sol/issues/README.md`, and `docs/sol/IMPLEMENTATION_ROADMAP.md` now route to current authority without caching a master revision, issue count, old queue, or executable delegation diary. | `9d432817e9` — local links resolve; stale Revision 25/29/31 and delegation-dispatch scans pass; repository fast pre-push guards pass. |
+
+**Next ordered chunk:** SOL-DOC-02 reconciles the durable operating and
+subsystem documents. It removes Revision 25/current-queue state, corrects
+voice and physical-Android policy, and keeps durable claim/authority boundaries
+without attempting master compaction or receipt moves.
+
 ## Executive decision
 
 Sol has a documentation reliability problem, not merely a documentation
@@ -368,14 +379,18 @@ analysis” remains.
 
 **Goal:** a new agent cannot be routed to obsolete work.
 
-1. Rewrite `docs/sol/README.md` to point revision-independently to the current
+SOL-DOC-01 [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723)
+completed items 1–3 at `9d432817e9`. Items 4–6 are the next bounded issue;
+they were intentionally not folded into the entry-point change.
+
+1. **Complete.** Rewrite `docs/sol/README.md` to point revision-independently to the current
    master, current issue projection, claim protocol, durable contracts, and
    receipt index. Remove the stale delegation/parity material from “Start
    here.”
-2. Rebuild `docs/sol/issues/README.md` around the current open set, separated
-   from closed receipt sources and `wontdo` tombstones. Do not hard-code a
-   revision. Prefer generated issue metadata over a manually maintained count.
-3. Reduce `IMPLEMENTATION_ROADMAP.md` to a minimal redirect.
+2. **Complete.** Rebuild `docs/sol/issues/README.md` as a classification index,
+   separating program/client sources from closed receipt sources and `wontdo`
+   tombstones. Do not hard-code a revision or manually maintained count.
+3. **Complete.** Reduce `IMPLEMENTATION_ROADMAP.md` to a minimal redirect.
 4. Remove Revision 25 pins from `OPERATING_MODEL.md` and
    `SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md`; remove current queue state from
    both.
