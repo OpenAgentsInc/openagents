@@ -491,3 +491,58 @@ the one-time emulator GitHub sign-in); #8676 end-to-end journey.
 one-time Android-emulator GitHub sign-in; Codex account reconnect in
 Desktop Settings; VoiceOver/TalkBack QA; Developer ID signing +
 clean-machine acceptance; final #8676/CUT-27 acceptance review.
+
+## Final reconciliation — 2026-07-12 (current main)
+
+This section supersedes every earlier count and blocker list in this historical
+audit. It was reconciled against live GitHub issue state and `origin/main` at
+`8706a2fd8e`.
+
+### Closed acceptance leaves
+
+- CUT-10 through CUT-26 are closed. In particular, the formerly open
+  physical/mobile leaves CUT-14 and CUT-16 and the Fleet acceptance CUT-25 are
+  closed; the owner-authenticated Android emulator and physical-iPhone
+  accessibility/cross-client receipts are retained by their issue ledgers.
+- CUT-26 is closed on exact public RC5 bytes. The notarized and stapled
+  `OpenAgents-0.1.0-rc.5` artifact passed the full packaged smoke, interrupted
+  download/resume with final digest equality, production-feed rollback with
+  client downgrade refusal, uninstall/reinstall, and diagnostics acceptance.
+  The live RC feed remains RC5; retained mobile OTA still answers successfully;
+  legacy Desktop feeds remain typed `410`. The repeatable production procedure
+  is [`../deploy/openagents-desktop-production-release.md`](../deploy/openagents-desktop-production-release.md).
+- The named Codex credential mismatch that previously blocked the physical
+  journey is cleared: the serving `~/.pylon-fable` inventory has ready isolated
+  `codex-2`, `codex-4`, and `codex-5` accounts under the fenced supervisor.
+
+### Only remaining local-cutover gate
+
+Three open records now represent one physical acceptance journey, not three
+independent implementation lanes:
+
+1. CUT-09 #8689: on the authenticated physical iPhone, enqueue one message
+   during a real network gap, reconnect, prove FIFO/exactly-once convergence,
+   then unlink/revoke and prove denial without replay.
+2. D1-H #8676: in the same journey, complete one real named-Codex continuation
+   on the exact synced Desktop thread and retain one terminal durable outcome;
+   unlink/revocation must deny a new mutation without retaining credential or
+   raw provider data in client state.
+3. R4-A #8677: close immediately after the CUT-09 physical row passes; all ten
+   deterministic fault rows and the Desktop restart/reload rungs are already
+   accepted.
+
+The physical store before-state is directly receipted: the paired iPhone is
+available through CoreDevice; its copied Expo SQLite Sync store has zero
+pending mutations and contains the current personal-scope catalog, threads,
+runtime turns, and prior cross-client outcomes. This is sufficient preparation,
+not a substitute for the remaining network-gap and revocation actions.
+
+### CUT-27 close sequence
+
+After that single journey passes: close #8689, #8676, and #8677; append the
+public-safe physical receipt; then reconcile #8707 criterion-by-criterion and
+declare the local Codex/Claude-to-OpenAgents cutover. No new CUT sub-issue or
+new architecture is indicated. The Agent Computer/workroom issues #8547 and
+#8636 remain a later remote-work track and do not block the local installed-app
+declaration. The separate AUDIO-0…AUDIO-8 program (#8733–#8741) likewise does
+not expand CUT-27.
