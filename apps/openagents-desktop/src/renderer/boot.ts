@@ -17,7 +17,7 @@ import {
   type IntentReporter,
 } from "@effect-native/core"
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
-import { makeDomRenderer } from "@effect-native/render-dom"
+import { makeDomRenderer, makeStubCodeEditorDriver } from "@effect-native/render-dom"
 
 import {
   unavailableCodexSettingsBridge,
@@ -42,6 +42,10 @@ import {
   unavailableWorkspaceBrowserBridge,
   type WorkspaceBrowserBridge,
 } from "./workspace-browser.ts"
+import {
+  unavailableWorkspaceDocumentBridge,
+  type WorkspaceDocumentBridge,
+} from "./workspace-editor.ts"
 import {
   desktopShellIntents,
   desktopShellView,
@@ -121,6 +125,8 @@ type DesktopBridge = Readonly<{
   renameWorkspaceEntry?: (value: unknown) => Promise<unknown>
   deleteWorkspaceEntry?: (value: unknown) => Promise<unknown>
   revealWorkspaceEntry?: (value: unknown) => Promise<unknown>
+  openWorkspaceDocument?: (value: unknown) => Promise<unknown>
+  saveWorkspaceDocument?: (value: unknown) => Promise<unknown>
   refreshWorkspace?: () => Promise<unknown>
   workspaceSubscribe?: (listener: (change: DesktopWorkspaceChange) => void) => () => void
   codexAccounts?: () => Promise<unknown>
@@ -194,6 +200,11 @@ const workspaceBrowserBridge: WorkspaceBrowserBridge = {
   deleteWorkspaceEntry: (value) => readBridge()?.deleteWorkspaceEntry?.(value) ?? unavailableWorkspaceBrowserBridge.deleteWorkspaceEntry(value),
   revealWorkspaceEntry: (value) => readBridge()?.revealWorkspaceEntry?.(value) ?? unavailableWorkspaceBrowserBridge.revealWorkspaceEntry(value),
   refreshWorkspace: () => readBridge()?.refreshWorkspace?.() ?? unavailableWorkspaceBrowserBridge.refreshWorkspace(),
+}
+
+const workspaceDocumentBridge: WorkspaceDocumentBridge = {
+  openWorkspaceDocument: (value) => readBridge()?.openWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.openWorkspaceDocument(value),
+  saveWorkspaceDocument: (value) => readBridge()?.saveWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.saveWorkspaceDocument(value),
 }
 
 /**
@@ -618,6 +629,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }, chat, {
         choose: async () => (await readBridge()?.chooseWorkspace?.()) === true,
         browser: workspaceBrowserBridge,
+        documents: workspaceDocumentBridge,
       }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost, commandBindingHost, {
         toggleFullScreen: async () => {
           const raw = await (globalThis as { openagentsDesktop?: { toggleFullScreen?: () => Promise<boolean> } }).openagentsDesktop?.toggleFullScreen?.()
@@ -635,7 +647,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     if (typeof bridge?.workspaceSubscribe === "function") {
       const unsubscribeWorkspace = bridge.workspaceSubscribe(change => {
         void Effect.runPromise(
-          registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserChangeReceived", StaticPayload(change)))),
+          Effect.all([
+            registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserChangeReceived", StaticPayload(change)))),
+            registry.dispatch(resolveIntentRef(IntentRef("WorkspaceEditorExternalChangeReceived", StaticPayload(change)))),
+          ], { concurrency: 1, discard: true }),
         )
       })
       window.addEventListener("pagehide", () => unsubscribeWorkspace(), { once: true })
@@ -1101,7 +1116,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       window.removeEventListener("scroll", onHistoryTimelineScroll, true)
       if(historySelectionTimer!==null)window.clearTimeout(historySelectionTimer)
     }, { once: true })
-    const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
+    const renderer = makeDomRenderer({
+      theme: openagentsDesktopTheme,
+      hostDrivers: [makeStubCodeEditorDriver()],
+    })
     yield* renderer.mount(root, program.viewStream, report)
     // Sidebar connected-accounts box (EP250): one boot-time accounts pull so
     // the pinned bottom box has evidence without visiting the Fleet

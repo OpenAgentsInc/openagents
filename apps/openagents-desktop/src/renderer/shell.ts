@@ -105,6 +105,15 @@ import {
   type WorkspaceBrowserBridge,
   type WorkspaceBrowserState,
 } from "./workspace-browser.ts"
+import {
+  emptyWorkspaceEditorState,
+  makeWorkspaceEditorHandlers,
+  unavailableWorkspaceDocumentBridge,
+  workspaceEditorIntents,
+  workspaceEditorView,
+  type WorkspaceDocumentBridge,
+  type WorkspaceEditorState,
+} from "./workspace-editor.ts"
 import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyItemPageOffset, historyItemPageSize, historySearchActive, historySearchField, historySearchResultSidebarItems, historySourceBadgeLabel, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "../codex-history-contract.ts"
 import {
@@ -256,6 +265,8 @@ export type DesktopShellState = Readonly<{
   workspace: DesktopWorkspaceName
   /** Grant-scoped, root-relative Files workspace projection. */
   workspaceBrowser: WorkspaceBrowserState
+  /** Effect Native document tabs and conflict-safe draft lifecycle. */
+  workspaceEditor: WorkspaceEditorState
   commandPaletteOpen: boolean
   /** Public-safe result of the latest deferred/native command admission. */
   commandNotice: string | null
@@ -328,6 +339,7 @@ export const initialDesktopShellState = (
   codingSessionQuery: "",
   workspace: "chat",
   workspaceBrowser: emptyWorkspaceBrowserState(),
+  workspaceEditor: emptyWorkspaceEditorState(),
   commandPaletteOpen: false,
   commandNotice: null,
   commandBindings: null,
@@ -517,6 +529,7 @@ export const desktopShellIntents = [
   ...fleetWorkspaceIntents,
   ...gitPanelIntents,
   ...workspaceBrowserIntents,
+  ...workspaceEditorIntents,
 ] as const
 
 export type CodexHistoryHost = Readonly<{
@@ -907,6 +920,7 @@ export type WorkspaceHost = Readonly<{
   /** Opens the native picker; true means a new WorkContext is installed. */
   choose: () => Promise<unknown>
   browser?: WorkspaceBrowserBridge
+  documents?: WorkspaceDocumentBridge
 }>
 
 export type CodingCatalogHost = Readonly<{
@@ -1058,6 +1072,10 @@ export const makeDesktopShellHandlers = (
     state,
     workspaceHost.browser ?? unavailableWorkspaceBrowserBridge,
   )
+  const workspaceEditorHandlers = makeWorkspaceEditorHandlers(
+    state,
+    workspaceHost.documents ?? unavailableWorkspaceDocumentBridge,
+  )
   /**
    * Hands one completed answer set to the typed bridge. The card collapses
    * only after the bridge confirms success. This preserves the frozen local
@@ -1090,6 +1108,23 @@ export const makeDesktopShellHandlers = (
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
   ...makeGitPanelHandlers(state, gitBridge),
   ...workspaceBrowserHandlers,
+  ...workspaceEditorHandlers,
+  WorkspaceBrowserEntrySelected: (pathRef) => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const knownEntry = Object.values(before.workspaceBrowser.pages)
+      .flatMap(page => page.entries)
+      .find(entry => entry.pathRef === pathRef)
+    const isSearchResult = before.workspaceBrowser.searchPage?.state === "available" &&
+      before.workspaceBrowser.searchPage.matches.some(match => match.pathRef === pathRef)
+    yield* workspaceBrowserHandlers.WorkspaceBrowserEntrySelected(pathRef)
+    if (before.workspaceBrowser.grantRef === null || knownEntry?.kind === "directory" || (knownEntry === undefined && !isSearchResult)) {
+      return
+    }
+    yield* workspaceEditorHandlers.WorkspaceEditorOpenRequested({
+      grantRef: before.workspaceBrowser.grantRef,
+      pathRef,
+    })
+  }),
   DesktopSettingsToggled: () => Effect.gen(function* () {
     yield* settingsHandlers.DesktopSettingsToggled()
     const bindings = yield* Effect.promise(commandBindingHost.snapshot)
@@ -1470,6 +1505,10 @@ export const makeDesktopShellHandlers = (
     Effect.gen(function* () {
       const selected = yield* Effect.promise(workspaceHost.choose)
       if (selected !== true) return
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        workspaceEditor: emptyWorkspaceEditorState(),
+      }))
       yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
     }),
   DesktopCommandPaletteToggled: () =>
@@ -2266,7 +2305,25 @@ const projectHome = (state: DesktopShellState): View => {
 }
 
 const workspaceFiles = (state: DesktopShellState): View =>
-  workspaceBrowserView(state.workspaceBrowser)
+  SplitPane({
+    key: "workspace-files-split",
+    orientation: "row",
+    style: { flex: 1, minWidth: 0, minHeight: 0 },
+    panes: [
+      {
+        id: "workspace-files-browser",
+        min: 320,
+        max: 560,
+        size: 400,
+        content: workspaceBrowserView(state.workspaceBrowser),
+      },
+      {
+        id: "workspace-files-editor",
+        min: 360,
+        content: workspaceEditorView(state.workspaceEditor),
+      },
+    ],
+  })
 
 const workspaceReview = (state: DesktopShellState): View => {
   return Stack(

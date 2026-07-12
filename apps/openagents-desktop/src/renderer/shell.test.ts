@@ -38,6 +38,7 @@ import {
   type HarnessLanes,
 } from "./shell.ts"
 import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspace-browser.ts"
+import type { WorkspaceDocumentBridge } from "./workspace-editor.ts"
 import type { ComposerImageAttachment } from "./composer-images.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { khalaTheme } from "@effect-native/tokens"
@@ -656,8 +657,10 @@ describe("pure transitions", () => {
       }),
     }
     const view = desktopShellView(files)
+    expect(nodeByKey(view, "workspace-files-split")?._tag).toBe("SplitPane")
     expect(nodeByKey(view, "workspace-browser")?._tag).toBe("Stack")
     expect(nodeByKey(view, "workspace-browser-select-README.md")?._tag).toBe("Button")
+    expect(nodeByKey(view, "workspace-editor-empty-title")?.content).toBe("No document open")
     expect(JSON.stringify(view)).not.toContain("/workspace")
     expect(nodeByKey(view, "shell-composer")).toBeUndefined()
   })
@@ -998,6 +1001,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     await Effect.runPromise(Effect.gen(function* () {
       let chooseCalls = 0
       const treeCalls: unknown[] = []
+      const documentCalls: unknown[] = []
       const browser: WorkspaceBrowserBridge = {
         workspaceTree: async (value) => {
           treeCalls.push(value)
@@ -1018,21 +1022,48 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         revealWorkspaceEntry: async () => null,
         refreshWorkspace: async () => true,
       }
+      const documents: WorkspaceDocumentBridge = {
+        openWorkspaceDocument: async (value) => {
+          documentCalls.push(value)
+          return {
+            state: "available",
+            document: {
+              grantRef: "workspace.grant.test",
+              pathRef: "README.md",
+              content: "# OpenAgents\n",
+              revisionRef: "workspace.document.readme",
+              languageMode: "markdown",
+              encoding: "utf-8",
+              lineEnding: "lf",
+              sizeBytes: 13,
+            },
+          }
+        },
+        saveWorkspaceDocument: async () => ({ state: "unavailable", reason: "unavailable", message: "unused" }),
+      }
       const state = yield* SubscriptionRef.make(baseState)
       const registry = yield* makeIntentRegistry(
         desktopShellIntents,
         makeDesktopShellHandlers(state, fixedNow, undefined, undefined, {
           choose: async () => { chooseCalls += 1; return true },
           browser,
+          documents,
         }),
       )
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload("files"))))
       expect((yield* SubscriptionRef.get(state)).workspaceBrowser.grantRef).toBe("workspace.grant.test")
       expect(treeCalls).toEqual([{ directoryRef: "", offset: 0, limit: 200 }])
 
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserEntrySelected", StaticPayload("README.md"))))
+      expect(documentCalls).toEqual([{ grantRef: "workspace.grant.test", pathRef: "README.md" }])
+      const opened = yield* SubscriptionRef.get(state)
+      expect(opened.workspaceEditor.activePathRef).toBe("README.md")
+      expect(nodeByKey(desktopShellView(opened), "workspace-editor-host-README.md")?.kind).toBe("code-editor")
+
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspacePickerRequested", StaticPayload(null))))
       expect(chooseCalls).toBe(1)
       expect(treeCalls).toHaveLength(2)
+      expect((yield* SubscriptionRef.get(state)).workspaceEditor.tabs).toEqual([])
     }))
   })
 
