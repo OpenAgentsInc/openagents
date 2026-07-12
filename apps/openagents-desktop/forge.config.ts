@@ -5,6 +5,8 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses"
 import { FuseV1Options, FuseVersion } from "@electron/fuses"
 import { execFileSync } from "node:child_process"
 import { cp, mkdir, rm } from "node:fs/promises"
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import path from "node:path"
 import { createRequire } from "node:module"
 
@@ -34,6 +36,7 @@ const macCodeSignableBasenames = new Set([
   "rg",
   "ShipIt",
   "zsh",
+  "oa-desktop-audio",
 ])
 
 const isMacCodeSignablePath = (file: string): boolean =>
@@ -81,6 +84,7 @@ const config: ForgeConfig = {
     prune: false,
     derefSymlinks: true,
     icon: "dist/assets/openagents-icon.png",
+    extraResource: ["dist/native"],
     ignore: path => ignoredCheckoutPath.test(path),
     protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],
     osxSign: developerIdApplication === undefined ? undefined : {
@@ -101,6 +105,15 @@ const config: ForgeConfig = {
   hooks: {
     generateAssets: async () => {
       execFileSync("bun", ["scripts/build.ts"], { cwd: process.cwd(), stdio: "inherit" })
+      execFileSync("cargo", ["build", "--release", "-p", "oa-desktop-audio"], { cwd: path.resolve(process.cwd(), "../.."), stdio: "inherit" })
+      const architecture = process.arch
+      const destinationDirectory = path.join(process.cwd(), "dist", "native", architecture)
+      const destination = path.join(destinationDirectory, "oa-desktop-audio")
+      mkdirSync(destinationDirectory, { recursive: true })
+      copyFileSync(path.resolve(process.cwd(), "../../target/release/oa-desktop-audio"), destination)
+      chmodSync(destination, 0o755)
+      const sha256 = createHash("sha256").update(readFileSync(destination)).digest("hex")
+      writeFileSync(path.join(destinationDirectory, "manifest.json"), JSON.stringify({ protocolVersion: 1, helperVersion: "0.1.0", architecture, sha256 }) + "\n", { mode: 0o644 })
     },
     packageAfterCopy: async (_forgeConfig, buildPath, _electronVersion, platform, arch) => {
       // Bun bundles every app dependency except the provider packages whose

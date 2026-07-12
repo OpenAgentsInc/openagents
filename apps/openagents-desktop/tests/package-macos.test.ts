@@ -51,6 +51,15 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(build).toContain('"smoke-fixtures"')
   })
 
+  test("packages the fixed architecture voice helper as an executable signed resource", () => {
+    expect(config.packagerConfig?.extraResource).toContain("dist/native")
+    const source = readFileSync(path.join(root, "forge.config.ts"), "utf8")
+    expect(source).toContain('"oa-desktop-audio"')
+    expect(source).toContain('cargo", ["build", "--release", "-p", "oa-desktop-audio"]')
+    expect(source).toContain("chmodSync(destination, 0o755)")
+    expect(source).toContain("manifest.json")
+  })
+
   test("entitlements stay minimal and never disable library validation or permit debugging", () => {
     for (const name of ["entitlements.mac.plist", "entitlements.mac.inherit.plist"]) {
       const plist = readFileSync(path.join(root, "build", name), "utf8")

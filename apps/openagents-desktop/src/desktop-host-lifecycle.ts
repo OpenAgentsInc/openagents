@@ -3,6 +3,7 @@ import type { CodexHistoryHost } from "./codex-history-host.ts"
 import type { DesktopSyncHost } from "./desktop-sync-host.ts"
 import type { DesktopRuntimeGateway } from "./runtime-gateway.ts"
 import type { DesktopWorkspaceService } from "./workspace-service.ts"
+import type { DesktopVoiceHost } from "./voice-host.ts"
 
 type Slot<Value> = Readonly<{
   value: Value
@@ -16,6 +17,7 @@ export type DesktopHostLifecycleSnapshot = Readonly<{
   sync: boolean
   account: boolean
   history: boolean
+  voice: boolean
   windowCount: number
 }>
 
@@ -25,11 +27,13 @@ export type DesktopHostLifecycle = Readonly<{
   sync: () => DesktopSyncHost | null
   account: () => CodexConnectService | null
   history: () => CodexHistoryHost | null
+  voice: () => DesktopVoiceHost | null
   replaceRuntime: (service: DesktopRuntimeGateway) => DesktopRuntimeGateway | null
   replaceWorkspace: (service: DesktopWorkspaceService | null) => DesktopWorkspaceService | null
   replaceSync: (service: DesktopSyncHost | null) => DesktopSyncHost | null
   replaceAccount: (service: CodexConnectService) => CodexConnectService | null
   replaceHistory: (service: CodexHistoryHost) => CodexHistoryHost | null
+  replaceVoice: (service: DesktopVoiceHost | null) => DesktopVoiceHost | null
   registerWindow: (windowRef: string, close: () => void) => () => void
   snapshot: () => DesktopHostLifecycleSnapshot
   dispose: () => void
@@ -60,6 +64,7 @@ export const makeDesktopHostLifecycle = (initial: Readonly<{
   let sync: Slot<DesktopSyncHost> | null = null
   let account: Slot<CodexConnectService> | null = { value: initial.account, close: once(initial.account.dispose) }
   let history: Slot<CodexHistoryHost> | null = { value: initial.history, close: once(initial.history.dispose) }
+  let voice: Slot<DesktopVoiceHost> | null = null
   const windows = new Map<string, () => void>()
 
   const replace = <Value>(
@@ -83,6 +88,7 @@ export const makeDesktopHostLifecycle = (initial: Readonly<{
     sync: () => sync?.value ?? null,
     account: () => account?.value ?? null,
     history: () => history?.value ?? null,
+    voice: () => voice?.value ?? null,
     replaceRuntime: service => {
       runtime = replace(runtime, service, value => value.dispose())
       return runtime?.value ?? null
@@ -102,6 +108,10 @@ export const makeDesktopHostLifecycle = (initial: Readonly<{
     replaceHistory: service => {
       history = replace(history, service, value => value.dispose())
       return history?.value ?? null
+    },
+    replaceVoice: service => {
+      voice = replace(voice, service, value => value.dispose())
+      return voice?.value ?? null
     },
     registerWindow: (windowRef, close) => {
       if (disposed) {
@@ -125,6 +135,7 @@ export const makeDesktopHostLifecycle = (initial: Readonly<{
       sync: sync !== null,
       account: account !== null,
       history: history !== null,
+      voice: voice !== null,
       windowCount: windows.size,
     }),
     dispose: () => {
@@ -136,6 +147,7 @@ export const makeDesktopHostLifecycle = (initial: Readonly<{
       workspace?.close(); workspace = null
       account?.close(); account = null
       history?.close(); history = null
+      voice?.close(); voice = null
       sync?.close(); sync = null
     },
   }

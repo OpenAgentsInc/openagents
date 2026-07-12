@@ -24,6 +24,8 @@ describe("Desktop host lifecycle", () => {
     const workspaceB = tracked("dispose")
     const syncA = tracked("close")
     const syncB = tracked("close")
+    const voiceA = tracked("dispose")
+    const voiceB = tracked("dispose")
     const lifecycle = makeDesktopHostLifecycle({
       runtime: runtimeA.service as never,
       account: accountA.service as never,
@@ -37,11 +39,13 @@ describe("Desktop host lifecycle", () => {
     lifecycle.replaceSync(syncB.service as never)
     lifecycle.replaceAccount(accountB.service as never)
     lifecycle.replaceHistory(historyB.service as never)
+    lifecycle.replaceVoice(voiceA.service as never)
+    lifecycle.replaceVoice(voiceB.service as never)
 
-    expect([runtimeA.count(), workspaceA.count(), syncA.count(), accountA.count(), historyA.count()]).toEqual([1, 1, 1, 1, 1])
+    expect([runtimeA.count(), workspaceA.count(), syncA.count(), accountA.count(), historyA.count(), voiceA.count()]).toEqual([1, 1, 1, 1, 1, 1])
     lifecycle.dispose()
     lifecycle.dispose()
-    expect([runtimeB.count(), workspaceB.count(), syncB.count(), accountB.count(), historyB.count()]).toEqual([1, 1, 1, 1, 1])
+    expect([runtimeB.count(), workspaceB.count(), syncB.count(), accountB.count(), historyB.count(), voiceB.count()]).toEqual([1, 1, 1, 1, 1, 1])
     expect(lifecycle.snapshot()).toEqual({
       disposed: true,
       runtime: false,
@@ -49,6 +53,7 @@ describe("Desktop host lifecycle", () => {
       sync: false,
       account: false,
       history: false,
+      voice: false,
       windowCount: 0,
     })
   })

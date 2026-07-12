@@ -14,7 +14,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, safeStorage, session, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
 import { Effect } from "effect"
 import {
   buildCloseTurnIntent,
@@ -197,6 +197,8 @@ import {
 } from "./coding-catalog-contract.ts"
 import { makeCodexHistoryHost } from "./codex-history-host.ts"
 import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
+import { createDesktopVoiceHost } from "./voice-host.ts"
+import { createPackagedVoiceNativeMedia } from "./voice-native-helper.ts"
 import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceFilesChannel,
@@ -353,7 +355,7 @@ const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 // Capture before any host lifecycle can change process state. This is the
 // default top-level coding workspace today; the runtime-facing getter is the
 // seam a future persisted directory setting/picker will replace.
-const desktopLaunchWorkingDirectory = path.resolve(process.cwd())
+const desktopLaunchWorkingDirectory = path.resolve(app.getPath("home"))
 const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
   smokeMode || liveProofDriverMode
     ? path.join(
@@ -496,6 +498,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     // Close and purge the account-linked Sync session before the renderer can
     // race another command against remote token revocation.
     await runtimeLiveSubscriptions.reset()
+    await hostLifecycle.voice()?.command({ protocolVersion: 1, id: "voice.revoke" })
     try { hostLifecycle.sync()?.unlinkAccount() } catch { /* remote revocation still runs */ }
     const result = await signOutDesktopSession({ vault: desktopSessionVault, signal })
     desktopSessionState = result.state
@@ -650,7 +653,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     list: threadRef => Effect.runSync(service.list(threadRef)),
     decide: command => Number(Effect.runSync(service.decide(command))),
   }
-})
+}, () => hostLifecycle.voice())
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
@@ -758,6 +761,21 @@ const hostLifecycle = makeDesktopHostLifecycle({
   account: codexConnect,
   history: codexHistoryHost,
 })
+hostLifecycle.replaceVoice(createDesktopVoiceHost({
+  permission: () => {
+    if (process.platform !== "darwin") return "denied"
+    const status = systemPreferences.getMediaAccessStatus("microphone")
+    return status === "granted" ? "granted" : status === "not-determined" ? "not_determined" : "denied"
+  },
+  requestPermission: async () => process.platform === "darwin" && await systemPreferences.askForMediaAccess("microphone") ? "granted" : "denied",
+  media: createPackagedVoiceNativeMedia({
+    resourcesPath: app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "dist"),
+    verifySignature: absolutePath => {
+      if (!app.isPackaged) return true
+      try { execFileSync("/usr/bin/codesign", ["--verify", "--strict", absolutePath], { stdio: "ignore" }); return true } catch { return false }
+    },
+  }),
+}))
 const workspaceSearchRegistry = makeWorkspaceSearchRegistry(() => hostLifecycle.workspace())
 const workspaceSearchOwnerRef = (webContentsId: number): string =>
   `webContents.${webContentsId}`

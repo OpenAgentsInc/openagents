@@ -84,6 +84,8 @@ describe("Desktop service topology oracle (#8678)", () => {
       "codex-connect-host",
       "desktop-host-lifecycle",
       "desktop-operation-correlation",
+      "desktop-voice-native-helper",
+      "desktop-voice-host",
       "preload-bridge",
       "effect-native-renderer",
     ]) {

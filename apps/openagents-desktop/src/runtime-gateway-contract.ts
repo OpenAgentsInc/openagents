@@ -85,6 +85,16 @@ const NonNegativeIntSchema = Schema.Number.check(
   Schema.isGreaterThanOrEqualTo(0),
 )
 const OperationContextField = { context: Schema.optional(DesktopOperationContextSchema) }
+const DesktopVoiceIdentitySchema = Schema.Struct({
+  ownerRef: PublicRefSchema, deviceRef: PublicRefSchema, threadRef: PublicRefSchema,
+  sessionRef: PublicRefSchema, generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+})
+export const DesktopVoiceStateSchema = Schema.Struct({
+  protocolVersion: Schema.Literal(1),
+  phase: Schema.Literals(["idle", "requesting_permission", "connecting", "live", "muted", "suspended", "denied", "offline", "backpressured", "revoked", "failed"]),
+  generation: NonNegativeIntSchema, nextSequence: NonNegativeIntSchema, acknowledgedSequence: NonNegativeIntSchema,
+  reason: Schema.optional(Schema.Literals(["permission_denied", "network_lost", "gateway_revoked", "helper_crashed", "stale_generation", "backpressure"])),
+})
 
 /**
  * Exact confirmed-run lanes a Desktop control intent may target (CUT-16).
@@ -126,6 +136,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     requestId: Schema.String,
     query: Schema.Struct({ id: Schema.Literal("runtime.bootstrap") }),
   }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("voice.state") }) }),
   Schema.Struct({
     ...OperationContextField,
     kind: Schema.Literal("query"),
@@ -240,6 +251,8 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
       }),
       Schema.Struct({ id: Schema.Literal("session.sign_in") }),
       Schema.Struct({ id: Schema.Literal("session.sign_out") }),
+      Schema.Struct({ id: Schema.Literal("voice.start"), protocolVersion: Schema.Literal(1), identity: DesktopVoiceIdentitySchema, disclosureRef: PublicRefSchema }),
+      Schema.Struct({ id: Schema.Literals(["voice.stop", "voice.mute", "voice.unmute", "voice.suspend", "voice.resume", "voice.revoke"]), protocolVersion: Schema.Literal(1) }),
       Schema.Struct({
         id: Schema.Literal("conversation.subscribe"),
         subscriptionRef: PublicRefSchema,
@@ -267,6 +280,7 @@ const DesktopRuntimeBootstrapSchema = Schema.Struct({
 })
 
 export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("voice_state"), requestId: Schema.optional(Schema.String), commandId: Schema.optional(Schema.String), state: DesktopVoiceStateSchema }),
   Schema.Struct({
     ...OperationContextField,
     kind: Schema.Literal("query_result"),
@@ -427,6 +441,7 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
 export type DesktopRuntimeGatewayResponse = typeof DesktopRuntimeGatewayResponseSchema.Type
 
 export const DesktopRuntimeGatewayEventSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("voice.lifecycle"), sequence: Schema.Number, state: DesktopVoiceStateSchema }),
   Schema.Struct({
     kind: Schema.Literal("runtime.lifecycle"),
     protocolVersion: Schema.Literal(DesktopRuntimeGatewayProtocolVersion),

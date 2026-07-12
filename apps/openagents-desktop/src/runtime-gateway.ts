@@ -19,6 +19,7 @@ import type {
   DesktopOperationContext,
 } from "./desktop-operation-context.ts"
 import type { DesktopRuntimeLiveSubscriptions } from "./runtime-live-subscriptions.ts"
+import type { DesktopVoiceCommand, DesktopVoiceHost } from "./voice-host.ts"
 
 type CapabilityState = Readonly<{
   id: DesktopRuntimeCapabilityId
@@ -185,12 +186,14 @@ export const createDesktopRuntimeGateway = (
   observeOperation: (stage: DesktopCorrelationStage, context: DesktopOperationContext) => void = () => undefined,
   liveSubscriptions: () => DesktopRuntimeLiveSubscriptions | null = () => null,
   runtimeInteractions: () => DesktopRuntimeInteractions | null = () => null,
+  voice: () => DesktopVoiceHost | null = () => null,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
   let sessionActionInFlight = false
   let sessionActionAbort: AbortController | null = null
   const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
+  let unsubscribeVoice: (() => void) | null = null
 
   const publish = (event: DesktopRuntimeGatewayEvent): void => {
     for (const listener of [...listeners]) listener(event)
@@ -211,12 +214,17 @@ export const createDesktopRuntimeGateway = (
       if (phase !== "idle") return
       phase = "ready"
       emit("ready")
+      unsubscribeVoice = voice()?.subscribe(state => publish({ kind: "voice.lifecycle", sequence: ++sequence, state })) ?? null
     },
     request: (request, context) => {
       if (context !== undefined) observeOperation("gateway.received", context)
       const outcome = (() : DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse> => {
       if (phase === "disposed") return { kind: "request_rejected", reason: "gateway_disposed" }
       if (request.kind === "query") {
+        if (request.query.id === "voice.state") {
+          const service = voice()
+          return service === null ? { kind: "request_rejected", reason: "invalid_request" } : { kind: "voice_state", requestId: request.requestId, state: service.state() }
+        }
         if (request.query.id === "conversation.commandOutcome") {
           const service = runtimeCommands()
           if (service === null) {
@@ -373,6 +381,11 @@ export const createDesktopRuntimeGateway = (
             identityTier:identityTier(),
           },
         }
+      }
+      if (request.command.id.startsWith("voice.")) {
+        const service = voice()
+        if (service === null) return { kind: "command_outcome", commandId: request.commandId, status: "unavailable", reason: "Voice host is unavailable." }
+        return service.command(request.command as DesktopVoiceCommand).then(state => ({ kind: "voice_state" as const, commandId: request.commandId, state }))
       }
       if (
         request.command.id === "conversation.subscribe" ||
@@ -640,6 +653,8 @@ export const createDesktopRuntimeGateway = (
     dispose: () => {
       if (phase === "disposed") return
       phase = "disposed"
+      unsubscribeVoice?.(); unsubscribeVoice = null
+      voice()?.dispose()
       sessionActionAbort?.abort()
       sessionActionAbort = null
       emit("disposed")
