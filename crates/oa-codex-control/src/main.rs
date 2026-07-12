@@ -1700,8 +1700,15 @@ fn microvm_failure_class(exit_code: i32, output: &str) -> Option<&'static str> {
     let normalized = output.to_ascii_lowercase();
     Some(if normalized.contains("turn-runner") && normalized.contains("not found") {
         "turn_runner_unavailable"
-    } else if normalized.contains("unauthorized") || normalized.contains("authentication") {
+    } else if normalized.contains("provider_auth")
+        || normalized.contains("unauthorized")
+        || normalized.contains("authentication")
+    {
         "provider_auth_failed"
+    } else if normalized.contains("workspace.checkout") {
+        "workspace_checkout_failed"
+    } else if normalized.contains("codex.exec") || normalized.contains("codex_") {
+        "codex_exec_failed"
     } else if normalized.contains("connection") || normalized.contains("timed out") {
         "network_failed"
     } else if normalized.contains("result.json") || normalized.contains("no such file") {
@@ -1709,6 +1716,23 @@ fn microvm_failure_class(exit_code: i32, output: &str) -> Option<&'static str> {
     } else {
         "guest_command_failed"
     })
+}
+
+fn microvm_failure_reason_ref(exit_code: i32, output: &str) -> Option<String> {
+    if exit_code == 0 {
+        return None;
+    }
+    output
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric()
+                || matches!(character, '.' | '_' | ':' | '-'))
+        })
+        .find(|token| {
+            token.starts_with("codex.provider_auth")
+                || token.starts_with("codex.exec")
+                || token.starts_with("workspace.checkout")
+        })
+        .map(str::to_string)
 }
 
 /// Worker thread: boot the microVM, run the turn, then emit lifecycle receipts
@@ -1864,6 +1888,7 @@ fn run_org_cloud_microvm_worker(
 
     let exit_code = outcome.exec.code;
     let failure_class = microvm_failure_class(exit_code, &outcome.exec.output);
+    let failure_reason_ref = microvm_failure_reason_ref(exit_code, &outcome.exec.output);
     let terminal_status = if exit_code == 0 { "completed" } else { "failed" };
     append_job_event(
         &config,
@@ -1875,6 +1900,7 @@ fn run_org_cloud_microvm_worker(
                 "runnerId": runner_id,
                 "exitCode": exit_code,
                 "failureClass": failure_class,
+                "failureReasonRef": failure_reason_ref,
             }))?),
             detail: Some("Agent Computer microVM turn finished.".to_string()),
             digest: None,

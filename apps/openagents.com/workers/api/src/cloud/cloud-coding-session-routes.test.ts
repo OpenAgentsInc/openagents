@@ -703,11 +703,13 @@ describe('POST /v1/cloud-coding-sessions', () => {
     // field; it reports the bound ref only inside the cloud.gce.provisioning
     // event data. The adapter must still validate the placement (not refuse
     // with agent_computer_work_context_binding_missing).
+    let fetchCalls = 0
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
       bearerToken: 'secret-test-token',
-      fetch: async () =>
-        Response.json({
+      fetch: async () => {
+        fetchCalls += 1
+        return Response.json({
           binding: {
             externalRunId: 'run_gce_daemon',
             lane: 'cloud-gcp',
@@ -735,8 +737,9 @@ describe('POST /v1/cloud-coding-sessions', () => {
           ],
           agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           externalRunId: 'run_gce_daemon',
-          status: 'completed',
-        }),
+          status: fetchCalls === 1 ? 'provisioning' : 'completed',
+        })
+      },
       gceProvisioningArmed: true,
     })
     const session = await Effect.runPromise(
@@ -763,6 +766,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     )
     expect(session.workContextRef).toBe('work-context.agent-computer.ccs_daemon')
     expect(session.agentComputerState).toBeDefined()
+    expect(fetchCalls).toBe(2)
   })
 
   test('fails closed when the control plane omits the isolation-policy echo', async () => {
