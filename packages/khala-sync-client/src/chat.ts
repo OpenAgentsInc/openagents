@@ -10,6 +10,7 @@ import {
   personalScope,
   threadScope,
   type ChatMessageEntity,
+  type ChatMessageImageAttachment,
   type ChatThreadEntity,
 } from "@openagentsinc/khala-sync"
 import type { ClientMutator } from "./overlay.js"
@@ -27,6 +28,7 @@ export type ChatAppendMessageArgs = Readonly<{
   threadId: string
   messageId: string
   body: string
+  attachments?: ReadonlyArray<ChatMessageImageAttachment>
 }>
 
 export type ChatRenameThreadArgs = Readonly<{
@@ -172,6 +174,7 @@ export const chatAppendMessageClientMutator = (
     const current = decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
     const now = (options.now ?? defaultNowIso)()
     const message = decodeChatMessageEntity({
+      ...(args.attachments === undefined ? {} : { attachments: args.attachments }),
       authorUserId: options.ownerUserId,
       body: args.body,
       createdAt: now,

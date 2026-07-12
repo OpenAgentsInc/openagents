@@ -706,17 +706,15 @@ receipts remain (owner decision 2026-07-12: no physical-Android gate)
   sandbox, and applies canonical stage/ready transactions carrying only
   `attachment.native-local.sha256.*` refs. The shared Composer renders the
   restored metadata and reports the device-local result without exposing a
-  picker URI. The next truth boundary re-reads native-local UTF-8 files at
-  submit, verifies exact size and SHA-256, and lowers their bytes into the
-  authoritative chat/runtime message as explicitly delimited untrusted data.
-  Changed, unreadable, oversized, image, and binary payloads fail before any
-  Sync mutation and preserve the canonical draft; accepted sends clear the
-  complete submitted document rather than retaining stale attachment refs.
-  A real byte-bearing image/binary transport and receipt is still required
-  before claiming end-to-end image turns. Remaining product gaps are that
-  image/binary delivery rung, real provider/model/account
-  selectors, editor/diff context capture, and equivalent full Desktop rich-
-  composer adoption. Physical accessibility remains open. The named Codex
+  picker URI. Submission re-reads native-local files, verifies exact size and
+  SHA-256, lowers UTF-8 as delimited untrusted data, and carries actual bounded
+  image bytes in the owner-private authoritative message. Server admission
+  additionally verifies image signature/digest before storage; Codex receives
+  ephemeral local-image files, Claude receives base64 image blocks, and hosted
+  Khala receives data URLs. Binary non-images and invalid payloads fail before
+  mutation and preserve the draft. The remaining product gap is real
+  provider/model/account selector authority. Physical accessibility remains
+  open. The named Codex
   composer receipt completed on 2026-07-12 with a retained redaction-clean
   proof. The trusted interaction authority is live on production Cloud Run
   revision `openagents-monolith-00085-k4v`; migrations 0061/0062 are applied

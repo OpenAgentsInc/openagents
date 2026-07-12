@@ -3,6 +3,7 @@ import {
   CHAT_THREAD_ENTITY_TYPE,
   ChatThreadCodexContinuityPin,
   ChatThreadRepoBinding,
+  ChatMessageImageAttachment,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   EntityId,
@@ -66,6 +67,7 @@ const AppendMessageArgs = S.Struct({
   threadId: ChatRefField,
   messageId: ChatRefField,
   body: ChatBodyField,
+  attachments: S.optional(S.Array(ChatMessageImageAttachment).check(S.isMaxLength(4))),
 })
 type AppendMessageArgs = typeof AppendMessageArgs.Type
 
@@ -134,6 +136,36 @@ type ChatThreadRow = Readonly<{
 type ChatMessageRow = Readonly<{
   message_id: string
 }>
+
+const verifyImageAttachment = async (
+  attachment: typeof ChatMessageImageAttachment.Type,
+): Promise<boolean> => {
+  let bytes: Uint8Array
+  try {
+    const binary = atob(attachment.dataBase64)
+    bytes = Uint8Array.from(binary, value => value.charCodeAt(0))
+  } catch {
+    return false
+  }
+  if (bytes.byteLength !== attachment.sizeBytes) return false
+  const signatureMatches = attachment.mediaType === "image/png"
+    ? bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    : attachment.mediaType === "image/jpeg"
+      ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : attachment.mediaType === "image/gif"
+        ? bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46
+        : bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 &&
+          bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 &&
+          bytes[10] === 0x42 && bytes[11] === 0x50
+  if (!signatureMatches) return false
+  const digest = Array.from(new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    Uint8Array.from(bytes).buffer,
+  )))
+    .map(value => value.toString(16).padStart(2, "0"))
+    .join("")
+  return digest === attachment.sha256
+}
 
 const ChatThreadEntityType = EntityType.make(CHAT_THREAD_ENTITY_TYPE)
 const ChatMessageEntityType = EntityType.make(CHAT_MESSAGE_ENTITY_TYPE)
@@ -362,6 +394,11 @@ export const chatAppendMessageMutator: MutatorDefinition =
   defineMutator<AppendMessageArgs>({
     decodeArgs: decodeChatAppendMessageArgs,
     execute: async (args, ctx) => {
+      for (const attachment of args.attachments ?? []) {
+        if (!(await verifyImageAttachment(attachment))) {
+          return reject(ctx, "attachment_integrity_invalid", "an image attachment failed integrity verification")
+        }
+      }
       const thread = await readThreadForUpdate(ctx, args.threadId)
       if (thread === null) {
         return reject(
@@ -385,6 +422,7 @@ export const chatAppendMessageMutator: MutatorDefinition =
 
       const nowIso = await transactionNowIso(ctx)
       const messageEntity = decodeChatMessageEntity({
+        ...(args.attachments === undefined ? {} : { attachments: args.attachments }),
         authorUserId: ctx.userId,
         body: args.body,
         createdAt: nowIso,
@@ -397,12 +435,12 @@ export const chatAppendMessageMutator: MutatorDefinition =
       await ctx.writer.sql`
         INSERT INTO khala_sync_chat_messages
           (message_id, thread_id, author_user_id, body, created_at, updated_at,
-           deleted_at)
+           deleted_at, attachments_json)
         VALUES
           (${messageEntity.messageId}, ${messageEntity.threadId},
            ${messageEntity.authorUserId}, ${messageEntity.body},
            ${messageEntity.createdAt}, ${messageEntity.updatedAt},
-           ${messageEntity.deletedAt})
+           ${messageEntity.deletedAt}, ${JSON.stringify(messageEntity.attachments ?? [])}::text::jsonb)
       `
 
       const updatedThreads: Array<ChatThreadRow> = await ctx.writer.sql`

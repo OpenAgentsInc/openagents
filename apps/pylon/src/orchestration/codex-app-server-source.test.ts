@@ -184,7 +184,7 @@ describe("makeCodexAppServerRunner", () => {
   test("adapts the typed app-server stream, preserving the child records the exec encoder drops", async () => {
     const fake = makeFakeAppServer({ notifications: CHILD_NOTIFICATIONS })
     const runner = makeCodexAppServerRunner({ spawnImpl: fake.spawn })
-    const { events } = await runner(runnerInput())
+    const { events } = await runner(runnerInput({ imagePaths: ["/workspace/thread-1/pixel.png"] }))
     const collected = await collectEvents(events)
 
     expect(collected.map((event) => event.type)).toEqual([
@@ -216,7 +216,10 @@ describe("makeCodexAppServerRunner", () => {
     const turnStart = fake.written[3]!.params as JsonRecord
     expect(turnStart.approvalPolicy).toBe("never")
     expect(turnStart.sandboxPolicy).toEqual({ type: "dangerFullAccess" })
-    expect(turnStart.input).toEqual([{ text: "run the fixture task", type: "text" }])
+    expect(turnStart.input).toEqual([
+      { text: "run the fixture task", type: "text" },
+      { path: "/workspace/thread-1/pixel.png", type: "localImage" },
+    ])
     expect(fake.spawned[0]!.args).toEqual(["app-server"])
     expect(fake.wasKilled()).toBe(true)
   })

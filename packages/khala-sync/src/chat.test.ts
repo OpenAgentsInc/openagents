@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  decodeChatMessageEntity,
   decodeChatThreadCodexContinuityPin,
   chatThreadRepoBindingRef,
   decodeChatThreadEntity,
@@ -51,6 +52,38 @@ describe("ChatThreadRepoBinding (MM-B2, #8472)", () => {
     expect(chatThreadRepoBindingRef({ name: "openagents", owner: "OpenAgentsInc" })).toBe(
       "OpenAgentsInc/openagents",
     )
+  })
+})
+
+describe("ChatMessageEntity image attachments (CUT-16)", () => {
+  const baseMessage = {
+    authorUserId: "github:12345",
+    body: "Inspect this image",
+    createdAt: "2026-07-12T00:00:00.000Z",
+    deletedAt: null,
+    messageId: "message.image.1",
+    threadId: "thread_1",
+    updatedAt: "2026-07-12T00:00:00.000Z",
+  }
+  const image = {
+    dataBase64: "AQID",
+    mediaType: "image/png" as const,
+    name: "pixel.png",
+    sha256: "a".repeat(64),
+    sizeBytes: 3,
+  }
+
+  test("keeps legacy messages valid and bounds the closed byte-bearing shape", () => {
+    expect(decodeChatMessageEntity(baseMessage).attachments).toBeUndefined()
+    expect(decodeChatMessageEntity({ ...baseMessage, attachments: [image] }).attachments).toEqual([image])
+    expect(() => decodeChatMessageEntity({
+      ...baseMessage,
+      attachments: Array.from({ length: 5 }, () => image),
+    })).toThrow()
+    expect(() => decodeChatMessageEntity({
+      ...baseMessage,
+      attachments: [{ ...image, mediaType: "image/svg+xml" }],
+    })).toThrow()
   })
 })
 

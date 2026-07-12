@@ -12,6 +12,7 @@ import {
   SyncSchemaVersion,
 } from "@openagentsinc/khala-sync"
 import { SQL } from "bun"
+import { createHash } from "node:crypto"
 import {
   afterAll,
   beforeAll,
@@ -273,6 +274,8 @@ describe.skipIf(!hasLocalPostgres())(
       const client = freshClient()
       const threadId = "chat-thread.runtime-reader.1"
       const messageId = "chat-message.runtime-reader.1"
+      const imageData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+      const imageBytes = Buffer.from(imageData, "base64")
 
       const response = await executePush({
         registry,
@@ -282,6 +285,13 @@ describe.skipIf(!hasLocalPostgres())(
             title: "Runtime reader fixture thread",
           }),
           envelope(2, CHAT_APPEND_MESSAGE_MUTATOR_NAME, {
+            attachments: [{
+              name: "pixel.png",
+              mediaType: "image/png",
+              sizeBytes: imageBytes.byteLength,
+              sha256: createHash("sha256").update(imageBytes).digest("hex"),
+              dataBase64: imageData,
+            }],
             body: "the real prompt text for a turn.start bodyRef",
             messageId,
             threadId,
@@ -300,6 +310,12 @@ describe.skipIf(!hasLocalPostgres())(
       expect(message?.body).toBe("the real prompt text for a turn.start bodyRef")
       expect(message?.authorUserId).toBe(client.userId)
       expect(message?.threadId).toBe(threadId)
+      expect(message?.attachments).toHaveLength(1)
+      expect(message?.attachments[0]).toMatchObject({
+        name: "pixel.png",
+        mediaType: "image/png",
+        dataBase64: imageData,
+      })
 
       // Cross-thread confusion guard: a message id that exists but under a
       // different thread must not resolve.

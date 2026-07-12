@@ -32,6 +32,26 @@ export const ChatMessageBody = S.String.check(
 )
 export type ChatMessageBody = typeof ChatMessageBody.Type
 
+export const CHAT_MESSAGE_IMAGE_COUNT_LIMIT = 4
+export const CHAT_MESSAGE_IMAGE_BYTES_LIMIT = 2 * 1024 * 1024
+
+export const ChatMessageImageAttachment = S.Struct({
+  name: S.String.check(S.isMinLength(1), S.isMaxLength(160)),
+  mediaType: S.Literals(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  sizeBytes: S.Number.check(
+    S.isInt(),
+    S.isGreaterThanOrEqualTo(1),
+    S.isLessThanOrEqualTo(CHAT_MESSAGE_IMAGE_BYTES_LIMIT),
+  ),
+  sha256: S.String.check(S.isPattern(/^[a-f0-9]{64}$/)),
+  dataBase64: S.String.check(
+    S.isMinLength(4),
+    S.isMaxLength(Math.ceil(CHAT_MESSAGE_IMAGE_BYTES_LIMIT / 3) * 4),
+    S.isPattern(/^[A-Za-z0-9+/]+={0,2}$/),
+  ),
+})
+export type ChatMessageImageAttachment = typeof ChatMessageImageAttachment.Type
+
 /**
  * Thread<->repo binding (MM-B2, #8472, mobile-only MVP pivot): the repo a
  * mobile thread is pinned to, so the org-owned cloud executor (MM-C1/C3,
@@ -141,6 +161,11 @@ export class ChatMessageEntity extends S.Class<ChatMessageEntity>(
   createdAt: ChatIsoTimestamp,
   updatedAt: ChatIsoTimestamp,
   deletedAt: S.NullOr(ChatIsoTimestamp),
+  attachments: S.optional(
+    S.Array(ChatMessageImageAttachment).check(
+      S.isMaxLength(CHAT_MESSAGE_IMAGE_COUNT_LIMIT),
+    ),
+  ),
 }) {}
 
 export const decodeChatThreadEntity = S.decodeUnknownSync(ChatThreadEntity)

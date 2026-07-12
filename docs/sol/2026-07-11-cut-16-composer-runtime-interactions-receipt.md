@@ -5,7 +5,7 @@
 - Status: shared authority, native persistence, both native interaction UIs,
   mobile runtime-control and canonical draft UI, Desktop gateway, and Claude
   provider injection active; mobile native attachment acquisition active;
-  attachment delivery/selectors and live acceptance remain open
+  selector authority and live/physical acceptance remain open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
@@ -190,10 +190,9 @@ Named-provider live evidence:
   `interaction: null`. The deployed trusted-authority gate is complete.
 
 CUT-16 remains open. The completion audit still finds literal composer gaps:
-mobile native file/image acquisition is landed, but attachment-bearing runtime
-submission/delivery is not yet proven; real provider/model/account selection
-remains, Desktop still needs full canonical rich-draft UI adoption, and editor/
-diff capture is not yet wired end to end in both hosts. The
+mobile native file/image acquisition and byte-bearing runtime transport are
+landed, but the latter still needs its production provider receipt; real
+provider/model/account selection remains. The
 remaining external receipt is physical-device/assistive-technology acceptance.
 Restart, revocation, provider injection, expiry, mobile runtime controls, and
 mobile canonical draft restoration are covered deterministically; those proofs
@@ -246,11 +245,9 @@ assertions; fleet workspace suites pass with the strengthened lane-bearing
 control expectation; full Desktop suite 992 pass / 3 env skips / 0 fail /
 5,309 assertions; built Electron smoke green (see the landing commit).
 
-Still open after this slice (unchanged residuals): Desktop full canonical
-rich-draft UI adoption, real provider/model/account selectors, editor/diff
-capture, attachment-bearing runtime delivery, chat-surface resume/retry/close
-parity (the fleet cockpit carries those controls today) and physical
-assistive-technology acceptance.
+Still open after this historical slice: later addenda supersede its composer
+residuals. The current gates are real provider/model/account selectors, the
+production image receipt, and physical assistive-technology acceptance.
 
 ## Addendum (2026-07-12): grant-scoped Desktop file mentions close I4
 
@@ -271,9 +268,8 @@ typed intent. Verification: focused 129 pass / 1 existing H5 skip / 0 fail;
 full Desktop 1,021 pass / 1 H5 skip / 0 fail / 5,503 assertions; typecheck,
 build, built-Electron smoke, and lifecycle teardown (`active: 0`) pass.
 
-This is not a mobile picker or physical-device receipt. CUT-16 remains open for
-mobile attachment-bearing runtime delivery/selectors and the physical
-cross-client/assistive-technology row.
+This is not a mobile picker or physical-device receipt. Later addenda deliver
+the mobile attachment transport; selector and physical acceptance remain.
 
 ## Addendum (2026-07-12): mobile attachment submission truth boundary
 
@@ -295,7 +291,32 @@ proves byte/digest verification, untrusted lowering, binary fail-closed
 behavior, and whole-document accepted clearing. Full mobile verification is
 112 pass / 0 fail / 599 assertions with typecheck green.
 
-This closes verified mobile text-file delivery, not image modality. CUT-16
-remains open for a real byte-bearing image/binary runtime transport, real
-provider/model/account selectors, and physical
-cross-client/assistive-technology receipts.
+## Addendum (2026-07-12): durable mobile image transport
+
+The authoritative message path now carries actual image bytes rather than
+metadata or a prompt-embedded approximation. `chat_message` has one additive,
+legacy-optional owner-private attachment array. Admission permits at most four
+PNG/JPEG/GIF/WebP images and 2 MiB decoded per image; the server decodes base64
+and verifies exact length, file signature, and SHA-256 before writing either
+the business row or thread-scope changelog. No native URI/path enters Sync and
+no public or view receipt carries base64.
+
+Mobile re-reads and verifies each digest-addressed sandbox file immediately
+before the authoritative append. The runtime intent references that exact
+confirmed message. The trusted Pylon reader decodes the canonical schema;
+Codex receives private turn-scoped local-image files (removed in `finally`),
+Claude receives documented streaming user-message base64 image blocks, and
+hosted Khala receives OpenAI-compatible data URLs. Images-only turns receive a
+non-empty explicit review instruction. Binary non-images still fail closed and
+preserve the complete draft.
+
+Verification before production deployment: Khala Sync 192 pass / 3 gated
+live skips / 0 fail / 12,803 assertions; Khala Sync Server full suite and
+typecheck green, including real-Postgres storage/integrity/runtime-read tests;
+Pylon focused image/app-server/enforcement suites 80 pass / 0 fail / 305
+assertions with typecheck; mobile 112 pass / 0 fail / 600 assertions with
+typecheck. Production migration/deployment and a real byte-bearing provider
+turn remain required before calling this live-proven.
+
+CUT-16 now remains open for real provider/model/account selectors, the live
+image receipt, and physical cross-client/assistive-technology acceptance.

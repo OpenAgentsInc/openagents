@@ -48,12 +48,20 @@ describe("shared canonical chat client", () => {
         threadId: THREAD,
         messageId: "message.chat-client.1",
         body: "Hello across devices",
+        attachments: [{
+          name: "pixel.png",
+          mediaType: "image/png",
+          sizeBytes: 3,
+          sha256: "a".repeat(64),
+          dataBase64: "AQID",
+        }],
       }))
       const thread = Effect.runSync(overlay.read(threadScope(THREAD)))
       expect(JSON.parse(thread.list("chat_message")[0]!.postImageJson)).toMatchObject({
         messageId: "message.chat-client.1",
         threadId: THREAD,
         body: "Hello across devices",
+        attachments: [{ name: "pixel.png", mediaType: "image/png" }],
       })
       expect(Effect.runSync(store.readEntities(personalScope(OWNER)))).toEqual([])
     } finally {

@@ -137,19 +137,18 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   ([receipt](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md));
   mobile native multi-file/image attachment acquisition at `c3ad8bee34`
   (bounded, hashed, sandbox-copied, `attachment.native-local.sha256` refs;
-  simulator native-link/render smoke only), plus verified UTF-8 attachment
-  lowering into the exact authoritative message. The submission boundary
-  rechecks bytes/size/digest and fails closed before mutation for images,
-  binary, changed, unreadable, or oversized content instead of reporting a
-  text-only send as attachment success.
+  simulator native-link/render smoke only), verified UTF-8 lowering, and the
+  bounded owner-private byte-bearing image path. Server admission verifies
+  decoded size, signature, and SHA-256; Pylon lowers the exact confirmed bytes
+  to Codex local-image, Claude base64-image, or hosted-Khala data-URL input.
 - Rung: **fixture-proven**; the attachment tranche is code-landed +
   fixture-proven, explicitly *not* a picker-tap or physical receipt.
 - Desktop I4 is now **`ui_available`**: the grant-scoped editor attaches a
   removable relative-path/revision/language/current-draft mention and lowers
   it as bounded explicitly untrusted context through both local and durable
   ChatHost sends. H2 session fork is also UI-available. Remaining gates are
-  mobile image/binary byte-bearing runtime delivery and real selectors, plus
-  the named physical cross-client receipts. CUT-21 already supplies named
+  production image proof and real selectors, plus the named physical
+  cross-client receipts. CUT-21 already supplies named
   Codex/Claude live streaming evidence.
 - CUT-16's own retained Codex daily-driver gate is now complete: the
   2026-07-12 `composer.run_stream` proof records 34 events, 7 commands, zero
@@ -349,9 +348,9 @@ still distinguish code/fixture/live/distribution/owner-acceptance rungs.
 
 ### (a) Code work
 
-1. CUT-16: mobile image/binary byte-bearing runtime delivery and real selector
-   adoption; verified text-file delivery plus Desktop I4/H2 are code-landed
-   with typed oracles.
+1. CUT-16: production image-provider proof and real selector adoption;
+   byte-bearing text/image delivery plus Desktop I4/H2 are code-landed with
+   typed oracles.
 2. CUT-26: publish the verified DMG/ZIP through the deployed signed-feed seam
    and enforce legacy lockout for the proven scope.
 3. CUT-27 declaration artifacts: loss/exception register,
@@ -450,7 +449,7 @@ current blocker state.
 
 ### Current blocker list (supersedes the one above)
 
-(a) Code: CUT-16 attachment-bearing runtime delivery + capability H2/I4
+(a) Code: CUT-16 real execution-target selector authority
 residuals (H1/H2 under an active #8712 claim by a concurrent session);
 CUT-25 remainder per its own ledger. CUT-11/CUT-12/CUT-26 code lanes are
 done.

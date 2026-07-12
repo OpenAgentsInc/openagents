@@ -50,6 +50,12 @@ export {
   type ComposerState,
 } from "@openagentsinc/composer-state"
 
+export {
+  CHAT_MESSAGE_IMAGE_BYTES_LIMIT,
+  CHAT_MESSAGE_IMAGE_COUNT_LIMIT,
+  type ChatMessageImageAttachment,
+} from "@openagentsinc/khala-sync"
+
 // ---------------------------------------------------------------------------
 // Local store (KS-5.1 + KS-5.4): contracts in store.ts; ALL SQL semantics
 // in the driver-agnostic store-core.ts. Runtime-specific stores live behind

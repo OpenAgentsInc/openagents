@@ -370,7 +370,10 @@ export const makeCodexAppServerRunner = (
     await requestWithTimeout("turn/start", {
       approvalPolicy: "never",
       cwd: input.cwd,
-      input: [{ text: input.instructions, type: "text" }],
+      input: [
+        { text: input.instructions, type: "text" },
+        ...(input.imagePaths ?? []).map(path => ({ path, type: "localImage" })),
+      ],
       // Owner-local dispatch always runs full access with network enabled
       // (the dispatch call site pins networkAccessEnabled: true); mirrors
       // CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE on the SDK path.

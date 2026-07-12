@@ -14,6 +14,7 @@ import {
   threadScope,
 } from "@openagentsinc/khala-sync"
 import { SQL } from "bun"
+import { createHash } from "node:crypto"
 import {
   afterAll,
   beforeAll,
@@ -74,6 +75,15 @@ const pushRequest = (
   })
 
 const registry = makeMutatorRegistry([...chatMutators])
+const PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+const PNG_BYTES = Buffer.from(PNG_BASE64, "base64")
+const PNG_ATTACHMENT = {
+  name: "pixel.png",
+  mediaType: "image/png" as const,
+  sizeBytes: PNG_BYTES.byteLength,
+  sha256: createHash("sha256").update(PNG_BYTES).digest("hex"),
+  dataBase64: PNG_BASE64,
+}
 
 describe.skipIf(!hasLocalPostgres())(
   "owner-private chat mutators against local Postgres",
@@ -113,6 +123,7 @@ describe.skipIf(!hasLocalPostgres())(
             title: "  Initial title  ",
           }),
           envelope(2, CHAT_APPEND_MESSAGE_MUTATOR_NAME, {
+            attachments: [PNG_ATTACHMENT],
             body: "private hello from the owner",
             messageId,
             threadId,
@@ -167,6 +178,7 @@ describe.skipIf(!hasLocalPostgres())(
       expect(JSON.stringify(threadLog.entries)).toContain(
         "private hello from the owner",
       )
+      expect(JSON.stringify(threadLog.entries)).toContain(PNG_ATTACHMENT.sha256)
       expect(
         threadLog.entries.every(
           (entry) => entry.mutationRef?.startsWith("mutation:") === true,
@@ -191,6 +203,40 @@ describe.skipIf(!hasLocalPostgres())(
       expect(threadRows[0]!.title).toBe("Renamed thread")
       expect(Number(threadRows[0]!.message_count)).toBe(1)
       expect(threadRows[0]!.last_message_at).not.toBeNull()
+    })
+
+    test("append verifies image bytes before writing any message or changelog", async () => {
+      const client = freshClient()
+      const threadId = "chat-thread.image-integrity.1"
+      await executePush({
+        registry,
+        request: pushRequest(client, [envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, {
+          threadId,
+          title: "Image integrity",
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      const result = await executePush({
+        registry,
+        request: pushRequest(client, [envelope(2, CHAT_APPEND_MESSAGE_MUTATOR_NAME, {
+          attachments: [{ ...PNG_ATTACHMENT, sha256: "0".repeat(64) }],
+          body: "must reject",
+          messageId: "chat-message.image-integrity.bad",
+          threadId,
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(result.results[0]).toMatchObject({
+        status: "rejected",
+        errorCode: "attachment_integrity_invalid",
+      })
+      const rows: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_chat_messages
+        WHERE thread_id = ${threadId}
+      `
+      expect(Number(rows[0]!.count)).toBe(0)
     })
 
     test("bindThreadRepo durably binds/clears a repo and rejects for a foreign owner or missing thread (#8472 follow-up)", async () => {

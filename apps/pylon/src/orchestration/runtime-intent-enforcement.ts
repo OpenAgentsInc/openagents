@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk"
 import {
   decodeFleetAccountEntity,
@@ -951,6 +954,7 @@ export type RuntimeCodexThreadRunner = (input: {
   readonly env: Record<string, string | undefined>
   readonly networkAccessEnabled: boolean
   readonly signal: AbortSignal
+  readonly imagePaths?: ReadonlyArray<string>
   readonly model?: string
   /**
    * When set, resume this existing Codex SDK thread (`Codex#resumeThread`)
@@ -962,6 +966,19 @@ export type RuntimeCodexThreadRunner = (input: {
    */
   readonly resumeThreadId?: string
 }) => Promise<{ readonly events: AsyncIterable<CodexRawEvent> }>
+
+export const runtimeCodexPromptWithImages = (
+  instructions: string,
+  imagePaths: ReadonlyArray<string> | undefined,
+): string | ReadonlyArray<Readonly<{ type: "text"; text: string }> | Readonly<{
+  type: "local_image"
+  path: string
+}>> => imagePaths === undefined || imagePaths.length === 0
+  ? instructions
+  : [
+      { type: "text", text: instructions },
+      ...imagePaths.map(path => ({ type: "local_image" as const, path })),
+    ]
 
 /**
  * The real runner: one Codex SDK thread against the given working
@@ -1031,7 +1048,8 @@ export const runWithRealCodexSdk: RuntimeCodexThreadRunner = async (input) => {
   const thread = input.resumeThreadId === undefined
     ? codex.startThread(threadOptions)
     : codex.resumeThread(input.resumeThreadId, threadOptions)
-  const result = await thread.runStreamed(input.instructions, { signal: input.signal })
+  const prompt = runtimeCodexPromptWithImages(input.instructions, input.imagePaths)
+  const result = await thread.runStreamed(prompt as string, { signal: input.signal })
   return result as { events: AsyncIterable<CodexRawEvent> }
 }
 
@@ -1048,6 +1066,7 @@ export type RuntimeClaudeThreadRunner = (input: {
   readonly permissionAuthorityRef?: string
   readonly model?: string
   readonly canUseTool?: CanUseTool
+  readonly images?: NonNullable<ChatMessageBody["attachments"]>
   /**
    * When set, resume this existing Claude Agent SDK session
    * (`options.resume`) instead of starting a fresh, contextless one — the
@@ -1058,6 +1077,28 @@ export type RuntimeClaudeThreadRunner = (input: {
    */
   readonly resumeSessionId?: string
 }) => Promise<{ readonly messages: AsyncIterable<ClaudeRawMessage> }>
+
+export const runtimeClaudeUserMessageWithImages = (
+  instructions: string,
+  images: NonNullable<ChatMessageBody["attachments"]>,
+) => ({
+  type: "user" as const,
+  message: {
+    role: "user" as const,
+    content: [
+      { type: "text" as const, text: instructions },
+      ...images.map(image => ({
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          media_type: image.mediaType,
+          data: image.dataBase64,
+        },
+      })),
+    ],
+  },
+  parent_tool_use_id: null,
+})
 
 export const DEFAULT_HOSTED_KHALA_RUNTIME_MODEL = "gemini-3.5-flash"
 export const HOSTED_KHALA_RUNTIME_PROVIDER = "vertex-gemini"
@@ -1073,6 +1114,7 @@ export type RuntimeHostedKhalaThreadRunner = (input: {
   readonly turnId: string
   readonly allocateSequence: () => number
   readonly nowIso: () => string
+  readonly images?: NonNullable<ChatMessageBody["attachments"]>
   readonly fetchImpl?: typeof globalThis.fetch
 }) => Promise<{ readonly events: AsyncIterable<KhalaRuntimeEvent> }>
 
@@ -1199,7 +1241,18 @@ export const runWithHostedKhalaGateway: RuntimeHostedKhalaThreadRunner = async (
   const url = new URL("/v1/chat/completions", input.baseUrl)
   const response = await fetchImpl(url.toString(), {
     body: JSON.stringify({
-      messages: [{ content: input.instructions, role: "user" }],
+      messages: [{
+        content: input.images === undefined || input.images.length === 0
+          ? input.instructions
+          : [
+              { type: "text", text: input.instructions },
+              ...input.images.map(image => ({
+                type: "image_url",
+                image_url: { url: `data:${image.mediaType};base64,${image.dataBase64}` },
+              })),
+            ],
+        role: "user",
+      }],
       model: input.model,
       stream: false,
     }),
@@ -1281,13 +1334,18 @@ export const runWithHostedKhalaGateway: RuntimeHostedKhalaThreadRunner = async (
  */
 export const runWithRealClaudeAgentSdk: RuntimeClaudeThreadRunner = async (input) => {
   const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as {
-    query: (args: { prompt: string; options?: Record<string, unknown> }) => AsyncIterable<ClaudeRawMessage>
+    query: (args: { prompt: string | AsyncIterable<unknown>; options?: Record<string, unknown> }) => AsyncIterable<ClaudeRawMessage>
   }
   const abort = new AbortController()
   if (input.signal.aborted) abort.abort()
   else input.signal.addEventListener("abort", () => abort.abort(), { once: true })
+  const prompt = input.images === undefined || input.images.length === 0
+    ? input.instructions
+    : (async function* () {
+        yield runtimeClaudeUserMessageWithImages(input.instructions, input.images!)
+      })()
   const messages = sdk.query({
-    prompt: input.instructions,
+    prompt,
     options: {
       abortController: abort,
       cwd: input.cwd,
@@ -1551,6 +1609,7 @@ const dispatchTurnStart = async (input: {
   readonly intent: RuntimeControlIntentRow
   readonly turnId: string
   readonly prompt: string
+  readonly images?: NonNullable<ChatMessageBody["attachments"]>
   readonly account?: ResolvedPylonAccountSelection
   readonly turn: ActiveRuntimeTurn
   readonly source: KhalaRuntimeSource
@@ -1559,7 +1618,7 @@ const dispatchTurnStart = async (input: {
   /** Codex resume-thread id OR Claude resume-session id, depending on `lane`. */
   readonly resumeRef?: string
 }): Promise<void> => {
-  const { options, store, intent, turnId, prompt, account, turn, source, lane, resumeRef } = input
+  const { options, store, intent, turnId, prompt, images, account, turn, source, lane, resumeRef } = input
   const pushEvent = options.pushEventImpl ?? defaultPushEvent(options.baseUrl, options.agentToken)
   // `handleTurnStart` durably claims sequence 0 before provider execution.
   // Provider-native started frames are therefore acknowledgement noise, not
@@ -1704,6 +1763,7 @@ const dispatchTurnStart = async (input: {
           ? {}
           : { permissionAuthorityRef: permission.authorityRef }),
         signal: turn.abortController.signal,
+        ...(images === undefined || images.length === 0 ? {} : { images }),
         ...(canUseTool === undefined ? {} : { canUseTool }),
         ...(resumeRef === undefined ? {} : { resumeSessionId: resumeRef }),
       })
@@ -1735,31 +1795,50 @@ const dispatchTurnStart = async (input: {
       // CUT-11 (#8691): default to the typed app-server source (the only
       // honest Codex child-record transport), pre-frame fallback to the SDK.
       const runCodexThread = options.codexThreadRunner ?? runWithCodexAppServerFirst
-      const { events } = await runCodexThread({
-        cwd,
-        env,
-        instructions: prompt,
-        networkAccessEnabled: true,
-        signal: turn.abortController.signal,
-        ...(resumeRef === undefined ? {} : { resumeThreadId: resumeRef }),
-      })
-      const childThreads = new Map<string, CodexChildThreadFacts>()
-      for await (const raw of events) {
-        captureCodexThreadId(raw)
-        const translated = codexRawEventToRuntimeEvents(raw, {
-          allocateSequence: turn.nextEventSequence,
-          childThreads,
-          nowIso: () => new Date().toISOString(),
-          source,
-          threadId: intent.threadId,
-          turnId,
-          turnStarted,
-        })
-        for (const event of translated) {
-          if (input.startedClaimed === true && event.kind === "turn.started") continue
-          if (event.kind === "turn.finished") finishedPushed = true
-          await pushOne(event)
+      const imageDir = images === undefined || images.length === 0
+        ? null
+        : await mkdtemp(join(tmpdir(), "oa-runtime-images-"))
+      const imagePaths: string[] = []
+      if (imageDir !== null) {
+        for (const [index, image] of images!.entries()) {
+          const extension = image.mediaType === "image/png" ? "png"
+            : image.mediaType === "image/jpeg" ? "jpg"
+              : image.mediaType === "image/gif" ? "gif" : "webp"
+          const path = join(imageDir, `${index + 1}.${extension}`)
+          await writeFile(path, Buffer.from(image.dataBase64, "base64"), { mode: 0o600 })
+          imagePaths.push(path)
         }
+      }
+      try {
+        const { events } = await runCodexThread({
+          cwd,
+          env,
+          instructions: prompt,
+          networkAccessEnabled: true,
+          signal: turn.abortController.signal,
+          ...(imagePaths.length === 0 ? {} : { imagePaths }),
+          ...(resumeRef === undefined ? {} : { resumeThreadId: resumeRef }),
+        })
+        const childThreads = new Map<string, CodexChildThreadFacts>()
+        for await (const raw of events) {
+          captureCodexThreadId(raw)
+          const translated = codexRawEventToRuntimeEvents(raw, {
+            allocateSequence: turn.nextEventSequence,
+            childThreads,
+            nowIso: () => new Date().toISOString(),
+            source,
+            threadId: intent.threadId,
+            turnId,
+            turnStarted,
+          })
+          for (const event of translated) {
+            if (input.startedClaimed === true && event.kind === "turn.started") continue
+            if (event.kind === "turn.finished") finishedPushed = true
+            await pushOne(event)
+          }
+        }
+      } finally {
+        if (imageDir !== null) await rm(imageDir, { recursive: true, force: true })
       }
     } else if (lane === "hosted_khala") {
       const runHostedKhala = options.hostedKhalaThreadRunner
@@ -1778,6 +1857,7 @@ const dispatchTurnStart = async (input: {
         source,
         threadId: intent.threadId,
         turnId,
+        ...(images === undefined || images.length === 0 ? {} : { images }),
       })
       for await (const event of events) {
         if (input.startedClaimed === true && event.kind === "turn.started") continue
@@ -2112,6 +2192,9 @@ const handleTurnStart = async (
     lane,
     options,
     prompt: message.body,
+    ...(message.attachments === undefined || message.attachments.length === 0
+      ? {}
+      : { images: message.attachments }),
     source,
     store,
     startedClaimed: true,
@@ -2412,7 +2495,11 @@ const RETRY_INSTRUCTION = "That didn't complete — please try again."
 const resolvePromptForContinueOrRetry = async (
   options: EnforceRuntimeIntentsOptions,
   row: RuntimeControlIntentRow,
-): Promise<{ ok: true; prompt: string } | { ok: false; detail: string }> => {
+): Promise<{
+  ok: true
+  prompt: string
+  images?: NonNullable<ChatMessageBody["attachments"]>
+} | { ok: false; detail: string }> => {
   const bodyRef =
     row.intent.kind === "turn.continue" || row.intent.kind === "turn.retry" ? row.intent.bodyRef : undefined
   const messageId = chatMessageIdFromBodyRef(bodyRef)
@@ -2436,7 +2523,14 @@ const resolvePromptForContinueOrRetry = async (
       ok: false,
     }
   }
-  return { ok: true, prompt: messageResult.message.body }
+  return {
+    ok: true,
+    prompt: messageResult.message.body,
+    ...(messageResult.message.attachments === undefined ||
+        messageResult.message.attachments.length === 0
+      ? {}
+      : { images: messageResult.message.attachments }),
+  }
 }
 
 /**
@@ -2553,6 +2647,7 @@ const handleTurnContinueOrRetry = async (
     lane,
     options,
     prompt: promptResult.prompt,
+    ...(promptResult.images === undefined ? {} : { images: promptResult.images }),
     source,
     store,
     turn,

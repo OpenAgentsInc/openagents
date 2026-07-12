@@ -132,6 +132,7 @@ export type RuntimeChatMessageRow = {
   readonly createdAt: string
   readonly updatedAt: string
   readonly deletedAt: string | null
+  readonly attachments: ReadonlyArray<unknown>
 }
 
 interface RawChatMessageRow {
@@ -142,6 +143,7 @@ interface RawChatMessageRow {
   readonly created_at: string
   readonly updated_at: string
   readonly deleted_at: string | null
+  readonly attachments_json: unknown
 }
 
 /**
@@ -160,13 +162,13 @@ export const readChatMessageById = async (
     input.threadId === undefined
       ? await sql`
           SELECT message_id, thread_id, author_user_id, body, created_at,
-                 updated_at, deleted_at
+                 updated_at, deleted_at, attachments_json
           FROM khala_sync_chat_messages
           WHERE message_id = ${input.messageId}
         `
       : await sql`
           SELECT message_id, thread_id, author_user_id, body, created_at,
-                 updated_at, deleted_at
+                 updated_at, deleted_at, attachments_json
           FROM khala_sync_chat_messages
           WHERE message_id = ${input.messageId} AND thread_id = ${input.threadId}
         `
@@ -180,6 +182,7 @@ export const readChatMessageById = async (
     messageId: row.message_id,
     threadId: row.thread_id,
     updatedAt: row.updated_at,
+    attachments: Array.isArray(row.attachments_json) ? row.attachments_json : [],
   }
 }
 

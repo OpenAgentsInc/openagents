@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -16,6 +16,8 @@ import {
   codexRawEventToRuntimeEvents,
   enforcePendingRuntimeIntents,
   runWithHostedKhalaGateway,
+  runtimeClaudeUserMessageWithImages,
+  runtimeCodexPromptWithImages,
   type ActiveRuntimeTurns,
   type CandidateAccount,
   type ClaudeRawMessage,
@@ -80,6 +82,37 @@ describe("candidateAccountsFromRegistry", () => {
     } finally {
       await rm(workspaceRoot, { force: true, recursive: true })
     }
+  })
+})
+
+describe("durable runtime image lowering", () => {
+  const image = {
+    name: "pixel.png",
+    mediaType: "image/png" as const,
+    sizeBytes: 3,
+    sha256: "a".repeat(64),
+    dataBase64: "AQID",
+  }
+
+  test("uses Codex local-image input and Claude base64 image blocks", () => {
+    expect(runtimeCodexPromptWithImages("inspect", ["/private/turn/pixel.png"])).toEqual([
+      { type: "text", text: "inspect" },
+      { type: "local_image", path: "/private/turn/pixel.png" },
+    ])
+    expect(runtimeClaudeUserMessageWithImages("inspect", [image])).toEqual({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "inspect" },
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "AQID" },
+          },
+        ],
+      },
+      parent_tool_use_id: null,
+    })
   })
 })
 
@@ -751,6 +784,13 @@ describe("enforcePendingRuntimeIntents", () => {
       messageId: "msg-1",
       threadId: "thread-1",
       updatedAt: iso,
+      attachments: [{
+        name: "pixel.png",
+        mediaType: "image/png",
+        sizeBytes: 3,
+        sha256: "a".repeat(64),
+        dataBase64: "AQID",
+      }],
     }
     let finishSeen: (() => void) | undefined
     const finished = new Promise<void>((resolve) => {
@@ -758,15 +798,19 @@ describe("enforcePendingRuntimeIntents", () => {
     })
     const pushedEvents: Array<KhalaRuntimeEvent> = []
     const { options, cleanup } = await baseOptions({
-      codexThreadRunner: fakeCodexRunner([
-        { type: "turn.started" },
-        { item: { text: "hello!", type: "agent_message" }, type: "item.completed" },
-        {
-          item: { exit_code: 0, status: "completed", type: "command_execution" },
-          type: "item.completed",
-        },
-        { type: "turn.completed", usage: { input_tokens: 10, output_tokens: 2, reasoning_output_tokens: 0 } },
-      ]),
+      codexThreadRunner: async input => {
+        expect(input.imagePaths).toHaveLength(1)
+        expect(Array.from(await readFile(input.imagePaths![0]!))).toEqual([1, 2, 3])
+        return fakeCodexRunner([
+          { type: "turn.started" },
+          { item: { text: "hello!", type: "agent_message" }, type: "item.completed" },
+          {
+            item: { exit_code: 0, status: "completed", type: "command_execution" },
+            type: "item.completed",
+          },
+          { type: "turn.completed", usage: { input_tokens: 10, output_tokens: 2, reasoning_output_tokens: 0 } },
+        ])!(input)
+      },
       fetchChatMessageImpl: async () => ({ message, ok: true }),
       pushEventImpl: async (input) => {
         pushedEvents.push(input.event)
@@ -827,6 +871,13 @@ describe("enforcePendingRuntimeIntents", () => {
       messageId: "msg-1",
       threadId: "thread-desktop-prefix",
       updatedAt: iso,
+      attachments: [{
+        name: "pixel.png",
+        mediaType: "image/png",
+        sizeBytes: 3,
+        sha256: "a".repeat(64),
+        dataBase64: "AQID",
+      }],
     }
     const pushedClaims: Array<KhalaRuntimeEvent> = []
     let finishCount = 0
@@ -952,6 +1003,13 @@ describe("enforcePendingRuntimeIntents", () => {
       messageId: "msg-1",
       threadId: "thread-1",
       updatedAt: iso,
+      attachments: [{
+        name: "pixel.png",
+        mediaType: "image/png",
+        sizeBytes: 3,
+        sha256: "a".repeat(64),
+        dataBase64: "AQID",
+      }],
     }
     let finishSeen: (() => void) | undefined
     const finished = new Promise<void>((resolve) => {
@@ -969,6 +1027,7 @@ describe("enforcePendingRuntimeIntents", () => {
         }),
       }),
       claudeThreadRunner: async input => {
+        expect(input.images).toEqual(message.attachments)
         permissionModes.push(input.permissionMode)
         expect(input.canUseTool).toBeFunction()
         expect(await input.canUseTool!("Bash", { command: "pwd" }, {

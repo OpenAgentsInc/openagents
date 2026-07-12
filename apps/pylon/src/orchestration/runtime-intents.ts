@@ -1,4 +1,5 @@
 import {
+  decodeChatMessageEntity,
   decodeRuntimeControlIntentRow,
   type RuntimeControlIntentRow,
 } from "@openagentsinc/khala-sync"
@@ -186,6 +187,13 @@ export type ChatMessageBody = {
   readonly createdAt: string
   readonly updatedAt: string
   readonly deletedAt: string | null
+  readonly attachments?: ReadonlyArray<Readonly<{
+    name: string
+    mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+    sizeBytes: number
+    sha256: string
+    dataBase64: string
+  }>>
 }
 
 export type FetchChatMessageResult =
@@ -247,7 +255,29 @@ export const fetchChatMessage = async (
   if (typeof record.message !== "object" || record.message === null) {
     return { error: "bad_response", ok: false, reason: "message shape was not an object", status: 200 }
   }
-  return { message: record.message as ChatMessageBody, ok: true }
+  try {
+    const decoded = decodeChatMessageEntity(record.message)
+    return {
+      message: {
+        authorUserId: decoded.authorUserId,
+        body: decoded.body,
+        createdAt: decoded.createdAt,
+        deletedAt: decoded.deletedAt,
+        messageId: decoded.messageId,
+        threadId: decoded.threadId,
+        updatedAt: decoded.updatedAt,
+        ...(decoded.attachments === undefined ? {} : { attachments: decoded.attachments }),
+      },
+      ok: true,
+    }
+  } catch {
+    return {
+      error: "bad_response",
+      ok: false,
+      reason: "message failed the canonical chat schema",
+      status: 200,
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

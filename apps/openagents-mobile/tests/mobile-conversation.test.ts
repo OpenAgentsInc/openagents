@@ -86,7 +86,14 @@ const makeConversation = (input: Readonly<{
       return 1 as MutationId
     }),
     appendMessage: args => Effect.sync(() => {
-      commands.push({ id: "append", threadRef: args.threadId, messageRef: args.messageId })
+      commands.push({
+        id: "append",
+        threadRef: args.threadId,
+        messageRef: args.messageId,
+        ...(args.attachments === undefined
+          ? {}
+          : { attachmentCount: String(args.attachments.length) }),
+      })
       if (input.appendConfirmed !== false) {
         const list = messages.get(args.threadId) ?? []
         list.push({
@@ -237,6 +244,13 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     const result = await host.sendMessage({
       threadRef: "thread.synced.1",
       body: "Follow-up",
+      attachments: [{
+        name: "pixel.png",
+        mediaType: "image/png",
+        sizeBytes: 3,
+        sha256: "a".repeat(64),
+        dataBase64: "AQID",
+      }],
     })
     expect(result).toMatchObject({
       ok: true,
@@ -246,7 +260,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })
     expect(fixture.commands).toEqual([
       { id: "create", threadRef: "thread.mobile.new-thread" },
-      { id: "append", threadRef: "thread.synced.1", messageRef: "message.mobile.new-message" },
+      { id: "append", threadRef: "thread.synced.1", messageRef: "message.mobile.new-message", attachmentCount: "1" },
     ])
   })
 

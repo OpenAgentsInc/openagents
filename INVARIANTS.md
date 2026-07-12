@@ -622,6 +622,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   omit owner identity and carry stable thread/message refs, server entity
   versions, scope cursor, phase, and pending count; optimistic content is never
   labeled confirmed, and denial/sign-out removes the conversation capability.
+  Optional image bytes on `chat_message` remain inside the owner-private exact
+  thread scope: at most four closed-type PNG/JPEG/GIF/WebP payloads, at most
+  2 MiB decoded each, with decoded length, file signature, and SHA-256 checked
+  by the server before storage/changelog admission. Native paths and picker
+  URIs never enter Sync. The trusted Pylon reader may materialize an image only
+  into a turn-scoped private scratch path and must delete it after dispatch;
+  no public/view receipt projects base64 bytes.
 - Native clients create one immutable device-local identity before OpenAuth.
   Its `scope.device_local.*` rows live in separate `local_entities` tables with
   `LocalRevision`; they are local Source Authority and are never readable as

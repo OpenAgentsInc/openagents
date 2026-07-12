@@ -217,7 +217,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible embedded-binary tag; build 116 removes the named-persona front door. */
-export const BUNDLE_TAG = "2026-07-12.cut-17-sync-authority-live"
+export const BUNDLE_TAG = "2026-07-12.cut-16-durable-images"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -1042,6 +1042,7 @@ const makeSyncedConversationHandlers = (
     const result = yield* Effect.promise(() => host.sendMessage({
       threadRef,
       body: prepared.body,
+      ...(prepared.attachments === undefined ? {} : { attachments: prepared.attachments }),
       onUpdate: thread => {
         Effect.runFork(SubscriptionRef.update(state, current => {
           if (current.activeThreadRef !== thread.threadRef) return current

@@ -1,4 +1,7 @@
-import type { RuntimeInteractionDecision } from "@openagentsinc/khala-sync"
+import type {
+  ChatMessageImageAttachment,
+  RuntimeInteractionDecision,
+} from "@openagentsinc/khala-sync"
 import type {
   ConfirmedAgentTimelineSnapshot,
   ConfirmedAgentRun,
@@ -56,6 +59,7 @@ export type MobileConversationHost = Readonly<{
   sendMessage: (input: Readonly<{
     threadRef: string
     body: string
+    attachments?: ReadonlyArray<ChatMessageImageAttachment>
     onUpdate?: (thread: MobileConversationThread) => void
   }>) => Promise<MobileConversationMutationResult>
   interrupt?: (input: Readonly<{
@@ -597,6 +601,7 @@ export const makeMobileConversationHost = (
       const messageRef = nextRef("message", randomId)
       try {
         await run(options.conversation.appendMessage({
+          ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
           threadId: input.threadRef,
           messageId: messageRef,
           body: input.body,
