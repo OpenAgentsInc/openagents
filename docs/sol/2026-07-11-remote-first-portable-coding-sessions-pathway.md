@@ -131,8 +131,11 @@ sessions will depend on without confusing a host path for portable identity.
 The main-process WorkContext exposes new recursive tree and search projections
 only through an opaque grant ref and relative path refs, with bounded results,
 declared cache epochs, ignore/secret/binary/symlink filtering, and exactly-owned
-watcher invalidation. This is capability-core evidence only: gateway/UI
-adoption and portable workspace materialization remain separate rungs.
+watcher invalidation. Fixed decoded tree/refresh/watch main-preload operations
+now carry that boundary to the trusted bundled renderer and rebind on explicit
+WorkContext replacement. This is host-capability evidence only: Effect Native
+UI, cancellable search transport, and portable workspace materialization remain
+separate rungs.
 
 ### Episodes 248–249 calibration
 

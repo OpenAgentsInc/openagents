@@ -55,7 +55,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) — deterministic/native implementation complete through `5aeabdbb1e`; authenticated directory, exact restore, live fence, and URL/notification delivery landed; physical receipts pending | M1 / mobile binding | CUT-01, CUT-13 |
 | 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) — closed `5d36b73ad2`; canonical registry, owner-private bindings, native/deferred routing, and built-host receipt | D2 / commands | CUT-13 |
 | 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) — interaction authority + both native UIs + mobile runtime controls/canonical draft restore/native acquisition landed; attachment delivery, selectors/Desktop adoption, named Codex/deploy, and physical receipts pending | D1-D2 / interaction | CUT-12, CUT-15 |
-| 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) — capability core landed `4bbf0c7758`; gateway/UI/mutations/scale receipt pending | D3 / workspace | CUT-13 |
+| 17 | CUT-17 | [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697) — capability core `4bbf0c7758` + tree/watch host bridge `37372f30e2`; UI/search worker/mutations/scale pending | D3 / workspace | CUT-13 |
 | 18 | CUT-18 | [#8698](https://github.com/OpenAgentsInc/openagents/issues/8698) | D3 / editor | CUT-17 |
 | 19 | CUT-19 | [#8699](https://github.com/OpenAgentsInc/openagents/issues/8699) | D3 / Git | CUT-18 |
 | 20 | CUT-20 | [#8700](https://github.com/OpenAgentsInc/openagents/issues/8700) | D3 / terminal-preview | CUT-17 |
@@ -765,9 +765,10 @@ bounded path/content search, Git-ignore/hidden/secret/binary/symlink filtering,
 declared cache key/epoch/freshness, explicit refresh, and one subscriber-owned
 recursive watcher whose change/overflow events invalidate both caches. Focused
 adversarial fixtures and the full Desktop suite/build are green. CUT-17 remains
-open: the fixed gateway/preload contract and Effect Native tree/search UI are
-not wired; reveal/create/rename/delete, permission-loss behavior, async search
-task cancellation, and the required scale/lifecycle receipt remain.
+open: `37372f30e2` wires the fixed decoded tree/refresh/watch host bridge and
+proves it in the built Electron smoke, but Effect Native tree/search UI is not
+wired; reveal/create/rename/delete, permission-loss behavior, async search task
+cancellation/transport, and the required scale/lifecycle receipt remain.
 
 ---
 
