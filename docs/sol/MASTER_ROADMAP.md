@@ -618,9 +618,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   carries per-node token attribution: exact only when every recorded turn
   reports a complete split, partial mixes named exactly, everything else
   loss-accounted — never synthesized from the usage-free canonical graph.
-  Only physical-iOS and Android-emulator receipts remain open (owner
-  decision 2026-07-12: nothing gates on physical Android; emulator
-  evidence satisfies every Android leg).
+  The accepted Android-15 emulator receipt plus the 2026-07-12 physical-iPhone
+  build-117 journey now prove mobile tap/select/inspect, live-to-interrupted
+  terminal convergence, and process-death restoration of the same agent state
+  and controls. CUT-12 is closed; owner decision 2026-07-12 still holds that
+  nothing gates on physical Android.
 - CUT-13 now has one provider-neutral `openagents.coding_catalog.v1` contract
   for stable project, repository, worktree, coding-session, and persisted
   navigation identities. Session identity is structurally separate from host,

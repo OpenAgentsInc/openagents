@@ -2,8 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692)
-- Status: shared presentation model plus Khala Mobile and OpenAgents Desktop
-  thread integration active; physical iOS/Android receipts remain pending
+- Status: complete; shared presentation model plus OpenAgents Mobile and
+  OpenAgents Desktop integration are device-proven on physical iOS and the
+  accepted Android emulator lane
 - Contracts: `khala_mobile.agent_graph.confirmed_hierarchy_and_safe_focus.v1`,
   `openagents_desktop.agent_graph.pointer_keyboard_focus_equivalence.v1`
 
@@ -145,5 +146,33 @@ Verification (2026-07-12, worktree at `origin/main` 375a8997ff):
 - Full OpenAgents Desktop: 985 pass, 3 skip, 0 fail, 5,275 expectations;
   Desktop typecheck passes; built Electron smoke passes end-to-end.
 - Rendering proof is deterministic view-program oracles plus the built
-  Electron smoke; no new pixel/screenshot claim is made for the mobile
-  surface, and physical iOS/Android receipts remain open.
+  Electron smoke; that tranche made no pixel/screenshot claim for the mobile
+  surface. The later device receipts below close the remaining interaction
+  gates.
+
+## 2026-07-12 physical-iOS acceptance
+
+The signed OpenAgents 0.5.2 build 117 was exercised on the paired physical
+iPhone 17 Pro Max through Apple's iPhone Mirroring boundary. The app restored
+an authenticated production Sync scope and showed the confirmed conversation
+surface. A new physical-mobile continuation was accepted into the existing
+thread and projected `Live · Agents · 1 agent · 1 active` with a visible
+`Cancel turn` control.
+
+The operator activated that control by tap. The same surface converged to
+`1 agent · 0 active` and exposed the closed terminal actions `Resume`, `Retry`,
+and `Close turn`. The app process was then forcibly replaced through CoreDevice
+(`devicectl ... --terminate-existing`) and cold-launched. It restored the same
+selected conversation, message, zero-active agent state, and terminal action
+set. Tapping the agent row expanded the inline typed facts, including
+`Interrupted`, `Provider unavailable`, `Provider omitted`, and the bounded
+stable root ref suffix. No credential, provider payload, filesystem path, or
+private message content was captured in the receipt.
+
+This supplies the literal physical-iOS tap/select/inspect and terminal-
+transition receipt. The Android interaction leg is supplied by the accepted
+Android-15 emulator receipt at
+`docs/sol/2026-07-12-android-emulator-receipts.md`, per the owner decision that
+no CUT gate requires physical Android. Together with the deterministic
+pointer/keyboard/screen-reader equivalence and scale oracles above, CUT-12's
+completion criteria are fully evidenced.
