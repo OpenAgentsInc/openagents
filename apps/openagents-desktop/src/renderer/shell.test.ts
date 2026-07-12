@@ -132,6 +132,20 @@ test("provider target selection is exact and stable per conversation", () => {
     },
   })).toEqual({ provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" })
 })
+
+test("Fable permission posture is explicit per conversation and absent from Codex chrome", () => {
+  const fable = desktopShellView({ ...baseState, selectedHarness: "fable" })
+  expect(nodeByKey(fable, "shell-permission-mode")?.label).toBe("Full tools")
+  expect((nodeByKey(fable, "shell-permission-mode")?.onPress as { name?: string })?.name)
+    .toBe("DesktopPermissionModeSelected")
+  const planned = desktopShellView({
+    ...baseState,
+    selectedHarness: "fable",
+    permissionModeByThread: { [testThread.id]: "plan_only" },
+  })
+  expect(nodeByKey(planned, "shell-permission-mode")?.label).toBe("Plan only")
+  expect(nodeByKey(desktopShellView(baseState), "shell-permission-mode")).toBeUndefined()
+})
 const agentGraphFixture: NonNullable<DesktopShellState["agentGraph"]> = {
   authority: "live",
   authorityLabel: "Live",

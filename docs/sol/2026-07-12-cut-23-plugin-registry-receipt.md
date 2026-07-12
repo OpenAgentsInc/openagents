@@ -53,6 +53,20 @@ capability skips, 4,730 assertions, and the full built-Electron smoke with
 
 ## Remaining CUT-23 scope
 
-- R3: local permission-mode UI and runtime enforcement (J3).
 - One real plugin/skill workflow on each supported provider remains an exit
   receipt; unsupported provider capability must stay explicit.
+
+## R3 permission-mode follow-up
+
+Fable conversations now expose a compact Effect Native `Full tools` / `Plan
+only` control. The selection is retained per conversation and crosses the
+typed start boundary. `Full tools` preserves the owner-directed default-mode
+allow-all posture and live question path; `Plan only` maps to the SDK's
+execution-denying `permissionMode: "plan"`. Codex displays no false control and
+main rejects any plan-only Codex request until its bundled runtime has an
+equivalent contract. The boundary rejects `bypassPermissions` and all unknown
+modes. J2 and J3 are now fixture-proven `ui_available` capabilities.
+
+The R3 integrated gate passed with 909 tests, three unrelated capability
+skips, 4,739 assertions, and the complete built-Electron smoke with teardown
+`active=0`.

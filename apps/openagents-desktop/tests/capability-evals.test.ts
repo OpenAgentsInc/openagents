@@ -487,7 +487,7 @@ describe("capability gaps (skipped-with-reason: blocked until wired)", () => {
     // wired BOTH D3 oracles (built-Electron smoke UI oracle + the adversarial
     // host suite programmatic oracle), so D3 leaves the blocked set.
     expect(blockedRows.map((row) => row.id).sort()).toEqual(
-      ["H2", "H5", "I4", "J2"].sort(),
+      ["H2", "H5", "I4"].sort(),
     )
   })
 

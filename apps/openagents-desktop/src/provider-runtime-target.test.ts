@@ -76,4 +76,10 @@ describe("local provider target contract", () => {
     expect(decodeFableLocalStartRequest({ ...value, skill: { ...value.skill, name: "../escape" } })).toBeNull()
     expect(decodeFableLocalStartRequest({ ...value, skill: { ...value.skill, pluginRef: "raw-path" } })).toBeNull()
   })
+
+  test("accepts only the closed local permission modes", () => {
+    const value = { ...request(undefined), permissionMode: "plan_only" }
+    expect(decodeFableLocalStartRequest(value)?.permissionMode).toBe("plan_only")
+    expect(decodeFableLocalStartRequest({ ...value, permissionMode: "bypassPermissions" })).toBeNull()
+  })
 })

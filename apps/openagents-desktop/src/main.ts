@@ -1439,6 +1439,7 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     message: turnPromptText(request.message, request.images),
     ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
     ...(selectedSkill === null ? {} : { skillName: selectedSkill.name }),
+    ...(request.permissionMode === "plan_only" ? { planMode: true } : {}),
     ...(request.images !== undefined && request.images.length > 0 ? { images: request.images } : {}),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
@@ -1611,6 +1612,9 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   }
   if (request.skill !== undefined) {
     return { ok: false, error: "Local Claude skills are not available on the Codex lane." }
+  }
+  if (request.permissionMode === "plan_only") {
+    return { ok: false, error: "Plan-only permission mode is not available on the Codex lane." }
   }
   const store = threads()
   const user: DesktopMessage = {

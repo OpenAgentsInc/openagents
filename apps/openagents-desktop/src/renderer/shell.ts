@@ -221,6 +221,7 @@ export type CodingSessionFilter = (typeof codingSessionFilters)[number]
 
 export const desktopHarnessNames = ["fable", "codex"] as const
 export type DesktopHarnessName = (typeof desktopHarnessNames)[number]
+export type LocalPermissionMode = "owner_full" | "plan_only"
 
 /**
  * Evidence-gated composer affordances (#8712): a harness chip is enabled only
@@ -270,6 +271,7 @@ export type DesktopShellState = Readonly<{
   selectedHarness: DesktopHarnessName
   /** Exact named provider target retained independently for each conversation. */
   providerTargetsByThread: Readonly<Record<string, LocalProviderTarget>>
+  permissionModeByThread: Readonly<Record<string, LocalPermissionMode>>
   /** Probed lane availability; boot replaces this with real evidence pre-mount. */
   harnessLanes: HarnessLanes
   threads: ReadonlyArray<DesktopThread>
@@ -367,6 +369,7 @@ export const initialDesktopShellState = (
   notes: [],
   selectedHarness: "codex",
   providerTargetsByThread: {},
+  permissionModeByThread: {},
   // Unproven until boot's availability probe lands (before first mount):
   // an unproven lane is disabled, not optimistically enabled.
   harnessLanes: {
@@ -478,6 +481,7 @@ export const DesktopHarnessSelected = defineIntent(
   Schema.Literals(desktopHarnessNames),
 )
 export const DesktopProviderAccountSelected = defineIntent("DesktopProviderAccountSelected", Schema.String)
+export const DesktopPermissionModeSelected = defineIntent("DesktopPermissionModeSelected", Schema.Literals(["owner_full", "plan_only"]))
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
 /**
  * Message metadata inspector selection (#8712). Payload is the transcript
@@ -555,6 +559,7 @@ export const desktopShellIntents = [
   DesktopNewChat,
   DesktopHarnessSelected,
   DesktopProviderAccountSelected,
+  DesktopPermissionModeSelected,
   DesktopChatSelected,
   DesktopMessageSelected,
   DesktopToolCardToggled,
@@ -921,6 +926,7 @@ export type ChatHost = Readonly<{
     harness?: DesktopHarnessName
     target?: LocalProviderTarget
     skill?: LocalSkillInvocation
+    permissionMode?: LocalPermissionMode
     /** Optional image attachments threaded into the turn payload (capability I1). */
     images?: ReadonlyArray<FableLocalImageAttachment>
     onUpdate?: (thread: DesktopThread) => void
@@ -1381,6 +1387,7 @@ export const makeDesktopShellHandlers = (
         harness: current.selectedHarness,
         ...(providerTargetForThread(current) === null ? {} : { target: providerTargetForThread(current)! }),
         ...(skillSelection.kind === "skill" ? { skill: skillSelection.skill } : {}),
+        permissionMode: current.permissionModeByThread[current.activeThreadId!] ?? "owner_full",
         ...(images.length > 0 ? { images } : {}),
         onUpdate: thread => {
           Effect.runFork(SubscriptionRef.update(state, next =>
@@ -1469,6 +1476,11 @@ export const makeDesktopShellHandlers = (
         },
       }
     }),
+  DesktopPermissionModeSelected: (permissionMode) =>
+    SubscriptionRef.update(state, current =>
+      current.activeThreadId === null || current.selectedHarness !== "fable"
+        ? current
+        : { ...current, permissionModeByThread: { ...current.permissionModeByThread, [current.activeThreadId]: permissionMode } }),
   DesktopMessageSelected: (key) =>
     SubscriptionRef.update(state, (current) => withMessageSelected(current, key)),
   DesktopToolCardToggled: (key) =>
@@ -2683,6 +2695,25 @@ const providerAccountControl = (state: DesktopShellState): View | null => {
   })
 }
 
+const permissionModeControl = (state: DesktopShellState): View | null => {
+  if (state.selectedHarness !== "fable" || state.activeThreadId === null) return null
+  const current = state.permissionModeByThread[state.activeThreadId] ?? "owner_full"
+  const next: LocalPermissionMode = current === "owner_full" ? "plan_only" : "owner_full"
+  return Button({
+    key: "shell-permission-mode",
+    label: current === "owner_full" ? "Full tools" : "Plan only",
+    variant: "ghost",
+    disabled: state.pending,
+    onPress: IntentRef("DesktopPermissionModeSelected", StaticPayload(next)),
+    style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", color: current === "plan_only" ? "info" : "textMuted" },
+    a11y: {
+      label: current === "owner_full"
+        ? "Full local tools selected. Switch this conversation to plan only"
+        : "Plan only selected. Switch this conversation to full local tools",
+    },
+  })
+}
+
 /**
  * The composer's trailing action control (EP250 Stop button, audit gap #9).
  * While a turn streams (`state.pending`) the evidence-gated Send is replaced by
@@ -2886,6 +2917,7 @@ const shellComposer = (state: DesktopShellState): View =>
           harnessChip(state, "fable", "Fable"),
           harnessChip(state, "codex", "Codex"),
           ...(providerAccountControl(state) === null ? [] : [providerAccountControl(state)!]),
+          ...(permissionModeControl(state) === null ? [] : [permissionModeControl(state)!]),
         ],
       ),
       // Capability I1: pending image thumbnails + transient rejection notice

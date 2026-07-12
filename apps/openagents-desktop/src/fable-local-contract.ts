@@ -451,6 +451,8 @@ export const FableLocalStartRequestSchema = Schema.Struct({
   target: Schema.optional(LocalProviderTargetSchema),
   /** Explicit `/skill` selection; main verifies it against the enabled host registry. */
   skill: Schema.optional(LocalSkillInvocationSchema),
+  /** Explicit local authority posture; absent preserves owner-full default. */
+  permissionMode: Schema.optional(Schema.Literals(["owner_full", "plan_only"])),
 })
 export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
 

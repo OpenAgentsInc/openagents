@@ -982,8 +982,10 @@ SDK passthrough are now implemented with host-private paths, opaque renderer
 refs, typed lifecycle controls, and explicit provider disagreement; see
 `docs/sol/2026-07-12-cut-23-plugin-registry-receipt.md`. Explicit host-validated
 `/skill <plugin>/<skill> <prompt>` invocation is also landed without prose
-keyword routing. CUT-23 remains open for R3 local permission-mode controls plus
-the named real provider workflows.
+keyword routing. Per-conversation Fable full-tools/plan-only permission control
+is also landed with explicit Codex capability disagreement. CUT-23's code
+residuals are complete; it remains open only for the named real provider
+plugin/skill workflow receipts required by its exit gate.
 
 ---
 

@@ -77,7 +77,6 @@ export type CapabilityRow = Readonly<{
 }>
 
 const EVALS = "apps/openagents-desktop/tests/capability-evals.test.ts"
-const SHELL = "apps/openagents-desktop/src/renderer/shell.test.ts"
 const TOOLCARDS = "apps/openagents-desktop/src/renderer/tool-cards.test.ts"
 const LOCAL_HARNESS = "apps/openagents-desktop/src/renderer/local-harness.test.ts"
 const MARKDOWN = "apps/openagents-desktop/src/renderer/markdown.test.ts"
@@ -99,6 +98,7 @@ const MCP_SETTINGS = "apps/openagents-desktop/src/renderer/settings.test.ts"
 const MCP_HOST = "apps/openagents-desktop/src/mcp-config-host.test.ts"
 const SKILL_UI = "apps/openagents-desktop/src/renderer/skill-invocation.test.ts"
 const SKILL_HOST = "apps/openagents-desktop/tests/plugin-config.test.ts"
+const SHELL = "apps/openagents-desktop/src/renderer/shell.test.ts"
 const GIT_PANEL = "apps/openagents-desktop/src/renderer/git-panel.test.ts"
 const GIT_HOST = "apps/openagents-desktop/src/git-github-host.test.ts"
 const TERMINAL_HOST = "apps/openagents-desktop/src/terminal-host.test.ts"
@@ -130,7 +130,7 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // partial -> ui_available (typed workspace-bounded PTY host + bounded/redacted
   // terminal UI + adversarial suite + built-host/dev-preview receipts), taking
   // ui_available from 20 to 21 and partial from 16 to 15.
-  ui_available: 22,
+  ui_available: 24,
   // The Git/GitHub UI surface emptied the programmatic_only bucket: E2/E4/E5
   // are now ui_available and E3 (worktree/branch isolation) is partial (branch
   // UI wired, worktree creation still agent-only), so programmatic_only is 0.
@@ -143,8 +143,8 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // baseline the live registry became { 21, 0, 15, 4 }. CUT-23 R1 then wired
   // I3's explicit slash grammar + host-validated SDK skill catalog, moving it
   // missing -> ui_available: { 22, 0, 15, 3 }.
-  partial: 15,
-  missing: 3,
+  partial: 14,
+  missing: 2,
 } as const
 
 export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
@@ -453,18 +453,16 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     rung: "fixture",
   },
   {
-    id: "J2", group: "J", capability: "Plan mode / plan review", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit J2: EnterPlanMode/ExitPlanMode are disallowed; no plan surface",
+    id: "J2", group: "J", capability: "Plan mode / plan review", status: "ui_available",
+    uiOracleRef: SHELL, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
   },
   {
-    id: "J3", group: "J", capability: "Tool approval / permission modes", status: "partial",
-    uiOracleRef: RUNTIME_INTERACTIONS, uiOracleWiring: "existing_suite",
+    id: "J3", group: "J", capability: "Tool approval / permission modes", status: "ui_available",
+    uiOracleRef: SHELL, uiOracleWiring: "existing_suite",
     programmaticOracleRef: RUNTIME_GATEWAY, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
-    blocker: "audit J3: local lane is allow-all canUseTool; signed-in decideInteraction exists but there is no local permission-mode UI",
   },
   {
     id: "J4", group: "J", capability: "Task/todo progress tracking", status: "partial",

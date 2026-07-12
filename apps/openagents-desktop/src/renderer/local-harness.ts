@@ -103,6 +103,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       images?: ReadonlyArray<FableLocalImageAttachment>
       target?: LocalProviderTarget
       skill?: LocalSkillInvocation
+      permissionMode?: "owner_full" | "plan_only"
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> => {
@@ -368,6 +369,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ...(send.images !== undefined && send.images.length > 0 ? { images: send.images } : {}),
         ...(send.target === undefined ? {} : { target: send.target }),
         ...(send.skill === undefined ? {} : { skill: send.skill }),
+        ...(send.permissionMode === undefined ? {} : { permissionMode: send.permissionMode }),
       })
       const result = decodeTurnResult(raw, laneLabel)
       // A3 queue-until-idle: a follow-up promoted at this turn's idle boundary

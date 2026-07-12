@@ -201,6 +201,7 @@ describe("makeLocalHarnessChatHost", () => {
       harness: "fable",
       target: { provider: "claude_agent", accountRef: "claude-pylon-b", model: "claude-fable-5" },
       skill: { pluginRef: "plugin.local.0123456789abcdef01234567", name: "review" },
+      permissionMode: "plan_only",
     })
     await settle()
     expect(harness.startCalls[0]).toEqual({
@@ -209,6 +210,7 @@ describe("makeLocalHarnessChatHost", () => {
       message: "hello fable",
       target: { provider: "claude_agent", accountRef: "claude-pylon-b", model: "claude-fable-5" },
       skill: { pluginRef: "plugin.local.0123456789abcdef01234567", name: "review" },
+      permissionMode: "plan_only",
     })
     harness.resolveStart({ ok: true, thread: finalThread })
     expect((await pending).ok).toBe(true)

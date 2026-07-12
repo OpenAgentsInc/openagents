@@ -728,6 +728,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   and exact `skills/<name>/SKILL.md` before enabling the SDK Skill tool for
   that turn. Malformed, missing, disabled, duplicate-name, empty-prompt, and
   stale selections fail closed without running an unskilled substitute turn.
+  Local permission posture is explicit per conversation. Fable defaults to
+  `owner_full` (the established default-mode allow-all tool posture with the
+  real question flow) and may be narrowed to SDK-enforced `plan_only`, which
+  cannot execute tools. Codex remains honestly full-execution-only until its
+  bundled runtime exposes an equivalent plan authority; a plan-only request on
+  that lane fails closed. No stored or renderer-supplied mode can select SDK
+  `bypassPermissions` or broaden authority beyond the owner-full default.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.
