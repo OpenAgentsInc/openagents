@@ -91,7 +91,7 @@ describe("sidebarAccountsView structure", () => {
     expect(sidebarAccountsView(fleetWith([]))).toBeNull()
   })
 
-  test("the box is hairline-topped with a faint title and one row per account", () => {
+  test("the box is hairline-topped and uses a collapsed Effect Native accordion by default", () => {
     const view = sidebarAccountsView(fleetWith([account("codex"), account("claude-1", "claude_agent")]))
     expect(view).not.toBeNull()
     const nodes = collectNodes(view)
@@ -99,10 +99,19 @@ describe("sidebarAccountsView structure", () => {
     // The hairline divider is the FIRST child inside the box (top edge).
     const divider = nodeByKey(view, "sidebar-accounts-hairline")
     expect(divider?._tag).toBe("Divider")
-    const title = nodeByKey(view, "sidebar-accounts-title") as { color?: string; variant?: string }
-    expect(title?.color).toBe("textFaint")
+    const disclosure = nodeByKey(view, "sidebar-accounts-disclosure") as {
+      _tag?: string
+      expandedIds?: ReadonlyArray<string>
+      onToggle?: { name?: string }
+      items?: ReadonlyArray<{ header?: string }>
+    }
+    expect(disclosure?._tag).toBe("Accordion")
+    expect(disclosure?.expandedIds).toEqual([])
+    expect(disclosure?.onToggle?.name).toBe("DesktopSidebarAccountsToggled")
+    expect(disclosure?.items?.[0]?.header).toBe("Accounts · 2")
     expect(nodeByKey(view, "sidebar-account-codex")).toBeDefined()
     expect(nodeByKey(view, "sidebar-account-claude-1")).toBeDefined()
+    expect((nodeByKey(sidebarAccountsView(fleetWith([account("codex")]), true), "sidebar-accounts-disclosure") as { expandedIds?: ReadonlyArray<string> }).expandedIds).toEqual(["accounts"])
   })
 
   test("shows at most 5 accounts with a dim '+N more' row deep-linking to the Fleet workspace", () => {

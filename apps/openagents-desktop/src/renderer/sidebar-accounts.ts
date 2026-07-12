@@ -20,7 +20,9 @@
  * label — capability-truthful, never a fake fill.
  */
 import {
+  Accordion,
   Button,
+  ComponentValueBinding,
   Divider,
   Icon,
   IntentRef,
@@ -180,7 +182,7 @@ const sidebarAccountRow = (fleet: FleetWorkspaceState, account: FleetAccount): V
  * than five accounts render a dim "+N more" row deep-linking to the Fleet
  * workspace through the existing DesktopWorkspaceSelected intent.
  */
-export const sidebarAccountsView = (fleet: FleetWorkspaceState): View | null => {
+export const sidebarAccountsView = (fleet: FleetWorkspaceState, expanded = false): View | null => {
   const sorted = sortFleetAccounts(fleet.accounts)
   if (sorted.length === 0) return null
   const shown = sorted.slice(0, sidebarAccountsCap)
@@ -196,23 +198,31 @@ export const sidebarAccountsView = (fleet: FleetWorkspaceState): View | null => 
     [
       // Hairline top edge: the box is visually pinned under the flexed list.
       Divider({ key: "sidebar-accounts-hairline", style: { width: "full" } }),
-      Text({
-        key: "sidebar-accounts-title",
-        content: "Accounts",
-        variant: "label",
-        color: "textFaint",
+      Accordion({
+        key: "sidebar-accounts-disclosure",
+        mode: "single",
+        expandedIds: expanded ? ["accounts"] : [],
+        onToggle: IntentRef("DesktopSidebarAccountsToggled", ComponentValueBinding()),
+        items: [{
+          id: "accounts",
+          header: `Accounts · ${sorted.length}`,
+          content: [
+            ...shown.map((account) => sidebarAccountRow(fleet, account)),
+            ...(hidden > 0
+              ? [Button({
+                  key: "sidebar-accounts-more",
+                  label: `+${hidden} more`,
+                  variant: "ghost",
+                  onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("fleet")),
+                  style: { color: "textFaint", typeScale: "caption", padding: "0", alignSelf: "start" },
+                  a11y: { label: `Open the Fleet workspace to see ${hidden} more connected accounts` },
+                })]
+              : []),
+          ],
+        }],
+        style: { width: "full" },
+        a11y: { label: `${sorted.length} connected accounts, ${expanded ? "expanded" : "collapsed"}` },
       }),
-      ...shown.map((account) => sidebarAccountRow(fleet, account)),
-      ...(hidden > 0
-        ? [Button({
-            key: "sidebar-accounts-more",
-            label: `+${hidden} more`,
-            variant: "ghost",
-            onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("fleet")),
-            style: { color: "textFaint", typeScale: "caption", padding: "0", alignSelf: "start" },
-            a11y: { label: `Open the Fleet workspace to see ${hidden} more connected accounts` },
-          })]
-        : []),
     ],
   )
 }

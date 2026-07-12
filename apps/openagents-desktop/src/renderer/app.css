@@ -842,6 +842,37 @@ textarea {
   opacity: 1;
 }
 
+/* Compact connected-account disclosure pinned beneath the chat list. The
+   shared Accordion owns semantics/state; this is only its desktop recipe. */
+[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-trigger"] {
+  width: 100%;
+  padding: var(--en-spacing-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--en-color-textFaint);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--en-type-label-fontSize);
+  text-align: left;
+}
+
+[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-trigger"]::after {
+  content: "›";
+  float: right;
+  transform: rotate(0deg);
+  transition: transform var(--en-motion-fast) var(--en-ease-basic);
+}
+
+[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-trigger"][aria-expanded="true"]::after {
+  transform: rotate(90deg);
+}
+
+[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-content"]:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--en-spacing-1);
+}
+
 [data-en-key="fleet-desk-actions"] {
   margin-top: var(--en-spacing-0\.5);
 }

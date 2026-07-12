@@ -406,8 +406,32 @@ describe("desktopShellView (state -> component tree)", () => {
     // The box content is the sidebar-accounts module's projection (rows +
     // hairline); its own suite proves cap/order/bar semantics.
     expect(nodeByKey(view, "sidebar-accounts-hairline")).toBeDefined()
+    expect(nodeByKey(view, "sidebar-accounts-disclosure")).toMatchObject({ _tag: "Accordion", expandedIds: [] })
     expect(nodeByKey(view, "sidebar-account-codex")).toBeDefined()
     expect(nodeByKey(view, "sidebar-account-claude-1")).toBeDefined()
+  })
+
+  test("accounts disclosure toggles through the typed intent and starts collapsed", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const initial: DesktopShellState = {
+        ...baseState,
+        fleet: {
+          ...baseState.fleet,
+          phase: "ready",
+          accounts: [{ ref: "codex", provider: "codex", email: null, readiness: "ready" }],
+        },
+      }
+      expect(initial.sidebarAccountsExpanded).toBe(false)
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow))
+      const disclosure = nodeByKey(desktopShellView(initial), "sidebar-accounts-disclosure") as {
+        onToggle: Parameters<typeof resolveIntentRef>[0]
+      }
+      yield* registry.dispatch(resolveIntentRef(disclosure.onToggle, "accounts"))
+      const expanded = yield* SubscriptionRef.get(state)
+      expect(expanded.sidebarAccountsExpanded).toBe(true)
+      expect(nodeByKey(desktopShellView(expanded), "sidebar-accounts-disclosure")?.expandedIds).toEqual(["accounts"])
+    }))
   })
 
   test("sidebar chat rows are compact navigation items with trailing metadata", () => {

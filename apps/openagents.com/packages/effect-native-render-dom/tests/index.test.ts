@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Window } from "../../../apps/web/node_modules/happy-dom"
 import {
+  Accordion,
   Button,
   CodeEditor,
   decodeCodeEditorHostProps,
@@ -31,6 +32,26 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("controlled accordion rerenders replace items instead of duplicating them", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    const accordion = (expanded: boolean) => Accordion({
+      key: "accounts-disclosure",
+      items: [{ id: "accounts", header: "Accounts", content: [Text({ key: "account-row", content: "Codex", variant: "body" })] }],
+      expandedIds: expanded ? ["accounts"] : [],
+      onToggle: IntentRef("ToggleAccounts"),
+    })
+    await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      yield* makeDomRenderer({ document }).mount(root, Stream.make(accordion(false), accordion(true)), () => Effect.succeed(undefined))
+      yield* nextTask
+      expect(root.querySelectorAll('[data-en-accordion-item="accounts"]')).toHaveLength(1)
+      expect(root.querySelector('[data-en-role="accordion-trigger"]')?.getAttribute("aria-expanded")).toBe("true")
+      expect((root.querySelector('[data-en-role="accordion-content"]') as HTMLElement).hidden).toBe(false)
+    })))
+  })
+
   test("split pane drag resizes a fixed trailing inspector pane", async () => {
     const window = new Window({ url: "http://localhost/" })
     const document = window.document as unknown as Document

@@ -4734,23 +4734,27 @@ const renderAccordion = (view: AccordionView, state: DomRendererState, report: I
   const el = state.keyedElement(view, "div")
   state.resetListeners(el)
   el.setAttribute("data-en-accordion-mode", view.mode ?? "single")
+  const children: Array<HTMLElement> = []
   for (const item of view.items) {
     const open = view.expandedIds.includes(item.id)
     const itemEl = el.ownerDocument.createElement("div")
     itemEl.setAttribute("data-en-accordion-item", item.id)
     const header = el.ownerDocument.createElement("button")
     header.type = "button"
+    header.setAttribute("data-en-role", "accordion-trigger")
     header.setAttribute("aria-expanded", open ? "true" : "false")
     header.textContent = item.header
     state.addListener(header, "click", () => runReportedIntent(report, view.onToggle, item.id))
     itemEl.appendChild(header)
     const region = el.ownerDocument.createElement("div")
     region.setAttribute("role", "region")
+    region.setAttribute("data-en-role", "accordion-content")
     region.hidden = !open
     for (const child of item.content) region.appendChild(renderView(child, state, report))
     itemEl.appendChild(region)
-    el.appendChild(itemEl)
+    children.push(itemEl)
   }
+  el.replaceChildren(...children)
   applyBaseStyle(el, view, state)
   applyA11y(el, view)
   return el

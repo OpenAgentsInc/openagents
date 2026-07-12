@@ -786,6 +786,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   numbering never restarts at a source boundary. Selecting a runtime/app-local
   row always unmounts any provider-history page before projecting that row's
   transcript, so a successful selection cannot leave stale chat content visible.
+- Desktop's connected Accounts sidebar section uses the shared controlled
+  Effect Native Accordion, defaults collapsed, and expands only through its
+  typed toggle intent. Controlled rerenders replace the prior accordion item
+  tree rather than appending duplicate headers or account rows.
 - Desktop chat context rails are genuinely pointer-resizable from 280–480px.
   The shared SplitPane renderer targets the explicitly sized pane adjacent to
   a divider (including a trailing/right pane), and the renderer-owned typed

@@ -337,6 +337,8 @@ export type DesktopShellState = Readonly<{
   commandBindingDraft: string
   /** True only while the platform command modifier is held. */
   historyShortcutHintsVisible: boolean
+  /** Accounts disclosure is compact by default and expands on explicit use. */
+  sidebarAccountsExpanded: boolean
   /** The desktop-only planning deck; it has no deployment authority itself. */
   fleetDeskOpen: boolean
   /** The current, explicitly unsubmitted FleetRun objective draft. */
@@ -418,6 +420,7 @@ export const initialDesktopShellState = (
   commandBindingSelectedId: null,
   commandBindingDraft: "",
   historyShortcutHintsVisible: false,
+  sidebarAccountsExpanded: false,
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -571,6 +574,7 @@ export const DesktopCommandBindingsReset = defineIntent("DesktopCommandBindingsR
 /** Dismisses the transient command notice toast immediately (× / click). */
 export const DesktopCommandNoticeDismissed = defineIntent("DesktopCommandNoticeDismissed", Schema.Null)
 export const DesktopHistoryShortcutHintsChanged = defineIntent("DesktopHistoryShortcutHintsChanged", Schema.Boolean)
+export const DesktopSidebarAccountsToggled = defineIntent("DesktopSidebarAccountsToggled", Schema.String)
 export const DesktopHistoryConversationPreviewed = defineIntent("DesktopHistoryConversationPreviewed", Schema.String)
 
 export const desktopShellIntents = [
@@ -620,6 +624,7 @@ export const desktopShellIntents = [
   DesktopCommandBindingsReset,
   DesktopCommandNoticeDismissed,
   DesktopHistoryShortcutHintsChanged,
+  DesktopSidebarAccountsToggled,
   DesktopHistoryConversationPreviewed,
   ...settingsIntents,
   ...diagnosticsIntents,
@@ -1915,6 +1920,10 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => withCommandPalette(current, false)),
   DesktopHistoryShortcutHintsChanged: (visible) =>
     SubscriptionRef.update(state, (current) => current.historyShortcutHintsVisible === visible ? current : { ...current, historyShortcutHintsVisible: visible }),
+  DesktopSidebarAccountsToggled: (itemId) =>
+    itemId !== "accounts"
+      ? Effect.void
+      : SubscriptionRef.update(state, current => ({ ...current, sidebarAccountsExpanded: !current.sidebarAccountsExpanded })),
   DesktopHistoryConversationPreviewed: (id) =>
     SubscriptionRef.update(state, (current) => current.history.pendingThreadRef === id ? current : { ...current, history: { ...current.history, pendingThreadRef: id } }),
   })
@@ -2553,7 +2562,7 @@ const shellSidebar = (state: DesktopShellState): View => {
   // above keeps flex:1/minHeight:0, so the chats list flexes up while this
   // box stays pinned at the column bottom; zero connected accounts render no
   // box at all.
-  const accountsBox = sidebarAccountsView(state.fleet)
+  const accountsBox = sidebarAccountsView(state.fleet, state.sidebarAccountsExpanded)
   return Stack(
     {
       key: "shell-sidebar",
