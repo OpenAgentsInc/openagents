@@ -638,6 +638,7 @@ export type ExactUsageReceiptOutcome =
        * it publicly.
        */
       tokenChargeMetered: boolean
+      tokenChargeSkippedReason: 'owner_subscription_capacity' | null
       tokensServedDelta: number
     }
   | { ok: false; error: string; status: number | null }
@@ -694,6 +695,7 @@ export const postExactUsageReceipt = async (
     tokenUsageEventRef?: unknown
     insertedTokenUsage?: unknown
     tokenChargeMetered?: unknown
+    tokenChargeSkippedReason?: unknown
     tokensServedDelta?: unknown
     reason?: unknown
   }
@@ -707,6 +709,22 @@ export const postExactUsageReceipt = async (
       status: receiptResponse.status,
     }
   }
+  const ownerSubscriptionCapacity =
+    (args.identity.lane === 'codex_app_server' &&
+      args.identity.provider === 'pylon-codex-org-capacity') ||
+    (args.identity.lane === 'claude_pylon' &&
+      args.identity.provider === 'pylon-claude-org-capacity')
+  if (
+    ownerSubscriptionCapacity &&
+    (receiptJson.tokenChargeMetered !== false ||
+      receiptJson.tokenChargeSkippedReason !== 'owner_subscription_capacity')
+  ) {
+    return {
+      ok: false,
+      error: 'owner_capacity_charge_disposition_invalid',
+      status: receiptResponse.status,
+    }
+  }
   return {
     ok: true,
     tokenUsageEventRef:
@@ -715,6 +733,10 @@ export const postExactUsageReceipt = async (
         : null,
     insertedTokenUsage: receiptJson.insertedTokenUsage === true,
     tokenChargeMetered: receiptJson.tokenChargeMetered === true,
+    tokenChargeSkippedReason:
+      receiptJson.tokenChargeSkippedReason === 'owner_subscription_capacity'
+        ? 'owner_subscription_capacity'
+        : null,
     tokensServedDelta:
       typeof receiptJson.tokensServedDelta === 'number'
         ? receiptJson.tokensServedDelta
@@ -989,6 +1011,7 @@ export type CodexTurnReasonRef =
   | 'codex.turn_failed'
   | 'codex.no_exact_usage'
   | 'codex.usage_receipt_failed'
+  | 'codex.owner_capacity_charge_disposition_invalid'
 
 export type CodexTurnOutcome =
   | {
@@ -1099,7 +1122,10 @@ export const runCodexTurnWithReceipt = async (
     return {
       exitCode: result.code,
       ok: false,
-      reasonRef: 'codex.usage_receipt_failed',
+      reasonRef:
+        receipt.error === 'owner_capacity_charge_disposition_invalid'
+          ? 'codex.owner_capacity_charge_disposition_invalid'
+          : 'codex.usage_receipt_failed',
       receiptStatus: receipt.status,
     }
   }

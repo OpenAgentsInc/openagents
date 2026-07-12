@@ -1822,7 +1822,7 @@ not require a protected-core change.
 | **P0 client track** | #8574 | OpenCode-parity Desktop, Runtime Gateway, authoritative Sync, Fleet cockpit, and D0–D6 |
 | **P0 client track** | #8597 | Effect Native mobile Sync/coding/fleet client and iOS/Android proof |
 | **Closed P0 proof** | #8640 | Accepted simultaneous named Codex + Claude Phase A receipt; product/client exits remain transferred |
-| **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
+| **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding; closed child #8719 now fails the workroom turn when owner-capacity receipt disposition would unexpectedly charge the customer |
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |

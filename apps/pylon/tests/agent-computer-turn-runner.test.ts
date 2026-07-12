@@ -919,6 +919,7 @@ const receiptFetch = (response?: Response) => {
         JSON.stringify({
           insertedTokenUsage: true,
           tokenChargeMetered: false,
+          tokenChargeSkippedReason: 'owner_subscription_capacity',
           tokenUsageEventRef: 'event.inference.served-tokens.khala-cloud-runtime.codexbeef',
           tokensServedDelta: 1140,
         }),
@@ -1139,6 +1140,35 @@ describe('agent-computer turn-runner: runCodexTurnWithReceipt (CX-3 #8547)', () 
     }
   })
 
+  test('unexpected owner-capacity metering => typed failed turn', async () => {
+    const { fetchImpl } = receiptFetch(
+      new Response(
+        JSON.stringify({
+          insertedTokenUsage: true,
+          tokenChargeMetered: true,
+          tokenUsageEventRef: 'event.unexpected.charge',
+          tokensServedDelta: 1140,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+    const outcome = await runCodexTurnWithReceipt(
+      { codexTurn, providerAuth: materializedCodexAuth, prompt: 'p', threadId: 't', turnId: 'u', workingDirectory: '/w' },
+      {
+        execRun: () => ({ code: 0, stdout: codexJsonl, stderr: '' }),
+        existsImpl: () => true,
+        fetchImpl,
+      },
+    )
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      reasonRef: 'codex.owner_capacity_charge_disposition_invalid',
+      receiptStatus: 200,
+    })
+    expect(JSON.stringify(outcome)).not.toContain(codexTurn.agentToken)
+  })
+
   test('spawn seam receives the scratch CODEX_HOME env, workspace cwd, and bounded timeout', async () => {
     const seen: Array<Parameters<CodexExecRun>[0]> = []
     const execRun: CodexExecRun = input => {
@@ -1196,5 +1226,127 @@ describe('agent-computer turn-runner: postExactUsageReceipt tokenChargeMetered s
     )
     expect(outcome.ok).toBe(true)
     if (outcome.ok) expect(outcome.tokenChargeMetered).toBe(false)
+  })
+
+  test('requires the exact no-charge reason for Claude owner capacity', async () => {
+    const { fetchImpl } = receiptFetch(
+      new Response(
+        JSON.stringify({
+          insertedTokenUsage: true,
+          tokenChargeMetered: false,
+          tokenChargeSkippedReason: 'some_other_reason',
+          tokensServedDelta: 15,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+    const outcome = await postExactUsageReceipt(
+      {
+        identity: {
+          agentToken: codexTurn.agentToken,
+          baseUrl: codexTurn.baseUrl,
+          lane: 'claude_pylon',
+          model: 'openagents/pylon-claude',
+          ownerUserId: codexTurn.ownerUserId,
+          provider: 'pylon-claude-org-capacity',
+        },
+        observedAt: '2026-07-10T00:00:00.000Z',
+        threadId: 't',
+        turnId: 'u',
+        usage: {
+          cacheReadTokens: 0,
+          inputTokens: 10,
+          outputTokens: 5,
+          reasoningTokens: 0,
+          totalTokens: 15,
+        },
+        usageRef: 'usage.claude_pylon.test',
+      },
+      fetchImpl,
+    )
+
+    expect(outcome).toEqual({
+      error: 'owner_capacity_charge_disposition_invalid',
+      ok: false,
+      status: 200,
+    })
+  })
+
+  test('rejects an omitted no-charge reason for Codex owner capacity', async () => {
+    const { fetchImpl } = receiptFetch(
+      new Response(
+        JSON.stringify({
+          insertedTokenUsage: true,
+          tokenChargeMetered: false,
+          tokensServedDelta: 15,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+    const outcome = await postExactUsageReceipt(
+      {
+        identity: {
+          agentToken: codexTurn.agentToken,
+          baseUrl: codexTurn.baseUrl,
+          lane: CODEX_USAGE_RECEIPT_LANE,
+          model: CODEX_USAGE_RECEIPT_MODEL,
+          ownerUserId: codexTurn.ownerUserId,
+          provider: CODEX_USAGE_RECEIPT_PROVIDER,
+        },
+        observedAt: '2026-07-10T00:00:00.000Z',
+        threadId: 't',
+        turnId: 'u',
+        usage: {
+          cacheReadTokens: 0,
+          inputTokens: 10,
+          outputTokens: 5,
+          reasoningTokens: 0,
+          totalTokens: 15,
+        },
+        usageRef: 'usage.codex_app_server.missing_reason',
+      },
+      fetchImpl,
+    )
+
+    expect(outcome.ok).toBe(false)
+  })
+
+  test('preserves normal metered behavior for hosted provider capacity', async () => {
+    const { fetchImpl } = receiptFetch(
+      new Response(
+        JSON.stringify({
+          insertedTokenUsage: true,
+          tokenChargeMetered: true,
+          tokensServedDelta: 15,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+    const outcome = await postExactUsageReceipt(
+      {
+        identity: {
+          agentToken: codexTurn.agentToken,
+          baseUrl: codexTurn.baseUrl,
+          lane: AGENT_COMPUTER_RECEIPT_LANE,
+          model: 'gemini-test',
+          ownerUserId: codexTurn.ownerUserId,
+          provider: AGENT_COMPUTER_DEFAULT_PROVIDER,
+        },
+        observedAt: '2026-07-10T00:00:00.000Z',
+        threadId: 't',
+        turnId: 'u',
+        usage: {
+          cacheReadTokens: 0,
+          inputTokens: 10,
+          outputTokens: 5,
+          reasoningTokens: 0,
+          totalTokens: 15,
+        },
+        usageRef: 'usage.hosted_khala.metered',
+      },
+      fetchImpl,
+    )
+
+    expect(outcome).toMatchObject({ ok: true, tokenChargeMetered: true })
   })
 })

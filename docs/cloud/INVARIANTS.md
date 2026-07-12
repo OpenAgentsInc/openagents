@@ -134,6 +134,11 @@ design context only.
   not carry the org-capacity provider — meters normally (the skip can never
   widen into a metering bypass). Compute lifecycle stays separately billed
   through `openagents.resource_usage_receipt.v1`.
+- Agent Computer receipt consumers independently require that same exact
+  no-charge disposition for owner-subscription capacity. A `200` response that
+  reports metering, omits the skip reason, or names another reason fails the
+  turn as `codex.owner_capacity_charge_disposition_invalid`; it cannot reach
+  accepted closeout merely because token truth was recorded.
 - Subscription capacity is never resold (`subscriptionCapacityResale: false`);
   these lanes serve only the owner the grant is scoped to.
 
