@@ -216,7 +216,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible embedded-binary tag; build 116 removes the named-persona front door. */
-export const BUNDLE_TAG = "2026-07-11.cut-16-native-attachments"
+export const BUNDLE_TAG = "2026-07-12.cut-17-sync-authority-live"
 
 const EmptyPayload = Schema.Struct({})
 
