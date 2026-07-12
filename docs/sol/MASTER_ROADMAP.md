@@ -6,8 +6,8 @@
   complete; CUT-16 repaired a missing production migration and
   the physical authenticated catalog now visibly lists hosted Gemini plus
   three owner Codex targets and exact hosted-Gemini selection survives process
-  replacement; CUT-26 publish/legacy-lockout
-  code complete; CUT-25 cross-client Fleet control is closed; remaining
+  replacement; CUT-26 `0.1.0-rc.1` is signed, notarized, stapled, and live on
+  the production RC feed; CUT-25 cross-client Fleet control is closed; remaining
   local-cutover leaves are acceptance-gated CUT-09, CUT-16, CUT-26, and CUT-27)
 - Revision: 84
 - Status: canonical OpenAgents implementation roadmap
@@ -1787,11 +1787,12 @@ disappear.
 - The full cross-platform app/protocol/data/update/OAuth identity freezes before
   the first packaged build. Packaged fuses, signing/notarization, clean-machine
   smoke, update, and rollback are required before distribution.
-- CUT-26 has now passed the local Developer ID signing, Apple notarization,
-  stapling, and Gatekeeper rung, and its independent signed update-feed seam is
-  deployed fail-closed. Distribution remains blocked on deliberate artifact
-  publication and the clean-machine install/update/interruption/rollback/
-  uninstall acceptance journey; a successful notarization is not that journey.
+- CUT-26 has now published Developer ID signed, Apple-notarized, stapled
+  `0.1.0-rc.1` through its production-signed RC feed while preserving the live
+  mobile OTA seed via an incremental image. Distribution remains acceptance-
+  gated on the clean-machine install/update/interruption/rollback/uninstall
+  journey; publication alone is not that journey. See
+  [`the RC publication receipt`](./2026-07-12-cut-26-desktop-rc-publication-receipt.md).
 - The live #8574 claim is the coordination authority for each leaf and every
   shared Effect Native hot contract.
 
@@ -1876,7 +1877,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-16, CUT-26, and CUT-27 remain open. CUT-10, CUT-14, and CUT-25 are closed with their required live/physical receipts; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-16 now awaits only physical-iOS VoiceOver; CUT-26 awaits publication/clean-machine acceptance; CUT-27 is the capstone declaration. |
+| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-16, CUT-26, and CUT-27 remain open. CUT-10, CUT-14, and CUT-25 are closed with their required live/physical receipts; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-16 now awaits only physical-iOS VoiceOver; CUT-26 has a live signed RC and awaits only clean-machine acceptance; CUT-27 is the capstone declaration. |
 | **Closed P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; Episode 250 transcript 250 retains the on-camera owner acceptance and explicit mechanics-win verdict. Do not add implementation children or treat later provider-capacity changes as invalidating the historical named-provider receipt. |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
