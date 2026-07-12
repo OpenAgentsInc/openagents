@@ -78,10 +78,11 @@ not current queues:
   implementation evidence. Promoted requirements must live in an owning
   contract, roadmap gate, issue, or verifier.
 
-The July 9 Sol argument corpus and the July 10 execution diary remain
-historical evidence pending the ordered extraction and Backroom export in the
-[`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
-They are intentionally absent from this dispatch-safe reading path.
+The July 9 Sol argument corpus is preserved as exact, non-dispatch evidence in
+Backroom with a bidirectional
+[`archive manifest`](./2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md).
+The July 10 execution diary remains pinned historical evidence. Neither is in
+this dispatch-safe reading path.
 
 ## Proof and receipt rule
 

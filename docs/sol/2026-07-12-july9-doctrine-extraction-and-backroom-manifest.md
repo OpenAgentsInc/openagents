@@ -11,6 +11,7 @@
 - Backroom import: `dec8ae52`
 - OpenAgents link migration and source removal: `b62ad88136`
 - Backroom final bidirectional receipt: `b9645456`
+- OpenAgents completed manifest: `c608527eda`
 - Dispatch: no
 
 ## Purpose

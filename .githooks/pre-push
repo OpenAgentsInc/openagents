@@ -57,6 +57,12 @@ if ! ( cd "$root/apps/openagents.com" && bun run check:conflict-markers && bun r
   exit 1
 fi
 
+echo "[pre-push guard] checking Sol documentation freshness and link integrity..." >&2
+if ! ( cd "$root" && bun run check:sol-docs && bun run test:sol-docs ) >&2; then
+  echo "[pre-push guard] BLOCKED: Sol documentation guard failed." >&2
+  exit 1
+fi
+
 echo "[pre-push guard] checking scoped Khala Code visual smoke gate..." >&2
 if ! ( cd "$root" && OPENAGENTS_PRE_PUSH_LOCAL_SHA="$main_local_sha" OPENAGENTS_PRE_PUSH_REMOTE_SHA="$main_remote_sha" bun scripts/qa-visual-smoke-gate.ts ) >&2; then
   echo "[pre-push guard] BLOCKED: Khala Code visual smoke gate failed." >&2

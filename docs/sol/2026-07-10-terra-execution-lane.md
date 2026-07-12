@@ -1,7 +1,7 @@
 # Terra execution lane under the Sol roadmap
 
 - Date: 2026-07-10
-- Updated: 2026-07-10 (Revision 25 mobile remote-workroom fold-in)
+- Updated: 2026-07-10 (mobile remote-workroom fold-in)
 - Status: active operating amendment
 - Authority: owner direction, [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md),
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md), and repository invariants

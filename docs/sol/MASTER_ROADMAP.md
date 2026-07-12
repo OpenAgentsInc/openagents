@@ -5,6 +5,7 @@
 - Updated: 2026-07-12
 - Revision: 91
 - Status: canonical OpenAgents implementation roadmap
+- Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: yes, together with live issues and
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -353,8 +354,9 @@ and fallback rules are archived in Backroom at
 
 ## Current implementation and issue truth
 
-Snapshot: `origin/main` at `4239689e24` plus live issue state through the latest
-SOL-DOC-04 refresh. Refresh live issues again before dispatch.
+Snapshot: the schema-versioned
+[`live roadmap issue artifact`](./live-roadmap-issues.json), refreshed from
+GitHub before dispatch and age-checked by the offline documentation guard.
 
 - The foundational local coding graph through CUT-25 is landed/closed except
   CUT-09's distinct lifecycle acceptance. CUT-16 is closed with physical-iOS

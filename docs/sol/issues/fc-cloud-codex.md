@@ -4,7 +4,8 @@
 - Parent capability: #8636 hybrid target routing
 - Mobile consumer: #8597
 - Status: active P0 minimum remote-workroom path; advanced capacity follows R7
-- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 31
+- Dispatch: no; refresh the live issue and master before implementation
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 
 ## Outcome
 

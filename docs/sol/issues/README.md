@@ -28,6 +28,18 @@ contain historical status; refresh the live issue/comments before dispatch.
 | [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) | #8676 | Real Desktop-to-physical-mobile continuation |
 | [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) | #8677 | Command/event/lifecycle fault proof |
 
+## Live issues represented by receipts
+
+These open CUT leaves have current receipt/index coverage rather than a second
+checked-in issue-body source. Together with the live issue sources above, they
+must equal the pinned product-issue projection.
+
+| Live issue | Current evidence |
+| --- | --- |
+| [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) |
+| [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | [`CUT-26 publication receipt`](../2026-07-12-cut-26-desktop-rc-publication-receipt.md) |
+| [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
+
 ## Closed proof and implementation sources
 
 These are immutable checked-in issue-body/acceptance sources for closed work.

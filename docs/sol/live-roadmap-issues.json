@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-12T19:44:25.083Z",
+  "repository": "OpenAgentsInc/openagents",
+  "label": "roadmap:sol",
+  "excludedLabels": [
+    "area:docs"
+  ],
+  "maxAgeHours": 168,
+  "issues": [
+    {
+      "labels": [
+        "priority:P0",
+        "area:infra",
+        "codex",
+        "area:pylon",
+        "roadmap:sol"
+      ],
+      "number": 8547,
+      "state": "OPEN",
+      "title": "P0 TASK: Codex inside a real Agent Computer/workroom",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8547"
+    },
+    {
+      "labels": [
+        "ui",
+        "priority:P0",
+        "effect",
+        "area:program",
+        "roadmap:sol"
+      ],
+      "number": 8566,
+      "state": "OPEN",
+      "title": "P0 PROGRAM: reliable Effect Native Desktop/mobile coding and fleet software",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8566"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "effect",
+        "area:desktop",
+        "decommission",
+        "roadmap:sol"
+      ],
+      "number": 8574,
+      "state": "OPEN",
+      "title": "P0 TRACK: OpenAgents Desktop workbench, Sync, and runtime gateway",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8574"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "effect",
+        "mobile",
+        "decommission",
+        "roadmap:sol"
+      ],
+      "number": 8597,
+      "state": "OPEN",
+      "title": "P0 TRACK: OpenAgents mobile Sync, remote coding, and fleet control",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8597"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "area:infra",
+        "codex",
+        "cloud-boundary",
+        "area:pylon",
+        "claude",
+        "roadmap:sol"
+      ],
+      "number": 8636,
+      "state": "OPEN",
+      "title": "P0 TASK: explicit owner-local and managed-remote work routing",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8636"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "effect",
+        "area:desktop",
+        "codex",
+        "mobile",
+        "roadmap:sol"
+      ],
+      "number": 8676,
+      "state": "OPEN",
+      "title": "P0 TASK D1-H: real streamed Desktop conversation with mobile continuation",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8676"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "effect",
+        "area:desktop",
+        "mobile",
+        "type:proof",
+        "roadmap:sol"
+      ],
+      "number": 8677,
+      "state": "OPEN",
+      "title": "P0 PROOF R4-A: conversation command and event fault convergence",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8677"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "effect",
+        "area:desktop",
+        "mobile",
+        "roadmap:sol"
+      ],
+      "number": 8689,
+      "state": "OPEN",
+      "title": "CUT-09 — Converge restart, stale generation, revocation, and interrupted finalization",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8689"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "effect",
+        "area:desktop",
+        "roadmap:sol"
+      ],
+      "number": 8706,
+      "state": "OPEN",
+      "title": "CUT-26 — Ship hardened Desktop distribution, updates, rollback, and legacy lockout",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8706"
+    },
+    {
+      "labels": [
+        "priority:P0",
+        "effect",
+        "area:desktop",
+        "codex",
+        "mobile",
+        "decommission",
+        "type:proof",
+        "claude",
+        "roadmap:sol"
+      ],
+      "number": 8707,
+      "state": "OPEN",
+      "title": "CUT-27 — Prove and declare the Codex/Claude-to-OpenAgents coding cutover",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8707"
+    }
+  ]
+}

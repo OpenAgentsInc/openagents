@@ -12,7 +12,7 @@ scope, and rung. Live issue state and the
 
 ## Open or finalizing proof
 
-| Work | Evidence snapshot | Final rung at this index | Disposition |
+| Work | Evidence snapshot | Proof rung | Final disposition |
 | --- | --- | --- | --- |
 | CUT-09 [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`2026-07-11-cut-09-lifecycle-convergence-receipt.md`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) | fixture/built-host proven | Issue open for literal physical-iOS network-gap, reconnect, unlink/revocation, and no-replay acceptance |
 | CUT-26 [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | [`2026-07-12-cut-26-desktop-rc-publication-receipt.md`](../2026-07-12-cut-26-desktop-rc-publication-receipt.md) | distributed candidate; installed RC1 counterexample retained | Issue open for the next monotonic candidate and clean-machine coding/update/rollback/reinstall/uninstall/diagnostics lifecycle |
@@ -20,7 +20,7 @@ scope, and rung. Live issue state and the
 
 ## Closed CUT proof
 
-| Work | Evidence snapshot | Final rung | Disposition |
+| Work | Evidence snapshot | Proof rung | Final disposition |
 | --- | --- | --- | --- |
 | CUT-07 #8687 | [`2026-07-11-cut-07-command-convergence-receipt.md`](../2026-07-11-cut-07-command-convergence-receipt.md) | closed | Command convergence leaf accepted; parent fault proof remained separate |
 | CUT-08 #8688 | [`2026-07-11-cut-08-event-store-convergence-receipt.md`](../2026-07-11-cut-08-event-store-convergence-receipt.md) | closed | Event/cursor/store convergence accepted; CUT-09 retained later live rung |
@@ -39,7 +39,7 @@ scope, and rung. Live issue state and the
 
 ## Closed supporting leaves and owner evidence
 
-| Work | Evidence snapshot | Final rung | Disposition |
+| Work | Evidence snapshot | Proof rung | Final disposition |
 | --- | --- | --- | --- |
 | CUT-16A #8717 | [`2026-07-12-cut-16a-mobile-execution-target-selector-receipt.md`](../2026-07-12-cut-16a-mobile-execution-target-selector-receipt.md) | closed | Exact mobile provider/model/account target selector accepted |
 | AC-1 #8719 | [`2026-07-12-ac1-owner-capacity-charge-disposition-receipt.md`](../2026-07-12-ac1-owner-capacity-charge-disposition-receipt.md) | closed | Unexpected owner-capacity charge fails closed |
@@ -50,7 +50,7 @@ scope, and rung. Live issue state and the
 
 ## Supporting platform and failure evidence
 
-| Evidence | Rung | Use |
+| Evidence snapshot | Proof rung | Final disposition / use |
 | --- | --- | --- |
 | [`2026-07-12-android-emulator-receipts.md`](../2026-07-12-android-emulator-receipts.md) | supporting device evidence | First CUT Android-emulator evidence and later acceptance chronology; does not reopen closed CUTs or create a physical-Android gate |
 | [`2026-07-12-new-chat-live-sync-false-completion-after-action.md`](../2026-07-12-new-chat-live-sync-false-completion-after-action.md) | failure/after-action | Retained counterexample for false completion and unreachable fallback; not a success receipt |

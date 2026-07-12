@@ -4,7 +4,8 @@
 - Parent: #8638
 - Mobile consumer: #8597
 - Status: active P0 target/workroom contract; advanced placement follows R7
-- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 31
+- Dispatch: no; refresh the live issue and master before implementation
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 
 ## Outcome
 

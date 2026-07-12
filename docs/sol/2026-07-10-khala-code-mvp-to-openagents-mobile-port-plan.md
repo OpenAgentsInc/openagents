@@ -1,7 +1,10 @@
 # Khala Code MVP → OpenAgents mobile Effect Native port plan
 
 - Date: 2026-07-10
-- Status: active P0 capability ledger under Master Roadmap Revision 30
+- Class: historical capability ledger
+- Status: pinned migration evidence; current acceptance and sequence live in
+  the master roadmap and live issues
+- Dispatch: no
 - Primary issues: #8597, #8547, #8636, #8566, #8638
 - Destination: `apps/openagents-mobile`
 - Source app: `clients/khala-mobile` (deprecated/frozen extraction source)
