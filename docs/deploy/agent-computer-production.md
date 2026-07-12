@@ -13,6 +13,8 @@ topology from Google Cloud and bearer material from Secret Manager.
 - The nested-virtualization host is running, has `/dev/kvm`, and can pull from
   the `oa-cloud` Artifact Registry repository.
 - Secret Manager has a current `oa-cloud-run-bridge-control-token` version.
+- Secret Manager has a current `provider-token-custody-aes-key-b64` version;
+  the monolith deploy mounts it as `PROVIDER_TOKEN_CUSTODY_AES_KEY_B64`.
 - The control URL is reachable from the production Cloud Run VPC connector.
 
 ## 1. Build the control image

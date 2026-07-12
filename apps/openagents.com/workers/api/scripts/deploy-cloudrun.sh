@@ -110,6 +110,10 @@ SET_SECRETS=(
   "ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID=oa-artifacts-gcs-hmac-access-key-id:latest"
   "ARTIFACTS_GCS_HMAC_SECRET=oa-artifacts-gcs-hmac-secret:latest"
   "AGENT_REGISTRATION_SECRET=openagents-agent-registration-secret:latest"
+  # Encrypted provider-account custody (Codex/Claude local-auth imports and
+  # per-turn Agent Computer materialization). Raw auth material never enters
+  # Cloud Run env files or source; only this Secret Manager key is mounted.
+  "PROVIDER_TOKEN_CUSTODY_AES_KEY_B64=provider-token-custody-aes-key-b64:latest"
   "ARTANIS_AGENT_TOKEN=openagents-artanis-agent-token:latest"
   # CFG-14 (2026-07-07): khala_app password for the Cloud SQL Auth Connector
   # socket path (PGHOST/PGUSER are non-secret wrangler vars; the db name rides
