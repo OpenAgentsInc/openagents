@@ -44,6 +44,9 @@ describe('Cloud Run env rendering', () => {
     const environment = await renderEnvironment('production')
 
     expect(environment.OPENAGENTS_RUNTIME).toBe('cloudrun-monolith')
+    expect(environment.OPENAGENTS_AUDIO_GATEWAY_URL).toBe(
+      'wss://openagents-audio-edge-staging-ezxz4mgdsq-uc.a.run.app/v1/stream',
+    )
     expect(environment.PORTAL_UI_DIR).toBe('/app/portal-ui')
     for (const key of Object.keys(environment)) {
       expect(key.startsWith('SARAH_')).toBe(false)
@@ -54,6 +57,9 @@ describe('Cloud Run env rendering', () => {
     const environment = await renderEnvironment('staging')
 
     expect(environment.OPENAGENTS_RUNTIME).toBe('cloudrun-monolith')
+    expect(environment.OPENAGENTS_AUDIO_GATEWAY_URL).toBe(
+      'wss://openagents-audio-edge-staging-ezxz4mgdsq-uc.a.run.app/v1/stream',
+    )
     expect(environment.PORTAL_UI_DIR).toBe('/app/portal-ui')
     for (const key of Object.keys(environment)) {
       expect(key.startsWith('SARAH_')).toBe(false)

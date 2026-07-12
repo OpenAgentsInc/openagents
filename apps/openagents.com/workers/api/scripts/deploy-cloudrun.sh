@@ -19,6 +19,7 @@ set -euo pipefail
 #                                            (khala_app; kills Hyperdrive)
 #   openagents-monolith-cron-token-<env>     bearer for POST /internal/cron
 #   openagents-monolith-admin-token-<env>    OPENAGENTS_ADMIN_API_TOKEN
+#   openagents-audio-token-secret            shared AUDIO-2 grant HMAC
 #   khala-live-hub-token                     shared LiveHub service bearer
 #   openagents-gemini-api-key / openagents-openrouter-api-key /
 #   openagents-fireworks-api-key / openagents-exa-api-key /
@@ -115,6 +116,9 @@ SET_SECRETS=(
   # Cloud Run env files or source; only this Secret Manager key is mounted.
   "PROVIDER_TOKEN_CUSTODY_AES_KEY_B64=provider-token-custody-aes-key-b64:latest"
   "ARTANIS_AGENT_TOKEN=openagents-artanis-agent-token:latest"
+  # Desktop audio grants are issued by this monolith and verified by the
+  # grant-gated audio edge. Keep the shared HMAC mounted across every deploy.
+  "OPENAGENTS_AUDIO_TOKEN_SECRET=openagents-audio-token-secret:latest"
   # CFG-14 (2026-07-07): khala_app password for the Cloud SQL Auth Connector
   # socket path (PGHOST/PGUSER are non-secret wrangler vars; the db name rides
   # the authority-less KHALA_SYNC_DATABASE_URL secret). khala_app is

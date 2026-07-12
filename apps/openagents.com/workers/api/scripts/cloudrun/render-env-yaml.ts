@@ -103,6 +103,10 @@ const liveHubUrl =
     : 'https://khala-live-hub-staging-ezxz4mgdsq-uc.a.run.app'
 Object.assign(vars, {
   KHALA_SYNC_LIVE_HUB_URL: liveHubUrl,
+  // Authenticated Desktop grant responses point at the public grant-gated
+  // edge; the shared HMAC remains a Secret Manager mount in deploy-cloudrun.sh.
+  OPENAGENTS_AUDIO_GATEWAY_URL:
+    'wss://openagents-audio-edge-staging-ezxz4mgdsq-uc.a.run.app/v1/stream',
   OPENAGENTS_RUNTIME: 'cloudrun-monolith',
   // #8652 PORTAL-1: /portal path mount on this monolith.
   PORTAL_UI_DIR: '/app/portal-ui',

@@ -805,7 +805,14 @@ const voiceMedia: VoiceNativeMedia = smokeMode
           throw new Error(`voice_grant_refused:${response.status}:${reason}`)
         }
         const value = await response.json() as Record<string, unknown>
-        if (value.schema !== "openagents.audio.grant.v1" || value.disclosureRef !== disclosureRef || typeof value.gatewayUrl !== "string" || !value.gatewayUrl.startsWith("wss://") || typeof value.grant !== "string" || value.grant.length < 16 || value.grant.length > 4096 || typeof value.expiresAtMs !== "number" || !Number.isSafeInteger(value.expiresAtMs) || value.expiresAtMs <= Date.now() || value.expiresAtMs > Date.now() + 5 * 60_000) throw new Error("voice_grant_invalid")
+        if (value.schema !== "openagents.audio.grant.v1") throw new Error("voice_grant_invalid:schema")
+        if (value.disclosureRef !== disclosureRef) throw new Error("voice_grant_invalid:disclosure")
+        if (typeof value.gatewayUrl !== "string" || !value.gatewayUrl.startsWith("wss://")) throw new Error("voice_grant_invalid:gateway")
+        if (typeof value.grant !== "string" || value.grant.length < 16 || value.grant.length > 4096) throw new Error("voice_grant_invalid:grant")
+        // The issuer targets five minutes, but its clock may lead the Desktop's
+        // clock. Enforce the AUDIO-2 protocol maximum instead of requiring
+        // impossible millisecond clock equality across machines.
+        if (typeof value.expiresAtMs !== "number" || !Number.isSafeInteger(value.expiresAtMs) || value.expiresAtMs <= Date.now() || value.expiresAtMs > Date.now() + 15 * 60_000) throw new Error("voice_grant_invalid:expiry")
         return { gatewayUrl: value.gatewayUrl, grant: value.grant }
       },
     })

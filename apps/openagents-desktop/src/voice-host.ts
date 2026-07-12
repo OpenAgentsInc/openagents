@@ -106,7 +106,7 @@ export const createDesktopVoiceHost = (input: Readonly<{
         },
         onAck: (sequence, ackGeneration) => {
           if (ackGeneration !== ownedGeneration || current.generation !== ownedGeneration) { typedFailure("failed", "stale_generation"); return }
-          publish({ ...current, acknowledgedSequence: Math.max(current.acknowledgedSequence, sequence) })
+          publish({ ...current, acknowledgedSequence: Math.max(current.acknowledgedSequence, sequence), retainedAudio: true })
         },
         onState: state => {
           if (current.generation !== ownedGeneration) return
