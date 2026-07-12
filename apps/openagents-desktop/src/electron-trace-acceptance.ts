@@ -233,11 +233,17 @@ export const traceAcceptanceJourney = `(async () => {
   if (!inspector || !document.querySelector('[data-en-key="history-item-back"]')) return {ok:false,reason:"inspector_inaccessible"}
   const timeline = document.querySelector('[data-en-key="history-timeline-page"]')
   if (!timeline || timeline.clientHeight < 100 || timeline.scrollHeight <= timeline.clientHeight) return {ok:false,reason:"timeline_not_scrollable",clientHeight:timeline?.clientHeight??0,scrollHeight:timeline?.scrollHeight??0}
-  const beforeScroll = timeline.scrollTop
-  timeline.scrollTop = Math.min(240, timeline.scrollHeight - timeline.clientHeight)
+  // Bottom-anchored open (EP250): the transcript starts at its END, so parking
+  // it mid-transcript scrolls UP (scrollTop decreases). The proof of a live,
+  // settable scroll region is that our programmatic scroll LANDS at the
+  // requested mid position — off both the top (so a reset-to-0 is detectable)
+  // and the bottom (so the modifier check below is meaningful) — never that
+  // the offset increased.
+  const scrollTarget = Math.min(240, timeline.scrollHeight - timeline.clientHeight)
+  timeline.scrollTop = scrollTarget
   timeline.dispatchEvent(new Event('scroll',{bubbles:true}))
   await wait(50)
-  if (timeline.scrollTop <= beforeScroll) return {ok:false,reason:"timeline_scroll_stuck",clientHeight:timeline.clientHeight,scrollHeight:timeline.scrollHeight}
+  if (Math.abs(timeline.scrollTop - scrollTarget) > 2 || scrollTarget < 1) return {ok:false,reason:"timeline_scroll_stuck",clientHeight:timeline.clientHeight,scrollHeight:timeline.scrollHeight,scrollTop:timeline.scrollTop,scrollTarget}
   const scrollBeforeModifier = timeline.scrollTop
   window.dispatchEvent(new KeyboardEvent('keydown',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true,...modifier}))
   if (!await until(() => document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')?.textContent === '1')) return {ok:false,reason:"history_modifier_hint_missing",metaText:document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')?.textContent??null,rowPresent:document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"]')!==null,metaPresent:document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')!==null}

@@ -4080,6 +4080,20 @@ const commitView = (view: View, state: DomRendererState, report: IntentReporter)
       { top: section.scrollTop, left: section.scrollLeft }
     ])
   )
+  // Any keyed element can be the reader's scroll container (e.g. a Stack that
+  // mixes prose rows and Timeline segments). renderStack restores its own
+  // offset, but a parent's replaceChildren / renderSplitPane pane rebuild
+  // detaches and reattaches that retained node AFTER its restore ran, which
+  // clamps scrollTop back to zero. Snapshot every scrolled-away keyed node by
+  // tag+key here and restore after the whole tree is committed, so a sibling
+  // state change (e.g. Cmd-hint hints) never moves the reader's place.
+  const keyedScrollKey = (node: HTMLElement): string =>
+    `${node.getAttribute("data-en-tag") ?? ""}::${node.getAttribute("data-en-key") ?? ""}`
+  const keyedScrollPositions = new Map(
+    Array.from(state.root.querySelectorAll<HTMLElement>("[data-en-key]"))
+      .filter((node) => node.scrollTop > 0 || node.scrollLeft > 0)
+      .map((node) => [keyedScrollKey(node), { top: node.scrollTop, left: node.scrollLeft }])
+  )
   state.clearFocusRequest()
   state.styles.beginRender()
   const element = renderView(view, state, report)
@@ -4096,6 +4110,13 @@ const commitView = (view: View, state: DomRendererState, report: IntentReporter)
     if (position !== undefined) {
       section.scrollTop = position.top
       section.scrollLeft = position.left
+    }
+  }
+  for (const node of Array.from(state.root.querySelectorAll<HTMLElement>("[data-en-key]"))) {
+    const position = keyedScrollPositions.get(keyedScrollKey(node))
+    if (position !== undefined && (node.scrollTop !== position.top || node.scrollLeft !== position.left)) {
+      node.scrollTop = position.top
+      node.scrollLeft = position.left
     }
   }
   for (const active of Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-nav-item][data-en-active="true"]'))) {

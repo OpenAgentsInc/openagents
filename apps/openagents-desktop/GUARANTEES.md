@@ -374,9 +374,14 @@ and debounce page projection to the final target after 110ms; stale responses
 cannot commit and the selected row is centered inside the viewport.
 
 Pressing or releasing the platform modifier by itself may update sidebar hints,
-but it must not move the center timeline. Effect Native preserves the keyed
-Timeline's horizontal and vertical offsets while rebuilding its children, and
-the built-Electron journey checks both modifier transitions after scrolling.
+but it must not move the center timeline. In the bottom-anchored flow the reader
+scrolls a keyed Stack that mixes prose rows and Timeline segments, so Effect
+Native preserves the horizontal and vertical offsets of every keyed scroll
+container — not only the Timeline `<ol>` — across a root commit, restoring them
+after the whole tree (including rebuilt SplitPane pane wrappers, which detach and
+reattach the retained scroll node) is committed. The built-Electron journey opens
+the transcript at its end, parks it mid-transcript, and checks both modifier
+transitions after scrolling.
 
 The trace workspace has no duplicate application/header bar, selected title,
 state label, or accounting banner. Selection lives in the sidebar. It is one
