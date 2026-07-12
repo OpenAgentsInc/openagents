@@ -3,10 +3,11 @@
 - Date: 2026-07-11
 - Issue: [#8697](https://github.com/OpenAgentsInc/openagents/issues/8697)
 - Status: capability core, tree/watch/search/mutation host bridge, cancellable
-  search worker, mutation core, and scale/lifecycle receipt landed; UI and
-  legacy projection migration remain open
+  search worker, mutation core, scale/lifecycle receipt, and standalone bounded
+  Effect Native browser projection landed; handler/shell composition and legacy
+  projection migration remain open
 - Implementations: `4bbf0c7758`, `37372f30e2`, `efe7738ff1`, `36725a91df`,
-  `57488904c5`, `9f957a6d76`, `60369f3009`
+  `57488904c5`, `9f957a6d76`, `60369f3009`, `96692a6672`
 
 ## Landed boundary
 
@@ -59,6 +60,17 @@ Fixed decoded create/rename/delete/reveal operations now cross the trusted
 main/preload boundary. Electron main injects reveal authority when it opens a
 WorkContext; no absolute path returns. No mutation UI is claimed.
 
+The shell-independent workspace-browser projection now expresses that boundary
+through the shared Effect Native catalog. It includes a lazy virtualized tree,
+bounded path/content search results, explicit idle/loading/unavailable/empty/
+truncated states, and inline create/rename/two-step delete/reveal affordances.
+The pure state transitions discard prior pages and search results when root
+authority ends, reject child pages or results from a different grant, dedupe
+paged entries, and cap the visible hierarchy at 500 rows with in-flow
+disclosure. This commit does not register bridge handlers or compose the view
+into the shell, so it is not evidence that Desktop users can reach the new
+boundary yet.
+
 ## Verification
 
 - focused search/worker/workspace/electron suite: 41 pass, 0 fail, 509 assertions;
@@ -88,13 +100,20 @@ WorkContext; no absolute path returns. No mutation UI is claimed.
   0.03 ms, then project close settled the pending worker, closed the watcher
   once, and reported zero active searches. The integrated suite with this test
   is 645 pass / 3,573 assertions plus the 11 existing named skips.
+- focused standalone browser projection: 13 pass, 53 assertions, covering grant
+  fencing, lazy depth-first pagination and deduplication, the 500-row disclosure
+  bound, virtualized tree/search lists, relative-only labels, and inline
+  mutation confirmation; and
+- post-rebase integrated Desktop suite at `96692a6672`: 685 pass / 3,781
+  assertions, 10 named capability-gap skips, typecheck, and production build.
 
-No tree/search/mutation UI is claimed.
+No composed or user-reachable tree/search/mutation UI is claimed.
 
 ## Remaining before CUT-17 closure
 
-- migrate the Files workspace to the new relative-ref boundary and ship the
-  recursive accessible Effect Native tree/search experience;
-- add the renderer mutation/reveal controls;
+- connect the standalone workspace-browser intents to the fixed decoded bridge
+  with project-scoped cancellation/refresh handling;
+- compose that browser into the Files workspace and remove the prior flat
+  root/read/save projection from its renderer consumers;
 - remove the legacy absolute-root renderer projection only after its consumers
   have migrated.
