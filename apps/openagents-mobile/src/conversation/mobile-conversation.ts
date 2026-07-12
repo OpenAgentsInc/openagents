@@ -585,7 +585,11 @@ export const makeMobileConversationHost = (
     listThreads,
     openThread: confirmedThread,
     watchThread: async (threadRef, onUpdate) => {
-      const initial = await readConfirmedThread(threadRef)
+      // Opening a dedicated thread scope can briefly move that scope through
+      // catch-up even though the personal catalog already confirmed the row.
+      // Reuse the bounded confirmed waiter instead of misclassifying that
+      // handoff window as a stale thread.
+      const initial = await confirmedThread(threadRef)
       if (initial === null) return null
       let closed = false
       try {
