@@ -4,5 +4,5 @@
     "allowImportingTsExtensions": true, "strict": true, "skipLibCheck": true,
     "noEmit": true, "types": ["bun-types"], "exactOptionalPropertyTypes": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
 }

@@ -1,0 +1,11 @@
+{
+  "project": "openagentsgemini",
+  "region": "us-central1",
+  "bucket": "openagentsgemini-audio-retention-mvp",
+  "serviceIdentity": "oa-audio-retention@openagentsgemini.iam.gserviceaccount.com",
+  "cloudSqlInstance": "khala-sync-pg",
+  "migration": "packages/khala-sync-server/migrations/0064_audio_retention.sql",
+  "publicAccess": "prohibited",
+  "mediaObjectVersioning": false,
+  "maximumObjectTtlDays": 30
+}

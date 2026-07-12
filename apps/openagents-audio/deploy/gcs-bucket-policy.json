@@ -1,0 +1,19 @@
+{
+  "iamConfiguration": {
+    "uniformBucketLevelAccess": { "enabled": true },
+    "publicAccessPrevention": "enforced"
+  },
+  "versioning": { "enabled": false },
+  "lifecycle": {
+    "rule": [
+      {
+        "action": { "type": "Delete" },
+        "condition": { "age": 30, "matchesPrefix": ["owners/"] }
+      },
+      {
+        "action": { "type": "Delete" },
+        "condition": { "daysSinceNoncurrentTime": 1, "matchesPrefix": ["owners/"] }
+      }
+    ]
+  }
+}

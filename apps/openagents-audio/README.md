@@ -23,3 +23,23 @@ bun run --cwd apps/openagents-audio build:cloudrun
 The live smoke is intentionally gated because it incurs Google STT use. Deploy with the repository automation gcloud configuration, mint a short-lived test grant through the application authority, then send a consented non-sensitive PCM fixture. Never put a token, transcript, or audio bytes in logs or issue comments.
 
 Official constraints used by this implementation: Google STT streaming is gRPC-only; Chirp 3 supports V2 streaming, interim/final results and VAD; Cloud Run WebSockets are bounded by the request timeout and reconnect is not guaranteed to reach the same instance.
+
+## Retained-audio storage
+
+Private, receipt-gated audio retention for AUDIO-3. Transport frames are
+coalesced upstream into bounded segments; this service accepts only segments
+covered by an active explicit retained-session receipt. It envelope-encrypts
+media before a private GCS write and keeps only exact manifests and audit
+receipts in Cloud SQL.
+
+The Cloud SQL schema is
+`packages/khala-sync-server/migrations/0064_audio_retention.sql`. The
+production bucket must have public-access prevention enforced, uniform
+bucket-level access, media object versioning disabled, a lifecycle rule matching
+the policy TTL, and a dedicated service identity limited to object
+create/get/delete/list. Cloud SQL backups retain manifests and audit receipts,
+not media objects.
+Neither this service nor its SQL schema produces a public or signed URL.
+
+Run `bun run test` and `bun run typecheck`. The gated GCS/Cloud SQL smoke is
+documented in `docs/deploy/openagents-audio-retention.md`.
