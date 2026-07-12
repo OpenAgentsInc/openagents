@@ -6,7 +6,8 @@
   Revision 82
 - Source analysis:
   [`2026-07-11-sol-and-teardowns-longform-analysis.md`](../fable/2026-07-11-sol-and-teardowns-longform-analysis.md)
-- Status: cleanup analysis and proposed execution order; not roadmap authority
+- Status: active cleanup execution ledger and historical source audit; not
+  roadmap authority
 - Scope: `docs/sol/`, its direct dependencies, and the use of the separate
   `OpenAgentsInc/backroom` repository for fully obsolete material
 
@@ -21,11 +22,14 @@
 | SOL-DOC-05 — normalize receipts and issue sources | [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727) | **Closed 2026-07-12.** One receipt index exposes final rungs for 25 root evidence files; every checked-in issue source is classified as live, closed proof, tombstone, or reference; ambiguous receipt headers now lead with final disposition. | `991f908b6b` — 43/43 unique issue-source coverage, live-state equality, stale-close, link, diff, and repository fast pre-push checks pass. |
 | SOL-DOC-06 — extract July 9 doctrine and prepare archive | [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728) | **Closed 2026-07-12.** Binding greenfield/Sarah-removal decisions and five live falsifiers have durable owners; the nine candidate files are pinned by hash, inbound links, destination, and cross-repo deletion gate. | `6e8b55b86e` — 9/9 hash equality, unchanged source bytes, migrated binding links, local links, diff, and repository fast pre-push checks pass. |
 | SOL-DOC-07 — archive July 9 corpus and remove sources | [#8729](https://github.com/OpenAgentsInc/openagents/issues/8729) | **Closed 2026-07-12.** Nine exact files were hash/line/byte verified and pushed to Backroom before their OpenAgents links migrated and source paths were removed. Both repositories record the commits. | Backroom import `dec8ae52`; OpenAgents removal `b62ad88136`; Backroom final note `b9645456`; OpenAgents completed manifest `c608527eda`. |
+| SOL-DOC-08 — automate freshness and link integrity | [#8730](https://github.com/OpenAgentsInc/openagents/issues/8730) | **Closed 2026-07-12.** A seven-day schema-versioned product-issue snapshot, explicit live refresh/comparison, active-policy/classification/receipt/archive/link/size checks, and negative regression fixtures now fail concrete drift offline before push. | `1e46778733` — 10 live product issues equal GitHub; 43/43 issue sources; 25 receipt rows; nine removed paths; 13/13 regressions; all Sol links; 571/800 master lines. |
 
-**Next ordered chunk:** SOL-DOC-08 implements the documentation freshness and
-link-integrity guard: metadata/classification checks, active revision/queue
-rules, issue-source coverage, receipt final-disposition requirements, removed-
-path denial, master size budget, and offline-safe live-issue snapshot age.
+**Next ordered chunk:** SOL-DOC-09 closes the remaining P0/P5/P6 exit gaps:
+generate the full Sol document manifest with class/owner/review/inbound- and
+issue-link/disposition data, classify every remaining ambiguous file, run and
+receipt the explicit clean-agent reading test, and select the next exact
+Backroom batch for obsolete July 10 delegation/execution prose without moving
+receipts, failures, contracts, decisions, transcripts, or tombstones.
 
 ## Executive decision
 
@@ -516,12 +520,20 @@ removal.
 7. **Complete for this batch.** No transitional redirect remains; the compact
    decision and immutable Backroom URLs own discoverability.
 
-**Exit:** the July 9 narrative and obsolete delegation prose are discoverable
-in Backroom but absent from the normal `openagents` reading and search path.
+**Exit for the completed first archive batch:** the July 9 narrative is
+discoverable in Backroom but absent from the normal `openagents` reading and
+search path. The retired July 10 delegation diary is non-dispatch but remains
+in the product repo; SOL-DOC-09 must classify it in the next exact archive
+batch before the broader P5 exit can be called complete.
 
 ### P6 — Automate freshness and link integrity
 
 **Goal:** make this cleanup durable.
+
+SOL-DOC-08 [#8730](https://github.com/OpenAgentsInc/openagents/issues/8730)
+completed the deterministic offline guard, explicit live refresh/equality
+mode, pinned issue artifact, normal test/deploy/pre-push integration, and 13
+negative drift fixtures at `1e46778733`.
 
 Add a documentation guard that fails when:
 
@@ -641,13 +653,14 @@ unowned documents, unlinked receipts, master-roadmap churn per landing, and the
 age of the generated issue projection. A successful cleanup does not merely
 move files. It makes incorrect dispatch structurally harder.
 
-## Final recommendation
+## Current recommendation
 
-Begin with P0 and P1 immediately. The entry indexes and active companion docs
-currently expose known false state, so they are correctness defects. Retire the
-Revision 25 delegation packet next. Then compact the master before performing
-large receipt moves or Backroom exports; otherwise the archive operation will
-be forced to guess which historical statements still carry authority.
+The first seven changesets and the automated guard are landed. Do not restart
+the completed entry-point, contract, master-compaction, receipt-index, or July
+9 archive work. Close the remaining P0 inventory gap with one generated full-
+tree manifest, use that inventory to define the next exact Backroom batch for
+the retired July 10 delegation/execution prose, and receipt the clean-agent
+reading test before claiming the ordered cleanup complete.
 
 Use Backroom aggressively for material that is truly dead, but only after
 conclusion extraction and link inventory. Keep proof close to the product;

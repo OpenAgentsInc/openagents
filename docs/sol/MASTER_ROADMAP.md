@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 91
+- Revision: 92
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -11,7 +11,7 @@
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
-- Documentation cleanup: SOL-DOC-01 through SOL-DOC-07 are closed.
+- Documentation cleanup: SOL-DOC-01 through SOL-DOC-08 are closed.
   SOL-DOC-04 [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726)
   compacted this authority from 2,189 to 557 lines at `6bfe97fddb` without
   changing product proof. SOL-DOC-05
@@ -23,7 +23,11 @@
   [#8729](https://github.com/OpenAgentsInc/openagents/issues/8729) archived
   exact bytes to Backroom first (`dec8ae52`), removed the nine source paths at
   `b62ad88136`, and closed the bidirectional receipt at Backroom `b9645456` and
-  OpenAgents `c608527eda`. SOL-DOC-08 adds the freshness guard. See the
+  OpenAgents `c608527eda`. SOL-DOC-08
+  [#8730](https://github.com/OpenAgentsInc/openagents/issues/8730) landed the
+  offline/live freshness guard, pinned product-issue snapshot, and regression
+  suite at `1e46778733`. SOL-DOC-09 closes the remaining P0 manifest,
+  disposition, and clean-agent-reading gaps. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
 This file owns current product direction, durable gates and laws, the current
