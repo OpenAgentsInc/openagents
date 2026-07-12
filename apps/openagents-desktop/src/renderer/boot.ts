@@ -1022,8 +1022,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const current = yield* SubscriptionRef.get(state)
           yield* Effect.sync(() => {
             if (shouldFocus) focusComposer()
-            if (shouldAnchorHistoryEnd) void anchorHistoryEnd()
-            if (shouldAnchorSearchOpen) { const itemRef = current.history.selectedItemRef; void (itemRef === null ? anchorHistoryEnd() : anchorHistoryItem(itemRef)) }
+            if (shouldAnchorHistoryEnd) void anchorHistoryEnd(current.history.page?.selectedThreadRef)
+            if (shouldAnchorSearchOpen) { const itemRef = current.history.selectedItemRef; void (itemRef === null ? anchorHistoryEnd(current.history.page?.selectedThreadRef) : anchorHistoryItem(itemRef)) }
           })
         })),
       )
@@ -1138,11 +1138,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }
     }
     // --- EP250 bottom-anchored history scrolling -------------------------
-    const historyScrollEl=():HTMLElement|null=>root.querySelector<HTMLElement>('[data-en-key="history-timeline-page"]')
-    const anchorHistoryEnd=async():Promise<void>=>{
+    const historyScrollEl=(threadRef?:string):HTMLElement|null=>threadRef===undefined
+      ? root.querySelector<HTMLElement>('[data-en-key^="history-timeline-page-"]')
+      : [...root.querySelectorAll<HTMLElement>('[data-en-key^="history-timeline-page-"]')].find(element=>element.getAttribute("data-en-key")===`history-timeline-page-${threadRef}`)??null
+    const anchorHistoryEnd=async(threadRef?:string):Promise<void>=>{
       for(let attempt=0;attempt<8;attempt++){
         await settleFrame()
-        const el=historyScrollEl()
+        const el=historyScrollEl(threadRef)
         if(el!==null&&el.scrollHeight>0){
           el.scrollTop=el.scrollHeight
           if(el.scrollHeight-(el.scrollTop+el.clientHeight)<=2)return
@@ -1164,7 +1166,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     let historyEdgeFetchInFlight=false
     const onHistoryTimelineScroll=(event:Event):void=>{
       const el=event.target
-      if(!(el instanceof HTMLElement)||el.getAttribute("data-en-key")!=="history-timeline-page"||historyEdgeFetchInFlight)return
+      if(!(el instanceof HTMLElement)||!el.getAttribute("data-en-key")?.startsWith("history-timeline-page-")||historyEdgeFetchInFlight)return
       const metrics={scrollTop:el.scrollTop,clientHeight:el.clientHeight,scrollHeight:el.scrollHeight}
       historyEdgeFetchInFlight=true
       void Effect.runPromise(SubscriptionRef.get(state)).then(async current=>{
@@ -1213,7 +1215,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             void Effect.runPromise(SubscriptionRef.get(state)).then(current=>{
               if(current.history.pendingThreadRef!==targetRef)return
               return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected",StaticPayload(targetRef)))))
-            }).then(()=>{void anchorHistoryEnd();return scrollHistorySelectionIntoView(targetIndex,targetRef)})
+            }).then(()=>{void anchorHistoryEnd(targetRef);return scrollHistorySelectionIntoView(targetIndex,targetRef)})
           },110)
         }
       }finally{
@@ -1252,7 +1254,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         if(current.workspace!=="chat"||current.history.page===null)return
         const targetRef=historyAgentTraversalTarget(current.history,delta)
         if(targetRef===null)return
-        return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryAgentSelected",StaticPayload(targetRef))))).then(()=>anchorHistoryEnd())
+        return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryAgentSelected",StaticPayload(targetRef))))).then(()=>anchorHistoryEnd(targetRef))
       })
     }
     const onHistoryModifierDown=(event:KeyboardEvent):void=>{
@@ -1394,7 +1396,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // saved item (scrolled to it) or bottom-anchored at the newest items.
     if (initialHistoryAnchor !== null) {
       const anchor = initialHistoryAnchor
-      window.setTimeout(() => { void (anchor.kind === "end" ? anchorHistoryEnd() : anchorHistoryItem(anchor.itemRef)) }, 0)
+      window.setTimeout(() => { void (anchor.kind === "end" ? anchorHistoryEnd(Effect.runSync(SubscriptionRef.get(state)).history.page?.selectedThreadRef) : anchorHistoryItem(anchor.itemRef)) }, 0)
     }
     // First paint must never wait on local rollout parsing. The sidebar gets
     // metadata immediately; the selected thread receives five recent messages

@@ -274,7 +274,7 @@ textarea {
 [data-en-key="history-workspace-split"],
 [data-en-key="history-workspace-split"] > [data-en-pane],
 [data-en-key="history-center"],
-[data-en-key="history-timeline-page"] {
+[data-en-key^="history-timeline-page-"] {
   min-width: 0 !important;
   max-width: 100%;
 }
@@ -321,7 +321,7 @@ textarea {
   overflow: hidden;
 }
 
-[data-en-key="history-timeline-page"] {
+[data-en-key^="history-timeline-page-"] {
   flex: 1 1 0 !important;
   height: 0 !important;
   min-height: 0 !important;

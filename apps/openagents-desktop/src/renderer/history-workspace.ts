@@ -549,7 +549,7 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   const center = Stack({ key: "history-center", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
     actionBar,
     IconButton({key:"history-agents-drawer",icon:"Agent",accessibilityLabel:`${state.railCollapsed?"Open":"Close"} agents inspector, ${page.agents.length} agents`,onPress:IntentRef("HistoryInspectorToggled"),surface:"glass",a11y:{expanded:!state.railCollapsed}}),
-    Stack({ key: "history-timeline-page", direction: "column", gap: "2", style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, [
+    Stack({ key: `history-timeline-page-${page.selectedThreadRef}`, direction: "column", gap: "2", style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, [
       // Honest thin loading row / position caption at the top loading edge.
       // No Previous/Next pager: older pages auto-load as the reader scrolls
       // up (EP250 bottom-anchored flow).

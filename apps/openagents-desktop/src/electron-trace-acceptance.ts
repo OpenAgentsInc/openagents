@@ -98,7 +98,7 @@ export const traceAcceptanceJourney = `(async () => {
   // starts at the end; scrolling up auto-loads the previous window with the
   // scroll anchor preserved.
   if (document.querySelector('[data-en-key="history-page-previous"]') || document.querySelector('[data-en-key="history-page-next"]')) return {ok:false,reason:"pager_still_present"}
-  const timelineRegion = await until(() => document.querySelector('[data-en-key="history-timeline-page"]'))
+  const timelineRegion = await until(() => document.querySelector('[data-en-key^="history-timeline-page-"]'))
   if (!timelineRegion) return {ok:false,reason:"timeline_missing"}
   const bottomAnchored = await until(() => timelineRegion.scrollHeight - (timelineRegion.scrollTop + timelineRegion.clientHeight) <= 2 ? true : null)
   if (!bottomAnchored) return {ok:false,reason:"not_bottom_anchored",scrollTop:timelineRegion.scrollTop,scrollHeight:timelineRegion.scrollHeight,clientHeight:timelineRegion.clientHeight}
@@ -241,7 +241,7 @@ export const traceAcceptanceJourney = `(async () => {
   const inspector = await until(() => document.querySelector('[data-en-key="history-item-inspector"]'))
   const inspectorReadyMs = Math.round(performance.now() - inspectorStart)
   if (!inspector || !document.querySelector('[data-en-key="history-item-back"]')) return {ok:false,reason:"inspector_inaccessible"}
-  const timeline = document.querySelector('[data-en-key="history-timeline-page"]')
+  const timeline = document.querySelector('[data-en-key^="history-timeline-page-"]')
   if (!timeline || timeline.clientHeight < 100 || timeline.scrollHeight <= timeline.clientHeight) return {ok:false,reason:"timeline_not_scrollable",clientHeight:timeline?.clientHeight??0,scrollHeight:timeline?.scrollHeight??0}
   // Bottom-anchored open (EP250): the transcript starts at its END, so parking
   // it mid-transcript scrolls UP (scrollTop decreases). The proof of a live,
