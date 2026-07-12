@@ -48,7 +48,25 @@ import { makeFixtureProviderAccountsSpawn, makeProviderAccountsService } from ".
 import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult } from "./fleet-contract.ts"
 import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
-import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
+import {
+  DesktopChatTurnChannel,
+  DesktopForkHistoryThreadChannel,
+  DesktopForkHistoryThreadRequestSchema,
+  DesktopHydrateThreadChannel,
+  DesktopLocalThreadsChannel,
+  DesktopNewThreadChannel,
+  DesktopOpenThreadChannel,
+  DesktopResumeLocalThreadChannel,
+  DesktopResumeLocalThreadRequestSchema,
+  DesktopThreadsChannel,
+  decode,
+  DesktopThreadRequestSchema,
+  DesktopTurnRequestSchema,
+  type DesktopForkHistoryThreadRequest,
+  type DesktopMessage,
+  type DesktopResumeLocalThreadRequest,
+} from "./chat-contract.ts"
+import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
@@ -1064,6 +1082,44 @@ ipcMain.handle(TerminalPreviewOpenChannel, (_event, value: unknown) => {
 // serialize every transcript into the renderer merely to draw the sidebar.
 ipcMain.handle(DesktopThreadsChannel, () => hostLifecycle.history()?.run({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }) ?? Promise.resolve(null))
 ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
+// H1 resume picker: app-local threads only. Returning the exact persisted
+// thread id lets the next local turn hit fable/codex-local's existing
+// per-thread SDK resume seam; imported provider history is never mutated.
+ipcMain.handle(DesktopLocalThreadsChannel, () => threads().list().filter(thread => fableLocal.hasContinuity(thread.id)))
+ipcMain.handle(DesktopResumeLocalThreadChannel, (_event, value: unknown) => {
+  const request = decode(DesktopResumeLocalThreadRequestSchema, value) as DesktopResumeLocalThreadRequest | null
+  return request === null || !fableLocal.hasContinuity(request.threadRef) ? null : threads().open(request.threadRef)
+})
+// H2 refs-only fork. Main re-reads a bounded provider-history window through
+// the history worker, projects only user/assistant prose through the existing
+// 12 x 2,000-character local-history bound, then creates a fresh local UUID.
+ipcMain.handle(DesktopForkHistoryThreadChannel, async (_event, value: unknown) => {
+  const request = decode(DesktopForkHistoryThreadRequestSchema, value) as DesktopForkHistoryThreadRequest | null
+  if (request === null) return null
+  const history = hostLifecycle.history()
+  if (history === null) return null
+  const probe = await history.run({
+    kind: "history_page",
+    sessionsRoot: codexSessionsRoot(),
+    claudeRoot: claudeProjectsRoot(),
+    threadRef: request.sourceThreadRef,
+    offset: 0,
+    limit: 1,
+  }) as import("./codex-history-contract.ts").CodexHistoryPage | null
+  const plan = probe === null ? null : historyForkFetchPlan(probe.totalItems, request.throughSequence)
+  if (plan === null) return null
+  const page = await history.run({
+    kind: "history_page",
+    sessionsRoot: codexSessionsRoot(),
+    claudeRoot: claudeProjectsRoot(),
+    threadRef: request.sourceThreadRef,
+    offset: plan.offset,
+    limit: plan.limit,
+  }) as import("./codex-history-contract.ts").CodexHistoryPage | null
+  if (page === null || page.selectedThreadRef !== request.sourceThreadRef) return null
+  const seed = historyForkSeed(page.items, plan.throughSequence)
+  return seed.length === 0 ? null : threads().forkThread(seed)
+})
 ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
   return request === null ? null : hostLifecycle.history()?.run({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id }) ?? null

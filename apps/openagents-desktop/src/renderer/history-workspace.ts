@@ -1,6 +1,7 @@
 import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, SplitPane, Stack, StaticPayload, Table, Text, TextField, Timeline, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
 import { Schema } from "@effect-native/core/effect"
 import type { CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage, CodexHistorySearchResult, CodexHistorySource } from "../codex-history-contract.ts"
+import type { DesktopThread } from "../chat-contract.ts"
 import { chatMarkdownBody } from "./markdown.ts"
 import { humanizeToolInvocation } from "./tool-cards.ts"
 
@@ -30,6 +31,12 @@ export type HistoryWorkspaceState = Readonly<{
   searchQuery: string
   searchResults: ReadonlyArray<CodexHistorySearchResult>
   searchTruncated: boolean
+  /** App-local threads are the H1 resume-picker candidates. Keeping this list
+   * separate from provider history prevents an imported rollout from being
+   * mistaken for a resumable local SDK thread. */
+  localThreads?: ReadonlyArray<DesktopThread>
+  resumePickerOpen?: boolean
+  actionNotice?: string | null
 }>
 export const historyCatalogPageSize = 40
 export const historyItemPageSize = 50
@@ -46,7 +53,13 @@ export const HistoryCatalogMoreRequested = defineIntent("HistoryCatalogMoreReque
 export const HistorySearchChanged = defineIntent("HistorySearchChanged", Schema.String)
 export const HistorySearchResultOpened = defineIntent("HistorySearchResultOpened", Schema.String)
 export const HistorySearchCleared = defineIntent("HistorySearchCleared", Schema.Null)
-export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryOlderRequested, HistoryNewerRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested, HistorySearchChanged, HistorySearchResultOpened, HistorySearchCleared] as const
+export const HistoryResumePickerToggled = defineIntent("HistoryResumePickerToggled", Schema.Null)
+export const HistoryResumeThreadSelected = defineIntent("HistoryResumeThreadSelected", Schema.String)
+export const HistoryForkRequested = defineIntent("HistoryForkRequested", Schema.Struct({
+  sourceThreadRef: Schema.String,
+  throughSequence: Schema.NullOr(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
+}))
+export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryOlderRequested, HistoryNewerRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested, HistorySearchChanged, HistorySearchResultOpened, HistorySearchCleared, HistoryResumePickerToggled, HistoryResumeThreadSelected, HistoryForkRequested] as const
 
 /** Human source badge for a merged catalog/search row (#8712 H3). */
 export const historySourceBadgeLabel = (source: CodexHistorySource): string => source === "claude" ? "Claude" : "Codex"
@@ -492,7 +505,42 @@ const inspector = (state: HistoryWorkspaceState): View => {
 export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   const page = state.page
   if (!page) return Stack({ key: "history-workspace-empty", direction: "column", gap: "2", style: { flex: 1, minWidth: 0 } }, [Text({ key: "history-empty-title", content: "Select a Codex conversation", variant: "heading", color: "textPrimary" }), Text({ key: "history-empty-copy", content: "Historical conversations and every discovered subagent are available without a 24-hour cutoff.", variant: "body", color: "textMuted" })])
+  const localThreads = state.localThreads ?? []
+  const selectedSequence = state.selectedItemRef === null
+    ? page.items.at(-1)?.sequence ?? null
+    : page.items.find(item => item.itemRef === state.selectedItemRef)?.sequence ?? null
+  const actionBar = Stack({ key: "history-thread-actions", direction: "column", gap: "1", style: { width: "full" } }, [
+    Stack({ key: "history-thread-action-buttons", direction: "row", gap: "2", align: "center" }, [
+      Button({
+        key: "history-resume-picker-toggle",
+        label: "Resume local chat",
+        variant: "secondary",
+        disabled: localThreads.length === 0,
+        onPress: IntentRef("HistoryResumePickerToggled"),
+        a11y: { label: localThreads.length === 0 ? "Resume local chat unavailable, no local chats" : `Choose one of ${localThreads.length} local chats to resume` },
+      }),
+      Button({
+        key: "history-fork-from-here",
+        label: "Fork from here",
+        variant: "secondary",
+        disabled: selectedSequence === null,
+        onPress: IntentRef("HistoryForkRequested", StaticPayload({ sourceThreadRef: page.selectedThreadRef, throughSequence: selectedSequence })),
+        a11y: { label: selectedSequence === null ? "Fork unavailable, no history item selected" : `Fork ${historySourceBadgeLabel(page.agents.find(agent => agent.threadRef === page.rootThreadRef)?.source ?? "codex")} session through item ${selectedSequence + 1} into a new local chat` },
+      }),
+    ]),
+    ...((state.resumePickerOpen ?? false) ? [Stack({ key: "history-resume-picker", direction: "column", gap: "1", a11y: { role: "region", label: "Local chats available to resume" } }, localThreads.map(thread =>
+      Button({
+        key: `history-resume-thread-${thread.id}`,
+        label: thread.title,
+        variant: "ghost",
+        onPress: IntentRef("HistoryResumeThreadSelected", StaticPayload(thread.id)),
+        a11y: { label: `Resume local chat ${thread.title}` },
+      }),
+    ))] : []),
+    ...(state.actionNotice === undefined || state.actionNotice === null ? [] : [Text({ key: "history-action-notice", content: state.actionNotice, variant: "caption", color: "warning" })]),
+  ])
   const center = Stack({ key: "history-center", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
+    actionBar,
     IconButton({key:"history-agents-drawer",icon:"Agent",accessibilityLabel:`${state.railCollapsed?"Open":"Close"} agents inspector, ${page.agents.length} agents`,onPress:IntentRef("HistoryInspectorToggled"),surface:"glass",a11y:{expanded:!state.railCollapsed}}),
     Stack({ key: "history-timeline-page", direction: "column", gap: "2", style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, [
       // Honest thin loading row / position caption at the top loading edge.

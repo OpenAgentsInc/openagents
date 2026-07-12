@@ -519,6 +519,9 @@ export type FableLocalQueueFollowupOutcome =
 export type FableLocalRuntime = Readonly<{
   availability: () => Promise<FableLocalAvailability>
   runTurn: (input: FableLocalTurnInput) => Promise<FableLocalTurnResult>
+  /** H1 resume-picker truth: only a thread with a completed SDK session in
+   * this runtime can be advertised as using the resume seam. */
+  hasContinuity: (threadRef: string) => boolean
   interrupt: (turnRef: string) => boolean
   /**
    * Delivers the user's answers to a pending AskUserQuestion (EP250 question
@@ -1411,6 +1414,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
   return {
     availability,
     runTurn,
+    hasContinuity: threadRef => sessionByThread.has(threadRef),
     interrupt: turnRef => {
       const active = activeTurns.get(turnRef)
       if (active === undefined) return false

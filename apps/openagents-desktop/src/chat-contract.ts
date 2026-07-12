@@ -6,6 +6,9 @@ export const DesktopNewThreadChannel = "openagents-desktop/thread-new" as const
 export const DesktopOpenThreadChannel = "openagents-desktop/thread-open" as const
 export const DesktopHydrateThreadChannel = "openagents-desktop/thread-hydrate" as const
 export const DesktopChatTurnChannel = "openagents-desktop/chat-turn" as const
+export const DesktopLocalThreadsChannel = "openagents-desktop/history-local-threads" as const
+export const DesktopResumeLocalThreadChannel = "openagents-desktop/history-resume-local-thread" as const
+export const DesktopForkHistoryThreadChannel = "openagents-desktop/history-fork-thread" as const
 
 /**
  * Per-message host metadata (#8712, EP250: "if I click on the message, I see
@@ -165,6 +168,23 @@ export type DesktopThread = typeof DesktopThreadSchema.Type & Readonly<{
 export const DesktopThreadRequestSchema = Schema.Struct({ id: Schema.String })
 export const DesktopTurnRequestSchema = Schema.Struct({ id: Schema.String, message: Schema.String })
 export type DesktopTurnRequest = typeof DesktopTurnRequestSchema.Type
+
+/** H1: select an existing app-local Fable thread. Reusing its exact ref is
+ * what reaches fable-local-runtime's existing per-thread SDK resume map. */
+export const DesktopResumeLocalThreadRequestSchema = Schema.Struct({
+  threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+})
+export type DesktopResumeLocalThreadRequest = typeof DesktopResumeLocalThreadRequestSchema.Type
+
+/** H2: refs-only fork request. Main re-reads provider history and constructs
+ * the bounded seed; renderer transcript text is never mutation authority. */
+export const DesktopForkHistoryThreadRequestSchema = Schema.Struct({
+  sourceThreadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  throughSequence: Schema.NullOr(
+    Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  ),
+})
+export type DesktopForkHistoryThreadRequest = typeof DesktopForkHistoryThreadRequestSchema.Type
 
 export const decode = (schema: any, value: unknown): unknown | null => {
   const result = Schema.decodeUnknownExit(schema)(value)

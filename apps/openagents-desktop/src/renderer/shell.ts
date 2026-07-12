@@ -600,6 +600,11 @@ export type CodexHistoryHost = Readonly<{
   catalog: () => Promise<CodexHistoryCatalog | null>
   page: (threadRef: string, offset: number, limit: number) => Promise<CodexHistoryPage | null>
   search?: (query: string, limit: number) => Promise<CodexHistorySearchResponse | null>
+  /** H1/H2 app-local lifecycle actions. Provider history stays read-only;
+   * only main can re-read it and create/open a local thread. */
+  localThreads?: () => Promise<ReadonlyArray<DesktopThread>>
+  resumeLocalThread?: (threadRef: string) => Promise<DesktopThread | null>
+  forkLocalThread?: (request: Readonly<{ sourceThreadRef: string; throughSequence: number | null }>) => Promise<DesktopThread | null>
   save?: (value: Readonly<{ rootThreadRef: string; selectedThreadRef: string; offset: number; selectedItemRef: string | null; railCollapsed: boolean; anchorItemRef: string | null; expandedThreadRefs?:ReadonlyArray<string> }>) => void
 }>
 
@@ -1063,7 +1068,23 @@ export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<Des
 }
 
 export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnType<ChatHost["sendMessage"]>>, timestamp: string): DesktopShellState => {
-  if (result.ok && result.thread) return { ...withChatSelected(state, result.thread), pending: false, threads: [result.thread, ...state.threads.filter((thread) => thread.id !== result.thread!.id)].slice(0, 5) }
+  if (result.ok && result.thread) {
+    const selected = withChatSelected(state, result.thread)
+    return {
+      ...selected,
+      pending: false,
+      threads: [result.thread, ...state.threads.filter((thread) => thread.id !== result.thread!.id)].slice(0, 5),
+      // A successful Fable turn just established/renewed this exact thread's
+      // runtime continuity entry. Record it as an H1 picker candidate without
+      // adding an asynchronous refresh to history navigation.
+      history: state.selectedHarness === "fable"
+        ? {
+            ...selected.history,
+            localThreads: [result.thread, ...(state.history.localThreads ?? []).filter(thread => thread.id !== result.thread!.id)].slice(0, 5),
+          }
+        : selected.history,
+    }
+  }
   const confirmedNotes = state.notes.filter((note) => !note.key.startsWith("pending-"))
   return { ...state, pending: false, notes: [...confirmedNotes, { key: `error-${state.notes.length}`, role: "system", text: result.error ?? "The model request failed.", timestamp }] }
 }
@@ -1659,6 +1680,40 @@ export const makeDesktopShellHandlers = (
       : current)
   }),
   HistorySearchCleared: () => SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: "", searchResults: [], searchTruncated: false } })),
+  // H1: the picker contains app-local threads only. Selecting one reuses its
+  // exact thread id, so the next turn reaches fable-local's existing
+  // per-thread SDK resume map. No provider-history row is mutated or cloned.
+  HistoryResumePickerToggled: () => SubscriptionRef.update(state, current => ({
+    ...current,
+    history: { ...current.history, resumePickerOpen: !(current.history.resumePickerOpen ?? false), actionNotice: null },
+  })),
+  HistoryResumeThreadSelected: (threadRef) => Effect.gen(function* () {
+    if (historyHost.resumeLocalThread === undefined) return
+    const before = (yield* SubscriptionRef.get(state)).history
+    if (!(before.localThreads ?? []).some(thread => thread.id === threadRef)) return
+    const thread = yield* Effect.promise(() => historyHost.resumeLocalThread!(threadRef))
+    if (thread === null) {
+      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, actionNotice: "That local chat is no longer available." } }))
+      return
+    }
+    yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
+  }),
+  // H2: payload contains refs/cutoff only. Main re-reads and bounds the source
+  // window, creates a fresh UUID, and returns the new local thread. The loaded
+  // source page is presentation state and is never sent as mutation input.
+  HistoryForkRequested: (request) => Effect.gen(function* () {
+    if (historyHost.forkLocalThread === undefined) return
+    const before = (yield* SubscriptionRef.get(state)).history
+    if (before.page === null || before.page.selectedThreadRef !== request.sourceThreadRef) return
+    const thread = yield* Effect.promise(() => historyHost.forkLocalThread!(request))
+    if (thread === null) {
+      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, actionNotice: "This history window could not be forked." } }))
+      return
+    }
+    // A fork has bounded history but no SDK continuity yet, so it must not
+    // enter the H1 picker until its first successful Fable turn.
+    yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
+  }),
   // Open a ranked result: window the session on its matching item (content
   // result) or at its end (title result), reusing the bottom-anchored flow.
   HistorySearchResultOpened: (threadRef) => Effect.gen(function* () {

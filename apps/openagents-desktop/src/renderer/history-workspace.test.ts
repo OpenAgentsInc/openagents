@@ -31,6 +31,25 @@ const markdownNodes=(all:any[],kind:string):any[]=>{
 }
 
 describe("history workspace",()=>{
+  test("H1 renders a typed resume picker containing app-local threads only",()=>{
+    const local={id:"local-thread-1",title:"Parser repair",updatedAt:"2026-07-12T01:00:00Z",notes:[]}
+    const view=historyWorkspaceView({...stateWith(page),localThreads:[local],resumePickerOpen:true})
+    const all=nodes(view) as any[]
+    const toggle=all.find(n=>n.key==="history-resume-picker-toggle")
+    const candidate=all.find(n=>n.key==="history-resume-thread-local-thread-1")
+    expect(toggle).toMatchObject({_tag:"Button",label:"Resume local chat",disabled:false})
+    expect(toggle.onPress.name).toBe("HistoryResumePickerToggled")
+    expect(candidate).toMatchObject({_tag:"Button",label:"Parser repair"})
+    expect(candidate.onPress).toMatchObject({name:"HistoryResumeThreadSelected",payload:{value:"local-thread-1"}})
+  })
+  test("H2 fork-from-here carries only the selected source ref and exact item cutoff",()=>{
+    const items=[item(0,"user_message","You","first"),item(1,"assistant_message","Assistant","second")]
+    const view=historyWorkspaceView(stateWith({...page,items,totalItems:2},"child:0"))
+    const action=(nodes(view) as any[]).find(n=>n.key==="history-fork-from-here")
+    expect(action).toMatchObject({_tag:"Button",label:"Fork from here",disabled:false})
+    expect(action.onPress).toMatchObject({name:"HistoryForkRequested",payload:{value:{sourceThreadRef:"child",throughSequence:0}}})
+    expect(JSON.stringify(action.onPress.payload.value)).not.toContain("first")
+  })
   test("renders a bounded split view with a semantic agent tree and icon-only lifecycle state",()=>{const view=historyWorkspaceView(stateWith(page));const all=nodes(view) as any[];const root=all.find(n=>n.id==="history-agent-root");const child=all.find(n=>n.id==="history-agent-child");expect(all.find(n=>n.key==="history-workspace-split")?._tag).toBe("SplitPane");expect(all.find(n=>n.key==="history-agents-drawer")).toMatchObject({_tag:"IconButton",icon:"Agent"});expect(all.find(n=>n.key==="history-center-title")).toBeUndefined();expect(all.find(n=>n.key==="history-center-status")).toBeUndefined();expect(all.find(n=>n.key==="history-completeness")).toBeUndefined();expect(all.find(n=>n.key==="history-agent-config")).toBeUndefined();expect(all.find(n=>n.key==="history-agent-list")).toMatchObject({_tag:"NavRail",role:"tree",activeId:"history-agent-child"});expect(root).toMatchObject({icon:"Check"});expect(root.meta).toBeUndefined();expect(child).toMatchObject({depth:1,selected:true,icon:"Play"});expect(child.meta).toBeUndefined();expect(child.accessibilityLabel).toContain("Running")})
   test("selected item opens structured detail with back action",()=>{const all=nodes(historyWorkspaceView(stateWith(page,"child:0"))) as any[];expect(all.find(n=>n.key==="history-item-inspector")).toBeDefined();expect(all.find(n=>n.key==="history-item-back")?.onPress.name).toBe("HistoryItemSelected")})
   test("agent metadata expands inline without replacing the agent tree",()=>{const metadata={...page.items[0]!,itemRef:"child:metadata",kind:"metadata" as const,label:"Agent metadata",summary:"# AGENTS.md instructions for /workspace\n\n<INSTRUCTIONS>\nKeep the contract.\n</INSTRUCTIONS>"};const metadataPage={...page,items:[metadata]};const all=nodes(historyWorkspaceView(stateWith(metadataPage,"child:metadata"))) as any[];const events=timelineEvents(all);expect(all.find(n=>n.key==="history-agent-tree-region")).toBeDefined();expect(all.find(n=>n.key==="history-item-inspector")).toBeUndefined();expect(events[0]).toMatchObject({label:"Agent metadata",time:"Click to collapse",variant:"metadata",icon:"ChevronDown"});expect(events[0].detail).toContain("Keep the contract.")})

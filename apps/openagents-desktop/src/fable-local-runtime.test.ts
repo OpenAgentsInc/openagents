@@ -298,10 +298,13 @@ describe("makeFableLocalRuntime.runTurn", () => {
       },
     })
     const sink = collect()
+    expect(harness.runtime.hasContinuity("thread-1")).toBe(false)
     const first = await harness.runtime.runTurn({
       turnRef: "turn-1", threadRef: "thread-1", history: [{ role: "user", text: "one" }], message: "one", emit: sink.emit,
     })
     expect(first.ok).toBe(true)
+    expect(harness.runtime.hasContinuity("thread-1")).toBe(true)
+    expect(harness.runtime.hasContinuity("another-thread")).toBe(false)
     const second = await harness.runtime.runTurn({
       turnRef: "turn-2", threadRef: "thread-1", history: [{ role: "user", text: "one" }, { role: "assistant", text: "ok" }], message: "two", emit: sink.emit,
     })

@@ -30,7 +30,21 @@ import {
   decodeProviderAccountUsageRequest,
   unavailableProviderAccountUsageResult,
 } from "./provider-accounts-contract.ts"
-import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
+import {
+  DesktopChatTurnChannel,
+  DesktopForkHistoryThreadChannel,
+  DesktopForkHistoryThreadRequestSchema,
+  DesktopHydrateThreadChannel,
+  DesktopLocalThreadsChannel,
+  DesktopNewThreadChannel,
+  DesktopOpenThreadChannel,
+  DesktopResumeLocalThreadChannel,
+  DesktopResumeLocalThreadRequestSchema,
+  DesktopThreadsChannel,
+  decode,
+  DesktopThreadRequestSchema,
+  DesktopTurnRequestSchema,
+} from "./chat-contract.ts"
 import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceTreeChannel,
@@ -253,6 +267,18 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   hydrateThread: (value: unknown) => {
     const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
     return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopHydrateThreadChannel, request)
+  },
+  /** H1/H2 history lifecycle bridge: fixed schema-decoded invokes only. */
+  historyThreads: {
+    listLocal: () => ipcRenderer.invoke(DesktopLocalThreadsChannel),
+    resumeLocal: (value: unknown) => {
+      const request = decode(DesktopResumeLocalThreadRequestSchema, value)
+      return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopResumeLocalThreadChannel, request)
+    },
+    fork: (value: unknown) => {
+      const request = decode(DesktopForkHistoryThreadRequestSchema, value)
+      return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopForkHistoryThreadChannel, request)
+    },
   },
   sendMessage: (value: unknown) => {
     const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null

@@ -91,6 +91,7 @@ const PROVIDER_ACCOUNTS = "apps/openagents-desktop/tests/provider-accounts.test.
 const RUNTIME_GATEWAY = "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts"
 const RUNTIME_INTERACTIONS = "apps/openagents-desktop/src/renderer/runtime-interactions.test.ts"
 const HISTORY_WORKSPACE = "apps/openagents-desktop/src/renderer/history-workspace.test.ts"
+const HISTORY_ACTIONS = "apps/openagents-desktop/src/history-thread-actions.test.ts"
 const COMMAND_HOST = "apps/openagents-desktop/tests/desktop-command-host.test.ts"
 const SMOKE = "apps/openagents-desktop/src/main.ts"
 const LIVE_PROOF = "apps/openagents-desktop/src/live-proof.ts"
@@ -130,7 +131,10 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // partial -> ui_available (typed workspace-bounded PTY host + bounded/redacted
   // terminal UI + adversarial suite + built-host/dev-preview receipts), taking
   // ui_available from 20 to 21 and partial from 16 to 15.
-  ui_available: 24,
+  // #8712 H1/H2: history now offers a typed local-thread resume picker and a
+  // refs-only fork-from-here action backed by a bounded host re-read. Both
+  // carry renderer and programmatic oracles, taking UI from 24 to 26.
+  ui_available: 26,
   // The Git/GitHub UI surface emptied the programmatic_only bucket: E2/E4/E5
   // are now ui_available and E3 (worktree/branch isolation) is partial (branch
   // UI wired, worktree creation still agent-only), so programmatic_only is 0.
@@ -143,8 +147,8 @@ export const CAPABILITY_TABLE_DISTRIBUTION = {
   // baseline the live registry became { 21, 0, 15, 4 }. CUT-23 R1 then wired
   // I3's explicit slash grammar + host-validated SDK skill catalog, moving it
   // missing -> ui_available: { 22, 0, 15, 3 }.
-  partial: 14,
-  missing: 2,
+  partial: 13,
+  missing: 1,
 } as const
 
 export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
@@ -365,18 +369,16 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
 
   // --- H. Session lifecycle -----------------------------------------------
   {
-    id: "H1", group: "H", capability: "Resume / continuation", status: "partial",
-    uiOracleRef: "", uiOracleWiring: "pending",
+    id: "H1", group: "H", capability: "Resume / continuation", status: "ui_available",
+    uiOracleRef: HISTORY_WORKSPACE, uiOracleWiring: "existing_suite",
     programmaticOracleRef: FABLE_RT, programmaticOracleWiring: "existing_suite",
-    rung: "pending",
-    blocker: "audit H1: SDK resume is automatic per thread; no resume picker, and Codex children never resume (thread-resume live rung pending)",
+    rung: "fixture",
   },
   {
-    id: "H2", group: "H", capability: "Session fork", status: "missing",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit H2: no fork surface or seam",
+    id: "H2", group: "H", capability: "Session fork", status: "ui_available",
+    uiOracleRef: HISTORY_WORKSPACE, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: HISTORY_ACTIONS, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
   },
   {
     id: "H3", group: "H", capability: "History import / browse", status: "partial",

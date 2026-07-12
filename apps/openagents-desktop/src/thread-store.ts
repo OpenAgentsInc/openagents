@@ -30,6 +30,21 @@ export const makeThreadStore = (file: string) => {
       write([thread, ...read()])
       return thread
     },
+    /** H2: create a distinct local thread from an already-bounded, host-read
+     * history seed. Every note is copied and the source store/history is never
+     * addressed by this write. */
+    forkThread: (seed: ReadonlyArray<DesktopMessage>): DesktopThread => {
+      const notes = seed.slice(-maxNotes).map(note => ({ ...note }))
+      const firstUser = notes.find(note => note.role === "user")?.text ?? "Forked conversation"
+      const thread: DesktopThread = {
+        id: randomUUID(),
+        title: `Fork · ${titleFor(firstUser)}`.slice(0, 55),
+        updatedAt: new Date().toISOString(),
+        notes,
+      }
+      write([thread, ...read()])
+      return thread
+    },
     open: (id: string): DesktopThread | null => read().find((thread) => thread.id === id) ?? null,
     append: (id: string, message: DesktopMessage): DesktopThread | null => {
       const found = read().find((thread) => thread.id === id)

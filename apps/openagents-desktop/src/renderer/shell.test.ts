@@ -762,6 +762,13 @@ describe("pure transitions", () => {
     expect(withPending(pending, false).pending).toBe(false)
   })
 
+  test("H1 successful Fable turns become resume-picker candidates without a history-navigation refresh", () => {
+    const completed = { ...testThread, title: "Continuity ready", notes: [{ key: "a1", role: "assistant" as const, text: "ready", timestamp: "18:05" }] }
+    const next = withTurnResult({ ...baseState, selectedHarness: "fable" }, { ok: true, thread: completed }, "18:05")
+    expect(next.history.localThreads?.map(thread => thread.id)).toEqual([testThread.id])
+    expect(next.history.localThreads?.[0]?.notes).toEqual(completed.notes)
+  })
+
   test("failed turns remove optimistic notes before rendering the error", () => {
     const pending = withNote(baseState, "not confirmed", "18:05")
     const next = withTurnResult(pending, { ok: false, error: "Still pending reconciliation." }, "18:06")
@@ -1493,6 +1500,60 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         expect((transcript?.messages as Array<unknown>).length).toBe(0)
       }),
     )
+  })
+
+  test("H1 resume-picker action opens the exact existing local thread and exits history", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const resumable = { id: "local-resume-1", title: "Continue parser", updatedAt: "2026-07-12T02:00:00Z", notes: [{ key: "u1", role: "user" as const, text: "Remember kestrel", timestamp: "02:00" }] }
+      const initial: DesktopShellState = {
+        ...baseState,
+        history: { ...baseState.history, page: historyPageFixture, localThreads: [resumable], resumePickerOpen: true },
+      }
+      const opened: string[] = []
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
+        state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined,
+        {
+          catalog: async () => null,
+          page: async () => null,
+          resumeLocalThread: async (threadRef) => { opened.push(threadRef); return resumable },
+        },
+      ))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryResumeThreadSelected", StaticPayload(resumable.id))))
+      const next = yield* SubscriptionRef.get(state)
+      expect(opened).toEqual([resumable.id])
+      expect(next.activeThreadId).toBe(resumable.id)
+      expect(next.notes).toEqual(resumable.notes)
+      expect(next.history.page).toBeNull()
+    }))
+  })
+
+  test("H2 fork action sends refs/cutoff only, opens a distinct seeded thread, and leaves source state untouched", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const sourcePage = structuredClone(historyPageFixture)
+      const forked = { id: "local-fork-2", title: "Fork · historical message", updatedAt: "2026-07-12T02:05:00Z", notes: [{ key: "fork.item-1", role: "user" as const, text: "historical message", timestamp: "18:04" }] }
+      const initial: DesktopShellState = { ...baseState, history: { ...baseState.history, page: sourcePage, selectedItemRef: "item-1" } }
+      const requests: unknown[] = []
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
+        state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined,
+        {
+          catalog: async () => null,
+          page: async () => null,
+          forkLocalThread: async (request) => { requests.push(request); return forked },
+        },
+      ))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryForkRequested", StaticPayload({ sourceThreadRef: "history-root", throughSequence: 0 }))))
+      const next = yield* SubscriptionRef.get(state)
+      expect(requests).toEqual([{ sourceThreadRef: "history-root", throughSequence: 0 }])
+      expect(JSON.stringify(requests)).not.toContain("historical message")
+      expect(next.activeThreadId).toBe("local-fork-2")
+      expect(next.activeThreadId).not.toBe(sourcePage.selectedThreadRef)
+      expect(next.notes).toEqual(forked.notes)
+      expect(next.history.page).toBeNull()
+      expect(next.history.localThreads ?? []).toEqual([])
+      expect(initial.history.page).toEqual(sourcePage)
+    }))
   })
 
   test("submit while pending is refused (disabled-while-pending contract)", async () => {

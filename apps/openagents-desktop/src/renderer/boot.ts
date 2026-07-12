@@ -131,6 +131,11 @@ type DesktopBridge = Readonly<{
   newThread?: () => Promise<unknown>
   openThread?: (value: unknown) => Promise<unknown>
   hydrateThread?: (value: unknown) => Promise<unknown>
+  historyThreads?: Readonly<{
+    listLocal?: () => Promise<unknown>
+    resumeLocal?: (value: unknown) => Promise<unknown>
+    fork?: (value: unknown) => Promise<unknown>
+  }>
   sendMessage?: (value: unknown) => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
   workspaceTree?: (value: unknown) => Promise<unknown>
@@ -757,6 +762,20 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         const response = await bridge.runtimeRequest({ kind: "query", requestId: `renderer-history-search-${++historyRequestSequence}`, query: { id: "codex.history.search", query, limit } })
         return response.kind === "codex_history_search" ? response.search : null
       },
+      localThreads: async (): Promise<ReadonlyArray<DesktopThread>> => {
+        const raw = await bridge?.historyThreads?.listLocal?.()
+        return Array.isArray(raw)
+          ? raw.filter((value): value is DesktopThread => typeof value === "object" && value !== null && typeof (value as { id?: unknown }).id === "string")
+          : []
+      },
+      resumeLocalThread: async (threadRef: string): Promise<DesktopThread | null> => {
+        const raw = await bridge?.historyThreads?.resumeLocal?.({ threadRef })
+        return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+      },
+      forkLocalThread: async (request: Readonly<{ sourceThreadRef: string; throughSequence: number | null }>): Promise<DesktopThread | null> => {
+        const raw = await bridge?.historyThreads?.fork?.(request)
+        return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+      },
       save: (value: any): void => { try { localStorage.setItem("openagents.desktop.history.v1",JSON.stringify({...value,expandedThreadRefs:Array.isArray(value?.expandedThreadRefs)?value.expandedThreadRefs:[]})) } catch { /* restoration is best effort and contains refs only */ } },
     }
     // One shared transient command-notice controller: threaded into the shell
@@ -861,7 +880,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       })
       window.addEventListener("pagehide", () => unsubscribeLedger(), { once: true })
     }
-    const historyCatalog = yield* Effect.promise(historyHost.catalog)
+    const [historyCatalog, localHistoryThreads] = yield* Effect.all([
+      Effect.promise(historyHost.catalog),
+      Effect.promise(historyHost.localThreads),
+    ], { concurrency: "unbounded" })
     // EP250 bottom-anchored flow: a restored ITEM selection loads the window
     // AROUND that item and scrolls to it; otherwise the conversation opens at
     // its END with the newest items visible.
@@ -879,7 +901,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             : { kind: "end" }
         }
       }
-      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
+      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[], localThreads: localHistoryThreads } }))
+    } else if (localHistoryThreads.length > 0) {
+      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, localThreads: localHistoryThreads } }))
     }
     let restoredWorkspace: DesktopWorkspaceName | null = null
     const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
