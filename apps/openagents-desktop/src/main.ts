@@ -796,7 +796,14 @@ const voiceMedia: VoiceNativeMedia = smokeMode
           headers: { authorization: `Bearer ${credential.accessToken}`, "content-type": "application/json", "x-openagents-desktop-device-ref": identity.deviceRef },
           body: JSON.stringify({ schema: "openagents.audio.grant.request.v1", identity, disclosureRef }),
         })
-        if (!response.ok) throw new Error("voice_grant_refused")
+        if (!response.ok) {
+          let reason = "unknown"
+          try {
+            const refusal = await response.json() as Record<string, unknown>
+            if (typeof refusal.error === "string" && /^[a-z0-9_]{1,64}$/u.test(refusal.error)) reason = refusal.error
+          } catch { /* keep the response body opaque */ }
+          throw new Error(`voice_grant_refused:${response.status}:${reason}`)
+        }
         const value = await response.json() as Record<string, unknown>
         if (value.schema !== "openagents.audio.grant.v1" || value.disclosureRef !== disclosureRef || typeof value.gatewayUrl !== "string" || !value.gatewayUrl.startsWith("wss://") || typeof value.grant !== "string" || value.grant.length < 16 || value.grant.length > 4096 || typeof value.expiresAtMs !== "number" || !Number.isSafeInteger(value.expiresAtMs) || value.expiresAtMs <= Date.now() || value.expiresAtMs > Date.now() + 5 * 60_000) throw new Error("voice_grant_invalid")
         return { gatewayUrl: value.gatewayUrl, grant: value.grant }

@@ -4,7 +4,10 @@
  * TypeScript in, three artifacts out — no Vite/Forge pipeline in this exit
  * (packaging/signing is a later #8574 exit; see UPSTREAM.md).
  */
-import { cp, mkdir, rename, rm } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { execFileSync } from "node:child_process"
+import { chmodSync, readFileSync, writeFileSync } from "node:fs"
+import { cp, copyFile, mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -12,6 +15,23 @@ const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 // Minification is on by default; set OA_DESKTOP_BUILD_MINIFY=0 for an A/B
 // unminified build (startup-bench comparison). See the startup-speed audit.
 const BUILD_MINIFY = process.env.OA_DESKTOP_BUILD_MINIFY !== "0"
+
+const stageDevelopmentVoiceHelper = async (dist: string): Promise<void> => {
+  if (process.platform !== "darwin") return
+  const workspaceRoot = path.resolve(appRoot, "../..")
+  execFileSync("cargo", ["build", "-p", "oa-desktop-audio"], { cwd: workspaceRoot, stdio: "pipe" })
+  const destinationDirectory = path.join(dist, "native", process.arch)
+  const destination = path.join(destinationDirectory, "oa-desktop-audio")
+  await mkdir(destinationDirectory, { recursive: true })
+  await copyFile(path.join(workspaceRoot, "target", "debug", "oa-desktop-audio"), destination)
+  chmodSync(destination, 0o755)
+  const sha256 = createHash("sha256").update(readFileSync(destination)).digest("hex")
+  writeFileSync(
+    path.join(destinationDirectory, "manifest.json"),
+    JSON.stringify({ protocolVersion: 1, helperVersion: "0.1.0", architecture: process.arch, sha256 }) + "\n",
+    { mode: 0o644 },
+  )
+}
 
 const assertSuccess = (label: string, result: Awaited<ReturnType<typeof Bun.build>>): void => {
   if (!result.success) {
@@ -117,10 +137,15 @@ export const buildDesktop = async (): Promise<string> => {
     path.join(appRoot, "..", "openagents-mobile", "assets", "images", "icon.png"),
     path.join(dist, "assets", "openagents-icon.png"),
   )
+  // `electron .` resolves the native voice runtime from dist/, just as the
+  // packaged app resolves it from Resources. The everyday development build
+  // must therefore stage a real helper too; otherwise voice.start can only
+  // fail after the UI reaches "Connecting voice".
+  await stageDevelopmentVoiceHelper(dist)
   return dist
 }
 
 if (import.meta.main) {
   await buildDesktop()
-  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer/)")
+  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, native voice helper)")
 }

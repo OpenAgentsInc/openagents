@@ -128,7 +128,12 @@ export const createDesktopVoiceHost = (input: Readonly<{
             publish({ ...current, activity: state === "proposed" ? "awaiting_confirmation" : "listening", proposal: { ...control, state } })
           } else { playbackActive = control.state === "speaking"; publish({ ...current, activity: playbackActive ? "speaking" : "listening", ...(control.outcomeRef === undefined ? {} : { playbackOutcomeRef: control.outcomeRef }) }) }
         },
-      }) } catch { typedFailure("failed", "helper_crashed") }
+      }) } catch (error) {
+        // Keep credentials and remote payloads opaque while retaining the
+        // bounded local failure code needed to diagnose the real Desktop path.
+        console.error("[openagents-desktop:voice] media open failed:", error instanceof Error ? error.message : "unknown_error")
+        typedFailure("failed", "helper_crashed")
+      }
       return current
     }
     if (command.id === "voice.mute") { captureWanted = false; session?.setCaptureEnabled(false); publish({ ...current, phase: "muted", activity: "muted" }); return current }

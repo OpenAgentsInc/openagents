@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { Worker } from "node:worker_threads"
@@ -36,8 +36,24 @@ describe("openagents-desktop build", () => {
       "renderer/index.html",
       "renderer/app.css",
       "assets/openagents-icon.png",
+      ...(process.platform === "darwin" ? [
+        `native/${process.arch}/oa-desktop-audio`,
+        `native/${process.arch}/manifest.json`,
+      ] : []),
     ]) {
       expect(existsSync(path.join(dist, artifact))).toBe(true)
+    }
+
+    if (process.platform === "darwin") {
+      const helper = path.join(dist, "native", process.arch, "oa-desktop-audio")
+      const manifest = JSON.parse(readFileSync(path.join(dist, "native", process.arch, "manifest.json"), "utf8")) as Record<string, unknown>
+      expect(statSync(helper).mode & 0o111).not.toBe(0)
+      expect(manifest).toEqual({
+        protocolVersion: 1,
+        helperVersion: "0.1.0",
+        architecture: process.arch,
+        sha256: createHash("sha256").update(readFileSync(helper)).digest("hex"),
+      })
     }
 
     // Electron stays external in the main bundle; the renderer bundle carries
