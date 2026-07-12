@@ -354,6 +354,18 @@ describe("pylon accounts connect", () => {
         providerAccountRef: "provider_account_codex_a",
         pylonLink: { owner: "openauth", status: "linked" },
       })
+      const config = JSON.parse(await readFile(summary.paths.config, "utf8")) as {
+        dev?: {
+          accounts?: Array<{
+            ref: string
+            openAgentsProviderAccountRef?: string
+          }>
+        }
+      }
+      expect(config.dev?.accounts?.find(account => account.ref === "codex-a"))
+        .toMatchObject({
+          openAgentsProviderAccountRef: "provider_account_codex_a",
+        })
       expect(JSON.stringify(projection)).not.toContain("oa_agent_secret_test")
       expect(JSON.stringify(projection)).not.toContain(home)
       assertPublicProjectionSafe(projection)

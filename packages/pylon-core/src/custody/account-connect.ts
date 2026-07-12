@@ -317,7 +317,12 @@ async function writeConfig(path: string, config: ConfigRecord): Promise<void> {
 
 function registryStatusFor(
   config: ConfigRecord,
-  input: { provider: PylonAccountProvider; accountRef: string; home: string },
+  input: {
+    provider: PylonAccountProvider
+    accountRef: string
+    home: string
+    openAgentsProviderAccountRef?: string
+  },
 ): "created" | "updated" | "unchanged" {
   const dev =
     config.dev !== null && typeof config.dev === "object" && !Array.isArray(config.dev)
@@ -328,6 +333,9 @@ function registryStatusFor(
     ref: input.accountRef,
     provider: input.provider,
     home: input.home,
+    ...(input.openAgentsProviderAccountRef === undefined
+      ? {}
+      : { openAgentsProviderAccountRef: input.openAgentsProviderAccountRef }),
   }
   const existingIndex = accounts.findIndex(account => {
     if (account === null || typeof account !== "object" || Array.isArray(account)) return false
@@ -346,7 +354,10 @@ function registryStatusFor(
     existing !== null &&
     typeof existing === "object" &&
     !Array.isArray(existing) &&
-    (existing as ConfigRecord).home === input.home
+    (existing as ConfigRecord).home === input.home &&
+    (input.openAgentsProviderAccountRef === undefined ||
+      (existing as ConfigRecord).openAgentsProviderAccountRef ===
+        input.openAgentsProviderAccountRef)
   ) {
     return "unchanged"
   }
@@ -794,7 +805,7 @@ export async function runPylonAccountsConnect(
   }
 
   const config = await readConfig(summary.paths.config)
-  const registryStatus = registryStatusFor(config, {
+  let registryStatus = registryStatusFor(config, {
     provider: args.provider,
     accountRef: args.accountRef,
     home,
@@ -807,6 +818,22 @@ export async function runPylonAccountsConnect(
     env,
     fetcher: options.fetcher ?? fetch,
   })
+  if (
+    openAgentsDeviceLogin.status === "polled" &&
+    openAgentsDeviceLogin.attemptStatus === "connected" &&
+    openAgentsDeviceLogin.accountStatus === "connected"
+  ) {
+    const linkedRegistryStatus = registryStatusFor(config, {
+      provider: args.provider,
+      accountRef: args.accountRef,
+      home,
+      openAgentsProviderAccountRef: openAgentsDeviceLogin.providerAccountRef,
+    })
+    if (linkedRegistryStatus !== "unchanged") {
+      await writeConfig(summary.paths.config, config)
+      if (registryStatus !== "created") registryStatus = "updated"
+    }
+  }
 
   const projection = {
     schema: "pylon.accounts.connect.v1",
