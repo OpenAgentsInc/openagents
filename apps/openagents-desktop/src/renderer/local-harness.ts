@@ -291,7 +291,16 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       if (event.kind === "child_started") {
         upsertRuntimeNote(
           childNoteKey(event.childRef),
-          { kind: "child", turnRef, childRef: event.childRef, status: "running", title: event.summary, detail: "", steered: null },
+          {
+            kind: "child",
+            turnRef,
+            childRef: event.childRef,
+            status: "running",
+            title: event.summary,
+            detail: "",
+            transcript: [{ role: "user", text: event.prompt ?? event.summary }],
+            steered: null,
+          },
           `Delegate child started · ${event.summary}`,
         )
         return
@@ -307,6 +316,10 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             status: existing?.status ?? "running",
             title: existing?.title ?? "",
             detail: event.summary,
+            transcript: [
+              ...(existing?.transcript ?? []),
+              { role: "system" as const, text: event.summary },
+            ].slice(-128),
             steered: existing?.steered ?? null,
           },
           `Delegate child · ${event.summary}`,
@@ -317,7 +330,19 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         const existing = existingChildRuntime(event.childRef)
         upsertRuntimeNote(
           childNoteKey(event.childRef),
-          { kind: "child", turnRef, childRef: event.childRef, status: "completed", title: existing?.title ?? event.summary, detail: event.summary, steered: existing?.steered ?? null },
+          {
+            kind: "child",
+            turnRef,
+            childRef: event.childRef,
+            status: "completed",
+            title: existing?.title ?? event.summary,
+            detail: event.summary,
+            transcript: [
+              ...(existing?.transcript ?? []),
+              { role: "assistant" as const, text: event.response ?? event.summary },
+            ].slice(-128),
+            steered: existing?.steered ?? null,
+          },
           `Delegate child completed · ${event.summary}`,
         )
         return
@@ -327,7 +352,19 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         const detail = event.detail.trim() === "" ? event.reason : `${event.reason} · ${event.detail}`
         upsertRuntimeNote(
           childNoteKey(event.childRef),
-          { kind: "child", turnRef, childRef: event.childRef, status: "failed", title: existing?.title ?? "", detail, steered: existing?.steered ?? null },
+          {
+            kind: "child",
+            turnRef,
+            childRef: event.childRef,
+            status: "failed",
+            title: existing?.title ?? "",
+            detail,
+            transcript: [
+              ...(existing?.transcript ?? []),
+              { role: "system" as const, text: detail },
+            ].slice(-128),
+            steered: existing?.steered ?? null,
+          },
           `Delegate child failed · ${detail}`,
         )
         return

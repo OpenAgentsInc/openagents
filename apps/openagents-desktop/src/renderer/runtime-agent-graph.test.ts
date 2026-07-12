@@ -96,6 +96,10 @@ describe("contract openagents_desktop.agent_graph.pointer_keyboard_focus_equival
       graph: presentation,
       expanded: true,
       selectedAgentRef: "agent.desktop.child",
+      selectedTranscript: [
+        { role: "user", text: "Inspect the failing test." },
+        { role: "assistant", text: "The assertion uses the stale fixture." },
+      ],
     })
 
     expect(nodeByKey(view, "runtime-agent-toggle")?.onPress).toMatchObject({ name: "DesktopAgentGraphToggled" })
@@ -115,6 +119,11 @@ describe("contract openagents_desktop.agent_graph.pointer_keyboard_focus_equival
     expect(nodeByKey(view, "runtime-agent-summary-row")?.direction).toBe("column")
     expect(nodeByKey(view, "runtime-agent-row-agent.desktop.child")?.direction).toBe("column")
     expect(nodeByKey(view, "runtime-agent-fields-agent.desktop.child")?._tag).toBe("Stack")
+    expect(nodeByKey(view, "runtime-agent-transcript-agent.desktop.child")?._tag).toBe("Stack")
+    expect(nodeByKey(view, "runtime-agent-transcript-text-agent.desktop.child-0")?.content)
+      .toBe("Inspect the failing test.")
+    expect(nodeByKey(view, "runtime-agent-transcript-text-agent.desktop.child-1")?.content)
+      .toBe("The assertion uses the stale fixture.")
     expect(JSON.stringify((view as unknown as Node).interactions)).toContain("DesktopAgentAction")
   })
 

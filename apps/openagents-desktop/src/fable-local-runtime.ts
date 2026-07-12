@@ -814,6 +814,10 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         kind: "child_started",
         childRef,
         summary: bounded(redact(task), FABLE_LOCAL_SUMMARY_LIMIT),
+        prompt: bounded(
+          redact(context === undefined ? task : `${task}\n\nContext:\n${context}`),
+          FABLE_LOCAL_FINAL_TEXT_LIMIT,
+        ),
       })
       // Resolves to a sentinel the moment the child is interrupted, so the
       // handler unblocks even if the (real) child runtime does not yet honor
@@ -905,6 +909,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             childRef,
             accountRef: result.accountRef,
             summary: bounded(redact(result.text), FABLE_LOCAL_SUMMARY_LIMIT),
+            response: bounded(redact(result.text), FABLE_LOCAL_FINAL_TEXT_LIMIT),
             usage: childUsageToLedger(result.usage),
             durationMs: result.durationMs,
           })

@@ -12,6 +12,7 @@ import type {
   LiveAgentGraphPresentationRow,
   LiveAgentGraphTone,
 } from "../agent-graph-presentation.ts"
+import type { RuntimeChildTranscript } from "./runtime-cards.ts"
 
 const badgeTone = (tone: LiveAgentGraphTone): "neutral" | "info" | "success" | "warn" | "danger" =>
   tone === "active"
@@ -54,7 +55,13 @@ const accessibilityLabel = (row: LiveAgentGraphPresentationRow): string =>
 const depthSpacing = (depth: number) =>
   (["0", "2", "4", "6", "8", "10"] as const)[Math.min(depth, 5)] ?? "0"
 
-const agentInspector = (row: LiveAgentGraphPresentationRow): View => {
+const transcriptRoleLabel = (role: RuntimeChildTranscript[number]["role"]): string =>
+  role === "user" ? "You" : role === "assistant" ? "Codex" : "Activity"
+
+const agentInspector = (
+  row: LiveAgentGraphPresentationRow,
+  transcript: RuntimeChildTranscript | null,
+): View => {
   const fields = runtimeAgentGraphDetailFields(row)
   return Stack(
     {
@@ -71,6 +78,40 @@ const agentInspector = (row: LiveAgentGraphPresentationRow): View => {
       a11y: { role: "region", label: `Agent details, ${row.label}` },
     },
     [
+      ...(transcript === null ? [] : [Stack(
+        {
+          key: `runtime-agent-transcript-${row.agentRef}`,
+          direction: "column",
+          gap: "3",
+          style: { width: "full" },
+          a11y: { role: "region", label: `Transcript for ${row.label}` },
+        },
+        [
+          Text({ key: `runtime-agent-transcript-title-${row.agentRef}`, content: "Transcript", variant: "label", color: "textPrimary" }),
+          ...transcript.map((entry, index) => Stack(
+            {
+              key: `runtime-agent-transcript-entry-${row.agentRef}-${index}`,
+              direction: "column",
+              gap: "1",
+              style: { width: "full" },
+            },
+            [
+              Text({
+                key: `runtime-agent-transcript-role-${row.agentRef}-${index}`,
+                content: transcriptRoleLabel(entry.role),
+                variant: "caption",
+                color: entry.role === "assistant" ? "accent" : "textMuted",
+              }),
+              Text({
+                key: `runtime-agent-transcript-text-${row.agentRef}-${index}`,
+                content: entry.text,
+                variant: "body",
+                color: entry.role === "system" ? "textMuted" : "textPrimary",
+              }),
+            ],
+          )),
+        ],
+      )]),
       Stack(
         { key: `runtime-agent-fields-${row.agentRef}`, direction: "column", gap: "2", style: { width: "full" } },
         fields.map((field, index) => Stack(
@@ -99,8 +140,9 @@ export const runtimeAgentGraphView = (input: Readonly<{
   graph: LiveAgentGraphPresentation
   expanded: boolean
   selectedAgentRef: string | null
+  selectedTranscript?: RuntimeChildTranscript | null
 }>): View => {
-  const { graph, expanded, selectedAgentRef } = input
+  const { graph, expanded, selectedAgentRef, selectedTranscript = null } = input
   const summary = `${graph.totalCount} agent${graph.totalCount === 1 ? "" : "s"} · ${graph.activeCount} active` +
     (graph.attentionCount === 0 ? "" : ` · ${graph.attentionCount} need attention`)
   return Stack(
@@ -180,7 +222,7 @@ export const runtimeAgentGraphView = (input: Readonly<{
               })]),
             ],
           ),
-          ...(selected ? [agentInspector(row)] : []),
+          ...(selected ? [agentInspector(row, selectedTranscript)] : []),
         ]
       }) : []),
       ...(expanded && graph.hiddenCount > 0 ? [Text({

@@ -338,6 +338,55 @@ describe("makeLocalHarnessChatHost", () => {
     expect(harness.steerCalls).toEqual([])
   })
 
+  test("delegated child cards retain the exact prompt and answer as a selectable transcript", async () => {
+    const harness = makeHarness()
+    const updates: DesktopThread[] = []
+    const pending = harness.host.sendMessage({
+      id: "thread-1",
+      message: "delegate",
+      harness: "fable",
+      onUpdate: thread => updates.push(thread),
+    })
+    await settle()
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: { kind: "turn_started", thread: threadWithUserNote },
+    })
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: {
+        kind: "child_started",
+        childRef: "child.codex.turn.fable.fixed.1",
+        summary: "Review the patch",
+        prompt: "Review the patch\n\nContext:\nFocus on the failing test.",
+      },
+    })
+    harness.emit({
+      turnRef: "turn.fable.fixed",
+      event: {
+        kind: "child_completed",
+        childRef: "child.codex.turn.fable.fixed.1",
+        accountRef: "codex-current",
+        summary: "The stale fixture is the cause.",
+        response: "The stale fixture is the cause. Update it and rerun the focused suite.",
+        usage: null,
+        durationMs: 42,
+      },
+    })
+    await settle()
+
+    const child = updates.at(-1)!.notes.find(note => note.runtime?.kind === "child")?.runtime
+    expect(child?.kind).toBe("child")
+    if (child?.kind !== "child") throw new Error("child runtime card missing")
+    expect(child.transcript).toEqual([
+      { role: "user", text: "Review the patch\n\nContext:\nFocus on the failing test." },
+      { role: "assistant", text: "The stale fixture is the cause. Update it and rerun the focused suite." },
+    ])
+
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
+  })
+
   test("queueFollowup routes to the active lane's queue channel (EP250 wave-2 A3)", async () => {
     const harness = makeHarness()
     const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })

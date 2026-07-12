@@ -284,6 +284,8 @@ export const FableLocalEventSchema = Schema.Union([
     childRef: Schema.String.check(Schema.isMaxLength(120)),
     accountRef: Schema.optional(Schema.String),
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    /** Exact bounded instruction sent to the child, for its transcript. */
+    prompt: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FINAL_TEXT_LIMIT))),
   }),
   Schema.Struct({
     kind: Schema.Literal("child_activity"),
@@ -308,6 +310,8 @@ export const FableLocalEventSchema = Schema.Union([
     childRef: Schema.String.check(Schema.isMaxLength(120)),
     accountRef: Schema.String,
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    /** Exact bounded child answer, rather than the compact card summary. */
+    response: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FINAL_TEXT_LIMIT))),
     usage: Schema.NullOr(FableChildUsageSchema),
     durationMs: Schema.Number,
   }),

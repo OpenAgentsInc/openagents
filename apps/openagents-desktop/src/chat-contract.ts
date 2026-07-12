@@ -109,6 +109,11 @@ export const DesktopRuntimePlanEntrySchema = Schema.Struct({
   step: Schema.String.check(Schema.isMaxLength(400)),
   status: Schema.Literals(["pending", "in_progress", "completed"]),
 })
+const DESKTOP_RUNTIME_TRANSCRIPT_TEXT_LIMIT = 32_000
+export const DesktopRuntimeTranscriptEntrySchema = Schema.Struct({
+  role: Schema.Literals(["user", "assistant", "system"]),
+  text: Schema.String.check(Schema.isMaxLength(DESKTOP_RUNTIME_TRANSCRIPT_TEXT_LIMIT)),
+})
 export const DesktopRuntimeCardSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("plan"),
@@ -121,6 +126,10 @@ export const DesktopRuntimeCardSchema = Schema.Union([
     status: Schema.Literals(["running", "completed", "failed"]),
     title: Schema.String.check(Schema.isMaxLength(400)),
     detail: Schema.String.check(Schema.isMaxLength(400)),
+    /** Optional for backward compatibility with already-persisted child cards. */
+    transcript: Schema.optional(
+      Schema.Array(DesktopRuntimeTranscriptEntrySchema).check(Schema.isMaxLength(128)),
+    ),
     steered: Schema.NullOr(
       Schema.Struct({
         action: Schema.Literals(["message", "interrupt"]),

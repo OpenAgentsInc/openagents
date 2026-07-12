@@ -11,6 +11,7 @@ import {
   chatMessageMetadataFields,
   desktopShellIntents,
   desktopShellView,
+  delegateTranscriptForAgent,
   formatRelativeTimestamp,
   formatShellTimestamp,
   initialDesktopShellState,
@@ -51,6 +52,34 @@ import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.t
 import { desktopCanonicalCommandRegistry } from "../desktop-command-contract.ts"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
+
+test("delegated-card selection resolves the same child transcript used by the agent rail", () => {
+  const transcript = [
+    { role: "user" as const, text: "Review this patch." },
+    { role: "assistant" as const, text: "The fixture is stale." },
+  ]
+  const notes = [{
+    key: "child-note",
+    role: "system" as const,
+    text: "Delegate child completed",
+    timestamp: "05:40",
+    runtime: {
+      kind: "child" as const,
+      turnRef: "turn-1",
+      childRef: "child-1",
+      status: "completed" as const,
+      title: "Review this patch.",
+      detail: "The fixture is stale.",
+      transcript,
+      steered: null,
+    },
+  }]
+  expect(delegateTranscriptForAgent(
+    notes,
+    "agent.local.turn-1.child.child-1",
+  )).toEqual(transcript)
+  expect(delegateTranscriptForAgent(notes, "agent.local.turn-1")).toBeNull()
+})
 
 describe("EP250 chat contracts are registered and enforced (#8712)", () => {
   test("registry validates and the owner-statement contracts are enforced", () => {

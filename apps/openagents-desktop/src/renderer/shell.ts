@@ -2412,6 +2412,21 @@ export const childCardMessage = (note: DesktopNoteEntry, child: RuntimeChildCard
   }
 }
 
+/** Resolve the exact delegated conversation selected by either child affordance. */
+export const delegateTranscriptForAgent = (
+  notes: ReadonlyArray<DesktopNoteEntry>,
+  agentRef: string | null,
+): RuntimeChildCardPayload["transcript"] | null => {
+  if (agentRef === null) return null
+  const child = notes
+    .map(note => note.runtime)
+    .find(runtime =>
+      runtime?.kind === "child" &&
+      localDelegateAgentRef(runtime.turnRef, runtime.childRef) === agentRef
+    )
+  return child?.kind === "child" ? child.transcript ?? null : null
+}
+
 /**
  * Queued follow-up chip (EP250 wave-2 A3). A compact "Queued follow-up (#N)"
  * badge shown while the follow-up sits in the queue-until-idle queue; it clears
@@ -3440,6 +3455,7 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
         graph: state.agentGraph,
         expanded: state.agentGraphExpanded,
         selectedAgentRef: state.selectedAgentRef,
+        selectedTranscript: delegateTranscriptForAgent(state.notes, state.selectedAgentRef),
       })
   if (selected === undefined && graph === null) return [transcript, shellComposer(state)]
   const rightRail = Stack(

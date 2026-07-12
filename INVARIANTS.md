@@ -805,6 +805,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   session, then uses isolated Pylon Codex homes as fallback; explicitly
   selecting a named Pylon account pins it. Current-session launches must clear
   an inherited `CODEX_HOME` so stale Pylon selection cannot override `~/.codex`.
+  A delegated child is a conversation, not merely graph metadata: its bounded
+  exact prompt and final response must remain attached to the child card and
+  appear in the selected-agent rail. Selecting a child must never degrade to a
+  status-only inspector while its transcript is available.
   User-local Claude plugins are host-owned capabilities: absolute plugin paths
   remain in the owner-only main-process registry, while preload/renderer expose
   only opaque plugin refs plus bounded provenance, scope, readiness, enablement,

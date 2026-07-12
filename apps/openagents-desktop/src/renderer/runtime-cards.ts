@@ -33,6 +33,7 @@ import type { DesktopNoteEntry } from "./shell.ts"
 export type RuntimeCardPayload = DesktopRuntimeCard
 export type RuntimePlanCardPayload = Extract<DesktopRuntimeCard, { kind: "plan" }>
 export type RuntimeChildCardPayload = Extract<DesktopRuntimeCard, { kind: "child" }>
+export type RuntimeChildTranscript = NonNullable<RuntimeChildCardPayload["transcript"]>
 export type RuntimeQueueChipPayload = Extract<DesktopRuntimeCard, { kind: "queue" }>
 export type RuntimePlanEntry = RuntimePlanCardPayload["entries"][number]
 export type RuntimePlanStatus = RuntimePlanEntry["status"]

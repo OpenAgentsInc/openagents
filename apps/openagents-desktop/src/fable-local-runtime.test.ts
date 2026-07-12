@@ -1083,6 +1083,7 @@ describe("Codex delegation through the Fable lane", () => {
     const started = sink.events.find(event => event.kind === "child_started") as Extract<FableLocalEvent, { kind: "child_started" }>
     expect(started.childRef).toBe("child.codex.turn-e2e.1")
     expect(started.summary).toContain("summarize the notes")
+    expect(started.prompt).toContain("summarize the notes")
     // The revoked account was skipped VISIBLY — typed activity, never silent.
     const reconnect = sink.events.find(event =>
       event.kind === "child_activity" && event.activity === "account_reconnect_required") as Extract<FableLocalEvent, { kind: "child_activity" }>
@@ -1090,6 +1091,7 @@ describe("Codex delegation through the Fable lane", () => {
     expect(reconnect.summary).toContain("reconnect")
     const completed = sink.events.find(event => event.kind === "child_completed") as Extract<FableLocalEvent, { kind: "child_completed" }>
     expect(completed.accountRef).toBe("codex-2")
+    expect(completed.response).toBe(FIXTURE_CODEX_CHILD_TEXT)
     expect(completed.usage).toEqual({
       inputTokens: 1200,
       cachedInputTokens: 900,
