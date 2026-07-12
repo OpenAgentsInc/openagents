@@ -940,6 +940,23 @@ const git = (cwd: string, args: string[]): string => {
   }
 }
 
+const gitCommitPattern = /^[0-9a-f]{40}$/i
+
+export const resolveRepositoryCommit = (
+  repo: string,
+  commitOrRef: string,
+  run: typeof spawnSync = spawnSync,
+): string | null => {
+  if (gitCommitPattern.test(commitOrRef)) return commitOrRef
+  const remote = `https://github.com/${repo}.git`
+  const result = run(['git', 'ls-remote', remote, `refs/heads/${commitOrRef}`], {
+    stdout: 'pipe', stderr: 'pipe',
+  })
+  if (result.exitCode !== 0) return null
+  const commit = result.stdout.toString().trim().split(/\s+/)[0] ?? ''
+  return gitCommitPattern.test(commit) ? commit : null
+}
+
 // ---------------------------------------------------------------------------
 // CX-3 (#8547): in-VM Codex execution — args/env/parse/run.
 // ---------------------------------------------------------------------------
@@ -1744,12 +1761,16 @@ async function main() {
   // 1. Real repo checkout via the #8475 materializer (unauthenticated depth-1
   //    clone + detached checkout of the pinned commit; public repo, no broker).
   emit({ kind: 'tool.call', turnId, tool: 'workspace.checkout', repo: wc.repo, commit: wc.commit })
+  const resolvedCommit = resolveRepositoryCommit(wc.repo, wc.commit)
+  if (resolvedCommit === null) {
+    throw new Error('workspace.checkout_ref_unresolved')
+  }
   const checkout: GitCheckoutWorkspace = {
     kind: 'git_checkout',
     repository: {
       provider: 'github',
       fullName: wc.repo,
-      commitSha: wc.commit,
+      commitSha: resolvedCommit,
       branch,
       visibility: 'public',
     },
@@ -1792,7 +1813,7 @@ async function main() {
       })
       throw new Error('codex.provider_auth_required')
     }
-    const prompt = wc.objective ?? `Work on ${wc.repo}@${wc.commit.slice(0, 12)}.`
+    const prompt = wc.objective ?? `Work on ${wc.repo}@${resolvedCommit.slice(0, 12)}.`
     emit({
       kind: 'tool.call',
       turnId,

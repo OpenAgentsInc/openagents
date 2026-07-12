@@ -41,6 +41,7 @@ import {
   materializeCodexProviderAuth,
   parseRepoFullName,
   runModelTurnReceipt,
+  resolveRepositoryCommit,
   runWritebackForTurn,
   shortLivedOpenCodeAuthExpiresAt,
   usageIngestBody,
@@ -53,6 +54,19 @@ import {
   type InferenceConfig,
   type WritebackConfig,
 } from '../deploy/agent-computer/turn-runner.ts'
+
+describe('agent-computer repository ref resolution', () => {
+  test('preserves immutable SHAs and resolves branch refs before materialization', () => {
+    const sha = 'a'.repeat(40)
+    expect(resolveRepositoryCommit('OpenAgentsInc/openagents', sha)).toBe(sha)
+    const resolved = resolveRepositoryCommit(
+      'OpenAgentsInc/openagents',
+      'main',
+      (() => ({ exitCode: 0, stdout: `${'b'.repeat(40)}\trefs/heads/main\n`, stderr: '' })) as never,
+    )
+    expect(resolved).toBe('b'.repeat(40))
+  })
+})
 
 const inference: InferenceConfig = {
   baseUrl: 'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
