@@ -781,6 +781,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration
   defensively reapplies it, with deterministic thread-ref tie-breaking.
+- Desktop's mixed runtime/provider conversation sidebar has one canonical
+  target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
+  numbering never restarts at a source boundary. Selecting a runtime/app-local
+  row always unmounts any provider-history page before projecting that row's
+  transcript, so a successful selection cannot leave stale chat content visible.
 - Desktop chat context rails are genuinely pointer-resizable from 280–480px.
   The shared SplitPane renderer targets the explicitly sized pane adjacent to
   a divider (including a trailing/right pane), and the renderer-owned typed

@@ -11,6 +11,7 @@ import {
   chatMessageMetadataFields,
   desktopShellIntents,
   desktopShellView,
+  desktopConversationShortcutTargets,
   delegateTranscriptForAgent,
   formatRelativeTimestamp,
   formatShellTimestamp,
@@ -469,10 +470,19 @@ describe("desktopShellView (state -> component tree)", () => {
       createdAt:"2026-07-10T18:04:00.000Z",updatedAt:"2026-07-10T18:04:00.000Z",depth:0,descendantCount:0,
       model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,source:"codex" as const,
     }))
-    const view=desktopShellView({...baseState,historyShortcutHintsVisible:true,history:{...baseState.history,catalog:{roots,agents:roots}}})
-    expect(navItemById(view,"sidebar-thread-hint-0")?.meta).toBe("1")
-    expect(navItemById(view,"sidebar-thread-hint-8")?.meta).toBe("9")
-    expect(navItemById(view,"sidebar-thread-hint-9")?.meta).toBe("")
+    const locals=Array.from({length:5},(_,index)=>({...testThread,id:`local-${index}`,title:`Local ${index}`}))
+    const state={...baseState,threads:locals,historyShortcutHintsVisible:true,history:{...baseState.history,catalog:{roots,agents:roots}}}
+    const view=desktopShellView(state)
+    expect(navItemById(view,"sidebar-thread-local-0")?.meta).toBe("1")
+    expect(navItemById(view,"sidebar-thread-local-4")?.meta).toBe("5")
+    expect(navItemById(view,"sidebar-thread-hint-0")?.meta).toBe("6")
+    expect(navItemById(view,"sidebar-thread-hint-3")?.meta).toBe("9")
+    expect(navItemById(view,"sidebar-thread-hint-4")?.meta).toBe("")
+    expect(desktopConversationShortcutTargets(state).slice(0,7)).toEqual([
+      ...locals.map(thread=>({kind:"runtime" as const,threadRef:thread.id})),
+      {kind:"history" as const,threadRef:"hint-0"},
+      {kind:"history" as const,threadRef:"hint-1"},
+    ])
   })
 
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {
@@ -1713,6 +1723,38 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         expect((transcript?.messages as Array<unknown>).length).toBe(0)
       }),
     )
+  })
+
+  test("selecting a runtime sidebar chat always exits the previously loaded provider history", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const local = {
+        ...testThread,
+        title: "Runtime chat",
+        notes: [{ key: "local-note", role: "assistant" as const, text: "Loaded runtime transcript", timestamp: "18:04" }],
+      }
+      const loaded: DesktopShellState = {
+        ...baseState,
+        threads: [local],
+        activeThreadId: null,
+        history: { ...baseState.history, page: historyPageFixture },
+      }
+      const state = yield* SubscriptionRef.make(loaded)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, {
+        listThreads: async () => [local],
+        newThread: async () => null,
+        openThread: async id => id === local.id ? local : null,
+        sendMessage: async () => ({ ok: false }),
+      }))
+
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(local.id))))
+
+      const selected = yield* SubscriptionRef.get(state)
+      expect(selected.activeThreadId).toBe(local.id)
+      expect(selected.history.page).toBeNull()
+      expect(selected.notes).toEqual(local.notes)
+      expect(nodeByKey(desktopShellView(selected), "history-workspace-split")).toBeUndefined()
+      expect(nodeByKey(desktopShellView(selected), "shell-transcript")).toBeDefined()
+    }))
   })
 
   test("H1 resume-picker action opens the exact existing local thread and exits history", async () => {

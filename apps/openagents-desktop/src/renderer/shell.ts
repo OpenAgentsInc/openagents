@@ -1733,12 +1733,22 @@ export const makeDesktopShellHandlers = (
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       activeThreadId: id,
-      notes: [],
+      notes: current.threads.find(thread => thread.id === id)?.notes ?? [],
       expandedToolCards: [],
       questionCards: {},
       agentGraph: null,
       agentGraphExpanded: false,
       selectedAgentRef: null,
+      // Runtime/app-local rows and provider-history rows share one sidebar,
+      // but they render through different center views. Selecting a runtime
+      // row must explicitly unmount the prior provider-history page.
+      history: {
+        ...current.history,
+        page: null,
+        selectedItemRef: null,
+        pendingThreadRef: null,
+        expandedThreadRefs: [],
+      },
     }))
     const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
     yield* SubscriptionRef.update(state, current => current.activeThreadId === id
@@ -2488,12 +2498,12 @@ export const runtimeCardMessage = (note: DesktopNoteEntry): TranscriptMessage =>
       : queueChipMessage(note, runtime)
 }
 
-const historySidebarItems = (state: DesktopShellState) => {
-  const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount)
+const historySidebarItems = (state: DesktopShellState, shortcutOffset: number, excludedIds: ReadonlySet<string>) => {
+  const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount).filter(thread => !excludedIds.has(thread.threadRef))
   const rows=roots.map((thread,index) => ({
     id:`sidebar-thread-${thread.threadRef}`,
     label:thread.title,
-    meta:state.historyShortcutHintsVisible ? (index < 9 ? String(index + 1) : "") : `${historySourceBadgeLabel(thread.source)} · ${formatRelativeTimestamp(thread.updatedAt)}`,
+    meta:state.historyShortcutHintsVisible ? (index + shortcutOffset < 9 ? String(index + shortcutOffset + 1) : "") : `${historySourceBadgeLabel(thread.source)} · ${formatRelativeTimestamp(thread.updatedAt)}`,
     accessibilityLabel:`Open ${historySourceBadgeLabel(thread.source)} chat ${thread.title}, ${thread.descendantCount} descendant agents`,
     onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
   }))
@@ -2515,8 +2525,24 @@ const localSidebarItems = (state: DesktopShellState) => state.threads.map((threa
 
 const sidebarConversationItems = (state: DesktopShellState) => {
   const local = localSidebarItems(state)
-  const localIds = new Set(local.map(item => item.id))
-  return [...local, ...historySidebarItems(state).filter(item => !localIds.has(item.id))]
+  const localThreadIds = new Set(state.threads.map(thread => thread.id))
+  return [...local, ...historySidebarItems(state, local.length, localThreadIds)]
+}
+
+export type DesktopConversationShortcutTarget = Readonly<{
+  kind: "runtime" | "history"
+  threadRef: string
+}>
+
+/** One canonical order for visible shortcut labels and keyboard activation. */
+export const desktopConversationShortcutTargets = (state: DesktopShellState): ReadonlyArray<DesktopConversationShortcutTarget> => {
+  const localIds = new Set(state.threads.map(thread => thread.id))
+  return [
+    ...state.threads.map(thread => ({ kind: "runtime" as const, threadRef: thread.id })),
+    ...state.history.catalog.roots
+      .filter(thread => !localIds.has(thread.threadRef))
+      .map(thread => ({ kind: "history" as const, threadRef: thread.threadRef })),
+  ]
 }
 
 const shellSidebar = (state: DesktopShellState): View => {

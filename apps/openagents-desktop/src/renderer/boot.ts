@@ -59,6 +59,7 @@ import {
 import {
   desktopShellIntents,
   desktopShellView,
+  desktopConversationShortcutTargets,
   initialDesktopShellState,
   makeDesktopShellHandlers,
   withLiveAgentGraph,
@@ -1224,23 +1225,31 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         while(historyShortcutSteps!==0||historyShortcutAbsoluteIndex!==null){
           await new Promise(resolve=>window.setTimeout(resolve,35))
           const current=await Effect.runPromise(SubscriptionRef.get(state))
-          if(current.workspace!=="chat"||current.history.catalog.roots.length===0){historyShortcutSteps=0;historyShortcutAbsoluteIndex=null;break}
-          const roots=current.history.catalog.roots
-          const activeRef=current.history.pendingThreadRef??current.history.page?.rootThreadRef
-          const activeIndex=roots.findIndex(item=>item.threadRef===activeRef)
+          const targets=desktopConversationShortcutTargets(current)
+          if(current.workspace!=="chat"||targets.length===0){historyShortcutSteps=0;historyShortcutAbsoluteIndex=null;break}
+          const activeRef=current.history.pendingThreadRef??current.history.page?.rootThreadRef??current.activeThreadId
+          const activeIndex=targets.findIndex(item=>item.threadRef===activeRef)
           const steps=historyShortcutSteps
           const absoluteIndex=historyShortcutAbsoluteIndex
           historyShortcutSteps=0
           historyShortcutAbsoluteIndex=null
           const baseIndex=activeIndex<0?(steps>0?-1:1):activeIndex
-          const targetIndex=Math.max(0,Math.min(roots.length-1,absoluteIndex??baseIndex+steps))
+          const targetIndex=Math.max(0,Math.min(targets.length-1,absoluteIndex??baseIndex+steps))
           if(targetIndex===activeIndex)continue
+          const target=targets[targetIndex]!
+          const targetRef=target.threadRef
+          if(target.kind==="runtime"){
+            if(historySelectionTimer!==null){window.clearTimeout(historySelectionTimer);historySelectionTimer=null}
+            await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected",StaticPayload(targetRef)))))
+            await scrollHistorySelectionIntoView(targetIndex,targetRef)
+            continue
+          }
+          const catalogIndex=current.history.catalog.roots.findIndex(root=>root.threadRef===targetRef)
           let visible=current.history.visibleRootCount
-          while(targetIndex>=visible){
+          while(catalogIndex>=visible){
             await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryCatalogMoreRequested",StaticPayload(null)))))
             visible+=historyCatalogPageSize
           }
-          const targetRef=roots[targetIndex]!.threadRef
           await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopHistoryConversationPreviewed",StaticPayload(targetRef)))))
           await scrollHistorySelectionIntoView(targetIndex,targetRef)
           if(historySelectionTimer!==null)window.clearTimeout(historySelectionTimer)
