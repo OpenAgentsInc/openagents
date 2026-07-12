@@ -2210,11 +2210,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         productArea: "composer send control",
         enforcementTier: "test-sweep",
         blockerRefs: [],
-        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-12" },
         statement:
-          "airplane icon in composer OUTSIDE of the button is stupid. put it in , remove text 'send'",
+          "put a microphone button there left of the submit button. make submit button an up arrow like codex has there. clicking microphone button toggles a voice mode we havent implemented yet. just put a text thing there for like disabled or something",
         authorityBoundary:
-          "The composer renders exactly ONE send control: the catalog IconButton with the paper-plane glyph inside (width = height per the icon-only rule), solid accent intent and control-lattice radius via typed style tokens, and no Send text label anywhere; the freestanding icon node is removed. The accessible name stays (Send message, or the disabled reason), the disabled state keeps the disabled-reason popover wrapper, and the control dispatches the same DesktopNoteSubmitted intent — no authority change.",
+          "The composer renders exactly one Submit control as the shared catalog IconButton with ArrowUp inside and no visible Send label. Immediately left is a compact shared Mic IconButton. Mic dispatches only DesktopVoiceModeToggled into renderer presentation state: selected state shows the literal `Voice unavailable` badge and starts no microphone, permission prompt, transcription, network, provider, or device action. Pending turns disable Mic and its handler also refuses programmatic toggles. Submit keeps its accessible name, disabled-reason wrapper, and DesktopNoteSubmitted intent.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "github:OpenAgentsInc/openagents#8712",
@@ -2226,7 +2226,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the composer renders exactly one send control as an IconButton (icon Plane, accessibilityLabel Send message, no label text), the freestanding shell-send-icon node is gone, disabled/pending states hold, and the intent ref stays DesktopNoteSubmitted.",
+              "Proves the composer renders exactly one ArrowUp Submit IconButton, places the compact Mic control immediately before it, toggles the honest Voice unavailable badge through the typed intent, and refuses that toggle while pending.",
           },
           {
             id: "composer_icon_only_send.smoke",

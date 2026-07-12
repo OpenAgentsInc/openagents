@@ -341,13 +341,12 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(navItemById(view, "sidebar-thread-test-thread")?.label).toBe("New chat")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
     expect(navItemById(view, "sidebar-thread-test-thread")?.meta).toBeDefined()
-    // ONE icon-only send control (owner: "airplane icon in composer OUTSIDE
-    // of the button is stupid. put it in , remove text 'send'"): the plane
-    // glyph lives INSIDE the send IconButton; the freestanding icon is gone.
+    // ONE icon-only send control: the Codex-style up arrow lives inside the
+    // button; there is no freestanding icon or text label.
     expect(nodeByKey(view, "shell-send-icon")).toBeUndefined()
     expect(nodeByKey(view, "shell-note")).toMatchObject({
       _tag: "IconButton",
-      icon: "Plane",
+      icon: "ArrowUp",
       accessibilityLabel: "Send message",
     })
     expect((nodeByKey(view, "shell-note") as { label?: unknown }).label).toBeUndefined()
@@ -654,6 +653,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(keys[3]).toBe("shell-reasoning-select")
     expect(bar?.children?.[4]?._tag).toBe("Spacer")
     expect(bar?.children?.[4]?.flex).toBe(true)
+    expect(keys[5]).toBe("shell-voice-toggle")
+    expect(keys[6]).toBe("shell-note")
     // The trailing send control is circular and dims to a ghost while blank.
     const blankSend = nodeByKey(view, "shell-note") as { style?: Record<string, unknown> }
     expect(blankSend?.style).toMatchObject({ backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" })
@@ -667,6 +668,45 @@ describe("desktopShellView (state -> component tree)", () => {
     // The Stop control (streaming) shares the circular shape.
     const stop = nodeByKey(desktopShellView(withPending(baseState, true)), "shell-stop") as { style?: Record<string, unknown> }
     expect(stop?.style).toMatchObject({ borderRadius: "full" })
+  })
+
+  test("microphone toggles an honest unavailable voice-mode placeholder", async () => {
+    const idle = desktopShellView(baseState)
+    const mic = nodeByKey(idle, "shell-voice-toggle") as {
+      _tag?: string; icon?: string; size?: string; disabled?: boolean
+      onPress: Parameters<typeof resolveIntentRef>[0]
+    }
+    expect(mic).toMatchObject({ _tag: "IconButton", icon: "Mic", size: "sm", disabled: false })
+    expect(nodeByKey(idle, "shell-voice-unavailable")).toBeUndefined()
+
+    const state = await Effect.runPromise(SubscriptionRef.make(baseState))
+    const registry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(state, fixedNow),
+    ))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(mic.onPress, null)))
+    const requested = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(requested.voiceModeRequested).toBe(true)
+    const requestedView = desktopShellView(requested)
+    expect(nodeByKey(requestedView, "shell-voice-unavailable")).toMatchObject({
+      _tag: "Badge",
+      label: "Voice unavailable",
+    })
+
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(mic.onPress, null)))
+    expect((await Effect.runPromise(SubscriptionRef.get(state))).voiceModeRequested).toBe(false)
+
+    const pendingState = await Effect.runPromise(SubscriptionRef.make(withPending(baseState, true)))
+    const pendingRegistry = await Effect.runPromise(makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(pendingState, fixedNow),
+    ))
+    const pendingMic = nodeByKey(desktopShellView(withPending(baseState, true)), "shell-voice-toggle") as {
+      disabled?: boolean; onPress: Parameters<typeof resolveIntentRef>[0]
+    }
+    expect(pendingMic.disabled).toBe(true)
+    await Effect.runPromise(pendingRegistry.dispatch(resolveIntentRef(pendingMic.onPress, null)))
+    expect((await Effect.runPromise(SubscriptionRef.get(pendingState))).voiceModeRequested).toBe(false)
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit; usable while pending for queue-until-idle (A3)", () => {

@@ -1621,6 +1621,7 @@ export const iconNames = [
   "Home",
   "NotificationBell",
   "Plane",
+  "ArrowUp",
   "Settings",
   "Terminal",
   "Tools",

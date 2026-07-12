@@ -324,6 +324,8 @@ export type DesktopShellState = Readonly<{
   selectedAgentRef: string | null
   /** User-resized width of the live/message context rail. */
   chatContextWidth: number
+  /** Presentation-only voice-mode request; capture is not implemented yet. */
+  voiceModeRequested: boolean
   codingCatalog: DesktopCodingCatalogProjection
   codingSessionFilter: CodingSessionFilter
   codingSessionQuery: string
@@ -413,6 +415,7 @@ export const initialDesktopShellState = (
   agentGraphExpanded: false,
   selectedAgentRef: null,
   chatContextWidth: 336,
+  voiceModeRequested: false,
   codingCatalog: emptyDesktopCodingCatalogProjection(),
   codingSessionFilter: "active",
   codingSessionQuery: "",
@@ -519,6 +522,7 @@ export const DesktopModelSelected = defineIntent(
   "DesktopModelSelected",
   Schema.Literals(["gpt-5.6-sol", "gpt-5.5", "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]),
 )
+export const DesktopVoiceModeToggled = defineIntent("DesktopVoiceModeToggled", Schema.Null)
 export const DesktopProviderAccountSelected = defineIntent("DesktopProviderAccountSelected", Schema.String)
 export const DesktopPermissionModeSelected = defineIntent("DesktopPermissionModeSelected", Schema.Literals(["owner_full", "plan_only"]))
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
@@ -606,6 +610,7 @@ export const desktopShellIntents = [
   DesktopHarnessSelected,
   DesktopCodexReasoningSelected,
   DesktopModelSelected,
+  DesktopVoiceModeToggled,
   DesktopProviderAccountSelected,
   DesktopPermissionModeSelected,
   DesktopChatSelected,
@@ -1632,6 +1637,10 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => isCodexModel(model)
       ? { ...current, codexModel: model }
       : { ...current, claudeModel: model }),
+  DesktopVoiceModeToggled: () =>
+    SubscriptionRef.update(state, (current) => current.pending
+      ? current
+      : { ...current, voiceModeRequested: !current.voiceModeRequested }),
   DesktopProviderAccountSelected: (accountRef) =>
     SubscriptionRef.update(state, (current) => {
       if (current.activeThreadId === null) return current
@@ -3045,7 +3054,7 @@ const composerActionControl = (state: DesktopShellState): View => {
     lane.available ? null : lane.reason ?? "Send unavailable: selected lane cannot act",
     IconButton({
       key: "shell-note",
-      icon: "Plane",
+      icon: "ArrowUp",
       accessibilityLabel: lane.available
         ? "Send message"
         : lane.reason ?? "Send unavailable: selected lane cannot act",
@@ -3057,6 +3066,34 @@ const composerActionControl = (state: DesktopShellState): View => {
     }),
   )
 }
+
+/**
+ * Voice is intentionally presentation-only until capture/transcription exists.
+ * The typed toggle exposes an honest unavailable state and starts no device,
+ * permission, network, or provider action.
+ */
+const composerVoiceControls = (state: DesktopShellState): ReadonlyArray<View> => [
+  ...(state.voiceModeRequested ? [Badge({
+    key: "shell-voice-unavailable",
+    label: "Voice unavailable",
+    tone: "neutral",
+  })] : []),
+  IconButton({
+    key: "shell-voice-toggle",
+    icon: "Mic",
+    size: "sm",
+    accessibilityLabel: state.voiceModeRequested
+      ? "Voice mode unavailable; turn off voice mode"
+      : "Turn on voice mode; voice is not available yet",
+    disabled: state.pending,
+    onPress: IntentRef("DesktopVoiceModeToggled"),
+    style: {
+      backgroundColor: state.voiceModeRequested ? "stateSelected" : "surfaceRaised",
+      color: state.voiceModeRequested ? "info" : "textMuted",
+      borderRadius: "md",
+    },
+  }),
+]
 
 /**
  * One pending image attachment (capability I1): a bounded thumbnail with a
@@ -3351,6 +3388,8 @@ const shellComposer = (state: DesktopShellState): View =>
           ...(permissionModeControl(state) === null ? [] : [permissionModeControl(state)!]),
           // Push the send/stop control to the far right of the bar.
           Spacer({ key: "shell-composer-bar-spacer", flex: true }),
+          // Voice-mode placeholder is honest presentation state only.
+          ...composerVoiceControls(state),
           // Circular Send (idle) or Stop (streaming) — see composerActionControl.
           composerActionControl(state),
         ],

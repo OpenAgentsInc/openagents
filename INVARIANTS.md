@@ -790,6 +790,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   Effect Native `IconButton` with a required accessible label. Its compact
   `sm` size is 32px; it may not regress to the generic 44px circular action
   treatment used for Send and Stop.
+- The composer trails with a compact shared `Mic` control immediately before
+  one shared `ArrowUp` Submit control. Until voice capture exists, Mic toggles
+  renderer-only presentation state that visibly says `Voice unavailable`; it
+  may not request microphone permission, start capture/transcription, touch a
+  provider or network, or imply that audio is active. Pending turns disable
+  the control and the typed handler independently refuses the toggle.
 - Desktop conversation navigation is globally ordered by descending
   `updatedAt` across hosted and app-local threads, never grouped by source.
   The converging host owns the canonical merge order and renderer hydration
