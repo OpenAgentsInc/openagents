@@ -3132,6 +3132,7 @@ const voiceHud = (state: DesktopShellState): View | null => {
       ...(proposal.state === "proposed" ? [Text({ key: "shell-voice-proposal-truth", content: "Not applied", variant: "caption", color: "textMuted" })] : []),
     ])]),
     ...(state.voice.errorText === null ? [] : [Text({ key: "shell-voice-error", content: state.voice.errorText, variant: "caption", color: "danger", a11y: { role: "region", label: `Voice error: ${state.voice.errorText}` } })]),
+    ...(state.voice.host.playbackOutcomeRef === undefined ? [] : [Text({ key: "shell-voice-playback-outcome", content: `Playback interrupted · ${state.voice.host.playbackOutcomeRef}`, variant: "caption", color: "textMuted", a11y: { role: "region", label: `Playback interruption outcome ${state.voice.host.playbackOutcomeRef}` } })]),
   ])
 }
 

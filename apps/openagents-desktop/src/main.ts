@@ -771,7 +771,9 @@ const voiceMedia: VoiceNativeMedia = smokeMode
           input.onControl({ kind: "activity", activity: "listening" })
           input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: false })
           setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: true }), 800)
-          setTimeout(() => input.onControl({ kind: "activity", activity: "speaking" }), 900)
+          setTimeout(() => input.onControl({ kind: "playback", speechRef: "smoke.speech.1", state: "speaking" }), 900)
+          setTimeout(() => input.onControl({ kind: "activity", activity: "speech_detected" }), 975)
+          setTimeout(() => input.onControl({ kind: "playback", speechRef: "smoke.speech.1", state: "canceled", outcomeRef: "outcome.smoke.interrupt.1" }), 1_050)
         })
         return {
           setCaptureEnabled: enabled => { captureEnabled = enabled; void captureEnabled },
@@ -3041,9 +3043,11 @@ const smokeVoiceMode = `(async () => {
   const registeredFocus = find("workspace-home-panel") !== null
   const chat = find("workspace-chat")
   if (chat instanceof HTMLElement) { chat.click(); await wait(50) }
+  while (Date.now() < deadline && find("shell-voice-playback-outcome") === null) await wait(25)
+  const bargeInOutcome = find("shell-voice-playback-outcome")?.textContent?.includes("outcome.smoke.interrupt.1") === true
   const stop = find("shell-voice-toggle")
   if (stop instanceof HTMLElement) { stop.click(); await wait(50) }
-  return { ok: registeredFocus && muted && truth.includes("Not retained") && find("shell-voice-hud") === null, truth, registeredFocus, muted, stopped: find("shell-voice-hud") === null }
+  return { ok: registeredFocus && muted && bargeInOutcome && truth.includes("Not retained") && find("shell-voice-hud") === null, truth, registeredFocus, muted, bargeInOutcome, stopped: find("shell-voice-hud") === null }
 })()`
 
 // Fable local streaming journey (#8712, EP250 owner fixes): from the fresh

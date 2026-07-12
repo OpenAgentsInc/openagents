@@ -295,6 +295,12 @@ Rust.
   choose commands, apply policy, or claim outcomes; those remain Effect-owned.
 - **AUDIO-7 #8740:** Google streaming synthesis stays in the Effect gateway;
   Rust owns output buffering/playback/cancel only.
+
+**Measured AUDIO-7 result (#8740):** the Effect gateway's official Google
+client streamed Chirp 3 HD with a 198 ms synthesis TTFB in the deployed smoke.
+The signed Rust helper now owns only validation, resampling, the bounded output
+queue, underrun observation, and prompt speech-ref-fenced flush. This further
+supports the hybrid decision rather than widening either side's authority.
 - **AUDIO-8 #8741:** proves cross-language contract compatibility, signed helper
   custody, crash/upgrade behavior, and the full latency decomposition.
 

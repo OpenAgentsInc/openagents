@@ -61,8 +61,14 @@ fn main() {
                                             generation,
                                             sequence,
                                             payload_length,
+                                            speech_ref,
+                                            first_chunk,
+                                            underrun_count,
                                         } => {
-                                            serde_json::json!({"state":"playback","generation":generation,"sequence":sequence,"payloadLength":payload_length})
+                                            serde_json::json!({"state":"playback","generation":generation,"sequence":sequence,"payloadLength":payload_length,"speechRef":speech_ref,"firstChunk":first_chunk,"underrunCount":underrun_count})
+                                        }
+                                        NativeTransportEvent::PlaybackCanceled { speech_ref, outcome_ref } => {
+                                            serde_json::json!({"state":"playback_canceled","speechRef":speech_ref,"outcomeRef":outcome_ref})
                                         }
                                         NativeTransportEvent::Transcript { utterance_ref, text, final_result } => {
                                             serde_json::json!({"state":"transcript","utteranceRef":utterance_ref,"text":text,"final":final_result})

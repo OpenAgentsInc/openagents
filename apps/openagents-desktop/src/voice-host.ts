@@ -23,6 +23,7 @@ export type DesktopVoiceState = Readonly<{
   activity: "stopped" | "permission" | "connecting" | "listening" | "speech_detected" | "transcribing" | "awaiting_confirmation" | "executing" | "speaking" | "muted" | "reconnecting" | "degraded" | "revoked"
   transcript?: Readonly<{ utteranceRef: string; text: string; final: boolean }>
   proposal?: Readonly<{ proposalRef: string; utteranceRef: string; turnRef: string; targetRef: string; commandId: string; expiresAtMs: number; state: "proposed" | "applied" | "refused" }>
+  playbackOutcomeRef?: string
   reason?: "permission_denied" | "network_lost" | "gateway_revoked" | "helper_crashed" | "stale_generation" | "backpressure" | "device_changed"
 }>
 
@@ -42,6 +43,7 @@ export type VoiceNativeMedia = Readonly<{
       | { kind: "transcript"; utteranceRef: string; text: string; final: boolean }
       | { kind: "activity"; activity: "speech_detected" | "transcribing" | "awaiting_confirmation" | "executing" | "speaking" | "listening" }
       | { kind: "proposal"; proposalRef: string; utteranceRef: string; turnRef: string; targetRef: string; commandId: string; expiresAtMs: number }
+      | { kind: "playback"; speechRef: string; state: "speaking" | "canceled"; outcomeRef?: string }
     >) => void
   }>) => VoiceNativeMediaSession | Promise<VoiceNativeMediaSession>
 }>
@@ -63,11 +65,12 @@ export const createDesktopVoiceHost = (input: Readonly<{
   let current: DesktopVoiceState = { protocolVersion: 1, phase: "idle", generation: 0, nextSequence: 0, acknowledgedSequence: 0, capture: false, egress: false, playback: false, retainedAudio: false, activity: "stopped" }
   let session: VoiceNativeMediaSession | null = null
   let captureWanted = false
+  let playbackActive = false
   let disposed = false
   const listeners = new Set<(state: DesktopVoiceState) => void>()
   const publish = (next: Omit<DesktopVoiceState, "capture" | "egress" | "playback"> & Partial<Pick<DesktopVoiceState, "capture" | "egress" | "playback">>) => {
     const live = next.phase === "live"; const muted = next.phase === "muted"
-    current = { ...next, capture: live && captureWanted, egress: live && captureWanted, playback: live || muted }
+    current = { ...next, capture: live && captureWanted, egress: live && captureWanted, playback: playbackActive && (live || muted) }
     for (const listener of listeners) listener(current)
   }
   const close = (reason: "stop" | "revoke" | "replace" | "suspend" | "shutdown") => { const owned = session; session = null; owned?.close(reason) }
@@ -111,12 +114,12 @@ export const createDesktopVoiceHost = (input: Readonly<{
           if (current.generation !== ownedGeneration) return
           if (control.kind === "transcript") publish({ ...current, activity: control.final ? "listening" : "transcribing", transcript: { utteranceRef: control.utteranceRef, text: control.text.slice(0, 16_384), final: control.final } })
           else if (control.kind === "activity") publish({ ...current, activity: control.activity })
-          else {
+          else if (control.kind === "proposal") {
             const commandTargets = control.commandId === control.targetRef ||
               ((control.commandId === "conversation.interrupt" || control.commandId === "conversation.followup") && control.targetRef === control.turnRef)
             const state = !commandTargets || control.expiresAtMs <= (input.now?.() ?? Date.now()) ? "refused" as const : "proposed" as const
             publish({ ...current, activity: state === "proposed" ? "awaiting_confirmation" : "listening", proposal: { ...control, state } })
-          }
+          } else { playbackActive = control.state === "speaking"; publish({ ...current, activity: playbackActive ? "speaking" : "listening", ...(control.outcomeRef === undefined ? {} : { playbackOutcomeRef: control.outcomeRef }) }) }
         },
       }) } catch { typedFailure("failed", "helper_crashed") }
       return current

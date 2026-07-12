@@ -46,6 +46,7 @@ pub struct ServerTtsHeader {
     pub schema: String,
     pub identity: VoiceIdentity,
     pub sequence: u64,
+    pub turn_ref: String,
     pub speech_ref: String,
     pub codec: Codec,
     pub sample_rate_hz: u32,
@@ -110,7 +111,7 @@ impl MediaHeader {
                     h.channels,
                     h.payload_length,
                     &h.sha256,
-                ) && valid_ref(&h.speech_ref)
+                ) && valid_ref(&h.turn_ref) && valid_ref(&h.speech_ref)
                     && matches!(h.sample_rate_hz, 24_000 | 48_000)
             }
         }

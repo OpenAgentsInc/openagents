@@ -729,6 +729,21 @@ completion, or alternate conversation authority. Accepted and settled truth
 continues to come from the normal Runtime Gateway command and conversation
 outcomes used by pointer, keyboard, and typed text.
 
+### AUDIO-7 TTS/barge-in receipt
+
+The gateway now exposes a grant-bound canonical `/v1/speak` seam backed by
+Google Chirp 3 HD bidirectional streaming synthesis. It preserves assistant
+text first, normalizes only a conservative spoken-form lexicon, emits fixed
+24 kHz mono s16le chunks, and records text-free synthesis metrics. The signed
+Rust helper validates identity, generation, turn, speech ref, codec, size, and
+digest before buffering playback; a newer speech ref flushes the old queue.
+
+Qualified barge-in requires Google speech-begin plus at least three characters
+of interim/final speech. It cancels synthesis/inference through the registered
+interrupt callback, sends an outcome-bound playback cancel, and promptly
+flushes Rust's output queue. See the
+[`AUDIO-7 deployed receipt`](./evidence/2026-07-12-audio-7-chirp-tts-barge-receipt.md).
+
 ### V0 — owner direction and contracts
 
 - Record the owner direction for explicit click-to-start persistent capture and

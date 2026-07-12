@@ -174,6 +174,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@google-cloud/speech": "^7.2.1",
+        "@google-cloud/text-to-speech": "^6.4.1",
         "@openagentsinc/audio-contract": "workspace:*",
         "effect": "catalog:",
       },
@@ -1804,6 +1805,8 @@
     "@google-cloud/speech": ["@google-cloud/speech@7.5.0", "", { "dependencies": { "@google-cloud/common": "^6.0.0", "@types/pumpify": "^1.4.4", "google-gax": "^5.0.0", "pumpify": "^2.0.1", "stream-events": "^1.0.5" } }, "sha512-Tvn9yvNNTGj+AcUVtTBgOASXuUfwqU3L2ugHAORhzPtj0G/Bxstlut9WhDl96FR/rihbJ6mvTMEijsbuOREDPA=="],
 
     "@google-cloud/storage": ["@google-cloud/storage@7.21.0", "", { "dependencies": { "@google-cloud/paginator": "^5.0.0", "@google-cloud/projectify": "^4.0.0", "@google-cloud/promisify": "<4.1.0", "abort-controller": "^3.0.0", "async-retry": "^1.3.3", "duplexify": "^4.1.3", "fast-xml-parser": "^5.3.4", "gaxios": "^6.0.2", "google-auth-library": "^9.6.3", "html-entities": "^2.5.2", "mime": "^3.0.0", "p-limit": "^3.0.1", "retry-request": "^7.0.0", "teeny-request": "^9.0.0" } }, "sha512-l+IFTkd+6Y5LoAuXyYCKNAKtw/Ci+rAMqgdTB1jv4iZiLhw0rtq+0qjIRbBizXkNzEFmXiXUW0H7sZQQvk1ffA=="],
+
+    "@google-cloud/text-to-speech": ["@google-cloud/text-to-speech@6.4.1", "", { "dependencies": { "google-gax": "^5.0.0" } }, "sha512-iF1SpBPbP019zoLYzIJXp/yDumrSNl19T7hXP4Lg8d2cnNtxoQKQuNOpiwFrxEKV3CBJpp7OY5+z7/K73zNr5w=="],
 
     "@gorhom/bottom-sheet": ["@gorhom/bottom-sheet@5.2.14", "", { "dependencies": { "@gorhom/portal": "1.0.14", "invariant": "^2.2.4" }, "peerDependencies": { "@types/react": "*", "@types/react-native": "*", "react": "*", "react-native": "*", "react-native-gesture-handler": ">=2.16.1", "react-native-reanimated": ">=3.16.0 || >=4.0.0-" }, "optionalPeers": ["@types/react", "@types/react-native"] }, "sha512-uLQFlDjp9z+jrOFcMSEldPqL5JdaXL3vXOh+juhwoNvXgTsEorJLjHTugXu+YccAG/0KJnShzKCrb71MHBsvJg=="],
 

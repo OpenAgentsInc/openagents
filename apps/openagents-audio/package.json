@@ -9,10 +9,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:cloudrun": "bun build src/main.ts --target=bun --outdir dist --entry-naming server.js",
     "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh",
-    "smoke:live": "bun scripts/live-retention-smoke.ts"
+    "smoke:live": "bun scripts/live-retention-smoke.ts",
+    "smoke:tts:live": "bun scripts/live-tts-smoke.ts",
+    "smoke:barge:live": "bun scripts/live-barge-smoke.ts"
   },
   "dependencies": {
     "@google-cloud/speech": "^7.2.1",
+    "@google-cloud/text-to-speech": "^6.4.1",
     "@openagentsinc/audio-contract": "workspace:*",
     "effect": "catalog:"
   },

@@ -51,8 +51,10 @@ export const ServerControlSchema = S.Union([
   S.Struct({ ...Base, _tag: S.Literal("must_refetch"), afterServerSequence: Seq }),
   S.Struct({ ...Base, _tag: S.Literal("transcript_interim"), utteranceRef: Ref, text: Text }),
   S.Struct({ ...Base, _tag: S.Literal("transcript_final"), utteranceRef: Ref, text: Text }),
-  S.Struct({ ...Base, _tag: S.Literal("assistant_text"), messageRef: Ref, text: Text }),
-  S.Struct({ ...Base, _tag: S.Literal("tts_chunk"), speechRef: Ref, payloadLength: BoundedBytes, sha256: S.String.check(S.isPattern(/^[a-f0-9]{64}$/u)) }),
+  S.Struct({ ...Base, _tag: S.Literal("assistant_text"), messageRef: Ref, turnRef: Ref, speechRef: Ref, text: Text }),
+  S.Struct({ ...Base, _tag: S.Literal("tts_chunk"), turnRef: Ref, speechRef: Ref, payloadLength: BoundedBytes, sha256: S.String.check(S.isPattern(/^[a-f0-9]{64}$/u)) }),
+  S.Struct({ ...Base, _tag: S.Literal("playback_cancel"), turnRef: Ref, speechRef: Ref, outcomeRef: Ref, reason: S.Literal("qualified_barge_in") }),
+  S.Struct({ ...Base, _tag: S.Literal("tts_state"), turnRef: Ref, speechRef: Ref, state: S.Literals(["started", "completed", "canceled", "provider_error", "empty"]) }),
   S.Struct({
     ...Base, _tag: S.Literal("command_proposal"), proposalRef: Ref,
     utteranceRef: Ref, turnRef: Ref, targetRef: Ref,
@@ -75,7 +77,7 @@ export const ClientAudioMediaHeaderSchema = S.Struct({
 })
 export const ServerTtsMediaHeaderSchema = S.Struct({
   schema: S.Literal(AUDIO_PROTOCOL_VERSION), kind: S.Literal("server_tts"),
-  identity: VoiceIdentitySchema, sequence: Seq, speechRef: Ref,
+  identity: VoiceIdentitySchema, sequence: Seq, turnRef: Ref, speechRef: Ref,
   codec: S.Literals(["pcm_s16le", "opus"]), sampleRateHz: S.Literals([24_000, 48_000]),
   channels: S.Literal(1), payloadLength: BoundedBytes,
   sha256: S.String.check(S.isPattern(/^[a-f0-9]{64}$/u)),

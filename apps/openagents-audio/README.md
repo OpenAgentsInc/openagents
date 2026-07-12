@@ -2,6 +2,13 @@
 
 Private Bun/Effect Cloud Run gateway for persistent voice. It accepts authenticated AUDIO-1 binary WebSocket frames at `/v1/stream`, validates exact owner/device/thread/session/generation and sequence, and bridges bounded LINEAR16 chunks to Google Speech-to-Text V2 `StreamingRecognize` with `chirp_3`.
 
+Canonical assistant text enters through the separately grant-bound
+`POST /v1/speak` seam and streams through Google Chirp 3 HD bidirectional TTS.
+The visible text is sent first and never depends on synthesis success. PCM is
+fixed at signed 16-bit little-endian, 24 kHz, mono and every chunk is bound to
+the exact voice identity, assistant turn, and speech ref. Qualified speech
+emits an outcome-bound playback cancel; trivial noise/backchannels do not.
+
 The Google adapter uses ADC/workload identity. Credentials, raw audio, and transcript text are never logged. Logs contain only event names and generation numbers; production metrics must remain ref-only. The service owns transcription delivery, not commands, Sync, retention, or raw-audio storage.
 
 ## Runtime contract
