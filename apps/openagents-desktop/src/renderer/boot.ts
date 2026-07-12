@@ -375,6 +375,28 @@ const fleetAccountsBridge: FleetAccountsBridge = {
       },
     })
   },
+  decideAttention: async (command) => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return null
+    const suffix = globalThis.crypto.randomUUID().replace(/[^A-Za-z0-9._:]/g, "")
+    return bridge.runtimeRequest({
+      kind: "command",
+      commandId: `fleet-attention-${suffix}`,
+      command: {
+        id: "runtime.decideInteraction",
+        interactionRef: command.interactionRef,
+        threadRef: command.threadRef,
+        turnRef: command.runRef,
+        envelope: {
+          decisionRef: `decision.desktop.${suffix}`,
+          idempotencyKey: `idem.desktop.${suffix}`,
+          decidedAt: new Date().toISOString(),
+          surface: "desktop",
+          decision: { kind: "tool_approval", outcome: command.action },
+        },
+      },
+    })
+  },
 }
 
 /**

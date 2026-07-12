@@ -178,6 +178,8 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
     expect(JSON.stringify(open.onPress)).toContain("thread.demo")
     expect((nodeByKey(view, "fleet-cockpit-run.demo-pause") as { onPress?: { name?: string } }).onPress?.name).toBe("FleetRunControlRequested")
     expect((nodeByKey(view, "fleet-cockpit-run.demo-cancel") as { onPress?: { name?: string } }).onPress?.name).toBe("FleetRunControlRequested")
+    expect((nodeByKey(view, "fleet-cockpit-run.demo-interaction.approval-approve") as { onPress?: { name?: string } }).onPress?.name).toBe("FleetAttentionDecisionRequested")
+    expect((nodeByKey(view, "fleet-cockpit-run.demo-interaction.approval-deny") as { onPress?: { name?: string } }).onPress?.name).toBe("FleetAttentionDecisionRequested")
   })
 
   test("non-live cockpit authority states honestly that controls are withheld", () => {
@@ -660,6 +662,32 @@ describe("typed fleet intent loop (registry -> state -> re-render)", () => {
       expect(submitted).toEqual([{ action: "pause", threadRef: "thread.demo", runRef: "run.demo", expectedVersion: 7 }])
       expect((yield* SubscriptionRef.get(state)).fleet.cockpitCards[0]?.runVersion).toBe(8)
       expect((yield* SubscriptionRef.get(state)).fleet.cockpitCards[0]?.status).toBe("canceled")
+    }))
+  })
+
+  test("attention decision carries exact interaction and run generations", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const submitted: unknown[] = []
+      const { state, registry } = yield* makeHarness({
+        list: async () => ({ ok: false, reason: "unused" }),
+        usage: async ref => ({ ok: false, ref, reason: "unused" }),
+        decideAttention: async command => { submitted.push(command); return { status: "pending_reconcile" } },
+        cockpit: async () => ({ authority: "live", cards: [runningCockpitCard] }),
+      })
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        fleet: { ...current.fleet, cockpitAuthority: "live" as const, cockpitCards: [runningCockpitCard] },
+      }))
+      const approve = nodeByKey(fleetWorkspaceView((yield* SubscriptionRef.get(state)).fleet), "fleet-cockpit-run.demo-interaction.approval-approve") as { onPress: Parameters<typeof resolveIntentRef>[0] }
+      yield* registry.dispatch(resolveIntentRef(approve.onPress, null))
+      expect(submitted).toEqual([{
+        action: "approve",
+        threadRef: "thread.demo",
+        runRef: "run.demo",
+        interactionRef: "interaction.approval",
+        expectedRunVersion: 7,
+        expectedInteractionVersion: 3,
+      }])
     }))
   })
 })

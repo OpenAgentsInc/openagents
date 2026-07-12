@@ -33,6 +33,9 @@ import {
 } from "../usage-ledger-contract.ts"
 import {
   admitFleetRunCommand,
+  admitFleetAttentionCommand,
+  type FleetAttentionAction,
+  type FleetAttentionCommand,
   type FleetCockpitCard,
   type FleetRunAction,
   type FleetRunCommand,
@@ -281,6 +284,11 @@ export const FleetRunControlRequested = defineIntent("FleetRunControlRequested",
   action: Schema.Literals(["pause", "cancel", "resume", "retry", "close"]),
   runRef: Schema.String,
 }))
+export const FleetAttentionDecisionRequested = defineIntent("FleetAttentionDecisionRequested", Schema.Struct({
+  action: Schema.Literals(["approve", "deny"]),
+  interactionRef: Schema.String,
+  runRef: Schema.String,
+}))
 
 export const fleetWorkspaceIntents = [
   FleetRefreshRequested,
@@ -288,6 +296,7 @@ export const fleetWorkspaceIntents = [
   FleetManageAccountsRequested,
   FleetLedgerUpdated,
   FleetRunControlRequested,
+  FleetAttentionDecisionRequested,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -302,6 +311,7 @@ export type FleetAccountsBridge = Readonly<{
   ledger?: () => Promise<unknown>
   cockpit?: () => Promise<Readonly<{ authority: FleetWorkspaceState["cockpitAuthority"]; cards: ReadonlyArray<FleetCockpitCard> }>>
   control?: (command: FleetRunCommand) => Promise<unknown>
+  decideAttention?: (command: FleetAttentionCommand) => Promise<unknown>
 }>
 
 export const unavailableFleetAccountsBridge: FleetAccountsBridge = {
@@ -384,6 +394,19 @@ export const makeFleetWorkspaceHandlers = <S extends FleetCapableState>(
       const command = admitFleetRunCommand(card, payload.action)
       if (command === null) return
       yield* Effect.promise(() => bridge.control!(command).catch(() => null))
+      if (bridge.cockpit === undefined) return
+      const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
+      yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))
+    }),
+  FleetAttentionDecisionRequested: (payload: Readonly<{ action: FleetAttentionAction; interactionRef: string; runRef: string }>) =>
+    Effect.gen(function* () {
+      if (bridge.decideAttention === undefined) return
+      const current = yield* SubscriptionRef.get(state)
+      const card = current.fleet.cockpitCards.find(item => item.runRef === payload.runRef)
+      if (card === undefined) return
+      const command = admitFleetAttentionCommand(card, payload.interactionRef, payload.action)
+      if (command === null) return
+      yield* Effect.promise(() => bridge.decideAttention!(command).catch(() => null))
       if (bridge.cockpit === undefined) return
       const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))
@@ -812,7 +835,20 @@ const fleetCockpitSection = (fleet: FleetWorkspaceState): ReadonlyArray<View> =>
           Button({ key: `fleet-cockpit-${card.runRef}-open`, label: "Open", variant: "ghost", onPress: IntentRef("DesktopChatSelected", StaticPayload(card.threadRef)), a11y: { label: `Open conversation ${card.title}` } }),
         ]),
         Text({ key: `fleet-cockpit-${card.runRef}-refs`, content: [card.workContextRef, card.repositoryRef, ...card.agentRefs, ...card.receiptRefs].filter((value): value is string => value !== null).join(" · "), variant: "caption", color: "textMuted" }),
-        ...(card.attention.length === 0 ? [] : [Text({ key: `fleet-cockpit-${card.runRef}-attention`, content: `${card.attention.length} item${card.attention.length === 1 ? "" : "s"} ${card.attention.length === 1 ? "needs" : "need"} attention`, variant: "label", color: "warning" })]),
+        ...(card.attention.length === 0 ? [] : [
+          Text({ key: `fleet-cockpit-${card.runRef}-attention`, content: `${card.attention.length} item${card.attention.length === 1 ? "" : "s"} ${card.attention.length === 1 ? "needs" : "need"} attention`, variant: "label", color: "warning" }),
+          ...card.attention.map(attention => Stack({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}`, direction: "row", gap: "2", align: "center" }, [
+            Text({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-title`, content: attention.title, variant: "body", color: "textPrimary" }),
+            Spacer({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-fill`, flex: true }),
+            ...attention.actions.map(action => Button({
+              key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-${action}`,
+              label: action === "approve" ? "Approve" : "Deny",
+              variant: action === "approve" ? "primary" : "secondary",
+              onPress: IntentRef("FleetAttentionDecisionRequested", StaticPayload({ action, interactionRef: attention.interactionRef, runRef: card.runRef })),
+              a11y: { label: `${action} ${attention.title}` },
+            })),
+          ])),
+        ]),
         ...(card.actions.length === 0 ? [] : [Stack({ key: `fleet-cockpit-${card.runRef}-controls`, direction: "row", gap: "2", align: "center" }, card.actions.map(action => Button({
           key: `fleet-cockpit-${card.runRef}-${action}`,
           label: action[0]!.toUpperCase() + action.slice(1),

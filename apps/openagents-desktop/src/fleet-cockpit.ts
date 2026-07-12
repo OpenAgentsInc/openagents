@@ -7,9 +7,12 @@
  */
 export {
   admitFleetRunCommand,
+  admitFleetAttentionCommand,
   projectFleetCockpitCard,
   type FleetAuthority,
   type FleetCockpitCard,
+  type FleetAttentionAction,
+  type FleetAttentionCommand,
   type FleetRunAction,
   type FleetRunCommand,
 } from "@openagentsinc/khala-sync-client"
