@@ -13,6 +13,8 @@ import {
   validateMarkdownLinks,
   validateMaster,
   validatePolicy,
+  validatePreparedArchiveManifest,
+  validatePreparedArchiveManifest,
   validateQueueOwnership,
   validateReceiptIndex,
   validateRevisionPins,
@@ -71,7 +73,9 @@ describe("positive repository fixture", () => {
       && document.status && document.snapshot && document.reviewTrigger
       && /^[0-9a-f]{64}$/.test(document.sha256)
       && Array.isArray(document.inboundLinks) && Array.isArray(document.issueLinks)
+      && document.inboundSourceCount === document.inboundLinks.length
     )).toBe(true)
+    expect(first.sourceTreeSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(first.documents.filter((document) => document.dispatch).map((document) => document.path)).toEqual([
       "docs/sol/MASTER_ROADMAP.md",
     ])
@@ -189,6 +193,19 @@ describe("policy, receipt, archive, and link regressions", () => {
 - Backroom final bidirectional receipt: \`b9645456\`
 `
     expect(validateArchiveManifest(manifest).join("\n")).toContain("OpenAgents completed manifest")
+  })
+
+  test("rejects a prepared archive batch without its exact source hash", () => {
+    expect(validatePreparedArchiveManifest("prepared without provenance").join("\n")).toContain(
+      "prepared archive manifest is missing",
+    )
+  })
+
+  test("rejects an unbounded or incomplete next Backroom batch", () => {
+    const result = validatePreparedArchiveManifest("# prepared without exact provenance").join("\n")
+    expect(result).toContain("prepared archive manifest is missing")
+    expect(result).toContain("exactly one July 10 candidate")
+    expect(result).toContain("Backroom-first deletion gate")
   })
 
   describe("internal Markdown links", () => {

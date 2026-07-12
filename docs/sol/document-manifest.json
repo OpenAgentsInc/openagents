@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "260cb66f88a4fb86c458167a138b442ab8d11d4557fac6ea7ed56d746b1a2866",
+  "sourceTreeSha256": "6d42305c95a4d2163bb89acae35c3b09c6a92d314fc198acfd5b6817fa286c01",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md",
@@ -711,9 +711,10 @@
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
         "docs/sol/receipts/README.md"
       ],
-      "inboundSourceCount": 1,
+      "inboundSourceCount": 2,
       "issueLinks": [
         8547,
         8566,
@@ -877,7 +878,7 @@
       "owner": "Sol documentation cleanup",
       "disposition": "retain-execution-ledger",
       "dispatch": false,
-      "sha256": "14add93bc77e2c6468d7a97a0c201ab5688330cd2ccb329ce7ea11d714155152",
+      "sha256": "14ccdb0a4b2bd10959c386462c2815648bebeb1a59a592a7be01f881434e6591",
       "status": "active cleanup execution ledger and historical source audit; not",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
@@ -909,7 +910,9 @@
         8727,
         8728,
         8729,
-        8730
+        8730,
+        8731,
+        8732
       ]
     },
     {
@@ -978,8 +981,10 @@
       "snapshot": "`39a4c9177b`",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "before any governed archive transition",
-      "inboundLinks": [],
-      "inboundSourceCount": 0,
+      "inboundLinks": [
+        "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md"
+      ],
+      "inboundSourceCount": 1,
       "issueLinks": []
     },
     {
@@ -1104,7 +1109,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "ee63aec112fb0964f9ef54e6e221cc6f403bc208f2f7881ec4c6991a39a13b89",
+      "sha256": "2671a0a239e5ab9c39fa9b1c8675a63c324fdb2fa4019af4e18418756474bcf9",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
@@ -1175,6 +1180,7 @@
         8728,
         8729,
         8730,
+        8731,
         8733,
         8734,
         8735,

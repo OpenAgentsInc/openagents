@@ -26,13 +26,14 @@
 | SOL-DOC-06 — extract July 9 doctrine and prepare archive | [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728) | **Closed 2026-07-12.** Binding greenfield/Sarah-removal decisions and five live falsifiers have durable owners; the nine candidate files are pinned by hash, inbound links, destination, and cross-repo deletion gate. | `6e8b55b86e` — 9/9 hash equality, unchanged source bytes, migrated binding links, local links, diff, and repository fast pre-push checks pass. |
 | SOL-DOC-07 — archive July 9 corpus and remove sources | [#8729](https://github.com/OpenAgentsInc/openagents/issues/8729) | **Closed 2026-07-12.** Nine exact files were hash/line/byte verified and pushed to Backroom before their OpenAgents links migrated and source paths were removed. Both repositories record the commits. | Backroom import `dec8ae52`; OpenAgents removal `b62ad88136`; Backroom final note `b9645456`; OpenAgents completed manifest `c608527eda`. |
 | SOL-DOC-08 — automate freshness and link integrity | [#8730](https://github.com/OpenAgentsInc/openagents/issues/8730) | **Closed 2026-07-12.** A seven-day schema-versioned product-issue snapshot, explicit live refresh/comparison, active-policy/classification/receipt/archive/link/size checks, and negative regression fixtures now fail concrete drift offline before push. | `1e46778733` — 10 live product issues equal GitHub; 43/43 issue sources; 25 receipt rows; nine removed paths; 13/13 regressions; all Sol links; 571/800 master lines. |
+| SOL-DOC-09 — full inventory and next archive preparation | [#8731](https://github.com/OpenAgentsInc/openagents/issues/8731) | **Closed 2026-07-12.** Every Sol Markdown file has a reproducible class/owner/hash/status/snapshot/review/dispatch/inbound/issue/disposition row; the one-hop clean-reader contract is receipted; one retired July 10 diary is the sole next archive candidate. Duplicate #8732 was closed without a second implementation lane. | `7f1bc65e4a` — 92/92 documents, nine controlled classes, one dispatch owner, one exact archive candidate, 19 live product issues, 15/15 regressions, 596/800 master lines. |
 
-**Next ordered chunk:** SOL-DOC-09 closes the remaining P0/P5/P6 exit gaps:
-generate the full Sol document manifest with class/owner/review/inbound- and
-issue-link/disposition data, classify every remaining ambiguous file, run and
-receipt the explicit clean-agent reading test, and select the next exact
-Backroom batch for obsolete July 10 delegation/execution prose without moving
-receipts, failures, contracts, decisions, transcripts, or tombstones.
+**Next ordered chunk:** SOL-DOC-10 performs the import-first cross-repository
+move of the one exact candidate in the
+[`July 10 preparation manifest`](./2026-07-12-july10-delegation-backroom-preparation-manifest.md):
+push exact bytes/provenance to Backroom, migrate its two inbound links, remove
+only that source, and record both repositories' commits before a final cleanup
+completion audit.
 
 ## Executive decision
 
@@ -376,14 +377,20 @@ recovery.
 
 **Goal:** know which files can dispatch before changing content.
 
-1. Add a machine-readable or consistently parsed header to every Sol document:
+SOL-DOC-09 [#8731](https://github.com/OpenAgentsInc/openagents/issues/8731)
+completed this phase at `7f1bc65e4a`: the deterministic checked-in manifest
+covers 92/92 Sol Markdown files, hashes the source tree, records review and
+link/issue/disposition facts, and fails on any unclassified or stale entry.
+
+1. **Complete.** Add machine-readable metadata or an explicit reviewed manifest
+   classification to every Sol document:
    `Class`, `Status`, `Snapshot`, `Supersedes`, `Superseded by`, and
    `Dispatch: yes/no` as applicable.
-2. Generate a manifest containing path, class, owner, last meaningful review,
+2. **Complete.** Generate a manifest containing path, class, owner, last meaningful review,
    inbound links, issue links, and proposed disposition.
-3. Declare only the master roadmap, claim protocol, durable contracts, live
+3. **Complete.** Declare only the master roadmap, claim protocol, durable contracts, live
    issues, and the one current status projection dispatch-capable.
-4. Stop adding landing diaries to the master roadmap during the cleanup.
+4. **Complete.** Stop adding landing diaries to the master roadmap during the cleanup.
 
 **Exit:** every file has an owner and disposition; no ambiguous “active
 analysis” remains.
@@ -632,6 +639,9 @@ The new-agent reading test should be explicit: give a clean agent only the Sol
 README and follow its links. It must identify the same owner decisions, open
 issue set, next dependency-ready work, proof rungs, and non-goals as the live
 authorities without consulting superseded prose.
+
+SOL-DOC-09 made this executable and retained the observed bounded answer in
+[`2026-07-12-clean-agent-reading-receipt.md`](./2026-07-12-clean-agent-reading-receipt.md).
 
 ## Success measures
 
