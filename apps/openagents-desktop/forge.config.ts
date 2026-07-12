@@ -46,7 +46,11 @@ const config: ForgeConfig = {
     asar: {
       // Both provider packages resolve and spawn native executables relative
       // to their installed package. Executables cannot run inside app.asar.
-      unpack: "**/node_modules/{@anthropic-ai/claude-agent-sdk*,@openai/codex*}/**/*",
+      // Keep the renderer on a real, bounded filesystem path. With
+      // GrantFileProtocolExtraPrivileges disabled, Chromium does not admit the
+      // top-level file URL through ASAR on the installed artifact even though
+      // Electron's Node-side ASAR APIs can list it.
+      unpack: "{dist/renderer/**/*,**/node_modules/{@anthropic-ai/claude-agent-sdk*,@openai/codex*}/**/*}",
     },
     // Forge's npm-oriented dependency walker cannot resolve Bun workspace
     // links. The release preflight/ASAR oracle enforces the artifact allowlist

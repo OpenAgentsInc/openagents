@@ -14,6 +14,7 @@ describe("CUT-26 macOS artifact contract", () => {
     const asar = config.packagerConfig?.asar as { unpack?: string }
     expect(asar.unpack).toContain("claude-agent-sdk")
     expect(asar.unpack).toContain("@openai/codex")
+    expect(asar.unpack).toContain("dist/renderer")
     expect(config.makers).toHaveLength(2)
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }
     expect(manifest.scripts["make:mac"]).toContain("prepare-macos-maker.ts")
@@ -32,8 +33,11 @@ describe("CUT-26 macOS artifact contract", () => {
       "EnableEmbeddedAsarIntegrityValidation]: true",
       "OnlyLoadAppFromAsar]: true",
       "LoadBrowserProcessSpecificV8Snapshot]: false",
+      "GrantFileProtocolExtraPrivileges]: false",
       "strictlyRequireAllFuses: true",
     ]) expect(source).toContain(expected)
+    const main = readFileSync(path.join(root, "src", "main.ts"), "utf8")
+    expect(main).toContain('path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer", "index.html")')
   })
 
   test("entitlements stay minimal and never disable library validation or permit debugging", () => {

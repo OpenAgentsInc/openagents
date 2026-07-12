@@ -295,6 +295,9 @@ import {
 } from "./desktop-command-bindings.ts"
 
 const here = import.meta.dirname
+const rendererHtmlPath = app.isPackaged
+  ? path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer", "index.html")
+  : path.join(here, "renderer", "index.html")
 // Startup-timing harness (measure-constantly discipline; scripts/startup-bench.ts).
 // When set to a file path, the app runs the deterministic fixture startup path
 // (implies smoke wiring — no network, no real ~/.codex scan), records the
@@ -2007,7 +2010,7 @@ const createWindow = (): BrowserWindow => {
     recordMainMark("windowReadyToShow")
     window.show()
   })
-  void window.loadFile(path.join(here, "renderer/index.html"))
+  void window.loadFile(rendererHtmlPath)
   return window
 }
 
