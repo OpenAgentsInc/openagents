@@ -1,14 +1,19 @@
 # Reliable Desktop/mobile subsystem implementation implications
 
-- Updated: 2026-07-10
-- Status: active companion to
-  [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 25
-- Execution packet:
-  [`2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Class: contract
+- Updated: 2026-07-12
+- Status: active, revision-independent subsystem boundary companion to
+  [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
+- Dispatch: no current queue; use the master roadmap, live issues/claims,
+  current code/tests, and receipts for implementation state
 
 The prior Sarah-first subsystem map is superseded. Its authority, privacy,
 typed-service, and receipt principles are retained; its named front door,
 relationship-first navigation, and A/V sequencing are not.
+
+This document states durable responsibilities and prohibitions. “Must” names a
+maintained product contract, not evidence that the capability is absent today.
+Do not infer current gaps, proof rungs, or next work from this file.
 
 ## Shared system rule
 
@@ -32,8 +37,8 @@ client state <- Khala Sync <- receipt/outcome <- evidence
 
 ## 1. Identity, session, and Khala Sync
 
-**Must become:** one authenticated owner/org/device/session contract that both
-clients can resume without forking state.
+**Durable responsibility:** one authenticated owner/org/device/session
+contract that both clients can resume without forking state.
 
 Implementation consequences:
 
@@ -58,12 +63,12 @@ Do not:
 - report transport delivery as command completion;
 - expose credentials, raw events, prompts, paths, or private repository data.
 
-Nearest gates: R1, R2, and the cross-client continuity fixture in the
-delegation packet.
+Related gates: R1, R2, and the current cross-client continuity acceptance in
+the master roadmap.
 
 ## 2. OpenAgents Desktop
 
-**Must become:** a practical OpenCode-parity coding workbench and
+**Durable responsibility:** a practical OpenCode-parity coding workbench and
 server-authoritative Fleet cockpit at `apps/openagents-desktop`.
 
 Implementation consequences:
@@ -71,12 +76,14 @@ Implementation consequences:
 - Keep the hardened Electron boundary: sandbox/context isolation, no renderer
   Node integration, restrictive CSP, deny-by-default navigation/window/
   permission policy, fixed schema-decoded IPC, and host capability grants.
-- Replace the local five-thread/request-response baseline with authoritative
-  session identity, streamed reasoning/tool/plan/request/outcome state, rich
-  composer/context, interrupt/resume, and reconnect.
-- Complete projects/sessions/commands, bounded file edit/save, Git review,
-  workspace-bounded PTY, runtime/model/provider/MCP/permission settings,
-  diagnostics, and lifecycle/distribution.
+- Maintain authoritative session identity, streamed reasoning/tool/plan/
+  request/outcome state, rich composer/context, interrupt/resume, and
+  reconnect without reviving a parallel local-only authority.
+- Maintain and finish any unsatisfied acceptance for projects/sessions/
+  commands, bounded file edit/save, Git review, workspace-bounded PTY,
+  runtime/model/provider/MCP/permission settings, diagnostics, and lifecycle/
+  distribution according to the current roadmap and live issues. Presence in
+  this list does not mean the capability is absent.
 - Compose Fleet state from existing Pylon/Sync authority. Direct controls and
   any future automation use the same typed command IDs and outcomes.
 - Use typed foreign-host nodes for editor/terminal depth; never generalize raw
@@ -92,13 +99,14 @@ Do not:
   status chrome;
 - retire legacy paths until replacement and migration/release proof exist.
 
-Nearest gates: R0, D0–D6/R5, then R7.
+Related roadmap gates: R0, D0–D6/R5, and R7.
 
 ## 3. OpenAgents mobile
 
-**Must become:** a compact remote coding, supervision, and continuity client at
-`apps/openagents-mobile`. It is phone-native rather than a scaled-down Desktop,
-but it must complete useful repository work without requiring Desktop.
+**Durable responsibility:** a compact remote coding, supervision, and
+continuity client at `apps/openagents-mobile`. It is phone-native rather than
+a scaled-down Desktop, but it must complete useful repository work without
+requiring Desktop.
 
 Implementation consequences:
 
@@ -117,11 +125,13 @@ Implementation consequences:
 - Render files, diffs, terminal, preview, artifacts, and writeback through typed
   remote-workroom capabilities. Use progressive contextual navigation; do not
   squeeze Desktop columns onto a phone.
-- Prove background/foreground, offline, restart, notification, deep-link,
-  accessibility, iOS, and Android behavior on physical devices.
+- Preserve background/foreground, offline, restart, notification, deep-link,
+  accessibility, and release proof on the acceptance hosts named by the
+  current roadmap: physical iOS plus Android emulator. Physical Android may
+  add evidence, but the owner decision says nothing gates on it.
 - Keep direct account recovery/settings available behind bounded capabilities.
-- Treat the restored build-115 app-local SwiftUI module as an explicit current
-  host exception, not a second state model or a reason for visual expansion.
+- Treat any app-local SwiftUI module as an explicit host exception, not a
+  second state model or a reason for visual expansion.
 
 Do not:
 
@@ -133,11 +143,11 @@ Do not:
   scoped by the workroom contract;
 - use EAS or silently reuse legacy Khala app data/identity.
 
-Nearest gates: R0, R1/R2, R6, then R7.
+Related roadmap gates: R0, R1/R2, R6, and R7.
 
 ## 4. Fleet, Pylon, workers, and Agent Computers
 
-**Must remain:** one durable FleetRun/claim/attempt/command/outcome authority
+**Durable responsibility:** one FleetRun/claim/attempt/command/outcome authority
 consumed by both clients.
 
 Implementation consequences:
@@ -150,8 +160,9 @@ Implementation consequences:
 - Distinguish accepted, rejected, failed, and unknown-pending-reconcile.
 - Preserve exact usage when measured and explicit `not_measured` otherwise.
 - Keep owner-local subscription and managed-cloud grant/economic rails distinct.
-- Consume #8640 as runtime proof; it does not establish a Sarah front door or
-  complete the Desktop/mobile cutover.
+- Retain closed #8640 as mixed-account runtime proof; it does not establish a
+  Sarah front door, complete the Desktop/mobile cutover, or represent current
+  work.
 
 Do not:
 
@@ -161,12 +172,13 @@ Do not:
 - treat a container/control-plane mock as production isolation proof or allow
   a client-specific remote-workroom authority.
 
-Nearest gates: R3/R4/R6/R7; #8547/#8636's minimum remote-workroom path is P0,
-while advanced elastic placement/provider breadth follows R7.
+Related roadmap gates: R3/R4/R6/R7. Brokered workroom and hybrid-routing
+slices must use this same authority; their current priority and issue refs come
+from the master roadmap.
 
 ## 5. Effect Native and host renderers
 
-**Must remain:** the shared component, state, and intent grammar.
+**Durable responsibility:** the shared component, state, and intent grammar.
 
 Implementation consequences:
 
@@ -188,7 +200,7 @@ Do not:
 
 ## 6. Evidence, behavior contracts, and receipts
 
-**Must become:** cross-device completion truth that survives reconnect and can
+**Durable responsibility:** cross-device completion truth that survives reconnect and can
 be independently checked.
 
 Implementation consequences:
@@ -211,7 +223,7 @@ Do not:
 
 ## 7. Release and operations
 
-**Must become:** observable, recoverable Desktop/mobile software with one
+**Durable responsibility:** observable, recoverable Desktop/mobile software with one
 cross-device incident model.
 
 Implementation consequences:
@@ -238,18 +250,25 @@ production routes. Broad route conversion, landing, Forum expansion, portal,
 CRM, sales, outbound, and payment product work is maintenance/deferred during
 R0–R7 unless it is an exact reliability dependency or production incident.
 
-## 9. Explicitly paused scope
+## 9. Closed presentation scope and retained voice modality
 
 - Sarah as named/default front door;
 - persona/relationship/role-program/named-colleague expansion;
-- avatar, opener, voice, ASR/VAD, realtime video, media admission/cache, and
-  presentation-quality experiments;
+- avatar, opener, Sarah/persona voice, realtime video, media admission/cache,
+  and presentation-quality experiments;
 - landing/portal/Forum product expansion;
 - optional visual/glass/lowering polish.
 
-Do not delete proven compatibility contracts merely to express the pause.
-Security, privacy, data-loss, active-cost, production-outage, and already-
-supported compatibility repairs remain allowed.
+Persona-neutral conversational voice is not part of the closed Sarah scope. It
+is an R6/R7 input/output modality over the same typed session command and
+outcome path as text: explicit microphone state, bounded ASR/TTS/barge-in, text
+fallback, no raw-audio retention by default, and no voice-only authority. Do
+not restore avatar/video/persona state or create a separate command system to
+implement it.
+
+Do not delete proven compatibility contracts merely to express closed scope.
+Security, privacy, data-loss, active-cost, production-outage, accessibility,
+and already-supported compatibility repairs remain allowed.
 
 ## Cross-subsystem definition of done
 

@@ -1,7 +1,10 @@
 # Sol day-to-day operating model
 
-- Updated: 2026-07-10
-- Status: active working contract under Master Roadmap Revision 25
+- Class: contract
+- Updated: 2026-07-12
+- Status: active, revision-independent working contract
+- Dispatch: process guidance only; current work comes from the master roadmap,
+  live issues, and claims
 
 ## Role
 
@@ -44,16 +47,14 @@ Before recommending or implementing a roadmap slice:
 6. Choose the smallest slice that closes a real loop or removes a duplicate
    seam.
 
-## Parallel implementation during the reliability cutover
+## Parallel implementation
 
-In this current Codex app runtime, Sol plus up to three concurrently active
-subagents are available. This is a session-scoped cap, not a universal Codex
-limit. Use those slots for disjoint lanes with clean worktrees and one
-integration owner; serialize shared schemas, migrations, generated catalogs,
-behavior-contract registries, package-script keys, lockfiles, route tables, and
-other hot files/contracts. Use additional Codex tabs for
-greater concurrency or independently steered contexts, not as an assumption
-that one account has gained more quota.
+Use the bounded concurrency exposed by the active runtime for disjoint lanes
+with clean worktrees and one integration owner. Capacity is session- and
+provider-dependent; this contract does not cache a worker count or imply that
+another tab/account has gained quota. Serialize shared schemas, migrations,
+generated catalogs, behavior-contract registries, package-script keys,
+lockfiles, route tables, and other hot files/contracts.
 
 The root coordinator owns same-session claims. Every independent mutating tab
 or session posts a GitHub `CLAIM` before implementation and follows the
@@ -62,10 +63,11 @@ or session posts a GitHub `CLAIM` before implementation and follows the
 on a schema name, catalog version, registry, or package key; those name one
 integration owner explicitly.
 
-The C1 fleet substrate is crossed. #8640 C2 remains a mixed-account runtime
-proof, not a product-front-door switch. Direct Desktop/mobile software becomes
-the accepted owner workflow only after R7. Existing Sarah routes may remain
-bounded compatibility/canary adapters; they do not own product sequencing. See
+#8640 is a closed mixed-account runtime proof, not a product-front-door switch
+or current work item. Direct Desktop/mobile acceptance follows the current
+roadmap gates and receipts. A retained legacy Sarah-named route may remain a
+bounded authority adapter while its explicit deletion/rename gate is open; it
+does not own product sequencing. Historical C0–C3 reasoning is in
 [`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
 
 ## Sol and Terra execution split
@@ -77,12 +79,11 @@ ready R0–R7 leaf when it has one observable outcome, a live issue claim, a cle
 worktree, no conflicting hot-contract ownership, and a proportional real-host
 proof. It does not need Sol to rewrite a clear issue into another task brief.
 
-Terra's first active lane is #8574 OpenAgents Desktop parity. This assignment is
-not permanent: Sol may route Terra to another ready leaf, and owner direction
-may do so immediately. Shared identity/Sync schemas, FleetRun authority/
-projection, Pylon claim/execution/retry state, migrations, credential/account-
-health policy, and the live #8640 burn remain Sol-owned hot paths unless the
-live claim records an explicit handoff.
+Terra's current assignment is whatever bounded live issue and claim identify;
+this durable contract does not cache a first lane or active burn. Shared
+identity/Sync schemas, FleetRun authority/projection, Pylon claim/execution/
+retry state, migrations, and credential/account-health policy require an
+explicit integration owner and claim handoff.
 
 The complete pull, claim, landing, and handoff contract is
 [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
@@ -191,7 +192,7 @@ After a material commit:
 1. Fetch current `origin/main` again and confirm the landed hash.
 2. Re-read the issue exit criteria and receipts.
 3. Update `MASTER_ROADMAP.md` if next-ready work, residual scope,
-   dependency state, R0–R7 acceptance, issue count, or paused disposition
+   dependency state, R0–R7 acceptance, open issue set, or paused disposition
    changed.
 4. Update `SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md` only if the durable target
    architecture changed.
