@@ -40,7 +40,15 @@ describe("CUT-26 macOS artifact contract", () => {
       "strictlyRequireAllFuses: true",
     ]) expect(source).toContain(expected)
     const main = readFileSync(path.join(root, "src", "main.ts"), "utf8")
-    expect(main).toContain('path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer", "index.html")')
+    expect(main).toContain('path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer")')
+    expect(main).toContain('protocol.registerSchemesAsPrivileged')
+    expect(main).toContain('protocol.handle(DesktopRendererScheme')
+    expect(main).toContain('window.loadURL(`${DesktopRendererScheme}://renderer/index.html`)')
+    expect(main).toContain('url.protocol === `${DesktopRendererScheme}:`')
+    expect(main).toContain('["index.html", "text/html; charset=utf-8"]')
+    expect(main).toContain('cpSync(smokeFixtureSourceRoot, smokeFixtureRoot, { recursive: true })')
+    const build = readFileSync(path.join(root, "scripts", "build.ts"), "utf8")
+    expect(build).toContain('"smoke-fixtures"')
   })
 
   test("entitlements stay minimal and never disable library validation or permit debugging", () => {

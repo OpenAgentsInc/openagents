@@ -99,6 +99,16 @@ export const buildDesktop = async (): Promise<string> => {
 
   await cp(path.join(appRoot, "index.html"), path.join(dist, "renderer/index.html"))
   await cp(path.join(appRoot, "src/renderer/app.css"), path.join(dist, "renderer/app.css"))
+  // Packaged smoke cannot reach the source checkout (and must not depend on
+  // it). Keep the bounded public fixtures beside the already-unpacked static
+  // renderer; main copies them into the per-run writable userData directory.
+  const smokeFixtures = path.join(dist, "renderer", "smoke-fixtures")
+  await mkdir(smokeFixtures, { recursive: true })
+  for (const fixture of ["codex-smoke", "claude-smoke"]) {
+    await cp(path.join(appRoot, "tests", "fixtures", fixture), path.join(smokeFixtures, fixture), {
+      recursive: true,
+    })
+  }
   // Consume the checked-in mobile source icon rather than maintaining an
   // approximate sibling asset. A future macOS package can derive `.icns` from
   // this same PNG without introducing a second brand source.

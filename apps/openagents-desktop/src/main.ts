@@ -12,9 +12,9 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, safeStorage, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
 import { Effect } from "effect"
 import {
   buildCloseTurnIntent,
@@ -29,6 +29,17 @@ import {
 // development (`electron .`) and packaged launches agree on "OpenAgents".
 app.setName("OpenAgents")
 process.title = "OpenAgents"
+
+const DesktopRendererScheme = "openagents-app"
+protocol.registerSchemesAsPrivileged([{
+  scheme: DesktopRendererScheme,
+  privileges: {
+    standard: true,
+    secure: true,
+    codeCache: true,
+    supportFetchAPI: true,
+  },
+}])
 
 import {
   CodexAccountsChannel,
@@ -297,9 +308,29 @@ import {
 } from "./desktop-command-bindings.ts"
 
 const here = import.meta.dirname
-const rendererHtmlPath = app.isPackaged
-  ? path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer", "index.html")
-  : path.join(here, "renderer", "index.html")
+const rendererRoot = app.isPackaged
+  ? path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer")
+  : path.join(here, "renderer")
+const rendererAssetContentTypes = new Map([
+  ["index.html", "text/html; charset=utf-8"],
+  ["boot.js", "text/javascript; charset=utf-8"],
+  ["app.css", "text/css; charset=utf-8"],
+] as const)
+const installDesktopRendererProtocol = (): void => {
+  protocol.handle(DesktopRendererScheme, request => {
+    const url = new URL(request.url)
+    const asset = url.hostname === "renderer" ? url.pathname.replace(/^\/+/, "") : ""
+    const contentType = rendererAssetContentTypes.get(asset as "index.html" | "boot.js" | "app.css")
+    if (contentType === undefined) return new Response("Not found", { status: 404 })
+    return new Response(readFileSync(path.join(rendererRoot, asset)), {
+      status: 200,
+      headers: { "content-type": contentType, "cache-control": "no-store" },
+    })
+  })
+}
+const smokeFixtureSourceRoot = app.isPackaged
+  ? path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer", "smoke-fixtures")
+  : path.join(here, "..", "tests", "fixtures")
 // Startup-timing harness (measure-constantly discipline; scripts/startup-bench.ts).
 // When set to a file path, the app runs the deterministic fixture startup path
 // (implies smoke wiring — no network, no real ~/.codex scan), records the
@@ -328,6 +359,13 @@ const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
     : path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
 )
 app.setPath("userData", desktopUserDataPath)
+const smokeFixtureRoot = smokeMode && app.isPackaged
+  ? path.join(desktopUserDataPath, "smoke-fixtures")
+  : smokeFixtureSourceRoot
+if (smokeMode && app.isPackaged) {
+  rmSync(smokeFixtureRoot, { recursive: true, force: true })
+  cpSync(smokeFixtureSourceRoot, smokeFixtureRoot, { recursive: true })
+}
 const primaryDesktopInstance = app.requestSingleInstanceLock()
 if (!primaryDesktopInstance) app.quit()
 const desktopCommandHost = makeDesktopCommandHost()
@@ -615,7 +653,9 @@ const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   if (frame === null || frame !== event.sender.mainFrame) return false
   try {
     const url = new URL(frame.url)
-    return url.protocol === "file:" && path.basename(url.pathname) === "index.html"
+    return url.protocol === `${DesktopRendererScheme}:` &&
+      url.hostname === "renderer" &&
+      url.pathname === "/index.html"
   } catch {
     return false
   }
@@ -693,7 +733,7 @@ const threads = () => makeThreadStore(path.join(app.getPath("userData"), "thread
 const codexSessionsRoot = () => path.resolve(
   process.env.OPENAGENTS_DESKTOP_CODEX_SESSIONS ?? (
     smokeMode
-      ? path.join(here, "..", "tests", "fixtures", "codex-smoke", "sessions")
+      ? path.join(smokeFixtureRoot, "codex-smoke", "sessions")
       : path.join(app.getPath("home"), ".codex", "sessions")
   ),
 )
@@ -704,7 +744,7 @@ const claudeProjectsRoot = (): string | null => {
   if (explicit !== undefined) return explicit === "" ? null : path.resolve(explicit)
   return path.resolve(
     smokeMode
-      ? path.join(here, "..", "tests", "fixtures", "claude-smoke", "projects")
+      ? path.join(smokeFixtureRoot, "claude-smoke", "projects")
       : path.join(app.getPath("home"), ".claude", "projects"),
   )
 }
@@ -2015,7 +2055,7 @@ const createWindow = (): BrowserWindow => {
     recordMainMark("windowReadyToShow")
     window.show()
   })
-  void window.loadFile(rendererHtmlPath)
+  void window.loadURL(`${DesktopRendererScheme}://renderer/index.html`)
   return window
 }
 
@@ -2805,6 +2845,8 @@ const smokeComposerGestures = `(async () => {
   }
   // Shift+Tab toggle, scoped to the focused composer input.
   const selectedHarness = () => {
+    const select = document.querySelector('[data-en-key="shell-harness-select"]')
+    if (select instanceof HTMLSelectElement) return select.value
     const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
     const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
     if (fable?.getAttribute("data-en-variant") === "secondary") return "fable"
@@ -2813,23 +2855,24 @@ const smokeComposerGestures = `(async () => {
   }
   input.focus()
   const before = selectedHarness()
-  if (before !== "fable") return { ok: false, reason: "expected fable selected before toggle, got " + before }
+  if (before !== "fable" && before !== "codex") return { ok: false, reason: "no harness selected before toggle: " + before }
+  const other = before === "fable" ? "codex" : "fable"
   const dispatchShiftTab = (target) => target.dispatchEvent(
     new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
   )
   const firstNotPrevented = dispatchShiftTab(input)
   const flipDeadline = Date.now() + 5000
-  while (Date.now() < flipDeadline && selectedHarness() !== "codex") {
+  while (Date.now() < flipDeadline && selectedHarness() !== other) {
     await wait(25)
   }
-  if (selectedHarness() !== "codex") return { ok: false, reason: "Shift+Tab did not toggle to codex (disabled lane toggle must be allowed)" }
+  if (selectedHarness() !== other) return { ok: false, reason: "Shift+Tab did not toggle to the other harness" }
   if (firstNotPrevented !== false) return { ok: false, reason: "Shift+Tab in the composer was not preventDefaulted" }
   const secondNotPrevented = dispatchShiftTab(input)
   const backDeadline = Date.now() + 5000
-  while (Date.now() < backDeadline && selectedHarness() !== "fable") {
+  while (Date.now() < backDeadline && selectedHarness() !== before) {
     await wait(25)
   }
-  if (selectedHarness() !== "fable") return { ok: false, reason: "Shift+Tab did not toggle back to fable" }
+  if (selectedHarness() !== before) return { ok: false, reason: "Shift+Tab did not toggle back to the initial harness" }
   if (secondNotPrevented !== false) return { ok: false, reason: "second Shift+Tab was not preventDefaulted" }
   // Focus elsewhere: Shift+Tab must NOT toggle (normal focus navigation).
   const elsewhere = document.querySelector('[data-en-key="workspace-new-chat"]')
@@ -2837,9 +2880,15 @@ const smokeComposerGestures = `(async () => {
   elsewhere.focus()
   const outsideNotPrevented = dispatchShiftTab(elsewhere)
   await wait(100)
-  if (selectedHarness() !== "fable") return { ok: false, reason: "Shift+Tab outside the composer hijacked the harness selection" }
+  if (selectedHarness() !== before) return { ok: false, reason: "Shift+Tab outside the composer hijacked the harness selection" }
   if (outsideNotPrevented !== true) return { ok: false, reason: "Shift+Tab outside the composer was preventDefaulted (focus navigation hijacked)" }
   input.focus()
+  if (selectedHarness() !== "fable") {
+    dispatchShiftTab(input)
+    const fableDeadline = Date.now() + 5000
+    while (Date.now() < fableDeadline && selectedHarness() !== "fable") await wait(25)
+  }
+  if (selectedHarness() !== "fable") return { ok: false, reason: "could not restore Fable for the following smoke turn" }
   return { ok: true, iconOnlySend: true, toggledBoth: true, outsideUntouched: true }
 })()`
 
@@ -2855,20 +2904,18 @@ const smokeComposerGestures = `(async () => {
 // are all real.
 const smokeFableLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
-  const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
-  if (fable === null || codex === null) return { ok: false, reason: "harness chips never mounted" }
-  if (fable.disabled !== false) return { ok: false, reason: "fable chip disabled despite fixture account" }
+  const harness = document.querySelector('[data-en-key="shell-harness-select"]')
+  if (!(harness instanceof HTMLSelectElement)) return { ok: false, reason: "provider select never mounted" }
+  const fable = Array.from(harness.options).find((option) => option.value === "fable")
+  const codex = Array.from(harness.options).find((option) => option.value === "codex")
+  if (fable === undefined || codex === undefined) return { ok: false, reason: "provider options missing" }
+  if (fable.disabled !== false) return { ok: false, reason: "Fable option disabled despite fixture account" }
   // EP250 chip-verified-evidence rule: the codex availability invoke is
   // GATED in smoke (released after this step), so at this point the chip is
   // deterministically disabled with its "verifying" reason — the state the
   // popover contract asserts against. The codex-first-class enabled state is
   // asserted by the later codex-local-streamed step.
-  if (codex.disabled !== true) return { ok: false, reason: "codex chip enabled before the smoke availability gate released" }
-  const codexAria = codex.getAttribute("aria-label") || ""
-  if (!codexAria.includes("Codex")) {
-    return { ok: false, reason: "codex disabled chip lost its accessible reason label" }
-  }
+  if (codex.disabled !== true) return { ok: false, reason: "Codex option enabled before the smoke availability gate released" }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
   // No STANDING caption: visible composer text must not carry the reason.
   // The hover-only disabled-reason popover (owner contract EP250) keeps its
@@ -2882,26 +2929,9 @@ const smokeFableLocalStreaming = `(async () => {
       visibleComposerText.includes("requires OpenAgents session")) {
     return { ok: false, reason: "composer still renders a standing disabled-reason caption" }
   }
-  // Disabled-control reason popover (owner verbatim: "i can't tell why the
-  // Codex option is disabled in the composer… put a popover on hover over
-  // the disabled button explaining why"): the disabled codex chip is
-  // wrapped in a tooltip whose content is the SAME reason the accessible
-  // label carries; pointerenter reveals it, pointerleave hides it.
-  const codexWrap = document.querySelector('[data-en-key="shell-harness-codex-reason"]')
-  if (codexWrap === null) return { ok: false, reason: "disabled codex chip has no reason popover wrapper" }
-  const bubble = codexWrap.querySelector('[data-en-role="tooltip"]')
-  if (bubble === null) return { ok: false, reason: "reason popover bubble missing" }
-  if (bubble.hidden !== true) return { ok: false, reason: "reason popover visible at rest (standing caption ban)" }
-  if ((bubble.textContent ?? "") !== codexAria) {
-    return { ok: false, reason: "popover reason does not match the accessible reason: " + bubble.textContent }
-  }
-  codexWrap.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false }))
+  harness.value = "fable"
+  harness.dispatchEvent(new Event("change", { bubbles: true }))
   await wait(50)
-  if (bubble.hidden !== false) return { ok: false, reason: "hover did not reveal the reason popover" }
-  codexWrap.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }))
-  await wait(50)
-  if (bubble.hidden !== true) return { ok: false, reason: "leave did not dismiss the reason popover" }
-  fable.click()
   const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
@@ -3004,8 +3034,12 @@ const smokeFableLocalStreaming = `(async () => {
 // earlier question-card step. Fable-lane only (the fixture query is Fable's).
 const smokeFableImageAttach = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
-  if (fable !== null && fable.getAttribute("data-en-variant") !== "secondary") fable.click()
+  const harness = document.querySelector('[data-en-key="shell-harness-select"]')
+  if (harness instanceof HTMLSelectElement && harness.value !== "fable") {
+    harness.value = "fable"
+    harness.dispatchEvent(new Event("change", { bubbles: true }))
+    await wait(50)
+  }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
   const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (composer === null || input === null) return { ok: false, reason: "composer not mounted" }
@@ -3105,18 +3139,28 @@ const smokeQuestionCard = `(async () => {
 // caption, no ASSISTANT label, and the composer re-enabled.
 const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
-  if (codex === null) return { ok: false, reason: "codex chip never mounted" }
+  const harness = () => document.querySelector('[data-en-key="shell-harness-select"]')
+  const codexOption = () => {
+    const select = harness()
+    return select instanceof HTMLSelectElement
+      ? Array.from(select.options).find((option) => option.value === "codex")
+      : undefined
+  }
+  if (codexOption() === undefined) return { ok: false, reason: "Codex provider option never mounted" }
   // The smoke availability gate released after the fable step: the fixture
   // preflight VERIFIED an account, so the chip must light on that evidence.
   {
     const deadline = Date.now() + 10000
-    while (Date.now() < deadline && codex.disabled !== false) {
+    while (Date.now() < deadline && codexOption()?.disabled !== false) {
       await wait(50)
     }
   }
-  if (codex.disabled !== false) return { ok: false, reason: "codex chip stayed disabled despite a fixture PROBE-VERIFIED account" }
-  codex.click()
+  if (codexOption()?.disabled !== false) return { ok: false, reason: "Codex option stayed disabled despite a fixture PROBE-VERIFIED account" }
+  const select = harness()
+  if (!(select instanceof HTMLSelectElement)) return { ok: false, reason: "provider select disappeared" }
+  select.value = "codex"
+  select.dispatchEvent(new Event("change", { bubbles: true }))
+  await wait(50)
   const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
@@ -3773,6 +3817,7 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
 void app.whenReady().then(async () => {
   if (!primaryDesktopInstance) return
   recordMainMark("appWhenReady")
+  installDesktopRendererProtocol()
   // macOS does not use BrowserWindow's icon for the active Dock tile in a
   // development Electron process. Set both native surfaces to the same mobile
   // PNG so the running desktop application has one product identity.
@@ -3792,7 +3837,7 @@ void app.whenReady().then(async () => {
     if (smokeMode) {
       // Deterministic CUT-13 built-host fixture: real local SQLite/catalog and
       // private binding path, without provider or remote authority claims.
-      syncHost.codingCatalog()?.selectWorkspace(path.join(here, "..", "tests", "fixtures", "codex-smoke"))
+      syncHost.codingCatalog()?.selectWorkspace(path.join(smokeFixtureRoot, "codex-smoke"))
     }
     const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
     if (restoredRoot !== null) hostLifecycle.replaceWorkspace(openSelectedWorkspace(restoredRoot))
