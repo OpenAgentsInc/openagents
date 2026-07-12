@@ -236,10 +236,23 @@ Resume/Retry/Close with no reconciliation error. This proves process
 replacement plus the pre-event-cancel correction on physical iOS. The network-
 gap/offline queue and unlink/revocation row remain outstanding.
 
+The repaired bundle is now served. Commit `ea2cc667af` passes the focused
+mobile conversation corpus (13 tests / 44 assertions) and mobile typecheck.
+The exact build-117 runtime fingerprint
+`44f4fbd0b8ab6bdd1aa410467e6df96f572762b2` was exported to the owned
+`openagents-production` channel and deployed as Cloud Run revision
+`oa-updates-00095-lnr`, serving 100 percent of `oa-updates` traffic. A live
+manifest request to `updates.openagents.com/openagents-mobile/manifest` with
+the exact iOS/runtime/channel headers returned HTTP 200 and Expo protocol v1.
+Subsequent physical foregrounds therefore retain the proven correction without
+requiring Metro, a rebuild, or reinstall.
+
 ## Close decision
 
 #8689 and #8677 remain open. Deterministic rows 7–9 are implemented, the
 physical phone carries the signed build with the app launched, and the live
 Desktop stream/reload/restart rungs are now receipted against the deployed
-surface — but the physical mobile continuation, network-gap, and revocation
-rungs still await the owner's on-device sign-in and touch steps.
+surface. The authenticated physical continuation found and fixed the pre-event
+cancel counterexample, and that repair is live over OTA. The physical cancel
+rerun is proven; only the network-gap/offline-queue and unlink/revocation rungs
+still require the owner's on-device touch steps.
