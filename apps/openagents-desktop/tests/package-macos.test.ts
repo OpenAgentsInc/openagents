@@ -61,6 +61,7 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(source).toContain("ASC_API_ISSUER_ID")
     expect(source).toContain('"code-sign"')
     expect(source).toContain('"signing-identity"')
+    expect(source).toContain('"/Electron Framework.framework/Versions/Current/"')
     expect(source).not.toContain("appleIdPassword")
     expect(source).not.toContain("@openagents.com")
   })

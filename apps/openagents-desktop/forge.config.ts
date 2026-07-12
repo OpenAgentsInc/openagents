@@ -69,6 +69,10 @@ const config: ForgeConfig = {
     protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],
     osxSign: developerIdApplication === undefined ? undefined : {
       identity: developerIdApplication,
+      // Electron Framework/Versions/Current is a symlink to A. Walking and
+      // signing both views races the same resource tree and eventually asks
+      // codesign to reopen a path already rewritten through the other view.
+      ignore: file => file.includes("/Electron Framework.framework/Versions/Current/"),
       optionsForFile: () => ({
         entitlements: "build/entitlements.mac.plist",
         hardenedRuntime: true,
