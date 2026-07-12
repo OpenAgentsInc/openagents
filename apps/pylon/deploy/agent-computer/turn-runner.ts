@@ -278,6 +278,42 @@ export const shortLivedOpenCodeAuthExpiresAt = (
   return typeof expires === 'number' && Number.isFinite(expires) ? expires : null
 }
 
+/** Convert the broker's refresh-free OpenCode envelope into the native
+ * Codex CLI `auth.json` shape. The short-lived access/id tokens are sufficient
+ * for one bounded turn; the refresh token deliberately remains empty because
+ * refresh authority never enters the guest. */
+export const codexAuthJsonFromOpenCodeAuthContent = (
+  authContentJson: string,
+): string | null => {
+  try {
+    const parsed = JSON.parse(authContentJson) as {
+      openai?: Record<string, unknown>
+    }
+    const openai = parsed.openai
+    if (
+      openai === undefined ||
+      typeof openai.access !== 'string' ||
+      typeof openai.idToken !== 'string'
+    ) {
+      return null
+    }
+    return JSON.stringify({
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+      last_refresh: new Date().toISOString(),
+      tokens: {
+        access_token: openai.access,
+        account_id:
+          typeof openai.accountId === 'string' ? openai.accountId : null,
+        id_token: openai.idToken,
+        refresh_token: '',
+      },
+    })
+  } catch {
+    return null
+  }
+}
+
 export const materializeCodexProviderAuth = async (
   args: {
     providerAuth: CodexProviderAuthConfig
@@ -322,7 +358,11 @@ export const materializeCodexProviderAuth = async (
   const codexHome = join(scratchRoot, args.turnId, 'codex-home')
   await mkdir(codexHome, { recursive: true })
   const authJsonPath = join(codexHome, 'auth.json')
-  await writeFile(authJsonPath, `${authContentJson}\n`, { mode: 0o600 })
+  const codexAuthJson = codexAuthJsonFromOpenCodeAuthContent(authContentJson)
+  if (codexAuthJson === null) {
+    return { ok: false, reasonRef: 'codex.provider_auth_material_invalid', status: response.status }
+  }
+  await writeFile(authJsonPath, `${codexAuthJson}\n`, { mode: 0o600 })
   return {
     ok: true,
     authGrantRef: args.providerAuth.authGrantRef,

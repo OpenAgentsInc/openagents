@@ -80,7 +80,9 @@ const claudeProviderAuth: ClaudeProviderAuthConfig = {
 const shortLivedAuthContent = JSON.stringify({
   openai: {
     access: 'short-lived-access-token-never-serialized',
+    accountId: 'account-public-test',
     expires: Date.parse('2026-07-08T12:30:00.000Z'),
+    idToken: 'short-lived-id-token-never-serialized',
   },
 })
 
@@ -161,7 +163,7 @@ describe('agent-computer turn-runner: Codex provider-account broker materializat
     expect(req.body).not.toContain('short-lived-access-token')
   })
 
-  test('materializes short-lived OPENCODE auth into scratch CODEX_HOME only', async () => {
+  test('materializes short-lived broker auth into native scratch CODEX_HOME only', async () => {
     const root = mkdtempSync(join(tmpdir(), 'agent-computer-codex-auth-'))
     try {
       const calls: Array<{ url: string; init: RequestInit }> = []
@@ -192,7 +194,16 @@ describe('agent-computer turn-runner: Codex provider-account broker materializat
       expect(result.codexHome).toBe(join(root, 'turn-codex-1', 'codex-home'))
       expect(result.env.CODEX_HOME).toBe(result.codexHome)
       expect(result.env.OPENCODE_AUTH_CONTENT).toBe(shortLivedAuthContent)
-      expect(await readFile(result.authJsonPath, 'utf8')).toBe(`${shortLivedAuthContent}\n`)
+      const nativeAuth = JSON.parse(await readFile(result.authJsonPath, 'utf8'))
+      expect(nativeAuth).toMatchObject({
+        OPENAI_API_KEY: null,
+        auth_mode: 'chatgpt',
+        tokens: {
+          access_token: 'short-lived-access-token-never-serialized',
+          id_token: 'short-lived-id-token-never-serialized',
+          refresh_token: '',
+        },
+      })
       expect(JSON.stringify({
         providerAccountRef: result.providerAccountRef,
         authGrantRef: result.authGrantRef,
