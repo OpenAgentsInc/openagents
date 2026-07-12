@@ -93,7 +93,7 @@ export const DesktopVoiceStateSchema = Schema.Struct({
   retainedAudio: Schema.Boolean,
   activity: Schema.Literals(["stopped", "permission", "connecting", "listening", "speech_detected", "transcribing", "awaiting_confirmation", "executing", "speaking", "muted", "reconnecting", "degraded", "revoked"]),
   transcript: Schema.optional(Schema.Struct({ utteranceRef: PublicRefSchema, text: Schema.String.check(Schema.isMaxLength(16_384)), final: Schema.Boolean })),
-  proposal: Schema.optional(Schema.Struct({ proposalRef: PublicRefSchema, targetRef: PublicRefSchema, state: Schema.Literals(["proposed", "applied", "refused"]) })),
+  proposal: Schema.optional(Schema.Struct({ proposalRef: PublicRefSchema, utteranceRef: PublicRefSchema, turnRef: PublicRefSchema, targetRef: PublicRefSchema, commandId: PublicRefSchema, expiresAtMs: NonNegativeIntSchema, state: Schema.Literals(["proposed", "applied", "refused"]) })),
   reason: Schema.optional(Schema.Literals(["permission_denied", "network_lost", "gateway_revoked", "helper_crashed", "stale_generation", "backpressure", "device_changed"])),
 })
 

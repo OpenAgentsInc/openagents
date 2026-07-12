@@ -60,6 +60,22 @@ pub enum NativeTransportEvent {
         sequence: u64,
         payload_length: usize,
     },
+    Transcript {
+        utterance_ref: String,
+        text: String,
+        final_result: bool,
+    },
+    Activity {
+        activity: String,
+    },
+    CommandProposal {
+        proposal_ref: String,
+        utterance_ref: String,
+        turn_ref: String,
+        target_ref: String,
+        command_id: String,
+        expires_at_ms: u64,
+    },
     Backpressured,
     DeviceChanged,
     Offline,
@@ -462,7 +478,15 @@ fn worker_once(
             match socket.read() {
                 Ok(Message::Text(text)) => {
                     if let Ok(frame) = serde_json::from_str::<Value>(&text) {
-                        if frame.get("_tag").and_then(Value::as_str) == Some("ack") {
+                        let bound_identity = frame.get("identity").cloned()
+                            .and_then(|value| serde_json::from_value::<VoiceIdentity>(value).ok());
+                        if frame.get("schema").and_then(Value::as_str) != Some(AUDIO_PROTOCOL_VERSION)
+                            || bound_identity.as_ref() != Some(identity)
+                        {
+                            continue;
+                        }
+                        let tag = frame.get("_tag").and_then(Value::as_str);
+                        if tag == Some("ack") {
                             if let Some(ack) = frame
                                 .get("acknowledgedClientSequence")
                                 .and_then(Value::as_u64)
@@ -473,6 +497,36 @@ fn worker_once(
                                 let _ = events.try_send(NativeTransportEvent::Ack {
                                     generation: identity.generation,
                                     sequence: ack,
+                                });
+                            }
+                        } else if matches!(tag, Some("transcript_interim" | "transcript_final")) {
+                            if let (Some(utterance_ref), Some(text)) = (
+                                frame.get("utteranceRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame.get("text").and_then(Value::as_str).filter(|value| value.len() <= 16_384),
+                            ) {
+                                let _ = events.try_send(NativeTransportEvent::Transcript {
+                                    utterance_ref: utterance_ref.to_owned(),
+                                    text: text.to_owned(),
+                                    final_result: tag == Some("transcript_final"),
+                                });
+                            }
+                        } else if matches!(tag, Some("speech_begin" | "speech_end")) {
+                            let _ = events.try_send(NativeTransportEvent::Activity {
+                                activity: if tag == Some("speech_begin") { "speech_detected" } else { "listening" }.to_owned(),
+                            });
+                        } else if tag == Some("command_proposal") {
+                            if let (Some(proposal_ref), Some(utterance_ref), Some(turn_ref), Some(target_ref), Some(command_id), Some(expires_at_ms)) = (
+                                frame.get("proposalRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame.get("utteranceRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame.get("turnRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame.get("targetRef").and_then(Value::as_str).filter(|value| !value.is_empty() && value.len() <= 256),
+                                frame.get("commandId").and_then(Value::as_str).filter(|value| matches!(*value, "chat.open" | "workspace.files" | "workspace.home" | "workspace.review" | "conversation.interrupt" | "conversation.followup")),
+                                frame.get("expiresAtMs").and_then(Value::as_u64),
+                            ) {
+                                let _ = events.try_send(NativeTransportEvent::CommandProposal {
+                                    proposal_ref: proposal_ref.to_owned(), utterance_ref: utterance_ref.to_owned(),
+                                    turn_ref: turn_ref.to_owned(), target_ref: target_ref.to_owned(),
+                                    command_id: command_id.to_owned(), expires_at_ms,
                                 });
                             }
                         }
@@ -660,11 +714,12 @@ mod tests {
             assert_eq!(&frame[8 + n..], &[3, 0, 4, 0]);
             socket
                 .send(Message::Text(
-                    json!({"_tag":"ack","acknowledgedClientSequence":0})
+                    json!({"schema":"openagents.audio.v1","identity":{"ownerRef":"o","deviceRef":"d","threadRef":"t","sessionRef":"s","generation":9},"sequence":1,"_tag":"ack","acknowledgedClientSequence":0})
                         .to_string()
                         .into(),
                 ))
                 .unwrap();
+            socket.send(Message::Text(json!({"schema":"openagents.audio.v1","identity":{"ownerRef":"o","deviceRef":"d","threadRef":"t","sessionRef":"s","generation":9},"sequence":2,"_tag":"transcript_final","utteranceRef":"utterance.1","text":"hello"}).to_string().into())).unwrap();
             let _ = socket.close(None);
         });
         let identity = VoiceIdentity {
@@ -707,7 +762,8 @@ mod tests {
         let mut saw_live = true;
         let mut saw_sent = false;
         let mut saw_ack = false;
-        for _ in 0..8 {
+        let mut saw_transcript = false;
+        for _ in 0..10 {
             match event_rx.recv_timeout(Duration::from_secs(1)).unwrap() {
                 NativeTransportEvent::Live => saw_live = true,
                 NativeTransportEvent::Sent {
@@ -720,15 +776,18 @@ mod tests {
                     generation: 9,
                 } => {
                     saw_ack = true;
-                    break;
+                }
+                NativeTransportEvent::Transcript { utterance_ref, text, final_result } => {
+                    saw_transcript = utterance_ref == "utterance.1" && text == "hello" && final_result;
                 }
                 _ => {}
             }
+            if saw_ack && saw_transcript { break; }
         }
         stop.store(true, Ordering::Release);
         client.join().unwrap();
         server.join().unwrap();
-        assert!(saw_live && saw_sent && saw_ack);
+        assert!(saw_live && saw_sent && saw_ack && saw_transcript);
     }
     #[test]
     fn validated_tts_pcm_is_resampled_into_bounded_playback_queue() {

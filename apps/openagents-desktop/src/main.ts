@@ -769,9 +769,9 @@ const voiceMedia: VoiceNativeMedia = smokeMode
         queueMicrotask(() => {
           input.onState("live")
           input.onControl({ kind: "activity", activity: "listening" })
-          input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open the project", final: false })
-          setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open the project", final: true }), 80)
-          setTimeout(() => input.onControl({ kind: "activity", activity: "speaking" }), 120)
+          input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: false })
+          setTimeout(() => input.onControl({ kind: "transcript", utteranceRef: "smoke.utterance.1", text: "Open project home overview", final: true }), 800)
+          setTimeout(() => input.onControl({ kind: "activity", activity: "speaking" }), 900)
         })
         return {
           setCaptureEnabled: enabled => { captureEnabled = enabled; void captureEnabled },
@@ -3029,15 +3029,21 @@ const smokeVoiceMode = `(async () => {
   if (!(mic instanceof HTMLElement)) return { ok: false, reason: "voice control missing" }
   mic.click()
   const deadline = Date.now() + 5000
-  while (Date.now() < deadline && find("shell-voice-transcript-state")?.textContent !== "Final") await wait(25)
+  while (Date.now() < deadline && find("shell-voice-capture")?.textContent !== "Mic capturing") await wait(25)
   const truth = ["shell-voice-capture", "shell-voice-egress", "shell-voice-retention", "shell-voice-playback"].map(key => find(key)?.textContent ?? "")
-  if (find("shell-voice-transcript-state")?.textContent !== "Final") return { ok: false, reason: "final transcript missing" }
   const mute = find("shell-voice-mute")
   if (!(mute instanceof HTMLElement)) return { ok: false, reason: "mute control missing" }
   mute.click(); await wait(50)
   const muted = find("shell-voice-capture")?.textContent === "Mic off" && find("shell-voice-egress")?.textContent === "Not sending"
-  mic.click(); await wait(50)
-  return { ok: muted && truth.includes("Not retained") && find("shell-voice-hud") === null, truth, muted, stopped: find("shell-voice-hud") === null }
+  const unmute = find("shell-voice-mute")
+  if (unmute instanceof HTMLElement) { unmute.click(); await wait(50) }
+  while (Date.now() < deadline && find("workspace-home-panel") === null) await wait(25)
+  const registeredFocus = find("workspace-home-panel") !== null
+  const chat = find("workspace-chat")
+  if (chat instanceof HTMLElement) { chat.click(); await wait(50) }
+  const stop = find("shell-voice-toggle")
+  if (stop instanceof HTMLElement) { stop.click(); await wait(50) }
+  return { ok: registeredFocus && muted && truth.includes("Not retained") && find("shell-voice-hud") === null, truth, registeredFocus, muted, stopped: find("shell-voice-hud") === null }
 })()`
 
 // Fable local streaming journey (#8712, EP250 owner fixes): from the fresh

@@ -290,6 +290,9 @@ Rust.
 - **AUDIO-4 #8737:** owns `crates/oa-desktop-audio`, the closed local control
   protocol, Electron supervision, packaging, signing, and helper fault tests.
 - **AUDIO-5/#8738 and AUDIO-6/#8739:** remain entirely Effect Native/TypeScript.
+- AUDIO-6 permits the Rust helper to validate and forward bounded server
+  transcript/activity/proposal frames. Rust still cannot classify utterances,
+  choose commands, apply policy, or claim outcomes; those remain Effect-owned.
 - **AUDIO-7 #8740:** Google streaming synthesis stays in the Effect gateway;
   Rust owns output buffering/playback/cancel only.
 - **AUDIO-8 #8741:** proves cross-language contract compatibility, signed helper

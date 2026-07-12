@@ -62,10 +62,12 @@ import {
   desktopConversationShortcutTargets,
   initialDesktopShellState,
   makeDesktopShellHandlers,
+  withInput,
   withLiveAgentGraph,
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
 import { withVoiceHostState } from "./voice-mode.ts"
+import { executeVoiceAction, makeVoiceFinalLedger } from "./voice-actions.ts"
 import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
 import {
   migrateDesktopPreferences,
@@ -802,6 +804,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const noticeController = makeCommandNoticeController(state)
     yield* Effect.addFinalizer(() => noticeController.shutdown)
     let voiceCommandSequence = 0
+    const voiceFinalLedger = makeVoiceFinalLedger()
     const voiceHost = {
       command: async (command: Readonly<Record<string, unknown>>) => {
         if (typeof bridge?.runtimeRequest !== "function") return null
@@ -888,10 +891,33 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     if (typeof bridge?.runtimeSubscribe === "function") {
       const unsubscribeVoice = bridge.runtimeSubscribe(event => {
         if (event.kind !== "voice.lifecycle") return
-        void Effect.runPromise(SubscriptionRef.update(state, current => ({
-          ...current,
-          voice: withVoiceHostState(current.voice, event.state),
-        })))
+        void Effect.runPromise(Effect.gen(function* () {
+          const before = yield* SubscriptionRef.get(state)
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            voice: withVoiceHostState(current.voice, event.state),
+          }))
+          const transcript = event.state.transcript
+          if (transcript?.final !== true || before.voice.sessionRef === null || event.state.generation !== before.voice.host.generation) return
+          const action = voiceFinalLedger.admit({
+            sessionRef: before.voice.sessionRef,
+            generation: event.state.generation,
+            utteranceRef: transcript.utteranceRef,
+            text: transcript.text,
+          }, before.voice.host.generation)
+          if (action === null) return
+          yield* Effect.promise(() => executeVoiceAction(action, {
+            submitMessage: text => Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(text)), null))),
+            interrupt: () => Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null))),
+            focusRegisteredCommand: commandId => {
+              const workspace = commandId === "workspace.files" ? "files"
+                : commandId === "workspace.home" ? "home"
+                  : commandId === "workspace.review" ? "review" : "chat"
+              return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload(workspace)), null)))
+            },
+            editFallback: text => Effect.runPromise(SubscriptionRef.update(state, current => withInput(current, text))),
+          }))
+        }))
       })
       yield* Effect.addFinalizer(() => Effect.sync(unsubscribeVoice))
     }

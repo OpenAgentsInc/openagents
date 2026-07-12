@@ -705,6 +705,30 @@ valuable for the long-lived native capture/playback loop, but moving renderer
 state, command policy, session identity, or cloud orchestration into Rust would
 duplicate existing Effect authorities without improving realtime media.
 
+### AUDIO-6 registered-action receipt
+
+Final STT controls now cross the Rust media helper as bounded, identity-bound
+events rather than being discarded. The helper validates the protocol and the
+complete owner/device/thread/session/generation identity before projecting a
+transcript, activity, or command proposal; it never interprets the text or
+selects an application action.
+
+The Effect Native renderer owns a central typed voice selector. It embeds the
+utterance and closed registered-action descriptors as normalized character
+trigram vectors, ranks them by cosine similarity, and requires both a score and
+margin. This is deliberately not keyword routing. Confident harmless focus
+routes are limited to canonical Desktop command IDs; interrupt uses the same
+Stop intent; all other finals use the existing message submit path, which is
+also the existing queue-until-idle follow-up path while a turn is active.
+Ambiguous or inadmissible input remains editable text. A bounded ledger keyed
+by voice session, generation, and utterance rejects replay, duplicate finals,
+lost-ACK delivery, and stale-generation delivery before any peer intent runs.
+
+Consequently, voice adds no DOM selector, shell, filesystem, credential,
+completion, or alternate conversation authority. Accepted and settled truth
+continues to come from the normal Runtime Gateway command and conversation
+outcomes used by pointer, keyboard, and typed text.
+
 ### V0 — owner direction and contracts
 
 - Record the owner direction for explicit click-to-start persistent capture and

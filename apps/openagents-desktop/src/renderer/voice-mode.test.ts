@@ -40,7 +40,7 @@ describe("persistent voice renderer truth", () => {
     const interim = withVoiceHostState(idleVoiceModeState(), projected({ transcript: { utteranceRef: "u1", text: "open", final: false } }))
     const final = withVoiceHostState(interim, projected({
       transcript: { utteranceRef: "u1", text: "Open files", final: true },
-      proposal: { proposalRef: "p1", targetRef: "workspace.files", state: "proposed" },
+      proposal: { proposalRef: "p1", utteranceRef: "u1", turnRef: "turn.1", targetRef: "workspace.files", commandId: "workspace.files", expiresAtMs: 2_000_000_000_000, state: "proposed" },
       activity: "awaiting_confirmation",
     }))
     expect(interim.host.transcript?.final).toBe(false)

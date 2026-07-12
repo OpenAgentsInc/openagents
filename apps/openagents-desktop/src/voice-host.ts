@@ -22,7 +22,7 @@ export type DesktopVoiceState = Readonly<{
   retainedAudio: boolean
   activity: "stopped" | "permission" | "connecting" | "listening" | "speech_detected" | "transcribing" | "awaiting_confirmation" | "executing" | "speaking" | "muted" | "reconnecting" | "degraded" | "revoked"
   transcript?: Readonly<{ utteranceRef: string; text: string; final: boolean }>
-  proposal?: Readonly<{ proposalRef: string; targetRef: string; state: "proposed" | "applied" | "refused" }>
+  proposal?: Readonly<{ proposalRef: string; utteranceRef: string; turnRef: string; targetRef: string; commandId: string; expiresAtMs: number; state: "proposed" | "applied" | "refused" }>
   reason?: "permission_denied" | "network_lost" | "gateway_revoked" | "helper_crashed" | "stale_generation" | "backpressure" | "device_changed"
 }>
 
@@ -41,7 +41,7 @@ export type VoiceNativeMedia = Readonly<{
     onControl: (control: Readonly<
       | { kind: "transcript"; utteranceRef: string; text: string; final: boolean }
       | { kind: "activity"; activity: "speech_detected" | "transcribing" | "awaiting_confirmation" | "executing" | "speaking" | "listening" }
-      | { kind: "proposal"; proposalRef: string; targetRef: string }
+      | { kind: "proposal"; proposalRef: string; utteranceRef: string; turnRef: string; targetRef: string; commandId: string; expiresAtMs: number }
     >) => void
   }>) => VoiceNativeMediaSession | Promise<VoiceNativeMediaSession>
 }>
@@ -58,6 +58,7 @@ export const createDesktopVoiceHost = (input: Readonly<{
   permission: () => "granted" | "denied" | "not_determined" | Promise<"granted" | "denied" | "not_determined">
   requestPermission: () => "granted" | "denied" | Promise<"granted" | "denied">
   media: VoiceNativeMedia
+  now?: () => number
 }>): DesktopVoiceHost => {
   let current: DesktopVoiceState = { protocolVersion: 1, phase: "idle", generation: 0, nextSequence: 0, acknowledgedSequence: 0, capture: false, egress: false, playback: false, retainedAudio: false, activity: "stopped" }
   let session: VoiceNativeMediaSession | null = null
@@ -110,7 +111,12 @@ export const createDesktopVoiceHost = (input: Readonly<{
           if (current.generation !== ownedGeneration) return
           if (control.kind === "transcript") publish({ ...current, activity: control.final ? "listening" : "transcribing", transcript: { utteranceRef: control.utteranceRef, text: control.text.slice(0, 16_384), final: control.final } })
           else if (control.kind === "activity") publish({ ...current, activity: control.activity })
-          else publish({ ...current, activity: "awaiting_confirmation", proposal: { proposalRef: control.proposalRef, targetRef: control.targetRef, state: "proposed" } })
+          else {
+            const commandTargets = control.commandId === control.targetRef ||
+              ((control.commandId === "conversation.interrupt" || control.commandId === "conversation.followup") && control.targetRef === control.turnRef)
+            const state = !commandTargets || control.expiresAtMs <= (input.now?.() ?? Date.now()) ? "refused" as const : "proposed" as const
+            publish({ ...current, activity: state === "proposed" ? "awaiting_confirmation" : "listening", proposal: { ...control, state } })
+          }
         },
       }) } catch { typedFailure("failed", "helper_crashed") }
       return current
