@@ -9,7 +9,7 @@
   replacement; CUT-26 publish/legacy-lockout
   code complete; CUT-25 cross-client Fleet control is closed; remaining
   local-cutover leaves are acceptance-gated CUT-09, CUT-16, CUT-26, and CUT-27)
-- Revision: 81
+- Revision: 82
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -536,8 +536,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   generations settle once as interrupted without replaying inference or
   assistant output. Real Desktop/Expo SQLite adapters reconstruct the same
   terminal after restart and the built Desktop Runtime Gateway v7 smoke is
-  green. #8689 and #8677 remain open because the paired physical iPhone is
-  offline, so the required network-gap/restart receipt has not run.
+  green. An authenticated Android network-gap pass additionally found and
+  repaired a message-without-runtime-intent hole: mobile now enqueues the
+  append and paired runtime command in durable FIFO order before awaiting
+  confirmation. #8689 and #8677 remain open only for the physical-iOS
+  network-gap and unlink/revocation actions.
 - At owner direction, the unavailable recording phone no longer stalls useful
   non-device work. CUT-09's physical acceptance remains open and is not
   waived, but CUT-10 may proceed. Its first collision-free tranche is captured

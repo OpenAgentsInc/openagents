@@ -634,6 +634,14 @@ export const makeMobileConversationHost = (
     },
     sendMessage: async input => {
       const messageRef = nextRef("message", randomId)
+      // Capture the last confirmed run before admitting the message. Offline
+      // admission cannot wait for the optimistic message to become confirmed:
+      // doing so used to abandon the paired runtime command after the bounded
+      // confirmation waiter, leaving a durable user message that could never
+      // execute after reconnect. The Sync FIFO preserves append-before-start.
+      const baselineThread = options.runtime === undefined
+        ? null
+        : await readConfirmedThread(input.threadRef)
       try {
         await run(options.conversation.appendMessage({
           ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
@@ -645,17 +653,17 @@ export const makeMobileConversationHost = (
         return { ok: false, error: "Authoritative conversation Sync is unavailable." }
       }
       const thread = await confirmedThread(input.threadRef, messageRef)
-      if (thread === null) {
+      if (thread === null && options.runtime === undefined) {
         return { ok: false, error: "Message is still pending reconciliation." }
       }
-      if (options.runtime === undefined) return { ok: true, thread }
+      if (options.runtime === undefined) return { ok: true, thread: thread! }
       const turnRef = `turn.mobile.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
-      const active = thread.timeline?.run
+      const active = (thread ?? baselineThread)?.timeline?.run
       const continuingActiveRun =
         active !== null && active !== undefined && active.status === "running"
       const previousSequence = Math.max(
         0,
-        ...(thread.timeline?.events.map(event => event.sequence) ?? []),
+        ...((thread ?? baselineThread)?.timeline?.events.map(event => event.sequence) ?? []),
       )
       const createdAt = now()
       const context = {
@@ -693,6 +701,9 @@ export const makeMobileConversationHost = (
         }
       } catch {
         return { ok: false, error: "Message was admitted, but runtime dispatch is unavailable." }
+      }
+      if (thread === null) {
+        return { ok: false, error: "Message and runtime command are queued pending reconciliation." }
       }
       const expectedRunRef = continuingActiveRun ? active.runRef : turnRef
       const settled = await confirmedRuntimeOutcome({

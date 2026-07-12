@@ -247,6 +247,35 @@ the exact iOS/runtime/channel headers returned HTTP 200 and Expo protocol v1.
 Subsequent physical foregrounds therefore retain the proven correction without
 requiring Metro, a rebuild, or reinstall.
 
+### Android offline-admission counterexample and repair — 2026-07-12
+
+The owner-authenticated API 35 Android emulator supplied an autonomous dry run
+of the remaining network-gap row before repeating it on physical iOS. With
+Wi-Fi and cellular disabled, the shared Sync engine durably admitted user
+messages. After connectivity returned, those messages confirmed, but no
+corresponding runtime intent existed and no provider turn could start.
+
+The defect was in the mobile adapter rather than Sync's FIFO. `sendMessage`
+waited for the optimistic message to become confirmed before constructing the
+paired runtime intent. Its bounded waiter necessarily elapsed while offline,
+so it returned `Message is still pending reconciliation` and permanently
+abandoned runtime dispatch even though the queued message later drained.
+
+Mobile now captures the last confirmed run before admission, enqueues the
+message and its exact runtime intent consecutively, and relies on Sync's
+durable FIFO to preserve append-before-start. If message confirmation is not
+yet available, the UI receives the honest bounded result `Message and runtime
+command are queued pending reconciliation.` Active-run continuation remains
+bound to the last confirmed run/lane, while a new turn retains the selected
+exact execution target. A regression oracle withholds message confirmation,
+then proves the paired `turn.start` intent still carries the exact message,
+thread, turn, and target refs.
+
+Focused mobile conversation verification is 14 pass / 47 assertions; the full
+mobile suite is 124 pass / 646 assertions and mobile typecheck passes. Emulator
+networking was restored after the fault pass. The physical-iOS network-gap and
+unlink/revocation actions remain the literal close gate.
+
 ## Close decision
 
 #8689 and #8677 remain open. Deterministic rows 7–9 are implemented, the

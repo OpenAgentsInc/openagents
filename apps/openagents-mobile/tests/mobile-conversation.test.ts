@@ -315,6 +315,51 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     expect(sleeps).toBe(1)
   })
 
+  test("queues the paired runtime intent when an offline append is not yet confirmed", async () => {
+    const fixture = makeConversation({ appendConfirmed: false })
+    const intents: Array<KhalaRuntimeControlIntent> = []
+    const runtime: KhalaSyncRuntimeCommands = {
+      appendUserMessage: intent => Effect.sync(() => {
+        intents.push(intent)
+        return MutationId.make(2)
+      }),
+      continueTurn: () => Effect.succeed(MutationId.make(3)),
+      retryTurn: () => Effect.succeed(MutationId.make(4)),
+      closeTurn: () => Effect.succeed(MutationId.make(5)),
+      interruptTurn: () => Effect.succeed(MutationId.make(6)),
+      startTurn: intent => Effect.sync(() => {
+        intents.push(intent)
+        return MutationId.make(2)
+      }),
+      outcome: () => Effect.succeed(null),
+    }
+    const ids = ["offline-message", "offline-turn"]
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      runtime,
+      randomId: () => ids.shift()!,
+      pollAttempts: 1,
+      sleep: async () => undefined,
+    })
+
+    expect(await host.sendMessage({
+      threadRef: "thread.synced.1",
+      body: "Queued while offline",
+      runtimeTarget: { lane: "hosted_khala" },
+    })).toEqual({
+      ok: false,
+      error: "Message and runtime command are queued pending reconciliation.",
+    })
+    expect(intents).toHaveLength(1)
+    expect(intents[0]).toMatchObject({
+      bodyRef: "chat_message.message.mobile.offline-message",
+      kind: "turn.start",
+      target: { lane: "hosted_khala" },
+      threadId: "thread.synced.1",
+      turnId: "turn.mobile.offline-turn",
+    })
+  })
+
   test("reconciles an asynchronous confirmation from the live subscription without interval polling", async () => {
     const fixture = makeConversation({ appendConfirmed: false })
     const never = new Promise<void>(() => undefined)
