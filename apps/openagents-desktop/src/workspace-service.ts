@@ -56,7 +56,7 @@ const boundedInteger = (
   : Math.max(0, Math.min(maximum, Math.trunc(value)))
 
 const workspacePathRef = (value: string): string | null => {
-  if (value.includes("\0") || path.isAbsolute(value) || /^[A-Za-z]:[\\/]/u.test(value)) {
+  if (/[\0\r\n]/u.test(value) || path.isAbsolute(value) || /^[A-Za-z]:[\\/]/u.test(value)) {
     return null
   }
   const normalized = path.posix.normalize(value.replaceAll("\\", "/"))
@@ -95,19 +95,35 @@ const canonicalDirectoryForRef = (
 }
 
 const gitIgnoredPathRefs = (root: string, refs: ReadonlyArray<string>): Set<string> => {
-  if (refs.length === 0) return new Set()
-  const result = spawnSync(
-    "git",
-    ["-C", root, "check-ignore", "--no-index", "--stdin", "-z"],
-    {
-      encoding: "utf8",
-      input: `${refs.join("\0")}\0`,
-      maxBuffer: 1_000_000,
-      timeout: 2_000,
-    },
-  )
-  if (result.status !== 0 || typeof result.stdout !== "string") return new Set()
-  return new Set(result.stdout.split("\0").filter(value => value !== ""))
+  const repositoryProbe = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
+    cwd: root,
+    stdio: "ignore",
+    timeout: 10_000,
+  })
+  if (repositoryProbe.status !== 0) return new Set()
+  const ignored = new Set<string>()
+  const classify = (candidates: ReadonlyArray<string>): void => {
+    if (candidates.length === 0) return
+    const result = spawnSync("git", ["check-ignore", "--no-index", "--", ...candidates], {
+      cwd: root,
+      stdio: "ignore",
+      timeout: 10_000,
+    })
+    if (result.status === 1) return
+    if (result.status !== 0) {
+      for (const candidate of candidates) ignored.add(candidate)
+      return
+    }
+    if (candidates.length === 1) {
+      ignored.add(candidates[0]!)
+      return
+    }
+    const midpoint = Math.ceil(candidates.length / 2)
+    classify(candidates.slice(0, midpoint))
+    classify(candidates.slice(midpoint))
+  }
+  classify(refs)
+  return ignored
 }
 
 const safeDirectoryEntries = (
@@ -181,7 +197,7 @@ const publicWorkspaceEntry = (entry: SafeWorkspaceEntry) => ({
 const workspaceEntryName = (value: string): string | null => {
   if (value !== value.trim() || value.length === 0 || value.length > 120 ||
       value === "." || value === ".." || value.includes("/") || value.includes("\\") ||
-      value.includes("\0") || defaultIgnoredName(value) || secretShapedName(value)) return null
+      /[\0\r\n]/u.test(value) || defaultIgnoredName(value) || secretShapedName(value)) return null
   return value
 }
 
@@ -477,6 +493,7 @@ export const searchWorkspace = (input: Readonly<{
 export type WorkspaceDocumentIo = Readonly<{
   read: (absolutePath: string) => Buffer
   replace: (absolutePath: string, bytes: Buffer) => void
+  create: (absolutePath: string, bytes: Buffer) => void
 }>
 
 const defaultWorkspaceDocumentIo: WorkspaceDocumentIo = {
@@ -497,6 +514,7 @@ const defaultWorkspaceDocumentIo: WorkspaceDocumentIo = {
       throw error
     }
   },
+  create: (absolutePath, bytes) => writeFileSync(absolutePath, bytes, { flag: "wx", mode: 0o666 }),
 }
 
 const documentUnavailable = (
@@ -675,6 +693,72 @@ export const saveWorkspaceDocument = (
       : documentUnavailable("unavailable", "That document could not be saved.")
   }
   const saved = projectWorkspaceDocument(root, currentGrantRef, input.pathRef, io)
+  return saved.state === "available"
+    ? { state: "saved", document: saved.document }
+    : saved
+}
+
+export const saveWorkspaceDocumentAs = (
+  root: string,
+  currentGrantRef: string,
+  input: Readonly<{
+    grantRef: string
+    pathRef: string
+    content: string
+  }>,
+  io: WorkspaceDocumentIo = defaultWorkspaceDocumentIo,
+): DesktopWorkspaceDocumentResult => {
+  if (input.grantRef !== currentGrantRef) {
+    return documentUnavailable("grant_revoked", "The workspace grant changed before that document could be saved.")
+  }
+  const pathRef = workspacePathRef(input.pathRef)
+  if (pathRef === null || pathRef === "") {
+    return documentUnavailable("invalid_ref", "That Save As document reference is invalid.")
+  }
+  const name = path.posix.basename(pathRef)
+  if (workspaceEntryName(name) === null || gitIgnoredPathRefs(root, [pathRef]).has(pathRef)) {
+    return documentUnavailable("unavailable", "That Save As target is not available from this workspace surface.")
+  }
+  const parentRef = path.posix.dirname(pathRef) === "." ? "" : path.posix.dirname(pathRef)
+  let parent: string | null
+  try {
+    parent = canonicalDirectoryForRef(root, parentRef, true)
+  } catch (error) {
+    return permissionError(error)
+      ? documentUnavailable("permission_denied", "The selected workspace no longer permits saving that document.")
+      : documentUnavailable("unavailable", "That Save As target is not available from this workspace surface.")
+  }
+  if (parent === null) {
+    return documentUnavailable("missing", "The Save As destination folder does not exist.")
+  }
+  const bytes = Buffer.from(input.content, "utf8")
+  if (bytes.length > maxDocumentBytes) {
+    return documentUnavailable("too_large", "The Save As document exceeds the 1 MB editor limit.")
+  }
+  if (bytes.includes(0)) {
+    return documentUnavailable("binary", "Binary content cannot be saved through the text editor.")
+  }
+  const absolutePath = path.join(parent, name)
+  if (!missingPath(absolutePath)) {
+    const current = projectWorkspaceDocument(root, currentGrantRef, pathRef, io)
+    return current.state === "available"
+      ? { state: "conflict", current: current.document }
+      : documentUnavailable("unavailable", "Save As never overwrites an existing workspace entry.")
+  }
+  try {
+    io.create(absolutePath, bytes)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") {
+      const current = projectWorkspaceDocument(root, currentGrantRef, pathRef, io)
+      return current.state === "available"
+        ? { state: "conflict", current: current.document }
+        : documentUnavailable("unavailable", "Save As never overwrites an existing workspace entry.")
+    }
+    return permissionError(error)
+      ? documentUnavailable("permission_denied", "The selected workspace no longer permits saving that document.")
+      : documentUnavailable("unavailable", "That document could not be created.")
+  }
+  const saved = projectWorkspaceDocument(root, currentGrantRef, pathRef, io)
   return saved.state === "available"
     ? { state: "saved", document: saved.document }
     : saved
@@ -866,6 +950,7 @@ export type DesktopWorkspaceService = Readonly<{
   revealEntry: (input: Readonly<{ pathRef: string }>) => Promise<DesktopWorkspaceOperationResult>
   openDocument: (input: Readonly<{ grantRef: string; pathRef: string }>) => DesktopWorkspaceDocumentResult
   saveDocument: (input: Readonly<{ grantRef: string; pathRef: string; content: string; expectedRevisionRef: string }>) => DesktopWorkspaceDocumentResult
+  saveDocumentAs: (input: Readonly<{ grantRef: string; pathRef: string; content: string }>) => DesktopWorkspaceDocumentResult
   refresh: () => void
   subscribe: (listener: (change: DesktopWorkspaceChange) => void) => Readonly<{ close: () => void }>
   read: (requestedPath: string) => DesktopWorkspaceFile | null
@@ -1012,6 +1097,12 @@ export const openWorkspaceService = (
     saveDocument: request => {
       if (disposed) return documentUnavailable("grant_revoked", "The selected workspace has been disposed.")
       const result = saveWorkspaceDocument(root, grantRef, request, options.documentIo)
+      if (result.state === "saved") notify("changed", result.document.pathRef)
+      return result
+    },
+    saveDocumentAs: request => {
+      if (disposed) return documentUnavailable("grant_revoked", "The selected workspace has been disposed.")
+      const result = saveWorkspaceDocumentAs(root, grantRef, request, options.documentIo)
       if (result.state === "saved") notify("changed", result.document.pathRef)
       return result
     },

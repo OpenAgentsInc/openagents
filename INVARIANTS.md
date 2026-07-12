@@ -665,11 +665,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   native-picker completion to a boolean and exposes none of the legacy root
   summary/list/read/save/Git-diff methods. The real Electron smoke clicks Files,
   proves no selected-root text or legacy editor, and tears down with zero active
-  owners. CUT-18 document open/save core operations echo the exact workspace
+  owners. CUT-18 document open/save/save-as core operations echo the exact workspace
   grant plus a relative path ref, return only bounded UTF-8 content and a
   content revision, classify invalid/missing/directory/binary/large/encoding/
-  permission/revoked outcomes, and atomically refuse stale revisions. They
-  never return the selected root or accept ambient/absolute renderer paths.
+  permission/revoked outcomes, and atomically refuse stale revisions. Save As
+  creates with exclusive-create semantics and never overwrites an existing
+  target, including a target that appears during the write race. Confirmed
+  workspace renames retarget matching open file and descendant tabs without
+  dropping drafts. Editor recovery persists only bounded relative path refs,
+  revisions, and drafts under an opaque coding-session ref; it persists no root
+  or grant, reopens through the current grant, and surfaces changed or missing
+  files as explicit conflicts before any save. These paths never return the
+  selected root or accept ambient/absolute renderer paths.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

@@ -20,7 +20,7 @@ import {
   type CodeEditorEvent,
   type View,
 } from "@effect-native/core"
-import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
+import { Effect, Exit, Schema, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
   DesktopWorkspaceChangeSchema,
@@ -59,6 +59,7 @@ export type WorkspaceEditorState = Readonly<{
   closeConfirmRef: string | null
   wordWrap: boolean
   minimap: boolean
+  saveAsPathRef: string | null
 }>
 
 export const emptyWorkspaceEditorState = (): WorkspaceEditorState => ({
@@ -67,6 +68,7 @@ export const emptyWorkspaceEditorState = (): WorkspaceEditorState => ({
   closeConfirmRef: null,
   wordWrap: false,
   minimap: false,
+  saveAsPathRef: null,
 })
 
 export const workspaceEditorTabDirty = (tab: WorkspaceEditorTab): boolean =>
@@ -146,6 +148,39 @@ export const withWorkspaceEditorOpened = (
     reason: null,
   }
 })
+
+/** Keeps open tabs attached to the same entry after a confirmed file/folder rename. */
+export const withWorkspaceEditorRenamed = (
+  state: WorkspaceEditorState,
+  sourcePathRef: string,
+  targetPathRef: string,
+): WorkspaceEditorState => {
+  const remap = (pathRef: string): string | null => pathRef === sourcePathRef
+    ? targetPathRef
+    : pathRef.startsWith(`${sourcePathRef}/`)
+      ? `${targetPathRef}${pathRef.slice(sourcePathRef.length)}`
+      : null
+  const renamed = state.tabs.map(tab => {
+    const pathRef = remap(tab.pathRef)
+    if (pathRef === null) return tab
+    return {
+      ...tab,
+      pathRef,
+      document: tab.document === null ? null : { ...tab.document, pathRef },
+      externalDocument: tab.externalDocument === null ? null : { ...tab.externalDocument, pathRef },
+      reason: `Renamed to ${pathRef}.`,
+    }
+  })
+  const pathRefs = renamed.map(tab => tab.pathRef)
+  if (new Set(pathRefs).size !== pathRefs.length) return state
+  return {
+    ...state,
+    tabs: renamed,
+    activePathRef: state.activePathRef === null ? null : remap(state.activePathRef) ?? state.activePathRef,
+    closeConfirmRef: state.closeConfirmRef === null ? null : remap(state.closeConfirmRef) ?? state.closeConfirmRef,
+    saveAsPathRef: null,
+  }
+}
 
 const findOffsets = (content: string, query: string): ReadonlyArray<number> => {
   const needle = query.toLocaleLowerCase()
@@ -291,6 +326,40 @@ export const withWorkspaceEditorSaveResult = (
   }
 })
 
+export const withWorkspaceEditorSaveAsResult = (
+  state: WorkspaceEditorState,
+  sourcePathRef: string,
+  targetPathRef: string,
+  result: DesktopWorkspaceDocumentResult,
+): WorkspaceEditorState => {
+  if (result.state !== "saved" || result.document.pathRef !== targetPathRef) {
+    return updateTab(state, sourcePathRef, tab => ({
+      ...tab,
+      saveState: "unavailable",
+      reason: result.state === "conflict"
+        ? "Save As never overwrites an existing file. Choose another path."
+        : result.state === "unavailable"
+          ? result.message
+          : "The Save As response did not match the requested path.",
+    }))
+  }
+  const tabs = state.tabs
+    .filter(tab => tab.pathRef === sourcePathRef || tab.pathRef !== targetPathRef)
+    .map(tab => tab.pathRef !== sourcePathRef ? tab : {
+      ...tab,
+      pathRef: targetPathRef,
+      phase: "ready" as const,
+      document: result.document,
+      externalDocument: null,
+      draft: result.document.content,
+      saveState: "saved" as const,
+      reason: null,
+      undo: [],
+      redo: [],
+    })
+  return { ...state, tabs, activePathRef: targetPathRef, saveAsPathRef: null }
+}
+
 export const withWorkspaceEditorExternalResult = (
   state: WorkspaceEditorState,
   pathRef: string,
@@ -345,32 +414,111 @@ export const withWorkspaceEditorExternalResult = (
 })
 
 export type WorkspaceEditorRecoverySnapshot = Readonly<{
-  version: 1
+  version: 2
   activePathRef: string | null
   tabs: ReadonlyArray<Readonly<{
     pathRef: string
-    grantRef: string
     expectedRevisionRef: string
     draft: string
   }>>
 }>
 
+export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
+  version: Schema.Literal(2),
+  activePathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  tabs: Schema.Array(Schema.Struct({
+    pathRef: DesktopWorkspacePathRefSchema,
+    expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+    draft: Schema.String.check(Schema.isMaxLength(1_000_000)),
+  })).check(Schema.isMaxLength(maxTabs)),
+})
+
+export const decodeWorkspaceEditorRecoverySnapshot = (value: unknown): WorkspaceEditorRecoverySnapshot | null => {
+  const decoded = Schema.decodeUnknownExit(WorkspaceEditorRecoverySnapshotSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+
 export const workspaceEditorRecoverySnapshot = (
   state: WorkspaceEditorState,
 ): WorkspaceEditorRecoverySnapshot => ({
-  version: 1,
+  version: 2,
   activePathRef: state.activePathRef,
   tabs: state.tabs.flatMap(tab => tab.document === null ? [] : [{
     pathRef: tab.pathRef,
-    grantRef: tab.document.grantRef,
     expectedRevisionRef: tab.document.revisionRef,
     draft: tab.draft.slice(0, 1_000_000),
   }]).slice(0, maxTabs),
 })
 
+const recoveryLanguageMode = (pathRef: string): DesktopWorkspaceDocument["languageMode"] => {
+  const extension = pathRef.split(".").at(-1)?.toLocaleLowerCase()
+  if (["ts", "tsx", "mts", "cts"].includes(extension ?? "")) return "typescript"
+  if (["js", "jsx", "mjs", "cjs"].includes(extension ?? "")) return "javascript"
+  if (["json", "jsonl"].includes(extension ?? "")) return "json"
+  if (["md", "mdx"].includes(extension ?? "")) return "markdown"
+  if (extension === "rs") return "rust"
+  if (extension === "py") return "python"
+  if (["sh", "bash", "zsh"].includes(extension ?? "")) return "shell"
+  if (extension === "toml") return "toml"
+  if (["yaml", "yml"].includes(extension ?? "")) return "yaml"
+  if (extension === "css") return "css"
+  if (["html", "htm"].includes(extension ?? "")) return "html"
+  return "plaintext"
+}
+
+export const withWorkspaceEditorRecoveredTab = (
+  state: WorkspaceEditorState,
+  grantRef: string,
+  recovered: WorkspaceEditorRecoverySnapshot["tabs"][number],
+  result: DesktopWorkspaceDocumentResult,
+): WorkspaceEditorState => {
+  const opening = withWorkspaceEditorOpening(state, recovered.pathRef)
+  if (result.state === "available" && result.document.pathRef === recovered.pathRef) {
+    const opened = withWorkspaceEditorOpened(opening, recovered.pathRef, result)
+    return updateTab(opened, recovered.pathRef, tab => {
+      if (result.document.revisionRef === recovered.expectedRevisionRef) {
+        return { ...tab, draft: recovered.draft }
+      }
+      if (result.document.content === recovered.draft) return tab
+      return {
+        ...tab,
+        phase: "conflict",
+        draft: recovered.draft,
+        externalDocument: result.document,
+        reason: "This recovered draft changed on disk while the app was closed.",
+      }
+    })
+  }
+  const synthetic: DesktopWorkspaceDocument = {
+    grantRef,
+    pathRef: recovered.pathRef,
+    content: "",
+    revisionRef: recovered.expectedRevisionRef,
+    languageMode: recoveryLanguageMode(recovered.pathRef),
+    encoding: "utf-8",
+    lineEnding: "none",
+    sizeBytes: 0,
+  }
+  return updateTab(opening, recovered.pathRef, tab => ({
+    ...tab,
+    phase: "conflict",
+    document: synthetic,
+    externalDocument: null,
+    draft: recovered.draft,
+    saveState: "unavailable",
+    reason: result.state === "unavailable"
+      ? `${result.message} Your recovered draft remains available for Save As.`
+      : "The recovered document could not be matched. Its draft remains available for Save As.",
+  }))
+}
+
 const WorkspaceEditorOpenPayloadSchema = Schema.Struct({
   grantRef: Schema.String,
   pathRef: DesktopWorkspacePathRefSchema,
+})
+const WorkspaceEditorRecoveryPayloadSchema = Schema.Struct({
+  grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+  snapshot: WorkspaceEditorRecoverySnapshotSchema,
 })
 
 export const WorkspaceEditorOpenRequested = defineIntent("WorkspaceEditorOpenRequested", WorkspaceEditorOpenPayloadSchema)
@@ -390,6 +538,11 @@ export const WorkspaceEditorConflictKeepMine = defineIntent("WorkspaceEditorConf
 export const WorkspaceEditorWordWrapToggled = defineIntent("WorkspaceEditorWordWrapToggled", Schema.Null)
 export const WorkspaceEditorMinimapToggled = defineIntent("WorkspaceEditorMinimapToggled", Schema.Null)
 export const WorkspaceEditorExternalChangeReceived = defineIntent("WorkspaceEditorExternalChangeReceived", DesktopWorkspaceChangeSchema)
+export const WorkspaceEditorSaveAsStarted = defineIntent("WorkspaceEditorSaveAsStarted", Schema.Null)
+export const WorkspaceEditorSaveAsChanged = defineIntent("WorkspaceEditorSaveAsChanged", Schema.String)
+export const WorkspaceEditorSaveAsSubmitted = defineIntent("WorkspaceEditorSaveAsSubmitted", Schema.Null)
+export const WorkspaceEditorSaveAsCancelled = defineIntent("WorkspaceEditorSaveAsCancelled", Schema.Null)
+export const WorkspaceEditorRecoveryRequested = defineIntent("WorkspaceEditorRecoveryRequested", WorkspaceEditorRecoveryPayloadSchema)
 
 export const workspaceEditorIntents = [
   WorkspaceEditorOpenRequested,
@@ -409,6 +562,11 @@ export const workspaceEditorIntents = [
   WorkspaceEditorWordWrapToggled,
   WorkspaceEditorMinimapToggled,
   WorkspaceEditorExternalChangeReceived,
+  WorkspaceEditorSaveAsStarted,
+  WorkspaceEditorSaveAsChanged,
+  WorkspaceEditorSaveAsSubmitted,
+  WorkspaceEditorSaveAsCancelled,
+  WorkspaceEditorRecoveryRequested,
 ] as const
 
 export type WorkspaceEditorCapableState = Readonly<{ workspaceEditor: WorkspaceEditorState }>
@@ -416,19 +574,37 @@ export type WorkspaceEditorCapableState = Readonly<{ workspaceEditor: WorkspaceE
 export type WorkspaceDocumentBridge = Readonly<{
   openWorkspaceDocument: (value: unknown) => Promise<unknown>
   saveWorkspaceDocument: (value: unknown) => Promise<unknown>
+  saveWorkspaceDocumentAs: (value: unknown) => Promise<unknown>
 }>
 
 export const unavailableWorkspaceDocumentBridge: WorkspaceDocumentBridge = {
   openWorkspaceDocument: async () => ({ state: "unavailable", reason: "unavailable", message: "Workspace documents are unavailable." }),
   saveWorkspaceDocument: async () => ({ state: "unavailable", reason: "unavailable", message: "Workspace document saving is unavailable." }),
+  saveWorkspaceDocumentAs: async () => ({ state: "unavailable", reason: "unavailable", message: "Workspace Save As is unavailable." }),
+}
+
+const suggestedSaveAsPathRef = (pathRef: string): string => {
+  const slash = pathRef.lastIndexOf("/")
+  const directory = slash < 0 ? "" : pathRef.slice(0, slash + 1)
+  const name = slash < 0 ? pathRef : pathRef.slice(slash + 1)
+  const dot = name.lastIndexOf(".")
+  return dot <= 0
+    ? `${directory}${name}-copy`
+    : `${directory}${name.slice(0, dot)}-copy${name.slice(dot)}`
 }
 
 export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: WorkspaceDocumentBridge = unavailableWorkspaceDocumentBridge,
+  onStateChange?: (state: S) => void,
 ) => {
   const setEditor = (mutate: (editor: WorkspaceEditorState) => WorkspaceEditorState) =>
-    SubscriptionRef.update(state, current => ({ ...current, workspaceEditor: mutate(current.workspaceEditor) }))
+    Effect.gen(function* () {
+      yield* SubscriptionRef.update(state, current => ({ ...current, workspaceEditor: mutate(current.workspaceEditor) }))
+      if (onStateChange !== undefined) {
+        onStateChange(yield* SubscriptionRef.get(state))
+      }
+    })
 
   const saveActive = Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
@@ -468,6 +644,25 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
       }
       yield* setEditor(editor => withWorkspaceEditorExternalResult(editor, tab.pathRef, result))
     }
+  })
+
+  const saveActiveAs = Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const tab = activeTab(current.workspaceEditor)
+    const targetPathRef = current.workspaceEditor.saveAsPathRef?.trim() ?? ""
+    if (tab === null || tab.document === null || targetPathRef === "" || tab.saveState === "saving") return
+    yield* setEditor(editor => updateTab(editor, tab.pathRef, value => ({ ...value, saveState: "saving", reason: null })))
+    const raw = yield* Effect.promise(() => bridge.saveWorkspaceDocumentAs({
+      grantRef: tab.document!.grantRef,
+      pathRef: targetPathRef,
+      content: tab.draft,
+    }).catch(() => null))
+    const result = decodeWorkspaceDocumentResult(raw) ?? {
+      state: "unavailable" as const,
+      reason: "unavailable" as const,
+      message: "The Save As response could not be read.",
+    }
+    yield* setEditor(editor => withWorkspaceEditorSaveAsResult(editor, tab.pathRef, targetPathRef, result))
   })
 
   return {
@@ -537,6 +732,43 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
     WorkspaceEditorWordWrapToggled: () => setEditor(editor => ({ ...editor, wordWrap: !editor.wordWrap })),
     WorkspaceEditorMinimapToggled: () => setEditor(editor => ({ ...editor, minimap: !editor.minimap })),
     WorkspaceEditorExternalChangeReceived: refreshChangedDocuments,
+    WorkspaceEditorSaveAsStarted: () => setEditor(editor => {
+      const tab = activeTab(editor)
+      return tab === null || tab.document === null
+        ? editor
+        : { ...editor, saveAsPathRef: suggestedSaveAsPathRef(tab.pathRef) }
+    }),
+    WorkspaceEditorSaveAsChanged: (pathRef: string) => setEditor(editor => ({
+      ...editor,
+      saveAsPathRef: editor.saveAsPathRef === null ? null : pathRef.slice(0, 1_024),
+    })),
+    WorkspaceEditorSaveAsSubmitted: () => saveActiveAs,
+    WorkspaceEditorSaveAsCancelled: () => setEditor(editor => ({ ...editor, saveAsPathRef: null })),
+    WorkspaceEditorRecoveryRequested: ({ grantRef, snapshot }: { grantRef: string; snapshot: WorkspaceEditorRecoverySnapshot }) =>
+      Effect.gen(function* () {
+        const before = yield* SubscriptionRef.get(state)
+        let recovered: WorkspaceEditorState = {
+          ...emptyWorkspaceEditorState(),
+          wordWrap: before.workspaceEditor.wordWrap,
+          minimap: before.workspaceEditor.minimap,
+        }
+        for (const tab of snapshot.tabs) {
+          const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({
+            grantRef,
+            pathRef: tab.pathRef,
+          }).catch(() => null))
+          const result = decodeWorkspaceDocumentResult(raw) ?? {
+            state: "unavailable" as const,
+            reason: "unavailable" as const,
+            message: "The recovered document response could not be read.",
+          }
+          recovered = withWorkspaceEditorRecoveredTab(recovered, grantRef, tab, result)
+        }
+        const activePathRef = snapshot.activePathRef !== null && tabFor(recovered, snapshot.activePathRef) !== null
+          ? snapshot.activePathRef
+          : recovered.tabs.at(-1)?.pathRef ?? null
+        yield* setEditor(() => ({ ...recovered, activePathRef }))
+      }),
   }
 }
 
@@ -579,7 +811,13 @@ export const workspaceEditorView = (state: WorkspaceEditorState): View => {
       Button({ key: "workspace-editor-wrap", label: "Wrap", variant: state.wordWrap ? "secondary" : "ghost", onPress: IntentRef("WorkspaceEditorWordWrapToggled"), a11y: { selected: state.wordWrap } }),
       Button({ key: "workspace-editor-minimap", label: "Minimap", variant: state.minimap ? "secondary" : "ghost", onPress: IntentRef("WorkspaceEditorMinimapToggled"), a11y: { selected: state.minimap } }),
       Button({ key: "workspace-editor-save", label: tab.saveState === "saving" ? "Saving…" : tab.saveState === "saved" ? "Saved" : "Save", variant: "primary", disabled: !workspaceEditorTabDirty(tab) || tab.saveState === "saving" || tab.phase === "unavailable", onPress: IntentRef("WorkspaceEditorSaveRequested"), a11y: { label: `Save ${tab.pathRef}` } }),
+      Button({ key: "workspace-editor-save-as", label: "Save As", variant: "secondary", disabled: tab.saveState === "saving" || tab.phase === "unavailable", onPress: IntentRef("WorkspaceEditorSaveAsStarted"), a11y: { label: `Save ${tab.pathRef} as a new file` } }),
     ]),
+    ...(state.saveAsPathRef === null ? [] : [Stack({ key: "workspace-editor-save-as-row", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+      TextField({ key: "workspace-editor-save-as-path", value: state.saveAsPathRef, label: "New relative path", placeholder: "src/new-file.ts", onChange: IntentRef("WorkspaceEditorSaveAsChanged", ComponentValueBinding()), onSubmit: IntentRef("WorkspaceEditorSaveAsSubmitted"), a11y: { label: "New relative document path" }, style: { flex: 1, minWidth: 0 } }),
+      Button({ key: "workspace-editor-save-as-submit", label: "Create copy", variant: "primary", disabled: state.saveAsPathRef.trim() === "", onPress: IntentRef("WorkspaceEditorSaveAsSubmitted") }),
+      Button({ key: "workspace-editor-save-as-cancel", label: "Cancel", variant: "ghost", onPress: IntentRef("WorkspaceEditorSaveAsCancelled") }),
+    ])]),
     Stack({ key: "workspace-editor-find", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
       TextField({ key: "workspace-editor-find-query", value: tab.findQuery, placeholder: "Find in document", onChange: IntentRef("WorkspaceEditorFindChanged", ComponentValueBinding()), a11y: { label: `Find in ${tab.pathRef}` }, style: { flex: 1, minWidth: 0 } }),
       Text({ key: "workspace-editor-find-count", content: tab.findMatches.length === 0 ? "No matches" : `${tab.findIndex + 1} of ${tab.findMatches.length}`, variant: "caption", color: "textMuted" }),
@@ -614,7 +852,7 @@ export const workspaceEditorView = (state: WorkspaceEditorState): View => {
             minimap: state.minimap,
             selection: { ...tab.selection, version: tab.selectionVersion },
             fontScale: "body",
-            onEvent: IntentRef("WorkspaceEditorEventReceived"),
+            onEvent: IntentRef("WorkspaceEditorEventReceived", ComponentValueBinding()),
             a11y: { role: "region", label: `Editor for ${tab.pathRef}` },
             style: { flex: 1, minHeight: 0, width: "full" },
           }),

@@ -5,6 +5,7 @@ import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopWorkspaceDocument } from "../workspace-contract.ts"
 import {
   emptyWorkspaceEditorState,
+  decodeWorkspaceEditorRecoverySnapshot,
   makeWorkspaceEditorHandlers,
   withWorkspaceEditorEvent,
   withWorkspaceEditorExternalResult,
@@ -13,7 +14,10 @@ import {
   withWorkspaceEditorOpened,
   withWorkspaceEditorOpening,
   withWorkspaceEditorRedo,
+  withWorkspaceEditorRenamed,
+  withWorkspaceEditorRecoveredTab,
   withWorkspaceEditorSaveResult,
+  withWorkspaceEditorSaveAsResult,
   withWorkspaceEditorUndo,
   workspaceEditorIntents,
   workspaceEditorRecoverySnapshot,
@@ -96,6 +100,20 @@ describe("workspace editor state", () => {
     expect(bounded.tabs[0]?.undo).toHaveLength(100)
   })
 
+  test("confirmed file and folder renames retarget open tabs without losing drafts", () => {
+    let state = withWorkspaceEditorEvent(readyState(), { type: "change", value: "dirty draft" })
+    state = withWorkspaceEditorOpening(state, "src/nested/worker.ts")
+    state = withWorkspaceEditorOpened(state, "src/nested/worker.ts", {
+      state: "available",
+      document: document({ pathRef: "src/nested/worker.ts" }),
+    })
+    state = withWorkspaceEditorRenamed(state, "src", "lib")
+    expect(state.tabs.map(tab => tab.pathRef)).toEqual(["lib/index.ts", "lib/nested/worker.ts"])
+    expect(state.tabs[0]?.draft).toBe("dirty draft")
+    expect(state.tabs[0]?.document?.pathRef).toBe("lib/index.ts")
+    expect(state.activePathRef).toBe("lib/nested/worker.ts")
+  })
+
   test("find is bounded, wraps, and projects the active selection", () => {
     let state = withWorkspaceEditorFind(readyState(), "needle")
     expect(state.tabs[0]?.findMatches).toEqual([6, 34])
@@ -116,6 +134,32 @@ describe("workspace editor state", () => {
     const saved = withWorkspaceEditorSaveResult(conflict, "src/index.ts", { state: "saved", document: savedDocument })
     expect(saved.tabs[0]).toMatchObject({ phase: "ready", draft: "local draft", document: savedDocument, saveState: "saved" })
     expect(workspaceEditorTabDirty(saved.tabs[0]!)).toBe(false)
+  })
+
+  test("Save As moves the active tab only after a create-only saved result", () => {
+    const dirty = withWorkspaceEditorEvent(readyState(), { type: "change", value: "copy content" })
+    const savedDocument = document({
+      pathRef: "src/index-copy.ts",
+      content: "copy content",
+      revisionRef: "workspace.document.copy",
+    })
+    const saved = withWorkspaceEditorSaveAsResult(
+      { ...dirty, saveAsPathRef: "src/index-copy.ts" },
+      "src/index.ts",
+      "src/index-copy.ts",
+      { state: "saved", document: savedDocument },
+    )
+    expect(saved).toMatchObject({ activePathRef: "src/index-copy.ts", saveAsPathRef: null })
+    expect(saved.tabs[0]).toMatchObject({ pathRef: "src/index-copy.ts", document: savedDocument, saveState: "saved" })
+
+    const conflict = withWorkspaceEditorSaveAsResult(
+      { ...dirty, saveAsPathRef: "src/existing.ts" },
+      "src/index.ts",
+      "src/existing.ts",
+      { state: "conflict", current: document({ pathRef: "src/existing.ts" }) },
+    )
+    expect(conflict.activePathRef).toBe("src/index.ts")
+    expect(conflict.tabs[0]?.reason).toContain("never overwrites")
   })
 
   test("external changes reload clean tabs and conflict without losing dirty drafts", () => {
@@ -147,16 +191,41 @@ describe("workspace editor state", () => {
     const state = withWorkspaceEditorEvent(readyState(), { type: "change", value: "recover me" })
     const snapshot = workspaceEditorRecoverySnapshot(state)
     expect(snapshot).toEqual({
-      version: 1,
+      version: 2,
       activePathRef: "src/index.ts",
       tabs: [{
         pathRef: "src/index.ts",
-        grantRef: "workspace.grant.editor",
         expectedRevisionRef: "workspace.document.initial",
         draft: "recover me",
       }],
     })
     expect(JSON.stringify(snapshot)).not.toContain("/Users/")
+    expect(JSON.stringify(snapshot)).not.toContain("workspace.grant.editor")
+    expect(decodeWorkspaceEditorRecoverySnapshot(snapshot)).toEqual(snapshot)
+    expect(decodeWorkspaceEditorRecoverySnapshot({ ...snapshot, tabs: [{ pathRef: "../escape", expectedRevisionRef: "x", draft: "x" }] })).toBeNull()
+  })
+
+  test("recovery reconciles unchanged files and preserves changed or missing drafts", () => {
+    const recovered = { pathRef: "src/index.ts", expectedRevisionRef: "workspace.document.initial", draft: "local recovery" }
+    const unchanged = withWorkspaceEditorRecoveredTab(
+      emptyWorkspaceEditorState(),
+      "workspace.grant.current",
+      recovered,
+      { state: "available", document: document({ grantRef: "workspace.grant.current" }) },
+    )
+    expect(unchanged.tabs[0]).toMatchObject({ phase: "ready", draft: "local recovery", externalDocument: null })
+
+    const external = document({ grantRef: "workspace.grant.current", content: "external", revisionRef: "workspace.document.external" })
+    const changed = withWorkspaceEditorRecoveredTab(emptyWorkspaceEditorState(), "workspace.grant.current", recovered, { state: "available", document: external })
+    expect(changed.tabs[0]).toMatchObject({ phase: "conflict", draft: "local recovery", externalDocument: external })
+
+    const missing = withWorkspaceEditorRecoveredTab(emptyWorkspaceEditorState(), "workspace.grant.current", recovered, {
+      state: "unavailable",
+      reason: "missing",
+      message: "Missing.",
+    })
+    expect(missing.tabs[0]).toMatchObject({ phase: "conflict", draft: "local recovery", externalDocument: null })
+    expect(missing.tabs[0]?.reason).toContain("Save As")
   })
 })
 
@@ -180,6 +249,7 @@ describe("workspace editor Effect Native view", () => {
       selection: { start: 0, end: 0, version: 0 },
     })
     expect((host?.onEvent as { name?: string }).name).toBe("WorkspaceEditorEventReceived")
+    expect(host?.onEvent).toMatchObject({ payload: { _tag: "ComponentValueBinding" } })
     expect(JSON.stringify(view)).not.toContain("workspace.grant.editor")
     expect(JSON.stringify(view)).not.toContain("workspace.document.initial")
   })
@@ -207,6 +277,14 @@ describe("workspace editor Effect Native view", () => {
     expect(nodeByKey(view, "workspace-editor-save")?.disabled).toBe(false)
     expect(nodeByKey(view, "workspace-editor-close")?.label).toBe("Discard changes")
     expect(nodeByKey(view, "workspace-editor-close-cancel")?.label).toBe("Keep editing")
+  })
+
+  test("Save As uses an inline relative-path form", () => {
+    const state = { ...readyState(), saveAsPathRef: "src/index-copy.ts" }
+    const view = workspaceEditorView(state)
+    expect(nodeByKey(view, "workspace-editor-save-as")?.label).toBe("Save As")
+    expect(nodeByKey(view, "workspace-editor-save-as-path")?.value).toBe("src/index-copy.ts")
+    expect(nodeByKey(view, "workspace-editor-save-as-submit")?.label).toBe("Create copy")
   })
 
   test("conflict state offers explicit reload or overwrite choices", () => {
@@ -238,6 +316,14 @@ const makeBridge = (): {
         calls.push({ op: "save", value })
         const request = value as { content: string }
         return { state: "saved", document: document({ content: request.content, revisionRef: "workspace.document.saved" }) }
+      },
+      saveWorkspaceDocumentAs: async value => {
+        calls.push({ op: "saveAs", value })
+        const request = value as { pathRef: string; content: string }
+        return {
+          state: "saved",
+          document: document({ pathRef: request.pathRef, content: request.content, revisionRef: "workspace.document.copy" }),
+        }
       },
     },
   }
@@ -299,6 +385,7 @@ describe("workspace editor typed intent loop", () => {
           }
         },
         saveWorkspaceDocument: async () => ({ state: "unavailable", reason: "unavailable", message: "unused" }),
+        saveWorkspaceDocumentAs: async () => ({ state: "unavailable", reason: "unavailable", message: "unused" }),
       }
       const dirty = withWorkspaceEditorEvent(readyState(), { type: "change", value: "local draft" })
       const state = yield* SubscriptionRef.make({ workspaceEditor: dirty })
@@ -314,6 +401,23 @@ describe("workspace editor typed intent loop", () => {
         draft: "local draft",
         externalDocument: { revisionRef: "workspace.document.external" },
       })
+    }))
+  })
+
+  test("Save As submits exact grant/path/content and retargets the tab", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const { bridge, calls } = makeBridge()
+      const state = yield* SubscriptionRef.make({ workspaceEditor: withWorkspaceEditorEvent(readyState(), { type: "change", value: "copy content" }) })
+      const registry = yield* makeIntentRegistry(workspaceEditorIntents, makeWorkspaceEditorHandlers(state, bridge))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceEditorSaveAsStarted", StaticPayload(null)), null))
+      expect((yield* SubscriptionRef.get(state)).workspaceEditor.saveAsPathRef).toBe("src/index-copy.ts")
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceEditorSaveAsSubmitted", StaticPayload(null)), null))
+      expect(calls).toEqual([{ op: "saveAs", value: {
+        grantRef: "workspace.grant.editor",
+        pathRef: "src/index-copy.ts",
+        content: "copy content",
+      } }])
+      expect((yield* SubscriptionRef.get(state)).workspaceEditor.activePathRef).toBe("src/index-copy.ts")
     }))
   })
 })

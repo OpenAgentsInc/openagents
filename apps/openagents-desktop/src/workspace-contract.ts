@@ -16,6 +16,7 @@ export const DesktopWorkspaceDeleteChannel = "openagents-desktop/workspace-delet
 export const DesktopWorkspaceRevealChannel = "openagents-desktop/workspace-reveal" as const
 export const DesktopWorkspaceDocumentOpenChannel = "openagents-desktop/workspace-document-open" as const
 export const DesktopWorkspaceDocumentSaveChannel = "openagents-desktop/workspace-document-save" as const
+export const DesktopWorkspaceDocumentSaveAsChannel = "openagents-desktop/workspace-document-save-as" as const
 export const DesktopWorkspaceRefreshChannel = "openagents-desktop/workspace-refresh" as const
 export const DesktopWorkspaceWatchChannel = "openagents-desktop/workspace-watch" as const
 export const DesktopWorkspaceChangeChannel = "openagents-desktop/workspace-change" as const
@@ -23,7 +24,7 @@ export const DesktopWorkspaceChangeChannel = "openagents-desktop/workspace-chang
 export const DesktopWorkspacePathRefSchema = Schema.String.pipe(
   Schema.check(
     Schema.isMaxLength(1_024),
-    Schema.isPattern(/^(?!\/)(?![A-Za-z]:[\\/])(?!.*(?:^|\/)\.\.(?:\/|$))(?!.*\\)[^\0]*$/u),
+    Schema.isPattern(/^(?!\/)(?![A-Za-z]:[\\/])(?!.*(?:^|\/)\.\.(?:\/|$))(?!.*\\)[^\0\r\n]*$/u),
   ),
 )
 
@@ -116,6 +117,12 @@ export const DesktopWorkspaceDocumentSaveRequestSchema = Schema.Struct({
   pathRef: DesktopWorkspacePathRefSchema,
   content: Schema.String.check(Schema.isMaxLength(1_000_000)),
   expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+})
+
+export const DesktopWorkspaceDocumentSaveAsRequestSchema = Schema.Struct({
+  grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+  pathRef: DesktopWorkspacePathRefSchema,
+  content: Schema.String.check(Schema.isMaxLength(1_000_000)),
 })
 
 export const DesktopWorkspaceDocumentSchema = Schema.Struct({
@@ -485,6 +492,13 @@ export const decodeWorkspaceDocumentSaveRequest = (
   value: unknown,
 ): { grantRef: string; pathRef: string; content: string; expectedRevisionRef: string } | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentSaveRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceDocumentSaveAsRequest = (
+  value: unknown,
+): { grantRef: string; pathRef: string; content: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentSaveAsRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 

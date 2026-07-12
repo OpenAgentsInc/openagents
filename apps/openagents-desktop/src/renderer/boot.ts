@@ -43,7 +43,9 @@ import {
   type WorkspaceBrowserBridge,
 } from "./workspace-browser.ts"
 import {
+  decodeWorkspaceEditorRecoverySnapshot,
   unavailableWorkspaceDocumentBridge,
+  workspaceEditorRecoverySnapshot,
   type WorkspaceDocumentBridge,
 } from "./workspace-editor.ts"
 import {
@@ -127,6 +129,7 @@ type DesktopBridge = Readonly<{
   revealWorkspaceEntry?: (value: unknown) => Promise<unknown>
   openWorkspaceDocument?: (value: unknown) => Promise<unknown>
   saveWorkspaceDocument?: (value: unknown) => Promise<unknown>
+  saveWorkspaceDocumentAs?: (value: unknown) => Promise<unknown>
   refreshWorkspace?: () => Promise<unknown>
   workspaceSubscribe?: (listener: (change: DesktopWorkspaceChange) => void) => () => void
   codexAccounts?: () => Promise<unknown>
@@ -205,6 +208,7 @@ const workspaceBrowserBridge: WorkspaceBrowserBridge = {
 const workspaceDocumentBridge: WorkspaceDocumentBridge = {
   openWorkspaceDocument: (value) => readBridge()?.openWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.openWorkspaceDocument(value),
   saveWorkspaceDocument: (value) => readBridge()?.saveWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.saveWorkspaceDocument(value),
+  saveWorkspaceDocumentAs: (value) => readBridge()?.saveWorkspaceDocumentAs?.(value) ?? unavailableWorkspaceDocumentBridge.saveWorkspaceDocumentAs(value),
 }
 
 /**
@@ -378,6 +382,24 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const state = yield* SubscriptionRef.make(initialDesktopShellState(host))
     const program = makeViewProgramFromState(state, desktopShellView)
     const bridge = readBridge()
+    const recoveryStorageKey = (workspaceSessionRef: string): string =>
+      `openagents.desktop.workspace-editor.v2.${workspaceSessionRef}`
+    const loadWorkspaceRecovery = (workspaceSessionRef: string) => {
+      try {
+        const raw = localStorage.getItem(recoveryStorageKey(workspaceSessionRef))
+        return raw === null ? null : decodeWorkspaceEditorRecoverySnapshot(JSON.parse(raw))
+      } catch {
+        return null
+      }
+    }
+    const saveWorkspaceRecovery = (
+      workspaceSessionRef: string,
+      snapshot: ReturnType<typeof workspaceEditorRecoverySnapshot>,
+    ): void => {
+      try {
+        localStorage.setItem(recoveryStorageKey(workspaceSessionRef), JSON.stringify(snapshot))
+      } catch { /* bounded recovery is best effort */ }
+    }
     const localChat = {
       listThreads: async () => {
         const raw = await bridge?.listThreads?.()
@@ -630,6 +652,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         choose: async () => (await readBridge()?.chooseWorkspace?.()) === true,
         browser: workspaceBrowserBridge,
         documents: workspaceDocumentBridge,
+        recovery: {
+          load: loadWorkspaceRecovery,
+          save: saveWorkspaceRecovery,
+        },
       }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost, questionHost, commandBindingHost, {
         toggleFullScreen: async () => {
           const raw = await (globalThis as { openagentsDesktop?: { toggleFullScreen?: () => Promise<boolean> } }).openagentsDesktop?.toggleFullScreen?.()
@@ -784,10 +810,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       // the end (title match) — reuse the restore-to-item scroll flow (H4).
       const shouldAnchorSearchOpen = ref.name === "HistorySearchResultOpened"
       return registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null)).pipe(
-        Effect.ensuring(Effect.sync(() => {
-          if (shouldFocus) focusComposer()
-          if (shouldAnchorHistoryEnd) void anchorHistoryEnd()
-          if (shouldAnchorSearchOpen) void Effect.runPromise(SubscriptionRef.get(state)).then(current => { const itemRef = current.history.selectedItemRef; void (itemRef === null ? anchorHistoryEnd() : anchorHistoryItem(itemRef)) })
+        Effect.ensuring(Effect.gen(function* () {
+          const current = yield* SubscriptionRef.get(state)
+          yield* Effect.sync(() => {
+            if (shouldFocus) focusComposer()
+            if (shouldAnchorHistoryEnd) void anchorHistoryEnd()
+            if (shouldAnchorSearchOpen) { const itemRef = current.history.selectedItemRef; void (itemRef === null ? anchorHistoryEnd() : anchorHistoryItem(itemRef)) }
+          })
         })),
       )
     }

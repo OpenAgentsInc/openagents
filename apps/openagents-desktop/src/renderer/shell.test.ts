@@ -1018,7 +1018,10 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         workspaceSearch: async () => null,
         cancelWorkspaceSearch: async () => null,
         createWorkspaceEntry: async () => null,
-        renameWorkspaceEntry: async () => null,
+        renameWorkspaceEntry: async () => ({
+          state: "renamed",
+          entry: { name: "GUIDE.md", pathRef: "GUIDE.md", kind: "file", expandable: false, sizeBytes: 10, revisionRef: "revision-guide" },
+        }),
         deleteWorkspaceEntry: async () => null,
         revealWorkspaceEntry: async () => null,
         refreshWorkspace: async () => true,
@@ -1041,6 +1044,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           }
         },
         saveWorkspaceDocument: async () => ({ state: "unavailable", reason: "unavailable", message: "unused" }),
+        saveWorkspaceDocumentAs: async () => ({ state: "unavailable", reason: "unavailable", message: "unused" }),
       }
       const state = yield* SubscriptionRef.make(baseState)
       const registry = yield* makeIntentRegistry(
@@ -1061,10 +1065,87 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
       expect(opened.workspaceEditor.activePathRef).toBe("README.md")
       expect(nodeByKey(desktopShellView(opened), "workspace-editor-host-README.md")?.kind).toBe("code-editor")
 
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserRenameStarted", StaticPayload({
+        pathRef: "README.md",
+        name: "README.md",
+        expectedRevisionRef: "revision-readme",
+      }))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserEditorChanged", StaticPayload("GUIDE.md"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserEditorSubmitted", StaticPayload(null))))
+      const renamed = yield* SubscriptionRef.get(state)
+      expect(renamed.workspaceEditor.activePathRef).toBe("GUIDE.md")
+      expect(renamed.workspaceEditor.tabs[0]?.document?.pathRef).toBe("GUIDE.md")
+
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspacePickerRequested", StaticPayload(null))))
       expect(chooseCalls).toBe(1)
-      expect(treeCalls).toHaveLength(2)
+      expect(treeCalls).toHaveLength(3)
       expect((yield* SubscriptionRef.get(state)).workspaceEditor.tabs).toEqual([])
+    }))
+  })
+
+  test("Files entry reconciles ref-only recovery against the current workspace grant", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const browser: WorkspaceBrowserBridge = {
+        workspaceTree: async () => ({
+          state: "available",
+          grantRef: "workspace.grant.current",
+          directoryRef: "",
+          entries: [{ name: "README.md", pathRef: "README.md", kind: "file", expandable: false, sizeBytes: 8, revisionRef: "revision-readme" }],
+          nextOffset: null,
+          cache: { key: "tree-root", epoch: 1, freshness: "current" },
+        }),
+        workspaceSearch: async () => null,
+        cancelWorkspaceSearch: async () => null,
+        createWorkspaceEntry: async () => null,
+        renameWorkspaceEntry: async () => null,
+        deleteWorkspaceEntry: async () => null,
+        revealWorkspaceEntry: async () => null,
+        refreshWorkspace: async () => true,
+      }
+      const documents: WorkspaceDocumentBridge = {
+        openWorkspaceDocument: async () => ({
+          state: "available",
+          document: {
+            grantRef: "workspace.grant.current",
+            pathRef: "README.md",
+            content: "base",
+            revisionRef: "workspace.document.base",
+            languageMode: "markdown",
+            encoding: "utf-8",
+            lineEnding: "none",
+            sizeBytes: 4,
+          },
+        }),
+        saveWorkspaceDocument: async () => null,
+        saveWorkspaceDocumentAs: async () => null,
+      }
+      const state = yield* SubscriptionRef.make({ ...baseState, codingCatalog: codingCatalogFixture })
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
+        state,
+        fixedNow,
+        undefined,
+        undefined,
+        {
+          choose: async () => false,
+          browser,
+          documents,
+          recovery: {
+            load: workspaceSessionRef => workspaceSessionRef === "session.desktop.fixture" ? {
+              version: 2,
+              activePathRef: "README.md",
+              tabs: [{ pathRef: "README.md", expectedRevisionRef: "workspace.document.base", draft: "recovered draft" }],
+            } : null,
+          },
+        },
+      ))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload("files"))))
+      const recovered = yield* SubscriptionRef.get(state)
+      expect(recovered.workspaceEditor.activePathRef).toBe("README.md")
+      expect(recovered.workspaceEditor.tabs[0]).toMatchObject({
+        phase: "ready",
+        draft: "recovered draft",
+        document: { grantRef: "workspace.grant.current" },
+      })
     }))
   })
 

@@ -148,6 +148,7 @@ import {
   DesktopWorkspaceRevealChannel,
   DesktopWorkspaceDocumentOpenChannel,
   DesktopWorkspaceDocumentSaveChannel,
+  DesktopWorkspaceDocumentSaveAsChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
@@ -162,6 +163,7 @@ import {
   decodeWorkspaceRevealRequest,
   decodeWorkspaceDocumentRequest,
   decodeWorkspaceDocumentSaveRequest,
+  decodeWorkspaceDocumentSaveAsRequest,
   decodeWorkspaceTreeRequest,
   decodeWorkspaceWatchRequest,
 } from "./workspace-contract.ts"
@@ -735,6 +737,16 @@ ipcMain.handle(DesktopWorkspaceDocumentSaveChannel, (event, value: unknown) => {
   return request === null || workspace === null
     ? { state: "unavailable", reason: "unavailable", message: "Choose a workspace folder before saving documents." }
     : workspace.saveDocument(request)
+})
+ipcMain.handle(DesktopWorkspaceDocumentSaveAsChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { state: "unavailable", reason: "unavailable", message: "Workspace Save As is unavailable." }
+  }
+  const request = decodeWorkspaceDocumentSaveAsRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", reason: "unavailable", message: "Choose a workspace folder before using Save As." }
+    : workspace.saveDocumentAs(request)
 })
 ipcMain.handle(DesktopWorkspaceRefreshChannel, event => {
   if (!isTrustedRuntimeGatewaySender(event)) return false
@@ -1565,6 +1577,7 @@ const smokeWorkspaceTreeBridge = `(async () => {
       typeof bridge?.cancelWorkspaceSearch !== "function" ||
       typeof bridge?.openWorkspaceDocument !== "function" ||
       typeof bridge?.saveWorkspaceDocument !== "function" ||
+      typeof bridge?.saveWorkspaceDocumentAs !== "function" ||
       typeof bridge?.refreshWorkspace !== "function" ||
       typeof bridge?.workspaceSubscribe !== "function") {
     throw new Error("workspace capability bridge unavailable")
@@ -1627,6 +1640,14 @@ const smokeWorkspaceTreeBridge = `(async () => {
     if (staleSave?.state !== "conflict" || staleSave.current?.pathRef !== "session_index.jsonl") {
       throw new Error("workspace document conflict fencing missing")
     }
+    const saveAsConflict = await bridge.saveWorkspaceDocumentAs({
+      grantRef: page.grantRef,
+      pathRef: "session_index.jsonl",
+      content: "must not overwrite",
+    })
+    if (saveAsConflict?.state !== "conflict" || saveAsConflict.current?.content !== document.document.content) {
+      throw new Error("workspace Save As overwrite fencing missing")
+    }
     const foreignCancel = await bridge.cancelWorkspaceSearch({
       requestRef: "workspace.search.request.foreign",
     })
@@ -1639,6 +1660,7 @@ const smokeWorkspaceTreeBridge = `(async () => {
       matchCount: search.page.matches.length,
       documentLanguage: document.document.languageMode,
       staleSave: staleSave.state,
+      saveAsConflict: saveAsConflict.state,
       epoch: refresh.epoch,
       foreignCancel: foreignCancel.cancelled,
     }
@@ -1649,6 +1671,7 @@ const smokeWorkspaceTreeBridge = `(async () => {
 
 const smokeWorkspaceFilesUi = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const codingCatalog = await globalThis.openagentsDesktop?.codingCatalog?.snapshot?.()
   const files = document.querySelector('[data-en-key="workspace-files"]')
   if (files === null) return { ok: false, reason: "Files dock item missing" }
   files.click()
@@ -1661,15 +1684,88 @@ const smokeWorkspaceFilesUi = `(async () => {
   const search = document.querySelector('[data-en-key="workspace-browser-query"] input')
   const boundary = document.querySelector('[data-en-key="workspace-browser-boundary"]')
   const legacyEditor = document.querySelector('[data-en-key="workspace-file-editor"]')
+  const file = document.querySelector('[data-en-key="workspace-browser-select-session_index.jsonl"]')
+  file?.click()
+  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea') === null) {
+    await wait(50)
+  }
+  const editor = document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea')
+  if (editor !== null) {
+    editor.value = editor.value + "\\nrecovery-smoke-draft"
+    editor.dispatchEvent(new Event("input", { bubbles: true }))
+    await wait(300)
+  }
+  const saveAs = document.querySelector('[data-en-key="workspace-editor-save-as"]')
+  saveAs?.click()
+  await wait(50)
+  const saveAsPath = document.querySelector('[data-en-key="workspace-editor-save-as-path"] input')
+  document.querySelector('[data-en-key="workspace-editor-save-as-cancel"]')?.click()
+  await wait(300)
+  const recoveryKey = typeof codingCatalog?.selectedSessionRef === "string"
+    ? "openagents.desktop.workspace-editor.v2." + codingCatalog.selectedSessionRef
+    : undefined
+  let recoveryStored = false
+  let recoveryTabCount = -1
+  let recoveryDraftHasMarker = false
+  let recoveryDraftTail = ""
+  if (recoveryKey !== undefined) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(recoveryKey) ?? "null")
+      recoveryTabCount = Array.isArray(stored?.tabs) ? stored.tabs.length : -1
+      recoveryDraftHasMarker = stored?.tabs?.some((tab) => tab.pathRef === "session_index.jsonl" && tab.draft.includes("recovery-smoke-draft")) === true
+      recoveryDraftTail = typeof stored?.tabs?.[0]?.draft === "string" ? stored.tabs[0].draft.slice(-32) : ""
+      recoveryStored = stored?.version === 2 && recoveryDraftHasMarker
+    } catch {}
+  }
   const leakedRoot = document.body.textContent?.includes("tests/fixtures/codex-smoke") === true
   const chat = document.querySelector('[data-en-key="workspace-chat"]')
   chat?.click()
   return {
     ok: browser !== null && tree !== null && search !== null && boundary !== null &&
-      legacyEditor === null && !leakedRoot && chat !== null,
+      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot && chat !== null,
     relativeBoundary: boundary?.textContent,
     legacyEditor: legacyEditor !== null,
+    editorHost: editor !== null,
+    saveAsForm: saveAsPath !== null,
+    recoveryStored,
+    recoveryKeyPresent: recoveryKey !== undefined,
+    recoveryTabCount,
+    recoveryDraftHasMarker,
+    recoveryDraftTail,
+    editorHasMarker: editor?.value?.includes("recovery-smoke-draft") === true,
+    catalogSessions: codingCatalog?.sessions?.length ?? -1,
+    catalogSelected: codingCatalog?.selectedSessionRef ?? null,
     leakedRoot,
+  }
+})()`
+
+const smokeWorkspaceEditorRecovery = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const codingCatalog = await globalThis.openagentsDesktop?.codingCatalog?.snapshot?.()
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-files"]') === null) {
+    await wait(50)
+  }
+  const files = document.querySelector('[data-en-key="workspace-files"]')
+  files?.click()
+  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea') === null) {
+    await wait(50)
+  }
+  const editor = document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea')
+  const recovered = editor?.value?.includes("recovery-smoke-draft") === true
+  const recoveryKey = typeof codingCatalog?.selectedSessionRef === "string"
+    ? "openagents.desktop.workspace-editor.v2." + codingCatalog.selectedSessionRef
+    : undefined
+  document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
+  await wait(50)
+  document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
+  document.querySelector('[data-en-key="workspace-chat"]')?.click()
+  return {
+    ok: recovered,
+    recovered,
+    stored: recoveryKey !== undefined && localStorage.getItem(recoveryKey) !== null,
+    editor: editor !== null,
+    catalogSelected: codingCatalog?.selectedSessionRef ?? null,
   }
 })()`
 
@@ -2778,6 +2874,7 @@ const runSmoke = (window: BrowserWindow): void => {
       }
       try {
         if (tracePass === 1) {
+          await step("workspace-editor-reload-recovery", smokeWorkspaceEditorRecovery)
           await step("codex-trace-reload-restoration", traceAcceptanceReload)
           await step("coding-catalog-reload-restoration", smokeCodingCatalog)
           clearTimeout(timeout)

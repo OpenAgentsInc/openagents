@@ -11,6 +11,7 @@ import {
   decodeWorkspaceDocumentRequest,
   decodeWorkspaceDocumentResult,
   decodeWorkspaceDocumentSaveRequest,
+  decodeWorkspaceDocumentSaveAsRequest,
   decodeWorkspaceOperationResult,
   decodeWorkspaceRenameRequest,
   decodeWorkspaceRevealRequest,
@@ -29,6 +30,7 @@ import {
   readWorkspaceFile,
   saveWorkspaceFile,
   saveWorkspaceDocument,
+  saveWorkspaceDocumentAs,
   renameWorkspaceEntry,
   revealWorkspaceEntry,
   searchWorkspace,
@@ -73,6 +75,21 @@ describe("Desktop bounded workspace service", () => {
       content: "next",
       expectedRevisionRef: "workspace.document.revision",
     })
+    expect(decodeWorkspaceDocumentSaveAsRequest({
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/copy.ts",
+      content: "copy",
+      expectedRevisionRef: "must-not-cross",
+    })).toEqual({
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/copy.ts",
+      content: "copy",
+    })
+    expect(decodeWorkspaceDocumentSaveAsRequest({
+      grantRef: "workspace.grant.docs",
+      pathRef: "../copy.ts",
+      content: "copy",
+    })).toBeNull()
     expect(decodeWorkspaceDocumentResult({
       state: "unavailable",
       reason: "binary",
@@ -184,6 +201,76 @@ describe("Desktop bounded workspace service", () => {
     expect(saved.document.revisionRef).not.toBe(conflict.current.revisionRef)
   })
 
+  test("Save As creates a new relative UTF-8 document and never overwrites", () => {
+    const root = makeRoot()
+    mkdirSync(path.join(root, "src"))
+    const saved = saveWorkspaceDocumentAs(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/copy.ts",
+      content: "export const copy = true\n",
+    })
+    expect(saved).toMatchObject({
+      state: "saved",
+      document: {
+        grantRef: "workspace.grant.docs",
+        pathRef: "src/copy.ts",
+        content: "export const copy = true\n",
+        languageMode: "typescript",
+        encoding: "utf-8",
+      },
+    })
+    expect(readFileSync(path.join(root, "src/copy.ts"), "utf8")).toBe("export const copy = true\n")
+
+    writeFileSync(path.join(root, "src/existing.ts"), "keep me\n")
+    const conflict = saveWorkspaceDocumentAs(root, "workspace.grant.docs", {
+      grantRef: "workspace.grant.docs",
+      pathRef: "src/existing.ts",
+      content: "overwrite attempt\n",
+    })
+    expect(conflict).toMatchObject({ state: "conflict", current: { content: "keep me\n" } })
+    expect(readFileSync(path.join(root, "src/existing.ts"), "utf8")).toBe("keep me\n")
+    expect(JSON.stringify([saved, conflict])).not.toContain(root)
+  })
+
+  test("Save As fails closed for revoked, hidden, ignored, missing-parent, race, and permission targets", () => {
+    const root = makeRoot()
+    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    writeFileSync(path.join(root, ".gitignore"), "ignored.ts\n")
+    const input = { grantRef: "workspace.grant.docs", pathRef: "copy.ts", content: "copy" }
+    expect(saveWorkspaceDocumentAs(root, "workspace.grant.other", input))
+      .toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(saveWorkspaceDocumentAs(root, "workspace.grant.docs", { ...input, pathRef: ".hidden" }))
+      .toMatchObject({ state: "unavailable", reason: "unavailable" })
+    expect(saveWorkspaceDocumentAs(root, "workspace.grant.docs", { ...input, pathRef: "ignored.ts" }))
+      .toMatchObject({ state: "unavailable", reason: "unavailable" })
+    expect(saveWorkspaceDocumentAs(root, "workspace.grant.docs", { ...input, pathRef: "missing/copy.ts" }))
+      .toMatchObject({ state: "unavailable", reason: "missing" })
+
+    const raceIo: WorkspaceDocumentIo = {
+      read: absolutePath => readFileSync(absolutePath),
+      replace: () => undefined,
+      create: absolutePath => {
+        writeFileSync(absolutePath, "race winner")
+        throw Object.assign(new Error("exists"), { code: "EEXIST" })
+      },
+    }
+    const raced = saveWorkspaceDocumentAs(root, "workspace.grant.docs", input, raceIo)
+    expect(raced).toMatchObject({ state: "conflict", current: { content: "race winner" } })
+    expect(readFileSync(path.join(root, "copy.ts"), "utf8")).toBe("race winner")
+
+    const denied = Object.assign(new Error("private detail"), { code: "EACCES" })
+    const deniedResult = saveWorkspaceDocumentAs(root, "workspace.grant.docs", {
+      ...input,
+      pathRef: "denied.ts",
+    }, {
+      read: absolutePath => readFileSync(absolutePath),
+      replace: () => undefined,
+      create: () => { throw denied },
+    })
+    expect(deniedResult).toMatchObject({ state: "unavailable", reason: "permission_denied" })
+    expect(JSON.stringify(deniedResult)).not.toContain("private detail")
+  })
+
   test("surfaces injected document permission loss and WorkContext disposal without root leakage", () => {
     const root = makeRoot()
     writeFileSync(path.join(root, "README.md"), "before")
@@ -191,6 +278,7 @@ describe("Desktop bounded workspace service", () => {
     const deniedIo: WorkspaceDocumentIo = {
       read: () => { throw denied },
       replace: () => { throw denied },
+      create: () => { throw denied },
     }
     const deniedOpen = openWorkspaceDocument(root, "workspace.grant.docs", {
       grantRef: "workspace.grant.docs",
@@ -213,6 +301,7 @@ describe("Desktop bounded workspace service", () => {
     }, {
       read: absolutePath => readFileSync(absolutePath),
       replace: () => { throw denied },
+      create: () => { throw denied },
     })
     expect(deniedSave).toMatchObject({ state: "unavailable", reason: "permission_denied" })
     expect(readFileSync(path.join(root, "README.md"), "utf8")).toBe("before")

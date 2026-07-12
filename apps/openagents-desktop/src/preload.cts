@@ -42,6 +42,7 @@ import {
   DesktopWorkspaceRevealChannel,
   DesktopWorkspaceDocumentOpenChannel,
   DesktopWorkspaceDocumentSaveChannel,
+  DesktopWorkspaceDocumentSaveAsChannel,
   DesktopWorkspaceRefreshChannel,
   DesktopWorkspaceWatchChannel,
   DesktopWorkspaceChangeChannel,
@@ -56,6 +57,7 @@ import {
   decodeWorkspaceRevealRequest,
   decodeWorkspaceDocumentRequest,
   decodeWorkspaceDocumentSaveRequest,
+  decodeWorkspaceDocumentSaveAsRequest,
   decodeWorkspaceDocumentResult,
   decodeWorkspaceOperationResult,
   decodeWorkspaceTreePage,
@@ -290,6 +292,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     if (request === null) return { state: "unavailable", reason: "invalid_ref", message: "The document save request is invalid." }
     const response = await ipcRenderer.invoke(DesktopWorkspaceDocumentSaveChannel, request)
     return decodeWorkspaceDocumentResult(response) ?? { state: "unavailable", reason: "unavailable", message: "The document save response is invalid." }
+  },
+  saveWorkspaceDocumentAs: async (value: unknown) => {
+    const request = decodeWorkspaceDocumentSaveAsRequest(value)
+    if (request === null) return { state: "unavailable", reason: "invalid_ref", message: "The Save As request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceDocumentSaveAsChannel, request)
+    return decodeWorkspaceDocumentResult(response) ?? { state: "unavailable", reason: "unavailable", message: "The Save As response is invalid." }
   },
   refreshWorkspace: async (): Promise<boolean> =>
     (await ipcRenderer.invoke(DesktopWorkspaceRefreshChannel)) === true,

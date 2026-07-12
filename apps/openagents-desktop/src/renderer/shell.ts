@@ -110,8 +110,11 @@ import {
   makeWorkspaceEditorHandlers,
   unavailableWorkspaceDocumentBridge,
   workspaceEditorIntents,
+  workspaceEditorRecoverySnapshot,
   workspaceEditorView,
+  withWorkspaceEditorRenamed,
   type WorkspaceDocumentBridge,
+  type WorkspaceEditorRecoverySnapshot,
   type WorkspaceEditorState,
 } from "./workspace-editor.ts"
 import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyItemPageOffset, historyItemPageSize, historySearchActive, historySearchField, historySearchResultSidebarItems, historySourceBadgeLabel, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
@@ -921,6 +924,10 @@ export type WorkspaceHost = Readonly<{
   choose: () => Promise<unknown>
   browser?: WorkspaceBrowserBridge
   documents?: WorkspaceDocumentBridge
+  recovery?: Readonly<{
+    load: (workspaceSessionRef: string) => WorkspaceEditorRecoverySnapshot | null
+    save?: (workspaceSessionRef: string, snapshot: WorkspaceEditorRecoverySnapshot) => void
+  }>
 }>
 
 export type CodingCatalogHost = Readonly<{
@@ -1072,10 +1079,31 @@ export const makeDesktopShellHandlers = (
     state,
     workspaceHost.browser ?? unavailableWorkspaceBrowserBridge,
   )
+  const persistWorkspaceRecovery = (current: DesktopShellState): void => {
+    const workspaceSessionRef = current.codingCatalog.selectedSessionRef ??
+      current.codingCatalog.sessions.find(session => session.state === "active")?.sessionRef ??
+      current.codingCatalog.sessions[0]?.sessionRef ?? null
+    if (workspaceSessionRef !== null) {
+      workspaceHost.recovery?.save?.(workspaceSessionRef, workspaceEditorRecoverySnapshot(current.workspaceEditor))
+    }
+  }
   const workspaceEditorHandlers = makeWorkspaceEditorHandlers(
     state,
     workspaceHost.documents ?? unavailableWorkspaceDocumentBridge,
+    persistWorkspaceRecovery,
   )
+  const recoverWorkspaceEditor = Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.workspaceEditor.tabs.length > 0) return
+    const workspaceSessionRef = current.codingCatalog.selectedSessionRef ??
+      current.codingCatalog.sessions.find(session => session.state === "active")?.sessionRef ??
+      current.codingCatalog.sessions[0]?.sessionRef ?? null
+    const grantRef = current.workspaceBrowser.grantRef
+    if (workspaceSessionRef === null || grantRef === null) return
+    const snapshot = workspaceHost.recovery?.load(workspaceSessionRef) ?? null
+    if (snapshot === null || snapshot.tabs.length === 0) return
+    yield* workspaceEditorHandlers.WorkspaceEditorRecoveryRequested({ grantRef, snapshot })
+  })
   /**
    * Hands one completed answer set to the typed bridge. The card collapses
    * only after the bridge confirms success. This preserves the frozen local
@@ -1124,6 +1152,26 @@ export const makeDesktopShellHandlers = (
       grantRef: before.workspaceBrowser.grantRef,
       pathRef,
     })
+  }),
+  WorkspaceBrowserEditorSubmitted: () => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const sourcePathRef = before.workspaceBrowser.editor?.kind === "rename"
+      ? before.workspaceBrowser.editor.pathRef
+      : null
+    yield* workspaceBrowserHandlers.WorkspaceBrowserEditorSubmitted()
+    if (sourcePathRef === null) return
+    const after = yield* SubscriptionRef.get(state)
+    if (after.workspaceBrowser.operation?.state !== "renamed") return
+    const next = {
+      ...after,
+      workspaceEditor: withWorkspaceEditorRenamed(
+        after.workspaceEditor,
+        sourcePathRef,
+        after.workspaceBrowser.operation.entry.pathRef,
+      ),
+    }
+    yield* SubscriptionRef.set(state, next)
+    persistWorkspaceRecovery(next)
   }),
   DesktopSettingsToggled: () => Effect.gen(function* () {
     yield* settingsHandlers.DesktopSettingsToggled()
@@ -1492,6 +1540,7 @@ export const makeDesktopShellHandlers = (
       }
       if (workspace === "files") {
         yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
+        yield* recoverWorkspaceEditor
       }
       if (workspace === "home") {
         const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
@@ -1509,7 +1558,10 @@ export const makeDesktopShellHandlers = (
         ...current,
         workspaceEditor: emptyWorkspaceEditorState(),
       }))
+      const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
+      yield* SubscriptionRef.update(state, current => ({ ...current, codingCatalog }))
       yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
+      yield* recoverWorkspaceEditor
     }),
   DesktopCommandPaletteToggled: () =>
     SubscriptionRef.update(state, (current) => withCommandPalette(current, !current.commandPaletteOpen)),
