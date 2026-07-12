@@ -24,6 +24,7 @@ import {
   validBranchName,
 } from "./git-github-host.ts"
 import type { GitGithubResult } from "./git-github-contract.ts"
+import { isolatedGitEnvironment } from "../tests/git-fixture.ts"
 
 const gitAvailable = spawnSync("git", ["--version"], { encoding: "utf8" }).status === 0
 
@@ -31,7 +32,7 @@ const git = (repo: string, ...args: string[]): { ok: boolean; stdout: string; st
   const proc = spawnSync("git", ["-C", repo, ...args], {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...isolatedGitEnvironment(),
       GIT_AUTHOR_NAME: "Test",
       GIT_AUTHOR_EMAIL: "test@example.com",
       GIT_COMMITTER_NAME: "Test",
