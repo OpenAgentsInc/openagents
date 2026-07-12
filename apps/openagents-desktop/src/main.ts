@@ -243,13 +243,30 @@ import {
 } from "./desktop-command-bindings.ts"
 
 const here = import.meta.dirname
-const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
+// Startup-timing harness (measure-constantly discipline; scripts/startup-bench.ts).
+// When set to a file path, the app runs the deterministic fixture startup path
+// (implies smoke wiring — no network, no real ~/.codex scan), records the
+// milestone marks, writes them as JSON to that path, and exits. It NEVER drives
+// the smoke composer flow. `desktopStartupT0` is the wall-clock (ms epoch) of
+// this main process's performance origin (≈ process start); every reported mark
+// is `Date.now()` minus this origin.
+const startupMarksFile = process.env.OPENAGENTS_DESKTOP_STARTUP_MARKS ?? null
+const startupMarksMode = startupMarksFile !== null
+const desktopStartupT0 = performance.timeOrigin
+const desktopMainMarks: Record<string, number> = {}
+const recordMainMark = (name: string): void => {
+  if (desktopMainMarks[name] === undefined) desktopMainMarks[name] = Date.now()
+}
+recordMainMark("mainModuleEvaluated")
+// Startup-marks mode reuses the deterministic smoke fixtures so the benchmark
+// isolates main-process init ordering rather than live filesystem/network state.
+const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
   smokeMode || liveProofDriverMode
     ? path.join(
         app.getPath("temp"),
-        `openagents-desktop-${smokeMode ? "smoke" : "live-proof"}-${process.pid}`,
+        `openagents-desktop-${startupMarksMode ? "startup-marks" : smokeMode ? "smoke" : "live-proof"}-${process.pid}`,
       )
     : path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
 )
@@ -1646,6 +1663,10 @@ const createWindow = (): BrowserWindow => {
     closeWindowScope()
   })
   window.once("ready-to-show", () => {
+    // Startup-timing: the first instant the window is presentable (first paint
+    // of the pre-boot frame). Recorded before show() so the mark reflects the
+    // compositor-ready moment, not post-show work.
+    recordMainMark("windowReadyToShow")
     window.show()
   })
   void window.loadFile(path.join(here, "renderer/index.html"))
@@ -3042,6 +3063,114 @@ const launchSmokeSecondInstance = async (): Promise<void> => {
   })
 }
 
+/**
+ * Startup-marks driver (measure-constantly discipline; scripts/startup-bench.ts).
+ * Waits for the renderer to report its shell-mounted mark, reads the paint
+ * timing back out of the sandboxed renderer with executeJavaScript (no boundary
+ * change — the same read-only channel smoke uses), times the runtime-gateway
+ * bootstrap (capability-ready), writes the milestone chain as JSON to `file`,
+ * then tears down and exits. All marks are ms from process start
+ * (`desktopStartupT0`, the main perf origin).
+ */
+const runStartupMarks = (window: BrowserWindow, file: string): void => {
+  const finish = (code: 0 | 1): void => {
+    try { workspaceSearchRegistry.dispose() } catch { /* best-effort teardown */ }
+    try { hostLifecycle.dispose() } catch { /* best-effort teardown */ }
+    try { desktopCorrelationJournal.dispose() } catch { /* best-effort teardown */ }
+    try { rmSync(app.getPath("userData"), { recursive: true, force: true }) } catch { /* temp userData */ }
+    app.exit(code)
+  }
+  const timeout = setTimeout(() => {
+    console.error("[openagents-desktop startup-marks] TIMEOUT waiting for renderer")
+    finish(1)
+  }, 45_000)
+  const rendererReadback = `(async () => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    const marks = () => globalThis.__oaStartupMarks || {}
+    const deadline = Date.now() + 30000
+    while (Date.now() < deadline &&
+      (typeof marks().shellMounted !== "number" ||
+       document.querySelector('[data-en-key="shell-root"]') === null)) {
+      await wait(20)
+    }
+    const paint = performance.getEntriesByType("paint")
+    const fcp = paint.find((entry) => entry.name === "first-contentful-paint")
+    const fp = paint.find((entry) => entry.name === "first-paint")
+    const bridge = globalThis.openagentsDesktop
+    let bootstrapWall = null
+    if (typeof bridge?.runtimeRequest === "function") {
+      const started = Date.now()
+      const result = await bridge.runtimeRequest({
+        kind: "query",
+        requestId: "startup-marks-bootstrap",
+        query: { id: "runtime.bootstrap" },
+      })
+      if (result?.result?.lifecycle === "ready") bootstrapWall = Date.now()
+      else bootstrapWall = started
+    }
+    return {
+      bootStart: marks().bootStart ?? null,
+      shellMounted: marks().shellMounted ?? null,
+      shellPresent: document.querySelector('[data-en-key="shell-root"]') !== null,
+      timeOrigin: performance.timeOrigin,
+      firstPaintOffset: fp ? fp.startTime : null,
+      firstContentfulPaintOffset: fcp ? fcp.startTime : null,
+      bootstrapWall,
+    }
+  })()`
+  window.webContents.once("did-finish-load", () => {
+    void (async () => {
+      try {
+        const readback = await window.webContents.executeJavaScript(rendererReadback, true) as {
+          bootStart: number | null
+          shellMounted: number | null
+          shellPresent: boolean
+          timeOrigin: number
+          firstPaintOffset: number | null
+          firstContentfulPaintOffset: number | null
+          bootstrapWall: number | null
+        }
+        if (!readback.shellPresent || readback.shellMounted === null) {
+          throw new Error(`renderer never mounted: ${JSON.stringify(readback)}`)
+        }
+        const t0 = desktopStartupT0
+        const rel = (wall: number | null): number | null =>
+          wall === null ? null : Math.round((wall - t0) * 100) / 100
+        const paintWall = readback.firstContentfulPaintOffset !== null
+          ? readback.timeOrigin + readback.firstContentfulPaintOffset
+          : readback.firstPaintOffset !== null
+            ? readback.timeOrigin + readback.firstPaintOffset
+            : null
+        const marks = {
+          // Every value is ms since process start (main performance origin).
+          mainModuleEvaluated: rel(desktopMainMarks.mainModuleEvaluated ?? null),
+          appWhenReady: rel(desktopMainMarks.appWhenReady ?? null),
+          windowCreated: rel(desktopMainMarks.windowCreated ?? null),
+          windowReadyToShow: rel(desktopMainMarks.windowReadyToShow ?? null),
+          rendererBootStart: rel(readback.bootStart),
+          firstPaint: rel(paintWall),
+          shellMounted: rel(readback.shellMounted),
+          capabilityReady: rel(readback.bootstrapWall),
+        }
+        mkdirSync(path.dirname(file), { recursive: true })
+        writeFileSync(file, JSON.stringify({
+          schema: "openagents-desktop-startup-marks/v1",
+          capturedAtIso: new Date().toISOString(),
+          unit: "ms-from-process-start",
+          marks,
+        }, null, 2))
+        console.log("[openagents-desktop startup-marks] captured", JSON.stringify(marks))
+        clearTimeout(timeout)
+        finish(0)
+      } catch (error) {
+        console.error("[openagents-desktop startup-marks] FAILED", error instanceof Error ? error.message : error)
+        clearTimeout(timeout)
+        finish(1)
+      }
+    })()
+  })
+}
+
 const runSmoke = (window: BrowserWindow): void => {
   const finish = (code: 0 | 1): void => {
     workspaceSearchRegistry.dispose()
@@ -3244,6 +3373,7 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
 
 void app.whenReady().then(async () => {
   if (!primaryDesktopInstance) return
+  recordMainMark("appWhenReady")
   // macOS does not use BrowserWindow's icon for the active Dock tile in a
   // development Electron process. Set both native surfaces to the same mobile
   // PNG so the running desktop application has one product identity.
@@ -3296,6 +3426,14 @@ void app.whenReady().then(async () => {
   // flags (fleet readiness), and the composer chip's availability call.
   void codexPreflight.probeAll("boot").catch(() => {})
   const window = createWindow()
+  recordMainMark("windowCreated")
+  // Startup-marks mode (scripts/startup-bench.ts): record the milestone chain
+  // and exit. Checked first because it implies smokeMode fixture wiring but must
+  // NOT drive the smoke composer flow.
+  if (startupMarksMode && startupMarksFile !== null) {
+    runStartupMarks(window, startupMarksFile)
+    return
+  }
   // Episode 250 live-proof driver (#8712): REAL adapters (no smoke fixtures),
   // mutually exclusive with smoke. See ./live-proof.ts — additive only.
   const liveProof = resolveLiveProofConfig(process.env, app.getPath("userData"))

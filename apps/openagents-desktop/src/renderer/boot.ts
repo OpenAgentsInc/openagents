@@ -1201,6 +1201,16 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       hostDrivers: [makeStubCodeEditorDriver()],
     })
     yield* renderer.mount(root, program.viewStream, report)
+    // Startup-timing instrumentation (measure-constantly discipline; see
+    // scripts/startup-bench.ts + docs/fable/2026-07-11-desktop-startup-speed-audit.md).
+    // A plain renderer-local global — NEVER a preload/IPC channel — that the
+    // main-process bench mode reads back with executeJavaScript. Records the
+    // wall-clock instant (ms epoch) the shell DOM first mounted: the interactive
+    // frame. Harmless in production (an unread global object).
+    {
+      const marks = ((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {})
+      marks.shellMounted = Date.now()
+    }
     // Sidebar connected-accounts box (EP250): one boot-time accounts pull so
     // the pinned bottom box has evidence without visiting the Fleet
     // workspace. This rides the EXISTING FleetRefreshRequested flow (list +
@@ -1244,6 +1254,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
   })
 
 const boot = (): void => {
+  // Startup-timing: earliest renderer-script instant (ms epoch). See the
+  // shellMounted mark above and scripts/startup-bench.ts.
+  ;((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {}).bootStart = Date.now()
   const root = document.getElementById("openagents-desktop-root")
   if (root === null) return
   const host = decodeBridgeHost(
