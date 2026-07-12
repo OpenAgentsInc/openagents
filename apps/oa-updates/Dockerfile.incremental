@@ -1,0 +1,16 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+WORKDIR /app
+
+# Preserve the immutable release assets baked into the currently deployed
+# image while advancing only the update-service code and the independent
+# OpenAgents Desktop feed seed. This is the safe path when no fresh Expo
+# export has been staged in `dist/`.
+COPY package.json ./
+COPY src ./src
+COPY openagents-desktop-dist ./openagents-desktop-dist
+
+EXPOSE 8080
+
+CMD ["bun", "run", "src/serve.ts"]

@@ -52,6 +52,12 @@ bun apps/oa-updates/scripts/verify-release.ts <artifact> <artifact>.sig.json   #
 
 ## Publish (GCP only)
 
+When a fresh Expo export is staged in `dist/`, use the normal `Dockerfile` and
+deployment script. When advancing service code without replacing the currently
+published mobile assets, build `Dockerfile.incremental` with the immutable
+digest of the currently ready Cloud Run image as `BASE_IMAGE`. That preserves
+the baked release inputs instead of silently deploying an empty seed.
+
 Build → sign → publish the artifact **and** its `.sig.json`/signed manifest to
 `updates.openagents.com` (the `oa-updates` Cloud Run service, project
 `openagentsgemini`, `us-central1`; see `scripts/deploy-cloudrun.sh`). Nothing is
