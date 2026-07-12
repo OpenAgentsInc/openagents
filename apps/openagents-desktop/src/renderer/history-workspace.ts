@@ -1,4 +1,4 @@
-import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, SplitPane, Stack, StaticPayload, Table, Text, TextField, Timeline, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
+import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, SplitPane, Stack, StaticPayload, Table, Text, TextField, Timeline, Tooltip, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
 import { Schema } from "@effect-native/core/effect"
 import type { CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage, CodexHistorySearchResult, CodexHistorySource } from "../codex-history-contract.ts"
 import type { DesktopThread } from "../chat-contract.ts"
@@ -473,14 +473,15 @@ const proseRow = (item: CodexHistoryItem): View =>
       ...(proseHeader(item) === null ? [] : [Text({ key: `history-item-${item.itemRef}-header`, content: proseHeader(item)!, variant: "caption", color: "textFaint" })]),
       ...historyProseBody(item, "history-item"),
       Stack({ key: `history-item-${item.itemRef}-meta-row`, direction: "row", gap: "1", align: "center" }, [
-        Button({
-          key: `history-item-details-${item.itemRef}`,
-          label: "details",
-          variant: "ghost",
-          style: { padding: "0", borderWidth: 0, typeScale: "caption", color: "textFaint" },
-          onPress: IntentRef("HistoryItemSelected", StaticPayload(item.itemRef)),
-          a11y: { label: `Show item details, ${item.label} message, source item ${item.sequence + 1}` },
-        }),
+        Tooltip(
+          { key: `history-item-details-tooltip-${item.itemRef}`, content: "Details", placement: { side: "top", align: "start" } },
+          [IconButton({
+            key: `history-item-details-${item.itemRef}`,
+            icon: "InfoCircle",
+            accessibilityLabel: `Show item details, ${item.label} message, source item ${item.sequence + 1}`,
+            onPress: IntentRef("HistoryItemSelected", StaticPayload(item.itemRef)),
+          })],
+        ),
       ]),
     ],
   )
@@ -511,22 +512,28 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
     : page.items.find(item => item.itemRef === state.selectedItemRef)?.sequence ?? null
   const actionBar = Stack({ key: "history-thread-actions", direction: "column", gap: "1", style: { width: "full" } }, [
     Stack({ key: "history-thread-action-buttons", direction: "row", gap: "2", align: "center" }, [
-      Button({
-        key: "history-resume-picker-toggle",
-        label: "Resume local chat",
-        variant: "secondary",
-        disabled: localThreads.length === 0,
-        onPress: IntentRef("HistoryResumePickerToggled"),
-        a11y: { label: localThreads.length === 0 ? "Resume local chat unavailable, no local chats" : `Choose one of ${localThreads.length} local chats to resume` },
-      }),
-      Button({
-        key: "history-fork-from-here",
-        label: "Fork from here",
-        variant: "secondary",
-        disabled: selectedSequence === null,
-        onPress: IntentRef("HistoryForkRequested", StaticPayload({ sourceThreadRef: page.selectedThreadRef, throughSequence: selectedSequence })),
-        a11y: { label: selectedSequence === null ? "Fork unavailable, no history item selected" : `Fork ${historySourceBadgeLabel(page.agents.find(agent => agent.threadRef === page.rootThreadRef)?.source ?? "codex")} session through item ${selectedSequence + 1} into a new local chat` },
-      }),
+      Tooltip(
+        { key: "history-resume-picker-tooltip", content: "Resume local chat", placement: { side: "bottom", align: "start" } },
+        [IconButton({
+          key: "history-resume-picker-toggle",
+          icon: "History",
+          accessibilityLabel: localThreads.length === 0 ? "Resume local chat unavailable, no local chats" : `Choose one of ${localThreads.length} local chats to resume`,
+          disabled: localThreads.length === 0,
+          surface: "glass",
+          onPress: IntentRef("HistoryResumePickerToggled"),
+        })],
+      ),
+      Tooltip(
+        { key: "history-fork-tooltip", content: "Fork from here", placement: { side: "bottom", align: "start" } },
+        [IconButton({
+          key: "history-fork-from-here",
+          icon: "Branch",
+          accessibilityLabel: selectedSequence === null ? "Fork unavailable, no history item selected" : `Fork ${historySourceBadgeLabel(page.agents.find(agent => agent.threadRef === page.rootThreadRef)?.source ?? "codex")} session through item ${selectedSequence + 1} into a new local chat`,
+          disabled: selectedSequence === null,
+          surface: "glass",
+          onPress: IntentRef("HistoryForkRequested", StaticPayload({ sourceThreadRef: page.selectedThreadRef, throughSequence: selectedSequence })),
+        })],
+      ),
     ]),
     ...((state.resumePickerOpen ?? false) ? [Stack({ key: "history-resume-picker", direction: "column", gap: "1", a11y: { role: "region", label: "Local chats available to resume" } }, localThreads.map(thread =>
       Button({

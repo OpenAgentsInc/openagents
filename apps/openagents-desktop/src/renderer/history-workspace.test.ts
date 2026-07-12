@@ -37,8 +37,9 @@ describe("history workspace",()=>{
     const all=nodes(view) as any[]
     const toggle=all.find(n=>n.key==="history-resume-picker-toggle")
     const candidate=all.find(n=>n.key==="history-resume-thread-local-thread-1")
-    expect(toggle).toMatchObject({_tag:"Button",label:"Resume local chat",disabled:false})
+    expect(toggle).toMatchObject({_tag:"IconButton",icon:"History",accessibilityLabel:"Choose one of 1 local chats to resume",disabled:false})
     expect(toggle.onPress.name).toBe("HistoryResumePickerToggled")
+    expect(all.find(n=>n.key==="history-resume-picker-tooltip")).toMatchObject({_tag:"Tooltip",content:"Resume local chat"})
     expect(candidate).toMatchObject({_tag:"Button",label:"Parser repair"})
     expect(candidate.onPress).toMatchObject({name:"HistoryResumeThreadSelected",payload:{value:"local-thread-1"}})
   })
@@ -46,9 +47,10 @@ describe("history workspace",()=>{
     const items=[item(0,"user_message","You","first"),item(1,"assistant_message","Assistant","second")]
     const view=historyWorkspaceView(stateWith({...page,items,totalItems:2},"child:0"))
     const action=(nodes(view) as any[]).find(n=>n.key==="history-fork-from-here")
-    expect(action).toMatchObject({_tag:"Button",label:"Fork from here",disabled:false})
+    expect(action).toMatchObject({_tag:"IconButton",icon:"Branch",disabled:false})
     expect(action.onPress).toMatchObject({name:"HistoryForkRequested",payload:{value:{sourceThreadRef:"child",throughSequence:0}}})
     expect(JSON.stringify(action.onPress.payload.value)).not.toContain("first")
+    expect((nodes(view) as any[]).find(n=>n.key==="history-fork-tooltip")).toMatchObject({_tag:"Tooltip",content:"Fork from here"})
   })
   test("renders a bounded split view with a semantic agent tree and icon-only lifecycle state",()=>{const view=historyWorkspaceView(stateWith(page));const all=nodes(view) as any[];const root=all.find(n=>n.id==="history-agent-root");const child=all.find(n=>n.id==="history-agent-child");expect(all.find(n=>n.key==="history-workspace-split")?._tag).toBe("SplitPane");expect(all.find(n=>n.key==="history-agents-drawer")).toMatchObject({_tag:"IconButton",icon:"Agent"});expect(all.find(n=>n.key==="history-center-title")).toBeUndefined();expect(all.find(n=>n.key==="history-center-status")).toBeUndefined();expect(all.find(n=>n.key==="history-completeness")).toBeUndefined();expect(all.find(n=>n.key==="history-agent-config")).toBeUndefined();expect(all.find(n=>n.key==="history-agent-list")).toMatchObject({_tag:"NavRail",role:"tree",activeId:"history-agent-child"});expect(root).toMatchObject({icon:"Check"});expect(root.meta).toBeUndefined();expect(child).toMatchObject({depth:1,selected:true,icon:"Play"});expect(child.meta).toBeUndefined();expect(child.accessibilityLabel).toContain("Running")})
   test("selected item opens structured detail with back action",()=>{const all=nodes(historyWorkspaceView(stateWith(page,"child:0"))) as any[];expect(all.find(n=>n.key==="history-item-inspector")).toBeDefined();expect(all.find(n=>n.key==="history-item-back")?.onPress.name).toBe("HistoryItemSelected")})
@@ -111,8 +113,8 @@ describe("history workspace",()=>{
       // Details affordance dispatches the SAME inspector intent timeline rows use.
       const details=nodes(historyWorkspaceView(stateWith(prosePage))).find(n=>n.key==="history-item-details-child:1")
       expect(details?.onPress?.name).toBe("HistoryItemSelected")
-      expect(details).toMatchObject({_tag:"Button",variant:"ghost"})
-      expect(details.style).toMatchObject({typeScale:"caption",color:"textFaint"})
+      expect(details).toMatchObject({_tag:"IconButton",icon:"InfoCircle"})
+      expect(nodes(historyWorkspaceView(stateWith(prosePage))).find(n=>n.key==="history-item-details-tooltip-child:1")).toMatchObject({_tag:"Tooltip",content:"Details"})
     })
     test("user and agent-message prose route through the same projector",()=>{
       const user=item(2,"user_message","You","Please check `pkg.json` and **fix** it")

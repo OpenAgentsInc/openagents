@@ -1641,7 +1641,11 @@ export const iconNames = [
   "Menu",
   "Compose",
   "Mic",
-  "Sparkles"
+  "Sparkles",
+  // History transcript actions use the shared OpenAI Apps SDK catalog names.
+  "History",
+  "Branch",
+  "InfoCircle"
 ] as const
 export const IconNameSchema = Schema.Literals(iconNames)
 export type IconName = (typeof iconNames)[number]
