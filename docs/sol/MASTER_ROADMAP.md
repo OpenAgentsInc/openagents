@@ -8,8 +8,8 @@
   three owner Codex targets and exact hosted-Gemini selection survives process
   replacement; CUT-26 `0.1.0-rc.1` is signed, notarized, stapled, and live on
   the production RC feed; CUT-25 cross-client Fleet control is closed; remaining
-  local-cutover leaves are acceptance-gated CUT-09, CUT-16, CUT-26, and CUT-27)
-- Revision: 84
+  local-cutover leaves are acceptance-gated CUT-09, CUT-26, and CUT-27)
+- Revision: 85
 - Status: canonical OpenAgents implementation roadmap
 - Documentation cleanup: SOL-DOC-01
   [#8723](https://github.com/OpenAgentsInc/openagents/issues/8723) closed the
@@ -765,7 +765,9 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   and target through CoreDevice process replacement. The authenticated Android
   app then submitted a real hosted-Gemini turn on that confirmed coding thread,
   projected active cancellation, received the exact bounded response and usage,
-  and reached `Turn completed`. Only physical-iOS VoiceOver remains open. The named Codex
+  and reached `Turn completed`. Physical-iOS VoiceOver then retained a
+  reachable authenticated timeline and navigation/drawer focus path, closing
+  CUT-16. The named Codex
   composer receipt completed on 2026-07-12 with a retained redaction-clean
   proof. The trusted interaction authority is live on production Cloud Run
   revision `openagents-monolith-00085-k4v`; migrations 0061/0062 are applied
@@ -1877,7 +1879,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-16, CUT-26, and CUT-27 remain open. CUT-10, CUT-14, and CUT-25 are closed with their required live/physical receipts; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-16 now awaits only physical-iOS VoiceOver; CUT-26 has a live signed RC and awaits only clean-machine acceptance; CUT-27 is the capstone declaration. |
+| **P0 local-coding leaves** | #8689–#8707 mixed | Only CUT-09, CUT-26, and CUT-27 remain open. CUT-10, CUT-14, CUT-16, and CUT-25 are closed with their required live/physical receipts; CUT-09 still awaits its distinct network-gap/revocation acceptance. CUT-26 has a live signed RC and awaits only clean-machine acceptance; CUT-27 is the capstone declaration. |
 | **Closed P0 recording pull-forward** | #8712 | Code-landed and provider-live via closed CUT-21; Episode 250 transcript 250 retains the on-camera owner acceptance and explicit mechanics-win verdict. Do not add implementation children or treat later provider-capacity changes as invalidating the historical named-provider receipt. |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |

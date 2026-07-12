@@ -429,3 +429,19 @@ canonical confirmed thread, not enqueue-only evidence. Together with the
 earlier Android TalkBack receipt and physical-iOS target-selection/process-
 restoration receipt, it closes the authenticated cross-client-turn residual.
 CUT-16 remains open only for its literal physical-iOS VoiceOver receipt.
+
+## Addendum (2026-07-12): physical iOS VoiceOver closure
+
+On the paired physical iPhone 17 Pro Max, Settings visibly confirmed VoiceOver
+active with the system `VoiceOver is active` banner and enabled switch. With
+VoiceOver still active, OpenAgents launched into the authenticated canonical
+conversation, retained its rendered timeline, and exposed the navigation
+control. Activating navigation opened the real conversation drawer; the New
+chat, OpenAgents, Coding, and retained conversation rows remained reachable
+instead of collapsing into one full-screen focus target or trapping the user.
+
+This is the literal physical-iOS assistive-technology row that remained after
+the Android TalkBack structural repair. Combined with the authenticated
+hosted-Gemini completed turn, exact target persistence, attachments/images,
+typed approvals/questions/control outcomes, keyboard, offline admission, and
+restart coverage above, CUT-16's close rule is satisfied.
