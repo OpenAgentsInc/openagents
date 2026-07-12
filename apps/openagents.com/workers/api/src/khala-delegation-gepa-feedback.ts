@@ -258,6 +258,8 @@ const deriveFailureRefs = (
   }
   if (
     text.includes('stale_or_missing_heartbeat') ||
+    text.includes('heartbeat_stale') ||
+    text.includes('heartbeat_missing') ||
     text.includes('stale_heartbeat') ||
     text.includes('pylon_stale')
   ) {

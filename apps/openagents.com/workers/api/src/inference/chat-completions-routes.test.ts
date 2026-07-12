@@ -479,6 +479,9 @@ describe('coding delegation default-on guard', () => {
     expect(response.headers.get('openagents-selected-pylon-ref')).toBe(
       'pylon.owner.codex',
     )
+    const text = await response.text()
+    expect(text).toContain('"pylonRef":"pylon.owner.codex"')
+    expect(text).toContain('"workflowClass":"codex_agent_task"')
   })
 
   test('direct agent-owned Pylon dispatch survives a transient OpenAuth link read failure', async () => {

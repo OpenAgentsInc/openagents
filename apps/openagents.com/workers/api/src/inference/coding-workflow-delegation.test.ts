@@ -958,11 +958,54 @@ describe('coding workflow delegation', () => {
     expect(result).toMatchObject({
       error: 'target_pylon_unavailable',
       evidenceRefs: expect.arrayContaining([
-        'evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat',
+        'evidence.khala_coding.target_pylon_ref.unavailable.heartbeat_stale',
       ]),
       kind: 'rejected',
       statusCode: 409,
     })
+    if (result?.kind !== 'rejected') {
+      throw new Error('expected a rejection')
+    }
+    expect(result.reason).toContain('last heartbeated 3600s ago')
+    expect(result.reason).toContain('omit --pylon-ref')
+  })
+
+  test('diagnoses a never-heartbeated target separately from a stale target (#8716)', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        registrations: [
+          registration({
+            latestHeartbeatAt: null,
+            latestHeartbeatStatus: null,
+          }),
+        ],
+      }),
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_missing_heartbeat',
+    })
+
+    expect(result).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.unavailable.heartbeat_missing',
+      ]),
+      kind: 'rejected',
+      statusCode: 409,
+    })
+    if (result?.kind !== 'rejected') {
+      throw new Error('expected a rejection')
+    }
+    expect(result.evidenceRefs).not.toContain(
+      'evidence.khala_coding.target_pylon_ref.unavailable.heartbeat_stale',
+    )
+    expect(result.reason).toContain('no recorded online heartbeat yet')
+    expect(result.reason).toContain('omit --pylon-ref')
   })
 
   test('does not reject a heartbeat written after the request timestamp as stale clock skew', async () => {
