@@ -32,7 +32,11 @@ import {
 } from "./codex-agent.js"
 import type { PylonCodexAuthValidityProbe } from "./account-connect.js"
 import { probeAndRecordCodexAccountAuthHealth } from "./codex-account-auth-health.js"
-import type { CodexAgentRuntimePhase, CodexAgentRunner } from "./codex-agent-executor.js"
+import {
+  CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL,
+  type CodexAgentRuntimePhase,
+  type CodexAgentRunner,
+} from "./codex-agent-executor.js"
 import {
   agentRunnerAccountRefHashForLease,
   agentRunnerForLease,
@@ -2210,6 +2214,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           ...(options.codexAuthValidityProbe === undefined
             ? {}
             : { codexAuthValidityProbe: options.codexAuthValidityProbe }),
+          codexOwnerLocalOwnCapacityControl: CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL,
           ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
           onCodexProgress: async (progress) => {

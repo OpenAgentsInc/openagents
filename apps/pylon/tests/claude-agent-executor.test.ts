@@ -591,7 +591,56 @@ describe("claude agent task recognition", () => {
     })
   })
 
-  test("refuses and cleans up when a run leaves long-lived SCM credentials", async () => {
+  test("refuses non-owner SCM credential posture before provider execution", async () => {
+    await withState(async (state) => {
+      const account = {
+        provider: "claude_agent" as const,
+        selector: "registry_ref" as const,
+        accountRef: "claude-scm-preflight",
+        accountRefHash: "account.pylon.claude_agent.scm_preflight",
+        home: join(state.paths.home, "accounts", "claude_agent", "claude-scm-preflight"),
+      }
+      await mkdir(account.home, { recursive: true })
+      await writeFile(
+        join(account.home, ".git-credentials"),
+        "https://x-access-token:ghp_abcdefghijklmnopqrstuvwxyz123456@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      let runnerCalls = 0
+
+      const record = await executeClaudeAgentAssignment(
+        state,
+        {
+          ...lease,
+          codingAssignment: gitCheckoutCodingAssignment,
+          leaseRef: "lease.public.claude_agent.scm_preflight",
+          paymentMode: "paid",
+        },
+        now,
+        {
+          account,
+          checkoutRunner,
+          claudeAgentRunner: async (input) => {
+            runnerCalls += 1
+            return idleRunner(input)
+          },
+          claudeAgentProbe: readyProbe,
+          claudeTurnReporter: successfulClaudeTurnReporter,
+        },
+      )
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain(
+        "blocker.assignment.claude_agent_long_lived_scm_credentials_detected",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.claude_agent_task.scm_credential_policy_failed",
+      )
+      expect(runnerCalls).toBe(0)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("refuses and cleans up when a non-owner run leaves long-lived SCM credentials", async () => {
     await withState(async (state) => {
       const account = {
         provider: "claude_agent" as const,
@@ -607,6 +656,7 @@ describe("claude agent task recognition", () => {
           ...lease,
           codingAssignment: gitCheckoutCodingAssignment,
           leaseRef: "lease.public.claude_agent.scm_leak",
+          paymentMode: "paid",
         },
         now,
         {
@@ -643,6 +693,72 @@ describe("claude agent task recognition", () => {
       )
       expect(leaseRecord?.state).toBe("cleaned")
       expect(existsSync(leaseRecord?.local.workingDirectory ?? "")).toBe(false)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("discloses owner-local own-capacity SCM posture without rejecting landed work", async () => {
+    await withState(async (state) => {
+      const account = {
+        provider: "claude_agent" as const,
+        selector: "registry_ref" as const,
+        accountRef: "claude-owner-local-scm",
+        accountRefHash: "account.pylon.claude_agent.owner_local_scm",
+        home: join(state.paths.home, "accounts", "claude_agent", "claude-owner-local-scm"),
+      }
+      await mkdir(account.home, { recursive: true })
+      await writeFile(
+        join(account.home, ".git-credentials"),
+        "https://x-access-token:github_pat_abcdefghijklmnopqrstuvwxyz1234567890@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      const authority = issueClaudeOwnerLocalPermissionAuthority({
+        authorizationRef: "authorization.pylon.claude_owner_local.89abcdef0123456789abcdef",
+        pylonRef: state.identity.pylonRef,
+        runRef: "fleet_run.owner_local.scm_disclosure",
+        operationRef: lease.assignmentRef,
+        accountRefHash: account.accountRefHash,
+        now,
+      })
+      let runnerCalls = 0
+
+      const record = await executeClaudeAgentAssignment(
+        state,
+        {
+          ...lease,
+          codingAssignment: gitCheckoutCodingAssignment,
+          leaseRef: "lease.public.claude_agent.owner_local_scm",
+          paymentMode: "no-spend",
+        },
+        now,
+        {
+          account,
+          checkoutRunner,
+          claudeAgentRunner: async (input) => {
+            runnerCalls += 1
+            return fixingRunner(input)
+          },
+          claudeAgentProbe: readyProbe,
+          claudeOwnerLocalPermissionControl: { authority },
+          claudeTurnReporter: successfulClaudeTurnReporter,
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(runnerCalls).toBe(1)
+      expect(record?.blockerRefs).not.toContain(
+        "blocker.assignment.claude_agent_long_lived_scm_credentials_detected",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.claude_agent_task.owner_local_scm_credential_posture_disclosed",
+      )
+      expect(record?.summaryRefs).toContain(
+        "summary.public.pylon.claude_agent_task.owner_local_scm_credential_posture_disclosed",
+      )
+      expect(record?.proofRefs).toContainEqual(
+        expect.stringMatching(
+          /^proof\.pylon\.claude_agent_task\.owner_local_scm_credential_posture_disclosed\./,
+        ),
+      )
       assertPublicProjectionSafe(record)
     })
   })

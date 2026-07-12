@@ -108,6 +108,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   uses the SDK equivalent of
   `--dangerously-bypass-approvals-and-sandbox` (`danger-full-access` plus
   approval policy `never`) so real GitHub/worktree operations can complete.
+  Codex selects that posture only when the trusted local no-spend runner passes
+  its non-serializable process-local own-capacity control and the lease is also
+  `no-spend`; lease/task/config fields alone cannot mint the exception. Other
+  Codex executor calls remain bounded with provider network access disabled.
+  In that exact owner-local, own-capacity, no-spend posture, a long-lived SCM
+  credential finding remains an honest typed closeout disclosure/caveat; it
+  cannot retroactively convert completed, verified, or already-landed work into
+  a credential-policy rejection. The Claude twin may use the same disclosure
+  posture only when its live process-opaque owner-local authority and no-spend
+  lease both match the execution. Missing, paid, bounded, remote, labor, and
+  otherwise non-owner postures receive no such exception and fail closed before
+  provider execution when the preflight scan detects credential material.
   Untrusted labor, provider, and public command paths still reject caller-
   supplied danger flags with a typed blocker, and assignment-safe config
   loaders never read a permissive mode from public wire/config.
@@ -266,9 +278,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   assignment explicitly allows anonymous read-only fallback. Runtime
   materialize/run/closeout paths must enforce
   `scanLongLivedScmCredentials`: Codex and Claude git-checkout runners scan the
-  bounded workspace plus selected isolated account home before verification or
-  PR publication, credential-policy findings become typed refusals, and lease
-  cleanup removes token-leaked workspaces even when they are dirty.
+  bounded workspace plus selected isolated account home after materialization,
+  immediately before provider execution, and again before verification or PR
+  publication. Non-owner and labor findings are typed fail-closed refusals; an
+  exact owner-local own-capacity no-spend finding is instead a typed closeout
+  disclosure that does not contradict completed or landed work. Lease cleanup
+  still removes token-leaked workspaces even when they are dirty.
 - Pylon prepared-worktree reuse is local-only and keyed by repository full name
   plus pinned baseline commit. Cleanup may snapshot only clean, credential-free
   workspaces with the typed `post_completion_snapshot` reason. Restore must
@@ -438,8 +453,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/pylon/tests/workspace-worktree.test.ts` for closeout cleanup of leaked
   dirty workspaces,
   `apps/pylon/tests/codex-agent-executor.test.ts` and
-  `apps/pylon/tests/claude-agent-executor.test.ts` for run-time workspace/home
-  credential-policy refusals, plus
+  `apps/pylon/tests/claude-agent-executor.test.ts` for pre-execution non-owner
+  workspace/home credential-policy refusals, post-run containment, and exact
+  owner-local own-capacity disclosure closeouts, plus
   `packages/agent-runtime-schema/src/index.test.ts` for reusable fixtures that
   cover every supported trigger type.
 

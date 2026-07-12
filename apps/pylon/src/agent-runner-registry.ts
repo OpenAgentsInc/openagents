@@ -24,6 +24,7 @@ import {
 } from "./codex-agent.js"
 import {
   CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
+  type CodexAgentOwnerLocalOwnCapacityControl,
   CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
   CODEX_AGENT_TASK_SCHEMA,
   CODEX_AGENT_TASK_AGENT_KIND,
@@ -122,6 +123,7 @@ export type AgentRunnerExecutionOptions = {
   codexAgentProbe?: CodexAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
   codexAuthValidityProbe?: PylonCodexAuthValidityProbe
+  codexOwnerLocalOwnCapacityControl?: CodexAgentOwnerLocalOwnCapacityControl
   onCodexProgress?: (progress: CodexAgentRuntimeProgress) => void | Promise<void>
   fetch?: typeof fetch
 }
@@ -350,6 +352,9 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
         ...(options.codexAuthValidityProbe === undefined
           ? {}
           : { codexAuthValidityProbe: options.codexAuthValidityProbe }),
+        ...(options.codexOwnerLocalOwnCapacityControl === undefined
+          ? {}
+          : { codexOwnerLocalOwnCapacityControl: options.codexOwnerLocalOwnCapacityControl }),
         ...(options.onCodexProgress === undefined ? {} : { onProgress: options.onCodexProgress }),
       } satisfies CodexAgentExecutionOptions),
   },

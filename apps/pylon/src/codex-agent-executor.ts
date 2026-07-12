@@ -16,6 +16,7 @@ import {
   materializeGitCheckoutWorkspaceWithLease,
   pruneWorkspaceCacheDirectories,
   releaseWorkspace,
+  WorkspaceScmCredentialPolicyError,
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
@@ -101,6 +102,14 @@ export type CodexAgentRuntimeSandboxMode = CodexAgentSandboxMode | "danger-full-
 
 export const CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE = "danger-full-access" as const
 export const CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY = "never" as const
+// Non-serializable process-local capability. The authenticated local
+// run-no-spend composition passes this exact symbol; assignment wire/config
+// data cannot forge the owner-local own-capacity posture.
+export const CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL = Symbol(
+  "openagents.pylon.codex_agent.owner_local_own_capacity",
+)
+export type CodexAgentOwnerLocalOwnCapacityControl =
+  typeof CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL
 
 export type CodexAgentTaskPayload = {
   schema: typeof CODEX_AGENT_TASK_SCHEMA
@@ -184,6 +193,7 @@ export type CodexAgentExecutionOptions = {
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
   codexAuthValidityProbe?: PylonCodexAuthValidityProbe
+  codexOwnerLocalOwnCapacityControl?: CodexAgentOwnerLocalOwnCapacityControl
   codexEventChunkReporter?: CodexEventChunkReporter
   codexTurnReporter?: CodexTurnReporter
   dependencyInstaller?: LocalCommandRunner
@@ -285,6 +295,13 @@ export function effectiveSandboxMode(
   _configMode: CodexAgentSandboxMode | undefined,
 ): CodexAgentRuntimeSandboxMode {
   return CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE
+}
+
+function boundedSandboxMode(
+  taskMode: CodexAgentSandboxMode | undefined,
+  configMode: CodexAgentSandboxMode | undefined,
+): CodexAgentSandboxMode {
+  return taskMode ?? configMode ?? "workspace-write"
 }
 
 /**
@@ -1336,14 +1353,46 @@ function codexScmCredentialScanRoots(input: {
   ]
 }
 
+type CodexScmCredentialDisclosure = {
+  detected: boolean
+  proofRefs: string[]
+  resultRefs: string[]
+  summaryRefs: string[]
+}
+
+const EMPTY_CODEX_SCM_CREDENTIAL_DISCLOSURE: CodexScmCredentialDisclosure = {
+  detected: false,
+  proofRefs: [],
+  resultRefs: [],
+  summaryRefs: [],
+}
+
+function mergeCodexScmCredentialDisclosures(
+  left: CodexScmCredentialDisclosure,
+  right: CodexScmCredentialDisclosure,
+): CodexScmCredentialDisclosure {
+  return {
+    detected: left.detected || right.detected,
+    proofRefs: [...new Set([...left.proofRefs, ...right.proofRefs])],
+    resultRefs: [...new Set([...left.resultRefs, ...right.resultRefs])],
+    summaryRefs: [...new Set([...left.summaryRefs, ...right.summaryRefs])],
+  }
+}
+
+type CodexScmCredentialPolicyDecision =
+  | { state: "clean" }
+  | { state: "disclosed"; disclosure: CodexScmCredentialDisclosure }
+  | { state: "refused"; refusal: ReturnType<typeof refusalRecord> }
+
 async function enforceCodexScmCredentialPolicy(input: {
   account: ResolvedPylonAccountSelection | null | undefined
   baselineCommitSha?: string | undefined
   lease: CodexAgentLease
   materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
   now: Date
+  ownerLocalOwnCapacityNoSpend: boolean
   runRef: string
-}) {
+}): Promise<CodexScmCredentialPolicyDecision> {
   try {
     await assertNoLongLivedScmCredentials({
       roots: codexScmCredentialScanRoots({
@@ -1352,23 +1401,60 @@ async function enforceCodexScmCredentialPolicy(input: {
         materialized: input.materialized,
       }),
     })
-    return null
-  } catch {
+    return { state: "clean" }
+  } catch (error) {
+    if (
+      input.ownerLocalOwnCapacityNoSpend &&
+      error instanceof WorkspaceScmCredentialPolicyError
+    ) {
+      const proofRef = stableRef(
+        "proof.pylon.codex_agent_task.owner_local_scm_credential_posture_disclosed",
+        `${input.lease.leaseRef}:${error.scan.findingRefs.join(",")}`,
+      )
+      return {
+        state: "disclosed",
+        disclosure: {
+          detected: true,
+          proofRefs: [proofRef],
+          resultRefs: [
+            "result.public.pylon.codex_agent_task.owner_local_scm_credential_posture_disclosed",
+          ],
+          summaryRefs: [
+            "summary.public.pylon.codex_agent_task.owner_local_scm_credential_posture_disclosed",
+          ],
+        },
+      }
+    }
     await releaseCodexAgentWorkspace({ materialized: input.materialized, now: input.now })
-    return refusalRecord({
-      lease: input.lease,
-      runRef: input.runRef,
-      blockerRefs: ["blocker.assignment.codex_agent_long_lived_scm_credentials_detected"],
-      resultRef: "result.public.pylon.codex_agent_task.scm_credential_policy_failed",
-      summaryRef: "summary.public.pylon.codex_agent_task.scm_credential_policy_failed",
-      message: "Local Codex thread stopped because long-lived SCM credential material was detected in the bounded workspace or selected worker home.",
-    })
+    const detected = error instanceof WorkspaceScmCredentialPolicyError
+    return {
+      state: "refused",
+      refusal: refusalRecord({
+        lease: input.lease,
+        runRef: input.runRef,
+        blockerRefs: [
+          detected
+            ? "blocker.assignment.codex_agent_long_lived_scm_credentials_detected"
+            : "blocker.assignment.codex_agent_scm_credential_scan_failed",
+        ],
+        resultRef: detected
+          ? "result.public.pylon.codex_agent_task.scm_credential_policy_failed"
+          : "result.public.pylon.codex_agent_task.scm_credential_scan_failed",
+        summaryRef: detected
+          ? "summary.public.pylon.codex_agent_task.scm_credential_policy_failed"
+          : "summary.public.pylon.codex_agent_task.scm_credential_scan_failed",
+        message: detected
+          ? "Local Codex thread stopped because long-lived SCM credential material was detected in the bounded workspace or selected worker home."
+          : "Local Codex thread stopped because the SCM credential posture could not be scanned safely.",
+      }),
+    }
   }
 }
 
 export type CodexAgentLease = {
   assignmentRef: string
   leaseRef: string
+  paymentMode?: "no-spend" | "paid"
   codingAssignment?: unknown
 }
 
@@ -1435,8 +1521,11 @@ function refusalRecord(input: {
   lease: CodexAgentLease
   runRef: string
   blockerRefs: string[]
+  proofRefs?: string[]
   resultRef: string
+  resultRefs?: string[]
   summaryRef: string
+  summaryRefs?: string[]
   message: string
   status?: "rejected" | "timed-out"
 }) {
@@ -1454,11 +1543,11 @@ function refusalRecord(input: {
     buildRefs: [input.runRef],
     message: input.message,
     previewRefs: [],
-    proofRefs: [failureRef],
-    resultRefs: [input.resultRef],
+    proofRefs: [failureRef, ...(input.proofRefs ?? [])],
+    resultRefs: [input.resultRef, ...(input.resultRefs ?? [])],
     runRefs: [input.runRef],
     status: input.status ?? "rejected",
-    summaryRefs: [input.summaryRef],
+    summaryRefs: [input.summaryRef, ...(input.summaryRefs ?? [])],
     testRefs: [failureRef],
   }
 }
@@ -1612,6 +1701,29 @@ export async function executeCodexAgentAssignment(
     })
   }
 
+  const ownerLocalOwnCapacityNoSpend =
+    lease.paymentMode === "no-spend" &&
+    options.codexOwnerLocalOwnCapacityControl === CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL
+  let scmCredentialDisclosure = EMPTY_CODEX_SCM_CREDENTIAL_DISCLOSURE
+  const materializationCredentialPolicy = await enforceCodexScmCredentialPolicy({
+    account: options.account,
+    baselineCommitSha: task.workspace?.repository.commitSha,
+    lease,
+    materialized,
+    now,
+    ownerLocalOwnCapacityNoSpend,
+    runRef,
+  })
+  if (materializationCredentialPolicy.state === "refused") {
+    return materializationCredentialPolicy.refusal
+  }
+  if (materializationCredentialPolicy.state === "disclosed") {
+    scmCredentialDisclosure = mergeCodexScmCredentialDisclosures(
+      scmCredentialDisclosure,
+      materializationCredentialPolicy.disclosure,
+    )
+  }
+
   const dependencies = await prepareWorkspaceDependencies({
     ...(options.dependencyInstaller === undefined ? {} : { installer: options.dependencyInstaller }),
     sharedCacheRoot: join(state.paths.cache, "codex-agent-tasks-node-modules-shared"),
@@ -1628,10 +1740,35 @@ export async function executeCodexAgentAssignment(
       lease,
       runRef,
       blockerRefs: ["blocker.assignment.codex_agent_workspace_dependency_install_failed"],
+      proofRefs: scmCredentialDisclosure.proofRefs,
       resultRef: "result.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      resultRefs: scmCredentialDisclosure.resultRefs,
       summaryRef: "summary.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      summaryRefs: scmCredentialDisclosure.summaryRefs,
       message: "Local Codex thread refused because workspace dependencies could not be prepared.",
     })
+  }
+
+  // The strict posture scans immediately before provider launch as well as
+  // after materialization. Dependency preparation must not create a window in
+  // which newly introduced credential material reaches a provider turn.
+  const preProviderCredentialPolicy = await enforceCodexScmCredentialPolicy({
+    account: options.account,
+    baselineCommitSha: task.workspace?.repository.commitSha,
+    lease,
+    materialized,
+    now,
+    ownerLocalOwnCapacityNoSpend,
+    runRef,
+  })
+  if (preProviderCredentialPolicy.state === "refused") {
+    return preProviderCredentialPolicy.refusal
+  }
+  if (preProviderCredentialPolicy.state === "disclosed") {
+    scmCredentialDisclosure = mergeCodexScmCredentialDisclosures(
+      scmCredentialDisclosure,
+      preProviderCredentialPolicy.disclosure,
+    )
   }
 
   const runner = options.codexAgentRunner ?? runWithCodexSdk
@@ -1671,11 +1808,13 @@ export async function executeCodexAgentAssignment(
       ...(eventReporter === undefined ? {} : { eventReporter }),
       instructions: materialized.instructions,
       leaseRef: lease.leaseRef,
-      networkAccessEnabled: true,
+      networkAccessEnabled: ownerLocalOwnCapacityNoSpend,
       pylonRef: state.identity.pylonRef,
       progressTokenEstimates: guardedEnv.OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_ESTIMATES === "1",
       runRef,
-      sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
+      sandboxMode: ownerLocalOwnCapacityNoSpend
+        ? effectiveSandboxMode(task.sandboxMode, config.sandboxMode)
+        : boundedSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs,
       ...(config.model === undefined ? {} : { model: config.model }),
       ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
@@ -1701,39 +1840,55 @@ export async function executeCodexAgentAssignment(
         ...codexAccountFailureBlockerRefs(failure.reason),
         failure.sourceDigestRef,
       ],
+      proofRefs: scmCredentialDisclosure.proofRefs,
       resultRef: timedOut
         ? "result.public.pylon.codex_agent_task.execution_timed_out"
         : `result.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
+      resultRefs: scmCredentialDisclosure.resultRefs,
       status: timedOut ? "timed-out" : "rejected",
       summaryRef: timedOut
         ? "summary.public.pylon.codex_agent_task.execution_timed_out"
         : `summary.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
+      summaryRefs: scmCredentialDisclosure.summaryRefs,
       message: timedOut
         ? "Local Codex thread timed out before completing the task."
         : `Local Codex thread refused with ${failure.reason}: ${failure.publicMessage || "no public error message available"}.`,
     })
 	  }
+
+  const postProviderCredentialPolicy = await enforceCodexScmCredentialPolicy({
+    account: options.account,
+    baselineCommitSha: task.workspace?.repository.commitSha,
+    lease,
+    materialized,
+    now,
+    ownerLocalOwnCapacityNoSpend,
+    runRef,
+  })
+  if (postProviderCredentialPolicy.state === "refused") {
+    return postProviderCredentialPolicy.refusal
+  }
+  if (postProviderCredentialPolicy.state === "disclosed") {
+    scmCredentialDisclosure = mergeCodexScmCredentialDisclosures(
+      scmCredentialDisclosure,
+      postProviderCredentialPolicy.disclosure,
+    )
+  }
+
   if (run.outcome === "cancelled") {
     await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
       blockerRefs: ["blocker.assignment.codex_agent_supervisor_cancelled"],
+      proofRefs: scmCredentialDisclosure.proofRefs,
       resultRef: "result.public.pylon.codex_agent_task.supervisor_cancelled",
+      resultRefs: scmCredentialDisclosure.resultRefs,
       summaryRef: "summary.public.pylon.codex_agent_task.supervisor_cancelled",
+      summaryRefs: scmCredentialDisclosure.summaryRefs,
       message: "Local Codex thread stopped when its owning supervisor scope was cancelled.",
     })
   }
-
-  const scmCredentialPolicyRefusal = await enforceCodexScmCredentialPolicy({
-    account: options.account,
-    baselineCommitSha: task.workspace?.repository.commitSha,
-    lease,
-    materialized,
-    now,
-    runRef,
-  })
-  if (scmCredentialPolicyRefusal !== null) return scmCredentialPolicyRefusal
 
   if (run.outcome === "workspace_escape_blocked") {
     await releaseCodexAgentWorkspace({ materialized, now })
@@ -1741,8 +1896,11 @@ export async function executeCodexAgentAssignment(
       lease,
       runRef,
       blockerRefs: ["blocker.assignment.codex_agent_workspace_escape_blocked"],
+      proofRefs: scmCredentialDisclosure.proofRefs,
       resultRef: "result.public.pylon.codex_agent_task.workspace_escape_blocked",
+      resultRefs: scmCredentialDisclosure.resultRefs,
       summaryRef: "summary.public.pylon.codex_agent_task.workspace_escape_blocked",
+      summaryRefs: scmCredentialDisclosure.summaryRefs,
       message: "Local Codex thread was stopped: a reported file change targeted paths outside the bounded workspace.",
     })
   }
@@ -1752,8 +1910,11 @@ export async function executeCodexAgentAssignment(
       lease,
       runRef,
       blockerRefs: ["blocker.assignment.codex_agent_budget_exceeded"],
+      proofRefs: scmCredentialDisclosure.proofRefs,
       resultRef: "result.public.pylon.codex_agent_task.budget_exceeded",
+      resultRefs: scmCredentialDisclosure.resultRefs,
       summaryRef: "summary.public.pylon.codex_agent_task.budget_exceeded",
+      summaryRefs: scmCredentialDisclosure.summaryRefs,
       message: "Local Codex thread exceeded its wall-clock budget before completing the task.",
     })
   }
@@ -1774,8 +1935,11 @@ export async function executeCodexAgentAssignment(
         ...codexAccountFailureBlockerRefs(failure.reason),
         failure.sourceDigestRef,
       ],
+      proofRefs: scmCredentialDisclosure.proofRefs,
       resultRef: `result.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
+      resultRefs: scmCredentialDisclosure.resultRefs,
       summaryRef: `summary.public.pylon.codex_agent_task.execution_refused.${failure.reason}`,
+      summaryRefs: scmCredentialDisclosure.summaryRefs,
       message: `Local Codex thread ended with ${failure.reason}: ${failure.publicMessage || "no public error message available"}.`,
     })
   }
@@ -1839,7 +2003,7 @@ export async function executeCodexAgentAssignment(
       ? `Local Codex completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.${pullRequest.messageSuffix}`
       : "Local Codex thread completed but the verification test command failed; the change is not accepted.",
     previewRefs: [materialized.workspaceRef, ...pullRequest.previewRefs],
-    proofRefs: [proofRef],
+    proofRefs: [proofRef, ...scmCredentialDisclosure.proofRefs],
     resultRefs: [
       passed
         ? `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_passed`
@@ -1847,6 +2011,7 @@ export async function executeCodexAgentAssignment(
       `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
       ...claudeReview.resultRefs,
       ...pullRequest.resultRefs,
+      ...scmCredentialDisclosure.resultRefs,
       ...workspaceCleanup.resultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
@@ -1856,6 +2021,7 @@ export async function executeCodexAgentAssignment(
         ? `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_passed`
         : `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
       ...claudeReview.summaryRefs,
+      ...scmCredentialDisclosure.summaryRefs,
     ],
     testRefs: [commandRef],
   }

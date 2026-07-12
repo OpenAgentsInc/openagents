@@ -15,6 +15,7 @@ import {
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
   releaseWorkspace,
+  WorkspaceScmCredentialPolicyError,
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
@@ -515,14 +516,46 @@ function claudeScmCredentialScanRoots(input: {
   ]
 }
 
+type ClaudeScmCredentialDisclosure = {
+  detected: boolean
+  proofRefs: string[]
+  resultRefs: string[]
+  summaryRefs: string[]
+}
+
+const EMPTY_CLAUDE_SCM_CREDENTIAL_DISCLOSURE: ClaudeScmCredentialDisclosure = {
+  detected: false,
+  proofRefs: [],
+  resultRefs: [],
+  summaryRefs: [],
+}
+
+function mergeClaudeScmCredentialDisclosures(
+  left: ClaudeScmCredentialDisclosure,
+  right: ClaudeScmCredentialDisclosure,
+): ClaudeScmCredentialDisclosure {
+  return {
+    detected: left.detected || right.detected,
+    proofRefs: [...new Set([...left.proofRefs, ...right.proofRefs])],
+    resultRefs: [...new Set([...left.resultRefs, ...right.resultRefs])],
+    summaryRefs: [...new Set([...left.summaryRefs, ...right.summaryRefs])],
+  }
+}
+
+type ClaudeScmCredentialPolicyDecision =
+  | { state: "clean" }
+  | { state: "disclosed"; disclosure: ClaudeScmCredentialDisclosure }
+  | { state: "refused"; refusal: ReturnType<typeof refusalRecord> }
+
 async function enforceClaudeScmCredentialPolicy(input: {
   account: ResolvedPylonAccountSelection | null | undefined
   baselineCommitSha?: string | undefined
   lease: ClaudeAgentLease
   materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
   now: Date
+  ownerLocalOwnCapacityNoSpend: boolean
   runRef: string
-}) {
+}): Promise<ClaudeScmCredentialPolicyDecision> {
   try {
     await assertNoLongLivedScmCredentials({
       roots: claudeScmCredentialScanRoots({
@@ -531,17 +564,53 @@ async function enforceClaudeScmCredentialPolicy(input: {
         materialized: input.materialized,
       }),
     })
-    return null
-  } catch {
+    return { state: "clean" }
+  } catch (error) {
+    if (
+      input.ownerLocalOwnCapacityNoSpend &&
+      error instanceof WorkspaceScmCredentialPolicyError
+    ) {
+      const proofRef = stableRef(
+        "proof.pylon.claude_agent_task.owner_local_scm_credential_posture_disclosed",
+        `${input.lease.leaseRef}:${error.scan.findingRefs.join(",")}`,
+      )
+      return {
+        state: "disclosed",
+        disclosure: {
+          detected: true,
+          proofRefs: [proofRef],
+          resultRefs: [
+            "result.public.pylon.claude_agent_task.owner_local_scm_credential_posture_disclosed",
+          ],
+          summaryRefs: [
+            "summary.public.pylon.claude_agent_task.owner_local_scm_credential_posture_disclosed",
+          ],
+        },
+      }
+    }
     await releaseClaudeAgentWorkspace({ materialized: input.materialized, now: input.now })
-    return refusalRecord({
-      lease: input.lease,
-      runRef: input.runRef,
-      blockerRefs: ["blocker.assignment.claude_agent_long_lived_scm_credentials_detected"],
-      resultRef: "result.public.pylon.claude_agent_task.scm_credential_policy_failed",
-      summaryRef: "summary.public.pylon.claude_agent_task.scm_credential_policy_failed",
-      message: "Local Claude Agent session stopped because long-lived SCM credential material was detected in the bounded workspace or selected worker home.",
-    })
+    const detected = error instanceof WorkspaceScmCredentialPolicyError
+    return {
+      state: "refused",
+      refusal: refusalRecord({
+        lease: input.lease,
+        runRef: input.runRef,
+        blockerRefs: [
+          detected
+            ? "blocker.assignment.claude_agent_long_lived_scm_credentials_detected"
+            : "blocker.assignment.claude_agent_scm_credential_scan_failed",
+        ],
+        resultRef: detected
+          ? "result.public.pylon.claude_agent_task.scm_credential_policy_failed"
+          : "result.public.pylon.claude_agent_task.scm_credential_scan_failed",
+        summaryRef: detected
+          ? "summary.public.pylon.claude_agent_task.scm_credential_policy_failed"
+          : "summary.public.pylon.claude_agent_task.scm_credential_scan_failed",
+        message: detected
+          ? "Local Claude Agent session stopped because long-lived SCM credential material was detected in the bounded workspace or selected worker home."
+          : "Local Claude Agent session stopped because the SCM credential posture could not be scanned safely.",
+      }),
+    }
   }
 }
 
@@ -786,6 +855,7 @@ export async function runWithClaudeAgentSdk(
 type ClaudeAgentLease = {
   assignmentRef: string
   leaseRef: string
+  paymentMode?: "no-spend" | "paid"
   codingAssignment?: unknown
 }
 
@@ -1028,6 +1098,28 @@ export async function executeClaudeAgentAssignment(
     })
   }
 
+  const ownerLocalOwnCapacityNoSpend =
+    lease.paymentMode === "no-spend" && permission.kind === "owner_local"
+  let scmCredentialDisclosure = EMPTY_CLAUDE_SCM_CREDENTIAL_DISCLOSURE
+  const preProviderCredentialPolicy = await enforceClaudeScmCredentialPolicy({
+    account: options.account,
+    baselineCommitSha: task.workspace?.repository.commitSha,
+    lease,
+    materialized,
+    now,
+    ownerLocalOwnCapacityNoSpend,
+    runRef,
+  })
+  if (preProviderCredentialPolicy.state === "refused") {
+    return preProviderCredentialPolicy.refusal
+  }
+  if (preProviderCredentialPolicy.state === "disclosed") {
+    scmCredentialDisclosure = mergeClaudeScmCredentialDisclosures(
+      scmCredentialDisclosure,
+      preProviderCredentialPolicy.disclosure,
+    )
+  }
+
   const runner = options.claudeAgentRunner ?? runWithClaudeAgentSdk
   let run: ClaudeAgentRunResult
   try {
@@ -1064,22 +1156,33 @@ export async function executeClaudeAgentAssignment(
       lease,
       runRef,
       blockerRefs: ["blocker.assignment.claude_agent_execution_refused"],
-      proofRefs: permissionProofRefs,
+      proofRefs: [...permissionProofRefs, ...scmCredentialDisclosure.proofRefs],
       resultRef: "result.public.pylon.claude_agent_task.execution_refused",
+      resultRefs: scmCredentialDisclosure.resultRefs,
       summaryRef: "summary.public.pylon.claude_agent_task.execution_refused",
+      summaryRefs: scmCredentialDisclosure.summaryRefs,
       message: "Local Claude Agent session refused with a typed execution error.",
     })
   }
 
-  const scmCredentialPolicyRefusal = await enforceClaudeScmCredentialPolicy({
+  const postProviderCredentialPolicy = await enforceClaudeScmCredentialPolicy({
     account: options.account,
     baselineCommitSha: task.workspace?.repository.commitSha,
     lease,
     materialized,
     now,
+    ownerLocalOwnCapacityNoSpend,
     runRef,
   })
-  if (scmCredentialPolicyRefusal !== null) return scmCredentialPolicyRefusal
+  if (postProviderCredentialPolicy.state === "refused") {
+    return postProviderCredentialPolicy.refusal
+  }
+  if (postProviderCredentialPolicy.state === "disclosed") {
+    scmCredentialDisclosure = mergeClaudeScmCredentialDisclosures(
+      scmCredentialDisclosure,
+      postProviderCredentialPolicy.disclosure,
+    )
+  }
 
   const tokenUsageReport = await reportClaudeAgentTurnUsage({
     lease,
@@ -1103,15 +1206,19 @@ export async function executeClaudeAgentAssignment(
           : "blocker.assignment.claude_agent_supervisor_cancelled",
         ...tokenUsageReport.blockerRefs,
       ],
-      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
+      proofRefs: [
+        ...permissionProofRefs,
+        ...tokenUsageReport.proofRefs,
+        ...scmCredentialDisclosure.proofRefs,
+      ],
       resultRef: ownerLocal
         ? "result.public.pylon.claude_agent_task.permission_cancelled"
         : "result.public.pylon.claude_agent_task.supervisor_cancelled",
-      resultRefs: tokenUsageReport.resultRefs,
+      resultRefs: [...tokenUsageReport.resultRefs, ...scmCredentialDisclosure.resultRefs],
       summaryRef: ownerLocal
         ? "summary.public.pylon.claude_agent_task.permission_cancelled"
         : "summary.public.pylon.claude_agent_task.supervisor_cancelled",
-      summaryRefs: tokenUsageReport.summaryRefs,
+      summaryRefs: [...tokenUsageReport.summaryRefs, ...scmCredentialDisclosure.summaryRefs],
       message: ownerLocal
         ? "Local Claude Agent session stopped after its owner-local permission authority was cancelled."
         : "Local Claude Agent session stopped when its owning supervisor scope was cancelled.",
@@ -1127,11 +1234,15 @@ export async function executeClaudeAgentAssignment(
         "blocker.assignment.claude_agent_workspace_escape_blocked",
         ...tokenUsageReport.blockerRefs,
       ],
-      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
+      proofRefs: [
+        ...permissionProofRefs,
+        ...tokenUsageReport.proofRefs,
+        ...scmCredentialDisclosure.proofRefs,
+      ],
       resultRef: "result.public.pylon.claude_agent_task.workspace_escape_blocked",
-      resultRefs: tokenUsageReport.resultRefs,
+      resultRefs: [...tokenUsageReport.resultRefs, ...scmCredentialDisclosure.resultRefs],
       summaryRef: "summary.public.pylon.claude_agent_task.workspace_escape_blocked",
-      summaryRefs: tokenUsageReport.summaryRefs,
+      summaryRefs: [...tokenUsageReport.summaryRefs, ...scmCredentialDisclosure.summaryRefs],
       message: "Local Claude Agent session was stopped: a tool call targeted paths outside the bounded workspace.",
     })
   }
@@ -1144,11 +1255,15 @@ export async function executeClaudeAgentAssignment(
         "blocker.assignment.claude_agent_budget_exceeded",
         ...tokenUsageReport.blockerRefs,
       ],
-      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
+      proofRefs: [
+        ...permissionProofRefs,
+        ...tokenUsageReport.proofRefs,
+        ...scmCredentialDisclosure.proofRefs,
+      ],
       resultRef: "result.public.pylon.claude_agent_task.budget_exceeded",
-      resultRefs: tokenUsageReport.resultRefs,
+      resultRefs: [...tokenUsageReport.resultRefs, ...scmCredentialDisclosure.resultRefs],
       summaryRef: "summary.public.pylon.claude_agent_task.budget_exceeded",
-      summaryRefs: tokenUsageReport.summaryRefs,
+      summaryRefs: [...tokenUsageReport.summaryRefs, ...scmCredentialDisclosure.summaryRefs],
       message: "Local Claude Agent session exceeded its turn or wall-clock budget before completing the task.",
     })
   }
@@ -1162,11 +1277,15 @@ export async function executeClaudeAgentAssignment(
         ...claudeAgentFailureBlockerRefs(run.failureCode),
         ...tokenUsageReport.blockerRefs,
       ],
-      proofRefs: [...permissionProofRefs, ...tokenUsageReport.proofRefs],
+      proofRefs: [
+        ...permissionProofRefs,
+        ...tokenUsageReport.proofRefs,
+        ...scmCredentialDisclosure.proofRefs,
+      ],
       resultRef: "result.public.pylon.claude_agent_task.execution_refused",
-      resultRefs: tokenUsageReport.resultRefs,
+      resultRefs: [...tokenUsageReport.resultRefs, ...scmCredentialDisclosure.resultRefs],
       summaryRef: "summary.public.pylon.claude_agent_task.execution_refused",
-      summaryRefs: tokenUsageReport.summaryRefs,
+      summaryRefs: [...tokenUsageReport.summaryRefs, ...scmCredentialDisclosure.summaryRefs],
       message: "Local Claude Agent session ended with an execution error before completing the task.",
     })
   }
@@ -1199,13 +1318,19 @@ export async function executeClaudeAgentAssignment(
       ? `Local Claude Agent completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.`
       : "Local Claude Agent session completed but the verification test command failed; the change is not accepted.",
     previewRefs: [materialized.workspaceRef],
-    proofRefs: [proofRef, ...permissionProofRefs, ...tokenUsageReport.proofRefs],
+    proofRefs: [
+      proofRef,
+      ...permissionProofRefs,
+      ...tokenUsageReport.proofRefs,
+      ...scmCredentialDisclosure.proofRefs,
+    ],
     resultRefs: [
       passed
         ? `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_passed`
         : `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.claude_agent_task.edited_files.${run.editedFileCount}`,
       ...tokenUsageReport.resultRefs,
+      ...scmCredentialDisclosure.resultRefs,
       ...workspaceCleanup.resultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
@@ -1215,6 +1340,7 @@ export async function executeClaudeAgentAssignment(
         ? `summary.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_passed`
         : `summary.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_failed`,
       ...tokenUsageReport.summaryRefs,
+      ...scmCredentialDisclosure.summaryRefs,
     ],
     testRefs: [commandRef],
   }

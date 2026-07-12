@@ -10,6 +10,7 @@ import { tmpdir } from "node:os"
 import {
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
   CODEX_AGENT_TASK_SCHEMA,
+  CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL,
   codexAgentTaskFrom,
   effectiveSandboxMode,
   executeCodexAgentAssignment,
@@ -696,10 +697,11 @@ describe("codex agent task recognition", () => {
         expect(input.account).toBe(account)
         return fixingRunner(input)
       }
-      await executeCodexAgentAssignment(state, lease, now, {
+      await executeCodexAgentAssignment(state, { ...lease, paymentMode: "no-spend" }, now, {
         account,
         codexAgentRunner: observingRunner,
         codexAgentProbe: readyProbe,
+        codexOwnerLocalOwnCapacityControl: CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL,
       })
       expect(seenMode).toBe("danger-full-access")
       expect(seenNetworkAccess).toBe(true)
@@ -1490,6 +1492,71 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
     })
   })
 
+  test("refuses no-spend SCM posture without owner-local control before provider execution", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-scm-preflight")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-scm-preflight",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-scm-preflight"),
+      }
+      await mkdir(account.home, { recursive: true })
+      await writeFile(
+        join(account.home, ".git-credentials"),
+        "https://x-access-token:ghp_abcdefghijklmnopqrstuvwxyz123456@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(join(workspace, "package.json"), `${JSON.stringify({ private: true, type: "module" })}\n`)
+        await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left + right\n")
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          'import { expect, test } from "bun:test"\nimport { sum } from "./sum"\ntest("adds", () => expect(sum(2, 3)).toBe(5))\n',
+        )
+      }
+      let runnerCalls = 0
+      let publisherCalls = 0
+
+      const record = await executeCodexAgentAssignment(
+        state,
+        {
+          ...lease,
+          codingAssignment: checkoutAssignment,
+          leaseRef: "lease.public.codex_agent.scm_preflight",
+          paymentMode: "no-spend",
+        },
+        now,
+        {
+          account,
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAuthValidityProbe: validCodexAuthProbe,
+          codexAgentRunner: async (input) => {
+            runnerCalls += 1
+            return idleRunner(input)
+          },
+          pullRequestPublisher: async () => {
+            publisherCalls += 1
+            return { state: "no_change" }
+          },
+        },
+      )
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain(
+        "blocker.assignment.codex_agent_long_lived_scm_credentials_detected",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.scm_credential_policy_failed",
+      )
+      expect(runnerCalls).toBe(0)
+      expect(publisherCalls).toBe(0)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("refuses and cleans up when a run leaves long-lived SCM credentials", async () => {
     await withState(async (state) => {
       const accountRefHash = hashPylonAccountRef("codex", "codex-scm-leak")
@@ -1522,9 +1589,15 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         )
       }
       let workspaceRef: string | null = null
+      let publisherCalls = 0
       const record = await executeCodexAgentAssignment(
         state,
-        { ...lease, codingAssignment: checkoutAssignment, leaseRef: "lease.public.codex_agent.scm_leak" },
+        {
+          ...lease,
+          codingAssignment: checkoutAssignment,
+          leaseRef: "lease.public.codex_agent.scm_leak",
+          paymentMode: "paid",
+        },
         now,
         {
           account,
@@ -1543,7 +1616,10 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
             )
             return idleRunner(input)
           },
-          pullRequestPublisher: async () => ({ state: "no_change" }),
+          pullRequestPublisher: async () => {
+            publisherCalls += 1
+            return { state: "no_change" }
+          },
         },
       )
 
@@ -1554,6 +1630,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       expect(record?.resultRefs).toContain(
         "result.public.pylon.codex_agent_task.scm_credential_policy_failed",
       )
+      expect(publisherCalls).toBe(0)
       expect(workspaceRef).not.toBeNull()
       const leaseRecord = await workspaceLeaseRecordFor({
         workspaceRef: workspaceRef as string,
@@ -1561,6 +1638,75 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       })
       expect(leaseRecord?.state).toBe("cleaned")
       expect(existsSync(leaseRecord?.local.workingDirectory ?? "")).toBe(false)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("discloses owner-local own-capacity SCM posture without rejecting landed work", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-owner-local-scm")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-owner-local-scm",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-owner-local-scm"),
+      }
+      await mkdir(account.home, { recursive: true })
+      await writeFile(
+        join(account.home, ".git-credentials"),
+        "https://x-access-token:github_pat_abcdefghijklmnopqrstuvwxyz1234567890@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(join(workspace, "package.json"), `${JSON.stringify({ private: true, type: "module" })}\n`)
+        await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left + right\n")
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          'import { expect, test } from "bun:test"\nimport { sum } from "./sum"\ntest("adds", () => expect(sum(2, 3)).toBe(5))\n',
+        )
+      }
+      let runnerCalls = 0
+
+      const record = await executeCodexAgentAssignment(
+        state,
+        {
+          ...lease,
+          codingAssignment: checkoutAssignment,
+          leaseRef: "lease.public.codex_agent.owner_local_scm",
+          paymentMode: "no-spend",
+        },
+        now,
+        {
+          account,
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAuthValidityProbe: validCodexAuthProbe,
+          codexOwnerLocalOwnCapacityControl: CODEX_AGENT_OWNER_LOCAL_OWN_CAPACITY_CONTROL,
+          codexAgentRunner: async (input) => {
+            runnerCalls += 1
+            return idleRunner(input)
+          },
+          pullRequestPublisher: async () => ({ state: "no_change" }),
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(runnerCalls).toBe(1)
+      expect(record?.blockerRefs).not.toContain(
+        "blocker.assignment.codex_agent_long_lived_scm_credentials_detected",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.owner_local_scm_credential_posture_disclosed",
+      )
+      expect(record?.summaryRefs).toContain(
+        "summary.public.pylon.codex_agent_task.owner_local_scm_credential_posture_disclosed",
+      )
+      expect(record?.proofRefs).toContainEqual(
+        expect.stringMatching(
+          /^proof\.pylon\.codex_agent_task\.owner_local_scm_credential_posture_disclosed\./,
+        ),
+      )
       assertPublicProjectionSafe(record)
     })
   })
