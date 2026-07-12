@@ -204,14 +204,20 @@ and rootfs, the Firecracker binary, and its runtime directory available. Keep
 the control bearer in a mode-0600 host env file or Secret Manager; never place
 it on the command line or in a receipt.
 
-At commit `ba084c0816`, an authenticated loopback request to the current-image
+At commit `b1af7b55ec`, an authenticated loopback request to the current-image
 daemon on `agent-computer-gce-1` completed the exact live
 `POST /v1/cloud-vm/sessions` lifecycle with `provisionerKind=live`, guest exec
 code `0`, and `cleanupReceipt.tornDown=true`. The post-run host audit reported
-zero TAP devices and zero jail directories. The same change retains an async
-waiter for each Firecracker child so teardown is followed by process reaping;
-otherwise a long-lived control host accumulates defunct processes even though
-scratch and networking were reclaimed.
+zero Firecracker processes, zero zombies, zero TAP devices, and zero jail
+directories. The image digest was
+`sha256:98957ec230d20a02371fef6d5a2fe274427228719711706eb72bcc1bfef2d642`;
+the provision and cleanup receipt digests were respectively
+`sha256:60643d1150e4d2dbce36faf68003ff6e9859678962e352eab9363078f3509d20`
+and
+`sha256:34246f548bdad2083a7c7131bd7b0db52168c1d7294c25c37a261a8c971327a0`.
+The same change retains an async waiter for each Firecracker child and ships
+the process-control utility used by teardown, so a long-lived control host does
+not retain a live or defunct process after scratch and networking are reclaimed.
 
 This smoke deliberately used loopback and did not repoint production. Before a
 physical-phone turn, the operator must expose the daemon only through the
