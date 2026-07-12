@@ -57,6 +57,7 @@ describe("EP250 chat contracts are registered and enforced (#8712)", () => {
       "openagents_desktop.chat.typed_tool_call_cards.v1",
       "openagents_desktop.chat.interactive_question_cards.v1",
       "openagents_desktop.chat.opencode_card_design_language.v1",
+      "openagents_desktop.chat.composer_stop_button.v1",
     ]) {
       expect(openAgentsDesktopUxContractRegistry.contracts.find(
         (contract) => contract.contractId === contractId,
@@ -432,7 +433,33 @@ describe("desktopShellView (state -> component tree)", () => {
 
     const pendingView = desktopShellView(withPending(baseState, true))
     expect(nodeByKey(pendingView, "shell-input")?.disabled).toBe(true)
-    expect(nodeByKey(pendingView, "shell-note")?.disabled).toBe(true)
+    // EP250 Stop button: while pending the trailing control is Stop, not Send.
+    expect(nodeByKey(pendingView, "shell-note")).toBeUndefined()
+    expect(nodeByKey(pendingView, "shell-stop")?._tag).toBe("IconButton")
+  })
+
+  test("EP250 Stop button (audit gap #9): pending replaces Send with an icon-only Stop; idle shows Send and no Stop", () => {
+    const idle = desktopShellView(baseState)
+    // Idle: exactly the icon-only Send, no Stop.
+    expect(nodeByKey(idle, "shell-note")?._tag).toBe("IconButton")
+    expect(nodeByKey(idle, "shell-stop")).toBeUndefined()
+
+    const streaming = desktopShellView(withPending(baseState, true))
+    const stop = nodeByKey(streaming, "shell-stop") as {
+      _tag?: string
+      icon?: string
+      disabled?: boolean
+      onPress?: { name?: string }
+      accessibilityLabel?: string
+    }
+    expect(stop?._tag).toBe("IconButton")
+    expect(stop?.icon).toBe("Stop")
+    // The Stop control is never disabled — you must always be able to interrupt.
+    expect(stop?.disabled).toBeUndefined()
+    expect(stop?.onPress?.name).toBe("DesktopTurnInterrupted")
+    expect(stop?.accessibilityLabel).toBe("Stop turn")
+    // No stray Send while streaming.
+    expect(nodeByKey(streaming, "shell-note")).toBeUndefined()
   })
 })
 
@@ -963,6 +990,39 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           timestamp: "18:05",
         })
         expect(next.notes.some((entry) => entry.key.startsWith("pending-"))).toBe(false)
+      }),
+    )
+  })
+
+  test("EP250 Stop button intent loop: DesktopTurnInterrupted calls chat.interruptActive once while pending, never while idle (openagents_desktop.chat.composer_stop_button.v1)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        let interrupts = 0
+        const chatHost = {
+          listThreads: async () => [],
+          newThread: async () => null,
+          openThread: async () => null,
+          sendMessage: async () => ({ ok: false, error: "unused in this test" }),
+          interruptActive: async () => { interrupts += 1; return true },
+        }
+        // Idle: the Stop control is not even rendered, but a stray dispatch must
+        // still no-op (the handler is guarded on pending).
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null))
+        expect(interrupts).toBe(0)
+
+        // Streaming: the composer renders the real Stop control; its onPress
+        // intent drives the interrupt seam exactly once.
+        yield* SubscriptionRef.set(state, withPending(baseState, true))
+        const stop = nodeByKey(desktopShellView(yield* SubscriptionRef.get(state)), "shell-stop") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(stop.onPress, null))
+        expect(interrupts).toBe(1)
       }),
     )
   })

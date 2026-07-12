@@ -315,6 +315,14 @@ export const DesktopNoteSubmitted = defineIntent(
   "DesktopNoteSubmitted",
   Schema.NullOr(Schema.String),
 )
+/**
+ * Interrupt the streaming turn (EP250 audit gap #9, "cheapest fix" — 240
+ * interrupts observed). Fired by the composer Stop button while `pending`;
+ * the handler dispatches the active local lane's already-plumbed interrupt IPC
+ * path (FableLocal/CodexLocal interrupt channel). The terminal turn result
+ * reverts the control to Send.
+ */
+export const DesktopTurnInterrupted = defineIntent("DesktopTurnInterrupted", Schema.Null)
 export const DesktopLoopPinged = defineIntent("DesktopLoopPinged", Schema.Null)
 export const DesktopFleetDeskToggled = defineIntent("DesktopFleetDeskToggled", Schema.Null)
 export const DesktopFleetObjectiveChanged = defineIntent(
@@ -396,6 +404,7 @@ export const DesktopHistoryConversationPreviewed = defineIntent("DesktopHistoryC
 export const desktopShellIntents = [
   DesktopInputChanged,
   DesktopNoteSubmitted,
+  DesktopTurnInterrupted,
   DesktopLoopPinged,
   DesktopFleetDeskToggled,
   DesktopFleetObjectiveChanged,
@@ -762,6 +771,14 @@ export type ChatHost = Readonly<{
     harness?: DesktopHarnessName
     onUpdate?: (thread: DesktopThread) => void
   }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
+  /**
+   * Interrupt the currently-streaming turn (EP250 Stop button). Resolves true
+   * when an active turn was signalled through the lane's interrupt IPC path,
+   * false when no turn is active or the host cannot interrupt. Optional: a host
+   * without a local streaming lane (e.g. the read-only runtime adapter) omits
+   * it and the Stop intent no-ops.
+   */
+  interruptActive?: () => Promise<boolean>
 }>
 
 /**
@@ -1049,6 +1066,15 @@ export const makeDesktopShellHandlers = (
         },
       }))
       yield* SubscriptionRef.update(state, (next) => withTurnResult(next, result, now()))
+    }),
+  DesktopTurnInterrupted: () =>
+    Effect.gen(function* () {
+      // Only meaningful while a turn streams; the terminal turn result (a
+      // typed `interrupted` failure) is what reverts pending -> Send. The Stop
+      // handler never fabricates that terminal state itself.
+      const current = yield* SubscriptionRef.get(state)
+      if (!current.pending) return
+      yield* Effect.promise(() => chat.interruptActive?.() ?? Promise.resolve(false))
     }),
   DesktopLoopPinged: () =>
     SubscriptionRef.update(state, (current) => withLoopProof(current, now())),
@@ -2184,6 +2210,47 @@ const harnessChip = (
   )
 }
 
+/**
+ * The composer's trailing action control (EP250 Stop button, audit gap #9).
+ * While a turn streams (`state.pending`) the evidence-gated Send is replaced by
+ * an icon-only Stop that dispatches DesktopTurnInterrupted for the active lane;
+ * the existing interrupt IPC path aborts the turn and the terminal turn result
+ * reverts this control to Send. Idle renders the exact icon-only Send as before
+ * (evidence-gated by the selected lane's availability).
+ */
+const composerActionControl = (state: DesktopShellState): View => {
+  if (state.pending) {
+    return IconButton({
+      key: "shell-stop",
+      icon: "Stop",
+      accessibilityLabel: "Stop turn",
+      onPress: IntentRef("DesktopTurnInterrupted"),
+      style: { backgroundColor: "surfaceRaised", color: "textPrimary", borderRadius: "md" },
+    })
+  }
+  const lane = state.harnessLanes[state.selectedHarness]
+  // ONE icon-only send control (owner statement 2026-07-11: "airplane icon in
+  // composer OUTSIDE of the button is stupid. put it in , remove text 'send'"):
+  // the paper-plane glyph lives INSIDE the button — no freestanding icon, no
+  // "Send" text label. The disabled reason survives only in the accessible
+  // label + hover popover (no standing caption).
+  return withDisabledReason(
+    "shell-note",
+    !lane.available,
+    lane.available ? null : lane.reason ?? "Send unavailable: selected lane cannot act",
+    IconButton({
+      key: "shell-note",
+      icon: "Plane",
+      accessibilityLabel: lane.available
+        ? "Send message"
+        : lane.reason ?? "Send unavailable: selected lane cannot act",
+      disabled: !lane.available,
+      onPress: IntentRef("DesktopNoteSubmitted"),
+      style: { backgroundColor: "accent", color: "textInverse", borderRadius: "md" },
+    }),
+  )
+}
+
 const shellComposer = (state: DesktopShellState): View =>
   Card(
     {
@@ -2241,30 +2308,8 @@ const shellComposer = (state: DesktopShellState): View =>
             onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
             style: { flex: 1 },
           }),
-          // ONE icon-only send control (owner statement 2026-07-11:
-          // "airplane icon in composer OUTSIDE of the button is stupid. put
-          // it in , remove text 'send'"): the paper-plane glyph lives INSIDE
-          // the button — no freestanding icon, no "Send" text label. Solid
-          // accent intent per the apps-sdk icon-only rule (width = height on
-          // the catalog IconButton), radius per the control lattice; the
-          // accessible name stays "Send message" (or the disabled reason).
-          withDisabledReason(
-            "shell-note",
-            !state.harnessLanes[state.selectedHarness].available,
-            state.harnessLanes[state.selectedHarness].available
-              ? null
-              : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
-            IconButton({
-              key: "shell-note",
-              icon: "Plane",
-              accessibilityLabel: state.harnessLanes[state.selectedHarness].available
-                ? "Send message"
-                : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
-              disabled: state.pending || !state.harnessLanes[state.selectedHarness].available,
-              onPress: IntentRef("DesktopNoteSubmitted"),
-              style: { backgroundColor: "accent", color: "textInverse", borderRadius: "md" },
-            }),
-          ),
+          // Icon-only Send (idle) or Stop (streaming) — see composerActionControl.
+          composerActionControl(state),
         ],
       ),
     ],

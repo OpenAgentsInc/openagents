@@ -74,6 +74,13 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
   const randomId = input.randomId ?? (() => globalThis.crypto.randomUUID())
   const now = input.now ?? (() => new Date())
 
+  /**
+   * The turn currently streaming through a local lane, if any. Tracked so the
+   * composer Stop button (EP250) can drive the lane's already-plumbed
+   * interrupt IPC path by its exact turnRef. One local turn runs at a time.
+   */
+  let activeTurn: { bridge: FableLocalRendererBridge; turnRef: string } | null = null
+
   /** One shared streaming projection for both local lanes: trace lines
    * first, growing assistant bubble last — the same order the finalized
    * persisted thread carries, so finalize never reshuffles the transcript. */
@@ -223,15 +230,28 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       // own; the invoke result finalizes the thread.
     })
     try {
+      activeTurn = { bridge, turnRef }
       const raw = await bridge.start({ turnRef, threadRef: send.id, message: send.message })
       return decodeTurnResult(raw, laneLabel)
     } finally {
+      activeTurn = null
       unsubscribe()
     }
   }
 
   return {
     ...input.base,
+    /**
+     * Interrupt the active local turn (EP250 Stop button). Signals the lane's
+     * frozen interrupt channel by the exact active turnRef; the runtime aborts
+     * and emits a typed `interrupted` failure that finalizes the turn.
+     */
+    interruptActive: async () => {
+      const active = activeTurn
+      if (active === null) return false
+      const raw = await active.bridge.interrupt({ turnRef: active.turnRef })
+      return raw === true
+    },
     sendMessage: async send => {
       if (send.harness === undefined) return input.base.sendMessage(send)
       if (send.harness === "codex") {

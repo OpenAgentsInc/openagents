@@ -37,6 +37,17 @@ export type LiveProofStepName =
   | "fable-turn"
   | "codex-chip"
   | "codex-turn"
+  // EP250 capability-eval harness (#8712): new rung-4 UI receipts for
+  // capabilities the audit proves are exercisable now.
+  //  - interrupt-stop: click Stop mid-turn; transcript shows interrupted state
+  //    (capability A2 — the composer Stop button).
+  //  - file-save: save through the files workspace save seam and reread
+  //    (capability C3 — the SHA-256 expectedRevision conflict guard).
+  //  - git-review: the review workspace shows a real dirty-file diff
+  //    (capability E1 — workspace-git-status + workspace-git-diff).
+  | "interrupt-stop"
+  | "file-save"
+  | "git-review"
   | "redaction-check"
   | "summary"
 
@@ -63,6 +74,11 @@ export const liveProofSteps: ReadonlyArray<LiveProofStep> = [
   { name: "fable-turn", required: false, timeoutMs: 180_000 },
   { name: "codex-chip", required: false, timeoutMs: 15_000 },
   { name: "codex-turn", required: false, timeoutMs: 180_000 },
+  // EP250 capability-eval rung-4 UI receipts. All optional: a missing lane or
+  // workspace journals an honest failure without failing the whole journey.
+  { name: "interrupt-stop", required: false, timeoutMs: 180_000 },
+  { name: "file-save", required: false, timeoutMs: 30_000 },
+  { name: "git-review", required: false, timeoutMs: 30_000 },
   { name: "redaction-check", required: false, timeoutMs: 5_000 },
   { name: "summary", required: false, timeoutMs: 5_000 },
 ]
@@ -234,6 +250,92 @@ const probeTurnScript = `(() => {
     systemCount: systemRows.length,
     lastSystem: systemRows.length === 0 ? null : systemRows[systemRows.length - 1].slice(0, 300),
     messageCount: document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length,
+  }
+})()`
+
+// EP250 capability-eval step probes (interrupt-stop / file-save / git-review).
+
+/** Reads the trailing composer control + pending state for interrupt-stop. */
+const probeComposerControlScript = `(() => {
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  const stop = document.querySelector('[data-en-key="shell-stop"]')
+  const send = document.querySelector('[data-en-key="shell-note"]')
+  const systemRows = Array.from(document.querySelectorAll(
+    '[data-en-key="shell-transcript"] [data-en-message][data-en-role="system"]'
+  )).map((row) => { const body = row.querySelector('[data-en-role="body"]'); return body === null ? "" : body.textContent || "" })
+  return {
+    composerDisabled: input === null ? null : input.disabled === true,
+    stopPresent: stop !== null,
+    sendPresent: send !== null,
+    interruptedNoticeCount: systemRows.filter((text) => text.toLowerCase().includes("interrupt")).length,
+  }
+})()`
+
+const clickStopScript = `(() => {
+  const stop = document.querySelector('[data-en-key="shell-stop"]')
+  if (stop === null) return { clicked: false }
+  stop.click()
+  return { clicked: true }
+})()`
+
+/** Opens the files workspace and reports its readiness + first file entry. */
+const probeFilesWorkspaceScript = `(() => {
+  const panel = document.querySelector('[data-en-key="workspace-files-panel"]')
+  const empty = document.querySelector('[data-en-key="workspace-files-empty"]')
+  const entries = Array.from(document.querySelectorAll('[data-en-key^="workspace-file-"]'))
+    .map((element) => element.getAttribute("data-en-key"))
+    .filter((key) => key !== null && /^workspace-file-[^-]/.test(key) &&
+      key !== "workspace-file-preview" && !key.startsWith("workspace-file-preview") &&
+      key !== "workspace-file-editor" && key !== "workspace-file-save" &&
+      key !== "workspace-file-reload" && key !== "workspace-file-actions" &&
+      key !== "workspace-file-saved" && key !== "workspace-file-conflict" &&
+      key !== "workspace-file-unavailable")
+  return { settled: panel !== null || empty !== null, hasWorkspace: panel !== null, firstEntry: entries[0] ?? null }
+})()`
+
+const clickKeyScript = (key: string): string => `(() => {
+  const element = document.querySelector('[data-en-key=${JSON.stringify(key)}]')
+  if (element === null) return { clicked: false }
+  element.click()
+  return { clicked: true }
+})()`
+
+/** Saves the open file with its CURRENT content (non-destructive round trip). */
+const saveOpenFileScript = `(() => {
+  const editor = document.querySelector('[data-en-key="workspace-file-editor"] textarea, [data-en-key="workspace-file-editor"] input')
+  const save = document.querySelector('[data-en-key="workspace-file-save"]')
+  if (editor === null || save === null) return { ready: false }
+  // Re-emit the current value unchanged so the save writes identical bytes:
+  // this proves the save seam + revision guard without mutating file meaning.
+  editor.dispatchEvent(new Event("input", { bubbles: true }))
+  save.click()
+  return { ready: true }
+})()`
+
+const probeSaveOutcomeScript = `(() => {
+  const saved = document.querySelector('[data-en-key="workspace-file-saved"]')
+  const conflict = document.querySelector('[data-en-key="workspace-file-conflict"]')
+  const unavailable = document.querySelector('[data-en-key="workspace-file-unavailable"]')
+  return {
+    settled: saved !== null || conflict !== null || unavailable !== null,
+    outcome: saved !== null ? "saved" : conflict !== null ? "conflict" : unavailable !== null ? "unavailable" : null,
+  }
+})()`
+
+/** Reads the review workspace's dirty-file status + selected diff. */
+const probeReviewWorkspaceScript = `(() => {
+  const panel = document.querySelector('[data-en-key="workspace-review-panel"]')
+  const clean = document.querySelector('[data-en-key="workspace-review-clean"]')
+  const unavailable = document.querySelector('[data-en-key="workspace-review-unavailable"]')
+  const changes = Array.from(document.querySelectorAll('[data-en-key^="workspace-review-change-"]'))
+    .map((element) => element.getAttribute("data-en-key"))
+  const diff = document.querySelector('[data-en-key="workspace-review-diff-content"]')
+  return {
+    settled: panel !== null || clean !== null || unavailable !== null,
+    changeCount: changes.length,
+    firstChange: changes[0] ?? null,
+    diffPresent: diff !== null,
+    diffLength: diff === null ? 0 : (diff.textContent || "").length,
   }
 })()`
 
@@ -576,6 +678,133 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
     })
   }
 
+  // EP250 capability A2: submit a real turn, click Stop the moment the
+  // composer reports a Stoppable pending state, and prove the turn ends with a
+  // typed interrupted notice while the control reverts from Stop to Send.
+  const stepInterruptStop = async (harness: "fable" | "codex"): Promise<void> => {
+    const submitted = asRec(await evalIn(submitTurnScript(liveProofTurnMessage)))
+    if (submitted["submitted"] !== true) {
+      await capture("interrupt-stop-failed")
+      record("interrupt-stop", false, { reason: submitted["reason"] ?? "submit failed", harness })
+      return
+    }
+    const pending = await pollUntil(
+      probeComposerControlScript,
+      (value) => value["composerDisabled"] === true && value["stopPresent"] === true,
+      30_000,
+      100,
+    )
+    if (!pending.ok) {
+      await capture("interrupt-stop-failed")
+      record("interrupt-stop", false, { reason: "turn never entered a Stoppable pending state", harness, ...pending.value })
+      return
+    }
+    await capture("interrupt-stop-pending")
+    const clicked = asRec(await evalIn(clickStopScript))
+    if (clicked["clicked"] !== true) {
+      await capture("interrupt-stop-failed")
+      record("interrupt-stop", false, { reason: "Stop control vanished before click", harness })
+      return
+    }
+    const settled = await pollUntil(
+      probeComposerControlScript,
+      (value) => value["composerDisabled"] === false && value["sendPresent"] === true,
+      liveProofStepTimeoutMs("interrupt-stop"),
+      150,
+    )
+    const value = settled.value
+    const interrupted = typeof value["interruptedNoticeCount"] === "number" &&
+      (value["interruptedNoticeCount"] as number) >= 1
+    const ok = settled.ok && interrupted
+    await capture(ok ? "interrupt-stop" : "interrupt-stop-failed")
+    record("interrupt-stop", ok, { reverted: settled.ok, interruptedNotice: interrupted, harness })
+  }
+
+  // EP250 capability C3: save the first bounded file through the files
+  // workspace save seam and prove a typed outcome renders. The save re-emits
+  // the file's CURRENT bytes (non-destructive round trip); the destructive
+  // stale-revision conflict proof lives in the headless temp-dir oracle.
+  const stepFileSave = async (): Promise<void> => {
+    const clicked = asRec(await evalIn(clickScript("workspace-files")))
+    if (clicked["clicked"] !== true) {
+      await capture("file-save-failed")
+      record("file-save", false, { reason: "Files dock button never mounted" })
+      return
+    }
+    const filesReady = await pollUntil(probeFilesWorkspaceScript, (value) => value["settled"] === true, 15_000, 200)
+    const fv = filesReady.value
+    if (!filesReady.ok || fv["hasWorkspace"] !== true || typeof fv["firstEntry"] !== "string") {
+      await capture("file-save-failed")
+      record("file-save", false, { reason: "no selected workspace with a bounded file entry", ...fv })
+      return
+    }
+    const opened = asRec(await evalIn(clickKeyScript(fv["firstEntry"] as string)))
+    if (opened["clicked"] !== true) {
+      await capture("file-save-failed")
+      record("file-save", false, { reason: "file entry never mounted", entry: fv["firstEntry"] })
+      return
+    }
+    const editorReady = await pollUntil(
+      saveOpenFileScript,
+      (value) => value["ready"] === true,
+      10_000,
+      200,
+    )
+    if (!editorReady.ok) {
+      await capture("file-save-failed")
+      record("file-save", false, { reason: "editor + save affordance never mounted", entry: fv["firstEntry"] })
+      return
+    }
+    const outcome = await pollUntil(probeSaveOutcomeScript, (value) => value["settled"] === true, liveProofStepTimeoutMs("file-save"), 150)
+    const ov = outcome.value
+    // Both "saved" and "conflict" are typed save-channel outcomes that prove
+    // the SHA-256 expectedRevision guard is live; only "unavailable"/timeout fail.
+    const ok = outcome.ok && (ov["outcome"] === "saved" || ov["outcome"] === "conflict")
+    await capture(ok ? "file-save" : "file-save-failed")
+    record("file-save", ok, { outcome: ov["outcome"] ?? null, entry: fv["firstEntry"] })
+  }
+
+  // EP250 capability E1: open the review workspace (via its palette command —
+  // review has no dock button) and prove a real dirty-file status renders with
+  // a loadable diff. A clean workspace has nothing to review and journals so.
+  const stepGitReview = async (): Promise<void> => {
+    const toggled = asRec(await evalIn(clickScript("shell-command-palette-toggle")))
+    if (toggled["clicked"] !== true) {
+      await capture("git-review-failed")
+      record("git-review", false, { reason: "command palette toggle never mounted" })
+      return
+    }
+    const paletteReady = await pollUntil(
+      clickKeyScript("desktop-command-workspace.review"),
+      (value) => value["clicked"] === true,
+      8_000,
+      150,
+    )
+    if (!paletteReady.ok) {
+      await capture("git-review-failed")
+      record("git-review", false, { reason: "Review changes palette command never mounted" })
+      return
+    }
+    const review = await pollUntil(probeReviewWorkspaceScript, (value) => value["settled"] === true, 15_000, 200)
+    const rv = review.value
+    const changeCount = typeof rv["changeCount"] === "number" ? rv["changeCount"] as number : 0
+    if (!review.ok || changeCount < 1 || typeof rv["firstChange"] !== "string") {
+      await capture("git-review-failed")
+      record("git-review", false, { reason: "workspace clean or unavailable (no dirty file to review)", changeCount, ...rv })
+      return
+    }
+    await evalIn(clickKeyScript(rv["firstChange"] as string))
+    const diff = await pollUntil(
+      probeReviewWorkspaceScript,
+      (value) => value["diffPresent"] === true && typeof value["diffLength"] === "number" && (value["diffLength"] as number) > 0,
+      liveProofStepTimeoutMs("git-review"),
+      200,
+    )
+    const ok = diff.ok
+    await capture(ok ? "git-review" : "git-review-failed")
+    record("git-review", ok, { changeCount, diffLength: diff.value["diffLength"] ?? 0 })
+  }
+
   const stepRedactionCheck = (): void => {
     const blank = shots.filter((shot) => shot.name.trim() === "" || shot.file.trim() === "")
     const emptyFiles = shots.filter((shot) => shot.file !== "" && shot.bytes <= 0)
@@ -639,6 +868,16 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
       } else {
         record("codex-turn", false, { reason: "codex-unavailable (see codex-chip)" })
       }
+      // EP250 capability-eval rung-4 receipts.
+      if (fableSelected || codexSelected) {
+        const interruptHarness: "fable" | "codex" = fableSelected ? "fable" : "codex"
+        if (fableSelected) await evalIn(clickScript("shell-harness-fable"))
+        await stepInterruptStop(interruptHarness)
+      } else {
+        record("interrupt-stop", false, { reason: "skipped: no local lane available to interrupt" })
+      }
+      await stepFileSave()
+      await stepGitReview()
       stepRedactionCheck()
       record("summary", requiredFailures.length === 0, {
         requiredFailures,

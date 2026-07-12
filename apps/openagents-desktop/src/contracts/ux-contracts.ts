@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.34",
+    version: "2026-07-11.35",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -290,6 +290,54 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the composer suite and the Electron smoke; the live-proof driver journals the chip's disabled state + aria-label instead of any visible caption.",
+      },
+      {
+        contractId: "openagents_desktop.chat.composer_stop_button.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer turn interruption",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "capability-audit", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "interrupt a running turn from the UI",
+        authorityBoundary:
+          "While a turn streams (pending), the composer's trailing icon-only Send is replaced by an icon-only Stop that dispatches the DesktopTurnInterrupted intent; the handler signals the active local lane's already-plumbed interrupt IPC path (FableLocal/CodexLocal interrupt channel) by the exact active turnRef and invents no terminal state — the runtime's typed `interrupted` failure is what finalizes the turn and reverts the control to Send. Stop grants no new authority: it cannot start a turn, route to another lane, or fabricate a completion, and a host without a local streaming lane simply no-ops.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/local-harness.ts",
+          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/capability-registry.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "composer_stop_button.render_and_intent_loop",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the composer renders the icon-only Stop (and no Send) while pending and Send (no Stop) while idle, and that dispatching DesktopTurnInterrupted through the real intent registry calls the chat host's interruptActive exactly once when pending and never when idle.",
+          },
+          {
+            id: "composer_stop_button.interrupt_path",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/capability-evals.test.ts",
+            description:
+              "Drives the local-harness interruptActive seam headlessly against a fake lane bridge: a streaming turn's exact turnRef is signalled on the frozen interrupt channel, and the runtime's typed `interrupted` FableLocalEvent maps to a turn_failed reason that finalizes the turn.",
+          },
+          {
+            id: "composer_stop_button.live_proof_step",
+            kind: "visual-smoke",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/live-proof.ts",
+            description:
+              "The interrupt-stop live-proof step clicks Stop mid-turn in the real Electron window and journals the interrupted transcript state with a PNG receipt (rung-4; executed by the live-proof driver, not the headless sweep).",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell Stop-button suite and the capability-evals interrupt-path oracle; the interrupt-stop live-proof step is exercised by the live-proof driver run.",
       },
       {
         contractId: "openagents_desktop.chat.markdown_rendering.v1",

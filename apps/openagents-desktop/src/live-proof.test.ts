@@ -31,6 +31,9 @@ describe("live-proof step list (EP250 journey)", () => {
       "fable-turn",
       "codex-chip",
       "codex-turn",
+      "interrupt-stop",
+      "file-save",
+      "git-review",
       "redaction-check",
       "summary",
     ])
@@ -38,6 +41,15 @@ describe("live-proof step list (EP250 journey)", () => {
 
   test("exactly steps 1, 2, and 4 are required (shell, fleet, new chat)", () => {
     expect(requiredLiveProofSteps()).toEqual(["shell-mounted", "fleet-workspace", "new-chat"])
+  })
+
+  test("the EP250 capability-eval steps (interrupt-stop/file-save/git-review) are optional and bounded", () => {
+    for (const name of ["interrupt-stop", "file-save", "git-review"] as const) {
+      const step = liveProofSteps.find((value) => value.name === name)
+      expect(step).toBeDefined()
+      expect(step?.required).toBe(false)
+      expect(liveProofStepTimeoutMs(name)).toBeGreaterThan(0)
+    }
   })
 
   test("every step is bounded by a positive timeout", () => {
