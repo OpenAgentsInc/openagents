@@ -1141,7 +1141,9 @@ import {
   makeGitHubWriteRepositoryForEnv,
   makeProviderAccountRepositoryForEnv,
   makeProviderAccountTokenCustodyStoreForEnv,
+  postgresIdentityAuthStoreForEnv,
 } from './identity-auth-domain-store'
+import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
 import {
   codexAccessToAuthMaterial,
   deleteConnectedCodexAuthFromCustody,
@@ -8447,7 +8449,12 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
   })
   if (!capacity.available) return
 
-  const accountRepository = makeProviderAccountRepositoryForEnv(env)
+  const postgresIdentity = postgresIdentityAuthStoreForEnv(env)
+  if (postgresIdentity === undefined) return
+  const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
+    makeProviderAccountRepositoryForEnv(env),
+    postgresIdentity.queryRows,
+  )
   const githubRepository = makeGitHubWriteRepositoryForEnv(env)
   const inferenceBaseUrl =
     env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL !== undefined &&
