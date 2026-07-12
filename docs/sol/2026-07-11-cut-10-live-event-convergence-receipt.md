@@ -89,3 +89,23 @@ usage, composer, provider-account, Pylon, package, or lockfile paths.
 CUT-10 must still attach the physical-mobile continuation receipt when the
 recording phone is available. Until then #8690 remains open; the deterministic
 no-poll code and built-Electron receipt are complete.
+
+## 2026-07-12 boot-convergence addendum
+
+The live #8677 journey found one remaining lifetime race outside the timeline
+consumer: a renderer whose one-shot catalog query arrived while an already-
+verified personal Sync scope was still bootstrapping permanently selected the
+local ChatHost. `1afe5328e2` replaces that immutable routing decision with a
+converging facade. Each user operation performs one authoritative catalog
+admission query—never an interval—and moves to the durable runtime as soon as
+the scope is live. Threads stay pinned to the host that created or opened them,
+so local drafts remain visible and are never silently reinterpreted as hosted
+refs. A deterministic oracle starts unavailable, becomes live in the same
+renderer, exposes the hosted thread, preserves the local thread, and proves a
+known local open sends no additional hosted query.
+
+Verification on the integrated tree: focused runtime-conversation corpus 18
+pass / 65 expectations; full Desktop 1,019 pass / 2 documented skips / 0 fail /
+5,493 expectations; typecheck, build, built Electron smoke, and teardown with
+zero active host slots all pass. The source oracle continues to forbid the old
+timeline polling constructs.

@@ -65,7 +65,11 @@ rung they feed (#8677) remains open and is accounted under CUT-09.
   mobile no-poll; Desktop renderer adapter; final Desktop consumer at
   `5e20b033a6` with a source oracle forbidding `pollAttempts` /
   `sleep(100)` / `setInterval`. Full Desktop verify green (311 tests /
-  1,581 expectations at landing).
+  1,581 expectations at landing). A later live run exposed a separate
+  boot-time lifetime race: catalog admission could arrive before verified
+  Sync finished catching up and pin the renderer local. `1afe5328e2` adds
+  per-operation authoritative convergence without an interval and preserves
+  local thread ownership; full Desktop verification is 1,019 pass / 2 skips.
   [Receipt](./2026-07-11-cut-10-live-event-convergence-receipt.md).
 - Rung: **fixture-proven** + built-Electron receipt. Non-device work is
   complete.
