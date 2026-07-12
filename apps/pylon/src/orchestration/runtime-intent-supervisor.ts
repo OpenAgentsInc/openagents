@@ -22,6 +22,7 @@ import {
 import { recordRuntimeTurnUsageReceipt } from "./runtime-turn-usage-receipts.js"
 import { createPylonOrchestrationStore } from "./store.js"
 import { createRuntimeInteractionHttpAuthority } from "./runtime-interaction-authority.js"
+import { runtimeSiblingAccountDiscoveryEnv } from "./runtime-account-discovery.js"
 
 /**
  * Runtime control-intent dispatch consumer — standalone process (#8388).
@@ -172,12 +173,20 @@ const readinessSummary = {
  * accounts list --json` reported those same accounts `ready`. Merging
  * sibling-discovered accounts into the registry array here (deduped by
  * provider+home) gets this supervisor back to parity with what the CLI
- * already considers a valid dispatch target, without changing
- * `candidateAccountsFromRegistry`'s own contract or tests. */
+ * already considers a valid dispatch target. Unlike inventory commands, the
+ * runtime supervisor defaults sibling discovery to `<pylonHome>/accounts` so
+ * an isolated supervisor can never silently widen custody to `~/.codex` or
+ * `~/.claude`; an explicit `PYLON_ACCOUNT_HOME_ROOT` can opt into a different
+ * bounded root. */
 const registryWithSiblingAccounts = async (): Promise<ReadonlyArray<PylonAccountRegistryEntry>> => {
   const registry = await loadPylonAccountRegistry(registrySummary)
   const seen = new Set(registry.map((entry) => `${entry.provider}:${entry.home}`))
-  const siblings = await discoverPylonSiblingAccountHomes(Bun.env as Record<string, string | undefined>)
+  const siblings = await discoverPylonSiblingAccountHomes(
+    runtimeSiblingAccountDiscoveryEnv(
+      pylonHome,
+      Bun.env as Record<string, string | undefined>,
+    ),
+  )
   const siblingEntries: PylonAccountRegistryEntry[] = siblings
     .filter((sibling) => !seen.has(`${sibling.provider}:${sibling.home}`))
     .map((sibling) => ({

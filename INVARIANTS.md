@@ -127,6 +127,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   from the caller-owned Pylon account registry. Automatic real-work fanout must
   not route through the display/default Codex account or omit `--account-ref`;
   that would write rollouts under the operator's default `~/.codex` home.
+  A runtime-intent supervisor rooted at an explicit Pylon home must also bound
+  implicit sibling-home discovery to that Pylon's account root; it may widen
+  discovery only through an explicit account-home root and must never infer
+  the owner's default `~/.codex` or `~/.claude` custody from `$HOME`.
   Local Pylon control sessions must also prefer healthy connected Codex account
   registry entries before falling back to the default Codex home. Provider
   usage exhaustion, rate limiting, and auth revocation are typed account-health
