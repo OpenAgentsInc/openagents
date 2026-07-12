@@ -769,6 +769,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   authority never cross preload; local history is never uploaded to Khala Sync
   by default. For every decoded thread, source records equal rendered source
   records plus wholly redacted records plus explicit gap records.
+- Windowed history prepends preserve the first visible keyed row synchronously
+  inside the shared DOM commit. Variable-height rows added above the viewport
+  may not produce an intermediate stale `scrollTop` frame or a delayed
+  post-paint correction; ordinary appends and unrelated rerenders retain their
+  existing numeric scroll position.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
   linked Sync when the current gateway catalog is live, otherwise explicit
   local-only mode.

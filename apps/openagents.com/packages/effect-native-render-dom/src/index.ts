@@ -1141,6 +1141,8 @@ const renderChildren = (
 
 const renderStack = (view: StackView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "div")
+  if (view.preserveScrollAnchor === true) element.setAttribute("data-en-preserve-scroll-anchor", "true")
+  else element.removeAttribute("data-en-preserve-scroll-anchor")
   // Same Chromium quirk renderTimeline guards against: replacing a scroll
   // container's children can transiently clamp its offset to zero even when
   // the keyed element itself is retained. A sibling state change must not
@@ -4215,6 +4217,9 @@ const renderView = (view: View, state: DomRendererState, report: IntentReporter)
   }
 }
 
+export const scrollTopForPreservedAnchor = (anchorViewportOffset: number, nextAnchorOffsetTop: number): number =>
+  Math.max(0, nextAnchorOffsetTop - anchorViewportOffset)
+
 const commitView = (view: View, state: DomRendererState, report: IntentReporter): void => {
   const activeBefore = state.root.ownerDocument.activeElement as HTMLElement | null
   const timelineScrollPositions = new Map(
@@ -4243,6 +4248,17 @@ const commitView = (view: View, state: DomRendererState, report: IntentReporter)
       .filter((node) => node.scrollTop > 0 || node.scrollLeft > 0)
       .map((node) => [keyedScrollKey(node), { top: node.scrollTop, left: node.scrollLeft }])
   )
+  const scrollAnchors = new Map(
+    Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-preserve-scroll-anchor="true"][data-en-key]')).flatMap((container) => {
+      const anchor = Array.from(container.children).map(child => child as HTMLElement).find((child) =>
+        child.hasAttribute("data-en-key") &&
+        (child.offsetTop + child.offsetHeight >= container.scrollTop))
+      return anchor === undefined ? [] : [[keyedScrollKey(container), {
+        key: anchor.getAttribute("data-en-key") ?? "",
+        offset: anchor.offsetTop - container.scrollTop,
+      }] as const]
+    })
+  )
   state.clearFocusRequest()
   state.styles.beginRender()
   state.beginHostRender()
@@ -4265,8 +4281,14 @@ const commitView = (view: View, state: DomRendererState, report: IntentReporter)
   }
   for (const node of Array.from(state.root.querySelectorAll<HTMLElement>("[data-en-key]"))) {
     const position = keyedScrollPositions.get(keyedScrollKey(node))
-    if (position !== undefined && (node.scrollTop !== position.top || node.scrollLeft !== position.left)) {
-      node.scrollTop = position.top
+    const anchor = scrollAnchors.get(keyedScrollKey(node))
+    const anchoredChild = anchor === undefined
+      ? undefined
+      : Array.from(node.children).map(child => child as HTMLElement)
+          .find(child => child.getAttribute("data-en-key") === anchor.key)
+    const restoredTop = anchoredChild === undefined ? position?.top : scrollTopForPreservedAnchor(anchor!.offset, anchoredChild.offsetTop)
+    if (position !== undefined && (node.scrollTop !== restoredTop || node.scrollLeft !== position.left)) {
+      node.scrollTop = restoredTop ?? position.top
       node.scrollLeft = position.left
     }
   }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { View } from "@effect-native/core"
-import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historyPrependScrollTop, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
+import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistorySearchResult } from "../codex-history-contract.ts"
 import { historyRestoreFetchPlan } from "./history-restore.ts"
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
@@ -288,10 +288,6 @@ describe("history workspace",()=>{
       expect(historyShouldFetchNewer({scrollTop:0,clientHeight:400,scrollHeight:2000,windowEnd:100,totalItems:1000,loadingEdge:null})).toBe(false)
       expect(historyShouldFetchNewer({scrollTop:1200,clientHeight:400,scrollHeight:2000,windowEnd:1000,totalItems:1000,loadingEdge:null})).toBe(false)
       expect(historyShouldFetchNewer({scrollTop:1200,clientHeight:400,scrollHeight:2000,windowEnd:100,totalItems:1000,loadingEdge:"bottom"})).toBe(false)
-    })
-    test("prepend preserves the reader's scroll anchor by the exact growth",()=>{
-      expect(historyPrependScrollTop(50,1000,1600)).toBe(650)
-      expect(historyPrependScrollTop(0,1000,1000)).toBe(0)
     })
     test("no pager rendered; loading edge shows an honest thin row",()=>{
       const windowed=windowPage(900,50,1000)

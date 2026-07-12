@@ -19,7 +19,7 @@ import {
 import { Effect, Stream } from "@effect-native/core/effect"
 import { Deferred } from "effect"
 
-import { makeDomRenderer, makeStubCodeEditorDriver, scrollRegionIsAtEnd, type DomHostContext, type DomHostDriver } from "../src/index"
+import { makeDomRenderer, makeStubCodeEditorDriver, scrollRegionIsAtEnd, scrollTopForPreservedAnchor, type DomHostContext, type DomHostDriver } from "../src/index"
 
 test("transcript pinning distinguishes a reader scrolled up from the live edge", () => {
   expect(scrollRegionIsAtEnd({ scrollHeight: 1_000, scrollTop: 300, clientHeight: 400 })).toBe(false)
@@ -32,6 +32,43 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("prepend anchoring corrects variable-height history before the next paint", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+      const release = yield* Deferred.make<void>()
+      const frame = (older: boolean) => Stack({
+        key: "anchored-scroll",
+        direction: "column",
+        preserveScrollAnchor: true,
+      }, [
+        ...(older ? [Text({ key: "older-row", content: "Older", variant: "body" })] : []),
+        Text({ key: "visible-row", content: "Visible", variant: "body" }),
+      ])
+      const stream = Stream.concat(
+        Stream.succeed(frame(false)),
+        Stream.fromEffect(Deferred.await(release).pipe(Effect.as(frame(true)))),
+      )
+      yield* makeDomRenderer({ document }).mount(root, stream, () => Effect.succeed(undefined))
+      yield* nextTask
+      const container = root.querySelector<HTMLElement>('[data-en-key="anchored-scroll"]')!
+      const anchor = root.querySelector<HTMLElement>('[data-en-key="visible-row"]')!
+      Object.defineProperty(anchor, "offsetTop", { configurable: true, get: () =>
+        container.querySelector('[data-en-key="older-row"]') === null ? 200 : 300 })
+      Object.defineProperty(anchor, "offsetHeight", { configurable: true, value: 40 })
+      container.scrollTop = 150
+      yield* Deferred.succeed(release, undefined)
+      yield* nextTask
+      yield* nextTask
+      expect(container.querySelector('[data-en-key="older-row"]')).not.toBeNull()
+      expect(container.getAttribute("data-en-preserve-scroll-anchor")).toBe("true")
+      expect((container.querySelector('[data-en-key="visible-row"]') as HTMLElement).offsetTop).toBe(300)
+      expect(scrollTopForPreservedAnchor(50, 300)).toBe(250)
+    })))
+  })
+
   test("controlled accordion rerenders replace items instead of duplicating them", async () => {
     const window = new Window({ url: "http://localhost/" })
     const document = window.document as unknown as Document

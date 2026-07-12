@@ -143,14 +143,6 @@ export const historyShouldFetchNewer = (input: Readonly<{ scrollTop: number; cli
   input.loadingEdge === null && input.windowEnd < input.totalItems &&
   input.scrollHeight - (input.scrollTop + input.clientHeight) < input.clientHeight * historyPrefetchViewportFactor
 
-/**
- * Scroll anchor preserved on prepend: content grew strictly above the
- * viewport, so the offset moves by exactly the growth — the reader's line
- * does not jump.
- */
-export const historyPrependScrollTop = (savedScrollTop: number, savedScrollHeight: number, newScrollHeight: number): number =>
-  Math.max(0, savedScrollTop + (newScrollHeight - savedScrollHeight))
-
 /** Honest position caption at the loading edge. */
 export const historyPositionCaption = (page: CodexHistoryPage): string => {
   const end = Math.min(page.totalItems, page.offset + page.items.length)
@@ -549,7 +541,7 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   const center = Stack({ key: "history-center", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
     actionBar,
     IconButton({key:"history-agents-drawer",icon:"Agent",accessibilityLabel:`${state.railCollapsed?"Open":"Close"} agents inspector, ${page.agents.length} agents`,onPress:IntentRef("HistoryInspectorToggled"),surface:"glass",a11y:{expanded:!state.railCollapsed}}),
-    Stack({ key: `history-timeline-page-${page.selectedThreadRef}`, direction: "column", gap: "2", style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, [
+    Stack({ key: `history-timeline-page-${page.selectedThreadRef}`, direction: "column", gap: "2", preserveScrollAnchor: true, style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, [
       // Honest thin loading row / position caption at the top loading edge.
       // No Previous/Next pager: older pages auto-load as the reader scrolls
       // up (EP250 bottom-anchored flow).

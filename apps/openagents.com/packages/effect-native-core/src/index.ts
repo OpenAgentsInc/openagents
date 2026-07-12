@@ -1835,6 +1835,8 @@ export interface StackView extends NodeBase {
   // away from / back to the end (reproduces transcript auto-pin behavior).
   readonly pinToEnd?: boolean
   readonly onPinnedChange?: IntentRef
+  /** Keep the first visible keyed child stationary when content is prepended. */
+  readonly preserveScrollAnchor?: boolean
   readonly children: ReadonlyArray<View>
 }
 
@@ -3258,6 +3260,7 @@ export const StackSchema: Schema.Codec<StackView, StackView> = Schema.TaggedStru
   style: StackStyleSchema.pipe(Schema.optionalKey),
   pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
   onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
+  preserveScrollAnchor: Schema.Boolean.pipe(Schema.optionalKey),
   children: Schema.Array(ViewSelf)
 })
 

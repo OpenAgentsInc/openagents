@@ -99,7 +99,7 @@ import type {
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "../codex-history-contract.ts"
-import { historyAgentTraversalTarget, historyCatalogPageSize, historyItemPageSize, historyPrependScrollTop, historyShouldFetchNewer, historyShouldFetchOlder, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
+import { historyAgentTraversalTarget, historyCatalogPageSize, historyItemPageSize, historyShouldFetchNewer, historyShouldFetchOlder, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
 import {
   decodeDesktopCodingCatalogProjection,
   desktopWorkspaceForCodingFocus,
@@ -1208,11 +1208,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         const page=current.history.page
         if(current.workspace!=="chat"||page===null)return
         if(historyShouldFetchOlder({scrollTop:metrics.scrollTop,clientHeight:metrics.clientHeight,offset:page.offset,loadingEdge:current.history.loadingEdge})){
-          const savedTop=metrics.scrollTop;const savedHeight=metrics.scrollHeight
           await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryOlderRequested",StaticPayload(null)))))
-          await settleFrame()
-          const after=historyScrollEl()
-          if(after!==null)after.scrollTop=historyPrependScrollTop(savedTop,savedHeight,after.scrollHeight)
         } else if(historyShouldFetchNewer({scrollTop:metrics.scrollTop,clientHeight:metrics.clientHeight,scrollHeight:metrics.scrollHeight,windowEnd:page.offset+page.items.length,totalItems:page.totalItems,loadingEdge:current.history.loadingEdge})){
           await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryNewerRequested",StaticPayload(null)))))
         }
