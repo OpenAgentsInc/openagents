@@ -27,12 +27,15 @@ describe("contract openagents_mobile.coding.native_target_delivery.v1", () => {
 
   test("queues until live authority, then activates the exact resolved target once", async () => {
     let live = false
-    const activated: string[] = []
+    const activated: Array<Readonly<{ sessionRef: string; source: string }>> = []
     const delivery = openNativeCodingTargetDelivery({
       resolve: async (): Promise<MobileCodingTargetResolution> => live
         ? { state: "ready", target, repository: {} as never, worktree: {} as never, session: {} as never }
         : { state: "rejected", reason: "authority_unavailable", affectedRef: target.sessionRef },
-      activate: async value => { activated.push(value.sessionRef); return true },
+      activate: async (value, source) => {
+        activated.push({ sessionRef: value.sessionRef, source })
+        return true
+      },
     })
     delivery.enqueue({ source: "deep_link", url: "openagents://coding/session/session.mobile" })
     await delivery.flush()
@@ -41,7 +44,14 @@ describe("contract openagents_mobile.coding.native_target_delivery.v1", () => {
     live = true
     await Promise.all([delivery.flush(), delivery.flush()])
     expect(delivery.pendingCount()).toBe(0)
-    expect(activated).toEqual(["session.mobile"])
+    expect(activated).toEqual([{ sessionRef: "session.mobile", source: "deep_link" }])
+
+    delivery.enqueue({ source: "notification", payload: target })
+    await delivery.flush()
+    expect(activated).toEqual([
+      { sessionRef: "session.mobile", source: "deep_link" },
+      { sessionRef: "session.mobile", source: "notification" },
+    ])
   })
 
   test("drops stale targets, bounds the queue, and teardown rejects late delivery", async () => {

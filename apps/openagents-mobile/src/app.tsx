@@ -12,6 +12,7 @@ import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
 import { signInNativeSession, signOutNativeSession } from "./auth/native-session-pkce"
 import type {
   MobileCodingDirectory,
+  MobileCodingSelection,
   MobileCodingTarget,
 } from "./coding/mobile-coding-navigation"
 import {
@@ -50,6 +51,14 @@ type MobileCodingHomeBinding = Readonly<{
   clearSelection: () => Promise<void>
   selectSession: (
     target: MobileCodingTarget,
+    onUpdate: (thread: MobileConversationThread) => void,
+  ) => Promise<Readonly<{
+    thread: MobileConversationThread
+    composer: MobileCodingComposerSession | null
+  }> | null>
+  activateSession: (
+    target: MobileCodingTarget,
+    source: MobileCodingSelection["source"],
     onUpdate: (thread: MobileConversationThread) => void,
   ) => Promise<Readonly<{
     thread: MobileConversationThread
@@ -110,7 +119,7 @@ const selectAuthenticatedMobileExperience = async (
   let activeComposer: MobileCodingComposerSession | null = null
   const bind = async (
     target: MobileCodingTarget,
-    source: "directory" | "restore",
+    source: MobileCodingSelection["source"],
     onUpdate: (thread: MobileConversationThread) => void,
   ): Promise<Readonly<{
     thread: MobileConversationThread
@@ -163,6 +172,7 @@ const selectAuthenticatedMobileExperience = async (
         await coding.clearActive()
       },
       selectSession: (target, onUpdate) => bind(target, "directory", onUpdate),
+      activateSession: (target, source, onUpdate) => bind(target, source, onUpdate),
       updateComposerText: async (session, text) => {
         if (composer === null) return null
         const updated = await composer.updateText(session, text)
@@ -341,10 +351,10 @@ export const App = () => {
       })
       targetDelivery = openNativeCodingTargetDelivery({
         resolve: candidate => syncHost!.coding().accept(candidate),
-        activate: async target => {
+        activate: async (target, source) => {
           const binding = codingBindingRef.current
           if (binding === undefined) return false
-          const selected = await binding.selectSession(target, applyActiveThread)
+          const selected = await binding.activateSession(target, source, applyActiveThread)
           return selected !== null
         },
       })

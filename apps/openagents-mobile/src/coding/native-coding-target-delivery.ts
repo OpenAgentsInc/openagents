@@ -20,7 +20,10 @@ export type NativeCodingTargetDelivery = Readonly<{
  */
 export const openNativeCodingTargetDelivery = (input: Readonly<{
   resolve: (candidate: MobileCodingInput) => Promise<MobileCodingTargetResolution>
-  activate: (target: MobileCodingTarget) => Promise<boolean>
+  activate: (
+    target: MobileCodingTarget,
+    source: MobileCodingInput["source"],
+  ) => Promise<boolean>
   rejected?: (resolution: Extract<MobileCodingTargetResolution, { state: "rejected" }>) => void
 }>): NativeCodingTargetDelivery => {
   let closed = false
@@ -38,7 +41,7 @@ export const openNativeCodingTargetDelivery = (input: Readonly<{
         input.rejected?.(resolution)
         continue
       }
-      if (!await input.activate(resolution.target)) return
+      if (!await input.activate(resolution.target, candidate.source)) return
       pending = pending.slice(1)
     }
   }

@@ -2,9 +2,8 @@
 
 - Date: 2026-07-11
 - Issue: [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694)
-- Status: physical iOS authenticated directory, exact session activation,
-  deep-link resolution, and process-death restore pass on build 117; Android
-  emulator authenticated acceptance remains owner-OAuth-gated
+- Status: closed — authenticated physical iOS and Android-emulator directory,
+  exact session activation, deep-link resolution, and process-death restore pass
 - Contract: `openagents_mobile.coding.authenticated_navigation.v1`
 
 ## Greenfield ownership
@@ -128,13 +127,6 @@ sign-in form. Local OTA loading was disabled only in the ignored generated host
 so the acceptance run could not substitute a published bundle for the source
 under test.
 
-## Residual
-
-CUT-14 remains open only for authenticated Android-emulator catalog/deep-link/
-process-death acceptance. Nothing gates on physical Android. The Android
-Release host reaches GitHub's real OpenAgents sign-in boundary; its one-time
-owner OAuth remains the current emulator handoff.
-
 ## Android emulator debug receipt
 
 An API 35 `khala_test` Pixel emulator now has the current native debug APK.
@@ -194,3 +186,28 @@ Physical receipts:
 
 Focused verification after the repairs: mobile 29 pass / 138 expectations,
 Desktop 98 pass / 546 expectations, both app typechecks pass.
+
+## Authenticated Android acceptance and closure
+
+On 2026-07-12 the owner completed GitHub OAuth in the persisted API 35
+`khala_test` emulator. The authenticated drawer rendered all three confirmed
+coding repository/session groups. Selecting the explicit `Active` control for
+a session opened and durably stored its exact repository/session/thread tuple;
+an `am force-stop` process replacement restored the same coding context and
+target selector.
+
+The cold deep-link pass found one real source-attribution defect: native target
+delivery resolved the correct session but discarded whether activation came
+from a deep link or notification, so persistence mislabeled it as `directory`.
+Native delivery now carries the decoded source into the same authoritative
+activation binding. Focused tests prove both `deep_link` and `notification`
+propagation. The emulator then cold-opened the exact third-session deep link;
+device SQLite recorded its exact refs with `source: deep_link`. A subsequent
+ordinary cold launch retained the refs and advanced the durable source to
+`restore`.
+
+Final verification is 21 focused tests / 121 assertions and the complete
+mobile suite at 123 tests / 643 assertions, all passing; mobile typecheck also
+passes. The AVD hardware-keyboard bridge is enabled, so owner input works from
+the macOS keyboard without using device mirroring. CUT-14 therefore has both
+required authenticated platform receipts and no residual acceptance gate.

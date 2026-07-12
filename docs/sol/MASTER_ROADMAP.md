@@ -1,15 +1,15 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-12 (CUT-10/CUT-11/CUT-12/CUT-21 closed; CUT-14 physical
-  iOS directory/deep-link/process-death acceptance complete and Android
-  emulator OAuth remains; CUT-16 repaired a missing production migration and
+- Updated: 2026-07-12 (CUT-10/CUT-11/CUT-12/CUT-14/CUT-21 closed; CUT-14
+  authenticated iOS and Android directory/deep-link/process-death acceptance
+  complete; CUT-16 repaired a missing production migration and
   the physical authenticated catalog now visibly lists hosted Gemini plus
   three owner Codex targets and exact hosted-Gemini selection survives process
   replacement; CUT-26 publish/legacy-lockout
   code complete; remaining local-cutover leaves are acceptance-gated CUT-09,
-  CUT-14, CUT-16, CUT-25, CUT-26, and CUT-27)
-- Revision: 78
+  CUT-16, CUT-25, CUT-26, and CUT-27)
+- Revision: 79
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -1814,9 +1814,11 @@ universe.
 
 ## Canonical open issue set
 
-There are **13 open `roadmap:sol` records** as of 2026-07-12: #8547, #8566,
-#8574, #8597, #8636, #8676, #8677; open CUT leaves #8689, #8694,
-#8696, #8705, #8706, and #8707. Episode 250 slice #8712 is closed with its
+There are **12 open `roadmap:sol` records** as of 2026-07-12: #8547, #8566,
+#8574, #8597, #8636, #8676, #8677; open CUT leaves #8689, #8696, #8705,
+#8706, and #8707. CUT-14 #8694 is closed with authenticated physical iOS and
+Android-emulator directory, exact deep-link, and process-death receipts.
+Episode 250 slice #8712 is closed with its
 retained on-camera owner acceptance. #8566 remains the sole program epic. No new Agent Computer child
 issues are needed for the local Desktop/mobile cutover; closed #8719–#8721
 already own the bounded metering correction under #8547. GitHub sub-issue
