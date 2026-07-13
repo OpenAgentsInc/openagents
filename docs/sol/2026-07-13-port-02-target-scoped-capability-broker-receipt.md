@@ -19,6 +19,9 @@ outcome without repeating an effect; conflicting bytes fail closed. Reissue
 revokes the source grant and wipes the source target before it can issue a
 strictly newer destination attachment lease, and it requires a fresh
 destination source-grant ref rather than copying revoked authority.
+The broker cannot be constructed without an idempotent evidence sink whose
+append resolves after durable PORT-01 commit; the in-memory sink exists only in
+the deterministic fault oracle.
 
 The target boundary is an injected, class-checked adapter. The acceptance
 oracle runs actual material callbacks through both an `owner_local` adapter and

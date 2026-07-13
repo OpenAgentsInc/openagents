@@ -23,6 +23,11 @@ target scratch boundary, and the vault zeros or destroys the transient buffer
 after the callback. Neither the broker snapshot nor its evidence sink receives
 the source-grant ref or material.
 
+Production construction must inject an idempotent durable evidence sink backed
+by the PORT-01 authority/event plane. `append` must resolve only after durable
+commit. A test-only in-memory sink is acceptable only inside the focused fault
+oracle; it is never production composition.
+
 Supported capabilities are provider, SCM read, SCM writeback, MCP/tool, and a
 bounded named API. `tool` and `api` require an exact `toolRef`; provider requires
 an exact named `accountRef`. Empty permissions, missing scope, unready targets,

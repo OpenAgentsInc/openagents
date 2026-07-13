@@ -153,7 +153,8 @@ export type CapabilityBrokerConfig = {
   readonly targets: ReadonlyArray<CapabilityTargetBinding>
   readonly adapters: ReadonlyArray<CapabilityTargetAdapter>
   readonly clock?: CapabilityBrokerClock
-  readonly evidenceSink?: {
+  /** Must append idempotently to durable PORT-01 authority before resolving. */
+  readonly evidenceSink: {
     readonly append: (evidence: CapabilityBrokerEvidence) => Promise<void>
   }
   readonly maxTtlMs?: number
@@ -483,7 +484,7 @@ export class PortableCapabilityBroker {
     const withEvidence = { ...outcome, evidenceRefs: [evidenceRef] }
     this.operations.set(outcome.operationRef, { fingerprint, outcome: withEvidence })
     this.evidence.push(evidence)
-    await this.config.evidenceSink?.append(evidence)
+    await this.config.evidenceSink.append(evidence)
   }
 
   private makeEvidence(evidenceRef: string, outcome: CapabilityBrokerOutcome, record?: CapabilityLeaseRecord): CapabilityBrokerEvidence {

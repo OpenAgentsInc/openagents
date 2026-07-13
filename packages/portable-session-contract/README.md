@@ -24,3 +24,6 @@ only inside the injected vault-to-target callback and is absent from snapshots,
 outcomes, evidence, prompts, Sync/checkpoint projections, artifacts, and
 diagnostics. Reissue requires a fresh destination source-grant ref after the
 source grant is revoked and its target installation is wiped.
+Construction requires an idempotent durable evidence sink; an operation does
+not report completion without appending its redacted evidence to the PORT-01
+authority composition.
