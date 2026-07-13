@@ -25,11 +25,14 @@ behind durable head.
 
 Every source attachment capability participates exactly once. PORT-02 revokes
 and wipes the source installation before issuing and redeeming fresh leases
-for the next attachment generation and explicit target. The target stages the
-checkpoint with `acceptingWork:false`; source cleanup must report every graph
-node plus released process, scratch, and port state; only then may PORT-01
-detach the source and advance the one live attachment. Target activation uses
-one stable operation ref after durable commit.
+for the next attachment generation and explicit target. Before that transfer,
+the target prepares the exact destination resource, privately materializes the
+checkpoint artifact, and verifies the stage with `acceptingWork:false`. A
+stage or artifact failure has no broker effect; a later broker failure aborts
+the staged destination and releases attempted leases. Source cleanup must
+report every graph node plus released process, scratch, and port state; only
+then may PORT-01 detach the source and advance the one live attachment. Target
+activation uses one stable operation ref after durable commit.
 
 The production-durability follow-up adds migration `0069` and
 `PostgresPortableCapabilityBrokerStore`. The exact active move claim, complete
@@ -46,6 +49,15 @@ completed, replayed, and failed outcomes release that claim at the latest
 observed broker revision; authority- and activation-pending outcomes retain it
 for same-byte process restart and reconciliation. A conflicting move is
 rejected before coordinator, vault, or target effects.
+
+The production wiring now includes the concrete owner-local Pylon target and
+local rehydration seam, retained Agent Computer lifecycle/provisioner, exact
+provider and GitHub grant-movement HTTP authority, callback-scoped capability
+vault, owner-local and managed target installers, and the owner-side production
+round-trip driver. Checkpoint production emits a bounded private `tar.zst`
+containing a canonical manifest, pinned git bundle, and exact non-ignored
+post-image; credential-shaped content and escaping symlinks are rejected, and
+transport buffers are zeroized after materialization.
 
 ## Fault and replay evidence
 
@@ -93,13 +105,17 @@ bun x tsc -p packages/portable-session-contract/tsconfig.json --noEmit --pretty 
 This is production-path implementation and real database/broker boundary
 evidence, not the real-host acceptance demanded by #8748. Migration `0069`
 was applied to staging and production on 2026-07-13 (SHA-256 prefix
-`ce9db7cddbb5`; both post-apply dry runs: `0 pending, 70 already applied`). The
-atomic store is now composed into the owner-side coordinator, but concrete
-owner-local Pylon, stateful managed Agent Computer, and provider/SCM vault and
-grant-install adapters remain. The issue must remain open until those adapters
-land, #8636 is completed, and one direct live journey moves the same bounded
+`ce9db7cddbb5`; both post-apply dry runs: `0 pending, 70 already applied`).
+#8636 is complete and the concrete composition above has landed. The issue
+must remain open until the guest materializer and fixed root/child continuation
+route, reverse managed-to-local artifact restoration, restart-safe Pylon
+binding recovery, and crash-safe host reconciliation land and deploy together.
+
+Closure then requires one direct live journey moving the same active
 child-bearing repository session from the owner's local Pylon to the accepted
-#8547 Agent Computer and back. That receipt must show actual target/runtime
-refs, exact repository/diff post-image, fresh grants, source reclaim, zero
-duplicate accepted parent/child work, and failure/rollback behavior. No fixture
+#8547 Agent Computer and back. Its one evidence bundle must show actual
+target/runtime refs, exact graph/thread/transcript/turn refs and cursors, exact
+checkpoint/repository/diff post-image, fresh grants, independent destination
+verification, source reclaim, replay without duplicate accepted root/child
+work, managed-to-local restoration, and failure/rollback behavior. No fixture
 or composition of separate receipts may substitute for that journey.
