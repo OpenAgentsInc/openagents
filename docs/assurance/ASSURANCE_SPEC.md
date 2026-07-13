@@ -190,10 +190,13 @@ compare or execute.
 ```
 
 The parsed semantic model—not raw Markdown—is the schema target. The current
-bounded proposal profile supports the mandatory ordered sections and exact
-parse → serialize → parse semantic round trips. Full v0.1 conformance must also
-preserve unknown valid custom sections; until that lands, the parser rejects
-unsupported sections instead of dropping them.
+bounded proposal profile supports the mandatory ordered sections, exact
+parse → serialize → parse semantic round trips, byte-stable preservation of
+unknown valid `custom-<kebab-name>` sections (the custom id itself is the
+heading in the bounded profile, placed after the mandatory sections), and
+verbatim preservation of unknown flat frontmatter keys. Non-custom unknown
+sections are still rejected (`unsupported_section`) rather than silently
+dropped, and malformed custom ids fail `invalid_custom_section_id`.
 
 Suggested frontmatter:
 

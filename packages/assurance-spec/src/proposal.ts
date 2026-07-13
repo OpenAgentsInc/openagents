@@ -94,7 +94,9 @@ export const proposeAssuranceSpec = (options: AssuranceProposalOptions): Assuran
       lifecycle_state: "proposed",
       author: options.author ?? source.document.frontmatter.author,
     },
+    unknownFrontmatter: [],
     sections: MANDATORY_ASSURANCE_SECTION_IDS.map((id) => ({ id, label: ASSURANCE_SECTION_LABELS[id], content: "" })),
+    customSections: [],
     subject: {
       product_spec: {
         profile: "openagents_executable_v0.1_exact_document",

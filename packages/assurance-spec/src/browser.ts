@@ -7,6 +7,7 @@
  */
 export * from "./graph.ts"
 export * from "./parser.ts"
+export * from "./review-annotation.ts"
 export * from "./schema.ts"
 export * from "./serializer.ts"
 export * from "./validator.ts"

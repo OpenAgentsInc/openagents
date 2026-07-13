@@ -1,6 +1,7 @@
 import {
   ASSURANCE_SECTION_LABELS,
   MANDATORY_ASSURANCE_SECTION_IDS,
+  structuredBlockNameForSection,
   type AssuranceSpecDocument,
   type MandatoryAssuranceSectionId,
 } from "./schema.ts"
@@ -30,6 +31,8 @@ const frontmatter = (document: AssuranceSpecDocument): string => [
   `artifact_type: ${quote(document.frontmatter.artifact_type)}`,
   `lifecycle_state: ${quote(document.frontmatter.lifecycle_state)}`,
   `author: ${quote(document.frontmatter.author)}`,
+  // Unknown-but-valid metadata round-trips verbatim after the known profile.
+  ...document.unknownFrontmatter.map((entry) => `${entry.key}: ${entry.raw}`),
   "---",
 ].join("\n")
 
@@ -48,18 +51,7 @@ const proseBySection: Record<MandatoryAssuranceSectionId, string> = {
 const structuredBlock = (name: string, value: unknown): string =>
   `\`\`\`${name}\n${canonicalJson(value)}\`\`\``
 
-const structuredBlockName = (id: MandatoryAssuranceSectionId): string | null => {
-  switch (id) {
-    case "subject": return "assurancespec-subject"
-    case "risk_model": return "assurancespec-risks"
-    case "environments": return "assurancespec-environments"
-    case "obligations": return "assurancespec-obligations"
-    case "gates": return "assurancespec-gates"
-    case "evidence_policy": return "assurancespec-evidence-policy"
-    case "authority_boundaries": return "assurancespec-authority"
-    default: return null
-  }
-}
+const structuredBlockName = structuredBlockNameForSection
 
 const blockValue = (document: AssuranceSpecDocument, id: MandatoryAssuranceSectionId): unknown => {
   switch (id) {
@@ -98,5 +90,9 @@ export const serializeAssuranceSpec = (document: AssuranceSpecDocument): string 
       ...(block === null ? [] : ["", block]),
     ].join("\n")
   })
-  return `${frontmatter(document)}\n\n${sections.join("\n\n")}\n`
+  // Custom sections are preserved verbatim after the mandatory sections, in
+  // authored order, with the custom id itself as the heading.
+  const custom = document.customSections.map((section) =>
+    [`## ${section.id}`, "", section.content].join("\n"))
+  return `${frontmatter(document)}\n\n${[...sections, ...custom].join("\n\n")}\n`
 }

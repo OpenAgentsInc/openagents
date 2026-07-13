@@ -1,9 +1,11 @@
-import { analyzeObligationDependencies } from "./graph.ts"
-import { AssuranceSpecParseError, parseAssuranceSpec } from "./parser.ts"
-import type {
-  AssuranceDiagnostic,
-  AssuranceObligation,
-  AssuranceSpecDocument,
+import { AssuranceSpecParseError, parseAssuranceSpecDocument } from "./parser.ts"
+import {
+  MANDATORY_ASSURANCE_SECTION_IDS,
+  THIN_SECTION_WORD_COUNT,
+  structuredBlockNameForSection,
+  type AssuranceDiagnostic,
+  type AssuranceObligation,
+  type AssuranceSpecDocument,
 } from "./schema.ts"
 
 export type AssuranceStructuralValidation = Readonly<{
@@ -31,68 +33,50 @@ export const missingObligationDesignFields = (
   return value === undefined || (Array.isArray(value) && value.length === 0)
 })
 
-const structuralDiagnostics = (document: AssuranceSpecDocument): ReadonlyArray<AssuranceDiagnostic> => {
-  const errors: AssuranceDiagnostic[] = []
-  const criterionRefs = document.subject.product_spec.criterion_refs
-  const criterionSet = new Set(criterionRefs)
-  if (criterionSet.size !== criterionRefs.length) {
-    errors.push({ code: "duplicate_subject_criterion_ref", message: "Subject criterion_refs must be unique.", severity: "error", path: "subject.product_spec.criterion_refs" })
-  }
-
-  const obligationIds = new Set<string>()
-  const coveredCriteria = new Set<string>()
-  const environmentIds = new Set(document.environments.profiles.map((profile) => profile.id))
-  const gateIds = new Set(document.gates.map((gate) => gate.id))
-  for (const obligation of document.obligations) {
-    if (obligationIds.has(obligation.id)) {
-      errors.push({ code: "duplicate_obligation_id", message: `Duplicate obligation ID: ${obligation.id}`, severity: "error", path: "obligations", obligation_id: obligation.id })
-    }
-    obligationIds.add(obligation.id)
-    if (obligation.criterion_refs.length === 0) {
-      errors.push({ code: "missing_obligation_criterion_ref", message: `Obligation ${obligation.id} has no criterion ref.`, severity: "error", path: `obligations.${obligation.id}`, obligation_id: obligation.id })
-    }
-    for (const criterionRef of obligation.criterion_refs) {
-      if (!criterionSet.has(criterionRef)) {
-        errors.push({ code: "dangling_source_ref", message: `Obligation ${obligation.id} references unknown criterion ${criterionRef}.`, severity: "error", path: `obligations.${obligation.id}.criterion_refs`, obligation_id: obligation.id })
-      } else {
-        coveredCriteria.add(criterionRef)
-      }
-    }
-    for (const environmentRef of obligation.environment_refs ?? []) {
-      if (!environmentIds.has(environmentRef)) {
-        errors.push({ code: "dangling_environment_ref", message: `Obligation ${obligation.id} references unknown environment ${environmentRef}.`, severity: "error", path: `obligations.${obligation.id}.environment_refs`, obligation_id: obligation.id })
-      }
-    }
-    if (obligation.activation_gate !== undefined && !gateIds.has(obligation.activation_gate)) {
-      errors.push({ code: "dangling_gate_ref", message: `Obligation ${obligation.id} references unknown gate ${obligation.activation_gate}.`, severity: "error", path: `obligations.${obligation.id}.activation_gate`, obligation_id: obligation.id })
+/**
+ * Skeleton-document honesty (GAP_ANALYSIS §2): a mandatory section whose
+ * narrative — the prose outside its typed structured block — is empty or a
+ * single boilerplate sentence warns without affecting validity. The
+ * deterministically generated MVP proposal rightly warns on every section
+ * until a human writes real reasoning into it.
+ */
+const structuralWarnings = (document: AssuranceSpecDocument): ReadonlyArray<AssuranceDiagnostic> => {
+  const warnings: AssuranceDiagnostic[] = []
+  for (const id of MANDATORY_ASSURANCE_SECTION_IDS) {
+    const section = document.sections.find((candidate) => candidate.id === id)
+    if (section === undefined) continue
+    const blockName = structuredBlockNameForSection(id)
+    const narrative = blockName === null
+      ? section.content
+      : section.content.replace(new RegExp(`\n?\`\`\`${blockName}\\n[\\s\\S]*?\n\`\`\`\n?`, "g"), "\n")
+    const meaningful = narrative.replace(/[`*_#>\-\s\d.()[\]]/g, " ").trim()
+    const wordCount = meaningful.split(/\s+/).filter(Boolean).length
+    if (meaningful === "" || /^tbd$/i.test(meaningful)) {
+      warnings.push({
+        code: "empty_required_section",
+        message: `Mandatory section has no narrative content: ${id}`,
+        severity: "warning",
+        path: `sections.${id}`,
+      })
+    } else if (wordCount < THIN_SECTION_WORD_COUNT) {
+      warnings.push({
+        code: "thin_required_section",
+        message: `Mandatory section narrative is skeleton-thin (${wordCount} words): ${id}`,
+        severity: "warning",
+        path: `sections.${id}`,
+      })
     }
   }
-  for (const criterionRef of criterionRefs) {
-    if (!coveredCriteria.has(criterionRef)) {
-      errors.push({ code: "uncovered_acceptance_criterion", message: `No obligation references ${criterionRef}.`, severity: "error", path: "obligations" })
-    }
-  }
-  for (const issue of analyzeObligationDependencies(document.obligations).issues) {
-    errors.push({
-      code: issue.code,
-      message: issue.message,
-      severity: "error",
-      path: issue.code === "cyclic_obligation_dependency"
-        ? "obligations"
-        : `obligations.${issue.obligation_id}.dependency_refs`,
-      obligation_id: issue.obligation_id,
-    })
-  }
-  return errors
+  return warnings
 }
 
 export const validateAssuranceSpec = (markdown: string): AssuranceStructuralValidation => {
   try {
-    const document = parseAssuranceSpec(markdown)
-    const errors = structuralDiagnostics(document)
-    return errors.length === 0
-      ? { valid: true, document, errors: [], warnings: [] }
-      : { valid: false, document, errors, warnings: [] }
+    const { document, integrity } = parseAssuranceSpecDocument(markdown)
+    const warnings = structuralWarnings(document)
+    return integrity.length === 0
+      ? { valid: true, document, errors: [], warnings }
+      : { valid: false, document, errors: integrity, warnings }
   } catch (error) {
     const diagnostic = error instanceof AssuranceSpecParseError
       ? error.diagnostic

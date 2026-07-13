@@ -1,0 +1,16 @@
+{
+  "review_annotation_format_version": "0.1",
+  "review_id": "review.example.mvp-proposal.1",
+  "reviewer_tool": "manual/openagents-review",
+  "reviewed_at": "2026-07-13T00:00:00Z",
+  "assurance_spec_id": "assurance.openagents.desktop.codex.workroom.mvp",
+  "assurance_spec_revision": 1,
+  "assurance_spec_digest": "sha256:0140839bc01c11a5dd8ed5e32931cac22be9eebfa524a28fe11c6c40fc51de4a",
+  "targets": [
+    {
+      "target_type": "obligation",
+      "target_id": "AO-CW-AC-04-01",
+      "axes": []
+    }
+  ]
+}

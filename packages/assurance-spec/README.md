@@ -83,12 +83,66 @@ committed tree and tracked dirty state only. It does not read ignored or
 untracked files, run package scripts, inspect remotes, or serialize absolute
 paths.
 
+## Document format (AS-L1 completion, #8760)
+
+- **Custom sections round-trip.** A `## custom-<kebab-name>` heading (the id
+  itself is the heading in this bounded profile) is preserved byte-stable
+  after the nine mandatory sections instead of failing `unsupported_section`.
+  Malformed custom ids fail `invalid_custom_section_id`; custom sections
+  before a mandatory section fail `invalid_section_order`. Documents without
+  custom sections serialize exactly as before.
+- **Unknown frontmatter round-trips.** Flat `key: value` lines outside the
+  bounded profile are preserved verbatim, in authored order, after the known
+  keys. They are never interpreted.
+- **Thin/empty-section warnings.** A mandatory section whose narrative
+  (structured block excluded) is empty warns `empty_required_section`; fewer
+  than `THIN_SECTION_WORD_COUNT` meaningful words warns
+  `thin_required_section`. Warnings never affect validity — they are cheap
+  honesty about skeleton documents, and the deterministically generated MVP
+  proposal rightly warns on every section until a human writes real reasoning.
+- **Referential integrity at parse time.** Duplicate/dangling/uncovered
+  criterion, environment, and gate references are computed in the same parse
+  pass; `parseAssuranceSpec` throws the first violation and
+  `validateAssuranceSpec` reports the complete set.
+
+## Conformance corpus (`conformance/`)
+
+`conformance/valid/` holds canonical documents (seeded from the checked-in MVP
+proposal plus minimal fixtures) that must validate and round-trip byte-stable.
+`conformance/invalid/` holds one fixture per implemented stable error code,
+named `<code-kebab>[--variant].assurance-spec.md`; the sweep in
+`test/conformance.test.ts` derives the expected code from the filename and
+mechanically enforces that every registered code
+(`ASSURANCE_STRUCTURAL_ERROR_CODES`) has a fixture and every fixture names a
+registered code. `conformance/review/` does the same for review annotations.
+
+Codes are API. Fixtures are frozen bytes — never regenerate them to make a
+serializer change pass. Any change that can make a previously valid document
+invalid must bump `assurance_spec_format_version`, freeze the current corpus
+under a per-version directory, and seed the new version's corpus
+(ASSURANCE_SPEC.md §13; the version pin is asserted in the parity tests).
+
+## Review annotations (`.assurance-review.json`)
+
+Portable review annotations (ASSURANCE_SPEC.md §8.1) are format-only in AS-1:
+`validateAssuranceReviewAnnotation` / `parseAssuranceReviewAnnotation` /
+`serializeAssuranceReviewAnnotation` handle the shape, and
+`bindAssuranceReviewAnnotation` enforces exact subject binding — same
+`assurance_spec_id`, same `assurance_revision`, byte-exact
+`assurance_spec_digest`, and every graded target (`document` / `section` /
+`obligation` / `gate`) resolving inside the document. The twelve recommended
+axes (`ASSURANCE_REVIEW_AXES`) are a closed vocabulary. An annotation is a
+portable opinion: review tooling, aggregation, and admission are deliberately
+out of scope, and a valid bound review grants no authority.
+
 ## Library
 
 ```ts
 import {
+  bindAssuranceReviewAnnotation,
   inventoryRepository,
   proposeAssuranceSpec,
+  validateAssuranceReviewAnnotation,
   validateAssuranceSpec,
 } from "@openagentsinc/assurance-spec"
 ```

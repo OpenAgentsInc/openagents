@@ -18,6 +18,7 @@ import {
   getObligations,
   handleMcpRequest,
   parseAssuranceSpec,
+  parseAssuranceSpecDocument,
   projectObligationGraph,
   runTool,
   serializeAssuranceSpec,
@@ -85,6 +86,8 @@ const makeDocument = (seeds: ReadonlyArray<ObligationSeed>): AssuranceSpecDocume
       lifecycle_state: "proposed",
       author: "obligation-graph tests",
     },
+    unknownFrontmatter: [],
+    customSections: [],
     sections: MANDATORY_ASSURANCE_SECTION_IDS.map((id) => ({
       id,
       label: ASSURANCE_SECTION_LABELS[id],
@@ -153,8 +156,10 @@ describe("dependency cycle detection (stable structural codes)", () => {
     const validation = validateAssuranceSpec(markdown)
     expect(validation.valid).toBe(false)
     expect(validation.errors.map((error) => error.code)).toEqual(["cyclic_obligation_dependency"])
-    // The fixture is committed in canonical serialized form.
-    expect(serializeAssuranceSpec(parseAssuranceSpec(markdown))).toBe(markdown)
+    // The fixture is committed in canonical serialized form. Referential
+    // integrity now runs at parse time (#8760), so the strict parse throws on
+    // the cycle; the lenient parse still yields the document for byte checks.
+    expect(serializeAssuranceSpec(parseAssuranceSpecDocument(markdown).document)).toBe(markdown)
   })
 
   test("a self-dependency fails validation with self_obligation_dependency", () => {

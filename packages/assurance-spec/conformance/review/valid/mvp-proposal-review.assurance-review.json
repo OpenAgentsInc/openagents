@@ -1,0 +1,89 @@
+{
+  "assurance_spec_digest": "sha256:0140839bc01c11a5dd8ed5e32931cac22be9eebfa524a28fe11c6c40fc51de4a",
+  "assurance_spec_id": "assurance.openagents.desktop.codex.workroom.mvp",
+  "assurance_spec_revision": 1,
+  "review_annotation_format_version": "0.1",
+  "review_id": "review.example.mvp-proposal.1",
+  "reviewed_at": "2026-07-13T00:00:00Z",
+  "reviewer_tool": "manual/openagents-review",
+  "targets": [
+    {
+      "axes": [
+        {
+          "axis_key": "subject_fidelity",
+          "evidence_refs": [],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "criterion_traceability",
+          "evidence_refs": [],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "risk_coverage",
+          "evidence_refs": [],
+          "suggestion": "No structured risks are designed yet; write the risk model before admission.",
+          "verdict": "fail"
+        },
+        {
+          "axis_key": "public_safety",
+          "evidence_refs": [],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "authority_containment",
+          "evidence_refs": [],
+          "verdict": "pass"
+        },
+        {
+          "axis_key": "feasibility",
+          "evidence_refs": [],
+          "suggestion": "Eighteen obligations with no proof design is a large review surface for one pass.",
+          "verdict": "warn"
+        }
+      ],
+      "target_id": "assurance.openagents.desktop.codex.workroom.mvp",
+      "target_type": "document"
+    },
+    {
+      "axes": [
+        {
+          "axis_key": "oracle_adequacy",
+          "evidence_refs": [],
+          "suggestion": "No oracle is designed; the obligation cannot be admitted.",
+          "verdict": "fail"
+        },
+        {
+          "axis_key": "falsifier_strength",
+          "evidence_refs": [],
+          "suggestion": "No falsifier is designed; sensitivity is unproven.",
+          "verdict": "fail"
+        },
+        {
+          "axis_key": "seam_reality",
+          "evidence_refs": [],
+          "verdict": "warn"
+        },
+        {
+          "axis_key": "environment_fidelity",
+          "evidence_refs": [],
+          "suggestion": "No environment profile is referenced.",
+          "verdict": "fail"
+        },
+        {
+          "axis_key": "evidence_sufficiency",
+          "evidence_refs": [],
+          "verdict": "fail"
+        },
+        {
+          "axis_key": "verifier_independence",
+          "evidence_refs": [],
+          "suggestion": "Independence is undeclared for this obligation.",
+          "verdict": "fail"
+        }
+      ],
+      "target_id": "AO-CW-AC-04-01",
+      "target_type": "obligation"
+    }
+  ]
+}

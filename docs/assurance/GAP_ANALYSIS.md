@@ -61,9 +61,12 @@ frontmatter (`assurance_spec_format_version: "0.1"`, id, revision, title,
 the 9 mandatory ordered sections (`assurance_objective`, `subject`,
 `risk_model`, `assurance_scope`, `environments`, `obligations`, `gates`,
 `evidence_policy`, `authority_boundaries`), typed fenced blocks, and a
-round-trip-stable deterministic serializer with canonical JSON. The parser
-currently **rejects** unknown sections (`unsupported_section`) — custom-section
-preservation is not implemented.
+round-trip-stable deterministic serializer with canonical JSON. Since #8760,
+`custom-<kebab-name>` sections round-trip byte-stable after the mandatory
+sections (the custom id is the heading in the bounded profile) and unknown
+flat frontmatter keys are preserved verbatim; non-custom unknown sections
+still fail `unsupported_section` and malformed custom ids fail
+`invalid_custom_section_id`.
 
 **Us — designed.** ASSURANCE_SPEC.md §3 adds the optional canonical sections
 (`oracle_design`, `behavior_contracts`, `product_promises`, `test_data`,
@@ -78,22 +81,27 @@ scope/AC/EVAL/SM/related-artifacts, durable `AC-`/`EVAL-`/`SM-` IDs with
 never-renumber discipline, and unknown frontmatter preserved under
 `parser_metadata.unknown_frontmatter`.
 
-**Gap and action.** Format-mechanics parity gaps on our side: custom-section
-and unknown-frontmatter preservation (upstream has both; we reject), and the
-optional canonical sections (designed, unparsed). These are cheap AS-1
-completion items and should land with the conformance corpus (§7) rather than
-as ad hoc parser patches. The mandatory-section vocabulary itself needs no
-change — it is deliberately different because the artifact is different.
+**Gap and action.** Custom-section and unknown-frontmatter preservation landed
+with the conformance corpus (#8760). The remaining format gap is the optional
+canonical sections (designed, unparsed); they ride along AS-MVP admission
+review rather than landing as ad hoc parser patches. The mandatory-section
+vocabulary itself needs no change — it is deliberately different because the
+artifact is different.
 
 ## 2. Parser, validator, and diagnostics
 
 **Us — implemented.** Hand-written Markdown parser → Effect Schema decode;
-structural errors (`unsupported_version`, `missing_required_section`,
-`duplicate_section`, `invalid_section_order`, `unsupported_section`, duplicate/
-dangling/uncovered-criterion and dangling environment/gate refs) separated from
-adequacy diagnostics (`obligation_needs_design` and coverage counts;
-`design_ready` requires every obligation ready and zero warnings). The
-structural-vs-adequacy split is tested.
+19 stable structural error codes exported as registries
+(`ASSURANCE_STRUCTURAL_ERROR_CODES`: format-plane codes including
+`unsupported_version`, `missing_required_section`, `duplicate_section`,
+`invalid_section_order`, `unsupported_section`, `invalid_custom_section_id`,
+plus referential-integrity codes for duplicate/dangling/uncovered criterion,
+environment, and gate refs — run at parse time in the same pass), two
+structural warning codes (`empty_required_section`, `thin_required_section` —
+skeleton-narrative honesty that fires on the generated MVP proposal), all
+separated from adequacy diagnostics (`obligation_needs_design` and coverage
+counts; `design_ready` requires every obligation ready and zero warnings).
+The structural-vs-adequacy split and code↔corpus parity are tested.
 
 **Us — designed.** ASSURANCE_SPEC.md §12 specifies the full diagnostic
 vocabulary as API: structural codes (`subject_document_digest_mismatch`,
@@ -107,14 +115,12 @@ vocabulary as API: structural codes (`subject_document_digest_mismatch`,
 Artifacts, duplicate-durable-ID rejection, 14 Decision Trace error codes, CRLF
 and tilde-fence robustness.
 
-**Gap and action.** We match upstream's *discipline* (typed codes, codes are
-API) but implement a fraction of our own designed vocabulary. Two upstream
-ideas worth adopting directly: thin/empty-section **warnings** (cheap honesty
-about skeleton documents — our generated proposal would rightly warn) and
-referential-integrity checks run at parse time rather than as a separate pass.
-The designed adequacy codes (`weak_oracle`, `missing_falsifier`, …) should land
-only as their underlying objects (oracles, falsifiers, seams) become parseable
-— a diagnostic for a field the parser cannot see is theater.
+**Gap and action.** The two upstream ideas worth adopting directly —
+thin/empty-section **warnings** and referential-integrity checks at parse time
+— landed with #8760. The remaining vocabulary gap is deliberate: the designed
+adequacy codes (`weak_oracle`, `missing_falsifier`, …) should land only as
+their underlying objects (oracles, falsifiers, seams) become parseable — a
+diagnostic for a field the parser cannot see is theater.
 
 ## 3. Digests and subject binding
 
@@ -260,10 +266,19 @@ AssuranceSpec — do not build that shelf yet.
 
 ## 7. Conformance, schemas, and distribution
 
-**Us — implemented.** 11 Bun tests across two files (round-trip determinism,
-coverage exactness, structural-vs-adequacy separation, committed-HEAD inventory
-binding). No conformance corpus, no JSON schema, not published to npm
-(workspace-only), no review-annotation tooling.
+**Us — implemented.** Bun test suite covering round-trip determinism, coverage
+exactness, structural-vs-adequacy separation, committed-HEAD inventory binding,
+and (since #8760) a committed conformance corpus at
+`packages/assurance-spec/conformance/` — `valid/` seeded from the MVP proposal
+plus minimal/designed/custom-section/unknown-frontmatter fixtures that must
+round-trip byte-stable, `invalid/` with one filename-coded fixture per
+implemented error code, and `review/` for the portable review-annotation
+format (parse/serialize/validate plus exact subject binding of revision and
+digest across the 12 recommended axes). Code↔corpus coverage and
+schema/parser frontmatter parity are enforced by test. Still true: no
+published JSON schema, not published to npm (workspace-only), and no
+review-annotation *tooling* (grading UX, aggregation, admission — deliberately
+deferred).
 
 **Us — designed.** Four conformance levels (AS-L1 document … AS-L4 evidence
 lifecycle), stable error codes as API, portable review annotations grading 12
@@ -277,15 +292,15 @@ non-interactive ergonomics, CI validating fixtures and examples plus a publish
 dry-run.
 
 **Gap and action.** A conformance corpus is how a format stops being "whatever
-the one parser accepts." Ours is the highest-value cheap item in the AS-1
-remainder: seed `conformance/valid/` from the MVP proposal plus minimal
-fixtures, `conformance/invalid/` from one fixture per implemented error code,
-and grow it with every new code. npm publication should wait until the format
-survives its first dogfood revision — publishing a format that churns weekly is
-upstream's mistake to learn from, not copy (they shipped 20 minor versions
-while `spec_format_version` stayed "0.1", and old documents fail new
-validators). One upstream discipline to adopt when we do publish: schema/parser
-parity enforced by test.
+the one parser accepts" — landed (#8760), with the growth rule enforced
+mechanically: a new error code cannot merge without an invalid fixture, and
+any change that can invalidate a previously valid document must bump
+`assurance_spec_format_version` and freeze the prior corpus per version.
+npm publication should still wait until the format survives its first dogfood
+revision — publishing a format that churns weekly is upstream's mistake to
+learn from, not copy (they shipped 20 minor versions while
+`spec_format_version` stayed "0.1", and old documents fail new validators).
+Schema/parser parity is already enforced by test ahead of any publication.
 
 ## 8. Deterministic compilation, receipts, status axes
 
@@ -379,7 +394,8 @@ Ordered by leverage, each mapped to its ladder home:
    commands + read-only MCP server over the implemented parser/validator/
    coverage. AS-1-adjacent; ships against current code.
 3. **Conformance corpus + custom-section preservation + thin-section warnings**
-   — completes AS-1 honestly.
+   — completes AS-1 honestly. Landed (#8760), including the portable
+   review-annotation format with exact subject binding.
 4. **AS-MVP vertical slice** — admit, compile, execute, and bridge exactly
    `AO-CW-AC-04-01`. The first real test of everything designed in §8.
 5. **Obligation-graph projection** (designable-now vs blocked) — small, useful,
