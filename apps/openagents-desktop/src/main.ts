@@ -78,6 +78,7 @@ import {
   type DesktopResumeLocalThreadRequest,
 } from "./chat-contract.ts"
 import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
+import { isIsolatedAppProof } from "./isolated-app-proof.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
@@ -366,6 +367,11 @@ const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
     : path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
 )
 app.setPath("userData", desktopUserDataPath)
+const isolatedAppProofMode = isIsolatedAppProof({
+  env: process.env,
+  userDataPath: desktopUserDataPath,
+  temporaryDirectory: app.getPath("temp"),
+})
 const smokeFixtureRoot = smokeMode && app.isPackaged
   ? path.join(desktopUserDataPath, "smoke-fixtures")
   : smokeFixtureSourceRoot
@@ -4022,7 +4028,11 @@ void app.whenReady().then(async () => {
   } catch {
     console.error("[openagents-desktop] local Sync persistence unavailable")
   }
-  try {
+  if (isolatedAppProofMode) {
+    desktopSessionVault = null
+    desktopSessionState = "signed_out"
+    console.warn("[openagents-desktop] isolated app proof: native session vault disabled (temporary user data only)")
+  } else try {
     desktopSessionVault = openDesktopSessionVault({
       filePath: path.join(app.getPath("userData"), "session", "native-session.enc"),
       safeStorage,
