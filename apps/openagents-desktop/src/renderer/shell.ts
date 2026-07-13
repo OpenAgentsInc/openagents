@@ -112,6 +112,7 @@ import {
 import {
   emptyProductSpecWorkspaceState,
   makeProductSpecWorkspaceHandlers,
+  productSpecPacketPrompt,
   productSpecWorkspaceIntents,
   productSpecWorkspaceView,
   unavailableProductSpecRendererBridge,
@@ -1380,7 +1381,59 @@ export const makeDesktopShellHandlers = (
       },
       workspace: "chat" as const,
     })))
-  const productSpecHandlers = makeProductSpecWorkspaceHandlers(state, productSpecBridge)
+  const productSpecHandlers = makeProductSpecWorkspaceHandlers(
+    state,
+    productSpecBridge,
+    () => globalThis.crypto.randomUUID(),
+    async (run, packet) => {
+      await Effect.runPromise(Effect.gen(function* () {
+        let current = yield* SubscriptionRef.get(state)
+        if (current.activeThreadId === null) {
+          const thread = yield* Effect.promise(chat.newThread)
+          if (thread === null) {
+            yield* SubscriptionRef.update(state, value => ({
+              ...value,
+              commandNotice: "The packet was admitted, but a Codex conversation could not be created.",
+            }))
+            return
+          }
+          yield* SubscriptionRef.update(state, value => withNewChat(value, thread))
+          current = yield* SubscriptionRef.get(state)
+        }
+        const prompt = productSpecPacketPrompt(run, packet)
+        yield* SubscriptionRef.update(state, value => ({
+          ...withInput(value, prompt),
+          workspace: "chat" as const,
+          selectedHarness: "codex" as const,
+        }))
+        current = yield* SubscriptionRef.get(state)
+        if (!current.harnessLanes.codex.available) {
+          yield* SubscriptionRef.update(state, value => ({
+            ...value,
+            commandNotice: "The packet is admitted and ready in the composer, but verified Codex capacity is unavailable.",
+          }))
+          return
+        }
+        yield* SubscriptionRef.set(state, withNote(current, prompt, now()))
+        const result = yield* Effect.promise(() => chat.sendMessage({
+          id: current.activeThreadId!,
+          message: prompt,
+          harness: "codex",
+          ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
+          permissionMode: "owner_full",
+          reasoningEffort: current.codexReasoningEffort,
+          model: current.codexModel,
+          onUpdate: thread => {
+            Effect.runFork(SubscriptionRef.update(state, next =>
+              next.activeThreadId === thread.id
+                ? { ...withChatSelected(next, thread), pending: true }
+                : next))
+          },
+        }))
+        yield* SubscriptionRef.update(state, value => withTurnResult(value, result, now()))
+      }))
+    },
+  )
   const recoverWorkspaceEditor = Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.workspaceEditor.tabs.length > 0) return

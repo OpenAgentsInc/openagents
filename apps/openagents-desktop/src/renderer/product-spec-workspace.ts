@@ -166,17 +166,41 @@ const packetsFor = (projection: Extract<ProductSpecProjection, { state: "ready" 
     allocation: index === 0 ? "root" as const : "child" as const,
   }))
 
+/** Exact prompt envelope for the first Codex turn bound to an admitted packet. */
+export const productSpecPacketPrompt = (
+  run: ProductSpecRun,
+  packet: ProductSpecWorkPacket,
+): string => [
+  "Use the built-in productspec-work skill to execute this admitted ProductSpec work packet.",
+  "Treat the identities below as immutable host-confirmed authority. Do not substitute another spec, revision, packet, lease, or criterion.",
+  `Spec: ${run.spec.specRef}`,
+  `Spec revision: ${run.spec.revision}`,
+  `Spec digest: ${run.spec.digest}`,
+  `Run: ${run.runRef}`,
+  `Plan: ${run.plan.planRef}`,
+  `Packet: ${packet.packetRef}`,
+  `Lease: ${packet.activeLease?.leaseRef ?? "missing"}`,
+  `Acceptance criteria: ${packet.criterionIds.join(", ")}`,
+  `Objective: ${packet.title}`,
+  "Work only on this packet. Run relevant verification, then report exact evidence and any blocker without claiming independent verification.",
+].join("\n")
+
 export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: ProductSpecRendererBridge = unavailableProductSpecRendererBridge,
   makeRef: () => string = () => globalThis.crypto.randomUUID(),
+  onPacketAdmitted?: (run: ProductSpecRun, packet: ProductSpecWorkPacket) => Promise<void>,
 ) => {
   const setWorkspace = (mutate: (workspace: ProductSpecWorkspaceState) => ProductSpecWorkspaceState) =>
     SubscriptionRef.update(state, (current) => ({ ...current, productSpec: mutate(current.productSpec) }))
 
   const workContextOrError = (current: S): string | null => selectedWorkContextRef(current.codingCatalog)
 
-  const runOperation = (packetRef: string, operation: (current: S, packet: ProductSpecWorkPacket) => Promise<unknown>) =>
+  const runOperation = (
+    packetRef: string,
+    operation: (current: S, packet: ProductSpecWorkPacket) => Promise<unknown>,
+    afterConfirmed?: (run: ProductSpecRun, packet: ProductSpecWorkPacket) => Promise<void>,
+  ) =>
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
       const packet = current.productSpec.run?.plan.packets.find((candidate) => candidate.packetRef === packetRef)
@@ -185,6 +209,7 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       const raw = yield* Effect.promise(() => operation(current, packet).catch(() => null))
       const result = runResult(raw)
       if (result !== null && result.ok) {
+        const confirmedPacket = result.value.plan.packets.find((value) => value.packetRef === packetRef)
         yield* setWorkspace((workspace) => ({
           ...workspace,
           run: result.value,
@@ -193,6 +218,9 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
           notice: `Packet ${packetRef} is now ${result.value.plan.packets.find((value) => value.packetRef === packetRef)?.state ?? "updated"}.`,
           error: null,
         }))
+        if (confirmedPacket !== undefined && afterConfirmed !== undefined) {
+          yield* Effect.promise(() => afterConfirmed(result.value, confirmedPacket).catch(() => undefined))
+        }
       } else {
         yield* setWorkspace((workspace) => ({ ...workspace, busy: null, error: operationMessage(result, "The packet transition could not be confirmed.") }))
       }
@@ -275,7 +303,7 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
         executionMode: "owner-present",
         expectedSpec: run.spec,
       })
-    }),
+    }, onPacketAdmitted),
     ProductSpecPacketBlocked: (packetRef: string) => runOperation(packetRef, async (current, packet) => bridge.blockPacket({
       runRef: current.productSpec.run!.runRef,
       packetRef,

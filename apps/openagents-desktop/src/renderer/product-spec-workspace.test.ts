@@ -11,6 +11,7 @@ import type {
 import {
   emptyProductSpecWorkspaceState,
   makeProductSpecWorkspaceHandlers,
+  productSpecPacketPrompt,
   productSpecWorkspaceView,
   unavailableProductSpecRendererBridge,
   type ProductSpecRendererBridge,
@@ -147,6 +148,7 @@ describe("ProductSpec Effect Native workroom", () => {
 
   test("binds plan and packet transitions to host-confirmed authority", async () => {
     const requests: Array<Readonly<{ op: string; value: unknown }>> = []
+    const dispatched: Array<{ run: ProductSpecRun; packet: ProductSpecWorkPacket }> = []
     let currentRun = acceptedRun()
     const bridge: ProductSpecRendererBridge = {
       ...unavailableProductSpecRendererBridge,
@@ -172,7 +174,12 @@ describe("ProductSpec Effect Native workroom", () => {
 
     const finalState = await Effect.runPromise(Effect.gen(function* () {
       const state = yield* SubscriptionRef.make(capableState())
-      const handlers = makeProductSpecWorkspaceHandlers(state, bridge, () => "uuid.test")
+      const handlers = makeProductSpecWorkspaceHandlers(
+        state,
+        bridge,
+        () => "uuid.test",
+        async (run, packet) => { dispatched.push({ run, packet }) },
+      )
       yield* handlers.ProductSpecOpenRequested()
       yield* handlers.ProductSpecPlanProposed()
       yield* handlers.ProductSpecPlanAccepted()
@@ -196,6 +203,20 @@ describe("ProductSpec Effect Native workroom", () => {
     })
     expect(requests.find((entry) => entry.op === "evidence")!.value).toMatchObject({ evidenceRef: "evidence.test", leaseRef: "lease.desktop.uuid.test" })
     expect(requests.find((entry) => entry.op === "verify")!.value).toMatchObject({ verifierRef: "verifier.test" })
+    expect(dispatched).toHaveLength(1)
+    expect(dispatched[0]?.packet).toMatchObject({
+      packetRef: "packet.ac-1",
+      state: "active",
+      activeLease: { leaseRef: "lease.desktop.uuid.test" },
+    })
+    const prompt = productSpecPacketPrompt(dispatched[0]!.run, dispatched[0]!.packet)
+    for (const line of [
+      `Spec revision: ${identity.revision}`,
+      `Spec digest: ${identity.digest}`,
+      "Packet: packet.ac-1",
+      "Lease: lease.desktop.uuid.test",
+      "Acceptance criteria: AC-1",
+    ]) expect(prompt).toContain(line)
     expect(finalState.productSpec.run?.plan.packets[0]?.state).toBe("verified")
     expect(finalState.productSpec.run?.plan.packets[1]?.state).toBe("planned")
   })
