@@ -26,11 +26,12 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
 
-// macOS derives the running application/menu identity before `ready`; set
-// both Electron's application name and the process title at module startup so
-// development (`electron .`) and packaged launches agree on "OpenAgents".
-app.setName("OpenAgents")
-process.title = "OpenAgents"
+// macOS derives Electron safeStorage's Keychain service from the application
+// name. Keep production stable while isolating unsigned development and smoke
+// launches so they can never contest the signed app's Keychain ACL.
+const desktopApplicationName = app.isPackaged ? "OpenAgents" : "OpenAgents Dev"
+app.setName(desktopApplicationName)
+process.title = desktopApplicationName
 
 protocol.registerSchemesAsPrivileged([{
   scheme: DesktopRendererScheme,

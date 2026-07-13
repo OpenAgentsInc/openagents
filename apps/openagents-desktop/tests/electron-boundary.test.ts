@@ -38,11 +38,12 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("app.dock?.setIcon(desktopIconPath)")
   })
 
-  test("uses one OpenAgents identity for macOS process, product, and window chrome", () => {
+  test("keeps production identity stable while isolating development safeStorage", () => {
     const manifest=JSON.parse(read("package.json")) as {productName?:string}
     const html=read("index.html")
-    expect(main).toContain('app.setName("OpenAgents")')
-    expect(main).toContain('process.title = "OpenAgents"')
+    expect(main).toContain('const desktopApplicationName = app.isPackaged ? "OpenAgents" : "OpenAgents Dev"')
+    expect(main).toContain("app.setName(desktopApplicationName)")
+    expect(main).toContain("process.title = desktopApplicationName")
     expect(main).toContain('title: "OpenAgents"')
     expect(manifest.productName).toBe("OpenAgents")
     expect(html).toContain("<title>OpenAgents</title>")
