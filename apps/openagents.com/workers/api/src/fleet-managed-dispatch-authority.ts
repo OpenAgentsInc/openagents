@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-
 export type ManagedFleetDispatchAuthorityInput = Readonly<{
   acceptedRunLease: boolean
   runStatus: string
@@ -21,16 +19,3 @@ export const authorizesManagedFleetUnitDispatch = (
   input.unitClaimRef.startsWith(
     `${input.runRef}.claim.${input.workUnitRef}.`,
   )
-
-/**
- * The FleetRun claim registry owns worker identity. Managed dispatch may
- * resolve a private provider account behind the broker, but that resolution
- * must not replace the public worker identity already bound to the claim.
- */
-export const managedFleetClaimAccountRefHash = (
-  workerAccountRef: string,
-): string =>
-  `account.pylon.codex.${createHash('sha256')
-    .update(`codex:${workerAccountRef}`)
-    .digest('hex')
-    .slice(0, 24)}`
