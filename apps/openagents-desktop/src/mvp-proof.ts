@@ -1,4 +1,4 @@
-import { mkdirSync, statSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import type { BrowserWindow } from "electron"
@@ -26,11 +26,14 @@ export const mvpProofEnvironmentFromArgv = (
   const workspace = proofArgValue(argv, "--openagents-mvp-proof-workspace")
   const receipts = proofArgValue(argv, "--openagents-mvp-proof-receipts")
   const specPath = proofArgValue(argv, "--openagents-mvp-proof-spec")
-  if (userData === null || workspace === null || receipts === null || specPath === null) return null
+  const phase = proofArgValue(argv, "--openagents-mvp-proof-phase")
+  if (userData === null || workspace === null || receipts === null || specPath === null ||
+      (phase !== "initial" && phase !== "restart")) return null
   return {
     OPENAGENTS_DESKTOP_MVP_PROOF: "1",
     OPENAGENTS_DESKTOP_MVP_PROOF_DIR: receipts,
     OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: specPath,
+    OPENAGENTS_DESKTOP_MVP_PROOF_PHASE: phase,
     OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
     OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: workspace,
     OPENAGENTS_DESKTOP_USER_DATA: userData,
@@ -47,6 +50,8 @@ export type MvpProofStepName =
   | "child-packet-turn"
   | "child-transcript"
   | "child-packet-verified"
+  | "renderer-reload-restored"
+  | "app-restart-restored"
   | "owner-gate-pending"
 
 export const mvpProofRequiredSteps: ReadonlyArray<MvpProofStepName> = [
@@ -59,6 +64,8 @@ export const mvpProofRequiredSteps: ReadonlyArray<MvpProofStepName> = [
   "child-packet-turn",
   "child-transcript",
   "child-packet-verified",
+  "renderer-reload-restored",
+  "app-restart-restored",
   "owner-gate-pending",
 ]
 
@@ -175,13 +182,21 @@ export const mvpCodexReadyProbe = `(() => {
 export type MvpProofRunOptions = Readonly<{
   outDir: string
   specPath: string
+  phase: "initial" | "restart"
   verifyArtifact: (packet: "root" | "child") => Readonly<{ ok: boolean; receiptRef: string }>
   exit: (code: number) => void
 }>
 
 export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions): void => {
   mkdirSync(options.outDir, { recursive: true })
-  const journal: MvpProofJournalEntry[] = []
+  const journal: MvpProofJournalEntry[] = options.phase === "restart"
+    ? (() => {
+        try {
+          const value = JSON.parse(readFileSync(path.join(options.outDir, "journal.json"), "utf8"))
+          return Array.isArray(value) ? value as MvpProofJournalEntry[] : []
+        } catch { return [] }
+      })()
+    : []
   let shot = 0
   const persist = (): void => writeFileSync(
     path.join(options.outDir, "journal.json"),
@@ -258,6 +273,23 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
     try {
       const shell = await poll(`(() => ({ ready: document.querySelector('[data-en-key="shell-root"]') !== null }))()`, value => value["ready"] === true, 30_000)
       if (!shell.ok) throw new Error("shell did not mount")
+      if (options.phase === "restart") {
+        await requireClick("workspace-product-spec")
+        if (!(await poll(productSpecProbe, value => value["mounted"] === true, 30_000)).ok) throw new Error("ProductSpec workspace did not remount after app restart")
+        await requireField("product-spec-path", options.specPath)
+        await requireClick("product-spec-open")
+        const restored = await poll(productSpecProbe, value =>
+          value["planAccepted"] === true && Number(value["ownerPending"]) === 2 &&
+          (value["packetStates"] as Array<Rec> | undefined)?.filter(row => row["value"] === "verified").length === 2,
+        30_000)
+        if (!restored.ok) throw new Error("accepted ProductSpec run did not restore after app restart")
+        await capture("app-restart-restored")
+        record("app-restart-restored", true, "accepted plan, two verified packets, and owner gates restored in a second app process")
+        record("summary", true, { requiredSteps: mvpProofRequiredSteps.length, ownerAcceptanceFabricated: false })
+        clearTimeout(overall)
+        options.exit(0)
+        return
+      }
       record("shell", true, "Effect Native shell mounted")
 
       await requireClick("workspace-new-chat")
@@ -304,13 +336,28 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
       record("child-transcript", true, "causal child card opened its independent transcript")
       await verifyPacket("child", "packet.fx-ac-02")
 
+      window.webContents.reload()
+      if (!(await poll(`(() => ({ ready: document.querySelector('[data-en-key="shell-root"]') !== null }))()`, value => value["ready"] === true, 30_000)).ok) {
+        throw new Error("shell did not restore after renderer reload")
+      }
+      await requireClick("workspace-product-spec")
+      if (!(await poll(productSpecProbe, value => value["mounted"] === true, 30_000)).ok) throw new Error("ProductSpec workspace did not remount after renderer reload")
+      await requireField("product-spec-path", options.specPath)
+      await requireClick("product-spec-open")
+      const reloadRestored = await poll(productSpecProbe, value =>
+        value["planAccepted"] === true && Number(value["ownerPending"]) === 2 &&
+        (value["packetStates"] as Array<Rec> | undefined)?.filter(row => row["value"] === "verified").length === 2,
+      30_000)
+      if (!reloadRestored.ok) throw new Error("accepted ProductSpec run did not restore after renderer reload")
+      await capture("renderer-reload-restored")
+      record("renderer-reload-restored", true, "accepted plan, two verified packets, and owner gates restored after renderer reload")
+
       const pending = await poll(productSpecProbe, value => Number(value["ownerPending"]) === 2, 30_000)
       if (!pending.ok) throw new Error("owner dispositions were not retained as separate pending gates")
       await capture("owner-gates-pending")
       record("owner-gate-pending", true, "two verified packets await explicit owner disposition")
-      record("summary", true, { requiredSteps: mvpProofRequiredSteps.length, ownerAcceptanceFabricated: false })
       clearTimeout(overall)
-      options.exit(0)
+      options.exit(75)
     } catch (error) {
       await capture("failure").catch(() => {})
       record("summary", false, error instanceof Error ? error.message : "MVP proof failed")

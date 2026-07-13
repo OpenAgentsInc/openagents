@@ -4673,6 +4673,7 @@ void app.whenReady().then(async () => {
     runMvpProof(window, {
       outDir: mvpProof.outDir,
       specPath: mvpProof.specPath,
+      phase: process.env.OPENAGENTS_DESKTOP_MVP_PROOF_PHASE === "restart" ? "restart" : "initial",
       verifyArtifact: packet => {
         if (workspaceRoot === null) return { ok: false, receiptRef: `receipt.mvp-proof.${packet}.unavailable` }
         const expected = `${packet} packet complete\n`

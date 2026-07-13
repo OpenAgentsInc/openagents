@@ -71,29 +71,35 @@ for (const args of [
 
 const installedExecutable = process.env.OPENAGENTS_DESKTOP_MVP_PROOF_APP?.trim()
 const packageRoot = path.resolve(import.meta.dir, "..")
-const command = [
-  ...resolveMvpProofCommand(installedExecutable, packageRoot),
-  MvpProofArg,
-  `--openagents-mvp-proof-user-data=${userData}`,
-  `--openagents-mvp-proof-workspace=${workspace}`,
-  `--openagents-mvp-proof-receipts=${receipts}`,
-  `--openagents-mvp-proof-spec=${specPath}`,
-]
-const child = Bun.spawn(command, {
-  cwd: packageRoot,
-  env: {
-    ...process.env,
-    OPENAGENTS_DESKTOP_MVP_PROOF: "1",
-    OPENAGENTS_DESKTOP_MVP_PROOF_DIR: receipts,
-    OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: specPath,
-    OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
-    OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: workspace,
-    OPENAGENTS_DESKTOP_USER_DATA: userData,
-  },
-  stderr: "inherit",
-  stdout: "inherit",
-})
-const childCode = await child.exited
+const launch = async (phase: "initial" | "restart"): Promise<number> => {
+  const command = [
+    ...resolveMvpProofCommand(installedExecutable, packageRoot),
+    MvpProofArg,
+    `--openagents-mvp-proof-user-data=${userData}`,
+    `--openagents-mvp-proof-workspace=${workspace}`,
+    `--openagents-mvp-proof-receipts=${receipts}`,
+    `--openagents-mvp-proof-spec=${specPath}`,
+    `--openagents-mvp-proof-phase=${phase}`,
+  ]
+  const child = Bun.spawn(command, {
+    cwd: packageRoot,
+    env: {
+      ...process.env,
+      OPENAGENTS_DESKTOP_MVP_PROOF: "1",
+      OPENAGENTS_DESKTOP_MVP_PROOF_DIR: receipts,
+      OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: specPath,
+      OPENAGENTS_DESKTOP_MVP_PROOF_PHASE: phase,
+      OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
+      OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: workspace,
+      OPENAGENTS_DESKTOP_USER_DATA: userData,
+    },
+    stderr: "inherit",
+    stdout: "inherit",
+  })
+  return child.exited
+}
+let childCode = await launch("initial")
+if (childCode === 75) childCode = await launch("restart")
 
 let journal: ReadonlyArray<MvpProofJournalEntry> = []
 try {

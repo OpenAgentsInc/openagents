@@ -16,6 +16,8 @@ describe("ProductSpec-native MVP proof contract", () => {
       "child-packet-turn",
       "child-transcript",
       "child-packet-verified",
+      "renderer-reload-restored",
+      "app-restart-restored",
       "owner-gate-pending",
     ])
   })
@@ -76,10 +78,12 @@ describe("ProductSpec-native MVP proof contract", () => {
       "--openagents-mvp-proof-workspace=/tmp/oa proof/workspace",
       "--openagents-mvp-proof-receipts=/tmp/oa proof/receipts",
       "--openagents-mvp-proof-spec=specs/mvp.product-spec.md",
+      "--openagents-mvp-proof-phase=initial",
     ])).toEqual({
       OPENAGENTS_DESKTOP_MVP_PROOF: "1",
       OPENAGENTS_DESKTOP_MVP_PROOF_DIR: "/tmp/oa proof/receipts",
       OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: "specs/mvp.product-spec.md",
+      OPENAGENTS_DESKTOP_MVP_PROOF_PHASE: "initial",
       OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
       OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: "/tmp/oa proof/workspace",
       OPENAGENTS_DESKTOP_USER_DATA: "/tmp/oa proof/user-data",
