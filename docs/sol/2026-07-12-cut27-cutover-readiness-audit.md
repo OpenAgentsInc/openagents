@@ -650,8 +650,8 @@ portable-session acceptance.
 
 ### Minimal close sequence
 
-1. Finish and close the shared #8689/#8676/#8677 physical-iPhone
-   network-gap/revocation journey.
+1. Closed #8689/#8676/#8677 supply the accepted physical-iPhone network-gap,
+   exactly-once continuation, revocation, and no-replay journey.
 2. Run the two exact installed-app repository tasks described under criterion
    1 and retain cross-device stable-ref evidence described under criterion 2.
 3. Publish the consolidated exception/accessibility/privacy/security/

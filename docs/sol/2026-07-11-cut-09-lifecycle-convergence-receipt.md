@@ -276,12 +276,37 @@ mobile suite is 124 pass / 646 assertions and mobile typecheck passes. Emulator
 networking was restored after the fault pass. The physical-iOS network-gap and
 unlink/revocation actions remain the literal close gate.
 
+### Physical iPhone network-gap and revocation acceptance — 2026-07-13
+
+The authenticated physical iPhone completed the literal remaining row against
+the production Sync/runtime surface. With Airplane Mode enabled and Wi-Fi
+disabled, mobile admitted marker A and visibly reported that the message and
+runtime command were queued pending reconciliation. Production contained no
+copy during the gap. After reconnect, the FIFO drained to exactly one durable
+message and exactly one runtime turn on the existing Desktop-created thread.
+The turn reached `completed` once with five events; no duplicate message, turn,
+or terminal output was present.
+
+For the revocation row, the phone returned offline, admitted marker B, and
+again displayed the paired queued state. Offline sign-out attempted revocation
+without pretending server success. After reconnect, online sign-out completed,
+the app returned to its local-device surface, and Settings displayed **Link
+OpenAgents account**. Production was queried before and after reconnect and
+contained zero messages and zero runtime turns for marker B. The burned queue
+therefore did not replay after authority was removed.
+
+Public-safe evidence retains only the queue transition, counts, terminal
+classification, and timestamp. The literal marker bodies, credential material,
+raw provider events, and private database rows are not part of the public
+receipt. The installed bundle also exposed a separate presentation regression:
+typing each character dismissed the native keyboard. That renderer defect does
+not alter the accepted durable queue/revocation result and is being repaired in
+a separately claimed source lane.
+
 ## Close decision
 
-#8689 and #8677 remain open. Deterministic rows 7–9 are implemented, the
-physical phone carries the signed build with the app launched, and the live
-Desktop stream/reload/restart rungs are now receipted against the deployed
-surface. The authenticated physical continuation found and fixed the pre-event
-cancel counterexample, and that repair is live over OTA. The physical cancel
-rerun is proven; only the network-gap/offline-queue and unlink/revocation rungs
-still require the owner's on-device touch steps.
+#8689 and parent #8677 are accepted. The deterministic matrix, built Desktop
+restart/reload, physical named-Codex continuation, pre-event cancellation,
+physical network gap, exactly-once FIFO drain, and revocation/no-replay rows all
+pass. #8676 shares the same physical continuation and revocation receipt and is
+accepted on that evidence.
