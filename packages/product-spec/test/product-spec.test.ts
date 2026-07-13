@@ -761,6 +761,180 @@ describe("openagents extensions", () => {
 })
 
 // ---------------------------------------------------------------------------
+// PSEL-2: proposed CW-AC-* → AC-* / SM-* migration revision (#8758).
+// The live docs/mvp ProductSpec stays byte-identical at revision 6 (the
+// checked-in AssuranceSpec and MVP-01 #8756 dogfood bind that exact
+// identity); the migrated revision 7 is a proposed document whose adoption
+// is owner-gated (PSEL-3). The ID map is the reviewed reconciliation
+// artifact: these tests prove it agrees with both documents exactly and that
+// normalization is pure whitespace collapse, not a rewrite.
+// ---------------------------------------------------------------------------
+
+describe("PSEL-2 migration proposal (revision 7)", () => {
+  const rev6Path = join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.product-spec.md")
+  const rev7Path = join(
+    repoRoot,
+    "docs",
+    "mvp",
+    "openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+  )
+  const idMapPath = join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.id-map.json")
+  const collapse = (text: string): string => text.replace(/\s+/g, " ").trim()
+
+  test("the live revision-6 identity is retained, not rewritten", async () => {
+    const rev6 = await Bun.file(rev6Path).text()
+    expect(computeProductSpecDocumentDigest(rev6)).toBe(
+      "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+    )
+    const executable = validateExecutableProductSpec(rev6)
+    expect(executable.executable).toBe(true)
+    expect(executable.document?.frontmatter.spec_revision).toBe(6)
+  })
+
+  test("the migrated revision validates under both profiles", async () => {
+    const rev7 = await Bun.file(rev7Path).text()
+    for (const profile of ["openagents", "upstream"] as const) {
+      const result = validateProductSpec(rev7, { profile })
+      expect(result.errors).toEqual([])
+      expect(result.valid).toBe(true)
+    }
+  })
+
+  test("the migrated revision is not silently executable under the legacy profile", async () => {
+    // The workroom-executable path for structured AC-* identity is PSEL-3
+    // territory; revision 7 must not silently inherit executable authority.
+    const result = validateExecutableProductSpec(await Bun.file(rev7Path).text())
+    expect(result.executable).toBe(false)
+    expect(result.errors.map((error) => error.code)).toContain("missing_acceptance_criteria")
+  })
+
+  test("the ID map binds the exact from/to revisions and digests", async () => {
+    const idMap = JSON.parse(await Bun.file(idMapPath).text())
+    const rev6 = await Bun.file(rev6Path).text()
+    const rev7 = await Bun.file(rev7Path).text()
+    expect(idMap.normalization).toBe("single_line_whitespace_collapse")
+    expect(idMap.status).toBe("proposed")
+    expect(idMap.from.path).toBe("docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
+    expect(idMap.from.spec_revision).toBe(6)
+    expect(idMap.from.document_digest).toBe(computeProductSpecDocumentDigest(rev6))
+    expect(idMap.to.path).toBe(
+      "docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+    )
+    expect(idMap.to.spec_revision).toBe(7)
+    expect(idMap.to.document_digest).toBe(computeProductSpecDocumentDigest(rev7))
+    expect(idMap.to.intent_digest).toBe(computeProductSpecIntentDigest(rev7))
+    expect(parseProductSpec(rev7).frontmatter.spec_revision).toBe(7)
+  })
+
+  test("criterion mappings are bijective and preserve the exact revision-6 text", async () => {
+    const idMap = JSON.parse(await Bun.file(idMapPath).text())
+    const rev6Criteria = validateExecutableProductSpec(await Bun.file(rev6Path).text()).criteria
+    const rev7Criteria =
+      parseProductSpec(await Bun.file(rev7Path).text()).sections.find(
+        (section) => section.id === "acceptance_criteria",
+      )?.acceptance_criteria ?? []
+    expect(rev6Criteria).toHaveLength(18)
+    expect(rev7Criteria).toHaveLength(18)
+    expect(idMap.acceptance_criteria).toHaveLength(18)
+    for (const [index, entry] of (idMap.acceptance_criteria as Array<{ from: string; to: string }>).entries()) {
+      expect(entry.from).toBe(rev6Criteria[index]!.id)
+      expect(entry.to).toBe(rev7Criteria[index]!.id)
+      expect(entry.from).toBe(`CW-AC-${String(index + 1).padStart(2, "0")}`)
+      expect(entry.to).toBe(`AC-${index + 1}`)
+      // Reviewed single-line normalization: pure whitespace collapse of the
+      // exact legacy criterion text — never a semantic rewrite.
+      expect(rev7Criteria[index]!.criterion).toBe(collapse(rev6Criteria[index]!.body))
+    }
+  })
+
+  test("metric mappings preserve metric/target/window and relocate segment/source", async () => {
+    const idMap = JSON.parse(await Bun.file(idMapPath).text())
+    const rev6Metrics =
+      parseProductSpec(await Bun.file(rev6Path).text()).sections.find(
+        (section) => section.id === "success_metrics",
+      )?.success_metrics ?? []
+    const rev7Document = parseProductSpec(await Bun.file(rev7Path).text())
+    const rev7Metrics =
+      rev7Document.sections.find((section) => section.id === "success_metrics")
+        ?.success_metrics ?? []
+    const context =
+      rev7Document.sections.find((section) => section.id === "custom-success-metric-context")
+        ?.content ?? ""
+    expect(rev6Metrics).toHaveLength(7)
+    expect(rev7Metrics).toHaveLength(7)
+    expect(idMap.success_metrics).toHaveLength(7)
+    for (const [index, entry] of (
+      idMap.success_metrics as Array<{
+        from: string
+        to: string
+        segment: string
+        source: string
+        context_section: string
+      }>
+    ).entries()) {
+      const from = rev6Metrics[index]!
+      const to = rev7Metrics[index]!
+      expect(entry.from).toBe(from.id)
+      expect(entry.to).toBe(to.id)
+      expect(entry.to).toBe(`SM-${index + 1}`)
+      expect(to.metric).toBe(from.metric)
+      expect(to.target).toBe(from.target)
+      expect(to.window).toBe(from.window)
+      // The upstream Success Metric schema has no segment/source; they move to
+      // the keyed custom-success-metric-context section and the ID map.
+      expect(to.segment).toBeUndefined()
+      expect(to.source).toBeUndefined()
+      expect(entry.segment).toBe(from.segment ?? "")
+      expect(entry.source).toBe(from.source ?? "")
+      expect(entry.context_section).toBe("custom-success-metric-context")
+      expect(context).toContain(`**${entry.to}** (\`${entry.from}\`)`)
+      expect(context).toContain(entry.segment)
+      expect(context).toContain(entry.source)
+    }
+  })
+
+  test("every other intent section is verbatim revision-6 prose", async () => {
+    const rev6 = parseProductSpec(await Bun.file(rev6Path).text())
+    const rev7 = parseProductSpec(await Bun.file(rev7Path).text())
+    for (const id of [
+      "problem",
+      "hypothesis",
+      "scope",
+      "user_experience",
+      "solution",
+      "risks",
+      "open_questions",
+      "rollout",
+      "custom-owner-gates",
+      "custom-receipts",
+      "custom-promise-links",
+    ]) {
+      expect(rev7.sections.find((section) => section.id === id)?.content).toBe(
+        rev6.sections.find((section) => section.id === id)?.content,
+      )
+    }
+  })
+
+  test("the Decision Trace references the ID map and supersession is typed, not implied", async () => {
+    const rev7 = parseProductSpec(await Bun.file(rev7Path).text())
+    const trace = rev7.sections.find((section) => section.id === "custom-decision-trace")
+    expect(trace?.content).toContain("openagents-codex-workroom-mvp.id-map.json")
+    expect(trace?.content).toContain("owner-gated")
+    expect(trace?.content).toContain(
+      "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+    )
+    const artifact = rev7.sections.find((section) => section.id === "related_artifacts")
+      ?.related_artifacts?.[0]
+    expect(artifact).toEqual({
+      type: "product_spec",
+      product_spec_path: "./openagents-codex-workroom-mvp.product-spec.md",
+      product_spec_revision: 6,
+      relation: "supersedes",
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Repo Product Spec roots gate (default profile stays authoritative)
 // ---------------------------------------------------------------------------
 

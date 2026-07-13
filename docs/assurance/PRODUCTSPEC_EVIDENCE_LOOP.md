@@ -250,6 +250,17 @@ links portable until this gap is reconciled.
 This is an intent-identity migration and therefore receives a revision bump
 even if the prose is otherwise unchanged.
 
+Status (2026-07-13, #8758): the migration revision exists as a proposal.
+`docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md`
+(revision 7) validates under both profiles with structured `AC-1…18`/`SM-1…7`
+items, a keyed `custom-success-metric-context` section, and a Decision Trace
+section; `docs/mvp/openagents-codex-workroom-mvp.id-map.json` is the
+machine-readable ID map, and `packages/product-spec` tests pin map/rev-6/rev-7
+agreement (pure whitespace-collapse normalization). The live subject, the
+checked-in AssuranceSpec, and the MVP-01 dogfood deliberately remain bound to
+revision 6; owner-gated adoption, identity freeze, rebinding, and the new
+accepted `AC-*` plan/run are PSEL-3.
+
 ### PSEL-3 — close the first Assurance loop
 
 - seed the stable public-safe Assurance Evidence Index in `no_evidence` state

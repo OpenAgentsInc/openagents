@@ -1,0 +1,146 @@
+{
+  "id_map_version": "1",
+  "title": "OpenAgents Desktop Codex Workroom MVP — CW-AC/legacy-metric to AC/SM identity map",
+  "normalization": "single_line_whitespace_collapse",
+  "status": "proposed",
+  "adoption_gate": "Owner-gated PSEL-3: the live executable subject remains revision 6 until the owner admits the migrated revision, the AssuranceSpec is rebound, and a new accepted plan/run exists for the AC-* identity. No existing evidence is relabeled.",
+  "decision_trace": "docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md#decision-trace",
+  "from": {
+    "path": "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+    "spec_revision": 6,
+    "document_digest": "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+    "profile": "openagents_executable_v0.1_exact_document"
+  },
+  "to": {
+    "path": "docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+    "spec_revision": 7,
+    "document_digest": "sha256:9d05ce3ed4efe4a77565726d44c893e5dfd16c585e4596631261d5acace23f40",
+    "intent_digest": "sha256:d3bea1c6bca5c796c707e6f33a2ebbc4b1cf01d6b5a075caf08af212db350ebc",
+    "profile": "upstream_productspec_0.19.0_structured_items"
+  },
+  "acceptance_criteria": [
+    {
+      "from": "CW-AC-01",
+      "to": "AC-1"
+    },
+    {
+      "from": "CW-AC-02",
+      "to": "AC-2"
+    },
+    {
+      "from": "CW-AC-03",
+      "to": "AC-3"
+    },
+    {
+      "from": "CW-AC-04",
+      "to": "AC-4"
+    },
+    {
+      "from": "CW-AC-05",
+      "to": "AC-5"
+    },
+    {
+      "from": "CW-AC-06",
+      "to": "AC-6"
+    },
+    {
+      "from": "CW-AC-07",
+      "to": "AC-7"
+    },
+    {
+      "from": "CW-AC-08",
+      "to": "AC-8"
+    },
+    {
+      "from": "CW-AC-09",
+      "to": "AC-9"
+    },
+    {
+      "from": "CW-AC-10",
+      "to": "AC-10"
+    },
+    {
+      "from": "CW-AC-11",
+      "to": "AC-11"
+    },
+    {
+      "from": "CW-AC-12",
+      "to": "AC-12"
+    },
+    {
+      "from": "CW-AC-13",
+      "to": "AC-13"
+    },
+    {
+      "from": "CW-AC-14",
+      "to": "AC-14"
+    },
+    {
+      "from": "CW-AC-15",
+      "to": "AC-15"
+    },
+    {
+      "from": "CW-AC-16",
+      "to": "AC-16"
+    },
+    {
+      "from": "CW-AC-17",
+      "to": "AC-17"
+    },
+    {
+      "from": "CW-AC-18",
+      "to": "AC-18"
+    }
+  ],
+  "success_metrics": [
+    {
+      "from": "codex_workroom_activation",
+      "to": "SM-1",
+      "segment": "developers with a supported macOS host and an eligible Codex account",
+      "source": "consented_public_safe_local_activation_receipts",
+      "context_section": "custom-success-metric-context"
+    },
+    {
+      "from": "codex_workroom_completion_without_fallback",
+      "to": "SM-2",
+      "segment": "opted-in repository tasks that pass the supported-runtime preflight",
+      "source": "consented_public_safe_task_and_review_receipts",
+      "context_section": "custom-success-metric-context"
+    },
+    {
+      "from": "productspec_guided_execution_integrity",
+      "to": "SM-3",
+      "segment": "consequential MVP tasks started from a ProductSpec plan",
+      "source": "consented_public_safe_spec_execution_receipts",
+      "context_section": "custom-success-metric-context"
+    },
+    {
+      "from": "codex_workroom_seven_day_return",
+      "to": "SM-4",
+      "segment": "developers with one accepted MVP task",
+      "source": "consented_public_safe_local_session_counters",
+      "context_section": "custom-success-metric-context"
+    },
+    {
+      "from": "codex_workroom_false_completion",
+      "to": "SM-5",
+      "segment": "all MVP Codex tasks with consented diagnostic receipts",
+      "source": "acceptance_exception_register_and_public_safe_support_receipts",
+      "context_section": "custom-success-metric-context"
+    },
+    {
+      "from": "codex_workroom_dogfood_duplicate_execution",
+      "to": "SM-6",
+      "segment": "ProductSpec-linked MVP implementation packets",
+      "source": "private_ref_only_dogfood_claim_and_lease_reconciliation",
+      "context_section": "custom-success-metric-context"
+    },
+    {
+      "from": "codex_workroom_dogfood_fallback_accounting",
+      "to": "SM-7",
+      "segment": "MVP packets leaving OpenAgents for an official Codex surface",
+      "source": "private_ref_only_dogfood_fallback_ledger",
+      "context_section": "custom-success-metric-context"
+    }
+  ]
+}

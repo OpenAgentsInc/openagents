@@ -99,6 +99,33 @@ Artifacts before we claim item-level upstream Evidence Loop interoperability.
 See
 [`../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`](../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md).
 
+## Proposed PSEL-2 migration revision (revision 7)
+
+The reviewed intent-identity migration exists as a proposal beside this
+package (#8758):
+
+- [`openagents-codex-workroom-mvp.rev7-proposed.product-spec.md`](./openagents-codex-workroom-mvp.rev7-proposed.product-spec.md)
+  — revision 7, converting `CW-AC-01…18` to structured `AC-1…18` items and the
+  seven metrics to `SM-1…7` (single-line whitespace-collapse normalization
+  only; every other intent section is verbatim revision-6 prose). It validates
+  under both the `openagents` and `upstream` ProductSpec profiles; each
+  metric's `segment`/`source` provenance lives in its keyed Success Metric
+  Context section, and its Decision Trace section records the migration and
+  its approval state.
+- [`openagents-codex-workroom-mvp.id-map.json`](./openagents-codex-workroom-mvp.id-map.json)
+  — the machine-readable old→new ID map, digest-pinned to both revisions.
+  `bun test packages/product-spec` enforces that the map, revision 6, and
+  revision 7 agree exactly.
+
+**Adoption is owner-gated and has not happened.** The live executable subject
+of this package, the checked-in AssuranceSpec proposal, and the MVP-01
+(#8756) dogfood remain bound to revision 6 (`CW-AC-*`, digest
+`sha256:fba79633…`). PSEL-3 freezes the migrated document/intent identities,
+rebinds the AssuranceSpec, and creates the new accepted plan/run for the
+`AC-*` identity; no run, packet, or evidence is relabeled by the proposal.
+Reconcile any future `CW-AC-*` reference through the ID map, never by
+find-and-replace.
+
 The pilot composes with the existing workroom rather than creating a second
 packet/status ledger: after a qualifying normalized Assurance Receipt exists,
 it is linked to an exact packet by reference. Portable ProductSpec Related
