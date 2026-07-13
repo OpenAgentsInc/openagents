@@ -40,3 +40,17 @@ leaves the repo in a shared artifact.
 Specs declare intent; they never enforce. Behavior contracts and Eval Suites
 remain the oracles; the promise registry remains the sole authority for public
 claims. A spec links registry IDs — it never duplicates their content.
+
+## Proposed assurance companion
+
+OpenAgents' proposed QA language lives in a separate **AssuranceSpec**
+companion, not in ProductSpec fields, custom sections, or `tool_metadata`.
+ProductSpec remains upstream-compatible product intent. The ProductSpec
+implementation does not interpret test techniques, environments, falsifiers,
+proof rungs, evidence policy, or release policy; it exposes stable
+acceptance-criterion IDs for the companion to reference.
+
+The proposal, including its independent revision law and generated immutable
+Assurance Manifest, is documented in
+`docs/fable/2026-07-13-assurancespec-productspec-companion-design.md`. No
+AssuranceSpec parser or compiler is claimed to exist in this package.

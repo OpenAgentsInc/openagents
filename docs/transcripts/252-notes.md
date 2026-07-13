@@ -6,15 +6,17 @@
 
 ## One-line pitch
 
-Before we let the ProductSpec drive a fleet of coding agents, make it drive a
-fleet of tests.
+Before we let the ProductSpec drive a fleet of coding agents, commit how we
+will prove it first.
 
 The first post-MVP ProductSpec should define a framework that turns committed
-product intent into a reviewable assurance manifest before implementation:
-deterministic unit, component, browser, native, device, seam, property,
-model-based, performance, security, accessibility, recovery, and bounded formal
-checks; the environments that must run them; the evidence each must produce;
-and the deliberately broken case proving each oracle can actually catch a bug.
+product intent into a separately reviewed **Assurance Spec** before
+implementation: deterministic unit, component, browser, native, device, seam,
+property, model-based, performance, security, accessibility, recovery, and
+bounded formal obligations; the environments that must run them; the evidence
+each must produce; and the deliberately broken case proving each oracle can
+actually catch a bug. Observer then compiles admitted proof design into an
+immutable Assurance Manifest that native harnesses and QA Swarm can execute.
 
 Then the implementation has somewhere honest to go: from expected red, through
 fixture-proven, through real-environment evidence, to a release decision that
@@ -51,8 +53,9 @@ This also picks up the most durable idea from Episode 246: close the gap between
 what we say and what we ship. Product promises govern the macro claim. Behavior
 contracts govern the exact behavior. Eval Suites and deterministic tests act as
 oracles. QA Swarm drives the product and records what happened. The missing
-piece is the compiler that assembles those parts from a ProductSpec early
-enough to shape the build instead of merely grading it afterward.
+piece is a companion proof-design artifact, its review/admission lifecycle, and
+the deterministic compiler that assembles those accepted parts early enough to
+shape the build instead of merely grading it afterward.
 
 ## Working name: Observer
 
@@ -63,7 +66,10 @@ exactly the job here: inspect the ProductSpec, discover the invisible failure
 surfaces, and keep watching as the implementation changes. It also fits the
 existing vocabulary without stealing it:
 
-- **Observer** compiles intent into assurance obligations.
+- **AssuranceSpec** is the portable companion standard and authored proof
+  design.
+- **Observer** proposes Assurance Specs and deterministically compiles admitted
+  ones into execution manifests.
 - **QA Swarm** executes scripted checks, exploration, probes, and regressions.
 - **Arbiter** can visualize the evidence graph and verdicts.
 - A later **Observatory** can be the hosted dashboard containing many projects
@@ -91,49 +97,60 @@ Use **Observer** as a working codename, not public brand clearance. The repo's
 StarCraft design guide says to borrow the command-console principles rather
 than Blizzard's names or assets; a public product should therefore undergo
 normal naming review and may simply become **OpenAgents Assurance**. The
-technical artifact should keep the framework-neutral name **Assurance
-Manifest** so the protocol remains understandable even if the product name
-changes.
+portable authored artifact should keep the framework-neutral name **Assurance
+Spec** and the generated IR should remain **Assurance Manifest**, so the
+protocol remains understandable even if the product name changes. The detailed
+companion-standard proposal is
+`docs/fable/2026-07-13-assurancespec-productspec-companion-design.md`.
 
 ## The thing we are actually designing
 
 Observer is not another test runner and not “ask an LLM to write Playwright.”
-It is a specification-to-assurance compiler plus a lifecycle for the artifacts
-it creates.
+It is a semantic proof-design planner plus a deterministic compiler and a
+lifecycle for the artifacts those stages create. Model-assisted planning may
+propose an Assurance Spec; it is not compiler output and is not authoritative
+until reviewed and admitted.
 
 Inputs:
 
 1. an exact ProductSpec path, revision, and digest;
-2. a typed environment profile describing the repository, frameworks,
+2. an admitted Assurance Spec revision and digest binding exact ProductSpec
+   criteria to risks, obligations, oracles, falsifiers, evidence, gates, and
+   authority boundaries;
+3. typed environment profiles describing the repository, frameworks,
    renderers, targets, capabilities, auth posture, risk class, and existing
    test surfaces;
-3. linked behavior contracts, Eval Suites, product promises, invariants, and
+4. linked behavior contracts, Eval Suites, product promises, invariants, and
    existing receipts;
-4. explicit owner policy for cost, production access, mutable actions,
+5. a digest-pinned adapter lock and accepted review/admission receipt;
+6. explicit owner policy for cost, production access, mutable actions,
    retention, and required proof rung.
 
 Outputs:
 
-1. an Assurance Manifest with stable obligation IDs;
-2. traceability from every acceptance criterion to one or more executable
-   oracles, or an explicit blocker/waiver/not-applicable decision;
-3. deterministic test and model scaffolds placed in the owning repository's
+1. an immutable, byte-stable Assurance Manifest with stable obligation IDs,
+   dependency graph, exact environment/adapter bindings, and `do_not_edit`;
+2. traceability diagnostics from every acceptance criterion to one or more
+   executable oracles, or an explicit needs-design/not-applicable record;
+3. proposed deterministic test and model scaffolds placed in the owning repository's
    normal verification paths;
-4. an environment matrix saying where each obligation must run;
+4. a resolved environment matrix saying where each obligation must run;
 5. falsifiers, known-bad fixtures, or mutations proving that each oracle is
    sensitive to the failure it claims to detect;
-6. run receipts, coverage and freshness ledgers, counterexamples, traces,
+6. separately stored run receipts, coverage and freshness projections,
+   counterexamples, traces,
    screenshots, videos, and exact commands;
 7. a release projection that reports observed evidence without granting
    deploy, acceptance, promise, or public-claim authority.
 
 The important separation is:
 
-> ProductSpec declares intent. Observer compiles verification obligations.
-> Behavior contracts state durable behavior and cite oracle refs. Eval Suites
-> and admitted tests provide executable evaluators. QA Swarm executes and
-> explores. Receipts record evidence. Maintainers accept. Product promises
-> alone govern public claims.
+> ProductSpec commits product intent. AssuranceSpec commits reviewed proof
+> design. Observer compiles admitted proof design into an immutable execution
+> graph. Behavior contracts state durable behavior and cite oracle refs. Eval
+> Suites and admitted tests provide executable evaluators. QA Swarm executes
+> and explores. Receipts record observations. Maintainers accept. Product
+> promises alone govern public claims.
 
 No layer gets to promote itself.
 
@@ -145,15 +162,19 @@ test file is deterministic merely because it was generated once.
 
 The deterministic contract should be narrower and stronger:
 
-- the same ProductSpec revision/digest plus the same accepted environment
-  profile and compiler version produces the same criterion IDs, obligation
-  IDs, dependency graph, required evidence classes, and manifest digest;
+- the same ProductSpec revision/digest, admitted Assurance Spec
+  revision/digest, environment-profile revisions/digests, adapter lock,
+  admission receipt, and compiler version produce byte-identical manifest
+  output;
 - bounded ProductSpec parsing and environment decoding use explicit schemas;
 - the semantic mapping from an acceptance criterion into assurance domains
   uses one typed selector/planner and produces reviewable structured output,
   never ad hoc keyword rules scattered across adapters;
+- semantic planning produces a proposed Assurance Spec before the deterministic
+  compiler begins; no model, network, clock, random, or repository-discovery
+  call occurs during compilation;
 - agent-authored tests and formal models are proposals until reviewed and
-  admitted into the manifest;
+  admitted through an Assurance Spec revision and manifest;
 - once admitted, every executable check has a pinned command, code digest,
   target profile, seed policy, timeout policy, and expected evidence shape;
 - rerunning the same accepted check against the same source/target state gives
@@ -184,10 +205,26 @@ many harnesses. That missing binding is part of Observer's job, and an eval's
 fractional pass threshold must not automatically become whole-criterion
 acceptance.
 
-Observer should preserve that boundary. It reads a ProductSpec and produces
-linked enforcement artifacts; it must never quietly reinterpret the spec to
-match whatever implementation happened to land. Intent changes require a
-`spec_revision` bump and reconciliation.
+Observer should preserve that boundary. Its semantic planner proposes an
+Assurance Spec from a ProductSpec; reviewers admit the mapping; its pure
+compiler then produces linked execution artifacts. No stage may quietly
+reinterpret the ProductSpec to match whatever implementation happened to land.
+Intent changes require a `spec_revision` bump and reconciliation.
+
+The upstream ProductSpec repository also supplies the architectural precedent
+for the new layer: Decision Trace is a separate companion, not another
+ProductSpec section. ProductSpec custom sections are preserved but not
+semantically typed, and `tool_metadata` is non-normative/export-stripped. A
+complete QA language therefore belongs in a separate **AssuranceSpec**
+companion with its own format version, revision, validator, conformance corpus,
+review annotations, and decision trace.
+
+OpenAgents Product Specs already add the executable profile AssuranceSpec
+needs: positive `spec_revision` and unique author-visible criterion IDs. Plain
+upstream v0.1 Acceptance Criteria are Markdown, so an importer may propose an
+exact text-anchor plus subject-digest binding, but it must block compilation
+until a reviewer admits stable anchors and must never silently fuzzy-rebind a
+changed criterion.
 
 ### Behavior contracts
 
@@ -305,7 +342,8 @@ customer outcome, or a public product claim.
 
 The ingredients are real; the composed product is not.
 
-- There is no ProductSpec-to-Assurance-Manifest compiler today.
+- There is no AssuranceSpec schema/parser/conformance corpus, admission
+  lifecycle, or ProductSpec→AssuranceSpec→Manifest compiler today.
 - ProductSpec AI-eval blocks are parsed but are not a generic execution plan.
 - Behavior-contract coverage proves registry/oracle linkage more readily than
   it proves semantic adequacy or oracle sensitivity.
@@ -324,16 +362,83 @@ The ingredients are real; the composed product is not.
 Episode 252 should make these gaps the starting state of the ProductSpec, not
 edit the historical plans until they read as if the combined service shipped.
 
+## AssuranceSpec: the formal ProductSpec companion
+
+The formal artifact should be **AssuranceSpec**, with authored files named
+`<name>.assurance-spec.md`. ProductSpec commits what and why; AssuranceSpec
+commits how we will know. This is the missing reviewed semantic bridge between
+product prose and deterministic execution.
+
+It should follow ProductSpec's strongest design decisions:
+
+- readable Markdown plus bounded structured fenced blocks;
+- a parsed semantic model with a Draft 2020-12 JSON Schema;
+- mandatory ordered sections plus preserved `custom-*` extensions;
+- its own `assurance_spec_format_version` and `assurance_revision`;
+- stable structural error codes separated from adequacy diagnostics;
+- a reference parser, serializer, validator, and CLI;
+- valid/invalid fixtures, exact round trips, schema/parser parity, and
+  deterministic compiler golden fixtures;
+- portable review annotations bound to exact revision/digest;
+- an optional Assurance Decision Trace for proof-policy drift;
+- explicit conformance levels that mean interoperability, not product quality.
+
+Proposed mandatory sections, in order:
+
+1. Assurance Objective;
+2. Subject;
+3. Risk Model;
+4. Assurance Scope;
+5. Environments;
+6. Obligations;
+7. Gates;
+8. Evidence Policy;
+9. Authority Boundaries.
+
+The Subject block binds the exact ProductSpec path, format version,
+`spec_revision`, digest, and criterion IDs. Obligations bind those criteria to
+risks, techniques, environments, oracles, falsifiers, evidence, proof rungs,
+independence requirements, dependencies, and activation gates. Environment
+Profiles and the adapter lock are separate digest-pinned inputs because they
+change on a different cadence from proof intent.
+
+The lifecycle has three deliberately different checkpoints:
+
+- `structurally_valid`: the document parses and conforms;
+- `reviewed`: portable review annotations cover the required axes;
+- `admitted_for_execution`: recognized external policy binds the exact
+  revision/digest and lets the compiler use it.
+
+A valid spec can contain a bad proof plan. A reviewed spec is not automatically
+authorized. An admitted spec says only that this proof design may be compiled
+and run; it does not say the product passed.
+
+Actual waivers stay out of ordinary spec state. The Assurance Spec defines
+exception policy; a separate authority-bound, scoped, expiring exception
+receipt records a decision. The obligation remains visible as unconfirmed with
+an exception rather than turning green.
+
+Authored Assurance Specs live beside their Product Specs. Reusable public-safe
+Environment Profiles live under `assurance/environments/`; deterministic
+generated manifests live under `generated/assurance/` or an equivalent
+content-addressed artifact tree; private and large receipts live in the run
+artifact store. The full proposal is
+`docs/fable/2026-07-13-assurancespec-productspec-companion-design.md`.
+
 ## The Assurance Manifest
 
 Proposed schema name: `openagents.observer.assurance_manifest.v1`.
 
-The manifest is derived from, but lives separately from, the ProductSpec. It is
-versioned, reviewable, and diffable. At minimum it contains:
+The manifest is generated from an exact ProductSpec, admitted Assurance Spec,
+Environment Profiles, adapter lock, accepted review set, and compiler version.
+It is immutable, content-addressed, reviewable, diffable, marked
+`do_not_edit`, and contains only resolved execution plans. At minimum it
+contains:
 
-- ProductSpec path, `spec_revision`, content digest, and criterion refs;
-- accepted environment-profile revision and digest;
-- compiler/planner version and accepted semantic-plan receipt;
+- ProductSpec and AssuranceSpec paths, format versions, revisions, content
+  digests, and criterion refs;
+- accepted environment-profile revisions/digests and adapter-lock digest;
+- compiler version and accepted review/admission receipt digest;
 - stable obligation ID, title, rationale, risk, and owning criterion IDs;
 - linked behavior-contract, Eval Suite, invariant, and promise IDs;
 - assurance domain and test technique;
@@ -343,18 +448,20 @@ versioned, reviewable, and diffable. At minimum it contains:
 - expected oracle and the exact falsifier it must reject;
 - required evidence and public-safety classification;
 - required proof rung and independence requirements;
-- separate state axes: lifecycle/admission (`proposed`, `admitted`,
-  `superseded`, `retired`), readiness (`needs_design`, `planned_red`,
-  `blocked`, `not_applicable`, `executable`), latest verdict (`not_run`,
-  `CONFIRMED`, `REFUTED`, `INCONCLUSIVE`), infrastructure (`ready`, `unarmed`,
-  `unavailable`, `failed`), stability (`stable`, `flaky`), freshness
-  (`current`, `stale`), and exception/waiver refs;
-- latest run, source, artifact, verifier, exception, freshness, and
-  supersession refs.
+- dependency and activation graphs plus gate expressions;
+- exact source, command, adapter, artifact, oracle, and falsifier digests.
 
-The manifest is a plan and ledger, not a second source of product truth. Its
-rows dereference the authoritative spec, contract, test, source, target, and
-receipt records.
+The manifest is an execution lockfile, not an authored proof plan, mutable
+ledger, or second source of product truth. Admission, readiness, latest
+verdict, infrastructure, stability, freshness, human disposition, exceptions,
+and supersession are separate source records or projections over receipts and
+current dependencies. They never mutate the manifest.
+
+Compilation is deliberately narrower than semantic planning. The same exact
+inputs produce byte-identical canonical JSON with stable ordering and no
+timestamps, absolute local paths, discovery, network calls, model calls, or
+time-derived IDs. If a required capability cannot resolve, compilation emits a
+typed gap rather than an implicit skip.
 
 ## Assurance domains: test the hell out of it, systematically
 
@@ -534,7 +641,7 @@ those receipts, not an independent source of green.
 
 Adapters decode typed capabilities. The planner must not infer tool selection
 with ad hoc substring or filename matching. Framework detection can propose a
-profile, but the accepted environment manifest is explicit and reviewable.
+profile, but the admitted Environment Profile is explicit and reviewable.
 
 An unsupported stack yields precise adapter gaps and portable manual
 obligations. It does not yield fake universal coverage.
@@ -568,10 +675,19 @@ current cross-renderer guarantee.
 
 The Effect Native adapter is first-party convenience, not the protocol. A
 customer using Vitest, Playwright, XCTest, Rust `proptest`, JUnit, Maestro, or a
-different formal checker should still produce the same Assurance Manifest and
-receipt vocabulary through different adapters.
+different formal checker should still preserve the same AssuranceSpec semantic
+model and receipt vocabulary. Its compiled manifest honestly differs when its
+adapters, commands, or environments differ.
 
 ## The ProductSpec to write during Episode 252
+
+The episode should first settle the AssuranceSpec companion proposal far
+enough that the ProductSpec can name a real deliverable rather than a magical
+“compiler.” The canonical proposal is
+`docs/fable/2026-07-13-assurancespec-productspec-companion-design.md`; it
+defines the authored format, semantic model, validation planes, revision law,
+review/admission artifacts, deterministic Manifest boundary, receipts, and
+authority matrix.
 
 Create the proposed post-MVP spec at:
 
@@ -615,21 +731,26 @@ criterion, whether the exact release artifact behaves as designed.
 
 ### Hypothesis
 
-If OpenAgents compiles an accepted ProductSpec plus a typed environment profile
-into a reviewable Assurance Manifest before implementation—mapping every
-criterion to risk-appropriate deterministic oracles, real seams, environment
-tiers, falsifiers, evidence, and proof rungs—and uses QA Swarm to execute,
-explore, distill, and receipt those checks, then OpenAgents and customer teams
-will detect specification drift and integration defects earlier, ship fewer
-false greens, and produce trustworthy release evidence without being locked to
-Effect Native or any single test framework.
+If OpenAgents turns an accepted ProductSpec into a separately reviewed and
+admitted Assurance Spec before implementation—mapping every criterion to
+risk-appropriate deterministic oracles, real seams, environment tiers,
+falsifiers, evidence, proof rungs, gates, and authority boundaries—then
+compiles that proof design into an immutable Assurance Manifest and uses QA
+Swarm to execute, explore, distill, and receipt those checks, OpenAgents and
+customer teams will detect specification drift and integration defects
+earlier, ship fewer false greens, and produce trustworthy release evidence
+without being locked to Effect Native or any single test framework.
 
 ### Proposed `in`
 
 - one validator-clean ProductSpec revision with unique stable criterion IDs;
+- one schema-valid, reviewed, and admitted Assurance Spec revision bound to the
+  exact ProductSpec revision/digest;
 - one accepted, digest-pinned environment profile for the owning repository;
-- typed semantic planning into the standard assurance-domain catalog;
-- one versioned Assurance Manifest with stable obligations and traceability;
+- typed semantic planning that produces proposed Assurance Spec obligations
+  through the standard assurance-domain catalog;
+- one immutable, byte-stable Assurance Manifest with stable obligations,
+  exact inputs, dependency graph, and traceability;
 - behavior-contract and Eval Suite proposal/link generation;
 - staged planned-red, implementation, integration, release, and post-release
   gates;
@@ -689,25 +810,34 @@ Effect Native or any single test framework.
   oracle to make the implementation pass without explicit revision/approval;
 - raw secrets, prompts, credentials, cookies, private paths, customer data, or
   provider payloads in receipts or public projections;
-- Observer becoming a second ProductSpec, promise registry, source database,
-  test runner, or CI system instead of compiling and projecting existing
-  authorities.
+- AssuranceSpec or Observer becoming a second source of product intent,
+  promise registry, source database, universal test runner, or CI system
+  instead of binding and projecting existing authorities;
+- hiding normative proof intent in ProductSpec `custom-*` sections or
+  export-stripped `tool_metadata`;
+- treating a model-generated mapping as deterministic compiler output or as
+  admitted policy;
+- storing mutable latest-run, freshness, flake, infrastructure, exception, or
+  human-disposition state in the generated Assurance Manifest.
 
 ## Candidate acceptance criteria
 
 - **OBS-AC-01:** Given one validator-clean ProductSpec with unique criterion
-  IDs, Observer binds the exact path, revision, digest, compiler version, and
-  accepted environment-profile digest and emits a schema-valid Assurance
-  Manifest with stable obligation IDs. Missing/duplicate IDs or a changed
-  digest stop compilation with a typed reconciliation state.
+  IDs and one schema-valid admitted Assurance Spec, Observer binds both exact
+  paths, format versions, revisions, digests, accepted review set, compiler
+  version, environment-profile digests, and adapter-lock digest and emits a
+  schema-valid Assurance Manifest with stable obligation IDs. A mismatch stops
+  compilation with a typed reconciliation state.
 - **OBS-AC-02:** Every acceptance criterion is mapped to at least one admitted
-  assurance obligation or one explicit `needs_design`, blocked, waived, or
-  not-applicable record with rationale and authority. The manifest reports
-  unmapped criteria and cannot present full traceability while any remain.
+  assurance obligation or one explicit reviewed `not_applicable` disposition.
+  `needs_design` and blocked remain visible readiness states; an exception is
+  a separate scoped receipt and never counts as proof. Full traceability cannot
+  appear while an applicable criterion is unmapped.
 - **OBS-AC-03:** Technique and adapter selection comes from one typed semantic
-  planner over the accepted environment profile. Its structured plan is
-  reviewable and digest-pinned; unsupported capabilities fail precisely, and
-  no ad hoc keyword/file matching silently chooses a test or tool.
+  planner that emits a proposed Assurance Spec over explicit Environment
+  Profiles. Review annotations and an admission receipt bind its exact
+  revision/digest before compilation. Unsupported capabilities fail precisely,
+  and no ad hoc keyword/file matching silently chooses a test or tool.
 - **OBS-AC-04:** The design gate emits planned-red or waived fixture-first
   suites before implementation without making expected-red trunk appear
   release-green. Claiming a criterion activates its required implementation
@@ -747,8 +877,10 @@ Effect Native or any single test framework.
   within declared budgets, explore an uncovered frontier, and distill one
   confirmed discovery into a reviewed deterministic regression. An
   undistillable exploration remains INCONCLUSIVE.
-- **OBS-AC-13:** The same spec/profile/compiler inputs reproduce the same
-  manifest and obligation graph. A run verdict is reproducible only against an
+- **OBS-AC-13:** The same ProductSpec, AssuranceSpec, review/admission,
+  profile, adapter-lock, and compiler inputs reproduce byte-identical canonical
+  manifest output with no clock, random, network, discovery, model, timestamp,
+  or absolute-path input. A run verdict is reproducible only against an
   immutable target snapshot with the same source, target, fixture, toolchain,
   seed, and check digests; dynamic targets bind the observed deployment/state
   or emit typed nondeterminism. Changed inputs never silently reuse prior green.
@@ -777,24 +909,44 @@ Effect Native or any single test framework.
 - **OBS-AC-18:** One non-Effect-Native reference project implements the same
   manifest through its native test tools and produces conforming receipts,
   proving the protocol is portable rather than an OpenAgents-only wrapper.
-- **OBS-AC-19:** Spec revision, environment-profile revision, adapter change,
-  source change, target deployment, behavior-contract change, or oracle change
-  marks affected evidence stale by dependency, retains history, and requires
-  explicit reconciliation rather than silently carrying green forward.
+- **OBS-AC-19:** ProductSpec or AssuranceSpec revision/digest,
+  environment-profile revision, adapter change, source change, target
+  deployment, behavior-contract change, or oracle change marks affected
+  evidence stale by dependency, retains history, and requires explicit
+  reconciliation rather than silently carrying green forward.
 - **OBS-AC-20:** Observer emits separate ledgers for criterion-to-obligation
   traceability, executed obligation/environment coverage, and reachable
   state/action/surface frontier coverage. Each ledger retains current, union,
   and delta views plus replay seeds; required-surface regression blocks, the
   frontier steers exploration, and line/branch coverage remains advisory.
+- **OBS-AC-21:** AssuranceSpec ships with a canonical format document, Draft
+  2020-12 schemas, reference parser/serializer/validator/CLI, stable structural
+  codes, valid and invalid fixture corpora, exact semantic round trips,
+  schema/parser parity, unsupported-version checks, and custom-section
+  preservation. Every stable error has a fixture.
+- **OBS-AC-22:** Compiler conformance includes duplicate/dangling/cycle
+  fixtures, Environment Profile capability mismatches, ProductSpec binding
+  drift, exact manifest golden bytes, gate-evaluation fixtures separate from
+  parser tests, and a self-hosting Assurance Spec for Observer.
+- **OBS-AC-23:** ProductSpec `spec_revision` and AssuranceSpec
+  `assurance_revision` evolve independently. A ProductSpec change stales its
+  companion until an explicit new binding; a proof-intent change requires an
+  Assurance revision and optional Assurance Decision Trace; an observed run
+  emits a receipt without editing either authored spec or the manifest.
+- **OBS-AC-24:** A generated manifest contains resolved execution plans and
+  dependency/gate graphs only. Admission, readiness, observation,
+  infrastructure, stability, freshness, disposition, and exception remain
+  orthogonal source records or projections, and no negative/unknown axis can
+  round up to green.
 
 ## Proposed receipt vocabulary
 
-These are candidate schemas to define in the ProductSpec, not claims that they
-exist today:
+These are candidate schemas to define through the AssuranceSpec/Observer
+design, not claims that they exist today:
 
 - `openagents.observer.assurance_manifest.v1` — compiled obligation graph;
-- `openagents.observer.semantic_plan_receipt.v1` — accepted criterion/domain
-  mapping;
+- `openagents.observer.assurance_admission_receipt.v1` — admitted exact
+  Assurance Spec and review-set binding;
 - `openagents.observer.oracle_sensitivity_receipt.v1` — correct-vs-falsifier
   result;
 - `openagents.observer.seam_receipt.v1` — exact real endpoints/artifacts crossed;
@@ -816,9 +968,10 @@ turn any of these into public launch copy.
 
 The recording should choose real targets rather than leave these as slogans:
 
-- **Pre-build traceability:** accepted ProductSpec criteria with a reviewed
-  obligation/blocker/waiver mapping before the first implementation packet.
-  Proposed target: 100% for Observer-backed projects.
+- **Pre-build traceability:** accepted ProductSpec criteria with an admitted
+  Assurance Spec obligation or reviewed not-applicable disposition before the
+  first implementation packet. Blockers and exceptions remain visible and do
+  not count as proof. Proposed target: 100% for Observer-backed projects.
 - **Oracle sensitivity:** release-required oracles whose known-bad variant is
   rejected. Proposed target: 100%.
 - **False-green rate:** confirmed escaped regressions for which the release
@@ -826,9 +979,9 @@ The recording should choose real targets rather than leave these as slogans:
   would not fail. Proposed target: zero.
 - **Seam coverage:** declared critical seams with a current real-wiring receipt
   at the required tier. Proposed target: 100% before release.
-- **Time to first useful red:** elapsed time from accepted ProductSpec/profile
-  to the first reviewed failing assurance corpus. This should fall over the
-  first three dogfood projects.
+- **Time to first useful red:** elapsed time from admitted Assurance
+  Spec/profiles to the first reviewed failing assurance corpus. This should
+  fall over the first three dogfood projects.
 - **Reproducibility:** reruns against identical immutable snapshots and declared
   digests producing the same verdict; dynamic targets must produce a typed
   nondeterminism or target-drift finding. Proposed target: at least 99% in
@@ -846,7 +999,7 @@ core protocol proprietary.
 
 ### Free and local
 
-- ProductSpec and environment-profile validation;
+- ProductSpec, AssuranceSpec, and Environment Profile validation;
 - Assurance Manifest compiler;
 - adapter SDK and reference adapters;
 - local deterministic runner composition;
@@ -904,6 +1057,10 @@ come from Observer's proof graph rather than issue theater.
 
 - Approve **Observer** as the working codename and whether **Observatory** is the
   hosted surface; require brand/trademark review before public naming.
+- Approve **AssuranceSpec** as the framework-neutral companion name and the
+  ProductSpec/AssuranceSpec/Manifest authority boundary.
+- Approve the roles and review axes that can admit an exact Assurance Spec
+  revision for execution; review annotations alone grant no authority.
 - Decide whether the first artifact is a committed `prd` or an experimental
   `hypothesis` until one dogfood compilation succeeds.
 - Approve which obligation classes are mandatory for the first OpenAgents
@@ -949,10 +1106,14 @@ come from Observer's proof graph rather than issue theater.
 
 ## Open questions for Episode 252
 
-- Is **Observer** the product, the compiler, an agent role, or all three?
-- Does the Assurance Manifest live beside the ProductSpec under `specs/qa/`,
-  under a generated `assurance/` tree, or as a typed projection from source
-  registries?
+- Which parts of **Observer** are the semantic planner, deterministic compiler,
+  execution coordinator, and hosted product, and which names should appear in
+  the public API?
+- Should deterministic manifests under `generated/assurance/` be committed, or
+  regenerated and byte-compared by the local/OpenAgents-owned verification
+  sweep?
+- Should Environment Profiles remain a sibling schema in the AssuranceSpec
+  project or become their own companion standard?
 - Which ProductSpec criteria are too subjective to compile without a separate
   rubric or human study?
 - Who accepts the semantic mapping from criterion to obligations: owner,
@@ -972,8 +1133,9 @@ come from Observer's proof graph rather than issue theater.
   workspace, or all three?
 - How much of the semantic planner can run with a local/BYO model while
   retaining reproducible accepted output?
-- When a ProductSpec revision changes, can unaffected obligations retain
-  evidence by dependency analysis, or must the entire manifest go stale?
+- Which kinds of evidence can survive a semantically equivalent implementation
+  refactor after a new manifest binds changed source digests, and who admits
+  that equivalence?
 - Can Episode 253's multiplayer agents propose tests and falsifiers before
   claiming implementation packets, with an independent agent reviewing the
   oracle plan?
@@ -989,11 +1151,12 @@ come from Observer's proof graph rather than issue theater.
    mutation specs, proof rungs, and product promises.
 4. **Tell the seam incident.** Everything passed; the real phone could not
    connect. Explain why “both sides have tests” is not a seam test.
-5. **Name Observer.** Explain the StarCraft unit, the Assurance Manifest, and
-   the relationship to QA Swarm and Arbiter.
-6. **Compile one criterion on a whiteboard.** Criterion → behavior contract →
-   unit/property/seam/browser obligations → falsifiers → environments → proof
-   rungs → receipts.
+5. **Name the artifacts.** ProductSpec commits product intent; AssuranceSpec
+   commits proof design; Observer compiles; the Assurance Manifest is generated
+   IR; QA Swarm executes; Arbiter projects evidence.
+6. **Write one Assurance Spec obligation on a whiteboard.** Criterion → risk →
+   behavior contract → unit/property/seam/browser obligations → falsifiers →
+   environments → proof rungs → gates → evidence.
 7. **Break the implementation on purpose.** Make the known-bad variant fail and
    explain why a test that cannot fail is not a test.
 8. **Use Effect Native as customer zero.** Tour the current DOM and React
@@ -1002,11 +1165,14 @@ come from Observer's proof graph rather than issue theater.
 9. **Draw the staged gates.** Planned red before implementation, hard gates as
    packets activate, real-environment evidence before release, live-safe checks
    after deployment.
-10. **Create the Observer ProductSpec.** Write Problem, Hypothesis, scope,
+10. **Design AssuranceSpec like a real standard.** Show the format, schema,
+    conformance fixtures, revision law, review annotations, decision trace,
+    compiler determinism, and authority matrix.
+11. **Create the Observer ProductSpec.** Write Problem, Hypothesis, scope,
     acceptance criteria, metrics, receipts, owner gates, pricing, and rollout.
-11. **Close on the sequence.** Ship the MVP, wrap every new ProductSpec in
-    Observer, then let multiplayer agents contribute against tests whose
-    meaning was agreed before they wrote the code.
+12. **Close on the sequence.** Ship the MVP, admit the proof design for the
+    next ProductSpec, compile it, then let multiplayer agents contribute
+    against tests whose meaning was agreed before they wrote the code.
 
 ## Candidate lines for the recording
 
@@ -1017,8 +1183,9 @@ come from Observer's proof graph rather than issue theater.
 > implementation what it would like to be tested on. I want the tests waiting
 > at the crime scene before the code arrives.
 
-> ProductSpec is intent. Observer turns intent into obligations. QA Swarm runs
-> them. Arbiter shows the receipts. None of those gets to accept its own work.
+> ProductSpec says what the product should do. AssuranceSpec says how we will
+> know. Observer compiles that agreement. QA Swarm runs it. Arbiter shows the
+> receipts. None of those gets to accept its own work.
 
 > A test suite is not impressive because it is large. It is impressive because
 > every important test can point to the bug it kills.
@@ -1041,19 +1208,21 @@ come from Observer's proof graph rather than issue theater.
 
 ## Honest ending
 
-Episode 252 plans and writes the ProductSpec for Observer. It does not claim
-that automatic ProductSpec-to-test compilation, universal framework adapters,
-the shared Effect Native conformance corpus, nightly TLC/counterexample
-conversion, hosted device labs, a public Observatory, or an Observer product
-promise are live. The repository already contains many
-of the component systems—ProductSpec validation, behavior contracts, Eval
-Suites, QA Runner/QA Swarm machinery, seam probes, property/model testing, TLA+
-models, mutation specs, and evidence routes—but they are not yet one automatic
-post-MVP product.
+Episode 252 plans the ProductSpec for Observer and the formal AssuranceSpec
+companion it depends on. It does not claim that an AssuranceSpec
+schema/parser/conformance suite, admission system, deterministic compiler,
+automatic ProductSpec-to-test planning, universal framework adapters, the
+shared Effect Native conformance corpus, nightly TLC/counterexample conversion,
+hosted device labs, a public Observatory, or an Observer product promise are
+live. The repository already contains many of the component systems—ProductSpec
+validation, behavior contracts, Eval Suites, QA Runner/QA Swarm machinery,
+seam probes, property/model testing, TLA+ models, mutation specs, and evidence
+routes—but they are not yet one automatic post-MVP product.
 
-The honest win is a validated contract for composing them: every criterion
-mapped before implementation, every oracle able to demonstrate a real red, and
-every green tied to the environment and proof rung it actually exercised.
+The honest win is a rigorous proposal for the missing contract: every criterion
+mapped in a separately reviewed artifact before implementation, every oracle
+able to demonstrate a real red, every compiled manifest reproducible, and every
+green tied to the environment and proof rung it actually exercised.
 
-Build the base hit. Put an Observer over the next spec. Then open the
-multiplayer lobby.
+Build the base hit. Admit an Assurance Spec for the next ProductSpec. Compile
+it with Observer. Then open the multiplayer lobby.

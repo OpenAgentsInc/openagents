@@ -198,3 +198,25 @@ first user report.
   (same wiring, same auth stack). The staging Worker currently shares the
   route code but has separate secrets/bindings; drift there would silently
   weaken R1's gate.
+
+## 7. AssuranceSpec disposition (2026-07-13)
+
+The proposed AssuranceSpec companion turns R5 from an informal naming
+convention into a typed **seam declaration** in the proof design for a product.
+Each required seam obligation names:
+
+- both real artifacts or sides;
+- the route, protocol, wire contract, or lifecycle boundary crossed;
+- the required environment and proof rung;
+- the wiring-level oracle;
+- a falsifier that breaks the relationship rather than only an isolated side;
+- the qualifying evidence kinds and independence rule.
+
+Mock-only component tests cannot satisfy the seam row. The generated Assurance
+Manifest binds an admitted declaration to exact adapters and commands; run
+receipts state what was observed. The behavior-contract registry remains the
+source of truth for the durable seam statement.
+
+This disposition is design only. R1–R7 retain their recorded implementation
+state, and no current QA Runner path is claimed to consume an Assurance Spec.
+See `2026-07-13-assurancespec-productspec-companion-design.md`.

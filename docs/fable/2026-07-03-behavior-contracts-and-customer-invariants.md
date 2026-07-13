@@ -180,3 +180,27 @@ contract change and needs the owner's sign-off.
 - Fixture tiers never touch client production credentials; live-mode oracles
   run only under the client's explicit arming, mirroring our own live-tier
   invariants in `ROADMAP_QA.md` §11.
+
+## 7. AssuranceSpec relationship addendum (2026-07-13)
+
+Behavior contracts and the proposed AssuranceSpec companion are adjacent but
+non-overlapping control layers:
+
+- a behavior contract is a durable micro-promise about behavior and retains
+  its own statement, lifecycle, oracle refs, and registry enforcement state;
+- an Assurance Spec references those contract IDs while declaring why they are
+  needed for a ProductSpec criterion, which environments and proof rungs must
+  exercise them, which falsifier demonstrates oracle sensitivity, and what
+  evidence a gate requires;
+- an Assurance Spec may propose a missing behavior contract, but cannot copy,
+  silently rewrite, activate, waive, or retire the contract;
+- changing a contract statement is a contract change, while changing how that
+  contract contributes to a product proof is an Assurance Spec revision;
+- run receipts report observations; neither a contract nor an Assurance Spec
+  gains deployment, spend, acceptance, or public-claim authority.
+
+This lets the same durable contract contribute to several product proofs
+without duplicating its source of truth. The full proposed boundary and
+companion format are documented in
+`2026-07-13-assurancespec-productspec-companion-design.md`; no AssuranceSpec
+integration is claimed live here.

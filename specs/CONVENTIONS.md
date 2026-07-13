@@ -29,6 +29,8 @@ A spec **declares — it never enforces**:
 ```text
 specs/<area>/<name>.product-spec.md          # e.g. specs/web/, specs/khala-code/, specs/sarah/
 specs/<area>/<name>.decision-trace.json      # optional companion (PS-5, later)
+specs/<area>/<name>.assurance-spec.md        # proposed proof-design companion (not implemented)
+specs/<area>/<name>.assurance-decision-trace.json # proposed assurance-policy history
 ```
 
 Owner-directed exception: the first deployable-product package keeps its one
@@ -88,3 +90,37 @@ dated-plan-doc pattern. Rule of thumb: a hypothesis about user/buyer behavior
 Never edit a spec to match implementation without a `spec_revision` bump —
 accidental behavior never silently becomes intent. This is the same law as
 "do not weaken an oracle," one layer up.
+
+## Proposed AssuranceSpec companion (not yet enforced)
+
+The design in
+`docs/fable/2026-07-13-assurancespec-productspec-companion-design.md` proposes
+an authored `<name>.assurance-spec.md` beside a Product Spec. The companion
+commits **verification intent**: exact criterion bindings, risks, proof
+obligations, environments, oracles, falsifiers, evidence policy, gates, and
+authority boundaries. It does not add QA semantics to the ProductSpec parser.
+
+The proposed revision matrix is:
+
+| Change | Required action |
+| --- | --- |
+| Product intent changes | Increment `spec_revision`; reconcile and rebind the Assurance Spec |
+| Proof obligation, risk, proof rung, seam, oracle/falsifier meaning, gate, or evidence policy changes | Increment `assurance_revision` and append the assurance decision trace when material |
+| Native test implementation changes without changing proof intent | Recompile the manifest; source/command digests and dependent evidence become stale |
+| Environment capability or policy changes | Increment the Environment Profile revision and recompile affected obligations |
+| Observed pass/fail/inconclusive result changes | Emit a new receipt; never edit either authored spec or the generated manifest |
+
+The companion must bind the exact ProductSpec path, format version,
+`spec_revision`, digest, and stable criterion IDs. A changed subject is stale
+until explicit reconciliation. Never silently change verification intent to
+fit an implementation, silently rebind a changed criterion, or carry old green
+evidence across changed dependencies.
+
+Authored companions live beside Product Specs. Reusable public-safe environment
+profiles belong under `assurance/environments/`; deterministic generated
+Assurance Manifests belong under `generated/assurance/` if committed; private
+or large run evidence belongs outside Git under the run-artifact store.
+
+These are proposed conventions, not current gates. Do not add AssuranceSpec
+files to the ProductSpec validation sweep or claim an Observer compiler until
+the schema, parser, conformance corpus, and deterministic compiler exist.
