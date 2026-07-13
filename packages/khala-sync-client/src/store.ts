@@ -96,6 +96,7 @@ export interface KhalaSyncLocalStore {
   readonly setLocalAccountLink:(link:LocalAccountLink)=>Effect.Effect<void,KhalaSyncClientStoreError>
   readonly clearLocalAccountLink:()=>Effect.Effect<void,KhalaSyncClientStoreError>
   readonly writeLocalEntities:(scope:SyncScope,entities:ReadonlyArray<LocalAuthorityEntity>)=>Effect.Effect<void,KhalaSyncClientStoreError>
+  readonly deleteLocalEntities:(scope:SyncScope,entities:ReadonlyArray<Pick<LocalAuthorityEntity,"entityType"|"entityId">>)=>Effect.Effect<void,KhalaSyncClientStoreError>
   readonly readLocalEntities:(scope:SyncScope,entityType?:string)=>Effect.Effect<ReadonlyArray<LocalAuthorityEntity>,KhalaSyncClientStoreError>
   /** Durable per-scope cursor; `null` when the scope was never synced. */
   readonly cursor: (
