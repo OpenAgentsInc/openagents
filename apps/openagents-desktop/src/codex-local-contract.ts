@@ -72,7 +72,7 @@ export const CodexLocalAvailabilitySchema = Schema.Union([
      * throttling without a quota marker. Reconnect fixes neither, and the two
      * states keep their distinct owner actions.
      */
-    reason: Schema.Literals(["no_codex_account", "no_verified_account", "quota_exhausted", "rate_limited"]),
+    reason: Schema.Literals(["no_codex_account", "no_verified_account", "policy_denied", "quota_exhausted", "rate_limited"]),
   }),
 ])
 export type CodexLocalAvailability = typeof CodexLocalAvailabilitySchema.Type
@@ -99,6 +99,8 @@ export const CODEX_CHIP_REASON_RATE_LIMITED =
   "Codex — accounts rate-limited · retry later or connect another account"
 export const CODEX_CHIP_REASON_QUOTA_EXHAUSTED =
   "Codex — usage quota exhausted · wait for reset or add credits"
+export const CODEX_CHIP_REASON_POLICY_DENIED =
+  "Codex — blocked by the active policy · review the task policy"
 
 /**
  * Pure chip projection from typed availability (unit-tested lifecycle
@@ -112,11 +114,13 @@ export const codexHarnessLaneFromAvailability = (
   if (availability.state === "available") return { available: true, reason: null }
   return {
     available: false,
-    reason: availability.reason === "quota_exhausted"
-      ? CODEX_CHIP_REASON_QUOTA_EXHAUSTED
-      : availability.reason === "rate_limited"
-        ? CODEX_CHIP_REASON_RATE_LIMITED
-        : CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
+    reason: availability.reason === "policy_denied"
+      ? CODEX_CHIP_REASON_POLICY_DENIED
+      : availability.reason === "quota_exhausted"
+        ? CODEX_CHIP_REASON_QUOTA_EXHAUSTED
+        : availability.reason === "rate_limited"
+          ? CODEX_CHIP_REASON_RATE_LIMITED
+          : CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
   }
 }
 

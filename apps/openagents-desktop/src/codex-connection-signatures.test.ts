@@ -26,6 +26,7 @@ import { join } from "node:path"
 
 import {
   classifyCodexFailureText,
+  isCodexPolicyDenialText,
   isCodexQuotaExhaustionText,
   isCodexRateLimitText,
   isCodexReconnectRequiredText,
@@ -56,6 +57,7 @@ import {
 } from "./codex-child-runtime.ts"
 import {
   CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
+  CODEX_CHIP_REASON_POLICY_DENIED,
   CODEX_CHIP_REASON_QUOTA_EXHAUSTED,
   CODEX_CHIP_REASON_RATE_LIMITED,
   CODEX_CHIP_REASON_VERIFYING,
@@ -186,6 +188,15 @@ const rows: ReadonlyArray<SignatureRow> = [
     uiReasonIncludes: "failed before producing content",
   },
   {
+    name: "policy denial without credential or quota failure",
+    script: { stdout: `${JSON.stringify({ type: "turn.failed", error: { message: "command denied by policy" } })}\n`, exitCode: 1 },
+    classification: "policy_denied",
+    rotates: true,
+    healthAfter: null,
+    failureText: "command denied by policy",
+    uiReasonIncludes: "failed before producing content",
+  },
+  {
     name: "network refused (connection refused pre-content)",
     script: { stdout: fixtureCodexNetworkRefusedStdout, exitCode: 1 },
     classification: "generic",
@@ -217,6 +228,9 @@ describe("EP250 codex connection-signature corpus (one row per signature)", () =
       }
       if (row.classification === "quota_exhausted") {
         expect(isCodexQuotaExhaustionText(row.failureText)).toBe(true)
+      }
+      if (row.classification === "policy_denied") {
+        expect(isCodexPolicyDenialText(row.failureText)).toBe(true)
       }
 
       // 2 + 3. ROTATION + HEALTH through the REAL child runtime and parser.
@@ -293,6 +307,7 @@ describe("EP250 codex connection-signature corpus (one row per signature)", () =
       "missing auth.json",
       "malformed auth.json",
       "rate-limit",
+      "policy",
       "network refused",
       "timeout",
     ]) {
@@ -331,6 +346,8 @@ describe("EP250 chip lifecycle state machine", () => {
       .toEqual({ available: false, reason: CODEX_CHIP_REASON_RATE_LIMITED })
     expect(codexHarnessLaneFromAvailability({ state: "unavailable", reason: "quota_exhausted" }))
       .toEqual({ available: false, reason: CODEX_CHIP_REASON_QUOTA_EXHAUSTED })
+    expect(codexHarnessLaneFromAvailability({ state: "unavailable", reason: "policy_denied" }))
+      .toEqual({ available: false, reason: CODEX_CHIP_REASON_POLICY_DENIED })
   })
 
   test("LIVE QUOTA CASE (codex-5, EP250): zero verified + exhausted usage → a distinct quota state, not reconnect or rate limit", async () => {

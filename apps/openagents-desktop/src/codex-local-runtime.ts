@@ -53,6 +53,7 @@ import {
   CODEX_CHILD_SANDBOX,
   CODEX_CHILD_SUMMARY_LIMIT,
   codexChildUsageFromTurnCompleted,
+  isCodexPolicyDenialText,
   isCodexQuotaExhaustionText,
   isCodexRateLimitText,
   isCodexReconnectRequiredText,
@@ -267,6 +268,7 @@ type ParsedTurnAttempt = Readonly<{
   threadId: string | null
   detail: string
   preContent: boolean
+  policyDenied: boolean
   quotaExhausted: boolean
   rateLimited: boolean
 }>
@@ -344,13 +346,15 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       // Quota honesty (live receipt 2026-07-11): when the only obstacle is a
       // rate limit, "Reconnect in Settings" would be a lie — reconnecting
       // never restores quota. The reason names the rate limit instead.
+      const policyDenied = options.preflight.results()
+        .some(result => result.state === "policy_denied")
       const quotaExhausted = options.preflight.results()
         .some(result => result.state === "quota_exhausted")
       const rateLimited = options.preflight.results()
         .some(result => result.state === "rate_limited")
       return {
         state: "unavailable",
-        reason: quotaExhausted ? "quota_exhausted" : rateLimited ? "rate_limited" : "no_verified_account",
+        reason: policyDenied ? "policy_denied" : quotaExhausted ? "quota_exhausted" : rateLimited ? "rate_limited" : "no_verified_account",
       }
     }
     return { state: "available", accountRef: first.ref, verifiedCount: verified.length }
@@ -388,6 +392,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           threadId: input.resumeThreadId,
           detail: "the package-owned Codex app-server executable is unavailable",
           preContent: true,
+          policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
         }
@@ -403,6 +408,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           threadId: input.resumeThreadId,
           detail: error instanceof Error ? error.message : "productspec-work skill installation failed",
           preContent: true,
+          policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
         }
@@ -647,6 +653,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           threadId: null,
           detail: "codex executable unavailable",
           preContent: true,
+          policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
         })
@@ -833,6 +840,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           threadId,
           detail: "codex process failed to start",
           preContent: true,
+          policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
         })
@@ -851,6 +859,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             threadId,
             detail: "turn interrupted",
             preContent,
+            policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
           })
@@ -864,6 +873,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             threadId,
             detail: `test deadline reached (${Math.round((timeoutMs ?? 0) / 1000)}s)`,
             preContent,
+            policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
           })
@@ -878,6 +888,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             threadId,
             detail: "credentials rejected (auth-class failure) — reconnect this Codex account",
             preContent,
+            policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
           })
@@ -894,6 +905,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
               CODEX_CHILD_SUMMARY_LIMIT,
             ),
             preContent,
+            policyDenied: isCodexPolicyDenialText(failureText),
             quotaExhausted: isCodexQuotaExhaustionText(failureText),
             rateLimited: isCodexRateLimitText(failureText),
           })
@@ -907,6 +919,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             threadId,
             detail: "the turn produced no agent_message text",
             preContent,
+            policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
           })
@@ -919,6 +932,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           threadId,
           detail: "",
           preContent: false,
+          policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
         })
@@ -1077,11 +1091,13 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           input.emit({
             kind: "lane_notice",
             text: bounded(
-              attempt.quotaExhausted
-                ? `Codex account ${account.ref} exhausted its usage quota (${attempt.detail}) — rotating to the next candidate account`
-                : attempt.rateLimited
-                  ? `Codex account ${account.ref} is rate-limited (${attempt.detail}) — rotating to the next candidate account`
-                  : `Codex account ${account.ref} failed before producing content (${attempt.detail}) — rotating to the next candidate account`,
+              attempt.policyDenied
+                ? `Codex policy denied the attempt on ${account.ref} (${attempt.detail}) — rotating to the next candidate account`
+                : attempt.quotaExhausted
+                  ? `Codex account ${account.ref} exhausted its usage quota (${attempt.detail}) — rotating to the next candidate account`
+                  : attempt.rateLimited
+                    ? `Codex account ${account.ref} is rate-limited (${attempt.detail}) — rotating to the next candidate account`
+                    : `Codex account ${account.ref} failed before producing content (${attempt.detail}) — rotating to the next candidate account`,
               FABLE_LOCAL_SUMMARY_LIMIT,
             ),
           })

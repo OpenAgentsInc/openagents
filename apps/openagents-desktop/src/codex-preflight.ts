@@ -78,6 +78,8 @@ export type CodexProbeState =
   | "reconnect_required"
   /** No auth.json in the account home — no spawn was attempted. */
   | "credentials_missing"
+  /** The selected Codex policy refused the bounded probe. */
+  | "policy_denied"
   /** Usage/credit budget exhausted while the credential remains valid. */
   | "quota_exhausted"
   /** Transient provider throttling distinct from exhausted usage/credits. */
@@ -221,6 +223,7 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         })
         if (outcome.outcome === "success") return finishWith("verified", "app-server probe turn completed")
         if (outcome.outcome === "reconnect_required") return finishWith("reconnect_required", outcome.detail)
+        if (outcome.policyDenied) return finishWith("policy_denied", outcome.detail)
         if (outcome.quotaExhausted) return finishWith("quota_exhausted", outcome.detail)
         if (outcome.rateLimited) return finishWith("rate_limited", outcome.detail)
         return finishWith("probe_failed", outcome.detail)
@@ -312,6 +315,10 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         const failureClass = classifyCodexFailureText(failureText)
         if (failureClass === "auth" || isCodexReconnectRequiredText(failureText)) {
           settle("reconnect_required", errorMessage ?? "credentials rejected (auth-class failure)")
+          return
+        }
+        if (failureClass === "policy_denied") {
+          settle("policy_denied", errorMessage ?? "Codex policy denied the probe")
           return
         }
         if (failureClass === "quota_exhausted") {
