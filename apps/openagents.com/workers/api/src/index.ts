@@ -861,6 +861,7 @@ import {
   mintCloudRuntimeExecutionToken,
   revokeCloudRuntimeExecutionToken,
 } from './khala-cloud-runtime-execution-token'
+import { authorizesManagedFleetUnitDispatch } from './fleet-managed-dispatch-authority'
 import {
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
@@ -11182,10 +11183,7 @@ const dispatchManagedFleetUnitForEnv = async (
   }
   if (
     !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
-    !/^[0-9a-f]{40}$/u.test(input.body.repository.commit) ||
-    !input.body.claimRef.startsWith(
-      `${input.runRef}.claim.${input.body.workUnitRef}.`,
-    )
+    !/^[0-9a-f]{40}$/u.test(input.body.repository.commit)
   ) {
     throw new Error('managed_fleet_tuple_invalid')
   }
@@ -11234,11 +11232,13 @@ const dispatchManagedFleetUnitForEnv = async (
     // `claimed_by_pylon`; the first execution batch advances it. Managed-unit
     // dispatch necessarily precedes that batch, so the accepted lease is the
     // authority here, not a circular `running` precondition.
-    if (
-      row === undefined ||
-      row.authorized !== true ||
-      (row.status !== 'claimed_by_pylon' && row.status !== 'running')
-    ) {
+    if (row === undefined || !authorizesManagedFleetUnitDispatch({
+      acceptedRunLease: row.authorized === true,
+      runStatus: row.status,
+      runRef: input.runRef,
+      workUnitRef: input.body.workUnitRef,
+      unitClaimRef: input.body.claimRef,
+    })) {
       throw new Error('managed_fleet_authority_invalid')
     }
     const request = JSON.parse(row.request_json) as {
