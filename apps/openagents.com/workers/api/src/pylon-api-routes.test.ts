@@ -869,6 +869,10 @@ const route = async (
         }>,
       ) => Effect.Effect<FleetSteeringOutcomeAck, FleetRunAuthorityError>
     }>
+    listManagedFleetCapacity?: (
+      env: Readonly<Record<string, unknown>>,
+      input: Readonly<{ ownerUserId: string; pylonRef: string }>,
+    ) => Promise<Readonly<Record<string, unknown>>>
     // KS-6.1 (#8302): optional fail-soft fleet cockpit projection spy.
     projectFleetAssignment?: (
       env: Readonly<Record<string, unknown>>,
@@ -922,6 +926,9 @@ const route = async (
     ...(options.fleetSteeringExchange === undefined
       ? {}
       : { fleetSteeringExchange: options.fleetSteeringExchange }),
+    ...(options.listManagedFleetCapacity === undefined
+      ? {}
+      : { listManagedFleetCapacity: options.listManagedFleetCapacity }),
     nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
     ...(options.projectFleetAssignment === undefined
       ? {}
@@ -4410,6 +4417,60 @@ describe('Pylon Sarah FleetRun transport', () => {
     },
     record: {},
   } as unknown as FleetRunAuthorityAppendExecutionResult
+
+  test('returns exact managed capacity only to the authenticated Pylon owner', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const accountRefHash = `account.pylon.codex.${'a'.repeat(24)}`
+    const response = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/managed-capacity',
+      {
+        tokenUserId: 'agent-one',
+        openauthUserId: 'openauth-user-one',
+        listManagedFleetCapacity: async (_env, input) => ({
+          schema: 'openagents.pylon.managed_cloud_fleet_capacity.v1',
+          accountRefHashes: [accountRefHash],
+          ownerUserIdSeen: input.ownerUserId,
+          pylonRefSeen: input.pylonRef,
+        }),
+      },
+    )
+    expect(response.status).toBe(200)
+    expect(await responseJson(response)).toMatchObject({
+      accountRefHashes: [accountRefHash],
+      ownerUserIdSeen: 'openauth-user-one',
+      pylonRefSeen: 'pylon.test.one',
+    })
+
+    const foreign = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/managed-capacity',
+      {
+        tokenUserId: 'agent-two',
+        openauthUserId: 'openauth-user-two',
+        listManagedFleetCapacity: async () => {
+          throw new Error('foreign capacity callback must not run')
+        },
+      },
+    )
+    expect(foreign.status).toBe(403)
+  })
+
+  test('fails closed when managed capacity authority is unavailable', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const response = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/managed-capacity',
+      { tokenUserId: 'agent-one' },
+    )
+    expect(response.status).toBe(503)
+    expect(await responseJson(response)).toMatchObject({
+      schema: 'openagents.pylon.managed_cloud_fleet_capacity.v1',
+      accountRefHashes: [],
+    })
+  })
 
   test('derives owner and Pylon authority server-side with canonical idempotency', async () => {
     const store = new MemoryPylonApiStore()

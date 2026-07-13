@@ -1,11 +1,50 @@
 import { describe, expect, test } from 'vitest'
 
-import { authorizesManagedFleetUnitDispatch } from './fleet-managed-dispatch-authority'
+import {
+  authorizesManagedFleetUnitDispatch,
+  selectExactManagedFleetProviderAccount,
+} from './fleet-managed-dispatch-authority'
 
 const runRef = 'fleet_run.sarah.0123456789abcdef0123'
 const workUnitRef = 'unit.fc4.managed_cloud'
 
 describe('managed FleetRun dispatch authority', () => {
+  test('selects only the exact pre-claimed provider and never substitutes another healthy account', async () => {
+    const firstHash = `account.pylon.codex.${'a'.repeat(24)}`
+    const claimedHash = `account.pylon.codex.${'b'.repeat(24)}`
+    const accounts = [
+      { providerAccountRef: 'provider.first' },
+      { providerAccountRef: 'provider.claimed' },
+    ]
+    const selected = await selectExactManagedFleetProviderAccount(
+      accounts,
+      claimedHash,
+      async account =>
+        account.providerAccountRef === 'provider.claimed'
+          ? claimedHash
+          : firstHash,
+    )
+    expect(selected?.account.providerAccountRef).toBe('provider.claimed')
+    expect(
+      await selectExactManagedFleetProviderAccount(
+        accounts,
+        `account.pylon.codex.${'c'.repeat(24)}`,
+        async account => account.providerAccountRef === 'provider.claimed' ? claimedHash : firstHash,
+      ),
+    ).toBeUndefined()
+  })
+
+  test('fails closed when two provider rows resolve to the same claimed hash', async () => {
+    const duplicateHash = `account.pylon.codex.${'d'.repeat(24)}`
+    expect(
+      await selectExactManagedFleetProviderAccount(
+        [{ id: 1 }, { id: 2 }],
+        duplicateHash,
+        async () => duplicateHash,
+      ),
+    ).toBeUndefined()
+  })
+
   test('accepts an exact per-unit claim under a separately accepted run lease', () => {
     expect(
       authorizesManagedFleetUnitDispatch({

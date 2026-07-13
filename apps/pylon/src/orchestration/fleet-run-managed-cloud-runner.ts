@@ -121,6 +121,54 @@ export type CreatePylonRemoteManagedCloudFleetRunClaimedWorkPortInput = Readonly
   now?: (() => Date) | undefined
 }>
 
+export const makePylonRemoteManagedCloudFleetRunCapacity = (
+  options: CreatePylonRemoteManagedCloudFleetRunClaimedWorkPortInput,
+): FleetRunSupervisorCapacity => ({
+  accounts: async () => {
+    const fetchImpl = options.fetchImpl ?? fetch
+    try {
+      const response = await fetchImpl(
+        `${options.baseUrl.replace(/\/+$/u, "")}/api/pylons/${encodeURIComponent(options.pylonRef)}/fleet-runs/managed-capacity`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${options.agentToken}`,
+          },
+          redirect: "error",
+          signal: AbortSignal.timeout(15_000),
+        },
+      )
+      if (!response.ok) return []
+      const body = await response.json() as {
+        schema?: unknown
+        accountRefHashes?: unknown
+      }
+      if (
+        body.schema !== "openagents.pylon.managed_cloud_fleet_capacity.v1" ||
+        !Array.isArray(body.accountRefHashes)
+      ) return []
+      return body.accountRefHashes
+        .filter((value): value is string =>
+          typeof value === "string" && /^account\.pylon\.codex\.[a-f0-9]{24}$/u.test(value))
+        .map(accountRef => ({
+          accountRef,
+          accountRefHash: accountRef,
+          advertisedCapacity: 1,
+          workerKind: "codex" as const,
+          executionTarget: "managed_cloud" as const,
+          marginalCostClass: "api_metered" as const,
+          quotaAvailable: true,
+          acceptedDataPostures: ["broker_safe"] as const,
+          repositoryAccess: true,
+          managedIsolation: true,
+        }))
+    } catch {
+      return []
+    }
+  },
+})
+
 export type OpenPylonManagedCloudStandingFleetRunExecutorInput = Readonly<{
   summary: BootstrapSummary
   pylonRef: string

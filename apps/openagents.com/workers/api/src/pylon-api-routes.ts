@@ -147,6 +147,10 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
       body: typeof FleetRunManagedUnitDispatchBody.Type
     }>,
   ) => Promise<Readonly<Record<string, unknown>>>
+  listManagedFleetCapacity?: (
+    env: Bindings,
+    input: Readonly<{ ownerUserId: string; pylonRef: string }>,
+  ) => Promise<Readonly<Record<string, unknown>>>
   fleetSteeringExchange?: Readonly<{
     readPage: (
       env: Bindings,
@@ -235,6 +239,8 @@ export const PYLON_FLEET_RUN_EXECUTION_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/events' as const
 export const PYLON_FLEET_RUN_MANAGED_UNIT_DISPATCH_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/managed-units/dispatch' as const
+export const PYLON_FLEET_RUN_MANAGED_CAPACITY_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/managed-capacity' as const
 export const PYLON_FLEET_RUN_STEERING_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/steering' as const
 export const PYLON_FLEET_RUN_STEERING_OUTCOMES_ROUTE_PATTERN =
@@ -1701,6 +1707,34 @@ const routeFleetRunManagedUnitDispatch = <Bindings extends PylonApiRouteEnv>(
           kind: 'storage_error',
           reason: 'Managed FleetRun dispatch failed safely.',
         }),
+    })
+    return noStoreJsonResponse(result)
+  }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+
+const routeFleetRunManagedCapacity = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    if (dependencies.listManagedFleetCapacity === undefined) {
+      return noStoreJsonResponse(
+        { schema: 'openagents.pylon.managed_cloud_fleet_capacity.v1', accountRefHashes: [] },
+        { status: 503 },
+      )
+    }
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const result = yield* Effect.tryPromise({
+      try: () => dependencies.listManagedFleetCapacity!(env, {
+        ownerUserId: fleetRunOwnerUserId(session),
+        pylonRef,
+      }),
+      catch: () => new PylonApiStoreError({
+        kind: 'storage_error',
+        reason: 'Managed FleetRun capacity lookup failed safely.',
+      }),
     })
     return noStoreJsonResponse(result)
   }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
@@ -3481,6 +3515,21 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/managed-units\/dispatch$/.exec(
         url.pathname,
       )
+
+    const fleetRunManagedCapacityMatch =
+      /^\/api\/pylons\/([^/]+)\/fleet-runs\/managed-capacity$/.exec(url.pathname)
+
+    if (fleetRunManagedCapacityMatch !== null) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+      return routeFleetRunManagedCapacity(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(fleetRunManagedCapacityMatch[1]!),
+      )
+    }
 
     if (fleetRunManagedUnitDispatchMatch !== null) {
       if (request.method !== 'POST') {

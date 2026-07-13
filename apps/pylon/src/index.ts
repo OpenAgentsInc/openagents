@@ -55,6 +55,7 @@ import { createIntentQueue } from "./node/intent-intake.js"
 import { createApprovalQueue } from "./node/approval-queue.js"
 import { openPylonNodeFleetRunActivationService } from "./node/fleet-run-activation.js"
 import { openPylonOwnedStandingFleetRunExecutor } from "./orchestration/fleet-run-owned-standing-executor.js"
+import { makePylonRemoteManagedCloudFleetRunCapacity } from "./orchestration/fleet-run-managed-cloud-runner.js"
 import {
   disabledPylonFleetRunIntakePollerStatus,
   openPylonFleetRunIntakePoller,
@@ -1203,21 +1204,11 @@ const runHeadlessNode = Effect.gen(function* () {
                   ...executorInput,
                   options: {
                     managedCloud: {
-                      capacity: {
-                        accounts: async () => [
-                          {
-                            accountRef: "account.pylon.managed_cloud.broker",
-                            advertisedCapacity: 1,
-                            workerKind: "codex",
-                            executionTarget: "managed_cloud",
-                            marginalCostClass: "api_metered",
-                            quotaAvailable: true,
-                            acceptedDataPostures: ["broker_safe"],
-                            repositoryAccess: true,
-                            managedIsolation: true,
-                          },
-                        ],
-                      },
+                      capacity: makePylonRemoteManagedCloudFleetRunCapacity({
+                        agentToken: presenceClientOptions.agentToken!,
+                        baseUrl: presenceBaseUrl,
+                        pylonRef: localState.identity.pylonRef,
+                      }),
                       adapter: {
                         kind: "remote",
                         agentToken: presenceClientOptions.agentToken!,

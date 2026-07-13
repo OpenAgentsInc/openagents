@@ -67,6 +67,8 @@ export function resolveSupervisorWorkerKind(
 
 export type FleetRunSupervisorAccount = {
   readonly accountRef: string
+  /** Exact public-safe account identity when capacity was admitted remotely. */
+  readonly accountRefHash?: string
   readonly advertisedCapacity: number
   readonly cooldownUntil?: Date | string | null
   readonly paused?: boolean
@@ -88,6 +90,17 @@ export type FleetRunSupervisorAccount = {
   readonly acceptedDataPostures?: readonly ("owner_private" | "broker_safe")[]
   readonly repositoryAccess?: boolean
   readonly managedIsolation?: boolean
+}
+
+const resolvedFleetAccountRefHash = (
+  account: FleetRunSupervisorAccount,
+  workerKind: FleetRunSupervisorConcreteWorkerKind,
+): string | null => {
+  const provider = workerKind === "claude" ? "claude_agent" : workerKind
+  const resolved = account.accountRefHash ?? hashPylonAccountRef(provider, account.accountRef)
+  return new RegExp(`^account\\.pylon\\.${provider}\\.[a-f0-9]{24}$`, "u").test(resolved)
+    ? resolved
+    : null
 }
 
 export type FleetRunSupervisorLifecycleEvent = PylonAssignmentRunLifecycleEvent
@@ -1186,6 +1199,9 @@ export async function tickFleetRunSupervisor(
       })
       continue
     }
+    if (resolvedFleetAccountRefHash(account, resolution.workerKind) === null) {
+      throw new Error("fleet capacity supplied an invalid account identity")
+    }
     const breakerReason = breakerSkipReasonForAccount(
       store,
       account,
@@ -1377,8 +1393,7 @@ export async function tickFleetRunSupervisor(
 
     const taskId = fleetRunTaskIdForClaim(run.runRef, claim.claimRef)
     const contextId = contextIdFor(account.accountRef, taskId)
-    const accountProvider = workerKind === "claude" ? "claude_agent" : workerKind
-    const accountRefHash = hashPylonAccountRef(accountProvider, account.accountRef)
+    const accountRefHash = resolvedFleetAccountRefHash(account, workerKind)!
     if (store.getDispatchContext(contextId) === null) {
       store.createDispatchContext({
         id: contextId,

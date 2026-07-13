@@ -19,3 +19,20 @@ export const authorizesManagedFleetUnitDispatch = (
   input.unitClaimRef.startsWith(
     `${input.runRef}.claim.${input.workUnitRef}.`,
   )
+
+export const selectExactManagedFleetProviderAccount = async <Account>(
+  accounts: readonly Account[],
+  expectedAccountRefHash: string,
+  accountRefHash: (account: Account) => Promise<string>,
+): Promise<Readonly<{ account: Account; accountRefHash: string }> | undefined> => {
+  const candidates = await Promise.all(
+    accounts.map(async account => ({
+      account,
+      accountRefHash: await accountRefHash(account),
+    })),
+  )
+  const matches = candidates.filter(
+    candidate => candidate.accountRefHash === expectedAccountRefHash,
+  )
+  return matches.length === 1 ? matches[0] : undefined
+}

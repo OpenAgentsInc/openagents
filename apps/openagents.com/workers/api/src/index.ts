@@ -861,7 +861,10 @@ import {
   mintCloudRuntimeExecutionToken,
   revokeCloudRuntimeExecutionToken,
 } from './khala-cloud-runtime-execution-token'
-import { authorizesManagedFleetUnitDispatch } from './fleet-managed-dispatch-authority'
+import {
+  authorizesManagedFleetUnitDispatch,
+  selectExactManagedFleetProviderAccount,
+} from './fleet-managed-dispatch-authority'
 import {
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
@@ -11156,6 +11159,45 @@ const withFleetSteeringExchange = <A>(
   )
 }
 
+const managedFleetProviderAccountRefHash = async (
+  providerAccountRef: string,
+): Promise<string> =>
+  `account.pylon.codex.${(await sha256Hex(providerAccountRef)).slice(0, 24)}`
+
+const listManagedFleetCapacityForEnv = async (
+  env: WorkerBindings,
+  input: Readonly<{ ownerUserId: string; pylonRef: string }>,
+): Promise<Readonly<Record<string, unknown>>> => {
+  const workerEnv = env as OpenAgentsWorkerEnv
+  const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
+  if (postgresIdentity === undefined) {
+    throw new Error('managed_fleet_identity_authority_unavailable')
+  }
+  const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
+    makeProviderAccountRepositoryForEnv(env),
+    postgresIdentity.queryRows,
+  )
+  const accounts = await listProviderAccountsForUser(
+    accountRepository,
+    input.ownerUserId,
+  )
+  const eligible = accounts.accounts.filter(
+    account =>
+      account.provider === CHATGPT_CODEX_PROVIDER &&
+      account.publicStatus === 'connected' &&
+      account.health === 'healthy',
+  )
+  const accountRefHashes = [...new Set(await Promise.all(
+    eligible.map(account =>
+      managedFleetProviderAccountRefHash(account.providerAccountRef),
+    ),
+  ))].slice(0, 64)
+  return {
+    schema: 'openagents.pylon.managed_cloud_fleet_capacity.v1',
+    accountRefHashes,
+  }
+}
+
 const dispatchManagedFleetUnitForEnv = async (
   env: WorkerBindings,
   input: Readonly<{
@@ -11184,7 +11226,10 @@ const dispatchManagedFleetUnitForEnv = async (
   }
   if (
     !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
-    !/^[0-9a-f]{40}$/u.test(input.body.repository.commit)
+    !/^[0-9a-f]{40}$/u.test(input.body.repository.commit) ||
+    !/^account\.pylon\.codex\.[a-f0-9]{24}$/u.test(
+      input.body.workerAccountRef,
+    )
   ) {
     throw new Error('managed_fleet_tuple_invalid')
   }
@@ -11300,12 +11345,18 @@ const dispatchManagedFleetUnitForEnv = async (
         input.ownerUserId,
       ),
     ])
-    const account = accounts.accounts.find(
+    const eligibleAccounts = accounts.accounts.filter(
       candidate =>
         candidate.provider === CHATGPT_CODEX_PROVIDER &&
         candidate.publicStatus === 'connected' &&
         candidate.health === 'healthy',
     )
+    const selected = await selectExactManagedFleetProviderAccount(
+      eligibleAccounts,
+      input.body.workerAccountRef,
+      account => managedFleetProviderAccountRefHash(account.providerAccountRef),
+    )
+    const account = selected?.account
     if (
       account === undefined ||
       githubConnection === undefined ||
@@ -11394,9 +11445,7 @@ const dispatchManagedFleetUnitForEnv = async (
         },
       }),
     )
-    const accountRefHash = `account.pylon.codex.${(
-      await sha256Hex(account.providerAccountRef)
-    ).slice(0, 24)}`
+    const accountRefHash = selected!.accountRefHash
     if (
       session.state !== 'completed' ||
       session.agentComputerState !== 'reclaimed' ||
@@ -11550,6 +11599,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
   dispatchManagedFleetUnit: dispatchManagedFleetUnitForEnv,
+  listManagedFleetCapacity: listManagedFleetCapacityForEnv,
   fleetRunAuthority: {
     claim: (env, input) =>
       withFleetRunAuthority(env, repository => repository.claim(input)),

@@ -133,6 +133,30 @@ function drainingRunner(input: {
 }
 
 describe("FleetRunSupervisor", () => {
+  test("rejects a prefixed wrong-provider capacity identity before claiming work", async () => {
+    const { store, run } = createStoreWithRun({
+      runRef: "fleet_run.invalid_remote_identity",
+      targetConcurrency: 1,
+      workUnits: 1,
+    })
+
+    await expect(tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.invalid_remote_identity",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 1),
+      runner: acceptingRunner(),
+      capacity: capacity([{
+        accountRef: "account.pylon.managed_cloud.broker",
+        accountRefHash: `account.pylon.claude_agent.${"a".repeat(24)}`,
+        advertisedCapacity: 1,
+        workerKind: "codex",
+      }]),
+      clock: { now: () => fixedNow },
+    })).rejects.toThrow("invalid account identity")
+    expect(store.listWorkClaims({ runRef: run.runRef })).toEqual([])
+  })
+
   test("starts the target wave before waiting for long-running dispatches", async () => {
     const { store, run } = createStoreWithRun({ runRef: "fleet_run.acceptance.target_wave", targetConcurrency: 5, workUnits: 5 })
     const started: string[] = []
