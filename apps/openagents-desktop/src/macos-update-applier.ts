@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
+import { spawn } from "node:child_process"
 
 import { isMonotonicUpgrade, type UpdateChannel } from "./update-contract.ts"
 
@@ -37,13 +38,17 @@ export type UpdateCommandResult = Readonly<{ exitCode: number; stdout: string; s
 export type UpdateCommandRunner = (executable: string, args: ReadonlyArray<string>) => Promise<UpdateCommandResult>
 
 const defaultRunner: UpdateCommandRunner = async (executable, args) => {
-  const child = Bun.spawn([executable, ...args], { stdout: "pipe", stderr: "pipe" })
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ])
-  return { exitCode, stdout, stderr }
+  return await new Promise<UpdateCommandResult>((resolve, reject) => {
+    const child = spawn(executable, [...args], { stdio: ["ignore", "pipe", "pipe"] })
+    let stdout = ""
+    let stderr = ""
+    child.stdout.setEncoding("utf8")
+    child.stderr.setEncoding("utf8")
+    child.stdout.on("data", (chunk: string) => { stdout += chunk })
+    child.stderr.on("data", (chunk: string) => { stderr += chunk })
+    child.once("error", reject)
+    child.once("close", (code) => resolve({ exitCode: code ?? 1, stdout, stderr }))
+  })
 }
 
 const safeVersion = (value: unknown): value is string =>
