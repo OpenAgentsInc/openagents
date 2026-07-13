@@ -374,14 +374,9 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       ...next,
       fleet: withFleetLoading(next.fleet),
     }))
-    const projection = decodeFleetAccountsProjection(
-      yield* Effect.promise(() => bridge.list().catch(() => null)),
-    )
-    yield* SubscriptionRef.update(state, (next) => ({
-      ...next,
-      fleet: withFleetProjection(next.fleet, projection),
-    }))
-    yield* pullFleetLedger(state, bridge)
+    // Authority receipts are independent of the optional local Pylon account
+    // projection. Read them first so a slow or unavailable local runtime can
+    // never hide an authenticated server-side fleet result.
     if (bridge.fleetRuns !== undefined) {
       const result = yield* Effect.promise(() => bridge.fleetRuns!().catch(() => null))
       let projection: FleetRunClientProjection | null = null
@@ -390,6 +385,14 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       }
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, authorityRuns: projection } }))
     }
+    const projection = decodeFleetAccountsProjection(
+      yield* Effect.promise(() => bridge.list().catch(() => null)),
+    )
+    yield* SubscriptionRef.update(state, (next) => ({
+      ...next,
+      fleet: withFleetProjection(next.fleet, projection),
+    }))
+    yield* pullFleetLedger(state, bridge)
     if (bridge.cockpit !== undefined) {
       const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))

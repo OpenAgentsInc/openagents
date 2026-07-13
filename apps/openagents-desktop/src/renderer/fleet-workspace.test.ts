@@ -563,6 +563,29 @@ describe("typed fleet intent loop (registry -> state -> re-render)", () => {
     )
   })
 
+  test("refresh reads server authority before the optional local account projection", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        let authorityRequested = false
+        const { registry } = yield* makeHarness({
+          fleetRuns: async () => {
+            authorityRequested = true
+            return { state: "unavailable" }
+          },
+          list: async () => {
+            expect(authorityRequested).toBe(true)
+            return { ok: false, reason: "pylon_runtime_unavailable" }
+          },
+          usage: async (ref) => ({ ok: false, ref, reason: "pylon_runtime_unavailable" }),
+        })
+        yield* registry.dispatch(resolveIntentRef(
+          (nodeByKey(fleetWorkspaceView(readyState), "fleet-refresh") as { onPress: Parameters<typeof resolveIntentRef>[0] }).onPress,
+          null,
+        ))
+      }),
+    )
+  })
+
   test("usage check dispatches per row, records evidence, and refuses unknown refs", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
