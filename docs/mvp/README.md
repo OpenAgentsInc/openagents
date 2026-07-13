@@ -26,8 +26,8 @@ read.
    — the narrow signed/notarized RC6 build, installed-smoke, restore, cleanup,
    and remaining-gates receipt.
 7. [`2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md)
-   — the signed/notarized RC7 artifact and installed real-Codex ProductSpec
-   journey receipt for the corrected ordinary logged-in-session MVP boundary.
+   — the signed/notarized RC7 artifact, source-launched real-Codex journey, and
+   installed-driver falsifier for the ordinary logged-in-session MVP boundary.
 
 The Product Spec declares intent. Current upstream ProductSpec can also index
 external evidence with Related Artifacts, but the local package has not yet
