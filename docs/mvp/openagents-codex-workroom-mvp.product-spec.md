@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop Codex Workroom MVP"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-13T00:00:00Z"
-updated_at: "2026-07-13T14:12:32Z"
+updated_at: "2026-07-13T14:18:23Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -57,6 +57,7 @@ needing an OpenAgents account or falling back to another Codex interface.
 ```productspec-scope
 in:
   - signed and notarized OpenAgents Desktop artifact for the first supported macOS target
+  - one canonical Effect Native application tree for the visible workroom, typed state, intents, lifecycle, and renderer boundary
   - local-first use without an OpenAgents account
   - one compatible host-owned Codex app-server and one named isolated Codex account
   - explicit repository grant and stable OpenAgents coding-session and WorkContext refs
@@ -119,12 +120,20 @@ Codex owns Thread → Turn → Item execution, model/provider calls, tools,
 approvals, sandboxing, local rollout history, and provider-native child threads.
 OpenAgents owns the product workroom and stable product refs.
 
+Effect Native is OpenAgents' Effect-based application framework: one set of
+typed components, state, intents, resources, and lifecycle rules can use
+swappable Electron/DOM, React Native/native, or canvas renderers without
+forking the application model. The MVP uses it so UI behavior and host
+authority stay schema-decoded, interruption-aware, testable, and reusable
+rather than creating a parallel React state or command universe for Desktop.
+
 The signed Effect Native renderer is sandboxed and tokenless. It consumes only
-fixed schema-decoded projections and emits registered typed intents. A
-host-owned Runtime Gateway supervises the compatible Codex app-server, maps
-Codex identity into stable OpenAgents session and agent refs, durably admits
-mutations before dispatch, reconciles current projection plus durable history
-before live resubscription, and composes grant-bounded workspace/Git reads.
+fixed schema-decoded projections and emits registered typed intents. Electron
+is the host/renderer, not a second application architecture. A host-owned
+Runtime Gateway supervises the compatible Codex app-server, maps Codex identity
+into stable OpenAgents session and agent refs, durably admits mutations before
+dispatch, reconciles current projection plus durable history before live
+resubscription, and composes grant-bounded workspace/Git reads.
 
 The host also owns a ProductSpec service backed by
 `@openagentsinc/product-spec`. It parses and validates specs, assigns an
