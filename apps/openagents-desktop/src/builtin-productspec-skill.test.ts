@@ -4,8 +4,10 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import {
+  AssuranceSpecWorkSkillSha256,
   BuiltinProductSpecSkillError,
   ProductSpecWorkSkillSha256,
+  verifyBuiltinAssuranceSpecWorkSkill,
   verifyBuiltinProductSpecWorkSkill,
 } from "./builtin-productspec-skill.ts"
 
@@ -21,17 +23,30 @@ const withCopy = (run: (root: string) => void): void => {
 }
 
 describe("built-in productspec-work compatibility asset", () => {
-  test("pins one product-owned proposal-only skill to the signed compatibility digest", () => {
+  test("pins the product-owned proposal-only skills to the signed compatibility digest", () => {
     const verified = verifyBuiltinProductSpecWorkSkill(sourceRoot)
+    const assurance = verifyBuiltinAssuranceSpecWorkSkill(sourceRoot)
     expect(verified.sha256).toBe(ProductSpecWorkSkillSha256)
+    expect(assurance.sha256).toBe(AssuranceSpecWorkSkillSha256)
     expect(verified.manifest).toEqual({
       schema: "openagents.desktop.builtin_skill_manifest.v1",
-      compatibilitySetVersion: 3,
+      compatibilitySetVersion: 4,
       skills: [{
         name: "productspec-work",
         version: "0.2.0",
         relativePath: "productspec-work/SKILL.md",
         sha256: ProductSpecWorkSkillSha256,
+        authority: "proposal_only",
+        installationScope: "app_owned_extra_root",
+        registrationSurface: "codex_app_server_native",
+        ambientFallback: false,
+        defaultCodexSessionAllowed: true,
+        defaultCodexHomeMutationAllowed: false,
+      }, {
+        name: "assurancespec-work",
+        version: "0.1.0",
+        relativePath: "assurancespec-work/SKILL.md",
+        sha256: AssuranceSpecWorkSkillSha256,
         authority: "proposal_only",
         installationScope: "app_owned_extra_root",
         registrationSurface: "codex_app_server_native",
@@ -48,10 +63,26 @@ describe("built-in productspec-work compatibility asset", () => {
       "`evidence-present` is not `verified`.",
       "approve or apply a ProductSpec edit",
       "mark a criterion verified, accepted, or waived",
-      "Never search for or fall back to an ambient",
+      "fall back to an ambient",
       "`incompatible_workflow`",
       "`get_run`, `propose_edit`,",
     ]) expect(text).toContain(required)
+
+    const assuranceText = readFileSync(assurance.skillPath, "utf8")
+    const publicAssuranceText = readFileSync(
+      path.resolve(import.meta.dir, "../../../packages/assurance-spec/skills/assurancespec-work/SKILL.md"),
+      "utf8",
+    )
+    expect(assuranceText).toBe(publicAssuranceText)
+    for (const required of [
+      "<assurance-spec path>@<revision>+<digest>#<obligation-id>",
+      "`evidence-present` is not `CONFIRMED`",
+      "`CONFIRMED` is not accepted",
+      "skip-and-green result",
+      "admit an AssuranceSpec or mutate its lifecycle state",
+      "claim verification or completion authority",
+      "fall back to an ambient",
+    ]) expect(assuranceText).toContain(required)
   })
 
   test("fails closed when the manifest or asset moves outside the compatibility set", () => {
@@ -72,6 +103,15 @@ describe("built-in productspec-work compatibility asset", () => {
       writeFileSync(path.join(root, "productspec-work", "SKILL.md"), "tampered\n")
       try {
         verifyBuiltinProductSpecWorkSkill(root)
+      } catch (error) {
+        expect(error).toMatchObject({ reason: "asset_digest_mismatch" })
+      }
+    })
+
+    withCopy(root => {
+      writeFileSync(path.join(root, "assurancespec-work", "SKILL.md"), "tampered\n")
+      try {
+        verifyBuiltinAssuranceSpecWorkSkill(root)
       } catch (error) {
         expect(error).toMatchObject({ reason: "asset_digest_mismatch" })
       }

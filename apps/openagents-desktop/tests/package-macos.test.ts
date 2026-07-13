@@ -86,17 +86,22 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(config.packagerConfig?.extendInfo).toMatchObject({ NSMicrophoneUsageDescription: expect.any(String) })
   })
 
-  test("packages the product-owned productspec-work compatibility asset", () => {
+  test("packages the product-owned ProductSpec and AssuranceSpec compatibility assets", () => {
     const resources = config.packagerConfig?.extraResource
     expect(resources).toContain("dist/builtin-skills")
     const manifest = JSON.parse(
       readFileSync(path.join(root, "resources", "builtin-skills", "manifest.json"), "utf8"),
     ) as { skills: Array<{ name: string; authority: string; ambientFallback: boolean }> }
-    expect(manifest.skills).toEqual([expect.objectContaining({
+    expect(manifest.skills).toContainEqual(expect.objectContaining({
       name: "productspec-work",
       authority: "proposal_only",
       ambientFallback: false,
-    })])
+    }))
+    expect(manifest.skills).toContainEqual(expect.objectContaining({
+      name: "assurancespec-work",
+      authority: "proposal_only",
+      ambientFallback: false,
+    }))
   })
 
   test("entitlements stay minimal and never disable library validation or permit debugging", () => {

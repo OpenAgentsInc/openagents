@@ -8,12 +8,15 @@ import { PassThrough } from "node:stream"
 import {
   declineCodexServerRequest,
   openCodexAppServerClient,
+  registerAssuranceSpecSkill,
   registerProductSpecSkill,
   type CodexAppServerSpawn,
 } from "./codex-app-server-client.ts"
 import { runCodexAppServerTurn, type CodexAppServerTurnControl } from "./codex-app-server-turn.ts"
 import {
+  AssuranceSpecWorkSkillSha256,
   ProductSpecWorkSkillSha256,
+  installBuiltinAssuranceSpecWorkSkill,
   installBuiltinProductSpecWorkSkill,
 } from "./builtin-productspec-skill.ts"
 import { ProductSpecDynamicTools } from "./product-spec-app-server-tools.ts"
@@ -99,6 +102,41 @@ describe("Codex app-server native integration", () => {
     await expect(registration).resolves.toEqual({
       name: "productspec-work",
       path: "/isolated/codex-home/skills/productspec-work/SKILL.md",
+      enabled: true,
+    })
+    client.close()
+  })
+
+  test("registers and proves assurancespec-work through the native skill surface", async () => {
+    const fake = fakeServer()
+    const client = openCodexAppServerClient({
+      binary: "/packaged/codex",
+      env: { CODEX_HOME: "/isolated/codex-home" },
+      cwd: "/workspace",
+      spawnImpl: fake.spawn,
+      requestTimeoutMs: 1_000,
+    })
+    const registration = registerAssuranceSpecSkill({
+      client,
+      cwd: "/workspace",
+      skillRoot: "/isolated/codex-home/skills",
+      skillPath: "/isolated/codex-home/skills/assurancespec-work/SKILL.md",
+    })
+    await Bun.sleep(0)
+    fake.respond(1, { userAgent: "codex-test" })
+    await Bun.sleep(0)
+    fake.respond(2, {})
+    await Bun.sleep(0)
+    fake.respond(3, {})
+    await Bun.sleep(0)
+    fake.respond(4, { data: [{ cwd: "/workspace", skills: [{
+      name: "assurancespec-work",
+      path: "/isolated/codex-home/skills/assurancespec-work/SKILL.md",
+      enabled: true,
+    }], errors: [] }] })
+    await expect(registration).resolves.toEqual({
+      name: "assurancespec-work",
+      path: "/isolated/codex-home/skills/assurancespec-work/SKILL.md",
       enabled: true,
     })
     client.close()
@@ -388,9 +426,12 @@ describe("Codex app-server native integration", () => {
     const namedHome = path.join(root, "accounts", "codex", "work")
     const defaultHome = path.join(root, ".codex")
     mkdirSync(path.join(resources, "productspec-work"), { recursive: true })
+    mkdirSync(path.join(resources, "assurancespec-work"), { recursive: true })
     const source = readFileSync(new URL("../resources/builtin-skills/productspec-work/SKILL.md", import.meta.url))
+    const assuranceSource = readFileSync(new URL("../resources/builtin-skills/assurancespec-work/SKILL.md", import.meta.url))
     const manifest = JSON.parse(readFileSync(new URL("../resources/builtin-skills/manifest.json", import.meta.url), "utf8"))
     writeFileSync(path.join(resources, "productspec-work", "SKILL.md"), source)
+    writeFileSync(path.join(resources, "assurancespec-work", "SKILL.md"), assuranceSource)
     writeFileSync(path.join(resources, "manifest.json"), JSON.stringify(manifest))
     const first = installBuiltinProductSpecWorkSkill({ builtinSkillsRoot: resources, namedCodexHome: namedHome, defaultCodexHome: defaultHome })
     expect(first.sha256).toBe(ProductSpecWorkSkillSha256)
@@ -398,5 +439,10 @@ describe("Codex app-server native integration", () => {
     expect(first.reconciled).toBe(false)
     expect(installBuiltinProductSpecWorkSkill({ builtinSkillsRoot: resources, namedCodexHome: namedHome, defaultCodexHome: defaultHome }).reconciled).toBe(true)
     expect(() => installBuiltinProductSpecWorkSkill({ builtinSkillsRoot: resources, namedCodexHome: defaultHome, defaultCodexHome: defaultHome })).toThrow()
+    const assurance = installBuiltinAssuranceSpecWorkSkill({ builtinSkillsRoot: resources, namedCodexHome: namedHome, defaultCodexHome: defaultHome })
+    expect(assurance.sha256).toBe(AssuranceSpecWorkSkillSha256)
+    expect(assurance.reconciled).toBe(false)
+    expect(installBuiltinAssuranceSpecWorkSkill({ builtinSkillsRoot: resources, namedCodexHome: namedHome, defaultCodexHome: defaultHome }).reconciled).toBe(true)
+    expect(() => installBuiltinAssuranceSpecWorkSkill({ builtinSkillsRoot: resources, namedCodexHome: defaultHome, defaultCodexHome: defaultHome })).toThrow()
   })
 })

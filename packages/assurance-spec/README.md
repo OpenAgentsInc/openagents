@@ -1,5 +1,12 @@
 # `@openagentsinc/assurance-spec`
 
+The repository-installable agent skills live in [`skills/`](./skills/):
+`assurancespec-authoring` creates and refines deterministic proposals, while
+`assurancespec-work` executes reviewed obligations without acquiring admission,
+verification, completion, or release authority. npm-based installation remains
+gated on the starter-kit/publication milestone; the files are published here
+now for direct repository consumption.
+
 Deterministic proposal, parsing, structural validation, serialization, and
 adequacy assessment for the proposed AssuranceSpec `0.1` companion format.
 

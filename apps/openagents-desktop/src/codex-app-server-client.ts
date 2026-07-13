@@ -186,13 +186,19 @@ export type ProductSpecSkillRegistration = Readonly<{
   enabled: true
 }>
 
-/** Register and prove the built-in skill through Codex's native app-server APIs. */
-export const registerProductSpecSkill = async (input: Readonly<{
+export type AssuranceSpecSkillRegistration = Readonly<{
+  name: "assurancespec-work"
+  path: string
+  enabled: true
+}>
+
+const registerNativeSkill = async <Name extends "productspec-work" | "assurancespec-work">(input: Readonly<{
   client: CodexAppServerClient
   cwd: string
   skillRoot: string
   skillPath: string
-}>): Promise<ProductSpecSkillRegistration> => {
+  name: Name
+}>): Promise<Readonly<{ name: Name; path: string; enabled: true }>> => {
   await input.client.initialize()
   await input.client.request("skills/extraRoots/set", { extraRoots: [input.skillRoot] })
   await input.client.request("skills/config/write", { path: input.skillPath, enabled: true })
@@ -203,11 +209,30 @@ export const registerProductSpecSkill = async (input: Readonly<{
   const skills = data.flatMap(entry => entry !== null && typeof entry === "object" &&
     Array.isArray((entry as { skills?: unknown }).skills) ? (entry as { skills: unknown[] }).skills : [])
   const match = skills.find(skill => skill !== null && typeof skill === "object" &&
-    (skill as { name?: unknown }).name === "productspec-work" &&
+    (skill as { name?: unknown }).name === input.name &&
     (skill as { path?: unknown }).path === input.skillPath &&
     (skill as { enabled?: unknown }).enabled === true)
   if (match === undefined) {
-    throw new CodexAppServerError("request_failed", "Codex did not confirm the productspec-work skill")
+    throw new CodexAppServerError("request_failed", `Codex did not confirm the ${input.name} skill`)
   }
-  return { name: "productspec-work", path: input.skillPath, enabled: true }
+  return { name: input.name, path: input.skillPath, enabled: true }
 }
+
+/** Register and prove the built-in skill through Codex's native app-server APIs. */
+export const registerProductSpecSkill = async (input: Readonly<{
+  client: CodexAppServerClient
+  cwd: string
+  skillRoot: string
+  skillPath: string
+}>): Promise<ProductSpecSkillRegistration> => {
+  return registerNativeSkill({ ...input, name: "productspec-work" })
+}
+
+/** Register and prove the AssuranceSpec built-in through Codex's native APIs. */
+export const registerAssuranceSpecSkill = async (input: Readonly<{
+  client: CodexAppServerClient
+  cwd: string
+  skillRoot: string
+  skillPath: string
+}>): Promise<AssuranceSpecSkillRegistration> =>
+  registerNativeSkill({ ...input, name: "assurancespec-work" })

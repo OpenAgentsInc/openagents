@@ -146,6 +146,7 @@ export const REQUIRED_ARTIFACTS = [
   "assets/openagents-icon.png",
   "builtin-skills/manifest.json",
   "builtin-skills/productspec-work/SKILL.md",
+  "builtin-skills/assurancespec-work/SKILL.md",
 ] as const
 
 /**

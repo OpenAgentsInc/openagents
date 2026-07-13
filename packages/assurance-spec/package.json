@@ -13,6 +13,7 @@
   },
   "files": [
     "src",
+    "skills",
     "README.md"
   ],
   "publishConfig": {
