@@ -7,6 +7,7 @@ export const MvpProofEnvironment = "OPENAGENTS_DESKTOP_MVP_PROOF"
 
 export type MvpProofStepName =
   | "shell"
+  | "codex-ready"
   | "product-spec-open"
   | "plan-accepted"
   | "root-packet-turn"
@@ -18,6 +19,7 @@ export type MvpProofStepName =
 
 export const mvpProofRequiredSteps: ReadonlyArray<MvpProofStepName> = [
   "shell",
+  "codex-ready",
   "product-spec-open",
   "plan-accepted",
   "root-packet-turn",
@@ -196,6 +198,19 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
       const shell = await poll(`(() => ({ ready: document.querySelector('[data-en-key="shell-root"]') !== null }))()`, value => value["ready"] === true, 30_000)
       if (!shell.ok) throw new Error("shell did not mount")
       record("shell", true, "Effect Native shell mounted")
+
+      await requireClick("workspace-new-chat")
+      const codexReady = await poll(`(() => {
+        const chip = document.querySelector('[data-en-key="shell-harness-codex"]')
+        return {
+          present: chip !== null,
+          ready: chip !== null && chip.disabled !== true,
+          reason: chip?.getAttribute('aria-label')?.slice(0, 160) ?? null,
+        }
+      })()`, value => value["ready"] === true, 240_000)
+      if (!codexReady.ok) throw new Error(`named Codex capacity unavailable: ${String(codexReady.value["reason"] ?? "unknown")}`)
+      await requireClick("shell-harness-codex")
+      record("codex-ready", true, "named isolated Codex capacity selected after host preflight")
 
       await requireClick("workspace-product-spec")
       if (!(await poll(productSpecProbe, value => value["mounted"] === true, 30_000)).ok) throw new Error("ProductSpec workspace did not mount")

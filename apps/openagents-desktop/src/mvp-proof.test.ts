@@ -7,6 +7,7 @@ describe("ProductSpec-native MVP proof contract", () => {
   test("requires the exact execution, child, verification, and owner-gate journey", () => {
     expect(mvpProofRequiredSteps).toEqual([
       "shell",
+      "codex-ready",
       "product-spec-open",
       "plan-accepted",
       "root-packet-turn",
