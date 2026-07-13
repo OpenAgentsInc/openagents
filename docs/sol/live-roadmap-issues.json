@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T01:40:00.000Z",
+  "generatedAt": "2026-07-13T02:34:51.801Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -61,47 +61,6 @@
       "state": "OPEN",
       "title": "P0 TASK: explicit owner-local and managed-remote work routing",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8636"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "effect",
-        "area:desktop",
-        "codex",
-        "mobile",
-        "roadmap:sol"
-      ],
-      "number": 8676,
-      "state": "OPEN",
-      "title": "P0 TASK D1-H: real streamed Desktop conversation with mobile continuation",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8676"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "effect",
-        "area:desktop",
-        "mobile",
-        "type:proof",
-        "roadmap:sol"
-      ],
-      "number": 8677,
-      "state": "OPEN",
-      "title": "P0 PROOF R4-A: conversation command and event fault convergence",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8677"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "effect",
-        "area:desktop",
-        "mobile",
-        "roadmap:sol"
-      ],
-      "number": 8689,
-      "state": "OPEN",
-      "title": "CUT-09 — Converge restart, stale generation, revocation, and interrupted finalization",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8689"
     },
     {
       "labels": [

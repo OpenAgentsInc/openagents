@@ -25,8 +25,6 @@ contain historical status; refresh the live issue/comments before dispatch.
 | [`app-desktop.md`](./app-desktop.md) | #8574 | Desktop D0–D6/R5 track |
 | [`app-mobile.md`](./app-mobile.md) | #8597 | Mobile R0–R7/R6 track |
 | [`fc-4-hybrid-cloud.md`](./fc-4-hybrid-cloud.md) | #8636 | Local/managed routing through one claim registry |
-| [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) | #8676 | Real Desktop-to-physical-mobile continuation |
-| [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) | #8677 | Command/event/lifecycle fault proof |
 
 ## Live issues represented by receipts
 
@@ -36,7 +34,6 @@ must equal the pinned product-issue projection.
 
 | Live issue | Current evidence |
 | --- | --- |
-| [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
 
 ## Closed proof and implementation sources
@@ -45,6 +42,9 @@ These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
 
 - [`CUT-26 RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md) — #8706
+- [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) — closed #8689 physical network-gap/revocation acceptance
+- [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) — closed #8676
+- [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) — closed #8677
 - [`fc-cloud-codex.md`](./fc-cloud-codex.md) — closed #8547 first accepted brokered Agent Computer/workroom
 - [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) — closed AUDIO-0…AUDIO-8 #8733–#8741 implementation track
 

@@ -448,9 +448,6 @@ the currently unclaimed worker lease.
 | [#8574](https://github.com/OpenAgentsInc/openagents/issues/8574) | Desktop D0–D6/R5 track |
 | [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597) | Mobile R0–R7/R6 track |
 | [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | One claim registry across local/managed routing |
-| [#8676](https://github.com/OpenAgentsInc/openagents/issues/8676) | Real streamed Desktop-to-physical-mobile continuation |
-| [#8677](https://github.com/OpenAgentsInc/openagents/issues/8677) | Command/event/lifecycle fault convergence |
-| [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | CUT-09 remaining lifecycle acceptance |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
@@ -460,14 +457,12 @@ Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 
 Live issues and claims control exact selection. At this snapshot:
 
-1. In parallel, run the combined physical-iPhone journey for #8676 and CUT-09:
-   same-ref named-Codex continuation,
-   literal offline/network gap, exactly-once reconnect, then unlink/sign-out/
-   revocation denial without replay.
-2. Close CUT-09, then #8677 when its full matrix/live rung reconciles; close
-   #8676 only on its literal continuation/denial receipt. Close CUT-27 last for
-   the local cutover after #8676/#8677/CUT-09 and the exception register
-   are satisfied. On the clean installed candidate, CUT-27 still proves one
+1. Closed #8676/#8677/CUT-09 now supply the physical same-ref named-Codex
+   continuation, offline FIFO/exactly-once reconnect, revocation denial, and
+   no-replay receipt.
+2. Close CUT-27 last for the local cutover after its remaining acceptance and
+   exception-register work is satisfied. On the clean installed candidate,
+   CUT-27 still proves one
    non-trivial named-Codex and one named-Claude repository task through
    project/session, composer/context, questions/approvals, edits, tests/
    preview, Git review, and durable terminal receipts; physical-iOS plus
