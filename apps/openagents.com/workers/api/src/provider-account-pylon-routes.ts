@@ -29,6 +29,7 @@ import {
   makeD1ProviderAccountRepository,
   pollOpenAiCodexDeviceLogin,
   refreshChatGptCodexDeviceLoginForUser,
+  issueProviderAccountGrant,
   resolveProviderAccountGrant,
   startChatGptCodexDeviceLogin,
   startOpenAiCodexDeviceLogin,
@@ -344,7 +345,7 @@ export const makeProviderAccountPylonHandlers = <
       (): Record<string, unknown> => ({}),
     )
     const providerAccountRef = optionalString(body.providerAccountRef)
-    const authGrantRef = optionalString(body.authGrantRef)
+    const requestedAuthGrantRef = optionalString(body.authGrantRef)
     if (providerAccountRef === undefined) {
       return noStoreJsonResponse(
         {
@@ -355,17 +356,23 @@ export const makeProviderAccountPylonHandlers = <
         { status: 400 },
       )
     }
-    if (authGrantRef === undefined) {
-      return noStoreJsonResponse(
-        { error: 'provider_auth_grant_required' },
-        { status: 400 },
-      )
-    }
-
     try {
       const grantRepository =
         dependencies.providerGrantRepository?.(env) ??
         routeProviderAccountRepository(dependencies, env)
+      const issuedGrant =
+        requestedAuthGrantRef === undefined
+          ? await issueProviderAccountGrant(grantRepository, {
+              providerAccountRef,
+              requestedAction: 'pylon_local_codex_assignment',
+              runnerSessionId: `pylon.${session.credential.id}`,
+              userId,
+            })
+          : undefined
+      const authGrantRef = requestedAuthGrantRef ?? issuedGrant?.grantRef
+      if (authGrantRef === undefined) {
+        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+      }
       const candidateGrant = await grantRepository.findGrantByRef(authGrantRef)
       if (candidateGrant === undefined || candidateGrant.userId !== userId) {
         return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
