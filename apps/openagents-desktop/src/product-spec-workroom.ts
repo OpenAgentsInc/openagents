@@ -35,6 +35,7 @@ import type {
   ProductSpecPlanProposalRequest,
   ProductSpecProjection,
   ProductSpecRun,
+  ProductSpecRunDispositionRequest,
   ProductSpecVerificationRequest,
   ProductSpecWorkPacket,
 } from "./product-spec-workroom-contract.ts"
@@ -53,6 +54,7 @@ export type ProductSpecWorkroom = Readonly<{
   admitPacket: (request: ProductSpecPacketAdmitRequest) => ProductSpecOperationResult<ProductSpecRun>
   blockPacket: (request: ProductSpecPacketBlockRequest) => ProductSpecOperationResult<ProductSpecRun>
   disposePacket: (request: ProductSpecPacketDispositionRequest) => ProductSpecOperationResult<ProductSpecRun>
+  disposeRun: (request: ProductSpecRunDispositionRequest) => ProductSpecOperationResult<ProductSpecRun>
   recordEvidence: (request: ProductSpecEvidenceRequest) => ProductSpecOperationResult<ProductSpecRun>
   verifyEvidence: (request: ProductSpecVerificationRequest) => ProductSpecOperationResult<ProductSpecRun>
   setOwnerDisposition: (request: ProductSpecOwnerDispositionRequest) => ProductSpecOperationResult<ProductSpecRun>
@@ -218,7 +220,9 @@ export const makeProductSpecWorkroom = (
       .filter(entry => entry.isFile() && entry.name.endsWith(".json"))
       .flatMap(entry => {
         const run = loadJson<ProductSpecRun>(resolve(stateRoot, "runs", entry.name))
-        return run !== null && identitiesEqual(run.spec, identity) && run.workContextRef === request.workContextRef
+        return run !== null && run.spec.relativePath === identity.relativePath &&
+            run.workContextRef === request.workContextRef &&
+            (run.plan.state === "accepted" || run.plan.state === "revision_mismatch")
           ? [run]
           : []
       })
@@ -692,6 +696,40 @@ export const makeProductSpecWorkroom = (
     }, now()))
   }
 
+  const disposeRun = (
+    request: ProductSpecRunDispositionRequest,
+  ): ProductSpecOperationResult<ProductSpecRun> => {
+    const loaded = loadRun(request.runRef)
+    if (!loaded.ok) return loaded
+    if (!identitiesEqual(loaded.value.spec, request.expectedSpec)) {
+      return failure("revision_mismatch", "Run disposition does not match the accepted ProductSpec identity.")
+    }
+    if (loaded.value.plan.state === request.disposition) {
+      return { ok: true, value: loaded.value, reconciled: true }
+    }
+    if (loaded.value.plan.state !== "accepted" && loaded.value.plan.state !== "revision_mismatch") {
+      return failure("invalid_transition", `A ${loaded.value.plan.state} plan cannot become ${request.disposition}.`)
+    }
+    const terminal = new Set(["verified", "failed", "superseded", "cancelled"])
+    const next: ProductSpecRun = {
+      ...loaded.value,
+      updatedAt: now(),
+      plan: {
+        ...loaded.value.plan,
+        state: request.disposition,
+        packets: loaded.value.plan.packets.map(packet => terminal.has(packet.state)
+          ? packet
+          : {
+              ...packet,
+              state: request.disposition,
+              activeLease: null,
+              blockedReason: request.reason,
+            }),
+      },
+    }
+    return persistRun(next)
+  }
+
   const verifyEvidence = (
     request: ProductSpecVerificationRequest,
   ): ProductSpecOperationResult<ProductSpecRun> => {
@@ -790,9 +828,24 @@ export const makeProductSpecWorkroom = (
     admitPacket,
     blockPacket,
     disposePacket,
+    disposeRun,
     recordEvidence,
     verifyEvidence,
     setOwnerDisposition,
-    run: loadRun,
+    run: runRef => {
+      const loaded = loadRun(runRef)
+      if (!loaded.ok || loaded.value.plan.state !== "accepted") return loaded
+      const projection = open({
+        workContextRef: loaded.value.workContextRef,
+        relativePath: loaded.value.spec.relativePath,
+      })
+      if (projection.ok && projection.value.state === "ready" &&
+          identitiesEqual(projection.value.identity, loaded.value.spec)) return loaded
+      return persistRun({
+        ...loaded.value,
+        updatedAt: now(),
+        plan: { ...loaded.value.plan, state: "revision_mismatch" },
+      })
+    },
   }
 }

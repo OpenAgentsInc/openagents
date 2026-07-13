@@ -97,6 +97,7 @@ import {
   ProductSpecPlanAcceptChannel,
   ProductSpecPlanProposeChannel,
   ProductSpecRunGetChannel,
+  ProductSpecRunDispositionChannel,
   decodeProductSpecCreateRequest,
   decodeProductSpecEditConfirmRequest,
   decodeProductSpecEditConfirmationResult,
@@ -113,6 +114,7 @@ import {
   decodeProductSpecPlanResult,
   decodeProductSpecProjectionResult,
   decodeProductSpecRunGetRequest,
+  decodeProductSpecRunDispositionRequest,
   decodeProductSpecRunResult,
   decodeProductSpecVerificationRequest,
 } from "./product-spec-workroom-contract.ts"
@@ -411,6 +413,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec packet disposition is invalid." }
       return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecPacketDispositionChannel, request)) ??
         { ok: false, reason: "invalid_transition", message: "The ProductSpec disposition response is invalid." }
+    },
+    disposeRun: async (value: unknown) => {
+      const request = decodeProductSpecRunDispositionRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec run disposition is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecRunDispositionChannel, request)) ??
+        { ok: false, reason: "invalid_transition", message: "The ProductSpec run disposition response is invalid." }
     },
     recordEvidence: async (value: unknown) => {
       const request = decodeProductSpecEvidenceRequest(value)

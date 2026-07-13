@@ -97,6 +97,7 @@ export type ProductSpecRendererBridge = Readonly<{
   admitPacket: (value: unknown) => Promise<unknown>
   blockPacket: (value: unknown) => Promise<unknown>
   disposePacket: (value: unknown) => Promise<unknown>
+  disposeRun: (value: unknown) => Promise<unknown>
   recordEvidence: (value: unknown) => Promise<unknown>
   verifyEvidence: (value: unknown) => Promise<unknown>
   setOwnerDisposition: (value: unknown) => Promise<unknown>
@@ -119,6 +120,7 @@ export const unavailableProductSpecRendererBridge: ProductSpecRendererBridge = {
   admitPacket: unavailable,
   blockPacket: unavailable,
   disposePacket: unavailable,
+  disposeRun: unavailable,
   recordEvidence: unavailable,
   verifyEvidence: unavailable,
   setOwnerDisposition: unavailable,
@@ -144,6 +146,7 @@ export const ProductSpecPacketDispositionSelected = defineIntent("ProductSpecPac
   packetRef: Schema.String,
   disposition: Schema.Literals(["failed", "cancelled", "superseded"]),
 }))
+export const ProductSpecRunDispositionSelected = defineIntent("ProductSpecRunDispositionSelected", Schema.Literals(["cancelled", "superseded"]))
 export const ProductSpecEvidenceRecorded = defineIntent("ProductSpecEvidenceRecorded", Schema.String)
 export const ProductSpecEvidenceVerified = defineIntent("ProductSpecEvidenceVerified", Schema.String)
 export const ProductSpecOwnerDispositionSelected = defineIntent("ProductSpecOwnerDispositionSelected", Schema.Struct({
@@ -169,6 +172,7 @@ export const productSpecWorkspaceIntents = [
   ProductSpecPacketAdmitted,
   ProductSpecPacketBlocked,
   ProductSpecPacketDispositionSelected,
+  ProductSpecRunDispositionSelected,
   ProductSpecEvidenceRecorded,
   ProductSpecEvidenceVerified,
   ProductSpecOwnerDispositionSelected,
@@ -397,6 +401,30 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       reason: current.productSpec.blockedReason.trim(),
       expectedSpec: current.productSpec.run!.spec,
     })),
+    ProductSpecRunDispositionSelected: (disposition: "cancelled" | "superseded") => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const run = current.productSpec.run
+      const reason = current.productSpec.blockedReason.trim()
+      if (run === null || reason === "" || current.productSpec.busy !== null) return
+      yield* setWorkspace(workspace => ({ ...workspace, busy: "run-disposition", error: null, notice: null }))
+      const raw = yield* Effect.promise(() => bridge.disposeRun({
+        runRef: run.runRef,
+        disposition,
+        reason,
+        expectedSpec: run.spec,
+      }).catch(() => null))
+      const result = runResult(raw)
+      yield* setWorkspace(workspace => result !== null && result.ok
+        ? {
+            ...workspace,
+            run: result.value,
+            plan: result.value.plan,
+            busy: null,
+            notice: `Old plan ${disposition}. ProductSpec revision editing is unlocked; prior evidence remains pinned to its original revision.`,
+            error: null,
+          }
+        : { ...workspace, busy: null, error: operationMessage(result, "The old plan could not be reconciled.") })
+    }),
     ProductSpecEvidenceRecorded: (packetRef: string) => runOperation(packetRef, async (current, packet) => bridge.recordEvidence({
       runRef: current.productSpec.run!.runRef,
       packetRef,
@@ -497,6 +525,8 @@ export const productSpecWorkspaceView = (
   const projection = workspace.projection
   const plan = workspace.run?.plan ?? workspace.plan
   const busy = workspace.busy !== null
+  const runNeedsDisposition = workspace.run !== null &&
+    (workspace.run.plan.state === "accepted" || workspace.run.plan.state === "revision_mismatch")
   return Stack({ key: "product-spec-workspace", direction: "column", gap: "3", style: { width: "full", minWidth: 0, minHeight: 0, paddingTop: "2" } }, [
     Stack({ key: "product-spec-heading", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
       Text({ key: "product-spec-title", content: "ProductSpec workroom", variant: "title", color: "textPrimary" }),
@@ -530,15 +560,22 @@ export const productSpecWorkspaceView = (
           ]),
           Text({ key: "product-spec-spec-ref", content: `Spec: ${projection.identity.specRef}`, variant: "caption", color: "textMuted" }),
           Text({ key: "product-spec-digest", content: projection.identity.digest, variant: "caption", color: "textMuted" }),
-          TextField({ key: "product-spec-edit-draft", value: workspace.editDraft, multiline: true, disabled: busy || workspace.run !== null, a11y: { label: "ProductSpec revision draft" }, onChange: IntentRef("ProductSpecEditDraftChanged", ComponentValueBinding()), style: { width: "full", minHeight: 240 } }),
-          ...(workspace.run !== null ? [Text({ key: "product-spec-edit-run-lock", content: "Finish or reconcile the accepted run before revising this ProductSpec.", variant: "caption", color: "warning" })] : []),
+          TextField({ key: "product-spec-edit-draft", value: workspace.editDraft, multiline: true, disabled: busy || runNeedsDisposition, a11y: { label: "ProductSpec revision draft" }, onChange: IntentRef("ProductSpecEditDraftChanged", ComponentValueBinding()), style: { width: "full", minHeight: 240 } }),
+          ...(runNeedsDisposition ? [Stack({ key: "product-spec-run-reconciliation", direction: "column", gap: "2", style: { width: "full", padding: "3", backgroundColor: "surfaceRaised", borderRadius: "md" } }, [
+            Text({ key: "product-spec-edit-run-lock", content: workspace.run!.plan.state === "revision_mismatch" ? "ProductSpec identity changed. New dispatch is stopped until this old plan is explicitly superseded or cancelled." : "Finish, supersede, or cancel the accepted run before revising this ProductSpec.", variant: "body", color: "warning" }),
+            Text({ key: "product-spec-run-reconciliation-identity", content: `Old identity: revision ${workspace.run!.spec.revision} · ${workspace.run!.spec.digest}`, variant: "caption", color: "textMuted" }),
+            Stack({ key: "product-spec-run-reconciliation-actions", direction: "row", gap: "2", style: { width: "full" } }, [
+              Button({ key: "product-spec-run-supersede", label: "Supersede old plan", variant: "primary", disabled: busy || workspace.blockedReason.trim() === "", onPress: IntentRef("ProductSpecRunDispositionSelected", StaticPayload("superseded")) }),
+              Button({ key: "product-spec-run-cancel", label: "Cancel old plan", variant: "secondary", disabled: busy || workspace.blockedReason.trim() === "", onPress: IntentRef("ProductSpecRunDispositionSelected", StaticPayload("cancelled")) }),
+            ]),
+          ])] : []),
           ...(workspace.editProposal !== null ? [Stack({ key: "product-spec-edit-review", direction: "column", gap: "2", style: { width: "full", minWidth: 0, padding: "3", backgroundColor: "surfaceRaised", borderRadius: "md" } }, [
             Text({ key: "product-spec-edit-review-title", content: `Revision ${workspace.editProposal.previous.revision} → ${workspace.editProposal.next.revision}`, variant: "heading", color: "textPrimary" }),
             Text({ key: "product-spec-edit-reconciliation", content: `Retained: ${workspace.editProposal.reconciliation.retainedCriterionIds.join(", ") || "none"} · Changed: ${workspace.editProposal.reconciliation.changedCriterionIds.join(", ") || "none"} · Added: ${workspace.editProposal.reconciliation.addedCriterionIds.join(", ") || "none"} · Removed: ${workspace.editProposal.reconciliation.removedCriterionIds.join(", ") || "none"}`, variant: "body", color: "warning" }),
             Text({ key: "product-spec-edit-diff", content: workspace.editProposal.diff, variant: "caption", color: "textMuted" }),
             Text({ key: "product-spec-edit-disposition", content: "Confirmation explicitly supersedes every affected prior-revision packet. Evidence remains pinned to its original criterion and does not cross revisions.", variant: "caption", color: "warning" }),
             Button({ key: "product-spec-edit-confirm", label: "Confirm and supersede affected packets", variant: "primary", disabled: busy, onPress: IntentRef("ProductSpecEditConfirmed") }),
-          ])] : workspace.run === null && workspace.editDraft !== projection.sourceMarkdown ? [Button({ key: "product-spec-edit-propose", label: "Review revision diff", variant: "secondary", disabled: busy, onPress: IntentRef("ProductSpecEditProposed") })] : []),
+          ])] : !runNeedsDisposition && workspace.editDraft !== projection.sourceMarkdown ? [Button({ key: "product-spec-edit-propose", label: "Review revision diff", variant: "secondary", disabled: busy, onPress: IntentRef("ProductSpecEditProposed") })] : []),
           Text({ key: "product-spec-criteria-title", content: `${projection.criteria.length} acceptance criteria`, variant: "label", color: "textPrimary" }),
           ...projection.criteria.map((criterion) => Stack({ key: `product-spec-criterion-${criterion.id}`, direction: "row", gap: "2", align: "start", style: { width: "full", minWidth: 0 } }, [
             Badge({ key: `product-spec-criterion-badge-${criterion.id}`, label: criterion.id, tone: "neutral" }),

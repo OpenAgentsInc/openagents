@@ -371,6 +371,70 @@ describe("ProductSpec workroom authority", () => {
     })).toMatchObject({ ok: false, reason: "invalid_transition" })
   })
 
+  test("stops dispatch on revision mismatch until the old plan is explicitly disposed", () => {
+    const { workspaceRoot, service } = harness()
+    const projection = openFixture(service)
+    const proposed = service.proposePlan(validPlan(projection.identity))
+    expect(proposed.ok).toBe(true)
+    if (!proposed.ok) return
+    const accepted = service.acceptPlan({ planRef: proposed.value.planRef, expectedSpec: projection.identity })
+    expect(accepted.ok).toBe(true)
+    if (!accepted.ok) return
+    expect(service.admitPacket({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      leaseRef: "lease.before.revision",
+      executorRef: "agent.root",
+      executionMode: "owner-present",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: true })
+
+    writeFileSync(join(workspaceRoot, "specs", "fixture.product-spec.md"), validSpec(2).replace("immutable digest", "revised immutable digest"))
+    const refreshed = service.run(accepted.value.runRef)
+    expect(refreshed).toMatchObject({ ok: true, value: { plan: { state: "revision_mismatch" } } })
+    expect(service.open({
+      workContextRef: "work.context.fixture",
+      relativePath: "specs/fixture.product-spec.md",
+    })).toMatchObject({ ok: true, value: { activeRunRef: accepted.value.runRef } })
+    expect(service.admitPacket({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.execution",
+      leaseRef: "lease.after.revision",
+      executorRef: "agent.child",
+      executionMode: "afk",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: false, reason: "revision_mismatch" })
+
+    const disposed = service.disposeRun({
+      runRef: accepted.value.runRef,
+      disposition: "superseded",
+      reason: "Revision 2 replaces the accepted intent.",
+      expectedSpec: projection.identity,
+    })
+    expect(disposed).toMatchObject({
+      ok: true,
+      value: {
+        plan: {
+          state: "superseded",
+          packets: [
+            { state: "superseded", activeLease: null, blockedReason: "Revision 2 replaces the accepted intent." },
+            { state: "superseded", blockedReason: "Revision 2 replaces the accepted intent." },
+          ],
+        },
+      },
+    })
+    expect(service.disposeRun({
+      runRef: accepted.value.runRef,
+      disposition: "superseded",
+      reason: "Revision 2 replaces the accepted intent.",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: true, reconciled: true })
+    expect(service.open({
+      workContextRef: "work.context.fixture",
+      relativePath: "specs/fixture.product-spec.md",
+    })).toMatchObject({ ok: true, value: { state: "ready" } })
+  })
+
   test("requires a confirmed revision bump and returns criterion reconciliation", () => {
     const { stateRoot, service } = harness()
     const current = openFixture(service)

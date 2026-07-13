@@ -241,6 +241,58 @@ describe("ProductSpec Effect Native workroom", () => {
     expect(nodeByKey(view, "product-spec-cancel-packet.ac-1")?.disabled).toBe(true)
   })
 
+  test("renders and executes explicit old-plan reconciliation after a revision mismatch", async () => {
+    const mismatchRun: ProductSpecRun = {
+      ...acceptedRun([{ ...packets[0]!, state: "active", activeLease: { leaseRef: "lease.old", executorRef: "agent.root", executionMode: "owner-present", admittedAt: "2026-07-13T12:02:00.000Z" } }, packets[1]!]),
+      plan: {
+        ...acceptedRun().plan,
+        state: "revision_mismatch",
+        packets: [{ ...packets[0]!, state: "active", activeLease: { leaseRef: "lease.old", executorRef: "agent.root", executionMode: "owner-present", admittedAt: "2026-07-13T12:02:00.000Z" } }, packets[1]!],
+      },
+    }
+    const disposedRun: ProductSpecRun = {
+      ...mismatchRun,
+      plan: {
+        ...mismatchRun.plan,
+        state: "superseded",
+        packets: mismatchRun.plan.packets.map(packet => ({ ...packet, state: "superseded" as const, activeLease: null, blockedReason: "Intent changed" })),
+      },
+    }
+    const requests: unknown[] = []
+    const state = await Effect.runPromise(Effect.gen(function* () {
+      const ref = yield* SubscriptionRef.make({
+        ...capableState(),
+        productSpec: { ...emptyProductSpecWorkspaceState(), projection, editDraft: projection.sourceMarkdown, run: mismatchRun, plan: mismatchRun.plan, blockedReason: "Intent changed" },
+      })
+      const handlers = makeProductSpecWorkspaceHandlers(ref, {
+        ...unavailableProductSpecRendererBridge,
+        disposeRun: async value => { requests.push(value); return { ok: true, value: disposedRun } },
+      })
+      yield* handlers.ProductSpecRunDispositionSelected("superseded")
+      return yield* SubscriptionRef.get(ref)
+    }))
+    expect(requests).toEqual([{
+      runRef: mismatchRun.runRef,
+      disposition: "superseded",
+      reason: "Intent changed",
+      expectedSpec: identity,
+    }])
+    expect(state.productSpec.run?.plan.state).toBe("superseded")
+    expect(state.productSpec.notice).toContain("editing is unlocked")
+
+    const view = productSpecWorkspaceView({
+      ...emptyProductSpecWorkspaceState(),
+      projection,
+      editDraft: projection.sourceMarkdown,
+      run: mismatchRun,
+      plan: mismatchRun.plan,
+      blockedReason: "Intent changed",
+    }, "work.context.demo")
+    expect(nodeByKey(view, "product-spec-edit-run-lock")?.content).toContain("dispatch is stopped")
+    expect((nodeByKey(view, "product-spec-run-supersede")?.onPress as { name?: string } | undefined)?.name).toBe("ProductSpecRunDispositionSelected")
+    expect(nodeByKey(view, "product-spec-edit-draft")?.disabled).toBe(true)
+  })
+
   test("binds plan and packet transitions to host-confirmed authority", async () => {
     const requests: Array<Readonly<{ op: string; value: unknown }>> = []
     const dispatched: Array<{ run: ProductSpecRun; packet: ProductSpecWorkPacket }> = []

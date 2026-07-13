@@ -9,6 +9,7 @@ export const ProductSpecEditConfirmChannel = "openagents:product-spec:edit-confi
 export const ProductSpecPacketAdmitChannel = "openagents:product-spec:packet-admit" as const
 export const ProductSpecPacketBlockChannel = "openagents:product-spec:packet-block" as const
 export const ProductSpecPacketDispositionChannel = "openagents:product-spec:packet-disposition" as const
+export const ProductSpecRunDispositionChannel = "openagents:product-spec:run-disposition" as const
 export const ProductSpecEvidenceRecordChannel = "openagents:product-spec:evidence-record" as const
 export const ProductSpecEvidenceVerifyChannel = "openagents:product-spec:evidence-verify" as const
 export const ProductSpecOwnerDispositionChannel = "openagents:product-spec:owner-disposition" as const
@@ -311,6 +312,14 @@ export const ProductSpecPacketDispositionRequestSchema = Schema.Struct({
 })
 export type ProductSpecPacketDispositionRequest = typeof ProductSpecPacketDispositionRequestSchema.Type
 
+export const ProductSpecRunDispositionRequestSchema = Schema.Struct({
+  runRef: RefSchema,
+  disposition: Schema.Literals(["cancelled", "superseded"]),
+  reason: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+  expectedSpec: ProductSpecIdentitySchema,
+})
+export type ProductSpecRunDispositionRequest = typeof ProductSpecRunDispositionRequestSchema.Type
+
 export const ProductSpecEvidenceRequestSchema = Schema.Struct({
   runRef: RefSchema,
   packetRef: RefSchema,
@@ -372,6 +381,7 @@ export const decodeProductSpecEditConfirmRequest = (value: unknown) => decode<Pr
 export const decodeProductSpecPacketAdmitRequest = (value: unknown) => decode<ProductSpecPacketAdmitRequest>(ProductSpecPacketAdmitRequestSchema, value)
 export const decodeProductSpecPacketBlockRequest = (value: unknown) => decode<ProductSpecPacketBlockRequest>(ProductSpecPacketBlockRequestSchema, value)
 export const decodeProductSpecPacketDispositionRequest = (value: unknown) => decode<ProductSpecPacketDispositionRequest>(ProductSpecPacketDispositionRequestSchema, value)
+export const decodeProductSpecRunDispositionRequest = (value: unknown) => decode<ProductSpecRunDispositionRequest>(ProductSpecRunDispositionRequestSchema, value)
 export const decodeProductSpecEvidenceRequest = (value: unknown) => decode<ProductSpecEvidenceRequest>(ProductSpecEvidenceRequestSchema, value)
 export const decodeProductSpecVerificationRequest = (value: unknown) => decode<ProductSpecVerificationRequest>(ProductSpecVerificationRequestSchema, value)
 export const decodeProductSpecOwnerDispositionRequest = (value: unknown) => decode<ProductSpecOwnerDispositionRequest>(ProductSpecOwnerDispositionRequestSchema, value)

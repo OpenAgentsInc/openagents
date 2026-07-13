@@ -288,6 +288,7 @@ import {
   ProductSpecPlanAcceptChannel,
   ProductSpecPlanProposeChannel,
   ProductSpecRunGetChannel,
+  ProductSpecRunDispositionChannel,
   decodeProductSpecCreateRequest,
   decodeProductSpecEditConfirmRequest,
   decodeProductSpecEditProposalRequest,
@@ -300,6 +301,7 @@ import {
   decodeProductSpecPlanAcceptRequest,
   decodeProductSpecPlanProposalRequest,
   decodeProductSpecRunGetRequest,
+  decodeProductSpecRunDispositionRequest,
   decodeProductSpecVerificationRequest,
   type ProductSpecOperationError,
 } from "./product-spec-workroom-contract.ts"
@@ -1339,6 +1341,12 @@ ipcMain.handle(ProductSpecPacketDispositionChannel, (event, raw: unknown) => {
   return request === null
     ? productSpecUnavailable("The ProductSpec packet disposition is invalid.")
     : withProductSpecWorkroom(event, authority => authority.service.disposePacket(request))
+})
+ipcMain.handle(ProductSpecRunDispositionChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecRunDispositionRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec run disposition is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.disposeRun(request))
 })
 ipcMain.handle(ProductSpecEvidenceRecordChannel, (event, raw: unknown) => {
   const request = decodeProductSpecEvidenceRequest(raw)
