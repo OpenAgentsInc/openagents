@@ -7,7 +7,8 @@ OpenAgents ProductSpec code has not yet caught up to the upstream features
 described here
 
 Upstream audited: `gokulrajaram/ProductSpec` at `9ef2654` (`0.19.0`, document
-format `0.1`)
+format `0.1`); Agent Run addendum (below) audited at `c7250a8` (parser
+`0.22.0` on main, npm still `0.19.0`) on 2026-07-13
 
 ## Decision
 
@@ -131,6 +132,46 @@ The current upstream vocabulary has no `assurance_spec`, `test_report`, or
 `assurance_receipt` type. The first dogfood should use `engineering_spec`,
 `code`, or `other` honestly. Propose new upstream types only after real usage
 shows that `other` loses material interoperability.
+
+## Agent Run addendum (upstream v0.21.0/v0.22.0, 2026-07-13)
+
+Upstream added a second companion artifact: **Agent Run**
+(`.agent-run.json`, `agent_run_format_version: "0.1"`,
+`schema/agent-run.schema.json`) — a self-reported receipt for one agent
+execution against a pinned Product Spec. `productspec init-run` drafts it with
+every `AC-`/`EVAL-`/`SM-` ID at `not_checked`; the executing agent then fills
+in per-item `passed`/`failed`/`not_checked`/`blocked`, evidence links, a
+`drift` block, and a free-text `completion_claim`. `productspec validate-run`
+and the MCP `draft_agent_run` tool shipped with it. Distribution honesty: all
+of this is on upstream `main` but unpublished to npm (registry latest is
+`0.19.0`).
+
+How it relates to this boundary:
+
+- **Attachment is directional and second-class.** The run pins the spec
+  (`product_spec.path` + `spec_revision` + *optional* `content_hash`), but
+  there is no `agent_run` Related Artifact type, so a Product Spec that wants
+  to index its runs must use `other` with a repo-relative path. Upstream's own
+  starter kit stores runs beside the spec tree (`docs/agent-runs/`) and
+  validates them in CI rather than linking them from the spec.
+- **Validation is shape-only.** `validate-run` does not check that the
+  `checked_items` IDs exist in the referenced spec, does not recompute the
+  content hash, and does not dereference evidence. A structurally valid Agent
+  Run can cite a spec it never read.
+- **PSEL treatment: accepted as a pointer, never a verdict (Law 13).** An
+  `.agent-run.json` is admissible into our loop exactly like any Related
+  Artifact target: a durable, typed *claim record* whose item statuses are the
+  producing agent's self-report. It never enters the Desktop workroom's
+  verification path as a receipt, never satisfies an Assurance obligation, and
+  never moves any of the eight status axes past "a self-report exists." The
+  proposed typed ingest (AGENT_TOOLING.md §7) maps it to the lowest proof
+  rung as self-reported evidence with `producer == claimant` flagged —
+  proposed, not implemented.
+- **What it is genuinely good for:** a portable, machine-checkable statement
+  of *what the agent believes it did*, drafted from the spec's own durable
+  IDs. That is a better claim substrate than prose "done" messages, and our
+  `claim` CLI / `check_completion_claim` tooling can meet it: their artifact
+  records the claim; our tools report what remains unverified about it.
 
 ## Two digests, not one
 

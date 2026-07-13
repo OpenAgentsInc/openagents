@@ -332,3 +332,42 @@ axis from repo state, call any model, or claim Environment Profile support it
 does not have. The value of shipping the honest thin version first is the same
 value the whole standard bets on: an agent that can *see* 0/18 executed is an
 agent that cannot claim done.
+
+## 7. Agent Run interop (proposed 2026-07-13 — nothing here is implemented)
+
+Upstream v0.21.0/v0.22.0 added **Agent Run** (`.agent-run.json`): a
+self-reported per-run receipt drafted by `productspec init-run` / the MCP
+`draft_agent_run` tool and filled in by the executing agent (GAP_ANALYSIS.md
+§5.1 has the verified shape). Our `claim` command and `check_completion_claim`
+tool answer the same moment in an agent's loop — "I want to say done" — so the
+relationship should be explicit:
+
+- **`init-run` drafts a claim; `claim` audits one.** Their artifact gives the
+  agent a structured place to assert `passed` per item. Our tool takes the
+  assertion and returns every obligation across all eight axes without
+  rounding up. These compose rather than compete: an agent working under both
+  standards drafts the Agent Run, runs `claim`, and attaches the un-rounded
+  audit output to the run's `evidence` rather than asserting bare `passed`.
+- **Ingest (`agent-run ingest <file>` — proposed CLI verb + MCP read tool).**
+  Parse and shape-validate an `.agent-run.json`, then map it into our typed
+  evidence model as **self-reported evidence at the lowest proof rung**
+  (proposed rung vocabulary addition: `self_report`), with:
+  `producer == claimant` always flagged (it is structurally true for this
+  artifact kind), the spec pin recorded (and `content_hash` absence surfaced
+  as a typed gap — upstream makes the hash optional), per-item statuses
+  imported as *claimed* observations that never touch the observation axis,
+  and cross-checks upstream skips: do the cited item IDs exist in the pinned
+  spec, and does the recomputed digest match. Never a verdict (Law 13); never
+  admissible where `producer_may_verify: false` requires an independent
+  producer.
+- **Emit (`agent-run emit` — proposed, lower priority).** Project a valid
+  `.agent-run.json` from our receipts for repos that consume upstream's
+  format. Down-conversion is lossy by construction (eight axes → one item
+  status; independence and environment binding have no upstream field), so an
+  emitted run must carry a note that statuses were down-converted and link
+  back to the receipts. Do not build until someone real asks for it.
+- **Ship gate.** Ingest is PSEL-adjacent (it needs the upstream-parity item
+  model to cross-check IDs) and lands no earlier than PSEL-0; it must not
+  jump the AT-1 → PSEL-0 → AS-MVP order. Emit waits for real receipts (AS-3),
+  because emitting self-report-shaped output from a system whose point is
+  independent observation is only honest when the receipts behind it exist.

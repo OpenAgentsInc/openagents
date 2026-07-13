@@ -361,3 +361,77 @@ first real receipt through the first real bridge. Tooling now (AT-1), parity
 next (PSEL-0), vertical slice before taxonomy (AS-MVP), mutation testing as
 the sensitivity engine, public traces as the wedge once there is something
 true to trace. Receipts over prose — including this prose.
+
+## 6. Addendum (2026-07-13, same day): the "intent harness" post and Agent Run
+
+Hours after the body of this document was written, the ProductSpec founder
+published an announcement repositioning the project as "the open intent
+harness for AI-native software work" and introducing **Agent Run** — in the
+post's words, "a receipt for one agent execution against a pinned Product
+Spec," drafted by `productspec init-run` with every AC/EVAL/SM at
+`not_checked`, which the agent then fills in. This section records what we
+verified, what it changes, and what it does not.
+
+### 6.1 Verified against upstream, not the post
+
+Post ≠ proof, so we checked `origin/main` (`c7250a8`). The feature is real and
+shipped in two releases: v0.21.0 (the `.agent-run.json` artifact,
+`validate-run`, `schema/agent-run.schema.json`) and v0.22.0 (`init-run`, the
+MCP `draft_agent_run` tool — the server's 14th, a `draft` status, conformance
+fixtures). The GitHub Action's `agent_runs` globs and a starter-kit example
+are on main under "Unreleased." One material announced-vs-shipped gap: **npm
+still serves 0.19.0**, so every Agent Run command in the post and in
+upstream's own README fails against the registry today. Exact schema shape
+and limits are in GAP_ANALYSIS.md §5.1; the evidence-loop treatment is in
+PRODUCTSPEC_EVIDENCE_LOOP.md's Agent Run addendum; the interop proposal is
+AGENT_TOOLING.md §7.
+
+### 6.2 What the move validates
+
+Three things, all good for us:
+
+- **The receipts thesis.** The intent layer's maintainer now says agents
+  "should not just say 'done'" — they should leave a durable per-criterion
+  record against a pinned spec revision. That is the market thesis of our
+  entire assurance program ("AI-accountable work," in the post's framing),
+  stated by the adjacent standard's author. When we ship independent receipts,
+  the category will already have been evangelized one rung below us.
+- **The harness framing.** "Intent harness" is a better name for what
+  ProductSpec actually is than "spec format," and it clarifies the seam: the
+  harness keeps the agent attached to *intent*; our layer decides what would
+  count as *proof*. Complementary vocabularies, not competing ones.
+- **The prediction record.** §4.2 above flagged the clone risk ("their vision
+  doc's 'managed implementation' arc could grow a quality/verification
+  story"). Agent Run is the first concrete step in that direction — and it
+  stopped exactly at the line we predicted a single-artifact standard would
+  stop at: self-report.
+
+### 6.3 Where the differentiation sharpens
+
+An Agent Run is filled in by the agent whose work it certifies. Our design
+treats that as the canonical false-green failure mode, not a receipt: no
+independence (`producer_may_verify` has no analogue), no oracle sensitivity
+(nothing requires a check that can *fail*), one status axis per item where we
+never collapse eight, a spec pin whose `content_hash` is optional, and a
+`validate-run` that checks shape without cross-checking the spec's item IDs or
+dereferencing evidence. None of this is a criticism of upstream's layer — a
+harness receipt is honest *as a claim record*, and their tooling never calls
+it more than that. It is the boundary marker: **they shipped the self-report
+rung; we are the verified tier above it.** The one-line positioning we should
+use from now on: *an Agent Run records what the agent believes it did; an
+Assurance Receipt records what an independent observation confirmed.*
+
+### 6.4 Plan changes (small, additive)
+
+- **Interop, not competition:** ingest `.agent-run.json` as self-reported
+  lowest-rung evidence with `producer == claimant` flagged (AGENT_TOOLING.md
+  §7) — PSEL-gated, proposed-not-implemented. Emit is deferred until real
+  receipts exist.
+- **Upstream gift list grows by one** (§4.2): propose an `agent_run` Related
+  Artifact type — their own artifact has no first-class attachment vocabulary
+  in their own spec.
+- **Nothing else moves.** AT-1 → PSEL-0 → AS-MVP stays the order. Agent Run
+  raises the value of the vertical slice (the contrast in §6.3 is only
+  demonstrable once one real independent receipt exists) and changes none of
+  its content. The npm lag is also a repeated lesson for #8767's gate:
+  announcing before distribution is a failure mode we already chose to avoid.

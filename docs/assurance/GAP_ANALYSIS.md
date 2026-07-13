@@ -1,6 +1,8 @@
 # AssuranceSpec vs upstream ProductSpec — three-way gap analysis
 
-Date: 2026-07-13
+Date: 2026-07-13 (updated same day for upstream v0.21.0/v0.22.0 **Agent Run**,
+verified against `origin/main` `c7250a8` after the founder's "open intent
+harness" announcement post — see §5.1)
 Status: analysis; no implementation claims beyond those named with exact paths
 References:
 - Ours, implemented: `packages/assurance-spec/` (`@openagentsinc/assurance-spec`
@@ -9,9 +11,12 @@ References:
   [`OBSERVER_PRODUCT_PLAN.md`](./OBSERVER_PRODUCT_PLAN.md),
   [`MVP_FIRST_ASSURANCESPEC.md`](./MVP_FIRST_ASSURANCESPEC.md),
   [`PRODUCTSPEC_EVIDENCE_LOOP.md`](./PRODUCTSPEC_EVIDENCE_LOOP.md)
-- Theirs, shipped: `gokulrajaram/ProductSpec` `origin/main`, parser
-  `@productspec/parser` 0.20.0 (npm latest 0.19.0; MCP `SERVER_VERSION`
-  "0.20.0"); read-only clone `projects/repos/ProductSpec`
+- Theirs, shipped: `gokulrajaram/ProductSpec` `origin/main` at `c7250a8`,
+  parser `@productspec/parser` 0.22.0 on main (**npm latest is still 0.19.0**
+  — v0.20.0–v0.22.0, including all Agent Run functionality, are merged but not
+  published to the registry, so the README's own
+  `npm exec --package @productspec/parser -- productspec init-run` does not
+  work from npm today); read-only clone `projects/repos/ProductSpec`
 Companion documents: [`AGENT_TOOLING.md`](./AGENT_TOOLING.md) (our agent-surface
 design), [`../fable/2026-07-13-productspec-assurance-qa-program-analysis.md`](../fable/2026-07-13-productspec-assurance-qa-program-analysis.md)
 (strategy analysis)
@@ -32,11 +37,13 @@ Three columns, kept honestly separate throughout:
   compiler, receipts with 8 status axes, Decision Trace, 4 conformance levels,
   a 12-layer authority matrix) plus the Observer product plan. Designed means
   designed. None of it is code unless the implemented column names it.
-- **Them — shipped.** Upstream ProductSpec v0.20.0: the intent-layer standard
-  plus a complete agent-adoption toolchain — 13-tool stdio MCP server, spec
-  sessions with hash+revision pinning, two installable skills, a drop-in
+- **Them — shipped.** Upstream ProductSpec v0.22.0 (on main): the intent-layer
+  standard plus a complete agent-adoption toolchain — 14-tool stdio MCP server,
+  spec sessions with hash+revision pinning, two installable skills, a drop-in
   starter kit, a GitHub Action, a spec dependency graph, Decision Trace
-  validation, a conformance corpus, JSON schemas, and npm distribution.
+  validation, a conformance corpus, JSON schemas, npm distribution (currently
+  lagging at 0.19.0), and — new in v0.21.0/v0.22.0 — the **Agent Run**
+  self-reported execution receipt (§5.1).
 
 The one-sentence verdict: **our design goes materially deeper than upstream on
 proof semantics; upstream is materially ahead of us on agent-adoption
@@ -177,11 +184,12 @@ do not yet specify agent tooling; AGENT_TOOLING.md now does.
 
 **Them — shipped.** Three complementary surfaces plus distribution:
 1. **MCP server** — `productspec mcp`, hand-rolled JSON-RPC 2.0 over stdio
-   (no SDK), protocol `2024-11-05`, 13 tools: `begin_spec_session`,
+   (no SDK), protocol `2024-11-05`, 14 tools: `begin_spec_session`,
    `check_spec_session`, `list_product_specs`, `get_product_spec`,
    `validate_product_spec`, `get_scope`, `get_acceptance_criteria`,
    `get_ai_evals`, `get_success_metrics`, `get_related_artifacts`,
-   `get_spec_graph`, `get_evidence_checklist`, `check_completion_claim`.
+   `get_spec_graph`, `get_evidence_checklist`, `draft_agent_run` (v0.22.0),
+   `check_completion_claim`.
    Path resolution confined to `root`, symlinks skipped, deterministic, never
    calls an LLM, never judges code correctness.
 2. **Two skills** — `productspec` (implement under a spec) and
@@ -236,6 +244,70 @@ interop, and it blocks more than it appears to. (b) **Our extension:** the
 receipt pipeline (normalized receipts → workroom bridge → Related Artifact
 publication) is designed-only; its first honest slice is AS-MVP's
 `AO-CW-AC-04-01` path, not a general system.
+
+### 5.1 Agent Run (upstream v0.21.0/v0.22.0, verified 2026-07-13)
+
+The founder's 2026-07-13 announcement repositions ProductSpec as "the open
+intent harness for AI-native software work" and introduces **Agent Run**, "a
+receipt for one agent execution against a pinned Product Spec." Verified
+against `origin/main` `c7250a8`:
+
+**Shipped on main.**
+- v0.21.0 "Agent Harness Records": the `.agent-run.json` companion artifact,
+  `productspec validate-run`, `schema/agent-run.schema.json`, an
+  agent-ready-repo example, and the README/agent-docs "intent harness
+  contract" repositioning.
+- v0.22.0 "Agent Run Drafting": `productspec init-run <spec.product-spec.md>
+  [run.agent-run.json]` (output path optional, unlike the post's two-argument
+  form), the MCP `draft_agent_run` tool, the `draft` run status, and
+  conformance fixtures (`conformance/valid/minimal.agent-run.json`,
+  invalid-status and missing-required-field fixtures).
+- In the "Unreleased" changelog section but on main: the GitHub Action's
+  optional `agent_runs` globs and a starter-kit Agent Run example validated in
+  CI.
+
+**Announced but not distributed.** npm latest is 0.19.0; none of the Agent Run
+functionality is installable from the registry, so the post's quoted command
+only works from a source checkout today.
+
+**Exact shape** (`agent_run_format_version: "0.1"`). Required: `run_id`,
+`agent { name, version? }`, `product_spec { path, spec_revision,
+content_hash? }` — note the hash pin is *optional*, weaker than their own spec
+sessions — `started_at`, `status` ∈ `draft`/`completed`/`blocked`/`failed`,
+`checked_items[]` (`item_id` matching `^(AC|EVAL|SM)-[1-9][0-9]*$`, `status` ∈
+`passed`/`failed`/`not_checked`/`blocked`, optional `evidence[]` links from
+the same 14-type vocabulary, optional `notes`), and `drift { detected,
+decision_trace_path?, summary? }`. Optional: `completed_at`,
+`completion_claim` (free text).
+
+**What it is not.** `validate-run` validates the JSON in isolation: shape
+only. It does not cross-check that `checked_items` IDs exist in the referenced
+spec, does not recompute `content_hash`, and does not dereference evidence
+links. There is no `agent_run` type in `RELATED_ARTIFACT_TYPES`, so a Product
+Spec cannot attach a run with first-class vocabulary — the binding is
+directional (run pins spec), and a spec-side pointer must use `other`.
+Most importantly, **the receipt is self-reported**: the same agent that did
+the work fills in `passed`/`failed`, drift, and the completion claim. One
+status axis per item, no independence policy, no oracle or falsifier concept,
+no environment binding, no producer identity beyond a self-declared
+`agent.name`.
+
+**Read and action.** This validates the receipts thesis — the intent layer's
+own maintainer now agrees that "done" must be a durable per-criterion record
+against a pinned spec, which is the "AI-accountable work" market both layers
+serve. It also marks, precisely, where our layer begins: an Agent Run is a
+*claim*; an Assurance Receipt is an adapter-produced *observation* with
+provenance, environment, oracle sensitivity, independence
+(`producer_may_verify: false`), and eight axes that never round up (Law 7,
+Law 10). Upstream shipping the self-report rung does not compress our
+differentiation — it names the baseline we verify above. Action: treat
+`.agent-run.json` as an ingestable low-rung evidence *pointer* (never a
+verdict — Law 13), mapped into our typed model with `producer == claimant`
+flagged; the concrete interop proposal is AGENT_TOOLING.md §7 and it is
+proposed, not implemented. The upstream-proposal candidate list in the
+companion strategy doc (fable §4.2) gains a third cheap item: an `agent_run`
+Related Artifact type, so the artifact they created has first-class attachment
+vocabulary in their own spec.
 
 ## 6. Dependency graph
 
@@ -376,13 +448,18 @@ sections' "upstream is ahead" reading stays calibrated:
 - **Dual document/intent digests** versus content-hash-only sessions.
 - **Receipts report; people and policy decide** (Law 10) — upstream's
   `check_completion_claim` gestures at this; our version is a lifecycle
-  commitment.
+  commitment. Agent Run (§5.1) sharpens the contrast rather than closing it:
+  their receipt is filled in by the agent whose work it certifies, which is
+  the exact false-green failure mode `producer_may_verify: false` exists to
+  exclude.
 
 And, symmetrically, where upstream is simply ahead and we should not
-rationalize it: agent ergonomics (13 tools, sessions, skills, starter kit,
+rationalize it: agent ergonomics (14 tools, sessions, skills, starter kit,
 Action, npm), conformance corpus, custom-section preservation, graph
-projection, and sheer distribution surface. Their velocity (v0.7 → v0.20 in
-days) also bought them format drift we must not import.
+projection, and sheer distribution surface. Their velocity (v0.7 → v0.22 in
+days) also bought them format drift we must not import — and, as of v0.21, a
+three-release npm publication lag that leaves their announced headline feature
+uninstallable.
 
 ## 11. Consolidated action list
 
