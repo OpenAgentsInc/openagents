@@ -408,6 +408,35 @@ export const workspaceTreePage = (input: Readonly<{
 const privateSearchContent = (content: string): boolean =>
   /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----|(?:github_pat|gh[pousr]_|sk-|AKIA)[A-Za-z0-9_\-]{8,}|authorization\s*:\s*bearer\s+\S+|(?:password|secret|token)\s*[:=]\s*[^\s]+/iu.test(content)
 
+const gitContentSearchCandidates = (
+  root: string,
+): Readonly<{ pathRefs: ReadonlyArray<string>; truncated: boolean }> | null => {
+  const result = spawnSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    {
+      cwd: root,
+      env: workspaceGitEnvironment(),
+      encoding: "buffer",
+      maxBuffer: 8_000_000,
+      timeout: 10_000,
+    },
+  )
+  if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) return null
+  const safe = result.stdout.toString("utf8").split("\0").flatMap(value => {
+    const pathRef = workspacePathRef(value)
+    if (pathRef === null || pathRef === "") return []
+    const components = pathRef.split("/")
+    return components.some(component => defaultIgnoredName(component) || secretShapedName(component))
+      ? []
+      : [pathRef]
+  }).sort((left, right) => left.localeCompare(right))
+  return {
+    pathRefs: safe.slice(0, maxSearchVisitedEntries),
+    truncated: safe.length > maxSearchVisitedEntries,
+  }
+}
+
 export const searchWorkspace = (input: Readonly<{
   root: string
   grantRef: string
@@ -431,9 +460,39 @@ export const searchWorkspace = (input: Readonly<{
     line: number | null
     preview: string | null
   }> = []
-  const directories = [root]
+  const gitCandidates = input.mode === "content" ? gitContentSearchCandidates(root) : null
+  const directories = gitCandidates === null ? [root] : []
   let visited = 0
-  let truncated = false
+  let truncated = gitCandidates?.truncated ?? false
+
+  if (gitCandidates !== null) {
+    for (const pathRef of gitCandidates.pathRefs) {
+      visited += 1
+      const absolutePath = path.join(root, ...pathRef.split("/"))
+      try {
+        const stats = lstatSync(absolutePath)
+        if (!stats.isFile() || stats.isSymbolicLink() || stats.size > maxSearchFileBytes) continue
+        const bytes = readFileSync(absolutePath)
+        if (bytes.includes(0)) continue
+        const content = bytes.toString("utf8")
+        if (privateSearchContent(content)) continue
+        const lines = content.split(/\r?\n/u)
+        const lineIndex = lines.findIndex(line => line.toLocaleLowerCase().includes(lowered))
+        if (lineIndex >= 0) {
+          matches.push({
+            pathRef,
+            kind: "content",
+            line: lineIndex + 1,
+            preview: lines[lineIndex]!.trim().slice(0, maxSearchPreviewCharacters),
+          })
+        }
+      } catch { /* unreadable or concurrently removed entries are omitted */ }
+      if (matches.length >= wanted) {
+        truncated = true
+        break
+      }
+    }
+  }
 
   while (directories.length > 0 && visited < maxSearchVisitedEntries && matches.length < wanted) {
     const directory = directories.shift()!
