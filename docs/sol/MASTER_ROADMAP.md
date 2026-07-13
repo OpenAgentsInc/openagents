@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 101
+- Revision: 102
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -175,6 +175,17 @@ proof; dated plans and analyses are evidence only.
     Effect/TypeScript and permits one signed process-opaque Rust Desktop media
     helper under the
     [`Effect vs Rust decision`](../voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md).
+24. **Interrupted-turn recovery and autonomous next-turn work are separate
+    promises.** An accepted provider turn survives a Desktop process restart
+    only through main-owned durable turn state, provider identity/cursor/text
+    checkpoints, and startup reconciliation that either resumes exactly once
+    or records an explicit `interrupted_by_restart` outcome. A completed turn
+    may advance a session goal only through server-owned durable goal state,
+    an idempotent outbox/lease, and startup/reconnect scanning. Renderer timers,
+    in-memory schedulers, persisted goal metadata, and model-written audit text
+    prove neither promise. This boundary applies the
+    [`OpenChamber teardown`](../teardowns/2026-07-12-openchamber-product-teardown.md)
+    finding without importing its restart gap.
 
 ## Product and authority model
 
@@ -382,7 +393,7 @@ worker closeout, or polished UI never manufactures live or owner acceptance.
 | C0 | Closed historical implementation baseline for the durable Fleet seam |
 | C1 | Closed/deployed minimum-safe run, claim, reconnect, and supervision substrate |
 | C2 | Closed #8640 simultaneous named Codex+Claude mixed-account proof; substrate only, never client cutover or Sarah authority |
-| C3 | Open product integration boundary: #8547's first managed Agent Computer is accepted in production; #8636's schema/readiness are deployed and its real owner-local plus managed-cloud mobile/Desktop hybrid receipt remains open |
+| C3 | Open product integration boundary: #8547's first managed Agent Computer is accepted in production; #8636's schema/readiness, per-unit hybrid placement, and remote Agent Computer dispatch seams are code/fixture-proven while its real owner-local plus managed-cloud mobile/Desktop hybrid receipt remains open |
 
 R7, not C2, is owner-facing software cutover. The historical C0–C3 evidence
 and fallback rules are archived in Backroom at
@@ -406,24 +417,29 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   launch, and named isolated-account readiness without weakening the fuse
   posture. See the [RC5 closure receipt](./2026-07-12-cut-26-rc5-installed-artifact-closure.md).
 - CUT-27 closes the bounded ordinary Codex/Claude-to-OpenAgents cutover only
-  after its open dependencies and exception register reconcile. It does not
-  manufacture remote-workroom, portability, broker, any-host, or voice proof.
-- #8676 is ready for one real named-Codex Desktop conversation continued under
-  the same refs on physical iPhone plus sign-out/revocation denial. #8677
-  retains fault-convergence proof and is coupled to CUT-09's remaining literal
-  physical network-gap/revocation acceptance.
+  after its open dependencies and exception register reconcile. Its packaged
+  Pylon and Codex executable lookup now resolves through the installed
+  `app.asar.unpacked` resources (`e10c24302b`, `3f6a955801`), and the packaged
+  account projection no longer pulls the broad Pylon custody surface into
+  Electron (`1867312827`). The exact installed named-Codex and named-Claude
+  repository-task proof remains open. CUT-27 does not manufacture remote-
+  workroom, portability, broker, any-host, or voice proof.
+- #8676, #8677, and CUT-09 #8689 are closed. Their physical receipts now cover
+  same-ref named-Codex Desktop-to-iPhone continuation, offline FIFO and
+  exactly-once reconnect, explicit gap/refetch, revocation denial, and no
+  replay after relink. These completed conversation/fault gates do not prove
+  process-restart continuation of an in-flight local provider turn.
 - Closed #8547 proves the first accepted brokered Agent Computer/workroom;
-  #8636 now owns live hybrid local/managed routing. Before that live acceptance, #8636
-  may still compose its managed-cloud runner into intake/activation, remove the
-  hard unconfigured placeholder, persist routing/fallback history through
-  Sync, project capacity/claims, and enforce per-work-unit quota/cost/data-
-  posture constraints. Portability, general broker,
-  owner-managed enrollment, provider-adapter breadth, and any-host directory
-  need bounded leaves rather than silent expansion of those issues. The
-  #8733–#8740 persistent Desktop voice implementation is closed. AUDIO-8 #8741
-  is reopened for owner confirmation of the landed endpointing, turn-fencing,
-  and renderer-update regression fixes and does not expand this remote-work
-  boundary.
+  #8636's structural hybrid-routing gap is now code- and fixture-proven. One
+  `auto` plan can place each unit independently against typed quota, cost, data
+  posture, repository, and task/isolation constraints through one claim
+  registry (`dc88054e7c`), and managed units can cross the authenticated Pylon
+  route to the broker-owned Agent Computer dispatch seam (`8244bd64e9`). #8636
+  remains open for the literal concurrent owner-local plus managed Agent
+  Computer run, Android control, Desktop observation, matching refs, and zero-
+  residue stop/reclaim receipt. Portability, general broker, owner-managed
+  enrollment, provider-adapter breadth, and any-host directory remain in the
+  PORT packet rather than silently expanding #8636.
 - Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
   receipt; it is not current work or a product-front-door decision.
 - #8733 is the closed persistent-audio implementation epic. AUDIO-1 #8734
@@ -432,6 +448,14 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   `main`, but the exact owner launcher still needs real-microphone confirmation
   before re-close. Audio work must not silently broaden CUT, managed workroom,
   Sync, command, behavior-contract, migration, or release authority.
+- [#8744](https://github.com/OpenAgentsInc/openagents/issues/8744) is the bounded
+  Desktop process-restart defect exposed during voice
+  dogfood. Chat-title sanitation and launcher-induced restarts are repaired,
+  but accepted local provider turns still need a durable journal, startup
+  reconciliation, exact-once resume where supported, and explicit
+  `interrupted_by_restart` fallback. The OpenChamber goal loop is useful UX and
+  scheduler evidence, not a substitute: its timer/in-flight state is also
+  memory-only and it does not scan unfinished goals on startup.
 - PORT-00 through PORT-08 are now live as ordered #8745–#8753 beneath #8566.
   They own the previously unfiled remote-first session/graph/attachment/
   checkpoint, broker, first move, owner-managed target, managed-provider,
@@ -478,7 +502,12 @@ Live issues and claims control exact selection. At this snapshot:
 1. Closed #8676/#8677/CUT-09 now supply the physical same-ref named-Codex
    continuation, offline FIFO/exactly-once reconnect, revocation denial, and
    no-replay receipt.
-2. Close CUT-27 last for the local cutover after its remaining acceptance and
+2. Finish #8744's disjoint Desktop restart-recovery slice: durably journal the
+   accepted turn before provider dispatch, checkpoint provider identity/cursor/
+   text, reconcile it on startup, and prove exactly one resumed or explicit
+   interrupted outcome with no duplicate prompt or assistant message. Keep
+   capture opt-in after restart.
+3. Close CUT-27 last for the local cutover after its remaining acceptance and
    exception-register work is satisfied. On the clean installed candidate,
    CUT-27 still proves one
    non-trivial named-Codex and one named-Claude repository task through
@@ -487,19 +516,21 @@ Live issues and claims control exact selection. At this snapshot:
    Android-emulator continuation/control/interruption; accessibility, privacy,
    security, provenance, and rollback evidence; and the product/runbook change
    making OpenAgents Desktop the default local surface for the proven scope.
-3. Continue disjoint #8636 source/persistence/capacity work on top of closed
-   #8547's accepted managed workroom, then retain the real owner-local plus
-   managed-cloud hybrid-routing receipt. Keep metering, target custody,
-   quota/cost/data posture, usage, writeback, reclaim, and fallback explicit.
-4. Finish AUDIO-8 #8741's exact owner-launcher microphone/UI confirmation,
+4. Complete #8636's remaining live acceptance on top of closed #8547 and the
+   landed per-unit placement plus remote Agent Computer dispatch seams: run
+   concurrent owner-local and managed-cloud units, control the managed unit
+   from Android, observe/resume from Desktop, and retain matching routing,
+   claim, outcome, usage, writeback, fallback, stop, and reclaim refs with zero
+   residue or duplicate claims.
+5. Finish AUDIO-8 #8741's exact owner-launcher microphone/UI confirmation,
    then re-close it. Treat closed #8733 as the P1 audio implementation
    substrate and do not widen Runtime Gateway, Desktop command, Sync, or
    release authority.
-5. Execute PORT-00 #8745 first. Then PORT-01 #8746 and PORT-02 #8747 may run
+6. Execute PORT-00 #8745 first. Then PORT-01 #8746 and PORT-02 #8747 may run
    in parallel only after the shared schema/intent freeze, with migrations,
    command IDs, catalogs, and policy serialized. PORT-03 #8748 composes both
    into the first real local↔managed move and failback.
-6. After the shared target contract, PORT-04 #8749 owner-managed enrollment and
+7. After the shared target contract, PORT-04 #8749 owner-managed enrollment and
    PORT-05 #8750's audited provider adapter may proceed in parallel. Then ship
    PORT-06 #8751 mobile any-host control, PORT-07 #8752 session-neutral voice,
    and PORT-08 #8753 signed R7 dogfood in order. The final journey must retain
@@ -588,10 +619,15 @@ closed presentation backlog. Claims are refreshed before every mutation.
 29. **Streaming is not recovery authority.** Durable per-thread events repair
     the bounded projection before volatile delivery resumes; preview/spinner/
     socket health never proves completion.
-30. **Fast interaction has one authority path.** Pointer, palette, menu, and
+30. **Restart recovery is not goal autonomy.** An accepted in-flight turn uses
+    a durable journal and startup reconciliation. A completed turn advances a
+    goal only through a durable server-owned queue, lease, idempotency key, and
+    startup scan. An in-memory timer, scheduler, or model audit cannot replace
+    either path.
+31. **Fast interaction has one authority path.** Pointer, palette, menu, and
     conflict-safe hotkeys dispatch the same effective intent; local focus is
     view state, while controls receive policy and durable outcomes.
-31. **Persistent audio is media transport plus explicit custody.** The audio
+32. **Persistent audio is media transport plus explicit custody.** The audio
     socket and Google provider streams rotate beneath one generation-fenced
     application session. Raw frames use the private media/storage plane, not
     Runtime Gateway events or Khala Sync. For #8733 owner dogfood, retained
@@ -637,6 +673,7 @@ evidence remains discoverable here:
 - [`remote-first portable-session pathway`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
 - [`persistent Desktop voice/audio plan`](../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md)
 - [`Effect vs Rust audio architecture decision`](../voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md)
+- [`OpenChamber whole-product teardown`](../teardowns/2026-07-12-openchamber-product-teardown.md)
 - [`Sol receipts and dated analyses`](./README.md)
 
 Do not regrow this file into a landing diary. Promote policy here, keep live
