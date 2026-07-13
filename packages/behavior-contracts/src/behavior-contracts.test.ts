@@ -142,7 +142,7 @@ describe("behavior contract registry", () => {
     expect(validation).toEqual({ issues: [], ok: true })
     expect(decoded.contracts).toHaveLength(29)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
-    expect(pending).toHaveLength(10)
+    expect(pending).toHaveLength(9)
     expect(
       decoded.contracts.find(
         contract =>
@@ -187,7 +187,8 @@ describe("behavior contract registry", () => {
       contract =>
         contract.contractId === "openagents_cloud.brokered_session_secrets.v1",
     )
-    expect(brokeredSecrets?.state).toBe("pending")
+    expect(brokeredSecrets?.state).toBe("enforced")
+    expect(brokeredSecrets?.enforcementTier).toBe("test-sweep")
     expect(brokeredSecrets?.statement).toContain("Secrets access via a broker")
     const anyHostVoice = decoded.contracts.find(
       contract =>

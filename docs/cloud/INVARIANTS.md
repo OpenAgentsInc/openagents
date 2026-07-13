@@ -44,6 +44,17 @@ design context only.
   workroom, program, org, or template policy.
 - Secret access must produce redacted evidence that can be audited without
   leaking secret material.
+- Portable-session capabilities use `PortableCapabilityBroker` and the frozen
+  `PortableCapabilityLease` scope. Every provider, SCM, MCP/tool, or bounded API
+  redemption is bound to one owner/session/attachment-generation/target plus a
+  least-privilege permission set and bounded TTL. Owner-local and
+  OpenAgents-managed targets enter through explicit class-matched adapters.
+  The broker retains refs and outcomes only; raw material may exist solely in
+  the injected vault-to-adapter callback. A destination generation receives a
+  freshly authorized source-grant ref only after source revocation and target
+  wipe. Replay, expiry, broker outage, target denial, or cleanup failure cannot
+  mint or reactivate destination authority. The enforcing fault oracle is
+  `packages/portable-session-contract/src/capability-broker.test.ts`.
 - GitHub write tokens may enter a bounded Codex workroom only through a
   short-lived run-scoped grant (resolved from `github_write_grant_ref`) or a
   statically-configured operator fallback (`OA_CODEX_GITHUB_TOKEN`), supplied to

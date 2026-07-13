@@ -1,0 +1,681 @@
+import { Effect } from "effect"
+
+import type {
+  PortableCapabilityKind,
+  PortableCapabilityLease,
+  PortableTargetClass,
+} from "./index.js"
+
+export const PORTABLE_CAPABILITY_BROKER_VERSION =
+  "openagents.portable_capability_broker.v1" as const
+
+export type CapabilityBrokerOperation =
+  | "issue"
+  | "redeem"
+  | "renew"
+  | "revoke"
+  | "reissue"
+  | "release"
+  | "wipe"
+
+export type CapabilityBrokerOutcomeStatus =
+  | "completed"
+  | "replayed"
+  | "rejected"
+  | "failed"
+
+export type CapabilityBrokerReason =
+  | "broker_unavailable"
+  | "cleanup_failed"
+  | "conflicting_replay"
+  | "expired"
+  | "invalid_scope"
+  | "lease_not_active"
+  | "source_revoked"
+  | "target_denied"
+  | "target_mismatch"
+
+export type CapabilityBrokerOutcome = {
+  readonly schema: typeof PORTABLE_CAPABILITY_BROKER_VERSION
+  readonly operationRef: string
+  readonly operation: CapabilityBrokerOperation
+  readonly status: CapabilityBrokerOutcomeStatus
+  readonly leaseRef: string
+  readonly resultingLeaseRef?: string
+  readonly reason?: CapabilityBrokerReason
+  readonly evidenceRefs: ReadonlyArray<string>
+}
+
+export type CapabilityBrokerEvidence = {
+  readonly schema: typeof PORTABLE_CAPABILITY_BROKER_VERSION
+  readonly evidenceRef: string
+  readonly operationRef: string
+  readonly operation: CapabilityBrokerOperation
+  readonly status: Exclude<CapabilityBrokerOutcomeStatus, "replayed">
+  readonly leaseRef: string
+  readonly resultingLeaseRef?: string
+  readonly ownerRef: string
+  readonly sessionRef: string
+  readonly attachmentRef: string
+  readonly attachmentGeneration: number
+  readonly targetRef: string
+  readonly capability: PortableCapabilityKind
+  readonly accountRef?: string
+  readonly toolRef?: string
+  readonly reason?: CapabilityBrokerReason
+  readonly occurredAt: string
+  readonly material: "excluded"
+}
+
+export type CapabilityLeaseRecord = {
+  readonly lease: PortableCapabilityLease
+  readonly sourceGrantRef: string
+  readonly permissions: ReadonlyArray<string>
+  readonly issuedAt: string
+  readonly redeemedAt?: string
+  readonly renewedAt?: string
+  readonly revokedAt?: string
+  readonly revocationConfirmedAt?: string
+  readonly releasedAt?: string
+  readonly wipedAt?: string
+  readonly renewalCount: number
+  readonly targetInstallationRef?: string
+}
+
+export type CapabilityBrokerSnapshot = {
+  readonly schema: typeof PORTABLE_CAPABILITY_BROKER_VERSION
+  readonly leases: ReadonlyArray<{
+    readonly lease: PortableCapabilityLease
+    readonly permissions: ReadonlyArray<string>
+    readonly issuedAt: string
+    readonly redeemedAt?: string
+    readonly renewedAt?: string
+    readonly revokedAt?: string
+    readonly revocationConfirmedAt?: string
+    readonly releasedAt?: string
+    readonly wipedAt?: string
+    readonly renewalCount: number
+    readonly targetInstallationRef?: string
+  }>
+  readonly outcomes: ReadonlyArray<CapabilityBrokerOutcome>
+  readonly evidence: ReadonlyArray<CapabilityBrokerEvidence>
+}
+
+export type SecretMaterial = Uint8Array & { readonly __secretMaterial: unique symbol }
+
+export type CapabilitySecretVault = {
+  readonly withSourceGrantMaterial: <A>(input: {
+    readonly sourceGrantRef: string
+    readonly leaseRef: string
+    readonly use: (material: SecretMaterial) => Promise<A>
+  }) => Promise<A>
+  readonly revokeSourceGrant: (input: {
+    readonly sourceGrantRef: string
+    readonly leaseRef: string
+  }) => Promise<void>
+}
+
+export type CapabilityTargetAdapter = {
+  readonly adapterRef: string
+  readonly targetClass: PortableTargetClass
+  readonly redeem: (input: {
+    readonly lease: PortableCapabilityLease
+    readonly permissions: ReadonlyArray<string>
+    readonly material: SecretMaterial
+  }) => Promise<{ readonly installationRef: string }>
+  readonly wipe: (input: {
+    readonly leaseRef: string
+    readonly targetRef: string
+    readonly attachmentRef: string
+    readonly attachmentGeneration: number
+    readonly installationRef?: string
+  }) => Promise<{ readonly wipeReceiptRef: string }>
+}
+
+export type CapabilityAdapterRuntime = {
+  readonly install: CapabilityTargetAdapter["redeem"]
+  readonly wipe: CapabilityTargetAdapter["wipe"]
+}
+
+export type CapabilityTargetBinding = {
+  readonly targetRef: string
+  readonly targetClass: PortableTargetClass
+  readonly adapterRef: string
+  readonly ready: boolean
+}
+
+export type CapabilityBrokerClock = {
+  readonly now: () => Date
+}
+
+export type CapabilityBrokerConfig = {
+  readonly vault: CapabilitySecretVault
+  readonly targets: ReadonlyArray<CapabilityTargetBinding>
+  readonly adapters: ReadonlyArray<CapabilityTargetAdapter>
+  readonly clock?: CapabilityBrokerClock
+  readonly evidenceSink?: {
+    readonly append: (evidence: CapabilityBrokerEvidence) => Promise<void>
+  }
+  readonly maxTtlMs?: number
+}
+
+export type IssueCapabilityInput = {
+  readonly operationRef: string
+  readonly leaseRef: string
+  readonly ownerRef: string
+  readonly sessionRef: string
+  readonly attachmentRef: string
+  readonly attachmentGeneration: number
+  readonly targetRef: string
+  readonly capability: PortableCapabilityKind
+  readonly sourceGrantRef: string
+  readonly accountRef?: string
+  readonly toolRef?: string
+  readonly permissions: ReadonlyArray<string>
+  readonly expiresAt: string
+}
+
+export type LeaseOperationInput = {
+  readonly operationRef: string
+  readonly leaseRef: string
+}
+
+export type RenewCapabilityInput = LeaseOperationInput & {
+  readonly expiresAt: string
+}
+
+export type ReissueCapabilityInput = LeaseOperationInput & {
+  readonly newLeaseRef: string
+  readonly destinationSourceGrantRef: string
+  readonly destinationAttachmentRef: string
+  readonly destinationAttachmentGeneration: number
+  readonly destinationTargetRef: string
+  readonly expiresAt: string
+}
+
+export class CapabilityBrokerError extends Error {
+  readonly _tag = "CapabilityBrokerError"
+
+  constructor(
+    readonly reason: CapabilityBrokerReason,
+    readonly operationRef: string,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+type StoredOutcome = {
+  readonly fingerprint: string
+  readonly outcome: CapabilityBrokerOutcome
+}
+
+const DEFAULT_MAX_TTL_MS = 15 * 60 * 1000
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`
+  if (value !== null && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
+      .join(",")}}`
+  }
+  return JSON.stringify(value)
+}
+
+function safeRef(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,255}$/.test(value)
+}
+
+function cloneLease(lease: PortableCapabilityLease): PortableCapabilityLease {
+  return { ...lease }
+}
+
+export class PortableCapabilityBroker {
+  private readonly clock: CapabilityBrokerClock
+  private readonly maxTtlMs: number
+  private readonly targets: Map<string, CapabilityTargetBinding>
+  private readonly adapters: Map<string, CapabilityTargetAdapter>
+  private readonly records = new Map<string, CapabilityLeaseRecord>()
+  private readonly operations = new Map<string, StoredOutcome>()
+  private readonly evidence: CapabilityBrokerEvidence[] = []
+
+  constructor(private readonly config: CapabilityBrokerConfig) {
+    this.clock = config.clock ?? { now: () => new Date() }
+    this.maxTtlMs = config.maxTtlMs ?? DEFAULT_MAX_TTL_MS
+    this.targets = new Map(config.targets.map((target) => [target.targetRef, target]))
+    this.adapters = new Map(config.adapters.map((adapter) => [adapter.adapterRef, adapter]))
+  }
+
+  issue(input: IssueCapabilityInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    return this.execute("issue", input.operationRef, input.leaseRef, input, async () => {
+      this.validateIssue(input)
+      if (this.records.has(input.leaseRef)) {
+        throw new CapabilityBrokerError("conflicting_replay", input.operationRef, "lease ref already exists")
+      }
+      const now = this.clock.now().toISOString()
+      const lease: PortableCapabilityLease = {
+        leaseRef: input.leaseRef,
+        ownerRef: input.ownerRef,
+        sessionRef: input.sessionRef,
+        attachmentRef: input.attachmentRef,
+        attachmentGeneration: input.attachmentGeneration,
+        targetRef: input.targetRef,
+        capability: input.capability,
+        ...(input.accountRef ? { accountRef: input.accountRef } : {}),
+        ...(input.toolRef ? { toolRef: input.toolRef } : {}),
+        expiresAt: input.expiresAt,
+        state: "issued",
+      }
+      this.records.set(input.leaseRef, {
+        lease,
+        sourceGrantRef: input.sourceGrantRef,
+        permissions: [...new Set(input.permissions)].sort(),
+        issuedAt: now,
+        renewalCount: 0,
+      })
+      return this.success("issue", input.operationRef, input.leaseRef)
+    })
+  }
+
+  redeem(input: LeaseOperationInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    return this.execute("redeem", input.operationRef, input.leaseRef, input, async () => {
+      const record = await this.requireActive(input, true)
+      const target = this.requireTarget(record, input.operationRef)
+      const adapter = this.requireAdapter(target, input.operationRef)
+      try {
+        const installed = await this.config.vault.withSourceGrantMaterial({
+          sourceGrantRef: record.sourceGrantRef,
+          leaseRef: input.leaseRef,
+          use: material => adapter.redeem({
+            lease: cloneLease(record.lease),
+            permissions: record.permissions,
+            material,
+          }),
+        })
+        this.records.set(input.leaseRef, {
+          ...record,
+          lease: { ...record.lease, state: "redeemed" },
+          redeemedAt: this.clock.now().toISOString(),
+          targetInstallationRef: installed.installationRef,
+        })
+        return this.success("redeem", input.operationRef, input.leaseRef)
+      } catch (error) {
+        const reason = error instanceof CapabilityBrokerError
+          ? error.reason
+          : String(error).includes("target_denied") ? "target_denied" : "broker_unavailable"
+        throw new CapabilityBrokerError(reason, input.operationRef, "target-scoped redemption failed closed")
+      }
+    })
+  }
+
+  renew(input: RenewCapabilityInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    return this.execute("renew", input.operationRef, input.leaseRef, input, async () => {
+      const record = await this.requireActive(input, false)
+      this.validateExpiry(input.expiresAt, input.operationRef)
+      this.records.set(input.leaseRef, {
+        ...record,
+        lease: { ...record.lease, expiresAt: input.expiresAt },
+        renewedAt: this.clock.now().toISOString(),
+        renewalCount: record.renewalCount + 1,
+      })
+      return this.success("renew", input.operationRef, input.leaseRef)
+    })
+  }
+
+  revoke(input: LeaseOperationInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    return this.execute("revoke", input.operationRef, input.leaseRef, input, () => this.revokeInternal(input, "revoke"))
+  }
+
+  wipe(input: LeaseOperationInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    return this.execute("wipe", input.operationRef, input.leaseRef, input, () => this.wipeInternal(input, "wipe"))
+  }
+
+  release(input: LeaseOperationInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    return this.execute("release", input.operationRef, input.leaseRef, input, async () => {
+      await this.revokeInternal({ ...input, operationRef: `${input.operationRef}.revoke` }, "release")
+      await this.wipeInternal({ ...input, operationRef: `${input.operationRef}.wipe` }, "release")
+      const record = this.requireRecord(input.leaseRef, input.operationRef)
+      this.records.set(input.leaseRef, {
+        ...record,
+        lease: { ...record.lease, state: "released" },
+        releasedAt: this.clock.now().toISOString(),
+      })
+      return this.success("release", input.operationRef, input.leaseRef)
+    })
+  }
+
+  reissue(input: ReissueCapabilityInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    return this.execute("reissue", input.operationRef, input.leaseRef, input, async () => {
+      const source = this.requireRecord(input.leaseRef, input.operationRef)
+      await this.revokeInternal({ operationRef: `${input.operationRef}.revoke`, leaseRef: input.leaseRef }, "reissue")
+      await this.wipeInternal({ operationRef: `${input.operationRef}.wipe`, leaseRef: input.leaseRef }, "reissue")
+      const issueInput: IssueCapabilityInput = {
+        operationRef: `${input.operationRef}.issue`,
+        leaseRef: input.newLeaseRef,
+        ownerRef: source.lease.ownerRef,
+        sessionRef: source.lease.sessionRef,
+        attachmentRef: input.destinationAttachmentRef,
+        attachmentGeneration: input.destinationAttachmentGeneration,
+        targetRef: input.destinationTargetRef,
+        capability: source.lease.capability,
+        sourceGrantRef: input.destinationSourceGrantRef,
+        ...(source.lease.accountRef ? { accountRef: source.lease.accountRef } : {}),
+        ...(source.lease.toolRef ? { toolRef: source.lease.toolRef } : {}),
+        permissions: source.permissions,
+        expiresAt: input.expiresAt,
+      }
+      this.validateIssue(issueInput)
+      if (input.destinationAttachmentGeneration <= source.lease.attachmentGeneration) {
+        throw new CapabilityBrokerError("invalid_scope", input.operationRef, "destination generation must advance")
+      }
+      if (this.records.has(input.newLeaseRef)) {
+        throw new CapabilityBrokerError("conflicting_replay", input.operationRef, "destination lease ref already exists")
+      }
+      this.records.set(input.newLeaseRef, {
+        lease: {
+          leaseRef: input.newLeaseRef,
+          ownerRef: source.lease.ownerRef,
+          sessionRef: source.lease.sessionRef,
+          attachmentRef: input.destinationAttachmentRef,
+          attachmentGeneration: input.destinationAttachmentGeneration,
+          targetRef: input.destinationTargetRef,
+          capability: source.lease.capability,
+          ...(source.lease.accountRef ? { accountRef: source.lease.accountRef } : {}),
+          ...(source.lease.toolRef ? { toolRef: source.lease.toolRef } : {}),
+          expiresAt: input.expiresAt,
+          state: "issued",
+        },
+        sourceGrantRef: input.destinationSourceGrantRef,
+        permissions: source.permissions,
+        issuedAt: this.clock.now().toISOString(),
+        renewalCount: 0,
+      })
+      return this.success("reissue", input.operationRef, input.leaseRef, input.newLeaseRef)
+    })
+  }
+
+  expireLeases(operationPrefix: string): Effect.Effect<ReadonlyArray<CapabilityBrokerOutcome>, CapabilityBrokerError> {
+    return Effect.tryPromise({
+      try: async () => {
+        const now = this.clock.now().getTime()
+        const outcomes: CapabilityBrokerOutcome[] = []
+        for (const record of this.records.values()) {
+          if (["issued", "redeemed"].includes(record.lease.state) && Date.parse(record.lease.expiresAt) <= now) {
+            const operationRef = `${operationPrefix}.${record.lease.leaseRef}`
+            const outcome = await Effect.runPromise(this.execute(
+              "revoke",
+              operationRef,
+              record.lease.leaseRef,
+              { operationRef, leaseRef: record.lease.leaseRef, reason: "expired" },
+              async () => {
+                await this.revokeInternal({ operationRef, leaseRef: record.lease.leaseRef }, "revoke", "expired")
+                await this.wipeInternal({ operationRef: `${operationRef}.wipe`, leaseRef: record.lease.leaseRef }, "wipe")
+                return this.success("revoke", operationRef, record.lease.leaseRef, undefined, "expired")
+              },
+            ))
+            outcomes.push(outcome)
+          }
+        }
+        return outcomes
+      },
+      catch: error => this.asBrokerError(error, operationPrefix),
+    })
+  }
+
+  snapshot(): CapabilityBrokerSnapshot {
+    return {
+      schema: PORTABLE_CAPABILITY_BROKER_VERSION,
+      leases: [...this.records.values()].map(({ sourceGrantRef: _excluded, ...record }) => ({
+        ...record,
+        lease: cloneLease(record.lease),
+        permissions: [...record.permissions],
+      })),
+      outcomes: [...this.operations.values()].map(item => ({ ...item.outcome, evidenceRefs: [...item.outcome.evidenceRefs] })),
+      evidence: this.evidence.map(item => ({ ...item })),
+    }
+  }
+
+  private execute<T extends object>(
+    operation: CapabilityBrokerOperation,
+    operationRef: string,
+    leaseRef: string,
+    input: T,
+    run: () => Promise<CapabilityBrokerOutcome>,
+  ): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
+    const fingerprint = canonical({ operation, input })
+    const prior = this.operations.get(operationRef)
+    if (prior) {
+      if (prior.fingerprint !== fingerprint) {
+        return Effect.fail(new CapabilityBrokerError("conflicting_replay", operationRef, "operation ref was replayed with different bytes"))
+      }
+      return Effect.succeed({ ...prior.outcome, status: "replayed" })
+    }
+    return Effect.tryPromise({
+      try: async () => {
+        try {
+          const outcome = await run()
+          await this.recordOutcome(fingerprint, outcome)
+          return this.operations.get(operationRef)?.outcome ?? outcome
+        } catch (error) {
+          const brokerError = this.asBrokerError(error, operationRef)
+          const record = this.records.get(leaseRef)
+          const outcome: CapabilityBrokerOutcome = {
+            schema: PORTABLE_CAPABILITY_BROKER_VERSION,
+            operationRef,
+            operation,
+            status: brokerError.reason === "invalid_scope" || brokerError.reason === "lease_not_active" || brokerError.reason === "target_mismatch" || brokerError.reason === "conflicting_replay" ? "rejected" : "failed",
+            leaseRef,
+            reason: brokerError.reason,
+            evidenceRefs: [],
+          }
+          await this.recordOutcome(fingerprint, outcome, record)
+          throw brokerError
+        }
+      },
+      catch: error => this.asBrokerError(error, operationRef),
+    })
+  }
+
+  private async recordOutcome(fingerprint: string, outcome: CapabilityBrokerOutcome, record = this.records.get(outcome.leaseRef)): Promise<void> {
+    const evidenceRef = `evidence.capability.${outcome.operationRef}`
+    const evidence = this.makeEvidence(evidenceRef, outcome, record)
+    const withEvidence = { ...outcome, evidenceRefs: [evidenceRef] }
+    this.operations.set(outcome.operationRef, { fingerprint, outcome: withEvidence })
+    this.evidence.push(evidence)
+    await this.config.evidenceSink?.append(evidence)
+  }
+
+  private makeEvidence(evidenceRef: string, outcome: CapabilityBrokerOutcome, record?: CapabilityLeaseRecord): CapabilityBrokerEvidence {
+    const lease = record?.lease
+    return {
+      schema: PORTABLE_CAPABILITY_BROKER_VERSION,
+      evidenceRef,
+      operationRef: outcome.operationRef,
+      operation: outcome.operation,
+      status: outcome.status === "replayed" ? "completed" : outcome.status,
+      leaseRef: outcome.leaseRef,
+      ...(outcome.resultingLeaseRef ? { resultingLeaseRef: outcome.resultingLeaseRef } : {}),
+      ownerRef: lease?.ownerRef ?? "owner.unknown",
+      sessionRef: lease?.sessionRef ?? "session.unknown",
+      attachmentRef: lease?.attachmentRef ?? "attachment.unknown",
+      attachmentGeneration: lease?.attachmentGeneration ?? 0,
+      targetRef: lease?.targetRef ?? "target.unknown",
+      capability: lease?.capability ?? "api",
+      ...(lease?.accountRef ? { accountRef: lease.accountRef } : {}),
+      ...(lease?.toolRef ? { toolRef: lease.toolRef } : {}),
+      ...(outcome.reason ? { reason: outcome.reason } : {}),
+      occurredAt: this.clock.now().toISOString(),
+      material: "excluded",
+    }
+  }
+
+  private success(
+    operation: CapabilityBrokerOperation,
+    operationRef: string,
+    leaseRef: string,
+    resultingLeaseRef?: string,
+    reason?: CapabilityBrokerReason,
+  ): CapabilityBrokerOutcome {
+    return {
+      schema: PORTABLE_CAPABILITY_BROKER_VERSION,
+      operationRef,
+      operation,
+      status: "completed",
+      leaseRef,
+      ...(resultingLeaseRef ? { resultingLeaseRef } : {}),
+      ...(reason ? { reason } : {}),
+      evidenceRefs: [],
+    }
+  }
+
+  private validateIssue(input: IssueCapabilityInput): void {
+    for (const value of [input.operationRef, input.leaseRef, input.ownerRef, input.sessionRef, input.attachmentRef, input.targetRef, input.sourceGrantRef]) {
+      if (!safeRef(value)) throw new CapabilityBrokerError("invalid_scope", input.operationRef, "scope contains an invalid ref")
+    }
+    if (input.attachmentGeneration < 0 || !Number.isInteger(input.attachmentGeneration)) {
+      throw new CapabilityBrokerError("invalid_scope", input.operationRef, "attachment generation must be a non-negative integer")
+    }
+    if (input.permissions.length === 0 || input.permissions.some(permission => !safeRef(permission))) {
+      throw new CapabilityBrokerError("invalid_scope", input.operationRef, "least-privilege permissions are required")
+    }
+    if (["provider", "scm_read", "scm_write"].includes(input.capability) && !input.accountRef) {
+      throw new CapabilityBrokerError("invalid_scope", input.operationRef, "provider and SCM leases require an account ref")
+    }
+    if ((input.capability === "tool" || input.capability === "api") && !input.toolRef) {
+      throw new CapabilityBrokerError("invalid_scope", input.operationRef, "tool and API leases require a tool ref")
+    }
+    this.validateExpiry(input.expiresAt, input.operationRef)
+    const target = this.targets.get(input.targetRef)
+    if (!target || !target.ready) {
+      throw new CapabilityBrokerError("target_denied", input.operationRef, "target is absent, revoked, or not ready")
+    }
+  }
+
+  private validateExpiry(expiresAt: string, operationRef: string): void {
+    const expiry = Date.parse(expiresAt)
+    const now = this.clock.now().getTime()
+    if (!Number.isFinite(expiry) || expiry <= now) {
+      throw new CapabilityBrokerError("expired", operationRef, "lease expiry is not in the future")
+    }
+    if (expiry - now > this.maxTtlMs) {
+      throw new CapabilityBrokerError("invalid_scope", operationRef, "lease exceeds maximum TTL")
+    }
+  }
+
+  private requireRecord(leaseRef: string, operationRef: string): CapabilityLeaseRecord {
+    const record = this.records.get(leaseRef)
+    if (!record) throw new CapabilityBrokerError("lease_not_active", operationRef, "lease does not exist")
+    return record
+  }
+
+  private async requireActive(input: LeaseOperationInput, expireAndWipe: boolean): Promise<CapabilityLeaseRecord> {
+    const record = this.requireRecord(input.leaseRef, input.operationRef)
+    if (!["issued", "redeemed"].includes(record.lease.state)) {
+      throw new CapabilityBrokerError("lease_not_active", input.operationRef, "lease is not active")
+    }
+    if (Date.parse(record.lease.expiresAt) <= this.clock.now().getTime()) {
+      this.records.set(input.leaseRef, {
+        ...record,
+        lease: { ...record.lease, state: "expired" },
+        revokedAt: this.clock.now().toISOString(),
+      })
+      if (expireAndWipe) {
+        try {
+          await this.revokeInternal(input, "revoke", "expired")
+          await this.wipeInternal({ ...input, operationRef: `${input.operationRef}.wipe` }, "wipe")
+        } catch {
+          throw new CapabilityBrokerError("cleanup_failed", input.operationRef, "expired lease cleanup failed closed")
+        }
+      }
+      throw new CapabilityBrokerError("expired", input.operationRef, "lease expired")
+    }
+    return record
+  }
+
+  private requireTarget(record: CapabilityLeaseRecord, operationRef: string): CapabilityTargetBinding {
+    const target = this.targets.get(record.lease.targetRef)
+    if (!target || !target.ready) throw new CapabilityBrokerError("target_denied", operationRef, "target is not ready")
+    return target
+  }
+
+  private requireAdapter(target: CapabilityTargetBinding, operationRef: string): CapabilityTargetAdapter {
+    const adapter = this.adapters.get(target.adapterRef)
+    if (!adapter || adapter.targetClass !== target.targetClass) {
+      throw new CapabilityBrokerError("target_mismatch", operationRef, "target adapter does not match target class")
+    }
+    return adapter
+  }
+
+  private async revokeInternal(input: LeaseOperationInput, operation: CapabilityBrokerOperation, reason?: CapabilityBrokerReason): Promise<CapabilityBrokerOutcome> {
+    const record = this.requireRecord(input.leaseRef, input.operationRef)
+    if (["revoked", "expired", "released"].includes(record.lease.state) && record.revocationConfirmedAt) {
+      return this.success(operation, input.operationRef, input.leaseRef, undefined, reason)
+    }
+    this.records.set(input.leaseRef, {
+      ...record,
+      lease: { ...record.lease, state: reason === "expired" ? "expired" : "revoked" },
+      revokedAt: this.clock.now().toISOString(),
+    })
+    try {
+      await this.config.vault.revokeSourceGrant({ sourceGrantRef: record.sourceGrantRef, leaseRef: input.leaseRef })
+      const current = this.requireRecord(input.leaseRef, input.operationRef)
+      this.records.set(input.leaseRef, {
+        ...current,
+        revocationConfirmedAt: this.clock.now().toISOString(),
+      })
+    } catch {
+      throw new CapabilityBrokerError("broker_unavailable", input.operationRef, "source grant revocation failed closed")
+    }
+    return this.success(operation, input.operationRef, input.leaseRef, undefined, reason)
+  }
+
+  private async wipeInternal(input: LeaseOperationInput, operation: CapabilityBrokerOperation): Promise<CapabilityBrokerOutcome> {
+    const record = this.requireRecord(input.leaseRef, input.operationRef)
+    if (record.wipedAt) return this.success(operation, input.operationRef, input.leaseRef)
+    await this.wipeAdapter(record, input.operationRef)
+    this.records.set(input.leaseRef, { ...this.requireRecord(input.leaseRef, input.operationRef), wipedAt: this.clock.now().toISOString() })
+    return this.success(operation, input.operationRef, input.leaseRef)
+  }
+
+  private async wipeAdapter(record: CapabilityLeaseRecord, operationRef: string): Promise<void> {
+    const target = this.targets.get(record.lease.targetRef)
+    if (!target) throw new CapabilityBrokerError("target_mismatch", operationRef, "target binding is absent")
+    const adapter = this.requireAdapter(target, operationRef)
+    try {
+      await adapter.wipe({
+        leaseRef: record.lease.leaseRef,
+        targetRef: record.lease.targetRef,
+        attachmentRef: record.lease.attachmentRef,
+        attachmentGeneration: record.lease.attachmentGeneration,
+        ...(record.targetInstallationRef ? { installationRef: record.targetInstallationRef } : {}),
+      })
+    } catch {
+      throw new CapabilityBrokerError("cleanup_failed", operationRef, "target wipe failed closed")
+    }
+  }
+
+  private asBrokerError(error: unknown, operationRef: string): CapabilityBrokerError {
+    return error instanceof CapabilityBrokerError
+      ? error
+      : new CapabilityBrokerError("broker_unavailable", operationRef, "capability broker dependency failed")
+  }
+}
+
+export function makeCapabilityTargetAdapter(input: CapabilityTargetAdapter): CapabilityTargetAdapter {
+  return input
+}
+
+export function makeOwnerLocalCapabilityAdapter(
+  adapterRef: string,
+  runtime: CapabilityAdapterRuntime,
+): CapabilityTargetAdapter {
+  return { adapterRef, targetClass: "owner_local", redeem: runtime.install, wipe: runtime.wipe }
+}
+
+export function makeOpenAgentsManagedCapabilityAdapter(
+  adapterRef: string,
+  runtime: CapabilityAdapterRuntime,
+): CapabilityTargetAdapter {
+  return { adapterRef, targetClass: "openagents_managed", redeem: runtime.install, wipe: runtime.wipe }
+}

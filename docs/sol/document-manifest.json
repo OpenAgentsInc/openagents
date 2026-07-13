@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "d62facaabfe0d128429a20347aa5cd1dba3265b2feda99ff66102c927749c0e7",
+  "sourceTreeSha256": "b7600cb5ef9e100e3bbb2b24f5195835cc52869f9e5fbdac82dbf291c295ee31",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1105,6 +1105,27 @@
       "inboundSourceCount": 2,
       "issueLinks": [
         8746
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-13-port-02-target-scoped-capability-broker-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8747",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "ae0b69040b299a777aa6f3c6745d11830245fb61e0a4d4b961e4a30f347bd7e0",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8745,
+        8747,
+        8748
       ]
     },
     {
@@ -2433,7 +2454,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "49768c4b476c9b0c5c80fb9acc99eb758a53463ca0c92b8879d34319f94cc4ff",
+      "sha256": "01c14d9e8452a3ee71727de59c197be77257be4a572f3f1c122f9e81eb924cee",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2473,7 +2494,8 @@
         8720,
         8721,
         8745,
-        8746
+        8746,
+        8747
       ]
     }
   ]

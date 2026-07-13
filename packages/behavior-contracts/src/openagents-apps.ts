@@ -315,27 +315,24 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     {
       authorityBoundary:
         "The broker grants least-privilege capability access to one owner/session/attachment/target/tool/TTL scope. It is not a generic secret tunnel, does not place raw secrets in clients or checkpoints, and does not let a moved session reuse the source attachment's credential material.",
-      blockerRefs: [
-        "github:OpenAgentsInc/openagents#8547",
-        "github:OpenAgentsInc/openagents#8566",
-        "github:OpenAgentsInc/openagents#8747",
-      ],
+      blockerRefs: [],
       contractId: "openagents_cloud.brokered_session_secrets.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/2026-07-13-port-02-target-scoped-capability-broker-receipt.md",
         "docs/cloud/INVARIANTS.md",
-        "docs/cloud/contracts/openagents.codex_auth_grant.v1.md",
-        "docs/cloud/contracts/openagents.byo_credential_broker.v1.md",
+        "docs/ops/2026-07-13-portable-capability-broker-runbook.md",
+        "packages/portable-session-contract/src/capability-broker.ts",
       ],
       oracles: [
         {
           description:
-            "Planned broker oracle: issue, redeem, renew, revoke, release, and wipe provider/SCM/tool capability leases; move the session; prove source grants cannot replay, fresh target grants are required, and secret scans find no raw material in Sync, checkpoints, prompts, logs, artifacts, or receipts.",
-          id: "openagents_cloud.brokered_session_secrets.planned",
-          kind: "planned",
-          mode: "e2e",
-          ref: "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+            "Executable broker oracle: issue, redeem, renew, revoke, reissue, release, and wipe provider/SCM/tool/API leases across owner-local and accepted managed adapters; reject replay, expiry, outage, denial, and cleanup faults; scan every exported surface for raw material.",
+          id: "openagents_cloud.brokered_session_secrets.test",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/portable-session-contract/src/capability-broker.test.ts",
         },
       ],
       productArea: "cross-target secret capability broker",
@@ -344,11 +341,11 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-11",
       },
-      state: "pending",
+      state: "enforced",
       statement: "Secrets access via a broker (i.e. gondolin or agyn style)",
       surface: "openagents-pylon-cloud-workrooms",
       verification:
-        "Pending a bounded broker leaf under #8566/#8547: enforce target-attested short-lived leases and gateway/JIT materialization across owner-managed and managed targets, including revocation-during-move, replay, cleanup, and forbidden-material scans.",
+        "PORT-02 enforces target-scoped short-lived leases and injected JIT materialization across owner-local and accepted OpenAgents-managed adapters, including reauthorization, revocation-during-move, lost-ACK replay, expiry, cleanup, outage/denial, and forbidden-material scans. PORT-03 separately proves a real process/session move.",
     },
     {
       authorityBoundary:

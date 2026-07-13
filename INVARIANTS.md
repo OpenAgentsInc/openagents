@@ -1088,8 +1088,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   real-host journey in `packages/portable-session-contract`; its enforced
   behavior contract is
   `openagents_apps.portable_session_contract_freeze.v1`. This is schema/model
-  authority only. Persistence, dispatch, broker redemption, target adapters,
-  movement, mobile control, and owner acceptance remain pending #8746–#8753.
+  authority only. PORT-01 supplies persistence and PORT-02 supplies broker
+  redemption plus the owner-local/OpenAgents-managed adapter seam. Dispatch,
+  target enrollment, movement, mobile control, and owner acceptance remain
+  pending #8748–#8753.
 - Current provider-native Codex topology remains owner-local, read-only, and
   loss-accounted. The landed inline child card is a bounded history projection;
   it does not prove live Khala Sync topology, host movement, child rehydration,
@@ -1123,6 +1125,24 @@ More specific invariant ledgers apply inside imported apps and packages.
   SQL, never from a socket or current projection. The real-Postgres oracle is
   `portable-session-authority.test.ts`. This does not grant target credentials
   or execute a host move; those remain PORT-02/PORT-03.
+- PORT-02 #8747 implements the general target-scoped capability broker in
+  `packages/portable-session-contract/src/capability-broker.ts` without
+  changing PORT-00's frozen lease schema or PORT-01's durable authority.
+  Provider, SCM read/write, MCP/tool, and bounded API leases bind one owner,
+  session, attachment generation, target, capability, optional account/tool,
+  least-privilege permission set, and bounded TTL. Issue, redeem, renew,
+  revoke, reissue, release, and wipe are exact-operation-ref idempotent;
+  conflicting replay fails closed. Source revoke and target wipe must complete
+  before a destination lease is issued, and reissue requires a fresh
+  destination source-grant ref. Raw material is visible only inside the
+  injected vault-to-target callback and cannot enter broker state, Sync,
+  checkpoints, prompts, logs, snapshots, diagnostics, artifacts, or public
+  receipts. Expiry, target denial, broker outage, mid-move revocation, and wipe
+  failure retain durable refs-only evidence and never grant destination
+  authority. Focused enforcement is
+  `packages/portable-session-contract/src/capability-broker.test.ts`. This is a
+  real local/managed adapter integration seam, not proof that a process or
+  session moved; PORT-03 owns that real-host movement receipt.
 - Mobile selects a visible conversation authority after native-session recovery
   and before mounting one Effect Native Home program: confirmed personal Sync
   when live, otherwise the existing public-local conversation. Explicit auth

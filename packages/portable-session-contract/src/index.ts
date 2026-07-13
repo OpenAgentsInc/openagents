@@ -266,3 +266,4 @@ export type PortableSessionCommandOutcome =
 
 export * from "./journeys.js"
 export * from "./model.js"
+export * from "./capability-broker.js"

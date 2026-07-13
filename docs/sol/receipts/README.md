@@ -44,6 +44,7 @@ scope, and rung. Live issue state and the
 | --- | --- | --- | --- |
 | PORT-00 #8745 | [`2026-07-12-port-00-portable-session-contract-freeze-receipt.md`](../2026-07-12-port-00-portable-session-contract-freeze-receipt.md) | closed schema/model contract | Runtime authority remains explicitly pending PORT-01 through PORT-08 |
 | PORT-01 #8746 | [`2026-07-13-port-01-durable-portable-session-authority-receipt.md`](../2026-07-13-port-01-durable-portable-session-authority-receipt.md) | durable Cloud SQL/Khala Sync authority | Credential redemption and real host movement remain PORT-02/PORT-03 |
+| PORT-02 #8747 | [`2026-07-13-port-02-target-scoped-capability-broker-receipt.md`](../2026-07-13-port-02-target-scoped-capability-broker-receipt.md) | general broker lifecycle plus owner-local/managed adapter fault oracle | Real provider-process/session movement remains PORT-03 |
 | CUT-16A #8717 | [`2026-07-12-cut-16a-mobile-execution-target-selector-receipt.md`](../2026-07-12-cut-16a-mobile-execution-target-selector-receipt.md) | closed | Exact mobile provider/model/account target selector accepted |
 | AC-1 #8719 | [`2026-07-12-ac1-owner-capacity-charge-disposition-receipt.md`](../2026-07-12-ac1-owner-capacity-charge-disposition-receipt.md) | closed | Unexpected owner-capacity charge fails closed |
 | AC-2 #8720 | [`2026-07-12-ac2-exact-once-usage-retry-receipt.md`](../2026-07-12-ac2-exact-once-usage-retry-receipt.md) | closed | Exact-once usage survives lost-response retry |
