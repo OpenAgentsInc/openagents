@@ -474,6 +474,8 @@ export const DesktopNoteSubmitted = defineIntent(
   "DesktopNoteSubmitted",
   Schema.NullOr(Schema.String),
 )
+export const DesktopSteerCurrentRequested = defineIntent("DesktopSteerCurrentRequested", Schema.NullOr(Schema.String))
+export const DesktopQueueNextRequested = defineIntent("DesktopQueueNextRequested", Schema.NullOr(Schema.String))
 /**
  * Interrupt the streaming turn (EP250 audit gap #9, "cheapest fix" — 240
  * interrupts observed). Fired by the composer Stop button while `pending`;
@@ -619,6 +621,8 @@ export const DesktopHistoryConversationPreviewed = defineIntent("DesktopHistoryC
 export const desktopShellIntents = [
   DesktopInputChanged,
   DesktopNoteSubmitted,
+  DesktopSteerCurrentRequested,
+  DesktopQueueNextRequested,
   DesktopTurnInterrupted,
   DesktopCodexHandoffRequested,
   DesktopReviewContextRemoved,
@@ -1473,6 +1477,35 @@ export const makeDesktopShellHandlers = (
           withQuestionAnswered(current, card.questionRef, answers))
       }
     })
+  const submitPendingMessage = (
+    current: DesktopShellState,
+    message: string,
+    mode: "steer" | "queue",
+  ) => Effect.gen(function* () {
+    if (!current.pending || current.activeThreadId === null || message.trim() === "") return
+    yield* SubscriptionRef.update(state, next => withInput(next, ""))
+    if (mode === "steer") {
+      if (chat.steerCurrent === undefined) {
+        yield* SubscriptionRef.update(state, next => withInput(next, message))
+        return
+      }
+      const steered = yield* Effect.promise(() =>
+        chat.steerCurrent!({ threadRef: current.activeThreadId!, message: message.trim() }))
+      if (!steered.ok) {
+        yield* SubscriptionRef.update(state, next => next.input === "" ? withInput(next, message) : next)
+      }
+      return
+    }
+    if (chat.queueFollowup === undefined) {
+      yield* SubscriptionRef.update(state, next => withInput(next, message))
+      return
+    }
+    const queued = yield* Effect.promise(() =>
+      chat.queueFollowup!({ threadRef: current.activeThreadId!, message: message.trim() }))
+    if (!queued.queued) {
+      yield* SubscriptionRef.update(state, next => next.input === "" ? withInput(next, message) : next)
+    }
+  })
   return ({
   ...settingsHandlers,
   ...diagnosticsHandlers,
@@ -1620,34 +1653,7 @@ export const makeDesktopShellHandlers = (
       // empty follow-up is never queued; image attachments are not queued
       // mid-turn (they ride the next started turn).
       if (current.pending) {
-        if (message.trim() === "") return
-        yield* SubscriptionRef.update(state, (next) => withInput(next, ""))
-        if (current.pendingSubmitMode === "steer") {
-          if (chat.steerCurrent === undefined) {
-            yield* SubscriptionRef.update(state, (next) => withInput(next, message))
-            return
-          }
-          const steered = yield* Effect.promise(() =>
-            chat.steerCurrent!({ threadRef: current.activeThreadId!, message: message.trim() }))
-          if (!steered.ok) {
-            yield* SubscriptionRef.update(state, (next) =>
-              next.input === "" ? withInput(next, message) : next)
-          }
-          return
-        }
-        if (chat.queueFollowup === undefined) {
-          yield* SubscriptionRef.update(state, (next) => withInput(next, message))
-          return
-        }
-        const queued = yield* Effect.promise(() =>
-          chat.queueFollowup!({ threadRef: current.activeThreadId!, message: message.trim() }))
-        // CUT-16: a refused queue (host raced past its in-flight send, or the
-        // runtime rejected the enqueue) must not silently drop the text — the
-        // draft is restored unless the user already typed something new.
-        if (!queued.queued) {
-          yield* SubscriptionRef.update(state, (next) =>
-            next.input === "" ? withInput(next, message) : next)
-        }
+        yield* submitPendingMessage(current, message, current.pendingSubmitMode)
         return
       }
       // Evidence-gated send (#8712): an unavailable selected lane must not
@@ -1701,6 +1707,16 @@ export const makeDesktopShellHandlers = (
         }
       }
     }),
+  DesktopSteerCurrentRequested: value => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const message = typeof value === "string" && value.trim() !== "" ? value : current.input
+    yield* submitPendingMessage(current, message, "steer")
+  }),
+  DesktopQueueNextRequested: value => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const message = typeof value === "string" && value.trim() !== "" ? value : current.input
+    yield* submitPendingMessage(current, message, "queue")
+  }),
   DesktopTurnInterrupted: () =>
     Effect.gen(function* () {
       // Only meaningful while a turn streams; the terminal turn result (a
@@ -3596,7 +3612,12 @@ const shellComposer = (state: DesktopShellState): View => {
             : "Queue a follow-up, delivered when this turn completes"
           : "Message" },
         onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
-        onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
+        onSubmit: IntentRef(
+          state.pending
+            ? state.pendingSubmitMode === "steer" ? "DesktopSteerCurrentRequested" : "DesktopQueueNextRequested"
+            : "DesktopNoteSubmitted",
+          ComponentValueBinding(),
+        ),
         // Generous multiline input (OpenCode min-h-[52px] editor). 64px min
         // height gives a comfortable ~3-line composer; the textarea soft-wraps
         // and scrolls internally past that.

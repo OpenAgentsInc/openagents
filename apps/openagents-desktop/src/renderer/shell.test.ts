@@ -2652,6 +2652,23 @@ describe("EP250 window + sidebar owner contracts", () => {
     expect((nodeByKey(desktopShellView({ ...baseState, pending: true }), "shell-stop")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopTurnInterrupted")
   })
 
+  test("steer-current and queue-next use canonical command identities", () => {
+    expect(desktopCanonicalCommandRegistry.find(command => command.id === "chat.steer_current")).toMatchObject({
+      intentName: "DesktopSteerCurrentRequested",
+      defaultBindings: ["Meta+Shift+Enter", "Control+Shift+Enter"],
+      palette: true,
+    })
+    expect(desktopCanonicalCommandRegistry.find(command => command.id === "chat.queue_next")).toMatchObject({
+      intentName: "DesktopQueueNextRequested",
+      defaultBindings: ["Meta+Alt+Enter", "Control+Alt+Enter"],
+      palette: true,
+    })
+    const steering = desktopShellView({ ...baseState, pending: true, pendingSubmitMode: "steer" })
+    const queueing = desktopShellView({ ...baseState, pending: true, pendingSubmitMode: "queue" })
+    expect((nodeByKey(steering, "shell-input")?.onSubmit as { name?: string } | undefined)?.name).toBe("DesktopSteerCurrentRequested")
+    expect((nodeByKey(queueing, "shell-input")?.onSubmit as { name?: string } | undefined)?.name).toBe("DesktopQueueNextRequested")
+  })
+
   test("sidebar renders no brand row (owner: remove the OpenAgents icon+text top left)", () => {
     const view = desktopShellView(baseState)
     expect(nodeByKey(view, "sidebar-brand-row")).toBeUndefined()
