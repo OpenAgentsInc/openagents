@@ -91,9 +91,9 @@ Migration `0067` was applied to both `khala_sync_staging` and
 `khala_sync_prod` on 2026-07-13 through the direct Cloud SQL Auth Proxy. Both
 post-apply dry runs reported zero pending migrations.
 
-Migration `0069` must likewise be applied to staging and production before the
-production coordinator is enabled. Its real-Postgres store oracle is included
-below.
+Migration `0069` was applied to staging and production on 2026-07-13 with
+SHA-256 prefix `ce9db7cddbb5`; both post-apply dry runs reported `0 pending, 70
+already applied`. Its real-Postgres store oracle is included below.
 
 ```sh
 bun test packages/khala-sync-server/src/portable-session-move.test.ts \
@@ -105,8 +105,8 @@ bun x tsc -p packages/khala-sync-server/tsconfig.json --noEmit --pretty false
 ## Live acceptance gate
 
 Do not close #8748 from deterministic evidence. First require #8636 complete,
-apply migration `0069`, compose the atomic store plus real local/managed target
-adapters in the owner-side coordinator, then run one direct session on live
+compose the atomic store plus real local/managed target adapters in the
+owner-side coordinator, then run one direct session on live
 infrastructure:
 
 1. start a bounded repository session with a root and at least one active child

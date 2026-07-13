@@ -83,8 +83,10 @@ bun x tsc -p packages/portable-session-contract/tsconfig.json --noEmit --pretty 
 
 This is production-path implementation and real database/broker boundary
 evidence, not the real-host acceptance demanded by #8748. Migration `0069`
-still needs staging/production application, and the atomic store still needs
-owner-side composition with the real local and managed adapters. The issue must
+was applied to staging and production on 2026-07-13 (SHA-256 prefix
+`ce9db7cddbb5`; both post-apply dry runs: `0 pending, 70 already applied`). The
+atomic store still needs owner-side composition with the real local and managed
+adapters. The issue must
 remain open until #8636 is completed and one direct live journey moves the same bounded
 child-bearing repository session from the owner's local Pylon to the accepted
 #8547 Agent Computer and back. That receipt must show actual target/runtime
