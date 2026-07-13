@@ -35,6 +35,32 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
 test -z "$(git status --porcelain)"
 ```
 
+## Candidate and installed-app safety
+
+Never splice, replace, or re-sign nested components inside
+`/Applications/OpenAgents.app`. Experimental candidates stay under `/tmp` and
+must never become evidence for an installed release by mutating the known-good
+installation in place. Build the complete artifact, notarize it, verify it,
+and install only that complete artifact through the release/update path.
+
+Before launching any experimental candidate, verify the outer app and every
+nested signed component. Every reported TeamIdentifier must be `HQWSG26L43`,
+and deep strict verification must pass:
+
+```sh
+CANDIDATE=/tmp/OpenAgents-candidate/OpenAgents.app
+codesign --verify --deep --strict --verbose=2 "$CANDIDATE"
+find "$CANDIDATE/Contents" -type f -perm +111 -print0 | while IFS= read -r -d '' file; do
+  codesign -dv --verbose=4 "$file" 2>&1 | grep -E '^(Authority|TeamIdentifier)='
+done
+```
+
+`OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1` is test-only evidence. It is accepted
+only with user data strictly below Electron's actual OS temporary directory
+(use `$TMPDIR`, not a guessed `/tmp` alias), disables account-session custody,
+and uses an in-memory browser partition. It must never be used for production,
+release acceptance, or authenticated cross-device claims.
+
 ## Build and preflight
 
 Set the intended version in `apps/openagents-desktop/package.json`, run the

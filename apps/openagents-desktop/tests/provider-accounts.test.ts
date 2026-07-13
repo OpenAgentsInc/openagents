@@ -6,7 +6,8 @@
  * children.
  */
 import { describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import path from "node:path"
 
 import {
@@ -362,6 +363,38 @@ describe("makeProviderAccountsService", () => {
     const result = await service.listProviderAccounts()
     expect(result.ok).toBe(true)
     service.dispose()
+  })
+
+  test("headless packaged bootstrap reads the isolated Pylon registry without a child runtime", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "provider-accounts-bootstrap-"))
+    const pylonHome = path.join(root, "pylon")
+    const accountHome = path.join(root, "account")
+    mkdirSync(pylonHome, { recursive: true })
+    mkdirSync(accountHome, { recursive: true })
+    writeFileSync(path.join(accountHome, "auth.json"), "{}", { mode: 0o600 })
+    writeFileSync(path.join(pylonHome, "config.json"), JSON.stringify({
+      dev: { accounts: [{ ref: "codex-2", provider: "codex", home: accountHome }] },
+    }))
+    const previous = process.env.PYLON_HOME
+    process.env.PYLON_HOME = pylonHome
+    try {
+      const diagnostics: Array<Readonly<Record<string, string | number | boolean | null>>> = []
+      const service = makeProviderAccountsService("/opaque/bundled/main", {
+        packaged: true,
+        inspectRuntimes: async () => [],
+        diagnostic: event => diagnostics.push(event),
+      })
+      expect(await service.listProviderAccounts()).toMatchObject({
+        ok: true,
+        accounts: [{ ref: "codex-2", provider: "codex", readiness: "ready" }],
+      })
+      expect(diagnostics[0]).toMatchObject({ mode: "packaged_projection", packagedHint: true })
+      service.dispose()
+    } finally {
+      if (previous === undefined) delete process.env.PYLON_HOME
+      else process.env.PYLON_HOME = previous
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   test("unavailable pylon runtime yields typed failures with no paths, never a throw", async () => {

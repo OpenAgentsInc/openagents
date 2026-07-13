@@ -205,6 +205,7 @@ export type ProviderAccountsServiceDependencies = Readonly<{
   inspectRuntimes?: () => Promise<ReadonlyArray<ProviderRuntimeCompatibility>>
   /** Electron's authoritative packaged-state signal; avoids ASAR path heuristics. */
   packaged?: boolean
+  diagnostic?: (event: Readonly<Record<string, string | number | boolean | null>>) => void
   /**
    * Source-independent projection used by packaged Desktop builds. The CLI
    * adapter remains the development path; an installed app cannot derive an
@@ -337,6 +338,13 @@ export const makeProviderAccountsService = (
       ? defaultPackagedProjection()
       : null
   )
+  dependencies.diagnostic?.({
+    kind: "projection_selected",
+    mode: packagedProjection === null ? "pylon_child" : "packaged_projection",
+    packagedHint: dependencies.packaged === true,
+    asarHint: isPackagedAsarPath(here),
+    repoRootAvailable: repoRootFromHere(here) !== null,
+  })
   let disposed = false
   const operations = new Set<Readonly<{ child: ChildLike; cancel: () => void }>>()
 
@@ -353,6 +361,7 @@ export const makeProviderAccountsService = (
       }
       const child = spawnPylon(input.args)
       if (child === null) {
+        dependencies.diagnostic?.({ kind: "spawn_unavailable", operation: input.args[1] ?? "unknown" })
         resolve(input.unavailable("pylon_runtime_unavailable"))
         return
       }
@@ -376,12 +385,15 @@ export const makeProviderAccountsService = (
       collectStream(child.stdout, (text) => {
         stdout += text
       })
-      collectStream(child.stderr, () => {})
+      let stderrBytes = 0
+      collectStream(child.stderr, text => { stderrBytes += Buffer.byteLength(text) })
       child.on("error", () => {
+        dependencies.diagnostic?.({ kind: "child_error", operation: input.args[1] ?? "unknown", stderrBytes })
         finish(input.unavailable("pylon_runtime_unavailable"))
       })
       child.on("close", (...args: unknown[]) => {
         const exitCode = typeof args[0] === "number" ? args[0] : null
+        dependencies.diagnostic?.({ kind: "child_close", operation: input.args[1] ?? "unknown", exitCode, stderrBytes })
         if (exitCode !== 0) {
           finish(input.unavailable("accounts_command_failed"))
           return
@@ -401,7 +413,10 @@ export const makeProviderAccountsService = (
           })
         : await packagedProjection.list()
             .then(stdout => parseProviderAccountsListJson(stdout, now().toISOString()))
-            .catch(() => unavailableProviderAccountsListResult("accounts_command_failed"))
+            .catch(error => {
+              dependencies.diagnostic?.({ kind: "packaged_projection_error", operation: "list", errorName: error instanceof Error ? error.name : "unknown" })
+              return unavailableProviderAccountsListResult("accounts_command_failed")
+            })
       if (!result.ok) return result
       const runtimes = await inspectRuntimes().catch(() => [])
       return runtimes.length === 0 ? result : { ...result, runtimes: runtimes.slice(0, 2) }

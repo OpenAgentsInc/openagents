@@ -78,7 +78,7 @@ import {
   type DesktopResumeLocalThreadRequest,
 } from "./chat-contract.ts"
 import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
-import { isIsolatedAppProof } from "./isolated-app-proof.ts"
+import { isolatedProofReceiptPath, isIsolatedAppProof } from "./isolated-app-proof.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
@@ -425,11 +425,12 @@ const codexConnect = makeCodexConnectService(here, {
 if (smokeMode) {
   console.log("[openagents-desktop] provider-accounts running in SMOKE FIXTURE mode (no real pylon spawn)")
 }
+const providerAccountsDiagnostics: Array<Readonly<Record<string, string | number | boolean | null>>> = []
 const providerAccounts = makeProviderAccountsService(
   here,
   smokeMode
     ? { spawnPylon: makeFixtureProviderAccountsSpawn() }
-    : { packaged: app.isPackaged },
+    : { packaged: app.isPackaged, diagnostic: event => providerAccountsDiagnostics.push(event) },
 )
 let desktopSessionVault: DesktopSessionVault | null = null
 let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "unavailable"
@@ -4005,6 +4006,19 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
 void app.whenReady().then(async () => {
   if (!primaryDesktopInstance) return
   recordMainMark("appWhenReady")
+  const providerAccountsBootstrapReceipt = isolatedAppProofMode
+    ? isolatedProofReceiptPath({ env: process.env, temporaryDirectory: app.getPath("temp") })
+    : null
+  if (providerAccountsBootstrapReceipt !== null) {
+    const result = await providerAccounts.listProviderAccounts()
+    writeFileSync(providerAccountsBootstrapReceipt, JSON.stringify({
+      schema: "openagents-desktop.provider-accounts-bootstrap.v1",
+      result,
+      diagnostics: providerAccountsDiagnostics,
+    }, null, 2), { encoding: "utf8", mode: 0o600 })
+    app.exit(result.ok ? 0 : 2)
+    return
+  }
   installDesktopRendererProtocol()
   // macOS does not use BrowserWindow's icon for the active Dock tile in a
   // development Electron process. Set both native surfaces to the same mobile
