@@ -17,6 +17,7 @@ import {
   installBuiltinProductSpecWorkSkill,
 } from "./builtin-productspec-skill.ts"
 import { ProductSpecDynamicTools } from "./product-spec-app-server-tools.ts"
+import type { FableLocalEvent } from "./fable-local-contract.ts"
 
 const roots: string[] = []
 afterEach(() => {
@@ -302,6 +303,82 @@ describe("Codex app-server native integration", () => {
       childRef: "child-thread-1",
       response: "Child evidence.",
     }))
+  })
+
+  test("projects current Codex agent states into one causal child lifecycle", async () => {
+    const fake = fakeServer()
+    const events: FableLocalEvent[] = []
+    const turn = runCodexAppServerTurn({
+      binary: "/usr/bin/codex",
+      env: {},
+      workspace: "/workspace",
+      threadRef: "thread-1",
+      turnRef: "oa-turn-agent-state",
+      accountRef: "codex-current",
+      prompt: "Delegate one packet",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.6-sol",
+      reasoningEffort: "medium",
+      productSpecSkill: {
+        skillRoot: "/isolated/codex-home/skills",
+        skillPath: "/isolated/codex-home/skills/productspec-work/SKILL.md",
+      },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: fake.spawn,
+    })
+    await waitForMessages(fake.messages, 1)
+    fake.respond(1, {})
+    await waitForMessages(fake.messages, 2)
+    fake.respond(2, { thread: { id: "codex-thread-agent-state" } })
+    await waitForMessages(fake.messages, 3)
+    fake.respond(3, { turn: { id: "codex-turn-agent-state", status: "inProgress" } })
+    fake.notify("item/started", {
+      threadId: "codex-thread-agent-state",
+      turnId: "codex-turn-agent-state",
+      item: {
+        type: "subAgentActivity",
+        id: "subagent-started",
+        kind: "started",
+        agentThreadId: "child-thread-current",
+        agentPath: "packet-worker",
+      },
+    })
+    fake.notify("item/completed", {
+      threadId: "codex-thread-agent-state",
+      turnId: "codex-turn-agent-state",
+      item: {
+        type: "collabAgentToolCall",
+        id: "collab-wait",
+        tool: "wait",
+        status: "completed",
+        senderThreadId: "codex-thread-agent-state",
+        receiverThreadIds: [],
+        prompt: "",
+        agentsStates: {
+          "child-thread-current": { status: "completed", message: "child packet complete" },
+        },
+      },
+    })
+    fake.notify("item/agentMessage/delta", {
+      threadId: "codex-thread-agent-state",
+      turnId: "codex-turn-agent-state",
+      itemId: "message-agent-state",
+      delta: "Parent complete.",
+    })
+    fake.notify("turn/completed", {
+      threadId: "codex-thread-agent-state",
+      turn: { id: "codex-turn-agent-state", status: "completed", error: null },
+    })
+    await expect(turn).resolves.toMatchObject({ outcome: "success", text: "Parent complete." })
+    expect(events.filter(event => event.kind === "child_started")).toEqual([
+      expect.objectContaining({ childRef: "child-thread-current", summary: "packet-worker" }),
+    ])
+    expect(events.filter(event => event.kind === "child_completed")).toEqual([
+      expect.objectContaining({ childRef: "child-thread-current", response: "child packet complete" }),
+    ])
   })
 
   test("installs only into a named isolated home and reconciles exact bytes", () => {

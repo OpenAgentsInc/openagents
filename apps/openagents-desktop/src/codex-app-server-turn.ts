@@ -169,6 +169,7 @@ export const runCodexAppServerTurn = async (
     response: string
     usage: CodexChildUsage | null
     startedAt: number
+    terminal: boolean
   }>()
   const pendingTools = new Set<string>()
   let settle: ((outcome: CodexAppServerTurnOutcome) => void) | null = null
@@ -187,7 +188,7 @@ export const runCodexAppServerTurn = async (
 
   const registerChild = (childRef: string, parentThreadId: string, prompt: string): void => {
     if (children.has(childRef)) return
-    children.set(childRef, { parentThreadId, prompt, response: "", usage: null, startedAt: Date.now() })
+    children.set(childRef, { parentThreadId, prompt, response: "", usage: null, startedAt: Date.now(), terminal: false })
     const parentChildRef = threadId !== null && parentThreadId !== threadId ? parentThreadId : undefined
     input.emit({
       kind: "child_started",
@@ -203,6 +204,54 @@ export const runCodexAppServerTurn = async (
     threadId !== null && child.parentThreadId !== threadId
       ? { parentChildRef: child.parentThreadId.slice(0, 120) }
       : {}
+
+  const settleChild = (childRef: string, status: string, message: string): void => {
+    const child = children.get(childRef)
+    if (child === undefined || child.terminal) return
+    child.terminal = true
+    if (status === "completed") {
+      input.emit({
+        kind: "child_completed",
+        childRef: childRef.slice(0, 120),
+        ...childParent(child),
+        accountRef: input.accountRef,
+        summary: (message || child.response.trim() || "Codex child completed").slice(0, 400),
+        ...((child.response.trim() || message) === "" ? {} : { response: (child.response.trim() || message).slice(0, 32_000) }),
+        usage: child.usage === null ? null : {
+          inputTokens: child.usage.inputTokens,
+          cachedInputTokens: child.usage.cachedInputTokens,
+          outputTokens: child.usage.outputTokens,
+          reasoningTokens: child.usage.reasoningOutputTokens,
+          totalTokens: child.usage.totalTokens,
+        },
+        durationMs: Date.now() - child.startedAt,
+      })
+    } else {
+      input.emit({
+        kind: "child_failed",
+        childRef: childRef.slice(0, 120),
+        ...childParent(child),
+        accountRef: input.accountRef || null,
+        reason: "child_failed",
+        detail: (message || `Codex child ${status}`).slice(0, 400),
+      })
+    }
+  }
+
+  const reconcileAgentStates = (item: Record<string, unknown>, parentThreadId: string): void => {
+    const states = record(item.agentsStates)
+    if (states === null) return
+    for (const [childRef, raw] of Object.entries(states)) {
+      const state = record(raw)
+      const status = string(state?.status)
+      const message = string(state?.message) ?? ""
+      registerChild(childRef, parentThreadId, string(item.prompt) ?? message)
+      if (status === "completed") settleChild(childRef, status, message)
+      else if (status === "errored" || status === "interrupted" || status === "shutdown" || status === "notFound") {
+        settleChild(childRef, status, message)
+      }
+    }
+  }
 
   const handleNotification = (message: CodexAppServerMessage): void => {
     const params = record(message.params)
@@ -246,6 +295,7 @@ export const runCodexAppServerTurn = async (
             ? item.receiverThreadIds.filter(value => typeof value === "string") as string[]
             : []
           for (const receiver of receivers) registerChild(receiver, notifiedThread!, string(item.prompt) ?? "")
+          reconcileAgentStates(item, notifiedThread!)
         }
         const facts = item === null ? null : toolFacts(item)
         const summary = facts?.summary || facts?.name || string(item?.type) || "child activity"
@@ -263,31 +313,9 @@ export const runCodexAppServerTurn = async (
         const turn = record(params.turn)
         const status = string(turn?.status)
         if (status === "completed") {
-          input.emit({
-            kind: "child_completed",
-            childRef: notifiedThread!.slice(0, 120),
-            ...childParent(child),
-            accountRef: input.accountRef,
-            summary: (child.response.trim() || "Codex child completed").slice(0, 400),
-            ...(child.response.trim() === "" ? {} : { response: child.response.slice(0, 32_000) }),
-            usage: child.usage === null ? null : {
-              inputTokens: child.usage.inputTokens,
-              cachedInputTokens: child.usage.cachedInputTokens,
-              outputTokens: child.usage.outputTokens,
-              reasoningTokens: child.usage.reasoningOutputTokens,
-              totalTokens: child.usage.totalTokens,
-            },
-            durationMs: Date.now() - child.startedAt,
-          })
+          settleChild(notifiedThread!, status, "")
         } else {
-          input.emit({
-            kind: "child_failed",
-            childRef: notifiedThread!.slice(0, 120),
-            ...childParent(child),
-            accountRef: input.accountRef,
-            reason: "child_failed",
-            detail: turn === null ? "Codex child failed" : turnError(turn).slice(0, 400),
-          })
+          settleChild(notifiedThread!, status ?? "failed", turn === null ? "Codex child failed" : turnError(turn))
         }
         return
       }
@@ -333,6 +361,13 @@ export const runCodexAppServerTurn = async (
           ? item.receiverThreadIds.filter(value => typeof value === "string") as string[]
           : []
         for (const receiver of receivers) registerChild(receiver, threadId ?? "", string(item.prompt) ?? "")
+        reconcileAgentStates(item, threadId ?? "")
+      } else if (item.type === "subAgentActivity") {
+        const childRef = string(item.agentThreadId)
+        if (childRef !== null) {
+          registerChild(childRef, threadId ?? "", string(item.agentPath) ?? "Codex child agent")
+          if (item.kind === "interrupted") settleChild(childRef, "interrupted", "Codex child interrupted")
+        }
       }
       const id = string(item.id) ?? `${item.type ?? "item"}`
       if (item.type === "agentMessage" && message.method === "item/completed" && text === "") {
