@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import path from "node:path"
 
 import { mvpCodexReadyProbe, mvpProofRequiredSteps, resolveMvpProofCommand, resolveMvpProofConfig } from "./mvp-proof.ts"
@@ -65,5 +66,11 @@ describe("ProductSpec-native MVP proof contract", () => {
     expect(resolveMvpProofCommand(" /Applications/OpenAgents.app/Contents/MacOS/OpenAgents ", "/repo/app")).toEqual([
       "/Applications/OpenAgents.app/Contents/MacOS/OpenAgents",
     ])
+  })
+
+  test("waits across Effect Native render boundaries before declaring a proof control unavailable", () => {
+    const source = readFileSync(new URL("./mvp-proof.ts", import.meta.url), "utf8")
+    expect(source).toContain('await poll(click(key), value => value["clicked"] === true, 30_000)')
+    expect(source).not.toContain('asRec(await evaluate(click(key)))')
   })
 })

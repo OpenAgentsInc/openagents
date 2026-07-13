@@ -187,8 +187,8 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
     return { ok: false, value }
   }
   const requireClick = async (key: string): Promise<void> => {
-    const result = asRec(await evaluate(click(key)))
-    if (result["clicked"] !== true) throw new Error(`control unavailable: ${key}`)
+    const result = await poll(click(key), value => value["clicked"] === true, 30_000)
+    if (!result.ok) throw new Error(`control unavailable: ${key}`)
   }
   const requireField = async (key: string, value: string): Promise<void> => {
     const result = asRec(await evaluate(setField(key, value)))
