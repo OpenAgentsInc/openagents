@@ -36,3 +36,12 @@ export const selectExactManagedFleetProviderAccount = async <Account>(
   )
   return matches.length === 1 ? matches[0] : undefined
 }
+
+export const newestManagedFleetProviderAccountsFirst = <Account extends {
+  readonly providerAccountRef: string
+  readonly updatedAt: string
+}>(accounts: readonly Account[]): Account[] =>
+  [...accounts].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    left.providerAccountRef.localeCompare(right.providerAccountRef),
+  )

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   authorizesManagedFleetUnitDispatch,
+  newestManagedFleetProviderAccountsFirst,
   selectExactManagedFleetProviderAccount,
 } from './fleet-managed-dispatch-authority'
 
@@ -9,6 +10,16 @@ const runRef = 'fleet_run.sarah.0123456789abcdef0123'
 const workUnitRef = 'unit.fc4.managed_cloud'
 
 describe('managed FleetRun dispatch authority', () => {
+  test('advertises the most recently refreshed eligible provider first', () => {
+    expect(newestManagedFleetProviderAccountsFirst([
+      { providerAccountRef: 'provider.stale', updatedAt: '2026-07-12T23:18:21.166Z' },
+      { providerAccountRef: 'provider.fresh', updatedAt: '2026-07-13T08:27:45.933Z' },
+    ]).map(account => account.providerAccountRef)).toEqual([
+      'provider.fresh',
+      'provider.stale',
+    ])
+  })
+
   test('selects only the exact pre-claimed provider and never substitutes another healthy account', async () => {
     const firstHash = `account.pylon.codex.${'a'.repeat(24)}`
     const claimedHash = `account.pylon.codex.${'b'.repeat(24)}`
