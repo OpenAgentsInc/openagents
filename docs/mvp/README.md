@@ -22,6 +22,9 @@ read.
    — the proposed first AssuranceSpec dogfood slice bound to this exact MVP
    ProductSpec. It plans proof-design tooling; it does not change MVP intent,
    sequencing, release state, or public claims.
+6. [`2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md)
+   — the narrow signed/notarized RC6 build, installed-smoke, restore, cleanup,
+   and remaining-gates receipt.
 
 The Product Spec declares intent. Current upstream ProductSpec can also index
 external evidence with Related Artifacts, but the local package has not yet
