@@ -1,0 +1,5 @@
+unit_ref=unit.fc4.owner_local.acceptance.20260713103147
+target=owner_local
+artifact=bounded_public_repository_change
+verification_ref=command.public.pylon_khala.verify.681a8f3ba01ca51a34f842d9
+authority=fixture_only
