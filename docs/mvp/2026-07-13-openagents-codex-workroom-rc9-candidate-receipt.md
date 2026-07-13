@@ -5,7 +5,7 @@
 - Source commit: `c388bf7e10`
 - Candidate version: `0.1.0-rc.9`
 - Result: exact installed signed/notarized real-Codex and RC8-to-RC9
-  release-lifecycle journeys passed; owner gates remain
+  release-lifecycle journeys passed; installed-journey owner acceptance remains
 
 ## Exact artifacts
 
@@ -97,4 +97,6 @@ failures, followed by the built Electron smoke.
   the complete `CW-AC-16` classification fixes.
 - RC9 is not published and no update feed, release registry, behavior registry,
   Eval registry, or promise registry was changed.
-- Product-owner gates remain pending and were not fabricated.
+- Product-owner acceptance of the installed journey/read-only boundary remains
+  pending and was not fabricated. Conditional rollout, telemetry, public-copy,
+  and dogfood-governance gates remain separate and untriggered.

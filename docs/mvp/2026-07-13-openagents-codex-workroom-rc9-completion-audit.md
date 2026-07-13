@@ -46,13 +46,20 @@
 
 ## What remains
 
-Implementation is complete against the 18 frozen criteria. “100% complete” as
-a product/release decision still requires the explicit product-owner gates in
-the ProductSpec: accept the exact installed journey and read-only boundary;
-approve public workroom/companion language; approve telemetry and consent copy;
-decide the Codex-only release posture before CUT-27; and accept the initial
-concurrency ceiling. Those decisions cannot be inferred from passing tests and
-were not fabricated.
+Implementation is complete against the 18 frozen criteria. Closing #8756 as
+the accepted implementation/evidence lane still requires one product-owner
+decision: accept the exact installed journey and its read-only review boundary.
+That decision cannot be inferred from passing tests and was not fabricated.
+
+The other ProductSpec owner gates remain explicit but are conditional on later
+actions rather than unconditional #8756 close blockers: public
+workroom/companion language requires approval before use; telemetry/consent
+copy requires approval before collection; publishing this Codex-only shape
+before CUT-27 requires an explicit release decision; and raising or adopting
+the initial concurrency ceiling requires the stated dogfood-governance
+decision. Closing an unpublished implementation/evidence issue does not take
+any of those actions.
 
 This audit does not publish RC9, update registries, authorize public promises,
-or close #8756. Those actions follow only after the recorded owner decisions.
+or close #8756. Closure follows the installed-journey acceptance; rollout and
+governance actions retain their separate gates.
