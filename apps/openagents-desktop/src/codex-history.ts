@@ -26,6 +26,22 @@ const iso = (value: unknown): string | null => {
 }
 const displayTime = (value: string): string => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 const titleFor = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 80) || "Untitled Codex chat"
+type CodexUserRecordKind = "authored" | "agent_metadata" | "plugin_metadata" | "environment_context"
+const codexUserRecordKind = (role: string | null, value: string): CodexUserRecordKind => {
+  if (role !== "user") return "authored"
+  if (value.startsWith("# AGENTS.md instructions for ") && value.includes("\n<INSTRUCTIONS>\n")) return "agent_metadata"
+  if (value.startsWith("<recommended_plugins>\n")) return "plugin_metadata"
+  const trimmed = value.trim()
+  return trimmed.startsWith("<environment_context>") && trimmed.endsWith("</environment_context>")
+    ? "environment_context"
+    : "authored"
+}
+const reservedTransportTitle = (value: string): boolean => {
+  const trimmed = value.trimStart()
+  return trimmed.startsWith("<environment_context>") ||
+    trimmed.startsWith("<recommended_plugins>") ||
+    trimmed.startsWith("# AGENTS.md instructions for ")
+}
 
 const filesUnder = (root: string, includeCompressed = false): string[] => {
   const visit = (directory: string): string[] => {
@@ -149,7 +165,7 @@ const readOne = (file: string, includeMessages: boolean): MutableThread | null =
     }).find((value): value is string => value !== null)
     if (text === undefined) continue
     thread.updatedAt = at
-    if (role === "user" && thread.title === undefined) thread.title = titleFor(text)
+    if (role === "user" && thread.title === undefined && codexUserRecordKind(role, text) === "authored") thread.title = titleFor(text)
     thread.notes.push({ key: `${thread.id}-${thread.notes.length}`, role, text: text.slice(0, 4_000), timestamp: displayTime(at) })
   }
   return thread
@@ -250,6 +266,20 @@ const titleIndex = (sessionsRoot: string): ReadonlyMap<string, string> => {
   } catch { return new Map() }
 }
 
+const firstAuthoredTitle = (entry: SessionIndexEntry): string | null => {
+  for (const line of historyText(entry.file).split("\n")) {
+    if (line === "") continue
+    try {
+      const envelope = object(JSON.parse(line)); const payload = envelope === null ? null : object(envelope.payload)
+      if (envelope?.type !== "response_item" || payload === null || string(payload.type) !== "message") continue
+      const role = string(payload.role)
+      const text = contentText(payload.content)
+      if (role === "user" && text !== "" && codexUserRecordKind(role, text) === "authored") return titleFor(text)
+    } catch { /* malformed records cannot become display titles */ }
+  }
+  return null
+}
+
 const inferredStatus = (file: string): CodexHistoryAgent["status"] => {
   try {
     const text = file.endsWith(".zst") ? historyText(file).slice(-historyTailBytes) : (() => { const size=statSync(file).size; const descriptor=openSync(file,"r"); try { const buffer=Buffer.alloc(Math.min(historyTailBytes,size)); readSync(descriptor,buffer,0,buffer.length,size-buffer.length); return buffer.toString("utf8") } finally { closeSync(descriptor) } })()
@@ -268,10 +298,15 @@ export const buildCodexHistoryGraph = (sessionsRoot: string): CodexHistoryGraph 
   const rootOf = (entry: SessionIndexEntry): string => { let current = entry; const seen = new Set<string>(); while (current.parentId !== null && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; current = parent } return current.id }
   const depthOf = (entry: SessionIndexEntry): number => { let depth = 0; let current = entry; const seen = new Set<string>(); while (current.parentId !== null && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; depth++; current = parent } return depth }
   const descendants = (id: string, seen = new Set<string>()): number => { if (seen.has(id)) return 0; seen.add(id); return (children.get(id) ?? []).reduce((sum, child) => sum + 1 + descendants(child, seen), 0) }
-  const agents = entries.map(entry => ({
-    threadRef: entry.id, parentThreadRef: entry.parentId, title: titles.get(entry.id) ?? (entry.parentId === null ? "Untitled Codex chat" : entry.nickname ?? entry.role ?? "Subagent"),
+  const agents = entries.map(entry => {
+    const indexedTitle = titles.get(entry.id)
+    const title = indexedTitle !== undefined && !reservedTransportTitle(indexedTitle)
+      ? indexedTitle
+      : firstAuthoredTitle(entry) ?? (entry.parentId === null ? "Untitled Codex chat" : entry.nickname ?? entry.role ?? "Subagent")
+    return ({
+    threadRef: entry.id, parentThreadRef: entry.parentId, title,
     status: inferredStatus(entry.file), createdAt: entry.createdAt, updatedAt: entry.updatedAt, depth: depthOf(entry), descendantCount: descendants(entry.id), model: entry.model, role: entry.role, nickname:entry.nickname,agentPath:entry.agentPath,sourceVersion:entry.sourceVersion,reasoning:entry.reasoning,source:"codex" as const,
-  })).sort((a,b) => a.createdAt.localeCompare(b.createdAt))
+  })}).sort((a,b) => a.createdAt.localeCompare(b.createdAt))
   return { entries, agents: agents.map(agent => ({ ...agent, title: agent.title || rootOf(byId.get(agent.threadRef)!) })) }
 }
 
@@ -283,16 +318,14 @@ export const readCodexHistoryCatalog = (sessionsRoot: string, graph = buildCodex
 const contentText = (value: unknown): string => Array.isArray(value) ? value.map(part => { const row = object(part); return row === null ? "" : safeText(row.text ?? row.value ?? row.content) }).filter(Boolean).join("\n") : safeText(value)
 const field = (label: string, value: unknown) => { const text = redactCodexHistoryText(safeText(value)); return text.text === "" ? null : { label, value: text.text, redacted: text.redacted } }
 const firstString = (value: unknown): string | null => Array.isArray(value) ? value.map(string).find((entry): entry is string => entry !== null) ?? null : string(value)
-const isInjectedAgentMetadata = (role: string | null, value: string): boolean => role === "user" && value.startsWith("# AGENTS.md instructions for ") && value.includes("\n<INSTRUCTIONS>\n")
-const isInjectedPluginMetadata = (role: string | null, value: string): boolean => role === "user" && value.startsWith("<recommended_plugins>\n")
+const isInjectedAgentMetadata = (role: string | null, value: string): boolean => codexUserRecordKind(role, value) === "agent_metadata"
+const isInjectedPluginMetadata = (role: string | null, value: string): boolean => codexUserRecordKind(role, value) === "plugin_metadata"
 /** Codex persists its per-turn execution envelope as a user-role message. It
  * is runtime scaffolding, not authored chat, so keep it on the filtered
  * context lane. Require one complete, top-level envelope: user prose that
  * merely mentions the tag remains visible. */
 const isInjectedEnvironmentContext = (role: string | null, value: string): boolean => {
-  if (role !== "user") return false
-  const trimmed = value.trim()
-  return trimmed.startsWith("<environment_context>") && trimmed.endsWith("</environment_context>")
+  return codexUserRecordKind(role, value) === "environment_context"
 }
 const agentMessageEnvelope = (value: string): Readonly<{ type: string | null; task: string | null; sender: string | null; payload: string | null }> => {
   const payloadMarker = "\nPayload:\n"

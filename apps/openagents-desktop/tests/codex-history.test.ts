@@ -48,4 +48,14 @@ describe("openagents_desktop.seam.codex_loss_accounted_history.v2 legacy compati
     const threads = readRecentCodexHistory({ sessionsRoot: sessions, now, includeMessages: false })
     expect(threads[0]?.notes).toEqual([])
   })
+
+  test("transport context never becomes the legacy sidebar title", () => {
+    const sessions = root()
+    const environment = "<environment_context>\n  <cwd>/safe/repo</cwd>\n</environment_context>"
+    write(sessions, "top.jsonl", [meta("top", "2026-07-10T17:00:00.000Z"), message("2026-07-10T17:01:00.000Z", "user", environment), message("2026-07-10T17:02:00.000Z", "user", "Continue the voice work")])
+    expect(readRecentCodexHistory({ sessionsRoot: sessions, now })[0]?.title).toBe("Continue the voice work")
+    const literal = root()
+    write(literal, "literal.jsonl", [meta("literal", "2026-07-10T17:00:00.000Z"), message("2026-07-10T17:01:00.000Z", "user", "Show the literal <environment_context> tag")])
+    expect(readRecentCodexHistory({ sessionsRoot: literal, now })[0]?.title).toBe("Show the literal <environment_context> tag")
+  })
 })
