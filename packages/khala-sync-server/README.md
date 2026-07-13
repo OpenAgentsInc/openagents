@@ -245,6 +245,20 @@ landed, but rebuilding the production guest image with that controller and the
 owner-local destination rehydrator, then running the direct local→managed→local
 journey, remain required before #8748 can close.
 
+`src/portable-capability-runtime-adapters.ts` composes PORT-02 with the real
+provider-account and GitHub grant authorities. Exact source revocation and
+caller-named destination reissue use the internal service-actor routes and
+accept only refs-only `material: excluded` outcomes. Raw resolved material is
+converted immediately into one callback-owned byte buffer, passed only to the
+target-local installation port, and zeroized in `finally` on success or
+failure. It never enters retained-control requests, journals, receipts, or
+errors. Managed installation must write and return the exact refs-only marker
+under `/var/lib/openagents/portable-sessions/<session-digest>/capabilities/`
+before the adapter returns an installation ref; owner-local installation uses
+the same callback boundary without claiming a managed marker. Focused tests
+cover both authorities, zeroization, outage/mismatch refusal, exact marker
+verification, install, and wipe.
+
 ## Fleet cockpit scope (KS-6.1, #8302)
 
 `src/fleet-projection.ts` + `src/fleet-mutators.ts` +
