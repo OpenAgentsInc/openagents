@@ -1979,21 +1979,22 @@ const selectAndPinDispatchAccount = async (
   const candidates = await options.listCandidateAccounts()
 
   const expectedTargetPrefix = provider === "claude_agent" ? "claude:" : "codex:"
-  const requestedAccountRefHash = executionTargetId === undefined
+  const requestedAccountTarget = executionTargetId === undefined
     ? undefined
     : executionTargetId.startsWith(expectedTargetPrefix)
       ? executionTargetId.slice(expectedTargetPrefix.length)
       : null
-  if (requestedAccountRefHash === null || requestedAccountRefHash === "") {
+  if (requestedAccountTarget === null || requestedAccountTarget === "") {
     return { detail: `execution target does not match the ${provider} lane`, ok: false }
   }
-  const requestedCandidate = requestedAccountRefHash === undefined
+  const requestedCandidate = requestedAccountTarget === undefined
     ? undefined
     : candidates.find(candidate =>
-        candidate.fleetAccount.accountRefHash === requestedAccountRefHash &&
+        (candidate.fleetAccount.accountRefHash === requestedAccountTarget ||
+          candidate.registryEntry.openAgentsProviderAccountRef === requestedAccountTarget) &&
         candidate.fleetAccount.provider === provider &&
         candidate.fleetAccount.readiness === "ready")
-  if (requestedAccountRefHash !== undefined && requestedCandidate === undefined) {
+  if (requestedAccountTarget !== undefined && requestedCandidate === undefined) {
     return { detail: `requested ${provider} execution target is not dispatch-ready`, ok: false }
   }
 

@@ -2141,6 +2141,86 @@ describe("thread-resume account affinity (#8410 follow-up)", () => {
     }
   })
 
+  test("an exact OpenAgents provider-account target resolves to its ready isolated local account", async () => {
+    const store = memoryStore()
+    const accounts = twoTiedCodexAccounts()
+    const providerAccountRef = "provider-account_ref_mobile_selected"
+    accounts[1] = {
+      ...accounts[1]!,
+      registryEntry: {
+        ...accounts[1]!.registryEntry,
+        openAgentsProviderAccountRef: providerAccountRef,
+      },
+    }
+    const requestedHash = accounts[1]!.fleetAccount.accountRefHash
+    const threadId = "thread-exact-provider-account"
+    const { options, cleanup } = await baseOptions({
+      codexThreadRunner: fakeCodexRunner([]),
+      listCandidateAccounts: async () => accounts,
+      fetchChatMessageImpl: async () => ({ message: messageFor(threadId, "msg-provider-account"), ok: true }),
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-provider-account",
+          executionTargetId: `codex:${providerAccountRef}`,
+          intentId: "intent-exact-provider-account",
+          kind: "turn.start",
+          seq: 1,
+          threadId,
+          turnId: "turn-exact-provider-account",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      expect(result.ok ? accountHashFromDispatchDetail(result.outcomes[0]!.detail) : null).toBe(requestedHash)
+      expect(store.getRuntimeDispatchAccountRefHash(threadId)).toBe(requestedHash)
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("an OpenAgents provider-account target remains fail-closed when its local account is unready", async () => {
+    const store = memoryStore()
+    const accounts = twoTiedCodexAccounts("acct-pin-b")
+    const providerAccountRef = "provider-account_ref_unready"
+    accounts[1] = {
+      ...accounts[1]!,
+      registryEntry: {
+        ...accounts[1]!.registryEntry,
+        openAgentsProviderAccountRef: providerAccountRef,
+      },
+    }
+    const threadId = "thread-unready-provider-account"
+    const { options, cleanup } = await baseOptions({
+      codexThreadRunner: fakeCodexRunner([]),
+      listCandidateAccounts: async () => accounts,
+      fetchChatMessageImpl: async () => ({ message: messageFor(threadId, "msg-unready-provider-account"), ok: true }),
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-unready-provider-account",
+          executionTargetId: `codex:${providerAccountRef}`,
+          intentId: "intent-unready-provider-account",
+          kind: "turn.start",
+          seq: 1,
+          threadId,
+          turnId: "turn-unready-provider-account",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      expect(result.ok ? result.outcomes[0] : null).toMatchObject({
+        outcome: "failed",
+        detail: "requested codex execution target is not dispatch-ready",
+      })
+      expect(store.getRuntimeDispatchAccountRefHash(threadId)).toBeNull()
+    } finally {
+      await cleanup()
+    }
+  })
+
   test("pins a thread's SECOND turn.start dispatch to the SAME account as its first, bypassing round-robin", async () => {
     const store = memoryStore()
     const threadId = "thread-pin-affinity-1"
