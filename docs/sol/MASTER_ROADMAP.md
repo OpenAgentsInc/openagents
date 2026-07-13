@@ -80,7 +80,7 @@ closed lane stops; code already landed on `main` remains dormant substrate.
 
 1. **The ProductSpec-native Codex Workroom MVP is the whole active P0 product
    program.** Ship one independently useful signed local-first Desktop product
-   around one named isolated Codex account. The former R0–R7 Desktop/mobile,
+   around the user's ordinary logged-in Codex session. The former R0–R7 Desktop/mobile,
    Sync, Fleet, cloud, portability, and voice program is closed not-planned;
    landed contracts remain evidence and safe reusable substrate only.
 2. **Sarah is removed, not the front door.** Named-persona, relationship-first,
@@ -244,7 +244,7 @@ ProductSpec revision/digest -> user-accepted plan -> criterion work packets
 | Intent | Exact ProductSpec revision/digest, stable criterion IDs, and user-accepted revisions |
 | Control | Repository/account grants, host policy, approvals, registered intents, and idempotency |
 | Planning | User-accepted criterion coverage, dependencies, and durable work packets |
-| Execution | One compatible host-owned Codex app-server in a named isolated account |
+| Execution | One compatible host-owned Codex app-server using the ordinary logged-in Codex session |
 | Workroom | Sessions, typed timeline, controls, blockers, child graph, and bounded repository review |
 | Evidence | Criterion-linked verification, exact or explicitly unmeasured usage, review, and receipts |
 | Continuity | Host-owned durable admission, cursors, gap repair, restart recovery, and diagnostics |
@@ -294,7 +294,7 @@ gates group that contract for sequencing; they neither restate nor weaken it:
 | Gate | Grouped scope | Exit evidence |
 | --- | --- | --- |
 | MVP-0 — ProductSpec authority | Guided valid Product Spec, exact revision/digest, stable criterion IDs, accepted criterion-addressed plan, hash-pinned built-in skill, no skill/model authority | One `ProductSpecRun` binds the granted spec and every work packet; invalid, stale, missing-ID, cyclic, or self-verifying states fail closed |
-| MVP-1 — useful local workroom | Signed local-first Desktop app, named isolated Codex, repository grant, sessions, causal timeline, controls/blockers, complete child graph, bounded files/Git diff | A real criterion-linked Codex task and child transcript remain inspectable beside exact repository effects without an OpenAgents account or default Codex home |
+| MVP-1 — useful local workroom | Signed local-first Desktop app, ordinary logged-in Codex session, repository grant, sessions, causal timeline, controls/blockers, complete child graph, bounded files/Git diff | A real criterion-linked Codex task and child transcript remain inspectable beside exact repository effects without an OpenAgents account or separate Pylon account-linking flow |
 | MVP-2 — recovery and truth | Durable admission, exact retry, gap repair, renderer reload, app restart, explicit fault taxonomy, criterion evidence, redacted diagnostics | Restart/reconnect creates no duplicate work, silent retarget, flattened child, false verification, leaked private data, or invented completion |
 | MVP-3 — exact release journey | Install, valid Product Spec, accepted multi-packet plan, real child-agent work, evidence/review, terminal outcome, update, rollback, reinstall, cleanup | The exact signed artifact completes CW-AC-01 through CW-AC-18 at their narrowest proof rungs and declares only the bounded Codex Workroom scope proven |
 

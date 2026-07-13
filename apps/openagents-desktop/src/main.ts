@@ -172,6 +172,7 @@ import {
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
   fixtureCodexSuccessStdout,
+  discoverRegisteredCodexAccounts,
   makeCodexAccountHealth,
   makeCodexChildRuntime,
   makeFixtureCodexChildSpawn,
@@ -198,7 +199,7 @@ import {
 } from "./codex-local-runtime.ts"
 import { makeCodexPreflight, type CodexProbeResult } from "./codex-preflight.ts"
 import { resolveBundledCodexExecutable } from "./provider-runtime-host.ts"
-import { installBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
+import { installBuiltinProductSpecWorkSkill, verifyBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
   LiveAgentGraphUpdateChannel,
@@ -1679,6 +1680,10 @@ const codexChildren = makeCodexChildRuntime({
 const codexAppServerConfig = {
   binary: resolveBundledCodexExecutable,
   installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
+    if (account.source === "current_session") {
+      const verified = verifyBuiltinProductSpecWorkSkill(builtinSkillsRoot)
+      return { skillRoot: builtinSkillsRoot, skillPath: verified.skillPath }
+    }
     const installed = installBuiltinProductSpecWorkSkill({
       builtinSkillsRoot,
       namedCodexHome: account.home,
@@ -1734,6 +1739,10 @@ const smokeProbeSpawnByHome: Record<string, ReturnType<typeof makeFixtureCodexCh
 const codexPreflight = makeCodexPreflight({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   onResult: recordProbeEvidence,
+  ...(!smokeMode ? {
+      discoverImpl: async () => (await discoverRegisteredCodexAccounts())
+        .filter(account => account.source === "current_session"),
+    } : {}),
   ...(!smokeMode ? { appServer: codexAppServerConfig } : {}),
   ...(smokeMode
     ? {
@@ -1760,7 +1769,8 @@ const selectedDesktopWorkspaceRoot = (): string | null => {
   }
 }
 // Codex local chat lane: the composer's Codex chip uses the pinned app-server
-// against one named isolated home with durable thread-resume continuity.
+// against the user's ordinary logged-in Codex session with durable
+// thread-resume continuity. Pylon accounts are fleet-only, not MVP fallback.
 // Smoke alone keeps the legacy scripted JSON fixture parser.
 const codexLocal = makeCodexLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
@@ -3263,45 +3273,22 @@ const smokeOpenSettings = `(async () => {
   const deadline = Date.now() + 5000
   while (
     Date.now() < deadline &&
-    document.querySelector('[data-en-key="settings-account-codex-2-readiness"]') === null
+    document.querySelector('[data-en-key="settings-codex-session-copy"]') === null
   ) {
     await wait(50)
   }
-  const revoked = document.querySelector('[data-en-key="settings-account-codex-2-readiness"]')
+  const session = document.querySelector('[data-en-key="settings-codex-session-copy"]')
   const connect = document.querySelector('[data-en-key="settings-connect-codex"]')
-  // EP250 UI-owned reconnect: the revoked fixture account must render its
-  // per-account Reconnect button, and the screen must carry no CLI copy.
-  const reconnect = document.querySelector('[data-en-key="settings-account-codex-2-reconnect"]')
+  const accountRow = document.querySelector('[data-en-key^="settings-account-"]')
   const screen = document.querySelector('[data-en-key="settings-screen"]')
-  const cliCopy = screen !== null && /pylon auth|khala fleet|codex login/i.test(screen.textContent ?? "")
+  const pylonCopy = screen !== null && /pylon|connect codex|device-auth/i.test(screen.textContent ?? "")
   return {
-    ok: revoked !== null && revoked.textContent === "credentials_revoked" &&
-      connect !== null && connect.textContent === "Connect Codex account" &&
-      reconnect !== null && reconnect.textContent === "Reconnect" && !cliCopy,
-    revokedChip: revoked === null ? null : revoked.textContent,
-    connectLabel: connect === null ? null : connect.textContent,
-    reconnectLabel: reconnect === null ? null : reconnect.textContent,
-    cliCopy,
-  }
-})()`
-
-const smokeConnectCodex = `(async () => {
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const button = document.querySelector('[data-en-key="settings-connect-codex"]')
-  if (button === null) return { ok: false, reason: "Connect button never mounted" }
-  button.click()
-  const deadline = Date.now() + 10000
-  while (
-    Date.now() < deadline &&
-    document.querySelector('[data-en-key="settings-connect-code"]') === null
-  ) {
-    await wait(100)
-  }
-  const code = document.querySelector('[data-en-key="settings-connect-code"]')
-  const link = document.querySelector('[data-en-key="settings-connect-link"]')
-  return {
-    ok: code !== null && code.textContent === "1234-ABCDE" &&
-      link !== null && link.textContent === "https://auth.openai.com/codex/device",
+    ok: session !== null && /already signed in on this Mac/.test(session.textContent ?? "") &&
+      connect === null && accountRow === null && !pylonCopy,
+    currentSessionCopy: session === null ? null : session.textContent,
+    connectPresent: connect !== null,
+    accountRowPresent: accountRow !== null,
+    pylonCopy,
   }
 })()`
 
@@ -4409,11 +4396,10 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("recent-codex-history-selected-detail", smokeCodexHistoryDetails)
         await step("codex-trace-acceptance", traceAcceptanceJourney)
         await captureShot(window, "03-codex-history-detail")
-        // Settings / Codex reconnect (#8640 unblock). Headless smoke cannot
-        // complete a real browser device-auth, so main runs a FIXTURE spawn:
-        // the awaiting_browser receipt below shows scripted fixture data.
-        await step("settings-open-accounts", smokeOpenSettings)
-        await captureShot(window, "04-settings-accounts")
+        // The MVP reuses the ordinary logged-in Codex session and exposes no
+        // Pylon account-linking or device-auth surface in Settings.
+        await step("settings-current-codex-session", smokeOpenSettings)
+        await captureShot(window, "04-settings-current-codex-session")
         // I2 (EP250 wave-2): add a fixture stdio MCP server through the real
         // form + IPC; it persists to the real userData store and lists.
         await step("settings-mcp-add-and-list", smokeMcpAddServer)
@@ -4422,8 +4408,6 @@ const runSmoke = (window: BrowserWindow): void => {
         // export notice (no secrets), and preferences durable IPC round-trips.
         await step("diagnostics-and-preferences", smokeDiagnosticsAndPreferences)
         await captureShot(window, "04c-diagnostics-panel")
-        await step("settings-connect-awaiting-browser-FIXTURE", smokeConnectCodex)
-        await captureShot(window, "05-settings-awaiting-browser-fixture")
         await step("settings-back-to-chat", smokeCloseSettings)
         // With the historical page still loaded, New chat must yield a fresh
         // empty transcript (the on-camera regression), then the Fleet dock

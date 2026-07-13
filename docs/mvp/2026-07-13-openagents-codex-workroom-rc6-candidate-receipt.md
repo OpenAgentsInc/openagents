@@ -68,10 +68,11 @@ the exact checked-in revision.
 
 ## Open gates
 
-- Every named Codex account currently available to the MVP proof driver is
-  either usage-limited or credentials-revoked. The default Codex home is not a
-  permitted substitute for the named isolated-account criterion. The owner
-  action is recorded in the workspace `NEEDS_OWNER.md` ledger.
+- This RC6 receipt used the now-superseded named-isolated-account criterion.
+  The owner corrected the MVP boundary on 2026-07-13: the workroom must use the
+  user's ordinary logged-in Codex session and expose no Pylon account-linking
+  flow. RC6 therefore remains historical evidence and is not an acceptance
+  blocker for the corrected candidate.
 - RC6 has not been published to the production update feed. Publishing remains
   downstream of an explicit release decision; this receipt does not mutate the
   feed.

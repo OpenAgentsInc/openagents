@@ -187,9 +187,16 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
           interrupt: null as (() => void) | null,
           steer: null as ((message: string) => Promise<boolean>) | null,
         }
+        const appServerEnv = account.source === "current_session"
+          ? (() => {
+              const current = { ...env }
+              delete current.CODEX_HOME
+              return current
+            })()
+          : pylonAccountEnvironment(env, selection)
         const outcome = await runCodexAppServerTurn({
           binary,
-          env: pylonAccountEnvironment(env, selection),
+          env: appServerEnv,
           workspace,
           threadRef: `preflight.${account.ref}`,
           turnRef: `preflight.${account.ref}.${startedAt}`,

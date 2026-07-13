@@ -69,7 +69,7 @@ in:
   - signed and notarized OpenAgents Desktop artifact for the first supported macOS target
   - one canonical Effect Native application tree for the visible workroom, typed state, intents, lifecycle, and renderer boundary
   - local-first use without an OpenAgents account
-  - one compatible host-owned Codex app-server and one named isolated Codex account
+  - one compatible host-owned Codex app-server using the user's ordinary logged-in Codex session
   - explicit repository grant and stable OpenAgents coding-session and WorkContext refs
   - create or open a ProductSpec v0.1 artifact through guided conversation or bounded fields with section-addressed validation
   - immutable ProductSpec digest and spec revision, explicit edit diff, and user confirmation for intent revisions
@@ -99,7 +99,7 @@ cut:
   - a second OpenAgents-owned model or tool loop beside Codex
   - direct raw Codex app-server, rollout, provider event, or terminal-text parsing in the renderer
   - renderer credentials, loopback secrets, generic IPC, raw MessagePort, Node, filesystem, process, or absolute-root authority
-  - use of the default Codex home for device login or automatic work dispatch
+  - named Pylon account linking, isolated-account rotation, or Fleet custody on the MVP workroom path
   - model prose, connection health, optimistic UI, or issue closure as completion authority
   - skill-authored spec edits, plans, criterion status, or completion becoming authoritative without host validation and user admission
   - silent retargeting of admitted work when the ProductSpec digest or revision changes
@@ -110,8 +110,9 @@ cut:
 ## User Experience
 
 A developer installs OpenAgents Desktop and reaches a useful local workroom
-without creating an OpenAgents account. The app either shows ready named Codex
-capacity or one precise prerequisite. The developer grants a repository, then
+without creating an OpenAgents account. The app uses the Codex session already
+logged in on the machine or shows one precise sign-in prerequisite; there is no
+second Pylon account-linking flow. The developer grants a repository, then
 creates a Product Spec conversationally or opens an existing one. The workroom
 shows validation at the relevant section, an exact revision/digest, and a
 reviewable plan derived from the acceptance criteria. After the developer
@@ -166,10 +167,11 @@ creating a second scheduler or claim universe.
 A product-owned, read-only, hash-pinned `productspec-work` skill supplies the
 reusable Codex method for elicitation, spec-edit proposals, decomposition,
 agent allocation, and evidence reporting. Runtime Gateway registers the
-app-managed skill root into the named isolated Codex environment through the
-native app-server skill surface and selects its exact typed catalog identity,
-never prose or keyword routing; it never uses the default Codex home or the
-current user-plugin `/skill` path.
+app-managed skill root into the current logged-in Codex app-server through the
+native skill surface and selects its exact typed catalog identity, never prose
+or keyword routing. The skill remains under the signed application resources;
+it is not copied into the default Codex home and never uses the current
+user-plugin `/skill` path.
 The skill can propose but cannot approve a spec edit, grant work, change a
 pinned revision, or verify its own result. Systematic execution is bounded to
 the user-accepted foreground plan and stops on blockers.
@@ -186,8 +188,10 @@ owner-local by default.
   checkout, resolves only its pinned compatible Codex runtime path, and reports
   missing or incompatible runtime state explicitly.
 - **CW-AC-02:** Local-first mode can reach the first useful Codex workroom without an
-  OpenAgents account or hosted service. Connecting Codex uses a named isolated
-  home and never mutates the default Codex home.
+  OpenAgents account or hosted service. It uses only the user's ordinary
+  logged-in Codex session, clears any inherited `CODEX_HOME`, and exposes no
+  named-Pylon account linking, isolated device-auth, or account rotation in the
+  MVP workroom.
 - **CW-AC-03:** Granting one repository creates a stable WorkContext and product session ref
   that do not derive from a path, process, port, machine, or provider thread ID.
 - **CW-AC-04:** From one guided conversation, the workroom creates a validator-clean
@@ -207,11 +211,12 @@ owner-local by default.
   mapped or explicitly deferred, every mutating packet has at most one active
   execution lease, and duplicate or cyclic work packets refuse.
 - **CW-AC-07:** The product-owned `productspec-work` skill ships hash-pinned in the signed
-  compatibility set, is registered only into the named isolated Codex skill
-  root through the native app-server surface, and can refine, decompose,
+  compatibility set, is registered from the app-owned resource root into the
+  current Codex session through the native app-server surface, and can refine, decompose,
   allocate, and report through typed host tools. Removing, corrupting, or
   version-mismatching it produces an explicit incompatible workflow state; it
-  never falls back to an ambient/user-installed skill or the default Codex home.
+  never falls back to an ambient/user-installed skill and never copies itself
+  into the default Codex home.
 - **CW-AC-08:** Skill or agent prose cannot approve a spec edit, admit a work packet, change
   the pinned revision, or mark a criterion verified. Evidence-present and
   verified remain distinct. Verification requires linked test/verifier output,
@@ -321,8 +326,9 @@ owner-local by default.
   consequential-work threshold.
 - A polished timeline can hide data loss. Completeness, explicit gaps, durable
   admission, and restart fault receipts remain acceptance requirements.
-- Named isolated account custody adds first-run friction. The activation metric
-  tests whether the safer flow is still usable without weakening isolation.
+- Reusing the ordinary Codex session can inherit stale or missing auth. The
+  host clears inherited `CODEX_HOME`, probes the exact current session, and
+  reports a precise sign-in or quota prerequisite without rotating elsewhere.
 - Read-only review may be too narrow for repeated daily use. That is a
   falsifiable post-launch result, not permission to add editor/PTY/Git breadth
   before the first complete workroom is accepted.
@@ -353,7 +359,7 @@ owner-local by default.
 - Which local-only, opt-in counters are sufficient to evaluate activation and
   return without collecting stable account, machine, repository, prompt, or
   transcript identity?
-- Which pinned Codex app/CLI versions can directly continue the named isolated
+- Which pinned Codex app/CLI versions can directly continue the ordinary logged-in
   thread, and what bounded handoff is required when direct continuation is not
   supported?
 - What evidence would justify raising the initial dogfood concurrency ceiling
@@ -474,7 +480,7 @@ cannot be reported as a capability exercised inside OpenAgents.
 
 - Exact signed/notarized artifact, component-version, install, update,
   rollback/downgrade-refusal, diagnostics, reinstall, and cleanup receipts.
-- Packaged real-Codex vertical journey covering named isolated account,
+- Packaged real-Codex vertical journey covering the ordinary logged-in session,
   repository grant, guided valid ProductSpec, accepted revision-pinned plan,
   two criterion-linked work packets, built-in skill use, one child transcript,
   evidence/verification distinction, exact diff, terminal outcome, renderer

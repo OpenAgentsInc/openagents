@@ -1,13 +1,10 @@
 /**
  * Settings screen (#8574, #8640 unblock): the most minimal UI needed to
- * reconnect Codex fleet accounts through the app instead of the CLI.
+ * configure local Desktop behavior without exposing fleet account custody.
  *
- * Pure Effect Native data over the shared catalog (v29): connected-accounts
- * list with readiness chips (revoked in a warning tone) and one primary
- * "Connect Codex account" button that drives the pylon isolated device-auth
- * flow through the hardened bridge. The renderer only ever sees refs,
- * readiness states, the verification URL + user code, and typed status —
- * schema-decoded here, never trusted raw.
+ * The MVP uses the ordinary Codex session already logged in on this machine.
+ * Named account linking and Pylon device-auth are fleet capabilities and do
+ * not appear on this surface.
  */
 import {
   Badge,
@@ -23,7 +20,6 @@ import {
   Text,
   TextField,
   Toggle,
-  Tooltip,
   defineIntent,
   type View,
 } from "@effect-native/core"
@@ -711,22 +707,12 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
             plugins: { state: "loading", plugins: [], dropped: 0, message: null },
           },
         } as S))
-        const accounts = decodeAccountsView(
-          yield* Effect.promise(() => bridge.listAccounts().catch(() => null)),
-        )
-        const claudeAccounts = decodeClaudeAccountsView(
-          yield* Effect.promise(() => providerAccountsBridge.list().catch(() => null)),
-        )
         const openAgentsSession = decodeOpenAgentsSessionView(
           yield* Effect.promise(() => openAgentsBridge.status().catch(() => null)),
         )
         yield* update((next) => ({
           ...next,
           settings: {
-            ...withSettingsClaudeAccounts(
-              withSettingsAccounts(next.settings, accounts),
-              claudeAccounts,
-            ),
             openAgentsSession,
           },
         }))
@@ -912,234 +898,6 @@ export const makeSettingsHandlers = <S extends SettingsCapableState>(
 // ---------------------------------------------------------------------------
 // View — pure `state -> View` over the shared catalog.
 // ---------------------------------------------------------------------------
-
-const readinessTone = (readiness: string): "success" | "warn" | "neutral" =>
-  readiness === "ready" ? "success" : readiness.startsWith("credentials_") ? "warn" : "neutral"
-
-const accountRow = (keyPrefix: string) => (account: CodexAccountItem): View =>
-  Stack(
-    {
-      key: `${keyPrefix}-${account.ref}`,
-      direction: "row",
-      gap: "2",
-      align: "center",
-      style: { width: "full" },
-    },
-    [
-      Text({
-        key: `${keyPrefix}-${account.ref}-ref`,
-        content: account.ref,
-        variant: "body",
-        color: "textPrimary",
-      }),
-      Spacer({ key: `${keyPrefix}-${account.ref}-fill`, flex: true }),
-      Badge({
-        key: `${keyPrefix}-${account.ref}-readiness`,
-        label: account.readiness,
-        tone: readinessTone(account.readiness),
-        a11y: { label: `Account ${account.ref} readiness: ${account.readiness}` },
-      }),
-    ],
-  )
-
-/**
- * A Codex account row: ref + readiness chip, plus a per-account Reconnect
- * button whenever the account's credential evidence is anything other than
- * a clean "ready" (EP250 owner mandate: the UI owns reconnect — the button
- * drives the receipted per-ref re-auth `--account <ref> --force-device-login`
- * into the SAME isolated home; no CLI instruction ever renders).
- */
-const reconnectButton = (ref: string, connectLive: boolean): View =>
-  Button({
-    key: `settings-account-${ref}-reconnect`,
-    label: connectLive ? "Waiting…" : "Reconnect",
-    variant: "secondary",
-    disabled: connectLive,
-    onPress: IntentRef("DesktopCodexReconnectRequested", StaticPayload(ref)),
-    a11y: {
-      label: connectLive
-        ? `Reconnect Codex account ${ref} unavailable: another device-auth flow is already running`
-        : `Reconnect Codex account ${ref} with the isolated device-auth flow`,
-    },
-  })
-
-const codexAccountRow = (connectLive: boolean) => (account: CodexAccountItem): View =>
-  Stack(
-    {
-      key: `settings-account-${account.ref}`,
-      direction: "row",
-      gap: "2",
-      align: "center",
-      style: { width: "full" },
-    },
-    [
-      Text({
-        key: `settings-account-${account.ref}-ref`,
-        content: account.ref,
-        variant: "body",
-        color: "textPrimary",
-      }),
-      Spacer({ key: `settings-account-${account.ref}-fill`, flex: true }),
-      Badge({
-        key: `settings-account-${account.ref}-readiness`,
-        label: account.readiness,
-        tone: readinessTone(account.readiness),
-        a11y: { label: `Account ${account.ref} readiness: ${account.readiness}` },
-      }),
-      ...(account.readiness === "ready"
-        ? []
-        : [
-            // Disabled-control reason popover (owner contract EP250): while
-            // another device-auth flow is live the disabled Reconnect
-            // explains itself on hover/focus — never a standing caption.
-            (connectLive
-              ? Tooltip(
-                  {
-                    key: `settings-account-${account.ref}-reconnect-reason`,
-                    content: "Another Codex device-auth flow is already running — finish or wait for it first.",
-                    placement: { side: "top", align: "start" },
-                  },
-                  [reconnectButton(account.ref, connectLive)],
-                )
-              : reconnectButton(account.ref, connectLive)),
-          ]),
-    ],
-  )
-
-const accountsSection = (
-  accounts: CodexAccountsView,
-  connectLive: boolean,
-): ReadonlyArray<View> => {
-  if (accounts.state === "loading") {
-    return [
-      Text({
-        key: "settings-accounts-loading",
-        content: "Loading connected accounts…",
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]
-  }
-  if (accounts.state === "unavailable") {
-    return [
-      Text({
-        key: "settings-accounts-unavailable",
-        content: accounts.message,
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]
-  }
-  if (accounts.accounts.length === 0) {
-    return [
-      Text({
-        key: "settings-accounts-empty",
-        content: "No Codex accounts connected yet.",
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]
-  }
-  return accounts.accounts.map(codexAccountRow(connectLive))
-}
-
-const claudeAccountsSection = (accounts: ClaudeAccountsView): ReadonlyArray<View> => {
-  if (accounts.state === "loading") {
-    return [
-      Text({
-        key: "settings-claude-accounts-loading",
-        content: "Loading Claude accounts…",
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]
-  }
-  if (accounts.state === "unavailable") {
-    return [
-      Text({
-        key: "settings-claude-accounts-unavailable",
-        content: accounts.message,
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]
-  }
-  if (accounts.accounts.length === 0) {
-    return [
-      Text({
-        key: "settings-claude-accounts-empty",
-        content: "No Claude accounts linked on this machine.",
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]
-  }
-  return accounts.accounts.map(accountRow("settings-claude-account"))
-}
-
-const connectStatusSection = (
-  connect: CodexConnectStatusView,
-  connectTarget: string | null,
-): ReadonlyArray<View> => {
-  if (connect.state === "idle") return []
-  if (connect.state === "starting") {
-    return [
-      Text({
-        key: "settings-connect-status",
-        content: connectTarget === null
-          ? "Starting the Codex device-auth flow…"
-          : `Starting the Codex device-auth flow for ${connectTarget}…`,
-        variant: "body",
-        color: "textMuted",
-      }),
-    ]
-  }
-  if (connect.state === "awaiting_browser") {
-    return [
-      Text({
-        key: "settings-connect-status",
-        content: connectTarget === null
-          ? "Open this link in your browser and enter the code below:"
-          : `Reconnecting ${connectTarget} — open this link in your browser and enter the code below:`,
-        variant: "body",
-        color: "textPrimary",
-      }),
-      Button({
-        key: "settings-connect-link",
-        label: connect.url,
-        variant: "ghost",
-        onPress: IntentRef("DesktopCodexVerificationOpened"),
-        a11y: { label: `Open verification link ${connect.url} in your browser` },
-      }),
-      Text({
-        key: "settings-connect-code",
-        content: connect.code,
-        variant: "heading",
-        color: "textPrimary",
-      }),
-    ]
-  }
-  if (connect.state === "connected") {
-    return [
-      Badge({
-        key: "settings-connect-status",
-        label: connectTarget !== null && connectTarget === connect.ref
-          ? `Reconnected: ${connect.ref}`
-          : `Connected: ${connect.ref}`,
-        tone: "success",
-        a11y: { label: `Codex account ${connect.ref} connected` },
-      }),
-    ]
-  }
-  return [
-    Badge({
-      key: "settings-connect-status",
-      label: `Connect failed: ${connect.reason}`,
-      tone: "warn",
-      a11y: { label: `Codex connect failed: ${connect.reason}` },
-    }),
-  ]
-}
 
 const openAgentsSessionSection = (
   phase: DesktopOpenAgentsSessionView,
@@ -1576,7 +1334,6 @@ const extensionLifecycleSection = (settings: SettingsState): ReadonlyArray<View>
 }
 
 export const settingsView = (settings: SettingsState): View => {
-  const connectLive = connectStatusIsLive(settings.connect)
   return Card(
     {
       key: "settings-screen",
@@ -1625,28 +1382,17 @@ export const settingsView = (settings: SettingsState): View => {
         ...openAgentsSessionSection(settings.openAgentsSession),
         Text({key:"settings-local-first-copy",content:"Local coding, conversations, and fleets work without an account. Link an account for cross-device Sync, hosted capacity, and network participation; disconnecting never deletes local work.",variant:"body",color:"textMuted"}),
         Text({
-          key: "settings-accounts-title",
-          content: "Codex accounts",
+          key: "settings-codex-session-title",
+          content: "Codex session",
           variant: "label",
           color: "textMuted",
         }),
-        ...accountsSection(settings.accounts, connectLive),
-        Button({
-          key: "settings-connect-codex",
-          label: connectLive ? "Connecting…" : "Connect Codex account",
-          variant: "primary",
-          disabled: connectLive,
-          onPress: IntentRef("DesktopCodexConnectRequested"),
-          a11y: { label: "Connect a Codex account with the isolated device-auth flow" },
-        }),
-        ...connectStatusSection(settings.connect, settings.connectTarget),
         Text({
-          key: "settings-claude-accounts-title",
-          content: "Claude accounts",
-          variant: "label",
+          key: "settings-codex-session-copy",
+          content: "OpenAgents uses the Codex session already signed in on this Mac. No separate account linking is required.",
+          variant: "body",
           color: "textMuted",
         }),
-        ...claudeAccountsSection(settings.claudeAccounts),
         ...mcpSection(settings.mcp),
         ...pluginSection(settings.plugins),
         ...extensionLifecycleSection(settings),

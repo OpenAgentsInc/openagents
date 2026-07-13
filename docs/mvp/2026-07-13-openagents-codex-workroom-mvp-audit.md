@@ -56,8 +56,8 @@ approvals, containment, and a replay-aware remote-control protocol.
 The smallest complete OpenAgents adaptation is therefore:
 
 > A developer can install OpenAgents Desktop, use it without an OpenAgents
-> account, connect a named Codex account without touching the default Codex
-> home, grant a repository, define or open a valid Product Spec, approve a plan
+> account, use the Codex session already logged in on the machine without a
+> second account-linking flow, grant a repository, define or open a valid Product Spec, approve a plan
 > derived from its exact revision, and have Codex agents systematically work
 > through its acceptance criteria. The developer can supervise typed live work
 > and child agents, resolve blockers, inspect criterion evidence and the
@@ -143,8 +143,9 @@ its place by reducing reorientation and uncertainty around that loop.
 2. Enter local-first mode without an OpenAgents account. If Codex is missing,
    incompatible, signed out, rate-limited, or policy-disabled, show the exact
    prerequisite or refusal instead of a fake empty workroom.
-3. Select or connect one **named isolated** Codex account. Device auth never
-   writes to the default `~/.codex` home.
+3. Use the user's ordinary logged-in Codex session. Clear inherited
+   `CODEX_HOME`; do not expose named-Pylon linking, device auth, or rotation in
+   the MVP workroom.
 4. Grant one repository and open a recent thread or create a new one.
 5. Create a Product Spec through guided conversation or bounded fields, or
    open an existing `.product-spec.md`; fix section-addressed validation errors
@@ -203,11 +204,11 @@ agent lanes, and report evidence. It is shipped and versioned with the signed
 compatibility set; users do not install an arbitrary plugin to reach the core
 flow.
 
-That read-only, hash-pinned skill belongs in an app-managed Codex skill root in
-the named isolated Codex environment. Runtime Gateway registers that root
+That read-only, hash-pinned skill remains in the signed app-managed skill root.
+Runtime Gateway registers that root into the current logged-in Codex session
 through the native app-server skill surface, verifies it through the skill
 catalog, and selects its exact typed identity—never prose or keyword routing.
-It never touches the default Codex home. It is not routed through Desktop's
+It is not copied into the default Codex home. It is not routed through Desktop's
 current user plugin/skill lifecycle, whose audited Codex lane is explicitly
 unsupported, and it does not turn arbitrary extensions into an MVP dependency.
 This is new MVP work; CUT-23 proved the Claude plugin/skill lane, not this

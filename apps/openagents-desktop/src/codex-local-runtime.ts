@@ -315,12 +315,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     // probe results land in the SAME health memory this ordering uses.
     if (options.preflight !== undefined) await options.preflight.ensureProbed()
     const discovered = health.order(await discover())
-    // The MVP admits one named isolated Codex account. The ambient/default
-    // session is intentionally excluded from app-server dispatch because the
-    // product-owned skill must never mutate the user's default Codex home.
+    // The Desktop MVP is a Codex wrapper: app-server turns use exactly the
+    // user's ordinary logged-in Codex session. Named Pylon accounts remain a
+    // fleet capability and are not eligible for this local workroom lane.
     const accounts = options.appServer === undefined
       ? discovered
-      : discovered.filter(account => account.source !== "current_session")
+      : discovered.filter(account => account.source === "current_session")
     const verifiedRefs = new Set(options.preflight?.verifiedRefs() ?? [])
     return {
       accounts,
@@ -533,9 +533,16 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           input.emit({ kind: "question_pending", questionRef, questions: originals.map(item => item.projected) })
         })
       }
+      const appServerEnv = input.account.source === "current_session"
+        ? (() => {
+            const current = { ...env }
+            delete current.CODEX_HOME
+            return current
+          })()
+        : pylonAccountEnvironment(env, selection)
       return runCodexAppServerTurn({
         binary,
-        env: pylonAccountEnvironment(env, selection),
+        env: appServerEnv,
         workspace: input.workspace,
         threadRef: input.threadRef,
         turnRef: input.turnRef,

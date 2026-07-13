@@ -95,9 +95,9 @@ describe("makeCodexLocalRuntime.runTurn", () => {
   test("reports a typed incompatible_workflow instead of falling back when app-server is unavailable", async () => {
     const runtime = makeCodexLocalRuntime({
       scratchRoot: scratch,
-      discoverImpl: async () => [accounts[0]!],
+      discoverImpl: async () => [{ ref: "codex-current", home: "/owner/.codex", source: "current_session" }],
       health: makeCodexAccountHealth(),
-      preflight: verifiedPreflight(["codex"]),
+      preflight: verifiedPreflight(["codex-current"]),
       appServer: {
         binary: () => null,
         installProductSpecSkill: () => { throw new Error("must not install") },
@@ -113,7 +113,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(result).toMatchObject({ ok: false, reason: "incompatible_workflow" })
   })
 
-  test("production app-server path excludes ambient Codex and completes a native question round-trip", async () => {
+  test("production app-server path uses only the logged-in Codex session and completes a native question round-trip", async () => {
     const fake = appServerFixture()
     const sink = collect()
     const runtime = makeCodexLocalRuntime({
@@ -134,7 +134,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
         spawnImpl: fake.spawn,
       },
     })
-    expect(await runtime.availability()).toEqual({ state: "available", accountRef: "codex", verifiedCount: 1 })
+    expect(await runtime.availability()).toEqual({ state: "available", accountRef: "ambient", verifiedCount: 1 })
     const running = runtime.runTurn({
       turnRef: "turn-native-question",
       threadRef: "thread-native-question",
@@ -147,7 +147,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     await waitFor(fake.messages, 4); fake.respond(3, {})
     await waitFor(fake.messages, 5); fake.respond(4, { data: [{ skills: [{
       name: "productspec-work",
-      path: "/isolated/accounts/codex/codex/skills/productspec-work/SKILL.md",
+      path: "/owner/.codex/skills/productspec-work/SKILL.md",
       enabled: true,
     }] }] })
     await waitFor(fake.messages, 6); fake.respond(5, { thread: { id: "native-thread" } })
@@ -219,7 +219,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(fake.messages[9]).toEqual({ id: 90, result: { answers: { choice: { answers: ["Native"] } } } })
     fake.notify("item/agentMessage/delta", { threadId: "native-thread", turnId: "native-turn", delta: "Done." })
     fake.notify("turn/completed", { threadId: "native-thread", turn: { id: "native-turn", status: "completed", error: null } })
-    await expect(running).resolves.toMatchObject({ ok: true, text: "Done.", accountRef: "codex", threadId: "native-thread" })
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Done.", accountRef: "ambient", threadId: "native-thread" })
     expect(sink.events).toContainEqual({ kind: "question_resolved", questionRef: pending.questionRef, outcome: "answered" })
     expect(sink.events).toContainEqual(expect.objectContaining({ kind: "followup_queued", position: 1 }))
     expect(sink.events).toContainEqual(expect.objectContaining({

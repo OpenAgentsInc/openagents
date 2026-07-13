@@ -6,8 +6,57 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-13.1",
+    version: "2026-07-13.2",
     contracts: [
+      {
+        contractId: "openagents_desktop.mvp.uses_logged_in_codex_session.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "MVP Codex runtime and Settings",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "this must work with the user's logged in Codex account. This whole idea of linking to pylons does not belong in this desktop application. The MVP needs to be, it uses your logged in Codex session, nothing else. Simplify this all right now.",
+        authorityBoundary:
+          "The local Desktop MVP admits exactly the ordinary current Codex session discovered at ~/.codex and launches the package-owned Codex app-server with inherited CODEX_HOME removed. Named Pylon accounts, account rotation, isolated device-auth, and Pylon account rows are not eligible for or rendered by the MVP workroom. The app-owned ProductSpec skill remains digest-pinned under the signed application resources and is registered as an explicit app-server extra root; it is not copied into ~/.codex. Fleet-only account custody remains outside this local-workroom contract. No credential bytes or home paths cross preload or renderer.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-local-runtime.ts",
+          "apps/openagents-desktop/src/codex-preflight.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/renderer/settings.ts",
+          "apps/openagents-desktop/src/mvp-proof.ts",
+          "github:OpenAgentsInc/openagents#8756",
+        ],
+        oracles: [
+          {
+            id: "mvp_codex_session.current_only_app_server",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
+            description:
+              "Offers both the ordinary session and a Pylon account, then proves the production app-server selects only the ordinary session and completes the native interaction round trip.",
+          },
+          {
+            id: "mvp_codex_session.no_linking_surface",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/settings.test.ts",
+            description:
+              "Proves Settings explains current-session reuse and renders no Codex/Claude Pylon account rows, connect action, reconnect action, or device-auth status.",
+          },
+          {
+            id: "mvp_codex_session.app_owned_skill_root",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/builtin-productspec-skill.test.ts",
+            description:
+              "Pins ProductSpec skill registration to the signed app-owned extra root while allowing the current Codex session and forbidding default-home skill mutation.",
+          },
+        ],
+        verification:
+          "Desktop typecheck and the Codex local-runtime, preflight, Settings, built-in skill, MVP-proof, package, and built-host suites enforce the current-session-only MVP boundary.",
+      },
       {
         contractId: "openagents_desktop.settings.reachable_workspace.v1",
         state: "enforced",

@@ -212,8 +212,8 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
           reason: document.querySelector('[data-en-key="shell-note"]')?.getAttribute('aria-label')?.slice(0, 160) ?? null,
         }
       })()`, value => value["ready"] === true && value["selected"] === true, 240_000)
-      if (!codexReady.ok) throw new Error(`named Codex capacity unavailable: ${String(codexReady.value["reason"] ?? "unknown")}`)
-      record("codex-ready", true, "named isolated Codex capacity selected after host preflight")
+      if (!codexReady.ok) throw new Error(`logged-in Codex session unavailable: ${String(codexReady.value["reason"] ?? "unknown")}`)
+      record("codex-ready", true, "ordinary logged-in Codex session selected after host preflight")
 
       await requireClick("workspace-product-spec")
       if (!(await poll(productSpecProbe, value => value["mounted"] === true, 30_000)).ok) throw new Error("ProductSpec workspace did not mount")

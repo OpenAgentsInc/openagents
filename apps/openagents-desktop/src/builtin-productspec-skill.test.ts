@@ -26,17 +26,18 @@ describe("built-in productspec-work compatibility asset", () => {
     expect(verified.sha256).toBe(ProductSpecWorkSkillSha256)
     expect(verified.manifest).toEqual({
       schema: "openagents.desktop.builtin_skill_manifest.v1",
-      compatibilitySetVersion: 2,
+      compatibilitySetVersion: 3,
       skills: [{
         name: "productspec-work",
         version: "0.2.0",
         relativePath: "productspec-work/SKILL.md",
         sha256: ProductSpecWorkSkillSha256,
         authority: "proposal_only",
-        installationScope: "named_isolated_codex_home",
+        installationScope: "app_owned_extra_root",
         registrationSurface: "codex_app_server_native",
         ambientFallback: false,
-        defaultCodexHomeAllowed: false,
+        defaultCodexSessionAllowed: true,
+        defaultCodexHomeMutationAllowed: false,
       }],
     })
 

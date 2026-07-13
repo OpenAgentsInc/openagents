@@ -16,17 +16,18 @@ const RelativeSkillPath = Schema.String.check(
 
 export const BuiltinSkillManifestSchema = Schema.Struct({
   schema: Schema.Literal("openagents.desktop.builtin_skill_manifest.v1"),
-  compatibilitySetVersion: Schema.Literal(2),
+  compatibilitySetVersion: Schema.Literal(3),
   skills: Schema.Array(Schema.Struct({
     name: Schema.Literal(ProductSpecWorkSkillName),
     version: Schema.Literal(ProductSpecWorkSkillVersion),
     relativePath: RelativeSkillPath,
     sha256: Sha256,
     authority: Schema.Literal("proposal_only"),
-    installationScope: Schema.Literal("named_isolated_codex_home"),
+    installationScope: Schema.Literal("app_owned_extra_root"),
     registrationSurface: Schema.Literal("codex_app_server_native"),
     ambientFallback: Schema.Literal(false),
-    defaultCodexHomeAllowed: Schema.Literal(false),
+    defaultCodexSessionAllowed: Schema.Literal(true),
+    defaultCodexHomeMutationAllowed: Schema.Literal(false),
   })).check(Schema.isMinLength(1), Schema.isMaxLength(1)),
 })
 export type BuiltinSkillManifest = typeof BuiltinSkillManifestSchema.Type

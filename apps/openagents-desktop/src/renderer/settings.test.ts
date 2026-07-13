@@ -197,29 +197,19 @@ describe("settingsView (state -> component tree)", () => {
     )
   })
 
-  test("accounts list renders ref rows with readiness chips; revoked is a warning tone", () => {
+  test("MVP shows the ordinary Codex session and no Pylon account-linking surface", () => {
     const view = settingsView(loadedAccounts)
     expect(nodeByKey(view, "settings-title")?.content).toBe("Settings")
     expect(nodeByKey(view, "settings-back")?._tag).toBe("Button")
-
-    expect(nodeByKey(view, "settings-account-codex-2-ref")?.content).toBe("codex-2")
-    const revoked = nodeByKey(view, "settings-account-codex-2-readiness")
-    expect(revoked?._tag).toBe("Badge")
-    expect(revoked?.label).toBe("credentials_revoked")
-    expect(revoked?.tone).toBe("warn")
-
-    const ready = nodeByKey(view, "settings-account-codex-4-readiness")
-    expect(ready?.label).toBe("ready")
-    expect(ready?.tone).toBe("success")
-
-    const connect = nodeByKey(view, "settings-connect-codex")
-    expect(connect?._tag).toBe("Button")
-    expect(connect?.label).toBe("Connect Codex account")
-    expect(connect?.variant).toBe("primary")
-    expect(connect?.disabled).toBe(false)
+    expect(nodeByKey(view, "settings-codex-session-title")?.content).toBe("Codex session")
+    expect(nodeByKey(view, "settings-codex-session-copy")?.content).toContain("already signed in on this Mac")
+    expect(nodeByKey(view, "settings-connect-codex")).toBeUndefined()
+    expect(nodeByKey(view, "settings-accounts-title")).toBeUndefined()
+    expect(nodeByKey(view, "settings-account-codex-2-ref")).toBeUndefined()
+    expect(nodeByKey(view, "settings-claude-accounts-title")).toBeUndefined()
   })
 
-  test("loading and unavailable account states render honest placeholders", () => {
+  test.skip("retired Pylon account placeholders", () => {
     const loading = settingsView(initialSettingsState())
     expect(nodeByKey(loading, "settings-accounts-loading")?.content).toBe(
       "Loading connected accounts…",
@@ -241,7 +231,7 @@ describe("settingsView (state -> component tree)", () => {
     )
   })
 
-  test("Claude accounts render read-only rows with readiness chips and no connect button", () => {
+  test.skip("retired Pylon Claude account rows", () => {
     const view = settingsView(
       withSettingsClaudeAccounts(initialSettingsState(), {
         state: "loaded",
@@ -261,7 +251,7 @@ describe("settingsView (state -> component tree)", () => {
     expect(collectNodes(view).filter(node => node._tag === "Button" && typeof node.key === "string" && node.key.startsWith("settings-claude"))).toEqual([])
   })
 
-  test("Claude accounts render honest empty and unavailable states", () => {
+  test.skip("retired Pylon Claude placeholder states", () => {
     const empty = settingsView(
       withSettingsClaudeAccounts(initialSettingsState(), { state: "loaded", accounts: [] }),
     )
@@ -282,7 +272,7 @@ describe("settingsView (state -> component tree)", () => {
     )
   })
 
-  test("awaiting_browser shows the clickable link and the user code LARGE (heading)", () => {
+  test.skip("retired isolated device-auth presentation", () => {
     const awaiting = settingsView(
       withSettingsConnectStatus(loadedAccounts, {
         state: "awaiting_browser",
@@ -305,7 +295,7 @@ describe("settingsView (state -> component tree)", () => {
     expect(nodeByKey(awaiting, "settings-connect-codex")?.label).toBe("Connecting…")
   })
 
-  test("connected and failed statuses render typed badges", () => {
+  test.skip("retired isolated connect status badges", () => {
     const connected = settingsView(
       withSettingsConnectStatus(loadedAccounts, { state: "connected", ref: "codex-4" }),
     )
@@ -331,7 +321,8 @@ describe("settingsView (state -> component tree)", () => {
     expect(nodeByKey(settings, "shell-title")).toBeUndefined()
     expect(navItemById(settings, "shell-settings-toggle")?.accessibilityLabel).toBe("Close Settings")
     expect(nodeByKey(settings, "settings-screen")?._tag).toBe("Card")
-    expect(nodeByKey(settings, "settings-connect-codex")?._tag).toBe("Button")
+    expect(nodeByKey(settings, "settings-codex-session-copy")?.content).toContain("already signed in")
+    expect(nodeByKey(settings, "settings-connect-codex")).toBeUndefined()
     // the chat surface is swapped out, not stacked under
     expect(nodeByKey(settings, "shell-input")).toBeUndefined()
     expect(nodeByKey(settings, "shell-transcript")).toBeUndefined()
@@ -454,7 +445,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     },
   })
 
-  test("Settings toggle loads accounts; connect polls through awaiting_browser to connected", async () => {
+  test.skip("retired Pylon connect flow", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const opened: Array<string> = []
@@ -509,7 +500,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
-  test("Settings toggle lists Claude accounts through the provider-accounts bridge", async () => {
+  test.skip("retired Pylon Claude account listing", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const providerBridge: ProviderAccountsSettingsBridge = {
@@ -553,7 +544,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
-  test("Settings toggle degrades to an explicit unavailable Claude section when the bridge is absent", async () => {
+  test.skip("retired Pylon Claude unavailable state", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const state = yield* SubscriptionRef.make(baseState)
@@ -583,7 +574,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
-  test("verification link press asks main to open the URL it holds (no URL crosses)", async () => {
+  test.skip("retired isolated verification link", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const opened: Array<string> = []
@@ -611,7 +602,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
-  test("connect failure surfaces as a typed failed status", async () => {
+  test.skip("retired isolated connect failure", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const settingsScreenState: DesktopShellState = { ...baseState, workspace: "settings" }
@@ -719,7 +710,7 @@ describe("typed intent loop end-to-end (settings)", () => {
 // copy anywhere on the screen.
 // ---------------------------------------------------------------------------
 
-describe("per-account Reconnect (EP250 UI-owned reconnect)", () => {
+describe.skip("retired per-account Pylon reconnect surface", () => {
   test("credential-failed rows render a working Reconnect button; ready rows render none", () => {
     const view = settingsView(loadedAccounts)
     const reconnect = nodeByKey(view, "settings-account-codex-2-reconnect")
@@ -798,7 +789,7 @@ describe("per-account Reconnect (EP250 UI-owned reconnect)", () => {
   })
 })
 
-describe("reconnect intent loop end-to-end (EP250)", () => {
+describe.skip("retired Pylon reconnect intent loop", () => {
   test("Reconnect dispatch calls the ref-targeted bridge, polls to connected, and re-lists accounts so readiness flips without restart", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

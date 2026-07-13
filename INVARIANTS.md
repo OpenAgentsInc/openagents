@@ -924,11 +924,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   Claude composer, the omitted/default target prefers the currently
   authenticated local Claude Code session and uses isolated Pylon Claude homes
   only as fallback; explicitly selecting a named Pylon account pins it.
-  The Codex composer and delegated Codex children follow the same precedence:
-  an omitted/default target prefers the ordinary authenticated local Codex
-  session, then uses isolated Pylon Codex homes as fallback; explicitly
-  selecting a named Pylon account pins it. Current-session launches must clear
-  an inherited `CODEX_HOME` so stale Pylon selection cannot override `~/.codex`.
+  The Codex composer MVP uses only the ordinary authenticated local Codex
+  session and exposes no named-Pylon linking, rotation, or isolated-home
+  fallback. Current-session launches must clear an inherited `CODEX_HOME` so
+  stale Pylon selection cannot override `~/.codex`. Delegated Fleet children
+  may retain explicit named-account custody under their separate fleet
+  contracts, but that authority cannot enter the local workroom lane.
   A delegated child is a conversation, not merely graph metadata: its bounded
   exact prompt and final response must remain attached to the child card and
   appear in the selected-agent rail. Selecting a child must never degrade to a
