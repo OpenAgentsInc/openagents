@@ -551,12 +551,17 @@ export const makeProductSpecWorkroom = (
   ): ProductSpecOperationResult<ProductSpecRun> => {
     const loaded = loadRun(request.runRef)
     if (!loaded.ok) return loaded
-    const packet = loaded.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
+    if (!identitiesEqual(loaded.value.spec, request.expectedSpec)) {
+      return failure("revision_mismatch", "Packet blocking does not match the accepted ProductSpec.")
+    }
+    const current = ensureCurrentSpec(loaded.value)
+    if (!current.ok) return current
+    const packet = current.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
     if (packet === undefined) return failure("packet_not_found", "The work packet does not exist.")
     if (packet.state !== "active" || packet.activeLease?.leaseRef !== request.leaseRef) {
       return failure("invalid_transition", "Only the active lease can block this packet.")
     }
-    return persistRun(replacePacket(loaded.value, {
+    return persistRun(replacePacket(current.value, {
       ...packet,
       state: "blocked",
       blockedReason: request.reason,
@@ -569,15 +574,20 @@ export const makeProductSpecWorkroom = (
   ): ProductSpecOperationResult<ProductSpecRun> => {
     const loaded = loadRun(request.runRef)
     if (!loaded.ok) return loaded
-    const packet = loaded.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
+    if (!identitiesEqual(loaded.value.spec, request.expectedSpec)) {
+      return failure("revision_mismatch", "Packet evidence does not match the accepted ProductSpec.")
+    }
+    const current = ensureCurrentSpec(loaded.value)
+    if (!current.ok) return current
+    const packet = current.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
     if (packet === undefined) return failure("packet_not_found", "The work packet does not exist.")
     if (packet.state === "evidence_present" && packet.evidenceRefs.includes(request.evidenceRef)) {
-      return { ok: true, value: loaded.value, reconciled: true }
+      return { ok: true, value: current.value, reconciled: true }
     }
     if (packet.state !== "active" || packet.activeLease?.leaseRef !== request.leaseRef) {
       return failure("invalid_transition", "Only the active lease can record terminal packet evidence.")
     }
-    return persistRun(replacePacket(loaded.value, {
+    return persistRun(replacePacket(current.value, {
       ...packet,
       state: "evidence_present",
       evidenceRefs: unique([...packet.evidenceRefs, request.evidenceRef]),
@@ -590,15 +600,20 @@ export const makeProductSpecWorkroom = (
   ): ProductSpecOperationResult<ProductSpecRun> => {
     const loaded = loadRun(request.runRef)
     if (!loaded.ok) return loaded
-    const packet = loaded.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
+    if (!identitiesEqual(loaded.value.spec, request.expectedSpec)) {
+      return failure("revision_mismatch", "Packet verification does not match the accepted ProductSpec.")
+    }
+    const current = ensureCurrentSpec(loaded.value)
+    if (!current.ok) return current
+    const packet = current.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
     if (packet === undefined) return failure("packet_not_found", "The work packet does not exist.")
     if (packet.state === "verified" && packet.verifierRefs.includes(request.verifierRef)) {
-      return { ok: true, value: loaded.value, reconciled: true }
+      return { ok: true, value: current.value, reconciled: true }
     }
     if (packet.state !== "evidence_present" || packet.evidenceRefs.length === 0) {
       return failure("evidence_required", "Evidence-present is required before independent verification.")
     }
-    return persistRun(replacePacket(loaded.value, {
+    return persistRun(replacePacket(current.value, {
       ...packet,
       state: "verified",
       verifierRefs: unique([...packet.verifierRefs, request.verifierRef]),

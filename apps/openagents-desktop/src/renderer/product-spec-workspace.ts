@@ -309,17 +309,20 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       packetRef,
       leaseRef: packet.activeLease?.leaseRef ?? "lease.missing",
       reason: current.productSpec.blockedReason.trim(),
+      expectedSpec: current.productSpec.run!.spec,
     })),
     ProductSpecEvidenceRecorded: (packetRef: string) => runOperation(packetRef, async (current, packet) => bridge.recordEvidence({
       runRef: current.productSpec.run!.runRef,
       packetRef,
       leaseRef: packet.activeLease?.leaseRef ?? "lease.missing",
       evidenceRef: current.productSpec.evidenceRef.trim(),
+      expectedSpec: current.productSpec.run!.spec,
     })),
     ProductSpecEvidenceVerified: (packetRef: string) => runOperation(packetRef, async (current) => bridge.verifyEvidence({
       runRef: current.productSpec.run!.runRef,
       packetRef,
       verifierRef: current.productSpec.verifierRef.trim(),
+      expectedSpec: current.productSpec.run!.spec,
     })),
     ProductSpecRunRefreshed: () => Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)

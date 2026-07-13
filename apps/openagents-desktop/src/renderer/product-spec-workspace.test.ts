@@ -201,8 +201,8 @@ describe("ProductSpec Effect Native workroom", () => {
       leaseRef: "lease.desktop.uuid.test",
       expectedSpec: identity,
     })
-    expect(requests.find((entry) => entry.op === "evidence")!.value).toMatchObject({ evidenceRef: "evidence.test", leaseRef: "lease.desktop.uuid.test" })
-    expect(requests.find((entry) => entry.op === "verify")!.value).toMatchObject({ verifierRef: "verifier.test" })
+    expect(requests.find((entry) => entry.op === "evidence")!.value).toMatchObject({ evidenceRef: "evidence.test", leaseRef: "lease.desktop.uuid.test", expectedSpec: identity })
+    expect(requests.find((entry) => entry.op === "verify")!.value).toMatchObject({ verifierRef: "verifier.test", expectedSpec: identity })
     expect(dispatched).toHaveLength(1)
     expect(dispatched[0]?.packet).toMatchObject({
       packetRef: "packet.ac-1",

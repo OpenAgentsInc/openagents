@@ -246,6 +246,7 @@ export const ProductSpecPacketBlockRequestSchema = Schema.Struct({
   packetRef: RefSchema,
   leaseRef: RefSchema,
   reason: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+  expectedSpec: ProductSpecIdentitySchema,
 })
 export type ProductSpecPacketBlockRequest = typeof ProductSpecPacketBlockRequestSchema.Type
 
@@ -254,6 +255,7 @@ export const ProductSpecEvidenceRequestSchema = Schema.Struct({
   packetRef: RefSchema,
   leaseRef: RefSchema,
   evidenceRef: RefSchema,
+  expectedSpec: ProductSpecIdentitySchema,
 })
 export type ProductSpecEvidenceRequest = typeof ProductSpecEvidenceRequestSchema.Type
 
@@ -261,6 +263,7 @@ export const ProductSpecVerificationRequestSchema = Schema.Struct({
   runRef: RefSchema,
   packetRef: RefSchema,
   verifierRef: RefSchema,
+  expectedSpec: ProductSpecIdentitySchema,
 })
 export type ProductSpecVerificationRequest = typeof ProductSpecVerificationRequestSchema.Type
 

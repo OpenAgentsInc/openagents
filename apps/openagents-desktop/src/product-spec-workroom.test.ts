@@ -187,6 +187,7 @@ describe("ProductSpec workroom authority", () => {
       runRef: accepted.value.runRef,
       packetRef: "work.packet.authority",
       verifierRef: "verifier.agent.prose",
+      expectedSpec: projection.identity,
     })).toMatchObject({ ok: false, reason: "evidence_required" })
 
     const evidenced = restarted.recordEvidence({
@@ -194,6 +195,7 @@ describe("ProductSpec workroom authority", () => {
       packetRef: "work.packet.authority",
       leaseRef: "lease.authority.1",
       evidenceRef: "evidence.tests.productspec",
+      expectedSpec: projection.identity,
     })
     expect(evidenced).toMatchObject({ ok: true })
     if (!evidenced.ok) return
@@ -203,6 +205,7 @@ describe("ProductSpec workroom authority", () => {
       runRef: accepted.value.runRef,
       packetRef: "work.packet.authority",
       verifierRef: "verifier.tests.productspec",
+      expectedSpec: projection.identity,
     })
     expect(verified).toMatchObject({ ok: true })
     if (!verified.ok) return
@@ -259,6 +262,26 @@ describe("ProductSpec workroom authority", () => {
       expectedSpec: projection.identity,
     })
     expect(refused).toMatchObject({ ok: false, reason: "revision_mismatch" })
+    expect(service.blockPacket({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      leaseRef: "lease.authority.1",
+      reason: "stale work",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: false, reason: "revision_mismatch" })
+    expect(service.recordEvidence({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      leaseRef: "lease.authority.1",
+      evidenceRef: "evidence.stale",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: false, reason: "revision_mismatch" })
+    expect(service.verifyEvidence({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      verifierRef: "verifier.stale",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: false, reason: "revision_mismatch" })
     const persisted = service.run(accepted.value.runRef)
     expect(persisted).toMatchObject({ ok: true })
     if (persisted.ok) expect(persisted.value.plan.state).toBe("revision_mismatch")
