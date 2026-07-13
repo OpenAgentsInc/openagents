@@ -1108,6 +1108,21 @@ More specific invariant ledgers apply inside imported apps and packages.
   repair, then add the required real-host/physical-device receipt. No client or
   runtime may infer topology from prose, upload raw local history, or describe
   #8674/#8675 as portability proof.
+- PORT-01 #8746 makes Cloud SQL the durable portable-session authority through
+  `packages/khala-sync-server/src/portable-session-authority.ts` and migration
+  `0066`. Owner-minted session identity, the complete parent/child graph,
+  per-thread cursors, authorized target membership, attachment generation,
+  secret-free checkpoint refs/digests, event log, repairable current rows, and
+  command outcomes commit transactionally. The partial unique index permits at
+  most one work-accepting attachment; every event and command checks the exact
+  attachment generation; movement fences the complete descendant set before
+  advancing it. Exact command/completion retries reconcile without executing
+  twice, conflicting identity reuse fails closed, and an owner retention purge
+  cascades authority rows while appending Sync tombstones. The hub/stream is
+  acceleration only: restart, stream gaps, or `MustRefetch` rebuild from Cloud
+  SQL, never from a socket or current projection. The real-Postgres oracle is
+  `portable-session-authority.test.ts`. This does not grant target credentials
+  or execute a host move; those remain PORT-02/PORT-03.
 - Mobile selects a visible conversation authority after native-session recovery
   and before mounting one Effect Native Home program: confirmed personal Sync
   when live, otherwise the existing public-local conversation. Explicit auth

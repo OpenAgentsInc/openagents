@@ -549,6 +549,23 @@ equivalent pre-mutation checks in the canonical request/Sync authority, and
 PORT-02 must implement actual broker redemption. No movement, target, mobile,
 voice, or dogfood claim is inferred from PORT-00.
 
+### PORT-01 durable authority
+
+PORT-01 [#8746](https://github.com/OpenAgentsInc/openagents/issues/8746) now
+lands the first production authority rung in Cloud SQL/Khala Sync. Migration
+`0066` and `portable-session-authority.ts` persist the owner-minted session,
+complete graph, per-thread cursors, authorized targets, one generation-fenced
+attachment, checkpoint metadata, append-only events, repairable current rows,
+and byte-idempotent commands/outcomes. The normal Worker request registry owns
+session registration and command admission. A real-Postgres restart/fault
+oracle proves graph preservation, current repair after a stream gap, lost-ACK
+and duplicate-move reconciliation, out-of-order/stale-source refusal, generic
+outcomes, and retention cascade/tombstones.
+
+This is durable control-plane authority, not a claim that execution already
+moved. PORT-02 still owns target-scoped credential redemption and PORT-03 owns
+the first real graph-wide checkpoint/rehydrate/failback receipt.
+
 ## Acceptance journey
 
 R7 should include this exact class of journey:

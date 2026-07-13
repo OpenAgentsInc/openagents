@@ -33,6 +33,7 @@ import {
   fleetOperatorMutators,
   fleetSteeringMutators,
   makeMutatorRegistry,
+  portableSessionMutators,
   runtimeMutators,
   type MutatorDefinition,
   type MutatorRegistry,
@@ -133,6 +134,7 @@ export const makeKhalaSyncWorkerMutatorRegistry = (): MutatorRegistry =>
     ...chatMutators,
     ...codingCatalogMutators,
     ...runtimeMutators,
+    ...portableSessionMutators,
     ...fleetOperatorMutators,
     ...fleetSteeringMutators,
   ])

@@ -31,6 +31,7 @@
   "dependencies": {
     "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/portable-session-contract": "workspace:*",
     "effect": "catalog:",
     "postgres": "3.4.9"
   },

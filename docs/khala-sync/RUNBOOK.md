@@ -106,6 +106,17 @@ bun run --cwd packages/khala-sync-server migrate -- --dry-run \
 # 4. Record the run (applied files list) on the owning KS issue.
 ```
 
+PORT-01 migration `0066_portable_session_authority.sql` follows this exact
+procedure. After apply, verify all nine `khala_sync_portable_*` relations,
+confirm `khala_sync_portable_one_live_attachment` exists, then run
+`portable-session-authority.test.ts` against a fresh database. Runtime triage
+must treat `khala_sync_portable_events` and `khala_sync_portable_commands` as
+authority: never repair a gap by editing `thread_current`, advancing a session
+generation, or deleting a command row. Use
+`repairPortableSessionCurrentProjection` for derived-current repair. A stuck
+accepted command remains pending reconciliation until its exact durable outcome
+arrives; retries must preserve the original command bytes/idempotency key.
+
 Hash-mismatch recovery: the runner REFUSES to run (dry or real) when an
 applied migration's on-disk hash changed or an applied file disappeared.
 This means someone edited or removed a landed migration. Do NOT edit the

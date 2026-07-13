@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "27af650adb81916dabbf426c0973a5abdd3802dcd3e4fe6e853c77f493daefb3",
+  "sourceTreeSha256": "ddd8eb9776ea4127e5833f73981f9865f977ac219b0b8d03b313eddd83406a35",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -548,7 +548,7 @@
       "owner": "Sol portable sessions",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "dc5787e87533e94d740c9151f61ecf056a4f4cabec14e3dee16853b4046e9ca6",
+      "sha256": "db91ff1ea691b21e0c1e331642345ad4b0c7f01548b24e6a54e0d9def68cee36",
       "status": "owner-directed product path; ordered implementation ledger active",
       "snapshot": "2026-07-11",
       "reviewedAt": "2026-07-12",
@@ -1085,6 +1085,25 @@
         8745,
         8746,
         8747
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-13-port-01-durable-portable-session-authority-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8746",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "cd1575c22154b843715c922a128454f110d28d0ee78e81d515da4bb378842670",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8746
       ]
     },
     {
@@ -2413,7 +2432,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "f726f35e402b7ccbad57cdadbc37757dccea8a056b7c381a840c7d3413ff751c",
+      "sha256": "49768c4b476c9b0c5c80fb9acc99eb758a53463ca0c92b8879d34319f94cc4ff",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2452,7 +2471,8 @@
         8719,
         8720,
         8721,
-        8745
+        8745,
+        8746
       ]
     }
   ]

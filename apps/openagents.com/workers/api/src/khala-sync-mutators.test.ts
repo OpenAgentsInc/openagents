@@ -82,6 +82,8 @@ describe('khala sync worker mutator registry', () => {
       'runtime.requestInteraction',
       'runtime.decideInteraction',
       'runtime.expireInteraction',
+      'portable.registerSession',
+      'portable.requestCommand',
       'fleet.setDesiredSlots',
       'fleet.pauseRun',
       'fleet.resumeRun',

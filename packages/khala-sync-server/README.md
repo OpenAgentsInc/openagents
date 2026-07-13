@@ -133,6 +133,44 @@ drop remain blocked on #8324/#8330 evidence.
   engine against local Postgres and reads the resulting owner/thread scopes
   through `logPage`, proving a pushed thread appears over catch-up.
 
+## Portable coding-session authority (PORT-01, #8746)
+
+`src/portable-session-authority.ts` +
+`migrations/0066_portable_session_authority.sql` persist the host-independent
+session, complete nested agent graph, authorized target directory,
+generation-fenced attachments, content-addressed checkpoint metadata,
+append-only per-thread events, repairable current projection, and durable
+command/outcome ledger. The Worker registry exposes
+`portable.registerSession` and `portable.requestCommand`; internal runtime
+writers use the same transaction module for events, projection repair,
+movement completion, generic outcomes, reads, and retention purge.
+
+Authority rules:
+
+- only the authenticated owner can mint a session or authorize a target;
+- one partial unique index permits at most one preparing/active/quiescing
+  attachment per session, and every accepted event/command matches its exact
+  attachment ref plus generation;
+- a move checkpoints and detaches the old generation before activating the
+  next, requires every canonical descendant in the destination fence, and
+  idempotently reconciles lost command/completion acknowledgements;
+- the event log and command ledger are authority; `thread_current`, changelog,
+  capture, hub, and WebSocket delivery are derived/repairable acceleration;
+- schema allowlists plus the forbidden-material guard keep credentials, host
+  paths, process/socket handles, provider-native session IDs, and raw private
+  transcript bytes out of these tables and Sync post-images; and
+- owner retention deletion cascades the durable session rows and emits delete
+  tombstones for every projected entity. Shared owner targets remain only as
+  directory records and carry no credential bytes.
+
+The real-Postgres oracle in `src/portable-session-authority.test.ts` proves a
+fresh SQL handle can reconstruct the same graph/current state, current rows can
+be deleted and repaired from events, cursor gaps and stale generations reject,
+lost ACK and duplicate move replays do not duplicate execution, and retention
+purges dependent authority rows. Apply migration `0066` staging first, then
+production through the normal direct migration runner below; never use
+Hyperdrive for migrations.
+
 ## Fleet cockpit scope (KS-6.1, #8302)
 
 `src/fleet-projection.ts` + `src/fleet-mutators.ts` +

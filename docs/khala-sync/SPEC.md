@@ -189,6 +189,10 @@ khala_sync_cvrs          (client_group_id, scope, cvr_version PK triple,
                           snapshot_cursor, entries jsonb — KS-7.2 CVR
                           read-set diffing, flag-gated KHALA_SYNC_CVR=1;
                           see docs/khala-sync/CVR_DESIGN.md)
+khala_sync_portable_*    (PORT-01 session, target membership, nested graph,
+                          exclusive attachment generations, checkpoints,
+                          append-only events, repairable current rows, and
+                          idempotent command/outcome ledger)
 ```
 
 - Version allocation: `UPDATE khala_sync_scopes SET last_version =
@@ -256,6 +260,12 @@ carries production surfaces)
    rows — the sync path never invents counter deltas.
 9. Raw private material (prompts, tokens, wallet, local paths) never enters
    changelog post-images for scopes broader than the owner.
+10. A portable session has one owner-minted, host-independent identity and at
+    most one work-accepting attachment generation; event/command writes from a
+    stale generation fail before mutation and movement fences every descendant.
+11. Portable event/command logs are authority. Current rows, capture, hubs,
+    sockets, and client caches are disposable projections repaired from Cloud
+    SQL without duplicate execution.
 
 ## 8. Verification plan
 
