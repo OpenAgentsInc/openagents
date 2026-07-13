@@ -16,6 +16,8 @@ export const OPENAGENTS_DESKTOP_PROTOCOL = "openagents"
 
 const ignoredCheckoutPath = /^\/(src|scripts|tests|docs|receipts|node_modules)(\/|$)|^\/(README\.md|UPSTREAM\.md|GUARANTEES\.md|tsconfig\.json|forge\.config\.ts)$/
 const resolveFromApp = createRequire(path.join(process.cwd(), "package.json"))
+const resolveFromClaudeSdk = (): NodeRequire =>
+  createRequire(resolveFromApp.resolve("@anthropic-ai/claude-agent-sdk"))
 const developerIdApplication = process.env.OA_DEVELOPER_ID_APPLICATION
 const notarizeCredentials = process.env.ASC_API_PRIVATE_KEY_PATH !== undefined &&
   process.env.ASC_API_KEY_ID !== undefined && process.env.ASC_API_ISSUER_ID !== undefined
@@ -49,8 +51,9 @@ const copyRuntimePackage = async (
   packageName: string,
   resolveSpecifier = packageName,
   ascend = 0,
+  resolver: NodeRequire = resolveFromApp,
 ): Promise<void> => {
-  let source = path.dirname(resolveFromApp.resolve(resolveSpecifier))
+  let source = path.dirname(resolver.resolve(resolveSpecifier))
   for (let index = 0; index < ascend; index += 1) source = path.dirname(source)
   const destination = path.join(buildPath, "node_modules", ...packageName.split("/"))
   await mkdir(path.dirname(destination), { recursive: true })
@@ -131,6 +134,8 @@ const config: ForgeConfig = {
         buildPath,
         `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`,
         `@anthropic-ai/claude-agent-sdk-${platform}-${arch}/package.json`,
+        0,
+        resolveFromClaudeSdk(),
       )
       await copyRuntimePackage(buildPath, "@openai/codex", "@openai/codex/bin/codex.js", 1)
       await copyRuntimePackage(buildPath, `@openai/codex-${platform}-${arch}`, `@openai/codex-${platform}-${arch}/package.json`)
