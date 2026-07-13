@@ -295,6 +295,7 @@ import {
   type ProductSpecOperationError,
 } from "./product-spec-workroom-contract.ts"
 import { makeProductSpecWorkroom } from "./product-spec-workroom.ts"
+import { ProductSpecDynamicTools, handleProductSpecDynamicTool } from "./product-spec-app-server-tools.ts"
 import {
   CodexHandoffOpenChannel,
   decodeCodexHandoffOpenRequest,
@@ -1642,6 +1643,13 @@ const codexAppServerConfig = {
       defaultCodexHome: path.join(homedir(), ".codex"),
     })
     return { skillRoot: installed.skillRoot, skillPath: installed.skillPath }
+  },
+  productSpecDynamicTools: ProductSpecDynamicTools,
+  onProductSpecToolCall: async (request: import("./codex-app-server-client.ts").CodexAppServerRequest) => {
+    const authority = currentProductSpecWorkroom()
+    return handleProductSpecDynamicTool(request, authority === null
+      ? null
+      : { workContextRef: authority.workContextRef, service: authority.service })
   },
 }
 // Codex account preflight: an ephemeral read-only app-server turn against

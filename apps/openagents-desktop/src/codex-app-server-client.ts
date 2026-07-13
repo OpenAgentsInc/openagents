@@ -160,6 +160,7 @@ export const openCodexAppServerClient = (input: Readonly<{
       if (initialized !== null) return initialized
       initialized = request("initialize", {
         clientInfo: { name: "openagents_desktop", title: "OpenAgents Desktop", version: "0.1.0" },
+        capabilities: { experimentalApi: true },
       }).then(() => { write({ method: "initialized", params: {} }) })
       return initialized
     },

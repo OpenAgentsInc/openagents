@@ -16,6 +16,7 @@ import {
   ProductSpecWorkSkillSha256,
   installBuiltinProductSpecWorkSkill,
 } from "./builtin-productspec-skill.ts"
+import { ProductSpecDynamicTools } from "./product-spec-app-server-tools.ts"
 
 const roots: string[] = []
 afterEach(() => {
@@ -78,7 +79,7 @@ describe("Codex app-server native integration", () => {
       skillPath: "/isolated/codex-home/skills/productspec-work/SKILL.md",
     })
     await Bun.sleep(0)
-    expect(fake.messages[0]).toMatchObject({ method: "initialize", id: 1 })
+    expect(fake.messages[0]).toMatchObject({ method: "initialize", id: 1, params: { capabilities: { experimentalApi: true } } })
     fake.respond(1, { userAgent: "codex-test" })
     await Bun.sleep(0)
     expect(fake.messages[1]).toEqual({ method: "initialized", params: {} })
@@ -152,6 +153,11 @@ describe("Codex app-server native integration", () => {
         skillRoot: "/isolated/codex-home/skills",
         skillPath: "/isolated/codex-home/skills/productspec-work/SKILL.md",
       },
+      productSpecDynamicTools: ProductSpecDynamicTools,
+      onProductSpecToolCall: async request => ({
+        contentItems: [{ type: "inputText", text: JSON.stringify({ ok: true, callId: (request.params as { callId: string }).callId }) }],
+        success: true,
+      }),
       control,
       emit: event => events.push(event),
       spawnImpl: fake.spawn,
@@ -170,7 +176,7 @@ describe("Codex app-server native integration", () => {
       enabled: true,
     }] }] })
     await waitForMessages(fake.messages, 6)
-    expect(fake.messages[5]).toMatchObject({ method: "thread/start", params: { ephemeral: false } })
+    expect(fake.messages[5]).toMatchObject({ method: "thread/start", params: { ephemeral: false, dynamicTools: ProductSpecDynamicTools } })
     fake.respond(5, { thread: { id: "codex-thread-1" }, model: "gpt-5.6-sol" })
     await waitForMessages(fake.messages, 7)
     expect(fake.messages[6]).toMatchObject({
@@ -191,6 +197,12 @@ describe("Codex app-server native integration", () => {
     })
     fake.respond(7, { turnId: "codex-turn-1" })
     await expect(steer).resolves.toBe(true)
+    fake.child.stdout.write(`${JSON.stringify({ id: "product-tool-1", method: "item/tool/call", params: { namespace: "product_spec", tool: "get_run", callId: "call-1", arguments: { runRef: "run.1" } } })}\n`)
+    await Bun.sleep(0)
+    expect(fake.messages).toContainEqual({ id: "product-tool-1", result: {
+      contentItems: [{ type: "inputText", text: JSON.stringify({ ok: true, callId: "call-1" }) }],
+      success: true,
+    } })
     fake.notify("turn/plan/updated", {
       threadId: "codex-thread-1",
       turnId: "codex-turn-1",

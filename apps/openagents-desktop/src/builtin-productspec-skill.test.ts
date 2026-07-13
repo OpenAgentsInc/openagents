@@ -26,10 +26,10 @@ describe("built-in productspec-work compatibility asset", () => {
     expect(verified.sha256).toBe(ProductSpecWorkSkillSha256)
     expect(verified.manifest).toEqual({
       schema: "openagents.desktop.builtin_skill_manifest.v1",
-      compatibilitySetVersion: 1,
+      compatibilitySetVersion: 2,
       skills: [{
         name: "productspec-work",
-        version: "0.1.0",
+        version: "0.2.0",
         relativePath: "productspec-work/SKILL.md",
         sha256: ProductSpecWorkSkillSha256,
         authority: "proposal_only",
@@ -48,6 +48,8 @@ describe("built-in productspec-work compatibility asset", () => {
       "approve or apply a ProductSpec edit",
       "mark a criterion verified, accepted, or waived",
       "Never search for or fall back to an ambient",
+      "`incompatible_workflow`",
+      "`get_run`, `propose_edit`,",
     ]) expect(text).toContain(required)
   })
 

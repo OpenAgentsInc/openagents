@@ -92,6 +92,27 @@ const waitFor = async (messages: ReadonlyArray<unknown>, count: number): Promise
 }
 
 describe("makeCodexLocalRuntime.runTurn", () => {
+  test("reports a typed incompatible_workflow instead of falling back when app-server is unavailable", async () => {
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["codex"]),
+      appServer: {
+        binary: () => null,
+        installProductSpecSkill: () => { throw new Error("must not install") },
+      },
+    })
+    const result = await runtime.runTurn({
+      turnRef: "turn-incompatible",
+      threadRef: "thread-incompatible",
+      history: [],
+      message: "execute ProductSpec",
+      emit: collect().emit,
+    })
+    expect(result).toMatchObject({ ok: false, reason: "incompatible_workflow" })
+  })
+
   test("production app-server path excludes ambient Codex and completes a native question round-trip", async () => {
     const fake = appServerFixture()
     const sink = collect()

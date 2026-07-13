@@ -5,8 +5,8 @@ import path from "node:path"
 import { Schema } from "@effect-native/core/effect"
 
 export const ProductSpecWorkSkillName = "productspec-work" as const
-export const ProductSpecWorkSkillVersion = "0.1.0" as const
-export const ProductSpecWorkSkillSha256 = "3858748c8d3ef533f6da3e0568788b93807ef63eb484771edebd7ff67c63e10e" as const
+export const ProductSpecWorkSkillVersion = "0.2.0" as const
+export const ProductSpecWorkSkillSha256 = "610f2171cce162ce0da79d7ef17445277744f16d202dfd90872dff215497294b" as const
 export const BuiltinSkillManifestFilename = "manifest.json" as const
 
 const Sha256 = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
@@ -16,7 +16,7 @@ const RelativeSkillPath = Schema.String.check(
 
 export const BuiltinSkillManifestSchema = Schema.Struct({
   schema: Schema.Literal("openagents.desktop.builtin_skill_manifest.v1"),
-  compatibilitySetVersion: Schema.Literal(1),
+  compatibilitySetVersion: Schema.Literal(2),
   skills: Schema.Array(Schema.Struct({
     name: Schema.Literal(ProductSpecWorkSkillName),
     version: Schema.Literal(ProductSpecWorkSkillVersion),

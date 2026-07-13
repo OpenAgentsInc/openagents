@@ -151,6 +151,7 @@ export const FableLocalFailureReasonSchema = Schema.Literals([
   // these two.
   "no_codex_account",
   "account_reconnect_required",
+  "incompatible_workflow",
 ])
 export type FableLocalFailureReason = typeof FableLocalFailureReasonSchema.Type
 
@@ -791,5 +792,7 @@ export const fableLocalFailureMessage = (
       return "No Codex account is registered on this machine. No message was routed to any other lane."
     case "account_reconnect_required":
       return `Every registered Codex account needs reconnect${suffix}. Reconnect in Settings — no message was routed to any other lane.`
+    case "incompatible_workflow":
+      return `The ProductSpec Codex workflow is incompatible${suffix}. No ambient skill or other lane was substituted.`
   }
 }

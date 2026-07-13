@@ -167,6 +167,8 @@ export type CodexLocalRuntimeOptions = Readonly<{
     }>
     spawnImpl?: CodexAppServerSpawn
     onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
+    productSpecDynamicTools?: ReadonlyArray<Readonly<Record<string, unknown>>>
+    onProductSpecToolCall?: (request: CodexAppServerRequest) => Promise<unknown | null>
   }>
   /**
    * Typed per-account evidence feed (main wires this into the usage ledger
@@ -258,7 +260,7 @@ export const writeCodexTurnImages = (
 }
 
 type ParsedTurnAttempt = Readonly<{
-  outcome: "success" | "reconnect_required" | "failed" | "timeout" | "interrupted"
+  outcome: "success" | "reconnect_required" | "incompatible_workflow" | "failed" | "timeout" | "interrupted"
   text: string
   usage: CodexChildUsage | null
   threadId: string | null
@@ -376,7 +378,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       const binary = options.appServer.binary()
       if (binary === null) {
         return {
-          outcome: "failed",
+          outcome: "incompatible_workflow",
           text: "",
           usage: null,
           threadId: input.resumeThreadId,
@@ -390,7 +392,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         skill = options.appServer.installProductSpecSkill(input.account)
       } catch (error) {
         return {
-          outcome: "failed",
+          outcome: "incompatible_workflow",
           text: "",
           usage: null,
           threadId: input.resumeThreadId,
@@ -544,6 +546,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         model: input.model,
         reasoningEffort: input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT,
         productSpecSkill: skill,
+        ...(options.appServer.productSpecDynamicTools === undefined ? {} : { productSpecDynamicTools: options.appServer.productSpecDynamicTools }),
+        ...(options.appServer.onProductSpecToolCall === undefined ? {} : { onProductSpecToolCall: options.appServer.onProductSpecToolCall }),
         control: input.control as CodexAppServerTurnControl,
         emit: input.emit,
         ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
@@ -1041,6 +1045,9 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             ),
           })
           continue
+        }
+        if (attempt.outcome === "incompatible_workflow") {
+          return emitFailure(failure("incompatible_workflow", attempt.detail))
         }
         if (attempt.preContent) {
           // Non-auth pre-content failure: rotation-eligible, no demotion.

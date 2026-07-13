@@ -10,7 +10,7 @@ import {
 import type { FableLocalEvent } from "./fable-local-contract.ts"
 
 export type CodexAppServerTurnOutcome = Readonly<{
-  outcome: "success" | "reconnect_required" | "failed" | "timeout" | "interrupted"
+  outcome: "success" | "reconnect_required" | "incompatible_workflow" | "failed" | "timeout" | "interrupted"
   text: string
   usage: CodexChildUsage | null
   threadId: string | null
@@ -41,6 +41,8 @@ export type RunCodexAppServerTurnInput = Readonly<{
   model: string
   reasoningEffort: string
   productSpecSkill: ProductSpecSkill
+  productSpecDynamicTools?: ReadonlyArray<Readonly<Record<string, unknown>>>
+  onProductSpecToolCall?: (request: CodexAppServerRequest) => Promise<unknown | null>
   ephemeral?: boolean
   sandbox?: "read-only" | "danger-full-access"
   includeProductSpecSkill?: boolean
@@ -138,8 +140,9 @@ const classifyFailure = (
   const reconnect = lower.includes("unauthorized") || lower.includes("authentication") ||
     lower.includes("login") || lower.includes("credential") || lower.includes("401")
   const rateLimited = lower.includes("rate limit") || lower.includes("usage limit") || lower.includes("429")
+  const incompatibleWorkflow = lower.includes("productspec-work") || lower.includes("dynamictools") || lower.includes("dynamic tools")
   return {
-    outcome: reconnect ? "reconnect_required" : "failed",
+    outcome: reconnect ? "reconnect_required" : incompatibleWorkflow ? "incompatible_workflow" : "failed",
     text,
     usage,
     threadId,
@@ -397,7 +400,16 @@ export const runCodexAppServerTurn = async (
       cwd: input.workspace,
       ...(input.spawnImpl === undefined ? {} : { spawnImpl: input.spawnImpl }),
       ...(input.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: input.requestTimeoutMs }),
-      ...(input.onServerRequest === undefined ? {} : { onServerRequest: input.onServerRequest }),
+      ...((input.onProductSpecToolCall === undefined && input.onServerRequest === undefined) ? {} : {
+        onServerRequest: async (request: CodexAppServerRequest) => {
+          if (request.method === "item/tool/call" && input.onProductSpecToolCall !== undefined) {
+            const result = await input.onProductSpecToolCall(request)
+            if (result !== null) return result
+          }
+          if (input.onServerRequest !== undefined) return input.onServerRequest(request)
+          throw new Error(`Unsupported Codex server request: ${request.method}`)
+        },
+      }),
     })
     const release = client.onNotification(handleNotification)
     if (input.includeProductSpecSkill !== false) {
@@ -420,6 +432,7 @@ export const runCodexAppServerTurn = async (
             sandbox,
             ephemeral: input.ephemeral ?? false,
             threadSource: "appServer",
+            ...(input.productSpecDynamicTools === undefined ? {} : { dynamicTools: input.productSpecDynamicTools }),
           }
         : {
             threadId: input.resumeThreadId,

@@ -131,6 +131,8 @@ export const codexLocalFailureMessage = (
       return "Codex is unavailable: no Codex account is registered on this machine. No message was routed to any other lane."
     case "account_reconnect_required":
       return `Codex is unavailable: every registered Codex account needs reconnect${suffix}. Reconnect in Settings — no message was routed to any other lane.`
+    case "incompatible_workflow":
+      return `The ProductSpec Codex workflow is incompatible${suffix}. No ambient skill or other lane was substituted.`
     case "interrupted":
       return "The local Codex turn was interrupted."
     case "timeout":

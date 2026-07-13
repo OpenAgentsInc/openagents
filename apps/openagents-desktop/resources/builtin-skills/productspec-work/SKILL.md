@@ -9,6 +9,15 @@ Use this skill only when OpenAgents supplies an admitted ProductSpec context
 through its typed host tools. The ProductSpec is the intent authority; this
 skill is a method for proposing and reporting work, never an authority source.
 
+The compatible host exposes the `product_spec` dynamic-tool namespace with
+exactly these proposal/report operations: `get_run`, `propose_edit`,
+`propose_plan`, `report_blocked`, and `record_evidence`. Resolve the current
+run with `get_run` before consequential work, use the proposal tools instead
+of editing host state through prose, and close an admitted lease with
+`report_blocked` or `record_evidence`. If this namespace or any required
+operation is absent, stop with `incompatible_workflow`; never replace it with
+shell commands, ambient tools, or an untyped completion claim.
+
 ## Required identity
 
 Before proposing or executing work, read the exact host-provided identity:
