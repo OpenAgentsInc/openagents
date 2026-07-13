@@ -95,6 +95,14 @@
       "guestInstallPath": "/usr/local/bin/codex",
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
     },
+    "portableSessionControl": {
+      "status": "source_wired_bake_pending",
+      "source": "apps/pylon/deploy/agent-computer/portable-session-control.ts",
+      "guestInstallPath": "/opt/agent/portable-session-control",
+      "contract": "fixed PORT-03 stage/activate/abort/quiesce/checkpoint/reclaim protocol; no arbitrary command surface",
+      "bakeReceiptField": "portableSessionControlSha256",
+      "note": "The rootfs build now compiles and installs this binary. Keep this status bake_pending and preserve the current rootfsDigest until a new nested-virt bake plus boot smoke records the new digest."
+    },
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
     "microvmDestroyReceiptRequired": true

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -32,6 +32,7 @@ mod gce_capacity;
 use gce_capacity::{provisioner_for, CapacityRequest, GceLease, ProvisionerKind, ReleaseReason};
 
 mod cloud_vm;
+mod portable_agent_computer;
 
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
 const DEFAULT_CODEX_BIN: &str = "/usr/local/bin/codex";
@@ -94,6 +95,9 @@ struct Config {
     /// /dev/kvm or the images the live lane falls back to fake so no-KVM envs
     /// never boot. See cloud_vm::LiveFirecrackerConfig for the full env set.
     cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind,
+    /// Serializes retained Agent Computer effects inside this daemon. The
+    /// filesystem operation journal remains the restart/replay authority.
+    portable_agent_computer_lock: Arc<Mutex<()>>,
     /// Redacted OpenAgents GCP project ref for the GCE capacity class. Never a
     /// raw project id. Set OA_CODEX_GCE_PROJECT_REF to override.
     gce_project_ref: String,
@@ -555,6 +559,7 @@ impl Config {
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::from_env_value(
                 optional_env("OA_CLOUD_VM_PROVISIONER").as_deref(),
             ),
+            portable_agent_computer_lock: Arc::new(Mutex::new(())),
             gce_project_ref: optional_env("OA_CODEX_GCE_PROJECT_REF")
                 .unwrap_or_else(|| "gcp-project-ref://openagents/cloud-primary".to_string()),
             gce_provisioner_identity_ref: optional_env("OA_CODEX_GCE_PROVISIONER_IDENTITY_REF")
@@ -694,6 +699,33 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 Err(error) => cloud_vm_failed_response(error)?,
             };
 
+            write_response(&mut stream, status, &response)
+        }
+        "/v1/portable-agent-computers/operations" => {
+            let operation = match serde_json::from_slice::<
+                portable_agent_computer::PortableAgentComputerRequest,
+            >(&request.body)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    return write_invalid_request(
+                        &mut stream,
+                        format!("invalid_request: {error}"),
+                    )
+                }
+            };
+            let _operation_guard = config
+                .portable_agent_computer_lock
+                .lock()
+                .map_err(|_| "portable Agent Computer operation lock was poisoned".to_string())?;
+            let (status, response) = match portable_agent_computer::execute(
+                &config.state_root,
+                config.cloud_vm_provisioner_kind,
+                operation,
+            ) {
+                Ok(response) => (200, response),
+                Err(error) => cloud_vm_failed_response(error)?,
+            };
             write_response(&mut stream, status, &response)
         }
         "/v1/workrooms/codex/start" => {
@@ -5413,6 +5445,7 @@ mod tests {
             placement_shc_pilot_expand: false,
             gce_provisioner_kind: ProvisionerKind::Fake,
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::Fake,
+            portable_agent_computer_lock: Arc::new(Mutex::new(())),
             gce_project_ref: "gcp-project-ref://openagents/cloud-primary".to_string(),
             gce_provisioner_identity_ref: "gce-provisioner://openagents/cloud".to_string(),
             queue: QueueConfig {
@@ -6315,6 +6348,7 @@ echo '{"status":"ok"}'
             placement_shc_pilot_expand: false,
             gce_provisioner_kind: ProvisionerKind::Fake,
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::Fake,
+            portable_agent_computer_lock: Arc::new(Mutex::new(())),
             gce_project_ref: "gcp-project-ref://openagents/cloud-primary".to_string(),
             gce_provisioner_identity_ref: "gce-provisioner://openagents/cloud".to_string(),
             queue: QueueConfig {

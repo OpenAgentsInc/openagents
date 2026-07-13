@@ -229,9 +229,21 @@ idempotent provisioner. Pending stage/activate/abort/quiesce/checkpoint/reclaim
 effects can replay after restart without changing their bytes, and managed
 failback cannot checkpoint or reclaim until the exact active generation is
 durably quiesced. The provisioner seam returns refs-only receipts; it never
-persists raw grants or host/runtime handles. The existing live control-plane
-route still runs and tears down a one-shot VM, so this adapter does not by
-itself claim a retained live Firecracker stage or the #8748 acceptance journey.
+persists raw grants or host/runtime handles.
+
+`src/portable-managed-agent-computer-provisioner.ts` is the concrete
+oa-codex-control binding. It sends the same operation ref and public-safe
+portable payload to the authenticated
+`POST /v1/portable-agent-computers/operations` route while keeping the control
+bearer exclusively in the Authorization header. The control host retains the
+exact Firecracker resource from non-accepting stage through activation,
+quiescence, checkpoint, and reclaim; fake-lane contract tests prove restart
+replay without KVM. Live execution is deliberately stricter: arming Firecracker
+on an unready host refuses instead of falling back to fake, and the baked guest
+must provide `/opt/agent/portable-session-control`. The route/client binding is
+landed, but rebuilding the production guest image with that controller and the
+owner-local destination rehydrator, then running the direct local→managed→local
+journey, remain required before #8748 can close.
 
 ## Fleet cockpit scope (KS-6.1, #8302)
 

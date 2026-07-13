@@ -457,6 +457,24 @@ impl CloudVmProvisioner for LiveFirecrackerProvisioner {
         let jail_id = Self::jail_id(&vm_id);
         let jail_dir = PathBuf::from(&config.runtime_dir).join(&jail_id);
 
+        // A retained PORT-03 stage can be retried after the host process loses
+        // its acknowledgement. The VM ref is deterministic, so return the exact
+        // already-healthy guest instead of replacing its scratch disk/network.
+        if guest_ready_once(&jail_dir) {
+            return Ok(ProvisionedVm {
+                id: vm_id,
+                os: CloudVmOs::Linux,
+                healthy: true,
+            });
+        }
+        if jail_dir.exists() {
+            kill_recorded_fc(&jail_dir);
+            if let Ok(tap) = std::fs::read_to_string(jail_dir.join("tap.name")) {
+                GuestNet::from_tap(tap.trim()).down().ok();
+            }
+            let _ = std::fs::remove_dir_all(&jail_dir);
+        }
+
         std::fs::create_dir_all(&jail_dir).map_err(|error| {
             CloudVmError::Runtime(format!("create jail dir: {error}"))
         })?;
@@ -797,16 +815,27 @@ fn ensure_iptables(table: Option<&str>, chain_rule: &[&str]) {
 /// `{"op":"ping"}` until it returns `output == "ready"` or the bounded window
 /// elapses. The fake lane never reaches this.
 fn wait_guest_ready(jail_dir: &Path) -> bool {
-    let uds = jail_dir.join("v.sock");
     for _ in 0..60 {
-        if let Ok(resp) = vsock_call(&uds, &serde_json::json!({"op": "ping"}), 3) {
-            if resp.get("output").and_then(|v| v.as_str()) == Some("ready") {
-                return true;
-            }
+        if guest_ready_once(jail_dir) {
+            return true;
         }
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
     false
+}
+
+fn guest_ready_once(jail_dir: &Path) -> bool {
+    let uds = jail_dir.join("v.sock");
+    vsock_call(&uds, &serde_json::json!({"op": "ping"}), 3)
+        .ok()
+        .and_then(|response| {
+            response
+                .get("output")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
+        .as_deref()
+        == Some("ready")
 }
 
 /// Dispatch an exec to the guest over the vsock control channel. The command is

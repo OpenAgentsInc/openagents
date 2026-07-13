@@ -35,15 +35,16 @@ The guest rootfs bake is no longer a hand-run recipe on the bake host — it is
 normally `agent-computer-gce-1`). It reproduces the proven recipe (debootstrap
 jammy + git/python3/ca-certificates/openssh-client, pinned bun, the vsock
 guest agent from the checked-in `guest-agent.py` + `agent-guest.service`,
-compiled `turn-runner`, `oa-workroomd`, and the systemd-networkd/resolved
+compiled `turn-runner`, fixed `portable-session-control`, `oa-workroomd`, and the systemd-networkd/resolved
 egress fix) and ADDS the pinned `codex` binary at `/usr/local/bin/codex`
 (npm `@openai/codex` linux-x64 vendor musl build; version + digests pinned in
 the script and in `agent-computer-image.manifest.json` → `guestImage.codex`).
 
 ```sh
-# On the nested-virt bake host, as root, with a staged turn-runner + workroomd:
+# On the nested-virt bake host, as root, with staged guest binaries:
 sudo ./build-agent-computer-rootfs.sh \
   --turn-runner /srv/openagents/stage/turn-runner \
+  --portable-session-control /srv/openagents/stage/portable-session-control \
   --workroomd /srv/openagents/stage/oa-workroomd \
   --output /srv/openagents/cloud-vm/agent-computer-rootfs-codex.ext4
 ```
@@ -52,6 +53,15 @@ It bakes to a NEW image (never overwrites the validated one), fsck-verifies,
 seals the sha256, and writes a refs-and-digests-only bake receipt JSON. Re-pin
 `guestImage.rootfsDigest` in the manifest only after the microVM boot smoke
 (guest agent ready over vsock + `codex --version` via guest exec) passes.
+
+For PORT-03 retained movement, `/opt/agent/portable-session-control` is the
+only guest command the host route invokes. It accepts the fixed
+stage/activate/abort/quiesce/checkpoint/reclaim vocabulary, verifies the
+materialized Git post-image before stage, drives only baked
+`oa-workroomd lifecycle` commands for the exact graph agents, and journals
+public-safe operation results. It is not a command tunnel. A production image
+is not PORT-03-ready until its bake receipt includes
+`portableSessionControlSha256` and a boot smoke proves the binary is present.
 
 ## In-repo `oa-workroomd` guest binary (#8591)
 

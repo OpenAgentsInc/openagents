@@ -1,0 +1,213 @@
+import type { ManagedAgentComputerPortableProvisioner } from "./portable-managed-agent-computer-target.js"
+
+const FORBIDDEN_PRIVATE_MATERIAL =
+  /(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)|"(?:token|apiKey|password|secret|credential|mnemonic|hostname|processId|socket|authHome)"\s*:/iu
+
+export class OaCodexControlPortableProvisionerError extends Error {
+  readonly _tag = "OaCodexControlPortableProvisionerError"
+  override readonly name = "OaCodexControlPortableProvisionerError"
+
+  constructor(
+    readonly code: "invalid" | "unavailable" | "rejected" | "unsafe_response",
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+type FetchLike = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>
+
+export type OaCodexControlPortableProvisionerConfig = Readonly<{
+  baseUrl: string
+  bearerToken: string
+  fetch?: FetchLike
+  timeoutMs?: number
+}>
+
+type OperationBase = Readonly<{
+  operationRef: string
+  action: "stage" | "activate" | "abort" | "quiesce" | "checkpoint" | "reclaim"
+  ownerRef: string
+  targetRef: string
+  sessionRef: string
+  attachmentRef: string
+  generation: number
+  resourceRef?: string
+  payload: unknown
+}>
+
+const object = (value: unknown): Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new OaCodexControlPortableProvisionerError(
+      "rejected",
+      "oa-codex-control returned a non-object portable provisioner response",
+    )
+  }
+  return value as Record<string, unknown>
+}
+
+const publicSafe = <A>(value: A): A => {
+  const encoded = JSON.stringify(value)
+  if (FORBIDDEN_PRIVATE_MATERIAL.test(encoded)) {
+    throw new OaCodexControlPortableProvisionerError(
+      "unsafe_response",
+      "portable provisioner response contains forbidden private material",
+    )
+  }
+  return value
+}
+
+/**
+ * Concrete PORT-03 binding to oa-codex-control's retained Firecracker route.
+ *
+ * The bearer token is carried only in the HTTP Authorization header. Operation
+ * bodies and responses contain the portable public-safe bundle plus opaque
+ * capability/resource refs; the client never serializes credential material.
+ */
+export const createOaCodexControlPortableProvisioner = (
+  config: OaCodexControlPortableProvisionerConfig,
+): ManagedAgentComputerPortableProvisioner => {
+  let endpoint: URL
+  try {
+    endpoint = new URL("/v1/portable-agent-computers/operations", config.baseUrl)
+  } catch {
+    throw new OaCodexControlPortableProvisionerError("invalid", "oa-codex-control base URL is invalid")
+  }
+  if (endpoint.protocol !== "https:" && !["127.0.0.1", "localhost", "::1"].includes(endpoint.hostname)) {
+    throw new OaCodexControlPortableProvisionerError(
+      "invalid",
+      "portable provisioner requires HTTPS or authenticated loopback HTTP",
+    )
+  }
+  if (config.bearerToken.length < 16) {
+    throw new OaCodexControlPortableProvisionerError("invalid", "oa-codex-control bearer token is missing")
+  }
+  const fetcher = config.fetch ?? globalThis.fetch
+  const timeoutMs = config.timeoutMs ?? 120_000
+
+  const run = async <A>(operation: OperationBase): Promise<A> => {
+    publicSafe(operation)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    let response: Response
+    try {
+      response = await fetcher(endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bearerToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(operation),
+        signal: controller.signal,
+      })
+    } catch {
+      throw new OaCodexControlPortableProvisionerError(
+        "unavailable",
+        "oa-codex-control portable provisioner is unavailable",
+      )
+    } finally {
+      clearTimeout(timeout)
+    }
+    let decoded: unknown
+    try {
+      decoded = await response.json()
+    } catch {
+      throw new OaCodexControlPortableProvisionerError(
+        "rejected",
+        "oa-codex-control returned an invalid portable provisioner response",
+      )
+    }
+    if (!response.ok) {
+      throw new OaCodexControlPortableProvisionerError(
+        "rejected",
+        `oa-codex-control refused portable operation (${response.status})`,
+      )
+    }
+    return publicSafe(object(decoded)) as A
+  }
+
+  return {
+    stage: input => run({
+      operationRef: input.operationRef,
+      action: "stage",
+      ownerRef: input.ownerRef,
+      targetRef: input.targetRef,
+      sessionRef: input.bundle.checkpoint.sessionRef,
+      attachmentRef: input.attachmentRef,
+      generation: input.generation,
+      payload: {
+        bundle: input.bundle,
+        capabilityLeaseRefs: input.capabilityLeaseRefs,
+      },
+    }),
+    activate: input => run({
+      operationRef: input.operationRef,
+      action: "activate",
+      ownerRef: input.ownerRef,
+      targetRef: input.targetRef,
+      resourceRef: input.resourceRef,
+      sessionRef: input.sessionRef,
+      attachmentRef: input.attachmentRef,
+      generation: input.generation,
+      payload: {
+        checkpointRef: input.checkpointRef,
+        executionBinding: input.executionBinding,
+        capabilityLeaseRefs: input.capabilityLeaseRefs,
+        authorityEvidenceRef: input.authorityEvidenceRef,
+      },
+    }),
+    abort: input => run({
+      operationRef: input.operationRef,
+      action: "abort",
+      ownerRef: input.ownerRef,
+      targetRef: input.targetRef,
+      resourceRef: input.resourceRef,
+      sessionRef: input.sessionRef,
+      attachmentRef: input.attachmentRef,
+      generation: input.generation,
+      payload: {},
+    }),
+    quiesce: input => run({
+      operationRef: input.operationRef,
+      action: "quiesce",
+      ownerRef: input.ownerRef,
+      targetRef: input.targetRef,
+      resourceRef: input.resourceRef,
+      sessionRef: input.sessionRef,
+      attachmentRef: input.attachmentRef,
+      generation: input.generation,
+      payload: { graph: input.graph, threadCursors: input.threadCursors },
+    }),
+    checkpoint: input => run({
+      operationRef: input.operationRef,
+      action: "checkpoint",
+      ownerRef: input.ownerRef,
+      targetRef: input.targetRef,
+      resourceRef: input.resourceRef,
+      sessionRef: input.sessionRef,
+      attachmentRef: input.attachmentRef,
+      generation: input.generation,
+      payload: {
+        checkpointRef: input.checkpointRef,
+        eventLogCursor: input.eventLogCursor,
+        executionBinding: input.executionBinding,
+        graph: input.graph,
+        threadCursors: input.threadCursors,
+      },
+    }),
+    reclaim: input => run({
+      operationRef: input.operationRef,
+      action: "reclaim",
+      ownerRef: input.ownerRef,
+      targetRef: input.targetRef,
+      resourceRef: input.resourceRef,
+      sessionRef: input.sessionRef,
+      attachmentRef: input.attachmentRef,
+      generation: input.generation,
+      payload: { agentRefs: input.agentRefs },
+    }),
+  }
+}

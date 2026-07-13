@@ -112,6 +112,20 @@ design context only.
   boot must tear down any partial jail before refusing, and teardown must be
   idempotent and always run (even on exec/copy_out failure) so a VM is never
   leaked.
+- PORT-03 managed movement uses the separate authenticated retained route
+  `POST /v1/portable-agent-computers/operations`. One exact operation ref is
+  byte-idempotent through the durable host journal; a staged Firecracker guest
+  remains non-accepting and alive until activation, and abort/reclaim destroy
+  the VM and its disposable scratch. Conflicting bytes or attachment
+  generations refuse before guest effects. The control bearer stays in the
+  HTTP Authorization header and may never enter an operation body, journal, or
+  receipt. If the daemon is armed for live Firecracker but KVM/images are not
+  ready, retained movement refuses and must not substitute the fake lane.
+- The live retained guest accepts operations only through the fixed
+  `/opt/agent/portable-session-control` binary. Arbitrary caller commands are
+  not part of the route. The guest controller must return public-safe receipts;
+  host and TypeScript adapters reject raw credentials, paths, process/socket
+  details, and topology before persistence or projection.
 
 ## Agent Computer In-VM Provider Execution (CX-3, #8547)
 

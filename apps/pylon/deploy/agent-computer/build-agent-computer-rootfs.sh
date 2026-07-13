@@ -15,6 +15,8 @@
 #     AF_VSOCK :1024)
 #   - the compiled turn-runner at /opt/agent/turn-runner (bun-linux-x64 build
 #     of apps/pylon/deploy/agent-computer/turn-runner.ts)
+#   - the fixed PORT-03 retained-session controller at
+#     /opt/agent/portable-session-control (no arbitrary command surface)
 #   - oa-workroomd at /usr/local/bin/oa-workroomd (staged by
 #     build-workroomd-for-image.sh)
 #   - the proven egress fix: systemd-networkd + systemd-resolved disabled and
@@ -51,6 +53,9 @@ Usage: sudo build-agent-computer-rootfs.sh [options]
   --size-mib N         image size in MiB (default 4096)
   --turn-runner PATH   prebuilt bun-linux-x64 turn-runner binary (required
                        unless --repo-root lets this script compile it)
+  --portable-session-control PATH
+                       prebuilt bun-linux-x64 portable session controller
+                       (required unless --repo-root lets this script compile it)
   --repo-root PATH     openagents checkout to compile the turn-runner from
                        (requires a host bun; used when --turn-runner absent)
   --workroomd PATH     oa-workroomd release binary (from
@@ -64,6 +69,7 @@ EOF
 OUTPUT=""
 SIZE_MIB=4096
 TURN_RUNNER=""
+PORTABLE_SESSION_CONTROL=""
 REPO_ROOT=""
 WORKROOMD=""
 SKIP_WORKROOMD=0
@@ -72,6 +78,7 @@ while [ $# -gt 0 ]; do
     --output) OUTPUT="$2"; shift 2 ;;
     --size-mib) SIZE_MIB="$2"; shift 2 ;;
     --turn-runner) TURN_RUNNER="$2"; shift 2 ;;
+    --portable-session-control) PORTABLE_SESSION_CONTROL="$2"; shift 2 ;;
     --repo-root) REPO_ROOT="$2"; shift 2 ;;
     --workroomd) WORKROOMD="$2"; shift 2 ;;
     --skip-workroomd) SKIP_WORKROOMD=1; shift ;;
@@ -92,6 +99,10 @@ done
 
 if [ -z "$TURN_RUNNER" ]; then
   [ -n "$REPO_ROOT" ] || fail "--turn-runner or --repo-root is required"
+  command -v bun >/dev/null 2>&1 || fail "--repo-root compile path needs a host bun"
+fi
+if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
+  [ -n "$REPO_ROOT" ] || fail "--portable-session-control or --repo-root is required"
   command -v bun >/dev/null 2>&1 || fail "--repo-root compile path needs a host bun"
 fi
 if [ "$SKIP_WORKROOMD" = "0" ]; then
@@ -183,7 +194,20 @@ fi
 [ -f "$TURN_RUNNER" ] || fail "turn-runner binary not found: $TURN_RUNNER"
 install -m 0755 "$TURN_RUNNER" "$MNT/opt/agent/turn-runner"
 
-# --- 7. oa-workroomd -----------------------------------------------------------
+# --- 7. retained portable-session controller ---------------------------------
+if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
+  echo "==> compiling portable-session-control from $REPO_ROOT"
+  PORTABLE_SESSION_CONTROL="$WORK/portable-session-control"
+  (cd "$REPO_ROOT" && bun build --compile --target=bun-linux-x64 \
+    apps/pylon/deploy/agent-computer/portable-session-control.ts \
+    --outfile "$PORTABLE_SESSION_CONTROL")
+fi
+[ -f "$PORTABLE_SESSION_CONTROL" ] \
+  || fail "portable-session-control binary not found: $PORTABLE_SESSION_CONTROL"
+install -m 0755 "$PORTABLE_SESSION_CONTROL" \
+  "$MNT/opt/agent/portable-session-control"
+
+# --- 8. oa-workroomd -----------------------------------------------------------
 WORKROOMD_SHA256="skipped"
 if [ "$SKIP_WORKROOMD" = "0" ]; then
   echo "==> installing oa-workroomd"
@@ -191,8 +215,9 @@ if [ "$SKIP_WORKROOMD" = "0" ]; then
   WORKROOMD_SHA256="$(sha256sum "$WORKROOMD" | cut -d' ' -f1)"
 fi
 
-# --- 8. seal ------------------------------------------------------------------
+# --- 9. seal ------------------------------------------------------------------
 TURN_RUNNER_SHA256="$(sha256sum "$TURN_RUNNER" | cut -d' ' -f1)"
+PORTABLE_SESSION_CONTROL_SHA256="$(sha256sum "$PORTABLE_SESSION_CONTROL" | cut -d' ' -f1)"
 umount "$MNT"
 e2fsck -fy "$OUTPUT" >/dev/null || [ $? -le 1 ] || fail "e2fsck reported unrecovered errors"
 ROOTFS_SHA256="$(sha256sum "$OUTPUT" | cut -d' ' -f1)"
@@ -208,6 +233,7 @@ cat > "$RECEIPT" <<EOF
   "codexVersion": "$CODEX_VERSION",
   "codexBinarySha256": "$CODEX_BINARY_SHA256",
   "turnRunnerSha256": "$TURN_RUNNER_SHA256",
+  "portableSessionControlSha256": "$PORTABLE_SESSION_CONTROL_SHA256",
   "workroomdSha256": "$WORKROOMD_SHA256",
   "rootfsSha256": "$ROOTFS_SHA256",
   "buildScript": "apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh"
