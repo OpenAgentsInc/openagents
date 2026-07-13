@@ -37,6 +37,7 @@ type Harness = {
   legacySends: Array<unknown>
   startCalls: Array<unknown>
   steerCalls: Array<unknown>
+  currentSteerCalls: Array<unknown>
   queueCalls: Array<unknown>
   emit: (envelope: FableLocalEventEnvelope) => void
   resolveStart: (value: unknown) => void
@@ -47,6 +48,7 @@ const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Ha
   const legacySends: Array<unknown> = []
   const startCalls: Array<unknown> = []
   const steerCalls: Array<unknown> = []
+  const currentSteerCalls: Array<unknown> = []
   const queueCalls: Array<unknown> = []
   let listener: ((envelope: FableLocalEventEnvelope) => void) | null = null
   let resolveStart: (value: unknown) => void = () => {}
@@ -78,6 +80,10 @@ const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Ha
       steerCalls.push(value)
       return { ok: true, outcome: "interrupted" }
     },
+    steerCurrent: async value => {
+      currentSteerCalls.push(value)
+      return { ok: true, outcome: "delivered" }
+    },
     queueFollowup: async value => {
       queueCalls.push(value)
       return { ok: true, queued: true, queueRef: "q1", position: 1 }
@@ -103,6 +109,7 @@ const makeHarness = (input?: { fableAvailable?: boolean; bridge?: boolean }): Ha
     legacySends,
     startCalls,
     steerCalls,
+    currentSteerCalls,
     queueCalls,
     emit: envelope => listener?.(envelope),
     resolveStart: value => resolveStart(value),

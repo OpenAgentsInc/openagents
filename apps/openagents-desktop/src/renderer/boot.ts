@@ -205,6 +205,7 @@ type DesktopBridge = Readonly<{
     start?: (value: unknown) => Promise<unknown>
     interrupt?: (value: unknown) => Promise<unknown>
     onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
+    steerCurrent?: (value: unknown) => Promise<unknown>
     steerChild?: (value: unknown) => Promise<unknown>
     queueFollowup?: (value: unknown) => Promise<unknown>
   }>
@@ -678,6 +679,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             onEvent: bridge.codexLocal.onEvent as (
               listener: (envelope: FableLocalEventEnvelope) => void,
             ) => () => void,
+            ...(typeof bridge.codexLocal.steerCurrent === "function"
+              ? { steerCurrent: bridge.codexLocal.steerCurrent }
+              : {}),
             ...(typeof bridge.codexLocal.steerChild === "function"
               ? { steerChild: bridge.codexLocal.steerChild }
               : {}),

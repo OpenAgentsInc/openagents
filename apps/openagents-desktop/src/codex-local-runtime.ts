@@ -76,11 +76,13 @@ import {
 import {
   FABLE_LOCAL_DELTA_LIMIT,
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
+  FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT,
   FABLE_LOCAL_SUMMARY_LIMIT,
   type FableChildUsage,
   type FableLocalEvent,
   type FableLocalFailureReason,
   type FableLocalImageAttachment,
+  type FableLocalQueueFollowupRequest,
 } from "./fable-local-contract.ts"
 import {
   FABLE_LOCAL_HISTORY_MESSAGES,
@@ -100,6 +102,7 @@ import {
   type CodexAppServerTurnControl,
 } from "./codex-app-server-turn.ts"
 import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts"
+import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
 
 export type CodexLocalTurnInput = Readonly<{
   turnRef: string
@@ -199,6 +202,11 @@ export type CodexLocalRuntime = Readonly<{
   availability: () => Promise<CodexLocalAvailability>
   runTurn: (input: CodexLocalTurnInput) => Promise<CodexLocalTurnResult>
   interrupt: (turnRef: string) => boolean
+  steerCurrent: (request: FableLocalQueueFollowupRequest) => Promise<Readonly<{
+    ok: boolean
+    outcome: "delivered" | "unsupported" | "not_found"
+  }>>
+  queueFollowup: (request: FableLocalQueueFollowupRequest) => FableLocalQueueFollowupOutcome
   answerQuestion: (request: FableLocalAnswerQuestionRequest) => boolean
   dispose: () => void
 }>
@@ -269,7 +277,15 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     interrupted: boolean
     child: ChildLike | null
     interrupt: (() => void) | null
+    steer: ((message: string) => Promise<boolean>) | null
   }>()
+  const activeTurnByThread = new Map<string, Readonly<{
+    turnRef: string
+    emit: (event: FableLocalEvent) => void
+    control: { steer: ((message: string) => Promise<boolean>) | null }
+  }>>()
+  const followupQueue = new Map<string, Array<{ queueRef: string; message: string }>>()
+  let followupSequence = 0
   const pendingQuestions = new Map<string, Readonly<{
     turnRef: string
     accept: (request: FableLocalAnswerQuestionRequest) => boolean
@@ -349,7 +365,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     reasoningEffort?: CodexReasoningEffort
     model: CodexModel
     emit: (event: FableLocalEvent) => void
-    control: { interrupted: boolean; child: ChildLike | null; interrupt: (() => void) | null }
+    control: {
+      interrupted: boolean
+      child: ChildLike | null
+      interrupt: (() => void) | null
+      steer: ((message: string) => Promise<boolean>) | null
+    }
   }>): Promise<ParsedTurnAttempt> => {
     if (options.appServer !== undefined) {
       const binary = options.appServer.binary()
@@ -864,8 +885,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       return emitFailure(failure("session_failed", "could not stage attached images"))
     }
 
-    const control = { interrupted: false, child: null as ChildLike | null, interrupt: null as (() => void) | null }
+    const control = {
+      interrupted: false,
+      child: null as ChildLike | null,
+      interrupt: null as (() => void) | null,
+      steer: null as ((message: string) => Promise<boolean>) | null,
+    }
     activeTurns.set(input.turnRef, control)
+    activeTurnByThread.set(input.threadRef, { turnRef: input.turnRef, emit: input.emit, control })
     input.emit({ kind: "turn_started" })
     // Spawn-config truth caption (the exec stream echoes no model back).
     const requestedModel = input.model ?? CODEX_LOCAL_MODEL
@@ -984,6 +1011,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       ))
     } finally {
       activeTurns.delete(input.turnRef)
+      const active = activeTurnByThread.get(input.threadRef)
+      if (active?.turnRef === input.turnRef) activeTurnByThread.delete(input.threadRef)
+      const queue = followupQueue.get(input.threadRef)
+      if (queue !== undefined && queue.length > 0) {
+        const next = queue.shift()!
+        if (queue.length === 0) followupQueue.delete(input.threadRef)
+        input.emit({ kind: "followup_promoted", queueRef: next.queueRef, message: next.message })
+      }
     }
   }
 
@@ -1001,6 +1036,33 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       active.child?.kill("SIGTERM")
       return true
     },
+    steerCurrent: async request => {
+      const active = activeTurnByThread.get(request.threadRef)
+      if (active === undefined) return { ok: false, outcome: "not_found" }
+      if (active.control.steer === null) return { ok: false, outcome: "unsupported" }
+      const delivered = await active.control.steer(bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT))
+      active.emit({
+        kind: "lane_notice",
+        text: delivered
+          ? "Current Codex turn steered with the submitted message"
+          : "Current Codex turn rejected the steer request",
+      })
+      return delivered ? { ok: true, outcome: "delivered" } : { ok: false, outcome: "unsupported" }
+    },
+    queueFollowup: request => {
+      const active = activeTurnByThread.get(request.threadRef)
+      if (active === undefined) return { ok: false, queued: false, reason: "no_active_turn" }
+      followupSequence += 1
+      const queueRef = bounded(
+        `followup.${fableThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,
+        120,
+      )
+      const queue = followupQueue.get(request.threadRef) ?? []
+      queue.push({ queueRef, message: bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT) })
+      followupQueue.set(request.threadRef, queue)
+      active.emit({ kind: "followup_queued", queueRef, position: queue.length })
+      return { ok: true, queued: true, queueRef, position: queue.length }
+    },
     answerQuestion: request => {
       const pending = pendingQuestions.get(request.questionRef)
       return pending !== undefined && pending.turnRef === request.turnRef
@@ -1016,6 +1078,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         active.child?.kill("SIGTERM")
       }
       activeTurns.clear()
+      activeTurnByThread.clear()
+      followupQueue.clear()
       sessionByThread.clear()
     },
   }

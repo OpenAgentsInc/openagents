@@ -182,7 +182,11 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
           accountRefHash: hashPylonAccountRef("codex", account.ref),
           home: account.home,
         }
-        const control = { interrupted: false, interrupt: null as (() => void) | null }
+        const control = {
+          interrupted: false,
+          interrupt: null as (() => void) | null,
+          steer: null as ((message: string) => Promise<boolean>) | null,
+        }
         const outcome = await runCodexAppServerTurn({
           binary,
           env: pylonAccountEnvironment(env, selection),

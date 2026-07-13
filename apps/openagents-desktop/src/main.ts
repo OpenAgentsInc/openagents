@@ -175,7 +175,9 @@ import {
   CodexLocalAvailabilityChannel,
   CodexLocalEventChannel,
   CodexLocalInterruptChannel,
+  CodexLocalQueueFollowupChannel,
   CodexLocalStartChannel,
+  CodexLocalSteerTurnChannel,
   codexLocalFailureMessage,
   codexLocalModelNoteText,
   codexLocalRequestedModelLabel,
@@ -2338,6 +2340,18 @@ ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
 ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
   const request = decodeFableLocalInterruptRequest(value)
   return request === null ? false : codexLocal.interrupt(request.turnRef)
+})
+ipcMain.handle(CodexLocalSteerTurnChannel, async (_event, value: unknown) => {
+  const request = decodeFableLocalQueueFollowupRequest(value)
+  return request === null
+    ? { ok: false, outcome: "not_found" }
+    : codexLocal.steerCurrent(request)
+})
+ipcMain.handle(CodexLocalQueueFollowupChannel, (_event, value: unknown) => {
+  const request = decodeFableLocalQueueFollowupRequest(value)
+  return request === null
+    ? { ok: false, queued: false, reason: "no_active_turn" }
+    : codexLocal.queueFollowup(request)
 })
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   const request = decodeFableLocalStartRequest(value)

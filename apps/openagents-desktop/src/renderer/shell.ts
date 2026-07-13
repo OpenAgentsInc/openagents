@@ -295,6 +295,8 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
   selectedHarness: DesktopHarnessName
+  /** While streaming, submit either steers the active turn or queues the next. */
+  pendingSubmitMode: "steer" | "queue"
   /** Requested Codex reasoning effort for subsequent turns. */
   codexReasoningEffort: CodexReasoningEffort
   /** Provider-scoped model choices persist while switching provider. */
@@ -408,6 +410,7 @@ export const initialDesktopShellState = (
   composerFileContext: null,
   notes: [],
   selectedHarness: "codex",
+  pendingSubmitMode: "queue",
   codexReasoningEffort: "medium",
   codexModel: "gpt-5.6-sol",
   claudeModel: "claude-fable-5",
@@ -543,6 +546,10 @@ export const DesktopVoiceMuteToggled = defineIntent("DesktopVoiceMuteToggled", S
 export const DesktopVoiceTranscriptAccepted = defineIntent("DesktopVoiceTranscriptAccepted", Schema.Null)
 export const DesktopProviderAccountSelected = defineIntent("DesktopProviderAccountSelected", Schema.String)
 export const DesktopPermissionModeSelected = defineIntent("DesktopPermissionModeSelected", Schema.Literals(["owner_full", "plan_only"]))
+export const DesktopPendingSubmitModeSelected = defineIntent(
+  "DesktopPendingSubmitModeSelected",
+  Schema.Literals(["steer", "queue"]),
+)
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
 /**
  * Message metadata inspector selection (#8712). Payload is the transcript
@@ -634,6 +641,7 @@ export const desktopShellIntents = [
   DesktopVoiceTranscriptAccepted,
   DesktopProviderAccountSelected,
   DesktopPermissionModeSelected,
+  DesktopPendingSubmitModeSelected,
   DesktopChatSelected,
   DesktopMessageSelected,
   DesktopToolCardToggled,
@@ -1049,6 +1057,10 @@ export type ChatHost = Readonly<{
    */
   queueFollowup?: (input: Readonly<{ threadRef: string; message: string }>) => Promise<
     Readonly<{ ok: boolean; queued: boolean }>
+  >
+  /** Inject a message into the exact currently active Codex app-server turn. */
+  steerCurrent?: (input: Readonly<{ threadRef: string; message: string }>) => Promise<
+    Readonly<{ ok: boolean; outcome: string }>
   >
 }>
 
@@ -1556,8 +1568,24 @@ export const makeDesktopShellHandlers = (
       // mid-turn (they ride the next started turn).
       if (current.pending) {
         if (message.trim() === "") return
-        if (chat.queueFollowup === undefined) return
         yield* SubscriptionRef.update(state, (next) => withInput(next, ""))
+        if (current.pendingSubmitMode === "steer") {
+          if (chat.steerCurrent === undefined) {
+            yield* SubscriptionRef.update(state, (next) => withInput(next, message))
+            return
+          }
+          const steered = yield* Effect.promise(() =>
+            chat.steerCurrent!({ threadRef: current.activeThreadId!, message: message.trim() }))
+          if (!steered.ok) {
+            yield* SubscriptionRef.update(state, (next) =>
+              next.input === "" ? withInput(next, message) : next)
+          }
+          return
+        }
+        if (chat.queueFollowup === undefined) {
+          yield* SubscriptionRef.update(state, (next) => withInput(next, message))
+          return
+        }
         const queued = yield* Effect.promise(() =>
           chat.queueFollowup!({ threadRef: current.activeThreadId!, message: message.trim() }))
         // CUT-16: a refused queue (host raced past its in-flight send, or the
@@ -1702,6 +1730,8 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => isCodexModel(model)
       ? { ...current, codexModel: model }
       : { ...current, claudeModel: model }),
+  DesktopPendingSubmitModeSelected: (pendingSubmitMode) =>
+    SubscriptionRef.update(state, current => ({ ...current, pendingSubmitMode })),
   DesktopVoiceModeToggled: () => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.pending) return
@@ -3438,6 +3468,20 @@ const reasoningSelect = (state: DesktopShellState): View | null =>
     a11y: { label: `Reasoning effort: ${state.codexReasoningEffort}` },
   })
 
+/** Explicit streaming-submit semantics: steer this exact turn or queue next. */
+const pendingSubmitSelect = (state: DesktopShellState): View | null =>
+  !state.pending || state.selectedHarness !== "codex" ? null : Select({
+    key: "shell-pending-submit-select",
+    value: state.pendingSubmitMode,
+    options: [
+      { value: "queue", label: "Queue next" },
+      { value: "steer", label: "Steer now" },
+    ],
+    onChange: IntentRef("DesktopPendingSubmitModeSelected", ComponentValueBinding()),
+    style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", backgroundColor: "background" },
+    a11y: { label: state.pendingSubmitMode === "queue" ? "Submit mode: queue next turn" : "Submit mode: steer current turn" },
+  })
+
 /**
  * The chat composer, re-laid-out to OpenCode's prompt-input shape (EP250 owner
  * directive, verbatim: "edit our chat input composer to look exactly like the
@@ -3488,10 +3532,16 @@ const shellComposer = (state: DesktopShellState): View => {
         // while a turn streams so a follow-up can be queued (submit mid-turn
         // enqueues instead of starting a new turn); the placeholder names
         // the honest semantics. The Stop button still interrupts.
-        placeholder: state.pending ? "Queue a follow-up…" : "Message",
+        placeholder: state.pending
+          ? state.pendingSubmitMode === "steer" ? "Steer the current turn…" : "Queue a follow-up…"
+          : "Message",
         disabled: false,
         clearOnSubmit: true,
-        a11y: { label: state.pending ? "Queue a follow-up, delivered when this turn completes" : "Message" },
+        a11y: { label: state.pending
+          ? state.pendingSubmitMode === "steer"
+            ? "Steer the current Codex turn"
+            : "Queue a follow-up, delivered when this turn completes"
+          : "Message" },
         onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
         onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
         // Generous multiline input (OpenCode min-h-[52px] editor). 64px min
@@ -3521,6 +3571,7 @@ const shellComposer = (state: DesktopShellState): View => {
           ...(providerAccountControl(state) === null ? [] : [providerAccountControl(state)!]),
           ...(permissionModeControl(state) === null ? [] : [permissionModeControl(state)!]),
           ...(codexHandoffControl(state) === null ? [] : [codexHandoffControl(state)!]),
+          ...(pendingSubmitSelect(state) === null ? [] : [pendingSubmitSelect(state)!]),
           // Push the send/stop control to the far right of the bar.
           Spacer({ key: "shell-composer-bar-spacer", flex: true }),
           // Voice-mode placeholder is honest presentation state only.

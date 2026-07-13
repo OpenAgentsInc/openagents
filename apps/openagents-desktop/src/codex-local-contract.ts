@@ -37,6 +37,8 @@ import {
 export const CodexLocalAvailabilityChannel = "openagents:codex-local:availability" as const
 export const CodexLocalStartChannel = "openagents:codex-local:start" as const
 export const CodexLocalInterruptChannel = "openagents:codex-local:interrupt" as const
+export const CodexLocalSteerTurnChannel = "openagents:codex-local:steer-turn" as const
+export const CodexLocalQueueFollowupChannel = "openagents:codex-local:queue-followup" as const
 export const CodexLocalEventChannel = "openagents:codex-local:event" as const
 /** Exact packaged Codex compatibility identity; thread handoff remains disabled
  * unless a separately verified official-app continuity proof cites this ref. */
@@ -81,7 +83,7 @@ export const decodeCodexLocalAvailability = (value: unknown): CodexLocalAvailabi
   return Exit.isSuccess(decoded) ? decoded.value : null
 }
 
-/** Start/interrupt requests reuse the frozen fable-local shapes. */
+/** Start/interrupt/steer/queue requests reuse the frozen fable-local shapes. */
 export const CodexLocalStartRequestSchema = FableLocalStartRequestSchema
 export const CodexLocalInterruptRequestSchema = FableLocalInterruptRequestSchema
 

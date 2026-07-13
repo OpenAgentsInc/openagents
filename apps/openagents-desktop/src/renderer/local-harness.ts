@@ -48,6 +48,7 @@ export type FableLocalRendererBridge = Readonly<{
    * `queueFollowup` enqueues a follow-up while a turn streams (A3).
    */
   steerChild?: (value: unknown) => Promise<unknown>
+  steerCurrent?: (value: unknown) => Promise<unknown>
   queueFollowup?: (value: unknown) => Promise<unknown>
 }>
 
@@ -507,6 +508,19 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       return typeof raw === "object" && raw !== null && typeof (raw as { queued?: unknown }).queued === "boolean"
         ? (raw as { ok: boolean; queued: boolean })
         : { ok: false, queued: false }
+    },
+    steerCurrent: async input => {
+      const active = activeTurn
+      if (active === null || active.bridge.steerCurrent === undefined) {
+        return { ok: false, outcome: "not_found" }
+      }
+      const raw = await active.bridge.steerCurrent({
+        threadRef: input.threadRef,
+        message: input.message,
+      })
+      return typeof raw === "object" && raw !== null && typeof (raw as { outcome?: unknown }).outcome === "string"
+        ? raw as { ok: boolean; outcome: string }
+        : { ok: false, outcome: "not_found" }
     },
     sendMessage: async send => {
       if (send.harness === undefined) return input.base.sendMessage(send)

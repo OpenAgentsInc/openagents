@@ -11,7 +11,7 @@ import {
   registerProductSpecSkill,
   type CodexAppServerSpawn,
 } from "./codex-app-server-client.ts"
-import { runCodexAppServerTurn } from "./codex-app-server-turn.ts"
+import { runCodexAppServerTurn, type CodexAppServerTurnControl } from "./codex-app-server-turn.ts"
 import {
   ProductSpecWorkSkillSha256,
   installBuiltinProductSpecWorkSkill,
@@ -135,7 +135,7 @@ describe("Codex app-server native integration", () => {
   test("runs a native app-server thread and streams its exact terminal outcome", async () => {
     const fake = fakeServer()
     const events: unknown[] = []
-    const control = { interrupted: false, interrupt: null }
+    const control = { interrupted: false, interrupt: null, steer: null }
     const turn = runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: { CODEX_HOME: "/isolated/codex-home" },
@@ -178,6 +178,19 @@ describe("Codex app-server native integration", () => {
       params: { threadId: "codex-thread-1", clientUserMessageId: "oa-turn-1" },
     })
     fake.respond(6, { turn: { id: "codex-turn-1", status: "inProgress" } })
+    await waitForMessages(fake.messages, 7)
+    const steer = (control as CodexAppServerTurnControl).steer?.("Focus on CW-AC-12")
+    await waitForMessages(fake.messages, 8)
+    expect(fake.messages[7]).toMatchObject({
+      method: "turn/steer",
+      params: {
+        threadId: "codex-thread-1",
+        expectedTurnId: "codex-turn-1",
+        input: [{ type: "text", text: "Focus on CW-AC-12", text_elements: [] }],
+      },
+    })
+    fake.respond(7, { turnId: "codex-turn-1" })
+    await expect(steer).resolves.toBe(true)
     fake.notify("item/started", {
       threadId: "codex-thread-1",
       turnId: "codex-turn-1",

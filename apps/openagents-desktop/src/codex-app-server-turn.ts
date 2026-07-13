@@ -22,6 +22,8 @@ export type CodexAppServerTurnOutcome = Readonly<{
 export type CodexAppServerTurnControl = {
   interrupted: boolean
   interrupt: (() => void) | null
+  /** Inject text into this exact active provider turn. */
+  steer: ((message: string) => Promise<boolean>) | null
 }
 
 type ProductSpecSkill = Readonly<{ skillRoot: string; skillPath: string }>
@@ -174,6 +176,7 @@ export const runCodexAppServerTurn = async (
     settled = true
     if (turnTimer !== null) clearTimeout(turnTimer)
     input.control.interrupt = null
+    input.control.steer = null
     settle?.(outcome)
   }
 
@@ -437,6 +440,20 @@ export const runCodexAppServerTurn = async (
         void client.request("turn/interrupt", { threadId, turnId }).catch(() => undefined)
       }
     }
+    input.control.steer = async message => {
+      if (client === null || threadId === null || turnId === null || message.trim() === "") return false
+      try {
+        await client.request("turn/steer", {
+          threadId,
+          clientUserMessageId: null,
+          input: [{ type: "text", text: message, text_elements: [] }],
+          expectedTurnId: turnId,
+        })
+        return true
+      } catch {
+        return false
+      }
+    }
     if (input.control.interrupted) input.control.interrupt()
 
     if (input.turnTimeoutMs !== undefined) {
@@ -460,6 +477,7 @@ export const runCodexAppServerTurn = async (
     return classifyFailure(error instanceof Error ? error.message : "Codex app-server failed", text, usage, threadId)
   } finally {
     input.control.interrupt = null
+    input.control.steer = null
     client?.close()
   }
 }

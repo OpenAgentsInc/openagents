@@ -166,7 +166,9 @@ import {
   CodexLocalAvailabilityChannel,
   CodexLocalEventChannel,
   CodexLocalInterruptChannel,
+  CodexLocalQueueFollowupChannel,
   CodexLocalStartChannel,
+  CodexLocalSteerTurnChannel,
 } from "./codex-local-contract.ts"
 import {
   CodexHandoffOpenChannel,
@@ -674,6 +676,18 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     interrupt: (value: unknown) => {
       const request = decodeFableLocalInterruptRequest(value)
       return request === null ? Promise.resolve(false) : ipcRenderer.invoke(CodexLocalInterruptChannel, request)
+    },
+    steerCurrent: (value: unknown) => {
+      const request = decodeFableLocalQueueFollowupRequest(value)
+      return request === null
+        ? Promise.resolve({ ok: false, outcome: "not_found" })
+        : ipcRenderer.invoke(CodexLocalSteerTurnChannel, request)
+    },
+    queueFollowup: (value: unknown) => {
+      const request = decodeFableLocalQueueFollowupRequest(value)
+      return request === null
+        ? Promise.resolve({ ok: false, queued: false, reason: "no_active_turn" })
+        : ipcRenderer.invoke(CodexLocalQueueFollowupChannel, request)
     },
     onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
       const handler = (_event: unknown, value: unknown): void => {

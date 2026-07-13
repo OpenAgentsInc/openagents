@@ -131,6 +131,22 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     }] }] })
     await waitFor(fake.messages, 6); fake.respond(5, { thread: { id: "native-thread" } })
     await waitFor(fake.messages, 7); fake.respond(6, { turn: { id: "native-turn" } })
+    await Bun.sleep(0)
+    const steering = runtime.steerCurrent({
+      threadRef: "thread-native-question",
+      message: "Use the native path",
+    })
+    await waitFor(fake.messages, 8)
+    expect(fake.messages[7]).toMatchObject({
+      method: "turn/steer",
+      params: { expectedTurnId: "native-turn", input: [{ type: "text", text: "Use the native path" }] },
+    })
+    fake.respond(7, {})
+    await expect(steering).resolves.toEqual({ ok: true, outcome: "delivered" })
+    expect(runtime.queueFollowup({
+      threadRef: "thread-native-question",
+      message: "Run the checks next",
+    })).toMatchObject({ ok: true, queued: true, position: 1 })
     fake.request(90, "item/tool/requestUserInput", {
       threadId: "native-thread",
       turnId: "native-turn",
@@ -151,12 +167,17 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       questionRef: pending.questionRef,
       answers: [{ question: "Which implementation?", labels: ["Native"] }],
     })).toBe(true)
-    await waitFor(fake.messages, 8)
-    expect(fake.messages[7]).toEqual({ id: 90, result: { answers: { choice: { answers: ["Native"] } } } })
+    await waitFor(fake.messages, 9)
+    expect(fake.messages[8]).toEqual({ id: 90, result: { answers: { choice: { answers: ["Native"] } } } })
     fake.notify("item/agentMessage/delta", { threadId: "native-thread", turnId: "native-turn", delta: "Done." })
     fake.notify("turn/completed", { threadId: "native-thread", turn: { id: "native-turn", status: "completed", error: null } })
     await expect(running).resolves.toMatchObject({ ok: true, text: "Done.", accountRef: "codex", threadId: "native-thread" })
     expect(sink.events).toContainEqual({ kind: "question_resolved", questionRef: pending.questionRef, outcome: "answered" })
+    expect(sink.events).toContainEqual(expect.objectContaining({ kind: "followup_queued", position: 1 }))
+    expect(sink.events).toContainEqual(expect.objectContaining({
+      kind: "followup_promoted",
+      message: "Run the checks next",
+    }))
   })
 
   test("an explicit workspace root is the exact Codex cwd", async () => {
