@@ -16,6 +16,7 @@ const MAX_MANIFEST_BYTES = 32 * 1024
 const MAX_SIGNATURE_BYTES = 8 * 1024
 const MAX_RELEASE_BYTES = 16 * 1024
 const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
+const SAFE_FAILURE_REASONS = new Set(["feed_unavailable", "response_too_large"])
 
 export type DesktopUpdateProjection = Readonly<{
   phase: "current" | "checking" | "available" | "downloading" | "staged" | "rejected"
@@ -110,6 +111,9 @@ const boundedBytes = async (response: Response, maximum: number): Promise<Uint8A
   return bytes
 }
 
+const publicFailureReason = (error: unknown, fallback: string): string =>
+  error instanceof Error && SAFE_FAILURE_REASONS.has(error.message) ? error.message : fallback
+
 export const openDesktopUpdateStagingHost = (input: Readonly<{
   root: string
   installedVersion: string
@@ -192,7 +196,7 @@ export const openDesktopUpdateStagingHost = (input: Readonly<{
       transient = null
       return snapshot()
     } catch (error) {
-      return reject(error instanceof Error ? error.message : "update_check_failed")
+      return reject(publicFailureReason(error, "update_check_failed"))
     } finally {
       busy = false
     }
@@ -217,7 +221,7 @@ export const openDesktopUpdateStagingHost = (input: Readonly<{
       transient = null
       return snapshot()
     } catch (error) {
-      return reject(error instanceof Error ? error.message : "update_download_failed")
+      return reject(publicFailureReason(error, "update_download_failed"))
     } finally {
       busy = false
     }

@@ -72,4 +72,33 @@ describe("Desktop signed update staging host", () => {
     expect((await host.check()).phase).toBe("available")
     expect(await host.download()).toMatchObject({ phase: "rejected", reason: "artifact_rejected" })
   })
+
+  test("projects bounded reason codes instead of transport URLs or local paths", async () => {
+    const check = fixture()
+    const secretFeed = `${check.base}/manifest.json?credential=do-not-project`
+    const failedCheck = openDesktopUpdateStagingHost({
+      root: check.root, installedVersion: "0.1.0-rc.5", channel: "rc", baseUrl: check.base, pin: check.pin,
+      fetch: (async (_value: string | URL | Request): Promise<Response> => { throw new Error(`request failed for ${secretFeed}`) }) as typeof globalThis.fetch,
+      openPath: async () => "",
+    })
+    const checkProjection = await failedCheck.check()
+    expect(checkProjection).toMatchObject({ phase: "rejected", reason: "update_check_failed" })
+    expect(JSON.stringify(checkProjection)).not.toContain(secretFeed)
+
+    const download = fixture()
+    let allowFeed = true
+    const failedDownload = openDesktopUpdateStagingHost({
+      root: download.root, installedVersion: "0.1.0-rc.5", channel: "rc", baseUrl: download.base, pin: download.pin,
+      fetch: (async value => {
+        if (allowFeed) return download.fetch(value)
+        throw new Error(`write failed at ${download.root}`)
+      }) as typeof globalThis.fetch,
+      openPath: async () => "",
+    })
+    expect((await failedDownload.check()).phase).toBe("available")
+    allowFeed = false
+    const downloadProjection = await failedDownload.download()
+    expect(downloadProjection).toMatchObject({ phase: "rejected", reason: "update_download_failed" })
+    expect(JSON.stringify(downloadProjection)).not.toContain(download.root)
+  })
 })
