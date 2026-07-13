@@ -128,6 +128,7 @@ type BoundaryLog = {
   wiped: string[]
   revoked: string[]
   targetOperations: string[]
+  sequence: string[]
 }
 
 class MemoryBrokerStateStore implements CapabilityBrokerStateStore {
@@ -150,6 +151,7 @@ const makeBroker = async (
         targetRef: input.lease.targetRef,
         materialBytes: input.material.byteLength,
       })
+      log.sequence.push(`install:${input.lease.targetRef}:${input.lease.leaseRef}`)
       return { installationRef: `installation.${input.lease.leaseRef}` }
     },
     wipe: async (input: { leaseRef: string }) => {
@@ -166,6 +168,7 @@ const makeBroker = async (
       withSourceGrantMaterial: async ({ use }) => use(material),
       revokeSourceGrant: async ({ sourceGrantRef }) => {
         log.revoked.push(sourceGrantRef)
+        log.sequence.push(`revoke:${sourceGrantRef}`)
       },
     },
     targets: [
@@ -298,6 +301,7 @@ const makeTarget = (
     },
     stageCheckpoint: async input => {
       log.targetOperations.push(input.operationRef)
+      log.sequence.push(`stage:${targetRef}:${input.operationRef}`)
       if (faults.rejectStage) throw new Error("destination rejected checkpoint")
       return {
         checkpointDigest: input.bundle.checkpoint.digest,
@@ -421,7 +425,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     loseCompletionAck?: boolean
     failFirstReissueEvidence?: boolean
   } = {}) => {
-    const log: BoundaryLog = { installed: [], wiped: [], revoked: [], targetOperations: [] }
+    const log: BoundaryLog = { installed: [], wiped: [], revoked: [], targetOperations: [], sequence: [] }
     const brokerHarness = await makeBroker(log, {
       ...(faults.failFirstReissueEvidence ? { failFirstReissueEvidence: true } : {}),
     })
@@ -488,6 +492,12 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     expect(snapshot?.checkpoints[0]?.diff_digest).toBe(digest("c"))
     expect(log.wiped).toEqual(expect.arrayContaining(sourceAttachment.capabilityLeaseRefs))
     expect(log.revoked).toEqual(expect.arrayContaining(["grant.port03.local.0", "grant.port03.local.1"]))
+    const managedStageIndex = log.sequence.findIndex(item => item.startsWith(`stage:${managedTargetRef}:`))
+    const firstRevokeIndex = log.sequence.findIndex(item => item.startsWith("revoke:"))
+    const firstManagedInstallIndex = log.sequence.findIndex(item => item.startsWith(`install:${managedTargetRef}:`))
+    expect(managedStageIndex).toBeGreaterThanOrEqual(0)
+    expect(firstRevokeIndex).toBeGreaterThan(managedStageIndex)
+    expect(firstManagedInstallIndex).toBeGreaterThan(firstRevokeIndex)
 
     await expect(withSyncTransaction(sql as unknown as SyncSql, writer =>
       appendPortableSessionEvent(writer, {
@@ -543,7 +553,9 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     expect(snapshot?.attachments.map(row => row.state)).toEqual(["quiesced"])
     expect(snapshot?.commands).toHaveLength(1)
     expect(snapshot?.commands[0]?.status).toBe("failed")
-    expect(broker.snapshot().leases.filter(row => row.lease.targetRef === managedTargetRef).every(row => row.lease.state === "released")).toBe(true)
+    expect(broker.snapshot().leases.filter(row => row.lease.targetRef === managedTargetRef)).toEqual([])
+    expect(log.revoked).toEqual([])
+    expect(log.installed.filter(item => item.targetRef === managedTargetRef)).toEqual([])
     expect(log.targetOperations).toContain("operation.command.port03.move.1.destination.abort")
   })
 
@@ -577,7 +589,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
   })
 
   test("a reissue evidence failure releases the requested destination lease instead of orphaning authority", async () => {
-    const { broker, coordinator, local, managed } = await setup({ failFirstReissueEvidence: true })
+    const { broker, coordinator, local, log, managed } = await setup({ failFirstReissueEvidence: true })
     const result = await coordinator.move(firstMove(local, managed))
     expect(result).toMatchObject({ status: "failed", reasonRef: "reason.portable_move.broker_failed" })
     const destination = broker.snapshot().leases.find(row =>
@@ -585,6 +597,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     expect(destination?.lease.state).toBe("released")
     expect(broker.snapshot().leases.filter(row =>
       row.lease.targetRef === managedTargetRef && ["issued", "redeemed"].includes(row.lease.state))).toHaveLength(0)
+    expect(log.targetOperations).toContain("operation.command.port03.move.1.destination.abort")
   })
 
   test("lost activation acknowledgement converges through a completed-command replay without another accepted parent or child turn", async () => {

@@ -555,7 +555,8 @@ export class PortableSessionMoveCoordinator {
     ensureTargetMatches(view, input)
     validateTransfers(view, input, this.config.broker)
     const durableEvidence: string[] = []
-    const destinationLeaseRefs: string[] = []
+    const destinationLeaseRefs = input.capabilityTransfers.map(transfer => transfer.destinationLeaseRef)
+    const attemptedDestinationLeaseRefs: string[] = []
     let staged = false
     let authorityCompleted = false
     let bundle: PortableCheckpointBundle | undefined
@@ -609,8 +610,21 @@ export class PortableSessionMoveCoordinator {
       validateBundle(view, input.command, bundle)
       durableEvidence.push(...bundle.checkpoint.receiptRefs)
 
+      staged = true
+      const stage = await input.destination.stageCheckpoint({
+        operationRef: `operation.${input.command.commandRef}.destination.stage`,
+        bundle,
+        destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationGeneration: view.sourceGeneration + 1,
+        capabilityLeaseRefs: destinationLeaseRefs,
+      }).catch(() => {
+        throw new PortableSessionMoveError("destination_rejected", "destination rejected checkpoint staging")
+      })
+      validateStage(bundle, stage)
+      durableEvidence.push(...stage.evidenceRefs)
+
       for (const transfer of input.capabilityTransfers) {
-        destinationLeaseRefs.push(transfer.destinationLeaseRef)
+        attemptedDestinationLeaseRefs.push(transfer.destinationLeaseRef)
         const moved = await Effect.runPromise(this.config.broker.reissue({
           operationRef: `operation.${input.command.commandRef}.capability.${transfer.sourceLeaseRef}.reissue`,
           leaseRef: transfer.sourceLeaseRef,
@@ -632,19 +646,6 @@ export class PortableSessionMoveCoordinator {
         })
         durableEvidence.push(...redeemed.evidenceRefs)
       }
-
-      staged = true
-      const stage = await input.destination.stageCheckpoint({
-        operationRef: `operation.${input.command.commandRef}.destination.stage`,
-        bundle,
-        destinationAttachmentRef: input.destinationAttachmentRef,
-        destinationGeneration: view.sourceGeneration + 1,
-        capabilityLeaseRefs: destinationLeaseRefs,
-      }).catch(() => {
-        throw new PortableSessionMoveError("destination_rejected", "destination rejected checkpoint staging")
-      })
-      validateStage(bundle, stage)
-      durableEvidence.push(...stage.evidenceRefs)
 
       const cleanup = await input.source.cleanupSource({
         operationRef: `operation.${input.command.commandRef}.source.cleanup`,
@@ -774,7 +775,7 @@ export class PortableSessionMoveCoordinator {
           durableEvidence.push(`evidence.${input.command.commandRef}.destination.abort_failed`)
         }
       }
-      for (const leaseRef of destinationLeaseRefs) {
+      for (const leaseRef of attemptedDestinationLeaseRefs) {
         try {
           const released = await Effect.runPromise(this.config.broker.release({
             operationRef: `operation.${input.command.commandRef}.capability.${leaseRef}.release`,

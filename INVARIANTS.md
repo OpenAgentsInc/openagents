@@ -1165,9 +1165,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   cannot move, and no host path may synthesize the binding. A movement command
   is admitted against the exact current attachment generation; the runtime
   quiesces every canonical descendant; PORT-01 persists the graph-wide fence;
-  and only then may PORT-02 revoke/wipe every source lease and issue/redeem a
-  fresh destination-generation lease. The destination may stage and verify a
-  checkpoint while `acceptingWork:false`, but it cannot activate until the
+  and only then may the destination stage and verify the checkpoint while
+  `acceptingWork:false`, with every planned fresh destination lease ref bound
+  to that exact staged resource. Only after that stage succeeds may PORT-02
+  revoke/wipe each source lease and issue/redeem its destination-generation
+  lease into the staged resource. Stage failure has zero broker effects; a
+  later broker failure aborts the staged destination and releases every
+  attempted destination lease. The destination cannot activate until the
   PORT-01 completion transaction has independently required the exact durable
   event cursor, recomputed the complete canonical graph digest, detached the
   source, and advanced the sole live attachment generation. Source cleanup
