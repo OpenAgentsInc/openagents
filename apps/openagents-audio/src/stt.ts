@@ -37,7 +37,7 @@ export const createGoogleSttAdapter = async (config: Readonly<{ projectId: strin
       })
       stream.on("drain", input.onDrain)
       stream.on("error", (error: { code?: number }) => input.onEvent({ _tag: "error", code: error.code === 8 ? "quota" : error.code === 4 ? "deadline" : "provider" }))
-      stream.write({ recognizer: `projects/${config.projectId}/locations/${config.location}/recognizers/_`, streamingConfig: { config: { explicitDecodingConfig: { encoding: "LINEAR16", sampleRateHertz: 16000, audioChannelCount: 1 }, languageCodes: [config.languageCode], model: "chirp_3", features: { enableAutomaticPunctuation: true } }, streamingFeatures: { interimResults: true, enableVoiceActivityEvents: true, endpointingSensitivity: "ENDPOINTING_SENSITIVITY_SUPERSHORT" } } })
+      stream.write({ recognizer: `projects/${config.projectId}/locations/${config.location}/recognizers/_`, streamingConfig: { config: { explicitDecodingConfig: { encoding: "LINEAR16", sampleRateHertz: 16000, audioChannelCount: 1 }, languageCodes: [config.languageCode], model: "chirp_3", features: { enableAutomaticPunctuation: true } }, streamingFeatures: { interimResults: true, enableVoiceActivityEvents: true, endpointingSensitivity: "ENDPOINTING_SENSITIVITY_SHORT" } } })
       return { write: (audio) => stream.write({ audio: Buffer.from(audio) }), close: () => stream.end(), cancel: () => stream.destroy() }
     },
   }

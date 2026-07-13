@@ -3386,8 +3386,9 @@ const reasoningSelect = (state: DesktopShellState): View | null =>
  * and the DesktopInputChanged/DesktopNoteSubmitted wiring are all preserved,
  * re-homed into the new shape.
  */
-const shellComposer = (state: DesktopShellState): View =>
-  Card(
+const shellComposer = (state: DesktopShellState): View => {
+  const hud = voiceHud(state)
+  return Card(
     {
       key: "shell-composer",
       padding: "2",
@@ -3412,7 +3413,7 @@ const shellComposer = (state: DesktopShellState): View =>
       ...composerImageRegion(state),
       ...composerReviewContextRegion(state),
       ...composerFileContextRegion(state),
-      ...(voiceHud(state) === null ? [] : [voiceHud(state)!]),
+      ...(hud === null ? [] : [hud]),
       // Multiline text input on TOP — grows/wraps with content (textarea).
       TextField({
         key: "shell-input",
@@ -3464,6 +3465,7 @@ const shellComposer = (state: DesktopShellState): View =>
       ),
     ],
   )
+}
 
 /**
  * Command palette panel (apps-sdk chrome port, EP250 #8712): the floating-

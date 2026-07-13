@@ -23,6 +23,18 @@ describe("Desktop host-owned persistent voice lifecycle", () => {
     await h.host.command({ protocolVersion: 1, id: "voice.unmute" }); expect(h.host.state()).toMatchObject({ phase: "live", generation: 1 })
     await h.host.command({ protocolVersion: 1, id: "voice.stop" }); expect(h.events.at(-1)).toBe("close:stop"); expect(h.host.state().phase).toBe("idle")
   })
+  test("transport watermarks stay exact without repainting the shell for every frame", async () => {
+    const h = harness(); let notifications = 0
+    h.host.subscribe(() => { notifications += 1 })
+    await h.host.command({ protocolVersion: 1, id: "voice.start", threadRef: "thread", sessionRef: "session", disclosureRef: "disclosure.v1" }); h.callbacks().onState("live")
+    const beforeFrames = notifications
+    for (let sequence = 0; sequence < 20; sequence += 1) {
+      h.callbacks().onPacket({ generation: 1, sequence, payloadLength: 320, sha256: "a".repeat(64) })
+      h.callbacks().onAck(sequence, 1)
+    }
+    expect(h.host.state()).toMatchObject({ nextSequence: 20, acknowledgedSequence: 19, retainedAudio: true })
+    expect(notifications - beforeFrames).toBe(1)
+  })
   test("permission denial never opens capture", async () => {
     let opened = false
     const host = createDesktopVoiceHost({ resolveIdentity: ({ generation }) => ({ ...identity, generation }), permission: () => "denied", requestPermission: () => "denied", media: { open: () => { opened = true; throw new Error() } } })

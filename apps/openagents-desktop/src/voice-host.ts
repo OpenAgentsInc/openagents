@@ -76,6 +76,11 @@ export const createDesktopVoiceHost = (input: Readonly<{
     current = { ...next, capture: live && captureWanted, egress: live && captureWanted, playback: playbackActive && (live || muted) }
     for (const listener of listeners) listener(current)
   }
+  // Transport watermarks are queryable host state, but they are not visible UI
+  // state. Publishing every 100 ms packet and ACK forces the whole Desktop shell
+  // to reconcile continuously (including hover and disclosure affordances).
+  // Keep the exact counters locally and publish only the first retention edge.
+  const updateTransportState = (next: DesktopVoiceState) => { current = next }
   const close = (reason: "stop" | "revoke" | "replace" | "suspend" | "shutdown") => { const owned = session; session = null; owned?.close(reason) }
   const typedFailure = (phase: DesktopVoiceState["phase"], reason: DesktopVoiceState["reason"]) => publish({ ...current, phase, ...(reason === undefined ? {} : { reason }) })
 
@@ -102,11 +107,14 @@ export const createDesktopVoiceHost = (input: Readonly<{
         identity, disclosureRef: command.disclosureRef,
         onPacket: packet => {
           if (session === null || packet.generation !== ownedGeneration || current.generation !== ownedGeneration || current.phase !== "live") return
-          publish({ ...current, nextSequence: Math.max(current.nextSequence, packet.sequence + 1) })
+          updateTransportState({ ...current, nextSequence: Math.max(current.nextSequence, packet.sequence + 1) })
         },
         onAck: (sequence, ackGeneration) => {
           if (ackGeneration !== ownedGeneration || current.generation !== ownedGeneration) { typedFailure("failed", "stale_generation"); return }
-          publish({ ...current, acknowledgedSequence: Math.max(current.acknowledgedSequence, sequence), retainedAudio: true })
+          const firstRetention = !current.retainedAudio
+          const next = { ...current, acknowledgedSequence: Math.max(current.acknowledgedSequence, sequence), retainedAudio: true }
+          if (firstRetention) publish(next)
+          else updateTransportState(next)
         },
         onState: state => {
           if (current.generation !== ownedGeneration) return

@@ -805,6 +805,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     yield* Effect.addFinalizer(() => noticeController.shutdown)
     let voiceCommandSequence = 0
     const voiceFinalLedger = makeVoiceFinalLedger()
+    let voiceMessageBusy = false
+    let voiceEventTail = Promise.resolve()
     const voiceHost = {
       command: async (command: Readonly<Record<string, unknown>>) => {
         if (typeof bridge?.runtimeRequest !== "function") return null
@@ -891,7 +893,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     if (typeof bridge?.runtimeSubscribe === "function") {
       const unsubscribeVoice = bridge.runtimeSubscribe(event => {
         if (event.kind !== "voice.lifecycle") return
-        void Effect.runPromise(Effect.gen(function* () {
+        const arrivedDuringMessage = voiceMessageBusy
+        voiceEventTail = voiceEventTail.then(() => Effect.runPromise(Effect.gen(function* () {
           const before = yield* SubscriptionRef.get(state)
           yield* SubscriptionRef.update(state, current => ({
             ...current,
@@ -899,6 +902,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }))
           const transcript = event.state.transcript
           if (transcript?.final !== true || before.voice.sessionRef === null || event.state.generation !== before.voice.host.generation) return
+          // The microphone is visibly paused for an admitted message turn. A
+          // provider final already buffered during that pause belongs to the
+          // closed turn boundary and must never replace/queue a fragment.
+          if (arrivedDuringMessage) return
           const action = voiceFinalLedger.admit({
             sessionRef: before.voice.sessionRef,
             generation: event.state.generation,
@@ -907,7 +914,24 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }, before.voice.host.generation)
           if (action === null) return
           yield* Effect.promise(() => executeVoiceAction(action, {
-            submitMessage: text => Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(text)), null))),
+            submitMessage: async text => {
+              voiceMessageBusy = true
+              const admitted = await Effect.runPromise(SubscriptionRef.get(state))
+              const admittedSession = admitted.voice.sessionRef
+              const admittedGeneration = admitted.voice.host.generation
+              try {
+                const muted = await voiceHost.command({ protocolVersion: 1, id: "voice.mute" })
+                if (muted !== null) await Effect.runPromise(SubscriptionRef.update(state, current => ({ ...current, voice: withVoiceHostState(current.voice, muted) })))
+                await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(text)), null)))
+              } finally {
+                const latest = await Effect.runPromise(SubscriptionRef.get(state))
+                if (latest.voice.sessionRef === admittedSession && latest.voice.host.generation === admittedGeneration && latest.voice.host.phase === "muted") {
+                  const resumed = await voiceHost.command({ protocolVersion: 1, id: "voice.unmute" })
+                  if (resumed !== null) await Effect.runPromise(SubscriptionRef.update(state, current => ({ ...current, voice: withVoiceHostState(current.voice, resumed) })))
+                }
+                voiceMessageBusy = false
+              }
+            },
             interrupt: () => Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopTurnInterrupted"), null))),
             focusRegisteredCommand: commandId => {
               const workspace = commandId === "workspace.files" ? "files"
@@ -917,7 +941,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             },
             editFallback: text => Effect.runPromise(SubscriptionRef.update(state, current => withInput(current, text))),
           }))
-        }))
+        }))).catch(error => {
+          voiceMessageBusy = false
+          console.error("[openagents-desktop:voice] lifecycle handling failed:", error instanceof Error ? error.message : "unknown_error")
+        })
       })
       yield* Effect.addFinalizer(() => Effect.sync(unsubscribeVoice))
     }
