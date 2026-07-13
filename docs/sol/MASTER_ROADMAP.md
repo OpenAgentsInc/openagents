@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 103
+- Revision: 104
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -482,7 +482,6 @@ the currently unclaimed worker lease.
 | [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | One claim registry across local/managed routing |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
 | [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 owner confirmation of real-microphone and UI-stability fixes |
-| [#8746](https://github.com/OpenAgentsInc/openagents/issues/8746) | PORT-01 durable session/graph/attachment/checkpoint/directory authority |
 | [#8747](https://github.com/OpenAgentsInc/openagents/issues/8747) | PORT-02 general target-scoped capability broker |
 | [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | PORT-03 first local↔managed graph-wide move and failback |
 | [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749) | PORT-04 owner-managed remote target lifecycle and moves |
@@ -525,10 +524,11 @@ Live issues and claims control exact selection. At this snapshot:
    then re-close it. Treat closed #8733 as the P1 audio implementation
    substrate and do not widen Runtime Gateway, Desktop command, Sync, or
    release authority.
-6. Closed PORT-00 #8745 supplies the shared schema/intent freeze. PORT-01
-   #8746 and PORT-02 #8747 may now run in parallel, with migrations, command
-   IDs, catalogs, and policy serialized. PORT-03 #8748 composes both into the
-   first real local↔managed move and failback.
+6. Closed PORT-00 #8745 and PORT-01 #8746 now supply the shared schema freeze
+   plus live durable Cloud SQL/Khala Sync session, graph, attachment,
+   checkpoint, directory, event, projection-repair, and command authority.
+   Execute PORT-02 #8747 next; PORT-03 #8748 then composes the authority and
+   broker into the first real local↔managed move and failback.
 7. After the shared target contract, PORT-04 #8749 owner-managed enrollment and
    PORT-05 #8750's audited provider adapter may proceed in parallel. Then ship
    PORT-06 #8751 mobile any-host control, PORT-07 #8752 session-neutral voice,

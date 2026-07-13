@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T04:15:09.824Z",
+  "generatedAt": "2026-07-13T04:55:29.000Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -94,17 +94,6 @@
       "state": "OPEN",
       "title": "AUDIO-8: deploy and prove the real-microphone persistent voice MVP",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8741"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8746,
-      "state": "OPEN",
-      "title": "PORT-01 — Land durable host-independent session, graph, attachment, checkpoint, and directory authority",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8746"
     },
     {
       "labels": [
