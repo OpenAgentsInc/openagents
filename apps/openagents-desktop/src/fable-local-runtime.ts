@@ -82,6 +82,7 @@ import {
   type CodexChildResult,
   type CodexChildRunInput,
 } from "./codex-child-contract.ts"
+import { resolveBundledClaudeExecutable } from "./provider-runtime-host.ts"
 
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
 /**
@@ -1225,6 +1226,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
           turnRef: input.turnRef,
           accountRef: account.ref,
         })
+        const claudeExecutable = resolveBundledClaudeExecutable()
         const session = query({
           prompt,
           options: {
@@ -1251,6 +1253,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             includePartialMessages: true,
             maxTurns: FABLE_LOCAL_MAX_TURNS,
             model: requestedModel,
+            ...(claudeExecutable === null ? {} : { pathToClaudeCodeExecutable: claudeExecutable }),
             // Owner full-access lane, but NOT bypassPermissions: bypass
             // would "Bypass all permission checks" (sdk.d.ts) — including
             // the canUseTool handler AskUserQuestion parks on. Default mode

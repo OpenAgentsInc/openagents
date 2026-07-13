@@ -5,6 +5,7 @@ import {
   executableOutsideAsar,
   inspectProviderRuntimeCompatibility,
   readInstalledClaudeAgentSdkVersion,
+  resolveBundledClaudeExecutable,
   resolveBundledCodexExecutable,
 } from "./provider-runtime-host.ts"
 
@@ -32,7 +33,19 @@ const child = (output: string, code = 0, delay = 0) => {
 describe("provider runtime host", () => {
   test("the clean checkout resolves the pinned native Codex and Claude SDK packages", () => {
     expect(resolveBundledCodexExecutable()).toContain("@openai+codex")
+    expect(resolveBundledClaudeExecutable()).toContain("@anthropic-ai+claude-agent-sdk-darwin-arm64")
     expect(readInstalledClaudeAgentSdkVersion()).toBe("0.3.172")
+  })
+
+  test("the installed app resolves the exact package-owned unpacked Claude binary", () => {
+    const resolved = resolveBundledClaudeExecutable({
+      resourcesPath: "/Applications/OpenAgents.app/Contents/Resources",
+      exists: value => value.endsWith("/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
+    })
+    expect(resolved).toBe(
+      "/Applications/OpenAgents.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude",
+    )
+    expect(resolved).not.toContain("/app.asar/")
   })
 
   test("the installed app resolves the exact package-owned unpacked Codex binary", () => {

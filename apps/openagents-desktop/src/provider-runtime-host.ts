@@ -80,6 +80,40 @@ export const resolveBundledCodexExecutable = (
   return exists(unpacked) ? unpacked : null
 }
 
+/**
+ * Resolves the native Claude executable owned by the pinned Agent SDK. The
+ * SDK's own resolver can see a virtual file inside Electron's ASAR and then
+ * pass that virtual path to spawn(), which fails with ENOTDIR. Resolve from
+ * the SDK's dependency graph and translate the result to app.asar.unpacked
+ * before a local Claude turn starts.
+ */
+export const resolveBundledClaudeExecutable = (
+  options: BundledCodexResolutionOptions = {},
+): string | null => {
+  const exists = options.exists ?? existsSync
+  const packageName = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`
+  const executableName = process.platform === "win32" ? "claude.exe" : "claude"
+  try {
+    const sdkEntry = require.resolve("@anthropic-ai/claude-agent-sdk")
+    const sdkRequire = createRequire(sdkEntry)
+    const executable = sdkRequire.resolve(`${packageName}/${executableName}`)
+    const executablePath = executableOutsideAsar(executable, exists)
+    if (executablePath !== null) return executablePath
+  } catch { /* packaged fallback below */ }
+  const resourcesPath = options.resourcesPath ?? (
+    process as NodeJS.Process & { resourcesPath?: string }
+  ).resourcesPath
+  if (typeof resourcesPath !== "string" || resourcesPath.length === 0) return null
+  const unpacked = path.join(
+    resourcesPath,
+    "app.asar.unpacked",
+    "node_modules",
+    packageName,
+    executableName,
+  )
+  return exists(unpacked) ? unpacked : null
+}
+
 export const readInstalledClaudeAgentSdkVersion = (): string | null => {
   try {
     const entry = require.resolve("@anthropic-ai/claude-agent-sdk")
