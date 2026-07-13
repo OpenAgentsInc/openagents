@@ -230,6 +230,7 @@ import {
   DesktopCodingCatalogRecoverChannel,
   DesktopCodingCatalogSnapshotChannel,
   decodeDesktopCodingCatalogProjection,
+  decodeDesktopCodingCatalogPageRequest,
   decodeDesktopCodingFocusRequest,
   decodeDesktopCodingSessionRequest,
   emptyDesktopCodingCatalogProjection,
@@ -761,9 +762,13 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     },
   },
   codingCatalog: {
-    snapshot: async () => decodeDesktopCodingCatalogProjection(
-      await ipcRenderer.invoke(DesktopCodingCatalogSnapshotChannel),
-    ) ?? emptyDesktopCodingCatalogProjection(),
+    snapshot: async (value: unknown = { offset: 0 }) => {
+      const request = decodeDesktopCodingCatalogPageRequest(value)
+      if (request === null) return emptyDesktopCodingCatalogProjection()
+      return decodeDesktopCodingCatalogProjection(
+        await ipcRenderer.invoke(DesktopCodingCatalogSnapshotChannel, request),
+      ) ?? emptyDesktopCodingCatalogProjection()
+    },
     choose: async () => decodeDesktopCodingCatalogProjection(
       await ipcRenderer.invoke(DesktopCodingCatalogChooseChannel),
     ) ?? emptyDesktopCodingCatalogProjection(),

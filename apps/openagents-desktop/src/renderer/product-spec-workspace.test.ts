@@ -98,6 +98,12 @@ const capableState = () => ({
     authorityLabel: "This Mac" as const,
     selectedSessionRef: "session.demo",
     focus: { kind: "none" as const },
+    pageOffset: 0,
+    totalSessions: 1,
+    nextOffset: null,
+    activeCount: 1,
+    recoveryCount: 0,
+    archivedCount: 0,
     sessions: [{
       sessionRef: "session.demo",
       workContextRef: "work.context.demo",

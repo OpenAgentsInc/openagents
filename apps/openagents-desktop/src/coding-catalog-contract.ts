@@ -52,9 +52,19 @@ export const DesktopCodingCatalogProjectionSchema = Schema.Struct({
   authorityLabel: Schema.Literal("This Mac"),
   selectedSessionRef: Schema.NullOr(CodingRef),
   focus: CodingNavigationFocus,
-  sessions: Schema.Array(DesktopCodingCatalogSessionSchema).check(Schema.isMaxLength(2_048)),
+  sessions: Schema.Array(DesktopCodingCatalogSessionSchema).check(Schema.isMaxLength(100)),
+  pageOffset: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  totalSessions: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  nextOffset: Schema.NullOr(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
+  activeCount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  recoveryCount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  archivedCount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
 })
 export type DesktopCodingCatalogProjection = typeof DesktopCodingCatalogProjectionSchema.Type
+
+export const DesktopCodingCatalogPageRequestSchema = Schema.Struct({
+  offset: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+})
 
 export type DesktopCodingCatalogQueryPlan = Readonly<{
   projectRef?: string
@@ -87,6 +97,8 @@ export const decodeDesktopCodingFocusRequest = (raw: unknown) =>
   decode<typeof DesktopCodingFocusRequestSchema.Type>(DesktopCodingFocusRequestSchema, raw)
 export const decodeDesktopCodingCatalogProjection = (raw: unknown) =>
   decode<DesktopCodingCatalogProjection>(DesktopCodingCatalogProjectionSchema, raw)
+export const decodeDesktopCodingCatalogPageRequest = (raw: unknown) =>
+  decode<typeof DesktopCodingCatalogPageRequestSchema.Type>(DesktopCodingCatalogPageRequestSchema, raw)
 
 export const emptyDesktopCodingCatalogProjection = (): DesktopCodingCatalogProjection => ({
   authority: "device_local",
@@ -94,6 +106,12 @@ export const emptyDesktopCodingCatalogProjection = (): DesktopCodingCatalogProje
   selectedSessionRef: null,
   focus: { kind: "none" },
   sessions: [],
+  pageOffset: 0,
+  totalSessions: 0,
+  nextOffset: null,
+  activeCount: 0,
+  recoveryCount: 0,
+  archivedCount: 0,
 })
 
 /**
@@ -156,9 +174,12 @@ export const desktopWorkspaceForCodingFocus = (
 
 export const projectDesktopCodingCatalog = (
   snapshot: DesktopCodingCatalogSnapshot,
+  offset = 0,
 ): DesktopCodingCatalogProjection => {
   const navigation = snapshot.navigation
-  const sessions = queryCodingSessions(snapshot.catalog, {}).map(session => {
+  const allSessions = queryCodingSessions(snapshot.catalog, {})
+  const pageOffset = Math.min(Math.max(0, Math.trunc(offset)), allSessions.length)
+  const sessions = allSessions.slice(pageOffset, pageOffset + 100).map(session => {
     const project = snapshot.catalog.projects.find(value => value.projectRef === session.projectRef)
     const repository = snapshot.catalog.repositories.find(value => value.repositoryRef === session.repositoryRef)
     const worktree = snapshot.catalog.worktrees.find(value => value.worktreeRef === session.worktreeRef)
@@ -198,5 +219,14 @@ export const projectDesktopCodingCatalog = (
     selectedSessionRef: navigation?.selectedSessionRef ?? null,
     focus: navigation?.focus ?? { kind: "none" },
     sessions,
+    pageOffset,
+    totalSessions: allSessions.length,
+    nextOffset: pageOffset + sessions.length < allSessions.length ? pageOffset + sessions.length : null,
+    activeCount: allSessions.filter(session => session.state === "active" || session.state === "idle").length,
+    recoveryCount: allSessions.filter(session => {
+      const worktree = snapshot.catalog.worktrees.find(value => value.worktreeRef === session.worktreeRef)
+      return session.state === "recovery_required" || worktree?.availability.state !== "available"
+    }).length,
+    archivedCount: allSessions.filter(session => session.state === "archived").length,
   })
 }

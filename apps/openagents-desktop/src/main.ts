@@ -218,6 +218,7 @@ import {
   DesktopCodingCatalogRecoverChannel,
   DesktopCodingCatalogSnapshotChannel,
   decodeDesktopCodingFocusRequest,
+  decodeDesktopCodingCatalogPageRequest,
   decodeDesktopCodingSessionRequest,
   emptyDesktopCodingCatalogProjection,
   projectDesktopCodingCatalog,
@@ -1050,11 +1051,11 @@ const installAdmittedCodingWorkspace = (root: string): boolean => {
   hostLifecycle.replaceWorkspace(admitted.workspace)
   return true
 }
-const codingCatalogSnapshot = () => {
+const codingCatalogSnapshot = (offset = 0) => {
   const catalog = hostLifecycle.sync()?.codingCatalog()
   return catalog === null || catalog === undefined
     ? emptyDesktopCodingCatalogProjection()
-    : projectDesktopCodingCatalog(catalog.snapshot())
+    : projectDesktopCodingCatalog(catalog.snapshot(), offset)
 }
 const codingThreadCreationAttempted = new Set<string>()
 const publishCodingCatalog = (): void => {
@@ -1334,7 +1335,10 @@ ipcMain.handle(ProductSpecRunGetChannel, (event, raw: unknown) => {
     ? productSpecUnavailable("The ProductSpec run request is invalid.")
     : withProductSpecWorkroom(event, authority => authority.service.run(request.runRef))
 })
-ipcMain.handle(DesktopCodingCatalogSnapshotChannel, () => codingCatalogSnapshot())
+ipcMain.handle(DesktopCodingCatalogSnapshotChannel, (_event, raw: unknown) => {
+  const request = decodeDesktopCodingCatalogPageRequest(raw)
+  return request === null ? codingCatalogSnapshot() : codingCatalogSnapshot(request.offset)
+})
 ipcMain.handle(DesktopCodingCatalogChooseChannel, async () => {
   await chooseCodingWorkspace()
   return codingCatalogSnapshot()

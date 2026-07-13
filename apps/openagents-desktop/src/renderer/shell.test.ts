@@ -271,6 +271,12 @@ const codingCatalogFixture: DesktopShellState["codingCatalog"] = {
   authorityLabel: "This Mac",
   selectedSessionRef: "session.desktop.fixture",
   focus: { kind: "conversation", conversationRef: "conversation.desktop.fixture" },
+  pageOffset: 0,
+  totalSessions: 1,
+  nextOffset: null,
+  activeCount: 1,
+  recoveryCount: 0,
+  archivedCount: 0,
   sessions: [{
     sessionRef: "session.desktop.fixture",
     projectRef: "project.desktop.fixture",
@@ -1361,6 +1367,16 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         }
         const opened: string[] = []
         const deleted: string[] = []
+        const pageOffsets: number[] = []
+        const firstPage = { ...codingCatalogFixture, totalSessions: 2, nextOffset: 1 }
+        const olderPage = {
+          ...codingCatalogFixture,
+          selectedSessionRef: codingCatalogFixture.selectedSessionRef,
+          pageOffset: 1,
+          totalSessions: 2,
+          nextOffset: null,
+          sessions: [{ ...codingCatalogFixture.sessions[0]!, sessionRef: "session.desktop.older", projectLabel: "Older" }],
+        }
         const registry = yield* makeIntentRegistry(
           desktopShellIntents,
           makeDesktopShellHandlers(
@@ -1376,8 +1392,9 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
             undefined,
             undefined,
             {
-              snapshot: async () => codingCatalogFixture,
-              choose: async () => codingCatalogFixture,
+              snapshot: async () => firstPage,
+              page: async offset => { pageOffsets.push(offset); return olderPage },
+              choose: async () => firstPage,
               open: async sessionRef => { opened.push(sessionRef); return codingCatalogFixture },
               archive: async () => archived,
               delete: async sessionRef => {
@@ -1394,7 +1411,18 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           onPress: Parameters<typeof resolveIntentRef>[0]
         }
         yield* registry.dispatch(resolveIntentRef(choose.onPress, null))
-        expect((yield* SubscriptionRef.get(state)).codingCatalog).toEqual(codingCatalogFixture)
+        expect((yield* SubscriptionRef.get(state)).codingCatalog).toEqual(firstPage)
+
+        const firstPageView = desktopShellView(yield* SubscriptionRef.get(state))
+        const loadMore = nodeByKey(firstPageView, "workspace-home-load-more") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(loadMore.onPress, null))
+        expect(pageOffsets).toEqual([1])
+        expect((yield* SubscriptionRef.get(state)).codingCatalog.sessions.map(value => value.sessionRef)).toEqual([
+          "session.desktop.fixture",
+          "session.desktop.older",
+        ])
 
         const populated = desktopShellView(yield* SubscriptionRef.get(state))
         const open = nodeByKey(populated, "workspace-home-session-open-session.desktop.fixture") as {

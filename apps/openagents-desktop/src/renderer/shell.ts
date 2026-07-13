@@ -606,6 +606,7 @@ export const DesktopCodingCatalogFilterSelected = defineIntent(
 )
 export const DesktopCodingCatalogQueryChanged = defineIntent("DesktopCodingCatalogQueryChanged", Schema.String)
 export const DesktopCodingCatalogChooseRequested = defineIntent("DesktopCodingCatalogChooseRequested", Schema.Null)
+export const DesktopCodingCatalogMoreRequested = defineIntent("DesktopCodingCatalogMoreRequested", Schema.Null)
 export const DesktopCodingSessionOpened = defineIntent("DesktopCodingSessionOpened", Schema.String)
 export const DesktopCodingSessionArchived = defineIntent("DesktopCodingSessionArchived", Schema.String)
 export const DesktopCodingSessionDeleteRequested = defineIntent("DesktopCodingSessionDeleteRequested", Schema.String)
@@ -677,6 +678,7 @@ export const desktopShellIntents = [
   DesktopCodingCatalogFilterSelected,
   DesktopCodingCatalogQueryChanged,
   DesktopCodingCatalogChooseRequested,
+  DesktopCodingCatalogMoreRequested,
   DesktopCodingSessionOpened,
   DesktopCodingSessionArchived,
   DesktopCodingSessionDeleteRequested,
@@ -1170,6 +1172,7 @@ export type WorkspaceHost = Readonly<{
 
 export type CodingCatalogHost = Readonly<{
   snapshot: () => Promise<DesktopCodingCatalogProjection>
+  page: (offset: number) => Promise<DesktopCodingCatalogProjection>
   choose: () => Promise<DesktopCodingCatalogProjection>
   open: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
   archive: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
@@ -1179,6 +1182,7 @@ export type CodingCatalogHost = Readonly<{
 
 const unavailableCodingCatalogHost: CodingCatalogHost = {
   snapshot: async () => emptyDesktopCodingCatalogProjection(),
+  page: async () => emptyDesktopCodingCatalogProjection(),
   choose: async () => emptyDesktopCodingCatalogProjection(),
   open: async () => emptyDesktopCodingCatalogProjection(),
   archive: async () => emptyDesktopCodingCatalogProjection(),
@@ -1991,6 +1995,21 @@ export const makeDesktopShellHandlers = (
       workspace: "home",
       codingSessionFilter: "active",
       codingSessionQuery: "",
+    }))
+  }),
+  DesktopCodingCatalogMoreRequested: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const offset = current.codingCatalog.nextOffset
+    if (offset === null) return
+    const page = yield* Effect.promise(() => codingCatalogHost.page(offset))
+    if (page.pageOffset !== offset) return
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      codingCatalog: {
+        ...page,
+        sessions: [...value.codingCatalog.sessions, ...page.sessions.filter(session =>
+          !value.codingCatalog.sessions.some(existing => existing.sessionRef === session.sessionRef))],
+      },
     }))
   }),
   DesktopCodingSessionOpened: (sessionRef) => Effect.gen(function* () {
@@ -2975,11 +2994,9 @@ const projectHome = (state: DesktopShellState): View => {
       : state.codingSessionFilter === "archived"
         ? session.state === "archived"
         : session.recoveryReason !== null || session.state === "recovery_required")
-  const activeCount = state.codingCatalog.sessions.filter(session =>
-    session.state === "active" || session.state === "idle").length
-  const recoveryCount = state.codingCatalog.sessions.filter(session =>
-    session.recoveryReason !== null || session.state === "recovery_required").length
-  const archivedCount = state.codingCatalog.sessions.filter(session => session.state === "archived").length
+  const activeCount = state.codingCatalog.activeCount
+  const recoveryCount = state.codingCatalog.recoveryCount
+  const archivedCount = state.codingCatalog.archivedCount
   const focusLabel = state.codingCatalog.focus.kind === "none"
     ? "No restored focus"
     : `Restored ${state.codingCatalog.focus.kind} focus`
@@ -3099,6 +3116,13 @@ const projectHome = (state: DesktopShellState): View => {
               })]),
         ],
       ))),
+      ...(state.codingCatalog.nextOffset === null ? [] : [Button({
+        key: "workspace-home-load-more",
+        label: `Load older sessions (${state.codingCatalog.sessions.length} of ${state.codingCatalog.totalSessions})`,
+        variant: "secondary",
+        onPress: IntentRef("DesktopCodingCatalogMoreRequested"),
+        a11y: { label: "Load the next bounded page of older coding sessions" },
+      })]),
     ],
   )
 }

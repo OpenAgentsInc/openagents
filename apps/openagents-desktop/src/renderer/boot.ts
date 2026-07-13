@@ -225,7 +225,7 @@ type DesktopBridge = Readonly<{
     onUpdate?: (listener: (update: LiveAgentGraphUpdate) => void) => () => void
   }>
   codingCatalog?: Readonly<{
-    snapshot?: () => Promise<unknown>
+    snapshot?: (value?: unknown) => Promise<unknown>
     choose?: () => Promise<unknown>
     open?: (value: unknown) => Promise<unknown>
     archive?: (value: unknown) => Promise<unknown>
@@ -750,7 +750,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }
     }
     const codingCatalogHost = {
-      snapshot: () => codingCatalogCall(bridge?.codingCatalog?.snapshot),
+      snapshot: () => codingCatalogCall(bridge?.codingCatalog?.snapshot === undefined
+        ? undefined
+        : () => bridge.codingCatalog!.snapshot!({ offset: 0 })),
+      page: (offset: number) => codingCatalogCall(bridge?.codingCatalog?.snapshot === undefined
+        ? undefined
+        : () => bridge.codingCatalog!.snapshot!({ offset })),
       choose: () => codingCatalogCall(bridge?.codingCatalog?.choose),
       open: (sessionRef: string) => codingCatalogCall(
         bridge?.codingCatalog?.open === undefined

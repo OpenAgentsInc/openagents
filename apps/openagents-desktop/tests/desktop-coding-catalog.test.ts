@@ -86,6 +86,40 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
     }
   })
 
+  test("projects bounded metadata pages across the complete age-unbounded catalog", () => {
+    const h = fixture()
+    try {
+      const snapshot = h.open().selectWorkspace(h.firstWorkspace)
+      const seed = snapshot.catalog.sessions[0]!
+      const sessions = Array.from({ length: 205 }, (_, index) => ({
+        ...seed,
+        sessionRef: `session.desktop.page-${String(index).padStart(3, "0")}`,
+        workContextRef: `work-context.desktop.page-${index}`,
+        threadRef: `thread.desktop.page-${index}`,
+        conversationRef: `conversation.desktop.page-${index}`,
+        lastActiveAt: new Date(Date.parse("2026-07-11T12:00:00.000Z") - index * 1_000).toISOString(),
+      }))
+      const paged = { ...snapshot, catalog: { ...snapshot.catalog, sessions } }
+      const first = projectDesktopCodingCatalog(paged)
+      const second = projectDesktopCodingCatalog(paged, first.nextOffset!)
+      const last = projectDesktopCodingCatalog(paged, second.nextOffset!)
+      expect(first.sessions).toHaveLength(100)
+      expect(first.pageOffset).toBe(0)
+      expect(first.totalSessions).toBe(205)
+      expect(first.nextOffset).toBe(100)
+      expect(second.sessions).toHaveLength(100)
+      expect(second.pageOffset).toBe(100)
+      expect(second.nextOffset).toBe(200)
+      expect(last.sessions).toHaveLength(5)
+      expect(last.pageOffset).toBe(200)
+      expect(last.nextOffset).toBeNull()
+      expect(new Set([...first.sessions, ...second.sessions, ...last.sessions].map(value => value.sessionRef)).size).toBe(205)
+    } finally {
+      Effect.runSync(h.store.close())
+      rmSync(h.root, { recursive: true, force: true })
+    }
+  })
+
   test("restart and duplicate workspace opens retain one stable session", () => {
     const h = fixture()
     let restartedStore: DesktopSyncStore | null = null
@@ -288,6 +322,12 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
       authorityLabel: "This Mac",
       selectedSessionRef: null,
       focus: { kind: "none" },
+      pageOffset: 0,
+      totalSessions: 1,
+      nextOffset: null,
+      activeCount: 1,
+      recoveryCount: 0,
+      archivedCount: 0,
       sessions: [{
         sessionRef: "session.desktop.fixture",
         workContextRef: "work-context.desktop.fixture",
