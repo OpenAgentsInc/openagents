@@ -11182,7 +11182,10 @@ const dispatchManagedFleetUnitForEnv = async (
   }
   if (
     !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
-    !/^[0-9a-f]{40}$/u.test(input.body.repository.commit)
+    !/^[0-9a-f]{40}$/u.test(input.body.repository.commit) ||
+    !input.body.claimRef.startsWith(
+      `${input.runRef}.claim.${input.body.workUnitRef}.`,
+    )
   ) {
     throw new Error('managed_fleet_tuple_invalid')
   }
@@ -11219,7 +11222,6 @@ const dispatchManagedFleetUnitForEnv = async (
              (request.owner_user_id = ${input.ownerUserId}
               AND lease.owner_user_id = ${input.ownerUserId}
               AND lease.pylon_ref = ${input.pylonRef}
-              AND lease.claim_ref = ${input.body.claimRef}
               AND lease.state = 'accepted') AS authorized
       FROM sarah_fleet_run_requests AS request
       INNER JOIN sarah_fleet_run_intake_leases AS lease
