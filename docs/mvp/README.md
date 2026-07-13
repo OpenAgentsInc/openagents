@@ -29,8 +29,9 @@ read.
    — the signed/notarized RC7 artifact, source-launched real-Codex journey, and
    installed-driver falsifier for the ordinary logged-in-session MVP boundary.
 8. [`2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md)
-   — the signed/notarized RC8 artifact and exact installed 12-step real-Codex,
-   renderer-reload, and app-process-restart journey receipt.
+   — the signed/notarized RC8 artifact, exact installed 12-step real-Codex
+   journey, renderer/app restart, and exact RC7-to-RC8 signed-update,
+   rollback, diagnostics, reinstall, and cleanup receipt.
 
 The Product Spec declares intent. Current upstream ProductSpec can also index
 external evidence with Related Artifacts, but the local package has not yet
