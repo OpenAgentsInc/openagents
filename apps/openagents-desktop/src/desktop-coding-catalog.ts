@@ -86,6 +86,7 @@ export type DesktopCodingCatalog = Readonly<{
   admitWorkspace: (root: string) => DesktopWorkspaceAdmissionResult
   openSession: (sessionRef: string) => DesktopCodingCatalogSnapshot
   archiveSession: (sessionRef: string) => DesktopCodingCatalogSnapshot
+  deleteSession: (sessionRef: string) => DesktopCodingCatalogSnapshot
   recoverSession: (sessionRef: string, root: string) => DesktopCodingCatalogSnapshot
   saveFocus: (sessionRef: string, focus: CodingNavigationFocus) => DesktopCodingCatalogSnapshot
   query: (query: CodingSessionCatalogQuery) => ReadonlyArray<CodingSessionEntity>
@@ -403,6 +404,60 @@ export const openDesktopCodingCatalog = (input: Readonly<{
     return snapshot()
   }
 
+  const deleteSession = (sessionRef: string): DesktopCodingCatalogSnapshot => {
+    const current = snapshot()
+    const selected = current.catalog.sessions.find(value => value.sessionRef === sessionRef)
+    // Permanent deletion is deliberately a second, explicit lifecycle step.
+    // Active/recovery sessions must first be archived so one accidental
+    // action cannot destroy the durable catalog identity.
+    if (selected === undefined || selected.state !== "archived") return current
+
+    const remainingSessions = current.catalog.sessions.filter(value => value.sessionRef !== sessionRef)
+    const deleteWorktree = !remainingSessions.some(value => value.worktreeRef === selected.worktreeRef)
+    const remainingWorktrees = deleteWorktree
+      ? current.catalog.worktrees.filter(value => value.worktreeRef !== selected.worktreeRef)
+      : current.catalog.worktrees
+    const deleteRepository = !remainingSessions.some(value => value.repositoryRef === selected.repositoryRef) &&
+      !remainingWorktrees.some(value => value.repositoryRef === selected.repositoryRef)
+    const remainingRepositories = deleteRepository
+      ? current.catalog.repositories.filter(value => value.repositoryRef !== selected.repositoryRef)
+      : current.catalog.repositories
+    const deleteProject = !remainingSessions.some(value => value.projectRef === selected.projectRef) &&
+      !remainingWorktrees.some(value => value.projectRef === selected.projectRef) &&
+      !remainingRepositories.some(value => value.projectRef === selected.projectRef)
+    const remainingCatalog: CodingSessionCatalog = {
+      sessions: remainingSessions,
+      worktrees: remainingWorktrees,
+      repositories: remainingRepositories,
+      projects: deleteProject
+        ? current.catalog.projects.filter(value => value.projectRef !== selected.projectRef)
+        : current.catalog.projects,
+    }
+    const recent = queryCodingSessions(remainingCatalog, { states: ["active", "idle"] })[0] ??
+      queryCodingSessions(remainingCatalog, { states: ["archived"] })[0] ?? null
+
+    // Move navigation before removing the entity. If the process stops
+    // between the two durable operations, the archived row remains safely
+    // retryable rather than leaving navigation pointed at a missing session.
+    persistNavigation(
+      remainingCatalog,
+      recent?.sessionRef ?? null,
+      recent === null ? { kind: "none" } : { kind: "conversation", conversationRef: recent.conversationRef },
+      (current.navigation?.openSessionRefs ?? []).filter(value => value !== sessionRef),
+    )
+    Effect.runSync(input.store.deleteLocalEntities(scope, [
+      { entityType: CODING_SESSION_ENTITY_TYPE, entityId: sessionRef },
+      ...(deleteWorktree ? [{ entityType: CODING_WORKTREE_ENTITY_TYPE, entityId: selected.worktreeRef }] : []),
+      ...(deleteRepository ? [{ entityType: CODING_REPOSITORY_ENTITY_TYPE, entityId: selected.repositoryRef }] : []),
+      ...(deleteProject ? [{ entityType: CODING_PROJECT_ENTITY_TYPE, entityId: selected.projectRef }] : []),
+    ]))
+    if (deleteWorktree) {
+      writeBindings(input.bindingFile, readBindings(input.bindingFile).filter(binding =>
+        binding.worktreeRef !== selected.worktreeRef))
+    }
+    return snapshot()
+  }
+
   const recoverSession = (sessionRef: string, requestedRoot: string): DesktopCodingCatalogSnapshot => {
     const root = canonicalRoot(requestedRoot)
     const current = read()
@@ -489,6 +544,7 @@ export const openDesktopCodingCatalog = (input: Readonly<{
     admitWorkspace,
     openSession,
     archiveSession,
+    deleteSession,
     recoverSession,
     saveFocus,
     query: query => queryCodingSessions(snapshot().catalog, query),

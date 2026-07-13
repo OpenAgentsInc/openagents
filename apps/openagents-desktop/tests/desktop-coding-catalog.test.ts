@@ -219,6 +219,36 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
     }
   })
 
+  test("permanent deletion requires archive and removes only orphaned local identities", () => {
+    const h = fixture()
+    try {
+      const catalog = h.open()
+      const first = catalog.selectWorkspace(h.firstWorkspace).catalog.sessions[0]!
+      const second = catalog.selectWorkspace(h.secondWorkspace).catalog.sessions.find(
+        value => value.sessionRef !== first.sessionRef,
+      )!
+      expect(catalog.deleteSession(first.sessionRef).catalog.sessions).toHaveLength(2)
+
+      catalog.archiveSession(first.sessionRef)
+      const deleted = catalog.deleteSession(first.sessionRef)
+      expect(deleted.catalog.sessions.map(value => value.sessionRef)).toEqual([second.sessionRef])
+      expect(deleted.catalog.projects).toHaveLength(1)
+      expect(deleted.catalog.repositories).toHaveLength(1)
+      expect(deleted.catalog.worktrees).toHaveLength(1)
+      expect(deleted.navigation?.selectedSessionRef).toBe(second.sessionRef)
+      expect(deleted.navigation?.openSessionRefs).toEqual([second.sessionRef])
+
+      const bindings = readFileSync(path.join(h.root, "private", "coding-bindings.json"), "utf8")
+      expect(bindings).not.toContain(h.firstWorkspace)
+      expect(bindings).toContain(h.secondWorkspace)
+      expect(catalog.deleteSession(first.sessionRef)).toEqual(catalog.snapshot())
+      expect(h.open().snapshot().catalog.sessions.map(value => value.sessionRef)).toEqual([second.sessionRef])
+    } finally {
+      Effect.runSync(h.store.close())
+      rmSync(h.root, { recursive: true, force: true })
+    }
+  })
+
   test("missing worktree recovery preserves canonical session and worktree refs", () => {
     const h = fixture()
     try {
