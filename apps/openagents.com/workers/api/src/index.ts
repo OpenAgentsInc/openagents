@@ -11450,7 +11450,7 @@ const dispatchManagedFleetUnitForEnv = async (
       )
       ON CONFLICT (receipt_ref) DO NOTHING
     `
-    const storedReceipts = await client.sql<{
+    const storedReceipts: Array<{
       account_ref_hash: string
       agent_computer_ref: string
       agent_computer_state: string
@@ -11463,7 +11463,7 @@ const dispatchManagedFleetUnitForEnv = async (
       receipt_ref: string
       session_ref: string
       work_unit_ref: string
-    }[]>`
+    }> = await client.sql`
       SELECT account_ref_hash, agent_computer_ref, agent_computer_state,
              artifact_ref, assignment_ref, claim_ref, closeout_ref,
              no_measurement_caveat_ref, placement_ref, receipt_ref,
@@ -11490,10 +11490,10 @@ const dispatchManagedFleetUnitForEnv = async (
     ) {
       throw new Error('managed_fleet_terminal_receipt_readback_failed')
     }
-    const resolvedRefs = await client.sql<{
+    const resolvedRefs: Array<{
       kind: string
       receipt_ref: string
-    }[]>`
+    }> = await client.sql`
       SELECT 'artifact' AS kind, receipt_ref
       FROM sarah_managed_fleet_unit_receipts WHERE artifact_ref = ${artifactRef}
       UNION ALL
