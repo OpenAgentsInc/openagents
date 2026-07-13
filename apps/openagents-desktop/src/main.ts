@@ -14,7 +14,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
 import {
   fetchFleetRunClientProjection,
@@ -215,6 +215,7 @@ import {
   projectDesktopCodingCatalog,
 } from "./coding-catalog-contract.ts"
 import { makeCodexHistoryHost } from "./codex-history-host.ts"
+import { makeCodexHistoryUtilityFactory } from "./codex-history-utility.ts"
 import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
 import { createDesktopVoiceHost, type VoiceNativeMedia } from "./voice-host.ts"
 import { createPackagedVoiceNativeMedia } from "./voice-native-helper.ts"
@@ -800,7 +801,11 @@ const claudeProjectsRoot = (): string | null => {
       : path.join(app.getPath("home"), ".claude", "projects"),
   )
 }
-const codexHistoryHost = makeCodexHistoryHost(desktopWorkerUrl(import.meta.url, "codex-history-worker.js"))
+const codexHistoryWorkerUrl = desktopWorkerUrl(import.meta.url, "codex-history-worker.js")
+const codexHistoryHost = makeCodexHistoryHost(makeCodexHistoryUtilityFactory(
+  codexHistoryWorkerUrl,
+  utilityProcess.fork,
+))
 const hostLifecycle = makeDesktopHostLifecycle({
   runtime: runtimeGateway,
   account: codexConnect,

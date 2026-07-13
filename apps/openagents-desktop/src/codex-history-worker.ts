@@ -1,5 +1,5 @@
 /** Runs all local rollout filesystem work outside Electron's main process. */
-import { parentPort } from "node:worker_threads"
+import { parentPort as workerParentPort } from "node:worker_threads"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
@@ -34,7 +34,32 @@ let mergedGraphs: MergedHistoryGraphs | null = null
 // Rebuildable bounded content-index cache (H4). Reset whenever a root changes.
 let searchIndex: Readonly<{ documents: ReadonlyArray<HistorySearchDocument>; indexedSessions: number; truncated: boolean }> | null = null
 const withIndexedTitle = <T extends { id: string; title: string }>(thread: T): T => ({ ...thread, title: titleIndex.get(thread.id) ?? thread.title })
-parentPort?.on("message", (input: Readonly<{ id: number; request: Request }>) => {
+
+type HistoryWorkerInput = Readonly<{ id: number; request: Request }>
+type UtilityParentPort = Readonly<{
+  on: (event: "message", listener: (event: Readonly<{ data: HistoryWorkerInput }>) => void) => void
+  postMessage: (value: unknown) => void
+}>
+
+// Electron 43's Node worker_threads path traps inside V8 ThreadIsolation on
+// this supported macOS runtime when the history result crosses MessagePort.
+// The main process therefore hosts history in an Electron utility process.
+// Keep the Node Worker adapter for the standalone build contract, but select
+// the process-isolated port whenever Electron supplies one.
+const utilityParentPort = (process as NodeJS.Process & { parentPort?: UtilityParentPort | null }).parentPort ?? null
+const onMessage = (listener: (input: HistoryWorkerInput) => void): void => {
+  if (utilityParentPort !== null) {
+    utilityParentPort.on("message", event => listener(event.data))
+    return
+  }
+  workerParentPort?.on("message", listener)
+}
+const postMessage = (value: unknown): void => {
+  if (utilityParentPort !== null) utilityParentPort.postMessage(value)
+  else workerParentPort?.postMessage(value)
+}
+
+onMessage(input => {
   try {
     const request = input.request
     const nextClaudeRoot = "claudeRoot" in request ? request.claudeRoot ?? null : claudeRoot
@@ -49,6 +74,6 @@ parentPort?.on("message", (input: Readonly<{ id: number; request: Request }>) =>
       : request.kind === "list"
       ? (() => { fileIndex = recentCodexSessionFiles(request.sessionsRoot); return readRecentCodexHistory({ sessionsRoot: request.sessionsRoot, includeMessages: false, limit: request.limit }).map(withIndexedTitle) })()
       : (() => { const thread = findRecentCodexThread({ sessionsRoot: request.sessionsRoot, id: request.id, messageLimit: request.messageLimit, file: fileIndex.get(request.id) }); return thread === null ? null : withIndexedTitle(thread) })()
-    parentPort?.postMessage({ id: input.id, ok: true, result })
-  } catch { parentPort?.postMessage({ id: input.id, ok: false, result: null }) }
+    postMessage({ id: input.id, ok: true, result })
+  } catch { postMessage({ id: input.id, ok: false, result: null }) }
 })
