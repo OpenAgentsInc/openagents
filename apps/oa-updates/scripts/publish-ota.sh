@@ -58,5 +58,58 @@ export OA_SEED_EXPO_CLIENT_PATH="/app/dist/expo-client.json"
 echo "    code signing: enabled (keyid main, key via Secret Manager)"
 bash "$REPO/apps/oa-updates/scripts/deploy-cloudrun.sh"
 
+# A service with explicitly pinned revision traffic does not automatically send
+# traffic to a newly created revision. Treat deploy as candidate creation, then
+# inspect the candidate's exact bytes before promotion. This prevents a
+# successful source deploy from leaving clients on an older launch asset.
+EXPECTED_BUNDLE="$(bun -e '
+  const metadata = await Bun.file(process.argv[1]).json()
+  const platform = process.argv[2]
+  const bundle = metadata?.fileMetadata?.[platform]?.bundle
+  if (typeof bundle !== "string" || bundle.length === 0) process.exit(1)
+  console.log(bundle.split("/").at(-1))
+' "$REPO/apps/oa-updates/dist/metadata.json" "$PLATFORM")"
+REVISION="$(gcloud run revisions list \
+  --service oa-updates \
+  --region us-central1 \
+  --sort-by='~metadata.creationTimestamp' \
+  --limit 1 \
+  --format='value(metadata.name)')"
+[[ -n "$REVISION" ]] || { echo "error: could not resolve deployed oa-updates revision" >&2; exit 1; }
+
+CANDIDATE_TAG="mobile-ota-candidate"
+gcloud run services update-traffic oa-updates \
+  --region us-central1 \
+  --set-tags "$CANDIDATE_TAG=$REVISION" >/dev/null
+SERVICE_URL="$(gcloud run services describe oa-updates --region us-central1 --format='value(status.url)')"
+CANDIDATE_URL="${SERVICE_URL/https:\/\//https:\/\/$CANDIDATE_TAG---}"
+MANIFEST_FILE="$(mktemp)"
+trap 'rm -f "$MANIFEST_FILE"' EXIT
+curl -fsS "$CANDIDATE_URL/openagents-mobile/manifest" \
+  -o "$MANIFEST_FILE" \
+  -H 'expo-protocol-version: 1' \
+  -H "expo-platform: $PLATFORM" \
+  -H "expo-runtime-version: $RUNTIME" \
+  -H "expo-channel-name: $CHANNEL"
+grep -Fq "\"key\":\"$EXPECTED_BUNDLE\"" "$MANIFEST_FILE" || {
+  echo "error: candidate $REVISION does not serve exported launch asset $EXPECTED_BUNDLE" >&2
+  exit 1
+}
+
+gcloud run services update-traffic oa-updates \
+  --region us-central1 \
+  --to-revisions "$REVISION=100" >/dev/null
+curl -fsS "https://updates.openagents.com/openagents-mobile/manifest" \
+  -o "$MANIFEST_FILE" \
+  -H 'expo-protocol-version: 1' \
+  -H "expo-platform: $PLATFORM" \
+  -H "expo-runtime-version: $RUNTIME" \
+  -H "expo-channel-name: $CHANNEL"
+grep -Fq "\"key\":\"$EXPECTED_BUNDLE\"" "$MANIFEST_FILE" || {
+  echo "error: production traffic does not serve promoted launch asset $EXPECTED_BUNDLE" >&2
+  exit 1
+}
+echo "==> verified and promoted $REVISION ($EXPECTED_BUNDLE)"
+
 echo "==> published. Verify:"
 echo "    curl -H 'expo-protocol-version: 1' -H 'expo-platform: $PLATFORM' -H \"expo-runtime-version: $RUNTIME\" -H \"expo-channel-name: $CHANNEL\" https://updates.openagents.com/$UPDATES_OWNER/manifest"
