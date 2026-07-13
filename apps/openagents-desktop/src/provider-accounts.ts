@@ -221,6 +221,9 @@ const repoRootFromHere = (here: string): string | null => {
   return existsSync(path.join(root, "apps", "pylon", "src", "index.ts")) ? root : null
 }
 
+export const isPackagedAsarPath = (here: string): boolean =>
+  here.split(path.sep).some(part => part === "app.asar" || part.startsWith("app.asar."))
+
 const defaultSpawnPylon = (here: string) => (args: ReadonlyArray<string>): ChildLike | null => {
   const root = repoRootFromHere(here)
   if (root === null) return null
@@ -326,7 +329,9 @@ export const makeProviderAccountsService = (
   const now = dependencies.now ?? (() => new Date())
   const inspectRuntimes = dependencies.inspectRuntimes ?? inspectProviderRuntimeCompatibility
   const packagedProjection = dependencies.packagedProjection ?? (
-    dependencies.spawnPylon === undefined && repoRootFromHere(here) === null
+    dependencies.spawnPylon === undefined && (
+      isPackagedAsarPath(here) || repoRootFromHere(here) === null
+    )
       ? defaultPackagedProjection()
       : null
   )

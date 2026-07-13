@@ -20,6 +20,7 @@ import {
   fixtureProviderAccountUsageStdout,
   makeFixtureProviderAccountsSpawn,
   makeProviderAccountsService,
+  isPackagedAsarPath,
   packagedAccountsListJson,
   parseProviderAccountsListJson,
   parseProviderAccountUsageJson,
@@ -251,6 +252,12 @@ const makeFakeChild = (): FakeChild & {
 }
 
 describe("makeProviderAccountsService", () => {
+  test("recognizes Electron archive paths even when the archive exposes packaged source files", () => {
+    expect(isPackagedAsarPath("/Applications/OpenAgents.app/Contents/Resources/app.asar/dist/main")).toBe(true)
+    expect(isPackagedAsarPath("/tmp/OpenAgents.app/Contents/Resources/app.asar.unpacked/bin")).toBe(true)
+    expect(isPackagedAsarPath("/Users/me/work/openagents/apps/openagents-desktop/out/main")).toBe(false)
+  })
+
   test("packaged config projection admits only valid registered refs with local auth presence", () => {
     const projected = parseProviderAccountsListJson(packagedAccountsListJson(JSON.stringify({
       dev: { accounts: [
