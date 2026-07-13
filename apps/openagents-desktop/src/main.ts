@@ -14,7 +14,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, session, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
 import {
   buildCloseTurnIntent,
@@ -726,7 +726,7 @@ ipcMain.handle(DesktopRuntimeGatewayInvokeChannel, (event, value: unknown) => {
 // explicitly given the same root. Normal development retains this stable path.
 // The frozen packaged identity remains the owner decision tracked by #8574.
 
-const hardenSession = (target: Session = session.defaultSession): void => {
+const hardenSession = (target: Session): void => {
   // Deny-by-default: this shell requests no runtime permissions.
   target.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false)
@@ -4020,7 +4020,10 @@ void app.whenReady().then(async () => {
     // constructing it entirely instead of weakening the production session.
     console.warn("[openagents-desktop] isolated app proof: persistent browser session disabled")
   } else {
-    hardenSession()
+    // `session` is another lazy Electron export on macOS. Resolving it in the
+    // top-level import is enough to initialize persistent cookie encryption,
+    // so production requests the default session only inside this branch.
+    hardenSession((await import("electron")).session.defaultSession)
   }
   try {
     const syncHost = openDesktopSyncHost({
