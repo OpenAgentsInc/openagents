@@ -76,6 +76,14 @@ describe("design conformance (a): no raw color literals in renderer modules", ()
     expect(css).toContain("var(--en-elevation-overlay-shadow)")
     expect(css).toContain("var(--en-motion-fast)")
   })
+
+  test("macOS integrated chrome uses the shared control and spacing scales", () => {
+    const css = readFileSync(path.join(rendererDir, "app.css"), "utf8")
+    const rule = css.match(/html\[data-desktop-platform="darwin"\] \[data-en-key="shell-sidebar"\]::before \{([^}]+)\}/)?.[1] ?? ""
+    expect(rule).toContain("var(--en-control-lg-height)")
+    expect(rule).toContain("var(--en-spacing-1)")
+    expect(rule).toContain("-webkit-app-region: drag")
+  })
 })
 
 describe("design conformance (b): style values come from the shared scales", () => {
@@ -213,7 +221,7 @@ describe("design conformance (c): per-surface structural recipes", () => {
     expect(row?.style).toMatchObject({ borderRadius: "sm" })
   })
 
-  test("composer: radius capped at xl; provider, model, and reasoning use compact native selects", () => {
+  test("MVP composer: radius capped at xl and the engine is a fixed Codex label", () => {
     const state: DesktopShellState = {
       ...baseState(),
       harnessLanes: {
@@ -224,23 +232,18 @@ describe("design conformance (c): per-surface structural recipes", () => {
     const view = desktopShellView(state)
     const composer = byKey(view, "shell-composer") as { radius?: string }
     expect(composer?.radius).toBe("xl")
-    const provider = byKey(view, "shell-harness-select") as { _tag?: string; value?: string; style?: Record<string, unknown> }
-    expect(provider?._tag).toBe("Select")
-    expect(provider?.value).toBe("codex")
-    expect(provider?.style).toMatchObject({ backgroundColor: "background", borderRadius: "md" })
-    const model = byKey(view, "shell-model-select") as { _tag?: string; value?: string; style?: Record<string, unknown> }
-    expect(model?._tag).toBe("Select")
-    expect(model?.value).toBe("gpt-5.6-sol")
-    const reasoning = byKey(view, "shell-reasoning-select") as { _tag?: string; value?: string; style?: Record<string, unknown> }
-    expect(reasoning?._tag).toBe("Select")
-    expect(reasoning?.value).toBe("medium")
+    const engine = byKey(view, "shell-codex-engine") as { _tag?: string; content?: string }
+    expect(engine?._tag).toBe("Text")
+    expect(engine?.content).toBe("Codex")
+    expect(byKey(view, "shell-harness-select")).toBeUndefined()
+    expect(byKey(view, "shell-model-select")).toBeUndefined()
+    expect(byKey(view, "shell-reasoning-select")).toBeUndefined()
   })
 
-  test("disabled provider options stay unavailable and Send carries the exact reason tooltip", () => {
+  test("Codex availability is expressed only on Send through the exact reason tooltip", () => {
     const state = baseState() // codex lane starts unavailable with a reason
     const view = desktopShellView(state)
-    const provider = byKey(view, "shell-harness-select") as { options?: ReadonlyArray<{ value: string; disabled?: boolean }> }
-    expect(provider.options?.find(option => option.value === "codex")?.disabled).toBe(true)
+    expect(byKey(view, "shell-harness-select")).toBeUndefined()
     // The Send button is equally explained while the selected lane cannot act.
     const sendReason = byKey(view, "shell-note-reason") as { _tag?: string; content?: string }
     expect(sendReason?._tag).toBe("Tooltip")
@@ -255,7 +258,6 @@ describe("design conformance (c): per-surface structural recipes", () => {
       },
     }
     const availableView = desktopShellView(available)
-    expect((byKey(availableView, "shell-harness-select") as { options?: ReadonlyArray<{ value: string; disabled?: boolean }> }).options?.find(option => option.value === "codex")?.disabled).toBe(false)
     expect(byKey(availableView, "shell-note-reason")).toBeUndefined()
   })
 

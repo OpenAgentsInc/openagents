@@ -85,6 +85,18 @@ textarea {
   overflow: hidden;
 }
 
+/* macOS integrated chrome: the native gray titlebar is hidden. This spacer
+   gives the traffic lights one control-sized row over the existing blue
+   sidebar and doubles as the window drag handle. It is deliberately absent
+   on other platforms, where the host still owns its normal frame. */
+html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
+  content: "";
+  display: block;
+  flex: 0 0 calc(var(--en-control-lg-height) + var(--en-spacing-1));
+  width: 100%;
+  -webkit-app-region: drag;
+}
+
 [data-en-key="sidebar-brand"] {
   margin: 0;
   padding: 0;

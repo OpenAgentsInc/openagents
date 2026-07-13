@@ -2712,6 +2712,13 @@ const createWindow = (): BrowserWindow => {
     show: false,
     title: "OpenAgents",
     icon: desktopIconPath,
+    // Integrate macOS window controls into the product chrome. The renderer
+    // reserves a token-sized drag/safe area in the blue sidebar, so there is
+    // no separate gray titlebar strip above the application.
+    ...(process.platform === "darwin" ? {
+      titleBarStyle: "hiddenInset" as const,
+      trafficLightPosition: { x: 12, y: 12 },
+    } : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

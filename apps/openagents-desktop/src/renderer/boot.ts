@@ -592,6 +592,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const state = yield* SubscriptionRef.make(initialDesktopShellState(host))
     const program = makeViewProgramFromState(state, desktopShellView)
     const bridge = readBridge()
+    document.documentElement.dataset.desktopPlatform = bridge?.platform ?? "unknown"
     if (typeof bridge?.localTurnRecovery?.onUpdate === "function") {
       const unsubscribeRecovery = bridge.localTurnRecovery.onUpdate(thread => {
         void Effect.runPromise(SubscriptionRef.update(state, current =>

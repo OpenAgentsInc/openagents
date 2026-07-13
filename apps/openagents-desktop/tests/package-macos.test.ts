@@ -39,6 +39,12 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(icon.byteLength).toBeGreaterThan(1_000_000)
   })
 
+  test("integrates the macOS traffic lights into the blue application chrome", () => {
+    expect(mainSource).toContain('titleBarStyle: "hiddenInset"')
+    expect(mainSource).toContain("trafficLightPosition: { x: 12, y: 12 }")
+    expect(mainSource).not.toContain('titleBarStyle: "default"')
+  })
+
   test("locks the hardened Electron fuse posture", () => {
     const source = readFileSync(path.join(root, "forge.config.ts"), "utf8")
     for (const expected of [
