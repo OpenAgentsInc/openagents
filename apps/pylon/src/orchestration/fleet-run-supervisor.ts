@@ -4,8 +4,12 @@ import { Effect, Schema as S, Scope } from "effect"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 import {
   defaultFleetAutoPolicy,
+  defaultFleetWorkUnitPlacementPolicy,
   marginalCostClassRank,
   resolveFleetAutoTarget,
+  resolveFleetWorkUnitPlacement,
+  type FleetExecutionTarget,
+  type FleetExecutionTargetDecision,
   type FleetAutoHarnessCounts,
   type FleetAutoPolicy,
   type FleetAutoTargetCandidate,
@@ -78,6 +82,12 @@ export type FleetRunSupervisorAccount = {
   // carry the exact bounded reason. It is policy input only: a reasoned row is
   // never dispatchable, even if a malformed producer also advertises slots.
   readonly unavailabilityReason?: FleetAutoTargetSkipReason
+  /** Execution custody; omitted legacy rows are owner-local. */
+  readonly executionTarget?: FleetExecutionTarget
+  readonly quotaAvailable?: boolean
+  readonly acceptedDataPostures?: readonly ("owner_private" | "broker_safe")[]
+  readonly repositoryAccess?: boolean
+  readonly managedIsolation?: boolean
 }
 
 export type FleetRunSupervisorLifecycleEvent = PylonAssignmentRunLifecycleEvent
@@ -108,6 +118,7 @@ export type FleetRunSupervisorDispatchInput = {
   // that claimed this unit. In a mixed-kind FleetRun this is the per-account
   // kind, never the raw run kind, so the runner dispatches to the right harness.
   readonly workerKind: FleetRunSupervisorConcreteWorkerKind
+  readonly executionTarget: FleetExecutionTarget
   /** Owning supervisor scope cancellation; never serialized or projected. */
   readonly signal?: AbortSignal | undefined
   /** Streams executor lifecycle as it happens; buffered terminal replay is deduplicated. */
@@ -205,6 +216,12 @@ export type FleetRunSupervisorOptions = {
 
 export type FleetRunSupervisorObservedEvent =
   | {
+    readonly kind: "target_routing"
+    readonly runRef: string
+    readonly workUnitRef: string
+    readonly decision: FleetExecutionTargetDecision
+  }
+  | {
     readonly kind: "tick"
     readonly runRef: string
     readonly activeAssignments: number
@@ -230,6 +247,7 @@ export type FleetRunSupervisorObservedEvent =
     readonly artifactRefs: readonly string[]
     readonly proofRefs: readonly string[]
     readonly authorityReceiptRefs: readonly string[]
+    readonly executionTarget: FleetExecutionTarget
   }
   | {
     readonly kind: "lifecycle"
@@ -238,6 +256,7 @@ export type FleetRunSupervisorObservedEvent =
     readonly claimRef: string
     readonly accountRef: string
     readonly event: FleetRunSupervisorLifecycleEvent
+    readonly executionTarget: FleetExecutionTarget
   }
   | {
     readonly kind: "approval_requested"
@@ -763,6 +782,68 @@ const pickAccount = (
   return eligible[0]?.account ?? null
 }
 
+const executionTargetFor = (account: FleetRunSupervisorAccount): FleetExecutionTarget =>
+  account.executionTarget ?? "owner_local"
+
+const accountsForWorkUnit = (
+  accounts: readonly FleetRunSupervisorAccount[],
+  activeCounts: ReadonlyMap<string, number>,
+  run: FleetRun,
+  workUnit: WorkPlannerClaimableUnit,
+  now: Date,
+): Readonly<{
+  decision: FleetExecutionTargetDecision
+  accounts: readonly FleetRunSupervisorAccount[]
+}> => {
+  const policy = workUnit.placement ?? defaultFleetWorkUnitPlacementPolicy(
+    run.authorityBinding?.targetPreference ?? "owner_local",
+  )
+  const candidates = (["owner_local", "managed_cloud"] as const).map(target => {
+    const targetAccounts = accounts.filter(account => executionTargetFor(account) === target)
+    const freeAccounts = targetAccounts.filter(account =>
+      account.unavailabilityReason === undefined &&
+      account.paused !== true &&
+      !isCoolingDown(account, now) &&
+      Math.max(0, account.advertisedCapacity - (activeCounts.get(account.accountRef) ?? 0)) > 0
+    )
+    const availableCapacity = freeAccounts.reduce(
+      (total, account) => total + Math.max(
+        0,
+        account.advertisedCapacity - (activeCounts.get(account.accountRef) ?? 0),
+      ),
+      0,
+    )
+    const cheapest = [...freeAccounts].sort((left, right) =>
+      marginalCostClassRank[left.marginalCostClass ?? "not_measured"] -
+      marginalCostClassRank[right.marginalCostClass ?? "not_measured"]
+    )[0]
+    return {
+      target,
+      ready: freeAccounts.length > 0,
+      availableCapacity,
+      quotaAvailable: freeAccounts.some(account => account.quotaAvailable !== false),
+      marginalCostClass: cheapest?.marginalCostClass ?? "not_measured",
+      acceptsDataPosture: freeAccounts.some(account =>
+        account.acceptedDataPostures?.includes(policy.dataPosture) ??
+          (target === "owner_local" || policy.dataPosture === "broker_safe")
+      ),
+      acceptsRepository: freeAccounts.some(account => account.repositoryAccess !== false) &&
+        (policy.repositoryConstraint === "either" ||
+          (policy.repositoryConstraint === "owner_local_allowed" && target === "owner_local") ||
+          (policy.repositoryConstraint === "managed_allowed" && target === "managed_cloud")),
+      acceptsTask: freeAccounts.some(account => account.managedIsolation === true) ||
+        policy.taskConstraint === "local_ok",
+    }
+  })
+  const decision = resolveFleetWorkUnitPlacement({ policy, candidates })
+  return {
+    decision,
+    accounts: decision.selectedTarget === null
+      ? []
+      : accounts.filter(account => executionTargetFor(account) === decision.selectedTarget),
+  }
+}
+
 const autoCandidateFor = (
   account: FleetRunSupervisorAccount,
   workerKind: FleetRunSupervisorConcreteWorkerKind,
@@ -876,6 +957,9 @@ const recordTerminalAssignment = async (
       claimRef: assignment.claim.claimRef,
       accountRef: assignment.accountRef,
       event,
+      executionTarget: run.authorityBinding?.targetPreference === "managed_cloud"
+        ? "managed_cloud"
+        : "owner_local",
     })
   }
   if (result.assignmentRef !== null) {
@@ -921,6 +1005,9 @@ const recordTerminalAssignment = async (
     artifactRefs: result.artifactRefs ?? [],
     proofRefs: result.proofRefs ?? [],
     authorityReceiptRefs: result.authorityReceiptRefs ?? [],
+    executionTarget: run.authorityBinding?.targetPreference === "managed_cloud"
+      ? "managed_cloud"
+      : "owner_local",
   })
   return true
 }
@@ -1132,11 +1219,13 @@ export async function tickFleetRunSupervisor(
   )
   const autoPolicy = options.autoPolicy ?? defaultFleetAutoPolicy
   const emittedAutoFallbacks = new Set<string>()
-  const resolveAutoAccount = async (): Promise<FleetRunSupervisorAccount | null> => {
+  const resolveAutoAccount = async (
+    eligibleAccounts: readonly FleetRunSupervisorAccount[] = accounts,
+  ): Promise<FleetRunSupervisorAccount | null> => {
     const resolution = resolveFleetAutoTarget({
       policy: autoPolicy,
       activeHarnessCounts: fleetAutoHarnessCounts(activeHarnessCounts),
-      candidates: accounts.map(account => autoCandidateFor(
+      candidates: eligibleAccounts.map(account => autoCandidateFor(
         account,
         workerKindForAccount(account),
         activeCounts,
@@ -1155,7 +1244,7 @@ export async function tickFleetRunSupervisor(
       })
     }
     if (resolution.selection === null) return null
-    return accounts.find(account =>
+    return eligibleAccounts.find(account =>
       account.accountRef === resolution.selection?.accountRef &&
       workerKindForAccount(account) === resolution.selection?.harnessKind
     ) ?? null
@@ -1250,10 +1339,19 @@ export async function tickFleetRunSupervisor(
 
   for (const workUnit of dispatchableWorkUnits) {
     if (dispatches.length >= freeSlots) break
+    const placement = accountsForWorkUnit(accounts, activeCounts, run, workUnit, now)
+    await emit(options.onLifecycle, {
+      kind: "target_routing",
+      runRef: run.runRef,
+      workUnitRef: workUnit.workUnitRef,
+      decision: placement.decision,
+    })
+    if (placement.accounts.length === 0) continue
     const account = run.workerKind === "auto"
-      ? await resolveAutoAccount()
-      : pickAccount(accounts, activeCounts, now)
-    if (account === null) break
+      ? await resolveAutoAccount(placement.accounts)
+      : pickAccount(placement.accounts, activeCounts, now)
+    if (account === null) continue
+    const executionTarget = executionTargetFor(account)
     const workerKind = workerKindForAccount(account)
     const claim = store.tryClaimWorkUnit({
       claimRef: claimRefFor(run.runRef, workUnit.workUnitRef, now, claimOrdinalBase + claimed),
@@ -1334,6 +1432,7 @@ export async function tickFleetRunSupervisor(
       artifactRefs: [],
       proofRefs: [],
       authorityReceiptRefs: [],
+      executionTarget,
     })
 
     dispatches.push((async () => {
@@ -1347,6 +1446,7 @@ export async function tickFleetRunSupervisor(
           taskId,
           workUnit,
           workerKind,
+          executionTarget,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
           onLifecycle: async event => {
             await emit(options.onLifecycle, {
@@ -1356,6 +1456,7 @@ export async function tickFleetRunSupervisor(
               claimRef: claim.claimRef,
               accountRef: account.accountRef,
               event,
+              executionTarget,
             })
             streamedLifecycle.add(JSON.stringify(event))
           },
@@ -1438,6 +1539,7 @@ export async function tickFleetRunSupervisor(
           artifactRefs: [],
           proofRefs: [],
           authorityReceiptRefs: [],
+          executionTarget,
         })
         clearTaskFinalizing(store, run.runRef, taskId)
         return
@@ -1489,6 +1591,7 @@ export async function tickFleetRunSupervisor(
             claimRef: claim.claimRef,
             accountRef: account.accountRef,
             event,
+            executionTarget,
           })
         }
 
@@ -1514,6 +1617,7 @@ export async function tickFleetRunSupervisor(
             artifactRefs: result.artifactRefs ?? [],
             proofRefs: result.proofRefs ?? [],
             authorityReceiptRefs: result.authorityReceiptRefs ?? [],
+            executionTarget,
           })
           return
         }
@@ -1542,6 +1646,7 @@ export async function tickFleetRunSupervisor(
           artifactRefs: result.artifactRefs ?? [],
           proofRefs: result.proofRefs ?? [],
           authorityReceiptRefs: result.authorityReceiptRefs ?? [],
+          executionTarget,
         })
         clearTaskFinalizing(store, run.runRef, taskId)
       } catch (error) {

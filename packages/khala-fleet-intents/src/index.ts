@@ -355,6 +355,11 @@ export const FleetExecutionTargetSkipReason = S.Literals([
   "managed_cloud_unconfigured",
   "managed_cloud_unavailable",
   "target_capacity_exhausted",
+  "target_quota_exhausted",
+  "target_cost_ceiling_exceeded",
+  "target_data_posture_denied",
+  "target_repository_denied",
+  "target_task_constraint_denied",
 ])
 export type FleetExecutionTargetSkipReason = typeof FleetExecutionTargetSkipReason.Type
 
@@ -376,6 +381,111 @@ export type FleetExecutionTargetCandidate = Readonly<{
   // free-form provider/error text.
   blockerRef?: string
 }>
+
+export const FleetWorkUnitDataPosture = S.Literals([
+  "owner_private",
+  "broker_safe",
+])
+export type FleetWorkUnitDataPosture = typeof FleetWorkUnitDataPosture.Type
+
+export const FleetWorkUnitQuotaClass = S.Literals([
+  "owner_subscription",
+  "brokered_credit",
+  "either",
+])
+export type FleetWorkUnitQuotaClass = typeof FleetWorkUnitQuotaClass.Type
+
+export const FleetWorkUnitRepositoryConstraint = S.Literals([
+  "owner_local_allowed",
+  "managed_allowed",
+  "either",
+])
+export type FleetWorkUnitRepositoryConstraint =
+  typeof FleetWorkUnitRepositoryConstraint.Type
+
+export const FleetWorkUnitTaskConstraint = S.Literals([
+  "local_ok",
+  "managed_required",
+])
+export type FleetWorkUnitTaskConstraint = typeof FleetWorkUnitTaskConstraint.Type
+
+/** Durable, refs-only policy evaluated independently for each work unit. */
+export const FleetWorkUnitPlacementPolicy = S.Struct({
+  targetPreference: FleetExecutionTargetPreference,
+  quotaClass: FleetWorkUnitQuotaClass,
+  maxMarginalCostClass: MarginalCostClass,
+  dataPosture: FleetWorkUnitDataPosture,
+  repositoryConstraint: FleetWorkUnitRepositoryConstraint,
+  taskConstraint: FleetWorkUnitTaskConstraint,
+})
+export type FleetWorkUnitPlacementPolicy =
+  typeof FleetWorkUnitPlacementPolicy.Type
+
+export const defaultFleetWorkUnitPlacementPolicy = (
+  targetPreference: FleetExecutionTargetPreference,
+): FleetWorkUnitPlacementPolicy => ({
+  targetPreference,
+  quotaClass: "either",
+  maxMarginalCostClass: "not_measured",
+  dataPosture: "broker_safe",
+  repositoryConstraint: "either",
+  taskConstraint: "local_ok",
+})
+
+export type FleetWorkUnitPlacementCandidate = Readonly<{
+  target: FleetExecutionTarget
+  ready: boolean
+  availableCapacity: number
+  quotaAvailable: boolean
+  marginalCostClass: MarginalCostClass
+  acceptsDataPosture: boolean
+  acceptsRepository: boolean
+  acceptsTask: boolean
+  blockerRef?: string
+}>
+
+const quotaMatchesTarget = (
+  quotaClass: FleetWorkUnitQuotaClass,
+  target: FleetExecutionTarget,
+): boolean => quotaClass === "either" ||
+  (quotaClass === "owner_subscription" && target === "owner_local") ||
+  (quotaClass === "brokered_credit" && target === "managed_cloud")
+
+/**
+ * Convert complete private eligibility facts into the bounded target resolver.
+ * The first failed constraint is retained as a typed public-safe reason.
+ */
+export const resolveFleetWorkUnitPlacement = (input: Readonly<{
+  policy: FleetWorkUnitPlacementPolicy
+  candidates: ReadonlyArray<FleetWorkUnitPlacementCandidate>
+}>): FleetExecutionTargetDecision => resolveFleetExecutionTarget({
+  preference: input.policy.targetPreference,
+  candidates: input.candidates.map(candidate => {
+    let reason: FleetExecutionTargetSkipReason | undefined
+    if (!candidate.ready || candidate.availableCapacity < 1) {
+      reason = "target_capacity_exhausted"
+    } else if (!candidate.quotaAvailable || !quotaMatchesTarget(input.policy.quotaClass, candidate.target)) {
+      reason = "target_quota_exhausted"
+    } else if (
+      marginalCostClassRank[candidate.marginalCostClass] >
+        marginalCostClassRank[input.policy.maxMarginalCostClass]
+    ) {
+      reason = "target_cost_ceiling_exceeded"
+    } else if (!candidate.acceptsDataPosture) {
+      reason = "target_data_posture_denied"
+    } else if (!candidate.acceptsRepository) {
+      reason = "target_repository_denied"
+    } else if (!candidate.acceptsTask) {
+      reason = "target_task_constraint_denied"
+    }
+    return {
+      target: candidate.target,
+      ready: reason === undefined,
+      ...(reason === undefined ? {} : { reason }),
+      ...(candidate.blockerRef === undefined ? {} : { blockerRef: candidate.blockerRef }),
+    }
+  }),
+})
 
 export type FleetExecutionTargetRoutingEvent = Readonly<{
   target: FleetExecutionTarget

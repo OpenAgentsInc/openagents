@@ -139,6 +139,11 @@ const FleetExecutionTargetRoutingEventSchema = S.Struct({
     "managed_cloud_unconfigured",
     "managed_cloud_unavailable",
     "target_capacity_exhausted",
+    "target_quota_exhausted",
+    "target_cost_ceiling_exceeded",
+    "target_data_posture_denied",
+    "target_repository_denied",
+    "target_task_constraint_denied",
   ])),
   blockerRef: S.optionalKey(S.String.check(
     S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u),

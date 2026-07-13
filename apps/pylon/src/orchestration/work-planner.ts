@@ -1,4 +1,5 @@
 import { Schema as S } from "effect"
+import type { FleetWorkUnitPlacementPolicy } from "@openagentsinc/khala-fleet-intents"
 
 import type { PylonOrchestrationStore } from "./store.js"
 
@@ -41,6 +42,7 @@ export type WorkPlannerCandidate = {
   readonly state?: WorkPlannerCandidateState
   readonly body?: string
   readonly verify?: string
+  readonly placement?: FleetWorkUnitPlacementPolicy
 }
 
 export type WorkPlannerClaimableUnit = WorkPlannerCandidate & {
@@ -164,6 +166,7 @@ export type PlanDagWorkUnit = {
   readonly issue?: number | undefined
   readonly labels?: readonly string[] | undefined
   readonly url?: string | undefined
+  readonly placement?: FleetWorkUnitPlacementPolicy | undefined
 }
 
 const PLAN_DAG_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u
@@ -404,6 +407,7 @@ export const planDagCandidates = (
       ...(node.issue === undefined ? {} : { number: node.issue }),
       ...(node.labels === undefined ? {} : { labels: [...node.labels] }),
       ...(node.url === undefined ? {} : { url: node.url }),
+      ...(node.placement === undefined ? {} : { placement: node.placement }),
     }
   })
 }

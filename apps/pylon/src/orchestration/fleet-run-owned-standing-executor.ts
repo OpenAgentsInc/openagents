@@ -40,6 +40,11 @@ import type {
   FleetRunSupervisorClock,
   FleetRunSupervisorObservedEvent,
 } from "./fleet-run-supervisor.js"
+import {
+  createPylonManagedCloudFleetRunClaimedWorkPort,
+  type CreatePylonManagedCloudFleetRunClaimedWorkPortInput,
+} from "./fleet-run-managed-cloud-runner.js"
+import type { FleetRunSupervisorCapacity } from "./fleet-run-supervisor.js"
 
 export type PylonOwnedStandingFleetRunCapacityOptions = Omit<
   CreatePylonOwnedFleetRunSupervisorCapacityInput,
@@ -88,6 +93,15 @@ export type PylonOwnedStandingFleetRunAdapterOptions = {
   readonly grok?: PylonOwnedStandingFleetRunGrokOptions | PylonOwnedGrokClaimedWorkPort | false | undefined
   readonly liveness?: PylonOwnedStandingFleetRunLivenessOptions | undefined
   readonly planner?: Omit<CreatePylonDurableFleetRunPlannerInput, "store"> | undefined
+  /**
+   * Optional broker-authorized Agent Computer lane. When present, the same
+   * supervisor and claim registry expose both target classes and dispatch each
+   * unit only through its selected target. Absence leaves managed units denied.
+   */
+  readonly managedCloud?: Readonly<{
+    capacity: FleetRunSupervisorCapacity
+    adapter: Omit<CreatePylonManagedCloudFleetRunClaimedWorkPortInput, "summary">
+  }> | undefined
 }
 
 export type OpenPylonOwnedStandingFleetRunExecutorInput = {
@@ -202,8 +216,7 @@ export async function openPylonOwnedStandingFleetRunExecutor(
               ...(input.now === undefined ? {} : { now: input.now }),
               ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
             })
-      return {
-        capacity: createPylonOwnedFleetRunSupervisorCapacity({
+      const ownerCapacity = createPylonOwnedFleetRunSupervisorCapacity({
           ...options.capacity,
           store,
           summary,
@@ -211,7 +224,47 @@ export async function openPylonOwnedStandingFleetRunExecutor(
           grokExecutionAvailable: grok !== undefined,
           ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
           ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
-        }),
+        })
+      const managedClaimedWork = options.managedCloud === undefined
+        ? null
+        : createPylonManagedCloudFleetRunClaimedWorkPort({
+            ...options.managedCloud.adapter,
+            summary,
+          })
+      const ownerRunner = createPylonOwnedFleetRunSupervisorRunner({
+        ...options.runner,
+        summary,
+        pylonRef: input.pylonRef,
+        baseUrl: input.baseUrl,
+        ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
+        ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
+        ...(input.now === undefined ? {} : { now: input.now }),
+        ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
+        ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
+        ...(grok === undefined ? {} : { grok }),
+      })
+      steeringControl = ownerRunner.steeringControl
+      return {
+        capacity: options.managedCloud === undefined
+          ? ownerCapacity
+          : {
+              accounts: async capacityInput => [
+                ...(await ownerCapacity.accounts(capacityInput)).map(account => ({
+                  ...account,
+                  executionTarget: "owner_local" as const,
+                  quotaAvailable: true,
+                  acceptedDataPostures: ["owner_private", "broker_safe"] as const,
+                  repositoryAccess: true,
+                })),
+                ...(await options.managedCloud!.capacity.accounts(capacityInput)).map(account => ({
+                  ...account,
+                  executionTarget: "managed_cloud" as const,
+                  acceptedDataPostures: ["broker_safe"] as const,
+                  repositoryAccess: true,
+                  managedIsolation: true,
+                })),
+              ],
+            },
         livenessProbe: (() => {
           const assignmentProbe = createPylonAssignmentFleetRunOwnerLocalLivenessProbe({
             ...options.liveness,
@@ -227,22 +280,25 @@ export async function openPylonOwnedStandingFleetRunExecutor(
           ...options.planner,
           store,
         }),
-        runner: (() => {
-          const runner = createPylonOwnedFleetRunSupervisorRunner({
-            ...options.runner,
-            summary,
-            pylonRef: input.pylonRef,
-            baseUrl: input.baseUrl,
-            ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
-            ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
-            ...(input.now === undefined ? {} : { now: input.now }),
-            ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
-            ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
-            ...(grok === undefined ? {} : { grok }),
-          })
-          steeringControl = runner.steeringControl
-          return runner
-        })(),
+        runner: {
+          dispatch: dispatch => {
+            if (dispatch.executionTarget === "owner_local") {
+              return ownerRunner.dispatch(dispatch)
+            }
+            if (managedClaimedWork === null) {
+              throw new Error("managed-cloud per-unit executor is not configured")
+            }
+            const durableClaim = store.getWorkClaim(dispatch.claim.claimRef)
+            return managedClaimedWork.dispatch({
+              targetPreference: "managed_cloud",
+              dispatch: {
+                ...dispatch,
+                ...(durableClaim === null ? {} : { claim: durableClaim }),
+              },
+            })
+          },
+          ...(ownerRunner.reconcile === undefined ? {} : { reconcile: ownerRunner.reconcile }),
+        },
       }
     },
   })

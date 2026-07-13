@@ -19,6 +19,7 @@ import {
 } from "@openagentsinc/khala-sync"
 import {
   FleetWorkerKind as FleetWorkerKindSchema,
+  FleetWorkUnitPlacementPolicy,
   type FleetWorkerKind,
 } from "@openagentsinc/khala-fleet-intents"
 import { Clock, Effect, Layer, Schema as S } from "effect"
@@ -178,6 +179,7 @@ export const FleetRunPlanUnit = S.Struct({
   unitRef: PlanUnitRef,
   title: PlanUnitTitle,
   dependsOn: S.optionalKey(S.Array(PlanUnitRef)),
+  placement: S.optionalKey(FleetWorkUnitPlacementPolicy),
 })
 export type FleetRunPlanUnit = typeof FleetRunPlanUnit.Type
 
@@ -373,6 +375,7 @@ const FleetRunExecutionV2WorkFields = {
   workerKind: S.Literals(["codex", "claude", "grok"]),
   accountRefHash: S.optionalKey(AccountRefHash),
   marginalCostClass: S.optionalKey(FleetAttemptMarginalCostClass),
+  capacityClass: S.optionalKey(S.Literals(["owner_local", "managed_cloud"])),
   blockerRefs: S.Array(BlockerRef),
 } as const
 export const FleetRunStartedExecutionEventV2 = S.Struct({
@@ -393,6 +396,7 @@ export const FleetRunApprovalRequestedExecutionEventV2 = S.Struct({
   workerKind: S.Literals(["codex", "claude", "grok"]),
   workerRef: ProjectedExecutionPublicRef,
   accountRefHash: S.optionalKey(AccountRefHash),
+  capacityClass: S.optionalKey(S.Literals(["owner_local", "managed_cloud"])),
   approvalRef: ProjectedExecutionPublicRef,
   toolClass: ApprovalToolClass,
   blockerRefs: S.Array(BlockerRef).check(S.isMinLength(1), S.isMaxLength(32)),
@@ -1062,7 +1066,12 @@ const validatePlanDag = (
     ) {
       throw invalidRequest()
     }
-    return { unitRef: unit.unitRef, title: unit.title, dependsOn }
+    return {
+      unitRef: unit.unitRef,
+      title: unit.title,
+      dependsOn,
+      ...(unit.placement === undefined ? {} : { placement: unit.placement }),
+    }
   })
   const normalizedByRef = new Map(
     normalizedUnits.map((unit) => [unit.unitRef, unit]),
@@ -3048,12 +3057,12 @@ const appendFleetRunExecutionEvents = async (
     }
     const initialRecord = await recordFromRow(initialRow)
     await assertStoredWorkUnits(writer.sql, initialRecord)
-    const attemptCapacityClass: FleetAttemptEntity["capacityClass"] =
+    const defaultAttemptCapacityClass: FleetAttemptEntity["capacityClass"] =
       initialRecord.request.workerPolicy.targetPreference === "managed_cloud"
         ? "managed_cloud"
         : "owner_local"
     if (
-      attemptCapacityClass === "managed_cloud" &&
+      defaultAttemptCapacityClass === "managed_cloud" &&
       initialRecord.request.workerPolicy.workerKind !== "codex"
     ) {
       throw fixedError(
@@ -3255,6 +3264,34 @@ const appendFleetRunExecutionEvents = async (
         event.kind === "approval_requested" ||
         event.kind === "work_terminal"
       ) {
+        const attemptCapacityClass = event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
+          ? event.capacityClass ?? defaultAttemptCapacityClass
+          : defaultAttemptCapacityClass
+        const explicitRunTarget = initialRecord.request.workerPolicy.targetPreference
+        if (
+          (explicitRunTarget === "owner_local" && attemptCapacityClass !== "owner_local") ||
+          (explicitRunTarget === "managed_cloud" && attemptCapacityClass !== "managed_cloud")
+        ) {
+          throw fixedError(
+            "invalid_request",
+            "fleet run execution target conflicts with explicit run authority",
+            { runRef: input.runRef },
+          )
+        }
+        const unitPlacement = initialRecord.request.workSource.kind === "plan_dag"
+          ? initialRecord.request.workSource.units.find(unit => unit.unitRef === event.unitRef)?.placement
+          : undefined
+        if (
+          unitPlacement?.targetPreference !== undefined &&
+          unitPlacement.targetPreference !== "auto" &&
+          unitPlacement.targetPreference !== attemptCapacityClass
+        ) {
+          throw fixedError(
+            "invalid_request",
+            "fleet run execution target conflicts with work-unit placement authority",
+            { runRef: input.runRef },
+          )
+        }
         if (
           attemptCapacityClass === "managed_cloud" &&
           event.workerKind !== "codex"
@@ -3317,6 +3354,10 @@ const appendFleetRunExecutionEvents = async (
         event.kind === "approval_requested" ||
         event.kind === "work_terminal"
       ) {
+        const attemptCapacityClass: FleetAttemptEntity["capacityClass"] =
+          event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
+            ? event.capacityClass ?? defaultAttemptCapacityClass
+            : defaultAttemptCapacityClass
         const projection = await projectAttemptForEvent(
           writer.sql,
           input,

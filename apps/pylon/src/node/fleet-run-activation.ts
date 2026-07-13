@@ -71,6 +71,8 @@ export type OpenPylonNodeFleetRunActivationServiceInput = {
   readonly maxActiveRuns?: number | undefined
   /** Explicit managed-cloud opener. Absence blocks; it never falls back local. */
   readonly openManagedCloudExecutor?: PylonFleetRunExecutorOpener | undefined
+  /** Explicit per-unit hybrid opener for an `auto` authority. */
+  readonly openHybridExecutor?: PylonFleetRunExecutorOpener | undefined
   readonly openExecutor?: PylonFleetRunExecutorOpener | undefined
   readonly openRuntime?: typeof openPylonFleetRunRuntime | undefined
   readonly pylonRef: string
@@ -274,9 +276,10 @@ export async function openPylonNodeFleetRunActivationService(
       blocked.set(runRef, "transport_not_configured")
       return
     }
-    const openExecutor =
-      run.authorityBinding?.targetPreference === "managed_cloud"
-        ? input.openManagedCloudExecutor
+    const openExecutor = run.authorityBinding?.targetPreference === "managed_cloud"
+      ? input.openManagedCloudExecutor
+      : run.authorityBinding?.targetPreference === "auto" && input.openHybridExecutor !== undefined
+        ? input.openHybridExecutor
         : openOwnerLocalExecutor
     if (openExecutor === undefined) {
       // A managed-cloud authority is never evidence for owner-local dispatch.

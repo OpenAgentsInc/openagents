@@ -90,6 +90,113 @@ const mixedCapacity: readonly FleetRunSupervisorAccount[] = [
 const capacity = () => ({ accounts: async () => mixedCapacity })
 
 describe("Pylon-owned FleetRun supervisor", () => {
+  test("places two concurrent units on owner-local and managed-cloud through one claim registry", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc4.hybrid_per_unit",
+      workUnits: 2,
+      targetConcurrency: 2,
+      workerKind: "codex",
+    })
+    const placement = (target: "owner_local" | "managed_cloud") => ({
+      targetPreference: target,
+      quotaClass: target === "owner_local"
+        ? "owner_subscription" as const
+        : "brokered_credit" as const,
+      maxMarginalCostClass: target === "owner_local"
+        ? "subscription" as const
+        : "api_metered" as const,
+      dataPosture: target === "owner_local"
+        ? "owner_private" as const
+        : "broker_safe" as const,
+      repositoryConstraint: target === "owner_local"
+        ? "owner_local_allowed" as const
+        : "managed_allowed" as const,
+      taskConstraint: target === "owner_local"
+        ? "local_ok" as const
+        : "managed_required" as const,
+    })
+    const units = [
+      {
+        workUnitRef: "fixture:hybrid.local",
+        kind: "fixture" as const,
+        source: "fixture" as const,
+        title: "owner local unit",
+        state: "open" as const,
+        placement: placement("owner_local"),
+      },
+      {
+        workUnitRef: "fixture:hybrid.managed",
+        kind: "fixture" as const,
+        source: "fixture" as const,
+        title: "managed cloud unit",
+        state: "open" as const,
+        placement: placement("managed_cloud"),
+      },
+    ]
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    const dispatches: FleetRunSupervisorDispatchInput[] = []
+
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc4.hybrid",
+      runRef: run.runRef,
+      planner: {
+        plan: async ({ now }) => planWorkCandidates("fixture", units, {
+          claimRegistry: store,
+          now,
+        }),
+      },
+      capacity: {
+        accounts: async () => [
+          {
+            accountRef: "codex-owner",
+            advertisedCapacity: 1,
+            marginalCostClass: "subscription",
+            workerKind: "codex",
+            executionTarget: "owner_local",
+            quotaAvailable: true,
+            acceptedDataPostures: ["owner_private", "broker_safe"],
+            repositoryAccess: true,
+          },
+          {
+            accountRef: "agent-computer-broker",
+            advertisedCapacity: 1,
+            marginalCostClass: "api_metered",
+            workerKind: "codex",
+            executionTarget: "managed_cloud",
+            quotaAvailable: true,
+            acceptedDataPostures: ["broker_safe"],
+            repositoryAccess: true,
+            managedIsolation: true,
+          },
+        ],
+      },
+      runner: {
+        dispatch: async input => {
+          dispatches.push(input)
+          return {
+            assignmentRef: `assignment.public.${input.executionTarget}`,
+            lifecycle: [],
+            status: "completed",
+          }
+        },
+      },
+      clock: { now: () => fixedNow },
+      onLifecycle: event => { observed.push(event) },
+    })
+
+    expect(result.claimed).toBe(2)
+    expect(dispatches.map(input => [input.workUnit.workUnitRef, input.executionTarget])).toEqual([
+      ["fixture:hybrid.local", "owner_local"],
+      ["fixture:hybrid.managed", "managed_cloud"],
+    ])
+    expect(new Set(store.listWorkClaims({ runRef: run.runRef }).map(claim => claim.workUnitRef)).size).toBe(2)
+    expect(observed.filter(event => event.kind === "target_routing").map(event =>
+      event.kind === "target_routing" ? event.decision.selectedTarget : null
+    )).toEqual(["owner_local", "managed_cloud"])
+  })
+
   test("waits for every residual attempt before emitting an operator-stop terminal", async () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const run = createRun(store, {

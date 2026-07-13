@@ -154,6 +154,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   concurrency. Regression coverage lives in
   `clients/khala-code-desktop/tests/fleet-run-supervisor.test.ts` and
   `clients/khala-code-desktop/tests/khala-fleet-tools.test.ts`.
+  Hybrid FleetRun placement is work-unit authority, not run-wide inference:
+  each plan unit may carry the shared typed target, quota, marginal-cost,
+  data-posture, repository, and task constraints. The one supervisor evaluates
+  those constraints before claiming, uses one work-claim registry across
+  owner-local and managed-cloud capacity, and projects the selected capacity
+  class on every v2 execution event. Explicit targets never substitute; an
+  `auto` decision retains its complete typed skip history. Managed-cloud units
+  still require the broker-authorized Agent Computer adapter and may never
+  inherit owner-local subscription or credential authority.
 - Khala Code mobile-only MVP cloud execution uses OpenAgents-owned Agent
   Computers: Firecracker microVMs on our GCE capacity, assigned per admitted
   work context and metered with refs-only lifecycle/resource receipts. Agent

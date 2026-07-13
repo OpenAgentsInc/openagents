@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 
 import {
+  FleetWorkUnitPlacementPolicy,
   resolveFleetExecutionTarget,
   type FleetExecutionTargetCandidate,
   type FleetExecutionTargetDecision,
@@ -76,6 +77,7 @@ const RemotePlanUnit = S.Struct({
   unitRef: PublicRef,
   title: S.String,
   dependsOn: S.optionalKey(S.Array(PublicRef)),
+  placement: S.optionalKey(FleetWorkUnitPlacementPolicy),
 })
 
 const RemotePlanDagSource = S.Struct({
@@ -488,6 +490,7 @@ const descriptorFrom = (
             title: unit.title,
             objective: request.objective,
             dependsOn: unit.dependsOn ?? [],
+            ...(unit.placement === undefined ? {} : { placement: unit.placement }),
             ...pins,
           })),
         })

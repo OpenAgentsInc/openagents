@@ -22,6 +22,7 @@ import {
   rankFleetHarnessesByCostClass,
   resolveFleetAutoTarget,
   resolveFleetExecutionTarget,
+  resolveFleetWorkUnitPlacement,
 } from "./index.ts"
 
 describe("Fleet steering delivery transport", () => {
@@ -702,5 +703,90 @@ describe("resolveFleetExecutionTarget (FC-4 #8636 typed owner-local/managed-clou
       candidates: [ownerLocalBlocked, managedCloudUnconfigured],
     }
     expect(resolveFleetExecutionTarget(input)).toEqual(resolveFleetExecutionTarget(input))
+  })
+})
+
+describe("resolveFleetWorkUnitPlacement (FC-4 per-unit constraints)", () => {
+  const candidate = (target: "owner_local" | "managed_cloud") => ({
+    target,
+    ready: true,
+    availableCapacity: 1,
+    quotaAvailable: true,
+    marginalCostClass: target === "owner_local"
+      ? "subscription" as const
+      : "api_metered" as const,
+    acceptsDataPosture: true,
+    acceptsRepository: true,
+    acceptsTask: true,
+  })
+
+  it("places independent units on different targets under explicit policies", () => {
+    const candidates = [candidate("owner_local"), candidate("managed_cloud")]
+    expect(resolveFleetWorkUnitPlacement({
+      policy: {
+        targetPreference: "owner_local",
+        quotaClass: "owner_subscription",
+        maxMarginalCostClass: "subscription",
+        dataPosture: "owner_private",
+        repositoryConstraint: "owner_local_allowed",
+        taskConstraint: "local_ok",
+      },
+      candidates,
+    }).selectedTarget).toBe("owner_local")
+    expect(resolveFleetWorkUnitPlacement({
+      policy: {
+        targetPreference: "managed_cloud",
+        quotaClass: "brokered_credit",
+        maxMarginalCostClass: "api_metered",
+        dataPosture: "broker_safe",
+        repositoryConstraint: "managed_allowed",
+        taskConstraint: "managed_required",
+      },
+      candidates,
+    }).selectedTarget).toBe("managed_cloud")
+  })
+
+  it("retains capacity, quota, cost, data, repository, and task denials", () => {
+    const policy = {
+      targetPreference: "managed_cloud" as const,
+      quotaClass: "brokered_credit" as const,
+      maxMarginalCostClass: "api_metered" as const,
+      dataPosture: "broker_safe" as const,
+      repositoryConstraint: "managed_allowed" as const,
+      taskConstraint: "managed_required" as const,
+    }
+    const fields = [
+      ["availableCapacity", 0, "target_capacity_exhausted"],
+      ["quotaAvailable", false, "target_quota_exhausted"],
+      ["marginalCostClass", "not_measured", "target_cost_ceiling_exceeded"],
+      ["acceptsDataPosture", false, "target_data_posture_denied"],
+      ["acceptsRepository", false, "target_repository_denied"],
+      ["acceptsTask", false, "target_task_constraint_denied"],
+    ] as const
+    for (const [field, value, reason] of fields) {
+      const decision = resolveFleetWorkUnitPlacement({
+        policy,
+        candidates: [{ ...candidate("managed_cloud"), [field]: value }],
+      })
+      expect(decision.outcome).toBe("denied")
+      expect(decision.history[0]?.reason).toBe(reason)
+    }
+  })
+
+  it("never silently substitutes an explicit target", () => {
+    const managed = { ...candidate("managed_cloud"), quotaAvailable: false }
+    const decision = resolveFleetWorkUnitPlacement({
+      policy: {
+        targetPreference: "managed_cloud",
+        quotaClass: "brokered_credit",
+        maxMarginalCostClass: "api_metered",
+        dataPosture: "broker_safe",
+        repositoryConstraint: "managed_allowed",
+        taskConstraint: "managed_required",
+      },
+      candidates: [candidate("owner_local"), managed],
+    })
+    expect(decision.selectedTarget).toBeNull()
+    expect(decision.history.map(event => event.target)).toEqual(["managed_cloud"])
   })
 })

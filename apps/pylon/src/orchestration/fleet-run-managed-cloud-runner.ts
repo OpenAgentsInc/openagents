@@ -222,7 +222,9 @@ const prepareDispatch = (
     !validExactRef(workUnit.workUnitRef) ||
     !validExactRef(dispatch.accountRef) ||
     (authorityTarget !== undefined &&
-      String(authorityTarget) !== "managed_cloud") ||
+      String(authorityTarget) !== "managed_cloud" &&
+      String(authorityTarget) !== "auto") ||
+    (dispatch.executionTarget ?? "managed_cloud") !== "managed_cloud" ||
     typeof workUnit.repo !== "string" ||
     !REPOSITORY_PATTERN.test(workUnit.repo) ||
     typeof workUnit.branch !== "string" ||
@@ -752,7 +754,15 @@ export async function openPylonManagedCloudStandingFleetRunExecutor(
         ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
       })
       return {
-        capacity: input.capacity,
+        capacity: {
+          accounts: async capacityInput => (await input.capacity.accounts(capacityInput)).map(account => ({
+            ...account,
+            executionTarget: "managed_cloud" as const,
+            acceptedDataPostures: ["broker_safe"] as const,
+            repositoryAccess: true,
+            managedIsolation: true,
+          })),
+        },
         livenessProbe: input.livenessProbe,
         planner: createPylonDurableFleetRunPlanner({
           ...(input.planner ?? {}),

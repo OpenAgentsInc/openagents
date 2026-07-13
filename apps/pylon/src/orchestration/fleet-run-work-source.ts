@@ -1,4 +1,5 @@
 import { Schema as S } from "effect"
+import { FleetWorkUnitPlacementPolicy } from "@openagentsinc/khala-fleet-intents"
 
 import { buildPylonKhalaGitCheckoutWorkspace } from "../khala-requester.js"
 import { assertPublicProjectionSafe } from "../state.js"
@@ -38,6 +39,7 @@ export const FleetRunPlanDagNodeSchema = S.Struct({
   issue: S.optional(S.Number),
   labels: S.optional(S.Array(S.String)),
   url: S.optional(S.String),
+  placement: S.optional(FleetWorkUnitPlacementPolicy),
 })
 
 export const FleetRunFixtureWorkSourceDescriptorSchema = S.Struct({
@@ -236,6 +238,11 @@ const assertDag = (source: FleetRunPlanDagWorkSourceDescriptor): void => {
     boundedString(`plan_dag node ${ref} objective`, node.objective, { min: 3, max: MAX_BODY_LENGTH })
     boundedLabels(`plan_dag node ${ref}`, node.labels)
     boundedUrl(`plan_dag node ${ref} url`, node.url)
+    if (node.placement !== undefined) {
+      S.decodeUnknownSync(FleetWorkUnitPlacementPolicy)(node.placement, {
+        onExcessProperty: "error",
+      })
+    }
     if ((node.dependsOn?.length ?? 0) > MAX_DEPENDENCIES) {
       throw new Error(`plan_dag node ${ref} supports at most ${MAX_DEPENDENCIES} dependencies`)
     }
@@ -362,6 +369,7 @@ export function decodeFleetRunWorkSourceDescriptor(input: unknown): FleetRunWork
       ...(node.issue === undefined ? {} : { issue: node.issue }),
       ...(labels === undefined ? {} : { labels }),
       ...(url === undefined ? {} : { url }),
+      ...(node.placement === undefined ? {} : { placement: node.placement }),
     }
   })
   return {

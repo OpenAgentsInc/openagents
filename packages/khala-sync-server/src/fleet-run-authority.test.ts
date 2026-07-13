@@ -163,6 +163,49 @@ describe("FleetRun authority request boundary", () => {
     ).toEqual({ kind: "issue_list", issueRefs: ["#8637"] })
   })
 
+  test("retains independent per-unit placement authority inside one auto run", () => {
+    const placement = (targetPreference: "owner_local" | "managed_cloud") => ({
+      targetPreference,
+      quotaClass: targetPreference === "owner_local"
+        ? "owner_subscription" as const
+        : "brokered_credit" as const,
+      maxMarginalCostClass: targetPreference === "owner_local"
+        ? "subscription" as const
+        : "api_metered" as const,
+      dataPosture: targetPreference === "owner_local"
+        ? "owner_private" as const
+        : "broker_safe" as const,
+      repositoryConstraint: targetPreference === "owner_local"
+        ? "owner_local_allowed" as const
+        : "managed_allowed" as const,
+      taskConstraint: targetPreference === "owner_local"
+        ? "local_ok" as const
+        : "managed_required" as const,
+    })
+    const decoded = decodeFleetRunAuthorityStartRequest(request(
+      "request-boundary-hybrid",
+      {
+        targetPreference: "auto",
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.fc4.hybrid",
+          units: [
+            { unitRef: "unit.local", title: "Local", placement: placement("owner_local") },
+            { unitRef: "unit.managed", title: "Managed", placement: placement("managed_cloud") },
+          ],
+        },
+      },
+    ))
+    expect(decoded.workSource).toEqual({
+      kind: "plan_dag",
+      planRef: "plan.fc4.hybrid",
+      units: [
+        { unitRef: "unit.local", title: "Local", dependsOn: [], placement: placement("owner_local") },
+        { unitRef: "unit.managed", title: "Managed", dependsOn: [], placement: placement("managed_cloud") },
+      ],
+    })
+  })
+
   test("fails closed on private material, short pins, duplicate issues, and invalid DAGs", () => {
     expect(() =>
       decodeFleetRunAuthorityStartRequest({

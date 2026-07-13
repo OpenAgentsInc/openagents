@@ -197,6 +197,7 @@ const PylonFleetRunExecutionV2WorkFields = {
   workerKind: WorkerKind,
   accountRefHash: S.optionalKey(AccountRefHash),
   marginalCostClass: S.optionalKey(FleetAttemptMarginalCostClass),
+  capacityClass: S.optionalKey(S.Literals(["owner_local", "managed_cloud"])),
   blockerRefs: ProjectedBlockerRefs,
 } as const
 
@@ -218,6 +219,7 @@ export const PylonFleetRunApprovalRequestedExecutionEventV2 = S.Struct({
   workerKind: WorkerKind,
   workerRef: ProjectedPublicRef,
   accountRefHash: S.optionalKey(AccountRefHash),
+  capacityClass: S.optionalKey(S.Literals(["owner_local", "managed_cloud"])),
   approvalRef: ProjectedPublicRef,
   toolClass: ApprovalToolClass,
   blockerRefs: NonEmptyProjectedBlockerRefs,
