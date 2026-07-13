@@ -1,3 +1,4 @@
+import { analyzeObligationDependencies } from "./graph.ts"
 import { AssuranceSpecParseError, parseAssuranceSpec } from "./parser.ts"
 import type {
   AssuranceDiagnostic,
@@ -70,6 +71,17 @@ const structuralDiagnostics = (document: AssuranceSpecDocument): ReadonlyArray<A
     if (!coveredCriteria.has(criterionRef)) {
       errors.push({ code: "uncovered_acceptance_criterion", message: `No obligation references ${criterionRef}.`, severity: "error", path: "obligations" })
     }
+  }
+  for (const issue of analyzeObligationDependencies(document.obligations).issues) {
+    errors.push({
+      code: issue.code,
+      message: issue.message,
+      severity: "error",
+      path: issue.code === "cyclic_obligation_dependency"
+        ? "obligations"
+        : `obligations.${issue.obligation_id}.dependency_refs`,
+      obligation_id: issue.obligation_id,
+    })
   }
   return errors
 }

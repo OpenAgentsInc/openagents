@@ -145,6 +145,7 @@ export const AssuranceObligationSchema = S.Struct({
   falsifier: S.optionalKey(AssuranceFalsifierSchema),
   evidence: S.optionalKey(AssuranceEvidenceRequirementSchema),
   independence: S.optionalKey(AssuranceIndependenceSchema),
+  dependency_refs: S.optionalKey(S.Array(StableRef)),
   activation_gate: S.optionalKey(StableRef),
 })
 export type AssuranceObligation = typeof AssuranceObligationSchema.Type

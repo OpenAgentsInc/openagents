@@ -3,8 +3,11 @@
 Date: 2026-07-13
 Status: design proposal for the AssuranceSpec agent surfaces; nothing in this
 document is implemented unless it names code that exists today
-(`packages/assurance-spec/src/cli.ts` currently ships exactly
-`propose`, `validate`, and `coverage`)
+(`packages/assurance-spec/src/cli.ts` ships `propose`, `validate`, `coverage`,
+`session begin/check`, `inventory`, `obligations`, `obligation`, `graph`,
+`ledgers`, `checklist`, `claim`, and `mcp`; the stdio MCP server in
+`src/mcp.ts` ships the §3.1 tool table; skills and the starter kit remain
+unimplemented)
 Owner directive being served: agents should be able to interact with the spec
 from whatever codebase or workspace they are already active in, with our way
 of doing things loaded — CLI, skill, MCP, whatever — for AssuranceSpec.
@@ -80,6 +83,7 @@ loops can branch on staleness without parsing output. Every command takes
 | `inventory <repo-dir>` | `--json` `--out <file>` | *(wraps existing `inventoryRepository`)* Committed-HEAD candidate test artifacts and scripts. Never maps candidates to proof. | 0/1/2 |
 | `obligations <file>` | `--criterion <id>` `--status ready\|needs_design` `--technique <t>` `--json` | Lists obligations with disposition, technique, environment refs, and design-readiness. Filterable so an agent can ask "what binds CW-AC-04". | 0/1/2 |
 | `obligation <file> <obligation-id>` | `--json` | Full single-obligation detail: oracle, falsifier, evidence requirements, independence, dependencies, activation gate — or the exact fields still unresolved. | 0/1/2 |
+| `graph <file>` | `--json` | Obligation dependency-graph projection: `designable_now` vs `blocked` (with `waits_on`) vs `gated`, edges, and a dependency-respecting `design_order` (a proof-design order, never an execution manifest ordering — that is the compiler's projection). Cycles, self-dependencies, and dangling refs fail validation first with `cyclic_obligation_dependency` / `self_obligation_dependency` / `dangling_dependency_ref`. | 0/1/2 |
 | `ledgers <file>` | `--json` | The three coverage ledgers, separately: criterion→obligation traceability; obligation×environment execution (all `not_run` today); reachable-frontier coverage (`not_computed` until a compiler exists). Never a single percentage. | 0/1/2 |
 | `checklist <file>` | `--criterion <id>` `--json` | Per criterion: bound obligations, each obligation's required evidence kinds, environments, and what is currently missing (which is, today, everything past design). The AssuranceSpec analogue of upstream's evidence checklist. | 0/1/2 |
 | `claim <file>` | `--claim "<text>"` `--json` | Completion-claim audit: echoes the claim, then reports every obligation across all eight status axes. Rounds nothing up; a claim against an unadmitted spec gets `admission: proposed` on every line. | 0/1/2 |
@@ -136,6 +140,7 @@ everything takes an optional `root`.
 | `get_seams` | `path` (req) | Seam obligations only: both real sides, boundary, environment tier, wiring oracle, relationship-breaking falsifier. Empty today; the tool exists so "no seam coverage" is a queryable fact, not an absence. |
 | `get_environments` | `path` (req) | Environment references in the spec plus, when `assurance/environments/*.assurance-environment.json` profiles exist, their digests and target classes. Missing profiles return typed gaps (`environment_profile_missing`), not empty successes. |
 | `get_gates` | `path` (req) | Gate definitions and which obligations each gate arms. |
+| `get_obligation_graph` | `path` (req) | Obligation dependency-graph projection, exactly as the CLI `graph` command: `designable_now` / `blocked` (+`waits_on`) / `gated`, edges, and `design_order`. Declared structure only — no satisfied-dependency claims, no blended score. |
 | `get_coverage_ledgers` | `path` (req) | The three ledgers, separately, exactly as the CLI `ledgers` command (never a blended score). |
 | `get_evidence_checklist` | `path` (req), `criterion_ref?` | Per criterion: bound obligations → required evidence kinds × environments → present/missing. Deterministic; collects nothing; attaches no verdicts to links. |
 | `check_completion_claim` | `path` (req), `claim?` | The honesty tool. Returns every obligation with **all eight axes**: `admission`, `readiness`, `observation` (`not_run` / `CONFIRMED` / `REFUTED` / `INCONCLUSIVE`), `infrastructure`, `stability`, `freshness`, `disposition`, `exception` — plus a top-level `admission_state` for the spec itself and the reminder string that acceptance is a human/policy decision. Until receipts exist, `observation` is `not_run` for everything and the tool says so; it never infers observation from repository state, test files, or the claim text. The `claim` is echoed for the record, not evaluated (same honest limitation upstream has — semantic claim evaluation would be model work, which is Observer's reviewable step, not this server). |

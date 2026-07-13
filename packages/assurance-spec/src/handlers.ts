@@ -18,6 +18,7 @@ import { Effect, Schema } from "effect"
 
 import { validateExecutableProductSpec } from "@openagentsinc/product-spec"
 
+import { projectObligationGraph, type ObligationGraph } from "./graph.ts"
 import { inventoryRepository } from "./repository-inventory.ts"
 import {
   ASSURANCE_SPEC_EXTENSION,
@@ -626,6 +627,11 @@ export const getObligation = (
     }
     return detail
   })
+
+export const getObligationGraph = (
+  args: PathArgs,
+): Effect.Effect<ObligationGraph, AssuranceToolError> =>
+  Effect.map(readValidSpec(resolveRoot(args.root), args.path), (spec) => projectObligationGraph(spec.document))
 
 export const getSeams = (args: PathArgs): Effect.Effect<SeamReport, AssuranceToolError> =>
   Effect.map(readValidSpec(resolveRoot(args.root), args.path), (spec) => seamReport(spec.document))

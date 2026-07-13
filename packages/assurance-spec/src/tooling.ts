@@ -159,6 +159,8 @@ export type ObligationSummary = Readonly<{
   disposition: string
   technique: string | null
   environment_refs: ReadonlyArray<string>
+  dependency_refs: ReadonlyArray<string>
+  activation_gate: string | null
   design_status: ObligationDesignStatus
 }>
 
@@ -184,6 +186,8 @@ export const summarizeObligations = (
       disposition: obligation.disposition,
       technique: obligation.technique ?? null,
       environment_refs: obligation.environment_refs ?? [],
+      dependency_refs: obligation.dependency_refs ?? [],
+      activation_gate: obligation.activation_gate ?? null,
       design_status: obligationDesignStatus(obligation),
     }))
 

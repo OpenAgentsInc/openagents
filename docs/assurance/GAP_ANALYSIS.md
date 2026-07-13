@@ -233,9 +233,14 @@ publication) is designed-only; its first honest slice is AS-MVP's
 
 ## 6. Dependency graph
 
-**Us — implemented.** Nothing. Obligation-level `dependency_refs` parse as
-fields, but no cycle detection or ordering exists (the designed
-`cyclic_obligation_dependency` code is unimplemented). No spec-to-spec graph.
+**Us — implemented (#8761).** Obligation-level `dependency_refs` are a
+schema field; the validator emits the designed `cyclic_obligation_dependency`
+structural code plus `self_obligation_dependency` and
+`dangling_dependency_ref`; a pure `projectObligationGraph` returns
+designable-now vs blocked (`waits_on`) vs gated with a dependency-respecting
+`design_order`, exposed as the CLI `graph` command and the MCP
+`get_obligation_graph` tool through one shared handler. Still no spec-to-spec
+graph (deliberate — see below).
 
 **Us — designed.** Obligation dependencies and activation gates (§5);
 manifest-level ordering falls out of the deterministic compiler (§9).
@@ -378,6 +383,7 @@ Ordered by leverage, each mapped to its ladder home:
 4. **AS-MVP vertical slice** — admit, compile, execute, and bridge exactly
    `AO-CW-AC-04-01`. The first real test of everything designed in §8.
 5. **Obligation-graph projection** (designable-now vs blocked) — small, useful,
-   feeds both CLI and MCP.
+   feeds both CLI and MCP. *(Shipped, #8761: `graph` CLI command +
+   `get_obligation_graph` MCP tool over `projectObligationGraph`.)*
 6. Defer: npm publication (until post-dogfood format stability), spec-to-spec
    graphs, review-annotation tooling, anything hosted.

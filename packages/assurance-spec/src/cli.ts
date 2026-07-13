@@ -20,6 +20,7 @@ import {
   getCoverageLedgers,
   getEvidenceChecklist,
   getObligation,
+  getObligationGraph,
   getObligations,
   getRepositoryInventory,
   inventoryRepository,
@@ -42,6 +43,7 @@ const usage = (): never => {
   console.error("  assurance-spec inventory <repo-dir> [--out <file.json>] [--json]")
   console.error("  assurance-spec obligations <file.assurance-spec.md> [--criterion <id>] [--status ready|needs_design] [--technique <t>] [--root <dir>] [--json]")
   console.error("  assurance-spec obligation <file.assurance-spec.md> <obligation-id> [--root <dir>] [--json]")
+  console.error("  assurance-spec graph <file.assurance-spec.md> [--root <dir>] [--json]")
   console.error("  assurance-spec ledgers <file.assurance-spec.md> [--root <dir>] [--json]")
   console.error("  assurance-spec checklist <file.assurance-spec.md> [--criterion <id>] [--root <dir>] [--json]")
   console.error("  assurance-spec claim <file.assurance-spec.md> [--claim <text>] [--root <dir>] [--json]")
@@ -320,6 +322,26 @@ const obligation = (args: ReadonlyArray<string>): void => {
   if (detail.unresolved_fields.length > 0) console.log(`  unresolved: ${detail.unresolved_fields.join(", ")}`)
 }
 
+const graph = (args: ReadonlyArray<string>): void => {
+  const [path] = positional(args, 1)
+  if (path === undefined) usage()
+  const json = jsonFlag(args)
+  const report = runOrExit(getObligationGraph({ path, ...rootArg(args) }), json)
+  if (json) {
+    printJson(report)
+    return
+  }
+  console.log(`designable_now (${report.designable_now.length}): ${report.designable_now.join(", ") || "-"}`)
+  for (const entry of report.blocked) {
+    console.log(`blocked ${entry.obligation_id} waits_on ${entry.waits_on.join(", ")}`)
+  }
+  for (const entry of report.gated) {
+    console.log(`gated ${entry.obligation_id} gate=${entry.activation_gate}`)
+  }
+  console.log(`design_order: ${report.design_order.join(" -> ") || "-"}`)
+  console.log(report.message)
+}
+
 const ledgers = (args: ReadonlyArray<string>): void => {
   const [path] = positional(args, 1)
   if (path === undefined) usage()
@@ -394,6 +416,7 @@ else if (command === "session") {
 else if (command === "inventory") await inventory(args)
 else if (command === "obligations") obligations(args)
 else if (command === "obligation") obligation(args)
+else if (command === "graph") graph(args)
 else if (command === "ledgers") ledgers(args)
 else if (command === "checklist") checklist(args)
 else if (command === "claim") claim(args)

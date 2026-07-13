@@ -16,6 +16,7 @@ const EXPECTED_TOOL_NAMES = [
   "get_seams",
   "get_environments",
   "get_gates",
+  "get_obligation_graph",
   "get_coverage_ledgers",
   "get_evidence_checklist",
   "check_completion_claim",

@@ -27,6 +27,7 @@ import {
   getEvidenceChecklist,
   getGates,
   getObligation,
+  getObligationGraph,
   getObligations,
   getRepositoryInventory,
   getSeams,
@@ -254,6 +255,12 @@ export const MCP_TOOLS: Readonly<Record<string, ToolDefinition>> = {
     description: "Gate definitions and which obligations each gate arms.",
     inputSchema: specPathSchema(),
     handler: (args, root) => getGates(pathArgs(args, root)),
+  },
+  get_obligation_graph: {
+    description:
+      "Obligation dependency-graph projection: designable_now vs blocked (with waits_on) vs gated, plus edges and a dependency-respecting design_order. Declared structure only — no receipts, no satisfied-dependency claims, no execution manifest ordering, no blended score (Law 7).",
+    inputSchema: specPathSchema(),
+    handler: (args, root) => getObligationGraph(pathArgs(args, root)),
   },
   get_coverage_ledgers: {
     description:
