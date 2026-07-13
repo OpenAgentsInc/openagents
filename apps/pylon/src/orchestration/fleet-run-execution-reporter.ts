@@ -778,6 +778,13 @@ export function openPylonFleetRunExecutionReporter(
 
   const enqueue = (event: PylonFleetRunExecutionEventInput): void => {
     const normalizedEvent = normalizeEventForRecord(event)
+    // A terminal event is a durable state transition, not a heartbeat. The
+    // supervisor keeps ticking terminal runs so delivery can recover, but a
+    // reopened reporter must not mint a fresh terminal receipt on every tick.
+    if (
+      normalizedEvent.kind === "run_terminal" &&
+      input.store.hasFleetRunExecutionTerminal(input.runRef)
+    ) return
     if (normalizedEvent.kind === "run_started") {
       const first = input.store.listFleetRunExecutionOutbox(input.runRef, {
         pendingOnly: false,

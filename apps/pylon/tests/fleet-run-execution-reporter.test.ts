@@ -90,6 +90,58 @@ const seedAcceptedRun = async (env: NodeJS.ProcessEnv) => {
 }
 
 describe("Pylon FleetRun execution reporter", () => {
+  test("records one durable run terminal across repeated ticks and reporter reopen", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fleet-run-terminal-once-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seedAcceptedRun(env)
+      const offline = {
+        append: async (): Promise<PylonFleetRunExecutionAck> => {
+          throw new Error("offline")
+        },
+      }
+      const first = openPylonFleetRunExecutionReporter({
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        now: () => fixedNow,
+        remote: offline,
+      })
+      await first.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "run_terminal",
+        observedAt: fixedNow.toISOString(),
+        terminalState: "failed",
+        blockerRefs: ["blocker.pylon.fleet_run.local_attempt_failed"],
+      })
+      await first.close()
+      await runtime.close()
+
+      const reopened = await openPylonFleetRunRuntime({ env, now: () => fixedNow })
+      const second = openPylonFleetRunExecutionReporter({
+        store: reopened.store,
+        pylonRef,
+        runRef,
+        now: () => fixedNow,
+        remote: offline,
+      })
+      await second.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "run_terminal",
+        observedAt: new Date(fixedNow.getTime() + 10_000).toISOString(),
+        terminalState: "failed",
+        blockerRefs: ["blocker.pylon.fleet_run.local_attempt_failed"],
+      })
+      expect(reopened.store.listFleetRunExecutionOutbox(runRef, {
+        pendingOnly: false,
+      }).map(entry => JSON.parse(entry.eventJson).kind)).toEqual(["run_terminal"])
+      await second.close()
+      await reopened.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("replays legacy v1 rows and splits a mixed outbox at the v2 schema boundary", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fleet-run-mixed-schema-"))
     const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv

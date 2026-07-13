@@ -2485,6 +2485,22 @@ export class PylonOrchestrationStore {
     )
   }
 
+  hasFleetRunExecutionTerminal(runRef: string): boolean {
+    if (!FLEET_RUN_ACTIVATION_REF_PATTERN.test(runRef)) {
+      throw new Error("fleet run execution outbox run ref is invalid")
+    }
+    const row = this.db
+      .query(`
+        SELECT 1 AS present
+          FROM pylon_orchestration_fleet_run_execution_outbox
+         WHERE run_ref = $runRef
+           AND json_extract(event_json, '$.kind') = 'run_terminal'
+         LIMIT 1
+      `)
+      .get({ $runRef: runRef }) as { present: number } | null
+    return row !== null
+  }
+
   markFleetRunExecutionOutboxDelivered(
     runRef: string,
     claimRef: string,
