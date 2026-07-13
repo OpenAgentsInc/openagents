@@ -54,11 +54,17 @@ current receipts.
    AssuranceSpec agent surfaces: CLI extensions, the read-only deterministic
    MCP server with dual-digest session pinning, the work/authoring skills,
    the starter-kit adoption path, and sequencing onto the AS ladder.
-8. [`../fable/2026-07-13-productspec-assurance-qa-program-analysis.md`](../fable/2026-07-13-productspec-assurance-qa-program-analysis.md)
+8. [`UX_CONTRACTS_AND_ASSURANCE.md`](./UX_CONTRACTS_AND_ASSURANCE.md) — where
+   owner-stated UX/micro-interaction/visual do-and-don't rules live: statement
+   verbatim in the owning app's behavior-contract registry with a test-sweep
+   oracle, referenced from AssuranceSpec obligations via `contract_refs` for
+   later environment-bound visual evidence; includes the worked Desktop
+   icon-slot and approved-fonts example and the add-the-next-rule recipe.
+9. [`../fable/2026-07-13-productspec-assurance-qa-program-analysis.md`](../fable/2026-07-13-productspec-assurance-qa-program-analysis.md)
    — strategy analysis of the whole ProductSpec/AssuranceSpec/QA landscape:
    upstream trajectory, honest inventory, committed ladders, and opinionated
    directions to evolve.
-9. [`../transcripts/252-notes.md`](../transcripts/252-notes.md) — recording show
+10. [`../transcripts/252-notes.md`](../transcripts/252-notes.md) — recording show
    notes only: story, episode beats, naming discussion, candidate lines, and
    honest non-claims.
 

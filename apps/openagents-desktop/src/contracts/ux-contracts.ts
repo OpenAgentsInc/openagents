@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-13.4",
+    version: "2026-07-13.5",
     contracts: [
       {
         contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
@@ -3214,6 +3214,97 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the diagnostics builder/redaction/host suite, the diagnostics view/handler suite, and the Electron smoke diagnostics-and-preferences step.",
+      },
+      {
+        contractId: "openagents_desktop.microinteraction.owner_review_register.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "micro-interaction do/don't register",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "I want the ones that we have for that for this app to include micro interactions and things that I do and don't want to see. There are some things I don't want to see, such as long streams of text where icons should be.",
+        authorityBoundary:
+          "This contract is the REGISTER for owner-stated micro-interaction and visual do/don't rules on this app: every future 'things I do and don't want to see' statement lands here as its own versioned contract with a real oracle in the same change (house law 2026-07-03), never conversation-only. The register grants no rendering authority and does not make any individual rule true — each concrete rule (starting with openagents_desktop.microinteraction.icon_slot_no_raw_text.v1 and openagents_desktop.typography.approved_fonts_only.v1) carries its own oracle and its own honest state. AssuranceSpec obligations may cite these contractIds via contract_refs for environment-bound pixel evidence later; this registry stays the single source of the rule text and AssuranceSpec never duplicates it (docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md).",
+        evidenceRefs: [
+          "contract:openagents_desktop.microinteraction.icon_slot_no_raw_text.v1",
+          "contract:openagents_desktop.typography.approved_fonts_only.v1",
+          "docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md",
+          "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
+        ],
+        oracles: [
+          {
+            id: "microinteraction_register.rules_present_and_documented",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
+            description:
+              "Proves both concrete owner rules exist in this registry as enforced contracts whose oracle refs point at the real enforcing suite, that both owner statements are recorded verbatim, and that docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md exists and names all three contractIds so the next owner rule has a documented home.",
+          },
+        ],
+        verification:
+          "bun test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; it fails if either concrete rule is removed, renamed, downgraded from enforced, detached from its oracle file, or undocumented in the assurance clarification doc.",
+      },
+      {
+        contractId: "openagents_desktop.microinteraction.icon_slot_no_raw_text.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "icon-slot micro-interactions",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "I want the ones that we have for that for this app to include micro interactions and things that I do and don't want to see. There are some things I don't want to see, such as long streams of text where icons should be.",
+        authorityBoundary:
+          "Icon slots are the closed-catalog glyph positions: sidebar dock items, icon-only action controls (IconButton and any icon-carrying node), and status indicator glyphs. Each must resolve a glyph name in the closed @effect-native/core iconNames catalog — never a raw string rendered where the glyph belongs — and dock labels stay bounded single-line micro-copy (24-char bound). Accessible labels are announced, not painted, and stay full-length. ENFORCED SUBSET (honest): the oracle proves the structural rule on the real typed view trees across sampled shell states — every workspace dock item carries a catalog glyph plus bounded single-line label, every icon-carrying node's glyph resolves in the closed catalog, and every IconButton is glyph-plus-accessible-label with no rendered text content — and demonstrates sensitivity against known-bad fixtures. The fully general 'no long text ever appears where an icon was designed' claim over arbitrary rendered pixels is NOT mechanically expressible on typed trees today; it lands later as an AssuranceSpec obligation with technique visual citing this contractId (ASSURANCE_SPEC.md §5), and this contract does not claim that pixel evidence exists yet.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents.com/packages/effect-native-core/src/index.ts",
+          "docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md",
+        ],
+        oracles: [
+          {
+            id: "icon_slots.closed_catalog_glyphs_and_bounded_labels",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
+            description:
+              "On the real desktopShellView trees across sampled states: every workspace dock item carries a closed-catalog glyph, a non-empty single-line label within the 24-char micro-copy bound, and an accessible label; every node carrying an icon prop and every Icon node resolves in the closed iconNames catalog; every IconButton carries a glyph and accessible label and no rendered text content. The falsifier test proves the validators reject an unknown glyph, an empty accessible label, rendered IconButton text, and a long-stream dock label.",
+          },
+        ],
+        verification:
+          "bun test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep and enforces the structural subset on real view trees; the residual pixel-level generalization is deferred to an AssuranceSpec visual-technique obligation referencing this contractId, per docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md.",
+      },
+      {
+        contractId: "openagents_desktop.typography.approved_fonts_only.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "typography",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "I want all that enforced in the assurance pieces. I want to be able to specify rules there. For example, I don't want to see certain things like strings where icons should be, certain fonts, and that must be specified",
+        authorityBoundary:
+          "The app's approved rendered font truth is exactly the host system stack declared on html/body in src/renderer/app.css (-apple-system, BlinkMacSystemFont, SF Pro Text, Helvetica Neue, sans-serif) plus the generic monospace family for code surfaces (the shared @effect-native/render-dom CodeBlock lowering). The @effect-native/tokens type scale deliberately carries size/weight only — no family tokens — so no renderer module, stylesheet, or typed style object in this app may declare any other family, and the CSS font shorthand stays exactly the form-control 'font: inherit' reset so a family cannot ride past the family checks. This contract binds the desktop app's own sources; the shared renderer package's catalog-owned lowering is referenced truth, not a place this oracle scans.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/app.css",
+          "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
+          "docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md",
+        ],
+        oracles: [
+          {
+            id: "typography.approved_font_stack_only",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
+            description:
+              "Scans every non-test .ts/.cts/.css file under apps/openagents-desktop/src recursively: every CSS font-family declaration and every TypeScript fontFamily value must resolve family-by-family to the approved allowlist, every CSS font shorthand must be exactly 'inherit', and the approved base stack must still be declared in app.css. The falsifier test proves a rogue family (Comic Sans MS / Papyrus / a font shorthand smuggle) is rejected while the approved stack passes.",
+          },
+        ],
+        verification:
+          "bun test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; adding any stray font family anywhere under apps/openagents-desktop/src fails it.",
       },
     ],
   };
