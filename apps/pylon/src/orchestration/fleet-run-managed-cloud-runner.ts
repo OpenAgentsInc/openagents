@@ -6,10 +6,7 @@ import { Effect } from "effect"
 import type { BootstrapSummary } from "../bootstrap.js"
 import type { CloudSessionGrantBinding } from "../openagents-cloud-provider.js"
 import { assertPublicProjectionSafe } from "../state.js"
-import type {
-  ControlSessionExecutor,
-  ControlSessionLane,
-} from "../node/control-sessions.js"
+import type { ControlSessionExecutor, ControlSessionLane } from "../node/control-sessions.js"
 import type {
   FleetRunSupervisorDispatchInput,
   FleetRunSupervisorDispatchResult,
@@ -22,24 +19,17 @@ import {
   createPylonDurableFleetRunPlanner,
   type CreatePylonDurableFleetRunPlannerInput,
 } from "./fleet-run-durable-planner.js"
-import {
-  openPylonStandingFleetRunExecutor,
-  type PylonStandingFleetRunExecutor,
-} from "./fleet-run-standing-executor.js"
+import { openPylonStandingFleetRunExecutor, type PylonStandingFleetRunExecutor } from "./fleet-run-standing-executor.js"
 
-export const PYLON_MANAGED_CLOUD_FLEET_TARGET_SCHEMA =
-  "openagents.pylon.managed_cloud_fleet_target.v1" as const
+export const PYLON_MANAGED_CLOUD_FLEET_TARGET_SCHEMA = "openagents.pylon.managed_cloud_fleet_target.v1" as const
 
-export const PYLON_MANAGED_CLOUD_FLEET_TUPLE_SCHEMA =
-  "openagents.pylon.managed_cloud_fleet_tuple.v1" as const
+export const PYLON_MANAGED_CLOUD_FLEET_TUPLE_SCHEMA = "openagents.pylon.managed_cloud_fleet_tuple.v1" as const
 
 export const PYLON_MANAGED_CLOUD_FLEET_BLOCKERS = {
-  cloudEvidenceInvalid:
-    "blocker.pylon.managed_cloud_fleet.cloud_evidence_invalid",
+  cloudEvidenceInvalid: "blocker.pylon.managed_cloud_fleet.cloud_evidence_invalid",
   executorFailed: "blocker.pylon.managed_cloud_fleet.executor_failed",
   grantUnavailable: "blocker.pylon.managed_cloud_fleet.grant_unavailable",
-  lifecycleProjectionFailed:
-    "blocker.pylon.managed_cloud_fleet.lifecycle_projection_failed",
+  lifecycleProjectionFailed: "blocker.pylon.managed_cloud_fleet.lifecycle_projection_failed",
   targetRequired: "blocker.pylon.managed_cloud_fleet.target_required",
   tupleInvalid: "blocker.pylon.managed_cloud_fleet.tuple_invalid",
   workerUnsupported: "blocker.pylon.managed_cloud_fleet.worker_unsupported",
@@ -82,16 +72,13 @@ export type PylonManagedCloudFleetGrantPort = (
  * factory injected prevents this adapter from reading ambient credentials or
  * inventing a second grant authority.
  */
-export type PylonManagedCloudFleetExecutorPort = (input: Readonly<{
-  binding: Required<
-    Pick<
-      CloudSessionGrantBinding,
-      "authGrantRef" | "providerAccountRef" | "ownerRef"
-    >
-  >
-  sessionRef: string
-  tuple: PylonManagedCloudFleetExactTuple
-}>) => ControlSessionExecutor
+export type PylonManagedCloudFleetExecutorPort = (
+  input: Readonly<{
+    binding: Required<Pick<CloudSessionGrantBinding, "authGrantRef" | "providerAccountRef" | "ownerRef">>
+    sessionRef: string
+    tuple: PylonManagedCloudFleetExactTuple
+  }>,
+) => ControlSessionExecutor
 
 export type PylonManagedCloudFleetTargetProjection = Readonly<{
   schema: typeof PYLON_MANAGED_CLOUD_FLEET_TARGET_SCHEMA
@@ -102,8 +89,8 @@ export type PylonManagedCloudFleetTargetProjection = Readonly<{
   fallbackRefs: readonly []
 }>
 
-export type PylonManagedCloudFleetRunDispatchResult =
-  FleetRunSupervisorDispatchResult & Readonly<{
+export type PylonManagedCloudFleetRunDispatchResult = FleetRunSupervisorDispatchResult &
+  Readonly<{
     target: PylonManagedCloudFleetTargetProjection
   }>
 
@@ -113,9 +100,7 @@ export type PylonManagedCloudFleetRunDispatchInput = Readonly<{
 }>
 
 export type PylonManagedCloudFleetRunClaimedWorkPort = Readonly<{
-  dispatch: (
-    input: PylonManagedCloudFleetRunDispatchInput,
-  ) => Promise<PylonManagedCloudFleetRunDispatchResult>
+  dispatch: (input: PylonManagedCloudFleetRunDispatchInput) => Promise<PylonManagedCloudFleetRunDispatchResult>
 }>
 
 export type CreatePylonManagedCloudFleetRunClaimedWorkPortInput = Readonly<{
@@ -125,6 +110,14 @@ export type CreatePylonManagedCloudFleetRunClaimedWorkPortInput = Readonly<{
   cloudLane?: Exclude<ControlSessionLane, "local"> | undefined
   now?: (() => Date) | undefined
   timeoutMs?: number | undefined
+}>
+
+export type CreatePylonRemoteManagedCloudFleetRunClaimedWorkPortInput = Readonly<{
+  agentToken: string
+  baseUrl: string
+  pylonRef: string
+  fetchImpl?: typeof fetch | undefined
+  now?: (() => Date) | undefined
 }>
 
 export type OpenPylonManagedCloudStandingFleetRunExecutorInput = Readonly<{
@@ -160,17 +153,12 @@ type PreparedDispatch = Readonly<{
 const stableDigest = (value: string, length = 24): string =>
   createHash("sha256").update(value).digest("hex").slice(0, length)
 
-const stableRef = (prefix: string, seed: string): string =>
-  `${prefix}.${stableDigest(seed)}`
+const stableRef = (prefix: string, seed: string): string => `${prefix}.${stableDigest(seed)}`
 
-const validPublicRef = (value: unknown): value is string =>
-  typeof value === "string" && PUBLIC_REF_PATTERN.test(value)
+const validPublicRef = (value: unknown): value is string => typeof value === "string" && PUBLIC_REF_PATTERN.test(value)
 
 const validExactRef = (value: unknown): value is string =>
-  typeof value === "string" &&
-  value.length >= 3 &&
-  value.length <= 180 &&
-  PUBLIC_REF_PATTERN.test(value)
+  typeof value === "string" && value.length >= 3 && value.length <= 180 && PUBLIC_REF_PATTERN.test(value)
 
 const boundedTimeout = (value: number | undefined): number =>
   value === undefined || !Number.isFinite(value)
@@ -187,11 +175,7 @@ const verificationArgs = (command: string | undefined): readonly string[] | null
     args.length === 0 ||
     args.length > 20 ||
     args.some(
-      arg =>
-        !VERIFY_ARG_PATTERN.test(arg) ||
-        arg.startsWith("/") ||
-        arg.includes("..") ||
-        /[;&|`$<>\\]/u.test(arg),
+      (arg) => !VERIFY_ARG_PATTERN.test(arg) || arg.startsWith("/") || arg.includes("..") || /[;&|`$<>\\]/u.test(arg),
     )
   ) {
     return null
@@ -199,9 +183,7 @@ const verificationArgs = (command: string | undefined): readonly string[] | null
   return args
 }
 
-const prepareDispatch = (
-  input: PylonManagedCloudFleetRunDispatchInput,
-): PreparedDispatch | null => {
+const prepareDispatch = (input: PylonManagedCloudFleetRunDispatchInput): PreparedDispatch | null => {
   const { dispatch } = input
   const { claim, run, workUnit } = dispatch
   const verifyArgs = verificationArgs(workUnit.verify)
@@ -237,10 +219,7 @@ const prepareDispatch = (
     return null
   }
 
-  const verifierRef = stableRef(
-    "verifier.public.pylon.managed_cloud",
-    workUnit.verify ?? "",
-  )
+  const verifierRef = stableRef("verifier.public.pylon.managed_cloud", workUnit.verify ?? "")
   const tupleSeed = JSON.stringify({
     schema: PYLON_MANAGED_CLOUD_FLEET_TUPLE_SCHEMA,
     targetPreference: input.targetPreference,
@@ -275,19 +254,13 @@ const prepareDispatch = (
     verifierRef,
     fingerprint,
   }
-  const assignmentRef = stableRef(
-    "assignment.pylon.managed_cloud",
-    fingerprint,
-  )
+  const assignmentRef = stableRef("assignment.pylon.managed_cloud", fingerprint)
   return {
     assignmentRef,
     closeoutRef: stableRef("closeout.public.pylon.managed_cloud", fingerprint),
-    executionTargetRef: stableRef(
-      "execution_target.pylon.managed_cloud",
-      fingerprint,
-    ),
+    executionTargetRef: stableRef("execution_target.pylon.managed_cloud", fingerprint),
     objective: [run.objective, workUnit.title, workUnit.body]
-      .filter(value => typeof value === "string" && value.trim().length > 0)
+      .filter((value) => typeof value === "string" && value.trim().length > 0)
       .join("\n\n"),
     sessionRef: stableRef("session.pylon.managed_cloud", fingerprint),
     tuple,
@@ -299,12 +272,7 @@ const prepareDispatch = (
 
 const validGrantBinding = (
   value: CloudSessionGrantBinding | null,
-): value is Required<
-  Pick<
-    CloudSessionGrantBinding,
-    "authGrantRef" | "providerAccountRef" | "ownerRef"
-  >
-> =>
+): value is Required<Pick<CloudSessionGrantBinding, "authGrantRef" | "providerAccountRef" | "ownerRef">> =>
   value !== null &&
   typeof value.authGrantRef === "string" &&
   GRANT_REF_PATTERN.test(value.authGrantRef) &&
@@ -329,35 +297,32 @@ const targetProjection = (
   fallbackRefs: [],
 })
 
-const fixedLifecycle = (input: Readonly<{
-  assignmentRef: string | null
-  blockerRef: string
-  now: Date
-}>): PylonAssignmentRunLifecycleEvent => ({
+const fixedLifecycle = (
+  input: Readonly<{
+    assignmentRef: string | null
+    blockerRef: string
+    now: Date
+  }>,
+): PylonAssignmentRunLifecycleEvent => ({
   schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
-  event:
-    input.assignmentRef === null
-      ? "assignment_run.no_assignment"
-      : "assignment_run.runtime_failed",
+  event: input.assignmentRef === null ? "assignment_run.no_assignment" : "assignment_run.runtime_failed",
   observedAt: input.now.toISOString(),
-  ...(input.assignmentRef === null
-    ? {}
-    : { assignmentRef: input.assignmentRef }),
+  ...(input.assignmentRef === null ? {} : { assignmentRef: input.assignmentRef }),
   status: "rejected",
   blockerRefs: [input.blockerRef],
 })
 
-const fixedResult = (input: Readonly<{
-  blockerRef: string
-  now: Date
-  prepared: PreparedDispatch | null
-  status: "blocked" | "failed"
-  lifecycle?: readonly PylonAssignmentRunLifecycleEvent[] | undefined
-}>): PylonManagedCloudFleetRunDispatchResult => {
+const fixedResult = (
+  input: Readonly<{
+    blockerRef: string
+    now: Date
+    prepared: PreparedDispatch | null
+    status: "blocked" | "failed"
+    lifecycle?: readonly PylonAssignmentRunLifecycleEvent[] | undefined
+  }>,
+): PylonManagedCloudFleetRunDispatchResult => {
   const inheritedLifecycle = [...(input.lifecycle ?? [])]
-  const lifecycle = inheritedLifecycle.some(event =>
-    event.blockerRefs?.includes(input.blockerRef),
-  )
+  const lifecycle = inheritedLifecycle.some((event) => event.blockerRefs?.includes(input.blockerRef))
     ? inheritedLifecycle
     : [
         ...inheritedLifecycle,
@@ -384,12 +349,14 @@ const fixedResult = (input: Readonly<{
   return result
 }
 
-const cloudTargetEvidence = (input: Readonly<{
-  prepared: PreparedDispatch
-  cloudRunner: unknown
-  resourceUsageReceiptRef: unknown
-  responseDigestRef: unknown
-}>): Readonly<{
+const cloudTargetEvidence = (
+  input: Readonly<{
+    prepared: PreparedDispatch
+    cloudRunner: unknown
+    resourceUsageReceiptRef: unknown
+    responseDigestRef: unknown
+  }>,
+): Readonly<{
   artifactRefs: readonly string[]
   resourceUsageReceiptRef: string
   targetEvidenceRef: string
@@ -408,8 +375,7 @@ const cloudTargetEvidence = (input: Readonly<{
     (lane !== "cloud-gcp" && lane !== "cloud-shc") ||
     (providerLane !== "gcp" && providerLane !== "shc") ||
     !validPublicRef(input.resourceUsageReceiptRef) ||
-    (input.responseDigestRef !== null &&
-      !validPublicRef(input.responseDigestRef))
+    (input.responseDigestRef !== null && !validPublicRef(input.responseDigestRef))
   ) {
     return null
   }
@@ -434,10 +400,7 @@ const cloudTargetEvidence = (input: Readonly<{
     }),
   )
   return {
-    artifactRefs:
-      typeof input.responseDigestRef === "string"
-        ? [input.responseDigestRef]
-        : [],
+    artifactRefs: typeof input.responseDigestRef === "string" ? [input.responseDigestRef] : [],
     resourceUsageReceiptRef: input.resourceUsageReceiptRef,
     targetEvidenceRef,
   }
@@ -451,7 +414,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
   const lane = options.cloudLane ?? "auto"
 
   return {
-    dispatch: async input => {
+    dispatch: async (input) => {
       if (
         input.targetPreference !== "managed_cloud" ||
         (lane !== "auto" && lane !== "cloud-gcp" && lane !== "cloud-shc")
@@ -528,8 +491,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
                 try: async () => {
                   await input.dispatch.onLifecycle?.(event)
                 },
-                catch: () =>
-                  new Error("managed_cloud_lifecycle_projection_failed"),
+                catch: () => new Error("managed_cloud_lifecycle_projection_failed"),
               }),
             ),
           )
@@ -563,8 +525,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
                 emit: () => {
                   progressIndex += 1
                   publish({
-                    schema:
-                      "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+                    schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
                     event: "assignment_run.runtime_progress",
                     observedAt: now().toISOString(),
                     assignmentRef: prepared.assignmentRef,
@@ -598,8 +559,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
           await lifecycleTail
         } catch {
           return fixedResult({
-            blockerRef:
-              PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed,
+            blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed,
             now: now(),
             prepared,
             status: "failed",
@@ -625,8 +585,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
         publish(
           fixedLifecycle({
             assignmentRef: prepared.assignmentRef,
-            blockerRef:
-              PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
+            blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
             now: now(),
           }),
         )
@@ -634,8 +593,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
           await lifecycleTail
         } catch {
           return fixedResult({
-            blockerRef:
-              PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed,
+            blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed,
             now: now(),
             prepared,
             status: "failed",
@@ -643,8 +601,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
           })
         }
         return fixedResult({
-          blockerRef:
-            PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
+          blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
           now: now(),
           prepared,
           status: "failed",
@@ -663,17 +620,14 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
         ...(passed
           ? {}
           : {
-              blockerRefs: [
-                PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.executorFailed,
-              ],
+              blockerRefs: [PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.executorFailed],
             }),
       })
       try {
         await lifecycleTail
       } catch {
         return fixedResult({
-          blockerRef:
-            PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed,
+          blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed,
           now: now(),
           prepared,
           status: "failed",
@@ -681,10 +635,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
         })
       }
 
-      const verificationEvidenceRefs = [
-        evidence.targetEvidenceRef,
-        evidence.resourceUsageReceiptRef,
-      ]
+      const verificationEvidenceRefs = [evidence.targetEvidenceRef, evidence.resourceUsageReceiptRef]
       const result: PylonManagedCloudFleetRunDispatchResult = {
         assignmentRef: prepared.assignmentRef,
         accountRefHash: null,
@@ -693,8 +644,7 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
         // evidence can supply its real closeout ref atomically.
         closeoutRef: null,
         lifecycle,
-        marginalCostClass:
-          input.dispatch.claim.marginalCostClass ?? "not_measured",
+        marginalCostClass: input.dispatch.claim.marginalCostClass ?? "not_measured",
         status: passed ? "completed" : "failed",
         summary: passed
           ? "Managed-cloud Codex work completed with receipt-backed target evidence."
@@ -723,6 +673,153 @@ export function createPylonManagedCloudFleetRunClaimedWorkPort(
 }
 
 /**
+ * Brokered FC-4 transport. Provider grants, execution tokens, GitHub write
+ * authority, and cloud-control credentials stay server-side; the Pylon sends
+ * only the exact accepted tuple and receives terminal public receipt refs.
+ */
+export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
+  options: CreatePylonRemoteManagedCloudFleetRunClaimedWorkPortInput,
+): PylonManagedCloudFleetRunClaimedWorkPort {
+  const fetchImpl = options.fetchImpl ?? fetch
+  const now = options.now ?? (() => new Date())
+  return {
+    dispatch: async (input) => {
+      const prepared = prepareDispatch(input)
+      if (prepared === null) {
+        return fixedResult({
+          blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.tupleInvalid,
+          now: now(),
+          prepared: null,
+          status: "blocked",
+        })
+      }
+      let body: unknown
+      try {
+        const response = await fetchImpl(
+          `${options.baseUrl.replace(/\/+$/u, "")}/api/pylons/${encodeURIComponent(options.pylonRef)}/fleet-runs/${encodeURIComponent(prepared.tuple.runRef)}/managed-units/dispatch`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${options.agentToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              schema: "openagents.pylon.managed_cloud_fleet_dispatch.request.v1",
+              targetPreference: "managed_cloud",
+              taskId: prepared.tuple.taskId,
+              claimRef: prepared.tuple.claimRef,
+              workUnitRef: prepared.tuple.workUnitRef,
+              workerAccountRef: prepared.tuple.workerAccountRef,
+              workerKind: "codex",
+              objective: prepared.objective,
+              unitObjective: input.dispatch.workUnit.body,
+              repository: prepared.tuple.repository,
+              verifierRef: prepared.verifierRef,
+              verifierCommand: input.dispatch.workUnit.verify,
+              verify: [...prepared.verifyArgs],
+              fingerprint: prepared.tuple.fingerprint,
+            }),
+          },
+        )
+        if (!response.ok) throw new Error("managed_fleet_dispatch_refused")
+        body = await response.json()
+      } catch {
+        return fixedResult({
+          blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.executorFailed,
+          now: now(),
+          prepared,
+          status: "failed",
+        })
+      }
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        (body as { schema?: unknown }).schema !== "openagents.pylon.managed_cloud_fleet_dispatch.result.v1" ||
+        (body as { state?: unknown }).state !== "completed"
+      ) {
+        return fixedResult({
+          blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
+          now: now(),
+          prepared,
+          status: "failed",
+        })
+      }
+      const result = body as {
+        agentComputerRef?: unknown
+        placementRef?: unknown
+        lifecycleReceiptRefs?: unknown
+        resourceUsageReceiptRefs?: unknown
+        artifactRef?: unknown
+      }
+      const lifecycleReceiptRefs = Array.isArray(result.lifecycleReceiptRefs)
+        ? result.lifecycleReceiptRefs.filter(validPublicRef)
+        : []
+      const usageRefs = Array.isArray(result.resourceUsageReceiptRefs)
+        ? result.resourceUsageReceiptRefs.filter(validPublicRef)
+        : []
+      if (
+        !validPublicRef(result.agentComputerRef) ||
+        !validPublicRef(result.placementRef) ||
+        lifecycleReceiptRefs.length === 0 ||
+        usageRefs.length === 0
+      ) {
+        return fixedResult({
+          blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
+          now: now(),
+          prepared,
+          status: "failed",
+        })
+      }
+      const targetEvidenceRef = stableRef(
+        "evidence.public.pylon.managed_cloud.target",
+        `${prepared.tuple.fingerprint}:${result.placementRef}:${usageRefs[0]}`,
+      )
+      const lifecycle: PylonAssignmentRunLifecycleEvent[] = [
+        {
+          schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+          event: "assignment_run.runtime_started",
+          observedAt: now().toISOString(),
+          assignmentRef: prepared.assignmentRef,
+          status: "running",
+          phase: "runtime_active",
+        },
+        {
+          schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+          event: "assignment_run.completed",
+          observedAt: now().toISOString(),
+          assignmentRef: prepared.assignmentRef,
+          status: "closed",
+          closeoutRef: prepared.closeoutRef,
+        },
+      ]
+      for (const event of lifecycle) await input.dispatch.onLifecycle?.(event)
+      const evidenceRefs = [targetEvidenceRef, ...lifecycleReceiptRefs, ...usageRefs]
+      const completed: PylonManagedCloudFleetRunDispatchResult = {
+        assignmentRef: prepared.assignmentRef,
+        accountRefHash: null,
+        closeoutRef: null,
+        lifecycle,
+        marginalCostClass: input.dispatch.claim.marginalCostClass ?? "not_measured",
+        status: "completed",
+        summary: "Managed-cloud Codex work completed on an Agent Computer with broker-held authority.",
+        usageEvidence: null,
+        verification: {
+          truth: "passed",
+          verifierRef: prepared.verifierRef,
+          evidenceRefs,
+        },
+        artifactRefs: validPublicRef(result.artifactRef) ? [result.artifactRef] : [],
+        proofRefs: evidenceRefs,
+        authorityReceiptRefs: usageRefs,
+        target: targetProjection(prepared, targetEvidenceRef),
+      }
+      assertPublicProjectionSafe(completed, "pylonRemoteManagedCloudFleetRunResult")
+      return completed
+    },
+  }
+}
+
+/**
  * Compose the managed-cloud claimed-work adapter into the same durable
  * planner/supervisor used by owner-local FleetRuns. All provider-account,
  * grant, capacity, and restart-liveness authority stays injected: this layer
@@ -738,12 +835,8 @@ export async function openPylonManagedCloudStandingFleetRunExecutor(
     ...(input.clock === undefined ? {} : { clock: input.clock }),
     ...(input.now === undefined ? {} : { now: input.now }),
     ...(input.onLifecycle === undefined ? {} : { onLifecycle: input.onLifecycle }),
-    ...(input.startImmediately === undefined
-      ? {}
-      : { startImmediately: input.startImmediately }),
-    ...(input.tickIntervalMs === undefined
-      ? {}
-      : { tickIntervalMs: input.tickIntervalMs }),
+    ...(input.startImmediately === undefined ? {} : { startImmediately: input.startImmediately }),
+    ...(input.tickIntervalMs === undefined ? {} : { tickIntervalMs: input.tickIntervalMs }),
     adapterFactory: ({ store }) => {
       const claimedWork = createPylonManagedCloudFleetRunClaimedWorkPort({
         summary: input.summary,
@@ -755,13 +848,14 @@ export async function openPylonManagedCloudStandingFleetRunExecutor(
       })
       return {
         capacity: {
-          accounts: async capacityInput => (await input.capacity.accounts(capacityInput)).map(account => ({
-            ...account,
-            executionTarget: "managed_cloud" as const,
-            acceptedDataPostures: ["broker_safe"] as const,
-            repositoryAccess: true,
-            managedIsolation: true,
-          })),
+          accounts: async (capacityInput) =>
+            (await input.capacity.accounts(capacityInput)).map((account) => ({
+              ...account,
+              executionTarget: "managed_cloud" as const,
+              acceptedDataPostures: ["broker_safe"] as const,
+              repositoryAccess: true,
+              managedIsolation: true,
+            })),
         },
         livenessProbe: input.livenessProbe,
         planner: createPylonDurableFleetRunPlanner({
@@ -769,7 +863,7 @@ export async function openPylonManagedCloudStandingFleetRunExecutor(
           store,
         }),
         runner: {
-          dispatch: dispatch => {
+          dispatch: (dispatch) => {
             // The supervisor persists `in_progress` immediately before it
             // invokes the runner, while its immutable call snapshot still
             // carries the preceding `claimed` state. Bind cloud authority to

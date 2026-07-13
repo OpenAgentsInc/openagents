@@ -23,10 +23,7 @@ import {
   createPylonOwnedGrokClaimedWorkPort,
   type CreatePylonOwnedGrokClaimedWorkPortInput,
 } from "./fleet-run-owned-grok-runner.js"
-import {
-  openPylonStandingFleetRunExecutor,
-  type PylonStandingFleetRunExecutor,
-} from "./fleet-run-standing-executor.js"
+import { openPylonStandingFleetRunExecutor, type PylonStandingFleetRunExecutor } from "./fleet-run-standing-executor.js"
 import {
   makePylonFleetRunSteeringHttpTransport,
   openPylonFleetRunSteeringConsumer,
@@ -36,37 +33,23 @@ import {
   type PylonFleetRunAttemptControl,
   type PylonFleetRunSteeringFollowUpCompletionSink,
 } from "./fleet-run-steering-follow-up-dispatcher.js"
-import type {
-  FleetRunSupervisorClock,
-  FleetRunSupervisorObservedEvent,
-} from "./fleet-run-supervisor.js"
+import type { FleetRunSupervisorClock, FleetRunSupervisorObservedEvent } from "./fleet-run-supervisor.js"
 import {
   createPylonManagedCloudFleetRunClaimedWorkPort,
+  createPylonRemoteManagedCloudFleetRunClaimedWorkPort,
   type CreatePylonManagedCloudFleetRunClaimedWorkPortInput,
+  type CreatePylonRemoteManagedCloudFleetRunClaimedWorkPortInput,
 } from "./fleet-run-managed-cloud-runner.js"
 import type { FleetRunSupervisorCapacity } from "./fleet-run-supervisor.js"
 
 export type PylonOwnedStandingFleetRunCapacityOptions = Omit<
   CreatePylonOwnedFleetRunSupervisorCapacityInput,
-  | "defaultHomes"
-  | "env"
-  | "grokExecutionAvailable"
-  | "loadRegistry"
-  | "store"
-  | "summary"
+  "defaultHomes" | "env" | "grokExecutionAvailable" | "loadRegistry" | "store" | "summary"
 >
 
 export type PylonOwnedStandingFleetRunRunnerOptions = Omit<
   CreatePylonOwnedFleetRunSupervisorRunnerInput,
-  | "agentToken"
-  | "baseUrl"
-  | "defaultHomes"
-  | "fetch"
-  | "loadRegistry"
-  | "now"
-  | "pylonRef"
-  | "summary"
-  | "grok"
+  "agentToken" | "baseUrl" | "defaultHomes" | "fetch" | "loadRegistry" | "now" | "pylonRef" | "summary" | "grok"
 >
 
 export type PylonOwnedStandingFleetRunGrokOptions = Omit<
@@ -82,11 +65,13 @@ export type PylonOwnedStandingFleetRunLivenessOptions = Omit<
 export type PylonOwnedStandingFleetRunAdapterOptions = {
   /** One strict registry source is shared by capacity and dispatch custody. */
   readonly loadRegistry?: (() => Promise<readonly PylonAccountRegistryEntry[]>) | undefined
-  readonly defaultHomes?: {
-    readonly claudeAgent: string
-    readonly codex: string
-    readonly grok?: string | undefined
-  } | undefined
+  readonly defaultHomes?:
+    | {
+        readonly claudeAgent: string
+        readonly codex: string
+        readonly grok?: string | undefined
+      }
+    | undefined
   readonly capacity?: PylonOwnedStandingFleetRunCapacityOptions | undefined
   readonly runner?: PylonOwnedStandingFleetRunRunnerOptions | undefined
   /** `false` is a test/diagnostic fail-closed mode; production composes the exact adapter. */
@@ -98,10 +83,14 @@ export type PylonOwnedStandingFleetRunAdapterOptions = {
    * supervisor and claim registry expose both target classes and dispatch each
    * unit only through its selected target. Absence leaves managed units denied.
    */
-  readonly managedCloud?: Readonly<{
-    capacity: FleetRunSupervisorCapacity
-    adapter: Omit<CreatePylonManagedCloudFleetRunClaimedWorkPortInput, "summary">
-  }> | undefined
+  readonly managedCloud?:
+    | Readonly<{
+        capacity: FleetRunSupervisorCapacity
+        adapter:
+          | ({ kind?: "local" } & Omit<CreatePylonManagedCloudFleetRunClaimedWorkPortInput, "summary">)
+          | ({ kind: "remote" } & Omit<CreatePylonRemoteManagedCloudFleetRunClaimedWorkPortInput, "pylonRef">)
+      }>
+    | undefined
 }
 
 export type OpenPylonOwnedStandingFleetRunExecutorInput = {
@@ -135,20 +124,18 @@ export async function openPylonOwnedStandingFleetRunExecutor(
   input: OpenPylonOwnedStandingFleetRunExecutorInput,
 ): Promise<PylonStandingFleetRunExecutor> {
   const env = input.env ?? process.env
-  const summary = input.summary ?? createBootstrapSummary(
-    parseBootstrapArgs(["--json"]),
-    env,
-  )
+  const summary = input.summary ?? createBootstrapSummary(parseBootstrapArgs(["--json"]), env)
   const options = input.options ?? {}
   const statePaths = resolveStatePaths(summary.paths)
   let steeringControl: PylonFleetRunAttemptControl | null = null
-  const steeringTransport = input.agentToken === undefined
-    ? null
-    : makePylonFleetRunSteeringHttpTransport({
-        agentToken: input.agentToken,
-        baseUrl: input.baseUrl,
-        ...(input.fetch === undefined ? {} : { fetchImpl: input.fetch }),
-      })
+  const steeringTransport =
+    input.agentToken === undefined
+      ? null
+      : makePylonFleetRunSteeringHttpTransport({
+          agentToken: input.agentToken,
+          baseUrl: input.baseUrl,
+          ...(input.fetch === undefined ? {} : { fetchImpl: input.fetch }),
+        })
 
   return await openPylonStandingFleetRunExecutor({
     bootstrap: summary,
@@ -204,33 +191,40 @@ export async function openPylonOwnedStandingFleetRunExecutor(
           },
         }),
     adapterFactory: ({ store }) => {
-      const grok = options.grok === false
-        ? undefined
-        : options.grok !== undefined && "dispatch" in options.grok && "reconcile" in options.grok
-          ? options.grok
-          : createPylonOwnedGrokClaimedWorkPort({
-              ...(options.grok ?? {}),
-              summary,
-              env,
-              store,
-              ...(input.now === undefined ? {} : { now: input.now }),
-              ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
-            })
+      const grok =
+        options.grok === false
+          ? undefined
+          : options.grok !== undefined && "dispatch" in options.grok && "reconcile" in options.grok
+            ? options.grok
+            : createPylonOwnedGrokClaimedWorkPort({
+                ...(options.grok ?? {}),
+                summary,
+                env,
+                store,
+                ...(input.now === undefined ? {} : { now: input.now }),
+                ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
+              })
       const ownerCapacity = createPylonOwnedFleetRunSupervisorCapacity({
-          ...options.capacity,
-          store,
-          summary,
-          env,
-          grokExecutionAvailable: grok !== undefined,
-          ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
-          ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
-        })
-      const managedClaimedWork = options.managedCloud === undefined
-        ? null
-        : createPylonManagedCloudFleetRunClaimedWorkPort({
-            ...options.managedCloud.adapter,
-            summary,
-          })
+        ...options.capacity,
+        store,
+        summary,
+        env,
+        grokExecutionAvailable: grok !== undefined,
+        ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
+        ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
+      })
+      const managedClaimedWork =
+        options.managedCloud === undefined
+          ? null
+          : options.managedCloud.adapter.kind === "remote"
+            ? createPylonRemoteManagedCloudFleetRunClaimedWorkPort({
+                ...options.managedCloud.adapter,
+                pylonRef: input.pylonRef,
+              })
+            : createPylonManagedCloudFleetRunClaimedWorkPort({
+                ...options.managedCloud.adapter,
+                summary,
+              })
       const ownerRunner = createPylonOwnedFleetRunSupervisorRunner({
         ...options.runner,
         summary,
@@ -245,26 +239,27 @@ export async function openPylonOwnedStandingFleetRunExecutor(
       })
       steeringControl = ownerRunner.steeringControl
       return {
-        capacity: options.managedCloud === undefined
-          ? ownerCapacity
-          : {
-              accounts: async capacityInput => [
-                ...(await ownerCapacity.accounts(capacityInput)).map(account => ({
-                  ...account,
-                  executionTarget: "owner_local" as const,
-                  quotaAvailable: true,
-                  acceptedDataPostures: ["owner_private", "broker_safe"] as const,
-                  repositoryAccess: true,
-                })),
-                ...(await options.managedCloud!.capacity.accounts(capacityInput)).map(account => ({
-                  ...account,
-                  executionTarget: "managed_cloud" as const,
-                  acceptedDataPostures: ["broker_safe"] as const,
-                  repositoryAccess: true,
-                  managedIsolation: true,
-                })),
-              ],
-            },
+        capacity:
+          options.managedCloud === undefined
+            ? ownerCapacity
+            : {
+                accounts: async (capacityInput) => [
+                  ...(await ownerCapacity.accounts(capacityInput)).map((account) => ({
+                    ...account,
+                    executionTarget: "owner_local" as const,
+                    quotaAvailable: true,
+                    acceptedDataPostures: ["owner_private", "broker_safe"] as const,
+                    repositoryAccess: true,
+                  })),
+                  ...(await options.managedCloud!.capacity.accounts(capacityInput)).map((account) => ({
+                    ...account,
+                    executionTarget: "managed_cloud" as const,
+                    acceptedDataPostures: ["broker_safe"] as const,
+                    repositoryAccess: true,
+                    managedIsolation: true,
+                  })),
+                ],
+              },
         livenessProbe: (() => {
           const assignmentProbe = createPylonAssignmentFleetRunOwnerLocalLivenessProbe({
             ...options.liveness,
@@ -281,7 +276,7 @@ export async function openPylonOwnedStandingFleetRunExecutor(
           store,
         }),
         runner: {
-          dispatch: dispatch => {
+          dispatch: (dispatch) => {
             if (dispatch.executionTarget === "owner_local") {
               return ownerRunner.dispatch(dispatch)
             }

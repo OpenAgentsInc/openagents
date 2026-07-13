@@ -5,12 +5,10 @@ import { join } from "node:path"
 
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js"
 import type { PylonDevCheckProjection } from "../src/dev-loop.js"
-import type {
-  ControlSessionExecutorInput,
-  ControlSessionExecutorResult,
-} from "../src/node/control-sessions.js"
+import type { ControlSessionExecutorInput, ControlSessionExecutorResult } from "../src/node/control-sessions.js"
 import {
   createPylonManagedCloudFleetRunClaimedWorkPort,
+  createPylonRemoteManagedCloudFleetRunClaimedWorkPort,
   openPylonManagedCloudStandingFleetRunExecutor,
   PYLON_MANAGED_CLOUD_FLEET_BLOCKERS,
   type PylonManagedCloudFleetExactTuple,
@@ -73,9 +71,7 @@ const claim = (overrides: Partial<WorkClaim> = {}): WorkClaim => ({
   ...overrides,
 })
 
-const dispatch = (
-  overrides: Partial<FleetRunSupervisorDispatchInput> = {},
-): FleetRunSupervisorDispatchInput => {
+const dispatch = (overrides: Partial<FleetRunSupervisorDispatchInput> = {}): FleetRunSupervisorDispatchInput => {
   const workClaim = overrides.claim ?? claim()
   return {
     accountRef,
@@ -94,16 +90,13 @@ const dispatch = (
       baseCommit: commit,
       repo: "OpenAgentsInc/openagents",
       number: 8636,
-      verify:
-        "bun test apps/pylon/tests/fleet-run-managed-cloud-runner.test.ts",
+      verify: "bun test apps/pylon/tests/fleet-run-managed-cloud-runner.test.ts",
     },
     ...overrides,
   }
 }
 
-const devCheck = (
-  state: PylonDevCheckProjection["state"] = "passed",
-): PylonDevCheckProjection => ({
+const devCheck = (state: PylonDevCheckProjection["state"] = "passed"): PylonDevCheckProjection => ({
   schema: "openagents.pylon.dev_check.v0.3",
   observedAt: fixedNow.toISOString(),
   action: "check",
@@ -139,9 +132,7 @@ const devCheck = (
   blockerRefs: state === "passed" ? [] : ["blocker.cloud.verify_failed"],
 })
 
-const cloudResult = (
-  overrides: Partial<ControlSessionExecutorResult> = {},
-): ControlSessionExecutorResult => ({
+const cloudResult = (overrides: Partial<ControlSessionExecutorResult> = {}): ControlSessionExecutorResult => ({
   commandCount: 1,
   devCheck: devCheck(),
   editedFileCount: 1,
@@ -155,8 +146,7 @@ const cloudResult = (
     runnerId: "raw-private-runner-name",
     externalRunId: "raw-private-external-run-id",
   },
-  resourceUsageReceiptRef:
-    "receipt.openagents.resource_usage_receipt.v1.aaaaaaaaaaaaaaaaaaaaaaaa",
+  resourceUsageReceiptRef: "receipt.openagents.resource_usage_receipt.v1.aaaaaaaaaaaaaaaaaaaaaaaa",
   ...overrides,
 })
 
@@ -168,7 +158,7 @@ const validBinding = {
 
 const blockerRefs = (result: {
   lifecycle: readonly { blockerRefs?: readonly string[] | undefined }[]
-}): readonly string[] => result.lifecycle.flatMap(event => event.blockerRefs ?? [])
+}): readonly string[] => result.lifecycle.flatMap((event) => event.blockerRefs ?? [])
 
 describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
   test("composes the real managed-cloud adapter and fails closed at the exact-usage gate", async () => {
@@ -197,11 +187,13 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
           branch: "main",
           baseCommit: commit,
           verify: "bun test apps/pylon/tests/fleet-run-managed-cloud-runner.test.ts",
-          issues: [{
-            number: 8547,
-            title: "Compose managed-cloud execution",
-            body: "Use the exact accepted Sarah authority and cloud grant.",
-          }],
+          issues: [
+            {
+              number: 8547,
+              title: "Compose managed-cloud execution",
+              body: "Use the exact accepted Sarah authority and cloud grant.",
+            },
+          ],
         },
         authorityBinding: {
           schema: "openagents.pylon.fleet_run_authority_binding.v1",
@@ -224,15 +216,17 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
         pylonRef: composedPylonRef,
         runRef,
         capacity: {
-          accounts: async () => [{
-            accountRef,
-            advertisedCapacity: 1,
-            marginalCostClass: "api_metered",
-            workerKind: "codex",
-          }],
+          accounts: async () => [
+            {
+              accountRef,
+              advertisedCapacity: 1,
+              marginalCostClass: "api_metered",
+              workerKind: "codex",
+            },
+          ],
         },
         livenessProbe: () => "unknown",
-        resolveGrantBinding: async tuple => {
+        resolveGrantBinding: async (tuple) => {
           grantCalls += 1
           expect(tuple.runRef).toBe(runRef)
           expect(tuple.workUnitRef).toContain("8547")
@@ -251,7 +245,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
           now: () => fixedNow,
           sleep: () => new Promise<void>(() => {}),
         },
-        onLifecycle: event => {
+        onLifecycle: (event) => {
           observed.push(event)
         },
         startImmediately: false,
@@ -261,9 +255,8 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
         for (let attempt = 0; attempt < 100 && executorCalls === 0; attempt += 1) {
           await Bun.sleep(2)
         }
-        const taskFailed = (): boolean => standing.runtime.store
-          .listTasks()
-          .some(candidate => candidate.status === "failed")
+        const taskFailed = (): boolean =>
+          standing.runtime.store.listTasks().some((candidate) => candidate.status === "failed")
         for (let attempt = 0; attempt < 100 && !taskFailed(); attempt += 1) {
           await Bun.sleep(2)
         }
@@ -274,9 +267,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
             runRef,
             state: "released",
             workerAccountRef: accountRef,
-            assignmentRef: expect.stringMatching(
-              /^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
-            ),
+            assignmentRef: expect.stringMatching(/^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u),
           }),
         ])
         expect(standing.runtime.store.listTasks("failed")).toEqual([
@@ -284,12 +275,14 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
             spec: expect.objectContaining({ fleetRunRef: runRef }),
           }),
         ])
-        expect(observed).toContainEqual(expect.objectContaining({
-          kind: "dispatch",
-          runRef,
-          status: "failed",
-          blockerRefs: ["blocker.pylon.fleet_run.usage_evidence_required"],
-        }))
+        expect(observed).toContainEqual(
+          expect.objectContaining({
+            kind: "dispatch",
+            runRef,
+            status: "failed",
+            blockerRefs: ["blocker.pylon.fleet_run.usage_evidence_required"],
+          }),
+        )
       } finally {
         await standing.close()
       }
@@ -307,7 +300,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     const port = createPylonManagedCloudFleetRunClaimedWorkPort({
       summary,
       now: () => fixedNow,
-      resolveGrantBinding: async tuple => {
+      resolveGrantBinding: async (tuple) => {
         resolvedTuple = tuple
         return validBinding
       },
@@ -315,12 +308,11 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
         expect(binding).toEqual(validBinding)
         expect(sessionRef).toMatch(/^session\.pylon\.managed_cloud\.[a-f0-9]{24}$/u)
         executorTuple = tuple
-        return async input => {
+        return async (input) => {
           executorInput = input
           input.emit({
             phase: "composer_event",
-            message:
-              "raw /private/cloud/topology bearer-token should never project",
+            message: "raw /private/cloud/topology bearer-token should never project",
           })
           input.emit({
             phase: "composer_event",
@@ -334,34 +326,26 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     const result = await port.dispatch({
       targetPreference: "managed_cloud",
       dispatch: dispatch({
-        onLifecycle: event => {
+        onLifecycle: (event) => {
           observedLifecycle.push(event.event)
         },
       }),
     })
 
     expect(result.status).toBe("completed")
-    expect(result.assignmentRef).toMatch(
-      /^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
-    )
+    expect(result.assignmentRef).toMatch(/^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u)
     expect(result.closeoutRef).toBeNull()
     expect(result.target).toEqual({
       schema: "openagents.pylon.managed_cloud_fleet_target.v1",
       targetPreference: "managed_cloud",
       capacityClass: "managed_cloud",
-      executionTargetRef: expect.stringMatching(
-        /^execution_target\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
-      ),
-      targetEvidenceRef: expect.stringMatching(
-        /^evidence\.public\.pylon\.managed_cloud\.target\.[a-f0-9]{24}$/u,
-      ),
+      executionTargetRef: expect.stringMatching(/^execution_target\.pylon\.managed_cloud\.[a-f0-9]{24}$/u),
+      targetEvidenceRef: expect.stringMatching(/^evidence\.public\.pylon\.managed_cloud\.target\.[a-f0-9]{24}$/u),
       fallbackRefs: [],
     })
     expect(result.verification).toEqual({
       truth: "passed",
-      verifierRef: expect.stringMatching(
-        /^verifier\.public\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
-      ),
+      verifierRef: expect.stringMatching(/^verifier\.public\.pylon\.managed_cloud\.[a-f0-9]{24}$/u),
       evidenceRefs: [
         result.target.targetEvidenceRef,
         "receipt.openagents.resource_usage_receipt.v1.aaaaaaaaaaaaaaaaaaaaaaaa",
@@ -403,11 +387,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
       lane: "auto",
       cwd: ".",
       env: {},
-      verify: [
-        "bun",
-        "test",
-        "apps/pylon/tests/fleet-run-managed-cloud-runner.test.ts",
-      ],
+      verify: ["bun", "test", "apps/pylon/tests/fleet-run-managed-cloud-runner.test.ts"],
     })
 
     const projected = JSON.stringify(result)
@@ -418,6 +398,48 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     expect(projected).not.toContain(validBinding.providerAccountRef)
     expect(projected).not.toContain("bearer-token")
     expect(projected).not.toContain("/private/cloud/topology")
+  })
+
+  test("keeps broker credentials server-side and accepts only terminal refs from remote dispatch", async () => {
+    let posted: Record<string, unknown> | null = null
+    const port = createPylonRemoteManagedCloudFleetRunClaimedWorkPort({
+      agentToken: "agent_test_public_transport_token",
+      baseUrl: "https://openagents.example",
+      pylonRef: "pylon.fc4.test",
+      now: () => fixedNow,
+      fetchImpl: async (_url, init) => {
+        posted = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Response.json({
+          schema: "openagents.pylon.managed_cloud_fleet_dispatch.result.v1",
+          state: "completed",
+          placementRef: "placement.cloud-coding.fc4",
+          agentComputerRef: "agent-computer.fc4",
+          agentComputerState: "reclaimed",
+          lifecycleReceiptRefs: ["receipt.lifecycle.fc4"],
+          resourceUsageReceiptRefs: ["receipt.resource_usage.fc4"],
+          artifactRef: "artifact.fc4",
+          workContextRef: "work_context.fc4",
+        })
+      },
+    })
+    const result = await port.dispatch({
+      targetPreference: "managed_cloud",
+      dispatch: dispatch({ executionTarget: "managed_cloud" }),
+    })
+    expect(result.status).toBe("completed")
+    expect(result.authorityReceiptRefs).toEqual(["receipt.resource_usage.fc4"])
+    expect(result.artifactRefs).toEqual(["artifact.fc4"])
+    expect(posted).toMatchObject({
+      schema: "openagents.pylon.managed_cloud_fleet_dispatch.request.v1",
+      targetPreference: "managed_cloud",
+      repository: {
+        fullName: "OpenAgentsInc/openagents",
+        branch: "main",
+        commit,
+      },
+    })
+    expect(JSON.stringify(posted)).not.toContain("agent_test_public_transport_token")
+    expect(JSON.stringify(result)).not.toContain("agent_test_public_transport_token")
   })
 
   test("rejects a non-managed target before either authority port runs", async () => {
@@ -444,9 +466,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     expect(result.assignmentRef).toBeNull()
     expect(result.target.targetPreference).toBe("managed_cloud")
     expect(result.target.fallbackRefs).toEqual([])
-    expect(blockerRefs(result)).toContain(
-      PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.targetRequired,
-    )
+    expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.targetRequired)
     expect(calls).toBe(0)
   })
 
@@ -471,9 +491,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
         dispatch: dispatch({ workerKind }),
       })
       expect(result.status).toBe("blocked")
-      expect(blockerRefs(result)).toContain(
-        PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.workerUnsupported,
-      )
+      expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.workerUnsupported)
       expect(result.target.fallbackRefs).toEqual([])
     }
     expect(calls).toBe(0)
@@ -502,9 +520,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
 
     expect(result.status).toBe("blocked")
     expect(result.assignmentRef).toBeNull()
-    expect(blockerRefs(result)).toContain(
-      PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.tupleInvalid,
-    )
+    expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.tupleInvalid)
     expect(calls).toBe(0)
   })
 
@@ -516,9 +532,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
         providerAccountRef: validBinding.providerAccountRef,
       }),
       async () => {
-        throw new Error(
-          "raw bearer credential from /private/owner/grant must not project",
-        )
+        throw new Error("raw bearer credential from /private/owner/grant must not project")
       },
     ]) {
       let executorCalls = 0
@@ -537,12 +551,8 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
         dispatch: dispatch(),
       })
       expect(result.status).toBe("blocked")
-      expect(result.assignmentRef).toMatch(
-        /^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u,
-      )
-      expect(blockerRefs(result)).toContain(
-        PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.grantUnavailable,
-      )
+      expect(result.assignmentRef).toMatch(/^assignment\.pylon\.managed_cloud\.[a-f0-9]{24}$/u)
+      expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.grantUnavailable)
       expect(executorCalls).toBe(0)
       expect(JSON.stringify(result)).not.toContain("bearer credential")
       expect(JSON.stringify(result)).not.toContain("/private/owner/grant")
@@ -554,7 +564,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
       summary,
       now: () => fixedNow,
       resolveGrantBinding: async () => validBinding,
-      createExecutor: () => async input => {
+      createExecutor: () => async (input) => {
         input.emit({
           phase: "composer_event",
           message: "local fallback attempted",
@@ -575,9 +585,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     expect(result.closeoutRef).toBeNull()
     expect(result.target.targetEvidenceRef).toBeNull()
     expect(result.target.fallbackRefs).toEqual([])
-    expect(blockerRefs(result)).toContain(
-      PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
-    )
+    expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid)
   })
 
   test("rejects syntactically valid evidence refs that fail the public-safety tripwire", async () => {
@@ -598,9 +606,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
 
     expect(result.status).toBe("failed")
     expect(result.target.targetEvidenceRef).toBeNull()
-    expect(blockerRefs(result)).toContain(
-      PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
-    )
+    expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid)
     expect(JSON.stringify(result)).not.toContain("private_repo")
   })
 
@@ -609,14 +615,12 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
       summary,
       now: () => fixedNow,
       resolveGrantBinding: async () => validBinding,
-      createExecutor: () => async input => {
+      createExecutor: () => async (input) => {
         input.emit({
           phase: "composer_event",
           message: "raw private topology",
         })
-        throw new Error(
-          "runner raw-private-host leaked token=owner-provider-secret",
-        )
+        throw new Error("runner raw-private-host leaked token=owner-provider-secret")
       },
     })
 
@@ -627,9 +631,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
 
     expect(result.status).toBe("failed")
     expect(result.closeoutRef).toBeNull()
-    expect(blockerRefs(result)).toContain(
-      PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.executorFailed,
-    )
+    expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.executorFailed)
     const projected = JSON.stringify(result)
     expect(projected).not.toContain("raw-private-host")
     expect(projected).not.toContain("owner-provider-secret")
@@ -641,8 +643,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
       summary,
       now: () => fixedNow,
       resolveGrantBinding: async () => validBinding,
-      createExecutor: () => async () =>
-        cloudResult({ devCheck: devCheck("failed") }),
+      createExecutor: () => async () => cloudResult({ devCheck: devCheck("failed") }),
     })
 
     const result = await port.dispatch({
@@ -679,9 +680,7 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
 
     expect(result.status).toBe("failed")
     expect(result.closeoutRef).toBeNull()
-    expect(blockerRefs(result)).toContain(
-      PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed,
-    )
+    expect(blockerRefs(result)).toContain(PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.lifecycleProjectionFailed)
     expect(JSON.stringify(result)).not.toContain("owner-private")
   })
 })

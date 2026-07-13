@@ -4,10 +4,10 @@ import {
   type FleetRunAuthorityClaimResult,
   FleetRunAuthorityError,
   FleetRunExecutionBatch,
-  FleetSteeringFollowUpCompletionBatch,
   type FleetSteeringFollowUpCompletionAck,
-  FleetSteeringOutcomeBatch,
+  FleetSteeringFollowUpCompletionBatch,
   type FleetSteeringOutcomeAck,
+  FleetSteeringOutcomeBatch,
   type FleetSteeringPage,
 } from '@openagentsinc/khala-sync-server'
 import { notFound } from '@openagentsinc/sync-worker'
@@ -133,6 +133,20 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
       FleetRunAuthorityError
     >
   }>
+  /**
+   * Broker-owned Agent Computer dispatch. The route authenticates the Pylon
+   * and derives the owner before this seam receives an exact public tuple.
+   * Provider material and cloud-control authority never cross this boundary.
+   */
+  dispatchManagedFleetUnit?: (
+    env: Bindings,
+    input: Readonly<{
+      ownerUserId: string
+      pylonRef: string
+      runRef: string
+      body: typeof FleetRunManagedUnitDispatchBody.Type
+    }>,
+  ) => Promise<Readonly<Record<string, unknown>>>
   fleetSteeringExchange?: Readonly<{
     readPage: (
       env: Bindings,
@@ -219,6 +233,8 @@ export const PYLON_FLEET_RUN_ACCEPT_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/accept' as const
 export const PYLON_FLEET_RUN_EXECUTION_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/events' as const
+export const PYLON_FLEET_RUN_MANAGED_UNIT_DISPATCH_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/:runRef/managed-units/dispatch' as const
 export const PYLON_FLEET_RUN_STEERING_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/steering' as const
 export const PYLON_FLEET_RUN_STEERING_OUTCOMES_ROUTE_PATTERN =
@@ -251,16 +267,33 @@ const FleetRunAcceptBody = S.Struct({
   runRef: FleetRunRef,
   claimRef: FleetRunClaimRef,
 })
+const FleetRunManagedUnitDispatchBody = S.Struct({
+  schema: S.Literal('openagents.pylon.managed_cloud_fleet_dispatch.request.v1'),
+  targetPreference: S.Literal('managed_cloud'),
+  taskId: S.String,
+  claimRef: S.String,
+  workUnitRef: S.String,
+  workerAccountRef: S.String,
+  workerKind: S.Literal('codex'),
+  objective: S.String,
+  unitObjective: S.String,
+  repository: S.Struct({
+    fullName: S.String,
+    branch: S.String,
+    commit: S.String,
+  }),
+  verifierRef: S.String,
+  verifierCommand: S.String,
+  verify: S.Array(S.String),
+  fingerprint: S.String,
+})
 const FleetRunSteeringQuery = S.Struct({
   claimRef: FleetRunClaimRef,
   after: S.Int.check(
     S.isGreaterThanOrEqualTo(0),
     S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
   ),
-  limit: S.Int.check(
-    S.isGreaterThanOrEqualTo(1),
-    S.isLessThanOrEqualTo(100),
-  ),
+  limit: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(100)),
 })
 
 const decodeStrictFleetRunBody = <A>(
@@ -1631,6 +1664,46 @@ const routeFleetRunExecution = <Bindings extends PylonApiRouteEnv>(
     ),
   )
 
+const routeFleetRunManagedUnitDispatch = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+  runRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    if (dependencies.dispatchManagedFleetUnit === undefined) {
+      return noStoreJsonResponse(
+        {
+          schema: 'openagents.pylon.managed_cloud_fleet_dispatch.error.v1',
+          reasonRef: 'blocker.pylon.managed_cloud_fleet.dispatch_unavailable',
+        },
+        { status: 503 },
+      )
+    }
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const body = yield* decodeStrictFleetRunBody(
+      request,
+      FleetRunManagedUnitDispatchBody,
+    )
+    const result = yield* Effect.tryPromise({
+      try: () =>
+        dependencies.dispatchManagedFleetUnit!(env, {
+          ownerUserId: fleetRunOwnerUserId(session),
+          pylonRef,
+          runRef,
+          body,
+        }),
+      catch: () =>
+        new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'Managed FleetRun dispatch failed safely.',
+        }),
+    })
+    return noStoreJsonResponse(result)
+  }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+
 const decodeFleetSteeringQuery = (
   url: URL,
 ): Effect.Effect<typeof FleetRunSteeringQuery.Type, PylonApiStoreError> =>
@@ -1698,9 +1771,7 @@ const routeFleetRunSteeringPage = <Bindings extends PylonApiRouteEnv>(
     })
     return noStoreJsonResponse(page)
   }).pipe(
-    Effect.catch(error =>
-      Effect.succeed(fleetRunSteeringErrorResponse(error)),
-    ),
+    Effect.catch(error => Effect.succeed(fleetRunSteeringErrorResponse(error))),
   )
 
 const routeFleetRunSteeringOutcomes = <Bindings extends PylonApiRouteEnv>(
@@ -1731,9 +1802,7 @@ const routeFleetRunSteeringOutcomes = <Bindings extends PylonApiRouteEnv>(
     })
     return noStoreJsonResponse(ack)
   }).pipe(
-    Effect.catch(error =>
-      Effect.succeed(fleetRunSteeringErrorResponse(error)),
-    ),
+    Effect.catch(error => Effect.succeed(fleetRunSteeringErrorResponse(error))),
   )
 
 const routeFleetRunSteeringCompletions = <Bindings extends PylonApiRouteEnv>(
@@ -1773,9 +1842,7 @@ const routeFleetRunSteeringCompletions = <Bindings extends PylonApiRouteEnv>(
     })
     return noStoreJsonResponse(ack)
   }).pipe(
-    Effect.catch(error =>
-      Effect.succeed(fleetRunSteeringErrorResponse(error)),
-    ),
+    Effect.catch(error => Effect.succeed(fleetRunSteeringErrorResponse(error))),
   )
 
 const requireOwnedAssignment = <Bindings extends PylonApiRouteEnv>(
@@ -3409,6 +3476,41 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
     const fleetRunExecutionMatch =
       /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/events$/.exec(url.pathname)
 
+    const fleetRunManagedUnitDispatchMatch =
+      /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/managed-units\/dispatch$/.exec(
+        url.pathname,
+      )
+
+    if (fleetRunManagedUnitDispatchMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+      return Effect.try({
+        try: () => ({
+          pylonRef: decodeURIComponent(fleetRunManagedUnitDispatchMatch[1]!),
+          runRef: S.decodeUnknownSync(FleetRunRef)(
+            decodeURIComponent(fleetRunManagedUnitDispatchMatch[2]!),
+          ),
+        }),
+        catch: () =>
+          new PylonApiStoreError({
+            kind: 'validation_error',
+            reason: 'Managed FleetRun dispatch path failed validation.',
+          }),
+      }).pipe(
+        Effect.flatMap(({ pylonRef, runRef }) =>
+          routeFleetRunManagedUnitDispatch(
+            dependencies,
+            request,
+            env,
+            pylonRef,
+            runRef,
+          ),
+        ),
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
     const fleetRunSteeringMatch =
       /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/steering(?:\/(outcomes|completions))?$/.exec(
         url.pathname,
@@ -3453,14 +3555,14 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
                   pylonRef,
                   runRef,
                 )
-            : routeFleetRunSteeringPage(
-                dependencies,
-                request,
-                env,
-                url,
-                pylonRef,
-                runRef,
-              ),
+              : routeFleetRunSteeringPage(
+                  dependencies,
+                  request,
+                  env,
+                  url,
+                  pylonRef,
+                  runRef,
+                ),
         ),
         Effect.catch(error =>
           Effect.succeed(fleetRunSteeringErrorResponse(error)),

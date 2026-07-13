@@ -1,10 +1,10 @@
 import { Container, getContainer } from '@cloudflare/containers'
 import {
   FleetRunAuthorityError,
-  makeFleetSteeringExchangeRepository,
-  makeFleetRunAuthorityRepository,
-  type FleetSteeringExchangeRepositoryShape,
   type FleetRunAuthorityRepositoryShape,
+  type FleetSteeringExchangeRepositoryShape,
+  makeFleetRunAuthorityRepository,
+  makeFleetSteeringExchangeRepository,
 } from '@openagentsinc/khala-sync-server'
 import {
   type WorkerBindings,
@@ -28,15 +28,54 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
-import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
-import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
+import {
+  ADMIN_CREDITS_BALANCE_PATH,
+  ADMIN_CREDITS_CLAWBACK_PATH,
+  ADMIN_CREDITS_GRANT_PATH,
+  ADMIN_CREDITS_HISTORY_PATH,
+  ADMIN_CREDITS_RECENT_GRANTS_PATH,
+  ADMIN_CREDITS_USERS_PATH,
+  makeAdminCreditsRoutes,
+} from './admin-credits-routes'
+import {
+  ADMIN_OPS_HEALTH_PATH,
+  ADMIN_OPS_RUNS_PATH,
+  makeAdminOpsRoutes,
+} from './admin-ops-routes'
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
 import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
+import {
+  makeD1AgentDefinitionForumCompletionForumStore,
+  makeGitHubRestAgentDefinitionCompletionGitHubStore,
+} from './agent-definition-bot-integration'
+import {
+  handleAgentDefinitionEventLedgerGatewayRequest,
+  matchAgentDefinitionEventLedgerGatewayRequest,
+} from './agent-definition-event-ledger-routes'
+import { handleAgentDefinitionsApi } from './agent-definition-routes'
+import {
+  handleAgentDefinitionRunRequest,
+  matchAgentDefinitionRunRequest,
+  revokeAgentDefinitionRunForgeGitTokensForAssignment,
+} from './agent-definition-run-routes'
+import {
+  AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME,
+  makeAgentDefinitionSchedulerDependencies,
+  runAgentDefinitionSchedulerTick,
+} from './agent-definition-scheduler'
+import {
+  handleAgentDefinitionForumCompletionRequest,
+  handleAgentDefinitionForumWebhookRequest,
+  handleAgentDefinitionGitHubCompletionRequest,
+  handleAgentDefinitionSlackWebhookRequest,
+  handleAgentDefinitionWebhookRequest,
+  verifyAgentDefinitionForumEventSource,
+} from './agent-definition-webhook-routes'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
 import {
   handleProgrammaticAgentHome,
@@ -53,6 +92,11 @@ import {
 import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
 import { makeD1AgentRateLimitRecoveryStore } from './agent-rate-limit-recovery'
 import {
+  handlePublicAgentReadinessReportApi,
+  makeOperatorAgentReadinessReportRoutes,
+} from './agent-readiness-public-report-routes'
+import { makeD1AgentReadinessPublicReportStore } from './agent-readiness-public-report-store'
+import {
   type AgentRegistrationStore,
   type AgentReissueStore,
   ProgrammaticAgentRegistrationRequest,
@@ -66,33 +110,6 @@ import {
   sha256Hex,
   timingSafeEqual,
 } from './agent-registration'
-import { handleAgentDefinitionsApi } from './agent-definition-routes'
-import {
-  handleAgentDefinitionEventLedgerGatewayRequest,
-  matchAgentDefinitionEventLedgerGatewayRequest,
-} from './agent-definition-event-ledger-routes'
-import {
-  makeD1AgentDefinitionForumCompletionForumStore,
-  makeGitHubRestAgentDefinitionCompletionGitHubStore,
-} from './agent-definition-bot-integration'
-import {
-  handleAgentDefinitionForumCompletionRequest,
-  handleAgentDefinitionForumWebhookRequest,
-  handleAgentDefinitionGitHubCompletionRequest,
-  handleAgentDefinitionSlackWebhookRequest,
-  handleAgentDefinitionWebhookRequest,
-  verifyAgentDefinitionForumEventSource,
-} from './agent-definition-webhook-routes'
-import {
-  handleAgentDefinitionRunRequest,
-  matchAgentDefinitionRunRequest,
-  revokeAgentDefinitionRunForgeGitTokensForAssignment,
-} from './agent-definition-run-routes'
-import {
-  AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME,
-  makeAgentDefinitionSchedulerDependencies,
-  runAgentDefinitionSchedulerTick,
-} from './agent-definition-scheduler'
 import {
   cancelActiveAgentRunsForBillingExhaustionForEnv,
   makeAgentDefinitionRunStoreForEnv,
@@ -101,15 +118,6 @@ import {
   makeOmniRunStoreForEnv,
   makeTraceStoreForEnv,
 } from './agent-runtime-store'
-import {
-  EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
-  EventLedgerIngestQueueMessage,
-  makePostgresEventLedgerStore,
-  recordEventLedgerMessageWithOwnerObject,
-  type EventLedgerSql,
-} from './event-ledger'
-export { EventLedgerOwnerDurableObject } from './event-ledger'
-import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-sequence-store'
 import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
@@ -127,11 +135,16 @@ import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
 } from './artanis-administrator-tick'
-import { runArtanisFleetOverseerTickScheduled } from './artanis-fleet-overseer-tick'
+import { ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE } from './artanis-authority-scope'
 import {
   boundedDistillationDatasetLimit,
   readArtanisDistillationDatasetReceipt,
 } from './artanis-distillation-dataset-receipt'
+import {
+  type ArtanisDatabase,
+  makeArtanisDatabaseForEnv,
+} from './artanis-domain-store'
+import { runArtanisFleetOverseerTickScheduled } from './artanis-fleet-overseer-tick'
 import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
 import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
@@ -147,20 +160,9 @@ import {
   handlePublicArtanisLaborReceiptsApi,
 } from './artanis-labor-receipt-routes'
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
-import {
-  makeArtanisDatabaseForEnv,
-  type ArtanisDatabase,
-} from './artanis-domain-store'
-import { artifactsBucketForEnv } from './artifacts-binding'
-// KS-8.11 (#8322): CRM/email write entry points ride the dual-write seam.
-import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
-import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
-import {
-  ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
-} from './artanis-authority-scope'
-import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
+import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { makeOperatorArtanisDashboardRoutes } from './artanis-operator-dashboard-routes'
 import {
@@ -169,25 +171,25 @@ import {
   readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
 import { makeArtanisForumUpdateWriter } from './artanis-operator-forum-update'
-import {
-  isOpenAgentsOwnerAgentOpenAuthUserId,
-  ownerAgentHasStandingApprovalForRiskyAction,
-} from './artanis-owner-authority'
+import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
+import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
 } from './artanis-operator-pylon-job-status'
-import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
-import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
-import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
 import {
   makeArtanisGithubIssueOpener,
   makeArtanisOperatorTools,
 } from './artanis-operator-tools'
+import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
 import {
-  makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
+  makeArtanisUnsupportedRequestsReader,
 } from './artanis-operator-unsupported-requests'
+import {
+  isOpenAgentsOwnerAgentOpenAuthUserId,
+  ownerAgentHasStandingApprovalForRiskyAction,
+} from './artanis-owner-authority'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
@@ -205,6 +207,11 @@ import {
   boundedTickStreakLimit,
   readArtanisTickStreak,
 } from './artanis-tick-streak'
+import { artifactsBucketForEnv } from './artifacts-binding'
+import {
+  AUDIO_GRANT_ISSUE_PATH,
+  handleAudioGrantIssueRequest,
+} from './audio-grant-routes'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -218,6 +225,12 @@ import {
   serializeCookie,
 } from './auth-cookies'
 import {
+  type AuthKvEnv,
+  type AuthKvStore,
+  authKvStoreForEnv,
+} from './auth/auth-kv'
+import { readAgentBearerToken, readBearerToken } from './auth/bearer-token'
+import {
   AUTH_EMAIL_OTP_CODE_TTL_SECONDS,
   type AuthEmailOtpRateLimitRejected,
   authEmailOtpClaimsAreFresh,
@@ -228,10 +241,6 @@ import {
   stampAuthEmailOtpClaims,
 } from './auth/email-otp-hardening'
 import {
-  readAgentBearerToken,
-  readBearerToken,
-} from './auth/bearer-token'
-import {
   authIssuerAllowsRedirect,
   authIssuerAllowsWebRedirectHostname,
   isMobileAccessTokenRevoked,
@@ -240,70 +249,11 @@ import {
   revokeMobileAccessToken,
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
-import {
-  type AuthKvEnv,
-  type AuthKvStore,
-  authKvStoreForEnv,
-} from './auth/auth-kv'
 import { makeOpenAuthStorageForEnv } from './auth/openauth-storage'
 import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
 } from './auth/session'
-import {
-  handleMobileCreditsBalanceRequest,
-  handleMobileCreditsTransactionsRequest,
-  MOBILE_CREDITS_BALANCE_PATH,
-  MOBILE_CREDITS_TRANSACTIONS_PATH,
-} from './mobile-credits-routes'
-import {
-  makeProviderAccountMobileHandlers,
-  MOBILE_CLAUDE_ACCOUNTS_PATH,
-  MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
-  MOBILE_CODEX_ACCOUNTS_PATH,
-  MOBILE_CODEX_DEVICE_LOGIN_START_PATH,
-} from './provider-account-mobile-routes'
-import {
-  handlePushDeviceTokensRequest,
-  PUSH_DEVICE_TOKENS_PATH,
-} from './push/push-device-token-routes'
-import {
-  handlePushNotificationPreferencesRequest,
-  handlePushNotifyEventsRequest,
-  PUSH_NOTIFICATION_PREFERENCES_PATH,
-  PUSH_NOTIFY_EVENTS_PATH,
-} from './push/push-notify-routes'
-import {
-  handleIapRevenueCatWebhookRequest,
-  IAP_REVENUECAT_WEBHOOK_PATH,
-} from './iap-webhook-routes'
-import {
-  ADMIN_CREDITS_BALANCE_PATH,
-  ADMIN_CREDITS_CLAWBACK_PATH,
-  ADMIN_CREDITS_GRANT_PATH,
-  ADMIN_CREDITS_HISTORY_PATH,
-  ADMIN_CREDITS_RECENT_GRANTS_PATH,
-  ADMIN_CREDITS_USERS_PATH,
-  makeAdminCreditsRoutes,
-} from './admin-credits-routes'
-import {
-  ADMIN_OPS_HEALTH_PATH,
-  ADMIN_OPS_RUNS_PATH,
-  makeAdminOpsRoutes,
-} from './admin-ops-routes'
-import {
-  ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
-  makeDailySalesLedgerRoutes,
-} from './business-outreach-daily-ledger-routes'
-import {
-  ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
-  ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
-  makeCrmApprovalBatchAdminRoutes,
-} from './crm-approval-batch-admin-routes'
-import {
-  handleMobileAccountDeletionRequest,
-  MOBILE_ACCOUNT_PATH,
-} from './mobile-account-deletion-routes'
 import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
@@ -332,6 +282,10 @@ import {
   verifyAutopilotL402PaymentProofFromBuyerLedger,
 } from './autopilot-work-routes'
 import {
+  recordBackendIncidentEvent,
+  routePatternFromRequest,
+} from './backend-incident-events'
+import {
   type BillingSummary,
   markOutOfCreditsNotificationFailed,
   markOutOfCreditsNotificationSent,
@@ -348,18 +302,10 @@ import {
   billingRuntimeForEnv,
 } from './billing-store'
 import {
-  recordBackendIncidentEvent,
-  routePatternFromRequest,
-} from './backend-incident-events'
-import {
   OpenAgentsDatabase,
   type OpenAgentsWorkerEnv,
   ThreadFileArtifacts,
 } from './bindings'
-import {
-  AUDIO_GRANT_ISSUE_PATH,
-  handleAudioGrantIssueRequest,
-} from './audio-grant-routes'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
 import {
@@ -378,32 +324,38 @@ import {
   handleOperatorBusinessAffiliateAttributionApi,
   handleOperatorBusinessAffiliateCodeApi,
 } from './business-affiliate-attribution-routes'
-import { makeD1AgentReadinessPublicReportStore } from './agent-readiness-public-report-store'
 import {
-  handlePublicAgentReadinessReportApi,
-  makeOperatorAgentReadinessReportRoutes,
-} from './agent-readiness-public-report-routes'
-import { makeD1BusinessOutreachStore } from './business-outreach'
-import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
-import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
-import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
-import { makeOperatorSarahSalesCheckoutRoutes } from './sarah-sales-checkout-routes'
+  firstAlreadySoldBusinessQuickWinReceipt,
+  makeInMemoryBusinessAlreadySoldEngagementReceiptStore,
+} from './business-already-sold-engagement-receipt'
+import { makeBusinessAlreadySoldEngagementReceiptRoutes } from './business-already-sold-engagement-receipt-routes'
 import {
-  SARAH_FLEET_RUNS_PATH,
-  makeSarahFleetRunRoutes,
-} from './sarah-fleet-run-routes'
-import {
-  makeD1BusinessStarterCreditStore,
-} from './business-starter-credit'
-import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
-import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
-import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
-import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
+  firstBusinessCaseStudy,
+  makeInMemoryBusinessCaseStudyStore,
+} from './business-case-study-engine'
+import { makeBusinessCaseStudyRoutes } from './business-case-study-engine-routes'
 // KS-8.14 (#8325): business funnel/orders/referrals dual-write seam —
 // scoped table writes read-back-mirror into Postgres (fail-soft).
 import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { runBusinessFulfillmentLoopScheduled } from './business-fulfillment-loop'
+import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
+import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
+import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
+import {
+  handleBusinessAgentGuide,
+  handleBusinessNewPage,
+} from './business-new-routes'
+import { makeD1BusinessOutreachStore } from './business-outreach'
+import {
+  ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
+  makeDailySalesLedgerRoutes,
+} from './business-outreach-daily-ledger-routes'
+import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
+import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
+import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { handleBusinessSignupApi } from './business-signup-routes'
+import { makeD1BusinessStarterCreditStore } from './business-starter-credit'
+import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
 import { buyModeEvalBridgeForEnv } from './buy-mode-live-eval-bridge'
@@ -421,17 +373,13 @@ import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // OA_CLOUD_CONTROL_URL/TOKEN are configured. The promise STAYS red until a real
 // desktop-originated GCE run produces artifact + receipt evidence.
 import {
-  probeAgentComputerCapacitySnapshot,
-  isCloudGceProvisioningArmed,
   isCloudCodingSessionsEnabled,
+  isCloudGceProvisioningArmed,
   makeCloudControlCloudCodingAdapter,
   makeD1CloudCodingAdmissionGate,
+  probeAgentComputerCapacitySnapshot,
   routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
 } from './cloud/cloud-coding-session-routes'
-import {
-  GitHubScmAuthBrokerDependencyFailed,
-  routeGitHubScmAuthBrokerRequest,
-} from './github-scm-auth-broker-routes'
 import { makeLedgerCloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
@@ -444,6 +392,10 @@ import {
   makeLedgerFineTuningMeteringHook,
   routeFineTuningJobRequest,
 } from './cloud/fine-tuning-service-routes'
+import {
+  KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
+  makeKhalaAgentComputerWritebackRoutes,
+} from './cloud/khala-agent-computer-writeback-routes'
 import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
 import {
   handleSandboxRequest,
@@ -452,33 +404,29 @@ import {
   makeLedgerSandboxMeteringHook,
   routeSandboxRequest,
 } from './cloud/sandbox-compute-service-routes'
+import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
 import {
   CodingQuickWinPipelineEndpoint,
   handleCodingQuickWinPipelineApi,
 } from './coding-quick-win-pipeline-routes'
-import {
-  firstBusinessCaseStudy,
-  makeInMemoryBusinessCaseStudyStore,
-} from './business-case-study-engine'
-import { makeBusinessCaseStudyRoutes } from './business-case-study-engine-routes'
-import {
-  firstAlreadySoldBusinessQuickWinReceipt,
-  makeInMemoryBusinessAlreadySoldEngagementReceiptStore,
-} from './business-already-sold-engagement-receipt'
-import { makeBusinessAlreadySoldEngagementReceiptRoutes } from './business-already-sold-engagement-receipt-routes'
+import { makeCodingQuickWinReceiptPublicRoutes } from './coding-quick-win-receipt-public-routes'
 import {
   type OpenAgentsWorkerConfigEnv,
   getOpenAgentsWorkerConfig,
   redactedValue,
 } from './config'
+import {
+  ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
+  ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
+  makeCrmApprovalBatchAdminRoutes,
+} from './crm-approval-batch-admin-routes'
 import { makeCrmApprovalBatchRoutes } from './crm-approval-batch-routes'
 import { makeCrmBatchRoutes } from './crm-batch-routes'
 import { makeCrmCommandRoutes } from './crm-command-routes'
+// KS-8.11 (#8322): CRM/email write entry points ride the dual-write seam.
+import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
-import { makeCrmReplyRoutes } from './crm-reply-routes'
-import { makeCrmSalesCheckoutRoutes } from './crm-sales-checkout-routes'
-import { makePortalRoutes } from './portal-routes'
 import { makeCrmMcpCatalog } from './crm-mcp'
 import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
 import {
@@ -489,6 +437,7 @@ import {
 } from './crm-mcp-grant'
 import { makeCrmMcpGrantRoutes } from './crm-mcp-grant-routes'
 import { makeCrmMcpRoutes } from './crm-mcp-routes'
+import { makeCrmReplyRoutes } from './crm-reply-routes'
 import {
   isCrmResendSendEnabled,
   makeCrmResendSender,
@@ -496,12 +445,8 @@ import {
 } from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
 import { makeCrmRoutes } from './crm-routes'
-import { routePublicAgentMcpRequest } from './public-agent-mcp-routes'
-import { routeSiteCrawlSurfaceRequest } from './site-crawl-surfaces-routes'
-import { routeWellKnownAgentSurfaceRequest } from './well-known-agent-surfaces-routes'
+import { makeCrmSalesCheckoutRoutes } from './crm-sales-checkout-routes'
 import { makeCrmSendRoutes } from './crm-send-routes'
-import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
-import { makeCodingQuickWinReceiptPublicRoutes } from './coding-quick-win-receipt-public-routes'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import {
   handleOperatorCustomerOneCohortRowsApi,
@@ -535,13 +480,41 @@ import {
   isEmailSequenceSendEnabled,
   makeCloudflareEmailSequenceSender,
 } from './email-sequence-send-service'
+import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
+import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
+import {
+  EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
+  EventLedgerIngestQueueMessage,
+  type EventLedgerSql,
+  makePostgresEventLedgerStore,
+  recordEventLedgerMessageWithOwnerObject,
+} from './event-ledger'
+import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-sequence-store'
 import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
 import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
+import {
+  authorizeForgeControlPlaneBearer,
+  makeForgeControlPlaneRoutes,
+} from './forge-control-plane-routes'
+// KS-8.16 (#8327): every forge store construction site rides the forge
+// domain dual-write seam (D1 authority + fail-soft Postgres mirror).
+import {
+  makeForgeCoordinationStoreForEnv,
+  makeForgeGitCanonicalStoreForEnv,
+  makeForgeGitHubMirrorStoreForEnv,
+  makeForgeGitPackfileArchiveStoreForEnv,
+  makeForgeTenantGitAuthStoreForEnv,
+} from './forge-domain-store'
+import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { forumContentDatabaseForEnv } from './forum/forum-content-store'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import { readForumTipRecipientReadinessForActor } from './forum/repository'
+import {
+  GitHubScmAuthBrokerDependencyFailed,
+  routeGitHubScmAuthBrokerRequest,
+} from './github-scm-auth-broker-routes'
 import {
   GITHUB_WRITE_REQUIRED_SCOPES,
   GitHubWriteApiFailure,
@@ -565,6 +538,14 @@ import {
   gitHubWriteRouteErrorName,
   gitHubWriteRouteErrorStatus,
 } from './github-write-route-errors'
+import {
+  makeGymLadderStoreForEnv,
+  makeGymRunProgressStoreForEnv,
+  makeHarborFullTraceArchiveStoreForEnv,
+  makeMirrorCodeRunStoreForEnv,
+  makeMutaliskKhalaDelegationWorkflowStoreForEnv,
+} from './gym-evals-domain-store'
+import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
 import {
   makeMissingOpenAgentsHostedMdkClient,
   makeOpenAgentsHostedMdkRouteClient,
@@ -591,18 +572,27 @@ import {
 } from './http/responses'
 import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
-import {
-  makeAutopilotContinuationStoreForEnv,
-  makeAutopilotWorkStoreForEnv,
-  makeHygieneDebtReceiptStoreForEnv,
-  makeOmniPublicProofBundleCompareReader,
-  makeOmniPublicProofBundlePostgresServerForEnv,
-  makeRelayHealthStoreForEnv,
-  makeSupervisionLongtailMirrorForEnv,
-} from './supervision-longtail-domain-store'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
-import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
+import {
+  IAP_REVENUECAT_WEBHOOK_PATH,
+  handleIapRevenueCatWebhookRequest,
+} from './iap-webhook-routes'
+import {
+  makeGitHubWriteRepositoryForEnv,
+  makeProviderAccountRepositoryForEnv,
+  makeProviderAccountTokenCustodyStoreForEnv,
+  postgresIdentityAuthStoreForEnv,
+} from './identity-auth-domain-store'
+import {
+  type IdentityDb,
+  identityDbForEnv,
+  readIdentityUserProfiles,
+} from './identity-db'
 import { makeImageGenerationRoutes } from './image-generation-routes'
+import {
+  inferenceEntitlementsMirrorForEnv,
+  makeInferenceEntitlementsRoutingForEnv,
+} from './inference-entitlements-store'
 import { makeInferenceReceiptStore } from './inference-receipts'
 import {
   isAcceptanceDispatchEnabled,
@@ -617,6 +607,11 @@ import {
   type AcceptedOutcomeSettlementSink,
   handleAcceptanceVerdictCallback,
 } from './inference/acceptance-verdict-callback-routes'
+import {
+  handleOperatorKhalaHeadToHeadApi,
+  handlePublicKhalaHeadToHeadApi,
+} from './inference/benchmark/head-to-head-routes'
+import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
 import { makeCardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
   handleChatCompletions,
@@ -624,17 +619,17 @@ import {
   isInferenceGatewayEnabled,
   khalaRequestForAdapter,
 } from './inference/chat-completions-routes'
-import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
 import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
 } from './inference/discovery-surfaces'
-import { durableInferenceStreamNamespaceForEnv } from './inference/durable-inference-stream-backend'
+import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
 import {
   matchDurableReadRequest,
   routeDurableInferenceReadRequest,
   routeDurableInferenceReadRequestDO,
 } from './inference/durable-inference-read-routes'
+import { durableInferenceStreamNamespaceForEnv } from './inference/durable-inference-stream-backend'
 import {
   KHALA_FIREWORKS_BACKING_MODEL_ID,
   fireworksAdapter,
@@ -644,30 +639,14 @@ import { runFleetBurnStallDetectorScheduled } from './inference/fleet-burn-stall
 import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
 import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
+import { makeGemma4Adapter } from './inference/gemma4-adapter'
+import { grantGithubSignupCredit } from './inference/github-signup-credit-grant'
 import { handleGlmFleetReadiness } from './inference/glm-fleet-readiness-routes'
 import {
   glmPoolHeartbeatRoutingStateOracle,
   runScheduledGlmPoolHeartbeatForD1,
 } from './inference/glm-pool-heartbeat'
 import { handleOperatorHarborFullTraceArchivesApi } from './inference/gym/harbor-full-trace-archive-routes'
-import {
-  makeGymLadderStoreForEnv,
-  makeGymRunProgressStoreForEnv,
-  makeHarborFullTraceArchiveStoreForEnv,
-  makeMirrorCodeRunStoreForEnv,
-  makeMutaliskKhalaDelegationWorkflowStoreForEnv,
-} from './gym-evals-domain-store'
-import {
-  handleOperatorGymRunProgressApi,
-  handlePublicGymRunProgressApi,
-} from './inference/gym/run-progress-routes'
-import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
-import {
-  handleOperatorMutaliskKhalaDelegationProgressApi,
-  handleOperatorMutaliskKhalaDelegationRunsApi,
-  handleOperatorMutaliskKhalaDelegationSummaryApi,
-  handlePublicMutaliskKhalaDelegationRunsApi,
-} from './inference/gym/mutalisk-khala-delegation-routes'
 import {
   handleOperatorGymLeaderboardApi,
   handlePublicGymLeaderboardApi,
@@ -677,12 +656,17 @@ import {
   handleMirrorCodeRunsApi,
   matchMirrorCodeRunByIdRequest,
 } from './inference/gym/mirrorcode-routes'
-import { runServingRateMonitorScheduled } from './inference/serving-rate-monitor'
 import {
-  handleOperatorKhalaHeadToHeadApi,
-  handlePublicKhalaHeadToHeadApi,
-} from './inference/benchmark/head-to-head-routes'
-import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
+  handleOperatorMutaliskKhalaDelegationProgressApi,
+  handleOperatorMutaliskKhalaDelegationRunsApi,
+  handleOperatorMutaliskKhalaDelegationSummaryApi,
+  handlePublicMutaliskKhalaDelegationRunsApi,
+} from './inference/gym/mutalisk-khala-delegation-routes'
+import {
+  handleOperatorGymRunProgressApi,
+  handlePublicGymRunProgressApi,
+} from './inference/gym/run-progress-routes'
+import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
 import {
   type HydraliskPoolRouteAdmissionSnapshot,
   makeHydraliskVllmAdapter,
@@ -706,8 +690,6 @@ import {
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
-import { grantGithubSignupCredit } from './inference/github-signup-credit-grant'
-import { agentRefForUser } from './inference/usd-credit-bridge'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import {
   isOperatorExemptionEnabled,
@@ -725,10 +707,6 @@ import {
   handlePaidPrivacyPurchase,
   handlePublicPrivacyReceiptRead,
 } from './inference/inference-privacy-receipt-routes'
-import {
-  inferenceEntitlementsMirrorForEnv,
-  makeInferenceEntitlementsRoutingForEnv,
-} from './inference-entitlements-store'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import {
@@ -740,6 +718,7 @@ import {
   isKhalaChatTraceEmitEnabled,
   isKhalaFreeTierTraceCaptureDefaultEnabled,
 } from './inference/khala-chat-trace-emitter'
+import { isKhalaCodeLightningPaymentsEnabled } from './inference/khala-code-lightning-payments'
 import { isKhalaCodePaidPlansEnabled } from './inference/khala-code-plan-catalog'
 import {
   handleKhalaCodePlanCatalogApi,
@@ -755,6 +734,20 @@ import {
   readKhalaLoopArming,
 } from './inference/khala-loop-integration'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
+import {
+  AUTO_EXECUTION_TARGET_ID,
+  type AutoExecutionTargetCandidate,
+  type AutoExecutionTargetResolution,
+  DEFAULT_EXECUTION_TARGET_ID,
+  isExecutionTargetIdAvailable,
+  normalizeExecutionTargetId,
+  readUserModelPreference,
+  resolveAutoExecutionTarget,
+  resolveAvailableExecutionTargetIds,
+  resolveAvailableModelIds,
+  resolveExecutionTargetPreference,
+  writeUserModelPreference,
+} from './inference/model-preference-store'
 import {
   FIREWORKS_ADAPTER_ID,
   FIREWORKS_STRONG_CODING_ADAPTER_ID,
@@ -773,24 +766,9 @@ import {
   resolveSupplyLaneArming,
 } from './inference/model-serving-policy'
 import {
-  AUTO_EXECUTION_TARGET_ID,
-  DEFAULT_EXECUTION_TARGET_ID,
-  isExecutionTargetIdAvailable,
-  normalizeExecutionTargetId,
-  readUserModelPreference,
-  resolveAutoExecutionTarget,
-  resolveAvailableExecutionTargetIds,
-  resolveAvailableModelIds,
-  resolveExecutionTargetPreference,
-  writeUserModelPreference,
-  type AutoExecutionTargetCandidate,
-  type AutoExecutionTargetResolution,
-} from './inference/model-preference-store'
-import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
-import { isKhalaCodeLightningPaymentsEnabled } from './inference/khala-code-lightning-payments'
 import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice'
 import {
   MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
@@ -837,7 +815,9 @@ import {
   makeD1ServedTokensRecorder,
   meterServedTokensFailSoft,
 } from './inference/served-tokens-recorder'
+import { runServingRateMonitorScheduled } from './inference/serving-rate-monitor'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
+import { agentRefForUser } from './inference/usd-credit-bridge'
 import {
   VERTEX_ANTHROPIC_ADAPTER_ID,
   makeVertexAnthropicAdapter,
@@ -847,7 +827,6 @@ import {
   VERTEX_GEMINI_ADAPTER_ID,
   makeVertexGeminiAdapter,
 } from './inference/vertex-gemini-adapter'
-import { makeGemma4Adapter } from './inference/gemma4-adapter'
 import { tokenProviderFromSecret } from './inference/vertex-token'
 import {
   decodeUnknownWithSchema,
@@ -860,20 +839,6 @@ import {
   safeJsonRecord,
   stringArrayFromUnknown,
 } from './json-boundary'
-import {
-  authorizeForgeControlPlaneBearer,
-  makeForgeControlPlaneRoutes,
-} from './forge-control-plane-routes'
-// KS-8.16 (#8327): every forge store construction site rides the forge
-// domain dual-write seam (D1 authority + fail-soft Postgres mirror).
-import {
-  makeForgeCoordinationStoreForEnv,
-  makeForgeGitCanonicalStoreForEnv,
-  makeForgeGitHubMirrorStoreForEnv,
-  makeForgeGitPackfileArchiveStoreForEnv,
-  makeForgeTenantGitAuthStoreForEnv,
-} from './forge-domain-store'
-import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import {
   loadKhalaChatAccountPylonContext,
@@ -881,38 +846,63 @@ import {
 } from './khala-chat-pylon-context'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 import {
-  handleKhalaFeedbackSubmit,
-  handleOperatorKhalaFeedback,
-  makeD1KhalaFeedbackStore,
-} from './khala-feedback-routes'
+  dispatchCloudGcpRuntimeTurn,
+  makeCloudCodingAdapterLaunchSeam,
+  readQueuedManagedCloudTurns,
+  resolveManagedCloudRepositoryCommit,
+  runCloudGcpRuntimeDispatch,
+} from './khala-cloud-runtime-dispatch'
+import {
+  type CloudGcpRuntimeDispatchContext,
+  KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
+  handleCloudGcpRuntimeDispatchAdminRoute,
+} from './khala-cloud-runtime-dispatch-admin-routes'
+import {
+  mintCloudRuntimeExecutionToken,
+  revokeCloudRuntimeExecutionToken,
+} from './khala-cloud-runtime-execution-token'
+import {
+  buildCloudRuntimeWorkContext,
+  buildCloudRuntimeWritebackConfig,
+  encodeWorkContextB64,
+} from './khala-cloud-runtime-inference-block'
+import {
+  KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
+  makeKhalaCloudRuntimeUsageRoutes,
+  ownerCapacityGrantAuthorizesReceipt,
+  publishKhalaCloudRuntimeInsufficientCreditEvent,
+} from './khala-cloud-runtime-usage-routes'
 import { handlePublicKhalaCodeDownloadCountsApi } from './khala-code-download-counts-routes'
+import {
+  isKhalaCodeOpenAgentsAuthVerifyReturnPath,
+  makeKhalaCodeOpenAgentsAuthHandlers,
+} from './khala-code-openagents-auth-routes'
 import {
   handlePublicKhalaCodeOutsideUserRunsApi,
   makeD1KhalaCodeOutsideUserRunStore,
   makePublicKhalaCodeOutsideUserRunReceiptRoutes,
 } from './khala-code-outside-user-run-routes'
+import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
 import {
   handleOperatorKhalaCodeTracePluginRevenueSharePrecedentsApi,
   makeD1KhalaCodeTracePluginRevenueShareStore,
   makeKhalaCodeTracePluginRevenueShareRoutes,
 } from './khala-code-trace-plugin-revenue-share-routes'
 import {
-  handleOperatorQaSwarmFirstEngagementsApi,
-  makeD1QaSwarmFirstEngagementStore,
-  makeQaSwarmFirstEngagementRoutes,
-} from './qa-swarm-first-engagement-routes'
+  handleKhalaFeedbackSubmit,
+  handleOperatorKhalaFeedback,
+  makeD1KhalaFeedbackStore,
+} from './khala-feedback-routes'
 import {
-  handleOperatorKhalaTraceReview,
-  makeD1KhalaTraceReviewStore,
-} from './khala-trace-review-routes'
+  DEFAULT_HOSTED_RUNTIME_MODEL,
+  type HostedRuntimeCompleteFn,
+  runHostedRuntimeTurnDispatch,
+} from './khala-hosted-runtime-dispatch'
 import {
-  handleOperatorRlmTraces,
-  makeD1OperatorRlmTraceStore,
-} from './rlm-operator-traces-routes'
-import {
-  handleOperatorKhalaUnsupportedRequests,
-  makeD1KhalaUnsupportedRequestStore,
-} from './khala-unsupported-request-routes'
+  hostedKhalaOwnerCreditAccountRef,
+  hostedTurnUsageFromArtanisMind,
+  recordHostedTurnUsageAndCharge,
+} from './khala-hosted-runtime-metering'
 import {
   combineMcpCatalogs,
   khalaDurableRequestIsLinkedToPrincipal,
@@ -920,23 +910,45 @@ import {
   makeKhalaMcpCatalog,
 } from './khala-mcp'
 import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
-import { handleKhalaSyncCvrPull } from './khala-sync-cvr-routes'
-import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
-import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
-import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
   KHALA_SYNC_CAPTURE_HEALTH_PATH,
   handleKhalaSyncCaptureHealth,
   runKhalaSyncCaptureStalenessProbe,
 } from './khala-sync-capture-health-routes'
-import {
-  OA_QUEUE_DELIVER_PATH,
-  handleOaQueueDeliver,
-} from './oa-queue-delivery-routes'
+import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
+import { handleKhalaSyncCvrPull } from './khala-sync-cvr-routes'
+import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
   KHALA_SYNC_FLEET_INTENTS_PATH,
   handleKhalaSyncFleetIntents,
 } from './khala-sync-fleet-intents-routes'
+import { projectFleetAssignmentTransition } from './khala-sync-fleet-projection'
+import {
+  KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
+  KHALA_SYNC_HUB_APPEND_PATH,
+  KHALA_SYNC_HUB_CONNECT_PATH,
+  KHALA_SYNC_HUB_LOG_PATH,
+  handleKhalaSyncHubAccessChangedRoute,
+  handleKhalaSyncHubInternalRoute,
+} from './khala-sync-hub-do'
+import { resolveKhalaSyncHubNamespace } from './khala-sync-live-hub-client'
+import { handleKhalaSyncLog } from './khala-sync-log-routes'
+import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
+import { refreshActivityTimelineSnapshotBestEffort } from './khala-sync-public-activity-timeline'
+import {
+  KHALA_SYNC_TOKENS_SERVED_RECONCILE_PATH,
+  handleKhalaSyncTokensServedReconcile,
+} from './khala-sync-public-counter-reconcile-routes'
+import {
+  reconcileTokensServedProjection,
+  recordTokensServedProjectionBestEffort,
+} from './khala-sync-public-tokens-served'
+import { refreshTokensServedAggregatesBestEffort } from './khala-sync-public-tokens-served-mix'
+import {
+  defaultMakeKhalaSyncSqlClient,
+  handleKhalaSyncPush,
+} from './khala-sync-push-routes'
+import { makeKhalaSyncRouteWiring } from './khala-sync-route-wiring'
 import {
   KHALA_SYNC_CHAT_MESSAGE_READ_PATH,
   KHALA_SYNC_RUNTIME_INTENTS_PATH,
@@ -950,55 +962,30 @@ import {
   handleKhalaSyncRuntimeInteraction,
 } from './khala-sync-runtime-interaction-routes'
 import {
-  KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
-  KHALA_SYNC_HUB_APPEND_PATH,
-  KHALA_SYNC_HUB_CONNECT_PATH,
-  KHALA_SYNC_HUB_LOG_PATH,
-  handleKhalaSyncHubAccessChangedRoute,
-  handleKhalaSyncHubInternalRoute,
-} from './khala-sync-hub-do'
-export { KhalaSyncHubDO } from './khala-sync-hub-do'
-import { resolveKhalaSyncHubNamespace } from './khala-sync-live-hub-client'
-import { projectFleetAssignmentTransition } from './khala-sync-fleet-projection'
-import { handleKhalaSyncLog } from './khala-sync-log-routes'
-import { makeKhalaSyncRouteWiring } from './khala-sync-route-wiring'
-import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
-import {
-  DEFAULT_HOSTED_RUNTIME_MODEL,
-  runHostedRuntimeTurnDispatch,
-  type HostedRuntimeCompleteFn,
-} from './khala-hosted-runtime-dispatch'
-import {
-  hostedKhalaOwnerCreditAccountRef,
-  hostedTurnUsageFromArtanisMind,
-  recordHostedTurnUsageAndCharge,
-} from './khala-hosted-runtime-metering'
-import {
-  handleKhalaSyncTokensServedReconcile,
-  KHALA_SYNC_TOKENS_SERVED_RECONCILE_PATH,
-} from './khala-sync-public-counter-reconcile-routes'
-import {
-  reconcileTokensServedProjection,
-  recordTokensServedProjectionBestEffort,
-} from './khala-sync-public-tokens-served'
-import {
-  handleKhalaSyncUserCreditBalanceBackfill,
-  KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH,
-} from './khala-sync-user-credit-balance-backfill-routes'
-import {
+  type UserCreditBalanceProjectionDeps,
   recordUserCreditBalanceDeltaBestEffort,
   userIdFromAgentRef,
-  type UserCreditBalanceProjectionDeps,
 } from './khala-sync-user-credit-balance'
-import { refreshTokensServedAggregatesBestEffort } from './khala-sync-public-tokens-served-mix'
-import { refreshActivityTimelineSnapshotBestEffort } from './khala-sync-public-activity-timeline'
 import {
-  defaultMakeKhalaSyncSqlClient,
-  handleKhalaSyncPush,
-} from './khala-sync-push-routes'
+  KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH,
+  handleKhalaSyncUserCreditBalanceBackfill,
+} from './khala-sync-user-credit-balance-backfill-routes'
+import {
+  handleOperatorKhalaTraceReview,
+  makeD1KhalaTraceReviewStore,
+} from './khala-trace-review-routes'
+import {
+  handleOperatorKhalaUnsupportedRequests,
+  makeD1KhalaUnsupportedRequestStore,
+} from './khala-unsupported-request-routes'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
+import { handleLander2Page } from './lander2-routes'
+import { handleLander3Page } from './lander3-routes'
+import { handleLander4Page } from './lander4-routes'
+import { handleLander5Page } from './lander5-routes'
+import { enrollListSubscriberInSequence } from './list-sequence-enrollment'
 import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
 import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
@@ -1013,10 +1000,6 @@ import {
   handleMarketplaceWorkClassCatalogApi,
 } from './marketplace-work-class-catalog-routes'
 import {
-  WasmPluginMarketplaceEndpoint,
-  handleWasmPluginMarketplaceApi,
-} from './wasm-plugin-marketplace-routes'
-import {
   mdkContainerEnvVars,
   optionalMdkContainerSecret,
 } from './mdk-container-env'
@@ -1026,6 +1009,16 @@ import {
   makeMdkSidecarHttpRequestForward,
   mdkServiceHttpBaseUrl,
 } from './mdk-service-endpoints'
+import {
+  MOBILE_ACCOUNT_PATH,
+  handleMobileAccountDeletionRequest,
+} from './mobile-account-deletion-routes'
+import {
+  MOBILE_CREDITS_BALANCE_PATH,
+  MOBILE_CREDITS_TRANSACTIONS_PATH,
+  handleMobileCreditsBalanceRequest,
+  handleMobileCreditsTransactionsRequest,
+} from './mobile-credits-routes'
 import {
   MobileWorkroomApprovalProjectionEndpoint,
   handleMobileWorkroomApprovalProjectionApi,
@@ -1037,6 +1030,16 @@ import { makeNativeListsRoutes } from './native-lists-routes'
 import { makeNexusPylonVisibilityRoutes } from './nexus-pylon-visibility-routes'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
+import {
+  OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
+  OA_JOB_TOPIC_PYLON_CODEX_RAW_EVENT_METADATA,
+  type OaJobQueueProducerEnv,
+  makeOaJobEnqueueForEnv,
+} from './oa-job-queue-producer'
+import {
+  OA_QUEUE_DELIVER_PATH,
+  handleOaQueueDeliver,
+} from './oa-queue-delivery-routes'
 import {
   logWorkerRouteError,
   logWorkerRouteInfo,
@@ -1095,12 +1098,8 @@ import {
   makeOperatorFleetStatusRoutes,
   readOperatorFleetStatusSnapshotFromRunnerStatusReadStore,
 } from './operator-fleet-status-routes'
-import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
-import {
-  makePylonAgentRunnerStatusMirrorForEnv,
-  makePylonAgentRunnerStatusReadStoreForEnv,
-} from './pylon-agent-runner-status-store'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
+import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
 import { makeOperatorSitesRoutes } from './operator-sites-routes'
@@ -1115,8 +1114,8 @@ import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
 import { readAgentBalance } from './payments-ledger'
-import { identityDbForEnv, readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import { paymentsLedgerDbForEnv } from './payments-ledger-db'
+import { makePortalRoutes } from './portal-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
 import {
@@ -1133,24 +1132,25 @@ import {
 } from './promise-transition-receipt-routes'
 import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
+import {
+  MOBILE_CLAUDE_ACCOUNTS_PATH,
+  MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
+  MOBILE_CODEX_ACCOUNTS_PATH,
+  MOBILE_CODEX_DEVICE_LOGIN_START_PATH,
+  makeProviderAccountMobileHandlers,
+} from './provider-account-mobile-routes'
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
+import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 import {
-  makeGitHubWriteRepositoryForEnv,
-  makeProviderAccountRepositoryForEnv,
-  makeProviderAccountTokenCustodyStoreForEnv,
-  postgresIdentityAuthStoreForEnv,
-} from './identity-auth-domain-store'
-import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
-import {
+  type ProviderTokenCustodyKeyEnv,
   codexAccessToAuthMaterial,
   deleteConnectedCodexAuthFromCustody,
   issueShortLivedCodexAccessFromCustody,
   providerAccountTokenCustodyCipherFromEnv,
   storeConnectedCodexAuthInCustody,
-  type ProviderTokenCustodyKeyEnv,
 } from './provider-account-token-custody'
 import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import {
@@ -1169,73 +1169,57 @@ import {
   publicActivityTimelineRawSourceInputForRequest,
 } from './public-activity-timeline-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
+import { routePublicAgentMcpRequest } from './public-agent-mcp-routes'
 import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
 import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
+import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicKhalaTokensServedChannelMixApi } from './public-khala-tokens-served-channel-mix-routes'
 import { handlePublicKhalaTokensServedDemandMixApi } from './public-khala-tokens-served-demand-mix-routes'
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
 import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
-import { handleLander2Page } from './lander2-routes'
-import { handleLander3Page } from './lander3-routes'
-import { handleLander4Page } from './lander4-routes'
-import { handleLander5Page } from './lander5-routes'
-import { handleReactLandingPage } from './react-landing-routes'
-import {
-  handleBusinessAgentGuide,
-  handleBusinessNewPage,
-} from './business-new-routes'
-import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
-import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { makePublicPartnerPayoutReceiptRoutes } from './public-partner-payout-receipt-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
+import { handlePublicSettledFeedApi } from './public-settled-feed-routes'
 import { makePublicSiteReferralPayoutReceiptRoutes } from './public-site-referral-payout-receipt-routes'
 import { makePublicStripeCheckoutReceiptRoutes } from './public-stripe-checkout-receipt-routes'
-import { makePublicFirstDollarEvidenceRoutes } from './revenue-event-provenance-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
-  type PylonApiStore,
-  resolveSparkPayoutDestination,
-} from './pylon-api'
+  PUSH_DEVICE_TOKENS_PATH,
+  handlePushDeviceTokensRequest,
+} from './push/push-device-token-routes'
 import {
-  makePylonApiStoreForEnv,
-  makePylonSparkPayoutTargetStoreForEnv,
-} from './pylon-dispatch-store'
+  PUSH_NOTIFICATION_PREFERENCES_PATH,
+  PUSH_NOTIFY_EVENTS_PATH,
+  handlePushNotificationPreferencesRequest,
+  handlePushNotifyEventsRequest,
+} from './push/push-notify-routes'
+import {
+  makePylonAgentRunnerStatusMirrorForEnv,
+  makePylonAgentRunnerStatusReadStoreForEnv,
+} from './pylon-agent-runner-status-store'
+import { type PylonApiStore, resolveSparkPayoutDestination } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import {
+  type PylonCapacityFunnelSnapshotStore,
   handlePylonCapacityFunnelApi,
   handlePylonCapacityFunnelHistoryApi,
   makePylonCapacityFunnelSnapshotStoreForEnv,
-  type PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import {
-  KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
-  makeKhalaCloudRuntimeUsageRoutes,
-  ownerCapacityGrantAuthorizesReceipt,
-  publishKhalaCloudRuntimeInsufficientCreditEvent,
-} from './khala-cloud-runtime-usage-routes'
-import {
-  dispatchCloudGcpRuntimeTurn,
-  makeCloudCodingAdapterLaunchSeam,
-  readQueuedManagedCloudTurns,
-  runCloudGcpRuntimeDispatch,
-  resolveManagedCloudRepositoryCommit,
-} from './khala-cloud-runtime-dispatch'
-import {
-  handleCloudGcpRuntimeDispatchAdminRoute,
-  KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
-  type CloudGcpRuntimeDispatchContext,
-} from './khala-cloud-runtime-dispatch-admin-routes'
-import {
-  KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
-  makeKhalaAgentComputerWritebackRoutes,
-} from './cloud/khala-agent-computer-writeback-routes'
+  PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION,
+  PylonCodexRawEventMetadataQueueMessage,
+  type PylonCodexRawEventMetadataQueueProducer,
+  makePylonCodexRawEventMetadataQueueConsumerForEnv,
+  makeQueuedR2PylonCodexRawEventChunkStore,
+  makeQueuedR2PylonCodexRawEventStore,
+} from './pylon-codex-raw-event-metadata-queue-store'
 import {
   PYLON_CLAUDE_TURN_INGEST_PATH,
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
@@ -1249,19 +1233,9 @@ import {
   makePylonCodexTurnIngestRoutes,
 } from './pylon-codex-turn-ingest-routes'
 import {
-  PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION,
-  PylonCodexRawEventMetadataQueueMessage,
-  makePylonCodexRawEventMetadataQueueConsumerForEnv,
-  makeQueuedR2PylonCodexRawEventChunkStore,
-  makeQueuedR2PylonCodexRawEventStore,
-  type PylonCodexRawEventMetadataQueueProducer,
-} from './pylon-codex-raw-event-metadata-queue-store'
-import {
-  OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
-  OA_JOB_TOPIC_PYLON_CODEX_RAW_EVENT_METADATA,
-  makeOaJobEnqueueForEnv,
-  type OaJobQueueProducerEnv,
-} from './oa-job-queue-producer'
+  makePylonApiStoreForEnv,
+  makePylonSparkPayoutTargetStoreForEnv,
+} from './pylon-dispatch-store'
 import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
@@ -1274,9 +1248,11 @@ import {
 } from './pylon-multi-earning-node-routes'
 import { makePylonOpenAgentsAuthHandlers } from './pylon-openagents-auth-routes'
 import {
-  isKhalaCodeOpenAgentsAuthVerifyReturnPath,
-  makeKhalaCodeOpenAgentsAuthHandlers,
-} from './khala-code-openagents-auth-routes'
+  handleOperatorQaSwarmFirstEngagementsApi,
+  makeD1QaSwarmFirstEngagementStore,
+  makeQaSwarmFirstEngagementRoutes,
+} from './qa-swarm-first-engagement-routes'
+import { handleReactLandingPage } from './react-landing-routes'
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
@@ -1284,6 +1260,11 @@ import {
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
 import { handleResendWebhook } from './resend-webhooks'
+import { makePublicFirstDollarEvidenceRoutes } from './revenue-event-provenance-routes'
+import {
+  handleOperatorRlmTraces,
+  makeD1OperatorRlmTraceStore,
+} from './rlm-operator-traces-routes'
 import { makeExactRouteRegistry } from './routing/exact-routes'
 import {
   cleanProductRouteRedirectLocation,
@@ -1305,6 +1286,11 @@ import {
   randomUuid,
 } from './runtime-primitives'
 import {
+  SARAH_FLEET_RUNS_PATH,
+  makeSarahFleetRunRoutes,
+} from './sarah-fleet-run-routes'
+import { makeOperatorSarahSalesCheckoutRoutes } from './sarah-sales-checkout-routes'
+import {
   SelfServeFanoutEndpoint,
   handleSelfServeFanoutApi,
   isSelfServeFanoutEnabled,
@@ -1318,6 +1304,7 @@ import {
 } from './signature-usage-metering-routes'
 import { makeD1SiteCommerceReviewStore } from './site-commerce-review'
 import { makeSiteCommerceRoutes } from './site-commerce-routes'
+import { routeSiteCrawlSurfaceRequest } from './site-crawl-surfaces-routes'
 import { resolveSiteFormSpec } from './site-form-spec-registry'
 import { makeD1SiteMdkAccountBindingStore } from './site-mdk-account-bindings'
 import { makeD1SiteMdkCheckoutIntentStore } from './site-mdk-checkout-intents'
@@ -1326,7 +1313,6 @@ import {
   isSiteFormCaptureEnabled,
   makeSitePageFormCaptureRoutes,
 } from './site-page-form-capture-routes'
-import { enrollListSubscriberInSequence } from './list-sequence-enrollment'
 import {
   type ReferralConsumptionResult,
   consumePendingReferralForUser,
@@ -1349,6 +1335,15 @@ import {
   makeD1StripeCheckoutReceiptStore,
   stripeCheckoutReceiptStoreForEnv,
 } from './stripe-checkout-receipts'
+import {
+  makeAutopilotContinuationStoreForEnv,
+  makeAutopilotWorkStoreForEnv,
+  makeHygieneDebtReceiptStoreForEnv,
+  makeOmniPublicProofBundleCompareReader,
+  makeOmniPublicProofBundlePostgresServerForEnv,
+  makeRelayHealthStoreForEnv,
+  makeSupervisionLongtailMirrorForEnv,
+} from './supervision-longtail-domain-store'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -1383,7 +1378,6 @@ import {
   buildSettledFeedEvents,
   publishSettledFeedEvents,
 } from './tassadar-settled-feed-sync'
-import { handlePublicSettledFeedApi } from './public-settled-feed-routes'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
@@ -1431,22 +1425,22 @@ import {
   runTipsSweepScheduled,
 } from './tips-sweep'
 import {
-  type AutopilotTokenLeaderboards,
-  TokenUsageLeaderboards,
-} from './token-usage'
-import {
+  type TokenLedgerRouteEnvSlice,
   directTokenLedgerRowFromIngestBody,
   ledgerDirectInsertDatabaseForEnv,
   makeTokenLedgerWriteStoreForEnv,
   makeTokenUsageLedgerForEnv,
   mirrorTokenLedgerDirectInsertBestEffort,
   tokenUsageLedgerFromRouteInput,
-  type TokenLedgerRouteEnvSlice,
 } from './token-ledger-store'
 import {
+  type AutopilotTokenLeaderboards,
+  TokenUsageLeaderboards,
+} from './token-usage'
+import {
+  TokenUsageLedger,
   makeD1TokenUsageLedger,
   readPublicTokensServedExactTotal,
-  TokenUsageLedger,
 } from './token-usage-ledger'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import {
@@ -1458,6 +1452,12 @@ import {
   TrainingAblationDeriskingLedgerEndpoint,
   handleTrainingAblationDeriskingLedgerApi,
 } from './training-ablation-derisking-ledger-routes'
+import {
+  type TrainingStoreEnv,
+  makeTrainingAuthorityStoreForEnv,
+  makeTrainingTraceContributionStoreForEnv,
+  makeTrainingVerificationStoreForEnv,
+} from './training-domain-store'
 import {
   TrainingFullPipelineProgramEndpoint,
   handleTrainingFullPipelineProgramApi,
@@ -1490,13 +1490,6 @@ import {
   TrainingPublicGradientWindowsEndpoint,
   handleTrainingPublicGradientWindowsApi,
 } from './training-public-gradient-windows-routes'
-import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
-import {
-  makeTrainingAuthorityStoreForEnv,
-  makeTrainingTraceContributionStoreForEnv,
-  makeTrainingVerificationStoreForEnv,
-  type TrainingStoreEnv,
-} from './training-domain-store'
 import {
   buildTrainingWindowRecord,
   transitionTrainingWindowRecord,
@@ -1512,6 +1505,7 @@ import {
   runTrainingVerificationClass,
 } from './training-verification'
 import { makeTrainingVerificationRoutes } from './training-verification-routes'
+import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import {
   makeD1TreasuryTransactionStore,
   makeTreasuryPageRoutes,
@@ -1532,10 +1526,17 @@ import {
   handlePublicTreasuryLaunchStatusApi,
   reconcilePendingTreasuryTransactions,
 } from './treasury-routes'
+import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
+import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
 import {
   type ViralAgentFunnelEventKind,
   recordViralAgentFunnelEvent,
 } from './viral-agent-funnel'
+import {
+  WasmPluginMarketplaceEndpoint,
+  handleWasmPluginMarketplaceApi,
+} from './wasm-plugin-marketplace-routes'
+import { routeWellKnownAgentSurfaceRequest } from './well-known-agent-surfaces-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
 import {
   makeD1XClaimRewardTreasuryDispatchStore,
@@ -1543,6 +1544,10 @@ import {
   runXClaimRewardTreasuryDispatchScheduled,
   xClaimRewardDispatchDayStartIso,
 } from './x-claim-reward-treasury-dispatcher'
+
+export { EventLedgerOwnerDurableObject } from './event-ledger'
+
+export { KhalaSyncHubDO } from './khala-sync-hub-do'
 
 export type Env = OpenAgentsWorkerEnv
 
@@ -3032,7 +3037,10 @@ const authEmailOtpRateLimitResponse = (
     status: 429,
   })
 
-const maybeAuthEmailOtpGuardResponse = async (request: Request, env: OpenAgentsWorkerEnv) => {
+const maybeAuthEmailOtpGuardResponse = async (
+  request: Request,
+  env: OpenAgentsWorkerEnv,
+) => {
   const url = new URL(request.url)
 
   if (request.method !== 'POST' || url.pathname !== '/code/authorize') {
@@ -3697,7 +3705,10 @@ const appendTeamAutopilotAnswerBack = async (
     return
   }
 
-  const bundle = await makeOmniRunStoreForEnv(env).findAgentRunForUser(parent.message.author.userId, runId)
+  const bundle = await makeOmniRunStoreForEnv(env).findAgentRunForUser(
+    parent.message.author.userId,
+    runId,
+  )
 
   if (bundle === undefined || bundle.run.status !== 'completed') {
     return
@@ -3734,27 +3745,31 @@ const appendTeamAutopilotAnswerBack = async (
   const selectedTeamFileIds = selectedFileIdsFromTeamMessageMetadata(
     parent.metadataJson,
   )
-  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), identityDbForEnv(env), {
-    agentRunId: runId,
-    authorUserId: parent.message.author.userId,
-    body: draft.body,
-    id: answerId,
-    kind: 'system',
-    metadataJson: JSON.stringify({
+  const message = await insertTeamChatMessage(
+    khalaCodeProductStateDatabaseForEnv(env),
+    identityDbForEnv(env),
+    {
       agentRunId: runId,
-      kind: 'autopilot_answer_back',
-      parentTeamChatMessageId: parent.message.id,
-      selectedTeamFileIds,
-      sourceEventId: draft.sourceEventId,
-    }),
-    ...(parent.message.autopilotThreadId === null
-      ? {}
-      : { autopilotThreadId: parent.message.autopilotThreadId }),
-    ...(parent.message.projectId === null
-      ? {}
-      : { projectId: parent.message.projectId }),
-    teamId: parent.message.teamId,
-  }).catch(async error => {
+      authorUserId: parent.message.author.userId,
+      body: draft.body,
+      id: answerId,
+      kind: 'system',
+      metadataJson: JSON.stringify({
+        agentRunId: runId,
+        kind: 'autopilot_answer_back',
+        parentTeamChatMessageId: parent.message.id,
+        selectedTeamFileIds,
+        sourceEventId: draft.sourceEventId,
+      }),
+      ...(parent.message.autopilotThreadId === null
+        ? {}
+        : { autopilotThreadId: parent.message.autopilotThreadId }),
+      ...(parent.message.projectId === null
+        ? {}
+        : { projectId: parent.message.projectId }),
+      teamId: parent.message.teamId,
+    },
+  ).catch(async error => {
     const replayed = await readTeamChatMessageById(
       openAgentsDatabase(env),
       identityDbForEnv(env),
@@ -3772,20 +3787,23 @@ const appendTeamAutopilotAnswerBack = async (
     return
   }
 
-  await insertThreadFileMessageReferences(khalaCodeProductStateDatabaseForEnv(env), {
-    fileIds: selectedTeamFileIds,
-    messageId: message.id,
-    referenceKind: 'autopilot_answer',
-    teamId: parent.message.teamId,
-    threadId:
-      parent.message.autopilotThreadId ??
-      (parent.message.projectId === null
-        ? teamChatThreadId(parent.message.teamId)
-        : teamProjectChatThreadId(
-            parent.message.teamId,
-            parent.message.projectId,
-          )),
-  })
+  await insertThreadFileMessageReferences(
+    khalaCodeProductStateDatabaseForEnv(env),
+    {
+      fileIds: selectedTeamFileIds,
+      messageId: message.id,
+      referenceKind: 'autopilot_answer',
+      teamId: parent.message.teamId,
+      threadId:
+        parent.message.autopilotThreadId ??
+        (parent.message.projectId === null
+          ? teamChatThreadId(parent.message.teamId)
+          : teamProjectChatThreadId(
+              parent.message.teamId,
+              parent.message.projectId,
+            )),
+    },
+  )
 
   await publishTeamChatMessageSync(
     env,
@@ -4023,7 +4041,8 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
               // product-state adapter handle (khala-sync migration 0047).
               db: khalaCodeProductStateDatabaseForEnv(env),
               ledgerDb: paymentsLedgerDbForEnv(env),
-              recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
+              recordCreditBalanceProjection:
+                creditBalanceProjectionRecorderForEnv(env),
             },
           ),
         )
@@ -4120,12 +4139,7 @@ const verifySession = async (
     return undefined
   }
 
-  return verifyOpenAuthUserTokens(
-    access,
-    cookies.get(REFRESH_COOKIE),
-    env,
-    ctx,
-  )
+  return verifyOpenAuthUserTokens(access, cookies.get(REFRESH_COOKIE), env, ctx)
 }
 
 const scheduleSiteReferralOnboardingEmail = (
@@ -4163,22 +4177,26 @@ const { appendRefreshedSessionCookies, requireBrowserSession } =
     verifySession,
   })
 
-const { requireUserBearerSession } =
-  makeUserBearerSessionBoundary<UserSubject, Env>({
-    isAccessTokenRevoked: async (env, accessToken) => {
-      try {
-        return await isMobileAccessTokenRevoked(authKvStoreForEnv(env), accessToken)
-      } catch (error) {
-        logWorkerRouteError('mobile_auth_revocation_check_failed', error)
+const { requireUserBearerSession } = makeUserBearerSessionBoundary<
+  UserSubject,
+  Env
+>({
+  isAccessTokenRevoked: async (env, accessToken) => {
+    try {
+      return await isMobileAccessTokenRevoked(
+        authKvStoreForEnv(env),
+        accessToken,
+      )
+    } catch (error) {
+      logWorkerRouteError('mobile_auth_revocation_check_failed', error)
 
-        return true
-      }
-    },
-    persistUser: (env, user) =>
-      upsertUser(identityDbForEnv(env), user),
-    verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
-      verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
-  })
+      return true
+    }
+  },
+  persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
+  verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
+    verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
+})
 
 // AIUR-2 (#8500): the Aiur admin panel forwards the owner's OWN OpenAuth
 // bearer token (the same token that authenticated Aiur's own owner-only
@@ -4203,7 +4221,8 @@ const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
   signupGrantsDb: env => khalaCodeProductStateDatabaseForEnv(env),
   identityDb: env => identityDbForEnv(env),
   ledgerDb: env => paymentsLedgerDbForEnv(env),
-  recordCreditBalanceProjection: env => creditBalanceProjectionRecorderForEnv(env),
+  recordCreditBalanceProjection: env =>
+    creditBalanceProjectionRecorderForEnv(env),
   requireAdminCaller: async (request, env, ctx) => {
     const session = await requireUserBearerSession(request, env, ctx)
     if (session === undefined) return undefined
@@ -4333,7 +4352,9 @@ const authenticateRequestActor = async (
  * none possible outside the owner-approved link flow) would still only ever
  * grant access to the SAME scope that flow approved, never an arbitrary one.
  */
-export const resolveKhalaSyncActorUserId = (actor: AuthenticatedActor): string =>
+export const resolveKhalaSyncActorUserId = (
+  actor: AuthenticatedActor,
+): string =>
   actor.kind === 'agent'
     ? (actor.agent.credential.openauthUserId ?? actor.agent.user.id)
     : actor.user.userId
@@ -4432,7 +4453,11 @@ const readAuthenticatedPageContext = async (
     isOpenAgentsAdminEmail(session.user.email)
       ? readUserKindTotals(identityDbForEnv(env))
       : Promise.resolve(undefined),
-    readTeamsForUser(openAgentsDatabase(env), identityDbForEnv(env), session.user.userId),
+    readTeamsForUser(
+      openAgentsDatabase(env),
+      identityDbForEnv(env),
+      session.user.userId,
+    ),
     listProviderAccountsForUser(providerAccountRepository, session.user.userId),
     listGitHubWriteConnectionsForUser(
       githubWriteRepository,
@@ -5428,7 +5453,10 @@ type MobileExecutionTargetAccountSummary = Readonly<{
 // — `resolveAutoExecutionTarget`'s typed-event contract does not.
 const mobileExecutionTargetReadiness = (
   health: PublicProviderAccount['health'],
-): Readonly<{ ready: boolean; reason?: AutoExecutionTargetCandidate['reason'] }> => {
+): Readonly<{
+  ready: boolean
+  reason?: AutoExecutionTargetCandidate['reason']
+}> => {
   if (health === 'requires_reauth') {
     return { reason: 'account_requires_reauth', ready: false }
   }
@@ -5447,8 +5475,15 @@ const mobileExecutionTargetAccountSummaries = (
   targetPrefix: 'claude' | 'codex',
 ): ReadonlyArray<MobileExecutionTargetAccountSummary> =>
   accounts
-    .filter(account => account.provider === provider && account.publicStatus === 'connected')
-    .sort((a, b) => (a.connectedAt ?? a.createdAt).localeCompare(b.connectedAt ?? b.createdAt))
+    .filter(
+      account =>
+        account.provider === provider && account.publicStatus === 'connected',
+    )
+    .sort((a, b) =>
+      (a.connectedAt ?? a.createdAt).localeCompare(
+        b.connectedAt ?? b.createdAt,
+      ),
+    )
     .map((account, index) => {
       const readiness = mobileExecutionTargetReadiness(account.health)
       return {
@@ -5522,17 +5557,23 @@ const handleMobileModelPreferenceApi = async (
     ANTHROPIC_CLAUDE_PROVIDER,
     'claude',
   )
-  const availableModelIds = resolveAvailableModelIds(resolveSupplyLaneArming(env))
+  const availableModelIds = resolveAvailableModelIds(
+    resolveSupplyLaneArming(env),
+  )
   const availableTargetIds = resolveAvailableExecutionTargetIds({
     availableModelIds,
-    claudeAccountRefHashes: claudeAccounts.map(account => account.accountRefHash),
+    claudeAccountRefHashes: claudeAccounts.map(
+      account => account.accountRefHash,
+    ),
     codexAccountRefHashes: codexAccounts.map(account => account.accountRefHash),
     managedCloudReady:
       agentComputerCapacity.available &&
-      providerAccountBundle.accounts.some(account =>
-        account.provider === CHATGPT_CODEX_PROVIDER &&
-        account.publicStatus === 'connected' &&
-        account.health === 'healthy') &&
+      providerAccountBundle.accounts.some(
+        account =>
+          account.provider === CHATGPT_CODEX_PROVIDER &&
+          account.publicStatus === 'connected' &&
+          account.health === 'healthy',
+      ) &&
       githubConnection !== undefined &&
       hasRequiredGitHubWriteScopes(githubConnection.scopes),
   })
@@ -5540,11 +5581,13 @@ const handleMobileModelPreferenceApi = async (
   if (request.method === 'PUT') {
     const rawBody = await request.json().catch(() => undefined)
     const targetId =
-      typeof (rawBody as { targetId?: unknown } | undefined)?.targetId === 'string'
-        ? ((rawBody as { targetId: string }).targetId.trim())
-        : typeof (rawBody as { modelId?: unknown } | undefined)?.modelId === 'string'
-          ? ((rawBody as { modelId: string }).modelId.trim())
-        : ''
+      typeof (rawBody as { targetId?: unknown } | undefined)?.targetId ===
+      'string'
+        ? (rawBody as { targetId: string }).targetId.trim()
+        : typeof (rawBody as { modelId?: unknown } | undefined)?.modelId ===
+            'string'
+          ? (rawBody as { modelId: string }).modelId.trim()
+          : ''
 
     if (targetId === '') {
       return noStoreJsonResponse(
@@ -5596,9 +5639,13 @@ const handleMobileModelPreferenceApi = async (
       ? resolveAutoExecutionTarget({
           candidates: [
             ...codexAccounts.map(account => toAutoCandidate('codex', account)),
-            ...claudeAccounts.map(account => toAutoCandidate('claude', account)),
+            ...claudeAccounts.map(account =>
+              toAutoCandidate('claude', account),
+            ),
           ],
-          fallbackTargetId: availableTargetIds.includes(DEFAULT_EXECUTION_TARGET_ID)
+          fallbackTargetId: availableTargetIds.includes(
+            DEFAULT_EXECUTION_TARGET_ID,
+          )
             ? DEFAULT_EXECUTION_TARGET_ID
             : null,
         })
@@ -5876,70 +5923,77 @@ const postTeamChatMessageForUser = async (
       ? await teamChatLaunchErrorFromResponse(missionLaunch.response)
       : undefined
 
-  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), identityDbForEnv(env), {
-    ...(missionLaunch === undefined || missionLaunch.ok === false
-      ? {}
-      : {
-          agentRunId: missionLaunch.launch.runId,
-          ...(autopilotThreadId === undefined ? {} : { autopilotThreadId }),
-          metadataJson: JSON.stringify({
-            mission: missionLaunch.launch.payload.mission,
-            runSummary: missionLaunch.launch.payload.runSummary,
-            statusUrl: missionLaunch.launch.payload.statusUrl,
-            streamUrl: missionLaunch.launch.payload.streamUrl,
-            context: teamAutopilotContext,
-            selectedTeamFileIds:
-              teamAutopilotContext?.selectedTeamFileIds ?? [],
+  const message = await insertTeamChatMessage(
+    khalaCodeProductStateDatabaseForEnv(env),
+    identityDbForEnv(env),
+    {
+      ...(missionLaunch === undefined || missionLaunch.ok === false
+        ? {}
+        : {
+            agentRunId: missionLaunch.launch.runId,
+            ...(autopilotThreadId === undefined ? {} : { autopilotThreadId }),
+            metadataJson: JSON.stringify({
+              mission: missionLaunch.launch.payload.mission,
+              runSummary: missionLaunch.launch.payload.runSummary,
+              statusUrl: missionLaunch.launch.payload.statusUrl,
+              streamUrl: missionLaunch.launch.payload.streamUrl,
+              context: teamAutopilotContext,
+              selectedTeamFileIds:
+                teamAutopilotContext?.selectedTeamFileIds ?? [],
+            }),
           }),
-        }),
-    ...(launchError === undefined
-      ? {}
-      : {
-          ...(autopilotThreadId === undefined ? {} : { autopilotThreadId }),
-          metadataJson: JSON.stringify({
-            context: teamAutopilotContext,
-            launchError,
-            launchStatus:
-              missionLaunch?.ok === false
-                ? missionLaunch.response.status
-                : undefined,
-            selectedTeamFileIds:
-              teamAutopilotContext?.selectedTeamFileIds ?? [],
+      ...(launchError === undefined
+        ? {}
+        : {
+            ...(autopilotThreadId === undefined ? {} : { autopilotThreadId }),
+            metadataJson: JSON.stringify({
+              context: teamAutopilotContext,
+              launchError,
+              launchStatus:
+                missionLaunch?.ok === false
+                  ? missionLaunch.response.status
+                  : undefined,
+              selectedTeamFileIds:
+                teamAutopilotContext?.selectedTeamFileIds ?? [],
+            }),
           }),
-        }),
-    ...(adjutantIntent === undefined
-      ? {}
-      : {
-          metadataJson: JSON.stringify({
-            adjutantIntent: {
-              schemaVersion: adjutantIntent.schemaVersion,
-              prompt: adjutantIntent.prompt,
-              softwareOrderId: adjutantIntent.softwareOrderId ?? null,
-              siteId: adjutantIntent.siteId ?? null,
-              taskSpecPath: adjutantIntent.taskSpecPath ?? null,
-            },
+      ...(adjutantIntent === undefined
+        ? {}
+        : {
+            metadataJson: JSON.stringify({
+              adjutantIntent: {
+                schemaVersion: adjutantIntent.schemaVersion,
+                prompt: adjutantIntent.prompt,
+                softwareOrderId: adjutantIntent.softwareOrderId ?? null,
+                siteId: adjutantIntent.siteId ?? null,
+                taskSpecPath: adjutantIntent.taskSpecPath ?? null,
+              },
+            }),
           }),
-        }),
-    authorUserId: input.userId,
-    body: messageBody,
-    ...(messageId === undefined ? {} : { id: messageId }),
-    kind,
-    ...(input.project === undefined ? {} : { projectId: input.project.id }),
-    teamId: input.teamId,
-  })
+      authorUserId: input.userId,
+      body: messageBody,
+      ...(messageId === undefined ? {} : { id: messageId }),
+      kind,
+      ...(input.project === undefined ? {} : { projectId: input.project.id }),
+      teamId: input.teamId,
+    },
+  )
   const selectedTeamFileIds =
     kind === 'autopilot_intent'
       ? (teamAutopilotContext?.selectedTeamFileIds ?? [])
       : requestedFileIds
 
-  await insertThreadFileMessageReferences(khalaCodeProductStateDatabaseForEnv(env), {
-    fileIds: selectedTeamFileIds,
-    messageId: message.id,
-    referenceKind:
-      kind === 'autopilot_intent' ? 'autopilot_input' : 'message_attachment',
-    teamId: input.teamId,
-    threadId: message.autopilotThreadId ?? input.roomThreadId,
-  })
+  await insertThreadFileMessageReferences(
+    khalaCodeProductStateDatabaseForEnv(env),
+    {
+      fileIds: selectedTeamFileIds,
+      messageId: message.id,
+      referenceKind:
+        kind === 'autopilot_intent' ? 'autopilot_input' : 'message_attachment',
+      teamId: input.teamId,
+      threadId: message.autopilotThreadId ?? input.roomThreadId,
+    },
+  )
 
   await publishTeamChatMessageSync(env, ctx, message, input.userId)
 
@@ -6484,14 +6538,19 @@ const readPendingReviewReadyNotifications = async (
         LIMIT 10`,
     )
     .all<
-      Omit<ReviewReadyNotificationRow, 'target_user_id' | 'display_name' | 'primary_email'> &
+      Omit<
+        ReviewReadyNotificationRow,
+        'target_user_id' | 'display_name' | 'primary_email'
+      > &
         Readonly<{ order_user_id: string | null }>
     >()
     .then(result => result.results)
 
   const profiles = await readIdentityUserProfiles(
     identityDb,
-    rows.flatMap(row => (row.order_user_id === null ? [] : [row.order_user_id])),
+    rows.flatMap(row =>
+      row.order_user_id === null ? [] : [row.order_user_id],
+    ),
   )
 
   return rows.map(({ order_user_id, ...row }) => {
@@ -6789,14 +6848,19 @@ const readPendingReviewReadyArtifactNotifications = async (
         LIMIT 10`,
     )
     .all<
-      Omit<ReviewReadyArtifactNotificationRow, 'target_user_id' | 'display_name' | 'primary_email'> &
+      Omit<
+        ReviewReadyArtifactNotificationRow,
+        'target_user_id' | 'display_name' | 'primary_email'
+      > &
         Readonly<{ order_user_id: string | null }>
     >()
     .then(result => result.results)
 
   const profiles = await readIdentityUserProfiles(
     identityDb,
-    rows.flatMap(row => (row.order_user_id === null ? [] : [row.order_user_id])),
+    rows.flatMap(row =>
+      row.order_user_id === null ? [] : [row.order_user_id],
+    ),
   )
 
   return rows.map(({ order_user_id, ...row }) => {
@@ -7090,7 +7154,10 @@ const enforceOutOfCreditsPolicy = async (
   scheduleBackgroundWork(ctx, notify)
 }
 
-const makeBillingAwareOmniRunStore = (env: OpenAgentsWorkerEnv, ctx?: ExecutionContext) =>
+const makeBillingAwareOmniRunStore = (
+  env: OpenAgentsWorkerEnv,
+  ctx?: ExecutionContext,
+) =>
   makeOmniRunStoreForEnv(env, {
     afterAgentRunMetered: run =>
       enforceOutOfCreditsPolicy(env, ctx, run.userId),
@@ -7565,12 +7632,15 @@ const deleteConnectedCodexAuth = async (
     providerAccountRef: string
   }>,
 ): Promise<boolean> =>
-  deleteConnectedCodexAuthFromCustody(makeProviderAccountTokenCustodyStoreForEnv(env), {
-    actorRef: `owner:${input.ownerUserId}`,
-    ownerUserId: input.ownerUserId,
-    providerAccountRef: input.providerAccountRef,
-    nowIso: currentIsoTimestamp(),
-  })
+  deleteConnectedCodexAuthFromCustody(
+    makeProviderAccountTokenCustodyStoreForEnv(env),
+    {
+      actorRef: `owner:${input.ownerUserId}`,
+      ownerUserId: input.ownerUserId,
+      providerAccountRef: input.providerAccountRef,
+      nowIso: currentIsoTimestamp(),
+    },
+  )
 
 const deleteConnectedCodexAuthForWorkerEnv = (
   env: OpenAgentsWorkerEnv,
@@ -7704,8 +7774,7 @@ export const handleProgrammaticAgentRegistration = async (
     return withAgentRateLimitHeaders(badRequest(errorMessage(error)))
   }
 
-  const store =
-    agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
+  const store = agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
 
   try {
     const registration = await createProgrammaticAgentRegistration(
@@ -7750,23 +7819,23 @@ export const handleProgrammaticAgentRegistration = async (
             'readiness.public.spark_primary.agent_balance',
           ]
         : lightningAddressPrimary
-        ? [
-            'readiness.public.spark_lightning_address.receive_ready',
-            'readiness.public.spark_primary.agent_balance',
-          ]
-        : [
-            'readiness.public.mdk_agent.daemon_running',
-            'readiness.public.mdk_agent.receive_ready',
-            'readiness.public.mdk_agent.setup_present',
-          ]
+          ? [
+              'readiness.public.spark_lightning_address.receive_ready',
+              'readiness.public.spark_primary.agent_balance',
+            ]
+          : [
+              'readiness.public.mdk_agent.daemon_running',
+              'readiness.public.mdk_agent.receive_ready',
+              'readiness.public.mdk_agent.setup_present',
+            ]
       const custodyPolicyRefs = sparkAddressPrimary
         ? [
             'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
             'policy.public.forum_tip_recipient.spark_self_custody',
           ]
         : lightningAddressPrimary
-        ? ['policy.public.forum_tip_recipient.spark_self_custody']
-        : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet']
+          ? ['policy.public.forum_tip_recipient.spark_self_custody']
+          : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet']
 
       await Effect.runPromise(
         upsertForumTipRecipientWallet(db, {
@@ -7844,9 +7913,7 @@ export const handleAdminReissueAgentToken = async (
 
       const session = await requireBrowserSession(authRequest, authEnv, authCtx)
 
-      return (
-        session !== undefined && isOpenAgentsAdminEmail(session.user.email)
-      )
+      return session !== undefined && isOpenAgentsAdminEmail(session.user.email)
     })
 
   if (!(await authorize(request, env, ctx))) {
@@ -7868,10 +7935,10 @@ export const handleAdminReissueAgentToken = async (
     parsed.slug !== undefined && parsed.externalId !== undefined
       ? 'ambiguous'
       : parsed.slug !== undefined
-      ? ({ slug: parsed.slug } as const)
-      : parsed.externalId !== undefined
-      ? ({ externalId: parsed.externalId } as const)
-      : undefined
+        ? ({ slug: parsed.slug } as const)
+        : parsed.externalId !== undefined
+          ? ({ externalId: parsed.externalId } as const)
+          : undefined
 
   if (selector === 'ambiguous') {
     return badRequest('provide exactly one of slug or externalId')
@@ -8208,8 +8275,7 @@ const threadFileRoutes = makeThreadFileRoutes({
 })
 
 const agentSiteRoutes = makeAgentSiteRoutes({
-  agentStoreForEnv: env =>
-    makeAgentRegistrationStoreForEnv(env),
+  agentStoreForEnv: env => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   artifactsForEnv: env => artifactsBucketForEnv(env),
   // KS-8.12 (#8323): agent site routes (builder sessions, site library,
@@ -8343,7 +8409,11 @@ const runHostedRuntimeTurnDispatchForEnv = async (
     return
   }
   const gatewayToken = (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN
-  const complete: HostedRuntimeCompleteFn = async ({ images, prompt, system }) => {
+  const complete: HostedRuntimeCompleteFn = async ({
+    images,
+    prompt,
+    system,
+  }) => {
     const result = await artanisMindComplete({
       apiKey,
       ...(gatewayToken === undefined || gatewayToken === ''
@@ -8492,10 +8562,12 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           listProviderAccountsForUser(accountRepository, turn.ownerUserId),
           githubRepository.findUsableConnectionForUser(turn.ownerUserId),
         ])
-        const account = accounts.accounts.find(candidate =>
-          candidate.provider === CHATGPT_CODEX_PROVIDER &&
-          candidate.publicStatus === 'connected' &&
-          candidate.health === 'healthy')
+        const account = accounts.accounts.find(
+          candidate =>
+            candidate.provider === CHATGPT_CODEX_PROVIDER &&
+            candidate.publicStatus === 'connected' &&
+            candidate.health === 'healthy',
+        )
         if (account === undefined) {
           throw new Error('managed_cloud_owner_codex_grant_unavailable')
         }
@@ -8644,9 +8716,7 @@ const creditBalanceProjectionRecorderForEnv =
     )
   }
 
-type PylonCodexRawEventProducerEnv = Parameters<
-  typeof openAgentsDatabase
->[0] &
+type PylonCodexRawEventProducerEnv = Parameters<typeof openAgentsDatabase>[0] &
   OaJobQueueProducerEnv &
   Readonly<{ ARTIFACTS?: R2Bucket | undefined }>
 
@@ -8767,12 +8837,15 @@ const hostedMdkClientForEnv = (
         ? {
             // Cast keeps this assignable under both the Workers and Bun
             // ambient fetch types (tsconfig.cloudrun.json, CFG-9 #8524).
-            fetch: (((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+            fetch: ((
+              input: Parameters<typeof fetch>[0],
+              init?: Parameters<typeof fetch>[1],
+            ) => {
               const request =
                 input instanceof Request ? input : new Request(input, init)
 
               return fetchMdkSidecarRequest(request, env)
-            }) as typeof fetch),
+            }) as typeof fetch,
           }
         : {}),
       routeSecret,
@@ -8996,25 +9069,30 @@ const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
 
 const providerAccountPylonHandlers =
   makeProviderAccountPylonHandlers<OpenAgentsWorkerEnv>({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
-  deleteStartedCodexDeviceLogin,
-  providerGrantRepository: env => {
-    const postgres = postgresIdentityAuthStoreForEnv(env)
-    if (postgres === undefined) {
-      throw new Error('authoritative_postgres_provider_grant_repository_unavailable')
-    }
-    return makeAuthoritativePostgresProviderGrantRepository(
-      makeProviderAccountRepositoryForEnv(env),
-      postgres.queryRows,
-    )
-  },
-  readConnectedClaudeAuthMaterial: (env, _ownerUserId, providerAccountRef) =>
-    readConnectedClaudeAuthMaterial(authKvStoreForEnv(env), providerAccountRef),
-  readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
-  readStartedCodexDeviceLogin,
-  storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
-  storeConnectedCodexAuth,
-  storeStartedCodexDeviceLogin,
+    agentStore: env => makeAgentRegistrationStoreForEnv(env),
+    deleteStartedCodexDeviceLogin,
+    providerGrantRepository: env => {
+      const postgres = postgresIdentityAuthStoreForEnv(env)
+      if (postgres === undefined) {
+        throw new Error(
+          'authoritative_postgres_provider_grant_repository_unavailable',
+        )
+      }
+      return makeAuthoritativePostgresProviderGrantRepository(
+        makeProviderAccountRepositoryForEnv(env),
+        postgres.queryRows,
+      )
+    },
+    readConnectedClaudeAuthMaterial: (env, _ownerUserId, providerAccountRef) =>
+      readConnectedClaudeAuthMaterial(
+        authKvStoreForEnv(env),
+        providerAccountRef,
+      ),
+    readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
+    readStartedCodexDeviceLogin,
+    storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
+    storeConnectedCodexAuth,
+    storeStartedCodexDeviceLogin,
   })
 
 const providerAccountMobileHandlers = makeProviderAccountMobileHandlers({
@@ -9133,33 +9211,27 @@ const providerAccountRoutes = makeProviderAccountRoutes({
     ),
   handleProviderAccountGrantResolveApi: (request, env) =>
     routeEffect('handle_provider_account_grant_resolve_api', () =>
-      providerAccountServiceHandlers.handleProviderAccountGrantResolveApi(
-        request,
-        env,
-      ).then(materializeHttpResult),
+      providerAccountServiceHandlers
+        .handleProviderAccountGrantResolveApi(request, env)
+        .then(materializeHttpResult),
     ),
   handleGoogleGeminiGrantResolveApi: (request, env) =>
     routeEffect('handle_google_gemini_grant_resolve_api', () =>
-      providerAccountServiceHandlers.handleGoogleGeminiGrantResolveApi(
-        request,
-        env,
-      ).then(materializeHttpResult),
+      providerAccountServiceHandlers
+        .handleGoogleGeminiGrantResolveApi(request, env)
+        .then(materializeHttpResult),
     ),
   handleGoogleGeminiBuiltinGrantApi: (request, env) =>
     routeEffect('handle_google_gemini_builtin_grant_api', () =>
-      providerAccountServiceHandlers.handleGoogleGeminiBuiltinGrantApi(
-        request,
-        env,
-      ).then(materializeHttpResult),
+      providerAccountServiceHandlers
+        .handleGoogleGeminiBuiltinGrantApi(request, env)
+        .then(materializeHttpResult),
     ),
   handleGoogleGeminiGenerateContentApi: (request, env, ctx, model) =>
     routeEffect('handle_google_gemini_generate_content_api', () =>
-      providerAccountServiceHandlers.handleGoogleGeminiGenerateContentApi(
-        request,
-        env,
-        ctx,
-        model,
-      ).then(materializeHttpResult),
+      providerAccountServiceHandlers
+        .handleGoogleGeminiGenerateContentApi(request, env, ctx, model)
+        .then(materializeHttpResult),
     ),
   handleProviderApiKeyConnectApi: (request, env, ctx, providerRouteSegment) =>
     routeEffect('handle_provider_api_key_connect_api', () =>
@@ -9172,11 +9244,9 @@ const providerAccountRoutes = makeProviderAccountRoutes({
     ),
   handleProviderAccountHealthApi: (request, env, providerAccountRef) =>
     routeEffect('handle_provider_account_health_api', () =>
-      providerAccountServiceHandlers.handleProviderAccountHealthApi(
-        request,
-        env,
-        providerAccountRef,
-      ).then(materializeHttpResult),
+      providerAccountServiceHandlers
+        .handleProviderAccountHealthApi(request, env, providerAccountRef)
+        .then(materializeHttpResult),
     ),
   handleProviderAccountPoolApi: (request, env, ctx) =>
     providerAccountPoolRoutes.handleProviderAccountPoolApi(request, env, ctx),
@@ -9190,19 +9260,15 @@ const providerAccountRoutes = makeProviderAccountRoutes({
     ),
   handleProviderDeviceLoginConnectedApi: (request, env, attemptId) =>
     routeEffect('handle_provider_device_login_connected_api', () =>
-      providerAccountServiceHandlers.handleProviderDeviceLoginConnectedApi(
-        request,
-        env,
-        attemptId,
-      ).then(materializeHttpResult),
+      providerAccountServiceHandlers
+        .handleProviderDeviceLoginConnectedApi(request, env, attemptId)
+        .then(materializeHttpResult),
     ),
   handleProviderDeviceLoginFailedApi: (request, env, attemptId) =>
     routeEffect('handle_provider_device_login_failed_api', () =>
-      providerAccountServiceHandlers.handleProviderDeviceLoginFailedApi(
-        request,
-        env,
-        attemptId,
-      ).then(materializeHttpResult),
+      providerAccountServiceHandlers
+        .handleProviderDeviceLoginFailedApi(request, env, attemptId)
+        .then(materializeHttpResult),
     ),
   handleProviderDeviceLoginStartApi: (request, env, ctx) =>
     routeEffect('handle_provider_device_login_start_api', () =>
@@ -9534,8 +9600,7 @@ const agentSearchRoutes = makeAgentSearchRoutes({
 })
 
 const autopilotWorkRouteDependencies = {
-  agentStore: (env: WorkerBindings) =>
-    makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env: WorkerBindings) => makeAgentRegistrationStoreForEnv(env),
   // Hosted Gemini executor binding (api.hosted_gemini.v1, yellow). DOUBLE-gated
   // and INERT by default: resolves an executor ONLY when
   // HOSTED_GEMINI_EXECUTOR_ENABLED is armed AND VERTEX_SA_KEY is present;
@@ -9551,10 +9616,8 @@ const autopilotWorkRouteDependencies = {
       makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
       billingDomainMirrorFromEnv(env),
     ),
-  makePylonApiStore: (env: WorkerBindings) =>
-    makePylonApiStoreForEnv(env),
-  makeStore: (env: WorkerBindings) =>
-    makeAutopilotWorkStoreForEnv(env),
+  makePylonApiStore: (env: WorkerBindings) => makePylonApiStoreForEnv(env),
+  makeStore: (env: WorkerBindings) => makeAutopilotWorkStoreForEnv(env),
   // Feed the registered-pylon registry into the work-order placement selector
   // so an owner's online, heartbeat-fresh Pylon is eligible for `requester_pylon`
   // placement (own jobs run on the owner's own node). Without this the selector
@@ -9593,8 +9656,7 @@ const autopilotContinuationPolicyRoutes =
 const autopilotMorningReportRoutes =
   makeAutopilotMorningReportRoutes<WorkerBindings>({
     agentStore: env => makeAgentRegistrationStoreForEnv(env),
-    makeContinuationStore: env =>
-      makeAutopilotContinuationStoreForEnv(env),
+    makeContinuationStore: env => makeAutopilotContinuationStoreForEnv(env),
     makeWorkStore: env => makeAutopilotWorkStoreForEnv(env),
     requireBrowserSession,
   })
@@ -9768,7 +9830,9 @@ const privateProjectWorkspaceRoutes =
     makeInviteStore: env =>
       makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
     makePrivateProjectStore: env =>
-      makeD1PrivateProjectWorkspaceStore(khalaCodeProductStateDatabaseForEnv(env)),
+      makeD1PrivateProjectWorkspaceStore(
+        khalaCodeProductStateDatabaseForEnv(env),
+      ),
     makeWorkspaceStore: env =>
       makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
     requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
@@ -10132,14 +10196,17 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
       agentStore: env => makeAgentRegistrationStoreForEnv(env),
       pylonStore: env => makePylonApiStoreForEnv(env),
       recordTokensServed: env =>
-        makeKhalaMcpServedTokensRecorder(ledgerDirectInsertDatabaseForEnv(env), {
-          // KS-8.2 (#8308): fail-soft Postgres mirror for direct rows. #8515:
-          // when writes==='postgres' the db handle above IS the Postgres
-          // adapter, so this mirror short-circuits to a no-op.
-          mirrorRow: row => mirrorTokenLedgerDirectInsertBestEffort(env, row),
-          // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
-          onIngestedEvent: makeTokensServedProjectionObserver(env),
-        }),
+        makeKhalaMcpServedTokensRecorder(
+          ledgerDirectInsertDatabaseForEnv(env),
+          {
+            // KS-8.2 (#8308): fail-soft Postgres mirror for direct rows. #8515:
+            // when writes==='postgres' the db handle above IS the Postgres
+            // adapter, so this mirror short-circuits to a no-op.
+            mirrorRow: row => mirrorTokenLedgerDirectInsertBestEffort(env, row),
+            // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+            onIngestedEvent: makeTokensServedProjectionObserver(env),
+          },
+        ),
     }),
   ]),
 })
@@ -10154,7 +10221,8 @@ const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
-  makeStore: env => makeD1AgentScopedGrantStore(openAgentsDatabase(env), identityDbForEnv(env)),
+  makeStore: env =>
+    makeD1AgentScopedGrantStore(openAgentsDatabase(env), identityDbForEnv(env)),
   requireBrowserSession,
 })
 
@@ -10178,14 +10246,15 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
   makeEvalBridge: env => buyModeEvalBridgeForEnv(env),
   makePaymentBridge: env => buyModePaymentBridgeForEnv(env),
   makeRelayPublisher: env => buyModeRelayPublisherForEnv(env),
-  makeStore: env => makeD1BuyModeDispatcherStore(businessDomainDatabaseForEnv(env)),
+  makeStore: env =>
+    makeD1BuyModeDispatcherStore(businessDomainDatabaseForEnv(env)),
   requireAdminApiToken,
 })
 
 const ecommerceCampaignSelfServeRoutes =
   makeEcommerceCampaignSelfServeRoutes<Env>({
-  makeStore: env =>
-    makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
+    makeStore: env =>
+      makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
     enabled: true, // INERT self-serve enabled
   })
 
@@ -10247,12 +10316,11 @@ const khalaCodeTracePluginRevenueShareRoutes =
     nowIso: currentIsoTimestamp,
   })
 
-const qaSwarmFirstEngagementRoutes =
-  makeQaSwarmFirstEngagementRoutes<Env>({
-    makeStore: env =>
-      makeD1QaSwarmFirstEngagementStore(businessDomainDatabaseForEnv(env)),
-    nowIso: currentIsoTimestamp,
-  })
+const qaSwarmFirstEngagementRoutes = makeQaSwarmFirstEngagementRoutes<Env>({
+  makeStore: env =>
+    makeD1QaSwarmFirstEngagementStore(businessDomainDatabaseForEnv(env)),
+  nowIso: currentIsoTimestamp,
+})
 
 const hostedGeminiPromiseReadinessRoutes =
   makeHostedGeminiPromiseReadinessRoutes<Env>({
@@ -10272,7 +10340,8 @@ const hostedGeminiPromiseReadinessRoutes =
 // no authority and asserts no promise is green.
 const publicCloudPrimitiveReceiptRoutes =
   makePublicCloudPrimitiveReceiptRoutes<Env>({
-    makeStore: env => makeLedgerCloudPrimitiveReceiptStore(paymentsLedgerDbForEnv(env)),
+    makeStore: env =>
+      makeLedgerCloudPrimitiveReceiptStore(paymentsLedgerDbForEnv(env)),
     nowIso: currentIsoTimestamp,
   })
 
@@ -10884,7 +10953,8 @@ const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({
 })
 
 const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
-  makeStore: env => makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
+  makeStore: env =>
+    makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
   nowIso: currentIsoTimestamp,
   requireAdminApiToken,
 })
@@ -10894,12 +10964,15 @@ const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
 // above; the new `agent_readiness_public_reports` table is a purpose-scoped
 // reporting table (not money/attribution-critical), so it reads/writes the
 // primary D1 binding directly rather than joining the business-domain mirror.
-const operatorAgentReadinessReportRoutes = makeOperatorAgentReadinessReportRoutes({
-  makePipelineStore: env => makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
-  makeReportStore: env => makeD1AgentReadinessPublicReportStore(openAgentsDatabase(env)),
-  nowIso: currentIsoTimestamp,
-  requireAdminApiToken,
-})
+const operatorAgentReadinessReportRoutes =
+  makeOperatorAgentReadinessReportRoutes({
+    makePipelineStore: env =>
+      makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
+    makeReportStore: env =>
+      makeD1AgentReadinessPublicReportStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+    requireAdminApiToken,
+  })
 
 const operatorSarahSalesCheckoutRoutes = makeOperatorSarahSalesCheckoutRoutes({
   makeDb: env => openAgentsDatabase(env),
@@ -10920,23 +10993,24 @@ const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
   requireAdminApiToken,
 })
 
-const operatorBusinessStarterCreditRoutes = makeOperatorBusinessStarterCreditRoutes({
-  makeStore: env => {
-    const db = businessDomainDatabaseForEnv(env)
-    // KS-8.7 (#8318/#8337): mirror the pay_ins/pay_in_legs rows the USD
-    // credit grant creates fail-soft (absent when KHALA_SYNC_DB/dual-write
-    // is unavailable — degrades to D1-only, converged by the next backfill
-    // sweep).
-    // CFG-4 (#8519): grant ledger rows run on the Postgres credits ledger;
-    // business_starter_credit_grants / business_pipeline_rows stay on D1.
-    return makeD1BusinessStarterCreditStore(
-      db,
-      paymentsLedgerDbForEnv(env),
-      makeD1BusinessPipelineStore(db),
-    )
-  },
-  requireAdminApiToken,
-})
+const operatorBusinessStarterCreditRoutes =
+  makeOperatorBusinessStarterCreditRoutes({
+    makeStore: env => {
+      const db = businessDomainDatabaseForEnv(env)
+      // KS-8.7 (#8318/#8337): mirror the pay_ins/pay_in_legs rows the USD
+      // credit grant creates fail-soft (absent when KHALA_SYNC_DB/dual-write
+      // is unavailable — degrades to D1-only, converged by the next backfill
+      // sweep).
+      // CFG-4 (#8519): grant ledger rows run on the Postgres credits ledger;
+      // business_starter_credit_grants / business_pipeline_rows stay on D1.
+      return makeD1BusinessStarterCreditStore(
+        db,
+        paymentsLedgerDbForEnv(env),
+        makeD1BusinessPipelineStore(db),
+      )
+    },
+    requireAdminApiToken,
+  })
 
 const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
   authenticateAgentToken: async (request, env) => {
@@ -11045,8 +11119,7 @@ const withFleetRunAuthority = <A>(
         }),
       try: () => defaultMakeKhalaSyncSqlClient(connectionString),
     }),
-    client =>
-      operation(makeFleetRunAuthorityRepository({ sql: client.sql })),
+    client => operation(makeFleetRunAuthorityRepository({ sql: client.sql })),
     client => Effect.promise(() => client.end().catch(() => undefined)),
   )
 }
@@ -11082,9 +11155,252 @@ const withFleetSteeringExchange = <A>(
   )
 }
 
+const dispatchManagedFleetUnitForEnv = async (
+  env: WorkerBindings,
+  input: Readonly<{
+    ownerUserId: string
+    pylonRef: string
+    runRef: string
+    body: Readonly<{
+      claimRef: string
+      taskId: string
+      workUnitRef: string
+      workerAccountRef: string
+      objective: string
+      unitObjective: string
+      repository: Readonly<{ fullName: string; branch: string; commit: string }>
+      verify: readonly string[]
+      verifierCommand: string
+      fingerprint: string
+    }>
+  }>,
+): Promise<Readonly<Record<string, unknown>>> => {
+  const workerEnv = env as OpenAgentsWorkerEnv
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined || connectionString.trim() === '') {
+    throw new Error('managed_fleet_storage_unavailable')
+  }
+  if (
+    !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
+    !/^[0-9a-f]{40}$/u.test(input.body.repository.commit)
+  ) {
+    throw new Error('managed_fleet_tuple_invalid')
+  }
+  const expectedFingerprint = await sha256Hex(
+    JSON.stringify({
+      schema: 'openagents.pylon.managed_cloud_fleet_tuple.v1',
+      targetPreference: 'managed_cloud',
+      runRef: input.runRef,
+      taskId: input.body.taskId,
+      claimRef: input.body.claimRef,
+      workUnitRef: input.body.workUnitRef,
+      workerAccountRef: input.body.workerAccountRef,
+      workerKind: 'codex',
+      repository: input.body.repository,
+      verifierCommand: input.body.verifierCommand,
+    }),
+  )
+  if (expectedFingerprint !== input.body.fingerprint) {
+    throw new Error('managed_fleet_tuple_fingerprint_invalid')
+  }
+
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  let minted:
+    | Awaited<ReturnType<typeof mintCloudRuntimeExecutionToken>>
+    | undefined
+  try {
+    const rows: Array<{
+      request_json: string
+      request_fingerprint: string
+      status: string
+    }> = await client.sql`
+      SELECT request.request_json, request.request_fingerprint, request.status
+      FROM sarah_fleet_run_requests AS request
+      INNER JOIN sarah_fleet_run_intake_leases AS lease
+        ON lease.run_ref = request.run_ref
+      WHERE request.run_ref = ${input.runRef}
+        AND request.owner_user_id = ${input.ownerUserId}
+        AND lease.owner_user_id = ${input.ownerUserId}
+        AND lease.pylon_ref = ${input.pylonRef}
+        AND lease.claim_ref = ${input.body.claimRef}
+        AND lease.state = 'accepted'
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (row === undefined || row.status !== 'running') {
+      throw new Error('managed_fleet_authority_invalid')
+    }
+    const request = JSON.parse(row.request_json) as {
+      repository?: {
+        owner?: string
+        name?: string
+        branch?: string
+        commit?: string
+      }
+      verifier?: { kind?: string; command?: string }
+      workSource?: {
+        kind?: string
+        units?: Array<{
+          unitRef?: string
+          objective?: string
+          placement?: { targetPreference?: string }
+        }>
+      }
+      workerPolicy?: { workerKind?: string }
+    }
+    const unit = request.workSource?.units?.find(
+      candidate => candidate.unitRef === input.body.workUnitRef,
+    )
+    if (
+      request.workSource?.kind !== 'plan_dag' ||
+      request.workerPolicy?.workerKind !== 'codex' ||
+      unit?.placement?.targetPreference !== 'managed_cloud' ||
+      unit.objective !== input.body.unitObjective ||
+      `${request.repository?.owner}/${request.repository?.name}` !==
+        input.body.repository.fullName ||
+      request.repository?.branch !== input.body.repository.branch ||
+      request.repository?.commit !== input.body.repository.commit ||
+      request.verifier?.kind !== 'command' ||
+      request.verifier.command !== input.body.verifierCommand
+    ) {
+      throw new Error('managed_fleet_tuple_not_authorized')
+    }
+
+    const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
+    if (postgresIdentity === undefined) {
+      throw new Error('managed_fleet_identity_authority_unavailable')
+    }
+    const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
+      makeProviderAccountRepositoryForEnv(env),
+      postgresIdentity.queryRows,
+    )
+    const [accounts, githubConnection] = await Promise.all([
+      listProviderAccountsForUser(accountRepository, input.ownerUserId),
+      makeGitHubWriteRepositoryForEnv(env).findUsableConnectionForUser(
+        input.ownerUserId,
+      ),
+    ])
+    const account = accounts.accounts.find(
+      candidate =>
+        candidate.provider === CHATGPT_CODEX_PROVIDER &&
+        candidate.publicStatus === 'connected' &&
+        candidate.health === 'healthy',
+    )
+    if (
+      account === undefined ||
+      githubConnection === undefined ||
+      !hasRequiredGitHubWriteScopes(githubConnection.scopes)
+    ) {
+      throw new Error('managed_fleet_owner_authority_unavailable')
+    }
+    const sessionId = `ccs.fleet.${input.body.fingerprint.slice(0, 24)}`
+    const grant = await issueProviderAccountGrant(accountRepository, {
+      providerAccountRef: account.providerAccountRef,
+      requestedAction: 'agent_computer_codex_turn',
+      runnerSessionId: sessionId,
+      threadId: input.runRef,
+      userId: input.ownerUserId,
+      workroomId: input.body.workUnitRef,
+    })
+    if (grant === undefined) throw new Error('managed_fleet_grant_unavailable')
+
+    minted = await mintCloudRuntimeExecutionToken(client.sql, {
+      ownerUserId: input.ownerUserId,
+    })
+    const baseUrl =
+      workerEnv.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL?.trim() ||
+      getAppOrigin(workerEnv)
+    const workContextRef = `work_context.fleet.${input.body.fingerprint.slice(0, 24)}`
+    const workContext = buildCloudRuntimeWorkContext({
+      repo: input.body.repository.fullName,
+      commit: input.body.repository.commit,
+      branch: input.body.repository.branch,
+      threadRef: input.runRef,
+      turnId: input.body.workUnitRef,
+      workContextRef,
+      objective: input.body.objective,
+      codexTurn: {
+        agentToken: minted.rawToken,
+        baseUrl,
+        ownerUserId: input.ownerUserId,
+        pylonRef: input.pylonRef,
+      },
+      providerAuth: {
+        agentToken: minted.rawToken,
+        authGrantRef: grant.grantRef,
+        baseUrl,
+        providerAccountRef: grant.providerAccountRef,
+      },
+      codexContinuity: {
+        maxReplayMessages: 24,
+        persistedCodexHome: false,
+        strategy: 'khala_sync_history_reprime',
+      },
+      writeback: buildCloudRuntimeWritebackConfig({
+        repositoryFullName: input.body.repository.fullName,
+        turnId: input.body.workUnitRef,
+        baseBranch: input.body.repository.branch,
+        branch: `fleet/${input.body.fingerprint.slice(0, 16)}`,
+        mode: 'pull_request',
+      }),
+    })
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: workerEnv.OA_CLOUD_CONTROL_URL ?? '',
+      bearerToken: workerEnv.OA_CLOUD_CONTROL_TOKEN ?? '',
+      gceProvisioningArmed: isCloudGceProvisioningArmed(
+        workerEnv.OA_CODEX_GCE_PROVISIONER,
+      ),
+    })
+    const session = await Effect.runPromise(
+      adapter.launch({
+        sessionId,
+        accountRef: agentRefForUser(input.ownerUserId),
+        lane: 'cloud-gcp',
+        request: {
+          adapter: 'codex',
+          lane: 'cloud-gcp',
+          objective: input.body.objective,
+          repoRef: input.body.repository.fullName,
+          repoTrustTier: 'private',
+          timeoutSeconds: 1800,
+          verify: [...input.body.verify],
+          threadRef: input.runRef,
+          workContextRef,
+          options: {
+            authGrantRef: grant.grantRef,
+            providerAccountRef: grant.providerAccountRef,
+            workContextB64: encodeWorkContextB64(workContext),
+          },
+        },
+      }),
+    )
+    return {
+      schema: 'openagents.pylon.managed_cloud_fleet_dispatch.result.v1',
+      runRef: input.runRef,
+      workUnitRef: input.body.workUnitRef,
+      state: session.state,
+      placementRef: session.placementRef,
+      agentComputerRef: session.agentComputerRef,
+      agentComputerState: session.agentComputerState,
+      lifecycleReceiptRefs: session.lifecycleReceiptRefs,
+      resourceUsageReceiptRefs: session.resourceUsageReceiptRefs,
+      artifactRef: session.artifactRef,
+      workContextRef: session.workContextRef,
+    }
+  } finally {
+    if (minted !== undefined) {
+      await revokeCloudRuntimeExecutionToken(client.sql, {
+        credentialId: minted.credentialId,
+      }).catch(() => undefined)
+    }
+    await client.end().catch(() => undefined)
+  }
+}
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
+  dispatchManagedFleetUnit: dispatchManagedFleetUnitForEnv,
   fleetRunAuthority: {
     claim: (env, input) =>
       withFleetRunAuthority(env, repository => repository.claim(input)),
@@ -11105,9 +11421,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   },
   fleetSteeringExchange: {
     readPage: (env, input) =>
-      withFleetSteeringExchange(env, repository =>
-        repository.readPage(input),
-      ),
+      withFleetSteeringExchange(env, repository => repository.readPage(input)),
     appendOutcomes: (env, input) =>
       withFleetSteeringExchange(env, repository =>
         repository.appendOutcomes(input),
@@ -11118,8 +11432,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
       ),
   },
   // #5252: private operator-only store for raw Spark payout targets.
-  makeSparkPayoutTargetStore: env =>
-    makePylonSparkPayoutTargetStoreForEnv(env),
+  makeSparkPayoutTargetStore: env => makePylonSparkPayoutTargetStoreForEnv(env),
   // KS-6.1 (#8302): fail-soft fleet cockpit projection of assignment
   // status transitions into Khala Sync (scope.fleet_run.<runId>) via the
   // KHALA_SYNC_DB Hyperdrive binding. Never fails the D1 business write;
@@ -11153,13 +11466,16 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     return delivered
   },
   revokeAssignmentForgeGitAccess: async (env, input) =>
-    revokeAgentDefinitionRunForgeGitTokensForAssignment({
-      forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
-      runStore: makeAgentDefinitionRunStoreForEnv(env),
-    }, {
-      assignmentRef: input.assignment.assignmentRef,
-      nowIso: input.nowIso,
-    }),
+    revokeAgentDefinitionRunForgeGitTokensForAssignment(
+      {
+        forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
+        runStore: makeAgentDefinitionRunStoreForEnv(env),
+      },
+      {
+        assignmentRef: input.assignment.assignmentRef,
+        nowIso: input.nowIso,
+      },
+    ),
   requireAdminApiToken,
   requireBrowserSession,
 })
@@ -11308,8 +11624,7 @@ const hygieneLaneSettlementRoutes =
     // payable funded receipt here; the settle route reads payability from it
     // and marks it retired once real bitcoin moves, so a second settle on the
     // same DebtReceiptKey reprojects to duplicate_replay.
-    makeDebtReceiptStore: env =>
-      makeHygieneDebtReceiptStoreForEnv(env),
+    makeDebtReceiptStore: env => makeHygieneDebtReceiptStoreForEnv(env),
     // The settle route's source of truth for payability: the durable store.
     // Fail-closed — no row (or a retired row) yields a non-payable projection,
     // so the operator cannot assert payability through the request body.
@@ -11429,8 +11744,7 @@ const tassadarTraceContributionRoutes =
 
       return store.transitionChallenge(finalized.challenge, finalized.event)
     },
-    makeContributionStore: env =>
-      makeTrainingTraceContributionStoreForEnv(env),
+    makeContributionStore: env => makeTrainingTraceContributionStoreForEnv(env),
     makeStore: env => makeTrainingAuthorityStoreForEnv(env),
     // Hands-off auto-stream of the real per-window reward on each Verified
     // exact_trace_replay pair (openagents #5309 + #5310): worker 5 sats AND
@@ -11446,7 +11760,9 @@ const tassadarTraceContributionRoutes =
         const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
         const contributionStore = makeTrainingTraceContributionStoreForEnv(env)
         const run = yield* Effect.promise(() =>
-          makeTrainingAuthorityStoreForEnv(env).readRun(input.lease.trainingRunRef),
+          makeTrainingAuthorityStoreForEnv(env).readRun(
+            input.lease.trainingRunRef,
+          ),
         )
 
         if (run === undefined) {
@@ -11598,7 +11914,8 @@ const tassadarTraceContributionRoutes =
         }
       }),
     resolvePylonOwnerUserId: async (env, pylonRef) => {
-      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
+      const registration =
+        await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
 
       return registration?.ownerAgentUserId
     },
@@ -11807,9 +12124,9 @@ const fireworksStrongCodingAdapter: InferenceProviderAdapter = {
     ? {}
     : {
         streamSse: request =>
-          fireworksAdapter
-            .streamSse!(request)
-            .pipe(Effect.mapError(toRetryableStrongCodingError)),
+          fireworksAdapter.streamSse!(request).pipe(
+            Effect.mapError(toRetryableStrongCodingError),
+          ),
       }),
 }
 inferenceProviderRegistry.register(fireworksStrongCodingAdapter)
@@ -12598,21 +12915,29 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/business-signup',
     handler: (request, env) =>
-      handleBusinessSignupApi(request, businessDomainDatabaseForEnv(env), undefined, {
-        appOrigin: getAppOrigin(env),
-        getResendEmailConfig: () => getResendEmailConfig(env),
-        sendInviteEmailWithLedger: (config, input) =>
-          sendPrivateWorkspaceInviteEmailWithLedger(
-            openAgentsDatabase(env),
-            config,
-            input,
-          ),
-      }),
+      handleBusinessSignupApi(
+        request,
+        businessDomainDatabaseForEnv(env),
+        undefined,
+        {
+          appOrigin: getAppOrigin(env),
+          getResendEmailConfig: () => getResendEmailConfig(env),
+          sendInviteEmailWithLedger: (config, input) =>
+            sendPrivateWorkspaceInviteEmailWithLedger(
+              openAgentsDatabase(env),
+              config,
+              input,
+            ),
+        },
+      ),
   },
   {
     path: '/api/public/business/funnel-dashboard',
     handler: (request, env) =>
-      handlePublicBusinessFunnelDashboardApi(request, businessDomainDatabaseForEnv(env)),
+      handlePublicBusinessFunnelDashboardApi(
+        request,
+        businessDomainDatabaseForEnv(env),
+      ),
   },
   {
     path: '/api/operator/business/affiliate-codes',
@@ -12659,9 +12984,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         fireworksArmed: resolveSupplyLaneArming(env).fireworks,
         recordFunnelEvent: input =>
           Effect.promise(() =>
-            recordBusinessFunnelEvent(businessDomainDatabaseForEnv(env), input).then(
-              () => undefined,
-            ),
+            recordBusinessFunnelEvent(
+              businessDomainDatabaseForEnv(env),
+              input,
+            ).then(() => undefined),
           ),
         recordTokensServed: makeD1ServedTokensRecorder(
           openAgentsDatabase(env),
@@ -12848,7 +13174,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/product-promises/transitions',
     handler: (request, env) =>
       handlePublicPromiseTransitionsApi(request, {
-        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
+        store: makeD1PromiseTransitionReceiptStore(
+          businessDomainDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -12867,7 +13195,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/product-promises/audit',
     handler: (request, env) =>
       handlePublicPromiseAuditApi(request, {
-        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
+        store: makeD1PromiseTransitionReceiptStore(
+          businessDomainDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -13233,7 +13563,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: CustomerOneCohortEndpoint,
     handler: (request, env) =>
       handlePublicCustomerOneCohortApi(request, {
-        store: makeD1CustomerOneCohortRowStore(businessDomainDatabaseForEnv(env)),
+        store: makeD1CustomerOneCohortRowStore(
+          businessDomainDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -13388,7 +13720,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorCustomerOneCohortRowsApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1CustomerOneCohortRowStore(businessDomainDatabaseForEnv(env)),
+        store: makeD1CustomerOneCohortRowStore(
+          businessDomainDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -13396,7 +13730,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleOperatorPromiseTransitionApi(request, {
         requireAdminApiToken: () => requireAdminApiToken(request, env),
-        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
+        store: makeD1PromiseTransitionReceiptStore(
+          businessDomainDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -13649,11 +13985,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         handleAudioGrantIssueRequest(
           {
-            gatewayUrl: workerEnv =>
-              workerEnv.OPENAGENTS_AUDIO_GATEWAY_URL,
+            gatewayUrl: workerEnv => workerEnv.OPENAGENTS_AUDIO_GATEWAY_URL,
             requireUserBearerSession,
-            signingSecret: workerEnv =>
-              workerEnv.OPENAGENTS_AUDIO_TOKEN_SECRET,
+            signingSecret: workerEnv => workerEnv.OPENAGENTS_AUDIO_TOKEN_SECRET,
             userIdFromSession: session => session.user.userId,
           },
           request,
@@ -13726,7 +14060,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // the code/token values before posting. Remove once the sign-in
     // state_mismatch is definitively fixed.
     path: '/api/mobile/signin-debug',
-    handler: (request) =>
+    handler: request =>
       Effect.promise(async () => {
         try {
           const body = await request.text()
@@ -13943,14 +14277,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // for the honest scope pin on live cross-user Khala Sync feeds).
     path: ADMIN_OPS_RUNS_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() => adminOpsRoutes.handleAdminOpsRunsApi(request, env, ctx)),
+      Effect.promise(() =>
+        adminOpsRoutes.handleAdminOpsRunsApi(request, env, ctx),
+      ),
   },
   {
     // AIUR-3 (#8501): the ops health strip (last org-cloud turn, push
     // device-token readiness, live Khala public-stats reachability).
     path: ADMIN_OPS_HEALTH_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() => adminOpsRoutes.handleAdminOpsHealthApi(request, env, ctx)),
+      Effect.promise(() =>
+        adminOpsRoutes.handleAdminOpsHealthApi(request, env, ctx),
+      ),
   },
   {
     // OB-6 (P1 Track C, #8563): the daily sales ledger — per-day, per-segment
@@ -13978,11 +14316,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
-        crmApprovalBatchAdminRoutes.handleCrmBatchApproveApi(
-          request,
-          env,
-          ctx,
-        ),
+        crmApprovalBatchAdminRoutes.handleCrmBatchApproveApi(request, env, ctx),
       ),
   },
   {
@@ -14707,7 +15041,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         fetchSparkTreasury: fetchMdkTreasuryPath(env),
         fetchTreasury: fetchMdkTreasuryPath(env),
         recordPayoutTransaction: async input => {
-          await makeD1TreasuryTransactionStore(makeTreasuryDatabaseForEnv(env)).insert({
+          await makeD1TreasuryTransactionStore(
+            makeTreasuryDatabaseForEnv(env),
+          ).insert({
             amountSat: input.amountSat,
             bolt11: null,
             createdAt: currentIsoTimestamp(),
@@ -14747,7 +15083,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorTreasuryPayoutApi(request, {
         fetchTreasury: fetchMdkTipsBufferPath(env),
         recordPayoutTransaction: async input => {
-          await makeD1TreasuryTransactionStore(makeTreasuryDatabaseForEnv(env)).insert({
+          await makeD1TreasuryTransactionStore(
+            makeTreasuryDatabaseForEnv(env),
+          ).insert({
             amountSat: input.amountSat,
             bolt11: null,
             createdAt: currentIsoTimestamp(),
@@ -15180,14 +15518,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         handleAgentDefinitionWebhookRequest(request, {
           definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
-            durableStreamNamespace: durableInferenceStreamNamespaceForEnv(
-              env,
-              {
-                enabled: isInferenceDurableStreamEnabled(
-                  env.INFERENCE_DURABLE_STREAM_ENABLED,
-                ),
-              },
-            ),
+            durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
+              enabled: isInferenceDurableStreamEnabled(
+                env.INFERENCE_DURABLE_STREAM_ENABLED,
+              ),
+            }),
             forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
             forgeStore: makeForgeCoordinationStoreForEnv(env),
             pylonStore: makePylonApiStoreForEnv(env),
@@ -15198,9 +15533,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
             }
           ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET,
-          eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
-            env,
-          ),
+          eventLedgerEnqueue: makeEventLedgerIngestEnqueue(env),
           githubMentionLogins: optionalCommaSeparatedValues(
             (
               env as Env & {
@@ -15243,22 +15576,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         handleAgentDefinitionSlackWebhookRequest(request, {
           definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
-            durableStreamNamespace: durableInferenceStreamNamespaceForEnv(
-              env,
-              {
-                enabled: isInferenceDurableStreamEnabled(
-                  env.INFERENCE_DURABLE_STREAM_ENABLED,
-                ),
-              },
-            ),
+            durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
+              enabled: isInferenceDurableStreamEnabled(
+                env.INFERENCE_DURABLE_STREAM_ENABLED,
+              ),
+            }),
             forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
             forgeStore: makeForgeCoordinationStoreForEnv(env),
             pylonStore: makePylonApiStoreForEnv(env),
             runStore: makeAgentDefinitionRunStoreForEnv(env),
           },
-          eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
-            env,
-          ),
+          eventLedgerEnqueue: makeEventLedgerIngestEnqueue(env),
           slackSecret: (
             env as Env & {
               AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET?: string
@@ -15274,7 +15602,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // KS-8.10 (#8321): bot completion reply posts ride the forum content
       // dual-write seam.
       const db = forumContentDatabaseForEnv(env)
-      const forum = makeD1AgentDefinitionForumCompletionForumStore(db, paymentsLedgerDbForEnv(env))
+      const forum = makeD1AgentDefinitionForumCompletionForumStore(
+        db,
+        paymentsLedgerDbForEnv(env),
+      )
 
       return handleAgentDefinitionForumWebhookRequest(request, {
         definitionStore: makeAgentDefinitionStoreForEnv(env),
@@ -15308,7 +15639,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const db = forumContentDatabaseForEnv(env)
 
       return handleAgentDefinitionForumCompletionRequest(request, {
-        forum: makeD1AgentDefinitionForumCompletionForumStore(db, paymentsLedgerDbForEnv(env)),
+        forum: makeD1AgentDefinitionForumCompletionForumStore(
+          db,
+          paymentsLedgerDbForEnv(env),
+        ),
         forumSecret: (
           env as Env & {
             AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
@@ -15455,13 +15789,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
         ),
         createStripePaidPlanCheckout: input =>
-          makeStripeCheckoutServiceForRoutes(env).createKhalaCodePaidPlanCheckout(
-            input,
-          ),
+          makeStripeCheckoutServiceForRoutes(
+            env,
+          ).createKhalaCodePaidPlanCheckout(input),
         db: openAgentsDatabase(env),
-        ...(mintLightningInvoice === undefined
-          ? {}
-          : { mintLightningInvoice }),
+        ...(mintLightningInvoice === undefined ? {} : { mintLightningInvoice }),
         mirror: billingDomainMirrorFromEnv(env),
         nowIso: currentIsoTimestamp,
         paidPlanPriceSats: readKhalaCodePaidPlanPriceSats(
@@ -15739,9 +16071,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           if (openauthUserId === undefined || openauthUserId === null) {
             return undefined
           }
-          const accounts = await makeD1ProviderAccountRepository(
-            db,
-          ).listAccountsForUser(openauthUserId)
+          const accounts =
+            await makeD1ProviderAccountRepository(db).listAccountsForUser(
+              openauthUserId,
+            )
           const account = accounts.find(
             candidate =>
               candidate.provider === 'openrouter' &&
@@ -16267,7 +16600,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         meteringHook: makeLedgerFineTuningMeteringHook({
           ledgerDb: paymentsLedgerDbForEnv(env),
           priceUsd: () => 0,
-          recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
+          recordCreditBalanceProjection:
+            creditBalanceProjectionRecorderForEnv(env),
           usdToMsat: usd => Math.ceil(usd * 1000),
         }),
       }),
@@ -16305,7 +16639,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         meteringHook: makeLedgerSandboxMeteringHook({
           ledgerDb: paymentsLedgerDbForEnv(env),
           priceUsd: () => 0,
-          recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
+          recordCreditBalanceProjection:
+            creditBalanceProjectionRecorderForEnv(env),
           usdToMsat: usd => Math.ceil(usd * 1000),
         }),
       }),
@@ -16410,7 +16745,9 @@ const routeRequest = makeWorkerRouteRequest({
                     ),
                   },
                 ),
-                forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, { db }),
+                forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, {
+                  db,
+                }),
                 forgeStore: makeForgeCoordinationStoreForEnv(env, { db }),
                 pylonStore: makePylonApiStoreForEnv(env),
                 runStore: makeAgentDefinitionRunStoreForEnv(env),
@@ -16599,7 +16936,9 @@ const routeRequest = makeWorkerRouteRequest({
       adapter: makeD1SandboxRuntimeAdapter(
         khalaCodeProductStateDatabaseForEnv(env),
       ),
-      enabled: isSandboxComputeServiceEnabled(env.CLOUD_SANDBOX_COMPUTE_ENABLED),
+      enabled: isSandboxComputeServiceEnabled(
+        env.CLOUD_SANDBOX_COMPUTE_ENABLED,
+      ),
     }),
   // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME
   // INFERENCE_GATEWAY_ENABLED flag as the list and chat-completions routes, so
@@ -16885,8 +17224,9 @@ const routeRequest = makeWorkerRouteRequest({
       readGithubAccessToken: userId =>
         Effect.tryPromise({
           try: async () =>
-            (await authKvStoreForEnv(env).get(githubIdentityTokenKey(userId))) ??
-            undefined,
+            (await authKvStoreForEnv(env).get(
+              githubIdentityTokenKey(userId),
+            )) ?? undefined,
           catch: () =>
             new GitHubScmAuthBrokerDependencyFailed({
               reason: 'github_identity_token_read_failed',
@@ -16951,8 +17291,7 @@ const routeRequest = makeWorkerRouteRequest({
         makeForgeGitCanonicalStoreForEnv(storeEnv),
       makeGitHubMirrorStore: storeEnv =>
         makeForgeGitHubMirrorStoreForEnv(storeEnv),
-      makeStore: storeEnv =>
-        makeForgeCoordinationStoreForEnv(storeEnv),
+      makeStore: storeEnv => makeForgeCoordinationStoreForEnv(storeEnv),
       mirrorGitHubToken: storeEnv => getForgeGitHubMirrorToken(storeEnv),
       nowIso: currentIsoTimestamp,
       requireAdminApiToken: (authRequest, authEnv) =>
@@ -17544,10 +17883,9 @@ export default {
       // shows on the admin reconcile route; repair stays an explicit,
       // audited admin action — the sweep NEVER overwrites the projection.
       Math.floor(event.scheduledTime / 60_000) % 15 === 0
-        ? reconcileTokensServedProjection(
-            makeTokensServedReconcileDeps(env),
-            { repair: false },
-          ).then(
+        ? reconcileTokensServedProjection(makeTokensServedReconcileDeps(env), {
+            repair: false,
+          }).then(
             () => undefined,
             () => undefined,
           )
@@ -17666,7 +18004,10 @@ export default {
       observedEffect(
         'AgentDefinitionScheduler.tick',
         Effect.promise(async () => {
-          const result = await pokeAgentDefinitionScheduler(env, event.scheduledTime)
+          const result = await pokeAgentDefinitionScheduler(
+            env,
+            event.scheduledTime,
+          )
 
           if (!result.ok) {
             logWorkerRouteWarning('agent_definition_scheduler_tick_skipped', {
@@ -17749,12 +18090,13 @@ export default {
         runXClaimRewardTreasuryDispatchScheduled(
           makeTreasuryDatabaseForEnv(env),
           {
-          config: readXClaimRewardTreasuryDispatchConfig(
-            env,
-            epochMillisToIsoTimestamp(event.scheduledTime),
-          ),
-          fetchTreasury: fetchMdkTreasuryPath(env),
-        }),
+            config: readXClaimRewardTreasuryDispatchConfig(
+              env,
+              epochMillisToIsoTimestamp(event.scheduledTime),
+            ),
+            fetchTreasury: fetchMdkTreasuryPath(env),
+          },
+        ),
       ),
       observedEffect(
         'ArtanisResponder.scan',
@@ -18010,21 +18352,22 @@ export default {
           checkTipsBufferBackingInvariant(
             paymentsLedgerDbForEnv(env),
             async () => {
-            const fetchBuffer = fetchMdkTipsBufferPath(env)
-            if (fetchBuffer === undefined) {
-              return null
-            }
-            try {
-              const response = await fetchBuffer('/balance')
-              const body = (await response.json()) as {
-                maxSendableSat?: number
-                balanceSat?: number
+              const fetchBuffer = fetchMdkTipsBufferPath(env)
+              if (fetchBuffer === undefined) {
+                return null
               }
-              return Number(body.maxSendableSat ?? body.balanceSat ?? 0)
-            } catch {
-              return null
-            }
-          }).then(
+              try {
+                const response = await fetchBuffer('/balance')
+                const body = (await response.json()) as {
+                  maxSendableSat?: number
+                  balanceSat?: number
+                }
+                return Number(body.maxSendableSat ?? body.balanceSat ?? 0)
+              } catch {
+                return null
+              }
+            },
+          ).then(
             () => undefined,
             error => {
               logWorkerRouteError(

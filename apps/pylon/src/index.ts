@@ -10,11 +10,7 @@ import { Database } from "bun:sqlite"
 import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime.js"
 import { readFile } from "node:fs/promises"
 import { existsSync, writeSync } from "node:fs"
-import {
-  loadClaudeAgentConfig,
-  probeClaudeAgentReadiness,
-  withClaudeAgentCapability,
-} from "./claude-agent.js"
+import { loadClaudeAgentConfig, probeClaudeAgentReadiness, withClaudeAgentCapability } from "./claude-agent.js"
 import {
   CODEX_AGENT_CAPABILITY_REF,
   loadCodexAgentConfig,
@@ -54,6 +50,7 @@ import {
 import { createIntentQueue } from "./node/intent-intake.js"
 import { createApprovalQueue } from "./node/approval-queue.js"
 import { openPylonNodeFleetRunActivationService } from "./node/fleet-run-activation.js"
+import { openPylonOwnedStandingFleetRunExecutor } from "./orchestration/fleet-run-owned-standing-executor.js"
 import {
   disabledPylonFleetRunIntakePollerStatus,
   openPylonFleetRunIntakePoller,
@@ -63,12 +60,7 @@ import { makePylonFleetRunExecutionHttpPort } from "./orchestration/fleet-run-ex
 import { openPylonFleetRunRemoteIntakeService } from "./orchestration/fleet-run-remote-intake.js"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime.js"
 import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate.js"
-import {
-  scanClaudeSessions,
-  toEventRows,
-  toSessionListEntry,
-  type ExternalSession,
-} from "./node/external-sessions.js"
+import { scanClaudeSessions, toEventRows, toSessionListEntry, type ExternalSession } from "./node/external-sessions.js"
 import { scanCodexSessions } from "./node/codex-sessions.js"
 import { homedir } from "node:os"
 import {
@@ -85,10 +77,7 @@ import {
   collectPylonAppleFmStatus,
   withAppleFmBackendCapabilities,
 } from "./node/apple-fm-status.js"
-import {
-  createAppleFmSupervisedLaunch,
-  type AppleFmSupervisedLaunch,
-} from "./node/apple-fm-supervised-launch.js"
+import { createAppleFmSupervisedLaunch, type AppleFmSupervisedLaunch } from "./node/apple-fm-supervised-launch.js"
 import {
   createControlSessionActions,
   type ControlSessionSpawnCommand,
@@ -98,11 +87,7 @@ import { resolveCloudControlConfig } from "./cloud-control-client.js"
 import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider.js"
 import { collectPylonContextProjection } from "./context-projection.js"
 import { collectPylonDevDoctor } from "./dev-doctor.js"
-import {
-  parsePylonAccountsConnectArgs,
-  pylonCodexAuthCliOutcome,
-  runPylonAccountsConnect,
-} from "./account-connect.js"
+import { parsePylonAccountsConnectArgs, pylonCodexAuthCliOutcome, runPylonAccountsConnect } from "./account-connect.js"
 import {
   parsePylonAuthArgs,
   resolveOpenAgentsAgentToken,
@@ -127,10 +112,7 @@ import {
   recordClaudeProviderDisabled,
 } from "@openagentsinc/pylon-core/custody/claude-account-health-ledger"
 import { collectPylonOperatorAccountStatus } from "./account-status.js"
-import {
-  createCodexFleetOffloadPlan,
-  parseCodexFleetOffloadArgs,
-} from "./codex-fleet-offload.js"
+import { createCodexFleetOffloadPlan, parseCodexFleetOffloadArgs } from "./codex-fleet-offload.js"
 import {
   recordPylonDevCodexRun,
   runPylonDevApply,
@@ -143,36 +125,16 @@ import {
   type VirtualMergeQueuePrFastForwardRequest,
   type VirtualMergeQueueProjection,
 } from "./blueprint-gates/virtual-merge-queue.js"
-import {
-  rejectCodexLocalDangerForPublicPath,
-  runCodexComposerStream,
-} from "./codex-composer.js"
+import { rejectCodexLocalDangerForPublicPath, runCodexComposerStream } from "./codex-composer.js"
 import { reprimePylonCodexAccountAuthFromCustody } from "./codex-custody-reprime.js"
-import {
-  rejectClaudeLocalDangerForPublicPath,
-  runClaudeComposerStream,
-} from "./claude-composer.js"
+import { rejectClaudeLocalDangerForPublicPath, runClaudeComposerStream } from "./claude-composer.js"
 import { runProbeCli } from "../packages/runtime/src/index.js"
 import { PYLON_VERSION } from "./version.js"
-import {
-  ControlEndpointError,
-  runControlCommand,
-} from "./node/control-cli.js"
-import {
-  runSessionsExec,
-  type ApprovalPolicy,
-  type SessionsExecControl,
-} from "./node/sessions-exec.js"
-import {
-  parseSessionsBatchTasks,
-  runSessionsBatch,
-} from "./node/sessions-batch.js"
+import { ControlEndpointError, runControlCommand } from "./node/control-cli.js"
+import { runSessionsExec, type ApprovalPolicy, type SessionsExecControl } from "./node/sessions-exec.js"
+import { parseSessionsBatchTasks, runSessionsBatch } from "./node/sessions-batch.js"
 import { createBoundedAutoApprovalPolicy } from "./node/auto-approval-policy.js"
-import {
-  PYLON_COMMAND_CATALOG,
-  findCommandEntry,
-  projectCommandCatalog,
-} from "./cli-catalog.js"
+import { PYLON_COMMAND_CATALOG, findCommandEntry, projectCommandCatalog } from "./cli-catalog.js"
 import {
   formatPublicActivityCliText,
   runPublicActivityCliCommand,
@@ -187,7 +149,16 @@ import {
   writeBootstrapFiles,
   type BootstrapSummary,
 } from "./bootstrap.js"
-import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState, type PylonPaths } from "./state.js"
+import {
+  assertPublicProjectionSafe,
+  ensurePylonLocalState,
+  loadOrCreatePresenceState,
+  projectPublicStatus,
+  writePresenceState,
+  writeRuntimeState,
+  type PylonLocalState,
+  type PylonPaths,
+} from "./state.js"
 import {
   activeCodingRunCounts,
   activeCodingRunCountsByAccount,
@@ -265,12 +236,7 @@ import {
 } from "./assignment.js"
 import { discoverHostInventory } from "./inventory.js"
 import { summarizeMultiEarning } from "./multi-earning-ledger.js"
-import {
-  autoUpdateDisabledReason,
-  checkForUpdate,
-  downloadAndApply,
-  resolveSelfBinaryPath,
-} from "./self-update.js"
+import { autoUpdateDisabledReason, checkForUpdate, downloadAndApply, resolveSelfBinaryPath } from "./self-update.js"
 import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
@@ -319,14 +285,9 @@ import {
   runPylonKhalaSpawnPlan,
   type PylonKhalaSpawnWorkflow,
 } from "./khala-spawn.js"
-import {
-  createPylonOrchestrationStore,
-} from "./orchestration/store.js"
+import { createPylonOrchestrationStore } from "./orchestration/store.js"
 import type { PylonDispatchBreakerSnapshot } from "./dispatch-failure-taxonomy.js"
-import {
-  pylonKhalaMcpConfig,
-  runPylonKhalaMcpStdio,
-} from "./khala-mcp.js"
+import { pylonKhalaMcpConfig, runPylonKhalaMcpStdio } from "./khala-mcp.js"
 import { hostname } from "node:os"
 
 // Routes node lifecycle log lines from plain async call sites into the
@@ -341,11 +302,7 @@ let verboseMode = false
 // app can auto-connect with no QR/paste ("shouldn't it auto detect"). The broker
 // registry is in-memory, so we re-register on an interval to survive cold
 // starts. Best-effort and unref'd — never blocks or holds the process open.
-function startDiscoveryHeartbeat(opts: {
-  controlPort: number
-  controlToken: string
-  boundHost: string
-}): void {
+function startDiscoveryHeartbeat(opts: { controlPort: number; controlToken: string; boundHost: string }): void {
   const broker = Bun.env.OA_DISCOVERY_BROKER
   if (!broker) return
   const owner = Bun.env.OA_DISCOVERY_OWNER ?? "chris"
@@ -442,7 +399,10 @@ async function resolveOwnSparkAddressOrNull(state: PylonLocalState): Promise<str
       showLocalTarget: true,
       warmSession: true,
     })
-    const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "spark-address" })
+    const result = await prepareSparkBackupReceive({
+      ...sparkOptions,
+      kind: "spark-address",
+    })
     return result.ok && typeof result.localTarget === "string" && result.localTarget.trim() !== ""
       ? result.localTarget.trim()
       : null
@@ -536,10 +496,7 @@ async function ensureSparkPayoutTargetRegistered(input: {
         // Public-safe digest ref only — never the raw spark1… address.
         sparkPayoutTargetRef: result.payoutTargetRef,
       })
-      input.log(
-        `[spark-payout] auto-registered Spark payout target (${result.payoutTargetRef}).`,
-        "info",
-      )
+      input.log(`[spark-payout] auto-registered Spark payout target (${result.payoutTargetRef}).`, "info")
     }
   } catch (error) {
     // Fail-soft: never propagate. Verbose only; carries no payment material.
@@ -564,8 +521,7 @@ function logToUi(message: string, level: PylonLogLevel = "verbose") {
 
 // Effect-native logging helper (defaults to verbose — hidden unless
 // --verbose / PYLON_VERBOSE=1)
-const log = (message: string, level: PylonLogLevel = "verbose") =>
-  Effect.sync(() => logToUi(message, level))
+const log = (message: string, level: PylonLogLevel = "verbose") => Effect.sync(() => logToUi(message, level))
 
 // Node-side wallet actions: the single execution path for money commands,
 // used by the control server (attach mode) and the headless node
@@ -582,7 +538,12 @@ const nodeWalletActions: ControlCommandActions = {
     nextActionRef: "action.wallet.spark_primary.backup_receive_lightning_address",
   }),
   walletAdmitPayoutTarget: (kind, ref) =>
-    Promise.resolve(admitPayoutTarget({ kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"], ref })),
+    Promise.resolve(
+      admitPayoutTarget({
+        kind: kind as Parameters<typeof admitPayoutTarget>[0]["kind"],
+        ref,
+      }),
+    ),
   // CL-23 read-only balance/earnings: project the live primary agent wallet
   // into a projection-safe subset (no offers/invoices/seed — just balance +
   // readiness). Spark is the primary agent balance; MDK is auxiliary.
@@ -633,7 +594,11 @@ function makeApprovalActions(paths: PylonPaths) {
   return {
     list: async () => ({ approvals: approvalQueue.list() }),
     resolve: async (input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }) => {
-      const result = approvalQueue.resolve(input.approvalRef, input.decision, input.answer ? { answer: input.answer } : undefined)
+      const result = approvalQueue.resolve(
+        input.approvalRef,
+        input.decision,
+        input.answer ? { answer: input.answer } : undefined,
+      )
       // Granting a labor first-run approval is the one side effect of "approve".
       if (result.applied && input.decision === "approve" && result.resolved?.jobType) {
         try {
@@ -671,7 +636,12 @@ function makeCoordinatorActions(holder: CoordinatorHolder) {
 }
 
 // Labor-market deferrals feed the approval queue (the real pending source).
-export function enqueueLaborApproval(input: { approvalRef: string; jobType?: string; policyRef?: string; prompt?: string }) {
+export function enqueueLaborApproval(input: {
+  approvalRef: string
+  jobType?: string
+  policyRef?: string
+  prompt?: string
+}) {
   approvalQueue.enqueue({
     approvalRef: input.approvalRef,
     kind: "labor_first_run",
@@ -698,12 +668,22 @@ function startExternalSessionTailer(): ExternalSessionStore {
     let claude: ExternalSession[] = []
     let codex: ExternalSession[] = []
     try {
-      claude = scanClaudeSessions({ projectsRoot, nowMs: now, maxAgeMs: 900_000, maxSessions: 12 })
+      claude = scanClaudeSessions({
+        projectsRoot,
+        nowMs: now,
+        maxAgeMs: 900_000,
+        maxSessions: 12,
+      })
     } catch {
       // best-effort
     }
     try {
-      codex = scanCodexSessions({ sessionsRoot: codexRoot, nowMs: now, maxAgeMs: 900_000, maxSessions: 12 })
+      codex = scanCodexSessions({
+        sessionsRoot: codexRoot,
+        nowMs: now,
+        maxAgeMs: 900_000,
+        maxSessions: 12,
+      })
     } catch {
       // best-effort
     }
@@ -714,17 +694,11 @@ function startExternalSessionTailer(): ExternalSessionStore {
   timer.unref?.()
   return {
     list: () => sessions,
-    find: (ref) =>
-      sessions.find((s) =>
-        s.sessionRef === ref || (s.aliasSessionRefs ?? []).includes(ref),
-      ),
+    find: (ref) => sessions.find((s) => s.sessionRef === ref || (s.aliasSessionRefs ?? []).includes(ref)),
   }
 }
 
-function externalSessionEventStream(
-  ref: string,
-  store: ExternalSessionStore,
-): ReadableStream<Uint8Array> {
+function externalSessionEventStream(ref: string, store: ExternalSessionStore): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
   const sseFrame = (payload: unknown) => `data: ${JSON.stringify(payload)}\n\n`
   const seen = new Set<string>()
@@ -774,14 +748,13 @@ function externalSessionEventStream(
 // Wrap the Pylon session actions so the control API also serves external
 // sessions (read-only). spawn/cancel/artifact stay Pylon-only; eventStream
 // tails the read-only external projection.
-function wrapSessionsWithExternal<T extends {
-  list: () => Promise<any[]>
-  events: (ref: string) => Promise<any>
-  eventStream?: (ref: string) => ReadableStream<Uint8Array>
-}>(
-  raw: T,
-  store: ExternalSessionStore,
-): T {
+function wrapSessionsWithExternal<
+  T extends {
+    list: () => Promise<any[]>
+    events: (ref: string) => Promise<any>
+    eventStream?: (ref: string) => ReadableStream<Uint8Array>
+  },
+>(raw: T, store: ExternalSessionStore): T {
   return {
     ...raw,
     list: async () => {
@@ -818,7 +791,10 @@ function wrapSessionsWithExternal<T extends {
 // asks (owner-authorized: the whole point of the loop).
 function startCoordinator(
   intentQueue: ReturnType<typeof createIntentQueue>,
-  sessions: { spawn: (cmd: any) => Promise<{ sessionRef: string }>; list: () => Promise<Array<{ sessionRef: string; state: string }>> },
+  sessions: {
+    spawn: (cmd: any) => Promise<{ sessionRef: string }>
+    list: () => Promise<Array<{ sessionRef: string; state: string }>>
+  },
 ): CoordinatorRuntime | null {
   if (Bun.env.OA_COORDINATOR === "0") return null
   const repoRoot = process.cwd()
@@ -841,8 +817,16 @@ function startCoordinator(
     createWorktree: async (intentId, index) => {
       const safe = intentId.replace(/[^a-zA-Z0-9._-]/g, "-")
       const dir = `/tmp/oa-coord/${safe}-${index}`
-      await Bun.spawn(["git", "worktree", "remove", "--force", dir], { cwd: repoRoot, stderr: "ignore", stdout: "ignore" }).exited
-      const proc = Bun.spawn(["git", "worktree", "add", "--detach", "--force", dir, "HEAD"], { cwd: repoRoot, stderr: "pipe", stdout: "ignore" })
+      await Bun.spawn(["git", "worktree", "remove", "--force", dir], {
+        cwd: repoRoot,
+        stderr: "ignore",
+        stdout: "ignore",
+      }).exited
+      const proc = Bun.spawn(["git", "worktree", "add", "--detach", "--force", dir, "HEAD"], {
+        cwd: repoRoot,
+        stderr: "pipe",
+        stdout: "ignore",
+      })
       const code = await proc.exited
       if (code !== 0) throw new Error(`git worktree add failed (${code}) for ${dir}`)
       return dir
@@ -889,23 +873,37 @@ function startCoordinator(
       // budget the spend gate denies, so this never fires unexpectedly.
       if (!decision.eligible || decision.decision !== "auto") return
       if (Bun.env.OA_SHIP_AUTO_EXECUTE !== "1") {
-        logToUi(`[ship] ${intentId} eligible for ${decision.shipMode} — auto-execute disabled (set OA_SHIP_AUTO_EXECUTE=1)`, "info")
+        logToUi(
+          `[ship] ${intentId} eligible for ${decision.shipMode} — auto-execute disabled (set OA_SHIP_AUTO_EXECUTE=1)`,
+          "info",
+        )
         return
       }
       const repoRoot = process.cwd()
       if (decision.shipMode === "ota") {
         // CL-38: auto OTA publish to our updates server when OTA-eligible.
         logToUi(`[ship] ${intentId} auto OTA publish -> publish-ota.sh`, "info")
-        Bun.spawn(["bash", "apps/oa-updates/scripts/publish-ota.sh"], { cwd: repoRoot, stdout: "ignore", stderr: "ignore" })
+        Bun.spawn(["bash", "apps/oa-updates/scripts/publish-ota.sh"], {
+          cwd: repoRoot,
+          stdout: "ignore",
+          stderr: "ignore",
+        })
       } else if (decision.shipMode === "rebuild") {
         // CL-39: auto local build + Apple altool submit when a rebuild is needed
         // (no EAS). Requires the extra OA_SHIP_REBUILD_AUTO=1 since builds are heavy.
         if (Bun.env.OA_SHIP_REBUILD_AUTO !== "1") {
-          logToUi(`[ship] ${intentId} rebuild needed — escalating (set OA_SHIP_REBUILD_AUTO=1 to auto-build locally)`, "info")
+          logToUi(
+            `[ship] ${intentId} rebuild needed — escalating (set OA_SHIP_REBUILD_AUTO=1 to auto-build locally)`,
+            "info",
+          )
           return
         }
         logToUi(`[ship] ${intentId} auto local rebuild -> build-and-submit.sh`, "info")
-        Bun.spawn(["bash", "clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh"], { cwd: repoRoot, stdout: "ignore", stderr: "ignore" })
+        Bun.spawn(["bash", "clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh"], {
+          cwd: repoRoot,
+          stdout: "ignore",
+          stderr: "ignore",
+        })
       }
     },
     log: (message) => logToUi(message, "info"),
@@ -972,9 +970,7 @@ async function runAccountsUsageRefresh(
 }> {
   const targets = await resolvePylonAccountUsageRefreshTargets(summary, options, { env: Bun.env })
   if (targets.length > 0 && targets.every((target) => target.provider === "grok")) {
-    throw new Error(
-      "Grok account usage refresh is unavailable; Grok usage truth remains not_measured",
-    )
+    throw new Error("Grok account usage refresh is unavailable; Grok usage truth remains not_measured")
   }
   let attemptedCount = 0
   let skippedGrok = false
@@ -996,46 +992,37 @@ async function runAccountsUsageRefresh(
         if (custodyReprime.status === "blocked") {
           continue
         }
-        await runCodexComposerStream(
-          prompt,
-          {
-            account: target.account,
-            approvalPolicy: "never",
-            config,
-            cwd: codexComposerWorkingDirectory(),
-            env: custodyReprime.env,
-            executionMode: "local_bounded",
-            ...(config.model === undefined ? {} : { model: config.model }),
-            networkAccessEnabled: false,
-            sandboxMode: "read-only",
-            timeoutMs: 60_000,
-            usageStateSummary: summary,
-          },
-        )
+        await runCodexComposerStream(prompt, {
+          account: target.account,
+          approvalPolicy: "never",
+          config,
+          cwd: codexComposerWorkingDirectory(),
+          env: custodyReprime.env,
+          executionMode: "local_bounded",
+          ...(config.model === undefined ? {} : { model: config.model }),
+          networkAccessEnabled: false,
+          sandboxMode: "read-only",
+          timeoutMs: 60_000,
+          usageStateSummary: summary,
+        })
       } else if (target.provider === "claude_agent") {
         const config = await loadClaudeAgentConfig(summary)
-        await runClaudeComposerStream(
-          prompt,
-          {
-            account: target.account,
-            config,
-            cwd: codexComposerWorkingDirectory(),
-            env: Bun.env,
-            executionMode: "local_bounded",
-            maxTurns: 1,
-            ...(config.model === undefined ? {} : { model: config.model }),
-            permissionMode: "acceptEdits",
-            timeoutMs: 60_000,
-            usageStateSummary: summary,
-          },
-        )
+        await runClaudeComposerStream(prompt, {
+          account: target.account,
+          config,
+          cwd: codexComposerWorkingDirectory(),
+          env: Bun.env,
+          executionMode: "local_bounded",
+          maxTurns: 1,
+          ...(config.model === undefined ? {} : { model: config.model }),
+          permissionMode: "acceptEdits",
+          timeoutMs: 60_000,
+          usageStateSummary: summary,
+        })
         await clearClaudeAccountHealth(summary, target.accountRefHash)
       }
     } catch (error) {
-      if (
-        target.provider === "claude_agent" &&
-        claudeProviderDisabledFailure(error)
-      ) {
+      if (target.provider === "claude_agent" && claudeProviderDisabledFailure(error)) {
         await recordClaudeProviderDisabled(summary, target.accountRefHash)
         failureBlockerRefs.push("blocker.pylon.claude_account.provider_disabled")
       }
@@ -1046,9 +1033,7 @@ async function runAccountsUsageRefresh(
   return {
     attemptedCount,
     blockerRefs: [
-      ...(skippedGrok
-        ? ["blocker.pylon.accounts_usage.grok_refresh_not_measured"]
-        : []),
+      ...(skippedGrok ? ["blocker.pylon.accounts_usage.grok_refresh_not_measured"] : []),
       ...failureBlockerRefs,
     ],
   }
@@ -1090,7 +1075,10 @@ function operatorTextFromInventory(inventory: Awaited<ReturnType<typeof discover
     ...mdkScopedAgentWalletStatus(),
   }
   return formatOperatorSnapshotText(
-    createOperatorSnapshot({ inventory, wallet: wallet as Parameters<typeof createOperatorSnapshot>[0]["wallet"] }),
+    createOperatorSnapshot({
+      inventory,
+      wallet: wallet as Parameters<typeof createOperatorSnapshot>[0]["wallet"],
+    }),
   )
 }
 
@@ -1152,7 +1140,9 @@ const runHeadlessNode = Effect.gen(function* () {
   const headlessSessionActions = makeSessionActions(bootstrapSummary)
   const headlessExternalTailer = startExternalSessionTailer()
   const headlessSessionsWithExternal = wrapSessionsWithExternal(headlessSessionActions, headlessExternalTailer)
-  const headlessIntentQueue = createIntentQueue({ persistPath: `${bootstrapSummary.paths.home}/intents.json` })
+  const headlessIntentQueue = createIntentQueue({
+    persistPath: `${bootstrapSummary.paths.home}/intents.json`,
+  })
   const headlessCoordinatorHolder: CoordinatorHolder = { rt: null }
   // #5207: load local state BEFORE the control server so the warm-session Spark
   // wallet actions (send + backup-status) can execute against this node's
@@ -1180,18 +1170,47 @@ const runHeadlessNode = Effect.gen(function* () {
     catch: () => new Error("failed to configure FleetRun execution projection"),
   })
   const fleetRunActivation = yield* Effect.tryPromise({
-    try: () => openPylonNodeFleetRunActivationService({
-      summary: bootstrapSummary,
-      pylonRef: localState.identity.pylonRef,
-      baseUrl: presenceBaseUrl,
-      env: Bun.env,
-      ...(presenceClientOptions.agentToken === undefined
-        ? {}
-        : { agentToken: presenceClientOptions.agentToken }),
-      ...(fleetRunExecutionRemote === undefined
-        ? {}
-        : { executionRemote: fleetRunExecutionRemote }),
-    }),
+    try: () =>
+      openPylonNodeFleetRunActivationService({
+        summary: bootstrapSummary,
+        pylonRef: localState.identity.pylonRef,
+        baseUrl: presenceBaseUrl,
+        env: Bun.env,
+        ...(presenceClientOptions.agentToken === undefined ? {} : { agentToken: presenceClientOptions.agentToken }),
+        ...(fleetRunExecutionRemote === undefined ? {} : { executionRemote: fleetRunExecutionRemote }),
+        ...(presenceClientOptions.agentToken === undefined || presenceBaseUrl === undefined
+          ? {}
+          : {
+              openHybridExecutor: (executorInput) =>
+                openPylonOwnedStandingFleetRunExecutor({
+                  ...executorInput,
+                  options: {
+                    managedCloud: {
+                      capacity: {
+                        accounts: async () => [
+                          {
+                            accountRef: "account.pylon.managed_cloud.broker",
+                            advertisedCapacity: 1,
+                            workerKind: "codex",
+                            executionTarget: "managed_cloud",
+                            marginalCostClass: "api_metered",
+                            quotaAvailable: true,
+                            acceptedDataPostures: ["broker_safe"],
+                            repositoryAccess: true,
+                            managedIsolation: true,
+                          },
+                        ],
+                      },
+                      adapter: {
+                        kind: "remote",
+                        agentToken: presenceClientOptions.agentToken!,
+                        baseUrl: presenceBaseUrl,
+                      },
+                    },
+                  },
+                }),
+            }),
+      }),
     catch: () => new Error("failed to open owner-local FleetRun activation authority"),
   })
   yield* Effect.addFinalizer(() => Effect.promise(() => fleetRunActivation.close()))
@@ -1199,13 +1218,9 @@ const runHeadlessNode = Effect.gen(function* () {
     try: async () => {
       const agentToken = presenceClientOptions.agentToken
       if (agentToken === undefined || presenceBaseUrl === undefined) return null
-      const configuredInterval = Number(
-        Bun.env.PYLON_FLEET_RUN_INTAKE_POLL_INTERVAL_MS ?? 5_000,
-      )
+      const configuredInterval = Number(Bun.env.PYLON_FLEET_RUN_INTAKE_POLL_INTERVAL_MS ?? 5_000)
       const intervalMs =
-        Number.isInteger(configuredInterval) &&
-        configuredInterval >= 250 &&
-        configuredInterval <= 300_000
+        Number.isInteger(configuredInterval) && configuredInterval >= 250 && configuredInterval <= 300_000
           ? configuredInterval
           : 5_000
       const remote = makePylonFleetRunHttpIntake({
@@ -1226,9 +1241,7 @@ const runHeadlessNode = Effect.gen(function* () {
   if (fleetRunIntakePoller !== null) {
     // Registered after activation so scoped LIFO shutdown stops new intake,
     // drains the current poll, then closes active executors.
-    yield* Effect.addFinalizer(() =>
-      Effect.promise(() => fleetRunIntakePoller.close()),
-    )
+    yield* Effect.addFinalizer(() => Effect.promise(() => fleetRunIntakePoller.close()))
   }
   // #5207: the daemon hosts the WARM Spark session — the actions pass
   // `warmSession: true` so the singleton SDK is built once and kept alive across
@@ -1266,9 +1279,7 @@ const runHeadlessNode = Effect.gen(function* () {
   // helper exists, the launch is inert (supervisorStatus undefined) and the
   // action returns the unsupervised projection byte-for-byte unchanged.
   appleFmSupervisedLaunch =
-    Bun.env.PYLON_APPLE_FM_SUPERVISE === "1"
-      ? createAppleFmSupervisedLaunch({ discover: { env: Bun.env } })
-      : null
+    Bun.env.PYLON_APPLE_FM_SUPERVISE === "1" ? createAppleFmSupervisedLaunch({ discover: { env: Bun.env } }) : null
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -1283,31 +1294,32 @@ const runHeadlessNode = Effect.gen(function* () {
       sessions: headlessSessionsWithExternal,
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
-      accountsStatus: (input) => input?.reset && input.accountRef
-        ? collectPylonAccountsStatus(
-            bootstrapSummary,
-            {
-              accountRef: input.accountRef,
-              provider: null,
-              all: false,
-              json: true,
-              reset: true,
-            },
-            { env: Bun.env },
-          )
-        : input?.detailed
+      accountsStatus: (input) =>
+        input?.reset && input.accountRef
           ? collectPylonAccountsStatus(
               bootstrapSummary,
               {
-                accountRef: null,
+                accountRef: input.accountRef,
                 provider: null,
-                all: true,
+                all: false,
                 json: true,
-                reset: false,
+                reset: true,
               },
               { env: Bun.env },
             )
-          : collectPylonOperatorAccountStatus(bootstrapSummary),
+          : input?.detailed
+            ? collectPylonAccountsStatus(
+                bootstrapSummary,
+                {
+                  accountRef: null,
+                  provider: null,
+                  all: true,
+                  json: true,
+                  reset: false,
+                },
+                { env: Bun.env },
+              )
+            : collectPylonOperatorAccountStatus(bootstrapSummary),
       // The supervisor-status provider comes from the launch lifecycle owner
       // above (undefined unless PYLON_APPLE_FM_SUPERVISE=1 and a helper exists),
       // so by default this is the unsupervised projection unchanged.
@@ -1321,9 +1333,7 @@ const runHeadlessNode = Effect.gen(function* () {
       approvals: makeApprovalActions(localState.paths),
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
       fleetRuns: fleetRunActivation,
-      fleetRunIntakeStatus: async () =>
-        fleetRunIntakePoller?.status() ??
-        disabledPylonFleetRunIntakePollerStatus(),
+      fleetRunIntakeStatus: async () => fleetRunIntakePoller?.status() ?? disabledPylonFleetRunIntakePollerStatus(),
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
@@ -1418,13 +1428,7 @@ const runHeadlessNode = Effect.gen(function* () {
   yield* Deferred.await(shutdown)
 })
 
-const runtimeCommandNamespaces = new Set([
-  "apple-fm",
-  "auth",
-  "backend",
-  "chat",
-  "omega",
-])
+const runtimeCommandNamespaces = new Set(["apple-fm", "auth", "backend", "chat", "omega"])
 
 function parsePresenceOptions(args: string[]) {
   return parseCliOptions(args)
@@ -1447,17 +1451,9 @@ function parseKeyValueOptions(args: string[]) {
   return parseCliOptions(args)
 }
 
-const presenceBootstrapValueOptions = new Set([
-  "capability-ref",
-  "display-name",
-  "pylon-ref",
-  "resource-mode",
-])
+const presenceBootstrapValueOptions = new Set(["capability-ref", "display-name", "pylon-ref", "resource-mode"])
 
-const presenceBootstrapFlagOptions = new Set([
-  "register-openagents",
-  "setup-mdk-wallet",
-])
+const presenceBootstrapFlagOptions = new Set(["register-openagents", "setup-mdk-wallet"])
 
 async function persistedBootstrapArgs(env: NodeJS.ProcessEnv) {
   const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), env)
@@ -1522,10 +1518,7 @@ function parsePresenceBootstrapArgs(args: string[]) {
 async function createPresenceBootstrapSummary(args: string[], env: NodeJS.ProcessEnv) {
   const argsFromConfig = await persistedBootstrapArgs(env)
   const argsFromPresence = parsePresenceBootstrapArgs(args)
-  return createBootstrapSummary(
-    parseBootstrapArgs(["--json", ...argsFromConfig, ...argsFromPresence]),
-    env,
-  )
+  return createBootstrapSummary(parseBootstrapArgs(["--json", ...argsFromConfig, ...argsFromPresence]), env)
 }
 
 function parsePsionicOptions(args: string[]) {
@@ -1581,7 +1574,11 @@ async function resolveSparkBackupOptions(
   // closures that REUSE the process-level warm Spark session (skip the cold
   // build + per-op disconnect). Undefined keeps the cold path (one-shot CLI),
   // which `createSparkBackup*` then resolves from PYLON_SPARK_WARM_SESSION.
-  input: { enabled?: boolean; showLocalTarget?: boolean; warmSession?: boolean } = {},
+  input: {
+    enabled?: boolean
+    showLocalTarget?: boolean
+    warmSession?: boolean
+  } = {},
 ) {
   const mnemonic = await readIdentityMnemonicOrNull(state)
   const storageDir = `${state.paths.home}/wallet/spark-backup/sdk`
@@ -1853,10 +1850,17 @@ async function routeWalletCommandThroughDaemon(
   try {
     const response = await fetch(`${base}/command`, {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify(command),
     })
-    const json = (await response.json()) as { ok?: boolean; result?: unknown; error?: string }
+    const json = (await response.json()) as {
+      ok?: boolean
+      result?: unknown
+      error?: string
+    }
     if (!response.ok || json.ok !== true) return null
     return json.result ?? null
   } catch {
@@ -1895,20 +1899,13 @@ function controlBaseUrlFromEnv(env: NodeJS.ProcessEnv = Bun.env): string {
 }
 
 function remoteReadRequested(args: string[], env: NodeJS.ProcessEnv = Bun.env): boolean {
-  return (
-    args.includes("--remote") ||
-    args.includes("--connect") ||
-    env.PYLON_CONNECT_REMOTE === "1"
-  )
+  return args.includes("--remote") || args.includes("--connect") || env.PYLON_CONNECT_REMOTE === "1"
 }
 
 // Probe the loopback control server WITHOUT binding it. A bounded `/health`
 // GET tells us a node is live; we also read (never write) the per-home control
 // token so a follow-up read-only `/command` can authenticate.
-async function probeRunningNode(
-  state: PylonLocalState,
-  env: NodeJS.ProcessEnv = Bun.env,
-): Promise<RunningNodeProbe> {
+async function probeRunningNode(state: PylonLocalState, env: NodeJS.ProcessEnv = Bun.env): Promise<RunningNodeProbe> {
   const baseUrl = controlBaseUrlFromEnv(env)
   let token: string | null = null
   const envToken = env.PYLON_CONTROL_TOKEN?.trim()
@@ -1926,7 +1923,9 @@ async function probeRunningNode(
     }
   }
   try {
-    const health = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(750) })
+    const health = await fetch(`${baseUrl}/health`, {
+      signal: AbortSignal.timeout(750),
+    })
     return { reachable: health.ok, baseUrl, hasToken: token !== null, token }
   } catch {
     return { reachable: false, baseUrl, hasToken: token !== null, token }
@@ -1935,15 +1934,15 @@ async function probeRunningNode(
 
 // Send a read-only control command to an already-running node. Returns null on
 // any transport/auth failure so the caller can degrade gracefully.
-async function readControlCommand(
-  probe: RunningNodeProbe,
-  command: ControlCommand,
-): Promise<unknown | null> {
+async function readControlCommand(probe: RunningNodeProbe, command: ControlCommand): Promise<unknown | null> {
   if (!probe.reachable || !probe.token) return null
   try {
     const response = await fetch(`${probe.baseUrl}/command`, {
       method: "POST",
-      headers: { authorization: `Bearer ${probe.token}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Bearer ${probe.token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify(command),
     })
     const json = (await response.json()) as { ok?: boolean; result?: unknown }
@@ -2072,15 +2071,17 @@ async function computeSparkSelftest(state: PylonLocalState): Promise<SparkSelfte
 // as an optional fallback alongside the native Spark tip destination. Returns
 // undefined (and costs nothing) when the Spark backup is not opt-in enabled, or
 // when the helper cannot reach the Spark network. Never throws.
-async function resolveLightningAddressForReadiness(
-  state: PylonLocalState,
-): Promise<string | undefined> {
+async function resolveLightningAddressForReadiness(state: PylonLocalState): Promise<string | undefined> {
   try {
-    const sparkOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget: true })
-    const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "lightning-address" })
-    return result.ok &&
-      typeof result.localTarget === "string" &&
-      result.localTarget.trim() !== ""
+    const sparkOptions = await resolveSparkBackupOptions(state, {
+      enabled: true,
+      showLocalTarget: true,
+    })
+    const result = await prepareSparkBackupReceive({
+      ...sparkOptions,
+      kind: "lightning-address",
+    })
+    return result.ok && typeof result.localTarget === "string" && result.localTarget.trim() !== ""
       ? result.localTarget.trim()
       : undefined
   } catch {
@@ -2094,15 +2095,17 @@ async function resolveLightningAddressForReadiness(
 // provisioned, and a Spark sender pays it Spark→Spark. Returns undefined (and
 // costs nothing) when the Spark backup is not opt-in enabled, or when the
 // helper cannot reach the Spark network. Never throws.
-async function resolveSparkAddressForReadiness(
-  state: PylonLocalState,
-): Promise<string | undefined> {
+async function resolveSparkAddressForReadiness(state: PylonLocalState): Promise<string | undefined> {
   try {
-    const sparkOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget: true })
-    const result = await prepareSparkBackupReceive({ ...sparkOptions, kind: "spark-address" })
-    return result.ok &&
-      typeof result.localTarget === "string" &&
-      result.localTarget.trim() !== ""
+    const sparkOptions = await resolveSparkBackupOptions(state, {
+      enabled: true,
+      showLocalTarget: true,
+    })
+    const result = await prepareSparkBackupReceive({
+      ...sparkOptions,
+      kind: "spark-address",
+    })
+    return result.ok && typeof result.localTarget === "string" && result.localTarget.trim() !== ""
       ? result.localTarget.trim()
       : undefined
   } catch {
@@ -2140,7 +2143,7 @@ function parseDevLoopOptions(args: string[]) {
 function splitDevCommand(value: string): string[] {
   const argv: string[] = []
   let current = ""
-  let quote: "'" | "\"" | null = null
+  let quote: "'" | '"' | null = null
   let escaped = false
   for (const char of value) {
     if (escaped) {
@@ -2157,7 +2160,7 @@ function splitDevCommand(value: string): string[] {
       else current += char
       continue
     }
-    if (char === "'" || char === "\"") {
+    if (char === "'" || char === '"') {
       quote = char
       continue
     }
@@ -2240,11 +2243,7 @@ const arrayFromRecord = (record: Record<string, unknown>, key: string): Readonly
   return Array.isArray(value) ? value : []
 }
 
-async function collectKhalaApmProjection(input: {
-  agentToken: string
-  baseUrl: string
-  state: PylonLocalState
-}) {
+async function collectKhalaApmProjection(input: { agentToken: string; baseUrl: string; state: PylonLocalState }) {
   const observedAt = new Date().toISOString()
   const response = await fetch(new URL("/api/operator/fleet/state", input.baseUrl), {
     headers: {
@@ -2255,22 +2254,20 @@ async function collectKhalaApmProjection(input: {
   if (!response.ok) {
     throw new Error(`khala apm query failed (${response.status})`)
   }
-  const snapshot = await response.json() as Record<string, unknown>
-  const pace = snapshot.pace !== null && typeof snapshot.pace === "object"
-    ? snapshot.pace as Record<string, unknown>
-    : {}
-  const fleet = snapshot.fleet !== null && typeof snapshot.fleet === "object"
-    ? snapshot.fleet as Record<string, unknown>
-    : {}
+  const snapshot = (await response.json()) as Record<string, unknown>
+  const pace =
+    snapshot.pace !== null && typeof snapshot.pace === "object" ? (snapshot.pace as Record<string, unknown>) : {}
+  const fleet =
+    snapshot.fleet !== null && typeof snapshot.fleet === "object" ? (snapshot.fleet as Record<string, unknown>) : {}
   const activeSessionTokenEstimate =
     pace.activeSessionTokenEstimate !== null && typeof pace.activeSessionTokenEstimate === "object"
-      ? pace.activeSessionTokenEstimate as Record<string, unknown>
+      ? (pace.activeSessionTokenEstimate as Record<string, unknown>)
       : {}
   const derivedServerAssignments = arrayFromRecord(fleet, "activeAssignments")
-    .filter((assignment): assignment is Record<string, unknown> =>
-      assignment !== null && typeof assignment === "object"
+    .filter(
+      (assignment): assignment is Record<string, unknown> => assignment !== null && typeof assignment === "object",
     )
-    .map(assignment => {
+    .map((assignment) => {
       const tokens = numberFromRecord(assignment, "tokensSoFar")
       const elapsedMs = numberFromRecord(assignment, "elapsedMs")
       const elapsedMinutes = Math.max(elapsedMs / 60_000, 1 / 6)
@@ -2284,32 +2281,28 @@ async function collectKhalaApmProjection(input: {
       }
     })
   const projectedServerAssignments = arrayFromRecord(activeSessionTokenEstimate, "assignments")
-  const serverAssignments = projectedServerAssignments.length > 0
-    ? projectedServerAssignments
-    : derivedServerAssignments
+  const serverAssignments =
+    projectedServerAssignments.length > 0 ? projectedServerAssignments : derivedServerAssignments
   const localRuns = await activeCodingRuns(input.state.paths)
-  const localCodexRuns = localRuns.filter(run => run.service === "codex")
+  const localCodexRuns = localRuns.filter((run) => run.service === "codex")
   const completedTokensPerMinute = numberFromRecord(pace, "liveBurnRateTokensPerMinute")
   const ownCapacityCodex =
     pace.ownCapacityCodex !== null && typeof pace.ownCapacityCodex === "object"
-      ? pace.ownCapacityCodex as Record<string, unknown>
+      ? (pace.ownCapacityCodex as Record<string, unknown>)
       : {}
   const completedTokensWindow = numberFromRecord(ownCapacityCodex, "tokensWindow")
-  const derivedInFlightTokens = derivedServerAssignments
-    .reduce((sum, assignment) => sum + assignment.tokens, 0)
-  const derivedInFlightTokensPerMinute = derivedServerAssignments
-    .reduce((sum, assignment) => sum + assignment.tokensPerMinute, 0)
+  const derivedInFlightTokens = derivedServerAssignments.reduce((sum, assignment) => sum + assignment.tokens, 0)
+  const derivedInFlightTokensPerMinute = derivedServerAssignments.reduce(
+    (sum, assignment) => sum + assignment.tokensPerMinute,
+    0,
+  )
   const inFlightTokens = numberFromRecord(activeSessionTokenEstimate, "inFlightTokens") || derivedInFlightTokens
   const inFlightTokensPerMinute =
-    numberFromRecord(activeSessionTokenEstimate, "inFlightTokensPerMinute") ||
-    derivedInFlightTokensPerMinute
+    numberFromRecord(activeSessionTokenEstimate, "inFlightTokensPerMinute") || derivedInFlightTokensPerMinute
   const activeAdjustedTokensPerMinute =
-    numberFromRecord(pace, "activeAdjustedTokensPerMinute") ||
-    completedTokensPerMinute + inFlightTokensPerMinute
+    numberFromRecord(pace, "activeAdjustedTokensPerMinute") || completedTokensPerMinute + inFlightTokensPerMinute
   const todayTokens = numberFromRecord(pace, "todayTokens")
-  const timezone = typeof pace.timezone === "string" && pace.timezone.trim() !== ""
-    ? pace.timezone
-    : "America/Chicago"
+  const timezone = typeof pace.timezone === "string" && pace.timezone.trim() !== "" ? pace.timezone : "America/Chicago"
   const text = [
     `Khala APM: ${activeAdjustedTokensPerMinute.toLocaleString()} active-adjusted tokens/min`,
     `completed-window: ${completedTokensPerMinute.toLocaleString()} tokens/min`,
@@ -2336,7 +2329,7 @@ async function collectKhalaApmProjection(input: {
       localCodexRunCount: localCodexRuns.length,
       serverAssignmentCount: serverAssignments.length,
       serverAssignments,
-      localRuns: localCodexRuns.map(run => ({
+      localRuns: localCodexRuns.map((run) => ({
         assignmentRef: run.assignmentRef,
         accountRefHash: run.accountRefHash ?? null,
         leaseRef: run.leaseRef,
@@ -2345,9 +2338,10 @@ async function collectKhalaApmProjection(input: {
         startedAt: run.startedAt,
       })),
       caveatRefs: arrayFromRecord(activeSessionTokenEstimate, "caveatRefs"),
-      method: typeof activeSessionTokenEstimate.method === "string"
-        ? activeSessionTokenEstimate.method
-        : "completed token window plus active assignment token projection",
+      method:
+        typeof activeSessionTokenEstimate.method === "string"
+          ? activeSessionTokenEstimate.method
+          : "completed token window plus active assignment token projection",
       sourceRefs: arrayFromRecord(activeSessionTokenEstimate, "sourceRefs"),
     },
     rawSnapshot: snapshot,
@@ -2366,9 +2360,7 @@ async function serverActiveCodingRunCounts(
 ): Promise<PylonActiveCodingRunCounts> {
   if (options === undefined) return {}
   try {
-    return activeCodingRunCountsFromAssignmentLeases(
-      await pollAssignments(summary, options),
-    )
+    return activeCodingRunCountsFromAssignmentLeases(await pollAssignments(summary, options))
   } catch {
     return {}
   }
@@ -2380,17 +2372,13 @@ async function serverActiveCodingRunAccountCounts(
 ): Promise<PylonActiveCodingRunAccountCounts> {
   if (options === undefined) return {}
   try {
-    return activeCodingRunCountsByAccountFromAssignmentLeases(
-      await pollAssignments(summary, options),
-    )
+    return activeCodingRunCountsByAccountFromAssignmentLeases(await pollAssignments(summary, options))
   } catch {
     return {}
   }
 }
 
-async function activeDispatchBreakersForPlanning(
-  summary: BootstrapSummary,
-): Promise<PylonDispatchBreakerSnapshot[]> {
+async function activeDispatchBreakersForPlanning(summary: BootstrapSummary): Promise<PylonDispatchBreakerSnapshot[]> {
   const dbPath = `${summary.paths.home}/orchestration.sqlite`
   if (!existsSync(dbPath)) return []
   let db: Database | null = null
@@ -2474,9 +2462,7 @@ async function localCodexDispatchAccounts(
     state,
     summary,
     env,
-    codexBusyByAccount(
-      await codingAccountBusyCountsForDispatch(summary, state, options),
-    ),
+    codexBusyByAccount(await codingAccountBusyCountsForDispatch(summary, state, options)),
   )
 }
 
@@ -2490,30 +2476,19 @@ async function localClaudeDispatchAccounts(
     state,
     summary,
     env,
-    claudeBusyByAccount(
-      await codingAccountBusyCountsForDispatch(summary, state, options),
-    ),
+    claudeBusyByAccount(await codingAccountBusyCountsForDispatch(summary, state, options)),
   )
 }
 
-function khalaCodexCapacityAdvertisementEnv(
-  env: NodeJS.ProcessEnv,
-  requestedSlots: number,
-): NodeJS.ProcessEnv {
+function khalaCodexCapacityAdvertisementEnv(env: NodeJS.ProcessEnv, requestedSlots: number): NodeJS.ProcessEnv {
   const requestedFloor = Math.max(
     DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY,
-    Number.isSafeInteger(requestedSlots) && requestedSlots > 0
-      ? Math.floor(requestedSlots)
-      : 1,
+    Number.isSafeInteger(requestedSlots) && requestedSlots > 0 ? Math.floor(requestedSlots) : 1,
   )
   const inheritedPooledConcurrency =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ??
-    DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY
-  const explicitPerAccountConcurrency =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY)
-  const perAccountTarget =
-    explicitPerAccountConcurrency ??
-    Math.max(inheritedPooledConcurrency, requestedFloor)
+    positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_CONCURRENCY) ?? DEFAULT_CODEX_PER_ACCOUNT_CONCURRENCY
+  const explicitPerAccountConcurrency = positiveIntegerEnv(env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY)
+  const perAccountTarget = explicitPerAccountConcurrency ?? Math.max(inheritedPooledConcurrency, requestedFloor)
   const pooledTarget = Math.max(inheritedPooledConcurrency, requestedFloor)
   return {
     ...env,
@@ -2524,24 +2499,14 @@ function khalaCodexCapacityAdvertisementEnv(
   }
 }
 
-function khalaClaudeCapacityAdvertisementEnv(
-  env: NodeJS.ProcessEnv,
-  requestedSlots: number,
-): NodeJS.ProcessEnv {
+function khalaClaudeCapacityAdvertisementEnv(env: NodeJS.ProcessEnv, requestedSlots: number): NodeJS.ProcessEnv {
   const requestedFloor = Math.max(
     1,
-    Number.isSafeInteger(requestedSlots) && requestedSlots > 0
-      ? Math.floor(requestedSlots)
-      : 1,
+    Number.isSafeInteger(requestedSlots) && requestedSlots > 0 ? Math.floor(requestedSlots) : 1,
   )
-  const inheritedPooledConcurrency =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_CONCURRENCY) ??
-    1
-  const explicitPerAccountConcurrency =
-    positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY)
-  const perAccountTarget =
-    explicitPerAccountConcurrency ??
-    Math.max(inheritedPooledConcurrency, requestedFloor)
+  const inheritedPooledConcurrency = positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_CONCURRENCY) ?? 1
+  const explicitPerAccountConcurrency = positiveIntegerEnv(env.OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY)
+  const perAccountTarget = explicitPerAccountConcurrency ?? Math.max(inheritedPooledConcurrency, requestedFloor)
   const pooledTarget = Math.max(inheritedPooledConcurrency, requestedFloor)
   return {
     ...env,
@@ -2558,7 +2523,11 @@ function positiveIntegerEnv(value: string | undefined): number | null {
 }
 
 async function localGitText(args: string[], cwd = process.cwd()): Promise<string> {
-  const proc = Bun.spawn(["git", ...args], { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Bun.spawn(["git", ...args], {
+    cwd,
+    stderr: "pipe",
+    stdout: "pipe",
+  })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -2704,12 +2673,16 @@ async function maybeAutoUpdate(): Promise<void> {
     if (target === null) return // dev / interpreter run — nothing to replace
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
     const state = await ensurePylonLocalState(summary)
-    const result = await checkForUpdate({ clientId: state.identity.nodeId, env: Bun.env })
+    const result = await checkForUpdate({
+      clientId: state.identity.nodeId,
+      env: Bun.env,
+    })
     if (result.status !== "update-available") return
-    process.stderr.write(
-      `Pylon: auto-updating ${result.currentVersion} -> ${result.release.version}...\n`,
-    )
-    const applied = await downloadAndApply({ release: result.release, targetPath: target })
+    process.stderr.write(`Pylon: auto-updating ${result.currentVersion} -> ${result.release.version}...\n`)
+    const applied = await downloadAndApply({
+      release: result.release,
+      targetPath: target,
+    })
     process.stderr.write(`Pylon: updated to ${applied.version}; relaunching.\n`)
     // Re-exec the freshly written binary with the same args, inheriting stdio so
     // a launchd/systemd/terminal supervisor stays attached, then exit with its code.
@@ -2722,9 +2695,7 @@ async function maybeAutoUpdate(): Promise<void> {
     const exitCode = await child.exited
     process.exit(exitCode)
   } catch (error) {
-    process.stderr.write(
-      `Pylon: auto-update skipped (${error instanceof Error ? error.message : String(error)}).\n`,
-    )
+    process.stderr.write(`Pylon: auto-update skipped (${error instanceof Error ? error.message : String(error)}).\n`)
   }
 }
 
@@ -2797,12 +2768,10 @@ async function main() {
   ) {
     const command = args[0] as PublicActivityCliCommand
     try {
-      const result = await runPublicActivityCliCommand(command, args.slice(1), { env: Bun.env })
-      process.stdout.write(
-        result.json
-          ? `${JSON.stringify(result, null, 2)}\n`
-          : formatPublicActivityCliText(result),
-      )
+      const result = await runPublicActivityCliCommand(command, args.slice(1), {
+        env: Bun.env,
+      })
+      process.stdout.write(result.json ? `${JSON.stringify(result, null, 2)}\n` : formatPublicActivityCliText(result))
       if (!result.ok) process.exitCode = 1
       return
     } catch (error) {
@@ -2886,7 +2855,11 @@ async function main() {
           },
           Bun.env,
         )
-        const reply = result as { sessionRef: string; parentSessionRef: string; state: string }
+        const reply = result as {
+          sessionRef: string
+          parentSessionRef: string
+          state: string
+        }
         if (!optionFlag(options, "wait")) {
           process.stdout.write(`${JSON.stringify({ ok: true, reply }, null, 2)}\n`)
           return
@@ -2898,7 +2871,8 @@ async function main() {
         return
       }
       if (command === "cancel") {
-        const sessionRef = optionString(options, "session-ref") ?? (args[2] && !args[2].startsWith("--") ? args[2] : undefined)
+        const sessionRef =
+          optionString(options, "session-ref") ?? (args[2] && !args[2].startsWith("--") ? args[2] : undefined)
         if (!sessionRef) throw new Error("sessions cancel requires --session-ref <ref>")
         const { result } = await runControlCommand({ type: "session.cancel", sessionRef }, Bun.env)
         process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
@@ -2925,10 +2899,7 @@ async function main() {
             }
           }
         }
-        const verify =
-          verifies.length === 0
-            ? ["bun", "--version"]
-            : ["sh", "-c", verifies.join(" && ")]
+        const verify = verifies.length === 0 ? ["bun", "--version"] : ["sh", "-c", verifies.join(" && ")]
         const concurrency = positiveIntegerOption(options, "concurrency", "sessions batch --concurrency") ?? 2
         const timeoutSeconds = positiveIntegerOption(options, "timeout-seconds", "sessions batch --timeout-seconds")
         const worktree = optionString(options, "worktree")
@@ -2957,7 +2928,9 @@ async function main() {
           },
           approvalsList: async () => {
             const { result } = await runControlCommand({ type: "approvals.list" }, Bun.env)
-            return result as { approvals: Array<{ approvalRef: string; kind: string }> }
+            return result as {
+              approvals: Array<{ approvalRef: string; kind: string }>
+            }
           },
         }
         const result = await runSessionsBatch(control, {
@@ -3012,10 +2985,7 @@ async function main() {
         // shell-parsed via `sh -c`. With multiple `--verify` commands, chain
         // them with `&&` so all must pass. Default to `bun --version` when none
         // given so the session still produces a verify outcome.
-        const verify =
-          verifies.length === 0
-            ? ["bun", "--version"]
-            : ["sh", "-c", verifies.join(" && ")]
+        const verify = verifies.length === 0 ? ["bun", "--version"] : ["sh", "-c", verifies.join(" && ")]
         const worktree = optionString(options, "worktree")
         // W-3 (#5379): `--on-approval` gains `auto`, the BOUNDED auto-approve
         // policy. `--approval-policy <name>` is an explicit alias for the same
@@ -3050,13 +3020,9 @@ async function main() {
         if (outOfBoundsRaw !== undefined && outOfBoundsRaw !== "escalate" && outOfBoundsRaw !== "deny") {
           throw new Error("sessions exec --auto-out-of-bounds must be escalate or deny")
         }
-        const outOfBounds: "escalate" | "deny" | undefined = outOfBoundsRaw as
-          | "escalate"
-          | "deny"
-          | undefined
+        const outOfBounds: "escalate" | "deny" | undefined = outOfBoundsRaw as "escalate" | "deny" | undefined
         const timeoutSecondsRaw = optionString(options, "timeout-seconds")
-        const timeoutSeconds =
-          timeoutSecondsRaw === undefined ? undefined : Number.parseInt(timeoutSecondsRaw, 10)
+        const timeoutSeconds = timeoutSecondsRaw === undefined ? undefined : Number.parseInt(timeoutSecondsRaw, 10)
         if (timeoutSeconds !== undefined && (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0)) {
           throw new Error("sessions exec --timeout-seconds must be a positive integer")
         }
@@ -3087,13 +3053,12 @@ async function main() {
           },
           approvalsList: async () => {
             const { result } = await runControlCommand({ type: "approvals.list" }, Bun.env)
-            return result as { approvals: Array<{ approvalRef: string; kind: string }> }
+            return result as {
+              approvals: Array<{ approvalRef: string; kind: string }>
+            }
           },
           approvalsResolve: async (approvalRef, decision) => {
-            const { result } = await runControlCommand(
-              { type: "approvals.resolve", approvalRef, decision },
-              Bun.env,
-            )
+            const { result } = await runControlCommand({ type: "approvals.resolve", approvalRef, decision }, Bun.env)
             return result
           },
         }
@@ -3144,7 +3109,8 @@ async function main() {
         return
       }
       if (command === "approve" || command === "deny" || command === "answer") {
-        const approvalRef = optionString(options, "approval-ref") ?? (args[2] && !args[2].startsWith("--") ? args[2] : undefined)
+        const approvalRef =
+          optionString(options, "approval-ref") ?? (args[2] && !args[2].startsWith("--") ? args[2] : undefined)
         if (!approvalRef) throw new Error(`approvals ${command} requires --approval-ref <ref>`)
         const answer = optionString(options, "answer")
         if (command === "answer" && !answer) throw new Error("approvals answer requires --answer <text>")
@@ -3183,7 +3149,10 @@ async function main() {
         }
         const projection = JSON.parse(await readFile(projectionPath, "utf8")) as VirtualMergeQueueProjection
         const request = JSON.parse(await readFile(requestPath, "utf8")) as VirtualMergeQueuePrFastForwardRequest
-        const result = planVirtualMergeQueuePrFastForward({ projection, request })
+        const result = planVirtualMergeQueuePrFastForward({
+          projection,
+          request,
+        })
         process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}\n`)
         return
       }
@@ -3245,7 +3214,9 @@ async function main() {
 
       await writeBootstrapFiles(summary)
       const state = await ensurePylonLocalState(summary)
-      const output = options.json ? { ...summary, localState: projectPublicStatus(state).state } : formatBootstrapText(summary)
+      const output = options.json
+        ? { ...summary, localState: projectPublicStatus(state).state }
+        : formatBootstrapText(summary)
       process.stdout.write(typeof output === "string" ? output : `${JSON.stringify(output, null, 2)}\n`)
       return
     } catch (error) {
@@ -3270,7 +3241,10 @@ async function main() {
     const probe = await probeRunningNode(state, Bun.env)
     const forceRemote = remoteReadRequested(args, Bun.env)
     if (forceRemote && !probe.reachable) {
-      const payload = { ok: false, error: `no Pylon node reachable at ${probe.baseUrl} (start one with \`pylon node\`)` }
+      const payload = {
+        ok: false,
+        error: `no Pylon node reachable at ${probe.baseUrl} (start one with \`pylon node\`)`,
+      }
       process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       process.exitCode = 1
       return
@@ -3280,7 +3254,9 @@ async function main() {
     // When a node is live, attach its read-only wallet status off the warm
     // session (same projection-safe read `wallet status` routes through).
     const liveWallet = probe.reachable
-      ? ((await readControlCommand(probe, { type: "wallet.status" })) as WalletStatusProjection | null)
+      ? ((await readControlCommand(probe, {
+          type: "wallet.status",
+        })) as WalletStatusProjection | null)
       : null
     const output = {
       ...projection,
@@ -3333,13 +3309,18 @@ async function main() {
     const probe = await probeRunningNode(state, Bun.env)
     const forceRemote = remoteReadRequested(args, Bun.env)
     if (forceRemote && !probe.reachable) {
-      const payload = { ok: false, error: `no Pylon node reachable at ${probe.baseUrl} (start one with \`pylon node\`)` }
+      const payload = {
+        ok: false,
+        error: `no Pylon node reachable at ${probe.baseUrl} (start one with \`pylon node\`)`,
+      }
       process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
       process.exitCode = 1
       return
     }
     const liveWallet = probe.reachable
-      ? ((await readControlCommand(probe, { type: "wallet.status" })) as WalletStatusProjection | null)
+      ? ((await readControlCommand(probe, {
+          type: "wallet.status",
+        })) as WalletStatusProjection | null)
       : null
     const report = {
       ok: true,
@@ -3392,18 +3373,41 @@ async function main() {
 
       const target = resolveSelfBinaryPath()
       if (target === null) {
-        const payload = { status: "dev-noop" as const, currentVersion: result.currentVersion, candidate: result.release.version, applied: false as const }
-        process.stdout.write(json ? `${JSON.stringify(payload, null, 2)}\n` : `Update ${result.release.version} available; running from source (no binary to replace).\n`)
+        const payload = {
+          status: "dev-noop" as const,
+          currentVersion: result.currentVersion,
+          candidate: result.release.version,
+          applied: false as const,
+        }
+        process.stdout.write(
+          json
+            ? `${JSON.stringify(payload, null, 2)}\n`
+            : `Update ${result.release.version} available; running from source (no binary to replace).\n`,
+        )
         return
       }
 
-      const applied = await downloadAndApply({ release: result.release, targetPath: target })
-      const payload = { status: "updated" as const, fromVersion: result.currentVersion, toVersion: applied.version, targetPath: applied.targetPath, applied: true as const }
-      process.stdout.write(json ? `${JSON.stringify(payload, null, 2)}\n` : `Updated ${result.currentVersion} -> ${applied.version}. Restart pylon to run the new version.\n`)
+      const applied = await downloadAndApply({
+        release: result.release,
+        targetPath: target,
+      })
+      const payload = {
+        status: "updated" as const,
+        fromVersion: result.currentVersion,
+        toVersion: applied.version,
+        targetPath: applied.targetPath,
+        applied: true as const,
+      }
+      process.stdout.write(
+        json
+          ? `${JSON.stringify(payload, null, 2)}\n`
+          : `Updated ${result.currentVersion} -> ${applied.version}. Restart pylon to run the new version.\n`,
+      )
       return
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (json) process.stdout.write(`${JSON.stringify({ status: "error", error: message, applied: false }, null, 2)}\n`)
+      if (json)
+        process.stdout.write(`${JSON.stringify({ status: "error", error: message, applied: false }, null, 2)}\n`)
       else process.stderr.write(`Pylon update failed: ${message}\n`)
       process.exitCode = 1
       return
@@ -3438,13 +3442,8 @@ async function main() {
         if (options.json) {
           process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         } else {
-          const verb =
-            projection.localClaude.setupTokenStatus === "skipped_existing_auth"
-              ? "Reused"
-              : "Connected"
-          process.stdout.write(
-            `✓ ${verb} Claude account (${projection.accountRef})\n`,
-          )
+          const verb = projection.localClaude.setupTokenStatus === "skipped_existing_auth" ? "Reused" : "Connected"
+          process.stdout.write(`✓ ${verb} Claude account (${projection.accountRef})\n`)
         }
         return
       }
@@ -3456,10 +3455,7 @@ async function main() {
       if (options.json) {
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
       } else {
-        const outcome = pylonCodexAuthCliOutcome(
-          projection.localCodex.deviceLoginStatus,
-          projection.localCodex.reason,
-        )
+        const outcome = pylonCodexAuthCliOutcome(projection.localCodex.deviceLoginStatus, projection.localCodex.reason)
         if (!outcome.ok) {
           // A present but revoked/expired credential that could not be recovered
           // must NEVER be reported as a bare success.
@@ -3477,14 +3473,15 @@ async function main() {
         // `Pylon auth failed` exit — guard it and degrade to a ref-only line.
         let email: string | null = null
         try {
-          const codexAccounts = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
+          const codexAccounts = await collectPylonCodexAccountsLocal(summary, {
+            env: Bun.env,
+          })
           email = codexAccounts.find((account) => account.accountRef === projection.accountRef)?.email ?? null
         } catch {
           email = null
         }
         const verb = outcome.kind === "reauthed" ? "Re-authenticated" : "Linked"
-        const usageNote =
-          outcome.reason === "usage_limited" ? " (note: account is usage-limited right now)" : ""
+        const usageNote = outcome.reason === "usage_limited" ? " (note: account is usage-limited right now)" : ""
         process.stdout.write(
           `✓ ${verb} Codex account${email ? `: ${email}` : ""} (${projection.accountRef})${usageNote}\n`,
         )
@@ -3508,22 +3505,21 @@ async function main() {
   }
 
   const codexAccountsAlias = args[0] === "codex" && args[1] === "accounts"
-  const accountCommandArgs =
-    args[0] === "accounts"
-      ? args.slice(1)
-      : codexAccountsAlias
-        ? args.slice(2)
-        : null
+  const accountCommandArgs = args[0] === "accounts" ? args.slice(1) : codexAccountsAlias ? args.slice(2) : null
 
   if (args[0] === "codex" && args[1] === "fleet") {
     try {
       const command = args[2]
       if (command !== "offload-plan") {
-        throw new Error("usage: pylon codex fleet offload-plan --accounts <refs> --target <host:capacity> [--target <host:capacity> ...] --json")
+        throw new Error(
+          "usage: pylon codex fleet offload-plan --accounts <refs> --target <host:capacity> [--target <host:capacity> ...] --json",
+        )
       }
       const options = parseCodexFleetOffloadArgs(args.slice(3))
       if (!options.json) {
-        throw new Error("usage: pylon codex fleet offload-plan --accounts <refs> --target <host:capacity> [--target <host:capacity> ...] --json")
+        throw new Error(
+          "usage: pylon codex fleet offload-plan --accounts <refs> --target <host:capacity> [--target <host:capacity> ...] --json",
+        )
       }
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const plan = await createCodexFleetOffloadPlan(summary, options)
@@ -3542,7 +3538,9 @@ async function main() {
       if (command === "list") {
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         if (accountCommandArgs.includes("--json")) {
-          const projection = await collectPylonAccountsList(summary, { env: Bun.env })
+          const projection = await collectPylonAccountsList(summary, {
+            env: Bun.env,
+          })
           process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
           return
         }
@@ -3550,9 +3548,7 @@ async function main() {
           const projection = await collectPylonAccountsList(summary, {
             env: Bun.env,
           })
-          const present = projection.accounts.filter(
-            (account) => account.homeState === "present",
-          )
+          const present = projection.accounts.filter((account) => account.homeState === "present")
           if (present.length === 0) {
             process.stdout.write("No connected Pylon accounts.\n")
             return
@@ -3560,14 +3556,14 @@ async function main() {
           process.stdout.write(`Connected Pylon accounts (${present.length}):\n`)
           for (const account of present) {
             const ref = account.accountRef ?? "(default)"
-            process.stdout.write(
-              `  ${account.provider.padEnd(14)} ${ref.padEnd(18)} ${account.readiness.state}\n`,
-            )
+            process.stdout.write(`  ${account.provider.padEnd(14)} ${ref.padEnd(18)} ${account.readiness.state}\n`)
           }
           return
         }
         // The Codex namespace alias retains its local-only email/linked-at view.
-        const codex = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
+        const codex = await collectPylonCodexAccountsLocal(summary, {
+          env: Bun.env,
+        })
         const presentCodex = codex.filter((account) => account.homeState === "present")
         if (presentCodex.length === 0) {
           process.stdout.write("No connected Codex accounts.\n")
@@ -3577,9 +3573,7 @@ async function main() {
         for (const account of presentCodex) {
           const ref = account.accountRef ?? "(default)"
           const email = account.email ?? "(email unavailable)"
-          const when = account.lastLinkedAt
-            ? new Date(account.lastLinkedAt).toLocaleString()
-            : "unknown"
+          const when = account.lastLinkedAt ? new Date(account.lastLinkedAt).toLocaleString() : "unknown"
           process.stdout.write(`  ${ref.padEnd(14)} ${email.padEnd(34)} linked ${when}\n`)
         }
         return
@@ -3587,43 +3581,47 @@ async function main() {
       if (command === "usage") {
         const options = parsePylonAccountsUsageArgs(accountCommandArgs.slice(1))
         if (!options.json) {
-          throw new Error("usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] [--report-local-codex-usage] --json")
+          throw new Error(
+            "usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] [--report-local-codex-usage] --json",
+          )
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         const refreshResult = options.refresh
           ? await runAccountsUsageRefresh(summary, options)
           : { attemptedCount: 0, blockerRefs: [] }
-        const directLocalCodexReport = await reportDirectLocalCodexUsage(
-          summary,
-          options,
-          { env: Bun.env },
+        const directLocalCodexReport = await reportDirectLocalCodexUsage(summary, options, { env: Bun.env })
+        const projection = await collectPylonAccountsUsage(summary, options, {
+          env: Bun.env,
+        })
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              ...projection,
+              refresh: {
+                ...projection.refresh,
+                performed: options.refresh && refreshResult.attemptedCount > 0,
+                directLocalCodexReport,
+                blockerRefs: [...projection.refresh.blockerRefs, ...refreshResult.blockerRefs],
+              },
+              blockerRefs: [...projection.blockerRefs, ...refreshResult.blockerRefs],
+            },
+            null,
+            2,
+          )}\n`,
         )
-        const projection = await collectPylonAccountsUsage(summary, options, { env: Bun.env })
-        process.stdout.write(`${JSON.stringify({
-          ...projection,
-          refresh: {
-            ...projection.refresh,
-            performed: options.refresh && refreshResult.attemptedCount > 0,
-            directLocalCodexReport,
-            blockerRefs: [
-              ...projection.refresh.blockerRefs,
-              ...refreshResult.blockerRefs,
-            ],
-          },
-          blockerRefs: [
-            ...projection.blockerRefs,
-            ...refreshResult.blockerRefs,
-          ],
-        }, null, 2)}\n`)
         return
       }
       if (command === "status") {
         const options = parsePylonAccountsStatusArgs(accountCommandArgs.slice(1))
         if (!options.json) {
-          throw new Error("usage: pylon accounts status [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--reset] --json")
+          throw new Error(
+            "usage: pylon accounts status [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--reset] --json",
+          )
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-        const projection = await collectPylonAccountsStatus(summary, options, { env: Bun.env })
+        const projection = await collectPylonAccountsStatus(summary, options, {
+          env: Bun.env,
+        })
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
       }
@@ -3635,7 +3633,9 @@ async function main() {
           )
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-        const projection = await runPylonAccountsConnect(summary, options, { env: Bun.env })
+        const projection = await runPylonAccountsConnect(summary, options, {
+          env: Bun.env,
+        })
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
       }
@@ -3775,11 +3775,17 @@ async function main() {
           const title = stringPsionicOption(options, "title")
           const body = stringPsionicOption(options, "body")
           if (!title || !body) throw new Error("usage: pylon forum post --title T --body B [--forum slug]")
-          const result = await forumPostTopic(networkOptions, { bodyText: body, forumSlug, title })
+          const result = await forumPostTopic(networkOptions, {
+            bodyText: body,
+            forumSlug,
+            title,
+          })
           await appendMemory(summary.paths.home, {
             at: new Date().toISOString(),
             kind: "forum_post",
-            refs: { topicId: (result.topic as { topicId?: string } | undefined)?.topicId ?? null },
+            refs: {
+              topicId: (result.topic as { topicId?: string } | undefined)?.topicId ?? null,
+            },
             summary: `posted forum topic: ${title.slice(0, 80)}`,
           })
           process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
@@ -3789,7 +3795,10 @@ async function main() {
           const topicId = args[2]
           const body = stringPsionicOption(options, "body")
           if (!topicId || !body) throw new Error("usage: pylon forum reply <topic-id> --body B")
-          const result = await forumReply(networkOptions, { bodyText: body, topicId })
+          const result = await forumReply(networkOptions, {
+            bodyText: body,
+            topicId,
+          })
           await appendMemory(summary.paths.home, {
             at: new Date().toISOString(),
             kind: "forum_reply",
@@ -3832,19 +3841,30 @@ async function main() {
       await appendMemory(summary.paths.home, {
         at: new Date().toISOString(),
         kind: "ask_artanis",
-        refs: { composedBy: composed.composedBy, topicId: (result.topic as { topicId?: string } | undefined)?.topicId ?? null },
+        refs: {
+          composedBy: composed.composedBy,
+          topicId: (result.topic as { topicId?: string } | undefined)?.topicId ?? null,
+        },
         summary: `asked artanis: ${question.slice(0, 80)}`,
       })
       process.stdout.write(`${JSON.stringify({ composedBy: composed.composedBy, result }, null, 2)}\n`)
       return
     } catch (error) {
-      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.stdout.write(
+        `${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`,
+      )
       process.exitCode = 1
       return
     }
   }
 
-  if (args[0] === "tip" || args[0] === "balance" || args[0] === "sweep-status" || args[0] === "tip-prefs" || args[0] === "claim-tip-readiness") {
+  if (
+    args[0] === "tip" ||
+    args[0] === "balance" ||
+    args[0] === "sweep-status" ||
+    args[0] === "tip-prefs" ||
+    args[0] === "claim-tip-readiness"
+  ) {
     try {
       const tipArgs = args[0] === "tip" ? args.slice(3) : args.slice(1)
       const options = parseKeyValueOptions(tipArgs)
@@ -3897,8 +3917,10 @@ async function main() {
         const prefs: Record<string, number | boolean> = {}
         if (options["sweep-enabled"] !== undefined) prefs.sweepEnabled = options["sweep-enabled"] === "true"
         if (options["sweep-threshold"] !== undefined) prefs.sweepThresholdSat = Number(options["sweep-threshold"])
-        if (options["send-credits-below"] !== undefined) prefs.sendCreditsBelowSat = Number(options["send-credits-below"])
-        if (options["receive-credits-below"] !== undefined) prefs.receiveCreditsBelowSat = Number(options["receive-credits-below"])
+        if (options["send-credits-below"] !== undefined)
+          prefs.sendCreditsBelowSat = Number(options["send-credits-below"])
+        if (options["receive-credits-below"] !== undefined)
+          prefs.receiveCreditsBelowSat = Number(options["receive-credits-below"])
         const result = await setTipPreferences(networkOptions, prefs)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
@@ -3916,10 +3938,14 @@ async function main() {
         sparkAddress,
         lightningAddress,
       })
-      process.stdout.write(`${JSON.stringify({ claimed: true, tipRecipientReadiness: (result as { tipRecipientReadiness?: unknown }).tipRecipientReadiness ?? null }, null, 2)}\n`)
+      process.stdout.write(
+        `${JSON.stringify({ claimed: true, tipRecipientReadiness: (result as { tipRecipientReadiness?: unknown }).tipRecipientReadiness ?? null }, null, 2)}\n`,
+      )
       return
     } catch (error) {
-      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.stdout.write(
+        `${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`,
+      )
       process.exitCode = 1
       return
     }
@@ -3952,7 +3978,9 @@ async function main() {
       const command = args[1]
       const options = parseDevLoopOptions(args.slice(2))
       if (!options.json) {
-        throw new Error(`usage: pylon dev ${command} --json [--allow-dirty]${command === "check" ? " [--command <argv>]" : ""}`)
+        throw new Error(
+          `usage: pylon dev ${command} --json [--allow-dirty]${command === "check" ? " [--command <argv>]" : ""}`,
+        )
       }
       if (options.command && command !== "check") {
         throw new Error("--command is only supported for pylon dev check")
@@ -4009,15 +4037,12 @@ async function main() {
         const objective = args[2]
         const budgetCents = Number(options["budget-cents"] ?? options.budget ?? 0)
         if (!objective || objective.startsWith("--") || !Number.isInteger(budgetCents) || budgetCents < 0) {
-          throw new Error('usage: pylon work submit "<objective>" --commit <40-char-sha> [--adapter codex|claude_agent|fable] [--budget-cents <cents>] [--repo owner/repo] [--branch main] [--verify "bun test"]')
+          throw new Error(
+            'usage: pylon work submit "<objective>" --commit <40-char-sha> [--adapter codex|claude_agent|fable] [--budget-cents <cents>] [--repo owner/repo] [--branch main] [--verify "bun test"]',
+          )
         }
         const adapter = options.adapter
-        if (
-          adapter !== undefined &&
-          adapter !== "codex" &&
-          adapter !== "claude_agent" &&
-          adapter !== "fable"
-        ) {
+        if (adapter !== undefined && adapter !== "codex" && adapter !== "claude_agent" && adapter !== "fable") {
           throw new Error("work submit --adapter must be codex, claude_agent, or fable")
         }
         const result = await submitPylonAutopilotWork(networkOptions, {
@@ -4046,7 +4071,9 @@ async function main() {
         const objective = args[2]
         const budgetSats = Number(options.budget)
         if (!objective || objective.startsWith("--") || !Number.isInteger(budgetSats) || budgetSats <= 0) {
-          throw new Error('usage: pylon work request "<objective>" --budget <sats> [--repo URL] [--verify command] [--deadline iso]')
+          throw new Error(
+            'usage: pylon work request "<objective>" --budget <sats> [--repo URL] [--verify command] [--deadline iso]',
+          )
         }
         const result = await createPylonWorkRequest(networkOptions, {
           budgetSats,
@@ -4055,10 +4082,13 @@ async function main() {
           repository: optionString(options, "repo"),
           verificationCommand: optionString(options, "verify"),
         })
-        await appendMemory(summary.paths.home, workRequestMemoryEntry({
-          at: new Date().toISOString(),
-          result,
-        }))
+        await appendMemory(
+          summary.paths.home,
+          workRequestMemoryEntry({
+            at: new Date().toISOString(),
+            result,
+          }),
+        )
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
@@ -4075,13 +4105,19 @@ async function main() {
         const requestRef = args[2]
         const quoteRef = args[3]
         if (!requestRef || !quoteRef) throw new Error("usage: pylon work accept <request-ref> <quote-ref>")
-        const result = await acceptPylonWorkOffer(networkOptions, { quoteRef, requestRef })
-        await appendMemory(summary.paths.home, workAcceptanceMemoryEntry({
-          at: new Date().toISOString(),
+        const result = await acceptPylonWorkOffer(networkOptions, {
           quoteRef,
           requestRef,
-          result,
-        }))
+        })
+        await appendMemory(
+          summary.paths.home,
+          workAcceptanceMemoryEntry({
+            at: new Date().toISOString(),
+            quoteRef,
+            requestRef,
+            result,
+          }),
+        )
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
@@ -4105,13 +4141,13 @@ async function main() {
       if (command === "review") {
         const workOrderRef = args[2]
         const action = options.action
-        if (
-          !workOrderRef ||
-          (action !== "accept" && action !== "reject" && action !== "request_changes")
-        ) {
+        if (!workOrderRef || (action !== "accept" && action !== "reject" && action !== "request_changes")) {
           throw new Error("usage: pylon work review <work-order-ref> --action accept|reject|request_changes")
         }
-        const result = await reviewPylonAutopilotWork(networkOptions, { action, workOrderRef })
+        const result = await reviewPylonAutopilotWork(networkOptions, {
+          action,
+          workOrderRef,
+        })
         await appendMemory(summary.paths.home, {
           at: new Date().toISOString(),
           kind: "autopilot_work_review",
@@ -4124,7 +4160,9 @@ async function main() {
 
       throw new Error("usage: pylon work submit|status|review|request|offers|accept ...")
     } catch (error) {
-      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.stdout.write(
+        `${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`,
+      )
       process.exitCode = 1
       return
     }
@@ -4135,10 +4173,7 @@ async function main() {
       const command = args[1]
       const optionArgs = command === "config" ? args.slice(2) : args.slice(1)
       const options = parseKeyValueOptions(optionArgs)
-      const baseUrl =
-        optionString(options, "base-url") ??
-        Bun.env.PYLON_OPENAGENTS_BASE_URL ??
-        "https://openagents.com"
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL ?? "https://openagents.com"
       if (command === "config") {
         process.stdout.write(
           `${JSON.stringify(
@@ -4197,9 +4232,10 @@ async function main() {
           process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
           return
         }
-        const text = typeof payload.text === "string" && payload.text.trim() !== ""
-          ? payload.text
-          : JSON.stringify(payload, null, 2)
+        const text =
+          typeof payload.text === "string" && payload.text.trim() !== ""
+            ? payload.text
+            : JSON.stringify(payload, null, 2)
         process.stdout.write(`${text}\n`)
       }
 
@@ -4220,7 +4256,9 @@ async function main() {
           optionString(options, "prompt") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         if (!objective) {
-          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--workflow claude_agent_task|codex_agent_task] [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--lifecycle-ndjson] [--json]")
+          throw new Error(
+            "usage: pylon khala spawn --count <n> --objective <text> [--workflow claude_agent_task|codex_agent_task] [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--account <ref>] [--max-parallel n] [--execute] [--lifecycle-ndjson] [--json]",
+          )
         }
         const workflow = optionString(options, "workflow") ?? "codex_agent_task"
         if (workflow !== "claude_agent_task" && workflow !== "codex_agent_task") {
@@ -4235,10 +4273,9 @@ async function main() {
         const repository = optionString(options, "repo") ?? "OpenAgentsInc/openagents"
         const verificationCommand = optionString(options, "verify")
         const explicitFixture =
-          optionFlag(options, "fixture") ||
-          optionFlag(options, "fixture-smoke") ||
-          optionFlag(options, "codex-fixture")
-        const hasWorkspacePin = commit !== undefined || verificationCommand !== undefined || optionString(options, "repo") !== undefined
+          optionFlag(options, "fixture") || optionFlag(options, "fixture-smoke") || optionFlag(options, "codex-fixture")
+        const hasWorkspacePin =
+          commit !== undefined || verificationCommand !== undefined || optionString(options, "repo") !== undefined
         if (explicitFixture && hasWorkspacePin) {
           throw new Error("khala spawn --fixture cannot be combined with --commit, --repo, or --verify")
         }
@@ -4255,12 +4292,11 @@ async function main() {
         }
         const state = await ensurePylonLocalState(summary)
         const targetPylonRef =
-          optionString(options, "pylon-ref") ??
-          optionString(options, "target-pylon-ref") ??
-          localPylonTargetRef(state)
-        const capacityEnv = spawnWorkflow === "claude_agent_task"
-          ? khalaClaudeCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
-          : khalaCodexCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
+          optionString(options, "pylon-ref") ?? optionString(options, "target-pylon-ref") ?? localPylonTargetRef(state)
+        const capacityEnv =
+          spawnWorkflow === "claude_agent_task"
+            ? khalaClaudeCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
+            : khalaCodexCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
         if (optionFlag(options, "execute")) {
           try {
             await sendHeartbeat(summary, {
@@ -4274,35 +4310,36 @@ async function main() {
             // push keeps advertised capacity current for the spawn planner.
           }
         }
-        const accountSelector =
-          optionString(options, "account") ??
-          optionString(options, "account-ref")
-        const allAccounts = await collectPylonAccountsList(summary, { env: capacityEnv })
+        const accountSelector = optionString(options, "account") ?? optionString(options, "account-ref")
+        const allAccounts = await collectPylonAccountsList(summary, {
+          env: capacityEnv,
+        })
         const accounts =
           accountSelector === undefined
             ? allAccounts
             : {
                 ...allAccounts,
-                accounts: allAccounts.accounts.filter((account) =>
-                  account.provider === accountProvider &&
-                  (
-                    account.accountRef === accountSelector ||
-                    account.accountRefHash === accountSelector ||
-                    (account.accountRef === null && /^(?:default|\(default\))$/iu.test(accountSelector))
-                  )
+                accounts: allAccounts.accounts.filter(
+                  (account) =>
+                    account.provider === accountProvider &&
+                    (account.accountRef === accountSelector ||
+                      account.accountRefHash === accountSelector ||
+                      (account.accountRef === null && /^(?:default|\(default\))$/iu.test(accountSelector))),
                 ),
               }
         if (accountSelector !== undefined && accounts.accounts.length === 0) {
           throw new Error(`khala spawn account ${accountSelector} is not a connected ${workerKind} account`)
         }
-        const advertisedCodexAccounts = spawnWorkflow === "claude_agent_task"
-          ? await localClaudeDispatchAccounts(summary, state, capacityEnv, networkOptions)
-          : await localCodexDispatchAccounts(summary, state, capacityEnv, networkOptions)
-        const advertisedCodexAvailability = advertisedCodexAccounts.length > 0
-          ? advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
-          : spawnWorkflow === "claude_agent_task"
-            ? await availableClaudeAssignments(summary, state, networkOptions, capacityEnv)
-            : await availableCodexAssignments(summary, state, networkOptions, capacityEnv)
+        const advertisedCodexAccounts =
+          spawnWorkflow === "claude_agent_task"
+            ? await localClaudeDispatchAccounts(summary, state, capacityEnv, networkOptions)
+            : await localCodexDispatchAccounts(summary, state, capacityEnv, networkOptions)
+        const advertisedCodexAvailability =
+          advertisedCodexAccounts.length > 0
+            ? advertisedCodexAccounts.reduce((sum, account) => sum + account.available, 0)
+            : spawnWorkflow === "claude_agent_task"
+              ? await availableClaudeAssignments(summary, state, networkOptions, capacityEnv)
+              : await availableCodexAssignments(summary, state, networkOptions, capacityEnv)
         const dispatchBreakers = await activeDispatchBreakersForPlanning(summary)
         const workspace = explicitFixture
           ? undefined
@@ -4366,9 +4403,7 @@ async function main() {
         }
         const state = await ensurePylonLocalState(summary)
         const targetPylonRef =
-          optionString(options, "pylon-ref") ??
-          optionString(options, "target-pylon-ref") ??
-          localPylonTargetRef(state)
+          optionString(options, "pylon-ref") ?? optionString(options, "target-pylon-ref") ?? localPylonTargetRef(state)
         const advertisedCodexAvailability = await availableCodexAssignments(summary, state, networkOptions)
         if (optionFlag(options, "execute")) {
           try {
@@ -4387,11 +4422,12 @@ async function main() {
         const issueNumbers =
           issuesOption === undefined
             ? await readKhalaRoadmapIssueNumbers(
-                optionString(options, "roadmap") ??
-                  "docs/khala/2026-06-26-khala-open-issues-master-roadmap.md",
+                optionString(options, "roadmap") ?? "docs/khala/2026-06-26-khala-open-issues-master-roadmap.md",
               )
             : parseKhalaBurndownIssueNumbers(issuesOption)
-        const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const accounts = await collectPylonAccountsList(summary, {
+          env: Bun.env,
+        })
         const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, Bun.env, networkOptions)
         const dispatchBreakers = await activeDispatchBreakersForPlanning(summary)
         const maxParallel = positiveIntegerOption(options, "max-parallel", "khala burndown --max-parallel")
@@ -4429,12 +4465,8 @@ async function main() {
         const commit = optionString(options, "commit")
         const repository = optionString(options, "repo") ?? "OpenAgentsInc/openagents"
         const verificationCommand = optionString(options, "verify")
-        const candidatesOption =
-          optionString(options, "candidates") ??
-          optionString(options, "candidate-refs")
-        const accountsOption =
-          optionString(options, "accounts") ??
-          optionString(options, "account-targets")
+        const candidatesOption = optionString(options, "candidates") ?? optionString(options, "candidate-refs")
+        const accountsOption = optionString(options, "accounts") ?? optionString(options, "account-targets")
         const missingPins = [
           commit === undefined ? "--commit" : null,
           verificationCommand === undefined ? "--verify" : null,
@@ -4452,10 +4484,10 @@ async function main() {
         const pinnedVerificationCommand = verificationCommand as string
         const state = await ensurePylonLocalState(summary)
         const targetPylonRef =
-          optionString(options, "pylon-ref") ??
-          optionString(options, "target-pylon-ref") ??
-          localPylonTargetRef(state)
-        const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+          optionString(options, "pylon-ref") ?? optionString(options, "target-pylon-ref") ?? localPylonTargetRef(state)
+        const accounts = await collectPylonAccountsList(summary, {
+          env: Bun.env,
+        })
         const wantedAccounts = new Set(
           accountTargetsArg
             .split(",")
@@ -4463,10 +4495,11 @@ async function main() {
             .filter((value) => value !== ""),
         )
         const accountTargets: KhalaDispatchAccountTarget[] = accounts.accounts
-          .filter((account) =>
-            account.provider === "codex" &&
-            ((account.accountRef !== null && wantedAccounts.has(account.accountRef)) ||
-              wantedAccounts.has(account.accountRefHash))
+          .filter(
+            (account) =>
+              account.provider === "codex" &&
+              ((account.accountRef !== null && wantedAccounts.has(account.accountRef)) ||
+                wantedAccounts.has(account.accountRefHash)),
           )
           .map((account) => ({
             accountRef: account.accountRef,
@@ -4476,12 +4509,8 @@ async function main() {
         const branch = optionString(options, "branch")
         const plan = buildPylonKhalaDispatchPlan({
           accountTargets,
-          candidateRefs: normalizeKhalaDispatchCandidateRefs(
-            candidateRefsArg.split(","),
-          ),
-          concurrency:
-            positiveIntegerOption(options, "concurrency", "khala dispatch --concurrency") ??
-            1,
+          candidateRefs: normalizeKhalaDispatchCandidateRefs(candidateRefsArg.split(",")),
+          concurrency: positiveIntegerOption(options, "concurrency", "khala dispatch --concurrency") ?? 1,
           dispatchBreakers: await activeDispatchBreakersForPlanning(summary),
           priorityLane: optionString(options, "priority-lane") ?? "default",
           targetPylonRef,
@@ -4502,18 +4531,16 @@ async function main() {
           optionString(options, "objective") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         const workflow = optionString(options, "workflow")
-        const explicitTargetPylonRef =
-          optionString(options, "pylon-ref") ??
-          optionString(options, "target-pylon-ref")
+        const explicitTargetPylonRef = optionString(options, "pylon-ref") ?? optionString(options, "target-pylon-ref")
         const commit = optionString(options, "commit")
         const repository = optionString(options, "repo")
         const verificationCommand = optionString(options, "verify")
         const explicitFixture =
-          optionFlag(options, "fixture") ||
-          optionFlag(options, "fixture-smoke") ||
-          optionFlag(options, "codex-fixture")
+          optionFlag(options, "fixture") || optionFlag(options, "fixture-smoke") || optionFlag(options, "codex-fixture")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow claude_agent_task|cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--no-run] [--lifecycle-ndjson] [--json]; public issue/repo codex_agent_task and claude_agent_task requests require complete workspace pins")
+          throw new Error(
+            "usage: pylon khala request --prompt <text> [--workflow claude_agent_task|cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--no-run] [--lifecycle-ndjson] [--json]; public issue/repo codex_agent_task and claude_agent_task requests require complete workspace pins",
+          )
         }
         if (
           workflow !== undefined &&
@@ -4521,16 +4548,15 @@ async function main() {
           workflow !== "cloud_coding_session" &&
           workflow !== "codex_agent_task"
         ) {
-          throw new Error("khala request --workflow must be claude_agent_task, cloud_coding_session, or codex_agent_task")
+          throw new Error(
+            "khala request --workflow must be claude_agent_task, cloud_coding_session, or codex_agent_task",
+          )
         }
         const hasWorkspacePin = commit !== undefined || repository !== undefined || verificationCommand !== undefined
         if (explicitFixture && hasWorkspacePin) {
           throw new Error("khala request --fixture cannot be combined with --commit, --repo, or --verify")
         }
-        if (
-          (workflow === "codex_agent_task" || workflow === "claude_agent_task") &&
-          !explicitFixture
-        ) {
+        if ((workflow === "codex_agent_task" || workflow === "claude_agent_task") && !explicitFixture) {
           const missingPins = [
             commit === undefined ? "--commit" : null,
             repository === undefined ? "--repo" : null,
@@ -4549,30 +4575,25 @@ async function main() {
         // provider is derived from the workflow so a claude_agent_task resolves a
         // `claude_agent` account (otherwise the selector would reject a Claude
         // ref with "not registered for this provider").
-        const accountProvider =
-          workflow === "claude_agent_task" ? "claude_agent" : "codex"
-        const targetsLocalCodingWorkflow =
-          workflow === "codex_agent_task" || workflow === "claude_agent_task"
-        const requestState = targetsLocalCodingWorkflow
-          ? await ensurePylonLocalState(summary)
-          : null
+        const accountProvider = workflow === "claude_agent_task" ? "claude_agent" : "codex"
+        const targetsLocalCodingWorkflow = workflow === "codex_agent_task" || workflow === "claude_agent_task"
+        const requestState = targetsLocalCodingWorkflow ? await ensurePylonLocalState(summary) : null
         const targetPylonRef =
-          explicitTargetPylonRef ??
-          (requestState === null ? undefined : localPylonTargetRef(requestState))
+          explicitTargetPylonRef ?? (requestState === null ? undefined : localPylonTargetRef(requestState))
         if (requestState !== null && targetPylonRef === localPylonTargetRef(requestState)) {
-          const requestPresenceEnv = workflow === "codex_agent_task"
-            ? khalaCodexCapacityAdvertisementEnv(Bun.env, 5)
-            : Bun.env
+          const requestPresenceEnv =
+            workflow === "codex_agent_task" ? khalaCodexCapacityAdvertisementEnv(Bun.env, 5) : Bun.env
           await sendHeartbeat(summary, {
-            ...presenceClientOptionsFromEnv({ baseUrl, env: requestPresenceEnv }),
+            ...presenceClientOptionsFromEnv({
+              baseUrl,
+              env: requestPresenceEnv,
+            }),
             ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
             activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
             activeRunCountsByAccount: await serverActiveCodingRunAccountCounts(summary, networkOptions),
           })
         }
-        const accountRef =
-          optionString(options, "account") ??
-          optionString(options, "account-ref")
+        const accountRef = optionString(options, "account") ?? optionString(options, "account-ref")
         const accountHome = optionString(options, "account-home")
         const accountSelection =
           accountRef === undefined && accountHome === undefined
@@ -4585,12 +4606,8 @@ async function main() {
         const targetAccountRefHash = accountSelection?.accountRefHash
         const result = await issuePylonKhalaRequest(networkOptions, {
           prompt,
-          ...(targetPylonRef === undefined
-            ? {}
-            : { targetPylonRef }),
-          ...(targetAccountRefHash === undefined
-            ? {}
-            : { targetAccountRefHash }),
+          ...(targetPylonRef === undefined ? {} : { targetPylonRef }),
+          ...(targetAccountRefHash === undefined ? {} : { targetAccountRefHash }),
           ...(workflow === undefined ? {} : { workflow: workflow as PylonKhalaWorkflow }),
           ...(hasWorkspacePin
             ? {
@@ -4613,9 +4630,7 @@ async function main() {
             assignmentLifecycleEvents: [],
             autoRun: {
               attempted: false,
-              reason: assignmentRef === null
-                ? "no_assignment_ref"
-                : "disabled_by_no_run",
+              reason: assignmentRef === null ? "no_assignment_ref" : "disabled_by_no_run",
               schema: "openagents.pylon.khala_request_auto_run.v0.1",
             },
           })
@@ -4659,9 +4674,7 @@ async function main() {
 
       if (command === "resume") {
         const durableRequestId =
-          args[2] !== undefined && !args[2].startsWith("--")
-            ? args[2]
-            : optionString(options, "resume")
+          args[2] !== undefined && !args[2].startsWith("--") ? args[2] : optionString(options, "resume")
         if (!durableRequestId) {
           throw new Error("usage: pylon khala resume <durable-request-id> [--offset <n>] [--json]")
         }
@@ -4681,11 +4694,11 @@ async function main() {
           return
         }
         const durableRequestId =
-          args[2] !== undefined && !args[2].startsWith("--")
-            ? args[2]
-            : optionString(options, "resume")
+          args[2] !== undefined && !args[2].startsWith("--") ? args[2] : optionString(options, "resume")
         if (!durableRequestId) {
-          throw new Error("usage: pylon khala status <durable-request-id> [--json] | pylon khala status --assignment-ref <assignmentRef> [--json]")
+          throw new Error(
+            "usage: pylon khala status <durable-request-id> [--json] | pylon khala status --assignment-ref <assignmentRef> [--json]",
+          )
         }
         const result = await readPylonKhalaStatus(networkOptions, durableRequestId)
         emit(result)
@@ -4694,9 +4707,7 @@ async function main() {
 
       if (command === "proof") {
         const assignmentRef =
-          args[2] !== undefined && !args[2].startsWith("--")
-            ? args[2]
-            : optionString(options, "assignment-ref")
+          args[2] !== undefined && !args[2].startsWith("--") ? args[2] : optionString(options, "assignment-ref")
         if (!assignmentRef) {
           throw new Error("usage: pylon khala proof <assignmentRef> [--json]")
         }
@@ -4707,9 +4718,7 @@ async function main() {
 
       if (command === "closeout") {
         const assignmentRef =
-          args[2] !== undefined && !args[2].startsWith("--")
-            ? args[2]
-            : optionString(options, "assignment-ref")
+          args[2] !== undefined && !args[2].startsWith("--") ? args[2] : optionString(options, "assignment-ref")
         if (!assignmentRef) {
           throw new Error("usage: pylon khala closeout <assignmentRef> [--json]")
         }
@@ -4720,7 +4729,9 @@ async function main() {
 
       throw new Error("usage: pylon khala request|resume|status|proof|closeout|spawn|burndown ...")
     } catch (error) {
-      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.stdout.write(
+        `${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`,
+      )
       process.exitCode = 1
       return
     }
@@ -4769,13 +4780,15 @@ async function main() {
         const sweepBackup = sparkOptions["confirm-sweep"] === true || sparkOptions.sweep === true
         if (sweepBackup) {
           const showLocalTarget = sparkOptions["show-local-target"] === true
-          const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget })
+          const sparkBackupOptions = await resolveSparkBackupOptions(state, {
+            enabled: true,
+            showLocalTarget,
+          })
           const reconcile = await sweepSparkBackupToMdk({
             ...sparkBackupOptions,
             confirmSweep: sparkOptions["confirm-sweep"] === true,
             destinationReady:
-              sparkOptions["destination-ready"] === true ||
-              sparkOptions["destination-invoice-ready"] === true,
+              sparkOptions["destination-ready"] === true || sparkOptions["destination-invoice-ready"] === true,
           })
           if (reconcile.state === "swept-to-mdk") {
             for (const receiptRef of reconcile.publicReceiptRefs) {
@@ -4792,8 +4805,7 @@ async function main() {
             }
           }
           process.stdout.write(`${JSON.stringify({ ok: reconcile.state === "swept-to-mdk", reconcile }, null, 2)}\n`)
-          process.exitCode =
-            reconcile.state === "swept-to-mdk" || reconcile.state === "nothing-to-sweep" ? 0 : 1
+          process.exitCode = reconcile.state === "swept-to-mdk" || reconcile.state === "nothing-to-sweep" ? 0 : 1
           return
         }
         // #5085: rewire legacy migration to the Bun-native Breez SDK helper
@@ -4884,8 +4896,7 @@ async function main() {
           process.stdout.write(
             `${JSON.stringify({ ok: reconcile.state === "swept-to-mdk", migration: result, reconcile }, null, 2)}\n`,
           )
-          process.exitCode =
-            reconcile.state === "swept-to-mdk" || reconcile.state === "nothing-to-sweep" ? 0 : 1
+          process.exitCode = reconcile.state === "swept-to-mdk" || reconcile.state === "nothing-to-sweep" ? 0 : 1
           return
         }
 
@@ -4896,16 +4907,12 @@ async function main() {
       if (command === "recover-mdk") {
         const recoveryOptions = parseKeyValueOptions(walletArgs)
         const amountRaw = recoveryOptions.amount
-        const amountSats =
-          amountRaw === undefined || amountRaw === true
-            ? undefined
-            : Number(amountRaw)
+        const amountSats = amountRaw === undefined || amountRaw === true ? undefined : Number(amountRaw)
         if (amountSats !== undefined && (!Number.isFinite(amountSats) || amountSats <= 0)) {
           throw new Error("wallet recover-mdk --amount must be a positive number of sats")
         }
         const destination =
-          optionString(recoveryOptions, "destination") ??
-          optionString(recoveryOptions, "payment-request")
+          optionString(recoveryOptions, "destination") ?? optionString(recoveryOptions, "payment-request")
         const recovery = await recoverLegacyMdkBalance({
           dryRun: recoveryOptions.execute !== true,
           env: Bun.env,
@@ -4938,11 +4945,14 @@ async function main() {
         // #5166: attach a secret-free Spark selftest so the platform collects,
         // fleet-wide, which gate makes the offline-receive helper unavailable.
         const sparkSelftest = await computeSparkSelftest(state)
-        const result = await reportWalletReadiness({ status, sparkSelftest }, {
-          agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
-          baseUrl,
-          pylonRef: state.identity.pylonRef,
-        })
+        const result = await reportWalletReadiness(
+          { status, sparkSelftest },
+          {
+            agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+            baseUrl,
+            pylonRef: state.identity.pylonRef,
+          },
+        )
         // Onboarding auto-claim (#4712): a wallet that reports ready also
         // claims Forum tip-recipient readiness with its native Spark address,
         // best-effort - the silent-untippable trap cannot happen to a
@@ -4957,13 +4967,21 @@ async function main() {
                 agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
                 baseUrl,
               },
-              { pylonRef: state.identity.pylonRef, sparkAddress, lightningAddress },
+              {
+                pylonRef: state.identity.pylonRef,
+                sparkAddress,
+                lightningAddress,
+              },
             )
           } catch (error) {
-            tipReadinessClaim = { error: error instanceof Error ? error.message : String(error) }
+            tipReadinessClaim = {
+              error: error instanceof Error ? error.message : String(error),
+            }
           }
         }
-        process.stdout.write(`${JSON.stringify({ status, result, tipReadinessClaim: tipReadinessClaim === null ? null : "tipRecipientReadiness" in (tipReadinessClaim as Record<string, unknown>) ? "claimed" : tipReadinessClaim }, null, 2)}\n`)
+        process.stdout.write(
+          `${JSON.stringify({ status, result, tipReadinessClaim: tipReadinessClaim === null ? null : "tipRecipientReadiness" in (tipReadinessClaim as Record<string, unknown>) ? "claimed" : tipReadinessClaim }, null, 2)}\n`,
+        )
         // Exit explicitly: resolving the Lightning Address opens the Spark SDK,
         // which keeps a background connection alive and would
         // otherwise hang this one-shot command after printing (#5162).
@@ -4972,13 +4990,22 @@ async function main() {
       if (command === "receive") {
         const amount = Number(options.amount)
         if (!Number.isFinite(amount) || amount <= 0) throw new Error("wallet receive requires --amount")
-        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true })
-        const result = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind: "lightning-address" })
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, {
+          enabled: true,
+        })
+        const result = await prepareSparkBackupReceive({
+          ...sparkBackupOptions,
+          kind: "lightning-address",
+        })
         if (result.receiptRef) {
           await appendLedgerEvent(state.paths, {
             kind: "backup-receive-selected",
             ref: result.receiptRef,
-            data: { receiptRef: result.receiptRef, rail: "spark_backup", state: result.state },
+            data: {
+              receiptRef: result.receiptRef,
+              rail: "spark_backup",
+              state: result.state,
+            },
           })
         }
         const redacted = {
@@ -4988,7 +5015,8 @@ async function main() {
           rawTargetAvailableLocally: result.rawTargetAvailableLocally,
           state: result.state,
           blockerRefs: result.blockerRefs,
-          nextHint: "Run `pylon wallet backup-receive --kind lightning-address --show-local-target` to view the local Spark Lightning Address.",
+          nextHint:
+            "Run `pylon wallet backup-receive --kind lightning-address --show-local-target` to view the local Spark Lightning Address.",
         }
         process.stdout.write(`${JSON.stringify(redacted, null, 2)}\n`)
         return
@@ -5000,8 +5028,14 @@ async function main() {
           throw new Error("wallet backup-receive supports --kind spark-address or lightning-address")
         }
         const showLocalTarget = sparkOptions["show-local-target"] === true
-        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true, showLocalTarget })
-        const result = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind })
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, {
+          enabled: true,
+          showLocalTarget,
+        })
+        const result = await prepareSparkBackupReceive({
+          ...sparkBackupOptions,
+          kind,
+        })
         // Only the spark-address kind caches its raw target locally; the
         // lightning address is re-derivable from the wallet on demand.
         if (kind === "spark-address" && result.ok && result.localTarget) {
@@ -5011,7 +5045,11 @@ async function main() {
           await appendLedgerEvent(state.paths, {
             kind: "backup-receive-selected",
             ref: result.receiptRef,
-            data: { receiptRef: result.receiptRef, rail: "spark_backup", state: result.state },
+            data: {
+              receiptRef: result.receiptRef,
+              rail: "spark_backup",
+              state: result.state,
+            },
           })
         }
         // Public-safe body always; raw local target only when explicitly asked.
@@ -5081,7 +5119,9 @@ async function main() {
           new Promise<Record<string, unknown>>((resolve) => {
             timer = setTimeout(() => {
               timedOut = true
-              void buildBoundedBackupStatusTimeoutBody(state, { showLocalTarget })
+              void buildBoundedBackupStatusTimeoutBody(state, {
+                showLocalTarget,
+              })
                 .then(resolve)
                 // The fallback only reads local cached state; if even that fails
                 // we still emit a minimal bounded blocker rather than hang.
@@ -5120,7 +5160,9 @@ async function main() {
         // credits the wallet balance — it is invisible to backup-status until
         // then (not an on-chain "unclaimed deposit"). This command syncs and
         // claims all pending Lightning HTLCs whose preimage the wallet holds.
-        const sparkBackupOptions = await resolveSparkBackupOptions(state, { enabled: true })
+        const sparkBackupOptions = await resolveSparkBackupOptions(state, {
+          enabled: true,
+        })
         const helper = sparkBackupOptions.helper
         if (helper === undefined) {
           process.stdout.write(
@@ -5138,7 +5180,11 @@ async function main() {
         const body: Record<string, unknown> =
           data !== null
             ? { ok: true, ...data }
-            : { ok: false, error: "claim_failed", reason: result.stderr || null }
+            : {
+                ok: false,
+                error: "claim_failed",
+                reason: result.stderr || null,
+              }
         process.stdout.write(`${JSON.stringify(body, null, 2)}\n`)
         // Exit explicitly: the Spark SDK keeps a background connection alive (#5162).
         process.exit(body.ok === true ? 0 : 1)
@@ -5192,12 +5238,7 @@ async function main() {
           // PYLON_SPARK_MAX_FEE_SATS env still applies). The default no-override
           // path is unchanged.
           let result: SparkBackupSendProjection | null = null
-          if (
-            confirmSend &&
-            maxFeeSats === undefined &&
-            typeof destination === "string" &&
-            destination.trim() !== ""
-          ) {
+          if (confirmSend && maxFeeSats === undefined && typeof destination === "string" && destination.trim() !== "") {
             const routed = await routeWalletCommandThroughDaemon(state, {
               type: "wallet.spark_send",
               destination,
@@ -5220,7 +5261,9 @@ async function main() {
           process.exit(result.state === "sent" ? 0 : 1)
         }
         if (rail === "mdk") {
-          throw new Error("wallet send --rail mdk is no longer supported for agent funds; MDK is scoped to checkouts and treasury. Use --rail spark --destination ... --confirm-send.")
+          throw new Error(
+            "wallet send --rail mdk is no longer supported for agent funds; MDK is scoped to checkouts and treasury. Use --rail spark --destination ... --confirm-send.",
+          )
         }
         throw new Error("wallet send --rail supports spark")
       }
@@ -5245,7 +5288,10 @@ async function main() {
           enabled: true,
           showLocalTarget: true,
         })
-        const prepared = await prepareSparkBackupReceive({ ...sparkBackupOptions, kind: "spark-address" })
+        const prepared = await prepareSparkBackupReceive({
+          ...sparkBackupOptions,
+          kind: "spark-address",
+        })
         if (!prepared.ok || !prepared.localTarget) {
           // #5194: include the bounded, public-safe reason (db_init_failed,
           // network_unreachable, timeout, module_load_failed, ...) so the
@@ -5281,15 +5327,19 @@ async function main() {
       }
       if (command === "request-payout-target-admission") {
         const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
-        if (!baseUrl) throw new Error("wallet request-payout-target-admission requires --base-url or PYLON_OPENAGENTS_BASE_URL")
+        if (!baseUrl)
+          throw new Error("wallet request-payout-target-admission requires --base-url or PYLON_OPENAGENTS_BASE_URL")
         const kind = options.kind as any
         const ref = optionString(options, "ref")
         if (!kind || !ref) throw new Error("wallet request-payout-target-admission requires --kind and --ref")
-        const result = await requestPayoutTargetAdmission({ kind, ref }, {
-          agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
-          baseUrl,
-          pylonRef: state.identity.pylonRef,
-        })
+        const result = await requestPayoutTargetAdmission(
+          { kind, ref },
+          {
+            agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+            baseUrl,
+            pylonRef: state.identity.pylonRef,
+          },
+        )
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
@@ -5334,24 +5384,28 @@ async function main() {
       if (command === "progress") {
         const progressJson = optionString(options, "progress")
         if (!progressJson) throw new Error("assignment progress requires --progress JSON")
-        const result = await submitAssignmentProgress(summary, JSON.parse(progressJson) as AssignmentProgress, clientOptions)
+        const result = await submitAssignmentProgress(
+          summary,
+          JSON.parse(progressJson) as AssignmentProgress,
+          clientOptions,
+        )
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
       if (command === "closeout") {
         const closeoutJson = optionString(options, "closeout")
         if (!closeoutJson) throw new Error("assignment closeout requires --closeout JSON")
-        const result = await submitAssignmentCloseout(summary, JSON.parse(closeoutJson) as AssignmentCloseout, clientOptions)
+        const result = await submitAssignmentCloseout(
+          summary,
+          JSON.parse(closeoutJson) as AssignmentCloseout,
+          clientOptions,
+        )
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
       if (command === "run-no-spend") {
-        const assignmentRef =
-          optionString(options, "assignment-ref") ??
-          optionString(options, "lease-ref")
-        const accountRef =
-          optionString(options, "account") ??
-          optionString(options, "account-ref")
+        const assignmentRef = optionString(options, "assignment-ref") ?? optionString(options, "lease-ref")
+        const accountRef = optionString(options, "account") ?? optionString(options, "account-ref")
         const accountHome = optionString(options, "account-home")
         const emitJsonLifecycle = lifecycleNdjsonRequested(options)
         const result = await runNoSpendAssignment(summary, {
@@ -5426,11 +5480,13 @@ async function main() {
             withCodexAgentCapability(
               withClaudeAgentCapability(
                 withAppleFmBackendCapabilities(
-                  [...new Set([
-                    ...state.runtime.capabilityRefs.filter((ref) => !/tassadar|psionic/i.test(ref)),
-                    PYLON_NIP90_PROVIDER_CAPABILITY_REF,
-                    PYLON_LABOR_CAPABILITY_REF,
-                  ])],
+                  [
+                    ...new Set([
+                      ...state.runtime.capabilityRefs.filter((ref) => !/tassadar|psionic/i.test(ref)),
+                      PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+                      PYLON_LABOR_CAPABILITY_REF,
+                    ]),
+                  ],
                   appleFmStatus,
                 ),
                 claudeAgentReadiness,
@@ -5438,13 +5494,14 @@ async function main() {
               codexAgentReadiness,
             ),
           ),
-          blockerRefs: [...new Set([
-            ...state.runtime.blockerRefs.filter((ref) =>
-              ref !== "blocker.assignment.lifecycle_offline" &&
-              !/tassadar|psionic/i.test(ref),
-            ),
-            ...appleFmStatus.blockerRefs,
-          ])],
+          blockerRefs: [
+            ...new Set([
+              ...state.runtime.blockerRefs.filter(
+                (ref) => ref !== "blocker.assignment.lifecycle_offline" && !/tassadar|psionic/i.test(ref),
+              ),
+              ...appleFmStatus.blockerRefs,
+            ]),
+          ],
         }
         await writeRuntimeState(state.paths, nextRuntime)
         const codingCapacity = await codingCapacityForDispatch(
@@ -5484,17 +5541,18 @@ async function main() {
           ready: 0,
           service: "codex" as const,
         }
-        const codexDispatchCapacity = codexAccounts.length > 0
-          ? {
-              ...codexCapacity,
-              available: codexAccountTotals.available,
-              busy: codexAccountTotals.busy,
-              queued: codexAccountTotals.queued,
-              ready: codexAccountTotals.ready,
-            }
-          : codexCapacity
+        const codexDispatchCapacity =
+          codexAccounts.length > 0
+            ? {
+                ...codexCapacity,
+                available: codexAccountTotals.available,
+                busy: codexAccountTotals.busy,
+                queued: codexAccountTotals.queued,
+                ready: codexAccountTotals.ready,
+              }
+            : codexCapacity
         const codingCapacityProjection = codingCapacity.some((item) => item.service === "codex")
-          ? codingCapacity.map((item) => item.service === "codex" ? codexDispatchCapacity : item)
+          ? codingCapacity.map((item) => (item.service === "codex" ? codexDispatchCapacity : item))
           : [codexDispatchCapacity, ...codingCapacity]
         const codingRefs = codingServiceCapacityRefs(codingCapacityProjection)
         const result = {
@@ -5527,15 +5585,11 @@ async function main() {
             codex: codexDispatchCapacity,
             assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
             capacityRefs: [
-              ...codingRefs.capacityRefs.filter((ref) =>
-                ref.startsWith("capacity.coding.codex."),
-              ),
+              ...codingRefs.capacityRefs.filter((ref) => ref.startsWith("capacity.coding.codex.")),
               ...codexAccountRefs.capacityRefs,
             ],
             loadRefs: [
-              ...codingRefs.loadRefs.filter((ref) =>
-                ref.startsWith("load.coding.codex."),
-              ),
+              ...codingRefs.loadRefs.filter((ref) => ref.startsWith("load.coding.codex.")),
               ...codexAccountRefs.loadRefs,
             ],
             policyRefs: ["policy.public.khala_coding.own_capacity_only"],
@@ -5602,11 +5656,17 @@ async function main() {
           lifecycle: "offline" as const,
         }
         await writeRuntimeState(state.paths, nextRuntime)
-        process.stdout.write(`${JSON.stringify({
-          ok: true,
-          lifecycle: nextRuntime.lifecycle,
-          stateRef: "state.public.pylon.nip90_provider.offline",
-        }, null, 2)}\n`)
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              ok: true,
+              lifecycle: nextRuntime.lifecycle,
+              stateRef: "state.public.pylon.nip90_provider.offline",
+            },
+            null,
+            2,
+          )}\n`,
+        )
         return
       }
       if (command === "once") {
@@ -5628,10 +5688,7 @@ async function main() {
   if (args[0] === "node") {
     if (args[1] === "fleet-run-intake-status") {
       try {
-        const summary = createBootstrapSummary(
-          parseBootstrapArgs(["--json"]),
-          Bun.env,
-        )
+        const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         const state = await ensurePylonLocalState(summary)
         const probe = await probeRunningNode(state, Bun.env)
         const status = await readControlCommand(probe, {
