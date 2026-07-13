@@ -3,7 +3,7 @@
 - Issue: #8597
 - Program parent: #8566
 - Destination: `apps/openagents-mobile`
-- Status: checked-in track source; refresh the live issue for current state
+- Status: active P0 under Master Revision 105 / R0–R7 / M0–M7
 - Dispatch: no; current/next/open language below is pinned issue-source prose
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Current work and ownership: live issue comments plus
@@ -13,9 +13,13 @@
 - Local coding cutover graph:
   [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
 
-The dated cutover graph preserves acceptance history, not the immediate queue.
-Refresh the master roadmap and live issue before selecting a leaf or inferring
-the current remote-workroom, host-movement, provider, or voice exit.
+The bounded local-coding cutover leaves through CUT-26 are closed; #8707 owns
+the remaining installed named-Codex/Claude and per-task physical-iOS/Android-
+emulator acceptance. PORT-00 through PORT-02 are closed. Remote workrooms,
+host movement, managed providers, any-host mobile control, portable-session
+voice, signed R7 dogfood, and legacy retirement remain explicitly owned by
+open PORT-03 through PORT-08 #8748–#8753 and are never inferred from the local
+cutover.
 
 ## Outcome
 
@@ -73,9 +77,16 @@ dispositioned. Importing the legacy package/component tree is forbidden.
   mobile Home to confirmed authoritative conversations when live, and the
   two-native-host fixture proves Desktop start → mobile follow-up → restart
   convergence with matching refs/versions/cursor.
-- Live provider streaming, physical mobile continuation, Fleet control,
-  remote workrooms, and receipts remain unproven. #8676 owns the next complete
-  live conversation/handoff; #8677 owns its fault-convergence proof.
+- Closed #8676/#8677 prove the bounded same-ref physical-iPhone continuation
+  and command/event fault-convergence prerequisites. Closed CUT-01 through
+  CUT-26 add the local workbench, Fleet/control, Android-emulator, packaging,
+  and legacy-lockout implementation receipts. #8707 still must map each
+  counted installed Codex and Claude task to its literal iOS/Android-emulator
+  continuation rows; prerequisite receipts cannot be inferred as that mapping.
+- The remote workroom, graph-wide host move/failback, any-host directory,
+  managed-provider, portable voice, signed dogfood, and legacy mobile
+  retirement exit remains unproved and explicitly PORT-owned. Keep #8597 open
+  after the bounded #8707 local rung closes.
 
 ## Identity locks
 
@@ -158,7 +169,7 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 
 ## Exit
 
-On physical iOS and Android devices, the authenticated owner selects a
+On physical iOS and the Android emulator, the authenticated owner selects a
 repository, starts or resumes one real isolated remote workroom, streams and
 steers the agent, inspects its complete nested topology and one independent
 child transcript, inspects/edits files, reviews the exact diff, runs a bounded

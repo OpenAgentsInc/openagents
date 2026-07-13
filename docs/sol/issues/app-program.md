@@ -1,7 +1,7 @@
 # P0 PROGRAM: reliable Effect Native Desktop/mobile coding and fleet software
 
 - Issue: #8566
-- Status: checked-in program source; refresh the live issue for current state
+- Status: sole active program parent under Master Revision 105
 - Dispatch: no; current/next/open language below is pinned issue-source prose
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Current work and ownership: live issue comments plus
@@ -27,34 +27,41 @@ remote coding + fleet                    full workbench + fleet
 
 ## Program tracks and bounded work
 
-- #8574 — Desktop track: D0–D6, practical OpenCode parity, Sync, Fleet,
-  security, lifecycle, and distribution.
-- #8597 — mobile track: R0/R1/R2/R3/R6, full useful Khala Code MVP
-  capability fold-in, remote coding, fleet controls, receipts, and iOS/Android.
-- #8547/#8636 — bounded P0 remote-workroom execution and target-routing tasks
-  required by the mobile coding exit; prove #8547's real target before #8636's
-  live hybrid-routing exit. Advanced elastic/provider breadth remains follow-on.
+- #8574 — Desktop D0–D6 implementation is represented by closed CUT-01
+  through CUT-26; #8707 remains the exact ordinary local-coding acceptance and
+  reconciliation gate.
+- #8597 — mobile's bounded local-cutover rung also remains gated by #8707.
+  Its literal remote-workroom, host-movement, any-host control, voice, signed
+  dogfood, and legacy-retirement exit remains owned by PORT-03 through PORT-08.
+- closed #8547/#8636 — accepted managed Agent Computer execution and the
+  bounded concurrent owner-local/managed-cloud hybrid-routing proof. They do
+  not prove portable host movement or provider breadth.
 - closed #8638 — existing Fleet substrate consumed by the clients; it is not
   another epic.
-- #8640 — bounded accepted simultaneous Codex+Claude runtime proof only.
+- closed #8640 — bounded accepted simultaneous Codex+Claude runtime substrate
+  proof only; it does not replace CUT-27 client acceptance.
 - closed #8675 — real-Electron acceptance of the landed loss-accounted Codex
   trace workspace and its UX promise.
-- #8676 — one real streamed Desktop conversation immediately continued on
-  mobile through the same confirmed refs and request processor.
-- #8677 — the bounded command/event fault-convergence matrix for that seam.
+- closed #8676 — one real streamed Desktop conversation immediately continued
+  on mobile through the same confirmed refs and request processor.
+- closed #8677 — the bounded command/event fault-convergence matrix for that
+  seam.
 - closed #8678 — #8683/#8684 complete its source-coupled Effect topology,
   ambient-authority denial, replaceability, lifecycle, correlation, and
   full-host residual.
-- #8681–#8707 — ordered CUT-01–CUT-27 leaves for the installed local
-  Codex/Claude coding cutover with physical mobile continuation/supervision.
-- #8733 with sub-issues #8734–#8741 — the separately tracked P1-parallel
-  persistent Desktop audio MVP: Google STT/TTS, retained-media custody, visible
-  Voice UI, registered actions, and deployed proof. It consumes this program's
-  identity/command/outcome laws without blocking CUT-27 or widening #8574.
-- later leaves at this snapshot — portable session authority, owner-managed and
-  managed-provider targets, the general broker, and any-host mobile voice.
-  Local live multi-agent supervision is now #8691/#8692. Do not overload
-  #8676/#8547/#8636, CUT-27, or #8733 with host-movement proof.
+- closed #8681–#8706 plus open #8707 — the ordered CUT-01–CUT-27 installed
+  Codex/Claude cutover graph. #8707 alone owns the remaining named-Claude,
+  per-counted-task cross-device, consolidated-evidence, and default-surface
+  declaration gates.
+- closed #8733 and #8734–#8740 plus open #8741 — the separately tracked
+  P1-parallel persistent Desktop audio MVP. AUDIO-8 remains an independent
+  owner-microphone/evidence gate; voice/A/V/presentation is not a #8574 or
+  #8566 exit criterion and does not block CUT-27 or program closure.
+- closed PORT-00 through PORT-02 #8745–#8747 plus open PORT-03 through PORT-08
+  #8748–#8753 — the ordered portable-session, broker, real-move,
+  owner-managed/managed-provider, mobile any-host, session-neutral voice, and
+  signed R7 dogfood packet. Keep these residuals explicit; no local CUT,
+  #8547/#8636, or AUDIO receipt manufactures them.
 
 The retired web/presentation/privacy-backlog records #8595, #8610, #8634,
 #8635, #8642, #8643, #8646, and #8650 are closed `wontfix` / not-planned.

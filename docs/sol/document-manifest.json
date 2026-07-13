@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "a25d4810f0d272f9879328ddea42ccd8bea6d52603951ce8fea4a045391105d9",
+  "sourceTreeSha256": "27924a330c649426e381cdb5a4c3401f09745d04622e91e59eb400dcd70bdb0b",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1578,8 +1578,8 @@
       "owner": "Sol issue #8574",
       "disposition": "retain-live-source",
       "dispatch": false,
-      "sha256": "e26c3cb198dec841e0a1855fdedec10ed10e355b336c27c597a4450efac34bea",
-      "status": "checked-in track source; refresh the live issue for current state",
+      "sha256": "d4b881e33384034d2157991ca430ae6fb49afa4227bb993452881c177637286b",
+      "status": "active P0 under Master Revision 105 / R0–R7 / D0–D6",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
@@ -1591,17 +1591,16 @@
       "issueLinks": [
         8566,
         8574,
-        8670,
-        8671,
-        8672,
+        8640,
         8673,
         8674,
         8675,
         8676,
         8677,
         8678,
-        8683,
-        8684,
+        8681,
+        8706,
+        8707,
         8733,
         8734,
         8741
@@ -1652,8 +1651,8 @@
       "owner": "Sol issue #8597",
       "disposition": "retain-live-source",
       "dispatch": false,
-      "sha256": "78414b58ce2cea53ab86164decb6beeed471df7168290c1e474c9f6efb35ae53",
-      "status": "checked-in track source; refresh the live issue for current state",
+      "sha256": "6be4e41d8105019ed86612acad7c9f1408ef03d3bf8de4f5d3000aa9c7fa4604",
+      "status": "active P0 under Master Revision 105 / R0–R7 / M0–M7",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
@@ -1667,9 +1666,10 @@
         8597,
         8671,
         8676,
-        8677,
         8681,
-        8707
+        8707,
+        8748,
+        8753
       ]
     },
     {
@@ -1678,8 +1678,8 @@
       "owner": "Sol issue #8566",
       "disposition": "retain-live-source",
       "dispatch": false,
-      "sha256": "e7afa2a07254c38042d4b27a68d29f6a3172f0aa8ee5d3195b1b12d355342a90",
-      "status": "checked-in program source; refresh the live issue for current state",
+      "sha256": "f336f298eec9592b1d411a235ab8ee84fcf8d48aa7427097668b110b29b597d7",
+      "status": "sole active program parent under Master Revision 105",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
@@ -1696,7 +1696,6 @@
         8610,
         8634,
         8635,
-        8636,
         8638,
         8640,
         8642,
@@ -1709,11 +1708,16 @@
         8678,
         8681,
         8683,
-        8691,
+        8706,
         8707,
         8733,
         8734,
-        8741
+        8740,
+        8741,
+        8745,
+        8747,
+        8748,
+        8753
       ]
     },
     {

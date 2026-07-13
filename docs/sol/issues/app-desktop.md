@@ -3,7 +3,7 @@
 - Issue: #8574
 - Program parent: #8566
 - Destination: `apps/openagents-desktop`
-- Status: checked-in track source; refresh the live issue for current state
+- Status: active P0 under Master Revision 105 / R0–R7 / D0–D6
 - Dispatch: no; current/next/open language below is pinned issue-source prose
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Architecture:
@@ -23,7 +23,8 @@
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
 The dated cutover graph preserves acceptance history, not the immediate queue.
-Refresh the master roadmap and live issue before selecting a leaf.
+CUT-01 through CUT-26 are closed. #8707 is the only remaining ordinary
+local-coding cutover gate; refresh its live evidence before selecting work.
 
 ## Outcome
 
@@ -44,75 +45,36 @@ behavior/service/release extraction source until successor and migration proof.
 
 ## Current truthful baseline
 
-The greenfield app now has:
+- CUT-01 through CUT-26 (#8681–#8706) are closed. Together they represent the
+  D0–D6 implementation baseline: one Effect Native tree, hardened Electron and
+  explicit Effect lifecycle boundaries, authenticated Sync, projects/sessions,
+  streamed and historical agent topology, composer/context, files/editor/Git/
+  bounded terminal, commands/keybindings, named runtime/account/model/MCP and
+  permission/settings surfaces, authoritative Fleet controls, accessibility,
+  diagnostics/recovery, signed distribution, rollback, and legacy desktop
+  release lockout.
+- The prerequisite conversation, fault, service-topology, and simultaneous-
+  provider proofs #8640, #8676, #8677, and #8678 are closed. They remain
+  prerequisites and do not substitute for the counted CUT-27 product journey.
+- CUT-26 supplies the signed/notarized/stapled RC5 installed-artifact,
+  production update, rollback/downgrade-refusal, reinstall, diagnostics, and
+  hardened Electron receipt.
+- #8707 remains open. Its exact residual is a successful installed task through
+  one named entitled Claude account, literal per-counted-Codex-and-Claude-task
+  physical-iOS/Android-emulator continuation and interruption convergence, one
+  consolidated public-safe cutover bundle, and the bounded default-surface
+  declaration. No historical “next CUT-05” or broad “not yet claimed” list is
+  an implementation queue.
+- #8733 and AUDIO-1 through AUDIO-7 are closed; AUDIO-8 #8741 remains a
+  separately tracked P1-parallel owner-microphone/evidence gate. It is not a
+  D0–D6, CUT-27, #8574, or #8566 completion dependency.
 
-- hardened Electron sandbox/isolation/navigation/permission boundaries;
-- an Effect Native conversation workspace with a loss-accounted owner-local
-  Codex history catalog/page capability through Runtime Gateway v4: active and
-  archived rollouts, real parent/depth agent graph, source-order typed items,
-  explicit redaction/gaps, paging/windowing, and a three-pane Agents/Item
-  inspector without uploading local history;
-- project-root selection, bounded root listing/read/edit/save with conflict and
-  atomic-write checks, plus typed read-only Git status/diff;
-- a closed command registry and palette;
-- a local diagnostic Fleet brief that explicitly is not a FleetRun;
-- Codex readiness and isolated Pylon device-auth Settings.
-- host-owned Khala Sync SQLite persistence and an Electron `safeStorage`
-  native-session vault with private atomic ciphertext, encryption-backend
-  refusal, invalid-record purge, and a tokenless Runtime Gateway phase.
-- recovered-session validation through the existing native-session boundary,
-  rotation-before-ready persistence, denial/owner-mismatch purge, transient
-  retention, and bounded verified/unavailable gateway state.
-- a distinct `openagents-desktop` public-client issuer policy for exact RFC
-  8252 literal-loopback GitHub code + S256 entry; Desktop does not claim the
-  mobile custom scheme.
-- host-composed loopback listener/browser/exchange/server-verification and
-  fail-closed dual-revocation sign-out behind argument-free Runtime Gateway
-  commands with bounded outcomes.
-- visible Effect Native Settings session phase and typed sign-in/sign-out
-  intents over argument-free Runtime Gateway commands, with honest disabled
-  in-flight state and no credential/callback projection.
-- visible authoritative Sync conversations (#8670), the matching mobile
-  continuation (#8671), and a shared confirmed provider-neutral timeline reader
-  (#8672); #8673 landed its schema-bounded Runtime Gateway v3 timeline query at
-  `bf4037e923` without claiming visible UI.
-- #8674 closed at `c83f5faac9` after 138 Desktop tests, build, packaged Electron
-  smoke, Effect Native accessibility tests, a 100+ MiB/100-child/100,000-item
-  scale corpus, and a structure-only real nested-history receipt with zero
-  unsupported gaps.
-- #8675 closed after a real-Electron acceptance against 1,231 top-level roots
-  and a selected 131-agent trace. Later landed refinements add one causal inline
-  child card with exact child ref, lifecycle, bounded redacted latest activity,
-  direct independent-transcript navigation, structured inter-agent handoffs,
-  and fast typed keyboard traversal.
-
-The normal Desktop `verify` gate is green and deterministic: typecheck, 186
-contract/e2e tests, bundle, and real-Electron smoke/reload use a checked-in
-privacy-safe Codex history fixture instead of ambient `~/.codex` state. The
-root `test:openagents-desktop` entry invokes that same gate. An explicit
-`OPENAGENTS_DESKTOP_CODEX_SESSIONS` override remains available only for a
-separately labelled real-history acceptance. #8674/#8675 are complete owner-
-local history and acceptance proof, not live Sync supervision proof.
-
-CUT-03 #8683 closed at `4d875dcb4b`. Its normal test sweep now reads every
-declared implementation/composition module, binds services to real construction
-symbols, derives filesystem/network/process/secret authority from those source
-boundaries, and rejects source drift, ambient cwd/`AsyncLocalStorage`, unnamed
-runtime exits, renderer authority, and wider installation scope. It also
-extracts an explicit selected-root WorkContext service and a process-owned,
-shutdown-disposed Codex-history worker host. CUT-04 #8684 closed at
-`6ee87714d0` with production-used replaceable lifecycle slots, exactly-once
-window/app/service teardown, cancellable account/PKCE/session operations, and
-public-safe operation/session/run/correlation refs across IPC, Runtime Gateway,
-Sync causality, and logs. The packaged smoke exercised the full path and ended
-with zero active owned resources. This completes #8678's architecture residual;
-it does not complete CUT-13 project/session or CUT-15 command breadth.
-
-Not yet claimed: physical Desktop auth acceptance, a provider-launched live
-stream attached to the confirmed thread/timeline, physical mobile continuation,
-full workbench, visible authoritative Fleet cockpit, signed distribution, or
-legacy retirement. #8676 owns the next real vertical slice; #8677 owns its
-fault acceptance.
+After #8707 closes, check every Exit row below against its final bundle and
+the closed CUT receipts. A missing row becomes a bounded defect/acceptance
+leaf; it is not waived by this current-state reconciliation. Portable remote
+workrooms, graph-wide host movement, managed-provider breadth, any-host mobile
+control, and portable voice remain in PORT-03 through PORT-08 and are not
+claimed by closing this ordinary local Desktop track.
 
 ## Required product shape
 
