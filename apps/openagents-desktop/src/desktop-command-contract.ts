@@ -2,6 +2,8 @@ import { Schema } from "effect"
 
 export const DesktopCommandId = Schema.Literals([
   "chat.new",
+  "chat.send",
+  "chat.stop",
   "window.fullscreen_toggle",
   "chat.open",
   "palette.toggle",
@@ -46,6 +48,8 @@ export type DesktopCommandDefinition = Readonly<{
 export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefinition> = [
   { id: "palette.toggle", label: "Commands", intentName: "DesktopCommandPaletteToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+K", "Control+K"], palette: false },
   { id: "chat.new", label: "New chat", intentName: "DesktopNewChat", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "always", authorization: "local_user", defaultBindings: ["Meta+N", "Control+N"], palette: true },
+  { id: "chat.send", label: "Send message", intentName: "DesktopNoteSubmitted", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "session_ready", authorization: "local_user", defaultBindings: ["Meta+Enter", "Control+Enter"], palette: true },
+  { id: "chat.stop", label: "Stop turn", intentName: "DesktopTurnInterrupted", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "session_ready", authorization: "local_user", defaultBindings: ["Meta+.", "Control+."], palette: true },
   { id: "window.fullscreen_toggle", label: "Toggle full screen", intentName: "DesktopFullscreenToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "always", authorization: "local_user", defaultBindings: ["Meta+F", "Control+F"], palette: true },
   { id: "workspace.fleet", label: "Open fleet", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "fleet" }, result: "workspace_selected", scope: "workspace", availability: "session_ready", authorization: "verified_owner", defaultBindings: [], palette: true },
   { id: "chat.open", label: "Open chat", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "chat" }, result: "workspace_selected", scope: "session", availability: "always", authorization: "local_user", defaultBindings: [], palette: true },

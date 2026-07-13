@@ -2637,6 +2637,21 @@ describe("EP250 window + sidebar owner contracts", () => {
     expect(entry?.defaultBindings).toEqual(["Meta+F", "Control+F"])
   })
 
+  test("composer send and stop use canonical command identities", () => {
+    expect(desktopCanonicalCommandRegistry.find(command => command.id === "chat.send")).toMatchObject({
+      intentName: "DesktopNoteSubmitted",
+      defaultBindings: ["Meta+Enter", "Control+Enter"],
+      palette: true,
+    })
+    expect(desktopCanonicalCommandRegistry.find(command => command.id === "chat.stop")).toMatchObject({
+      intentName: "DesktopTurnInterrupted",
+      defaultBindings: ["Meta+.", "Control+."],
+      palette: true,
+    })
+    expect((nodeByKey(desktopShellView(baseState), "shell-note")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopNoteSubmitted")
+    expect((nodeByKey(desktopShellView({ ...baseState, pending: true }), "shell-stop")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopTurnInterrupted")
+  })
+
   test("sidebar renders no brand row (owner: remove the OpenAgents icon+text top left)", () => {
     const view = desktopShellView(baseState)
     expect(nodeByKey(view, "sidebar-brand-row")).toBeUndefined()
