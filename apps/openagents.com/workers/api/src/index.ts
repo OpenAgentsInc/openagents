@@ -861,7 +861,10 @@ import {
   mintCloudRuntimeExecutionToken,
   revokeCloudRuntimeExecutionToken,
 } from './khala-cloud-runtime-execution-token'
-import { authorizesManagedFleetUnitDispatch } from './fleet-managed-dispatch-authority'
+import {
+  authorizesManagedFleetUnitDispatch,
+  managedFleetClaimAccountRefHash,
+} from './fleet-managed-dispatch-authority'
 import {
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
@@ -11394,9 +11397,9 @@ const dispatchManagedFleetUnitForEnv = async (
         },
       }),
     )
-    const accountRefHash = `account.pylon.codex.${(
-      await sha256Hex(account.providerAccountRef)
-    ).slice(0, 24)}`
+    const accountRefHash = managedFleetClaimAccountRefHash(
+      input.body.workerAccountRef,
+    )
     if (
       session.state !== 'completed' ||
       session.agentComputerState !== 'reclaimed' ||

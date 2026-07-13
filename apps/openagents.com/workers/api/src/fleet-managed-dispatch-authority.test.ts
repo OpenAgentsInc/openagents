@@ -1,11 +1,20 @@
 import { describe, expect, test } from 'vitest'
 
-import { authorizesManagedFleetUnitDispatch } from './fleet-managed-dispatch-authority'
+import {
+  authorizesManagedFleetUnitDispatch,
+  managedFleetClaimAccountRefHash,
+} from './fleet-managed-dispatch-authority'
 
 const runRef = 'fleet_run.sarah.0123456789abcdef0123'
 const workUnitRef = 'unit.fc4.managed_cloud'
 
 describe('managed FleetRun dispatch authority', () => {
+  test('keeps the claimed managed broker identity across private provider resolution', () => {
+    expect(
+      managedFleetClaimAccountRefHash('account.pylon.managed_cloud.broker'),
+    ).toBe('account.pylon.codex.de252ca6ca49232a1208fab5')
+  })
+
   test('accepts an exact per-unit claim under a separately accepted run lease', () => {
     expect(
       authorizesManagedFleetUnitDispatch({
