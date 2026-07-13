@@ -14,13 +14,11 @@
  * values with public-safe reasons — never a throw across IPC.
  */
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
+import { readFile } from "node:fs/promises"
+import { homedir } from "node:os"
 import path from "node:path"
-import {
-  collectPylonAccountsList,
-  collectPylonAccountsUsage,
-} from "@openagentsinc/pylon-core/custody"
-import { resolvePylonHome } from "@openagentsinc/pylon-core/shared"
 import { inspectProviderRuntimeCompatibility } from "./provider-runtime-host.ts"
 import type { ProviderRuntimeCompatibility } from "./provider-runtime-compatibility.ts"
 
@@ -235,19 +233,73 @@ const defaultSpawnPylon = (here: string) => (args: ReadonlyArray<string>): Child
   }) as unknown as ChildLike
 }
 
+type PackagedRegistryAccount = Readonly<{
+  ref: string
+  provider: string
+  home: string
+  paused: boolean
+}>
+
+const parsePackagedRegistry = (configJson: string): Array<PackagedRegistryAccount> => {
+  const parsed = JSON.parse(configJson) as {
+    dev?: { accounts?: Array<Record<string, unknown>> }
+  }
+  return (parsed.dev?.accounts ?? []).flatMap(account => {
+    const ref = account.ref
+    const provider = account.provider
+    const accountHome = account.home
+    if (typeof ref !== "string" || !providerAccountRefPattern.test(ref) ||
+        typeof provider !== "string" || typeof accountHome !== "string" ||
+        !path.isAbsolute(accountHome)) return []
+    return [{ ref, provider: provider.slice(0, 40), home: accountHome, paused: account.paused === true }]
+  })
+}
+
+export const packagedAccountsListJson = (
+  configJson: string,
+  authExists: (value: string) => boolean = existsSync,
+): string => JSON.stringify({
+  accounts: parsePackagedRegistry(configJson).map(account => ({
+    provider: account.provider,
+    accountRef: account.ref,
+    readiness: {
+      state: !account.paused && authExists(path.join(account.home, "auth.json"))
+        ? "ready"
+        : "credentials_missing",
+    },
+  })),
+})
+
 const defaultPackagedProjection = (): NonNullable<ProviderAccountsServiceDependencies["packagedProjection"]> => {
-  const summary = { paths: resolvePylonHome(process.env) }
-  const env = process.env as Record<string, string | undefined>
+  const home = process.env.PYLON_HOME?.trim() || path.join(homedir(), ".openagents", "pylon")
+  const configPath = path.join(home, "config.json")
+  const usagePath = path.join(home, "account-usage.json")
+  const registry = async (): Promise<Array<PackagedRegistryAccount>> =>
+    parsePackagedRegistry(await readFile(configPath, "utf8"))
   return {
-    list: async () => JSON.stringify(await collectPylonAccountsList(summary, { env })),
-    usage: async (ref) => JSON.stringify(await collectPylonAccountsUsage(summary, {
-      accountRef: ref,
-      provider: null,
-      all: false,
-      refresh: true,
-      reportLocalCodexUsage: false,
-      json: true,
-    }, { env })),
+    list: async () => packagedAccountsListJson(await readFile(configPath, "utf8")),
+    usage: async (ref) => {
+      const account = (await registry()).find(candidate => candidate.ref === ref)
+      if (account === undefined) return JSON.stringify({ accounts: [] })
+      const parsed = JSON.parse(await readFile(usagePath, "utf8")) as {
+        accounts?: Record<string, {
+          providerTruth?: { snapshots?: unknown }
+          localSessionTruth?: { usage?: unknown }
+        }>
+      }
+      const hash = `account.pylon.${account.provider}.${createHash("sha256")
+        .update(`${account.provider}:${account.ref}`).digest("hex").slice(0, 24)}`
+      const entry = parsed.accounts?.[hash]
+      return JSON.stringify({
+        accounts: [{
+          accountRef: ref,
+          truth: {
+            provider: { snapshots: entry?.providerTruth?.snapshots ?? [] },
+            localSession: { usage: entry?.localSessionTruth?.usage ?? null },
+          },
+        }],
+      })
+    },
   }
 }
 

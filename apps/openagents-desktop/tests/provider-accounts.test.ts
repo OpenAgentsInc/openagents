@@ -20,6 +20,7 @@ import {
   fixtureProviderAccountUsageStdout,
   makeFixtureProviderAccountsSpawn,
   makeProviderAccountsService,
+  packagedAccountsListJson,
   parseProviderAccountsListJson,
   parseProviderAccountUsageJson,
   projectReadinessState,
@@ -250,6 +251,26 @@ const makeFakeChild = (): FakeChild & {
 }
 
 describe("makeProviderAccountsService", () => {
+  test("packaged config projection admits only valid registered refs with local auth presence", () => {
+    const projected = parseProviderAccountsListJson(packagedAccountsListJson(JSON.stringify({
+      dev: { accounts: [
+        { ref: "codex-2", provider: "codex", home: "/private/accounts/codex-2" },
+        { ref: "codex-paused", provider: "codex", home: "/private/accounts/paused", paused: true },
+        { ref: "../escape", provider: "codex", home: "/private/accounts/escape" },
+        { ref: "relative", provider: "codex", home: "relative/home" },
+      ] },
+    }), value => value === "/private/accounts/codex-2/auth.json"), generatedAt)
+    expect(projected).toEqual({
+      ok: true,
+      generatedAt,
+      accounts: [
+        { ref: "codex-2", provider: "codex", email: null, readiness: "ready" },
+        { ref: "codex-paused", provider: "codex", email: null, readiness: "credentials-missing" },
+      ],
+    })
+    expect(JSON.stringify(projected)).not.toContain("/private")
+  })
+
   test("fixture spawn: list projects the public-safe fleet and usage returns bounded totals", async () => {
     const service = makeProviderAccountsService("/nonexistent", {
       spawnPylon: makeFixtureProviderAccountsSpawn(),
