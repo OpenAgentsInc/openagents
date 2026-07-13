@@ -6,6 +6,7 @@ import type {
 } from "@openagentsinc/portable-session-contract"
 
 import type { PylonPortableControlSessionLifecycle } from "../../../apps/pylon/src/node/control-sessions.js"
+import { PylonPortableCheckpointArtifactStore } from "../../../apps/pylon/src/portable-session-checkpoint-artifact.js"
 import type { PylonPortableLocalRehydrator, PylonPortableDestinationAuthority } from "../../../apps/pylon/src/portable-session-destination.js"
 import { createPylonOwnerLocalDestinationLifecycle } from "../../../apps/pylon/src/portable-session-destination.js"
 import { PylonPortableSessionOperationLedger } from "../../../apps/pylon/src/portable-session-operation-ledger.js"
@@ -403,9 +404,10 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
   managed: Readonly<{
     ownerRef: string
     targetRef: string
-    provisioner: OaCodexControlPortableProvisionerConfig
+    provisioner: Omit<OaCodexControlPortableProvisionerConfig, "checkpointArtifacts">
   }>
 }>): Promise<PortableSessionProductionDriver> => {
+  const checkpointArtifacts = new PylonPortableCheckpointArtifactStore()
   const broker = createPortableSessionProductionBroker({
     grantAuthority: input.capabilities.grantAuthority,
     sql: input.runtime.sql,
@@ -436,12 +438,16 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
     lifecycle: input.local.lifecycle,
     binding: input.local.binding,
     destination,
+    checkpointArtifacts,
   })
   const managed = new PostgresManagedAgentComputerTarget({
     sql: input.runtime.sql,
     ownerRef: input.managed.ownerRef,
     targetRef: input.managed.targetRef,
-    provisioner: createOaCodexControlPortableProvisioner(input.managed.provisioner),
+    provisioner: createOaCodexControlPortableProvisioner({
+      ...input.managed.provisioner,
+      checkpointArtifacts,
+    }),
   })
   return new PortableSessionProductionDriver({
     runtime: new PostgresPortableSessionMoveRuntime(input.runtime),

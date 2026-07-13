@@ -1,7 +1,11 @@
+import { createHash } from "node:crypto"
+
+import type { PortableCheckpointArtifactResolver } from "../../../apps/pylon/src/portable-session-checkpoint-artifact.js"
 import type { ManagedAgentComputerPortableProvisioner } from "./portable-managed-agent-computer-target.js"
 
 const FORBIDDEN_PRIVATE_MATERIAL =
   /(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)|"(?:token|apiKey|password|secret|credential|mnemonic|hostname|processId|socket|authHome)"\s*:/iu
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u
 
 export class OaCodexControlPortableProvisionerError extends Error {
   readonly _tag = "OaCodexControlPortableProvisionerError"
@@ -25,6 +29,7 @@ export type OaCodexControlPortableProvisionerConfig = Readonly<{
   bearerToken: string
   fetch?: FetchLike
   timeoutMs?: number
+  checkpointArtifacts: PortableCheckpointArtifactResolver
 }>
 
 type OperationBase = Readonly<{
@@ -71,8 +76,10 @@ export const createOaCodexControlPortableProvisioner = (
   config: OaCodexControlPortableProvisionerConfig,
 ): ManagedAgentComputerPortableProvisioner => {
   let endpoint: URL
+  let materializeEndpoint: URL
   try {
     endpoint = new URL("/v1/portable-agent-computers/operations", config.baseUrl)
+    materializeEndpoint = new URL("/v1/portable-agent-computers/checkpoints/materialize", config.baseUrl)
   } catch {
     throw new OaCodexControlPortableProvisionerError("invalid", "oa-codex-control base URL is invalid")
   }
@@ -129,20 +136,125 @@ export const createOaCodexControlPortableProvisioner = (
     return publicSafe(object(decoded)) as A
   }
 
+  const materialize = async (input: Readonly<{
+    operationRef: string
+    ownerRef: string
+    targetRef: string
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    checkpointRef: string
+    artifactRef: string
+    artifactDigest: string
+    bytes: Uint8Array
+  }>): Promise<Record<string, unknown>> => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    const requestBytes = Uint8Array.from(input.bytes)
+    let response: Response
+    try {
+      response = await fetcher(materializeEndpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bearerToken}`,
+          "content-type": "application/octet-stream",
+          "X-OA-Operation-Ref": input.operationRef,
+          "X-OA-Owner-Ref": input.ownerRef,
+          "X-OA-Target-Ref": input.targetRef,
+          "X-OA-Session-Ref": input.sessionRef,
+          "X-OA-Attachment-Ref": input.attachmentRef,
+          "X-OA-Attachment-Generation": String(input.generation),
+          "X-OA-Checkpoint-Ref": input.checkpointRef,
+          "X-OA-Artifact-Ref": input.artifactRef,
+          "X-OA-Artifact-Digest": input.artifactDigest,
+        },
+        body: requestBytes.buffer,
+        signal: controller.signal,
+      })
+    } catch {
+      throw new OaCodexControlPortableProvisionerError(
+        "unavailable",
+        "oa-codex-control checkpoint materializer is unavailable",
+      )
+    } finally {
+      clearTimeout(timeout)
+      requestBytes.fill(0)
+    }
+    let decoded: unknown
+    try {
+      decoded = await response.json()
+    } catch {
+      throw new OaCodexControlPortableProvisionerError(
+        "rejected",
+        "oa-codex-control returned an invalid checkpoint materialization response",
+      )
+    }
+    if (!response.ok) {
+      throw new OaCodexControlPortableProvisionerError(
+        "rejected",
+        `oa-codex-control refused checkpoint materialization (${response.status})`,
+      )
+    }
+    return publicSafe(object(decoded))
+  }
+
   return {
-    stage: input => run({
-      operationRef: input.operationRef,
-      action: "stage",
-      ownerRef: input.ownerRef,
-      targetRef: input.targetRef,
-      sessionRef: input.bundle.checkpoint.sessionRef,
-      attachmentRef: input.attachmentRef,
-      generation: input.generation,
-      payload: {
+    stage: async input => {
+      const prepared = await run<Readonly<{
+        resourceRef: string
+        materializationRequired: true
+      }>>({
+        operationRef: input.operationRef,
+        action: "stage",
+        ownerRef: input.ownerRef,
+        targetRef: input.targetRef,
+        sessionRef: input.bundle.checkpoint.sessionRef,
+        attachmentRef: input.attachmentRef,
+        generation: input.generation,
+        payload: {
+          bundle: input.bundle,
+          capabilityLeaseRefs: input.capabilityLeaseRefs,
+        },
+      })
+      if (!SAFE_REF.test(prepared.resourceRef) || prepared.materializationRequired !== true) {
+        throw new OaCodexControlPortableProvisionerError("rejected", "oa-codex-control did not prepare an exact non-accepting resource")
+      }
+      const artifact = await config.checkpointArtifacts.resolve({
+        ownerRef: input.ownerRef,
+        targetRef: input.targetRef,
+        sessionRef: input.bundle.checkpoint.sessionRef,
+        attachmentRef: input.attachmentRef,
+        generation: input.generation,
+        checkpointRef: input.bundle.checkpoint.checkpointRef,
         bundle: input.bundle,
-        capabilityLeaseRefs: input.capabilityLeaseRefs,
-      },
-    }),
+      })
+      try {
+        if (!SAFE_REF.test(artifact.artifactRef) ||
+            !/^sha256:[a-f0-9]{64}$/u.test(artifact.digest) ||
+            artifact.bytes.byteLength === 0 ||
+            `sha256:${createHash("sha256").update(artifact.bytes).digest("hex")}` !== artifact.digest) {
+          throw new OaCodexControlPortableProvisionerError("rejected", "checkpoint artifact resolver returned mismatched bytes")
+        }
+        const receipt = await materialize({
+          operationRef: `${input.operationRef}.materialize`,
+          ownerRef: input.ownerRef,
+          targetRef: input.targetRef,
+          sessionRef: input.bundle.checkpoint.sessionRef,
+          attachmentRef: input.attachmentRef,
+          generation: input.generation,
+          checkpointRef: input.bundle.checkpoint.checkpointRef,
+          artifactRef: artifact.artifactRef,
+          artifactDigest: artifact.digest,
+          bytes: artifact.bytes,
+        })
+        if (receipt.resourceRef !== prepared.resourceRef) {
+          throw new OaCodexControlPortableProvisionerError("rejected", "checkpoint materialization used a different retained resource")
+        }
+        return receipt as Awaited<ReturnType<ManagedAgentComputerPortableProvisioner["stage"]>>
+      } finally {
+        artifact.bytes.fill(0)
+      }
+    },
     activate: input => run({
       operationRef: input.operationRef,
       action: "activate",

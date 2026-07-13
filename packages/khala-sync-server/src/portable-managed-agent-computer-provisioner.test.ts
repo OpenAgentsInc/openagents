@@ -57,16 +57,17 @@ const bundle: PortableCheckpointBundle = {
 
 describe("oa-codex-control retained Agent Computer provisioner", () => {
   test("maps the exact PORT-03 lifecycle to authenticated refs-only operations", async () => {
-    const requests: Array<{ authorization: string | null; body: Record<string, unknown> }> = []
-    const fetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
-      requests.push({
-        authorization: new Headers(init?.headers).get("authorization"),
-        body,
-      })
-      const action = body.action
-      const responses: Record<string, unknown> = {
-        stage: {
+    const requests: Array<{ path: string; authorization: string | null; body?: Record<string, unknown> }> = []
+    const artifactSource = new TextEncoder().encode("fixture-private-checkpoint-artifact")
+    let issuedArtifact: Uint8Array | undefined
+    const fetch = async (request: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const path = new URL(request instanceof Request ? request.url : request.toString()).pathname
+      if (path.endsWith("/checkpoints/materialize")) {
+        requests.push({ path, authorization: new Headers(init?.headers).get("authorization") })
+        expect(new Headers(init?.headers).get("X-OA-Artifact-Digest")).toBe(
+          `sha256:${createHash("sha256").update(artifactSource).digest("hex")}`,
+        )
+        return Response.json({
           resourceRef: "resource.agent-computer.binding",
           checkpointDigest: bundle.checkpoint.digest,
           repositoryPostImageDigest: bundle.checkpoint.repositoryPostImageDigest,
@@ -75,6 +76,19 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
           threadCursors: bundle.threadCursors,
           acceptingWork: false,
           evidenceRefs: ["evidence.port03.binding.stage"],
+        })
+      }
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+      requests.push({
+        path,
+        authorization: new Headers(init?.headers).get("authorization"),
+        body,
+      })
+      const action = body.action
+      const responses: Record<string, unknown> = {
+        stage: {
+          resourceRef: "resource.agent-computer.binding",
+          materializationRequired: true,
         },
         activate: {
           activatedAgentRefs: ["agent.port03.binding.root"],
@@ -100,6 +114,17 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
       baseUrl: "http://127.0.0.1:8787",
       bearerToken: "fixture-control-token",
       fetch,
+      checkpointArtifacts: {
+        resolve: async input => {
+          expect(input.bundle).toEqual(bundle)
+          issuedArtifact = artifactSource.slice()
+          return {
+            artifactRef: "artifact.port03.binding",
+            digest: `sha256:${createHash("sha256").update(issuedArtifact).digest("hex")}`,
+            bytes: issuedArtifact,
+          }
+        },
+      },
     })
     const staged = await provisioner.stage({
       operationRef: "operation.port03.binding.stage",
@@ -160,10 +185,11 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
       agentRefs: ["agent.port03.binding.root"],
     })
 
-    expect(requests.map(item => item.body.action)).toEqual([
-      "stage", "activate", "quiesce", "checkpoint", "reclaim",
+    expect(requests.map(item => item.body?.action ?? "materialize")).toEqual([
+      "stage", "materialize", "activate", "quiesce", "checkpoint", "reclaim",
     ])
     expect(requests.every(item => item.authorization === "Bearer fixture-control-token")).toBeTrue()
+    expect(issuedArtifact?.every(byte => byte === 0)).toBeTrue()
     expect(JSON.stringify(requests.map(item => item.body))).not.toContain("fixture-control-token")
   })
 
@@ -171,12 +197,14 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
     expect(() => createOaCodexControlPortableProvisioner({
       baseUrl: "http://agent-computer.example.test",
       bearerToken: "fixture-control-token",
+      checkpointArtifacts: { resolve: async () => { throw new Error("unused") } },
     })).toThrow(OaCodexControlPortableProvisionerError)
 
     const provisioner = createOaCodexControlPortableProvisioner({
       baseUrl: "https://agent-computer.example.test",
       bearerToken: "fixture-control-token",
       fetch: async () => Response.json({ hostname: "private-host" }),
+      checkpointArtifacts: { resolve: async () => { throw new Error("unused") } },
     })
     await expect(provisioner.stage({
       operationRef: "operation.port03.binding.unsafe",
@@ -189,3 +217,4 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
     })).rejects.toMatchObject({ code: "unsafe_response" })
   })
 })
+import { createHash } from "node:crypto"

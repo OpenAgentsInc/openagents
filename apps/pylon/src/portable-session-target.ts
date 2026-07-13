@@ -12,6 +12,7 @@ import type {
 import { Effect } from "effect"
 
 import type { PylonPortableControlSessionLifecycle } from "./node/control-sessions.js"
+import type { PylonPortableCheckpointArtifactStore } from "./portable-session-checkpoint-artifact.js"
 import {
   type PylonPortableCheckpointBundle,
   PylonPortableSessionOperationLedger,
@@ -202,6 +203,7 @@ export const createPylonOwnerLocalExecutionTarget = async (input: Readonly<{
     agents: ReadonlyArray<Readonly<{ agentRef: string; controlSessionRef: string }>>
   }>
   destination?: PylonPortableDestinationLifecycle
+  checkpointArtifacts?: Pick<PylonPortableCheckpointArtifactStore, "register">
 }>): Promise<PylonOwnerLocalExecutionTarget> => {
   try {
     const fence = await Effect.runPromise(input.ledger.readSession(input.binding.sessionRef))
@@ -264,7 +266,17 @@ export const createPylonOwnerLocalExecutionTarget = async (input: Readonly<{
         kind: "checkpoint",
       }))
       if (admitted.record.state === "completed") {
-        return runLedger(input.ledger.readCheckpointBundle(operation.operationRef))
+        const bundle = await runLedger(input.ledger.readCheckpointBundle(operation.operationRef))
+        if (input.checkpointArtifacts !== undefined) {
+          const source = await input.lifecycle.checkpointSource({
+            sessionRef: operation.sessionRef,
+            attachmentRef: operation.attachmentRef,
+            generation: operation.generation,
+            agentRefs: operation.graph.nodes.map(node => node.agentRef),
+          })
+          input.checkpointArtifacts.register({ bundle, workingDirectory: source.workingDirectory })
+        }
+        return bundle
       }
       const source = await input.lifecycle.checkpointSource({
         sessionRef: operation.sessionRef,
@@ -306,6 +318,7 @@ export const createPylonOwnerLocalExecutionTarget = async (input: Readonly<{
         graph: operation.graph,
         threadCursors: operation.threadCursors,
       }
+      input.checkpointArtifacts?.register({ bundle, workingDirectory: source.workingDirectory })
       const stored = await runLedger(input.ledger.storeCheckpointBundle({
         operationRef: operation.operationRef,
         bundle,
