@@ -35,10 +35,11 @@ this closure graph:
 | [#8707 CUT-27](https://github.com/OpenAgentsInc/openagents/issues/8707) | All implementation leaves and prerequisite parents are closed; literal Claude and per-task cross-device acceptance remain absent | Satisfy the remaining installed Claude and device gates, publish the cutover bundle/docs, then close |
 | [#8574 Desktop](https://github.com/OpenAgentsInc/openagents/issues/8574) | D0–D6 implementation is represented by closed CUT leaves; its ordinary local-coding acceptance is still delegated to #8707 | Close only after #8707 and a current body/docs reconciliation |
 | [#8597 mobile](https://github.com/OpenAgentsInc/openagents/issues/8597) | Local-cutover implementation is complete except #8707; the issue's literal remote-first exit is PORT-owned | Reconcile the local rung after #8707, but keep the track open for PORT-03–PORT-08 |
-| [#8566 program](https://github.com/OpenAgentsInc/openagents/issues/8566) | Program parent only; no independent leaf is hidden here | Close last, after client tracks, AUDIO-8 where still attached, PORT/R7 dogfood, reconciliation, and legacy retirement |
+| [#8566 program](https://github.com/OpenAgentsInc/openagents/issues/8566) | Program parent only; no independent leaf is hidden here; its body explicitly excludes Sarah/persona/A/V/presentation work from the exit | Close last, after client tracks, PORT/R7 dogfood, reconciliation, and legacy retirement; AUDIO-8 is not a program-close blocker |
 
 Therefore there are two immediately actionable non-PORT finish lanes: AUDIO-8
-and CUT-27. #8574 is their dependent reconciliation/closure step. #8597 and
+and CUT-27. They are independent. #8574 is the dependent reconciliation/
+closure step for CUT-27 only; AUDIO-8 does not gate #8574 or #8566. #8597 and
 #8566 cannot honestly close while the excluded PORT exits remain open.
 
 ## #8741 AUDIO-8
@@ -155,7 +156,10 @@ closed CUT leaves cover the truthful baseline, Effect service/lifecycle
 boundaries, project/session navigation, commands, workspace/files/editor/Git/
 PTY, named runtimes, settings/accessibility/diagnostics, Fleet surfaces, and
 signed distribution. AUDIO-8 is a parallel voice proof and the master roadmap
-explicitly says it does not block CUT-27.
+explicitly says it does not block CUT-27. The #8566 parent body also explicitly
+excludes Sarah/persona/A/V/presentation work from its exit, so AUDIO-8 does not
+become a hidden Desktop-track or program-parent close gate merely because it is
+attached to the same program area.
 
 ### Exact remaining gate
 
@@ -211,7 +215,8 @@ the parent to make its checklist look green.
 
 ### Exact remaining gate
 
-1. Complete AUDIO-8 and CUT-27, then close #8574 as described above.
+1. Complete CUT-27, then close #8574 as described above. Track and close
+   AUDIO-8 independently; it is not a #8566 exit criterion or blocker.
 2. Keep #8566 open while #8597 and PORT-03–PORT-08 remain open. The parent
    requires the signed R7 dogfood journey, cross-host convergence/failback,
    legacy product/install/release retirement, and final issue/docs agreement.
@@ -236,8 +241,10 @@ the parent to make its checklist look green.
 
 ## Finish order
 
-1. Complete the AUDIO-8 owner journey and final evidence, then close #8741.
-2. Unlock one named Claude account; complete Claude plus literal per-task iOS/
+1. In the independent audio lane, complete the AUDIO-8 owner journey and final
+   evidence, then close #8741. This may happen before or after the cutover lane
+   and does not gate #8566.
+2. In the cutover lane, unlock one named Claude account; complete Claude plus literal per-task iOS/
    Android-emulator CUT-27 acceptance; publish the consolidated evidence and
    default-surface docs; close #8707.
 3. Reconcile and close #8574.
