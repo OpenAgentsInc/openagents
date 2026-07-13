@@ -17,12 +17,14 @@ import { execFileSync } from "node:child_process"
 import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
 import {
+  fetchFleetRunClientProjection,
   buildCloseTurnIntent,
   buildContinueTurnIntent,
   buildInterruptTurnIntent,
   buildRetryTurnIntent,
   buildStartTurnIntent,
 } from "@openagentsinc/khala-sync-client"
+import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
 
 // macOS derives the running application/menu identity before `ready`; set
 // both Electron's application name and the process title at module startup so
@@ -2256,6 +2258,14 @@ ipcMain.handle(ProviderAccountsListChannel, () => {
   // probes stream fresh session evidence into health/ledger asynchronously.
   void codexPreflight.probeAll("fleet_refresh").catch(() => {})
   return providerAccounts.listProviderAccounts()
+})
+ipcMain.handle(FleetRunProjectionListChannel, async () => {
+  const credential = desktopSessionVault?.load()
+  if (credential === undefined || credential === null) return { state: "unauthorized" }
+  return fetchFleetRunClientProjection({
+    baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
+    accessToken: credential.accessToken,
+  })
 })
 ipcMain.handle(ProviderAccountsUsageChannel, (_event, value: unknown) => {
   const request = decodeProviderAccountUsageRequest(value)

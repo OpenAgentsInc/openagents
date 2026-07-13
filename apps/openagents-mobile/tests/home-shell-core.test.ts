@@ -134,6 +134,43 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(serialized).not.toContain("Sarah")
   })
 
+  test("drawer exposes the exact authenticated hybrid FleetRun refs", () => {
+    const serialized = JSON.stringify(renderDrawerView({
+      ...initialHomeState,
+      fleetRuns: {
+        schema: "openagents.fleet_run_client_projection.v1",
+        privateMaterialExcluded: true,
+        generatedAt: "2026-07-13T10:55:20.179Z",
+        runs: [{
+          runRef: "fleet_run.sarah.f566771758bbe0ab5fc5",
+          authorityStatus: "claimed_by_pylon",
+          executionState: "completed",
+          lastSequence: 96,
+          attempts: [{
+            workUnitRef: "unit.fc4.owner_local.acceptance.202607131047",
+            workClaimRef: "claim.unit.owner-local",
+            intakeClaimRef: "claim.sarah_fleet_run.0123456789abcdef01234567",
+            assignmentRef: "assignment.public.khala_coding.chatcmpl_c9db1507f52a44468b43545317e10c8e",
+            accountRefHash: "account.pylon.codex.f88a4773edd26cae162ceb2f",
+            requestedTarget: "owner_local",
+            selectedTarget: "owner_local",
+            fallback: { truth: "not_applicable" },
+            outcome: "accepted",
+            closeoutRef: "assignment.closeout.summary.e2d06ebe9e9eaf48dd9e8d74",
+            artifactRefs: [], proofRefs: [], authorityReceiptRefs: [],
+            usageTruth: "exact", usageEvidenceRef: "receipt.usage.exact", tokenUsageRefs: ["receipt.usage.exact"], usageCaveatRefs: [], blockerRefs: [],
+            terminalAt: "2026-07-13T10:55:20.179Z", updatedAt: "2026-07-13T10:55:20.179Z",
+          }],
+          createdAt: "2026-07-13T10:55:20.179Z",
+          updatedAt: "2026-07-13T10:55:20.179Z",
+        }],
+      },
+    }))
+    expect(serialized).toContain("fleet_run.sarah.f566771758bbe0ab5fc5")
+    expect(serialized).toContain("owner_local → owner_local · accepted")
+    expect(serialized).toContain("assignment.closeout.summary.e2d06ebe9e9eaf48dd9e8d74")
+  })
+
   test("drawer Settings opens the account and Sync surface", async () => {
     const program = buildHomeProgram()
     program.chrome.toggleDrawer()

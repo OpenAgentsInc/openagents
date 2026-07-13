@@ -106,6 +106,32 @@ const runningCockpitCard: FleetCockpitCard = {
 }
 
 describe("fleetWorkspaceView (state -> component tree)", () => {
+  test("renders authority FleetRun refs even when local Pylon accounts are unavailable", () => {
+    const state: FleetWorkspaceState = {
+      ...withFleetProjection(emptyFleetWorkspaceState(), { ok: false, reason: "pylon_runtime_unavailable" }),
+      authorityRuns: {
+        schema: "openagents.fleet_run_client_projection.v1",
+        privateMaterialExcluded: true,
+        generatedAt: "2026-07-13T10:55:20.179Z",
+        runs: [{
+          runRef: "fleet_run.sarah.f566771758bbe0ab5fc5",
+          authorityStatus: "claimed_by_pylon", executionState: "completed", lastSequence: 96,
+          attempts: [{
+            workUnitRef: "unit.fc4.managed_cloud.acceptance.202607131047", workClaimRef: "claim.unit.managed-cloud", intakeClaimRef: "claim.sarah_fleet_run.0123456789abcdef01234567",
+            assignmentRef: "assignment.pylon.managed_cloud.de6892b92ed6ab448336f908", accountRefHash: "account.pylon.codex.8c4cc8341ca620288165a2a6",
+            requestedTarget: "managed_cloud", selectedTarget: "managed_cloud", fallback: { truth: "not_applicable" }, outcome: "accepted",
+            closeoutRef: "closeout.agent_computer.execution.78c8fe0d47bc9b1efd382d81", artifactRefs: [], proofRefs: [], authorityReceiptRefs: [],
+            usageTruth: "not_measured", usageEvidenceRef: "receipt.usage.not-measured", tokenUsageRefs: [], usageCaveatRefs: ["caveat.usage.not-measured"], blockerRefs: [],
+            terminalAt: "2026-07-13T10:55:20.179Z", updatedAt: "2026-07-13T10:55:20.179Z",
+          }], createdAt: "2026-07-13T10:55:20.179Z", updatedAt: "2026-07-13T10:55:20.179Z",
+        }],
+      },
+    }
+    const serialized = JSON.stringify(fleetWorkspaceView(state))
+    expect(serialized).toContain("fleet_run.sarah.f566771758bbe0ab5fc5")
+    expect(serialized).toContain("managed_cloud → managed_cloud · accepted")
+    expect(serialized).toContain("closeout.agent_computer.execution.78c8fe0d47bc9b1efd382d81")
+  })
   test("loading phase shows the honest loading copy and a disabled refresh", () => {
     const view = fleetWorkspaceView(withFleetLoading(emptyFleetWorkspaceState()))
     expect(nodeByKey(view, "fleet-loading")?._tag).toBe("Text")

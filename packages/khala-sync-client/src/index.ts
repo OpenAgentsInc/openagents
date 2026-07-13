@@ -17,6 +17,11 @@
 // drafts. Re-export the exact canonical composer boundary they need so app
 // packages do not create a parallel draft model or a second dependency edge.
 export {
+  fetchFleetRunClientProjection,
+  type FleetRunProjectionFetchResult,
+} from "./fleet-run-client-projection.js"
+
+export {
   admitFleetAttentionCommand,
   admitFleetRunCommand,
   fleetRunActions,

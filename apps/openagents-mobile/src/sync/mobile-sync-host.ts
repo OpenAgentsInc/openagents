@@ -5,6 +5,7 @@ import {
   openExpoKhalaSyncStore,
   type ExpoSqliteDatabase,
 } from "@openagentsinc/khala-sync-client/expo-sqlite-store"
+import { fetchFleetRunClientProjection } from "@openagentsinc/khala-sync-client"
 import { loadNativeSessionCredential } from "../auth/native-session-vault"
 import {
   fetchMobileExecutionTargetCatalog,
@@ -16,6 +17,7 @@ export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
   connectStoredVerifiedSession: () => Promise<"connected" | "signed_out" | "unavailable">
   /** Public-safe target projection. Credential custody never leaves this host. */
   executionTargets: () => Promise<MobileExecutionTargetCatalog | null>
+  fleetRuns: () => ReturnType<typeof fetchFleetRunClientProjection>
 }>
 
 export const OPENAGENTS_MOBILE_SYNC_DATABASE = "openagents-mobile-sync.sqlite"
@@ -44,6 +46,16 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
   })
   return {
     ...host,
+    fleetRuns: async () => {
+      const credential = await loadNativeSessionCredential()
+      if (credential === null || host.conversation() === null) {
+        return { state: "unauthorized" }
+      }
+      return fetchFleetRunClientProjection({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: credential.accessToken,
+      })
+    },
     executionTargets: async () => {
       try {
         const credential = await loadNativeSessionCredential()

@@ -45,6 +45,7 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
     directory: MobileCodingDirectory
     activeComposer: () => MobileCodingComposerSession | null
     executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
+    fleetRuns?: import("@openagentsinc/khala-sync").FleetRunClientProjection
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,

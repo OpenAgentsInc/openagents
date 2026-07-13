@@ -24,6 +24,7 @@ import {
   decodeFleetStageRequest,
   unavailableFleetStageResult,
 } from "./fleet-contract.ts"
+import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
 import {
   ProviderAccountsListChannel,
   ProviderAccountsUsageChannel,
@@ -482,6 +483,9 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         ? Promise.resolve(unavailableProviderAccountUsageResult("unknown", "invalid_request"))
         : ipcRenderer.invoke(ProviderAccountsUsageChannel, request)
     },
+  },
+  fleetRuns: {
+    list: () => ipcRenderer.invoke(FleetRunProjectionListChannel),
   },
   /**
    * Fable local lane (#8712): schema-checked on both sides of the boundary.

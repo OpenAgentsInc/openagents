@@ -170,6 +170,7 @@ type DesktopBridge = Readonly<{
     list?: () => Promise<unknown>
     usage?: (ref: string) => Promise<unknown>
   }>
+  fleetRuns?: Readonly<{ list?: () => Promise<unknown> }>
   fableLocal?: Readonly<{
     availability?: () => Promise<unknown>
     start?: (value: unknown) => Promise<unknown>
@@ -327,6 +328,12 @@ const codexSettingsBridge: CodexSettingsBridge = {
  * schema-decode every response before it touches state.
  */
 const fleetAccountsBridge: FleetAccountsBridge = {
+  fleetRuns: () => {
+    const bridge = readBridge()
+    return typeof bridge?.fleetRuns?.list === "function"
+      ? bridge.fleetRuns.list()
+      : Promise.resolve({ state: "unavailable" })
+  },
   list: () => {
     const bridge = readBridge()
     return typeof bridge?.providerAccounts?.list === "function"

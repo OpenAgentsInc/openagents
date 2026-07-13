@@ -2,6 +2,7 @@ import { canonicalJson, fleetRunScope } from '@openagentsinc/khala-sync'
 import {
   decodeFleetRunAuthorityStartRequest,
   FleetRunAuthorityError,
+  FleetRunAuthorityListInput,
   FleetRunAuthorityObserveInput,
   FleetRunAuthorityRecord,
   FleetRunAuthorityStartInput,
@@ -95,6 +96,20 @@ const makeFakeAuthority = (): FleetRunAuthorityRepositoryShape => {
           requestFingerprint: fingerprint,
           status: 'pending_executor',
           request,
+          execution: {
+            state: 'pending',
+            lastSequence: 0,
+            counters: {
+              workUnitsTotal: 1,
+              activeAssignments: 0,
+              acceptedAssignments: 0,
+              failedAssignments: 0,
+              staleAssignments: 0,
+            },
+            startedAt: null,
+            updatedAt: FIXED_NOW,
+            closeouts: [],
+          },
           createdAt: FIXED_NOW,
           updatedAt: FIXED_NOW,
         })
@@ -146,9 +161,43 @@ const makeFakeAuthority = (): FleetRunAuthorityRepositoryShape => {
       }),
     )
 
+  const list: NonNullable<FleetRunAuthorityRepositoryShape['list']> = raw =>
+    Effect.try({
+      try: () => {
+        const decoded = S.decodeUnknownSync(FleetRunAuthorityListInput)(raw, {
+          onExcessProperty: 'error',
+        })
+        const records = [...recordsByOwnerAndRun.entries()]
+          .filter(([key]) => key.startsWith(`${decoded.ownerUserId}:`))
+          .map(([, record]) => record)
+          .slice(0, decoded.limit)
+        return {
+          projection: {
+            schema: 'openagents.fleet_run_client_projection.v1' as const,
+            privateMaterialExcluded: true as const,
+            generatedAt: FIXED_NOW,
+            runs: records.map(record => ({
+              runRef: record.runRef,
+              authorityStatus: record.status,
+              executionState: record.execution.state,
+              lastSequence: record.execution.lastSequence,
+              attempts: [],
+              createdAt: record.createdAt,
+              updatedAt: record.updatedAt,
+            })),
+          },
+        }
+      },
+      catch: () => new FleetRunAuthorityError({
+        kind: 'invalid_request',
+        reason: 'fixed invalid list request',
+      }),
+    })
+
   return {
     start,
     observe,
+    list,
     claim: unsupported,
     acceptClaim: unsupported,
   }
@@ -374,6 +423,27 @@ describe('Sarah FleetRun authenticated route', () => {
       run: { runRef: createdBody.run.runRef },
     })
     expect(harness.calls.ended).toBe(2)
+  })
+
+  test('lists a bounded owner-only refs projection when runRef is absent', async () => {
+    const harness = makeHarness()
+    const created = await harness.run(
+      post(fleetRequest('operator-list-1'), 'user-operator'),
+    )
+    const createdBody = (await created.json()) as { run: { runRef: string } }
+    const listed = await harness.run(
+      new Request(`https://openagents.com${SARAH_FLEET_RUNS_PATH}`, {
+        headers: { 'x-test-user': 'user-operator' },
+      }),
+    )
+    expect(listed.status).toBe(200)
+    expect(await listed.json()).toMatchObject({
+      ok: true,
+      fleet: {
+        schema: 'openagents.fleet_run_client_projection.v1',
+        runs: [{ runRef: createdBody.run.runRef, attempts: [] }],
+      },
+    })
   })
 
   test('replays identical owner idempotency and returns a fixed changed-input conflict', async () => {

@@ -40,6 +40,10 @@ import {
   type FleetRunAction,
   type FleetRunCommand,
 } from "../fleet-cockpit.ts"
+import {
+  decodeFleetRunClientProjection,
+  type FleetRunClientProjection,
+} from "@openagentsinc/khala-sync"
 
 export type FleetAccountReadiness = "ready" | "credentials-missing" | "unknown"
 
@@ -98,6 +102,7 @@ export type FleetWorkspaceState = Readonly<{
   ledger: UsageLedgerSnapshot | null
   cockpitCards: ReadonlyArray<FleetCockpitCard>
   cockpitAuthority: "live" | "offline" | "stale" | "revoked" | "unknown"
+  authorityRuns: FleetRunClientProjection | null
 }>
 
 export const emptyFleetWorkspaceState = (): FleetWorkspaceState => ({
@@ -109,6 +114,7 @@ export const emptyFleetWorkspaceState = (): FleetWorkspaceState => ({
   ledger: null,
   cockpitCards: [],
   cockpitAuthority: "unknown",
+  authorityRuns: null,
 })
 
 // ---------------------------------------------------------------------------
@@ -307,6 +313,7 @@ export const fleetWorkspaceIntents = [
 export type FleetAccountsBridge = Readonly<{
   list: () => Promise<unknown>
   usage: (ref: string) => Promise<unknown>
+  fleetRuns?: () => Promise<unknown>
   /** Session usage ledger snapshot (#8712 Lane C); optional for older hosts. */
   ledger?: () => Promise<unknown>
   cockpit?: () => Promise<Readonly<{ authority: FleetWorkspaceState["cockpitAuthority"]; cards: ReadonlyArray<FleetCockpitCard> }>>
@@ -375,6 +382,14 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       fleet: withFleetProjection(next.fleet, projection),
     }))
     yield* pullFleetLedger(state, bridge)
+    if (bridge.fleetRuns !== undefined) {
+      const result = yield* Effect.promise(() => bridge.fleetRuns!().catch(() => null))
+      let projection: FleetRunClientProjection | null = null
+      if (typeof result === "object" && result !== null && "state" in result && result.state === "available" && "projection" in result) {
+        try { projection = decodeFleetRunClientProjection(result.projection) } catch { projection = null }
+      }
+      yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, authorityRuns: projection } }))
+    }
     if (bridge.cockpit !== undefined) {
       const cockpit = yield* Effect.promise(() => bridge.cockpit!().catch(() => ({ authority: "unknown" as const, cards: [] })))
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, cockpitAuthority: cockpit.authority, cockpitCards: cockpit.cards.slice(0, 50) } }))
@@ -800,6 +815,15 @@ const sessionUsageSection = (fleet: FleetWorkspaceState): ReadonlyArray<View> =>
 }
 
 const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
+  const authorityRows: ReadonlyArray<View> = (fleet.authorityRuns?.runs ?? []).flatMap(run => [
+    Text({ key: `authority-run-${run.runRef}`, content: `Fleet run · ${run.executionState}\n${run.runRef}`, variant: "label", color: "textPrimary" }),
+    ...run.attempts.map(attempt => Text({
+      key: `authority-attempt-${attempt.workClaimRef}`,
+      content: `${attempt.requestedTarget} → ${attempt.selectedTarget} · ${attempt.outcome}\n${attempt.workClaimRef}\n${attempt.assignmentRef ?? "Assignment pending"}\n${attempt.closeoutRef ?? "Closeout pending"}`,
+      variant: "caption",
+      color: "textMuted",
+    })),
+  ])
   if (fleet.phase === "loading" || fleet.phase === "idle") {
     return [Text({
       key: "fleet-loading",
@@ -809,7 +833,7 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
     })]
   }
   if (fleet.phase === "unavailable") {
-    return [
+    return [...authorityRows,
       Text({
         key: "fleet-unavailable",
         content: "Fleet accounts are unavailable. No account evidence was read.",
@@ -825,7 +849,7 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
     ]
   }
   if (fleet.accounts.length === 0) {
-    return [...fleetCockpitSection(fleet), Text({
+    return [...authorityRows, ...fleetCockpitSection(fleet), Text({
       key: "fleet-empty",
       content: "No provider accounts connected yet. Connect one in Settings.",
       variant: "body",
@@ -833,6 +857,7 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
     })]
   }
   return [
+    ...authorityRows,
     ...fleetCockpitSection(fleet),
     // Column flow (not a row): chips can never run off the right window edge.
     Stack(

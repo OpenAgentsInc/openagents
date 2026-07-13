@@ -382,7 +382,22 @@ export const makeSarahFleetRunRoutes = <Bindings extends SarahFleetRunRouteEnv>(
 
         const runRef = url.searchParams.get('runRef')
         if (runRef === null) {
-          return respond(invalidRequest())
+          if (repository.list === undefined) {
+            return respond(serviceUnavailable('storage_unavailable'))
+          }
+          const outcome = yield* authorityOutcome(
+            repository.list({ ownerUserId: owner.userId, limit: 20 }),
+          )
+          return respond(
+            outcome.kind === 'failure'
+              ? authorityErrorResponse(outcome.error)
+              : noStoreJsonResult({
+                  ok: true,
+                  policy,
+                  routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
+                  fleet: outcome.value.projection,
+                }),
+          )
         }
         const outcome = yield* authorityOutcome(
           repository.observe({ ownerUserId: owner.userId, runRef }),

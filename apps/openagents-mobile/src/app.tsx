@@ -36,6 +36,7 @@ import {
   type MobileExperienceReconciler,
 } from "./conversation/mobile-experience-reconciler"
 import type { MobileSyncPhase } from "./screens/home-core"
+import type { FleetRunClientProjection } from "@openagentsinc/khala-sync"
 import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileNativeSyncHost } from "./sync/mobile-sync-host"
 import { startOtaPolling } from "./updates/ota-polling"
@@ -48,6 +49,7 @@ type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
   activeComposer: () => MobileCodingComposerSession | null
   executionTargets: ReadonlyArray<MobileExecutionTargetOption>
+  fleetRuns?: FleetRunClientProjection
   clearSelection: () => Promise<void>
   selectSession: (
     target: MobileCodingTarget,
@@ -114,6 +116,7 @@ const selectAuthenticatedMobileExperience = async (
   const directory = await coding.directory()
   if (conversation.mode !== "sync") return { conversation }
   const executionTargetCatalog = await syncHost.executionTargets()
+  const fleetRunResult = await syncHost.fleetRuns()
   const executionTargets = executionTargetCatalog?.options ?? []
   const host = conversation.host
   let activeComposer: MobileCodingComposerSession | null = null
@@ -167,6 +170,9 @@ const selectAuthenticatedMobileExperience = async (
       directory,
       activeComposer: () => activeComposer,
       executionTargets,
+      ...(fleetRunResult.state === "available"
+        ? { fleetRuns: fleetRunResult.projection }
+        : {}),
       clearSelection: async () => {
         activeComposer = null
         await coding.clearActive()

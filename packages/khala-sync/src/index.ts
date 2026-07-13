@@ -18,6 +18,7 @@ export const KHALA_SYNC_PROTOCOL_VERSION = 1
 // Fleet cockpit entity contracts (KS-6.1): post-image shapes for
 // scope.fleet_run.<id> changelog entries. Self-contained module (no cycle).
 export * from "./fleet.js"
+export * from "./fleet-run-client-projection.js"
 
 // Capacity-aware dispatch account selection (#8389/#8388): pure selector
 // over FleetAccountEntity, shared by khala-sync-server and the published

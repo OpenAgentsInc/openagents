@@ -23,6 +23,7 @@ import {
   resolveLiveAgentGraphSelection,
   type ScopeSyncState,
 } from "@openagentsinc/khala-sync-client"
+import type { FleetRunClientProjection } from "@openagentsinc/khala-sync"
 
 import type {
   MobileCodingDirectory,
@@ -95,6 +96,7 @@ export interface HomeState {
   readonly codingDirectory: MobileCodingDirectory | null
   readonly codingComposer: MobileCodingComposerSession | null
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
+  readonly fleetRuns?: FleetRunClientProjection
   readonly codingExecutionTargetCatalogRequired: boolean
   readonly codingAttachmentPicking: boolean
   readonly codingAttachmentStatus: Readonly<{
@@ -539,6 +541,20 @@ export const renderDrawerView = (state: HomeState): View =>
         selected: state.activeThreadRef === thread.threadRef,
       }, state.accessibility)),
       ...codingOfflineCacheAccountingRows(state),
+      ...(state.fleetRuns?.runs ?? []).flatMap(run => [
+        Text({
+          key: `fleet-run-${run.runRef}`,
+          content: `Fleet run · ${run.executionState}\n${run.runRef}`,
+          variant: "caption",
+          color: "textPrimary",
+        }),
+        ...run.attempts.map(attempt => Text({
+          key: `fleet-attempt-${attempt.workClaimRef}`,
+          content: `${attempt.requestedTarget} → ${attempt.selectedTarget} · ${attempt.outcome}\n${attempt.workClaimRef}\n${attempt.assignmentRef ?? "Assignment pending"}\n${attempt.closeoutRef ?? "Closeout pending"}`,
+          variant: "caption",
+          color: "textMuted",
+        })),
+      ]),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
       Text({ key: "drawer-bundle", content: `Bundle ${BUNDLE_TAG}`, variant: "caption", color: "textMuted" }),
@@ -557,6 +573,7 @@ export interface HomeProgramOptions {
     directory: MobileCodingDirectory
     activeComposer: () => MobileCodingComposerSession | null
     executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
+    fleetRuns?: FleetRunClientProjection
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,
@@ -1345,6 +1362,9 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         codingDirectory: options.coding?.directory ?? null,
         codingComposer: activeComposer,
         codingExecutionTargets: options.coding?.executionTargets ?? [],
+        ...(options.coding?.fleetRuns === undefined
+          ? {}
+          : { fleetRuns: options.coding.fleetRuns }),
         codingExecutionTargetCatalogRequired:
           options.coding?.executionTargets !== undefined,
         khala: activeComposer === null

@@ -3,6 +3,7 @@ import {
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
   decodeFleetAttemptEntity,
+  FleetRunClientProjection as FleetRunClientProjectionSchema,
   decodeFleetWorkerEntity,
   decodeFleetWorkUnitEntity,
   FleetAttemptExactUsageEvidence,
@@ -13,6 +14,7 @@ import {
   type FleetAssignmentEntity,
   type FleetAttemptEntity,
   type FleetApprovalEntity,
+  type FleetRunClientProjection,
   type FleetWorkerEntity,
   type FleetWorkUnitEntity,
   type SyncScope,
@@ -125,9 +127,7 @@ const ProjectedExecutionPublicRef = S.String.check(
   S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u),
 )
 const AccountRefHash = S.String.check(
-  S.isPattern(
-    /^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{24}$/u,
-  ),
+  S.isPattern(/^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{24}$/u),
 )
 const ApprovalToolClass = S.String.check(
   S.isMinLength(1),
@@ -254,6 +254,12 @@ export const FleetRunAuthorityAcceptClaimInput = S.Struct({
 })
 export type FleetRunAuthorityAcceptClaimInput =
   typeof FleetRunAuthorityAcceptClaimInput.Type
+
+export const FleetRunAuthorityListInput = S.Struct({
+  ownerUserId: PublicOwnerRef,
+  limit: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(20)),
+})
+export type FleetRunAuthorityListInput = typeof FleetRunAuthorityListInput.Type
 
 export const FleetRunExecutionState = S.Literals([
   "pending",
@@ -487,10 +493,7 @@ type FleetRunAnyWorkTerminalExecutionEvent = Extract<
 type FleetRunV2WorkExecutionEvent = Extract<
   FleetRunExecutionEventV2,
   {
-    readonly kind:
-      | "work_progress"
-      | "approval_requested"
-      | "work_terminal"
+    readonly kind: "work_progress" | "approval_requested" | "work_terminal"
   }
 >
 
@@ -613,6 +616,10 @@ export type FleetRunAuthorityObserveResult = Readonly<{
   record: FleetRunAuthorityRecord
 }>
 
+export type FleetRunAuthorityListResult = Readonly<{
+  projection: FleetRunClientProjection
+}>
+
 export type FleetRunAuthorityClaimResult = Readonly<{
   duplicate: boolean
   claim: FleetRunIntakeClaim
@@ -657,6 +664,9 @@ export type FleetRunAuthorityRepositoryShape = Readonly<{
   observe: (
     input: unknown,
   ) => Effect.Effect<FleetRunAuthorityObserveResult, FleetRunAuthorityError>
+  list?: (
+    input: unknown,
+  ) => Effect.Effect<FleetRunAuthorityListResult, FleetRunAuthorityError>
   claim: (
     input: unknown,
   ) => Effect.Effect<FleetRunAuthorityClaimResult, FleetRunAuthorityError>
@@ -937,14 +947,15 @@ export const decodeFleetRunExecutionBatch = (
       return
     }
     if (event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2) {
-      const terminalEvidenceGroups = event.kind === "work_terminal"
-        ? [
-            event.verification?.evidenceRefs ?? [],
-            event.artifactRefs ?? [],
-            event.proofRefs ?? [],
-            event.authorityReceiptRefs ?? [],
-          ]
-        : []
+      const terminalEvidenceGroups =
+        event.kind === "work_terminal"
+          ? [
+              event.verification?.evidenceRefs ?? [],
+              event.artifactRefs ?? [],
+              event.proofRefs ?? [],
+              event.authorityReceiptRefs ?? [],
+            ]
+          : []
       if (
         (event.accountRefHash !== undefined &&
           !accountHashMatchesWorker(event.workerKind, event.accountRefHash)) ||
@@ -1195,7 +1206,10 @@ const assertExecutionEventContentBinding = async (
   claimRef: string,
   event: FleetRunExecutionEvent,
 ): Promise<void> => {
-  if (event.eventRef !== (await expectedExecutionEventRef(runRef, claimRef, event))) {
+  if (
+    event.eventRef !==
+    (await expectedExecutionEventRef(runRef, claimRef, event))
+  ) {
     throw fixedError(
       "invalid_request",
       "fleet run execution event ref does not match its canonical content",
@@ -1446,8 +1460,7 @@ const attemptEntityFromRow = (row: FleetRunAttemptRow): FleetAttemptEntity => {
     if (
       canonicalJson(artifactRefs) !== row.artifact_refs_json ||
       canonicalJson(proofRefs) !== row.proof_refs_json ||
-      canonicalJson(authorityReceiptRefs) !==
-        row.authority_receipt_refs_json ||
+      canonicalJson(authorityReceiptRefs) !== row.authority_receipt_refs_json ||
       canonicalJson(tokenUsageRefs) !== row.token_usage_refs_json ||
       canonicalJson(blockerRefs) !== row.blocker_refs_json ||
       entity.usageEvidence.truth !== row.usage_truth ||
@@ -1841,6 +1854,129 @@ const observeFleetRun = async (
     const record = await recordWithExecutionFromRow(tx, row)
     await assertStoredWorkUnits(tx, record)
     return { record }
+  })
+
+const requestedTargetForAttempt = (
+  request: FleetRunAuthorityStartRequest,
+  workUnitRef: string,
+): FleetRunTargetPreference => {
+  if (request.workSource.kind === "issue_list") {
+    return request.workerPolicy.targetPreference
+  }
+  return (
+    request.workSource.units.find((unit) => unit.unitRef === workUnitRef)
+      ?.placement?.targetPreference ?? request.workerPolicy.targetPreference
+  )
+}
+
+const listFleetRuns = async (
+  sql: SyncSql,
+  input: FleetRunAuthorityListInput,
+  generatedAt: string,
+): Promise<FleetRunAuthorityListResult> =>
+  sql.begin(async (tx) => {
+    const rows: Array<FleetRunRequestRow> = await tx`
+      SELECT * FROM sarah_fleet_run_requests
+      WHERE owner_user_id = ${input.ownerUserId}
+      ORDER BY created_at DESC, run_ref DESC
+      LIMIT ${input.limit}
+    `
+    const attemptRows: Array<FleetRunAttemptRow> = await tx`
+      WITH recent_runs AS (
+        SELECT run_ref FROM sarah_fleet_run_requests
+        WHERE owner_user_id = ${input.ownerUserId}
+        ORDER BY created_at DESC, run_ref DESC
+        LIMIT ${input.limit}
+      )
+      SELECT attempt.*
+      FROM sarah_fleet_run_attempts AS attempt
+      INNER JOIN recent_runs ON recent_runs.run_ref = attempt.run_ref
+      WHERE attempt.owner_user_id = ${input.ownerUserId}
+      ORDER BY attempt.run_ref, attempt.started_at, attempt.attempt_ref
+    `
+    const attemptsByRun = attemptRows.reduce(
+      (grouped, row) =>
+        grouped.set(row.run_ref, [...(grouped.get(row.run_ref) ?? []), row]),
+      new Map<string, ReadonlyArray<FleetRunAttemptRow>>(),
+    )
+    try {
+      return {
+        projection: S.decodeUnknownSync(FleetRunClientProjectionSchema)(
+          {
+            schema: "openagents.fleet_run_client_projection.v1",
+            generatedAt,
+            privateMaterialExcluded: true,
+            runs: await Promise.all(
+              rows.map(async (row) => {
+                const record = await recordFromRow(row)
+                const request = record.request
+                return {
+                  runRef: record.runRef,
+                  authorityStatus: record.status,
+                  executionState: record.execution.state,
+                  lastSequence: record.execution.lastSequence,
+                  attempts: (attemptsByRun.get(row.run_ref) ?? []).map(
+                    (attemptRow) => {
+                      const attempt = attemptEntityFromRow(attemptRow)
+                      const usage = attempt.usageEvidence
+                      return {
+                        workUnitRef: attempt.workUnitRef,
+                        workClaimRef: attempt.attemptRef,
+                        intakeClaimRef: attempt.intakeClaimRef,
+                        assignmentRef: attempt.assignmentRef,
+                        accountRefHash: attempt.accountRefHash,
+                        requestedTarget: requestedTargetForAttempt(
+                          request,
+                          attempt.workUnitRef,
+                        ),
+                        selectedTarget: attempt.capacityClass,
+                        fallback: {
+                          truth:
+                            requestedTargetForAttempt(
+                              request,
+                              attempt.workUnitRef,
+                            ) === "auto"
+                              ? "not_reported"
+                              : "not_applicable",
+                        },
+                        outcome:
+                          attempt.state === "succeeded"
+                            ? "accepted"
+                            : attempt.state,
+                        closeoutRef: attempt.closeoutRef,
+                        artifactRefs: attempt.artifactRefs,
+                        proofRefs: attempt.proofRefs,
+                        authorityReceiptRefs: attempt.authorityReceiptRefs,
+                        usageTruth: usage.truth,
+                        usageEvidenceRef:
+                          usage.truth === "pending" ? null : usage.evidenceRef,
+                        tokenUsageRefs:
+                          usage.truth === "pending" ? [] : usage.tokenUsageRefs,
+                        usageCaveatRefs:
+                          usage.truth === "not_measured"
+                            ? usage.caveatRefs
+                            : [],
+                        blockerRefs: attempt.blockerRefs,
+                        terminalAt: attempt.terminalAt,
+                        updatedAt: attempt.updatedAt,
+                      }
+                    },
+                  ),
+                  createdAt: row.created_at,
+                  updatedAt: row.updated_at,
+                }
+              }),
+            ),
+          },
+          { onExcessProperty: "error" },
+        ),
+      }
+    } catch {
+      throw fixedError(
+        "storage_unavailable",
+        "fleet run client projection failed integrity validation",
+      )
+    }
   })
 
 const requireLinkedPylon = async (
@@ -2332,18 +2468,17 @@ const projectAttemptForEvent = async (
   event: Extract<
     FleetRunExecutionEvent,
     {
-      readonly kind:
-        | "work_progress"
-        | "approval_requested"
-        | "work_terminal"
+      readonly kind: "work_progress" | "approval_requested" | "work_terminal"
     }
   >,
   capacityClass: FleetAttemptEntity["capacityClass"],
   nowIso: string,
-): Promise<Readonly<{
-  attempt: FleetAttemptEntity
-  workUnit: FleetWorkUnitEntity
-}>> => {
+): Promise<
+  Readonly<{
+    attempt: FleetAttemptEntity
+    workUnit: FleetWorkUnitEntity
+  }>
+> => {
   const existingRows: Array<FleetRunAttemptRow> = await sql`
     SELECT * FROM sarah_fleet_run_attempts
     WHERE run_ref = ${input.runRef} AND attempt_ref = ${event.workClaimRef}
@@ -3280,13 +3415,17 @@ const appendFleetRunExecutionEvents = async (
         event.kind === "approval_requested" ||
         event.kind === "work_terminal"
       ) {
-        const attemptCapacityClass = event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
-          ? event.capacityClass ?? defaultAttemptCapacityClass
-          : defaultAttemptCapacityClass
-        const explicitRunTarget = initialRecord.request.workerPolicy.targetPreference
+        const attemptCapacityClass =
+          event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
+            ? (event.capacityClass ?? defaultAttemptCapacityClass)
+            : defaultAttemptCapacityClass
+        const explicitRunTarget =
+          initialRecord.request.workerPolicy.targetPreference
         if (
-          (explicitRunTarget === "owner_local" && attemptCapacityClass !== "owner_local") ||
-          (explicitRunTarget === "managed_cloud" && attemptCapacityClass !== "managed_cloud")
+          (explicitRunTarget === "owner_local" &&
+            attemptCapacityClass !== "owner_local") ||
+          (explicitRunTarget === "managed_cloud" &&
+            attemptCapacityClass !== "managed_cloud")
         ) {
           throw fixedError(
             "invalid_request",
@@ -3294,9 +3433,12 @@ const appendFleetRunExecutionEvents = async (
             { runRef: input.runRef },
           )
         }
-        const unitPlacement = initialRecord.request.workSource.kind === "plan_dag"
-          ? initialRecord.request.workSource.units.find(unit => unit.unitRef === event.unitRef)?.placement
-          : undefined
+        const unitPlacement =
+          initialRecord.request.workSource.kind === "plan_dag"
+            ? initialRecord.request.workSource.units.find(
+                (unit) => unit.unitRef === event.unitRef,
+              )?.placement
+            : undefined
         if (
           unitPlacement?.targetPreference !== undefined &&
           unitPlacement.targetPreference !== "auto" &&
@@ -3372,7 +3514,7 @@ const appendFleetRunExecutionEvents = async (
       ) {
         const attemptCapacityClass: FleetAttemptEntity["capacityClass"] =
           event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
-            ? event.capacityClass ?? defaultAttemptCapacityClass
+            ? (event.capacityClass ?? defaultAttemptCapacityClass)
             : defaultAttemptCapacityClass
         const projection = await projectAttemptForEvent(
           writer.sql,
@@ -3631,6 +3773,21 @@ export const makeFleetRunAuthorityRepository = (
         })
       }),
   )
+  const list = Effect.fn("FleetRunAuthorityRepository.list")(
+    (rawInput: unknown) =>
+      Effect.gen(function* () {
+        const input = yield* Effect.try({
+          try: () => decodeUnknown(FleetRunAuthorityListInput, rawInput),
+          catch: authorityErrorFromUnknown,
+        })
+        const nowMs = yield* now
+        return yield* Effect.tryPromise({
+          try: () =>
+            listFleetRuns(options.sql, input, new Date(nowMs).toISOString()),
+          catch: authorityErrorFromUnknown,
+        })
+      }),
+  )
   const acceptClaim = Effect.fn("FleetRunAuthorityRepository.acceptClaim")(
     (rawInput: unknown) =>
       Effect.gen(function* () {
@@ -3671,7 +3828,7 @@ export const makeFleetRunAuthorityRepository = (
       })
     }),
   )
-  return { start, observe, claim, acceptClaim, appendExecutionEvents }
+  return { start, observe, list, claim, acceptClaim, appendExecutionEvents }
 }
 
 export const fleetRunAuthorityRepositoryLayer = (
