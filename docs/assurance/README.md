@@ -47,7 +47,18 @@ current receipts.
    dogfood plan for building only what is necessary to author, validate, admit,
    compile, and minimally execute the first AssuranceSpec against the current
    OpenAgents Desktop MVP ProductSpec.
-6. [`../transcripts/252-notes.md`](../transcripts/252-notes.md) — recording show
+6. [`GAP_ANALYSIS.md`](./GAP_ANALYSIS.md) — three-way gap analysis: what we
+   have implemented, what we have designed but not built, and what upstream
+   ProductSpec 0.20 has shipped, per capability area, with actions.
+7. [`AGENT_TOOLING.md`](./AGENT_TOOLING.md) — the design for our own
+   AssuranceSpec agent surfaces: CLI extensions, the read-only deterministic
+   MCP server with dual-digest session pinning, the work/authoring skills,
+   the starter-kit adoption path, and sequencing onto the AS ladder.
+8. [`../fable/2026-07-13-productspec-assurance-qa-program-analysis.md`](../fable/2026-07-13-productspec-assurance-qa-program-analysis.md)
+   — strategy analysis of the whole ProductSpec/AssuranceSpec/QA landscape:
+   upstream trajectory, honest inventory, committed ladders, and opinionated
+   directions to evolve.
+9. [`../transcripts/252-notes.md`](../transcripts/252-notes.md) — recording show
    notes only: story, episode beats, naming discussion, candidate lines, and
    honest non-claims.
 
