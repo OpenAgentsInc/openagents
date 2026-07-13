@@ -51,7 +51,8 @@ All 12 required journal steps passed:
 
 The terminal verdict was `acceptance PASSED` and `summary OK
 {"requiredSteps":12,"ownerAcceptanceFabricated":false}`. The proof copy is
-reversible and is not a published installation.
+reversible and is not a published installation. It and the private temporary
+proof receipts were removed after the public-safe result was captured.
 
 ## Exact release lifecycle
 
