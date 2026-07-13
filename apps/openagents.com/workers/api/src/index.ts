@@ -863,7 +863,6 @@ import {
 } from './khala-cloud-runtime-execution-token'
 import {
   authorizesManagedFleetUnitDispatch,
-  newestManagedFleetProviderAccountsFirst,
   selectExactManagedFleetProviderAccount,
 } from './fleet-managed-dispatch-authority'
 import {
@@ -11182,13 +11181,11 @@ const listManagedFleetCapacityForEnv = async (
     accountRepository,
     input.ownerUserId,
   )
-  const eligible = newestManagedFleetProviderAccountsFirst(
-    accounts.accounts.filter(
-      account =>
-        account.provider === CHATGPT_CODEX_PROVIDER &&
-        account.publicStatus === 'connected' &&
-        account.health === 'healthy',
-    ),
+  const eligible = accounts.accounts.filter(
+    account =>
+      account.provider === CHATGPT_CODEX_PROVIDER &&
+      account.publicStatus === 'connected' &&
+      account.health === 'healthy',
   )
   const accountRefHashes = [...new Set(await Promise.all(
     eligible.map(account =>
