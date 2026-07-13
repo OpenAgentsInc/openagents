@@ -203,6 +203,7 @@ import {
 } from "./usage-ledger-contract.ts"
 import { makeUsageLedger } from "./usage-ledger.ts"
 import { makeThreadStore } from "./thread-store.ts"
+import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { reconcileLocalTurns } from "./local-turn-recovery.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
@@ -1605,11 +1606,21 @@ const codexChildren = makeCodexChildRuntime({
       }
     : {}),
 })
-// Codex account PREFLIGHT (EP250 anti-speedbump core): a cheap REAL validity
-// probe per registered account — a minimal bounded `codex exec` turn in a
-// read-only sandbox (receipted ~3.5s on a live account; `codex login status`
-// is presence-only and reports "Logged in" on revoked homes, so it can never
-// be the probe). Runs on boot (async, non-blocking), on fleet Refresh, after
+const codexAppServerConfig = {
+  binary: resolveBundledCodexExecutable,
+  installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
+    const installed = installBuiltinProductSpecWorkSkill({
+      builtinSkillsRoot,
+      namedCodexHome: account.home,
+      defaultCodexHome: path.join(homedir(), ".codex"),
+    })
+    return { skillRoot: installed.skillRoot, skillPath: installed.skillPath }
+  },
+}
+// Codex account preflight: an ephemeral read-only app-server turn against
+// each named isolated account. `codex login status` is presence-only and can
+// report logged-in on revoked homes, so actual protocol success is required.
+// Runs on boot (async, non-blocking), on fleet Refresh, after
 // reconnect completion, and lazily before the first dispatch this session.
 // Results are session-scoped truth feeding the shared account health
 // ordering, the fleet readiness projection (via the ledger's typed
@@ -1646,6 +1657,7 @@ const smokeProbeSpawnByHome: Record<string, ReturnType<typeof makeFixtureCodexCh
 const codexPreflight = makeCodexPreflight({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   onResult: recordProbeEvidence,
+  ...(!smokeMode ? { appServer: codexAppServerConfig } : {}),
   ...(smokeMode
     ? {
         // Isolated health in smoke so the scripted probe round does not
@@ -1670,10 +1682,9 @@ const selectedDesktopWorkspaceRoot = (): string | null => {
     return null
   }
 }
-// Codex local chat lane (EP250 codex-first-class): the composer's Codex chip
-// in local mode — a real `codex exec --json` turn per send, on the isolated
-// registry homes, with session-resume continuity (no --ephemeral; children
-// keep --ephemeral). Smoke drives a scripted stream through the REAL parser.
+// Codex local chat lane: the composer's Codex chip uses the pinned app-server
+// against one named isolated home with durable thread-resume continuity.
+// Smoke alone keeps the legacy scripted JSON fixture parser.
 const codexLocal = makeCodexLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   workspaceRoot: () => desktopRuntimeWorkspaceRoot({
@@ -1707,21 +1718,7 @@ const codexLocal = makeCodexLocalRuntime({
       usageLedger.markReconnectRequired({ provider: "codex", accountRef: input.accountRef })
     }
   },
-  ...(!smokeMode
-    ? {
-        appServer: {
-          binary: resolveBundledCodexExecutable,
-          installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
-            const installed = installBuiltinProductSpecWorkSkill({
-              builtinSkillsRoot,
-              namedCodexHome: account.home,
-              defaultCodexHome: path.join(homedir(), ".codex"),
-            })
-            return { skillRoot: installed.skillRoot, skillPath: installed.skillPath }
-          },
-        },
-      }
-    : {}),
+  ...(!smokeMode ? { appServer: codexAppServerConfig } : {}),
   ...(smokeMode
     ? {
         spawnImpl: input => {
@@ -2464,6 +2461,18 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         })
       }
+      // Interactive and structured cards are host-owned durable state, not a
+      // renderer-only projection. Persist every update before forwarding it so
+      // renderer reload, final-thread replacement, and app restart preserve
+      // questions, plans, complete nested child transcripts, and queue chips.
+      const runtimeOperation = localRuntimePersistenceOperation({
+        turnRef: request.turnRef,
+        event: turnEvent,
+        notes: store.open(request.threadRef)?.notes ?? [],
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      })
+      if (runtimeOperation.kind === "upsert") store.upsert(request.threadRef, runtimeOperation.note)
+      if (runtimeOperation.kind === "remove") store.remove(request.threadRef, runtimeOperation.key)
       if (sender.isDestroyed()) return
       const forwarded = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
       sender.send(CodexLocalEventChannel, { turnRef: request.turnRef, event: forwarded })

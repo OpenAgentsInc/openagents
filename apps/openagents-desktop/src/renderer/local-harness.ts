@@ -310,6 +310,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             kind: "child",
             turnRef,
             childRef: event.childRef,
+            ...(event.parentChildRef === undefined ? {} : { parentChildRef: event.parentChildRef }),
             status: "running",
             title: event.summary,
             detail: "",
@@ -328,6 +329,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             kind: "child",
             turnRef,
             childRef: event.childRef,
+            ...((event.parentChildRef ?? existing?.parentChildRef) === undefined
+              ? {}
+              : { parentChildRef: event.parentChildRef ?? existing?.parentChildRef }),
             status: existing?.status ?? "running",
             title: existing?.title ?? "",
             detail: event.summary,
@@ -349,6 +353,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             kind: "child",
             turnRef,
             childRef: event.childRef,
+            ...((event.parentChildRef ?? existing?.parentChildRef) === undefined
+              ? {}
+              : { parentChildRef: event.parentChildRef ?? existing?.parentChildRef }),
             status: "completed",
             title: existing?.title ?? event.summary,
             detail: event.summary,
@@ -371,6 +378,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             kind: "child",
             turnRef,
             childRef: event.childRef,
+            ...((event.parentChildRef ?? existing?.parentChildRef) === undefined
+              ? {}
+              : { parentChildRef: event.parentChildRef ?? existing?.parentChildRef }),
             status: "failed",
             title: existing?.title ?? "",
             detail,

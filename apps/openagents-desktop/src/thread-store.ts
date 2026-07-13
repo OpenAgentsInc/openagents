@@ -77,5 +77,17 @@ export const makeThreadStore = (file: string) => {
       write([next, ...read().filter((thread) => thread.id !== id)])
       return next
     },
+    /** Remove one exact keyed runtime note without touching adjacent history. */
+    remove: (id: string, key: string): DesktopThread | null => {
+      const found = read().find((thread) => thread.id === id)
+      if (!found) return null
+      const next: DesktopThread = {
+        ...found,
+        updatedAt: new Date().toISOString(),
+        notes: found.notes.filter(note => note.key !== key),
+      }
+      write([next, ...read().filter((thread) => thread.id !== id)])
+      return next
+    },
   }
 }

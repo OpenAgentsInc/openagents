@@ -282,6 +282,8 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("child_started"),
     childRef: Schema.String.check(Schema.isMaxLength(120)),
+    /** Exact provider child whose thread caused this child, absent for root children. */
+    parentChildRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     accountRef: Schema.optional(Schema.String),
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
     /** Exact bounded instruction sent to the child, for its transcript. */
@@ -290,6 +292,7 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("child_activity"),
     childRef: Schema.String.check(Schema.isMaxLength(120)),
+    parentChildRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     /**
      * "item": a completed child stream item. "account_reconnect_required":
      * an account with rejected credentials was skipped VISIBLY (typed event,
@@ -308,6 +311,7 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("child_completed"),
     childRef: Schema.String.check(Schema.isMaxLength(120)),
+    parentChildRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     accountRef: Schema.String,
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
     /** Exact bounded child answer, rather than the compact card summary. */
@@ -318,6 +322,7 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("child_failed"),
     childRef: Schema.String.check(Schema.isMaxLength(120)),
+    parentChildRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     accountRef: Schema.NullOr(Schema.String),
     reason: Schema.Literals([
       "account_reconnect_required",

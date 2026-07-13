@@ -8,9 +8,11 @@
  * semantics of ensureProbed vs probeAll.
  */
 import { describe, expect, test } from "bun:test"
+import { EventEmitter } from "node:events"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { PassThrough } from "node:stream"
 
 import {
   fixtureCodexRateLimitStdout,
@@ -27,6 +29,7 @@ import {
   makeCodexPreflight,
   type CodexProbeResult,
 } from "./codex-preflight.ts"
+import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
 
 const scratch = (): string => mkdtempSync(join(tmpdir(), "codex-preflight-"))
 
@@ -36,6 +39,73 @@ const account = (ref: string): CodexChildAccount => ({
 })
 
 describe("makeCodexPreflight", () => {
+  test("production preflight uses an ephemeral read-only native app-server turn", async () => {
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const stderr = new PassThrough()
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: PassThrough
+      stdout: PassThrough
+      stderr: PassThrough
+      kill: () => boolean
+    }
+    child.stdin = stdin
+    child.stdout = stdout
+    child.stderr = stderr
+    child.kill = () => true
+    const messages: Array<Record<string, any>> = []
+    let buffer = ""
+    stdin.on("data", chunk => {
+      buffer += chunk.toString("utf8")
+      while (buffer.includes("\n")) {
+        const index = buffer.indexOf("\n")
+        const line = buffer.slice(0, index)
+        buffer = buffer.slice(index + 1)
+        if (line === "") continue
+        const message = JSON.parse(line) as Record<string, any>
+        messages.push(message)
+        if (message.method === "initialize") stdout.write(`${JSON.stringify({ id: message.id, result: {} })}\n`)
+        if (message.method === "thread/start") stdout.write(`${JSON.stringify({ id: message.id, result: { thread: { id: "preflight-thread" } } })}\n`)
+        if (message.method === "turn/start") {
+          stdout.write(`${JSON.stringify({ id: message.id, result: { turn: { id: "preflight-turn", status: "inProgress" } } })}\n`)
+          queueMicrotask(() => {
+            stdout.write(`${JSON.stringify({ method: "item/agentMessage/delta", params: {
+              threadId: "preflight-thread", turnId: "preflight-turn", delta: "ok",
+            } })}\n`)
+            stdout.write(`${JSON.stringify({ method: "turn/completed", params: {
+              threadId: "preflight-thread", turn: { id: "preflight-turn", status: "completed" },
+            } })}\n`)
+          })
+        }
+      }
+    })
+    const preflight = makeCodexPreflight({
+      scratchRoot: scratch,
+      hasAuthImpl: () => true,
+      spawnImpl: () => { throw new Error("legacy codex exec must not run") },
+      discoverImpl: async () => [account("codex-native")],
+      health: makeCodexAccountHealth(),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: () => ({
+          skillRoot: "/isolated/accounts/codex/codex-native/skills",
+          skillPath: "/isolated/accounts/codex/codex-native/skills/productspec-work/SKILL.md",
+        }),
+        spawnImpl: (() => child) as unknown as CodexAppServerSpawn,
+      },
+    })
+    const results = await preflight.probeAll("test")
+    expect(results[0]).toMatchObject({ state: "verified", detail: "app-server probe turn completed" })
+    expect(messages.find(message => message.method === "thread/start")?.params).toMatchObject({
+      ephemeral: true,
+      approvalPolicy: "never",
+    })
+    expect(messages.find(message => message.method === "turn/start")?.params).toMatchObject({
+      sandboxPolicy: { type: "readOnly", networkAccess: true },
+      input: [{ type: "text", text: CODEX_PREFLIGHT_PROMPT, text_elements: [] }],
+    })
+  })
+
   test("spawns the receipted MINIMAL probe recipe: read-only sandbox, low effort, --ephemeral, tiny prompt", async () => {
     const captured: Array<{ args: ReadonlyArray<string>; env: Record<string, string | undefined> }> = []
     const preflight = makeCodexPreflight({

@@ -142,6 +142,7 @@ describe("Codex app-server native integration", () => {
       workspace: "/workspace",
       threadRef: "oa-thread-1",
       turnRef: "oa-turn-1",
+      accountRef: "codex-work",
       prompt: "Implement criterion CW-AC-04",
       imagePaths: [],
       resumeThreadId: null,
@@ -177,6 +178,52 @@ describe("Codex app-server native integration", () => {
       params: { threadId: "codex-thread-1", clientUserMessageId: "oa-turn-1" },
     })
     fake.respond(6, { turn: { id: "codex-turn-1", status: "inProgress" } })
+    fake.notify("item/started", {
+      threadId: "codex-thread-1",
+      turnId: "codex-turn-1",
+      item: {
+        type: "collabAgentToolCall",
+        id: "collab-1",
+        tool: "spawnAgent",
+        status: "inProgress",
+        senderThreadId: "codex-thread-1",
+        receiverThreadIds: ["child-thread-1"],
+        prompt: "Inspect the acceptance tests",
+      },
+    })
+    fake.notify("item/started", {
+      threadId: "child-thread-1",
+      turnId: "child-turn-1",
+      item: {
+        type: "collabAgentToolCall",
+        id: "collab-nested",
+        tool: "spawnAgent",
+        status: "inProgress",
+        senderThreadId: "child-thread-1",
+        receiverThreadIds: ["grandchild-thread-1"],
+        prompt: "Check the nested oracle",
+      },
+    })
+    fake.notify("item/agentMessage/delta", {
+      threadId: "child-thread-1",
+      turnId: "child-turn-1",
+      itemId: "child-message",
+      delta: "Child evidence.",
+    })
+    fake.notify("turn/completed", {
+      threadId: "child-thread-1",
+      turn: { id: "child-turn-1", status: "completed", error: null },
+    })
+    fake.notify("item/agentMessage/delta", {
+      threadId: "grandchild-thread-1",
+      turnId: "grandchild-turn-1",
+      itemId: "grandchild-message",
+      delta: "Nested evidence.",
+    })
+    fake.notify("turn/completed", {
+      threadId: "grandchild-thread-1",
+      turn: { id: "grandchild-turn-1", status: "completed", error: null },
+    })
     fake.notify("item/agentMessage/delta", {
       threadId: "codex-thread-1",
       turnId: "codex-turn-1",
@@ -199,6 +246,21 @@ describe("Codex app-server native integration", () => {
       usage: { totalTokens: 44 },
     })
     expect(events).toContainEqual({ kind: "text_delta", text: "Native app-server answer." })
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "child_started",
+      childRef: "child-thread-1",
+      summary: "Inspect the acceptance tests",
+    }))
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "child_started",
+      childRef: "grandchild-thread-1",
+      parentChildRef: "child-thread-1",
+    }))
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "child_completed",
+      childRef: "child-thread-1",
+      response: "Child evidence.",
+    }))
   })
 
   test("installs only into a named isolated home and reconciles exact bytes", () => {

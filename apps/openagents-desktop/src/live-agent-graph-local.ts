@@ -415,14 +415,18 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
     childRef: string,
     at: string,
     startedAt: string | null,
+    parentChildRef?: string,
   ): Readonly<{ agentRef: string; created: CanonicalNode | null; edge: CanonicalEdge | null }> => {
     const existing = turn.children.get(childRef)
     if (existing !== undefined) return { agentRef: existing, created: null, edge: null }
     const childSegment = sanitizeLocalRefSegment(childRef)
     const agentRef = localDelegateAgentRef(turnRef, childRef)
     turn.children.set(childRef, agentRef)
+    const parentAgentRef = parentChildRef === undefined
+      ? turn.rootAgentRef
+      : turn.children.get(parentChildRef) ?? turn.rootAgentRef
     const node = makeNode(agentRef, {
-      parent: { kind: "agent", agentRef: turn.rootAgentRef },
+      parent: { kind: "agent", agentRef: parentAgentRef },
       // Delegate children are always Codex exec children, on either lane.
       runtime: laneRuntime("codex_local"),
       status: "running",
@@ -433,7 +437,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
     const edge: CanonicalEdge = {
       edgeRef: `edge.parent.${agentRef}`,
       kind: "parent",
-      fromAgentRef: turn.rootAgentRef,
+      fromAgentRef: parentAgentRef,
       toAgentRef: agentRef,
       version: 1,
     }
@@ -545,7 +549,10 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
         })])
       }
       case "child_started": {
-        const ensured = ensureChild(turn, envelope.turnRef, event.childRef, at, at)
+        if (event.parentChildRef !== undefined && !turn.children.has(event.parentChildRef)) {
+          return refuse("unknown_child", `parent child ${event.parentChildRef} untracked`, at)
+        }
+        const ensured = ensureChild(turn, envelope.turnRef, event.childRef, at, at, event.parentChildRef)
         if (ensured.created === null) {
           const child = nodeOf(ensured.agentRef)
           if (child === undefined) return refuse("unknown_child", `child ${event.childRef} untracked`, at)
@@ -559,7 +566,10 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
         return created
       }
       case "child_activity": {
-        const ensured = ensureChild(turn, envelope.turnRef, event.childRef, at, null)
+        if (event.parentChildRef !== undefined && !turn.children.has(event.parentChildRef)) {
+          return refuse("unknown_child", `parent child ${event.parentChildRef} untracked`, at)
+        }
+        const ensured = ensureChild(turn, envelope.turnRef, event.childRef, at, null, event.parentChildRef)
         if (ensured.created !== null) {
           // Loss-tolerant creation: the start was not observed (startedAt
           // stays null) but parentage is known from the envelope.
@@ -580,7 +590,10 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
       }
       case "child_completed":
       case "child_failed": {
-        const ensured = ensureChild(turn, envelope.turnRef, event.childRef, at, null)
+        if (event.parentChildRef !== undefined && !turn.children.has(event.parentChildRef)) {
+          return refuse("unknown_child", `parent child ${event.parentChildRef} untracked`, at)
+        }
+        const ensured = ensureChild(turn, envelope.turnRef, event.childRef, at, null, event.parentChildRef)
         const child = ensured.created ?? nodeOf(ensured.agentRef)
         if (child === undefined) return refuse("unknown_child", `child ${event.childRef} untracked`, at)
         if (ensured.created === null && terminalRootStatuses.has(child.status)) {

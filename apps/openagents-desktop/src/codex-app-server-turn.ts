@@ -32,12 +32,16 @@ export type RunCodexAppServerTurnInput = Readonly<{
   workspace: string
   threadRef: string
   turnRef: string
+  accountRef: string
   prompt: string
   imagePaths: ReadonlyArray<string>
   resumeThreadId: string | null
   model: string
   reasoningEffort: string
   productSpecSkill: ProductSpecSkill
+  ephemeral?: boolean
+  sandbox?: "read-only" | "danger-full-access"
+  includeProductSpecSkill?: boolean
   control: CodexAppServerTurnControl
   emit: (event: FableLocalEvent) => void
   spawnImpl?: CodexAppServerSpawn
@@ -105,6 +109,12 @@ const toolFacts = (item: Record<string, unknown>): Readonly<{
       }
     case "webSearch":
       return { name: "WebSearch", summary: "", ok: true }
+    case "collabAgentToolCall":
+      return {
+        name: "Agent",
+        summary: (string(item.prompt) ?? string(item.tool) ?? "Delegate agent").slice(0, 400),
+        ok: item.status === "completed",
+      }
     default:
       return null
   }
@@ -140,11 +150,19 @@ const classifyFailure = (
 export const runCodexAppServerTurn = async (
   input: RunCodexAppServerTurnInput,
 ): Promise<CodexAppServerTurnOutcome> => {
+  const sandbox = input.sandbox ?? "danger-full-access"
   let client: CodexAppServerClient | null = null
   let threadId: string | null = input.resumeThreadId
   let turnId: string | null = null
   let text = ""
   let usage: CodexChildUsage | null = null
+  const children = new Map<string, {
+    parentThreadId: string
+    prompt: string
+    response: string
+    usage: CodexChildUsage | null
+    startedAt: number
+  }>()
   const pendingTools = new Set<string>()
   let settle: ((outcome: CodexAppServerTurnOutcome) => void) | null = null
   let settled = false
@@ -159,10 +177,114 @@ export const runCodexAppServerTurn = async (
     settle?.(outcome)
   }
 
+  const registerChild = (childRef: string, parentThreadId: string, prompt: string): void => {
+    if (children.has(childRef)) return
+    children.set(childRef, { parentThreadId, prompt, response: "", usage: null, startedAt: Date.now() })
+    const parentChildRef = threadId !== null && parentThreadId !== threadId ? parentThreadId : undefined
+    input.emit({
+      kind: "child_started",
+      childRef: childRef.slice(0, 120),
+      ...(parentChildRef === undefined ? {} : { parentChildRef: parentChildRef.slice(0, 120) }),
+      accountRef: input.accountRef,
+      summary: (prompt.trim() || "Codex child agent").slice(0, 400),
+      ...(prompt.trim() === "" ? {} : { prompt: prompt.slice(0, 32_000) }),
+    })
+  }
+
+  const childParent = (child: { parentThreadId: string }): Readonly<{ parentChildRef?: string }> =>
+    threadId !== null && child.parentThreadId !== threadId
+      ? { parentChildRef: child.parentThreadId.slice(0, 120) }
+      : {}
+
   const handleNotification = (message: CodexAppServerMessage): void => {
     const params = record(message.params)
     if (params === null) return
+    if (message.method === "thread/started") {
+      const startedThread = record(params.thread)
+      const childRef = string(startedThread?.id)
+      const parentThreadId = string(startedThread?.parentThreadId)
+      if (childRef !== null && parentThreadId !== null &&
+        (parentThreadId === threadId || children.has(parentThreadId))) {
+        registerChild(childRef, parentThreadId, string(startedThread?.preview) ?? "")
+      }
+      return
+    }
     const notifiedThread = string(params.threadId)
+    const child = notifiedThread === null ? undefined : children.get(notifiedThread)
+    if (child !== undefined) {
+      if (message.method === "item/agentMessage/delta") {
+        const delta = string(params.delta)
+        if (delta !== null && delta !== "") {
+          child.response += delta
+          input.emit({
+            kind: "child_activity",
+            childRef: notifiedThread!.slice(0, 120),
+            ...childParent(child),
+            activity: "item",
+            accountRef: input.accountRef,
+            summary: delta.slice(0, 400),
+          })
+        }
+        return
+      }
+      if (message.method === "thread/tokenUsage/updated") {
+        child.usage = usageFromNotification(params) ?? child.usage
+        return
+      }
+      if (message.method === "item/started" || message.method === "item/completed") {
+        const item = record(params.item)
+        if (item?.type === "collabAgentToolCall") {
+          const receivers = Array.isArray(item.receiverThreadIds)
+            ? item.receiverThreadIds.filter(value => typeof value === "string") as string[]
+            : []
+          for (const receiver of receivers) registerChild(receiver, notifiedThread!, string(item.prompt) ?? "")
+        }
+        const facts = item === null ? null : toolFacts(item)
+        const summary = facts?.summary || facts?.name || string(item?.type) || "child activity"
+        input.emit({
+          kind: "child_activity",
+          childRef: notifiedThread!.slice(0, 120),
+          ...childParent(child),
+          activity: "item",
+          accountRef: input.accountRef,
+          summary: summary.slice(0, 400),
+        })
+        return
+      }
+      if (message.method === "turn/completed") {
+        const turn = record(params.turn)
+        const status = string(turn?.status)
+        if (status === "completed") {
+          input.emit({
+            kind: "child_completed",
+            childRef: notifiedThread!.slice(0, 120),
+            ...childParent(child),
+            accountRef: input.accountRef,
+            summary: (child.response.trim() || "Codex child completed").slice(0, 400),
+            ...(child.response.trim() === "" ? {} : { response: child.response.slice(0, 32_000) }),
+            usage: child.usage === null ? null : {
+              inputTokens: child.usage.inputTokens,
+              cachedInputTokens: child.usage.cachedInputTokens,
+              outputTokens: child.usage.outputTokens,
+              reasoningTokens: child.usage.reasoningOutputTokens,
+              totalTokens: child.usage.totalTokens,
+            },
+            durationMs: Date.now() - child.startedAt,
+          })
+        } else {
+          input.emit({
+            kind: "child_failed",
+            childRef: notifiedThread!.slice(0, 120),
+            ...childParent(child),
+            accountRef: input.accountRef,
+            reason: "child_failed",
+            detail: turn === null ? "Codex child failed" : turnError(turn).slice(0, 400),
+          })
+        }
+        return
+      }
+      return
+    }
     if (threadId !== null && notifiedThread !== null && notifiedThread !== threadId) return
     const notifiedTurn = string(params.turnId) ?? string(record(params.turn)?.id)
     if (turnId !== null && notifiedTurn !== null && notifiedTurn !== turnId) return
@@ -182,6 +304,12 @@ export const runCodexAppServerTurn = async (
     if (message.method === "item/started" || message.method === "item/completed") {
       const item = record(params.item)
       if (item === null) return
+      if (item.type === "collabAgentToolCall") {
+        const receivers = Array.isArray(item.receiverThreadIds)
+          ? item.receiverThreadIds.filter(value => typeof value === "string") as string[]
+          : []
+        for (const receiver of receivers) registerChild(receiver, threadId ?? "", string(item.prompt) ?? "")
+      }
       const id = string(item.id) ?? `${item.type ?? "item"}`
       if (item.type === "agentMessage" && message.method === "item/completed" && text === "") {
         const full = string(item.text)
@@ -251,12 +379,16 @@ export const runCodexAppServerTurn = async (
       ...(input.onServerRequest === undefined ? {} : { onServerRequest: input.onServerRequest }),
     })
     const release = client.onNotification(handleNotification)
-    await registerProductSpecSkill({
-      client,
-      cwd: input.workspace,
-      skillRoot: input.productSpecSkill.skillRoot,
-      skillPath: input.productSpecSkill.skillPath,
-    })
+    if (input.includeProductSpecSkill !== false) {
+      await registerProductSpecSkill({
+        client,
+        cwd: input.workspace,
+        skillRoot: input.productSpecSkill.skillRoot,
+        skillPath: input.productSpecSkill.skillPath,
+      })
+    } else {
+      await client.initialize()
+    }
     const threadResponse = record(await client.request(
       input.resumeThreadId === null ? "thread/start" : "thread/resume",
       input.resumeThreadId === null
@@ -264,8 +396,8 @@ export const runCodexAppServerTurn = async (
             model: input.model,
             cwd: input.workspace,
             approvalPolicy: "never",
-            sandbox: "danger-full-access",
-            ephemeral: false,
+            sandbox,
+            ephemeral: input.ephemeral ?? false,
             threadSource: "appServer",
           }
         : {
@@ -273,7 +405,7 @@ export const runCodexAppServerTurn = async (
             model: input.model,
             cwd: input.workspace,
             approvalPolicy: "never",
-            sandbox: "danger-full-access",
+            sandbox,
           },
     ))
     const thread = record(threadResponse?.thread)
@@ -284,7 +416,7 @@ export const runCodexAppServerTurn = async (
     const userInput: Array<Record<string, unknown>> = [
       { type: "text", text: input.prompt, text_elements: [] },
       ...input.imagePaths.map(path => ({ type: "localImage", path })),
-      { type: "skill", name: "productspec-work", path: input.productSpecSkill.skillPath },
+      ...(input.includeProductSpecSkill === false ? [] : [{ type: "skill", name: "productspec-work", path: input.productSpecSkill.skillPath }]),
     ]
     const turnResponse = record(await client.request("turn/start", {
       threadId,
@@ -294,7 +426,9 @@ export const runCodexAppServerTurn = async (
       model: input.model,
       effort: input.reasoningEffort,
       approvalPolicy: "never",
-      sandboxPolicy: { type: "dangerFullAccess" },
+      sandboxPolicy: sandbox === "read-only"
+        ? { type: "readOnly", networkAccess: true }
+        : { type: "dangerFullAccess" },
     }))
     turnId = string(record(turnResponse?.turn)?.id)
     if (turnId === null) throw new Error("Codex app-server omitted turn identity")

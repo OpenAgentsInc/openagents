@@ -66,6 +66,34 @@ const nodeOf = (assembler: LocalAgentGraphAssembler, agentRef: string) => {
 }
 
 describe("createLocalAgentGraphAssembler", () => {
+  test("retains provider-native nested child parentage instead of flattening", () => {
+    const assembler = makeAssembler()
+    expectApplied(assembler.startTurn(
+      { turnRef: "turn-nested", threadRef: "thread.local.test", lane: "codex_local" },
+      at(1),
+    ))
+    expectApplied(apply(assembler, "turn-nested", {
+      kind: "child_started",
+      childRef: "child-parent",
+      summary: "parent",
+    }, 2))
+    expectApplied(apply(assembler, "turn-nested", {
+      kind: "child_started",
+      childRef: "child-grandchild",
+      parentChildRef: "child-parent",
+      summary: "grandchild",
+    }, 3))
+    const graph = assembler.snapshot()
+    const parent = graph.nodes.find(node => node.agentRef.endsWith("child.child-parent"))!
+    const grandchild = graph.nodes.find(node => node.agentRef.endsWith("child.child-grandchild"))!
+    expect(grandchild.parent).toEqual({ kind: "agent", agentRef: parent.agentRef })
+    expect(graph.edges).toContainEqual(expect.objectContaining({
+      kind: "parent",
+      fromAgentRef: parent.agentRef,
+      toAgentRef: grandchild.agentRef,
+    }))
+  })
+
   test("assembles a fable root with codex delegate children into one canonical graph", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(

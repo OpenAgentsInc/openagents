@@ -454,6 +454,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         workspace: input.workspace,
         threadRef: input.threadRef,
         turnRef: input.turnRef,
+        accountRef: input.account.ref,
         prompt: input.prompt,
         imagePaths: input.imagePaths,
         resumeThreadId: input.resumeThreadId,

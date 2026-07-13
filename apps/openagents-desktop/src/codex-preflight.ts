@@ -60,6 +60,8 @@ import {
   type CodexChildSpawn,
 } from "./codex-child-runtime.ts"
 import { CODEX_LOCAL_MODEL } from "./codex-local-contract.ts"
+import { runCodexAppServerTurn } from "./codex-app-server-turn.ts"
+import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
 
 /** Receipted probe spawn config (see module docstring). */
 export const CODEX_PREFLIGHT_MODEL = CODEX_LOCAL_MODEL
@@ -104,6 +106,15 @@ export type CodexPreflightOptions = Readonly<{
   /** Streamed per-account results (ledger/fleet/log feeds). */
   onResult?: (result: CodexProbeResult) => void
   now?: () => Date
+  /** Production path: probe through the same pinned app-server used for work. */
+  appServer?: Readonly<{
+    binary: () => string | null
+    installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
+      skillRoot: string
+      skillPath: string
+    }>
+    spawnImpl?: CodexAppServerSpawn
+  }>
 }>
 
 export type CodexPreflight = Readonly<{
@@ -132,11 +143,10 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
   let inFlight: Promise<ReadonlyArray<CodexProbeResult>> | null = null
   let probedOnce = false
 
-  const probeOne = (account: CodexChildAccount): Promise<CodexProbeResult> =>
-    new Promise(resolve => {
+  const probeOne = async (account: CodexChildAccount): Promise<CodexProbeResult> => {
       const startedAt = Date.now()
-      const finishWith = (state: CodexProbeState, detail: string): void =>
-        resolve({
+      const finishWith = (state: CodexProbeState, detail: string): CodexProbeResult =>
+        ({
           ref: account.ref,
           state,
           detail: bounded(redactChildText(detail, "")),
@@ -147,16 +157,58 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
       // Fast path: no auth.json means no credential at all — spawning would
       // burn ~50s of 401 retries for a foregone conclusion (receipted).
       if (!hasAuth(account.home)) {
-        finishWith("credentials_missing", "no auth.json in the account home")
-        return
+        return finishWith("credentials_missing", "no auth.json in the account home")
       }
 
       const workspace = join(options.scratchRoot(), "codex-preflight", account.ref)
       try {
         mkdirSync(workspace, { recursive: true })
       } catch {
-        finishWith("probe_failed", "probe scratch workspace unavailable")
-        return
+        return finishWith("probe_failed", "probe scratch workspace unavailable")
+      }
+      if (options.appServer !== undefined) {
+        const binary = options.appServer.binary()
+        if (binary === null) return finishWith("probe_failed", "package-owned Codex app-server unavailable")
+        let skill: Readonly<{ skillRoot: string; skillPath: string }>
+        try {
+          skill = options.appServer.installProductSpecSkill(account)
+        } catch (error) {
+          return finishWith("probe_failed", error instanceof Error ? error.message : "productspec-work unavailable")
+        }
+        const selection: ResolvedPylonAccountSelection = {
+          provider: "codex",
+          selector: "registry_ref",
+          accountRef: account.ref,
+          accountRefHash: hashPylonAccountRef("codex", account.ref),
+          home: account.home,
+        }
+        const control = { interrupted: false, interrupt: null as (() => void) | null }
+        const outcome = await runCodexAppServerTurn({
+          binary,
+          env: pylonAccountEnvironment(env, selection),
+          workspace,
+          threadRef: `preflight.${account.ref}`,
+          turnRef: `preflight.${account.ref}.${startedAt}`,
+          accountRef: account.ref,
+          prompt: CODEX_PREFLIGHT_PROMPT,
+          imagePaths: [],
+          resumeThreadId: null,
+          model: CODEX_PREFLIGHT_MODEL,
+          reasoningEffort: CODEX_PREFLIGHT_REASONING_EFFORT,
+          productSpecSkill: skill,
+          ephemeral: true,
+          sandbox: "read-only",
+          includeProductSpecSkill: false,
+          control,
+          emit: () => {},
+          ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+          requestTimeoutMs: timeoutMs,
+          turnTimeoutMs: timeoutMs,
+        })
+        if (outcome.outcome === "success") return finishWith("verified", "app-server probe turn completed")
+        if (outcome.outcome === "reconnect_required") return finishWith("reconnect_required", outcome.detail)
+        if (outcome.rateLimited) return finishWith("rate_limited", outcome.detail)
+        return finishWith("probe_failed", outcome.detail)
       }
       const selection: ResolvedPylonAccountSelection = {
         provider: "codex",
@@ -185,8 +237,7 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         cwd: workspace,
       })
       if (child === null) {
-        finishWith("probe_failed", "codex executable unavailable")
-        return
+        return finishWith("probe_failed", "codex executable unavailable")
       }
 
       let done = false
@@ -198,11 +249,12 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         timedOut = true
         child.kill("SIGTERM")
       }, timeoutMs)
+      return await new Promise<CodexProbeResult>(resolve => {
       const settle = (state: CodexProbeState, detail: string): void => {
         if (done) return
         done = true
         clearTimeout(timer)
-        finishWith(state, detail)
+        resolve(finishWith(state, detail))
       }
 
       const jsonLines = makeCodexJsonLineConsumer(event => {
@@ -253,7 +305,8 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         }
         settle("probe_failed", errorMessage ?? `codex exec exited ${exitCode ?? "abnormally"}`)
       })
-    })
+      })
+    }
 
   const runRound = async (): Promise<ReadonlyArray<CodexProbeResult>> => {
     const accounts = await discover()

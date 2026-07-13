@@ -137,6 +137,8 @@ export const DesktopRuntimeCardSchema = Schema.Union([
     kind: Schema.Literal("child"),
     turnRef: Schema.String.check(Schema.isMaxLength(120)),
     childRef: Schema.String.check(Schema.isMaxLength(120)),
+    /** Provider-native parent identity for durable nested topology. */
+    parentChildRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     status: Schema.Literals(["running", "completed", "failed"]),
     title: Schema.String.check(Schema.isMaxLength(400)),
     detail: Schema.String.check(Schema.isMaxLength(400)),
