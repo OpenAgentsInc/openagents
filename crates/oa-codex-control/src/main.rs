@@ -1694,6 +1694,46 @@ struct MicrovmModelReceipt {
     tokens_served_delta: Option<u64>,
 }
 
+/// Public, content-addressed refs for files that were actually copied out of
+/// the Agent Computer. The filename and host path are deliberately excluded:
+/// terminal receipts prove the extracted bytes without exposing private
+/// topology or trusting an agent-authored reference string.
+fn extracted_artifact_refs(host_artifact_dir: &Path) -> Result<Vec<String>, String> {
+    let entries = fs::read_dir(host_artifact_dir)
+        .map_err(|error| format!("failed to read extracted Agent Computer artifacts: {error}"))?;
+    let mut files = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!("failed to enumerate extracted Agent Computer artifacts: {error}")
+        })?;
+        let file_type = entry.file_type().map_err(|error| {
+            format!("failed to inspect extracted Agent Computer artifact: {error}")
+        })?;
+        if file_type.is_file() {
+            files.push(entry.path());
+        }
+    }
+    files.sort();
+    if files.is_empty() {
+        return Err("Agent Computer completed without an extracted artifact".to_string());
+    }
+    if files.len() > 64 {
+        return Err("Agent Computer extracted artifact set exceeds the 64-file bound".to_string());
+    }
+
+    let mut refs = Vec::new();
+    for path in files {
+        let bytes = fs::read(&path)
+            .map_err(|error| format!("failed to read extracted Agent Computer artifact: {error}"))?;
+        let digest = format!("{:x}", Sha256::digest(bytes));
+        let artifact_ref = format!("artifact.sha256.{digest}");
+        if !refs.contains(&artifact_ref) {
+            refs.push(artifact_ref);
+        }
+    }
+    Ok(refs)
+}
+
 fn microvm_failure_class(exit_code: i32, output: &str) -> Option<&'static str> {
     if exit_code == 0 {
         return None;
@@ -1868,6 +1908,7 @@ fn run_org_cloud_microvm_worker(
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default();
+    let artifact_refs = extracted_artifact_refs(&host_artifact_dir)?;
 
     // provisioned (active) — echoes the work-context ref for the isolation check.
     let provision_receipt_ref = format!("receipt.cloud.gce.provision.{run_short}");
@@ -1875,7 +1916,7 @@ fn run_org_cloud_microvm_worker(
         &config,
         &run_id,
         JobEventInput {
-            artifact_refs: Vec::new(),
+            artifact_refs: artifact_refs.clone(),
             data_json: Some(json_string(&serde_json::json!({
                 "workContextRef": work_context_ref,
                 "vmId": outcome.vm_id,
@@ -1971,7 +2012,7 @@ fn run_org_cloud_microvm_worker(
         &config,
         &run_id,
         JobEventInput {
-            artifact_refs: Vec::new(),
+            artifact_refs,
             data_json: Some(json_string(&serde_json::json!({
                 "workContextRef": work_context_ref,
                 "runnerId": runner_id,
@@ -4994,6 +5035,48 @@ mod tests {
         assert!(cmd[2].contains("base64 -d > /tmp/wc.json"));
         assert!(cmd[2].contains("/opt/agent/turn-runner /tmp/wc.json"));
         assert!(cmd[2].contains(cloud_vm::VM_ARTIFACT_DIR));
+    }
+
+    #[test]
+    fn extracted_agent_computer_artifacts_become_content_addressed_public_refs() {
+        let dir = env::temp_dir().join(format!(
+            "oa-codex-control-artifacts-{}",
+            now_ms().unwrap()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("result.json"), br#"{"status":"completed"}"#).unwrap();
+        fs::write(dir.join("result.md"), b"completed\n").unwrap();
+
+        let refs = extracted_artifact_refs(&dir).unwrap();
+
+        assert_eq!(refs.len(), 2);
+        assert!(refs.iter().all(|reference| {
+            reference.starts_with("artifact.sha256.") && reference.len() == 80
+        }));
+        assert!(refs.iter().all(|reference| {
+            !reference.contains("result") && !reference.contains(dir.to_string_lossy().as_ref())
+        }));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn extracted_agent_computer_artifacts_reject_empty_and_oversized_sets() {
+        let dir = env::temp_dir().join(format!(
+            "oa-codex-control-artifact-bound-{}",
+            now_ms().unwrap()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        assert!(extracted_artifact_refs(&dir)
+            .unwrap_err()
+            .contains("without an extracted artifact"));
+
+        for index in 0..65 {
+            fs::write(dir.join(format!("artifact-{index}")), index.to_string()).unwrap();
+        }
+        assert!(extracted_artifact_refs(&dir)
+            .unwrap_err()
+            .contains("exceeds the 64-file bound"));
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
