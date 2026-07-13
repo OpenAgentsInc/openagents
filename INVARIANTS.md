@@ -1201,7 +1201,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   state. Checkpoint and cleanup replay after SQLite reopen do not repeat
   process or workspace effects. This source-side boundary is enforced by
   `apps/pylon/tests/portable-session-target.test.ts` and
-  `apps/pylon/tests/portable-session-operation-ledger.test.ts`. Managed → local
+  `apps/pylon/tests/portable-session-operation-ledger.test.ts`. The binding
+  itself is also private SQLite authority, not process memory: it stores the
+  exact root/child parent edges, control-session refs, workspace refs, process/
+  workspace lifecycle, and owning runtime epoch without storing a local path.
+  A new Pylon epoch recovers an unfinished binding only as `quiesced`, marks
+  the prior process epoch absent, and returns one typed refs-only recovery
+  outcome. Every old epoch rechecks SQLite before accepting a reply, so a
+  process that outlives restart cannot accept another parent or child turn.
+  Same-byte recovery replays; a conflicting recovery ref or attachment
+  generation fails closed. This restart fence is enforced by
+  `apps/pylon/tests/portable-control-session-recovery.test.ts`. Managed → local
   failback stages through `apps/pylon/src/portable-session-destination.ts`.
   Before any restore effect it requires the exact active remote attachment from
   PORT-01, then verifies the repository post-image, binary diff, complete

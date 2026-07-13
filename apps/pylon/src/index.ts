@@ -88,6 +88,7 @@ import {
   type ControlSessionSpawnCommand,
   type ControlSessionProjection,
 } from "./node/control-sessions.js"
+import { PylonPortableSessionOperationLedger } from "./portable-session-operation-ledger.js"
 import { resolveCloudControlConfig } from "./cloud-control-client.js"
 import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider.js"
 import { collectPylonContextProjection } from "./context-projection.js"
@@ -951,8 +952,10 @@ function makeAssignmentActions() {
 }
 
 function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) {
+  const portableDatabase = new Database(`${summary.paths.home}/portable-session-operations.sqlite`, { create: true })
   return createControlSessionActions({
     summary,
+    portableLedger: new PylonPortableSessionOperationLedger(portableDatabase),
     // #4997: build the OpenAgents Cloud executor from env when a cloud control
     // plane is configured (OA_CLOUD_CONTROL_URL + OA_CLOUD_CONTROL_TOKEN). When
     // it is not, this returns null and cloud lanes degrade to the local

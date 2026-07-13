@@ -75,6 +75,40 @@ export type PylonPortableOperationRecord = Readonly<{
   outcome?: PylonPortableOperationOutcome
 }>
 
+export type PylonPortableControlBindingAgent = Readonly<{
+  agentRef: string
+  parentAgentRef?: string
+  controlSessionRef: string
+  workspaceRef: string
+  processLifecycle: "active" | "settled" | "absent_after_restart"
+  workspaceLifecycle: "retained" | "released"
+}>
+
+export type PylonPortableControlBinding = Readonly<{
+  schema: typeof PYLON_PORTABLE_OPERATION_LEDGER_VERSION
+  sessionRef: string
+  attachmentRef: string
+  generation: number
+  runtimeInstanceRef: string
+  state: "accepting" | "quiesced" | "cleaned"
+  revision: number
+  agents: ReadonlyArray<PylonPortableControlBindingAgent>
+}>
+
+export type PylonPortableControlBindingRecovery = Readonly<{
+  schema: typeof PYLON_PORTABLE_OPERATION_LEDGER_VERSION
+  recoveryRef: string
+  sessionRef: string
+  attachmentRef: string
+  generation: number
+  runtimeInstanceRef: string
+  outcome: "recovered_quiesced" | "already_cleaned"
+  acceptingWork: false
+  agentRefs: ReadonlyArray<string>
+  controlSessionRefs: ReadonlyArray<string>
+  workspaceRefs: ReadonlyArray<string>
+}>
+
 export class PylonPortableOperationLedgerError extends Error {
   readonly _tag = "PylonPortableOperationLedgerError"
   override readonly name = "PylonPortableOperationLedgerError"
@@ -109,6 +143,31 @@ type OperationRow = {
   fingerprint: string
   state: "admitted" | "completed"
   outcome_json: string | null
+}
+
+type ControlBindingRow = {
+  session_ref: string
+  attachment_ref: string
+  generation: number
+  runtime_instance_ref: string
+  state: "accepting" | "quiesced" | "cleaned"
+  revision: number
+}
+
+type ControlBindingAgentRow = {
+  session_ref: string
+  agent_ref: string
+  parent_agent_ref: string | null
+  control_session_ref: string
+  workspace_ref: string
+  process_lifecycle: PylonPortableControlBindingAgent["processLifecycle"]
+  workspace_lifecycle: PylonPortableControlBindingAgent["workspaceLifecycle"]
+}
+
+type ControlBindingRecoveryRow = {
+  recovery_ref: string
+  fingerprint: string
+  outcome_json: string
 }
 
 const canonical = (value: unknown): string => {
@@ -211,7 +270,220 @@ export class PylonPortableSessionOperationLedger {
         bundle_json TEXT NOT NULL,
         FOREIGN KEY (operation_ref) REFERENCES pylon_portable_session_operations(operation_ref) ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS pylon_portable_control_bindings (
+        session_ref TEXT PRIMARY KEY,
+        attachment_ref TEXT NOT NULL,
+        generation INTEGER NOT NULL CHECK (generation >= 0),
+        runtime_instance_ref TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('accepting', 'quiesced', 'cleaned')),
+        revision INTEGER NOT NULL CHECK (revision >= 0),
+        FOREIGN KEY (session_ref) REFERENCES pylon_portable_session_fences(session_ref) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS pylon_portable_control_binding_agents (
+        session_ref TEXT NOT NULL,
+        agent_ref TEXT NOT NULL,
+        parent_agent_ref TEXT,
+        control_session_ref TEXT NOT NULL,
+        workspace_ref TEXT NOT NULL,
+        process_lifecycle TEXT NOT NULL CHECK (process_lifecycle IN ('active', 'settled', 'absent_after_restart')),
+        workspace_lifecycle TEXT NOT NULL CHECK (workspace_lifecycle IN ('retained', 'released')),
+        PRIMARY KEY (session_ref, agent_ref),
+        UNIQUE (session_ref, control_session_ref),
+        FOREIGN KEY (session_ref) REFERENCES pylon_portable_control_bindings(session_ref) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS pylon_portable_control_binding_recoveries (
+        recovery_ref TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        outcome_json TEXT NOT NULL
+      );
     `)
+  }
+
+  persistControlBinding(input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+    agents: ReadonlyArray<Readonly<{
+      agentRef: string
+      parentAgentRef?: string
+      controlSessionRef: string
+      workspaceRef: string
+    }>>
+  }>): Effect.Effect<Readonly<{ status: "stored" | "replayed"; binding: PylonPortableControlBinding }>, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() => {
+      this.assertControlBindingInput(input)
+      const existing = this.readControlBindingRow(input.sessionRef)
+      if (existing !== null) {
+        const binding = this.controlBinding(existing)
+        const expected = this.controlBindingComparable({
+          ...input,
+          state: "accepting",
+          agents: input.agents.map(agent => ({
+            ...agent,
+            processLifecycle: "active" as const,
+            workspaceLifecycle: "retained" as const,
+          })),
+        })
+        if (canonical(this.controlBindingComparable(binding)) !== canonical(expected)) {
+          throw new PylonPortableOperationLedgerError("conflicting_replay", "portable control binding conflicts")
+        }
+        return { status: "replayed" as const, binding }
+      }
+      const fence = this.requireExactFence(input)
+      if (Number(fence.accepting_work) !== 1) {
+        throw new PylonPortableOperationLedgerError("stale_generation", "portable control binding is not accepting")
+      }
+      this.database.query(`
+        INSERT INTO pylon_portable_control_bindings
+          (session_ref, attachment_ref, generation, runtime_instance_ref, state, revision)
+        VALUES (?, ?, ?, ?, 'accepting', 0)
+      `).run(input.sessionRef, input.attachmentRef, input.generation, input.runtimeInstanceRef)
+      const insertAgent = this.database.query(`
+        INSERT INTO pylon_portable_control_binding_agents
+          (session_ref, agent_ref, parent_agent_ref, control_session_ref, workspace_ref,
+           process_lifecycle, workspace_lifecycle)
+        VALUES (?, ?, ?, ?, ?, 'active', 'retained')
+      `)
+      for (const agent of input.agents) {
+        insertAgent.run(
+          input.sessionRef,
+          agent.agentRef,
+          agent.parentAgentRef ?? null,
+          agent.controlSessionRef,
+          agent.workspaceRef,
+        )
+      }
+      return {
+        status: "stored" as const,
+        binding: this.controlBinding(this.requireControlBindingRow(input.sessionRef)),
+      }
+    }).immediate())
+  }
+
+  readControlBinding(sessionRef: string): Effect.Effect<PylonPortableControlBinding, PylonPortableOperationLedgerError> {
+    return this.effect(() => {
+      assertRef(sessionRef, "sessionRef")
+      return this.controlBinding(this.requireControlBindingRow(sessionRef))
+    })
+  }
+
+  listControlBindings(): Effect.Effect<ReadonlyArray<PylonPortableControlBinding>, PylonPortableOperationLedgerError> {
+    return this.effect(() => {
+      const rows = this.database.query(`
+        SELECT session_ref, attachment_ref, generation, runtime_instance_ref, state, revision
+        FROM pylon_portable_control_bindings ORDER BY session_ref ASC
+      `).all() as ControlBindingRow[]
+      return rows.map(row => this.controlBinding(row))
+    })
+  }
+
+  assertControlBindingAccepting(input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+  }>): Effect.Effect<PylonPortableControlBinding, PylonPortableOperationLedgerError> {
+    return this.effect(() => {
+      this.assertScope(input)
+      assertRef(input.runtimeInstanceRef, "runtimeInstanceRef")
+      const binding = this.controlBinding(this.requireControlBindingRow(input.sessionRef))
+      if (binding.attachmentRef !== input.attachmentRef || binding.generation !== input.generation ||
+          binding.runtimeInstanceRef !== input.runtimeInstanceRef || binding.state !== "accepting") {
+        throw new PylonPortableOperationLedgerError("stale_generation", "portable control binding is not accepting")
+      }
+      return binding
+    })
+  }
+
+  markControlBindingQuiesced(input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+  }>): Effect.Effect<Readonly<{ status: "completed" | "replayed"; binding: PylonPortableControlBinding }>, PylonPortableOperationLedgerError> {
+    return this.transitionControlBinding(input, "quiesced")
+  }
+
+  markControlBindingCleaned(input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+  }>): Effect.Effect<Readonly<{ status: "completed" | "replayed"; binding: PylonPortableControlBinding }>, PylonPortableOperationLedgerError> {
+    return this.transitionControlBinding(input, "cleaned")
+  }
+
+  recoverControlBinding(input: Readonly<{
+    recoveryRef: string
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+  }>): Effect.Effect<Readonly<{
+    status: "recovered" | "replayed"
+    binding: PylonPortableControlBinding
+    recovery: PylonPortableControlBindingRecovery
+  }>, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() => {
+      this.assertScope(input)
+      assertRef(input.recoveryRef, "recoveryRef")
+      assertRef(input.runtimeInstanceRef, "runtimeInstanceRef")
+      const exactFingerprint = fingerprint(input)
+      const prior = this.database.query(`
+        SELECT recovery_ref, fingerprint, outcome_json
+        FROM pylon_portable_control_binding_recoveries WHERE recovery_ref = ?
+      `).get(input.recoveryRef) as ControlBindingRecoveryRow | null
+      if (prior !== null) {
+        if (prior.fingerprint !== exactFingerprint) {
+          throw new PylonPortableOperationLedgerError("conflicting_replay", "portable control recovery conflicts")
+        }
+        const recovery = this.decodeControlBindingRecovery(prior.outcome_json)
+        return {
+          status: "replayed" as const,
+          binding: this.controlBinding(this.requireControlBindingRow(input.sessionRef)),
+          recovery,
+        }
+      }
+      const row = this.requireControlBindingRow(input.sessionRef)
+      if (row.attachment_ref !== input.attachmentRef || Number(row.generation) !== input.generation) {
+        throw new PylonPortableOperationLedgerError("stale_generation", "portable control recovery generation is stale")
+      }
+      const alreadyCleaned = row.state === "cleaned"
+      const alreadyRecoveredByRuntime = row.state === "quiesced" &&
+        row.runtime_instance_ref === input.runtimeInstanceRef
+      if (!alreadyCleaned && !alreadyRecoveredByRuntime) {
+        this.database.query(`
+          UPDATE pylon_portable_control_bindings
+          SET runtime_instance_ref = ?, state = 'quiesced', revision = revision + 1
+          WHERE session_ref = ? AND attachment_ref = ? AND generation = ? AND state != 'cleaned'
+        `).run(input.runtimeInstanceRef, input.sessionRef, input.attachmentRef, input.generation)
+        this.database.query(`
+          UPDATE pylon_portable_control_binding_agents
+          SET process_lifecycle = 'absent_after_restart'
+          WHERE session_ref = ? AND workspace_lifecycle = 'retained'
+        `).run(input.sessionRef)
+      }
+      const binding = this.controlBinding(this.requireControlBindingRow(input.sessionRef))
+      const recovery = this.validateControlBindingRecovery({
+        schema: PYLON_PORTABLE_OPERATION_LEDGER_VERSION,
+        recoveryRef: input.recoveryRef,
+        sessionRef: input.sessionRef,
+        attachmentRef: input.attachmentRef,
+        generation: input.generation,
+        runtimeInstanceRef: alreadyCleaned ? row.runtime_instance_ref : input.runtimeInstanceRef,
+        outcome: alreadyCleaned ? "already_cleaned" : "recovered_quiesced",
+        acceptingWork: false,
+        agentRefs: binding.agents.map(agent => agent.agentRef),
+        controlSessionRefs: binding.agents.map(agent => agent.controlSessionRef),
+        workspaceRefs: [...new Set(binding.agents.map(agent => agent.workspaceRef))].sort(),
+      })
+      this.database.query(`
+        INSERT INTO pylon_portable_control_binding_recoveries
+          (recovery_ref, fingerprint, outcome_json) VALUES (?, ?, ?)
+      `).run(input.recoveryRef, exactFingerprint, JSON.stringify(recovery))
+      return { status: "recovered" as const, binding, recovery }
+    }).immediate())
   }
 
   registerSession(input: Readonly<{
@@ -630,6 +902,176 @@ export class PylonPortableSessionOperationLedger {
     return { status: "admitted", record: operationRecord(this.requireOperation(input.operationRef)) }
   }
 
+  private transitionControlBinding(input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+  }>, destination: "quiesced" | "cleaned"): Effect.Effect<Readonly<{
+    status: "completed" | "replayed"
+    binding: PylonPortableControlBinding
+  }>, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() => {
+      this.assertScope(input)
+      assertRef(input.runtimeInstanceRef, "runtimeInstanceRef")
+      const row = this.requireControlBindingRow(input.sessionRef)
+      if (row.attachment_ref !== input.attachmentRef || Number(row.generation) !== input.generation ||
+          row.runtime_instance_ref !== input.runtimeInstanceRef) {
+        throw new PylonPortableOperationLedgerError("stale_generation", "portable control binding owner is stale")
+      }
+      if (row.state === destination) {
+        return { status: "replayed" as const, binding: this.controlBinding(row) }
+      }
+      if (destination === "quiesced" && row.state !== "accepting") {
+        throw new PylonPortableOperationLedgerError("invalid_scope", "portable control binding cannot quiesce")
+      }
+      if (destination === "cleaned" && row.state !== "quiesced") {
+        throw new PylonPortableOperationLedgerError("invalid_scope", "portable control binding must quiesce before cleanup")
+      }
+      this.database.query(`
+        UPDATE pylon_portable_control_bindings
+        SET state = ?, revision = revision + 1
+        WHERE session_ref = ? AND runtime_instance_ref = ? AND state = ?
+      `).run(destination, input.sessionRef, input.runtimeInstanceRef, row.state)
+      this.database.query(`
+        UPDATE pylon_portable_control_binding_agents
+        SET process_lifecycle = 'settled', workspace_lifecycle = ?
+        WHERE session_ref = ?
+      `).run(destination === "cleaned" ? "released" : "retained", input.sessionRef)
+      return {
+        status: "completed" as const,
+        binding: this.controlBinding(this.requireControlBindingRow(input.sessionRef)),
+      }
+    }).immediate())
+  }
+
+  private assertControlBindingInput(input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+    agents: ReadonlyArray<Readonly<{
+      agentRef: string
+      parentAgentRef?: string
+      controlSessionRef: string
+      workspaceRef: string
+    }>>
+  }>): void {
+    this.assertScope(input)
+    assertRef(input.runtimeInstanceRef, "runtimeInstanceRef")
+    if (input.agents.length === 0) {
+      throw new PylonPortableOperationLedgerError("invalid_scope", "portable control binding requires agents")
+    }
+    const agentRefs = new Set<string>()
+    const controlSessionRefs = new Set<string>()
+    for (const agent of input.agents) {
+      assertRef(agent.agentRef, "agentRef")
+      if (agent.parentAgentRef !== undefined) assertRef(agent.parentAgentRef, "parentAgentRef")
+      assertRef(agent.controlSessionRef, "controlSessionRef")
+      assertRef(agent.workspaceRef, "workspaceRef")
+      if (agentRefs.has(agent.agentRef) || controlSessionRefs.has(agent.controlSessionRef)) {
+        throw new PylonPortableOperationLedgerError("invalid_scope", "portable control binding agents are not unique")
+      }
+      agentRefs.add(agent.agentRef)
+      controlSessionRefs.add(agent.controlSessionRef)
+    }
+    const roots = input.agents.filter(agent => agent.parentAgentRef === undefined)
+    if (roots.length !== 1 || input.agents.some(agent =>
+      agent.parentAgentRef !== undefined && !agentRefs.has(agent.parentAgentRef))) {
+      throw new PylonPortableOperationLedgerError("invalid_scope", "portable control binding graph is invalid")
+    }
+  }
+
+  private controlBindingComparable(input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    runtimeInstanceRef: string
+    state: "accepting" | "quiesced" | "cleaned"
+    agents: ReadonlyArray<PylonPortableControlBindingAgent>
+  }>): unknown {
+    return {
+      sessionRef: input.sessionRef,
+      attachmentRef: input.attachmentRef,
+      generation: input.generation,
+      runtimeInstanceRef: input.runtimeInstanceRef,
+      state: input.state,
+      agents: [...input.agents].sort((left, right) => left.agentRef.localeCompare(right.agentRef)),
+    }
+  }
+
+  private controlBinding(row: ControlBindingRow): PylonPortableControlBinding {
+    const agents = this.database.query(`
+      SELECT session_ref, agent_ref, parent_agent_ref, control_session_ref, workspace_ref,
+             process_lifecycle, workspace_lifecycle
+      FROM pylon_portable_control_binding_agents
+      WHERE session_ref = ? ORDER BY agent_ref ASC
+    `).all(row.session_ref) as ControlBindingAgentRow[]
+    return {
+      schema: PYLON_PORTABLE_OPERATION_LEDGER_VERSION,
+      sessionRef: row.session_ref,
+      attachmentRef: row.attachment_ref,
+      generation: Number(row.generation),
+      runtimeInstanceRef: row.runtime_instance_ref,
+      state: row.state,
+      revision: Number(row.revision),
+      agents: agents.map(agent => ({
+        agentRef: agent.agent_ref,
+        ...(agent.parent_agent_ref === null ? {} : { parentAgentRef: agent.parent_agent_ref }),
+        controlSessionRef: agent.control_session_ref,
+        workspaceRef: agent.workspace_ref,
+        processLifecycle: agent.process_lifecycle,
+        workspaceLifecycle: agent.workspace_lifecycle,
+      })),
+    }
+  }
+
+  private validateControlBindingRecovery(value: PylonPortableControlBindingRecovery): PylonPortableControlBindingRecovery {
+    const refs = [
+      value.recoveryRef,
+      value.sessionRef,
+      value.attachmentRef,
+      value.runtimeInstanceRef,
+      ...value.agentRefs,
+      ...value.controlSessionRefs,
+      ...value.workspaceRefs,
+    ]
+    if (value.schema !== PYLON_PORTABLE_OPERATION_LEDGER_VERSION || value.acceptingWork !== false ||
+        !Number.isSafeInteger(value.generation) || value.generation < 0 ||
+        (value.outcome !== "recovered_quiesced" && value.outcome !== "already_cleaned") ||
+        refs.some(ref => !SAFE_REF.test(ref)) || FORBIDDEN_PRIVATE_MATERIAL.test(canonical(value)) ||
+        new Set(value.agentRefs).size !== value.agentRefs.length ||
+        new Set(value.controlSessionRefs).size !== value.controlSessionRefs.length ||
+        new Set(value.workspaceRefs).size !== value.workspaceRefs.length) {
+      throw new PylonPortableOperationLedgerError("unsafe_result", "portable control recovery outcome is invalid")
+    }
+    return value
+  }
+
+  private decodeControlBindingRecovery(serialized: string): PylonPortableControlBindingRecovery {
+    let value: unknown
+    try {
+      value = JSON.parse(serialized)
+    } catch {
+      throw new PylonPortableOperationLedgerError("unsafe_result", "portable control recovery outcome is invalid")
+    }
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new PylonPortableOperationLedgerError("unsafe_result", "portable control recovery outcome is invalid")
+    }
+    const candidate = value as Record<string, unknown>
+    if (!Array.isArray(candidate.agentRefs) || !Array.isArray(candidate.controlSessionRefs) ||
+        !Array.isArray(candidate.workspaceRefs) ||
+        !candidate.agentRefs.every(item => typeof item === "string") ||
+        !candidate.controlSessionRefs.every(item => typeof item === "string") ||
+        !candidate.workspaceRefs.every(item => typeof item === "string") ||
+        typeof candidate.recoveryRef !== "string" || typeof candidate.sessionRef !== "string" ||
+        typeof candidate.attachmentRef !== "string" || typeof candidate.runtimeInstanceRef !== "string" ||
+        typeof candidate.generation !== "number") {
+      throw new PylonPortableOperationLedgerError("unsafe_result", "portable control recovery outcome is invalid")
+    }
+    return this.validateControlBindingRecovery(candidate as unknown as PylonPortableControlBindingRecovery)
+  }
+
   private assertScope(input: Readonly<{
     sessionRef: string
     attachmentRef: string
@@ -659,6 +1101,19 @@ export class PylonPortableSessionOperationLedger {
       SELECT session_ref, attachment_ref, generation, accepting_work, revision
       FROM pylon_portable_session_fences WHERE session_ref = ?
     `).get(sessionRef) as SessionRow | null
+  }
+
+  private readControlBindingRow(sessionRef: string): ControlBindingRow | null {
+    return this.database.query(`
+      SELECT session_ref, attachment_ref, generation, runtime_instance_ref, state, revision
+      FROM pylon_portable_control_bindings WHERE session_ref = ?
+    `).get(sessionRef) as ControlBindingRow | null
+  }
+
+  private requireControlBindingRow(sessionRef: string): ControlBindingRow {
+    const row = this.readControlBindingRow(sessionRef)
+    if (row === null) throw new PylonPortableOperationLedgerError("not_found", "portable control binding is absent")
+    return row
   }
 
   private requireSession(sessionRef: string): SessionRow {

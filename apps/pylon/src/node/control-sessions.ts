@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
+import { Effect } from "effect"
 import {
   loadPylonAccountRegistry,
   publicPylonAccountSelection,
@@ -67,6 +68,10 @@ import {
 import { estimateAppleFmLocalSessionEnergy } from "./apple-fm-energy-estimate.js"
 import { collectPylonAppleFmStatus } from "./apple-fm-status.js"
 import { runAppleFmLocalControlSession } from "./apple-fm-local-session.js"
+import {
+  type PylonPortableControlBindingRecovery,
+  PylonPortableSessionOperationLedger,
+} from "../portable-session-operation-ledger.js"
 
 export const CONTROL_SESSION_EVENT_SCHEMA = "openagents.pylon.control_session_event.v0.1"
 export const CONTROL_SESSION_ARTIFACT_SCHEMA = "openagents.pylon.control_session_artifact.v0.1"
@@ -266,6 +271,12 @@ export type PylonPortableCheckpointSource = Readonly<{
 
 export type PylonPortableControlSessionLifecycle = Readonly<{
   bind: (input: PylonPortableControlSessionBinding) => void
+  recover: (input: Readonly<{
+    recoveryRef: string
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+  }>) => Promise<PylonPortableControlBindingRecovery>
   quiesce: (input: Readonly<{
     sessionRef: string
     attachmentRef: string
@@ -1115,6 +1126,10 @@ export function createControlSessionActions(options: {
   cloudExecutor?: ControlSessionExecutor
   cloudExecutorFactory?: (env: Record<string, string | undefined>) => ControlSessionExecutor | null
   proofsDir?: string
+  /** Private local durability seam for graph-wide portable control bindings. */
+  portableLedger?: PylonPortableSessionOperationLedger
+  /** Public-safe process-epoch ref; injected only by deterministic restart tests. */
+  portableRuntimeInstanceRef?: string
   summary: BootstrapSummary
 }): ControlSessionActions {
   const encoder = new TextEncoder()
@@ -1124,6 +1139,38 @@ export function createControlSessionActions(options: {
     input: PylonPortableControlSessionBinding
     state: "accepting" | "quiesced" | "cleaned"
   }>()
+  const portableRuntimeInstanceRef = options.portableRuntimeInstanceRef ??
+    stableRef("runtime.pylon.control_session", randomBytes(24).toString("hex"))
+  if (options.portableLedger !== undefined) {
+    const durableBindings = Effect.runSync(options.portableLedger.listControlBindings())
+    for (const durable of durableBindings) {
+      const recovered = durable.state === "cleaned" || durable.runtimeInstanceRef === portableRuntimeInstanceRef
+        ? { binding: durable }
+        : Effect.runSync(options.portableLedger.recoverControlBinding({
+            recoveryRef: stableRef(
+              "recovery.pylon.control_session.restart",
+              `${durable.sessionRef}:${durable.attachmentRef}:${durable.generation}:${portableRuntimeInstanceRef}`,
+            ),
+            sessionRef: durable.sessionRef,
+            attachmentRef: durable.attachmentRef,
+            generation: durable.generation,
+            runtimeInstanceRef: portableRuntimeInstanceRef,
+          }))
+      portableBindings.set(durable.sessionRef, {
+        input: {
+          sessionRef: recovered.binding.sessionRef,
+          attachmentRef: recovered.binding.attachmentRef,
+          generation: recovered.binding.generation,
+          agents: recovered.binding.agents.map(agent => ({
+            agentRef: agent.agentRef,
+            controlSessionRef: agent.controlSessionRef,
+          })),
+        },
+        state: recovered.binding.state === "cleaned" ? "cleaned" :
+          recovered.binding.state === "accepting" ? "accepting" : "quiesced",
+      })
+    }
+  }
   const subscribers = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>()
   const executor = options.executor ?? defaultControlSessionExecutor
   const baseEnv = options.env ?? (Bun.env as Record<string, string | undefined>)
@@ -1606,6 +1653,30 @@ export function createControlSessionActions(options: {
       for (const item of agents) {
         if (!records.has(item.controlSessionRef)) throw new Error("portable control session is absent")
       }
+      if (options.portableLedger !== undefined) {
+        const byControlSession = new Map(agents.map(item => [item.controlSessionRef, item.agentRef]))
+        Effect.runSync(options.portableLedger.persistControlBinding({
+          sessionRef: input.sessionRef,
+          attachmentRef: input.attachmentRef,
+          generation: input.generation,
+          runtimeInstanceRef: portableRuntimeInstanceRef,
+          agents: agents.map(item => {
+            const record = records.get(item.controlSessionRef)!
+            const parentAgentRef = record.parentSessionRef === null
+              ? undefined
+              : byControlSession.get(record.parentSessionRef)
+            if (record.parentSessionRef !== null && parentAgentRef === undefined) {
+              throw new Error("portable control-session parent is outside the bound graph")
+            }
+            return {
+              agentRef: item.agentRef,
+              ...(parentAgentRef === undefined ? {} : { parentAgentRef }),
+              controlSessionRef: item.controlSessionRef,
+              workspaceRef: record.workspace.workspaceRef,
+            }
+          }),
+        }))
+      }
       const existing = portableBindings.get(input.sessionRef)
       if (existing !== undefined) {
         if (JSON.stringify(existing.input) !== JSON.stringify(input)) {
@@ -1614,6 +1685,28 @@ export function createControlSessionActions(options: {
         return
       }
       portableBindings.set(input.sessionRef, { input, state: "accepting" })
+    },
+    recover: async (input) => {
+      if (options.portableLedger === undefined) {
+        throw new Error("portable control-session recovery ledger is not configured")
+      }
+      const result = await Effect.runPromise(options.portableLedger.recoverControlBinding({
+        ...input,
+        runtimeInstanceRef: portableRuntimeInstanceRef,
+      }))
+      portableBindings.set(input.sessionRef, {
+        input: {
+          sessionRef: result.binding.sessionRef,
+          attachmentRef: result.binding.attachmentRef,
+          generation: result.binding.generation,
+          agents: result.binding.agents.map(agent => ({
+            agentRef: agent.agentRef,
+            controlSessionRef: agent.controlSessionRef,
+          })),
+        },
+        state: result.binding.state === "cleaned" ? "cleaned" : "quiesced",
+      })
+      return result.recovery
     },
     quiesce: async (input) => {
       const binding = portableBindingFor(input)
@@ -1630,6 +1723,14 @@ export function createControlSessionActions(options: {
         throw new Error("portable control-session process did not settle")
       }
       binding.state = "quiesced"
+      if (options.portableLedger !== undefined) {
+        await Effect.runPromise(options.portableLedger.markControlBindingQuiesced({
+          sessionRef: input.sessionRef,
+          attachmentRef: input.attachmentRef,
+          generation: input.generation,
+          runtimeInstanceRef: portableRuntimeInstanceRef,
+        }))
+      }
       return {
         quiescedAgentRefs: bound.map(item => item.agentRef),
         evidenceRefs: bound.map(item => stableRef(
@@ -1686,6 +1787,14 @@ export function createControlSessionActions(options: {
         `${input.sessionRef}:${input.generation}:${cleanupRefs.sort().join(":")}`,
       )
       binding.state = "cleaned"
+      if (options.portableLedger !== undefined) {
+        await Effect.runPromise(options.portableLedger.markControlBindingCleaned({
+          sessionRef: input.sessionRef,
+          attachmentRef: input.attachmentRef,
+          generation: input.generation,
+          runtimeInstanceRef: portableRuntimeInstanceRef,
+        }))
+      }
       return {
         cleanedAgentRefs: bound.map(item => item.agentRef),
         cleanupReceiptRef,
@@ -1771,10 +1880,24 @@ export function createControlSessionActions(options: {
       const command = parseReplyCommand(raw)
       const parent = records.get(command.sessionRef)
       if (!parent) throw new Error("session.reply parent session not found")
-      if ([...portableBindings.values()].some(binding =>
-        binding.state !== "accepting" &&
-        binding.input.agents.some(agent => agent.controlSessionRef === parent.sessionRef))) {
-        throw new Error("portable control-session generation is not accepting work")
+      const portableBinding = [...portableBindings.values()].find(binding =>
+        binding.input.agents.some(agent => agent.controlSessionRef === parent.sessionRef))
+      if (portableBinding !== undefined) {
+        if (portableBinding.state !== "accepting") {
+          throw new Error("portable control-session generation is not accepting work")
+        }
+        if (options.portableLedger !== undefined) {
+          try {
+            await Effect.runPromise(options.portableLedger.assertControlBindingAccepting({
+              sessionRef: portableBinding.input.sessionRef,
+              attachmentRef: portableBinding.input.attachmentRef,
+              generation: portableBinding.input.generation,
+              runtimeInstanceRef: portableRuntimeInstanceRef,
+            }))
+          } catch {
+            throw new Error("portable control-session generation is not accepting work")
+          }
+        }
       }
       const runRef = randomBytes(12).toString("hex")
       const objective = buildContinuationObjective(parent.objective, command.objective)

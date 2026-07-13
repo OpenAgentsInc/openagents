@@ -197,6 +197,18 @@ destination rehydration adapters below now consume this fence; #8748 still
 requires the remaining production composition and the direct local → managed →
 local acceptance journey.
 
+The same SQLite file owns the private portable control-session binding.
+It retains the exact root/child parent edges, control-session refs, workspace
+refs, lifecycle states, and runtime epoch without serializing a working
+directory, process identifier, prompt, or credential. Normal `pylon node`
+startup opens that ledger before exposing control actions. On process restart,
+the runtime atomically replaces the old epoch with a non-accepting `quiesced`
+binding and `portable.recover` returns a typed refs-only outcome. Even a
+deliberately still-live old manager must recheck that durable epoch before `session.reply`,
+so it cannot accept stale parent or child work. The recovery ref is byte-
+idempotent and generation-fenced; see
+`tests/portable-control-session-recovery.test.ts`.
+
 ## Dashboard (TUI)
 
 Running `pylon` with no subcommand opens the observational dashboard: an
@@ -818,6 +830,12 @@ secret-free repository/diff/graph checkpoint, replays that checkpoint after a
 ledger reopen, rejects stale replies, and performs checkpoint-authorized source
 cleanup exactly once. `tests/portable-session-target.test.ts` is the focused
 root/child process, repository, restart, and cleanup receipt.
+
+Control-session binding recovery is independently covered by
+`tests/portable-control-session-recovery.test.ts`: a second SQLite/Pylon epoch
+reconstructs the exact root/child/workspace binding as quiesced, lost-ACK replay
+returns the same recovery outcome, conflicting bytes fail, and the stale first
+epoch cannot accept a continuation despite its accepting in-memory snapshot.
 
 `portable-session-destination.ts` supplies the matching owner-local destination
 adapter for managed → local failback. It checks the exact current PORT-01
