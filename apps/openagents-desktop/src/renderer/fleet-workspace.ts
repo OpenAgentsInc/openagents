@@ -43,7 +43,7 @@ import {
 import {
   decodeFleetRunClientProjection,
   type FleetRunClientProjection,
-} from "@openagentsinc/khala-sync"
+} from "../fleet-run-projection-contract.ts"
 
 export type FleetAccountReadiness = "ready" | "credentials-missing" | "unknown"
 

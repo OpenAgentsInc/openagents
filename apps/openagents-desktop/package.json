@@ -29,6 +29,7 @@
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
+    "@openagentsinc/product-spec": "workspace:*",
     "@openai/codex": "0.144.1",
     "@openai/codex-darwin-arm64": "npm:@openai/codex@0.144.1-darwin-arm64",
     "effect": "catalog:"

@@ -83,6 +83,35 @@ import {
   type DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
+import {
+  ProductSpecCreateChannel,
+  ProductSpecEditConfirmChannel,
+  ProductSpecEditProposeChannel,
+  ProductSpecEvidenceRecordChannel,
+  ProductSpecEvidenceVerifyChannel,
+  ProductSpecOpenChannel,
+  ProductSpecPacketAdmitChannel,
+  ProductSpecPacketBlockChannel,
+  ProductSpecPlanAcceptChannel,
+  ProductSpecPlanProposeChannel,
+  ProductSpecRunGetChannel,
+  decodeProductSpecCreateRequest,
+  decodeProductSpecEditConfirmRequest,
+  decodeProductSpecEditConfirmationResult,
+  decodeProductSpecEditProposalRequest,
+  decodeProductSpecEditProposalResult,
+  decodeProductSpecEvidenceRequest,
+  decodeProductSpecOpenRequest,
+  decodeProductSpecPacketAdmitRequest,
+  decodeProductSpecPacketBlockRequest,
+  decodeProductSpecPlanAcceptRequest,
+  decodeProductSpecPlanProposalRequest,
+  decodeProductSpecPlanResult,
+  decodeProductSpecProjectionResult,
+  decodeProductSpecRunGetRequest,
+  decodeProductSpecRunResult,
+  decodeProductSpecVerificationRequest,
+} from "./product-spec-workroom-contract.ts"
 import { GitGithubChannel, decodeGitGithubRequest, gitGithubError } from "./git-github-contract.ts"
 import {
   TerminalCloseChannel,
@@ -308,6 +337,74 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   chooseWorkspace: async (): Promise<boolean> => {
     const selected = await ipcRenderer.invoke(DesktopWorkspaceChooseChannel)
     return typeof selected === "object" && selected !== null
+  },
+  productSpec: {
+    open: async (value: unknown) => {
+      const request = decodeProductSpecOpenRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec open request is invalid." }
+      return decodeProductSpecProjectionResult(await ipcRenderer.invoke(ProductSpecOpenChannel, request)) ??
+        { ok: false, reason: "read_failed", message: "The ProductSpec open response is invalid." }
+    },
+    create: async (value: unknown) => {
+      const request = decodeProductSpecCreateRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec create request is invalid." }
+      return decodeProductSpecProjectionResult(await ipcRenderer.invoke(ProductSpecCreateChannel, request)) ??
+        { ok: false, reason: "write_failed", message: "The ProductSpec create response is invalid." }
+    },
+    proposeEdit: async (value: unknown) => {
+      const request = decodeProductSpecEditProposalRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec edit proposal is invalid." }
+      return decodeProductSpecEditProposalResult(await ipcRenderer.invoke(ProductSpecEditProposeChannel, request)) ??
+        { ok: false, reason: "write_failed", message: "The ProductSpec edit response is invalid." }
+    },
+    confirmEdit: async (value: unknown) => {
+      const request = decodeProductSpecEditConfirmRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec edit confirmation is invalid." }
+      return decodeProductSpecEditConfirmationResult(await ipcRenderer.invoke(ProductSpecEditConfirmChannel, request)) ??
+        { ok: false, reason: "write_failed", message: "The ProductSpec confirmation response is invalid." }
+    },
+    proposePlan: async (value: unknown) => {
+      const request = decodeProductSpecPlanProposalRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec plan proposal is invalid." }
+      return decodeProductSpecPlanResult(await ipcRenderer.invoke(ProductSpecPlanProposeChannel, request)) ??
+        { ok: false, reason: "write_failed", message: "The ProductSpec plan response is invalid." }
+    },
+    acceptPlan: async (value: unknown) => {
+      const request = decodeProductSpecPlanAcceptRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec plan acceptance is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecPlanAcceptChannel, request)) ??
+        { ok: false, reason: "write_failed", message: "The ProductSpec acceptance response is invalid." }
+    },
+    admitPacket: async (value: unknown) => {
+      const request = decodeProductSpecPacketAdmitRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec packet admission is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecPacketAdmitChannel, request)) ??
+        { ok: false, reason: "invalid_transition", message: "The ProductSpec admission response is invalid." }
+    },
+    blockPacket: async (value: unknown) => {
+      const request = decodeProductSpecPacketBlockRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec packet block request is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecPacketBlockChannel, request)) ??
+        { ok: false, reason: "invalid_transition", message: "The ProductSpec block response is invalid." }
+    },
+    recordEvidence: async (value: unknown) => {
+      const request = decodeProductSpecEvidenceRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec evidence request is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecEvidenceRecordChannel, request)) ??
+        { ok: false, reason: "invalid_transition", message: "The ProductSpec evidence response is invalid." }
+    },
+    verifyEvidence: async (value: unknown) => {
+      const request = decodeProductSpecVerificationRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec verification request is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecEvidenceVerifyChannel, request)) ??
+        { ok: false, reason: "invalid_transition", message: "The ProductSpec verification response is invalid." }
+    },
+    run: async (value: unknown) => {
+      const request = decodeProductSpecRunGetRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec run request is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecRunGetChannel, request)) ??
+        { ok: false, reason: "read_failed", message: "The ProductSpec run response is invalid." }
+    },
   },
   workspaceTree: async (value: unknown) => {
     const request = decodeWorkspaceTreeRequest(value)

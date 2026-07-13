@@ -8,6 +8,7 @@ import {
   parseProductSpec,
   starterProductSpec,
   stripToolMetadata,
+  validateExecutableProductSpec,
   validateProductSpec,
 } from "../src/index.ts"
 
@@ -141,6 +142,37 @@ describe("openagents extensions", () => {
     expect(ids).toContain("custom-owner-gates")
     expect(ids).toContain("custom-receipts")
     expect(ids).toContain("custom-promise-links")
+  })
+
+  test("the MVP spec is executable with unique author-visible criteria", async () => {
+    const markdown = await Bun.file(
+      join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.product-spec.md"),
+    ).text()
+    const result = validateExecutableProductSpec(markdown)
+    expect(result.executable).toBe(true)
+    expect(result.errors).toEqual([])
+    expect(result.criteria).toHaveLength(18)
+    expect(result.criteria.map(criterion => criterion.id)).toEqual(
+      Array.from({ length: 18 }, (_, index) => `CW-AC-${String(index + 1).padStart(2, "0")}`),
+    )
+  })
+
+  test("legacy prose remains standard-valid but cannot execute", async () => {
+    const markdown = await readFixture("conformance/valid/minimal.product-spec.md")
+    expect(validateProductSpec(markdown).valid).toBe(true)
+    const result = validateExecutableProductSpec(markdown)
+    expect(result.executable).toBe(false)
+    expect(result.errors.map(error => error.code)).toContain("missing_acceptance_criterion_id")
+  })
+
+  test("duplicate criterion IDs refuse executable admission", async () => {
+    const markdown = await Bun.file(
+      join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.product-spec.md"),
+    ).text()
+    const duplicate = markdown.replace("**CW-AC-02:**", "**CW-AC-01:**")
+    const result = validateExecutableProductSpec(duplicate)
+    expect(result.executable).toBe(false)
+    expect(result.errors.map(error => error.code)).toContain("duplicate_acceptance_criterion_id")
   })
 })
 

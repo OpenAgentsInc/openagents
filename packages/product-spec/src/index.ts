@@ -151,6 +151,34 @@ export type ValidationResult =
   | { valid: true; document: ProductSpecDocument; errors: []; warnings: ValidationIssue[] }
   | { valid: false; document?: undefined; errors: ValidationIssue[]; warnings: ValidationIssue[] }
 
+/**
+ * Author-visible criterion identity required by the OpenAgents executable
+ * ProductSpec profile. The base ProductSpec format intentionally permits prose
+ * acceptance criteria; OpenAgents keeps those documents viewable but refuses
+ * to dispatch work until every top-level criterion bullet has one unique ID.
+ */
+export type ProductSpecAcceptanceCriterion = Readonly<{
+  id: string
+  body: string
+  ordinal: number
+}>
+
+export type ExecutableProductSpecResult =
+  | Readonly<{
+      executable: true
+      document: ProductSpecDocument
+      criteria: ReadonlyArray<ProductSpecAcceptanceCriterion>
+      errors: readonly []
+      warnings: ReadonlyArray<ValidationIssue>
+    }>
+  | Readonly<{
+      executable: false
+      document?: ProductSpecDocument
+      criteria: ReadonlyArray<ProductSpecAcceptanceCriterion>
+      errors: ReadonlyArray<ValidationIssue>
+      warnings: ReadonlyArray<ValidationIssue>
+    }>
+
 class SpecParseError extends Error {
   constructor(readonly issue: ValidationIssue) {
     super(issue.message)
@@ -625,6 +653,148 @@ export const validateProductSpec = (markdown: string): ValidationResult => {
       warnings: [],
     }
   }
+}
+
+const EXECUTABLE_CRITERION_ID = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/
+const BOLD_CRITERION_PREFIX = /^\*\*([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+):\*\*\s*([\s\S]*)$/
+const PLAIN_CRITERION_PREFIX = /^([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+):\s*([\s\S]*)$/
+
+/** Parse top-level Acceptance Criteria bullets after ProductSpec routing. */
+export const extractProductSpecAcceptanceCriteria = (
+  document: ProductSpecDocument,
+): Readonly<{
+  criteria: ReadonlyArray<ProductSpecAcceptanceCriterion>
+  errors: ReadonlyArray<ValidationIssue>
+}> => {
+  const section = document.sections.find(candidate => candidate.id === "acceptance_criteria")
+  if (section === undefined) {
+    return {
+      criteria: [],
+      errors: [{
+        code: "missing_required_section",
+        message: "Missing mandatory section: acceptance_criteria",
+        path: "sections.acceptance_criteria",
+      }],
+    }
+  }
+
+  const rawItems: string[] = []
+  let current: string[] | null = null
+  let fenced = false
+  const flush = (): void => {
+    if (current === null) return
+    rawItems.push(current.join("\n").trim())
+    current = null
+  }
+
+  for (const line of section.content.split("\n")) {
+    if (line.trimStart().startsWith("```")) {
+      flush()
+      fenced = !fenced
+      continue
+    }
+    if (fenced) continue
+    if (line.startsWith("- ")) {
+      flush()
+      current = [line.slice(2).trim()]
+      continue
+    }
+    if (current !== null && /^(?: {2,}|\t)\S/.test(line)) {
+      current.push(line.trim())
+      continue
+    }
+    if (line.trim().length !== 0) flush()
+  }
+  flush()
+
+  const criteria: ProductSpecAcceptanceCriterion[] = []
+  const errors: ValidationIssue[] = []
+  const seen = new Set<string>()
+
+  rawItems.forEach((item, ordinal) => {
+    const match = BOLD_CRITERION_PREFIX.exec(item) ?? PLAIN_CRITERION_PREFIX.exec(item)
+    if (match === null || !EXECUTABLE_CRITERION_ID.test(match[1] ?? "")) {
+      errors.push({
+        code: "missing_acceptance_criterion_id",
+        message: `Executable acceptance criterion ${ordinal + 1} requires an author-visible ID such as CW-AC-01.`,
+        path: `sections.acceptance_criteria.criteria.${ordinal}`,
+      })
+      return
+    }
+    const id = match[1]!
+    const body = (match[2] ?? "").trim()
+    if (body.length === 0) {
+      errors.push({
+        code: "empty_acceptance_criterion",
+        message: `Acceptance criterion ${id} has no requirement text.`,
+        path: `sections.acceptance_criteria.criteria.${ordinal}`,
+      })
+      return
+    }
+    if (seen.has(id)) {
+      errors.push({
+        code: "duplicate_acceptance_criterion_id",
+        message: `Duplicate acceptance criterion ID: ${id}`,
+        path: `sections.acceptance_criteria.criteria.${ordinal}`,
+      })
+      return
+    }
+    seen.add(id)
+    criteria.push({ id, body, ordinal })
+  })
+
+  if (rawItems.length === 0) {
+    errors.push({
+      code: "missing_acceptance_criteria",
+      message: "Executable ProductSpecs require at least one top-level acceptance criterion bullet.",
+      path: "sections.acceptance_criteria",
+    })
+  }
+
+  return { criteria, errors }
+}
+
+/**
+ * OpenAgents executable profile: standard-valid plus positive revision and
+ * unique author-visible criterion IDs. A standard-valid legacy document can
+ * still be rendered when this returns `executable: false`.
+ */
+export const validateExecutableProductSpec = (
+  markdown: string,
+): ExecutableProductSpecResult => {
+  const validation = validateProductSpec(markdown)
+  if (!validation.valid) {
+    return {
+      executable: false,
+      criteria: [],
+      errors: validation.errors,
+      warnings: validation.warnings,
+    }
+  }
+  const extracted = extractProductSpecAcceptanceCriteria(validation.document)
+  const errors = [...extracted.errors]
+  if (validation.document.frontmatter.spec_revision === undefined) {
+    errors.unshift({
+      code: "missing_spec_revision",
+      message: "Executable ProductSpecs require a positive spec_revision.",
+      path: "frontmatter.spec_revision",
+    })
+  }
+  return errors.length === 0
+    ? {
+        executable: true,
+        document: validation.document,
+        criteria: extracted.criteria,
+        errors: [],
+        warnings: validation.warnings,
+      }
+    : {
+        executable: false,
+        document: validation.document,
+        criteria: extracted.criteria,
+        errors,
+        warnings: validation.warnings,
+      }
 }
 
 // ---------------------------------------------------------------------------

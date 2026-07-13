@@ -257,6 +257,32 @@ import {
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
+import {
+  ProductSpecCreateChannel,
+  ProductSpecEditConfirmChannel,
+  ProductSpecEditProposeChannel,
+  ProductSpecEvidenceRecordChannel,
+  ProductSpecEvidenceVerifyChannel,
+  ProductSpecOpenChannel,
+  ProductSpecPacketAdmitChannel,
+  ProductSpecPacketBlockChannel,
+  ProductSpecPlanAcceptChannel,
+  ProductSpecPlanProposeChannel,
+  ProductSpecRunGetChannel,
+  decodeProductSpecCreateRequest,
+  decodeProductSpecEditConfirmRequest,
+  decodeProductSpecEditProposalRequest,
+  decodeProductSpecEvidenceRequest,
+  decodeProductSpecOpenRequest,
+  decodeProductSpecPacketAdmitRequest,
+  decodeProductSpecPacketBlockRequest,
+  decodeProductSpecPlanAcceptRequest,
+  decodeProductSpecPlanProposalRequest,
+  decodeProductSpecRunGetRequest,
+  decodeProductSpecVerificationRequest,
+  type ProductSpecOperationError,
+} from "./product-spec-workroom-contract.ts"
+import { makeProductSpecWorkroom } from "./product-spec-workroom.ts"
 import { GitGithubChannel } from "./git-github-contract.ts"
 import { openGitGithubService } from "./git-github-host.ts"
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
@@ -926,6 +952,44 @@ const workspaceSnapshot = () => {
   if (workspace === null) return null
   try { return workspace.summary() } catch { return null }
 }
+const productSpecUnavailable = (message: string): ProductSpecOperationError => ({
+  ok: false,
+  reason: "invalid_request",
+  message,
+})
+const currentProductSpecWorkroom = () => {
+  const catalog = hostLifecycle.sync()?.codingCatalog()?.snapshot()
+  const workspace = hostLifecycle.workspace()
+  if (catalog === null || catalog === undefined || catalog.resolution?.state !== "ready" || workspace === null) {
+    return null
+  }
+  const root = hostLifecycle.sync()?.codingCatalog()?.selectedRoot() ?? null
+  if (root === null) return null
+  const selectedRootProjection = (() => {
+    try { return workspace.summary().root } catch { return null }
+  })()
+  if (selectedRootProjection === null || path.resolve(root) !== path.resolve(selectedRootProjection)) return null
+  const workContextRef = catalog.resolution.session.workContextRef
+  return {
+    workContextRef,
+    service: makeProductSpecWorkroom({
+      workspaceRoot: selectedRootProjection,
+      stateRoot: path.join(app.getPath("userData"), "product-spec", workContextRef),
+    }),
+  }
+}
+const withProductSpecWorkroom = <A>(
+  event: IpcMainInvokeEvent,
+  work: (authority: NonNullable<ReturnType<typeof currentProductSpecWorkroom>>) => A,
+): A | ProductSpecOperationError => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return productSpecUnavailable("The ProductSpec request did not come from the trusted Desktop renderer.")
+  }
+  const authority = currentProductSpecWorkroom()
+  return authority === null
+    ? productSpecUnavailable("Choose an admitted coding workspace before using ProductSpec work.")
+    : work(authority)
+}
 const openSelectedWorkspace = (root: string) => openWorkspaceService(root, {
   reveal: absolutePath => {
     shell.showItemInFolder(absolutePath)
@@ -1121,6 +1185,80 @@ ipcMain.handle(DesktopWorkspaceWatchChannel, (event, value: unknown) => {
 ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
   await chooseCodingWorkspace()
   return workspaceSnapshot()
+})
+ipcMain.handle(ProductSpecOpenChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecOpenRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec open request is invalid.")
+    : withProductSpecWorkroom(event, authority => request.workContextRef !== authority.workContextRef
+      ? productSpecUnavailable("The ProductSpec work context is not the selected coding session.")
+      : authority.service.open(request))
+})
+ipcMain.handle(ProductSpecCreateChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecCreateRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec create request is invalid.")
+    : withProductSpecWorkroom(event, authority => request.workContextRef !== authority.workContextRef
+      ? productSpecUnavailable("The ProductSpec work context is not the selected coding session.")
+      : authority.service.create(request))
+})
+ipcMain.handle(ProductSpecEditProposeChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecEditProposalRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec edit proposal is invalid.")
+    : withProductSpecWorkroom(event, authority => request.workContextRef !== authority.workContextRef
+      ? productSpecUnavailable("The ProductSpec work context is not the selected coding session.")
+      : authority.service.proposeEdit(request))
+})
+ipcMain.handle(ProductSpecEditConfirmChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecEditConfirmRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec edit confirmation is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.confirmEdit(request))
+})
+ipcMain.handle(ProductSpecPlanProposeChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecPlanProposalRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec plan proposal is invalid.")
+    : withProductSpecWorkroom(event, authority => request.workContextRef !== authority.workContextRef
+      ? productSpecUnavailable("The ProductSpec work context is not the selected coding session.")
+      : authority.service.proposePlan(request))
+})
+ipcMain.handle(ProductSpecPlanAcceptChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecPlanAcceptRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec plan acceptance is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.acceptPlan(request))
+})
+ipcMain.handle(ProductSpecPacketAdmitChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecPacketAdmitRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec packet admission is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.admitPacket(request))
+})
+ipcMain.handle(ProductSpecPacketBlockChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecPacketBlockRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec packet block transition is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.blockPacket(request))
+})
+ipcMain.handle(ProductSpecEvidenceRecordChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecEvidenceRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec evidence transition is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.recordEvidence(request))
+})
+ipcMain.handle(ProductSpecEvidenceVerifyChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecVerificationRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec verification transition is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.verifyEvidence(request))
+})
+ipcMain.handle(ProductSpecRunGetChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecRunGetRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec run request is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.run(request.runRef))
 })
 ipcMain.handle(DesktopCodingCatalogSnapshotChannel, () => codingCatalogSnapshot())
 ipcMain.handle(DesktopCodingCatalogChooseChannel, async () => {
