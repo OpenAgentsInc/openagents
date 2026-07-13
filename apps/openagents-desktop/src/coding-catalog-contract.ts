@@ -30,6 +30,10 @@ export const DesktopCodingCatalogRecoveryReason = Schema.Literals([
 
 export const DesktopCodingCatalogSessionSchema = Schema.Struct({
   sessionRef: CodingRef,
+  // Optional on decode so retained pre-admission local rows stay viewable.
+  // Every newly projected admitted workspace supplies both fields.
+  workContextRef: Schema.optionalKey(CodingRef),
+  grantRef: Schema.optionalKey(Schema.NullOr(CodingRef)),
   projectRef: CodingRef,
   repositoryRef: CodingRef,
   worktreeRef: CodingRef,
@@ -174,6 +178,8 @@ export const projectDesktopCodingCatalog = (
     )
     return {
       sessionRef: session.sessionRef,
+      workContextRef: session.workContextRef,
+      grantRef: session.grant.state === "granted" ? session.grant.grantRef : null,
       projectRef: session.projectRef,
       repositoryRef: session.repositoryRef,
       worktreeRef: session.worktreeRef,

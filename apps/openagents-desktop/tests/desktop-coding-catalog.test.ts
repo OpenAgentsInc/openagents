@@ -7,6 +7,7 @@ import { LocalIdentityRef } from "@openagentsinc/khala-sync"
 import { Effect } from "effect"
 
 import { openDesktopCodingCatalog } from "../src/desktop-coding-catalog.ts"
+import { openAdmittedDesktopWorkspace } from "../src/desktop-workspace-admission.ts"
 import {
   decodeDesktopCodingCatalogProjection,
   desktopWorkspaceForCodingFocus,
@@ -64,9 +65,9 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
       expect(selected.resolution?.state).toBe("ready")
       expect(selected.catalog).toMatchObject({
         projects: [{ displayName: "first-workspace" }],
-        repositories: [{ displayName: "first-workspace" }],
-        worktrees: [{ displayName: "first-workspace", availability: { state: "available" } }],
-        sessions: [{ state: "active" }],
+        repositories: [{ displayName: "first-workspace", grant: { state: "granted" } }],
+        worktrees: [{ displayName: "first-workspace", availability: { state: "available" }, grant: { state: "granted" } }],
+        sessions: [{ state: "active", grant: { state: "granted" } }],
       })
       const rows = JSON.stringify(selected.catalog)
       expect(rows).not.toContain(h.root)
@@ -90,24 +91,78 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
     let restartedStore: DesktopSyncStore | null = null
     let originalClosed = false
     try {
-      const first = h.open().selectWorkspace(h.firstWorkspace)
-      const sessionRef = first.catalog.sessions[0]!.sessionRef
+      const firstCatalog = h.open()
+      const first = firstCatalog.admitWorkspace(h.firstWorkspace)
+      const firstAdmission = first.admission
+      const sessionRef = first.snapshot.catalog.sessions[0]!.sessionRef
       Effect.runSync(h.store.close())
       originalClosed = true
       restartedStore = openStore(path.join(h.root, "sync.sqlite"))
-      const afterRestart = openDesktopCodingCatalog({
+      const afterRestartCatalog = openDesktopCodingCatalog({
         store: restartedStore,
         identityRef: LocalIdentityRef.make("local_catalogfixture"),
         bindingFile: path.join(h.root, "private", "coding-bindings.json"),
         randomId: () => "must-not-generate",
         now: () => "2026-07-11T12:01:00.000Z",
-      }).selectWorkspace(h.firstWorkspace)
-      expect(afterRestart.catalog.sessions).toHaveLength(1)
-      expect(afterRestart.catalog.sessions[0]?.sessionRef).toBe(sessionRef)
-      expect(afterRestart.navigation?.openSessionRefs).toEqual([sessionRef])
+      })
+      const afterRestart = afterRestartCatalog.admitWorkspace(h.firstWorkspace)
+      expect(afterRestart.snapshot.catalog.sessions).toHaveLength(1)
+      expect(afterRestart.snapshot.catalog.sessions[0]?.sessionRef).toBe(sessionRef)
+      expect(afterRestart.snapshot.navigation?.openSessionRefs).toEqual([sessionRef])
+      expect(afterRestart.admission).toEqual(firstAdmission)
+
+      const opened = openAdmittedDesktopWorkspace(afterRestartCatalog, h.firstWorkspace)
+      try {
+        expect(opened.workspace.grantRef).toBe(firstAdmission.grantRef)
+        expect(opened.admission.workContextRef).toBe(firstAdmission.workContextRef)
+        expect(opened.admission.sessionRef).toBe(firstAdmission.sessionRef)
+      } finally {
+        opened.workspace.dispose()
+      }
     } finally {
       if (!originalClosed) Effect.runSync(h.store.close())
       if (restartedStore !== null) Effect.runSync(restartedStore.close())
+      rmSync(h.root, { recursive: true, force: true })
+    }
+  })
+
+  test("one opaque admission binds repository, worktree, WorkContext, session, and picker grant", () => {
+    const h = fixture()
+    try {
+      const catalog = h.open()
+      const opened = openAdmittedDesktopWorkspace(catalog, h.firstWorkspace)
+      try {
+        const { admission } = opened
+        const resolved = opened.catalog.resolution
+        expect(resolved?.state).toBe("ready")
+        if (resolved?.state !== "ready") return
+        expect(resolved.repository.grant).toEqual({ state: "granted", grantRef: admission.grantRef })
+        expect(resolved.worktree.grant).toEqual({ state: "granted", grantRef: admission.grantRef })
+        expect(resolved.session.grant).toEqual({ state: "granted", grantRef: admission.grantRef })
+        expect(resolved.session.workContextRef).toBe(admission.workContextRef)
+        expect(resolved.session.sessionRef).toBe(admission.sessionRef)
+        expect(opened.workspace.grantRef).toBe(admission.grantRef)
+
+        const publicIdentity = JSON.stringify(admission)
+        expect(publicIdentity).not.toContain(h.root)
+        expect(publicIdentity).not.toContain("first-workspace")
+        expect(publicIdentity).not.toContain(String(process.pid))
+        expect(publicIdentity).not.toContain("localhost")
+        expect(publicIdentity).not.toContain("provider")
+        expect(publicIdentity).not.toContain("thread")
+
+        const projection = projectDesktopCodingCatalog(opened.catalog)
+        expect(projection.sessions[0]).toMatchObject({
+          sessionRef: admission.sessionRef,
+          workContextRef: admission.workContextRef,
+          grantRef: admission.grantRef,
+        })
+        expect(JSON.stringify(projection)).not.toContain(h.root)
+      } finally {
+        opened.workspace.dispose()
+      }
+    } finally {
+      Effect.runSync(h.store.close())
       rmSync(h.root, { recursive: true, force: true })
     }
   })
@@ -205,6 +260,8 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
       focus: { kind: "none" },
       sessions: [{
         sessionRef: "session.desktop.fixture",
+        workContextRef: "work-context.desktop.fixture",
+        grantRef: "workspace.grant.desktop.fixture",
         projectRef: "project.desktop.fixture",
         repositoryRef: "repository.desktop.fixture",
         worktreeRef: "worktree.desktop.fixture",

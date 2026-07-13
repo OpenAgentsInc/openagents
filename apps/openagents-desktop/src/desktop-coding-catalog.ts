@@ -60,9 +60,30 @@ export type DesktopCodingCatalogSnapshot = Readonly<{
   issues: ReturnType<typeof validateCodingSessionCatalog>
 }>
 
+/**
+ * One durable identity admission for a user-selected repository checkout.
+ *
+ * The raw root is deliberately absent. It remains only in the private binding
+ * file, while every product/runtime surface shares these opaque refs.
+ */
+export type DesktopWorkspaceAdmission = Readonly<{
+  grantRef: string
+  projectRef: string
+  repositoryRef: string
+  worktreeRef: string
+  workContextRef: string
+  sessionRef: string
+}>
+
+export type DesktopWorkspaceAdmissionResult = Readonly<{
+  snapshot: DesktopCodingCatalogSnapshot
+  admission: DesktopWorkspaceAdmission
+}>
+
 export type DesktopCodingCatalog = Readonly<{
   snapshot: () => DesktopCodingCatalogSnapshot
   selectWorkspace: (root: string) => DesktopCodingCatalogSnapshot
+  admitWorkspace: (root: string) => DesktopWorkspaceAdmissionResult
   openSession: (sessionRef: string) => DesktopCodingCatalogSnapshot
   archiveSession: (sessionRef: string) => DesktopCodingCatalogSnapshot
   recoverSession: (sessionRef: string, root: string) => DesktopCodingCatalogSnapshot
@@ -78,6 +99,26 @@ export type DesktopCodingCatalog = Readonly<{
     navigation: CodingNavigationEntity | null
   }>
 }>
+
+export const workspaceAdmissionFromSnapshot = (
+  snapshot: DesktopCodingCatalogSnapshot,
+): DesktopWorkspaceAdmission | null => {
+  const resolved = snapshot.resolution
+  if (resolved?.state !== "ready") return null
+  const grants = [resolved.repository.grant, resolved.worktree.grant, resolved.session.grant]
+  if (grants.some(grant => grant.state !== "granted")) return null
+  const grantRefs = grants.map(grant => grant.state === "granted" ? grant.grantRef : null)
+  const grantRef = grantRefs[0]
+  if (grantRef === null || grantRefs.some(value => value !== grantRef)) return null
+  return {
+    grantRef,
+    projectRef: resolved.project.projectRef,
+    repositoryRef: resolved.repository.repositoryRef,
+    worktreeRef: resolved.worktree.worktreeRef,
+    workContextRef: resolved.session.workContextRef,
+    sessionRef: resolved.session.sessionRef,
+  }
+}
 
 const safeRefPart = (value: string): string => {
   const cleaned = value.replace(/[^A-Za-z0-9._:-]/g, "")
@@ -233,7 +274,7 @@ export const openDesktopCodingCatalog = (input: Readonly<{
     return read()
   }
 
-  const selectWorkspace = (requestedRoot: string): DesktopCodingCatalogSnapshot => {
+  const selectWorkspaceSnapshot = (requestedRoot: string): DesktopCodingCatalogSnapshot => {
     const root = canonicalRoot(requestedRoot)
     const bindings = readBindings(input.bindingFile)
     const existingBinding = bindings.find(binding => binding.root === root)
@@ -242,11 +283,40 @@ export const openDesktopCodingCatalog = (input: Readonly<{
       const session = queryCodingSessions(current.catalog, { states: ["active", "idle"] })
         .find(value => value.worktreeRef === existingBinding.worktreeRef)
       if (session !== undefined) {
+        // Upgrade the retained pre-admission catalog shape exactly once. Only
+        // the former local `not_required` state is eligible: revoked,
+        // unavailable, or conflicting grants remain fail-closed.
+        const repository = current.catalog.repositories.find(value =>
+          value.repositoryRef === session.repositoryRef)
+        const worktree = current.catalog.worktrees.find(value =>
+          value.worktreeRef === session.worktreeRef)
+        if (
+          repository?.grant.state === "unavailable" && repository.grant.reason === "not_required" &&
+          worktree?.grant.state === "unavailable" && worktree.grant.reason === "not_required" &&
+          session.grant.state === "unavailable" && session.grant.reason === "not_required"
+        ) {
+          const grant = {
+            state: "granted" as const,
+            grantRef: `workspace.grant.desktop.${safeRefPart(session.sessionRef)}`,
+          }
+          const updatedAt = now()
+          const admittedRepository = decodeCodingRepositoryEntity({ ...repository, grant, updatedAt })
+          const admittedWorktree = decodeCodingWorktreeEntity({ ...worktree, grant, updatedAt })
+          const admittedSession = decodeCodingSessionEntity({ ...session, grant, updatedAt })
+          persist([
+            { entityType: CODING_REPOSITORY_ENTITY_TYPE, entityId: admittedRepository.repositoryRef, postImageJson: JSON.stringify(encodeCodingRepositoryEntity(admittedRepository)) },
+            { entityType: CODING_WORKTREE_ENTITY_TYPE, entityId: admittedWorktree.worktreeRef, postImageJson: JSON.stringify(encodeCodingWorktreeEntity(admittedWorktree)) },
+            { entityType: CODING_SESSION_ENTITY_TYPE, entityId: admittedSession.sessionRef, postImageJson: JSON.stringify(encodeCodingSessionEntity(admittedSession)) },
+          ])
+        }
+        const admitted = read()
+        const admittedSession = admitted.catalog.sessions.find(value =>
+          value.sessionRef === session.sessionRef) ?? session
         persistNavigation(
-          current.catalog,
-          session.sessionRef,
-          { kind: "conversation", conversationRef: session.conversationRef },
-          [session.sessionRef, ...(current.navigation?.openSessionRefs ?? [])],
+          admitted.catalog,
+          admittedSession.sessionRef,
+          { kind: "conversation", conversationRef: admittedSession.conversationRef },
+          [admittedSession.sessionRef, ...(admitted.navigation?.openSessionRefs ?? [])],
         )
         return snapshot()
       }
@@ -259,10 +329,13 @@ export const openDesktopCodingCatalog = (input: Readonly<{
     const repositoryRef = `repository.desktop.${id}`
     const worktreeRef = `worktree.desktop.${id}`
     const sessionRef = `session.desktop.${id}`
+    const workContextRef = `work-context.desktop.${id}`
+    const grantRef = `workspace.grant.desktop.${id}`
+    const grant = { state: "granted" as const, grantRef }
     const project = decodeCodingProjectEntity({ schema, projectRef, ownerScopeRef: authorityRef, displayName, aliasRefs: [], state: "active", createdAt, updatedAt: createdAt, archivedAt: null })
-    const repository = decodeCodingRepositoryEntity({ schema, repositoryRef, projectRef, ownerScopeRef: authorityRef, displayName, aliasRefs: [], pinnedBaseRef: `base.desktop.${id}`, availability: { state: "available" }, grant: { state: "unavailable", reason: "not_required" }, createdAt, updatedAt: createdAt })
-    const worktree = decodeCodingWorktreeEntity({ schema, worktreeRef, repositoryRef, projectRef, ownerScopeRef: authorityRef, displayName, aliasRefs: [], baseRef: repository.pinnedBaseRef, availability: { state: "available" }, grant: { state: "unavailable", reason: "not_required" }, createdAt, updatedAt: createdAt })
-    const session = decodeCodingSessionEntity({ schema, sessionRef, ownerScopeRef: authorityRef, projectRef, repositoryRef, worktreeRef, workContextRef: `work-context.desktop.${id}`, threadRef: `thread.desktop.${id}`, conversationRef: `conversation.desktop.${id}`, runRef: null, fleetRef: null, currentAttachmentRef: null, currentCheckpointRef: null, agentTopologyRef: null, canonicalEventCursor: 0, activityCursors: [], provider: { state: "unavailable", reason: "not_selected" }, runtime: { state: "unavailable", reason: "not_attached" }, grant: { state: "unavailable", reason: "not_required" }, state: "active", createdAt, updatedAt: createdAt, lastActiveAt: createdAt, archivedAt: null })
+    const repository = decodeCodingRepositoryEntity({ schema, repositoryRef, projectRef, ownerScopeRef: authorityRef, displayName, aliasRefs: [], pinnedBaseRef: `base.desktop.${id}`, availability: { state: "available" }, grant, createdAt, updatedAt: createdAt })
+    const worktree = decodeCodingWorktreeEntity({ schema, worktreeRef, repositoryRef, projectRef, ownerScopeRef: authorityRef, displayName, aliasRefs: [], baseRef: repository.pinnedBaseRef, availability: { state: "available" }, grant, createdAt, updatedAt: createdAt })
+    const session = decodeCodingSessionEntity({ schema, sessionRef, ownerScopeRef: authorityRef, projectRef, repositoryRef, worktreeRef, workContextRef, threadRef: `thread.desktop.${id}`, conversationRef: `conversation.desktop.${id}`, runRef: null, fleetRef: null, currentAttachmentRef: null, currentCheckpointRef: null, agentTopologyRef: null, canonicalEventCursor: 0, activityCursors: [], provider: { state: "unavailable", reason: "not_selected" }, runtime: { state: "unavailable", reason: "not_attached" }, grant, state: "active", createdAt, updatedAt: createdAt, lastActiveAt: createdAt, archivedAt: null })
     persist([
       { entityType: CODING_PROJECT_ENTITY_TYPE, entityId: projectRef, postImageJson: JSON.stringify(encodeCodingProjectEntity(project)) },
       { entityType: CODING_REPOSITORY_ENTITY_TYPE, entityId: repositoryRef, postImageJson: JSON.stringify(encodeCodingRepositoryEntity(repository)) },
@@ -282,6 +355,16 @@ export const openDesktopCodingCatalog = (input: Readonly<{
     )
     return snapshot()
   }
+
+  const admitWorkspace = (root: string): DesktopWorkspaceAdmissionResult => {
+    const admitted = selectWorkspaceSnapshot(root)
+    const admission = workspaceAdmissionFromSnapshot(admitted)
+    if (admission === null) throw new Error("selected workspace identity admission is inconsistent")
+    return { snapshot: admitted, admission }
+  }
+
+  const selectWorkspace = (root: string): DesktopCodingCatalogSnapshot =>
+    admitWorkspace(root).snapshot
 
   const openSession = (sessionRef: string): DesktopCodingCatalogSnapshot => {
     const current = snapshot()
@@ -403,6 +486,7 @@ export const openDesktopCodingCatalog = (input: Readonly<{
   return {
     snapshot,
     selectWorkspace,
+    admitWorkspace,
     openSession,
     archiveSession,
     recoverSession,
