@@ -34,6 +34,49 @@ bun packages/assurance-spec/src/cli.ts coverage \
 `propose` succeeds when it creates a structurally valid proposal even if every
 obligation still needs design. `coverage` reports adequacy separately.
 
+### Agent tooling (AT-1)
+
+The CLI also ships the deterministic agent surface designed in
+[`../../docs/assurance/AGENT_TOOLING.md`](../../docs/assurance/AGENT_TOOLING.md):
+
+```bash
+# Stateless dual-digest sessions (the full pin is returned to the caller)
+bun packages/assurance-spec/src/cli.ts session begin <file.assurance-spec.md> [--root <dir>] [--json]
+bun packages/assurance-spec/src/cli.ts session check <file.assurance-spec.md> \
+  (--against <session.json> | --spec-digest <hex> --subject-digest <hex>) [--root <dir>] [--json]
+
+# Read-only reports (never a verdict, never a blended score)
+bun packages/assurance-spec/src/cli.ts obligations <file> [--criterion <id>] [--status ready|needs_design] [--technique <t>] [--json]
+bun packages/assurance-spec/src/cli.ts obligation <file> <obligation-id> [--json]
+bun packages/assurance-spec/src/cli.ts ledgers <file> [--json]
+bun packages/assurance-spec/src/cli.ts checklist <file> [--criterion <id>] [--json]
+bun packages/assurance-spec/src/cli.ts claim <file> [--claim "<text>"] [--json]
+bun packages/assurance-spec/src/cli.ts inventory <repo-dir> [--out <file.json>] [--json]
+
+# Read-only stdio MCP server (JSON-RPC 2.0, protocol 2024-11-05), confined to --root
+bun packages/assurance-spec/src/cli.ts mcp --root .
+```
+
+Exit codes are the API: **0** success, **1** operation failure, **2** usage
+error, **3** stale session. Every command takes `--json`.
+
+The MCP server exposes the §3.1 read-only tool table
+(`begin_assurance_session`, `check_assurance_session`, `list_assurance_specs`,
+`get_assurance_spec`, `validate_assurance_spec`, `get_subject_binding`,
+`get_obligations`, `get_obligation`, `get_seams`, `get_environments`,
+`get_gates`, `get_coverage_ledgers`, `get_evidence_checklist`,
+`check_completion_claim`, `get_typed_gaps`, `get_repository_inventory`) over a
+hand-rolled zero-dependency stdio JSON-RPC loop. There are deliberately no
+mutating tools: no admit, approve, verify, plan, design, or propose over MCP.
+Until receipts exist, `observation` is `not_run` everywhere, the reachable
+frontier is `not_computed`, and missing Environment Profiles are typed gaps
+(`environment_profile_missing`) — the tools say exactly that instead of
+rounding up. Sessions are stateless: `begin` returns the full dual-digest pin
+(no `intent_digest` yet — the field is declared, never faked) and `check`
+recomputes both digests and classifies `unchanged` / `assurance_spec_changed`
+/ `subject_changed` / `both_changed` / `invalid_current` with a typed
+`recommended_action`.
+
 Without `--repo`, proposal generation remains valid and emits a typed
 `repository_not_supplied` diagnostic. With `--repo`, inventory reads the
 committed tree and tracked dirty state only. It does not read ignored or
