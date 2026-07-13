@@ -390,7 +390,7 @@ import {
 const here = import.meta.dirname
 const builtinSkillsRoot = app.isPackaged
   ? path.join(process.resourcesPath, "builtin-skills")
-  : path.join(here, "..", "builtin-skills")
+  : path.join(here, "builtin-skills")
 const rendererRoot = app.isPackaged
   ? path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer")
   : path.join(here, "renderer")

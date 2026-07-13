@@ -64,6 +64,9 @@ describe("openagents-desktop build", () => {
     // which drops the space in `from "electron"`) still proves externalization.
     const main = readFileSync(path.join(dist, "main.js"), "utf8")
     expect(main).toMatch(/from\s*"electron"/)
+    const mainSource = readFileSync(path.join(appRoot, "src", "main.ts"), "utf8")
+    expect(mainSource).toContain(': path.join(here, "builtin-skills")')
+    expect(mainSource).not.toContain(': path.join(here, "..", "builtin-skills")')
 
     const renderer = readFileSync(path.join(dist, "renderer/boot.js"), "utf8")
     expect(renderer).not.toMatch(/require\(\s*"electron"\s*\)/)
