@@ -201,15 +201,18 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
 
       await requireClick("workspace-new-chat")
       const codexReady = await poll(`(() => {
-        const chip = document.querySelector('[data-en-key="shell-harness-codex"]')
+        const select = document.querySelector('[data-en-key="shell-harness-select"]')
+        const option = select instanceof HTMLSelectElement
+          ? Array.from(select.options).find(value => value.value === 'codex')
+          : null
         return {
-          present: chip !== null,
-          ready: chip !== null && chip.disabled !== true,
-          reason: chip?.getAttribute('aria-label')?.slice(0, 160) ?? null,
+          present: select !== null && option !== null,
+          selected: select instanceof HTMLSelectElement && select.value === 'codex',
+          ready: option !== null && option.disabled !== true,
+          reason: document.querySelector('[data-en-key="shell-note"]')?.getAttribute('aria-label')?.slice(0, 160) ?? null,
         }
-      })()`, value => value["ready"] === true, 240_000)
+      })()`, value => value["ready"] === true && value["selected"] === true, 240_000)
       if (!codexReady.ok) throw new Error(`named Codex capacity unavailable: ${String(codexReady.value["reason"] ?? "unknown")}`)
-      await requireClick("shell-harness-codex")
       record("codex-ready", true, "named isolated Codex capacity selected after host preflight")
 
       await requireClick("workspace-product-spec")
