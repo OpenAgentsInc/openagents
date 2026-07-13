@@ -28,6 +28,21 @@ export type BundledCodexResolutionOptions = Readonly<{
   exists?: (value: string) => boolean
 }>
 
+export const executableOutsideAsar = (
+  candidate: string,
+  exists: (value: string) => boolean = existsSync,
+): string | null => {
+  const asarSegment = `${path.sep}app.asar${path.sep}`
+  if (candidate.includes(asarSegment)) {
+    const unpacked = candidate.replace(
+      asarSegment,
+      `${path.sep}app.asar.unpacked${path.sep}`,
+    )
+    return exists(unpacked) ? unpacked : null
+  }
+  return exists(candidate) ? candidate : null
+}
+
 /**
  * Resolves only the optional native package owned by the pinned Codex
  * dependency. Forge moves native packages out of `app.asar`; package
@@ -45,7 +60,8 @@ export const resolveBundledCodexExecutable = (
     const codexRequire = createRequire(codexEntrypoint)
     const packageJson = codexRequire.resolve(`${target.packageName}/package.json`)
     const executable = path.join(path.dirname(packageJson), "vendor", target.triple, "bin", target.executable)
-    if (exists(executable)) return executable
+    const executablePath = executableOutsideAsar(executable, exists)
+    if (executablePath !== null) return executablePath
   } catch { /* packaged fallback below */ }
   const resourcesPath = options.resourcesPath ?? (
     process as NodeJS.Process & { resourcesPath?: string }

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { PassThrough } from "node:stream"
 
 import {
+  executableOutsideAsar,
   inspectProviderRuntimeCompatibility,
   readInstalledClaudeAgentSdkVersion,
   resolveBundledCodexExecutable,
@@ -43,6 +44,15 @@ describe("provider runtime host", () => {
       "/Applications/OpenAgents.app/Contents/Resources/app.asar.unpacked/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
     )
     expect(resolved).not.toContain("/.codex")
+  })
+
+  test("an Electron virtual ASAR executable is translated before spawn", () => {
+    const virtual = "/Applications/OpenAgents.app/Contents/Resources/app.asar/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
+    const unpacked = virtual.replace("/app.asar/", "/app.asar.unpacked/")
+    expect(executableOutsideAsar(virtual, value => value === unpacked)).toBe(unpacked)
+    expect(executableOutsideAsar(virtual, () => false)).toBeNull()
+    expect(executableOutsideAsar("/checkout/node_modules/codex", value => value.startsWith("/checkout")))
+      .toBe("/checkout/node_modules/codex")
   })
 
   test("concurrent observations return redacted compatible facts", async () => {
