@@ -202,7 +202,8 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
     await requireClick("product-spec-refresh")
     const evidence = await poll(productSpecProbe, value =>
       (value["packetStates"] as Array<Rec> | undefined)?.some(row =>
-        row["key"] === `product-spec-packet-state-${packetRef}` && row["value"] === "evidence_present") === true,
+        row["key"] === `product-spec-packet-state-${packetRef}` &&
+        String(row["value"] ?? "").trim().toLowerCase().replace(/\s+/g, "_") === "evidence_present") === true,
     30_000)
     if (!evidence.ok) throw new Error(`${packet} packet did not retain agent-produced evidence`)
     await requireField("product-spec-verifier-ref", "verifier.mvp-proof.host")
