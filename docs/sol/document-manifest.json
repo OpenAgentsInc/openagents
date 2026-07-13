@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "c85a60091c9c593eb758c1aa61fd665a803883b77bf7b6e24a7c77f766c86a19",
+  "sourceTreeSha256": "1c3299cead03f36ed9287626a9957fc92d64930a63412e3d1f12f6b8d7108df6",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1120,9 +1120,10 @@
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
-        "docs/sol/MASTER_ROADMAP.md"
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/issues/README.md"
       ],
-      "inboundSourceCount": 1,
+      "inboundSourceCount": 2,
       "issueLinks": [
         8636
       ]
@@ -1279,7 +1280,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "e0775007c5eae617d125cc754e356fe57501c4c7fa0d9357131c86dddb180f00",
+      "sha256": "9cc2e93ccc58ae4bcc96400a7f009a9ed26d07074268f67b53d212323bbece62",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-13",
       "reviewedAt": "2026-07-12",
@@ -1461,7 +1462,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "d7ccf0d2fc1b844c34b65da61f56462310d2f60ed20adb8a32d3c7e297e6e3ce",
+      "sha256": "36f20bd77374c0137502b101b1fa182b1ac799b519c12703f372001c1a5f479d",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2142,15 +2143,15 @@
     },
     {
       "path": "docs/sol/issues/fc-4-hybrid-cloud.md",
-      "class": "contract",
-      "owner": "Sol issue #8636",
-      "disposition": "retain-live-source",
+      "class": "receipt",
+      "owner": "Sol issue source",
+      "disposition": "retain-evidence",
       "dispatch": false,
       "sha256": "e846acd6fc5c95e87b667e00d3be364c82e8b4fa52bafe62d6baf579ae8f0add",
       "status": "active P0 target/workroom contract; advanced placement follows R7",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
-      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
         "docs/sol/issues/README.md"
       ],

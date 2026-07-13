@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T08:33:19.000Z",
+  "generatedAt": "2026-07-13T12:14:00.151Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -46,21 +46,6 @@
       "state": "OPEN",
       "title": "P0 TRACK: OpenAgents mobile Sync, remote coding, and fleet control",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8597"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "area:infra",
-        "codex",
-        "cloud-boundary",
-        "area:pylon",
-        "claude",
-        "roadmap:sol"
-      ],
-      "number": 8636,
-      "state": "OPEN",
-      "title": "P0 TASK: explicit owner-local and managed-remote work routing",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8636"
     },
     {
       "labels": [

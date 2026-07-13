@@ -492,7 +492,6 @@ the currently unclaimed worker lease.
 | [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566) | Sole R0–R7 program parent |
 | [#8574](https://github.com/OpenAgentsInc/openagents/issues/8574) | Desktop D0–D6/R5 track |
 | [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597) | Mobile R0–R7/R6 track |
-| [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | Closed: one accepted claim registry across owner-local/managed routing; [receipt](./2026-07-13-fc4-hybrid-client-acceptance-receipt.md) |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
 | [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 owner confirmation of real-microphone and UI-stability fixes |
 | [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | PORT-03 first local↔managed graph-wide move and failback |

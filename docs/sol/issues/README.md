@@ -24,7 +24,6 @@ contain historical status; refresh the live issue/comments before dispatch.
 | [`app-program.md`](./app-program.md) | #8566 | Sole R0–R7 program parent |
 | [`app-desktop.md`](./app-desktop.md) | #8574 | Desktop D0–D6/R5 track |
 | [`app-mobile.md`](./app-mobile.md) | #8597 | Mobile R0–R7/R6 track |
-| [`fc-4-hybrid-cloud.md`](./fc-4-hybrid-cloud.md) | #8636 | Local/managed routing through one claim registry |
 
 ## Live issues represented by receipts
 
@@ -60,6 +59,9 @@ They are evidence, not ready leaves.
 - [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) — closed #8676
 - [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) — closed #8677
 - [`fc-cloud-codex.md`](./fc-cloud-codex.md) — closed #8547 first accepted brokered Agent Computer/workroom
+- [`fc-4-hybrid-cloud.md`](./fc-4-hybrid-cloud.md) and the
+  [`hybrid client acceptance receipt`](../2026-07-13-fc4-hybrid-client-acceptance-receipt.md)
+  — closed #8636 owner-local/managed routing through one claim registry
 - [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) — closed AUDIO-0…AUDIO-7 #8733–#8740 implementation work; the reopened final acceptance leaf is classified above
 
 - [`confirmed-agent-timeline.md`](./confirmed-agent-timeline.md) — #8672
