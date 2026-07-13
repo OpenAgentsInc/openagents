@@ -135,4 +135,33 @@ export const makeAuthoritativePostgresProviderGrantRepository = (
     }
     return toGrantRecord(row as ProviderAccountAuthGrantRow)
   },
+  revokeGrant: async (grant, event) => {
+    const rows = await query(
+      `WITH revoked AS (
+         UPDATE provider_account_auth_grants
+            SET status = 'revoked', revoked_at = $1, updated_at = $2
+          WHERE id = $3 AND user_id = $4 AND status = 'issued'
+          RETURNING *
+       ), audited AS (
+         INSERT INTO provider_account_events
+           (id, provider_account_id, auth_grant_id, user_id, team_id, thread_id,
+            workroom_id, runner_session_id, kind, summary, source_refs_json,
+            evidence_refs_json, target_ref, metadata_json, actor_id, created_at)
+         SELECT $5,$6,$3,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+           FROM revoked RETURNING id
+       ) SELECT revoked.* FROM revoked JOIN audited ON TRUE`,
+      [
+        grant.revokedAt, grant.updatedAt, grant.id, grant.userId,
+        event.id, event.providerAccountId, event.userId, event.teamId,
+        event.threadId, event.workroomId, event.runnerSessionId, event.kind,
+        event.summary, event.sourceRefsJson, event.evidenceRefsJson,
+        event.targetRef, event.metadataJson, event.actorId, event.createdAt,
+      ],
+    )
+    const row = rows[0]
+    if (row === undefined) {
+      throw new ProviderGrantNotIssued({ message: 'Grant is not issued.' })
+    }
+    return toGrantRecord(row as ProviderAccountAuthGrantRow)
+  },
 })

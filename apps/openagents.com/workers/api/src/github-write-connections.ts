@@ -334,6 +334,9 @@ export type GitHubWriteRepository = Readonly<{
   markGrantUsed: (
     grant: GitHubWriteAuthGrantRecord,
   ) => Promise<GitHubWriteAuthGrantRecord>
+  revokeGrant?: (
+    grant: GitHubWriteAuthGrantRecord,
+  ) => Promise<GitHubWriteAuthGrantRecord>
 }>
 
 type ConnectionRow = Readonly<{
@@ -521,6 +524,7 @@ export const gitHubWriteConnectionMetadataJson = (
     scopes: ReadonlyArray<string>
     source: string
     status: string
+    reissuedFromGrantRef?: string | undefined
   }>,
 ): string =>
   JSON.stringify({
@@ -528,6 +532,9 @@ export const gitHubWriteConnectionMetadataJson = (
     scopes: [...input.scopes],
     source: clampText(input.source, 120),
     status: clampText(input.status, 80),
+    ...(input.reissuedFromGrantRef === undefined
+      ? {}
+      : { reissuedFromGrantRef: clampText(input.reissuedFromGrantRef, 220) }),
   })
 
 export const toPublicGitHubWriteConnection = (
@@ -909,6 +916,22 @@ export const makeD1GitHubWriteRepository = (
 
     return toGrantRecord(row)
   },
+  revokeGrant: async grant => {
+    const result = await db
+      .prepare(
+        `UPDATE github_write_auth_grants
+         SET status = 'revoked', revoked_at = ?, updated_at = ?
+         WHERE id = ? AND user_id = ? AND status = 'issued'`,
+      )
+      .bind(grant.revokedAt, grant.updatedAt, grant.id, grant.userId)
+      .run()
+    if (result.meta.changes !== 1) {
+      throw new GitHubWriteGrantNotIssued({
+        message: 'GitHub write grant is not issued.',
+      })
+    }
+    return { ...grant, status: 'revoked' }
+  },
 })
 
 export const startGitHubWriteConnectionAttempt = async (
@@ -1012,6 +1035,20 @@ export const listGitHubWriteConnectionsForUser = async (
   return makeGitHubWriteConnectionBundle(connections, attempts, now)
 }
 
+const publicGitHubWriteGrant = (
+  saved: GitHubWriteAuthGrantRecord,
+): PublicGitHubWriteGrant => ({
+  id: saved.id,
+  connectionRef: saved.connectionRef,
+  grantRef: saved.grantRef,
+  status: saved.status,
+  requestedAction: textOrUndefined(saved.requestedAction),
+  runnerSessionId: textOrUndefined(saved.runnerSessionId),
+  expiresAt: saved.expiresAt,
+  createdAt: saved.createdAt,
+  updatedAt: saved.updatedAt,
+})
+
 export const issueGitHubWriteGrant = async (
   repository: GitHubWriteRepository,
   input: Readonly<{
@@ -1022,8 +1059,18 @@ export const issueGitHubWriteGrant = async (
   options: Readonly<{
     makeId?: IdFactory
     now?: () => Date
+    grantRef?: string
+    reissuedFromGrantRef?: string
   }> = {},
 ): Promise<PublicGitHubWriteGrant | undefined> => {
+  if (
+    options.grantRef !== undefined &&
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,219}$/.test(options.grantRef)
+  ) {
+    throw new GitHubWritePermissionFailure({
+      message: 'GitHub write grant ref is not public-safe.',
+    })
+  }
   const connection = await repository.findUsableConnectionForUser(input.userId)
 
   if (connection === undefined || connection.secretRef === null) {
@@ -1047,7 +1094,9 @@ export const issueGitHubWriteGrant = async (
     runnerSessionId: safeText(input.runnerSessionId, 180) ?? null,
     connectionRef: connection.connectionRef,
     secretRef: connection.secretRef,
-    grantRef: `github-write-grant_${makeId('grant_ref')}`,
+    grantRef:
+      safeText(options.grantRef, 220) ??
+      `github-write-grant_${makeId('grant_ref')}`,
     status: 'issued',
     requestedAction: safeText(input.requestedAction, 160) ?? null,
     metadataJson: gitHubWriteConnectionMetadataJson({
@@ -1055,6 +1104,9 @@ export const issueGitHubWriteGrant = async (
       scopes: connection.scopes,
       source: 'browser_grant_issue',
       status: 'issued',
+      ...(options.reissuedFromGrantRef === undefined
+        ? {}
+        : { reissuedFromGrantRef: options.reissuedFromGrantRef }),
     }),
     createdAt: now,
     updatedAt: now,
@@ -1065,17 +1117,112 @@ export const issueGitHubWriteGrant = async (
   }
   const saved = await repository.createGrant(grant)
 
-  return {
-    id: saved.id,
-    connectionRef: saved.connectionRef,
-    grantRef: saved.grantRef,
-    status: saved.status,
-    requestedAction: textOrUndefined(saved.requestedAction),
-    runnerSessionId: textOrUndefined(saved.runnerSessionId),
-    expiresAt: saved.expiresAt,
-    createdAt: saved.createdAt,
-    updatedAt: saved.updatedAt,
+  return publicGitHubWriteGrant(saved)
+}
+
+export const revokeGitHubWriteGrant = async (
+  repository: GitHubWriteRepository,
+  input: Readonly<{ userId: string; grantRef: string }>,
+  options: Readonly<{ now?: () => Date }> = {},
+): Promise<PublicGitHubWriteGrant | undefined> => {
+  const grant = await repository.findGrantByRef(clampText(input.grantRef, 220))
+  if (grant === undefined || grant.userId !== input.userId) return undefined
+  if (grant.status === 'revoked') return publicGitHubWriteGrant(grant)
+  if (grant.status !== 'issued' || repository.revokeGrant === undefined) {
+    throw new GitHubWriteGrantNotIssued({
+      message: 'GitHub write grant is not issued.',
+    })
   }
+  const now = (options.now ?? systemGitHubWriteRuntime.now)().toISOString()
+  return publicGitHubWriteGrant(
+    await repository.revokeGrant({
+      ...grant,
+      status: 'revoked',
+      revokedAt: now,
+      updatedAt: now,
+    }),
+  )
+}
+
+export const reissueGitHubWriteGrant = async (
+  repository: GitHubWriteRepository,
+  input: Readonly<{
+    userId: string
+    sourceGrantRef: string
+    destinationGrantRef: string
+    requestedAction?: string | undefined
+    runnerSessionId?: string | undefined
+  }>,
+  options: Readonly<{ makeId?: IdFactory; now?: () => Date }> = {},
+): Promise<PublicGitHubWriteGrant | undefined> => {
+  const sourceRef = clampText(input.sourceGrantRef, 220)
+  const destinationRef = clampText(input.destinationGrantRef, 220)
+  if (
+    sourceRef.length === 0 ||
+    destinationRef.length === 0 ||
+    sourceRef === destinationRef
+  ) {
+    throw new GitHubWritePermissionFailure({
+      message: 'Destination grant scope is invalid.',
+    })
+  }
+  if (
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,219}$/.test(sourceRef) ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,219}$/.test(destinationRef)
+  ) {
+    throw new GitHubWritePermissionFailure({
+      message: 'GitHub write grant refs are not public-safe.',
+    })
+  }
+  const source = await repository.findGrantByRef(sourceRef)
+  if (source === undefined || source.userId !== input.userId) return undefined
+  if (source.status !== 'revoked') {
+    throw new GitHubWriteGrantNotIssued({
+      message: 'Source GitHub write grant is not revoked.',
+    })
+  }
+  const existing = await repository.findGrantByRef(destinationRef)
+  const runnerSessionId = safeText(input.runnerSessionId, 180) ?? null
+  const requestedAction = safeText(input.requestedAction, 160) ?? null
+  if (existing !== undefined) {
+    if (
+      existing.userId !== input.userId ||
+      existing.connectionRef !== source.connectionRef ||
+      existing.runnerSessionId !== runnerSessionId ||
+      existing.requestedAction !== requestedAction ||
+      !existing.metadataJson?.includes(
+        `\"reissuedFromGrantRef\":\"${sourceRef}\"`,
+      )
+    ) {
+      throw new GitHubWritePermissionFailure({
+        message: 'Destination grant replay scope conflicts.',
+      })
+    }
+    return publicGitHubWriteGrant(existing)
+  }
+  const connection = await repository.findUsableConnectionForUser(input.userId)
+  if (connection?.connectionRef !== source.connectionRef) {
+    throw new GitHubWriteConnectionNotUsable({
+      message: 'GitHub write connection is not usable.',
+    })
+  }
+  return issueGitHubWriteGrant(
+    repository,
+    {
+      userId: input.userId,
+      ...(input.requestedAction === undefined
+        ? {}
+        : { requestedAction: input.requestedAction }),
+      ...(input.runnerSessionId === undefined
+        ? {}
+        : { runnerSessionId: input.runnerSessionId }),
+    },
+    {
+      ...options,
+      grantRef: destinationRef,
+      reissuedFromGrantRef: sourceRef,
+    },
+  )
 }
 
 export const resolveGitHubWriteGrant = async (

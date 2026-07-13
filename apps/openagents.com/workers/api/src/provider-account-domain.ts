@@ -480,6 +480,23 @@ export type ResolveProviderAccountGrantInput = Readonly<{
   runnerSessionId?: string | undefined
 }>
 
+export type RevokeProviderAccountGrantInput = Readonly<{
+  actorId: string
+  userId: string
+  grantRef: string
+}>
+
+export type ReissueProviderAccountGrantInput = Readonly<{
+  actorId: string
+  userId: string
+  sourceGrantRef: string
+  destinationGrantRef: string
+  requestedAction?: string | undefined
+  threadId?: string | undefined
+  workroomId?: string | undefined
+  runnerSessionId?: string | undefined
+}>
+
 export type ProviderAccountRepository = Readonly<{
   findAccountByRef: (
     userId: string,
@@ -543,6 +560,10 @@ export type ProviderAccountRepository = Readonly<{
     grantRef: string,
   ) => Promise<ProviderAccountAuthGrantRecord | undefined>
   markGrantUsed: (
+    grant: ProviderAccountAuthGrantRecord,
+    event: ProviderAccountEventRecord,
+  ) => Promise<ProviderAccountAuthGrantRecord>
+  revokeGrant?: (
     grant: ProviderAccountAuthGrantRecord,
     event: ProviderAccountEventRecord,
   ) => Promise<ProviderAccountAuthGrantRecord>

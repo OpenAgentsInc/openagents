@@ -27,6 +27,8 @@ import {
   type RecordConnectedInput,
   type RecordFailedInput,
   type RecordHealthInput,
+  type ReissueProviderAccountGrantInput,
+  type RevokeProviderAccountGrantInput,
   type ResolveProviderAccountGrantInput,
   type ResolvedProviderAccountGrant,
   type StartCodexDeviceLogin,
@@ -276,6 +278,8 @@ export const refreshChatGptCodexDeviceLoginForUser = async (
   options: Readonly<{
     now?: () => Date
     makeId?: IdFactory
+    grantRef?: string
+    reissuedFromGrantRef?: string
   }> = {},
 ): Promise<
   | Readonly<{
@@ -1125,7 +1129,20 @@ export const issueProviderAccountGrant = async (
     account.provider === CHATGPT_CODEX_PROVIDER
       ? 'codex-auth-grant'
       : 'provider-auth-grant'
-  const grantRef = `${grantRefPrefix}_${makeId('grant_ref')}`
+  const suppliedGrantRef = sanitizeOrRejectSecretText(
+    options.grantRef,
+    220,
+    'grantRef',
+  )
+  if (
+    suppliedGrantRef !== undefined &&
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,219}$/.test(suppliedGrantRef)
+  ) {
+    throw new ProviderGrantAccountMismatch({
+      message: 'Grant ref is not a public-safe ref.',
+    })
+  }
+  const grantRef = suppliedGrantRef ?? `${grantRefPrefix}_${makeId('grant_ref')}`
   const grant: ProviderAccountAuthGrantRecord = {
     id: makeId('provider_grant'),
     providerAccountId: account.id,
@@ -1144,6 +1161,9 @@ export const issueProviderAccountGrant = async (
       providerAccountRef: account.providerAccountRef,
       source: 'browser_grant_issue',
       status: 'issued',
+      ...(options.reissuedFromGrantRef === undefined
+        ? {}
+        : { reissuedFromGrantRef: options.reissuedFromGrantRef }),
     }),
     createdAt: now,
     updatedAt: now,
@@ -1174,6 +1194,96 @@ export const issueProviderAccountGrant = async (
   const saved = await repository.createAuthGrant(grant, event)
 
   return toPublicProviderAccountGrant(saved, nowDate)
+}
+
+export const revokeProviderAccountGrant = async (
+  repository: ProviderAccountRepository,
+  input: RevokeProviderAccountGrantInput,
+  options: Readonly<{ now?: () => Date; makeId?: IdFactory }> = {},
+): Promise<PublicProviderAccountGrant | undefined> => {
+  const grantRef = sanitizeOrRejectSecretText(input.grantRef, 220, 'grantRef')
+  if (grantRef === undefined) return undefined
+  const grant = await repository.findGrantByRef(grantRef)
+  if (grant === undefined || grant.userId !== input.userId) return undefined
+  const runtime = { ...systemProviderAccountRuntime, ...options }
+  const nowDate = runtime.now()
+  if (grant.status === 'revoked') return toPublicProviderAccountGrant(grant, nowDate)
+  if (grant.status !== 'issued' || repository.revokeGrant === undefined) {
+    throw new ProviderGrantNotIssued({ message: 'Grant is not issued.' })
+  }
+  const now = nowDate.toISOString()
+  const revoked = { ...grant, status: 'revoked' as const, revokedAt: now, updatedAt: now }
+  const event = makeEvent({
+    id: runtime.makeId('provider_event'),
+    kind: 'auth_grant_revoked',
+    providerAccountId: grant.providerAccountId,
+    userId: grant.userId,
+    teamId: grant.teamId,
+    threadId: grant.threadId,
+    workroomId: grant.workroomId,
+    runnerSessionId: grant.runnerSessionId,
+    summary: 'Exact session-scoped provider grant revoked for portable movement.',
+    targetRef: grant.grantRef,
+    metadata: { source: 'portable_session_move', status: 'revoked' },
+    actorId: input.actorId,
+    sourceRefs: [`providerAccount:${grant.providerAccountRef}`],
+    evidenceRefs: [`providerAccountAuthGrant:${grant.grantRef}`],
+    createdAt: now,
+  })
+  return toPublicProviderAccountGrant(
+    await repository.revokeGrant(revoked, event),
+    nowDate,
+  )
+}
+
+export const reissueProviderAccountGrant = async (
+  repository: ProviderAccountRepository,
+  input: ReissueProviderAccountGrantInput,
+  options: Readonly<{ now?: () => Date; makeId?: IdFactory }> = {},
+): Promise<PublicProviderAccountGrant | undefined> => {
+  const sourceRef = sanitizeOrRejectSecretText(input.sourceGrantRef, 220, 'sourceGrantRef')
+  const destinationRef = sanitizeOrRejectSecretText(input.destinationGrantRef, 220, 'destinationGrantRef')
+  if (sourceRef === undefined || destinationRef === undefined || sourceRef === destinationRef) {
+    throw new ProviderGrantAccountMismatch({ message: 'Destination grant scope is invalid.' })
+  }
+  if (
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,219}$/.test(sourceRef) ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,219}$/.test(destinationRef)
+  ) {
+    throw new ProviderGrantAccountMismatch({ message: 'Grant refs are not public-safe.' })
+  }
+  const source = await repository.findGrantByRef(sourceRef)
+  if (source === undefined || source.userId !== input.userId) return undefined
+  if (source.status !== 'revoked') {
+    throw new ProviderGrantNotIssued({ message: 'Source grant is not revoked.' })
+  }
+  const existing = await repository.findGrantByRef(destinationRef)
+  if (existing !== undefined) {
+    const runnerSessionId = sanitizeOrRejectSecretText(input.runnerSessionId, 180, 'runnerSessionId') ?? null
+    const requestedAction = sanitizeOrRejectSecretText(input.requestedAction, 160, 'requestedAction') ?? null
+    if (
+      existing.userId !== input.userId ||
+      existing.providerAccountRef !== source.providerAccountRef ||
+      existing.runnerSessionId !== runnerSessionId ||
+      existing.requestedAction !== requestedAction
+      || !existing.metadataJson?.includes(`\"reissuedFromGrantRef\":\"${sourceRef}\"`)
+    ) {
+      throw new ProviderGrantAccountMismatch({ message: 'Destination grant replay scope conflicts.' })
+    }
+    return toPublicProviderAccountGrant(existing, (options.now ?? systemProviderAccountRuntime.now)())
+  }
+  return issueProviderAccountGrant(
+    repository,
+    {
+      userId: input.userId,
+      providerAccountRef: source.providerAccountRef,
+      ...(input.requestedAction === undefined ? {} : { requestedAction: input.requestedAction }),
+      ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+      ...(input.workroomId === undefined ? {} : { workroomId: input.workroomId }),
+      ...(input.runnerSessionId === undefined ? {} : { runnerSessionId: input.runnerSessionId }),
+    },
+    { ...options, grantRef: destinationRef, reissuedFromGrantRef: sourceRef },
+  )
 }
 
 export const resolveProviderAccountGrant = async (

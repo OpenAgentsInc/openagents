@@ -28,9 +28,11 @@ import {
   recordDeviceLoginConnected,
   recordDeviceLoginFailed,
   recordProviderAccountHealth,
+  reissueProviderAccountGrant,
   refreshChatGptCodexDeviceLoginForUser,
   refreshOpenAiCodexOAuthAuth,
   resolveProviderAccountGrant,
+  revokeProviderAccountGrant,
   startChatGptCodexDeviceLogin,
   toPublicProviderAccount,
   toPublicProviderAccountEvent,
@@ -241,6 +243,15 @@ class MemoryProviderAccountRepository implements ProviderAccountRepository {
     this.replaceGrant(grant)
     this.events.push({ ...event, authGrantId: grant.id })
 
+    return Promise.resolve(grant)
+  }
+
+  revokeGrant(
+    grant: ProviderAccountAuthGrantRecord,
+    event: ProviderAccountEventRecord,
+  ): Promise<ProviderAccountAuthGrantRecord> {
+    this.replaceGrant(grant)
+    this.events.push({ ...event, authGrantId: grant.id })
     return Promise.resolve(grant)
   }
 
@@ -1234,6 +1245,61 @@ describe('provider account service', () => {
       _tag: 'ProviderAccountNotConnectedHealthy',
       message: 'Provider account is not connected and healthy.',
     } satisfies Partial<ProviderAccountNotConnectedHealthy>)
+  })
+
+  test('portable movement revokes one exact grant and reissues idempotently without disconnecting the account', async () => {
+    const repository = new MemoryProviderAccountRepository()
+    repository.accounts.push(makeAccount({}))
+    repository.grants.push(makeGrant({ grantRef: 'codex-auth-grant_source' }))
+
+    const revoked = await revokeProviderAccountGrant(
+      repository,
+      {
+        actorId: 'service:portable-move',
+        userId: 'github:1',
+        grantRef: 'codex-auth-grant_source',
+      },
+      {
+        makeId: makeIdFactory(['revoke_event']),
+        now: () => new Date('2026-06-02T19:05:00.000Z'),
+      },
+    )
+    expect(revoked?.status).toBe('revoked')
+    expect(repository.accounts[0]?.status).toBe('connected')
+
+    const input = {
+      actorId: 'service:portable-move',
+      userId: 'github:1',
+      sourceGrantRef: 'codex-auth-grant_source',
+      destinationGrantRef: 'codex-auth-grant_destination',
+      requestedAction: 'portable_session_resume',
+      runnerSessionId: 'session.destination.2',
+    } as const
+    const first = await reissueProviderAccountGrant(repository, input, {
+      makeId: makeIdFactory(['destination_grant', 'destination_event']),
+      now: () => new Date('2026-06-02T19:06:00.000Z'),
+    })
+    const replay = await reissueProviderAccountGrant(repository, input, {
+      now: () => new Date('2026-06-02T19:06:01.000Z'),
+    })
+
+    expect(first?.grantRef).toBe('codex-auth-grant_destination')
+    expect(replay?.grantRef).toBe(first?.grantRef)
+    expect(repository.grants).toHaveLength(2)
+    expect(JSON.stringify([first, replay])).not.toContain('providerSecretRef')
+    await expect(
+      reissueProviderAccountGrant(repository, {
+        ...input,
+        runnerSessionId: 'session.conflicting',
+      }),
+    ).rejects.toThrow(/replay scope conflicts/)
+    await expect(
+      revokeProviderAccountGrant(repository, {
+        actorId: 'service:portable-move',
+        userId: 'github:other',
+        grantRef: 'codex-auth-grant_destination',
+      }),
+    ).resolves.toBeUndefined()
   })
 
   test('fake SHC runner resolves a grant and receives only a redacted materialization plan', async () => {

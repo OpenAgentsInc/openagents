@@ -1978,6 +1978,14 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/github-write/connections',
   '/api/github-write/connections/{param}/disconnect',
   '/api/github-write/grants/resolve',
+  // Internal PORT-03 service-authority routes. These require the provider
+  // service actor and expose refs-only outcomes, not public API credentials.
+  '/api/portable-capability-grants/provider/revoke',
+  '/api/portable-capability-grants/provider/reissue',
+  '/api/portable-capability-grants/github/revoke',
+  '/api/portable-capability-grants/github/reissue',
+  '/api/pylons/{param}/fleet-runs/managed-capacity',
+  '/api/pylons/{param}/fleet-runs/{param}/managed-units/dispatch',
   '/api/images/generate',
   '/api/images/{param}',
   // Inference referral revshare dashboard (sub-EPIC #5475 / #5491): browser-

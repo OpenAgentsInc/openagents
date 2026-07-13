@@ -528,9 +528,11 @@ import {
   hasRequiredGitHubWriteScopes,
   listGitHubWriteConnectionsForUser,
   recordGitHubWriteConnectionConnected,
+  reissueGitHubWriteGrant,
   requireGitHubWriteCallbackAccount,
   requireGitHubWritePermissions,
   resolveGitHubWriteGrant,
+  revokeGitHubWriteGrant,
   startGitHubWriteConnectionAttempt,
 } from './github-write-connections'
 import {
@@ -1166,6 +1168,8 @@ import {
   issueProviderAccountGrant,
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
+  reissueProviderAccountGrant,
+  revokeProviderAccountGrant,
 } from './provider-accounts'
 import {
   handlePublicActivityTimelineApiForEnv,
@@ -5148,6 +5152,98 @@ const handleGitHubWriteGrantResolveApi = async (
         message: redactedGrantErrorMessage(error),
       },
       { status: grantResolveErrorStatus(error) },
+    )
+  }
+}
+
+const handlePortableCapabilityGrantAuthorityApi = async (
+  request: Request,
+  env: OpenAgentsWorkerEnv,
+): Promise<Response> => {
+  if (request.method !== 'POST') return methodNotAllowed(['POST'])
+  const actor = await requireProviderServiceActor(request, env)
+  if (actor === undefined) {
+    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+  }
+  const body = await readJsonObject(request).catch(
+    (): Record<string, unknown> => ({}),
+  )
+  const ownerUserId = optionalString(body.ownerUserId)
+  const grantRef = optionalString(body.grantRef)
+  const sourceGrantRef = optionalString(body.sourceGrantRef)
+  const destinationGrantRef = optionalString(body.destinationGrantRef)
+  if (ownerUserId === undefined) {
+    return noStoreJsonResponse(
+      { error: 'bad_request', reason: 'ownerUserId is required' },
+      { status: 400 },
+    )
+  }
+  const path = new URL(request.url).pathname
+  const isReissue = path.endsWith('/reissue')
+  if (
+    (!isReissue && grantRef === undefined) ||
+    (isReissue &&
+      (sourceGrantRef === undefined || destinationGrantRef === undefined))
+  ) {
+    return noStoreJsonResponse(
+      { error: 'bad_request', reason: 'exact grant refs are required' },
+      { status: 400 },
+    )
+  }
+  try {
+    const requestedAction = optionalString(body.requestedAction)
+    const runnerSessionId = optionalString(body.runnerSessionId)
+    const provider = path.includes('/provider/')
+    let grant
+    if (provider) {
+      const postgres = postgresIdentityAuthStoreForEnv(env)
+      if (postgres === undefined) {
+        return noStoreJsonResponse(
+          { error: 'provider_grant_authority_unavailable' },
+          { status: 503 },
+        )
+      }
+      const repository = makeAuthoritativePostgresProviderGrantRepository(
+        makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+        postgres.queryRows,
+      )
+      grant = isReissue
+        ? await reissueProviderAccountGrant(repository, {
+            actorId: actor.user.id,
+            userId: ownerUserId,
+            sourceGrantRef: sourceGrantRef!,
+            destinationGrantRef: destinationGrantRef!,
+            ...(requestedAction === undefined ? {} : { requestedAction }),
+            ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
+          })
+        : await revokeProviderAccountGrant(repository, {
+            actorId: actor.user.id,
+            userId: ownerUserId,
+            grantRef: grantRef!,
+          })
+    } else {
+      const repository = makeGitHubWriteRepositoryForEnv(env)
+      grant = isReissue
+        ? await reissueGitHubWriteGrant(repository, {
+            userId: ownerUserId,
+            sourceGrantRef: sourceGrantRef!,
+            destinationGrantRef: destinationGrantRef!,
+            ...(requestedAction === undefined ? {} : { requestedAction }),
+            ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
+          })
+        : await revokeGitHubWriteGrant(repository, {
+            userId: ownerUserId,
+            grantRef: grantRef!,
+          })
+    }
+    if (grant === undefined) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+    return noStoreJsonResponse({ grant, material: 'excluded' })
+  } catch {
+    return noStoreJsonResponse(
+      { error: 'portable_capability_grant_refused' },
+      { status: 409 },
     )
   }
 }
@@ -15668,6 +15764,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       Effect.promise(() => handleGitHubWriteGrantResolveApi(request, env)),
   },
+  ...(
+    [
+      '/api/portable-capability-grants/provider/revoke',
+      '/api/portable-capability-grants/provider/reissue',
+      '/api/portable-capability-grants/github/revoke',
+      '/api/portable-capability-grants/github/reissue',
+    ] as const
+  ).map(path => ({
+    path,
+    handler: (request: Request, env: OpenAgentsWorkerEnv) =>
+      Effect.promise(() =>
+        handlePortableCapabilityGrantAuthorityApi(request, env),
+      ),
+  })),
   {
     path: '/api/admin/sync/notify',
     handler: (request, env) =>

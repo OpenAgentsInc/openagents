@@ -1894,6 +1894,17 @@ CONFLICT` target and index, so no new schema was needed; the production
   materialization may receive only short-lived access-token
   `OPENCODE_AUTH_CONTENT` without a refresh field. Regression coverage lives in
   `workers/api/src/provider-account-token-custody.test.ts`.
+- PORT-03 portable movement revokes only the exact source provider/GitHub
+  grant and reissues a caller-named, distinct destination grant bound to the
+  same owner and underlying account/connection. Revoke and reissue are
+  replay-idempotent; cross-owner, already-consumed, non-revoked-source, and
+  conflicting destination scopes fail closed. The service-authority response
+  contains refs and public status only (`material: excluded`), never the
+  credential material resolved later inside the one-shot target installer.
+  Broad account/connection disconnect is not a portable-move revocation path.
+  Regression coverage lives in
+  `workers/api/src/portable-capability-grant-authority.test.ts` and
+  `workers/api/src/github-write-connections.test.ts`.
 - Khala Mobile Codex connect is a mobile-bearer facade over the same
   user-scoped custody rail. `/api/mobile/codex-accounts*` routes must verify
   the OpenAuth mobile bearer, start/poll device auth without touching

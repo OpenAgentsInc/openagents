@@ -15,6 +15,7 @@ import {
 } from './provider-account-domain'
 import {
   type ProviderAccountError,
+  ProviderGrantNotIssued,
   ProviderAccountReloadFailed,
   providerAccountErrorFromUnknown,
 } from './provider-account-errors'
@@ -710,6 +711,42 @@ export const makeD1ProviderAccountRepository = (
     }
 
     return toGrantRecord(updated)
+  },
+
+  revokeGrant: async (grant, event) => {
+    const [result] = await db.batch([
+      db.prepare(
+        `UPDATE provider_account_auth_grants
+         SET status = 'revoked', revoked_at = ?, updated_at = ?
+         WHERE id = ? AND user_id = ? AND status = 'issued'`,
+      )
+        .bind(grant.revokedAt, grant.updatedAt, grant.id, grant.userId),
+      db.prepare(
+          `INSERT INTO provider_account_events
+            (id, provider_account_id, auth_grant_id, user_id, team_id,
+             thread_id, workroom_id, runner_session_id, kind, summary,
+             source_refs_json, evidence_refs_json, target_ref, metadata_json,
+             actor_id, created_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM provider_account_auth_grants
+              WHERE id = ? AND user_id = ? AND status = 'revoked'
+                AND revoked_at = ?
+           )`,
+        )
+        .bind(
+          event.id, event.providerAccountId, grant.id, event.userId,
+          event.teamId, event.threadId, event.workroomId,
+          event.runnerSessionId, event.kind, event.summary,
+          event.sourceRefsJson, event.evidenceRefsJson, event.targetRef,
+          event.metadataJson, event.actorId, event.createdAt, grant.id,
+          grant.userId, grant.revokedAt,
+        ),
+    ])
+    if (result.meta.changes !== 1) {
+      throw new ProviderGrantNotIssued({ message: 'Grant is not issued.' })
+    }
+    return { ...grant, status: 'revoked' }
   },
 
   disconnectAccount: async (

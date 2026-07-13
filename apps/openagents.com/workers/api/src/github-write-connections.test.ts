@@ -19,8 +19,10 @@ import {
   makeGitHubWriteConnectionService,
   makeGitHubWriteRepositoryService,
   recordGitHubWriteConnectionConnected,
+  reissueGitHubWriteGrant,
   requireGitHubWriteCallbackAccount,
   resolveGitHubWriteGrant,
+  revokeGitHubWriteGrant,
   startGitHubWriteConnectionAttempt,
 } from './github-write-connections'
 
@@ -166,6 +168,14 @@ class MemoryGitHubWriteRepository implements GitHubWriteRepository {
     const index = this.grants.findIndex(candidate => candidate.id === grant.id)
     this.grants.splice(index, 1, grant)
 
+    return Promise.resolve(grant)
+  }
+
+  revokeGrant(
+    grant: GitHubWriteAuthGrantRecord,
+  ): Promise<GitHubWriteAuthGrantRecord> {
+    const index = this.grants.findIndex(candidate => candidate.id === grant.id)
+    this.grants.splice(index, 1, grant)
     return Promise.resolve(grant)
   }
 }
@@ -326,6 +336,73 @@ describe('GitHub write connections', () => {
         },
       ),
     ).rejects.toThrow(GitHubWriteGrantExpired)
+  })
+
+  test('portable movement revokes one GitHub grant and reissues a distinct refs-only grant idempotently', async () => {
+    const repository = new MemoryGitHubWriteRepository()
+    repository.connections.push({
+      connectedAt: '2026-06-02T20:00:00.000Z',
+      connectionRef: 'github-write_1',
+      createdAt: '2026-06-02T20:00:00.000Z',
+      deletedAt: null,
+      disconnectedAt: null,
+      githubId: '1',
+      githubLogin: 'chris',
+      health: 'healthy',
+      id: 'github_write_connection_1',
+      lastStatusAt: '2026-06-02T20:00:00.000Z',
+      metadataJson: null,
+      scopes: GITHUB_WRITE_REQUIRED_SCOPES,
+      secretRef: 'github-write://github-write_1',
+      status: 'connected',
+      updatedAt: '2026-06-02T20:00:00.000Z',
+      userId: 'github:1',
+    })
+    const source = await issueGitHubWriteGrant(
+      repository,
+      { userId: 'github:1', runnerSessionId: 'session.source' },
+      {
+        grantRef: 'github-write-grant_source',
+        makeId: sequentialIds(),
+        now: () => new Date('2026-06-02T20:01:00.000Z'),
+      },
+    )
+    expect(source?.grantRef).toBe('github-write-grant_source')
+    await revokeGitHubWriteGrant(
+      repository,
+      { userId: 'github:1', grantRef: 'github-write-grant_source' },
+      { now: () => new Date('2026-06-02T20:02:00.000Z') },
+    )
+    const input = {
+      userId: 'github:1',
+      sourceGrantRef: 'github-write-grant_source',
+      destinationGrantRef: 'github-write-grant_destination',
+      requestedAction: 'portable_session_resume',
+      runnerSessionId: 'session.destination',
+    } as const
+    const first = await reissueGitHubWriteGrant(repository, input, {
+      makeId: sequentialIds(),
+      now: () => new Date('2026-06-02T20:03:00.000Z'),
+    })
+    const replay = await reissueGitHubWriteGrant(repository, input)
+
+    expect(first?.grantRef).toBe('github-write-grant_destination')
+    expect(replay?.grantRef).toBe(first?.grantRef)
+    expect(repository.grants).toHaveLength(2)
+    expect(repository.connections[0]?.status).toBe('connected')
+    expect(JSON.stringify([first, replay])).not.toContain('secretRef')
+    await expect(
+      reissueGitHubWriteGrant(repository, {
+        ...input,
+        requestedAction: 'conflicting_action',
+      }),
+    ).rejects.toThrow(/replay scope conflicts/)
+    await expect(
+      revokeGitHubWriteGrant(repository, {
+        userId: 'github:other',
+        grantRef: 'github-write-grant_destination',
+      }),
+    ).resolves.toBeUndefined()
   })
 
   test('Effect services expose repository and lifecycle operations', async () => {
