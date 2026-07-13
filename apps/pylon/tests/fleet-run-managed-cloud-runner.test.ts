@@ -442,6 +442,38 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     expect(JSON.stringify(result)).not.toContain("agent_test_public_transport_token")
   })
 
+  test("deduplicates receipts shared across managed lifecycle and usage roles", async () => {
+    const sharedReceipt = "receipt.agent_computer.shared.fc4"
+    const port = createPylonRemoteManagedCloudFleetRunClaimedWorkPort({
+      agentToken: "agent_test_public_transport_token",
+      baseUrl: "https://openagents.example",
+      pylonRef: "pylon.fc4.test",
+      now: () => fixedNow,
+      fetchImpl: async () => Response.json({
+        schema: "openagents.pylon.managed_cloud_fleet_dispatch.result.v1",
+        state: "completed",
+        placementRef: "placement.cloud-coding.fc4",
+        agentComputerRef: "agent-computer.fc4",
+        agentComputerState: "reclaimed",
+        lifecycleReceiptRefs: [sharedReceipt],
+        resourceUsageReceiptRefs: [sharedReceipt],
+        artifactRef: "artifact.fc4",
+        workContextRef: "work_context.fc4",
+      }),
+    })
+
+    const result = await port.dispatch({
+      targetPreference: "managed_cloud",
+      dispatch: dispatch({ executionTarget: "managed_cloud" }),
+    })
+
+    expect(result.status).toBe("completed")
+    expect(result.verification?.evidenceRefs).toContain(sharedReceipt)
+    expect(result.proofRefs).toEqual(result.verification?.evidenceRefs)
+    expect(new Set(result.proofRefs).size).toBe(result.proofRefs?.length)
+    expect(result.authorityReceiptRefs).toEqual([sharedReceipt])
+  })
+
   test("rejects a non-managed target before either authority port runs", async () => {
     let calls = 0
     const port = createPylonManagedCloudFleetRunClaimedWorkPort({

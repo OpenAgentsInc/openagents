@@ -761,7 +761,9 @@ export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
         !validPublicRef(result.agentComputerRef) ||
         !validPublicRef(result.placementRef) ||
         lifecycleReceiptRefs.length === 0 ||
-        usageRefs.length === 0
+        usageRefs.length === 0 ||
+        new Set(lifecycleReceiptRefs).size !== lifecycleReceiptRefs.length ||
+        new Set(usageRefs).size !== usageRefs.length
       ) {
         return fixedResult({
           blockerRef: PYLON_MANAGED_CLOUD_FLEET_BLOCKERS.cloudEvidenceInvalid,
@@ -793,7 +795,14 @@ export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
         },
       ]
       for (const event of lifecycle) await input.dispatch.onLifecycle?.(event)
-      const evidenceRefs = [targetEvidenceRef, ...lifecycleReceiptRefs, ...usageRefs]
+      // One authoritative receipt can carry both lifecycle and resource-usage
+      // roles. The execution wire preserves that ref in each role-bearing list,
+      // while its flattened verification/proof union must remain a set.
+      const evidenceRefs = [...new Set([
+        targetEvidenceRef,
+        ...lifecycleReceiptRefs,
+        ...usageRefs,
+      ])]
       const completed: PylonManagedCloudFleetRunDispatchResult = {
         assignmentRef: prepared.assignmentRef,
         accountRefHash: null,
