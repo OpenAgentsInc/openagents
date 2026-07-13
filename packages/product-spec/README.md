@@ -52,5 +52,5 @@ acceptance-criterion IDs for the companion to reference.
 
 The proposal, including its independent revision law and generated immutable
 Assurance Manifest, is documented in
-`docs/fable/2026-07-13-assurancespec-productspec-companion-design.md`. No
+`docs/assurance/ASSURANCE_SPEC.md`. No
 AssuranceSpec parser or compiler is claimed to exist in this package.

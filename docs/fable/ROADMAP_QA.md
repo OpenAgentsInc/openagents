@@ -1,8 +1,10 @@
 # ROADMAP_QA — The Fully Automated Khala Code QA Cycle
 
-> **Sequencing note (2026-07-07):** top-level execution sequencing is now
-> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
-> remains the content authority for the QA engine lanes.
+> **Historical-status note (2026-07-13):** current sequencing is owned by
+> [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md). This document is the
+> completed issue map and design record for the former Khala Code QA engine;
+> `docs/qa/README.md` indexes its retained execution evidence. It is not current
+> OpenAgents Desktop release proof or AssuranceSpec authority.
 
 Date: 2026-07-02
 Status: **completed issue map; follow-on QA Swarm work continues under

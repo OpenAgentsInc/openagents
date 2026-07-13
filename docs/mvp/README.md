@@ -18,6 +18,10 @@ read.
    priority, live-gate, and issue-triage authority.
 4. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
    — the sole active Sol product lane and current claim/evidence ledger.
+5. [`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md)
+   — the proposed first AssuranceSpec dogfood slice bound to this exact MVP
+   ProductSpec. It plans proof-design tooling; it does not change MVP intent,
+   sequencing, release state, or public claims.
 
 The Product Spec declares intent. Runtime policy, behavior contracts, Eval
 Suites, tests, reviewed artifacts, and receipts verify it; owner gates record
@@ -37,6 +41,22 @@ bun test packages/product-spec/test/product-spec.test.ts
 
 Do not create a second copy under `specs/`; links, issues, dispatch prompts, and
 future decision traces should cite this path plus `spec_revision`.
+
+## Planned first AssuranceSpec
+
+The first authored companion is intended to live here as
+`openagents-codex-workroom-mvp.assurance-spec.md`, beside the ProductSpec it
+binds. It does not exist yet. The pilot first builds the schema, parser,
+validator, exact revision/digest/criterion binder, review/admission artifacts,
+local Environment Profile, deterministic Manifest compiler, Bun-test adapter,
+falsifier, and receipt path necessary to make that file real.
+
+The target subject is currently ProductSpec format `0.1`, `spec_revision: 6`,
+SHA-256
+`3396b2dd2778c724184668b045dedc3288578685386beeef67b4316e83b99aa5`, with
+`CW-AC-01` through `CW-AC-18`. A changed revision or digest requires the pilot
+binding and evidence to be reconciled; this README is not an authority for
+silently pinning stale identity.
 
 ## Current boundary
 

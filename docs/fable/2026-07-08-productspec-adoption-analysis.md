@@ -376,52 +376,9 @@ receipt-first disciplines that bind every phase.
 
 ## 9. AssuranceSpec companion addendum (2026-07-13)
 
-Episode 252's preemptive-QA design exposed a second missing control file:
-ProductSpec commits **product intent**, but neither ProductSpec nor our current
-harnesses provide a portable, reviewable artifact that commits **proof
-design** before implementation.
-
-The proposed answer is **AssuranceSpec**, an independently versioned
-`<name>.assurance-spec.md` companion. Its complete design is in
-`2026-07-13-assurancespec-productspec-companion-design.md`.
-
-This changes none of the ProductSpec adoption decision:
-
-- the upstream ProductSpec standard and this package's compatibility profile
-  remain unchanged;
-- stable OpenAgents Acceptance Criterion IDs become exact AssuranceSpec
-  binding handles;
-- ProductSpec custom sections remain useful for lightweight owner gates,
-  receipt links, and promise links, but are not the home of a complete QA
-  language;
-- `tool_metadata` remains non-normative and export-stripped;
-- ProductSpec Decision Trace records product-intent drift;
-- a proposed Assurance Decision Trace records proof-policy drift;
-- behavior contracts and Eval Suites remain oracle authorities;
-- receipts remain observations;
-- the promise registry remains the sole authority for public claims.
-
-The refined pipeline is:
-
-```text
-Product Spec (product intent)
-  → Assurance Spec (reviewed proof design)       ← PROPOSED companion
-  → Environment Profiles + adapter lock
-  → Assurance Manifest (deterministic execution lockfile)
-  → behavior contracts + Eval Suites + native tests + formal models
-  → QA Swarm/framework execution
-  → Assurance Receipts + release projection
-  → maintainer/release decision
-  → promise registry (public claims)             ← unchanged sole authority
-```
-
-The semantic criterion-to-obligation mapping happens when agents propose and
-reviewers admit the Assurance Spec. Only the later AssuranceSpec-to-Manifest
-step is described as deterministic. The manifest is immutable generated IR;
-latest verdict, infrastructure, flake, freshness, disposition, and exception
-state live in receipts and projections.
-
-This addendum is design, not shipped-state documentation. Do not add QA fields
-to `@openagentsinc/product-spec`, retrofit existing Product Specs, or claim
-AssuranceSpec conformance until a schema, parser/serializer, validator,
-conformance corpus, review binding, and byte-stable compiler exist.
+The proposed independent AssuranceSpec companion now lives under
+[`../assurance/`](../assurance/README.md). ProductSpec remains unchanged product
+intent with stable criterion binding; AssuranceSpec owns reviewed proof intent;
+the generated Manifest is execution IR; receipts are observations; the promise
+registry remains the sole authority for public claims. No AssuranceSpec parser,
+compiler, or conformance claim exists yet.

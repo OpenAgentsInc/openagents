@@ -24,6 +24,12 @@ closed `not planned` with supersession comments and without rewriting their
 bodies or claiming their exits complete. Their landed evidence remains valid at
 its narrowest proof rung; the table below remains the exact point-in-time audit.
 
+The Product Spec citation above intentionally preserves this audit's revision-5
+snapshot. The current canonical subject has since advanced to `spec_revision:
+6`; the proposed first AssuranceSpec dogfood binds that current revision and
+exact digest in
+[`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md).
+
 ## Executive finding
 
 **OpenAgents' first deployable Codex product should be a signed, local-first

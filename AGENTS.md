@@ -136,6 +136,16 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `docs/mvp/` owns the canonical first-deployable-product package: its exact
   ProductSpec, supporting audit, and reading-order README. The ProductSpec owns
   intent; `docs/sol/MASTER_ROADMAP.md` still owns priority and sequencing.
+- `docs/assurance/` owns the proposed AssuranceSpec companion format, Observer
+  architecture, current-system map, and MVP-first dogfood plan. It owns proof
+  design, not product intent, test execution, release decisions, or public
+  claims. The first authored MVP companion will live beside its ProductSpec in
+  `docs/mvp/` only after the required parser, validation, admission, and
+  conformance implementation exists.
+- `docs/qa/` owns QA execution notes, operational runbooks, oracle descriptions,
+  and retained historical evidence. Most current files describe the frozen
+  Khala Code migration source; their dated green state is not evidence for
+  `apps/openagents-desktop`. AssuranceSpec semantics do not live there.
 - `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
   those areas.
 

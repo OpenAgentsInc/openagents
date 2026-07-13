@@ -25,8 +25,9 @@ traces, code changes, verification, and accepted progress.
   status or operator instruction should exist without receipts.
 - Episode 251 deliberately cut back to the first shippable product: a signed,
   local-first, Codex-only, ProductSpec-native workroom.
-- Episode 252 plans Observer, the preemptive assurance layer that compiles each
-  ProductSpec criterion into tests, falsifiers, environments, and proof rungs.
+- Episode 252 plans AssuranceSpec and Observer: a reviewed companion maps each
+  ProductSpec criterion to obligations, falsifiers, environments, and proof
+  rungs before Observer compiles an immutable execution graph.
 - Episode 253 asks what becomes possible once the base hit has that proof
   graph: what if all of those owner-controlled workrooms can choose to work
   together?
@@ -333,7 +334,7 @@ how a ProductSpec becomes accepted code.
 If a post-MVP Desktop extension lets owners of the signed local workroom
 explicitly contribute bounded local agent capacity to one public OpenAgents
 ProductSpec, and if a typed project kernel connects criterion-pinned packets,
-Observer assurance obligations, exclusive mutation leases,
+AssuranceSpec obligations, exclusive mutation leases,
 Forum coordination, public-safe traces, GitHub changes, independent
 verification, and maintainer acceptance into one Linear-style public
 projection, then OpenAgents can improve itself through a legible multiplayer
@@ -343,9 +344,9 @@ process without surrendering owner control, privacy, or claim integrity.
 
 - one accepted multiplayer ProductSpec with revision, digest, and stable
   criterion IDs;
-- one accepted Observer Assurance Manifest revision/digest mapping those
-  criteria to obligation IDs, proof rungs, evidence requirements, and
-  staleness dependencies;
+- one admitted Assurance Spec revision/digest mapping those criteria to
+  obligation IDs, proof rungs, evidence requirements, and staleness
+  dependencies, plus its generated Assurance Manifest digest;
 - one public OpenAgents monorepo project and one initial milestone;
 - explicit Desktop contribution opt-in with time, token, concurrency,
   repository, network, and visibility limits;
@@ -408,8 +409,8 @@ process without surrendering owner control, privacy, or claim integrity.
   dispatch.
 - **MP-AC-03:** One accepted criterion becomes a dependency-ready packet bound
   to exact ProductSpec revision/digest, criterion, repository, base commit,
-  paths, hot contracts, Observer Assurance Manifest revision/digest,
-  obligation IDs, required proof rungs, evidence requirements, staleness
+  paths, hot contracts, AssuranceSpec revision/digest, generated Manifest
+  digest, obligation IDs, required proof rungs, evidence requirements, staleness
   rules, verification commands, and public-safe Forum topic.
 - **MP-AC-04:** Claim admission atomically creates at most one active mutation
   lease per collision domain, not merely per packet name. A competing packet
@@ -572,7 +573,8 @@ These need actual targets and owner acceptance during the episode:
    explain why a replay is evidence rather than completion authority.
 9. **Create the multiplayer ProductSpec.** Scaffold v0.1, write Problem,
    Hypothesis, scope, criteria, metrics, owner gates, receipts, and promise
-   links. Make it the next post-MVP contract after Observer.
+   links. Make it the next post-MVP contract after the first AssuranceSpec
+   dogfood slice.
 10. **Close on the loop.** OpenAgents users do not merely consume the coding
     app. With explicit consent, their agents can help improve it, publicly,
     through work anyone can inspect and nobody gets to self-certify.

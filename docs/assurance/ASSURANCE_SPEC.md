@@ -2,14 +2,16 @@
 
 Date: 2026-07-13
 
-Status: design proposal; no format, compiler, adapter, or hosted service is
-claimed to exist
+Status: canonical design proposal; no format, compiler, adapter, or hosted
+service is claimed to exist
 
 Reference implementation studied:
 `projects/repos/ProductSpec` at `833d67d` (repository `0.7.0`, document format
 `spec_format_version: "0.1"`)
 
 Related episode: `docs/transcripts/252-notes.md`
+
+First dogfood plan: `docs/assurance/MVP_FIRST_ASSURANCESPEC.md`
 
 Working OpenAgents product/compiler name: **Observer**
 

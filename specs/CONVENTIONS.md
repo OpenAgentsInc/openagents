@@ -36,7 +36,10 @@ specs/<area>/<name>.assurance-decision-trace.json # proposed assurance-policy hi
 Owner-directed exception: the first deployable-product package keeps its one
 canonical Product Spec beside its audit at
 `docs/mvp/openagents-codex-workroom-mvp.product-spec.md`. The ProductSpec test
-sweep validates that co-located file. Do not mirror it back into `specs/`.
+sweep validates that co-located file. Its proposed first AssuranceSpec will
+likewise live beside it as
+`docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md` once the companion
+implementation exists. Do not mirror either artifact back into `specs/`.
 
 Scaffold with:
 
@@ -93,8 +96,7 @@ accidental behavior never silently becomes intent. This is the same law as
 
 ## Proposed AssuranceSpec companion (not yet enforced)
 
-The design in
-`docs/fable/2026-07-13-assurancespec-productspec-companion-design.md` proposes
+The design in `docs/assurance/ASSURANCE_SPEC.md` proposes
 an authored `<name>.assurance-spec.md` beside a Product Spec. The companion
 commits **verification intent**: exact criterion bindings, risks, proof
 obligations, environments, oracles, falsifiers, evidence policy, gates, and

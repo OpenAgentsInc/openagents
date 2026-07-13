@@ -293,28 +293,9 @@ remain blocked.
 
 ## 11. AssuranceSpec relationship addendum (2026-07-13)
 
-Episode 252 proposes a proof-design control plane above this product:
-**AssuranceSpec**. The boundary is:
-
-- ROADMAP_QA supplies techniques, harness components, and implementation
-  sequencing.
-- An Assurance Spec declares what proof one exact ProductSpec requires: risks,
-  obligations, real environments, seams, falsifiers, evidence, proof rungs,
-  gates, and authority boundaries.
-- A generated immutable Assurance Manifest binds an admitted Assurance Spec to
-  exact environment profiles, adapters, commands, and dependency digests.
-- QA Swarm executes manifest units, explores outside the known graph, and
-  proposes distilled regressions.
-- Native oracles judge bounded behavior; normalized receipts report what was
-  observed; maintainers and release policy decide what that evidence permits.
-
-QA Swarm therefore is not simultaneously the semantic planner, oracle
-authority, executor, and release authority. An exploratory finding becomes a
-durable requirement only through AssuranceSpec review or oracle revision. A
-green swarm run cannot revise product intent, admit its own proof plan, deploy,
-or promote a public promise.
-
-The companion-standard proposal lives in
-`2026-07-13-assurancespec-productspec-companion-design.md`. This addendum does
-not claim that QA Swarm consumes Assurance Manifests today; the current product
-and promise states above remain unchanged.
+AssuranceSpec now has a canonical design home at
+[`../assurance/README.md`](../assurance/README.md). QA Swarm remains an
+execution/exploration substrate; it does not authoritatively interpret product
+intent, admit proof design, accept its own evidence, release, or promote a
+promise. No current QA Swarm path is claimed to consume Assurance Manifests,
+and the product/promise states above remain unchanged.

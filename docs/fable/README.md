@@ -23,6 +23,10 @@ each source doc.
   retained only for historical strategy and issue provenance.
 - [`../RETIRED.md`](../RETIRED.md) — the central ledger of retired and
   postponed program/document areas after the 2026-07-08 owner mandate.
+- [`../assurance/README.md`](../assurance/README.md) — the current home for the
+  proposed AssuranceSpec companion, Observer architecture, current-system map,
+  and MVP-first dogfood plan. Detailed proof-design material no longer lives in
+  episode notes or historical Fable plans.
 - [`2026-07-08-repo-docs-direction-cleanup-audit.md`](./2026-07-08-repo-docs-direction-cleanup-audit.md)
   — the execution prescription for this docs-direction cleanup: Tassadar/
   Psionic retired for now, non-Khala/non-business lanes postponed, and stale
@@ -83,13 +87,14 @@ each source doc.
   epic #8073, harmonized with ROADMAP_AFTER (this roadmap is the plumbing
   under AW-0). Meditation source:
   [`2026-07-02-business-fulfillment-engine-meditations.md`](./2026-07-02-business-fulfillment-engine-meditations.md).
-- [`ROADMAP_QA.md`](./ROADMAP_QA.md) — the active QA execution roadmap
-  (2026-07-02): everything needed to run the fully automated Khala Code QA
+- [`ROADMAP_QA.md`](./ROADMAP_QA.md) — the historical completed QA execution
+  map (2026-07-02): everything designed for the automated Khala Code QA
   cycle — the scheduled nightly loop and merge gates, the real-run latency
   budget family and lag burndown, headed native Mode V, the complete
   use-case scenario corpus, owner-armed live tiers, the explorer/distill
   learning loop, and hard-fail guardrails. Eight workstreams, 39 issues
-  (#8012–#8050) under epic #8051, with the issue map in its §12.
+  (#8012–#8050) under epic #8051, with the issue map in its §12. Current QA
+  navigation and status boundaries live in [`../qa/README.md`](../qa/README.md).
 - [`2026-07-02-qa-swarm-product-plan.md`](./2026-07-02-qa-swarm-product-plan.md)
   — the QA Swarm product plan: the ROADMAP_QA machine packaged as a sellable
   autonomous-QA product (swarm runs, committed distilled tests, honest
@@ -225,8 +230,8 @@ each source doc.
   plan: Schema-first contracts → scoped process/protocol services
   (ChildProcess, CodexAppServer, PylonService, config) → staged Foldkit
   shell migration copying the `apps/autopilot-desktop` patterns into
-  `clients/khala-code-desktop` (the only active desktop target;
-  autopilot-desktop is postponed reference material) → @effect/vitest
+  `clients/khala-code-desktop` (the desktop target at the time, now frozen
+  migration source material) → @effect/vitest
   + TestClock + guardrails.
 - `2026-07-01-orca-analysis-and-adoption-plan.md` — how to think about Orca
   (`stablyai/orca`, MIT reference at `projects/repos/orca`): a terminal
