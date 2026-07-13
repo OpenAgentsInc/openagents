@@ -342,6 +342,96 @@ describe("React Native renderer host boundaries", () => {
     expect(scheduledNativeWrites).toContain("")
   })
 
+  test("does not write each focused native edit back through ObservableState", async () => {
+    const hookValues: unknown[] = []
+    let hookIndex = 0
+    let nativeValue = ""
+    const nativeWrites: string[] = []
+    const dependencies: ReactNativeDependencies = {
+      React: {
+        createElement,
+        useEffect: effect => { effect() },
+        useState: <State>(initial: State | (() => State)) => {
+          const index = hookIndex++
+          if (!(index in hookValues)) {
+            hookValues[index] = typeof initial === "function"
+              ? (initial as () => State)()
+              : initial
+          }
+          return [hookValues[index] as State, (next: State | ((current: State) => State)) => {
+            const current = hookValues[index] as State
+            hookValues[index] = typeof next === "function"
+              ? (next as (value: State) => State)(current)
+              : next
+          }] as const
+        },
+      },
+      ReactNative: { ...reactNative, Platform: { OS: "ios", Version: 26 } },
+    }
+    const expoUi: ExpoUiSwiftUiRuntime = {
+      Host: "SwiftHost",
+      HStack: "SwiftHStack",
+      VStack: "SwiftVStack",
+      Button: "SwiftButton",
+      Image: "SwiftImage",
+      Text: "SwiftText",
+      Spacer: "SwiftSpacer",
+      TextField: "SwiftTextField",
+      useNativeState: <Value>(initialValue: Value) => ({
+        get: () => nativeValue as Value,
+        set: value => {
+          nativeWrites.push(value as string)
+          nativeValue = value as string
+        },
+      }),
+      modifiers: {
+        glassEffect: value => ({ kind: "glass", value }),
+        foregroundStyle: value => ({ kind: "foreground", value }),
+        frame: value => ({ kind: "frame", value }),
+      },
+    }
+    const events: string[] = []
+    const report: IntentReporter = (_ref, payload) => Effect.sync(() => {
+      events.push(payload as string)
+    })
+    const renderField = (controlledValue: string): ReactElementLike => {
+      hookIndex = 0
+      const rendered = renderReactNativeView(
+        Composer({
+          key: "composer",
+          doc: controlledValue === "" ? [] : [{ kind: "text", text: controlledValue }],
+          mode: "normal",
+          onChange: IntentRef("Changed"),
+          onSubmit: IntentRef("Submitted"),
+          style: { surface: "glass" },
+        }),
+        dependencies,
+        report,
+        { expoUi, platform: "ios" },
+      )
+      const host = rendered.props.children as ReactElementLike
+      const component = host.props.children as ReactElementLike
+      if (typeof component.type !== "function") throw new Error("expected native composer component")
+      const native = component.type(component.props) as ReactElementLike
+      return (native.props.children as ReadonlyArray<ReactElementLike>)[0]!
+    }
+
+    const firstField = renderField("")
+    nativeValue = "a"
+    ;(firstField.props.onTextChange as (value: string) => void)("a")
+    await Effect.runPromise(nextTask)
+    expect(events).toEqual(["a"])
+
+    // The app's controlled echo acknowledges persistence. It must not call
+    // ObservableState.set because that disrupts the focused SwiftUI field.
+    renderField("a")
+    expect(nativeWrites).toEqual([])
+
+    // A genuinely external replacement still synchronizes into native state.
+    renderField("remote replacement")
+    expect(nativeWrites).toEqual(["remote replacement"])
+  })
+
   test("keeps the accessible RN composer fallback on Android", () => {
     const element = renderReactNativeView(
       Composer({

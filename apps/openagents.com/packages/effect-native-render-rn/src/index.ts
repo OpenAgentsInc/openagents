@@ -4211,6 +4211,10 @@ interface ExpoUiPendingComposerClear {
   current: string | null
 }
 
+interface ExpoUiNativeComposerEdit {
+  current: string | null
+}
+
 // Keep this component at module scope. Defining it inside
 // `renderExpoUiComposer` creates a new React component type for every emitted
 // Effect Native view. A controlled draft emits after every character, so that
@@ -4226,6 +4230,13 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
   // render, and ObservableState.set("") alone does not synchronously clear the
   // SwiftUI control.
   const [pendingClear] = useState<ExpoUiPendingComposerClear>(() => ({ current: null }))
+  // A native edit is already committed inside SwiftUI before onTextChange is
+  // delivered. The app then emits the same value back as its controlled draft.
+  // Writing that echo through ObservableState.set rebuilds the native field on
+  // @expo/ui and drops first responder (the keyboard disappears after every
+  // character). Remember the last native edit so its matching controlled
+  // emission is acknowledged without writing it back into the focused field.
+  const [nativeEdit] = useState<ExpoUiNativeComposerEdit>(() => ({ current: null }))
   const [textFieldRef] = useState<{ current: ExpoUiTextFieldRef | null }>(() => ({ current: null }))
   const clearNativeText = (): void => {
     textState.set("")
@@ -4247,10 +4258,17 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
       // stale submitted echo. Resume ordinary controlled synchronization.
       pendingClear.current = null
     }
+    if (nativeEdit.current === controlledValue) {
+      nativeEdit.current = null
+      return
+    }
+    // This is an external controlled replacement rather than the echo of the
+    // last focused native edit. It owns the field from here onward.
+    nativeEdit.current = null
     if (textState.get() !== controlledValue) {
       textState.set(controlledValue)
     }
-  }, [controlledValue, pendingClear, textFieldRef, textState])
+  }, [controlledValue, nativeEdit, pendingClear, textFieldRef, textState])
   const submitDisabled = view.disabled === true || view.submitting === true ||
     view.onSubmit === undefined
   const submit = (): void => {
@@ -4297,6 +4315,7 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
         if (submittedValue !== null && value === "") return
         if (view.disabled === true || view.onChange === undefined) return
         if (submittedValue !== null) pendingClear.current = null
+        nativeEdit.current = value
         runReportedIntent(report, view.onChange, value)
       },
       modifiers: [expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 })]
