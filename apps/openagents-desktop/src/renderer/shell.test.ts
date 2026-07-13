@@ -343,6 +343,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(navItemById(view, "workspace-chat")).toMatchObject({icon:"Chats",accessibilityLabel:"Chat"})
     expect(navItemById(view, "shell-command-palette-toggle")).toMatchObject({icon:"Menu",accessibilityLabel:"Open command palette"})
     expect(navItemById(view, "shell-settings-toggle")).toMatchObject({icon:"Settings",accessibilityLabel:"Open Settings"})
+    const dockItems = ((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[0]?.items ?? []) as Array<AnyNode>
+    expect(dockItems.at(-1)?.id).toBe("shell-settings-toggle")
     expect(navItemById(view, "workspace-home")?.icon).toBe("Home")
     expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · all time")
     expect(navItemById(view, "sidebar-thread-test-thread")?.label).toBe("New chat")
@@ -1548,6 +1550,31 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         const after = yield* SubscriptionRef.get(state)
         expect(after.workspace).toBe("files")
         expect(after.commandPaletteOpen).toBe(false)
+      }),
+    )
+  })
+
+  test("Settings dock action toggles only Settings and leaves Command-K closed", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        const settings = navItemById(view, "shell-settings-toggle") as {
+          onSelect: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(settings.onSelect, null))
+        const opened = yield* SubscriptionRef.get(state)
+        expect(opened.workspace).toBe("settings")
+        expect(opened.commandPaletteOpen).toBe(false)
+
+        yield* registry.dispatch(resolveIntentRef(settings.onSelect, null))
+        const closed = yield* SubscriptionRef.get(state)
+        expect(closed.workspace).toBe("chat")
+        expect(closed.commandPaletteOpen).toBe(false)
       }),
     )
   })

@@ -2968,6 +2968,9 @@ const shellSidebar = (state: DesktopShellState): View => {
             {id:"workspace-product-spec",label:"ProductSpec",icon:"Code",selected:state.workspace==="product-spec",accessibilityLabel:"ProductSpec workroom",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("product-spec"))},
             {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
             {id:"shell-command-palette-toggle",label:"Commands",icon:"Menu",accessibilityLabel:"Open command palette",onSelect:IntentRef("DesktopCommandPaletteToggled")},
+            // Keep Settings last: the dock wraps before it overflows, so the
+            // visible rightmost control is always the Settings gear rather
+            // than the adjacent Command-K affordance.
             {id:"shell-settings-toggle",label:"Settings",icon:"Settings",selected:state.workspace==="settings",accessibilityLabel:state.workspace==="settings"?"Close Settings":"Open Settings",onSelect:IntentRef("DesktopSettingsToggled")},
           ]},
           historySearchActive(state.history)
@@ -4207,7 +4210,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
         ],
       ),
     ],

@@ -175,6 +175,19 @@ describe("design conformance (c): per-surface structural recipes", () => {
     ])
   })
 
+  test("Settings owns bounded vertical overflow and the dock wraps before clipping its final action", () => {
+    const css = readFileSync(path.join(rendererDir, "app.css"), "utf8")
+    const dockRule = css.match(/\[data-en-key="sidebar-workspace-dock"\] \{([^}]+)\}/)?.[1] ?? ""
+    expect(dockRule).toContain("flex-wrap: wrap")
+
+    const settingsRule = css.match(/\[data-en-key="desktop-settings-stack"\] \{([^}]+)\}/)?.[1] ?? ""
+    expect(settingsRule).toContain("flex: 1 1 0 !important")
+    expect(settingsRule).toContain("height: 0 !important")
+    expect(settingsRule).toContain("min-height: 0 !important")
+    expect(settingsRule).toContain("overflow-y: auto !important")
+    expect(settingsRule).toContain("overflow-x: hidden !important")
+  })
+
   test("command palette: surfaceOverlay panel, hairline borderSubtle, radius xl, 6px gutter, chord captions", () => {
     const view = desktopShellView({ ...baseState(), commandPaletteOpen: true })
     const palette = byKey(view, "desktop-command-palette") as {

@@ -6,8 +6,46 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-12.6",
+    version: "2026-07-13.1",
     contracts: [
+      {
+        contractId: "openagents_desktop.settings.reachable_workspace.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Settings navigation and scrolling",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "when I toggle like that settings button or whatever that rightmost button in the sidebar is, it'll open and collapse the Command K bar. That doesn't make any fucking sense. I can't scroll down in the settings page.",
+        authorityBoundary:
+          "The sidebar dock wraps instead of clipping its final controls and keeps the typed Settings action last, so the visible rightmost gear dispatches only DesktopSettingsToggled; Command-K remains a separate typed command. The Settings workspace is the bounded vertical scroll owner and keeps every control reachable without changing body-level viewport policy. No renderer path, credential, provider payload, or broader runtime authority is introduced.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/app.css",
+          "github:OpenAgentsInc/openagents#8756",
+        ],
+        oracles: [
+          {
+            id: "settings_navigation.rightmost_action_is_settings_only",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves Settings is the final dock item and its real typed intent opens and closes Settings without opening the Command-K palette.",
+          },
+          {
+            id: "settings_navigation.workspace_is_scroll_owner",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            description:
+              "Proves the token-conformant Settings workspace owns bounded vertical overflow while the host body remains fixed.",
+          },
+        ],
+        verification:
+          "Desktop shell and design-conformance suites plus typecheck/build enforce the distinct navigation intents and scroll ownership.",
+      },
       {
         contractId: "openagents_desktop.chat.launch_directory_is_default_cwd.v1",
         state: "enforced",

@@ -118,6 +118,7 @@ textarea {
 [data-en-key="sidebar-workspace-dock"] {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: var(--en-spacing-1);
   margin: 0 0 var(--en-spacing-1);
 }
@@ -202,6 +203,19 @@ textarea {
   min-height: 0;
   width: 0;
   overflow: hidden;
+}
+
+/* Settings is a bounded workspace, not a page that expands beneath the
+   hidden body viewport. It owns the vertical scroll well so every account,
+   extension, update, shortcut, and diagnostics control stays reachable. */
+[data-en-key="desktop-settings-stack"] {
+  flex: 1 1 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 /* ------------------------------------------------------------------ */
