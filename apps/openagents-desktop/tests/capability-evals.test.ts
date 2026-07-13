@@ -481,15 +481,15 @@ describe("capability gaps (skipped-with-reason: blocked until wired)", () => {
     // progress); this image lane landed I1 (image input: composer
     // attach/drop/paste + both-lane wiring, headless oracle + smoke step). All
     // of those leave the blocked set. CUT-16 then wires I4's grant-scoped
-    // editor file mention + delivery path, leaving only H5.
+    // editor file mention + delivery path. H5 now has a visible automatic-
+    // compaction marker and a loss-accounted persisted-boundary harness, so
+    // no capability has both oracles pending.
     // The Git/GitHub UI reconciliation (E2/E4/E5 -> ui_available, E3 -> partial)
     // does not touch this set: those E rows always carried a wired programmatic
     // oracle, so they were never in the both-pending blocked set. CUT-20 (#8700)
     // wired BOTH D3 oracles (built-Electron smoke UI oracle + the adversarial
     // host suite programmatic oracle), so D3 leaves the blocked set.
-    expect(blockedRows.map((row) => row.id).sort()).toEqual(
-      ["H5"].sort(),
-    )
+    expect(blockedRows.map((row) => row.id).sort()).toEqual([])
   })
 
   for (const row of blockedRows) {

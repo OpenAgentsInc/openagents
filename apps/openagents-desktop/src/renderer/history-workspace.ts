@@ -207,6 +207,7 @@ const agentMessageDetail = (item: CodexHistoryItem): string => {
 
 const historyVariant = (item: CodexHistoryItem): TimelineEvent["variant"] =>
   item.kind === "metadata" ? "metadata"
+    : item.kind === "context" ? "metadata"
     : item.kind === "agent_message" ? "agent"
     : item.kind === "tool_call" || item.kind === "tool_result" || item.kind === "approval" || item.kind === "collaboration" ? "tool"
     : item.kind === "reasoning" || item.kind === "plan" ? "reasoning"
@@ -215,6 +216,7 @@ const historyVariant = (item: CodexHistoryItem): TimelineEvent["variant"] =>
 
 const historyIcon = (item: CodexHistoryItem): IconName =>
   item.kind === "metadata" ? "ChevronRight"
+    : item.kind === "context" ? "History"
     : item.kind === "agent_message" ? "Agent"
     : item.kind === "tool_call" || item.kind === "tool_result" ? toolIcon(item.label)
     : item.kind === "collaboration" ? "Agent"
@@ -332,7 +334,8 @@ export const projectHistoryEntries = (items: ReadonlyArray<CodexHistoryItem>, ex
     run = []
   }
   for (const item of items) {
-    if (["usage", "session", "context", "lifecycle", "system_message"].includes(item.kind)) continue
+    if (["usage", "session", "lifecycle", "system_message"].includes(item.kind) ||
+      (item.kind === "context" && item.label !== "History compacted")) continue
     if (item.kind === "reasoning" && (item.summary.trim() === "" || item.summary.startsWith("[REDACTED:"))) continue
     if ((item.kind === "assistant_message" || item.kind === "user_message") && (item.summary.trim() === "" || item.summary.trim().toLowerCase() === item.label.trim().toLowerCase())) continue
     if (isProseItem(item)) {

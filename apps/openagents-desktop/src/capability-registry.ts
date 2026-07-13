@@ -92,6 +92,7 @@ const PROVIDER_ACCOUNTS = "apps/openagents-desktop/tests/provider-accounts.test.
 const RUNTIME_GATEWAY = "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts"
 const RUNTIME_INTERACTIONS = "apps/openagents-desktop/src/renderer/runtime-interactions.test.ts"
 const HISTORY_WORKSPACE = "apps/openagents-desktop/src/renderer/history-workspace.test.ts"
+const CODEX_HISTORY = "apps/openagents-desktop/tests/codex-subagent-history.test.ts"
 const HISTORY_ACTIONS = "apps/openagents-desktop/src/history-thread-actions.test.ts"
 const COMMAND_HOST = "apps/openagents-desktop/tests/desktop-command-host.test.ts"
 const SMOKE = "apps/openagents-desktop/src/main.ts"
@@ -406,10 +407,10 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   },
   {
     id: "H5", group: "H", capability: "Context compaction", status: "partial",
-    uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: "", programmaticOracleWiring: "pending",
-    rung: "pending",
-    blocker: "audit H5: SDK auto-compacts, but there is no UI marker or control and no compaction-boundary integrity harness",
+    uiOracleRef: HISTORY_WORKSPACE, uiOracleWiring: "existing_suite",
+    programmaticOracleRef: CODEX_HISTORY, programmaticOracleWiring: "existing_suite",
+    rung: "fixture",
+    blocker: "audit H5: automatic Codex compaction is visible and loss-accounted across its persisted boundary; explicit user-triggered compaction remains unsupported by the pinned app-server",
   },
 
   // --- I. Context & inputs (all missing) ----------------------------------
