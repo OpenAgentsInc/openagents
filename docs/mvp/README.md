@@ -85,7 +85,7 @@ receipt path remain later pilot work.
 
 The target subject is currently ProductSpec format `0.1`, `spec_revision: 6`,
 SHA-256
-`3396b2dd2778c724184668b045dedc3288578685386beeef67b4316e83b99aa5`, with
+`fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1`, with
 `CW-AC-01` through `CW-AC-18`. A changed revision or digest requires the pilot
 binding and evidence to be reconciled; this README is not an authority for
 silently pinning stale identity.

@@ -44,7 +44,7 @@ promise transition.
 path:                docs/mvp/openagents-codex-workroom-mvp.product-spec.md
 spec_format_version: 0.1
 spec_revision:       6
-sha256:              3396b2dd2778c724184668b045dedc3288578685386beeef67b4316e83b99aa5
+sha256:              fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1
 criterion IDs:       CW-AC-01 through CW-AC-18
 ```
 

@@ -17,7 +17,7 @@ describe("AssuranceSpec format and proposal", () => {
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.document.subject.product_spec.document_digest).toBe("sha256:3396b2dd2778c724184668b045dedc3288578685386beeef67b4316e83b99aa5")
+    expect(result.document.subject.product_spec.document_digest).toBe("sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1")
     expect(result.document.subject.product_spec.criterion_refs).toEqual(Array.from({ length: 18 }, (_, index) => `CW-AC-${String(index + 1).padStart(2, "0")}`))
     expect(result.document.obligations).toHaveLength(18)
     expect(result.document.obligations[3]?.id).toBe("AO-CW-AC-04-01")
