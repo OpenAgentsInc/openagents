@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
 
-import { mvpProofRequiredSteps, resolveMvpProofConfig } from "./mvp-proof.ts"
+import { mvpCodexReadyProbe, mvpProofRequiredSteps, resolveMvpProofConfig } from "./mvp-proof.ts"
 
 describe("ProductSpec-native MVP proof contract", () => {
   test("requires the exact execution, child, verification, and owner-gate journey", () => {
@@ -46,5 +46,14 @@ describe("ProductSpec-native MVP proof contract", () => {
       OPENAGENTS_DESKTOP_SMOKE: "1",
       OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: "specs/mvp.product-spec.md",
     }, userData).conflict).toBe(true)
+  })
+
+  test("proves the fixed ordinary Codex session without retired provider or account selectors", () => {
+    expect(mvpCodexReadyProbe).toContain("shell-codex-engine")
+    expect(mvpCodexReadyProbe).toContain("shell-note")
+    expect(mvpCodexReadyProbe).toContain("send.disabled")
+    expect(mvpCodexReadyProbe).not.toContain("shell-harness-select")
+    expect(mvpCodexReadyProbe).not.toContain("CODEX_HOME")
+    expect(mvpCodexReadyProbe).not.toContain("account")
   })
 })

@@ -115,6 +115,21 @@ const turnProbe = `(() => {
   }
 })()`
 
+/**
+ * The MVP has one engine: the user's ordinary logged-in Codex session. Read
+ * readiness from that fixed engine and the evidence-gated Send control; never
+ * wait for the retired provider/account selector.
+ */
+export const mvpCodexReadyProbe = `(() => {
+  const engine = document.querySelector('[data-en-key="shell-codex-engine"]')
+  const send = document.querySelector('button[data-en-key="shell-note"], [data-en-key="shell-note"] button')
+  return {
+    present: engine?.textContent?.trim() === 'Codex' && send !== null,
+    ready: send instanceof HTMLButtonElement && send.disabled !== true,
+    reason: send?.getAttribute('aria-label')?.slice(0, 160) ?? null,
+  }
+})()`
+
 export type MvpProofRunOptions = Readonly<{
   outDir: string
   specPath: string
@@ -200,18 +215,8 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
       record("shell", true, "Effect Native shell mounted")
 
       await requireClick("workspace-new-chat")
-      const codexReady = await poll(`(() => {
-        const select = document.querySelector('[data-en-key="shell-harness-select"]')
-        const option = select instanceof HTMLSelectElement
-          ? Array.from(select.options).find(value => value.value === 'codex')
-          : null
-        return {
-          present: select !== null && option !== null,
-          selected: select instanceof HTMLSelectElement && select.value === 'codex',
-          ready: option !== null && option.disabled !== true,
-          reason: document.querySelector('[data-en-key="shell-note"]')?.getAttribute('aria-label')?.slice(0, 160) ?? null,
-        }
-      })()`, value => value["ready"] === true && value["selected"] === true, 240_000)
+      const codexReady = await poll(mvpCodexReadyProbe, value =>
+        value["present"] === true && value["ready"] === true, 240_000)
       if (!codexReady.ok) throw new Error(`logged-in Codex session unavailable: ${String(codexReady.value["reason"] ?? "unknown")}`)
       record("codex-ready", true, "ordinary logged-in Codex session selected after host preflight")
 
