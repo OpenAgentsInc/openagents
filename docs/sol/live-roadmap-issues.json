@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T04:01:19.702Z",
+  "generatedAt": "2026-07-13T04:15:09.824Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -94,17 +94,6 @@
       "state": "OPEN",
       "title": "AUDIO-8: deploy and prove the real-microphone persistent voice MVP",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8741"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8745,
-      "state": "OPEN",
-      "title": "PORT-00 — Freeze portable-session intents, invariants, schemas, and real-host journeys",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8745"
     },
     {
       "labels": [
