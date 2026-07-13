@@ -806,7 +806,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     let voiceCommandSequence = 0
     const voiceFinalLedger = makeVoiceFinalLedger()
     let voiceMessageBusy = false
-    let voiceEventTail = Promise.resolve()
     const voiceHost = {
       command: async (command: Readonly<Record<string, unknown>>) => {
         if (typeof bridge?.runtimeRequest !== "function") return null
@@ -894,7 +893,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const unsubscribeVoice = bridge.runtimeSubscribe(event => {
         if (event.kind !== "voice.lifecycle") return
         const arrivedDuringMessage = voiceMessageBusy
-        voiceEventTail = voiceEventTail.then(() => Effect.runPromise(Effect.gen(function* () {
+        void Effect.runPromise(Effect.gen(function* () {
           const before = yield* SubscriptionRef.get(state)
           yield* SubscriptionRef.update(state, current => ({
             ...current,
@@ -941,7 +940,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             },
             editFallback: text => Effect.runPromise(SubscriptionRef.update(state, current => withInput(current, text))),
           }))
-        }))).catch(error => {
+        })).catch(error => {
           voiceMessageBusy = false
           console.error("[openagents-desktop:voice] lifecycle handling failed:", error instanceof Error ? error.message : "unknown_error")
         })
