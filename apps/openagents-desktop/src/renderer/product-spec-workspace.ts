@@ -217,8 +217,12 @@ export const productSpecPacketPrompt = (
   `Plan: ${run.plan.planRef}`,
   `Packet: ${packet.packetRef}`,
   `Lease: ${packet.activeLease?.leaseRef ?? "missing"}`,
+  `Allocation: ${packet.allocation}`,
   `Acceptance criteria: ${packet.criterionIds.join(", ")}`,
   `Objective: ${packet.title}`,
+  ...(packet.allocation === "child"
+    ? ["This packet is child-allocated. Delegate its implementation through the native Codex child-agent tool, inspect the exact child result, and preserve the child transcript and parentage in the workroom."]
+    : ["This packet is root-allocated. Execute it in the current Codex turn."]),
   "Work only on this packet. Run relevant verification, then report exact evidence and any blocker without claiming independent verification.",
 ].join("\n")
 

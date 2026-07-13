@@ -300,8 +300,22 @@ describe("ProductSpec Effect Native workroom", () => {
       `Spec digest: ${identity.digest}`,
       "Packet: packet.ac-1",
       "Lease: lease.desktop.uuid.test",
+      "Allocation: root",
       "Acceptance criteria: AC-1",
+      "Execute it in the current Codex turn.",
     ]) expect(prompt).toContain(line)
+    const childPrompt = productSpecPacketPrompt(dispatched[0]!.run, {
+      ...packets[1]!,
+      state: "active",
+      activeLease: {
+        leaseRef: "lease.desktop.child.test",
+        executorRef: "executor.desktop.child",
+        executionMode: "owner-present",
+        admittedAt: "2026-07-13T12:02:00.000Z",
+      },
+    })
+    expect(childPrompt).toContain("Allocation: child")
+    expect(childPrompt).toContain("Delegate its implementation through the native Codex child-agent tool")
     expect(finalState.productSpec.run?.plan.packets[0]?.state).toBe("verified")
     expect(finalState.productSpec.run?.plan.packets[1]?.state).toBe("planned")
   })
