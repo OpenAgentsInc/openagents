@@ -90,6 +90,7 @@ import {
   isTrustedDesktopRendererUrl,
 } from "./desktop-renderer-location.ts"
 import { desktopWorkerUrl } from "./desktop-worker-location.ts"
+import { desktopRuntimeWorkspaceRoot } from "./desktop-runtime-workspace.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
@@ -1467,15 +1468,25 @@ const codexPreflight = makeCodexPreflight({
       }
     : {}),
 })
+const selectedDesktopWorkspaceRoot = (): string | null => {
+  try {
+    return hostLifecycle.workspace()?.summary().root ?? null
+  } catch {
+    return null
+  }
+}
 // Codex local chat lane (EP250 codex-first-class): the composer's Codex chip
 // in local mode — a real `codex exec --json` turn per send, on the isolated
 // registry homes, with session-resume continuity (no --ephemeral; children
 // keep --ephemeral). Smoke drives a scripted stream through the REAL parser.
 const codexLocal = makeCodexLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
-  workspaceRoot: () => smokeMode || liveProofDriverMode
-    ? path.join(app.getPath("userData"), "fable-local", "fixture-workspace")
-    : desktopLaunchWorkingDirectory,
+  workspaceRoot: () => desktopRuntimeWorkspaceRoot({
+    fixtureMode: smokeMode || liveProofDriverMode,
+    userDataPath: app.getPath("userData"),
+    selectedWorkspaceRoot: selectedDesktopWorkspaceRoot(),
+    launchFallbackRoot: desktopLaunchWorkingDirectory,
+  }),
   preflight: codexPreflight,
   initialSessions: localTurnJournal.list().flatMap(record =>
     record.lane === "codex-local" && record.providerSessionRef !== null && record.accountRef !== null
@@ -1529,9 +1540,12 @@ const pluginConfigStore = openPluginConfigStore(
 )
 const fableLocal = makeFableLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
-  workspaceRoot: () => smokeMode || liveProofDriverMode
-    ? path.join(app.getPath("userData"), "fable-local", "fixture-workspace")
-    : desktopLaunchWorkingDirectory,
+  workspaceRoot: () => desktopRuntimeWorkspaceRoot({
+    fixtureMode: smokeMode || liveProofDriverMode,
+    userDataPath: app.getPath("userData"),
+    selectedWorkspaceRoot: selectedDesktopWorkspaceRoot(),
+    launchFallbackRoot: desktopLaunchWorkingDirectory,
+  }),
   delegate: codexChildren,
   userMcpServers: () => mcpConfigStore.servers(),
   userPlugins: () => pluginConfigStore.enabledPaths(),
