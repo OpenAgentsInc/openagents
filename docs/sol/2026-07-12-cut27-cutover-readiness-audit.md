@@ -663,3 +663,38 @@ portable-session acceptance.
 
 No new CUT leaf or architecture is indicated. These are acceptance runs and a
 final declaration over already-landed capabilities.
+
+## Live blocker revalidation — 2026-07-13
+
+This addendum records a fresh acceptance check from clean `origin/main` at
+`b0e579b0bba6ffbaa716f7ec42885a482d3c7ca8`. It does not change the criteria
+above or declare the cutover.
+
+- Bounded provider probes ran for exact named accounts `claude-pylon-2` at
+  `2026-07-13T12:37:40.365Z` and `claude-pylon-3` at
+  `2026-07-13T12:38:01.223Z`. Both probes were performed, and both returned
+  readiness `provider_disabled`, no capability refs, local-session state
+  `missing`, no usage observation, and the bounded
+  `blocker.pylon.claude_account.provider_disabled` refusal. The raw provider
+  text and credential material were not retained.
+- No `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` is present in the agent
+  environment, so there is no separately authorized API-key-backed named
+  Claude lane to substitute honestly. The existing named accounts require the
+  organization-side action already published in workspace `NEEDS_OWNER.md`.
+- The Android 15 arm64 emulator is online at `emulator-5554` with
+  `com.openagents.app` foregrounded. Its public UI state is an authenticated
+  confirmed conversation with prior retry/close controls and retained Android
+  fault messages. That confirms the accepted emulator remains runnable; it is
+  not evidence that either required provider repository task traversed Android.
+- The counted named-Codex Desktop repository journey remains retained by the
+  live issue ledger. The named-Claude repository journey cannot start while
+  provider capability is disabled. Consequently neither the two-provider task
+  row nor the literal same-task iPhone/Android continuation row can be promoted
+  from partial to accepted.
+
+The exact residual is unchanged: enable provider access for one named Claude
+account (or authorize a separately named API-key-backed account), run the
+installed-app Claude edit/test/Git-review/restart journey, then map the counted
+Codex and Claude task refs through the accepted iPhone and Android continuation,
+attention/control, interruption, and Desktop-convergence journey. Until those
+direct receipts exist, #8707 and #8574 remain open.

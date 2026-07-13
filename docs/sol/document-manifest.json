@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "8227ad3c426f5f77d94deef3fa8cc03a6e034bdc672c3713aefa73a84d5ece47",
+  "sourceTreeSha256": "a25d4810f0d272f9879328ddea42ccd8bea6d52603951ce8fea4a045391105d9",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -818,7 +818,7 @@
       "owner": "Sol coding cutover",
       "disposition": "retain-evidence",
       "dispatch": false,
-      "sha256": "2d248e5f0663354a2bb4ff4b57ab2d264bd01f5ef364699e959ff57ed8f8b5ac",
+      "sha256": "889a876395b04908a1d0cbc1a71d80757ad0b819a6c8ef9a4b04519d90174d82",
       "status": "pinned additive snapshot; non-dispatch",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
