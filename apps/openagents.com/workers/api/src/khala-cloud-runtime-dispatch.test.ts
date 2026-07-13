@@ -229,10 +229,11 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
     expect(captured.b64).toBeDefined()
     const wc = decodeWorkContextB64(captured.b64!)
     expect(wc.repo).toBe('octocat/Hello-World')
-    expect(wc.inference.agentToken).toBe('oa_agent_RAWTOKEN0123456789abcdef')
-    expect(wc.inference.ownerUserId).toBe('github:14167547')
-    expect(wc.inference.noMeterSecret).toBe('no-meter')
-    expect(wc.inference.provider).toBe('vertex-gemini')
+    expect(wc.inference).toBeDefined()
+    expect(wc.inference!.agentToken).toBe('oa_agent_RAWTOKEN0123456789abcdef')
+    expect(wc.inference!.ownerUserId).toBe('github:14167547')
+    expect(wc.inference!.noMeterSecret).toBe('no-meter')
+    expect(wc.inference!.provider).toBe('vertex-gemini')
   })
 
   test('forwards a repo binding ref to placement when present', async () => {

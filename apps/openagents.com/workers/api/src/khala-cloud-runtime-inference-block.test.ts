@@ -245,6 +245,6 @@ describe('encodeWorkContextB64 / decodeWorkContextB64', () => {
     // round-trips through the same decode the turn-runner does (JSON.parse).
     expect(decodeWorkContextB64(b64)).toEqual(wc)
     // the agent token survives inside the opaque blob for the guest's call.
-    expect(decodeWorkContextB64(b64).inference.agentToken).toBe('oa_agent_secret')
+    expect(decodeWorkContextB64(b64).inference?.agentToken).toBe('oa_agent_secret')
   })
 })

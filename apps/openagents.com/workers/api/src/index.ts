@@ -11210,20 +11210,23 @@ const dispatchManagedFleetUnitForEnv = async (
     | undefined
   try {
     const rows: Array<{
+      claim_ref: string
+      lease_owner_user_id: string
+      lease_pylon_ref: string
+      lease_state: string
+      request_owner_user_id: string
       request_json: string
       request_fingerprint: string
       status: string
     }> = await client.sql`
-      SELECT request.request_json, request.request_fingerprint, request.status
+      SELECT request.request_json, request.request_fingerprint, request.status,
+             request.owner_user_id AS request_owner_user_id,
+             lease.claim_ref, lease.owner_user_id AS lease_owner_user_id,
+             lease.pylon_ref AS lease_pylon_ref, lease.state AS lease_state
       FROM sarah_fleet_run_requests AS request
       INNER JOIN sarah_fleet_run_intake_leases AS lease
         ON lease.run_ref = request.run_ref
       WHERE request.run_ref = ${input.runRef}
-        AND request.owner_user_id = ${input.ownerUserId}
-        AND lease.owner_user_id = ${input.ownerUserId}
-        AND lease.pylon_ref = ${input.pylonRef}
-        AND lease.claim_ref = ${input.body.claimRef}
-        AND lease.state = 'accepted'
       LIMIT 1
     `
     const row = rows[0]
@@ -11233,6 +11236,11 @@ const dispatchManagedFleetUnitForEnv = async (
     // authority here, not a circular `running` precondition.
     if (
       row === undefined ||
+      row.request_owner_user_id !== input.ownerUserId ||
+      row.lease_owner_user_id !== input.ownerUserId ||
+      row.lease_pylon_ref !== input.pylonRef ||
+      row.claim_ref !== input.body.claimRef ||
+      row.lease_state !== 'accepted' ||
       (row.status !== 'claimed_by_pylon' && row.status !== 'running')
     ) {
       throw new Error('managed_fleet_authority_invalid')
