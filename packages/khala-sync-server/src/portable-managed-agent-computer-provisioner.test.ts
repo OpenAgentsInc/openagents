@@ -216,5 +216,31 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
       capabilityLeaseRefs: [],
     })).rejects.toMatchObject({ code: "unsafe_response" })
   })
+
+  test("aborts the exact prepared resource scope when artifact resolution fails", async () => {
+    const actions: string[] = []
+    const provisioner = createOaCodexControlPortableProvisioner({
+      baseUrl: "http://127.0.0.1:8787",
+      bearerToken: "fixture-control-token",
+      fetch: async (_request, init) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        actions.push(String(body.action))
+        return Response.json(body.action === "stage"
+          ? { resourceRef: "resource.agent-computer.prepared", materializationRequired: true }
+          : { evidenceRefs: ["evidence.agent-computer.prepared-aborted"] })
+      },
+      checkpointArtifacts: { resolve: async () => { throw new Error("source unavailable") } },
+    })
+    await expect(provisioner.stage({
+      operationRef: "operation.port03.binding.prepare-failure",
+      ownerRef: "owner.port03.binding",
+      targetRef: "target.port03.binding.managed",
+      bundle,
+      attachmentRef: "attachment.port03.binding.managed",
+      generation: 2,
+      capabilityLeaseRefs: [],
+    })).rejects.toThrow("source unavailable")
+    expect(actions).toEqual(["stage", "abortPrepared"])
+  })
 })
 import { createHash } from "node:crypto"

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import {
   makeOpenAgentsManagedCapabilityAdapter,
   makeOwnerLocalCapabilityAdapter,
+  type PortableAgentGraph,
   type SecretMaterial,
 } from "@openagentsinc/portable-session-contract"
 
@@ -126,6 +127,26 @@ const legs = {
     destinationRunnerSessionRef: "runner.port03.driver.local",
     capabilityTransfers: [],
   },
+}
+
+const managedContinuation = {
+  operationRef: "operation.port03.driver.continue",
+  providerLeaseRef: "lease.port03.driver.managed.provider",
+  turns: graph.nodes.map(node => ({
+    agentRef: node.agentRef,
+    turnRef: `turn.port03.driver.${node.agentRef}`,
+    task: `Continue the bounded fixture for ${node.agentRef}`,
+  })),
+}
+
+const continuationAuthority = {
+  readExpectedCursors: async (input: { expectedGraph: PortableAgentGraph }) => input.expectedGraph.nodes.map(node => ({
+    agentRef: node.agentRef,
+    threadRef: node.threadRef,
+    activityCursor: node.activityCursor,
+    eventCursor: 1,
+  })),
+  commit: async () => undefined,
 }
 
 const result = (input: PortableSessionMoveInput): PortableSessionMoveResult => ({
@@ -341,13 +362,18 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 production round-trip driver", () 
       broker,
       local,
       managed,
+      continuationAuthority,
       continuation: {
         run: async input => ({
-          acceptedWorkRefs: input.expectedAgentRefs.map(agentRef => ({
-            agentRef,
-            turnRef: `turn.port03.driver.${agentRef}`,
+          acceptedWorkRefs: input.plan.turns.map(({ agentRef, turnRef }) => ({ agentRef, turnRef })),
+          threadCursors: input.expectedGraph.nodes.map(node => ({
+            agentRef: node.agentRef,
+            threadRef: node.threadRef,
+            activityCursor: node.activityCursor + 1,
+            eventCursor: 2,
           })),
           evidenceRefs: ["evidence.port03.driver.continuation"],
+          replay: "executed",
         }),
       },
     })
@@ -356,6 +382,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 production round-trip driver", () 
       proofClass: "deterministic",
       executionBinding,
       expectedGraph: graph,
+      managedContinuation,
       ...legs,
     })
 
@@ -397,12 +424,19 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 production round-trip driver", () 
       broker,
       local,
       managed,
-      continuation: { run: async () => ({ acceptedWorkRefs: [], evidenceRefs: [] }) },
+      continuationAuthority,
+      continuation: { run: async () => ({
+        acceptedWorkRefs: [],
+        threadCursors: [],
+        evidenceRefs: [],
+        replay: "executed",
+      }) },
     })
     await expect(driver.runRoundTrip({
       proofClass: "deterministic",
       executionBinding,
       expectedGraph: { rootAgentRef: graph.rootAgentRef, nodes: [graph.nodes[0]!] },
+      managedContinuation,
       ...legs,
     })).rejects.toBeInstanceOf(PortableSessionProductionDriverError)
     expect(moved).toBeFalse()

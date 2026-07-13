@@ -34,7 +34,7 @@ export type OaCodexControlPortableProvisionerConfig = Readonly<{
 
 type OperationBase = Readonly<{
   operationRef: string
-  action: "stage" | "activate" | "abort" | "quiesce" | "checkpoint" | "reclaim"
+  action: "stage" | "abortPrepared" | "activate" | "abort" | "quiesce" | "checkpoint" | "reclaim"
   ownerRef: string
   targetRef: string
   sessionRef: string
@@ -219,40 +219,54 @@ export const createOaCodexControlPortableProvisioner = (
       if (!SAFE_REF.test(prepared.resourceRef) || prepared.materializationRequired !== true) {
         throw new OaCodexControlPortableProvisionerError("rejected", "oa-codex-control did not prepare an exact non-accepting resource")
       }
-      const artifact = await config.checkpointArtifacts.resolve({
-        ownerRef: input.ownerRef,
-        targetRef: input.targetRef,
-        sessionRef: input.bundle.checkpoint.sessionRef,
-        attachmentRef: input.attachmentRef,
-        generation: input.generation,
-        checkpointRef: input.bundle.checkpoint.checkpointRef,
-        bundle: input.bundle,
-      })
       try {
-        if (!SAFE_REF.test(artifact.artifactRef) ||
-            !/^sha256:[a-f0-9]{64}$/u.test(artifact.digest) ||
-            artifact.bytes.byteLength === 0 ||
-            `sha256:${createHash("sha256").update(artifact.bytes).digest("hex")}` !== artifact.digest) {
-          throw new OaCodexControlPortableProvisionerError("rejected", "checkpoint artifact resolver returned mismatched bytes")
-        }
-        const receipt = await materialize({
-          operationRef: `${input.operationRef}.materialize`,
+        const artifact = await config.checkpointArtifacts.resolve({
           ownerRef: input.ownerRef,
           targetRef: input.targetRef,
           sessionRef: input.bundle.checkpoint.sessionRef,
           attachmentRef: input.attachmentRef,
           generation: input.generation,
           checkpointRef: input.bundle.checkpoint.checkpointRef,
-          artifactRef: artifact.artifactRef,
-          artifactDigest: artifact.digest,
-          bytes: artifact.bytes,
+          bundle: input.bundle,
         })
-        if (receipt.resourceRef !== prepared.resourceRef) {
-          throw new OaCodexControlPortableProvisionerError("rejected", "checkpoint materialization used a different retained resource")
+        try {
+          if (!SAFE_REF.test(artifact.artifactRef) ||
+              !/^sha256:[a-f0-9]{64}$/u.test(artifact.digest) ||
+              artifact.bytes.byteLength === 0 ||
+              `sha256:${createHash("sha256").update(artifact.bytes).digest("hex")}` !== artifact.digest) {
+            throw new OaCodexControlPortableProvisionerError("rejected", "checkpoint artifact resolver returned mismatched bytes")
+          }
+          const receipt = await materialize({
+            operationRef: `${input.operationRef}.materialize`,
+            ownerRef: input.ownerRef,
+            targetRef: input.targetRef,
+            sessionRef: input.bundle.checkpoint.sessionRef,
+            attachmentRef: input.attachmentRef,
+            generation: input.generation,
+            checkpointRef: input.bundle.checkpoint.checkpointRef,
+            artifactRef: artifact.artifactRef,
+            artifactDigest: artifact.digest,
+            bytes: artifact.bytes,
+          })
+          if (receipt.resourceRef !== prepared.resourceRef) {
+            throw new OaCodexControlPortableProvisionerError("rejected", "checkpoint materialization used a different retained resource")
+          }
+          return receipt as Awaited<ReturnType<ManagedAgentComputerPortableProvisioner["stage"]>>
+        } finally {
+          artifact.bytes.fill(0)
         }
-        return receipt as Awaited<ReturnType<ManagedAgentComputerPortableProvisioner["stage"]>>
-      } finally {
-        artifact.bytes.fill(0)
+      } catch (error) {
+        await run({
+          operationRef: `${input.operationRef}.abort-prepared`,
+          action: "abortPrepared",
+          ownerRef: input.ownerRef,
+          targetRef: input.targetRef,
+          sessionRef: input.bundle.checkpoint.sessionRef,
+          attachmentRef: input.attachmentRef,
+          generation: input.generation,
+          payload: { stageOperationRef: input.operationRef },
+        }).catch(() => undefined)
+        throw error
       }
     },
     activate: input => run({

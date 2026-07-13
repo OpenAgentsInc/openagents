@@ -15,6 +15,13 @@ import {
   PostgresManagedAgentComputerTarget,
 } from "../src/portable-managed-agent-computer-target.js"
 import {
+  createOaCodexControlPortableManagedContinuation,
+  PostgresPortableManagedContinuationAuthority,
+  type PortableManagedContinuation,
+  type PortableManagedContinuationAuthority,
+  type PortableManagedContinuationPlan,
+} from "../src/portable-managed-continuation.js"
+import {
   createOaCodexControlPortableProvisioner,
   type OaCodexControlPortableProvisionerConfig,
 } from "../src/portable-managed-agent-computer-provisioner.js"
@@ -56,18 +63,6 @@ export type PortableRoundTripMoveLeg = Readonly<{
   destinationAttachmentRef: string
   destinationRunnerSessionRef: string
   capabilityTransfers: PortableSessionMoveInput["capabilityTransfers"]
-}>
-
-export type PortableManagedContinuation = Readonly<{
-  run: (input: Readonly<{
-    sessionRef: string
-    attachmentRef: string
-    generation: number
-    expectedAgentRefs: ReadonlyArray<string>
-  }>) => Promise<Readonly<{
-    acceptedWorkRefs: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string }>>
-    evidenceRefs: ReadonlyArray<string>
-  }>>
 }>
 
 export type PortableRoundTripReceipt = Readonly<{
@@ -154,12 +149,14 @@ export class PortableSessionProductionDriver {
     local: PortableSessionExecutionTarget
     managed: PortableSessionExecutionTarget
     continuation: PortableManagedContinuation
+    continuationAuthority: PortableManagedContinuationAuthority
   }>) {}
 
   async runRoundTrip(input: Readonly<{
     proofClass: PortableRoundTripReceipt["proofClass"]
     executionBinding: PortableSessionExecutionBinding
     expectedGraph: PortableAgentGraph
+    managedContinuation: PortableManagedContinuationPlan
     localToManaged: PortableRoundTripMoveLeg
     managedToLocal: PortableRoundTripMoveLeg
   }>): Promise<PortableRoundTripReceipt> {
@@ -176,6 +173,7 @@ export class PortableSessionProductionDriver {
     if (expectedAgents.length < 2 ||
         !expectedAgentSet.has(input.expectedGraph.rootAgentRef) ||
         !input.expectedGraph.nodes.some(node => node.parentAgentRef !== undefined) ||
+        input.expectedGraph.nodes.some(node => !["running", "waiting"].includes(node.lifecycle)) ||
         input.expectedGraph.nodes.some(node =>
           node.parentAgentRef !== undefined && !expectedAgentSet.has(node.parentAgentRef))) {
       throw new PortableSessionProductionDriverError("graph_mismatch", "round trip requires one canonical child-bearing agent graph")
@@ -206,11 +204,20 @@ export class PortableSessionProductionDriver {
         input.managedToLocal.command.expectedGeneration !== moved.destinationGeneration) {
       throw new PortableSessionProductionDriverError("direction_mismatch", "failback does not start from the completed managed generation")
     }
+    const expectedThreadCursors = await this.config.continuationAuthority.readExpectedCursors({
+      ownerRef: input.executionBinding.ownerRef,
+      sessionRef: moved.sessionRef,
+      attachmentRef: moved.destinationAttachmentRef,
+      generation: moved.destinationGeneration,
+      expectedGraph: input.expectedGraph,
+    })
     const continuation = await this.config.continuation.run({
       sessionRef: moved.sessionRef,
       attachmentRef: moved.destinationAttachmentRef,
       generation: moved.destinationGeneration,
-      expectedAgentRefs: expectedAgents,
+      expectedGraph: input.expectedGraph,
+      expectedThreadCursors,
+      plan: input.managedContinuation,
     })
     const acceptedAgents = continuation.acceptedWorkRefs.map(row => row.agentRef)
     const acceptedPairs = continuation.acceptedWorkRefs.map(row => `${row.agentRef}:${row.turnRef}`)
@@ -221,6 +228,16 @@ export class PortableSessionProductionDriver {
         continuation.acceptedWorkRefs.some(row => !SAFE_REF.test(row.agentRef) || !SAFE_REF.test(row.turnRef))) {
       throw new PortableSessionProductionDriverError("continuation_mismatch", "managed continuation did not accept exactly one turn per canonical agent")
     }
+    await this.config.continuationAuthority.commit({
+      ownerRef: input.executionBinding.ownerRef,
+      sessionRef: moved.sessionRef,
+      attachmentRef: moved.destinationAttachmentRef,
+      generation: moved.destinationGeneration,
+      expectedGraph: input.expectedGraph,
+      expectedThreadCursors,
+      plan: input.managedContinuation,
+      receipt: continuation,
+    })
     this.config.prepareBroker?.(input.managedToLocal)
     const failedBack = await this.config.runtime.move(runtimeInput(
       input.managedToLocal,
@@ -387,7 +404,6 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
       >
     }>
   }>
-  continuation: PortableManagedContinuation
   local: Readonly<{
     targetRef: string
     ledger: PylonPortableSessionOperationLedger
@@ -449,13 +465,26 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
       checkpointArtifacts,
     }),
   })
+  const continuation = createOaCodexControlPortableManagedContinuation({
+    baseUrl: input.managed.provisioner.baseUrl,
+    bearerToken: input.managed.provisioner.bearerToken,
+    ownerRef: input.managed.ownerRef,
+    targetRef: input.managed.targetRef,
+    ...(input.managed.provisioner.fetch === undefined ? {} : { fetch: input.managed.provisioner.fetch }),
+    ...(input.managed.provisioner.timeoutMs === undefined ? {} : { timeoutMs: input.managed.provisioner.timeoutMs }),
+  })
+  const continuationAuthority = new PostgresPortableManagedContinuationAuthority({
+    sql: input.runtime.sql,
+    transaction: input.runtime.transaction,
+  })
   return new PortableSessionProductionDriver({
     runtime: new PostgresPortableSessionMoveRuntime(input.runtime),
     broker: broker.config,
     prepareBroker: broker.prepare,
     local,
     managed,
-    continuation: input.continuation,
+    continuation,
+    continuationAuthority,
   })
 }
 
