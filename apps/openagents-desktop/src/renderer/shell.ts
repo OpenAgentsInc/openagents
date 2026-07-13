@@ -121,6 +121,13 @@ import {
   type ProductSpecRendererBridge,
   type ProductSpecWorkspaceState,
 } from "./product-spec-workspace.ts"
+import {
+  assuranceSpecWorkspaceIntents,
+  assuranceSpecWorkspaceView,
+  initialAssuranceSpecWorkspaceState,
+  makeAssuranceSpecWorkspaceHandlers,
+  type AssuranceSpecWorkspaceState,
+} from "./assurance-spec-workspace.ts"
 import { idleVoiceModeState, voiceActive, voiceIndicatorText, withVoiceHostState, type VoiceModeState } from "./voice-mode.ts"
 import type { DesktopVoiceState } from "../voice-host.ts"
 import type { GitDiffResult } from "../git-github-contract.ts"
@@ -232,7 +239,7 @@ export type QuestionCardInteraction = Readonly<{
   answers: ReadonlyArray<QuestionAnswer> | null
 }>
 
-export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "product-spec", "review", "terminal", "inbox", "settings"] as const
+export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "product-spec", "assurance-spec", "review", "terminal", "inbox", "settings"] as const
 export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 export const codingSessionFilters = ["active", "recovery", "archived"] as const
 export type CodingSessionFilter = (typeof codingSessionFilters)[number]
@@ -383,6 +390,8 @@ export type DesktopShellState = Readonly<{
   git: GitPanelState
   /** ProductSpec intent, planning, packet, evidence, and verification projection. */
   productSpec: ProductSpecWorkspaceState
+  /** Read-only visualization of one parsed AssuranceSpec document. */
+  assuranceSpec: AssuranceSpecWorkspaceState
   update: DesktopUpdateProjection
 }>
 
@@ -463,6 +472,7 @@ export const initialDesktopShellState = (
   terminal: emptyTerminalWorkspaceState(),
   git: emptyGitPanelState(),
   productSpec: emptyProductSpecWorkspaceState(),
+  assuranceSpec: initialAssuranceSpecWorkspaceState(),
   update: emptyDesktopUpdateProjection(),
 })
 
@@ -718,6 +728,7 @@ export const desktopShellIntents = [
   ...terminalWorkspaceIntents,
   ...gitPanelIntents,
   ...productSpecWorkspaceIntents,
+  ...assuranceSpecWorkspaceIntents,
   ...workspaceBrowserIntents,
   ...workspaceEditorIntents,
 ] as const
@@ -1487,6 +1498,7 @@ export const makeDesktopShellHandlers = (
       }))
     },
   )
+  const assuranceSpecHandlers = makeAssuranceSpecWorkspaceHandlers(state)
   const recoverWorkspaceEditor = Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.workspaceEditor.tabs.length > 0) return
@@ -1595,6 +1607,7 @@ export const makeDesktopShellHandlers = (
   ...makeTerminalWorkspaceHandlers(state, terminalBridge),
   ...gitPanelHandlers,
   ...productSpecHandlers,
+  ...assuranceSpecHandlers,
   ...workspaceBrowserHandlers,
   ...workspaceEditorHandlers,
   WorkspaceBrowserEntrySelected: (pathRef) => Effect.gen(function* () {
@@ -2962,6 +2975,7 @@ const shellSidebar = (state: DesktopShellState): View => {
             {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
             {id:"workspace-files",label:"Files",icon:"Folder",selected:state.workspace==="files",accessibilityLabel:"Files",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("files"))},
             {id:"workspace-product-spec",label:"ProductSpec",icon:"Code",selected:state.workspace==="product-spec",accessibilityLabel:"ProductSpec workroom",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("product-spec"))},
+            {id:"workspace-assurance-spec",label:"AssuranceSpec",icon:"Compare",selected:state.workspace==="assurance-spec",accessibilityLabel:"AssuranceSpec document",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("assurance-spec"))},
             {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
             {id:"shell-command-palette-toggle",label:"Commands",icon:"Menu",accessibilityLabel:"Open command palette",onSelect:IntentRef("DesktopCommandPaletteToggled")},
             // Keep Settings last: the dock wraps before it overflows, so the
@@ -4182,7 +4196,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "assurance-spec" ? [assuranceSpecWorkspaceView(state.assuranceSpec)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
         ],
       ),
     ],

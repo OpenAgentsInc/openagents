@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-13.3",
+    version: "2026-07-13.4",
     contracts: [
       {
         contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
@@ -19,7 +19,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "remove from the interface everything not in the MVP spec.",
         authorityBoundary:
-          "The ProductSpec Scope and User Experience sections are the visible-surface allowlist. Desktop exposes local Codex chat/session navigation, repository grant and session home, ProductSpec workroom, bounded files and review, questions/approvals/plans, Open in Codex, commands, update/rollback, diagnostics, and keyboard settings. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
+          "The ProductSpec Scope and User Experience sections, plus the owner's subsequent explicit AssuranceSpec document-format visualization direction, are the visible-surface allowlist. Desktop exposes local Codex chat/session navigation, repository grant and session home, ProductSpec workroom, the read-only AssuranceSpec document inspector, bounded files and review, questions/approvals/plans, Open in Codex, commands, update/rollback, diagnostics, and keyboard settings. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
         evidenceRefs: [
           "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
           "apps/openagents-desktop/src/desktop-command-contract.ts",
@@ -35,7 +35,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Proves the dock and composer contain only MVP affordances and reject Fleet, accounts, provider/model/reasoning selection, attachments, and voice.",
+              "Proves the dock contains the MVP affordances plus the explicitly owner-directed AssuranceSpec document inspector, while the shell rejects Fleet, accounts, provider/model/reasoning selection, attachments, and voice.",
           },
           {
             id: "mvp_surface.settings_allowlist",
@@ -56,6 +56,37 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop typecheck, shell/settings/command suites, build, and built-host smoke enforce the ProductSpec-visible allowlist.",
+      },
+      {
+        contractId: "openagents_desktop.assurance_spec.document_visualization.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "AssuranceSpec document support",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "we'll want to be able to open different files and support different formats. And so just think about like we are adding support for the assurance spec format now. What do we want that file to look like? ... I want to see a beautiful visualization of Assurance Spec in the app",
+        authorityBoundary:
+          "The Desktop build parses the exact checked-in .assurance-spec.md artifact through the browser-safe package grammar and embeds only its bounded presentation snapshot; future editor-opened source uses the same app-owned projection boundary. Structural validity, criterion mapping, and repository candidates are presentation facts only: the view cannot admit work, execute checks, verify evidence, waive obligations, release software, or change public promises. Invalid bytes replace the document visualization with an explicit invalid state, and no filesystem or repository authority is added to the renderer.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/assurance-spec-workspace.ts",
+          "apps/openagents-desktop/src/renderer/assurance-spec-workspace.test.ts",
+          "packages/assurance-spec/src/browser.ts",
+          "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
+        ],
+        oracles: [
+          {
+            id: "assurance_spec.document_is_source_driven_and_authority_honest",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/assurance-spec-workspace.test.ts",
+            description:
+              "Parses the checked-in MVP AssuranceSpec, proves all 18 obligations and their incomplete proof-design fields render, proves invalid bytes fail closed, and proves the view exposes no execution or verification actions.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, renderer unit tests, design conformance, and production build enforce the source-driven Effect Native document visualization and proposal-only authority boundary.",
       },
       {
         contractId: "openagents_desktop.mvp.uses_logged_in_codex_session.v1",

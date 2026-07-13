@@ -10,6 +10,7 @@ import { chmodSync, readFileSync, writeFileSync } from "node:fs"
 import { cp, copyFile, mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { projectAssuranceSpecDocument } from "../src/assurance-spec-document.ts"
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 // Minification is on by default; set OA_DESKTOP_BUILD_MINIFY=0 for an A/B
@@ -42,6 +43,17 @@ const assertSuccess = (label: string, result: Awaited<ReturnType<typeof Bun.buil
 
 export const buildDesktop = async (): Promise<string> => {
   const dist = path.join(appRoot, "dist")
+  const mvpAssuranceSpecSource = readFileSync(
+    path.resolve(appRoot, "../..", "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md"),
+    "utf8",
+  )
+  const mvpAssuranceSpecProjection = projectAssuranceSpecDocument(
+    mvpAssuranceSpecSource,
+    "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
+  )
+  if (mvpAssuranceSpecProjection.state !== "ready") {
+    throw new Error("openagents-desktop build failed: checked-in MVP AssuranceSpec is invalid")
+  }
   await rm(dist, { recursive: true, force: true })
   await mkdir(path.join(dist, "renderer"), { recursive: true })
 
@@ -114,6 +126,12 @@ export const buildDesktop = async (): Promise<string> => {
       target: "browser",
       format: "iife",
       minify: BUILD_MINIFY,
+      // Dogfood the exact checked-in proposal through the same browser-safe
+      // parser used by future editor-opened `.assurance-spec.md` files. The
+      // renderer component still owns no filesystem authority.
+      define: {
+        __OPENAGENTS_MVP_ASSURANCE_SPEC_SNAPSHOT__: JSON.stringify(JSON.stringify(mvpAssuranceSpecProjection)),
+      },
     }),
   )
 

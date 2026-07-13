@@ -350,11 +350,11 @@ describe("history workspace search UI", () => {
     expect(historySearchOpenAnchor(result({ matchKind: "title", matchItemRef: null, matchSequence: null }))).toEqual({ kind: "end" })
   })
 
-  test("result rows carry the source badge and dispatch the open intent with the threadRef", () => {
+  test("result rows keep the MVP surface Codex-only and dispatch the open intent with the threadRef", () => {
     const state: HistoryWorkspaceState = { ...emptyHistoryWorkspaceState(), searchQuery: "inspector", searchResults: [result({}), result({ threadRef: "cx9", rootThreadRef: "cx9", source: "codex", matchKind: "title", matchItemRef: null, matchSequence: null })] }
     const items = historySearchResultSidebarItems(state)
-    expect(items.map(row => row.meta)).toEqual(["Claude", "Codex"])
-    expect(items[0]?.onSelect).toMatchObject({ name: "HistorySearchResultOpened", payload: { value: "claude:cl1" } })
+    expect(items.map(row => row.meta)).toEqual(["Codex"])
+    expect(items[0]?.onSelect).toMatchObject({ name: "HistorySearchResultOpened", payload: { value: "cx9" } })
   })
 
   test("the search field renders a TextField bound to the query", () => {

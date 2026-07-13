@@ -362,7 +362,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
-  test("MVP dock exposes only workroom surfaces and excludes Fleet", () => {
+  test("MVP dock exposes only workroom surfaces plus the owner-directed AssuranceSpec viewer", () => {
     const view = desktopShellView(baseState)
     const nav = nodeByKey(view, "sidebar-navigation")
     const dock = (nav?.sections as Array<{ id: string; items: Array<AnyNode> }>)[0]
@@ -373,6 +373,7 @@ describe("desktopShellView (state -> component tree)", () => {
       "workspace-chat",
       "workspace-files",
       "workspace-product-spec",
+      "workspace-assurance-spec",
       "workspace-home",
       "shell-command-palette-toggle",
       "shell-settings-toggle",

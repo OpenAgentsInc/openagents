@@ -27,6 +27,7 @@
     "@effect-native/tokens": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/audio-contract": "workspace:*",
+    "@openagentsinc/assurance-spec": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",

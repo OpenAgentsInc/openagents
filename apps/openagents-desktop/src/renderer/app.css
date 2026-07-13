@@ -987,6 +987,171 @@ html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   box-shadow: none !important;
 }
 
+/* ------------------------------------------------------------------ */
+/* AssuranceSpec document viewer                                      */
+/* ------------------------------------------------------------------ */
+
+[data-en-key="assurance-spec-document"] {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-en-key="assurance-spec-file-header"] {
+  flex: 0 0 auto;
+  padding-right: var(--en-spacing-5) !important;
+  padding-left: var(--en-spacing-5) !important;
+}
+
+[data-en-key="assurance-spec-title"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-en-key="assurance-spec-file-name"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-en-key="assurance-spec-authority-notice"] {
+  border: 1px solid var(--en-color-borderSubtle);
+}
+
+[data-en-key="assurance-summary-strip"] {
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+  background: var(--en-color-surfaceRaised);
+}
+
+[data-en-key^="assurance-summary-"]:not([data-en-key="assurance-summary-strip"]) {
+  border-right: 1px solid var(--en-color-borderSubtle);
+}
+
+[data-en-key="assurance-summary-needs-design"] {
+  border-right: 0 !important;
+}
+
+[data-en-key="assurance-spec-workbench"] {
+  flex: 1 1 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+[data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-obligations"] {
+  padding: var(--en-spacing-3) var(--en-spacing-2) var(--en-spacing-3) var(--en-spacing-4);
+  background: var(--en-color-surface);
+  overflow: hidden;
+}
+
+[data-en-key="assurance-spec-workbench"] > [data-en-role="divider"] {
+  width: 1px !important;
+  background: var(--en-color-borderSubtle) !important;
+}
+
+[data-en-key="assurance-obligation-list"] {
+  height: 0;
+  padding-right: var(--en-spacing-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+[data-en-key^="assurance-obligation-"][data-en-tag="Button"] {
+  position: relative;
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  min-height: var(--en-control-xl-height);
+  padding: 0 var(--en-spacing-2) !important;
+  border: 0 !important;
+  overflow: hidden;
+  text-align: left !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-en-key^="assurance-obligation-selected-"][data-en-tag="Button"] {
+  box-shadow: inset 2px 0 var(--en-color-accent);
+}
+
+[data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-detail"] {
+  padding: var(--en-spacing-4) var(--en-spacing-5);
+  overflow: hidden;
+}
+
+[data-en-key="assurance-obligation-detail-scroll"] {
+  height: 0;
+  margin: 0 auto;
+  padding-right: var(--en-spacing-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+[data-en-key="assurance-source-claim"] {
+  padding: var(--en-spacing-3);
+  border-left: 2px solid var(--en-color-accent);
+  border-radius: var(--en-radius-sm);
+  background: var(--en-color-surfaceRaised);
+}
+
+[data-en-key="assurance-proof-design-table"] {
+  table-layout: fixed;
+  border-collapse: separate !important;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+}
+
+[data-en-key="assurance-proof-design-table"] th {
+  padding: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textFaint);
+  font-size: var(--en-type-caption-fontSize);
+  font-weight: 600;
+}
+
+[data-en-key="assurance-proof-design-table"] td {
+  padding: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  vertical-align: middle;
+}
+
+[data-en-key="assurance-proof-design-table"] tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+[data-en-key^="assurance-subject-"][data-en-key$="-label"],
+[data-en-key^="assurance-risk-policy-"][data-en-key$="-label"],
+[data-en-key^="assurance-environment-policy-"][data-en-key$="-label"],
+[data-en-key^="assurance-gate-policy-"][data-en-key$="-label"],
+[data-en-key^="assurance-repository-policy-"][data-en-key$="-label"] {
+  flex: 0 0 var(--en-dimension-xs);
+}
+
+@media (max-width: 980px) {
+  [data-en-key="assurance-spec-file-header"] {
+    padding-right: var(--en-spacing-3) !important;
+    padding-left: var(--en-spacing-3) !important;
+  }
+
+  [data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-obligations"] {
+    width: 240px !important;
+  }
+
+  [data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-detail"] {
+    padding-right: var(--en-spacing-3);
+    padding-left: var(--en-spacing-3);
+  }
+
+  [data-en-key="assurance-spec-title-line"] {
+    flex-wrap: wrap;
+  }
+}
+
 @media (max-width: 760px) {
   #openagents-desktop-root {
     padding: 0;

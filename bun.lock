@@ -191,6 +191,7 @@
         "@effect-native/core": "workspace:*",
         "@effect-native/render-dom": "workspace:*",
         "@effect-native/tokens": "workspace:*",
+        "@openagentsinc/assurance-spec": "workspace:*",
         "@openagentsinc/audio-contract": "workspace:*",
         "@openagentsinc/behavior-contracts": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
