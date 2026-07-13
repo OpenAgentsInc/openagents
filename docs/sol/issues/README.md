@@ -35,6 +35,16 @@ must equal the pinned product-issue projection.
 | Live issue | Current evidence |
 | --- | --- |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
+| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) plus the live regression comments |
+
+## Live issues represented by an owning plan
+
+The remote-first leaves share one ordered contract plan rather than nine
+duplicated checked-in issue bodies.
+
+| Live issues | Owning plan |
+| --- | --- |
+| [#8745](https://github.com/OpenAgentsInc/openagents/issues/8745), [#8746](https://github.com/OpenAgentsInc/openagents/issues/8746), [#8747](https://github.com/OpenAgentsInc/openagents/issues/8747), [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748), [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749), [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750), [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751), [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752), [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | [`remote-first portable coding sessions`](../2026-07-11-remote-first-portable-coding-sessions-pathway.md) |
 
 ## Closed proof and implementation sources
 
@@ -46,7 +56,7 @@ They are evidence, not ready leaves.
 - [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) — closed #8676
 - [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) — closed #8677
 - [`fc-cloud-codex.md`](./fc-cloud-codex.md) — closed #8547 first accepted brokered Agent Computer/workroom
-- [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) — closed AUDIO-0…AUDIO-8 #8733–#8741 implementation track
+- [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) — closed AUDIO-0…AUDIO-7 #8733–#8740 implementation work; the reopened final acceptance leaf is classified above
 
 - [`confirmed-agent-timeline.md`](./confirmed-agent-timeline.md) — #8672
 - [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md) — #8674

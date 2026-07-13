@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "eb98657bc74a3792827d14543af62cf883f8548812624a5a4466ec67ad765815",
+  "sourceTreeSha256": "af7f85e036483d23e98b6889365d57a4cf12e912bacc62674ed3692b5c4e8e05",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -548,8 +548,8 @@
       "owner": "Sol portable sessions",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "087ce1c835d1adf180f67fb5b400c233070e5f3ccfd941924dfef79a5eed55e2",
-      "status": "owner-directed product-path amendment; implementation pending",
+      "sha256": "86598ad011d10f04ad763229ec9490297b3498b6b41497f717143b693340819a",
+      "status": "owner-directed product path; ordered implementation ledger active",
       "snapshot": "2026-07-11",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
@@ -558,9 +558,10 @@
         "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
+        "docs/sol/issues/README.md",
         "docs/teardowns/README.md"
       ],
-      "inboundSourceCount": 5,
+      "inboundSourceCount": 6,
       "issueLinks": [
         8547,
         8566,
@@ -580,7 +581,16 @@
         8697,
         8698,
         8699,
-        8707
+        8707,
+        8745,
+        8746,
+        8747,
+        8748,
+        8749,
+        8750,
+        8751,
+        8752,
+        8753
       ]
     },
     {
@@ -1141,7 +1151,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "74c767d978f7acd97b0c6434fb3a33510cf07ebe5ac1c946ca585ef164ad1382",
+      "sha256": "ac5a22ca24b709e57cdc1ac2af64537c61c2ceb990b431d9a30ee6a9353ef3bd",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
@@ -1213,9 +1223,19 @@
         8731,
         8733,
         8734,
+        8740,
         8741,
         8742,
-        8743
+        8743,
+        8745,
+        8746,
+        8747,
+        8748,
+        8749,
+        8750,
+        8751,
+        8752,
+        8753
       ]
     },
     {
@@ -1311,7 +1331,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "03d59a113ea96efd5eca94493fb4b4cf119ed68c7e2c5856230a9bbc92ca80b8",
+      "sha256": "cc81b2547f1f51c99ab6b453f72b41f12e2c3e91c50be6d8dbbc80a358d0d0b9",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1371,7 +1391,17 @@
         8706,
         8707,
         8733,
-        8741
+        8740,
+        8741,
+        8745,
+        8746,
+        8747,
+        8748,
+        8749,
+        8750,
+        8751,
+        8752,
+        8753
       ]
     },
     {

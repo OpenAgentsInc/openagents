@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 100
+- Revision: 101
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -420,16 +420,24 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   posture constraints. Portability, general broker,
   owner-managed enrollment, provider-adapter breadth, and any-host directory
   need bounded leaves rather than silent expansion of those issues. The
-  #8733–#8741 persistent Desktop voice implementation track is closed and does
-  not expand this remote-work boundary.
+  #8733–#8740 persistent Desktop voice implementation is closed. AUDIO-8 #8741
+  is reopened for owner confirmation of the landed endpointing, turn-fencing,
+  and renderer-update regression fixes and does not expand this remote-work
+  boundary.
 - Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
   receipt; it is not current work or a product-front-door decision.
-- #8733 is the closed persistent-audio MVP. AUDIO-1 #8734 through AUDIO-8
-  #8741 are on `main`; the deployed private-gateway, real-microphone,
-  canonical-Chirp, durable-retention, full Desktop verify, packaged lower-rung,
-  and owner-review receipts satisfy the implementation epic. A signed RC of
-  this exact main is subsequent release-system work. Audio work must not silently broaden CUT, managed
-  workroom, Sync, command, behavior-contract, migration, or release authority.
+- #8733 is the closed persistent-audio implementation epic. AUDIO-1 #8734
+  through AUDIO-7 #8740 are closed. AUDIO-8 #8741 is reopened: its production
+  endpointing, turn-fencing, and bounded renderer-notification fixes are on
+  `main`, but the exact owner launcher still needs real-microphone confirmation
+  before re-close. Audio work must not silently broaden CUT, managed workroom,
+  Sync, command, behavior-contract, migration, or release authority.
+- PORT-00 through PORT-08 are now live as ordered #8745–#8753 beneath #8566.
+  They own the previously unfiled remote-first session/graph/attachment/
+  checkpoint, broker, first move, owner-managed target, managed-provider,
+  mobile any-host, session-neutral voice, and R7 dogfood contracts. They do
+  not broaden CUT-27 or #8636, and shared schemas, migrations, command IDs,
+  catalogs, and policy remain serialized in packet order.
 - `apps/pylon/src/orchestration` and `apps/pylon/src/node` remain protected
   load-bearing Fleet core during the open correctness proof. Streamlining is a
   separately bounded post-proof program under the
@@ -449,6 +457,16 @@ the currently unclaimed worker lease.
 | [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597) | Mobile R0–R7/R6 track |
 | [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | One claim registry across local/managed routing |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
+| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 owner confirmation of real-microphone and UI-stability fixes |
+| [#8745](https://github.com/OpenAgentsInc/openagents/issues/8745) | PORT-00 portable-session intent, invariant, schema, and journey freeze |
+| [#8746](https://github.com/OpenAgentsInc/openagents/issues/8746) | PORT-01 durable session/graph/attachment/checkpoint/directory authority |
+| [#8747](https://github.com/OpenAgentsInc/openagents/issues/8747) | PORT-02 general target-scoped capability broker |
+| [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | PORT-03 first local↔managed graph-wide move and failback |
+| [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749) | PORT-04 owner-managed remote target lifecycle and moves |
+| [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750) | PORT-05 first audited managed-provider adapter |
+| [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751) | PORT-06 Effect Native mobile any-host control |
+| [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752) | PORT-07 persona-neutral portable-session voice |
+| [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | PORT-08 signed R7 portable-session dogfood |
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 #8642, #8643, #8646, and #8650. They are not dormant queues.
@@ -473,18 +491,21 @@ Live issues and claims control exact selection. At this snapshot:
    #8547's accepted managed workroom, then retain the real owner-local plus
    managed-cloud hybrid-routing receipt. Keep metering, target custody,
    quota/cost/data posture, usage, writeback, reclaim, and fallback explicit.
-4. Treat closed #8733 as the accepted P1 audio implementation substrate. Ship
-   it through the existing Desktop RC system without widening Runtime Gateway,
-   Desktop command, Sync, or release authority.
-5. File bounded leaves for portable-session attachment/checkpoint authority,
-   general capability broker, owner-managed targets, first audited provider
-   adapter, and any-host directory before mutation. Mobile voice may later
-   consume #8734's shared contracts, but mobile capture is not part of #8733.
-6. Compose those substrates into remaining Desktop R5, mobile R6, and R7
-   dogfood: local→managed→owner-managed movement, stable topology/cursors,
-   cross-device control, voice follow-up, revocation, lost ACK, restart/update,
-   failback, and reclaim with no fork, duplication, leak, orphan, or false
-   authority.
+4. Finish AUDIO-8 #8741's exact owner-launcher microphone/UI confirmation,
+   then re-close it. Treat closed #8733 as the P1 audio implementation
+   substrate and do not widen Runtime Gateway, Desktop command, Sync, or
+   release authority.
+5. Execute PORT-00 #8745 first. Then PORT-01 #8746 and PORT-02 #8747 may run
+   in parallel only after the shared schema/intent freeze, with migrations,
+   command IDs, catalogs, and policy serialized. PORT-03 #8748 composes both
+   into the first real local↔managed move and failback.
+6. After the shared target contract, PORT-04 #8749 owner-managed enrollment and
+   PORT-05 #8750's audited provider adapter may proceed in parallel. Then ship
+   PORT-06 #8751 mobile any-host control, PORT-07 #8752 session-neutral voice,
+   and PORT-08 #8753 signed R7 dogfood in order. The final journey must retain
+   stable topology/cursors through local→managed→owner-managed movement,
+   cross-device control, revocation, lost ACK, restart/update, failback, and
+   reclaim with no fork, duplication, leak, orphan, or false authority.
 Owner or external gates shift capacity to another ready R0–R7 slice, never to
 closed presentation backlog. Claims are refreshed before every mutation.
 

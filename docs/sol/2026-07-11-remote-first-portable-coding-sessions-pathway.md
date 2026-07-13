@@ -2,9 +2,9 @@
 
 - Date: 2026-07-11
 - Class: contract
-- Dispatch: no current queue; use the master, live issues, and claims
+- Dispatch: yes; PORT-00 through PORT-08 are live as #8745–#8753
 - Owner: Sol portable sessions
-- Status: owner-directed product-path amendment; implementation pending
+- Status: owner-directed product path; ordered implementation ledger active
 - Program parent: [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566)
 - Canonical sequencing: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 - Local coding cutover graph:
@@ -37,9 +37,9 @@ replace the planned entries.
 
 ## Direct answer
 
-Revisions 30–31 now reflect all four outcomes as pending roadmap contracts.
-The live issue ledger, implementation, and acceptance evidence do not yet cover
-them completely.
+The roadmap reflects all four outcomes as pending product contracts. The live
+issue ledger now covers them as #8745–#8753; implementation and acceptance
+evidence remain pending and must advance packet by packet.
 
 | Requested outcome | Current coverage | Missing live ownership and proof |
 | --- | --- | --- |
@@ -514,22 +514,21 @@ still require the normal visible confirmation and durable outcome.
 
 ## Ordered pathway
 
-These are bounded work packets to add beneath #8566 after the local cutover
-graph. They still need live issue leaves and claims before implementation; the
-existing #8676, #8547, #8636, and CUT-27 issues must not be silently broadened
-to pretend they already own all of this.
+These bounded work packets are live beneath #8566 after the local cutover
+graph. The existing #8676, #8547, #8636, and CUT-27 issues must not be silently
+broadened to pretend they already own all of this.
 
-| Order | Packet | Outcome | Exit proof |
-| ---: | --- | --- | --- |
-| 0 | Intent and invariants | ProductSpec, executable behavior/UX contracts and real-host QA journeys, target vocabulary, session/checkpoint/agent-graph schemas, and threat/model boundary are frozen. | Schema/architecture tests reject host-derived session identity, root-catalog child leakage, two live attachments, orphaned active descendants, secrets in checkpoints, and silent target/isolation changes; the journey rejects detail-blocked first paint and click/hotkey divergence. |
-| 1 | Durable session authority | `coding_session`, canonical agent graph/per-thread cursors, attachment generation, checkpoint metadata, host/session directory, authoritative durable log, derived current projection, volatile stream, and command outcomes land in the canonical request processor and Khala Sync. | Local fixture survives restart, live-stream gap, lost ACK, duplicate move, stale source generation, and replay without duplicate execution, duplicate child launch cards, or a flattened graph. |
-| 2 | General broker | Provider/SCM/tool secret leases work across local and managed targets; source grants revoke and target grants reissue on move. | Revoke during move, replay, log/snapshot scan, timeout, and wipe tests pass with no raw secret projection. |
-| 3 | First real move | Move a bounded session with at least one child from local Pylon A to the accepted #8547 Agent Computer and back by checkpoint/rehydrate. | Same session/thread/run/agent refs, parent edges and per-thread cursors, exact checkpoint/diff digest, one live attachment, new target grants, source cleanup, no source child accepting work, and no duplicate accepted parent or child turn. |
-| 4 | Owner-managed remote target | Ship enroll/update/revoke/connect for a homelab/customer-cloud Pylon or `oa-node`. | Local → owner-managed remote → local move passes with explicit health, isolation, compatibility, and cleanup receipts. |
-| 5 | Managed-provider adapter | Audit and implement one provider adapter such as Daytona behind the same contract. | Provider-specific provision/snapshot/ports/exec/teardown behavior maps to OpenAgents receipts; downgrade and cleanup failures are visible and fail closed. |
-| 6 | Mobile any-host control | Mobile session directory, compact nested agent supervision, causal child activity/direct transcript access, target detail, stop/checkpoint/move/resume/failback, push/deep links, and attention views consume the shared contract. | Physical iOS/Android clients inspect and control the same canonical session/agent graph on each enrolled host class through the same typed tap/shortcut actions without host paths, tokens, or vendor APIs. |
-| 7 | Conversational voice | Persona-neutral ASR/TTS/barge-in drives the same typed commands and outcomes. | Physical-phone voice follow-up plus interrupt/move/resume works under reconnect; text remains available and no audio is retained by default. |
-| 8 | R7 dogfood | Sustained owner use across at least two host classes, including faults, updates, revocation, and rollback. | Signed owner-accepted receipt with zero forked session identity, duplicate accepted work, secret leak, silent substitution, or orphaned source runtime. |
+| Order | Issue | Packet | Outcome | Exit proof |
+| ---: | --- | --- | --- | --- |
+| 0 | [#8745](https://github.com/OpenAgentsInc/openagents/issues/8745) | Intent and invariants | ProductSpec, executable behavior/UX contracts and real-host QA journeys, target vocabulary, session/checkpoint/agent-graph schemas, and threat/model boundary are frozen. | Schema/architecture tests reject host-derived session identity, root-catalog child leakage, two live attachments, orphaned active descendants, secrets in checkpoints, and silent target/isolation changes; the journey rejects detail-blocked first paint and click/hotkey divergence. |
+| 1 | [#8746](https://github.com/OpenAgentsInc/openagents/issues/8746) | Durable session authority | `coding_session`, canonical agent graph/per-thread cursors, attachment generation, checkpoint metadata, host/session directory, authoritative durable log, derived current projection, volatile stream, and command outcomes land in the canonical request processor and Khala Sync. | Local fixture survives restart, live-stream gap, lost ACK, duplicate move, stale source generation, and replay without duplicate execution, duplicate child launch cards, or a flattened graph. |
+| 2 | [#8747](https://github.com/OpenAgentsInc/openagents/issues/8747) | General broker | Provider/SCM/tool/API secret leases work across local and managed targets; source grants revoke and target grants reissue on move. | Revoke during move, replay, log/snapshot scan, timeout, and wipe tests pass with no raw secret projection. |
+| 3 | [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | First real move | Move a bounded session with at least one child from local Pylon A to the accepted #8547 Agent Computer and back by checkpoint/rehydrate. | Same session/thread/run/agent refs, parent edges and per-thread cursors, exact checkpoint/diff digest, one live attachment, new target grants, source cleanup, no source child accepting work, and no duplicate accepted parent or child turn. |
+| 4 | [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749) | Owner-managed remote target | Ship enroll/update/revoke/connect for a homelab/customer-cloud Pylon or `oa-node`. | Local → owner-managed remote → local move passes with explicit health, isolation, compatibility, and cleanup receipts. |
+| 5 | [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750) | Managed-provider adapter | Audit and implement one provider adapter such as Daytona behind the same contract. | Provider-specific provision/snapshot/ports/exec/teardown behavior maps to OpenAgents receipts; downgrade and cleanup failures are visible and fail closed. |
+| 6 | [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751) | Mobile any-host control | Mobile session directory, compact nested agent supervision, causal child activity/direct transcript access, target detail, stop/checkpoint/move/resume/failback, push/deep links, and attention views consume the shared contract. | Physical iOS and Android-emulator clients inspect and control the same canonical session/agent graph on each enrolled host class through the same typed tap/shortcut actions without host paths, tokens, or vendor APIs. |
+| 7 | [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752) | Conversational voice | Persona-neutral ASR/TTS/barge-in drives the same typed commands and outcomes. | Physical-phone voice follow-up plus interrupt/move/resume works under reconnect; text remains available and no audio is retained by default. |
+| 8 | [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | R7 dogfood | Sustained owner use across owner-local, accepted managed, and owner-managed target classes, including faults, updates, revocation, and rollback. | Signed owner-accepted receipt with zero forked session identity, duplicate accepted work, secret leak, silent substitution, or orphaned source runtime. |
 
 Packets 1 and 2 are the critical path. Provider breadth and UI polish must not
 race ahead of the session-fencing and secret-reissue laws.
@@ -650,12 +649,11 @@ The subsequent reconciliation adds the episode-249 consequence: the canonical ag
 independent child transcripts/activity cursors, and the fast click/tap/hotkey
 supervision contract survive live streaming and host movement. #8691/#8692 now
 own the local live-graph contract/UI and closed #8683/#8684 complete #8678's
-topology residual. The remaining coordination gap is the remote-portability
-issue ledger, not roadmap prose:
+topology residual. The former remote-portability issue-ledger gap is closed by
+#8745–#8753. The remaining work is implementation and acceptance:
 
-- create bounded leaves for portable session authority, owner-managed/provider
-  targets, the general broker, and any-host mobile/voice rather than overloading
-  #8676/#8547/#8636 or CUT-27;
+- execute the bounded portable-session, broker, target, any-host mobile, voice,
+  and dogfood leaves without overloading #8676/#8547/#8636 or CUT-27;
 - reconcile live #8566/#8574/#8597 bodies that still cite superseded voice scope, name
   closed work as future, or classify all voice as a non-goal.
 
