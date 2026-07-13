@@ -5,10 +5,11 @@
 - Dispatch: no; follow the authority order below
 - Owner: Sol roadmap
 
-Sol owns the implementation-grounded OpenAgents roadmap for reliable Desktop
-and mobile coding, remote workrooms, cross-device continuity, and fleet
-control. This index points to the authorities; it does not cache their revision,
-issue count, or current queue.
+Sol owns the implementation-grounded OpenAgents roadmap. Its active product is
+the ProductSpec-native local Desktop Codex Workroom; broader mobile, remote,
+Fleet, portability, provider, and voice plans are retained evidence or closed
+non-revival boundaries. This index points to the authorities; it does not cache
+their revision, issue count, or current queue.
 
 ## Dispatch-safe reading order
 
@@ -51,10 +52,6 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   status prose.
 - [`2026-07-10-r1-r2-identity-sync-contract.md`](./2026-07-10-r1-r2-identity-sync-contract.md)
   — frozen identity and Sync contract for the R1/R2 boundary.
-- [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
-  — promoted pathway for portable sessions, target authority, brokered
-  capabilities, any-host mobile control, and persona-neutral voice. Current
-  sequencing still comes from the master and live issues.
 
 ## Evidence and historical baselines
 
@@ -77,6 +74,9 @@ not current queues:
 - [`2026-07-11-openagents-coding-cutover-issue-plan.md`](./2026-07-11-openagents-coding-cutover-issue-plan.md)
   — dated CUT-01–CUT-27 dependency and acceptance design. Live issue state and
   receipts override its mutable status prose.
+- [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
+  — historical portable-session, target, broker, mobile, and voice design. Its
+  open leaves are closed not-planned and it cannot dispatch work.
 - [`2026-07-12-cut27-cutover-readiness-audit.md`](./2026-07-12-cut27-cutover-readiness-audit.md)
   — chronological readiness evidence, not a current blocker table.
 - [`../teardowns/README.md`](../teardowns/README.md) — point-in-time product and

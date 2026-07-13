@@ -12,7 +12,17 @@
   [current official Codex skill guidance](https://learn.chatgpt.com/docs/build-skills)
   on 2026-07-13
 - Product Spec:
-  [`openagents-codex-workroom-mvp.product-spec.md` @ `spec_revision: 2`](./openagents-codex-workroom-mvp.product-spec.md)
+  [`openagents-codex-workroom-mvp.product-spec.md` @ `spec_revision: 3`](./openagents-codex-workroom-mvp.product-spec.md)
+
+## Post-audit owner disposition
+
+After this snapshot, the owner made the audit recommendation the replacement
+queue rather than a child of the broader program. [MVP-01
+#8756](https://github.com/OpenAgentsInc/openagents/issues/8756) is now the sole
+active Sol product lane. The 11 issues listed in the snapshot table below were
+closed `not planned` with supersession comments and without rewriting their
+bodies or claiming their exits complete. Their landed evidence remains valid at
+its narrowest proof rung; the table below remains the exact point-in-time audit.
 
 ## Executive finding
 

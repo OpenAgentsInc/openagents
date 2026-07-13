@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop Codex Workroom MVP"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-13T00:00:00Z"
-updated_at: "2026-07-13T13:52:48Z"
+updated_at: "2026-07-13T14:12:32Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -18,8 +18,8 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_epic: "8566"
-  openagents_lane: "Desktop #8574; CUT-27 #8707 remains the broader cutover authority"
+  openagents_epic: "8756"
+  openagents_lane: "MVP-01 #8756; sole active Sol product lane"
   openagents_assurance_level: "signed-local-codex-workroom"
   openagents_evidence: "docs/mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md"
   openagents_productspec_workflow: "native ProductSpec workbench plus built-in productspec-work skill"

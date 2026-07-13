@@ -16,8 +16,8 @@ read.
    behind that spec. It does not dispatch work or manufacture current proof.
 3. [`../sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) — the sequencing,
    priority, live-gate, and issue-triage authority.
-4. [Live `roadmap:sol` issues](https://github.com/OpenAgentsInc/openagents/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap%3Asol)
-   — execution coordination and current claims.
+4. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
+   — the sole active Sol product lane and current claim/evidence ledger.
 
 The Product Spec declares intent. Runtime policy, behavior contracts, Eval
 Suites, tests, reviewed artifacts, and receipts verify it; owner gates record

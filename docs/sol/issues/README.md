@@ -19,31 +19,22 @@ These files correspond to open issues in the schema-versioned
 [`product-issue snapshot`](../live-roadmap-issues.json). Their bodies may
 contain historical status; refresh the live issue/comments before dispatch.
 
-| Source | Live issue | Durable role |
-| --- | --- | --- |
-| [`app-program.md`](./app-program.md) | #8566 | Sole R0–R7 program parent |
-| [`app-desktop.md`](./app-desktop.md) | #8574 | Desktop D0–D6/R5 track |
-| [`app-mobile.md`](./app-mobile.md) | #8597 | Mobile R0–R7/R6 track |
+There is no checked-in issue-body source for the sole live MVP issue. Its exact
+intent authority is the ProductSpec classified below.
 
 ## Live issues represented by receipts
 
-These open CUT leaves have current receipt/index coverage rather than a second
-checked-in issue-body source. Together with the live issue sources above, they
-must equal the pinned product-issue projection.
-
-| Live issue | Current evidence |
-| --- | --- |
-| [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
-| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) plus the live regression comments |
+No live issue is represented only by a receipt. Receipts remain evidence, not
+the active MVP dispatch authority.
 
 ## Live issues represented by an owning plan
 
-The remote-first leaves share one ordered contract plan rather than nine
-duplicated checked-in issue bodies.
+The sole live issue executes one exact ProductSpec rather than duplicating its
+acceptance language in a checked-in issue-body source.
 
-| Live issues | Owning plan |
+| Live issue | Owning ProductSpec |
 | --- | --- |
-| [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748), [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749), [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750), [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751), [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752), [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | [`remote-first portable coding sessions`](../2026-07-11-remote-first-portable-coding-sessions-pathway.md) |
+| [#8756](https://github.com/OpenAgentsInc/openagents/issues/8756) | [`OpenAgents Desktop Codex Workroom MVP`](../../mvp/openagents-codex-workroom-mvp.product-spec.md) |
 
 ## Closed proof and implementation sources
 
@@ -98,6 +89,9 @@ They are evidence, not ready leaves.
 These closed/not-planned sources preserve negative product boundaries. They are
 not dormant epics. A real defect or newly authorized outcome gets a new issue.
 
+- [`app-program.md`](./app-program.md) — #8566 broad Desktop/mobile/Fleet program
+- [`app-desktop.md`](./app-desktop.md) — #8574 broad Desktop parity/Fleet track
+- [`app-mobile.md`](./app-mobile.md) — #8597 mobile/Sync/remote/Fleet track
 - [`app-forum.md`](./app-forum.md) — #8635
 - [`app-landing.md`](./app-landing.md) — #8595
 - [`app-web-consolidation.md`](./app-web-consolidation.md) — #8634
@@ -105,6 +99,13 @@ not dormant epics. A real defect or newly authorized outcome gets a new issue.
 - [`glass-ui-and-sarah-mobile.md`](./glass-ui-and-sarah-mobile.md) — #8646
 - [`role-programs-and-colleagues.md`](./role-programs-and-colleagues.md) — #8643
 - [`sarah-presentation.md`](./sarah-presentation.md) — #8610
+- [CUT-27](https://github.com/OpenAgentsInc/openagents/issues/8707) — broader
+  Codex/Claude and per-task device cutover
+- [AUDIO-8](https://github.com/OpenAgentsInc/openagents/issues/8741) — persistent
+  microphone/voice acceptance
+- [PORT-03 through PORT-08](https://github.com/OpenAgentsInc/openagents/issues/8748)
+  — #8748, #8749, #8750, #8751, #8752, and #8753 remote movement, target,
+  provider, mobile, voice, and R7 work
 
 ## Architecture reference
 

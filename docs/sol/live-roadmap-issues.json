@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T12:14:00.151Z",
+  "generatedAt": "2026-07-13T14:12:26.947Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -10,141 +10,16 @@
   "issues": [
     {
       "labels": [
-        "ui",
         "priority:P0",
-        "effect",
-        "area:program",
-        "roadmap:sol"
-      ],
-      "number": 8566,
-      "state": "OPEN",
-      "title": "P0 PROGRAM: reliable Effect Native Desktop/mobile coding and fleet software",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8566"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "effect",
-        "area:desktop",
-        "decommission",
-        "roadmap:sol"
-      ],
-      "number": 8574,
-      "state": "OPEN",
-      "title": "P0 TRACK: OpenAgents Desktop workbench, Sync, and runtime gateway",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8574"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "effect",
-        "mobile",
-        "decommission",
-        "roadmap:sol"
-      ],
-      "number": 8597,
-      "state": "OPEN",
-      "title": "P0 TRACK: OpenAgents mobile Sync, remote coding, and fleet control",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8597"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "effect",
         "area:desktop",
         "codex",
-        "mobile",
-        "decommission",
         "type:proof",
-        "claude",
         "roadmap:sol"
       ],
-      "number": 8707,
+      "number": 8756,
       "state": "OPEN",
-      "title": "CUT-27 — Prove and declare the Codex/Claude-to-OpenAgents coding cutover",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8707"
-    },
-    {
-      "labels": [
-        "effect",
-        "area:desktop",
-        "area:infra",
-        "gcp",
-        "type:proof",
-        "roadmap:sol",
-        "priority:P1-parallel",
-        "track:audio"
-      ],
-      "number": 8741,
-      "state": "OPEN",
-      "title": "AUDIO-8: deploy and prove the real-microphone persistent voice MVP",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8741"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8748,
-      "state": "OPEN",
-      "title": "PORT-03 — Prove the first graph-wide local Pylon to managed Agent Computer move and failback",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8748"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8749,
-      "state": "OPEN",
-      "title": "PORT-04 — Owner-managed remote Pylon or oa-node enrollment, lifecycle, and portable moves",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8749"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8750,
-      "state": "OPEN",
-      "title": "PORT-05 — Audit and ship one managed-provider target adapter behind the portable target contract",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8750"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8751,
-      "state": "OPEN",
-      "title": "PORT-06 — Effect Native mobile any-host session directory and graph-wide portable controls",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8751"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8752,
-      "state": "OPEN",
-      "title": "PORT-07 — Persona-neutral conversational voice over portable session commands",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8752"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8753,
-      "state": "OPEN",
-      "title": "PORT-08 — Signed R7 sustained dogfood for portable coding across host classes, faults, updates, and reclaim",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8753"
+      "title": "MVP-01 — Ship and prove the ProductSpec-native OpenAgents Desktop Codex Workroom",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/8756"
     }
   ]
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "c3a8342f2d7f39156bf70c4ae352a3b610a4648a04ee72c3cf0451d9b0c079af",
+  "sourceTreeSha256": "dcd0df5927377f8a08227cb561d8d98616bb3a61792046e342232e10c8fcd6b6",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -559,10 +559,9 @@
         "docs/sol/2026-07-12-port-00-portable-session-contract-freeze-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
-        "docs/sol/issues/README.md",
         "docs/teardowns/README.md"
       ],
-      "inboundSourceCount": 7,
+      "inboundSourceCount": 6,
       "issueLinks": [
         8547,
         8566,
@@ -829,10 +828,9 @@
         "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
-        "docs/sol/issues/README.md",
         "docs/sol/receipts/README.md"
       ],
-      "inboundSourceCount": 7,
+      "inboundSourceCount": 6,
       "issueLinks": [
         8547,
         8566,
@@ -1315,7 +1313,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "f6099afecac7456100bb1b63b26f6b9f8b980c8715ba244a52451d4f02d9b783",
+      "sha256": "5af35be66a527d83300af7785a3fa711b682d37aceacaa0f71ccb5dce7ee9a39",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-13",
       "reviewedAt": "2026-07-12",
@@ -1399,11 +1397,8 @@
         8745,
         8747,
         8748,
-        8749,
-        8750,
-        8751,
-        8752,
-        8753
+        8753,
+        8756
       ]
     },
     {
@@ -1432,7 +1427,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "a0027f62fff55135654f438844f3ead6e1a7aa97e1eedcffd7e6ff5a1adbf589",
+      "sha256": "f21c5e2287c69a002e0d980ec15497eff7e5616d95f121bb299617b13dfc2ffb",
       "status": "current",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1499,7 +1494,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "36f20bd77374c0137502b101b1fa182b1ac799b519c12703f372001c1a5f479d",
+      "sha256": "278fa94762f0d1107f524779e45bc5e99bc319cf0037e9d60fc32cbf31b9432b",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1570,20 +1565,21 @@
         8750,
         8751,
         8752,
-        8753
+        8753,
+        8756
       ]
     },
     {
       "path": "docs/sol/issues/app-desktop.md",
-      "class": "contract",
+      "class": "tombstone",
       "owner": "Sol issue #8574",
-      "disposition": "retain-live-source",
+      "disposition": "retain-tombstone",
       "dispatch": false,
       "sha256": "d4b881e33384034d2157991ca430ae6fb49afa4227bb993452881c177637286b",
       "status": "active P0 under Master Revision 105 / R0–R7 / D0–D6",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
-      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "reviewTrigger": "only on explicit owner revival",
       "inboundLinks": [
         "docs/sol/2026-07-10-opencode-khala-openagents-desktop-parity-audit.md",
         "docs/sol/issues/README.md"
@@ -1648,15 +1644,15 @@
     },
     {
       "path": "docs/sol/issues/app-mobile.md",
-      "class": "contract",
+      "class": "tombstone",
       "owner": "Sol issue #8597",
-      "disposition": "retain-live-source",
+      "disposition": "retain-tombstone",
       "dispatch": false,
       "sha256": "6be4e41d8105019ed86612acad7c9f1408ef03d3bf8de4f5d3000aa9c7fa4604",
       "status": "active P0 under Master Revision 105 / R0–R7 / M0–M7",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
-      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "reviewTrigger": "only on explicit owner revival",
       "inboundLinks": [
         "docs/sol/issues/README.md",
         "docs/sol/issues/glass-ui-and-sarah-mobile.md"
@@ -1675,15 +1671,15 @@
     },
     {
       "path": "docs/sol/issues/app-program.md",
-      "class": "contract",
+      "class": "tombstone",
       "owner": "Sol issue #8566",
-      "disposition": "retain-live-source",
+      "disposition": "retain-tombstone",
       "dispatch": false,
       "sha256": "f336f298eec9592b1d411a235ab8ee84fcf8d48aa7427097668b110b29b597d7",
       "status": "sole active program parent under Master Revision 105",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
-      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "reviewTrigger": "only on explicit owner revival",
       "inboundLinks": [
         "docs/sol/issues/README.md"
       ],
