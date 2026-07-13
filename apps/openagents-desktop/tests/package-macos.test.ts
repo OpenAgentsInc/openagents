@@ -5,8 +5,14 @@ import path from "node:path"
 import config, { OPENAGENTS_DESKTOP_BUNDLE_ID, OPENAGENTS_DESKTOP_PROTOCOL } from "../forge.config.ts"
 
 const root = path.resolve(import.meta.dir, "..")
+const mainSource = readFileSync(path.join(root, "src", "main.ts"), "utf8")
 
 describe("CUT-26 macOS artifact contract", () => {
+  test("normal production launches use the canonical OpenAgents profile with a legacy atomic migration", () => {
+    expect(mainSource).toContain('path.join(app.getPath("appData"), "OpenAgents")')
+    expect(mainSource).toContain("renameSync(legacyDevelopmentUserDataPath, productionUserDataPath)")
+    expect(mainSource).not.toContain(': path.join(app.getPath("appData"), "OpenAgentsDesktopDev")')
+  })
   test("freezes independent identity, DMG+ZIP outputs, ASAR, and provider executable unpacking", () => {
     expect(OPENAGENTS_DESKTOP_BUNDLE_ID).toBe("com.openagents.desktop")
     expect(OPENAGENTS_DESKTOP_BUNDLE_ID).not.toContain("khala")

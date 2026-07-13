@@ -13,7 +13,7 @@
 import path from "node:path"
 import { homedir } from "node:os"
 import { createHash, randomUUID } from "node:crypto"
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFile, execFileSync } from "node:child_process"
 import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
@@ -426,13 +426,24 @@ const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 // default top-level coding workspace today; the runtime-facing getter is the
 // seam a future persisted directory setting/picker will replace.
 const desktopLaunchWorkingDirectory = path.resolve(app.getPath("home"))
+const productionUserDataPath = path.join(app.getPath("appData"), "OpenAgents")
+const legacyDevelopmentUserDataPath = path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
+if (!smokeMode && !liveProofDriverMode && process.env.OPENAGENTS_DESKTOP_USER_DATA === undefined &&
+    !existsSync(productionUserDataPath) && existsSync(legacyDevelopmentUserDataPath)) {
+  try {
+    // Same-parent rename preserves the complete durable profile atomically.
+    // Failure is non-destructive: production still starts at its canonical
+    // path and the legacy directory remains untouched for manual recovery.
+    renameSync(legacyDevelopmentUserDataPath, productionUserDataPath)
+  } catch { /* retain the legacy profile without deleting or partially copying it */ }
+}
 const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
   smokeMode || liveProofDriverMode
     ? path.join(
         app.getPath("temp"),
         `openagents-desktop-${startupMarksMode ? "startup-marks" : smokeMode ? "smoke" : "live-proof"}-${process.pid}`,
       )
-    : path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
+    : productionUserDataPath
 )
 app.setPath("userData", desktopUserDataPath)
 const isolatedAppProofMode = isIsolatedAppProof({
@@ -800,10 +811,8 @@ ipcMain.handle(DesktopRuntimeGatewayInvokeChannel, (event, value: unknown) => {
   return outcome instanceof Promise ? outcome.then(recordReturned) : recordReturned(outcome)
 })
 
-// Interim development identity ONLY. Smoke uses a per-run userData root set
-// before single-instance lock acquisition; its spawned receipt process is
-// explicitly given the same root. Normal development retains this stable path.
-// The frozen packaged identity remains the owner decision tracked by #8574.
+// Smoke uses a per-run temporary root before single-instance lock acquisition;
+// normal launches use the canonical OpenAgents profile above.
 
 const hardenSession = (target: Session): void => {
   // Deny-by-default: this shell requests no runtime permissions.
