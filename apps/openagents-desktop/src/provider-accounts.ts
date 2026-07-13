@@ -203,6 +203,8 @@ export type ProviderAccountsServiceDependencies = Readonly<{
   usageTimeoutMs?: number
   now?: () => Date
   inspectRuntimes?: () => Promise<ReadonlyArray<ProviderRuntimeCompatibility>>
+  /** Electron's authoritative packaged-state signal; avoids ASAR path heuristics. */
+  packaged?: boolean
   /**
    * Source-independent projection used by packaged Desktop builds. The CLI
    * adapter remains the development path; an installed app cannot derive an
@@ -330,7 +332,7 @@ export const makeProviderAccountsService = (
   const inspectRuntimes = dependencies.inspectRuntimes ?? inspectProviderRuntimeCompatibility
   const packagedProjection = dependencies.packagedProjection ?? (
     dependencies.spawnPylon === undefined && (
-      isPackagedAsarPath(here) || repoRootFromHere(here) === null
+      dependencies.packaged === true || isPackagedAsarPath(here) || repoRootFromHere(here) === null
     )
       ? defaultPackagedProjection()
       : null

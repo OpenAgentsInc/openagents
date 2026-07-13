@@ -427,7 +427,9 @@ if (smokeMode) {
 }
 const providerAccounts = makeProviderAccountsService(
   here,
-  smokeMode ? { spawnPylon: makeFixtureProviderAccountsSpawn() } : {},
+  smokeMode
+    ? { spawnPylon: makeFixtureProviderAccountsSpawn() }
+    : { packaged: app.isPackaged },
 )
 let desktopSessionVault: DesktopSessionVault | null = null
 let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "unavailable"

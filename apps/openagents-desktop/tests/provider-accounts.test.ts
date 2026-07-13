@@ -349,6 +349,21 @@ describe("makeProviderAccountsService", () => {
     service.dispose()
   })
 
+  test("explicit Electron packaged truth wins when the bundled dirname is not an ASAR path", async () => {
+    const service = makeProviderAccountsService("/Applications/OpenAgents.app/Contents/Resources", {
+      packaged: true,
+      spawnPylon: undefined,
+      packagedProjection: {
+        list: async () => fixtureProviderAccountsListStdout,
+        usage: async () => fixtureProviderAccountUsageStdout,
+      },
+      inspectRuntimes: async () => [],
+    })
+    const result = await service.listProviderAccounts()
+    expect(result.ok).toBe(true)
+    service.dispose()
+  })
+
   test("unavailable pylon runtime yields typed failures with no paths, never a throw", async () => {
     const service = makeProviderAccountsService("/nonexistent", { spawnPylon: () => null })
     const list = await service.listProviderAccounts()
