@@ -12,22 +12,23 @@ import { openDesktopUpdateStagingHost } from "../src/update-staging-host.ts"
 
 type Step = Readonly<{ step: string; ok: boolean; detail: string }>
 
-const value = (name: string): string => {
+const argument = (name: string): string => {
   const prefix = `--${name}=`
   const found = Bun.argv.slice(2).find(arg => arg.startsWith(prefix))?.slice(prefix.length).trim() ?? ""
   if (found === "") throw new Error(`missing ${prefix}<value>`)
-  return path.resolve(found)
+  return found
 }
-const previousDmg = value("previous-dmg")
-const candidateDmg = value("candidate-dmg")
-const secretsFile = value("signing-secrets")
-const outDir = value("out-dir")
-const previousVersion = "0.1.0-rc.7"
-const candidateVersion = "0.1.0-rc.8"
-const artifactUrl = "https://updates.openagents.invalid/artifacts/OpenAgents-0.1.0-rc.8-arm64.dmg"
+const fileArgument = (name: string): string => path.resolve(argument(name))
+const previousDmg = fileArgument("previous-dmg")
+const candidateDmg = fileArgument("candidate-dmg")
+const secretsFile = fileArgument("signing-secrets")
+const outDir = fileArgument("out-dir")
+const previousVersion = argument("previous-version")
+const candidateVersion = argument("candidate-version")
+const artifactUrl = `https://updates.openagents.invalid/artifacts/${path.basename(candidateDmg)}`
 const feedBase = "https://updates.openagents.invalid/desktop/openagents/rc"
 const root = mkdtempSync(path.join(tmpdir(), "openagents-release-acceptance-"))
-const installedApp = "/Applications/OpenAgents RC8 Update Proof.app"
+const installedApp = "/Applications/OpenAgents Release Update Proof.app"
 const updateRoot = path.join(root, "update")
 const diagnosticsDir = path.join(root, "diagnostics")
 const journal: Step[] = []
@@ -79,7 +80,7 @@ try {
 
   mountedCopy(previousDmg, installedApp)
   verifyInstalled(previousVersion)
-  record("install-previous", "stapled RC7 installed as the reversible update source")
+  record("install-previous", `stapled ${previousVersion} installed as the reversible update source`)
 
   const artifactBytes = new Uint8Array(readFileSync(candidateDmg))
   const publish = computeDesktopReleasePublish({
@@ -90,7 +91,7 @@ try {
     artifactBytes,
     artifactUrl,
     releasedAt: "2026-07-13T22:09:10.663Z",
-    notesRef: "mvp-8756-rc8",
+    notesRef: `mvp-8756-${candidateVersion}`,
     key: { d, kid },
   })
   artifactBytes.fill(0)
@@ -127,15 +128,15 @@ try {
     baseUrl: feedBase,
   })
   const first = host()
-  assert((await first.check()).phase === "available", "signed feed did not expose RC8")
-  assert((await first.download()).phase === "staged", "RC8 did not stage")
+  assert((await first.check()).phase === "available", `signed feed did not expose ${candidateVersion}`)
+  assert((await first.download()).phase === "staged", `${candidateVersion} did not stage`)
   const recovered = host()
   assert(recovered.snapshot().phase === "staged", "staged update did not survive process interruption")
-  record("interrupted-update", "digest-verified staged RC8 survived host destruction and reopen")
+  record("interrupted-update", `digest-verified staged ${candidateVersion} survived host destruction and reopen`)
   const applied = await recovered.apply()
-  assert(applied.phase === "restarting", `RC8 apply did not request restart: ${JSON.stringify(applied)}`)
+  assert(applied.phase === "restarting", `${candidateVersion} apply did not request restart: ${JSON.stringify(applied)}`)
   verifyInstalled(candidateVersion)
-  record("signed-update", "real notarized RC7 app atomically replaced by notarized RC8")
+  record("signed-update", `real notarized ${previousVersion} app atomically replaced by notarized ${candidateVersion}`)
 
   const applier8 = openMacOSUpdateApplier({
     root: updateRoot,
@@ -146,12 +147,12 @@ try {
   })
   const downgrade = await applier8.install(previousDmg, previousVersion)
   assert(!downgrade.ok && downgrade.reason === "candidate_not_monotonic", "downgrade was not refused")
-  record("downgrade-refused", "RC8 refused RC7 as a candidate outside the rollback slot")
+  record("downgrade-refused", `${candidateVersion} refused ${previousVersion} as a candidate outside the rollback slot`)
   assert(applier8.rollbackAvailable() && applier8.rollbackVersion() === previousVersion, "rollback slot unavailable")
   const rolledBack = await applier8.rollback()
   assert(rolledBack.ok && rolledBack.action === "rolled_back", "rollback failed")
   verifyInstalled(previousVersion)
-  record("rollback", "one retained rollback slot restored exact notarized RC7")
+  record("rollback", `one retained rollback slot restored exact notarized ${previousVersion}`)
 
   const diagnostics = makeDiagnosticsHost({
     exportDir: diagnosticsDir,
@@ -179,11 +180,11 @@ try {
   record("uninstall", "reversible proof app removed")
   mountedCopy(candidateDmg, installedApp)
   verifyInstalled(candidateVersion)
-  record("reinstall", "exact stapled RC8 reinstalled from the accepted DMG")
+  record("reinstall", `exact stapled ${candidateVersion} reinstalled from the accepted DMG`)
   rmSync(installedApp, { recursive: true, force: true })
   rmSync(root, { recursive: true, force: true })
   record("cleanup", "proof app, rollback slot, staged bytes, diagnostics, mounts, and private state removed")
-  record("summary", "exact RC7-to-RC8 release acceptance sequence passed without deployment")
+  record("summary", `exact ${previousVersion}-to-${candidateVersion} release acceptance sequence passed without deployment`)
 } catch (error) {
   journal.push({ step: "summary", ok: false, detail: error instanceof Error ? error.message.slice(0, 400) : "release acceptance failed" })
   persist()
