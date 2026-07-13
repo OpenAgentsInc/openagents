@@ -249,6 +249,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   whose derived public key differs from the committed pin is refused at
   publish time. The unsigned `artifactUrl` is transport only — the download
   is gated by the SIGNED sha256/byteLength.
+- OpenAgents Desktop macOS artifacts carry the product-owned
+  `resources/openagents-icon.icns` bundle. Finder, Dock, ZIP, and DMG output
+  must never fall back to Electron's atom icon; the packaging contract test
+  validates both the Forge input and the ICNS container before release.
 - Khala Code outside-user run evidence is opt-in only. The desktop may offer a
   "post run receipt" control, but it must not phone home or submit evidence on
   startup, refresh, harness inspection, or page view. Public run receipts may

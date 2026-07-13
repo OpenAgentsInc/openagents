@@ -92,7 +92,10 @@ const config: ForgeConfig = {
     // The release preflight/ASAR oracle enforces the resulting allowlist.
     prune: false,
     derefSymlinks: true,
-    icon: "dist/assets/openagents-icon.png",
+    // Electron Packager does not convert a PNG into a macOS application icon.
+    // Point it at the product-owned ICNS bundle so Finder/Dock never inherit
+    // Electron's atom icon. The renderer still uses the shared PNG below.
+    icon: "resources/openagents-icon.icns",
     extraResource: ["dist/native", "dist/builtin-skills"],
     ignore: path => ignoredCheckoutPath.test(path),
     protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],

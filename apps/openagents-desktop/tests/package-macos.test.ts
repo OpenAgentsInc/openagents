@@ -32,6 +32,13 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(makerPreparation).toContain('"fs-xattr"')
   })
 
+  test("packages the product-owned macOS icon instead of Electron's fallback", () => {
+    expect(config.packagerConfig?.icon).toBe("resources/openagents-icon.icns")
+    const icon = readFileSync(path.join(root, "resources", "openagents-icon.icns"))
+    expect(icon.subarray(0, 4).toString("ascii")).toBe("icns")
+    expect(icon.byteLength).toBeGreaterThan(1_000_000)
+  })
+
   test("locks the hardened Electron fuse posture", () => {
     const source = readFileSync(path.join(root, "forge.config.ts"), "utf8")
     for (const expected of [
