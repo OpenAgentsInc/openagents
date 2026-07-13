@@ -14,6 +14,7 @@
     "dev": "bun scripts/build.ts && electron .",
     "live-proof": "bun scripts/build.ts && bun scripts/run-live-proof.ts",
     "mvp-proof": "bun scripts/build.ts && bun scripts/run-mvp-proof.ts",
+    "release-acceptance": "bun scripts/run-release-acceptance.ts",
     "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
     "startup-bench": "bun scripts/startup-bench.ts",
     "test": "bun test",
