@@ -312,7 +312,7 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       const proposal = current.productSpec.editProposal
       if (projection?.state !== "ready" || proposal === null || current.productSpec.busy !== null) return
       yield* setWorkspace(workspace => ({ ...workspace, busy: "edit-confirm", error: null, notice: null }))
-      const raw = yield* Effect.promise(() => bridge.confirmEdit({ proposalRef: proposal.proposalRef, expectedCurrent: projection.identity }).catch(() => null))
+      const raw = yield* Effect.promise(() => bridge.confirmEdit({ proposalRef: proposal.proposalRef, expectedCurrent: projection.identity, criterionDisposition: "supersede_affected_packets" }).catch(() => null))
       const result = decodeProductSpecEditConfirmationResult(raw) as ProductSpecResult<{ projection: ProductSpecProjection }> | null
       yield* setWorkspace(workspace => result !== null && result.ok
         ? { ...workspace, projection: result.value.projection, editDraft: result.value.projection.sourceMarkdown, editProposal: null, plan: null, run: null, busy: null, notice: "ProductSpec revision confirmed. Create a new plan for the new immutable identity.", error: null }
@@ -494,7 +494,8 @@ export const productSpecWorkspaceView = (
             Text({ key: "product-spec-edit-review-title", content: `Revision ${workspace.editProposal.previous.revision} → ${workspace.editProposal.next.revision}`, variant: "heading", color: "textPrimary" }),
             Text({ key: "product-spec-edit-reconciliation", content: `Retained: ${workspace.editProposal.reconciliation.retainedCriterionIds.join(", ") || "none"} · Changed: ${workspace.editProposal.reconciliation.changedCriterionIds.join(", ") || "none"} · Added: ${workspace.editProposal.reconciliation.addedCriterionIds.join(", ") || "none"} · Removed: ${workspace.editProposal.reconciliation.removedCriterionIds.join(", ") || "none"}`, variant: "body", color: "warning" }),
             Text({ key: "product-spec-edit-diff", content: workspace.editProposal.diff, variant: "caption", color: "textMuted" }),
-            Button({ key: "product-spec-edit-confirm", label: "Confirm revision and invalidate prior plan", variant: "primary", disabled: busy, onPress: IntentRef("ProductSpecEditConfirmed") }),
+            Text({ key: "product-spec-edit-disposition", content: "Confirmation explicitly supersedes every affected prior-revision packet. Evidence remains pinned to its original criterion and does not cross revisions.", variant: "caption", color: "warning" }),
+            Button({ key: "product-spec-edit-confirm", label: "Confirm and supersede affected packets", variant: "primary", disabled: busy, onPress: IntentRef("ProductSpecEditConfirmed") }),
           ])] : workspace.run === null && workspace.editDraft !== projection.sourceMarkdown ? [Button({ key: "product-spec-edit-propose", label: "Review revision diff", variant: "secondary", disabled: busy, onPress: IntentRef("ProductSpecEditProposed") })] : []),
           Text({ key: "product-spec-criteria-title", content: `${projection.criteria.length} acceptance criteria`, variant: "label", color: "textPrimary" }),
           ...projection.criteria.map((criterion) => Stack({ key: `product-spec-criterion-${criterion.id}`, direction: "row", gap: "2", align: "start", style: { width: "full", minWidth: 0 } }, [

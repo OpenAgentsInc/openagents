@@ -149,7 +149,7 @@ describe("ProductSpec Effect Native workroom", () => {
     const bridge: ProductSpecRendererBridge = {
       ...unavailableProductSpecRendererBridge,
       proposeEdit: async value => { requests.push({ op: "propose", value }); return { ok: true, value: proposal } },
-      confirmEdit: async value => { requests.push({ op: "confirm", value }); return { ok: true, value: { proposal: { ...proposal, state: "confirmed", confirmedAt: "2026-07-13T12:01:00.000Z" }, projection: nextProjection, reconciled: false } } },
+      confirmEdit: async value => { requests.push({ op: "confirm", value }); return { ok: true, value: { proposal: { ...proposal, state: "confirmed", confirmedAt: "2026-07-13T12:01:00.000Z" }, projection: nextProjection, reconciled: false, criterionDisposition: "supersede_affected_packets" } } },
     }
     const state = await Effect.runPromise(Effect.gen(function* () {
       const ref = yield* SubscriptionRef.make({ ...capableState(), productSpec: { ...emptyProductSpecWorkspaceState(), projection, editDraft: nextProjection.sourceMarkdown } })
@@ -159,7 +159,7 @@ describe("ProductSpec Effect Native workroom", () => {
       return yield* SubscriptionRef.get(ref)
     }))
     expect(requests[0]).toEqual({ op: "propose", value: { workContextRef: "work.context.demo", expectedCurrent: identity, proposedMarkdown: nextProjection.sourceMarkdown } })
-    expect(requests[1]).toEqual({ op: "confirm", value: { proposalRef: proposal.proposalRef, expectedCurrent: identity } })
+    expect(requests[1]).toEqual({ op: "confirm", value: { proposalRef: proposal.proposalRef, expectedCurrent: identity, criterionDisposition: "supersede_affected_packets" } })
     expect(state.productSpec.projection).toEqual(nextProjection)
     expect(state.productSpec.editProposal).toBeNull()
     expect(state.productSpec.notice).toContain("new immutable identity")

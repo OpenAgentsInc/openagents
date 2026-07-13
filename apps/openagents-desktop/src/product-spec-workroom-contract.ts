@@ -159,6 +159,7 @@ export const ProductSpecEditConfirmationSchema = Schema.Struct({
   proposal: ProductSpecEditProposalSchema,
   projection: ProductSpecProjectionSchema,
   reconciled: Schema.Boolean,
+  criterionDisposition: Schema.Literal("supersede_affected_packets"),
 })
 export type ProductSpecEditConfirmation = typeof ProductSpecEditConfirmationSchema.Type
 
@@ -233,6 +234,7 @@ export type ProductSpecEditProposalRequest = typeof ProductSpecEditProposalReque
 export const ProductSpecEditConfirmRequestSchema = Schema.Struct({
   proposalRef: RefSchema,
   expectedCurrent: ProductSpecIdentitySchema,
+  criterionDisposition: Schema.Literal("supersede_affected_packets"),
 })
 export type ProductSpecEditConfirmRequest = typeof ProductSpecEditConfirmRequestSchema.Type
 

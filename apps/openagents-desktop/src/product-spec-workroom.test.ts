@@ -361,6 +361,7 @@ describe("ProductSpec workroom authority", () => {
     const confirmed = service.confirmEdit({
       proposalRef: proposed.value.proposalRef,
       expectedCurrent: current.identity,
+      criterionDisposition: "supersede_affected_packets",
     })
     expect(confirmed).toMatchObject({ ok: true, value: { reconciled: false } })
     if (!confirmed.ok) return
@@ -371,6 +372,7 @@ describe("ProductSpec workroom authority", () => {
     expect(service.confirmEdit({
       proposalRef: proposed.value.proposalRef,
       expectedCurrent: current.identity,
+      criterionDisposition: "supersede_affected_packets",
     })).toMatchObject({ ok: true, reconciled: true, value: { reconciled: true } })
 
     const plan = service.proposePlan({

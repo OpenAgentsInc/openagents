@@ -328,7 +328,7 @@ export const makeProductSpecWorkroom = (
       })
       if (reopened.ok && reopened.value.state === "ready" &&
           identitiesEqual(reopened.value.identity, proposal.next)) {
-        return { ok: true, value: { proposal, projection: reopened.value, reconciled: true }, reconciled: true }
+        return { ok: true, value: { proposal, projection: reopened.value, reconciled: true, criterionDisposition: request.criterionDisposition }, reconciled: true }
       }
       return failure("proposal_stale", "The confirmed ProductSpec no longer matches its retained revision.")
     }
@@ -361,7 +361,7 @@ export const makeProductSpecWorkroom = (
     } catch {
       return failure("write_failed", "The ProductSpec confirmation receipt could not be persisted.")
     }
-    return { ok: true, value: { proposal: confirmed, projection: reopened.value, reconciled: false } }
+    return { ok: true, value: { proposal: confirmed, projection: reopened.value, reconciled: false, criterionDisposition: request.criterionDisposition } }
   }
 
   const proposePlan = (
