@@ -10,7 +10,8 @@ This is our own implementation. The upstream `@productspec/parser` is a
 conformance reference only — never a runtime dependency. Compatibility is held
 by the vendored fixtures in `fixtures/conformance/` (MIT, attributed), which
 this package's tests run on every sweep alongside the OpenAgents extension
-fixtures and every spec in the repo `specs/` tree.
+fixtures, every spec in the repo `specs/` tree, and the owner-directed
+co-located MVP spec in `docs/mvp/`.
 
 ## Usage
 

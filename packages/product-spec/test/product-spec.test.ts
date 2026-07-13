@@ -144,11 +144,11 @@ describe("openagents extensions", () => {
   })
 })
 
-describe("repo specs tree gate", () => {
-  const specsRoot = join(repoRoot, "specs")
-  const specFiles = listSpecFiles(specsRoot)
+describe("repo Product Spec roots gate", () => {
+  const productSpecRoots = [join(repoRoot, "specs"), join(repoRoot, "docs", "mvp")]
+  const specFiles = productSpecRoots.flatMap(listSpecFiles).sort()
 
-  test("specs/ contains at least one Product Spec", () => {
+  test("configured roots contain at least one Product Spec", () => {
     expect(specFiles.length).toBeGreaterThan(0)
   })
 

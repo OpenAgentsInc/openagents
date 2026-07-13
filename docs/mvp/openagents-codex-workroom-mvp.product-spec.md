@@ -21,7 +21,7 @@ tool_metadata:
   openagents_epic: "8566"
   openagents_lane: "Desktop #8574; CUT-27 #8707 remains the broader cutover authority"
   openagents_assurance_level: "signed-local-codex-workroom"
-  openagents_evidence: "docs/sol/2026-07-13-openagents-codex-workroom-mvp-audit.md"
+  openagents_evidence: "docs/mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md"
   openagents_productspec_workflow: "native ProductSpec workbench plus built-in productspec-work skill"
 ---
 

@@ -12,7 +12,7 @@
   [current official Codex skill guidance](https://learn.chatgpt.com/docs/build-skills)
   on 2026-07-13
 - Product Spec:
-  [`specs/openagents/codex-workroom-mvp.product-spec.md` @ `spec_revision: 2`](../../specs/openagents/codex-workroom-mvp.product-spec.md)
+  [`openagents-codex-workroom-mvp.product-spec.md` @ `spec_revision: 2`](./openagents-codex-workroom-mvp.product-spec.md)
 
 ## Executive finding
 
@@ -50,7 +50,7 @@ The smallest complete OpenAgents adaptation is therefore:
 This definition is narrower than the current R0–R7 program and CUT-27. It does
 not change their sequence, split their issues, or authorize a public cutover
 claim. It identifies the first independently understandable product inside
-that program. The [Product Spec](../../specs/openagents/codex-workroom-mvp.product-spec.md)
+that program. The [Product Spec](./openagents-codex-workroom-mvp.product-spec.md)
 is the durable intent artifact; this audit is its point-in-time evidence.
 
 ## Question and method
@@ -60,7 +60,7 @@ Codex in its first deployable form?**
 
 The audit reviewed:
 
-- the current [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Sol index, Desktop
+- the current [`MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md), Sol index, Desktop
   architecture, OpenCode parity audit, coding cutover plan, CUT-27 readiness
   audit, checked-in issue sources, and current Desktop guarantees;
 - the teardown set about
@@ -368,7 +368,7 @@ credentials, raw runtime events, or provider payloads.
 ## Recommendation
 
 Adopt
-[`specs/openagents/codex-workroom-mvp.product-spec.md` @ `spec_revision: 2`](../../specs/openagents/codex-workroom-mvp.product-spec.md)
+[`openagents-codex-workroom-mvp.product-spec.md` @ `spec_revision: 2`](./openagents-codex-workroom-mvp.product-spec.md)
 as the durable what/why for this bounded product. Keep the master roadmap and
 live issues as sequence and coordination authority. Do not open a parallel epic
 or change public promises from this audit alone.

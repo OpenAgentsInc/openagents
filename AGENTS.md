@@ -133,6 +133,9 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   ordering. `docs/fable/` is retained historical strategy and no longer owns
   sequencing. Start with `docs/sol/MASTER_ROADMAP.md`; current code, issue
   state, contracts, and receipts remain the factual status authorities.
+- `docs/mvp/` owns the canonical first-deployable-product package: its exact
+  ProductSpec, supporting audit, and reading-order README. The ProductSpec owns
+  intent; `docs/sol/MASTER_ROADMAP.md` still owns priority and sequencing.
 - `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
   those areas.
 
@@ -813,9 +816,15 @@ format (v0.1) — the durable what/why for consequential product work, upstream
 of MASTER_ROADMAP sequencing, epics, behavior contracts, Eval Suites, and the
 promise registry. Read `specs/CONVENTIONS.md` before adding or editing one;
 rationale in `docs/fable/2026-07-08-productspec-adoption-analysis.md` (#8593).
+The owner-directed first-MVP package is the single co-located exception:
+`docs/mvp/openagents-codex-workroom-mvp.product-spec.md` stays beside its audit
+and is included in the ProductSpec test sweep; do not create a mirror under
+`specs/`.
 
-- Validate with `bun packages/product-spec/src/cli.ts validate --specs-root specs`
-  (also enforced by `bun test packages/product-spec` in the normal sweep);
+- Validate general specs with
+  `bun packages/product-spec/src/cli.ts validate --specs-root specs` and the MVP
+  with `... validate docs/mvp/openagents-codex-workroom-mvp.product-spec.md`
+  (both enforced by `bun test packages/product-spec` in the normal sweep);
   scaffold with `... init specs/<area>/<name>.product-spec.md`.
 - Specs declare, registries enforce: link behavior-contract IDs, Eval Suite
   names, and promise IDs — never duplicate their content, and never treat a

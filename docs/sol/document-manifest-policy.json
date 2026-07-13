@@ -3,12 +3,6 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
-    "docs/sol/2026-07-13-openagents-codex-workroom-mvp-audit.md": {
-      "class": "historical-analysis",
-      "owner": "Sol product analysis",
-      "disposition": "retain-historical",
-      "dispatch": false
-    },
     "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md": {
       "class": "current-status",
       "owner": "Sol reliable-client program",

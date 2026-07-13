@@ -31,6 +31,11 @@ specs/<area>/<name>.product-spec.md          # e.g. specs/web/, specs/khala-code
 specs/<area>/<name>.decision-trace.json      # optional companion (PS-5, later)
 ```
 
+Owner-directed exception: the first deployable-product package keeps its one
+canonical Product Spec beside its audit at
+`docs/mvp/openagents-codex-workroom-mvp.product-spec.md`. The ProductSpec test
+sweep validates that co-located file. Do not mirror it back into `specs/`.
+
 Scaffold with:
 
 ```sh
