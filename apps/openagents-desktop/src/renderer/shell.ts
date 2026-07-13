@@ -581,7 +581,12 @@ export const DesktopQuestionOptionSelected = defineIntent(
     label: Schema.String,
   }),
 )
-export const DesktopQuestionSubmitted = defineIntent("DesktopQuestionSubmitted", Schema.String)
+export const DesktopQuestionSubmitted = defineIntent("DesktopQuestionSubmitted", Schema.NullOr(Schema.String))
+export const DesktopApprovalApproved = defineIntent("DesktopApprovalApproved", Schema.NullOr(Schema.String))
+export const DesktopApprovalDenied = defineIntent("DesktopApprovalDenied", Schema.NullOr(Schema.String))
+export const DesktopPlanAccepted = defineIntent("DesktopPlanAccepted", Schema.NullOr(Schema.String))
+export const DesktopPlanChangesRequested = defineIntent("DesktopPlanChangesRequested", Schema.NullOr(Schema.String))
+export const DesktopPlanReplanRequested = defineIntent("DesktopPlanReplanRequested", Schema.NullOr(Schema.String))
 export const DesktopAgentGraphToggled = defineIntent("DesktopAgentGraphToggled", Schema.Null)
 export const DesktopChatContextResized = defineIntent("DesktopChatContextResized", Schema.Struct({
   paneId: Schema.String,
@@ -653,6 +658,11 @@ export const desktopShellIntents = [
   DesktopFullscreenToggled,
   DesktopQuestionOptionSelected,
   DesktopQuestionSubmitted,
+  DesktopApprovalApproved,
+  DesktopApprovalDenied,
+  DesktopPlanAccepted,
+  DesktopPlanChangesRequested,
+  DesktopPlanReplanRequested,
   DesktopAgentGraphToggled,
   DesktopChatContextResized,
   DesktopAgentAction,
@@ -1477,6 +1487,39 @@ export const makeDesktopShellHandlers = (
           withQuestionAnswered(current, card.questionRef, answers))
       }
     })
+  const pendingInteractionRef = (
+    current: DesktopShellState,
+    kind: NonNullable<DesktopQuestionCard["kind"]>,
+    requested: string | null,
+  ): string | null => {
+    const matchesKind = (card: DesktopQuestionCard): boolean =>
+      card.kind === kind || (kind === "provider_question" && card.kind === undefined)
+    if (requested !== null) {
+      const card = questionNoteFor(current, requested)?.question
+      return card?.status === "pending" && matchesKind(card) ? requested : null
+    }
+    const refs = current.notes.flatMap(note =>
+      note.question?.status === "pending" && matchesKind(note.question) ? [note.question.questionRef] : [])
+    return refs.length === 1 ? refs[0]! : null
+  }
+  const selectRuntimeDecision = (
+    requested: string | null,
+    kind: "tool_approval" | "plan_review",
+    label: string,
+  ) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (!current.questionAnswerHostAvailable || questionHost.answer === null) return
+    const questionRef = pendingInteractionRef(current, kind, requested)
+    if (questionRef === null) return
+    const next = withQuestionSelection(current, questionRef, 0, label)
+    if (next === current) return
+    yield* SubscriptionRef.set(state, next)
+    const card = questionNoteFor(next, questionRef)?.question
+    const interaction = next.questionCards[questionRef]
+    if (card !== undefined && interaction !== undefined && questionAnswersReady(card, interaction)) {
+      yield* submitQuestion(card, interaction)
+    }
+  })
   const submitPendingMessage = (
     current: DesktopShellState,
     message: string,
@@ -1872,15 +1915,22 @@ export const makeDesktopShellHandlers = (
         yield* submitQuestion(card, interaction)
       }
     }),
-  DesktopQuestionSubmitted: (questionRef) =>
+  DesktopQuestionSubmitted: (requested) =>
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
       if (!current.questionAnswerHostAvailable) return
+      const questionRef = pendingInteractionRef(current, "provider_question", requested)
+      if (questionRef === null) return
       const card = questionNoteFor(current, questionRef)?.question
       const interaction = current.questionCards[questionRef]
       if (card === undefined || card.status !== "pending" || interaction === undefined) return
       yield* submitQuestion(card, interaction)
     }),
+  DesktopApprovalApproved: requested => selectRuntimeDecision(requested, "tool_approval", "Approve"),
+  DesktopApprovalDenied: requested => selectRuntimeDecision(requested, "tool_approval", "Deny"),
+  DesktopPlanAccepted: requested => selectRuntimeDecision(requested, "plan_review", "Accept"),
+  DesktopPlanChangesRequested: requested => selectRuntimeDecision(requested, "plan_review", "Request changes"),
+  DesktopPlanReplanRequested: requested => selectRuntimeDecision(requested, "plan_review", "Replan"),
   DesktopAgentGraphToggled: () =>
     SubscriptionRef.update(state, current => current.agentGraph === null
       ? current
@@ -2527,11 +2577,21 @@ export const questionCardMessage = (
                   label: option.label,
                   variant: selected.includes(option.label) ? "secondary" : "ghost",
                   disabled: !answerAvailable,
-                  onPress: IntentRef("DesktopQuestionOptionSelected", StaticPayload({
-                    questionRef: card.questionRef,
-                    questionIndex,
-                    label: option.label,
-                  })),
+                  onPress: card.kind === "tool_approval" && option.label === "Approve"
+                    ? IntentRef("DesktopApprovalApproved", StaticPayload(card.questionRef))
+                    : card.kind === "tool_approval" && option.label === "Deny"
+                      ? IntentRef("DesktopApprovalDenied", StaticPayload(card.questionRef))
+                      : card.kind === "plan_review" && option.label === "Accept"
+                        ? IntentRef("DesktopPlanAccepted", StaticPayload(card.questionRef))
+                        : card.kind === "plan_review" && option.label === "Request changes"
+                          ? IntentRef("DesktopPlanChangesRequested", StaticPayload(card.questionRef))
+                          : card.kind === "plan_review" && option.label === "Replan"
+                            ? IntentRef("DesktopPlanReplanRequested", StaticPayload(card.questionRef))
+                            : IntentRef("DesktopQuestionOptionSelected", StaticPayload({
+                              questionRef: card.questionRef,
+                              questionIndex,
+                              label: option.label,
+                            })),
                   a11y: {
                     label: answerAvailable
                       ? `${question.multiSelect ? "Toggle" : "Answer"} ${option.label}`

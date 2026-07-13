@@ -2590,6 +2590,49 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
     }
   })
 
+  test("runtime approval and plan controls use their canonical command intents", async () => {
+    const approvalNote = {
+      ...singleSelectNote,
+      question: {
+        ...singleSelectNote.question,
+        threadRef: testThread.id,
+        source: "runtime" as const,
+        kind: "tool_approval" as const,
+        questions: [{ question: "Allow this tool?", header: "Approval", multiSelect: false, options: [{ label: "Approve" }, { label: "Deny" }] }],
+      },
+    }
+    const planNote = {
+      ...singleSelectNote,
+      key: "turn.fable.x-question-plan.1",
+      question: {
+        ...singleSelectNote.question,
+        questionRef: "plan.1",
+        threadRef: testThread.id,
+        source: "runtime" as const,
+        kind: "plan_review" as const,
+        questions: [{ question: "Accept this plan?", header: "Plan", multiSelect: false, options: [{ label: "Accept" }, { label: "Request changes" }, { label: "Replan" }] }],
+      },
+    }
+    const approvalView = desktopShellView({ ...questionState, notes: [approvalNote] })
+    expect((nodeByKey(approvalView, "question-question.1-q0-option-0")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopApprovalApproved")
+    expect((nodeByKey(approvalView, "question-question.1-q0-option-1")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopApprovalDenied")
+    const planView = desktopShellView({ ...questionState, notes: [planNote] })
+    expect((nodeByKey(planView, "question-plan.1-q0-option-0")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopPlanAccepted")
+    expect((nodeByKey(planView, "question-plan.1-q0-option-1")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopPlanChangesRequested")
+    expect((nodeByKey(planView, "question-plan.1-q0-option-2")?.onPress as { name?: string } | undefined)?.name).toBe("DesktopPlanReplanRequested")
+
+    const { calls, host } = makeAnswerHost()
+    await Effect.runPromise(Effect.gen(function* () {
+      const state = yield* SubscriptionRef.make<DesktopShellState>({ ...questionState, notes: [approvalNote] })
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, host),
+      )
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopApprovalDenied", StaticPayload(null))))
+    }))
+    expect(calls).toEqual([{ turnRef: "turn.fable.x", threadRef: testThread.id, questionRef: "question.1", answers: [{ question: "Allow this tool?", labels: ["Deny"] }] }])
+  })
+
   test("bridge-absent degradation: options render disabled read-only and dispatch nothing", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -2667,6 +2710,19 @@ describe("EP250 window + sidebar owner contracts", () => {
     const queueing = desktopShellView({ ...baseState, pending: true, pendingSubmitMode: "queue" })
     expect((nodeByKey(steering, "shell-input")?.onSubmit as { name?: string } | undefined)?.name).toBe("DesktopSteerCurrentRequested")
     expect((nodeByKey(queueing, "shell-input")?.onSubmit as { name?: string } | undefined)?.name).toBe("DesktopQueueNextRequested")
+  })
+
+  test("question, approval, and plan review actions are canonical commands", () => {
+    expect(Object.fromEntries(desktopCanonicalCommandRegistry
+      .filter(command => command.id.startsWith("interaction."))
+      .map(command => [command.id, command.intentName]))).toEqual({
+      "interaction.question.submit": "DesktopQuestionSubmitted",
+      "interaction.approval.approve": "DesktopApprovalApproved",
+      "interaction.approval.deny": "DesktopApprovalDenied",
+      "interaction.plan.accept": "DesktopPlanAccepted",
+      "interaction.plan.request_changes": "DesktopPlanChangesRequested",
+      "interaction.plan.replan": "DesktopPlanReplanRequested",
+    })
   })
 
   test("sidebar renders no brand row (owner: remove the OpenAgents icon+text top left)", () => {
