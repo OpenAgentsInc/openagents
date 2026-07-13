@@ -11394,6 +11394,14 @@ const dispatchManagedFleetUnitForEnv = async (
       artifactRef: session.artifactRef,
       workContextRef: session.workContextRef,
     }
+  } catch (error) {
+    logWorkerRouteWarning('managed_fleet_unit_dispatch_failed', {
+      reason:
+        error instanceof Error
+          ? error.message.slice(0, 160)
+          : 'managed_fleet_dispatch_unknown',
+    })
+    throw error
   } finally {
     if (minted !== undefined) {
       await revokeCloudRuntimeExecutionToken(client.sql, {
