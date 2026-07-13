@@ -1,13 +1,18 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { cp, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { afterEach, describe, expect, test } from "bun:test"
 
 import {
+  continuePortableSession,
   executePortableSessionControl,
   installPortableCapability,
+  materializePortableCheckpoint,
   portableSessionRoot,
+  productionRuntime,
+  repositorySnapshot,
   PortableSessionControlError,
   type PortableSessionGuestRuntime,
 } from "../deploy/agent-computer/portable-session-control.js"
@@ -60,9 +65,19 @@ const fixture = async () => {
   roots.push(stateRoot)
   const calls: string[] = []
   const runtime: PortableSessionGuestRuntime = {
+    prepare: async () => { calls.push("prepare") },
     verifyStage: async () => { calls.push("stage") },
     verifyCapabilities: async () => { calls.push("capabilities") },
     activate: async () => { calls.push("activate") },
+    continueWork: async ({ turns }) => {
+      calls.push("continue")
+      return turns.map((turn, index) => ({
+        agentRef: turn.agentRef,
+        turnRef: turn.turnRef,
+        activityCursor: index + 4,
+        eventCursor: index + 9,
+      }))
+    },
     quiesce: async () => { calls.push("quiesce") },
     reclaim: async () => { calls.push("reclaim") },
     repositorySnapshot: async () => ({
@@ -73,6 +88,21 @@ const fixture = async () => {
   }
   return { stateRoot, calls, runtime }
 }
+
+const run = async (command: ReadonlyArray<string>, cwd?: string): Promise<void> => {
+  const child = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, COPYFILE_DISABLE: "1" } })
+  if (await child.exited !== 0) throw new Error(await new Response(child.stderr).text())
+}
+
+const canonical = (value: unknown): string => {
+  if (value === null || typeof value !== "object") return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonical(record[key])}`).join(",")}}`
+}
+
+const sha = (bytes: string | Uint8Array): `sha256:${string}` =>
+  `sha256:${createHash("sha256").update(bytes).digest("hex")}`
 
 describe("retained Agent Computer portable-session-control", () => {
   test("keeps stage non-accepting, activates the graph, checkpoints, and reclaims exactly once", async () => {
@@ -169,6 +199,63 @@ describe("retained Agent Computer portable-session-control", () => {
     expect(calls).toEqual(["stage", "reclaim"])
   })
 
+  test("executes one bounded turn per graph agent and fences replay", async () => {
+    const { stateRoot, calls, runtime } = await fixture()
+    const continuationGraph = {
+      rootAgentRef: "agent.port03.guest.root",
+      nodes: [
+        { agentRef: "agent.port03.guest.root", threadRef: "thread.port03.guest.root" },
+        { agentRef: "agent.port03.guest.child", parentAgentRef: "agent.port03.guest.root", threadRef: "thread.port03.guest.child" },
+      ],
+    }
+    const continuationBundle = {
+      ...bundle,
+      executionBinding: { ...bundle.executionBinding, repositoryRef: "repository.OpenAgentsInc.openagents" },
+      graph: continuationGraph,
+    }
+    await executePortableSessionControl({
+      operation: operation("stage", "operation.port03.guest.continue.stage", { bundle: continuationBundle, capabilityLeaseRefs: ["lease.port03.guest"] }),
+      stateRoot,
+      runtime,
+    })
+    await executePortableSessionControl({
+      operation: operation("activate", "operation.port03.guest.continue.activate", {
+        authorityEvidenceRef: "evidence.port03.guest.authority",
+        capabilityLeaseRefs: ["lease.port03.guest"],
+      }),
+      stateRoot,
+      runtime,
+    })
+    const continuation = {
+      operationRef: "operation.port03.guest.continue",
+      ownerRef: "owner.port03.guest",
+      targetRef: "target.port03.guest.managed",
+      sessionRef: "session.port03.guest",
+      attachmentRef: "attachment.port03.guest.managed",
+      generation: 2,
+      providerLeaseRef: "lease.port03.guest",
+      turns: [
+        { agentRef: "agent.port03.guest.root", turnRef: "turn.port03.guest.root", task: "Complete one bounded root turn." },
+        { agentRef: "agent.port03.guest.child", turnRef: "turn.port03.guest.child", task: "Complete one bounded child turn." },
+      ],
+    }
+    expect(await continuePortableSession({ continuation, stateRoot, runtime })).toMatchObject({
+      acceptedWorkRefs: [
+        { agentRef: "agent.port03.guest.root", turnRef: "turn.port03.guest.root" },
+        { agentRef: "agent.port03.guest.child", turnRef: "turn.port03.guest.child" },
+      ],
+      replay: "executed",
+      material: "excluded",
+    })
+    expect(await continuePortableSession({ continuation, stateRoot, runtime })).toMatchObject({ replay: "replayed" })
+    expect(calls.filter(call => call === "continue")).toHaveLength(1)
+    await expect(continuePortableSession({
+      continuation: { ...continuation, turns: continuation.turns.map((turn, index) => index === 0 ? { ...turn, task: "changed" } : turn) },
+      stateRoot,
+      runtime,
+    })).rejects.toThrow("operation bytes conflict")
+  })
+
   test("installs raw capability material behind a refs-only marker and wipes both", async () => {
     const { stateRoot, runtime } = await fixture()
     await executePortableSessionControl({
@@ -210,5 +297,93 @@ describe("retained Agent Computer portable-session-control", () => {
     expect(wiped).toMatchObject({ material: "excluded" })
     expect(await Bun.file(join(sessionRoot, "capability-material", `${leaf}.material`)).exists()).toBe(false)
     expect(await Bun.file(join(sessionRoot, "capabilities", `${leaf}.installed.json`)).exists()).toBe(false)
+  })
+
+  test("safely materializes a private checkpoint archive before verified stage", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-materialize-state-"))
+    const sourceRoot = await mkdtemp(join(tmpdir(), "portable-materialize-source-"))
+    const archiveRoot = await mkdtemp(join(tmpdir(), "portable-materialize-archive-"))
+    roots.push(stateRoot, sourceRoot, archiveRoot)
+    const sourceWorkspace = join(sourceRoot, "workspace")
+    await mkdir(sourceWorkspace)
+    await run(["git", "init", "--quiet"], sourceWorkspace)
+    await run(["git", "config", "user.email", "portable@example.invalid"], sourceWorkspace)
+    await run(["git", "config", "user.name", "Portable Test"], sourceWorkspace)
+    await writeFile(join(sourceWorkspace, "tracked.txt"), "base\n")
+    await run(["git", "add", "tracked.txt"], sourceWorkspace)
+    await run(["git", "commit", "--quiet", "-m", "base"], sourceWorkspace)
+    await writeFile(join(sourceWorkspace, "tracked.txt"), "changed\n")
+    await writeFile(join(sourceWorkspace, "untracked.txt"), "new\n")
+    await symlink("tracked.txt", join(sourceWorkspace, "CLAUDE.md"))
+    const snapshot = await repositorySnapshot(sourceRoot)
+    const bundlePath = join(archiveRoot, "repository.bundle")
+    await run(["git", "bundle", "create", bundlePath, "HEAD"], sourceWorkspace)
+    const postImage = join(archiveRoot, "post-image")
+    await mkdir(postImage)
+    await cp(join(sourceWorkspace, "tracked.txt"), join(postImage, "tracked.txt"))
+    await cp(join(sourceWorkspace, "untracked.txt"), join(postImage, "untracked.txt"))
+    await symlink("tracked.txt", join(postImage, "CLAUDE.md"))
+    const files = await Promise.all(["CLAUDE.md", "tracked.txt", "untracked.txt"].map(async path => {
+      if (path === "CLAUDE.md") {
+        const linkTarget = await readlink(join(postImage, path))
+        const bytes = new TextEncoder().encode(linkTarget)
+        return { path, mode: 0o120000, sha256: sha(bytes), size: bytes.byteLength, linkTarget }
+      }
+      const bytes = await readFile(join(postImage, path))
+      return { path, mode: 0o644, sha256: sha(bytes), size: bytes.byteLength }
+    }))
+    const normalizedGraph = { ...graph, nodes: [...graph.nodes].sort((a, b) => a.agentRef.localeCompare(b.agentRef)) }
+    const materializedBundle = {
+      ...bundle,
+      checkpoint: {
+        ...bundle.checkpoint,
+        checkpointRef: "checkpoint.port03.guest.source",
+        ...snapshot,
+        graphDigest: sha(canonical(normalizedGraph)),
+      },
+    }
+    const artifactRef = "artifact.port03.guest.private"
+    await writeFile(join(archiveRoot, "manifest.json"), JSON.stringify({
+      schema: "openagents.portable_checkpoint_artifact.v1",
+      artifactRef,
+      checkpointRef: materializedBundle.checkpoint.checkpointRef,
+      bundle: materializedBundle,
+      files,
+    }))
+    const tarPath = join(archiveRoot, "checkpoint.tar")
+    const zstdPath = join(archiveRoot, "checkpoint.tar.zst")
+    await run(["tar", "-C", archiveRoot, "-cf", tarPath, "manifest.json", "repository.bundle", "post-image"])
+    await run(["zstd", "-q", "-f", tarPath, "-o", zstdPath])
+    const archive = await readFile(zstdPath)
+    const stage = operation("stage", "operation.port03.guest.materialized-stage", {
+      bundle: materializedBundle,
+      capabilityLeaseRefs: ["lease.port03.guest.provider"],
+    })
+    const preparedRuntime: PortableSessionGuestRuntime = {
+      ...productionRuntime,
+      prepare: async ({ sessionRoot, agentRefs }) => {
+        for (const agentRef of agentRefs) {
+          const leaf = createHash("sha256").update(agentRef).digest("hex").slice(0, 24)
+          const dir = join(sessionRoot, "agents", leaf)
+          await mkdir(dir, { recursive: true })
+          await writeFile(join(dir, "lifecycle-state.json"), "{}")
+        }
+      },
+    }
+    const receipt = await materializePortableCheckpoint({
+      metadata: {
+        operationRef: "operation.port03.guest.materialize",
+        artifactRef,
+        artifactDigest: sha(archive),
+        stageOperation: stage,
+      },
+      archive,
+      stateRoot,
+      runtime: preparedRuntime,
+      zstdBin: "/opt/homebrew/bin/zstd",
+    })
+    expect(receipt).toMatchObject({ acceptingWork: false })
+    expect(await readlink(join(portableSessionRoot(stateRoot, stage.sessionRef), "workspace", "CLAUDE.md"))).toBe("tracked.txt")
+    expect(await repositorySnapshot(portableSessionRoot(stateRoot, stage.sessionRef))).toEqual(snapshot)
   })
 })

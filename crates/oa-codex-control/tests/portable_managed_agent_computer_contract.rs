@@ -5,6 +5,7 @@ use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 const TOKEN: &str = "portable-agent-computer-contract-token";
 
@@ -119,15 +120,28 @@ fn post(daemon: &Daemon, value: &Value) -> (u16, Value) {
     .unwrap()
 }
 
-fn install_capability(
-    daemon: &Daemon,
-    _resource_ref: &str,
-    material: &[u8],
-) -> (u16, Value) {
+fn post_continuation(daemon: &Daemon, value: &Value) -> (u16, Value) {
+    let body = serde_json::to_vec(value).unwrap();
+    request(
+        &daemon.addr,
+        "POST",
+        "/v1/portable-agent-computers/continuations",
+        Some(&body),
+        Some(TOKEN),
+    )
+    .unwrap()
+}
+
+fn install_capability(daemon: &Daemon, _resource_ref: &str, material: &[u8]) -> (u16, Value) {
     let mut stream = TcpStream::connect(&daemon.addr).unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
     let headers = [
-        ("X-OA-Operation-Ref", "operation.port03.http.capability-install"),
+        (
+            "X-OA-Operation-Ref",
+            "operation.port03.http.capability-install",
+        ),
         ("X-OA-Owner-Ref", "owner.port03.http"),
         ("X-OA-Target-Ref", "target.port03.http.managed"),
         ("X-OA-Session-Ref", "session.port03.http"),
@@ -151,10 +165,71 @@ fn install_capability(
     stream.write_all(material).unwrap();
     let mut response = Vec::new();
     stream.read_to_end(&mut response).unwrap();
-    let split = response.windows(4).position(|part| part == b"\r\n\r\n").unwrap();
+    let split = response
+        .windows(4)
+        .position(|part| part == b"\r\n\r\n")
+        .unwrap();
     let status = String::from_utf8_lossy(&response[..split])
-        .lines().next().unwrap().split_whitespace().nth(1).unwrap().parse().unwrap();
-    (status, serde_json::from_slice(&response[split + 4..]).unwrap())
+        .lines()
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&response[split + 4..]).unwrap(),
+    )
+}
+
+fn materialize_checkpoint(daemon: &Daemon, material: &[u8]) -> (u16, Value) {
+    let digest = format!("sha256:{:x}", Sha256::digest(material));
+    let mut stream = TcpStream::connect(&daemon.addr).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let headers = [
+        ("X-OA-Operation-Ref", "operation.port03.http.materialize"),
+        ("X-OA-Owner-Ref", "owner.port03.http"),
+        ("X-OA-Target-Ref", "target.port03.http.managed"),
+        ("X-OA-Session-Ref", "session.port03.http"),
+        ("X-OA-Attachment-Ref", "attachment.port03.http.managed"),
+        ("X-OA-Attachment-Generation", "2"),
+        ("X-OA-Checkpoint-Ref", "checkpoint.port03.http.source"),
+        ("X-OA-Artifact-Ref", "artifact.port03.http.private"),
+        ("X-OA-Artifact-Digest", digest.as_str()),
+    ];
+    let mut head = format!(
+        "POST /v1/portable-agent-computers/checkpoints/materialize HTTP/1.1\r\nhost: {}\r\nauthorization: Bearer {}\r\ncontent-type: application/octet-stream\r\ncontent-length: {}\r\nconnection: close\r\n",
+        daemon.addr, TOKEN, material.len(),
+    );
+    for (name, value) in headers {
+        head.push_str(&format!("{name}: {value}\r\n"));
+    }
+    head.push_str("\r\n");
+    stream.write_all(head.as_bytes()).unwrap();
+    stream.write_all(material).unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    let split = response
+        .windows(4)
+        .position(|part| part == b"\r\n\r\n")
+        .unwrap();
+    let status = String::from_utf8_lossy(&response[..split])
+        .lines()
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&response[split + 4..]).unwrap(),
+    )
 }
 
 fn base(action: &str, operation_ref: &str, resource_ref: Option<&str>) -> Value {
@@ -178,6 +253,7 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
     stage["payload"] = json!({
         "bundle": {
             "checkpoint": {
+                "checkpointRef": "checkpoint.port03.http.source",
                 "digest": format!("sha256:{}", "d".repeat(64)),
                 "repositoryPostImageDigest": format!("sha256:{}", "a".repeat(64)),
                 "diffDigest": format!("sha256:{}", "b".repeat(64)),
@@ -186,7 +262,11 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
             "executionBinding": { "runRef": "run.port03.http" },
             "graph": {
                 "rootAgentRef": "agent.port03.http.root",
-                "nodes": [{ "agentRef": "agent.port03.http.root" }]
+                "nodes": [{
+                    "agentRef": "agent.port03.http.root",
+                    "threadRef": "thread.port03.http.root",
+                    "activityCursor": 1
+                }]
             },
             "threadCursors": [{
                 "threadRef": "thread.port03.http.root",
@@ -203,10 +283,17 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
     assert_eq!(post(&daemon, &stage).1, staged);
     let resource_ref = staged["resourceRef"].as_str().unwrap();
 
+    let (status, verified) = materialize_checkpoint(&daemon, b"fake-private-checkpoint-archive");
+    assert_eq!(status, 200, "materialize response: {verified}");
+    assert_eq!(verified["acceptingWork"], false);
+
     let (status, installed) = install_capability(&daemon, resource_ref, b"opaque-http-material");
     assert_eq!(status, 200, "install response: {installed}");
     assert_eq!(installed["material"], "excluded");
-    assert_eq!(installed["marker"]["leaseRef"], "lease.port03.http.provider");
+    assert_eq!(
+        installed["marker"]["leaseRef"],
+        "lease.port03.http.provider"
+    );
 
     let mut activate = base(
         "activate",
@@ -219,6 +306,28 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
         "capabilityLeaseRefs": ["lease.port03.http.provider"]
     });
     assert_eq!(post(&daemon, &activate).0, 200);
+
+    let continuation = json!({
+        "operationRef": "operation.port03.http.continuation",
+        "ownerRef": "owner.port03.http",
+        "targetRef": "target.port03.http.managed",
+        "sessionRef": "session.port03.http",
+        "attachmentRef": "attachment.port03.http.managed",
+        "generation": 2,
+        "providerLeaseRef": "lease.port03.http.provider",
+        "turns": [{
+            "agentRef": "agent.port03.http.root",
+            "turnRef": "turn.port03.http.root",
+            "task": "PRIVATE-HTTP-CONTINUATION-SENTINEL"
+        }]
+    });
+    let (status, continued) = post_continuation(&daemon, &continuation);
+    assert_eq!(status, 200, "continuation response: {continued}");
+    assert_eq!(continued["replay"], "executed");
+    assert_eq!(
+        post_continuation(&daemon, &continuation).1["replay"],
+        "replayed"
+    );
 
     let mut quiesce = base(
         "quiesce",
@@ -254,6 +363,12 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
     .unwrap();
     assert!(!journal.contains(TOKEN));
     assert!(!journal.contains("/Users/"));
+    let operations =
+        std::fs::read_dir(daemon.state_dir.join("portable-agent-computers/operations"))
+            .unwrap()
+            .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+            .collect::<String>();
+    assert!(!operations.contains("PRIVATE-HTTP-CONTINUATION-SENTINEL"));
 }
 
 #[test]

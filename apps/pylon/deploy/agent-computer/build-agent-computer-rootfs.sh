@@ -130,7 +130,7 @@ mkfs.ext4 -q -F "$OUTPUT"
 mount -o loop "$OUTPUT" "$MNT"
 
 echo "==> debootstrap $SUITE (git, python3, ca-certificates, openssh-client)"
-debootstrap --include=git,python3,ca-certificates,openssh-client \
+debootstrap --include=git,python3,ca-certificates,openssh-client,zstd \
   "$SUITE" "$MNT" "$MIRROR"
 
 echo "$SUITE" >/dev/null # suite recorded in the receipt below

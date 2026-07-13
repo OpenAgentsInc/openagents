@@ -1213,6 +1213,23 @@ More specific invariant ledgers apply inside imported apps and packages.
   port state released. Private paths and checkpoint bytes remain behind the
   local rehydrator and never enter ledger outcomes. This destination boundary
   is enforced by `apps/pylon/tests/portable-session-destination.test.ts`.
+  The retained managed target prepares a nonaccepting Firecracker resource
+  before receiving private checkpoint bytes. Its authenticated materializer
+  derives that resource from target plus session, validates an exact
+  digest-bound tar.zst containing only the Git bundle, manifest, and sorted
+  post-image, and permits symbolic links only when their declared relative
+  target has no empty/dot/dotdot/backslash component and resolves inside the
+  repository. Resolver/upload/verification failure must run the same scoped
+  `abortPrepared` compensation; teardown is durably marked pending before the
+  VM effect, and replay treats an already-missing VM as successful cleanup.
+  Activation alone accepts no fabricated work. The private continuation route
+  requires exactly one unique turn for the canonical root and every child, an
+  installed stage-planned provider lease, and one real bounded `oa-workroomd
+  codex session` execution per agent. Only agent/turn refs, monotonic thread
+  cursors, evidence refs, and material exclusion may enter host or guest
+  journals; same-operation replay cannot execute a second turn. Focused
+  enforcement lives in `apps/pylon/tests/portable-session-control.test.ts` and
+  `crates/oa-codex-control/tests/portable_managed_agent_computer_contract.rs`.
   These landed
   coordinator, store, and owner-local source pieces are implementation rungs
   only: #8748 remains

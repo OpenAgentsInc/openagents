@@ -52,11 +52,362 @@ pub struct PortableCapabilityInstallRequest {
     pub capability: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableCheckpointMaterializeRequest {
+    pub operation_ref: String,
+    pub owner_ref: String,
+    pub target_ref: String,
+    pub session_ref: String,
+    pub attachment_ref: String,
+    pub generation: u64,
+    pub checkpoint_ref: String,
+    pub artifact_ref: String,
+    pub artifact_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableContinuationTurn {
+    pub agent_ref: String,
+    pub turn_ref: String,
+    pub task: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableContinuationRequest {
+    pub operation_ref: String,
+    pub owner_ref: String,
+    pub target_ref: String,
+    pub session_ref: String,
+    pub attachment_ref: String,
+    pub generation: u64,
+    pub provider_lease_ref: String,
+    pub turns: Vec<PortableContinuationTurn>,
+}
+
 pub fn staged_resource_ref(target_ref: &str, session_ref: &str) -> String {
     format!(
         "resource.agent-computer.{}",
         short_digest(&format!("{target_ref}|{session_ref}"))
     )
+}
+
+pub fn continue_work(
+    state_root: &Path,
+    configured_kind: ProvisionerKind,
+    request: &PortableContinuationRequest,
+) -> Result<Value, CloudVmError> {
+    for (field, value) in [
+        ("operationRef", request.operation_ref.as_str()),
+        ("ownerRef", request.owner_ref.as_str()),
+        ("targetRef", request.target_ref.as_str()),
+        ("sessionRef", request.session_ref.as_str()),
+        ("attachmentRef", request.attachment_ref.as_str()),
+        ("providerLeaseRef", request.provider_lease_ref.as_str()),
+    ] {
+        if !safe_ref(value) {
+            return Err(CloudVmError::InvalidRequest(format!(
+                "{field} is not a public-safe ref"
+            )));
+        }
+    }
+    if request.generation == 0 || request.turns.is_empty() || request.turns.len() > 64 {
+        return Err(CloudVmError::InvalidRequest(
+            "continuation generation or turn count is invalid".to_string(),
+        ));
+    }
+    for turn in &request.turns {
+        if !safe_ref(&turn.agent_ref)
+            || !safe_ref(&turn.turn_ref)
+            || turn.task.trim().is_empty()
+            || turn.task.len() > 16 * 1024
+        {
+            return Err(CloudVmError::InvalidRequest(
+                "continuation turn is invalid".to_string(),
+            ));
+        }
+    }
+    let encoded = serde_json::to_vec(&request)
+        .map_err(|error| CloudVmError::InvalidRequest(format!("encode continuation: {error}")))?;
+    let fingerprint = digest(&encoded);
+    let root = state_root.join("portable-agent-computers");
+    fs::create_dir_all(root.join("operations"))
+        .map_err(|error| CloudVmError::Runtime(format!("create operation journal: {error}")))?;
+    let operation_path = root
+        .join("operations")
+        .join(format!("{}.json", short_digest(&request.operation_ref)));
+    if let Some(record) = read_json::<OperationRecord>(&operation_path)? {
+        if record.fingerprint != fingerprint {
+            return Err(CloudVmError::InvalidRequest(
+                "operationRef was replayed with different bytes".to_string(),
+            ));
+        }
+        if record.status == "completed" {
+            let mut response = record.response.ok_or_else(|| {
+                CloudVmError::Runtime("completed continuation has no response".to_string())
+            })?;
+            response
+                .as_object_mut()
+                .ok_or_else(|| {
+                    CloudVmError::Runtime("continuation response is not an object".to_string())
+                })?
+                .insert("replay".to_string(), Value::String("replayed".to_string()));
+            return Ok(response);
+        }
+    } else {
+        write_json_atomic(
+            &operation_path,
+            &OperationRecord {
+                schema: PORTABLE_AGENT_COMPUTER_VERSION.to_string(),
+                fingerprint: fingerprint.clone(),
+                status: "pending".to_string(),
+                response: None,
+            },
+        )?;
+    }
+    let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
+    let resource = read_json::<RetainedResource>(&resource_path(&root, &resource_ref))?
+        .ok_or_else(|| {
+            CloudVmError::InvalidRequest("active retained resource was not found".to_string())
+        })?;
+    if resource.state != "active"
+        || resource.owner_ref != request.owner_ref
+        || resource.target_ref != request.target_ref
+        || resource.session_ref != request.session_ref
+        || resource.attachment_ref != request.attachment_ref
+        || resource.generation != request.generation
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "continuation scope differs from active retained resource".to_string(),
+        ));
+    }
+    if !resource
+        .capability_lease_refs
+        .as_array()
+        .is_some_and(|leases| {
+            leases
+                .iter()
+                .any(|lease| lease.as_str() == Some(&request.provider_lease_ref))
+        })
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "continuation provider lease was not planned".to_string(),
+        ));
+    }
+    let agents = agent_refs(&resource.graph)?;
+    if request.turns.len() != agents.len()
+        || request
+            .turns
+            .iter()
+            .zip(&agents)
+            .any(|(turn, agent)| &turn.agent_ref != agent)
+        || request
+            .turns
+            .iter()
+            .map(|turn| turn.turn_ref.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != request.turns.len()
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "continuation must bind one unique turn to every graph agent".to_string(),
+        ));
+    }
+    let (provisioner, effective_kind) = provisioner_for(configured_kind);
+    if configured_kind == ProvisionerKind::Live && effective_kind != ProvisionerKind::Live {
+        return Err(CloudVmError::KvmUnavailable(
+            "continuation requires the configured retained Firecracker host".to_string(),
+        ));
+    }
+    let response = if effective_kind == ProvisionerKind::Fake {
+        let cursors = request.turns.iter().enumerate().map(|(index, turn)| json!({
+            "agentRef": turn.agent_ref,
+            "threadRef": resource.graph["nodes"][index]["threadRef"],
+            "activityCursor": resource.graph["nodes"][index].get("activityCursor").and_then(Value::as_u64).unwrap_or(0) + 1,
+            "eventCursor": resource.thread_cursors.as_array().and_then(|rows| rows.get(index)).and_then(|row| row.get("eventCursor")).and_then(Value::as_u64).unwrap_or(0) + 1,
+        })).collect::<Vec<_>>();
+        json!({
+            "acceptedWorkRefs": request.turns.iter().map(|turn| json!({"agentRef": turn.agent_ref, "turnRef": turn.turn_ref})).collect::<Vec<_>>(),
+            "threadCursors": cursors,
+            "evidenceRefs": [evidence_ref("continuation", &request.operation_ref)],
+            "replay": "executed", "material": "excluded",
+        })
+    } else {
+        let mut private_body = encoded;
+        let result = provisioner.exec_with_stdin(
+            &resource.vm,
+            GUEST_CONTROL_BIN,
+            &["continue".to_string()],
+            &mut private_body,
+        );
+        private_body.fill(0);
+        let result = result?;
+        if result.code != 0 {
+            return Err(CloudVmError::Runtime(
+                "portable guest continuation failed".to_string(),
+            ));
+        }
+        serde_json::from_str(&result.output).map_err(|_| {
+            CloudVmError::Runtime(
+                "portable guest returned invalid continuation receipt".to_string(),
+            )
+        })?
+    };
+    response.as_object().ok_or_else(|| {
+        CloudVmError::Runtime("continuation response is not an object".to_string())
+    })?;
+    reject_private_material(&serde_json::to_vec(&response).unwrap_or_default())?;
+    write_json_atomic(
+        &operation_path,
+        &OperationRecord {
+            schema: PORTABLE_AGENT_COMPUTER_VERSION.to_string(),
+            fingerprint,
+            status: "completed".to_string(),
+            response: Some(response.clone()),
+        },
+    )?;
+    Ok(response)
+}
+
+pub fn zero_continuation_tasks(request: &mut PortableContinuationRequest) {
+    for turn in &mut request.turns {
+        // SAFETY: overwriting existing UTF-8 bytes with zero preserves String's
+        // allocation invariants; the value is never read again before drop.
+        unsafe { turn.task.as_bytes_mut().fill(0) };
+    }
+}
+
+pub fn materialize_checkpoint(
+    state_root: &Path,
+    configured_kind: ProvisionerKind,
+    request: PortableCheckpointMaterializeRequest,
+    artifact: &mut [u8],
+) -> Result<Value, CloudVmError> {
+    for (field, value) in [
+        ("operationRef", request.operation_ref.as_str()),
+        ("ownerRef", request.owner_ref.as_str()),
+        ("targetRef", request.target_ref.as_str()),
+        ("sessionRef", request.session_ref.as_str()),
+        ("attachmentRef", request.attachment_ref.as_str()),
+        ("checkpointRef", request.checkpoint_ref.as_str()),
+        ("artifactRef", request.artifact_ref.as_str()),
+        ("artifactDigest", request.artifact_digest.as_str()),
+    ] {
+        if !safe_ref(value) {
+            return Err(CloudVmError::InvalidRequest(format!(
+                "{field} is not a public-safe ref"
+            )));
+        }
+    }
+    if request.generation == 0 || artifact.is_empty() || artifact.len() > 128 * 1024 * 1024 {
+        return Err(CloudVmError::InvalidRequest(
+            "checkpoint artifact generation or length is invalid".to_string(),
+        ));
+    }
+    let actual_digest = digest(artifact);
+    if actual_digest != request.artifact_digest {
+        return Err(CloudVmError::InvalidRequest(
+            "checkpoint artifact digest differs from the declared digest".to_string(),
+        ));
+    }
+    let root = state_root.join("portable-agent-computers");
+    let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
+    let path = resource_path(&root, &resource_ref);
+    let mut resource = read_json::<RetainedResource>(&path)?.ok_or_else(|| {
+        CloudVmError::InvalidRequest("prepared retained resource was not found".to_string())
+    })?;
+    if request.owner_ref != resource.owner_ref
+        || request.target_ref != resource.target_ref
+        || request.session_ref != resource.session_ref
+        || request.attachment_ref != resource.attachment_ref
+        || request.generation != resource.generation
+        || request.checkpoint_ref != required_string(&resource.checkpoint, "checkpointRef")?
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "checkpoint artifact scope differs from prepared resource".to_string(),
+        ));
+    }
+    if resource.state == "staged" {
+        if resource.artifact_ref.as_deref() != Some(request.artifact_ref.as_str())
+            || resource.artifact_digest.as_deref() != Some(request.artifact_digest.as_str())
+        {
+            return Err(CloudVmError::InvalidRequest(
+                "checkpoint artifact replay conflicts with verified stage".to_string(),
+            ));
+        }
+        return resource.stage_receipt.ok_or_else(|| {
+            CloudVmError::Runtime("verified stage is missing its receipt".to_string())
+        });
+    }
+    if resource.state != "prepared" {
+        return Err(CloudVmError::InvalidRequest(
+            "checkpoint artifact requires a prepared nonaccepting resource".to_string(),
+        ));
+    }
+    let stage_operation = PortableAgentComputerRequest {
+        operation_ref: resource.stage_operation_ref.clone(),
+        action: "stage".to_string(),
+        owner_ref: resource.owner_ref.clone(),
+        target_ref: resource.target_ref.clone(),
+        session_ref: resource.session_ref.clone(),
+        attachment_ref: resource.attachment_ref.clone(),
+        generation: resource.generation,
+        resource_ref: None,
+        payload: json!({
+            "bundle": {
+                "checkpoint": resource.checkpoint.clone(),
+                "executionBinding": resource.execution_binding.clone(),
+                "graph": resource.graph.clone(),
+                "threadCursors": resource.thread_cursors.clone(),
+            },
+            "capabilityLeaseRefs": resource.capability_lease_refs.clone(),
+        }),
+    };
+    let (provisioner, effective_kind) = provisioner_for(configured_kind);
+    if configured_kind == ProvisionerKind::Live && effective_kind != ProvisionerKind::Live {
+        return Err(CloudVmError::KvmUnavailable(
+            "checkpoint materialization requires the configured retained Firecracker host"
+                .to_string(),
+        ));
+    }
+    let mut response = if effective_kind == ProvisionerKind::Fake {
+        fake_stage_response(&resource)?
+    } else {
+        let metadata = serde_json::to_string(&json!({
+            "operationRef": request.operation_ref,
+            "artifactRef": request.artifact_ref,
+            "artifactDigest": request.artifact_digest,
+            "stageOperation": stage_operation,
+        }))
+        .map_err(|error| CloudVmError::Runtime(format!("encode checkpoint metadata: {error}")))?;
+        let result = provisioner.exec_with_stdin(
+            &resource.vm,
+            GUEST_CONTROL_BIN,
+            &["checkpoint-materialize".to_string(), metadata],
+            artifact,
+        )?;
+        if result.code != 0 {
+            return Err(CloudVmError::Runtime(
+                "portable guest refused checkpoint materialization".to_string(),
+            ));
+        }
+        serde_json::from_str(&result.output).map_err(|_| {
+            CloudVmError::Runtime("portable guest returned invalid stage receipt".to_string())
+        })?
+    };
+    response
+        .as_object_mut()
+        .ok_or_else(|| CloudVmError::Runtime("stage receipt is not an object".to_string()))?
+        .insert("resourceRef".to_string(), Value::String(resource_ref));
+    reject_private_material(&serde_json::to_vec(&response).unwrap_or_default())?;
+    resource.state = "staged".to_string();
+    resource.artifact_ref = Some(request.artifact_ref);
+    resource.artifact_digest = Some(request.artifact_digest);
+    resource.stage_receipt = Some(response.clone());
+    write_json_atomic(&path, &resource)?;
+    Ok(response)
 }
 
 pub fn install_capability(
@@ -109,11 +460,15 @@ pub fn install_capability(
             "capability install scope differs from staged resource".to_string(),
         ));
     }
-    if !resource.capability_lease_refs.as_array().is_some_and(|leases| {
-        leases
-            .iter()
-            .any(|lease| lease.as_str() == Some(request.lease_ref.as_str()))
-    }) {
+    if !resource
+        .capability_lease_refs
+        .as_array()
+        .is_some_and(|leases| {
+            leases
+                .iter()
+                .any(|lease| lease.as_str() == Some(request.lease_ref.as_str()))
+        })
+    {
         return Err(CloudVmError::InvalidRequest(
             "capability lease was not planned by the staged checkpoint".to_string(),
         ));
@@ -183,6 +538,12 @@ struct RetainedResource {
     thread_cursors: Value,
     #[serde(default)]
     capability_lease_refs: Value,
+    #[serde(default)]
+    artifact_ref: Option<String>,
+    #[serde(default)]
+    artifact_digest: Option<String>,
+    #[serde(default)]
+    stage_receipt: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -267,7 +628,10 @@ fn execute_effect(
     request: &PortableAgentComputerRequest,
 ) -> Result<Value, CloudVmError> {
     if request.action == "stage" {
-        return stage(root, provisioner, effective_kind, request);
+        return stage(root, provisioner, request);
+    }
+    if request.action == "abortPrepared" {
+        return abort_prepared(root, provisioner, request);
     }
     let resource_ref = request.resource_ref.as_deref().ok_or_else(|| {
         CloudVmError::InvalidRequest("resourceRef is required after stage".to_string())
@@ -278,7 +642,9 @@ fn execute_effect(
     })?;
     assert_resource(&resource, request)?;
 
-    let response = if effective_kind == ProvisionerKind::Fake {
+    let cleanup_reconciliation = matches!(request.action.as_str(), "abort" | "reclaim")
+        && matches!(resource.state.as_str(), "teardown_pending" | "reclaimed");
+    let response = if effective_kind == ProvisionerKind::Fake || cleanup_reconciliation {
         fake_response(&resource, request)?
     } else {
         live_guest_response(provisioner, &resource.vm, request)?
@@ -288,8 +654,12 @@ fn execute_effect(
         "activate" => resource.state = "active".to_string(),
         "quiesce" => resource.state = "quiesced".to_string(),
         "abort" | "reclaim" => {
-            provisioner.teardown(&resource.vm)?;
-            resource.state = "reclaimed".to_string();
+            if resource.state != "reclaimed" {
+                resource.state = "teardown_pending".to_string();
+                write_json_atomic(&resource_path, &resource)?;
+                provisioner.teardown(&resource.vm)?;
+                resource.state = "reclaimed".to_string();
+            }
         }
         "checkpoint" => {}
         "wipeCapability" => {}
@@ -304,10 +674,58 @@ fn execute_effect(
     Ok(response)
 }
 
+fn abort_prepared(
+    root: &Path,
+    provisioner: &dyn CloudVmProvisioner,
+    request: &PortableAgentComputerRequest,
+) -> Result<Value, CloudVmError> {
+    if request.resource_ref.is_some() {
+        return Err(CloudVmError::InvalidRequest(
+            "abortPrepared derives its retained resource".to_string(),
+        ));
+    }
+    let stage_operation_ref = required_payload_string(request, "stageOperationRef")?;
+    let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
+    let path = resource_path(root, &resource_ref);
+    let Some(mut resource) = read_json::<RetainedResource>(&path)? else {
+        return Ok(
+            json!({ "evidenceRefs": [evidence_ref("abort-prepared", &request.operation_ref)], "material": "excluded" }),
+        );
+    };
+    if resource.owner_ref != request.owner_ref
+        || resource.target_ref != request.target_ref
+        || resource.session_ref != request.session_ref
+        || resource.attachment_ref != request.attachment_ref
+        || resource.generation != request.generation
+        || resource.stage_operation_ref != stage_operation_ref
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "abortPrepared scope differs from prepared resource".to_string(),
+        ));
+    }
+    if resource.state != "reclaimed" {
+        resource.state = "teardown_pending".to_string();
+        write_json_atomic(&path, &resource)?;
+        provisioner.teardown(&resource.vm)?;
+        resource.state = "reclaimed".to_string();
+        write_json_atomic(&path, &resource)?;
+    }
+    let stage_record_path = root
+        .join("operations")
+        .join(format!("{}.json", short_digest(&stage_operation_ref)));
+    if let Some(mut stage_record) = read_json::<OperationRecord>(&stage_record_path)? {
+        stage_record.status = "compensated".to_string();
+        stage_record.response = None;
+        write_json_atomic(&stage_record_path, &stage_record)?;
+    }
+    Ok(
+        json!({ "evidenceRefs": [evidence_ref("abort-prepared", &request.operation_ref)], "material": "excluded" }),
+    )
+}
+
 fn stage(
     root: &Path,
     provisioner: &dyn CloudVmProvisioner,
-    effective_kind: ProvisionerKind,
     request: &PortableAgentComputerRequest,
 ) -> Result<Value, CloudVmError> {
     if request.resource_ref.is_some() {
@@ -337,9 +755,7 @@ fn stage(
         .get("capabilityLeaseRefs")
         .cloned()
         .ok_or_else(|| {
-            CloudVmError::InvalidRequest(
-                "stage payload requires capabilityLeaseRefs".to_string(),
-            )
+            CloudVmError::InvalidRequest("stage payload requires capabilityLeaseRefs".to_string())
         })?;
     if !capability_lease_refs.as_array().is_some_and(|leases| {
         !leases.is_empty()
@@ -350,6 +766,24 @@ fn stage(
         return Err(CloudVmError::InvalidRequest(
             "stage capabilityLeaseRefs must be non-empty public-safe refs".to_string(),
         ));
+    }
+    let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
+    let retained_path = resource_path(root, &resource_ref);
+    if let Some(resource) = read_json::<RetainedResource>(&retained_path)? {
+        if resource.stage_operation_ref != request.operation_ref {
+            return Err(CloudVmError::InvalidRequest(
+                "a different stage operation already owns this session resource".to_string(),
+            ));
+        }
+        let mut replay = request.clone();
+        replay.resource_ref = Some(resource_ref);
+        assert_resource(&resource, &replay)?;
+        if resource.state == "reclaimed" || resource.state == "teardown_pending" {
+            return Err(CloudVmError::InvalidRequest(
+                "prepared resource was compensated and cannot be resumed".to_string(),
+            ));
+        }
+        return Ok(prepared_stage_response(&resource));
     }
     let vm_request = CloudVmRequest {
         run_id: request.operation_ref.clone(),
@@ -364,33 +798,6 @@ fn stage(
             "retained Agent Computer failed its boot health check".to_string(),
         ));
     }
-    let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
-    let retained_path = resource_path(root, &resource_ref);
-    if let Some(resource) = read_json::<RetainedResource>(&retained_path)? {
-        if resource.stage_operation_ref != request.operation_ref {
-            return Err(CloudVmError::InvalidRequest(
-                "a different stage operation already owns this session resource".to_string(),
-            ));
-        }
-        let mut replay = request.clone();
-        replay.resource_ref = Some(resource_ref);
-        assert_resource(&resource, &replay)?;
-        return if effective_kind == ProvisionerKind::Fake {
-            fake_stage_response(&resource)
-        } else {
-            let mut response = live_guest_response(provisioner, &resource.vm, request)?;
-            response
-                .as_object_mut()
-                .ok_or_else(|| {
-                    CloudVmError::Runtime("stage response is not an object".to_string())
-                })?
-                .insert(
-                    "resourceRef".to_string(),
-                    Value::String(resource.resource_ref.clone()),
-                );
-            Ok(response)
-        };
-    }
     let resource = RetainedResource {
         schema: PORTABLE_AGENT_COMPUTER_VERSION.to_string(),
         owner_ref: request.owner_ref.clone(),
@@ -401,27 +808,27 @@ fn stage(
         resource_ref: resource_ref.clone(),
         stage_operation_ref: request.operation_ref.clone(),
         vm,
-        state: "staged".to_string(),
+        state: "prepared".to_string(),
         checkpoint: checkpoint.clone(),
         execution_binding,
         graph: graph.clone(),
         thread_cursors: thread_cursors.clone(),
         capability_lease_refs,
+        artifact_ref: None,
+        artifact_digest: None,
+        stage_receipt: None,
     };
-    let mut response = if effective_kind == ProvisionerKind::Fake {
-        fake_stage_response(&resource)?
-    } else {
-        live_guest_response(provisioner, &resource.vm, request)?
-    };
-    response
-        .as_object_mut()
-        .ok_or_else(|| CloudVmError::Runtime("stage response is not an object".to_string()))?
-        .insert(
-            "resourceRef".to_string(),
-            Value::String(resource_ref.clone()),
-        );
     write_json_atomic(&retained_path, &resource)?;
-    Ok(response)
+    Ok(prepared_stage_response(&resource))
+}
+
+fn prepared_stage_response(resource: &RetainedResource) -> Value {
+    json!({
+        "resourceRef": resource.resource_ref,
+        "acceptingWork": false,
+        "materializationRequired": true,
+        "evidenceRefs": [evidence_ref("prepare-stage", &resource.resource_ref)],
+    })
 }
 
 fn fake_stage_response(resource: &RetainedResource) -> Result<Value, CloudVmError> {
@@ -580,12 +987,26 @@ fn assert_resource(
         "checkpoint" if resource.state != "quiesced" => Err(CloudVmError::InvalidRequest(
             "checkpoint requires quiescence".to_string(),
         )),
-        "reclaim" if !matches!(resource.state.as_str(), "quiesced" | "reclaimed") => Err(
-            CloudVmError::InvalidRequest("reclaim requires quiescence".to_string()),
-        ),
-        "abort" if !matches!(resource.state.as_str(), "staged" | "reclaimed") => Err(
-            CloudVmError::InvalidRequest("only a staged resource may abort".to_string()),
-        ),
+        "reclaim"
+            if !matches!(
+                resource.state.as_str(),
+                "quiesced" | "teardown_pending" | "reclaimed"
+            ) =>
+        {
+            Err(CloudVmError::InvalidRequest(
+                "reclaim requires quiescence".to_string(),
+            ))
+        }
+        "abort"
+            if !matches!(
+                resource.state.as_str(),
+                "staged" | "teardown_pending" | "reclaimed"
+            ) =>
+        {
+            Err(CloudVmError::InvalidRequest(
+                "only a staged resource may abort".to_string(),
+            ))
+        }
         "wipeCapability" if resource.state == "reclaimed" => Err(CloudVmError::InvalidRequest(
             "cannot wipe a reclaimed resource".to_string(),
         )),
@@ -828,6 +1249,27 @@ mod tests {
         value
     }
 
+    fn materialize_fake(state_root: &Path, operation_ref: &str) -> Value {
+        let mut artifact = b"fake-private-checkpoint-archive".to_vec();
+        materialize_checkpoint(
+            state_root,
+            ProvisionerKind::Fake,
+            PortableCheckpointMaterializeRequest {
+                operation_ref: operation_ref.to_string(),
+                owner_ref: "owner.port03.binding".to_string(),
+                target_ref: "target.port03.binding.managed".to_string(),
+                session_ref: "session.port03.binding".to_string(),
+                attachment_ref: "attachment.port03.binding.managed".to_string(),
+                generation: 2,
+                checkpoint_ref: "checkpoint.port03.binding.source".to_string(),
+                artifact_ref: "artifact.port03.binding.private".to_string(),
+                artifact_digest: digest(&artifact),
+            },
+            &mut artifact,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn retained_lifecycle_replays_and_reclaims_the_exact_resource() {
         let state_root = root("lifecycle");
@@ -842,6 +1284,7 @@ mod tests {
             staged
         );
         let resource_ref = staged.get("resourceRef").and_then(Value::as_str).unwrap();
+        let _staged = materialize_fake(&state_root, "operation.port03.binding.materialize");
 
         let mut activate = request(
             "activate",
@@ -904,6 +1347,96 @@ mod tests {
     }
 
     #[test]
+    fn continuation_executes_exact_graph_turns_once_without_journaling_tasks() {
+        let state_root = root("continuation");
+        let staged = execute(
+            &state_root,
+            ProvisionerKind::Fake,
+            stage_request("operation.port03.binding.continue.stage"),
+        )
+        .unwrap();
+        let resource_ref = staged["resourceRef"].as_str().unwrap();
+        materialize_fake(&state_root, "operation.port03.binding.continue.materialize");
+        let mut activate = request(
+            "activate",
+            "operation.port03.binding.continue.activate",
+            Some(resource_ref),
+        );
+        activate.payload = json!({
+            "authorityEvidenceRef": "evidence.port03.binding.authority",
+            "capabilityLeaseRefs": ["lease.port03.binding.provider"]
+        });
+        execute(&state_root, ProvisionerKind::Fake, activate).unwrap();
+        let continuation = PortableContinuationRequest {
+            operation_ref: "operation.port03.binding.continue".to_string(),
+            owner_ref: "owner.port03.binding".to_string(),
+            target_ref: "target.port03.binding.managed".to_string(),
+            session_ref: "session.port03.binding".to_string(),
+            attachment_ref: "attachment.port03.binding.managed".to_string(),
+            generation: 2,
+            provider_lease_ref: "lease.port03.binding.provider".to_string(),
+            turns: vec![PortableContinuationTurn {
+                agent_ref: "agent.port03.binding.root".to_string(),
+                turn_ref: "turn.port03.binding.root".to_string(),
+                task: "PRIVATE-CONTINUATION-TASK-SENTINEL".to_string(),
+            }],
+        };
+        let executed = continue_work(&state_root, ProvisionerKind::Fake, &continuation).unwrap();
+        assert_eq!(executed["replay"], "executed");
+        assert_eq!(
+            continue_work(&state_root, ProvisionerKind::Fake, &continuation).unwrap()["replay"],
+            "replayed"
+        );
+        let journal =
+            fs::read_to_string(state_root.join("portable-agent-computers/operations").join(
+                format!("{}.json", short_digest(&continuation.operation_ref)),
+            ))
+            .unwrap();
+        assert!(!journal.contains("PRIVATE-CONTINUATION-TASK-SENTINEL"));
+    }
+
+    #[test]
+    fn abort_prepared_compensates_and_cleanup_reconciles_a_missing_vm() {
+        let state_root = root("compensation");
+        let stage = stage_request("operation.port03.binding.compensated.stage");
+        execute(&state_root, ProvisionerKind::Fake, stage.clone()).unwrap();
+        let mut abort = request(
+            "abortPrepared",
+            "operation.port03.binding.compensated.abort-prepared",
+            None,
+        );
+        abort.payload = json!({ "stageOperationRef": stage.operation_ref });
+        let first = execute(&state_root, ProvisionerKind::Fake, abort.clone()).unwrap();
+        assert_eq!(
+            execute(&state_root, ProvisionerKind::Fake, abort).unwrap(),
+            first
+        );
+        assert!(execute(&state_root, ProvisionerKind::Fake, stage).is_err());
+
+        let resource_ref =
+            staged_resource_ref("target.port03.binding.managed", "session.port03.binding");
+        let path = resource_path(&state_root.join("portable-agent-computers"), &resource_ref);
+        let mut resource = read_json::<RetainedResource>(&path).unwrap().unwrap();
+        assert_eq!(resource.state, "reclaimed");
+        resource.state = "teardown_pending".to_string();
+        write_json_atomic(&path, &resource).unwrap();
+        let mut reclaim = request(
+            "reclaim",
+            "operation.port03.binding.compensated.reclaim-replay",
+            Some(&resource_ref),
+        );
+        reclaim.payload = json!({ "agentRefs": ["agent.port03.binding.root"] });
+        assert_eq!(
+            execute(&state_root, ProvisionerKind::Fake, reclaim).unwrap()["scratch"],
+            "released"
+        );
+        assert_eq!(
+            read_json::<RetainedResource>(&path).unwrap().unwrap().state,
+            "reclaimed"
+        );
+    }
+
+    #[test]
     fn capability_install_is_refs_only_and_wipe_is_journaled_without_material() {
         let state_root = root("capability");
         let staged = execute(
@@ -913,6 +1446,10 @@ mod tests {
         )
         .unwrap();
         let resource_ref = staged["resourceRef"].as_str().unwrap().to_string();
+        materialize_fake(
+            &state_root,
+            "operation.port03.binding.capability-materialize",
+        );
         let install_request = PortableCapabilityInstallRequest {
             operation_ref: "operation.port03.binding.capability-install".to_string(),
             owner_ref: "owner.port03.binding".to_string(),

@@ -81,10 +81,10 @@
   "guestImage": {
     "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
-    "rootfsDigest": "sha256:54d90722acb400434d8352d2876835b3f9f2700d8b99fa1f8be7952e47ce0d48",
-    "rootfsDigestPrevious": "sha256:2eb563b3f52e22eedfe85f1593cf08b0c8a1cc5dc3ca3d88f06bcc8f42cc7e0a (#8477 writeback-proven image; the inMicrovmWritebackProof/inMicrovmTurnProof above were proven on THIS digest, which predates the CX-3 codex bake)",
-    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + pinned bun 1.3.14 + Codex CLI 0.144.0 + vsock guest agent + bundled turn-runner at origin/main 9ea19fb291; staged as /srv/openagents/cloud-vm/agent-computer-rootfs-resolve-9ea19fb291.ext4",
-    "rootfsStatus": "PRODUCTION MANAGED TURN GREEN 2026-07-12: repositoryRef=main resolved server-side to an immutable SHA; a real Firecracker guest redeemed the owner's Postgres grant, checked out OpenAgentsInc/openagents, ran native Codex, wrote exactly one exact usage row (turn.agent-computer-smoke.20260712T235107Z: input=60167, output=294, total=60461), synced a completed terminal turn, and reclaimed the microVM with zero taps/runtime residue.",
+    "rootfsDigest": "sha256:66333e38cd446a2b3d4bf6121b3e29ecea14b08ad2126812fed6e87b79dde81e",
+    "rootfsDigestPrevious": "sha256:54d90722acb400434d8352d2876835b3f9f2700d8b99fa1f8be7952e47ce0d48 (production managed Codex turn proven 2026-07-12)",
+    "rootfsSource": "source-controlled debootstrap jammy bake at PORT-03 retained-control revision 34b62dd73d; retained host/guest inputs are byte-identical through current-main integration revision 4e66e3c062",
+    "rootfsStatus": "PORT-03 IMAGE LIVE BOOT GREEN 2026-07-13: provisionerKind=live, guest exec code=0, controller digest matched the bake receipt, artifacts extracted, and cleanupReceipt.tornDown=true. Full retained stage/install/activate acceptance remains fail-closed until a managed checkpoint artifact materializer supplies the verified Git post-image/diff and agent lifecycle files to the blank staged guest.",
     "rootfsBuildScript": "apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh (source-controlled bake, CX-3 #8547 item 1: debootstrap jammy + pinned bun/codex + vsock guest agent guest-agent.py/agent-guest.service + turn-runner + oa-workroomd + egress fix; seals sha256 + emits a refs-only bake receipt; run as root on the nested-virt bake host, then boot-smoke and re-pin rootfsDigest)",
     "codex": {
       "status": "baked_and_boot_smoke_proven_2026_07_10",
@@ -96,12 +96,22 @@
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
     },
     "portableSessionControl": {
-      "status": "source_wired_bake_pending",
+      "status": "checkpoint_materializer_and_continuation_source_wired_rebake_pending",
       "source": "apps/pylon/deploy/agent-computer/portable-session-control.ts",
       "guestInstallPath": "/opt/agent/portable-session-control",
-      "contract": "fixed PORT-03 stage/activate/abort/quiesce/checkpoint/reclaim protocol; no arbitrary command surface",
+      "contract": "fixed PORT-03 stage/materialize/activate/continue/abort/quiesce/checkpoint/reclaim/wipeCapability protocol; checkpoint and capability bytes plus private continuation tasks cross only authenticated bounded raw-stdin seams; no arbitrary command surface",
       "bakeReceiptField": "portableSessionControlSha256",
-      "note": "The rootfs build now compiles and installs this binary. Keep this status bake_pending and preserve the current rootfsDigest until a new nested-virt bake plus boot smoke records the new digest."
+      "portableSessionControlSha256": "820f18c5ea9b24f072f9e41755881b8235ab5e3835e00c7793780d4ddb659437",
+      "liveBootProof": {
+        "provedAt": "2026-07-13",
+        "provisionerKind": "live",
+        "execCode": 0,
+        "artifactsExtracted": true,
+        "tornDown": true,
+        "provisionReceiptDigest": "sha256:371df018106efd86d8e39796956ddac881b8ea3cd5d1b68ee480ca21819e08b1",
+        "cleanupReceiptDigest": "sha256:1dfa54ec2d6fd22171182d3ebbc36094a593b5b37cfbfae685560d07826ae399"
+      },
+      "note": "The recorded digest proves the prior capability controller image only. Source now also verifies a bounded Git-bundle/post-image tar.zst (including safe relative symlinks), compensates failed prepares, reconciles missing-VM teardown replay, and runs one replay-fenced oa-workroomd/Codex turn for the canonical root and each child with refs-only receipts. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming PORT-03 completion."
     },
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,

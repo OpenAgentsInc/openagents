@@ -38,7 +38,7 @@ const DEFAULT_CODEX_BIN: &str = "/usr/local/bin/codex";
 const DEFAULT_OPENCODE_BIN: &str = "/usr/local/bin/opencode";
 const DEFAULT_STATE_ROOT: &str = "/var/lib/openagents/codex-control";
 const DEFAULT_WORKROOMD_BIN: &str = "/usr/local/bin/oa-workroomd";
-const MAX_BODY_BYTES: usize = 128 * 1024;
+const MAX_BODY_BYTES: usize = 128 * 1024 * 1024;
 static JSON_WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// cloud#97: count of queued jobs the internal tick worker has dispatched and
 /// not yet observed reach a terminal state. Bounds queue concurrency.
@@ -587,7 +587,12 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
     }
 
     if !authorized(&request.authorization, &config.token) {
-        if path == "/v1/portable-agent-computers/capabilities/install" {
+        if matches!(
+            path,
+            "/v1/portable-agent-computers/capabilities/install"
+                | "/v1/portable-agent-computers/checkpoints/materialize"
+                | "/v1/portable-agent-computers/continuations"
+        ) {
             request.body.fill(0);
         }
         return write_response(
@@ -727,6 +732,34 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
             };
             write_response(&mut stream, status, &response)
         }
+        "/v1/portable-agent-computers/continuations" => {
+            let mut private_body = SecretBody(std::mem::take(&mut request.body));
+            let mut continuation = match serde_json::from_slice::<
+                portable_agent_computer::PortableContinuationRequest,
+            >(&private_body.0)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    return write_invalid_request(&mut stream, format!("invalid_request: {error}"))
+                }
+            };
+            private_body.0.fill(0);
+            let _operation_guard = config
+                .portable_agent_computer_lock
+                .lock()
+                .map_err(|_| "portable Agent Computer operation lock was poisoned".to_string())?;
+            let result = portable_agent_computer::continue_work(
+                &config.state_root,
+                config.cloud_vm_provisioner_kind,
+                &continuation,
+            );
+            portable_agent_computer::zero_continuation_tasks(&mut continuation);
+            let (status, response) = match result {
+                Ok(response) => (200, response),
+                Err(error) => cloud_vm_failed_response(error)?,
+            };
+            write_response(&mut stream, status, &response)
+        }
         "/v1/portable-agent-computers/capabilities/install" => {
             let mut material = SecretBody(std::mem::take(&mut request.body));
             if request.header("content-type") != Some("application/octet-stream") {
@@ -746,7 +779,10 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
             let install = portable_agent_computer::PortableCapabilityInstallRequest {
                 operation_ref: required("x-oa-operation-ref")?,
                 owner_ref: required("x-oa-owner-ref")?,
-                resource_ref: portable_agent_computer::staged_resource_ref(&target_ref, &session_ref),
+                resource_ref: portable_agent_computer::staged_resource_ref(
+                    &target_ref,
+                    &session_ref,
+                ),
                 target_ref,
                 session_ref,
                 attachment_ref: required("x-oa-attachment-ref")?,
@@ -766,6 +802,48 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 config.cloud_vm_provisioner_kind,
                 install,
                 &mut material.0,
+            ) {
+                Ok(response) => (200, response),
+                Err(error) => cloud_vm_failed_response(error)?,
+            };
+            write_response(&mut stream, status, &response)
+        }
+        "/v1/portable-agent-computers/checkpoints/materialize" => {
+            let mut artifact = SecretBody(std::mem::take(&mut request.body));
+            if request.header("content-type") != Some("application/octet-stream") {
+                return write_invalid_request(
+                    &mut stream,
+                    "content-type must be application/octet-stream".to_string(),
+                );
+            }
+            let required = |name: &str| {
+                request
+                    .header(name)
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("missing {name}"))
+            };
+            let materialize = portable_agent_computer::PortableCheckpointMaterializeRequest {
+                operation_ref: required("x-oa-operation-ref")?,
+                owner_ref: required("x-oa-owner-ref")?,
+                target_ref: required("x-oa-target-ref")?,
+                session_ref: required("x-oa-session-ref")?,
+                attachment_ref: required("x-oa-attachment-ref")?,
+                generation: required("x-oa-attachment-generation")?
+                    .parse()
+                    .map_err(|_| "invalid attachment generation".to_string())?,
+                checkpoint_ref: required("x-oa-checkpoint-ref")?,
+                artifact_ref: required("x-oa-artifact-ref")?,
+                artifact_digest: required("x-oa-artifact-digest")?,
+            };
+            let _operation_guard = config
+                .portable_agent_computer_lock
+                .lock()
+                .map_err(|_| "portable Agent Computer operation lock was poisoned".to_string())?;
+            let (status, response) = match portable_agent_computer::materialize_checkpoint(
+                &config.state_root,
+                config.cloud_vm_provisioner_kind,
+                materialize,
+                &mut artifact.0,
             ) {
                 Ok(response) => (200, response),
                 Err(error) => cloud_vm_failed_response(error)?,

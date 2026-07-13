@@ -56,12 +56,49 @@ seals the sha256, and writes a refs-and-digests-only bake receipt JSON. Re-pin
 
 For PORT-03 retained movement, `/opt/agent/portable-session-control` is the
 only guest command the host route invokes. It accepts the fixed
-stage/activate/abort/quiesce/checkpoint/reclaim vocabulary, verifies the
+stage/activate/abort/quiesce/checkpoint/reclaim/wipeCapability vocabulary, verifies the
 materialized Git post-image before stage, drives only baked
 `oa-workroomd lifecycle` commands for the exact graph agents, and journals
 public-safe operation results. It is not a command tunnel. A production image
 is not PORT-03-ready until its bake receipt includes
 `portableSessionControlSha256` and a boot smoke proves the binary is present.
+
+Capability installation uses a separate authenticated
+`POST /v1/portable-agent-computers/capabilities/install` octet-stream route.
+Only public refs travel in `X-OA-*` headers; the material body is mutable,
+passes to the fixed guest controller through a raw vsock stdin frame, and is
+zeroized on both sides. The host derives the retained resource from
+`targetRef + sessionRef`, requires the exact staged owner/attachment/generation,
+and verifies that the lease was planned by the stage operation. A marker with
+only `leaseRef` and `evidenceRef` is committed after successful installation;
+`wipeCapability` removes both material and marker.
+
+Checkpoint materialization uses the authenticated octet-stream
+`POST /v1/portable-agent-computers/checkpoints/materialize` route after a
+nonaccepting prepare. The archive is digest-bound to the exact checkpoint and
+contains only a Git bundle, manifest, and sorted post-image. The guest rejects
+traversal, devices, hard links, unknown entries, and escaping links; bounded
+relative symbolic links are recreated from manifest-declared link-target
+bytes. It checks every size/mode/digest, reconstructs the pinned revision,
+recomputes repository/diff/graph digests, and only then records stage. Any
+resolver, upload, digest, or verification failure invokes replay-safe
+`abortPrepared`; teardown is journaled as pending before its effect so a lost
+ack or missing VM reconciles to completed cleanup rather than orphaning a VM.
+
+Real work acceptance is separate from lifecycle activation. The authenticated
+`POST /v1/portable-agent-computers/continuations` route accepts one bounded
+private task for exactly the canonical root and every child, binds each to a
+unique turn ref and the installed planned provider lease, and sends the body
+to the guest over raw stdin. The guest executes one real `oa-workroomd codex
+session` turn per agent against the materialized workspace. Only accepted
+agent/turn refs, monotonic cursors, evidence refs, and `material: excluded` are
+journaled. Same-operation replay returns the stored result without a second
+turn; changed bytes conflict.
+
+The 2026-07-13 capability image bake and live Firecracker boot smoke are green.
+The materializer/continuation additions require a new nested-virt rebake and a
+full stage/install/activate/continue/quiesce/checkpoint/reclaim live receipt
+before the image manifest or #8748 can claim the complete movement rung.
 
 ## In-repo `oa-workroomd` guest binary (#8591)
 

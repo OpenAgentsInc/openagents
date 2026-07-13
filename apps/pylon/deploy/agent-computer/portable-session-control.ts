@@ -10,8 +10,8 @@
  */
 
 import { createHash } from "node:crypto"
-import { lstat, mkdir, readFile, readlink, rename, rm, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { chmod, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises"
+import { dirname, join, posix } from "node:path"
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u
 const FORBIDDEN_PRIVATE_MATERIAL =
@@ -43,9 +43,17 @@ type ControllerState = Readonly<{
 }>
 
 export type PortableSessionGuestRuntime = Readonly<{
+  prepare: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
   verifyStage: (input: Readonly<{ sessionRoot: string; bundle: Record<string, unknown> }>) => Promise<void>
   verifyCapabilities: (input: Readonly<{ sessionRoot: string; leaseRefs: ReadonlyArray<string> }>) => Promise<void>
   activate: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
+  continueWork: (input: Readonly<{
+    sessionRoot: string
+    ownerRef: string
+    repositoryRef: string
+    providerLeaseRef: string
+    turns: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string; task: string }>>
+  }>) => Promise<ReadonlyArray<Readonly<{ agentRef: string; turnRef: string; activityCursor: number; eventCursor: number }>>>
   quiesce: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
   reclaim: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
   repositorySnapshot: (sessionRoot: string) => Promise<Readonly<{
@@ -59,6 +67,17 @@ export class PortableSessionControlError extends Error {
   readonly _tag = "PortableSessionControlError"
   override readonly name = "PortableSessionControlError"
 }
+
+type Continuation = Readonly<{
+  operationRef: string
+  ownerRef: string
+  targetRef: string
+  sessionRef: string
+  attachmentRef: string
+  generation: number
+  providerLeaseRef: string
+  turns: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string; task: string }>>
+}>
 
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value)
@@ -158,6 +177,92 @@ const assertScope = (state: ControllerState, operation: Operation): void => {
       state.generation !== operation.generation) {
     throw new PortableSessionControlError("operation does not match retained attachment generation")
   }
+}
+
+const validateContinuation = (input: unknown): Continuation => {
+  const value = asObject(input, "continuation")
+  const generation = Number(value.generation)
+  if (!Number.isSafeInteger(generation) || generation <= 0) throw new PortableSessionControlError("generation must be positive")
+  if (!Array.isArray(value.turns) || value.turns.length === 0 || value.turns.length > 64) {
+    throw new PortableSessionControlError("continuation turns must be bounded")
+  }
+  const turns = value.turns.map((entry, index) => {
+    const turn = asObject(entry, `turns[${index}]`)
+    if (typeof turn.task !== "string" || turn.task.trim().length === 0 || Buffer.byteLength(turn.task) > 16 * 1024) {
+      throw new PortableSessionControlError("continuation task must be non-empty and bounded")
+    }
+    return {
+      agentRef: asString(turn.agentRef, "agentRef"),
+      turnRef: asString(turn.turnRef, "turnRef"),
+      task: turn.task,
+    }
+  })
+  return {
+    operationRef: asString(value.operationRef, "operationRef"),
+    ownerRef: asString(value.ownerRef, "ownerRef"),
+    targetRef: asString(value.targetRef, "targetRef"),
+    sessionRef: asString(value.sessionRef, "sessionRef"),
+    attachmentRef: asString(value.attachmentRef, "attachmentRef"),
+    generation,
+    providerLeaseRef: asString(value.providerLeaseRef, "providerLeaseRef"),
+    turns,
+  }
+}
+
+export const continuePortableSession = async (input: Readonly<{
+  continuation: unknown
+  stateRoot: string
+  runtime: PortableSessionGuestRuntime
+}>): Promise<unknown> => {
+  const continuation = validateContinuation(input.continuation)
+  const sessionRoot = portableSessionRoot(input.stateRoot, continuation.sessionRef)
+  const state = await readState(sessionRoot)
+  if (state === undefined || state.state !== "active") throw new PortableSessionControlError("continuation requires active retained state")
+  assertScope(state, { ...continuation, action: "activate", payload: {} })
+  const fingerprint = digest(continuation)
+  const replay = state.operations[continuation.operationRef]
+  if (replay !== undefined) {
+    if (replay.fingerprint !== fingerprint) throw new PortableSessionControlError("operation bytes conflict")
+    return { ...(replay.response as Record<string, unknown>), replay: "replayed" }
+  }
+  const agentRefs = graphAgentRefs(asObject(state.bundle.graph, "retained graph"))
+  if (continuation.turns.length !== agentRefs.length ||
+      continuation.turns.some((turn, index) => turn.agentRef !== agentRefs[index]) ||
+      new Set(continuation.turns.map(turn => turn.turnRef)).size !== continuation.turns.length) {
+    throw new PortableSessionControlError("continuation requires one unique turn for each canonical graph agent")
+  }
+  await input.runtime.verifyCapabilities({ sessionRoot, leaseRefs: [continuation.providerLeaseRef] })
+  const executionBinding = asObject(state.bundle.executionBinding, "executionBinding")
+  const completed = await input.runtime.continueWork({
+    sessionRoot,
+    ownerRef: continuation.ownerRef,
+    repositoryRef: asString(executionBinding.repositoryRef, "repositoryRef"),
+    providerLeaseRef: continuation.providerLeaseRef,
+    turns: continuation.turns,
+  })
+  if (completed.length !== continuation.turns.length || completed.some((row, index) =>
+    row.agentRef !== continuation.turns[index]?.agentRef || row.turnRef !== continuation.turns[index]?.turnRef)) {
+    throw new PortableSessionControlError("guest runtime continuation receipt differs from planned turns")
+  }
+  const nodes = (asObject(state.bundle.graph, "graph").nodes as ReadonlyArray<Record<string, unknown>>)
+  const cursors = completed.map((row, index) => ({
+    agentRef: row.agentRef,
+    threadRef: asString(nodes[index]?.threadRef, "threadRef"),
+    activityCursor: row.activityCursor,
+    eventCursor: row.eventCursor,
+  }))
+  const response = publicSafe({
+    acceptedWorkRefs: completed.map(({ agentRef, turnRef }) => ({ agentRef, turnRef })),
+    threadCursors: cursors,
+    evidenceRefs: [stableRef("evidence.agent-computer.continuation", continuation.operationRef)],
+    replay: "executed" as const,
+    material: "excluded" as const,
+  })
+  await writeState(sessionRoot, {
+    ...state,
+    operations: { ...state.operations, [continuation.operationRef]: { fingerprint, response } },
+  })
+  return response
 }
 
 export const executePortableSessionControl = async (input: Readonly<{
@@ -352,10 +457,189 @@ export const installPortableCapability = async (input: Readonly<{
   return { installationRef, evidenceRef: metadata.evidenceRef, marker, material: "excluded" }
 }
 
+const SAFE_ARCHIVE_EXTRACT = String.raw`
+import os,sys,tarfile
+source,destination=sys.argv[1],sys.argv[2]
+with tarfile.open(source,'r:') as archive:
+  total=0
+  for member in archive.getmembers():
+    name=member.name.rstrip('/')
+    parts=name.split('/')
+    if name.startswith('/') or '\\' in name or any(part in ('','.','..') for part in parts):
+      raise SystemExit('unsafe archive path')
+    if not (name=='manifest.json' or name=='repository.bundle' or name=='post-image' or name.startswith('post-image/')):
+      raise SystemExit('unexpected archive entry')
+    if member.islnk() or member.isdev():
+      raise SystemExit('archive hard links and devices are forbidden')
+    if member.issym():
+      target=member.linkname
+      if not name.startswith('post-image/') or not target or target.startswith('/') or '\\' in target:
+        raise SystemExit('unsafe archive symbolic link')
+      target_parts=target.split('/')
+      if any(part in ('','.','..') for part in target_parts):
+        raise SystemExit('unsafe archive symbolic link')
+      resolved=os.path.normpath(os.path.join(os.path.dirname(name),target))
+      if not resolved.startswith('post-image/'):
+        raise SystemExit('archive symbolic link escapes post-image')
+    elif not (member.isdir() or member.isfile()):
+      raise SystemExit('unsupported archive entry')
+    total += member.size
+    if total > 134217728:
+      raise SystemExit('archive content too large')
+  archive.extractall(destination)
+`
+
+const safeRelativePath = (value: unknown): string => {
+  if (typeof value !== "string" || value.length === 0 || value.startsWith("/") || value.includes("\\")) {
+    throw new PortableSessionControlError("checkpoint file path is invalid")
+  }
+  const parts = value.split("/")
+  if (parts.some(part => part === "" || part === "." || part === ".." || part === ".git")) {
+    throw new PortableSessionControlError("checkpoint file path escapes the repository")
+  }
+  return value
+}
+
+const safeRelativeLinkTarget = (path: string, value: unknown): string => {
+  if (typeof value !== "string" || value.length === 0 || value.startsWith("/") || value.includes("\\")) {
+    throw new PortableSessionControlError("checkpoint symbolic link target is invalid")
+  }
+  const parts = value.split("/")
+  if (parts.some(part => part === "" || part === "." || part === "..")) {
+    throw new PortableSessionControlError("checkpoint symbolic link target is invalid")
+  }
+  const resolved = posix.normalize(posix.join(posix.dirname(path), value))
+  if (resolved === ".." || resolved.startsWith("../") || posix.isAbsolute(resolved)) {
+    throw new PortableSessionControlError("checkpoint symbolic link escapes the repository")
+  }
+  return value
+}
+
+const removeWorkspacePostImage = async (root: string): Promise<void> => {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (entry.name === ".git") continue
+    await rm(join(root, entry.name), { recursive: true, force: true })
+  }
+}
+
+const listPortableEntries = async (root: string, prefix = ""): Promise<ReadonlyArray<string>> => {
+  const files: string[] = []
+  for (const entry of await readdir(join(root, prefix), { withFileTypes: true })) {
+    const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`
+    if (entry.isDirectory()) files.push(...await listPortableEntries(root, relative))
+    else if (entry.isFile() || entry.isSymbolicLink()) files.push(relative)
+    else throw new PortableSessionControlError("checkpoint post-image contains an unsupported entry")
+  }
+  return files.sort()
+}
+
+export const materializePortableCheckpoint = async (input: Readonly<{
+  metadata: unknown
+  archive: Uint8Array
+  stateRoot: string
+  runtime: PortableSessionGuestRuntime
+  zstdBin?: string
+}>): Promise<unknown> => {
+  const metadata = publicSafe(asObject(input.metadata, "checkpoint metadata"))
+  const artifactRef = asString(metadata.artifactRef, "artifactRef")
+  const artifactDigest = asString(metadata.artifactDigest, "artifactDigest")
+  const operation = validateOperation(metadata.stageOperation)
+  if (operation.action !== "stage") throw new PortableSessionControlError("checkpoint metadata requires stage")
+  if (`sha256:${createHash("sha256").update(input.archive).digest("hex")}` !== artifactDigest) {
+    throw new PortableSessionControlError("checkpoint archive digest differs")
+  }
+  const sessionRoot = portableSessionRoot(input.stateRoot, operation.sessionRef)
+  const work = join(sessionRoot, `.materialize-${createHash("sha256").update(artifactRef).digest("hex").slice(0, 16)}`)
+  const archivePath = join(work, "checkpoint.tar.zst")
+  const tarPath = join(work, "checkpoint.tar")
+  const extracted = join(work, "extracted")
+  try {
+    await rm(work, { recursive: true, force: true })
+    await mkdir(extracted, { recursive: true, mode: 0o700 })
+    await writeFile(archivePath, input.archive, { mode: 0o600 })
+    await run([input.zstdBin ?? "/usr/bin/zstd", "-q", "-d", "-f", archivePath, "-o", tarPath])
+    await run(["/usr/bin/python3", "-c", SAFE_ARCHIVE_EXTRACT, tarPath, extracted])
+    const manifest = publicSafe(JSON.parse(await readFile(join(extracted, "manifest.json"), "utf8"))) as Record<string, unknown>
+    if (manifest.schema !== "openagents.portable_checkpoint_artifact.v1" || manifest.artifactRef !== artifactRef ||
+        manifest.checkpointRef !== asObject(asObject(operation.payload.bundle, "bundle").checkpoint, "checkpoint").checkpointRef ||
+        canonicalJson(manifest.bundle) !== canonicalJson(operation.payload.bundle)) {
+      throw new PortableSessionControlError("checkpoint manifest does not bind the staged bundle")
+    }
+    if (!Array.isArray(manifest.files)) throw new PortableSessionControlError("checkpoint manifest files are missing")
+    const declared = manifest.files.map((entry, index) => {
+      const file = asObject(entry, `files[${index}]`)
+      const path = safeRelativePath(file.path)
+      const mode = Number(file.mode)
+      const size = Number(file.size)
+      if (![0o644, 0o755, 0o120000].includes(mode) || !Number.isSafeInteger(size) || size < 0 ||
+          typeof file.sha256 !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(file.sha256)) {
+        throw new PortableSessionControlError("checkpoint file metadata is invalid")
+      }
+      const linkTarget = mode === 0o120000
+        ? safeRelativeLinkTarget(path, file.linkTarget)
+        : undefined
+      if (mode !== 0o120000 && file.linkTarget !== undefined) {
+        throw new PortableSessionControlError("regular checkpoint file declares a symbolic link target")
+      }
+      return { path, mode, size, sha256: file.sha256, linkTarget }
+    })
+    const paths = declared.map(file => file.path)
+    if (new Set(paths).size !== paths.length || [...paths].sort().join("\0") !== paths.join("\0")) {
+      throw new PortableSessionControlError("checkpoint file inventory is not unique and sorted")
+    }
+    if ((await listPortableEntries(join(extracted, "post-image"))).join("\0") !== paths.join("\0")) {
+      throw new PortableSessionControlError("checkpoint post-image inventory differs from manifest")
+    }
+    for (const file of declared) {
+      const source = join(extracted, "post-image", file.path)
+      const info = await lstat(source)
+      const bytes = file.mode === 0o120000
+        ? new TextEncoder().encode(await readlink(source))
+        : await readFile(source)
+      if ((file.mode === 0o120000) !== info.isSymbolicLink() ||
+          (file.mode !== 0o120000 && !info.isFile()) ||
+          (file.linkTarget !== undefined && new TextDecoder().decode(bytes) !== file.linkTarget)) {
+        throw new PortableSessionControlError("checkpoint post-image entry type differs from manifest")
+      }
+      if (bytes.byteLength !== file.size || `sha256:${createHash("sha256").update(bytes).digest("hex")}` !== file.sha256) {
+        throw new PortableSessionControlError("checkpoint post-image file differs from manifest")
+      }
+    }
+    const workspace = workspacePath(sessionRoot)
+    await rm(workspace, { recursive: true, force: true })
+    await mkdir(workspace, { recursive: true, mode: 0o700 })
+    const checkpoint = asObject(asObject(operation.payload.bundle, "bundle").checkpoint, "checkpoint")
+    const revision = asString(checkpoint.repositoryRevisionRef, "repositoryRevisionRef")
+    await run(["/usr/bin/git", "-C", workspace, "init", "--quiet"])
+    await run(["/usr/bin/git", "-C", workspace, "fetch", "--quiet", "--no-tags", join(extracted, "repository.bundle"), revision])
+    await run(["/usr/bin/git", "-C", workspace, "checkout", "--quiet", "--detach", revision])
+    await removeWorkspacePostImage(workspace)
+    for (const file of declared) {
+      const destination = join(workspace, file.path)
+      await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
+      if (file.mode === 0o120000) {
+        await symlink(file.linkTarget!, destination)
+      } else {
+        await writeFile(destination, await readFile(join(extracted, "post-image", file.path)), { mode: file.mode })
+        await chmod(destination, file.mode)
+      }
+    }
+    await rm(join(workspace, ".git", "hooks"), { recursive: true, force: true })
+    await rm(join(workspace, ".git", "logs"), { recursive: true, force: true })
+    await input.runtime.prepare({
+      sessionRoot,
+      agentRefs: graphAgentRefs(asObject(operation.payload.bundle, "bundle").graph),
+    })
+    return executePortableSessionControl({ operation, stateRoot: input.stateRoot, runtime: input.runtime })
+  } finally {
+    await rm(work, { recursive: true, force: true })
+  }
+}
+
 const run = async (command: ReadonlyArray<string>): Promise<string> => {
   const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe", env: { PATH: "/usr/local/bin:/usr/bin:/bin" } })
   const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()])
-  if (exitCode !== 0) throw new PortableSessionControlError("fixed guest runtime command failed")
+  if (exitCode !== 0) throw new PortableSessionControlError(`fixed guest runtime command failed (${command[0]})`)
   return stdout
 }
 
@@ -419,6 +703,13 @@ export const repositorySnapshot = async (sessionRoot: string) => {
 
 export const productionRuntime: PortableSessionGuestRuntime = {
   repositorySnapshot,
+  prepare: async ({ sessionRoot, agentRefs }) => {
+    for (const agentRef of agentRefs) {
+      const stateDir = agentStatePath(sessionRoot, agentRef)
+      await mkdir(stateDir, { recursive: true, mode: 0o700 })
+      await run(["/usr/local/bin/oa-workroomd", "lifecycle", "create", "--state-dir", stateDir, "--json"])
+    }
+  },
   verifyStage: async ({ sessionRoot, bundle }) => {
     const expected = asObject(bundle.checkpoint, "checkpoint")
     const graph = asObject(bundle.graph, "graph")
@@ -462,6 +753,85 @@ export const productionRuntime: PortableSessionGuestRuntime = {
       await transitionLifecycle(agentStatePath(sessionRoot, agentRef), "running")
     }
   },
+  continueWork: async ({ sessionRoot, ownerRef, repositoryRef, providerLeaseRef, turns }) => {
+    const materialLeaf = createHash("sha256").update(providerLeaseRef).digest("hex").slice(0, 24)
+    const authJsonPath = join(sessionRoot, "capability-material", `${materialLeaf}.material`)
+    if (!(await Bun.file(authJsonPath).exists())) throw new PortableSessionControlError("provider capability material is unavailable")
+    const completed: Array<Readonly<{ agentRef: string; turnRef: string; activityCursor: number; eventCursor: number }>> = []
+    for (const turn of turns) {
+      const stateDir = agentStatePath(sessionRoot, turn.agentRef)
+      const assignmentRef = stableRef("assignment.portable", `${turn.agentRef}|${turn.turnRef}`)
+      const workroomRef = stableRef("workroom.portable", turn.agentRef)
+      const grantRef = stableRef("grant.portable", `${providerLeaseRef}|${turn.turnRef}`)
+      const now = Date.now()
+      const assignmentPath = join(stateDir, `${assignmentRef}.json`)
+      const grantPath = join(stateDir, `${grantRef}.json`)
+      await writeFile(assignmentPath, canonicalJson({
+        contract_version: "openagents.codex_workroom_assignment.v1",
+        assignment_id: assignmentRef,
+        workroom_id: workroomRef,
+        target_node_id: turn.agentRef,
+        user_ref: ownerRef,
+        organization_ref: null,
+        project_ref: null,
+        provider_account_ref: providerLeaseRef,
+        auth_grant_ref: grantRef,
+        repo_ref: repositoryRef,
+        prompt: turn.task,
+        required_artifacts: ["continuation-receipt"],
+        sandbox: "workspace_write",
+        timeout_ms: 900_000,
+        wallet_authority: false,
+        created_at_ms: now,
+        audit_context: turn.turnRef,
+      }), { mode: 0o600 })
+      await writeFile(grantPath, canonicalJson({
+        contract_version: "openagents.codex_auth_grant.v1",
+        workroom_id: workroomRef,
+        user_ref: ownerRef,
+        organization_ref: null,
+        project_ref: null,
+        provider_account_ref: providerLeaseRef,
+        grant_ref: grantRef,
+        provider_secret_ref: `provider-account://${providerLeaseRef}`,
+        requested_mode: "exec",
+        issued_at_ms: now,
+        expires_at_ms: now + 60 * 60 * 1000,
+        audit_context: turn.turnRef,
+      }), { mode: 0o600 })
+      const sessionStatePath = join(stateDir, "codex-session-state.json")
+      const existingSession = await Bun.file(sessionStatePath).exists()
+      if (!existingSession) {
+        const codexWorkspaceRoot = join(stateDir, "codex-workspaces")
+        await mkdir(codexWorkspaceRoot, { recursive: true, mode: 0o700 })
+        await symlink(workspacePath(sessionRoot), join(codexWorkspaceRoot, assignmentRef))
+        await run([
+          "/usr/local/bin/oa-workroomd", "codex", "session", "create",
+          "--assignment-file", assignmentPath, "--ttl-ms", "7200000", "--state-dir", stateDir, "--json",
+        ])
+      }
+      const output = JSON.parse(await run([
+        "/usr/local/bin/oa-workroomd", "codex", "session",
+        existingSession ? "continue-turn" : "start-turn",
+        ...(existingSession ? ["--prompt", turn.task] : []),
+        "--grant-file", grantPath,
+        "--auth-json-file", authJsonPath,
+        "--codex-bin", "/usr/local/bin/codex",
+        "--state-dir", stateDir,
+        "--json",
+      ])) as Record<string, unknown>
+      const session = asObject(output.session, "codex continuation session")
+      const turnIndex = Number(session.turn_index)
+      const events = Array.isArray(session.events) ? session.events.length : -1
+      if (session.status !== "idle" || !Number.isSafeInteger(turnIndex) || turnIndex < 1 || events < 1) {
+        throw new PortableSessionControlError("codex continuation did not complete one bounded turn")
+      }
+      completed.push({ agentRef: turn.agentRef, turnRef: turn.turnRef, activityCursor: turnIndex, eventCursor: events })
+      await rm(assignmentPath, { force: true })
+      await rm(grantPath, { force: true })
+    }
+    return completed
+  },
   quiesce: async ({ sessionRoot, agentRefs }) => {
     for (const agentRef of agentRefs) {
       await transitionLifecycle(agentStatePath(sessionRoot, agentRef), "paused")
@@ -490,6 +860,22 @@ if (import.meta.main) {
         response = await installPortableCapability({ metadata: JSON.parse(metadata), material, stateRoot })
       } finally {
         material.fill(0)
+      }
+    } else if (encoded === "checkpoint-materialize") {
+      const metadata = Bun.argv[3]
+      if (metadata === undefined) throw new PortableSessionControlError("checkpoint metadata is required")
+      const archive = await Bun.stdin.bytes()
+      try {
+        response = await materializePortableCheckpoint({ metadata: JSON.parse(metadata), archive, stateRoot, runtime: productionRuntime })
+      } finally {
+        archive.fill(0)
+      }
+    } else if (encoded === "continue") {
+      const privateBody = await Bun.stdin.bytes()
+      try {
+        response = await continuePortableSession({ continuation: JSON.parse(new TextDecoder().decode(privateBody)), stateRoot, runtime: productionRuntime })
+      } finally {
+        privateBody.fill(0)
       }
     } else {
       response = await executePortableSessionControl({ operation: JSON.parse(encoded), stateRoot, runtime: productionRuntime })
