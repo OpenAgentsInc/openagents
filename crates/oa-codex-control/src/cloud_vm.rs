@@ -245,6 +245,20 @@ pub trait CloudVmProvisioner: Send + Sync {
         args: &[String],
     ) -> Result<VmExecResult, CloudVmError>;
 
+    /// Run a fixed command with opaque bytes on stdin. The bytes are never
+    /// encoded into argv, environment, JSON, logs, or durable host state.
+    fn exec_with_stdin(
+        &self,
+        _vm: &ProvisionedVm,
+        _command: &str,
+        _args: &[String],
+        _stdin: &mut [u8],
+    ) -> Result<VmExecResult, CloudVmError> {
+        Err(CloudVmError::Runtime(
+            "guest stdin transport is unavailable".to_string(),
+        ))
+    }
+
     /// Copy a path OUT of the VM to a host dir (artifact extraction). Mirrors
     /// the container backend's `copyOut`.
     fn copy_out(
@@ -301,6 +315,16 @@ impl CloudVmProvisioner for FakeProvisioner {
             code: 0,
             output: format!("fake-cloud-vm exec: {line}\n"),
         })
+    }
+
+    fn exec_with_stdin(
+        &self,
+        vm: &ProvisionedVm,
+        command: &str,
+        args: &[String],
+        _stdin: &mut [u8],
+    ) -> Result<VmExecResult, CloudVmError> {
+        self.exec(vm, command, args)
     }
 
     fn copy_out(
@@ -475,9 +499,8 @@ impl CloudVmProvisioner for LiveFirecrackerProvisioner {
             let _ = std::fs::remove_dir_all(&jail_dir);
         }
 
-        std::fs::create_dir_all(&jail_dir).map_err(|error| {
-            CloudVmError::Runtime(format!("create jail dir: {error}"))
-        })?;
+        std::fs::create_dir_all(&jail_dir)
+            .map_err(|error| CloudVmError::Runtime(format!("create jail dir: {error}")))?;
 
         // Per-run DISPOSABLE scratch copy of the rootfs. The turn writes into it;
         // teardown removes the whole jail dir, wiping the scratch. The baked
@@ -612,6 +635,20 @@ impl CloudVmProvisioner for LiveFirecrackerProvisioner {
         Ok(output)
     }
 
+    fn exec_with_stdin(
+        &self,
+        vm: &ProvisionedVm,
+        command: &str,
+        args: &[String],
+        stdin: &mut [u8],
+    ) -> Result<VmExecResult, CloudVmError> {
+        let config = self.require_ready()?;
+        let jail_dir = PathBuf::from(&config.runtime_dir).join(Self::jail_id(&vm.id));
+        let mut full = vec![command.to_string()];
+        full.extend(args.iter().cloned());
+        guest_exec_with_stdin(&jail_dir, &full, stdin, GUEST_EXEC_TIMEOUT_SECS)
+    }
+
     fn copy_out(
         &self,
         vm: &ProvisionedVm,
@@ -732,20 +769,39 @@ impl GuestNet {
             .stderr(std::process::Stdio::null())
             .status();
         run(&["tuntap", "add", "dev", &self.tap, "mode", "tap"])?;
-        run(&["addr", "add", &format!("{}/30", self.host_ip), "dev", &self.tap])?;
+        run(&[
+            "addr",
+            "add",
+            &format!("{}/30", self.host_ip),
+            "dev",
+            &self.tap,
+        ])?;
         run(&["link", "set", "dev", &self.tap, "up"])?;
         std::fs::write("/proc/sys/net/ipv4/ip_forward", "1")
             .map_err(|e| format!("enable ip_forward: {e}"))?;
         let host_if = host_default_iface().ok_or("no default route iface")?;
         // MASQUERADE once (idempotent -C check) in the nat table, plus per-tap
         // FORWARD rules in the default (filter) table.
-        ensure_iptables(Some("nat"), &["POSTROUTING", "-o", &host_if, "-j", "MASQUERADE"]);
-        ensure_iptables(None, &["FORWARD", "-i", &self.tap, "-o", &host_if, "-j", "ACCEPT"]);
+        ensure_iptables(
+            Some("nat"),
+            &["POSTROUTING", "-o", &host_if, "-j", "MASQUERADE"],
+        );
+        ensure_iptables(
+            None,
+            &["FORWARD", "-i", &self.tap, "-o", &host_if, "-j", "ACCEPT"],
+        );
         ensure_iptables(
             None,
             &[
-                "FORWARD", "-o", &self.tap, "-m", "state", "--state",
-                "RELATED,ESTABLISHED", "-j", "ACCEPT",
+                "FORWARD",
+                "-o",
+                &self.tap,
+                "-m",
+                "state",
+                "--state",
+                "RELATED,ESTABLISHED",
+                "-j",
+                "ACCEPT",
             ],
         );
         Ok(())
@@ -758,11 +814,24 @@ impl GuestNet {
         let null = || std::process::Stdio::null();
         let host_if = host_default_iface().unwrap_or_default();
         let _ = Command::new("iptables")
-            .args(["-D", "FORWARD", "-i", &self.tap, "-o", &host_if, "-j", "ACCEPT"])
+            .args([
+                "-D", "FORWARD", "-i", &self.tap, "-o", &host_if, "-j", "ACCEPT",
+            ])
             .stderr(null())
             .status();
         let _ = Command::new("iptables")
-            .args(["-D", "FORWARD", "-o", &self.tap, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"])
+            .args([
+                "-D",
+                "FORWARD",
+                "-o",
+                &self.tap,
+                "-m",
+                "state",
+                "--state",
+                "RELATED,ESTABLISHED",
+                "-j",
+                "ACCEPT",
+            ])
             .stderr(null())
             .status();
         let _ = Command::new("ip")
@@ -860,6 +929,85 @@ fn guest_exec(
         .unwrap_or_default()
         .to_string();
     Ok(VmExecResult { code, output })
+}
+
+/// Secret-safe guest stdin transport. Only the public command metadata is JSON
+/// framed; the mutable material follows as an exact raw byte frame.
+fn guest_exec_with_stdin(
+    jail_dir: &Path,
+    command: &[String],
+    stdin: &mut [u8],
+    timeout_secs: u64,
+) -> Result<VmExecResult, CloudVmError> {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixStream;
+
+    let uds = jail_dir.join("v.sock");
+    let mut stream = UnixStream::connect(&uds)
+        .map_err(|error| CloudVmError::Runtime(format!("vsock connect: {error}")))?;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(timeout_secs + 20)))
+        .ok();
+    stream
+        .set_write_timeout(Some(std::time::Duration::from_secs(timeout_secs + 20)))
+        .ok();
+    stream
+        .write_all(format!("CONNECT {GUEST_AGENT_PORT}\n").as_bytes())
+        .map_err(|error| CloudVmError::Runtime(format!("vsock CONNECT write: {error}")))?;
+    let mut handshake = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        let count = stream
+            .read(&mut byte)
+            .map_err(|error| CloudVmError::Runtime(format!("vsock handshake read: {error}")))?;
+        if count == 0 || handshake.len() > 64 {
+            return Err(CloudVmError::Runtime("vsock handshake failed".to_string()));
+        }
+        if byte[0] == b'\n' {
+            break;
+        }
+        handshake.push(byte[0]);
+    }
+    if !handshake.starts_with(b"OK") {
+        return Err(CloudVmError::Runtime("vsock handshake refused".to_string()));
+    }
+    let header = serde_json::to_vec(&serde_json::json!({
+        "op": "exec-stdin",
+        "command": command,
+        "timeout": timeout_secs,
+        "stdinLength": stdin.len(),
+    }))
+    .map_err(|error| CloudVmError::Runtime(format!("encode stdin header: {error}")))?;
+    stream
+        .write_all(&(header.len() as u32).to_be_bytes())
+        .and_then(|_| stream.write_all(&header))
+        .and_then(|_| stream.write_all(stdin))
+        .map_err(|error| CloudVmError::Runtime(format!("write guest stdin frame: {error}")))?;
+    let mut len = [0u8; 4];
+    read_exact(&mut stream, &mut len)
+        .map_err(|error| CloudVmError::Runtime(format!("read stdin response length: {error}")))?;
+    let response_len = u32::from_be_bytes(len) as usize;
+    if response_len > 64 * 1024 * 1024 {
+        return Err(CloudVmError::Runtime(
+            "guest response too large".to_string(),
+        ));
+    }
+    let mut response = vec![0u8; response_len];
+    read_exact(&mut stream, &mut response)
+        .map_err(|error| CloudVmError::Runtime(format!("read stdin response: {error}")))?;
+    let value: serde_json::Value = serde_json::from_slice(&response)
+        .map_err(|error| CloudVmError::Runtime(format!("decode stdin response: {error}")))?;
+    Ok(VmExecResult {
+        code: value
+            .get("code")
+            .and_then(|value| value.as_i64())
+            .unwrap_or(-1) as i32,
+        output: value
+            .get("output")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
+    })
 }
 
 /// Copy an in-guest path back out to the host. The guest agent returns a
@@ -1288,7 +1436,10 @@ mod tests {
         assert!(outcome.vm_id.starts_with("cloud-vm-ref://"));
         assert_eq!(outcome.os, CloudVmOs::Linux);
         assert_eq!(outcome.provisioner_kind, "fake");
-        assert!(outcome.provision_receipt.receipt_digest.starts_with("sha256:"));
+        assert!(outcome
+            .provision_receipt
+            .receipt_digest
+            .starts_with("sha256:"));
         assert!(outcome.provision_receipt.healthy);
 
         // exec: ran the session command.
@@ -1304,7 +1455,10 @@ mod tests {
         // teardown: cleanup receipt minted.
         assert!(outcome.cleanup_receipt.torn_down);
         assert!(outcome.cleanup_receipt.artifacts_extracted);
-        assert!(outcome.cleanup_receipt.receipt_digest.starts_with("sha256:"));
+        assert!(outcome
+            .cleanup_receipt
+            .receipt_digest
+            .starts_with("sha256:"));
 
         cleanup(&dir);
     }
@@ -1366,7 +1520,10 @@ mod tests {
             }),
         };
         let err = live.provision(&request(CloudVmOs::Macos)).unwrap_err();
-        assert!(matches!(err, CloudVmError::OsTierUnavailable(CloudVmOs::Macos)));
+        assert!(matches!(
+            err,
+            CloudVmError::OsTierUnavailable(CloudVmOs::Macos)
+        ));
     }
 
     #[test]
@@ -1412,7 +1569,9 @@ mod tests {
         assert!(contains_forbidden_material("/run/firecracker.sock"));
         assert!(contains_forbidden_material("/dev/kvm"));
         assert!(contains_forbidden_material("tap0"));
-        assert!(!contains_forbidden_material("cloud-vm-ref://sha256/deadbeef"));
+        assert!(!contains_forbidden_material(
+            "cloud-vm-ref://sha256/deadbeef"
+        ));
     }
 
     #[test]
@@ -1428,7 +1587,10 @@ mod tests {
         )
         .unwrap();
         let json = serde_json::to_string(&outcome).unwrap();
-        assert!(!contains_forbidden_material(&json), "outcome leaked material: {json}");
+        assert!(
+            !contains_forbidden_material(&json),
+            "outcome leaked material: {json}"
+        );
         cleanup(&dir);
     }
 
@@ -1459,7 +1621,11 @@ mod tests {
         let kind = ProvisionerKind::from_env_value(
             std::env::var("OA_CLOUD_VM_PROVISIONER").ok().as_deref(),
         );
-        assert_eq!(kind, ProvisionerKind::Live, "set OA_CLOUD_VM_PROVISIONER=live");
+        assert_eq!(
+            kind,
+            ProvisionerKind::Live,
+            "set OA_CLOUD_VM_PROVISIONER=live"
+        );
         let (provisioner, effective) = provisioner_for(kind);
         assert_eq!(
             effective,

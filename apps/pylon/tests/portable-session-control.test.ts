@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -6,6 +6,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import {
   executePortableSessionControl,
+  installPortableCapability,
+  portableSessionRoot,
   PortableSessionControlError,
   type PortableSessionGuestRuntime,
 } from "../deploy/agent-computer/portable-session-control.js"
@@ -165,5 +167,48 @@ describe("retained Agent Computer portable-session-control", () => {
     })
     expect(aborted).toHaveProperty("evidenceRefs")
     expect(calls).toEqual(["stage", "reclaim"])
+  })
+
+  test("installs raw capability material behind a refs-only marker and wipes both", async () => {
+    const { stateRoot, runtime } = await fixture()
+    await executePortableSessionControl({
+      operation: operation("stage", "operation.port03.guest.capability-stage", { bundle }),
+      stateRoot,
+      runtime,
+    })
+    const material = new TextEncoder().encode("opaque-test-material")
+    const metadata = {
+      operationRef: "operation.port03.guest.capability-install",
+      ownerRef: "owner.port03.guest",
+      targetRef: "target.port03.guest.managed",
+      resourceRef: "resource.port03.guest",
+      sessionRef: "session.port03.guest",
+      attachmentRef: "attachment.port03.guest.managed",
+      generation: 2,
+      leaseRef: "lease.port03.guest.provider",
+      evidenceRef: "evidence.port03.guest.provider",
+      capability: "capability.provider.codex",
+    }
+    const installed = await installPortableCapability({ metadata, material, stateRoot }) as Record<string, unknown>
+    expect(installed).toMatchObject({
+      evidenceRef: metadata.evidenceRef,
+      marker: { leaseRef: metadata.leaseRef, evidenceRef: metadata.evidenceRef },
+      material: "excluded",
+    })
+    const sessionRoot = portableSessionRoot(stateRoot, metadata.sessionRef)
+    const leaf = new Bun.CryptoHasher("sha256").update(metadata.leaseRef).digest("hex").slice(0, 24)
+    expect(await readFile(join(sessionRoot, "capability-material", `${leaf}.material`), "utf8")).toBe("opaque-test-material")
+
+    const wiped = await executePortableSessionControl({
+      operation: operation("wipeCapability", "operation.port03.guest.capability-wipe", {
+        leaseRef: metadata.leaseRef,
+        installationRef: installed.installationRef,
+      }),
+      stateRoot,
+      runtime,
+    })
+    expect(wiped).toMatchObject({ material: "excluded" })
+    expect(await Bun.file(join(sessionRoot, "capability-material", `${leaf}.material`)).exists()).toBe(false)
+    expect(await Bun.file(join(sessionRoot, "capabilities", `${leaf}.installed.json`)).exists()).toBe(false)
   })
 })

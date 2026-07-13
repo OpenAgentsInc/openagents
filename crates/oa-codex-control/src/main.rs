@@ -16,9 +16,8 @@ use std::os::unix::fs::PermissionsExt;
 
 use openagents_cloud_contract::{
     AgentComputerIsolationPolicy, ArtanisBootstrapAssignment, CodexAuthGrant, CodexRequestedMode,
-    CodexSandboxMode,
-    CodexWorkroomAssignment, ComputeLane, ComputeQuotaCaps, ComputeUsage, LaneCostModel,
-    ModelUsageRecord, PlacementAssignment, ProviderLane, ResourceHostSnapshot,
+    CodexSandboxMode, CodexWorkroomAssignment, ComputeLane, ComputeQuotaCaps, ComputeUsage,
+    LaneCostModel, ModelUsageRecord, PlacementAssignment, ProviderLane, ResourceHostSnapshot,
     ResourceUsageReceipt, RunResourceUsage, RunnerBinding, TokenCountSource, TrainingRetentionMode,
     TrainingRunAssignment, VirtualizationFacts, CODEX_AUTH_GRANT_VERSION,
     CODEX_WORKROOM_ASSIGNMENT_VERSION, GCE_EPHEMERAL_CAPACITY_CLASS_ID,
@@ -576,7 +575,7 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
     stream
         .set_write_timeout(Some(Duration::from_secs(15)))
         .map_err(|error| format!("failed to set write timeout: {error}"))?;
-    let request = read_http_request(&mut stream)?;
+    let mut request = read_http_request(&mut stream)?;
     let (path, query) = split_path_query(&request.path);
 
     if request.method == "GET" && path == "/healthz" {
@@ -588,6 +587,9 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
     }
 
     if !authorized(&request.authorization, &config.token) {
+        if path == "/v1/portable-agent-computers/capabilities/install" {
+            request.body.fill(0);
+        }
         return write_response(
             &mut stream,
             401,
@@ -708,10 +710,7 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
             {
                 Ok(value) => value,
                 Err(error) => {
-                    return write_invalid_request(
-                        &mut stream,
-                        format!("invalid_request: {error}"),
-                    )
+                    return write_invalid_request(&mut stream, format!("invalid_request: {error}"))
                 }
             };
             let _operation_guard = config
@@ -722,6 +721,51 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 &config.state_root,
                 config.cloud_vm_provisioner_kind,
                 operation,
+            ) {
+                Ok(response) => (200, response),
+                Err(error) => cloud_vm_failed_response(error)?,
+            };
+            write_response(&mut stream, status, &response)
+        }
+        "/v1/portable-agent-computers/capabilities/install" => {
+            let mut material = SecretBody(std::mem::take(&mut request.body));
+            if request.header("content-type") != Some("application/octet-stream") {
+                return write_invalid_request(
+                    &mut stream,
+                    "content-type must be application/octet-stream".to_string(),
+                );
+            }
+            let required = |name: &str| {
+                request
+                    .header(name)
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("missing {name}"))
+            };
+            let target_ref = required("x-oa-target-ref")?;
+            let session_ref = required("x-oa-session-ref")?;
+            let install = portable_agent_computer::PortableCapabilityInstallRequest {
+                operation_ref: required("x-oa-operation-ref")?,
+                owner_ref: required("x-oa-owner-ref")?,
+                resource_ref: portable_agent_computer::staged_resource_ref(&target_ref, &session_ref),
+                target_ref,
+                session_ref,
+                attachment_ref: required("x-oa-attachment-ref")?,
+                generation: required("x-oa-attachment-generation")?
+                    .parse()
+                    .map_err(|_| "invalid attachment generation".to_string())?,
+                lease_ref: required("x-oa-lease-ref")?,
+                evidence_ref: required("x-oa-evidence-ref")?,
+                capability: required("x-oa-capability")?,
+            };
+            let _operation_guard = config
+                .portable_agent_computer_lock
+                .lock()
+                .map_err(|_| "portable Agent Computer operation lock was poisoned".to_string())?;
+            let (status, response) = match portable_agent_computer::install_capability(
+                &config.state_root,
+                config.cloud_vm_provisioner_kind,
+                install,
+                &mut material.0,
             ) {
                 Ok(response) => (200, response),
                 Err(error) => cloud_vm_failed_response(error)?,
@@ -787,8 +831,7 @@ fn handle_get_route(
     query: Option<&str>,
 ) -> Result<(), String> {
     if path == "/v1/cloud-vm/readiness" {
-        let (_, effective_kind) =
-            cloud_vm::provisioner_for(config.cloud_vm_provisioner_kind);
+        let (_, effective_kind) = cloud_vm::provisioner_for(config.cloud_vm_provisioner_kind);
         return write_response(
             stream,
             200,
@@ -1074,8 +1117,8 @@ fn run_cloud_vm_session_route(
     config: &Config,
     request: CloudVmSessionRequest,
 ) -> Result<cloud_vm::CloudVmSessionOutcome, cloud_vm::CloudVmError> {
-    let os = cloud_vm::CloudVmOs::parse(&request.os)
-        .map_err(cloud_vm::CloudVmError::InvalidRequest)?;
+    let os =
+        cloud_vm::CloudVmOs::parse(&request.os).map_err(cloud_vm::CloudVmError::InvalidRequest)?;
     let vm_request = cloud_vm::CloudVmRequest {
         run_id: request.run_id.clone(),
         os,
@@ -1513,7 +1556,12 @@ fn start_placement_async(
     // non-KVM / unarmed host refuses honestly rather than faking a boot.
     if binding.lane == ComputeLane::CloudGcp {
         if let Some(work_context_b64) = assignment.work_context_b64.clone() {
-            return start_org_cloud_microvm_placement(config, &assignment, &binding, work_context_b64);
+            return start_org_cloud_microvm_placement(
+                config,
+                &assignment,
+                &binding,
+                work_context_b64,
+            );
         }
     }
 
@@ -1585,10 +1633,12 @@ fn start_org_cloud_microvm_placement(
 
     let now = now_ms()?;
     let external_run_id = external_run_id(&binding.runner_id, &assignment.run_id);
-    let work_context_ref = assignment
-        .work_context_ref
-        .clone()
-        .unwrap_or_else(|| format!("work-context.agent-computer.{}", short_digest_hex(&assignment.run_id)));
+    let work_context_ref = assignment.work_context_ref.clone().unwrap_or_else(|| {
+        format!(
+            "work-context.agent-computer.{}",
+            short_digest_hex(&assignment.run_id)
+        )
+    });
 
     let job = JobRecord {
         cancel_requested: false,
@@ -1612,7 +1662,9 @@ fn start_org_cloud_microvm_placement(
         JobEventInput {
             artifact_refs: Vec::new(),
             data_json: serde_json::to_string(binding).ok(),
-            detail: Some("Placement bound to the cloud-gcp Agent Computer microVM lane.".to_string()),
+            detail: Some(
+                "Placement bound to the cloud-gcp Agent Computer microVM lane.".to_string(),
+            ),
             digest: None,
             kind: "placement.bound".to_string(),
             receipt_refs: Vec::new(),
@@ -1755,8 +1807,9 @@ fn extracted_artifact_refs(host_artifact_dir: &Path) -> Result<Vec<String>, Stri
 
     let mut refs = Vec::new();
     for path in files {
-        let bytes = fs::read(&path)
-            .map_err(|error| format!("failed to read extracted Agent Computer artifact: {error}"))?;
+        let bytes = fs::read(&path).map_err(|error| {
+            format!("failed to read extracted Agent Computer artifact: {error}")
+        })?;
         let digest = format!("{:x}", Sha256::digest(bytes));
         let artifact_ref = format!("artifact.sha256.{digest}");
         if !refs.contains(&artifact_ref) {
@@ -1771,24 +1824,26 @@ fn microvm_failure_class(exit_code: i32, output: &str) -> Option<&'static str> {
         return None;
     }
     let normalized = output.to_ascii_lowercase();
-    Some(if normalized.contains("turn-runner") && normalized.contains("not found") {
-        "turn_runner_unavailable"
-    } else if normalized.contains("codex.exec") || normalized.contains("codex_") {
-        "codex_exec_failed"
-    } else if normalized.contains("provider_auth")
-        || normalized.contains("unauthorized")
-        || normalized.contains("authentication")
-    {
-        "provider_auth_failed"
-    } else if normalized.contains("workspace.checkout") {
-        "workspace_checkout_failed"
-    } else if normalized.contains("connection") || normalized.contains("timed out") {
-        "network_failed"
-    } else if normalized.contains("result.json") || normalized.contains("no such file") {
-        "artifact_missing"
-    } else {
-        "guest_command_failed"
-    })
+    Some(
+        if normalized.contains("turn-runner") && normalized.contains("not found") {
+            "turn_runner_unavailable"
+        } else if normalized.contains("codex.exec") || normalized.contains("codex_") {
+            "codex_exec_failed"
+        } else if normalized.contains("provider_auth")
+            || normalized.contains("unauthorized")
+            || normalized.contains("authentication")
+        {
+            "provider_auth_failed"
+        } else if normalized.contains("workspace.checkout") {
+            "workspace_checkout_failed"
+        } else if normalized.contains("connection") || normalized.contains("timed out") {
+            "network_failed"
+        } else if normalized.contains("result.json") || normalized.contains("no such file") {
+            "artifact_missing"
+        } else {
+            "guest_command_failed"
+        },
+    )
 }
 
 fn microvm_failure_reason_ref(exit_code: i32, output: &str) -> Option<String> {
@@ -1797,8 +1852,7 @@ fn microvm_failure_reason_ref(exit_code: i32, output: &str) -> Option<String> {
     }
     output
         .split(|character: char| {
-            !(character.is_ascii_alphanumeric()
-                || matches!(character, '.' | '_' | ':' | '-'))
+            !(character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | ':' | '-'))
         })
         .filter(|token| {
             token.starts_with("codex.provider_auth")
@@ -1836,9 +1890,9 @@ fn public_reason_ref(value: &str) -> Option<String> {
         .any(|prefix| value.starts_with(prefix));
     (allowed_prefix
         && value.len() <= 120
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-')
-        }))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-')))
     .then(|| value.to_string())
 }
 
@@ -1848,7 +1902,9 @@ fn bounded_guest_diagnostic_tail(output: &str) -> Vec<GuestDiagnosticEvent> {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
             continue;
         };
-        let Some(record) = value.as_object() else { continue };
+        let Some(record) = value.as_object() else {
+            continue;
+        };
         let Some(kind) = record.get("kind").and_then(|value| value.as_str()) else {
             continue;
         };
@@ -1870,11 +1926,18 @@ fn bounded_guest_diagnostic_tail(output: &str) -> Vec<GuestDiagnosticEvent> {
             .get("errorClass")
             .and_then(|value| value.as_str())
             .filter(|value| {
-                matches!(*value, "provider_auth" | "workspace" | "codex_exec" | "network" | "artifact")
+                matches!(
+                    *value,
+                    "provider_auth" | "workspace" | "codex_exec" | "network" | "artifact"
+                )
             })
             .map(str::to_string);
         events.push(GuestDiagnosticEvent {
-            kind: kind.to_string(), status, reason_ref, exit_code, error_class,
+            kind: kind.to_string(),
+            status,
+            reason_ref,
+            exit_code,
+            error_class,
         });
         if events.len() > MAX_GUEST_DIAGNOSTIC_EVENTS {
             events.remove(0);
@@ -1898,7 +1961,11 @@ fn run_org_cloud_microvm_worker(
     let run_short = short_digest_hex(&run_id);
     let (provisioner, kind) = cloud_vm::provisioner_for(config.cloud_vm_provisioner_kind);
     if kind != cloud_vm::ProvisionerKind::Live {
-        append_microvm_failed(&config, &run_id, "live Firecracker provisioner unavailable at boot");
+        append_microvm_failed(
+            &config,
+            &run_id,
+            "live Firecracker provisioner unavailable at boot",
+        );
         let _ = update_job_status(&config, &run_id, "failed");
         return Err("live Firecracker provisioner unavailable at boot".to_string());
     }
@@ -1929,7 +1996,11 @@ fn run_org_cloud_microvm_worker(
     let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(error) => {
-            append_microvm_failed(&config, &run_id, &format!("microVM turn failed: {}", error.message()));
+            append_microvm_failed(
+                &config,
+                &run_id,
+                &format!("microVM turn failed: {}", error.message()),
+            );
             let _ = update_job_status(&config, &run_id, "failed");
             return Err(format!("microVM turn failed: {}", error.message()));
         }
@@ -2023,13 +2094,16 @@ fn run_org_cloud_microvm_worker(
                 "scratchWipeReceiptRef": scratch_wipe_ref,
                 "microvmDestroyReceiptRef": microvm_destroy_ref,
             }))?),
-            detail: Some("Agent Computer microVM reclaimed: scratch wiped, microVM destroyed.".to_string()),
+            detail: Some(
+                "Agent Computer microVM reclaimed: scratch wiped, microVM destroyed.".to_string(),
+            ),
             digest: Some(outcome.cleanup_receipt.receipt_digest.clone()),
             kind: "cloud.gce.cleanup".to_string(),
             receipt_refs: vec![scratch_wipe_ref, microvm_destroy_ref],
             redacted: false,
             source: "control".to_string(),
-            summary: "Agent Computer microVM reclaimed (scratch wiped, microVM destroyed).".to_string(),
+            summary: "Agent Computer microVM reclaimed (scratch wiped, microVM destroyed)."
+                .to_string(),
             type_: "cloud.gce.cleanup".to_string(),
         },
     )?;
@@ -2039,7 +2113,11 @@ fn run_org_cloud_microvm_worker(
     let failure_class = microvm_failure_class(exit_code, &outcome.exec.output);
     let failure_reason_ref = microvm_failure_reason_ref(exit_code, &outcome.exec.output);
     let guest_diagnostic_tail = bounded_guest_diagnostic_tail(&outcome.exec.output);
-    let terminal_status = if exit_code == 0 { "completed" } else { "failed" };
+    let terminal_status = if exit_code == 0 {
+        "completed"
+    } else {
+        "failed"
+    };
     append_job_event(
         &config,
         &run_id,
@@ -4642,8 +4720,26 @@ fn write_response<T: Serialize>(
 struct HttpRequest {
     authorization: Option<String>,
     body: Vec<u8>,
+    headers: Vec<(String, String)>,
     method: String,
     path: String,
+}
+
+impl HttpRequest {
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+struct SecretBody(Vec<u8>);
+
+impl Drop for SecretBody {
+    fn drop(&mut self) {
+        self.0.fill(0);
+    }
 }
 
 fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
@@ -4671,6 +4767,7 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     let path = request_parts.next().unwrap_or_default().to_string();
     let mut content_length = 0_usize;
     let mut authorization = None;
+    let mut headers = Vec::new();
 
     for line in lines {
         if let Some((name, value)) = line.split_once(':') {
@@ -4682,6 +4779,9 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
                     .map_err(|_| "invalid content-length".to_string())?;
             } else if name == "authorization" {
                 authorization = Some(value.to_string());
+            }
+            if name != "authorization" {
+                headers.push((name, value.to_string()));
             }
         }
     }
@@ -4704,6 +4804,7 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     Ok(HttpRequest {
         authorization,
         body,
+        headers,
         method,
         path,
     })
@@ -5071,10 +5172,7 @@ mod tests {
 
     #[test]
     fn extracted_agent_computer_artifacts_become_content_addressed_public_refs() {
-        let dir = env::temp_dir().join(format!(
-            "oa-codex-control-artifacts-{}",
-            now_ms().unwrap()
-        ));
+        let dir = env::temp_dir().join(format!("oa-codex-control-artifacts-{}", now_ms().unwrap()));
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("result.json"), br#"{"status":"completed"}"#).unwrap();
         fs::write(dir.join("result.md"), b"completed\n").unwrap();
@@ -6497,17 +6595,21 @@ echo '{"status":"ok"}'
     fn guest_diagnostic_tail_drops_raw_and_secret_shaped_fields() {
         let output = concat!(
             "Bearer super-secret-token\n",
-            r#"{"kind":"text.delta","text":"private repository content"}"#, "\n",
+            r#"{"kind":"text.delta","text":"private repository content"}"#,
+            "\n",
             r#"{"kind":"tool.result","status":"failed","reasonRef":"codex.provider_auth_material_invalid","errorClass":"provider_auth","authorization":"Bearer secret","authMaterial":"secret"}"#,
         );
         let tail = bounded_guest_diagnostic_tail(output);
-        assert_eq!(tail, vec![GuestDiagnosticEvent {
-            kind: "tool.result".to_string(),
-            status: Some("failed".to_string()),
-            reason_ref: Some("codex.provider_auth_material_invalid".to_string()),
-            exit_code: None,
-            error_class: Some("provider_auth".to_string()),
-        }]);
+        assert_eq!(
+            tail,
+            vec![GuestDiagnosticEvent {
+                kind: "tool.result".to_string(),
+                status: Some("failed".to_string()),
+                reason_ref: Some("codex.provider_auth_material_invalid".to_string()),
+                exit_code: None,
+                error_class: Some("provider_auth".to_string()),
+            }]
+        );
         let serialized = serde_json::to_string(&tail).unwrap();
         assert!(!serialized.contains("Bearer"));
         assert!(!serialized.contains("authMaterial"));

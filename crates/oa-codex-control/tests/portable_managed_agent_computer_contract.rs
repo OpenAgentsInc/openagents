@@ -119,6 +119,44 @@ fn post(daemon: &Daemon, value: &Value) -> (u16, Value) {
     .unwrap()
 }
 
+fn install_capability(
+    daemon: &Daemon,
+    _resource_ref: &str,
+    material: &[u8],
+) -> (u16, Value) {
+    let mut stream = TcpStream::connect(&daemon.addr).unwrap();
+    stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let headers = [
+        ("X-OA-Operation-Ref", "operation.port03.http.capability-install"),
+        ("X-OA-Owner-Ref", "owner.port03.http"),
+        ("X-OA-Target-Ref", "target.port03.http.managed"),
+        ("X-OA-Session-Ref", "session.port03.http"),
+        ("X-OA-Attachment-Ref", "attachment.port03.http.managed"),
+        ("X-OA-Attachment-Generation", "2"),
+        ("X-OA-Lease-Ref", "lease.port03.http.provider"),
+        ("X-OA-Evidence-Ref", "evidence.port03.http.provider"),
+        ("X-OA-Capability", "capability.provider.codex"),
+    ];
+    let mut head = format!(
+        "POST /v1/portable-agent-computers/capabilities/install HTTP/1.1\r\nhost: {}\r\nauthorization: Bearer {}\r\ncontent-type: application/octet-stream\r\ncontent-length: {}\r\nconnection: close\r\n",
+        daemon.addr,
+        TOKEN,
+        material.len(),
+    );
+    for (name, value) in headers {
+        head.push_str(&format!("{name}: {value}\r\n"));
+    }
+    head.push_str("\r\n");
+    stream.write_all(head.as_bytes()).unwrap();
+    stream.write_all(material).unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    let split = response.windows(4).position(|part| part == b"\r\n\r\n").unwrap();
+    let status = String::from_utf8_lossy(&response[..split])
+        .lines().next().unwrap().split_whitespace().nth(1).unwrap().parse().unwrap();
+    (status, serde_json::from_slice(&response[split + 4..]).unwrap())
+}
+
 fn base(action: &str, operation_ref: &str, resource_ref: Option<&str>) -> Value {
     json!({
         "operationRef": operation_ref,
@@ -164,6 +202,11 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
     assert_eq!(staged["acceptingWork"], false);
     assert_eq!(post(&daemon, &stage).1, staged);
     let resource_ref = staged["resourceRef"].as_str().unwrap();
+
+    let (status, installed) = install_capability(&daemon, resource_ref, b"opaque-http-material");
+    assert_eq!(status, 200, "install response: {installed}");
+    assert_eq!(installed["material"], "excluded");
+    assert_eq!(installed["marker"]["leaseRef"], "lease.port03.http.provider");
 
     let mut activate = base(
         "activate",

@@ -37,6 +37,133 @@ pub struct PortableAgentComputerRequest {
     pub payload: Value,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableCapabilityInstallRequest {
+    pub operation_ref: String,
+    pub owner_ref: String,
+    pub target_ref: String,
+    pub resource_ref: String,
+    pub session_ref: String,
+    pub attachment_ref: String,
+    pub generation: u64,
+    pub lease_ref: String,
+    pub evidence_ref: String,
+    pub capability: String,
+}
+
+pub fn staged_resource_ref(target_ref: &str, session_ref: &str) -> String {
+    format!(
+        "resource.agent-computer.{}",
+        short_digest(&format!("{target_ref}|{session_ref}"))
+    )
+}
+
+pub fn install_capability(
+    state_root: &Path,
+    configured_kind: ProvisionerKind,
+    request: PortableCapabilityInstallRequest,
+    material: &mut [u8],
+) -> Result<Value, CloudVmError> {
+    for (field, value) in [
+        ("operationRef", request.operation_ref.as_str()),
+        ("ownerRef", request.owner_ref.as_str()),
+        ("targetRef", request.target_ref.as_str()),
+        ("resourceRef", request.resource_ref.as_str()),
+        ("sessionRef", request.session_ref.as_str()),
+        ("attachmentRef", request.attachment_ref.as_str()),
+        ("leaseRef", request.lease_ref.as_str()),
+        ("evidenceRef", request.evidence_ref.as_str()),
+        ("capability", request.capability.as_str()),
+    ] {
+        if !safe_ref(value) {
+            return Err(CloudVmError::InvalidRequest(format!(
+                "{field} is not a public-safe ref"
+            )));
+        }
+    }
+    if request.generation == 0 || material.is_empty() || material.len() > 128 * 1024 {
+        return Err(CloudVmError::InvalidRequest(
+            "capability generation or material length is invalid".to_string(),
+        ));
+    }
+    if request.resource_ref != staged_resource_ref(&request.target_ref, &request.session_ref) {
+        return Err(CloudVmError::InvalidRequest(
+            "capability install resource is not the exact staged target/session".to_string(),
+        ));
+    }
+    let root = state_root.join("portable-agent-computers");
+    let resource = read_json::<RetainedResource>(&resource_path(&root, &request.resource_ref))?
+        .ok_or_else(|| {
+            CloudVmError::InvalidRequest("retained resource was not found".to_string())
+        })?;
+    if request.owner_ref != resource.owner_ref
+        || request.target_ref != resource.target_ref
+        || request.session_ref != resource.session_ref
+        || request.attachment_ref != resource.attachment_ref
+        || request.generation != resource.generation
+        || request.resource_ref != resource.resource_ref
+        || resource.state != "staged"
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "capability install scope differs from staged resource".to_string(),
+        ));
+    }
+    if !resource.capability_lease_refs.as_array().is_some_and(|leases| {
+        leases
+            .iter()
+            .any(|lease| lease.as_str() == Some(request.lease_ref.as_str()))
+    }) {
+        return Err(CloudVmError::InvalidRequest(
+            "capability lease was not planned by the staged checkpoint".to_string(),
+        ));
+    }
+    let (provisioner, effective_kind) = provisioner_for(configured_kind);
+    if configured_kind == ProvisionerKind::Live && effective_kind != ProvisionerKind::Live {
+        return Err(CloudVmError::KvmUnavailable(
+            "capability install requires the configured retained Firecracker host".to_string(),
+        ));
+    }
+    if effective_kind == ProvisionerKind::Fake {
+        return Ok(capability_install_response(&request));
+    }
+    let metadata = serde_json::to_string(&request)
+        .map_err(|error| CloudVmError::Runtime(format!("encode capability metadata: {error}")))?;
+    let result = provisioner.exec_with_stdin(
+        &resource.vm,
+        GUEST_CONTROL_BIN,
+        &["capability-install".to_string(), metadata],
+        material,
+    )?;
+    if result.code != 0 {
+        return Err(CloudVmError::Runtime(
+            "portable guest refused capability installation".to_string(),
+        ));
+    }
+    let mut response: Value = serde_json::from_str(&result.output).map_err(|_| {
+        CloudVmError::Runtime("portable guest returned invalid capability receipt".to_string())
+    })?;
+    response
+        .as_object_mut()
+        .ok_or_else(|| CloudVmError::Runtime("capability receipt is not an object".to_string()))?
+        .insert(
+            "resourceRef".to_string(),
+            Value::String(request.resource_ref.clone()),
+        );
+    reject_private_material(&serde_json::to_vec(&response).unwrap_or_default())?;
+    Ok(response)
+}
+
+fn capability_install_response(request: &PortableCapabilityInstallRequest) -> Value {
+    json!({
+        "installationRef": format!("installation.agent-computer.capability.{}", short_digest(&format!("{}|{}", request.resource_ref, request.lease_ref))),
+        "evidenceRef": request.evidence_ref,
+        "marker": { "leaseRef": request.lease_ref, "evidenceRef": request.evidence_ref },
+        "material": "excluded",
+        "resourceRef": request.resource_ref,
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RetainedResource {
@@ -54,6 +181,8 @@ struct RetainedResource {
     execution_binding: Value,
     graph: Value,
     thread_cursors: Value,
+    #[serde(default)]
+    capability_lease_refs: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,6 +292,7 @@ fn execute_effect(
             resource.state = "reclaimed".to_string();
         }
         "checkpoint" => {}
+        "wipeCapability" => {}
         _ => {
             return Err(CloudVmError::InvalidRequest(format!(
                 "unknown portable Agent Computer action '{}'",
@@ -202,6 +332,25 @@ fn stage(
     let thread_cursors = bundle.get("threadCursors").cloned().ok_or_else(|| {
         CloudVmError::InvalidRequest("stage bundle requires threadCursors".to_string())
     })?;
+    let capability_lease_refs = request
+        .payload
+        .get("capabilityLeaseRefs")
+        .cloned()
+        .ok_or_else(|| {
+            CloudVmError::InvalidRequest(
+                "stage payload requires capabilityLeaseRefs".to_string(),
+            )
+        })?;
+    if !capability_lease_refs.as_array().is_some_and(|leases| {
+        !leases.is_empty()
+            && leases
+                .iter()
+                .all(|lease| lease.as_str().is_some_and(safe_ref))
+    }) {
+        return Err(CloudVmError::InvalidRequest(
+            "stage capabilityLeaseRefs must be non-empty public-safe refs".to_string(),
+        ));
+    }
     let vm_request = CloudVmRequest {
         run_id: request.operation_ref.clone(),
         os: CloudVmOs::Linux,
@@ -215,10 +364,7 @@ fn stage(
             "retained Agent Computer failed its boot health check".to_string(),
         ));
     }
-    let resource_ref = format!(
-        "resource.agent-computer.{}",
-        short_digest(&format!("{}|{}", request.target_ref, request.session_ref))
-    );
+    let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
     let retained_path = resource_path(root, &resource_ref);
     if let Some(resource) = read_json::<RetainedResource>(&retained_path)? {
         if resource.stage_operation_ref != request.operation_ref {
@@ -260,6 +406,7 @@ fn stage(
         execution_binding,
         graph: graph.clone(),
         thread_cursors: thread_cursors.clone(),
+        capability_lease_refs,
     };
     let mut response = if effective_kind == ProvisionerKind::Fake {
         fake_stage_response(&resource)?
@@ -358,6 +505,10 @@ fn fake_response(
             "ports": "released",
             "evidenceRefs": [evidence_ref("reclaim", &request.operation_ref)]
         })),
+        "wipeCapability" => Ok(json!({
+            "wipeReceiptRef": evidence_ref("capability-wipe", &request.operation_ref),
+            "material": "excluded"
+        })),
         other => Err(CloudVmError::InvalidRequest(format!(
             "unknown action '{other}'"
         ))),
@@ -435,6 +586,9 @@ fn assert_resource(
         "abort" if !matches!(resource.state.as_str(), "staged" | "reclaimed") => Err(
             CloudVmError::InvalidRequest("only a staged resource may abort".to_string()),
         ),
+        "wipeCapability" if resource.state == "reclaimed" => Err(CloudVmError::InvalidRequest(
+            "cannot wipe a reclaimed resource".to_string(),
+        )),
         _ => Ok(()),
     }
 }
@@ -747,6 +901,56 @@ mod tests {
             reclaimed
         );
         let _ = fs::remove_dir_all(state_root);
+    }
+
+    #[test]
+    fn capability_install_is_refs_only_and_wipe_is_journaled_without_material() {
+        let state_root = root("capability");
+        let staged = execute(
+            &state_root,
+            ProvisionerKind::Fake,
+            stage_request("operation.port03.binding.capability-stage"),
+        )
+        .unwrap();
+        let resource_ref = staged["resourceRef"].as_str().unwrap().to_string();
+        let install_request = PortableCapabilityInstallRequest {
+            operation_ref: "operation.port03.binding.capability-install".to_string(),
+            owner_ref: "owner.port03.binding".to_string(),
+            target_ref: "target.port03.binding.managed".to_string(),
+            resource_ref: resource_ref.clone(),
+            session_ref: "session.port03.binding".to_string(),
+            attachment_ref: "attachment.port03.binding.managed".to_string(),
+            generation: 2,
+            lease_ref: "lease.port03.binding.provider".to_string(),
+            evidence_ref: "evidence.port03.binding.provider".to_string(),
+            capability: "capability.provider.codex".to_string(),
+        };
+        let mut material = b"opaque-test-material".to_vec();
+        let installed = install_capability(
+            &state_root,
+            ProvisionerKind::Fake,
+            install_request,
+            &mut material,
+        )
+        .unwrap();
+        assert_eq!(installed["material"], "excluded");
+
+        let mut wipe = request(
+            "wipeCapability",
+            "operation.port03.binding.capability-wipe",
+            Some(&resource_ref),
+        );
+        wipe.payload = json!({
+            "leaseRef": "lease.port03.binding.provider",
+            "installationRef": installed["installationRef"],
+        });
+        let wiped = execute(&state_root, ProvisionerKind::Fake, wipe).unwrap();
+        assert_eq!(wiped["material"], "excluded");
+        let journals = fs::read_dir(state_root.join("portable-agent-computers/operations"))
+            .unwrap()
+            .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+            .collect::<String>();
+        assert!(!journals.contains("opaque-test-material"));
     }
 
     #[test]

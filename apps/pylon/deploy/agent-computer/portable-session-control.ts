@@ -17,7 +17,7 @@ const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u
 const FORBIDDEN_PRIVATE_MATERIAL =
   /(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)|"(?:token|apiKey|password|secret|credential|mnemonic|hostname|processId|socket|authHome)"\s*:/iu
 
-type Action = "stage" | "activate" | "abort" | "quiesce" | "checkpoint" | "reclaim"
+type Action = "stage" | "activate" | "abort" | "quiesce" | "checkpoint" | "reclaim" | "wipeCapability"
 type Operation = Readonly<{
   operationRef: string
   action: Action
@@ -132,7 +132,7 @@ const graphAgentRefs = (graphValue: unknown): ReadonlyArray<string> => {
 const validateOperation = (input: unknown): Operation => {
   const value = publicSafe(asObject(input, "operation"))
   const action = value.action
-  if (!["stage", "activate", "abort", "quiesce", "checkpoint", "reclaim"].includes(String(action))) {
+  if (!["stage", "activate", "abort", "quiesce", "checkpoint", "reclaim", "wipeCapability"].includes(String(action))) {
     throw new PortableSessionControlError("action is invalid")
   }
   const generation = Number(value.generation)
@@ -251,6 +251,16 @@ export const executePortableSessionControl = async (input: Readonly<{
         graph: operation.payload.graph,
         threadCursors: operation.payload.threadCursors,
       }
+    } else if (operation.action === "wipeCapability") {
+      const leaseRef = asString(operation.payload.leaseRef, "leaseRef")
+      asString(operation.payload.installationRef, "installationRef")
+      const leaf = createHash("sha256").update(leaseRef).digest("hex").slice(0, 24)
+      await rm(join(sessionRoot, "capability-material", `${leaf}.material`), { force: true })
+      await rm(join(sessionRoot, "capabilities", `${leaf}.installed.json`), { force: true })
+      response = {
+        wipeReceiptRef: stableRef("receipt.agent-computer.capability-wipe", operation.operationRef),
+        material: "excluded",
+      }
     } else if (operation.action === "abort" || operation.action === "reclaim") {
       if (operation.action === "abort" && state.state !== "staged") throw new PortableSessionControlError("abort requires stage")
       if (operation.action === "reclaim" && state.state !== "quiesced") throw new PortableSessionControlError("reclaim requires quiescence")
@@ -279,6 +289,67 @@ export const executePortableSessionControl = async (input: Readonly<{
   }
   await writeState(sessionRoot, nextState)
   return response
+}
+
+type CapabilityInstallMetadata = Readonly<{
+  operationRef: string
+  ownerRef: string
+  targetRef: string
+  resourceRef: string
+  sessionRef: string
+  attachmentRef: string
+  generation: number
+  leaseRef: string
+  evidenceRef: string
+  capability: string
+}>
+
+export const installPortableCapability = async (input: Readonly<{
+  metadata: unknown
+  material: Uint8Array
+  stateRoot: string
+}>): Promise<unknown> => {
+  const metadata = publicSafe(asObject(input.metadata, "capability install metadata")) as unknown as CapabilityInstallMetadata
+  for (const field of ["operationRef", "ownerRef", "targetRef", "resourceRef", "sessionRef", "attachmentRef", "leaseRef", "evidenceRef", "capability"] as const) {
+    asString(metadata[field], field)
+  }
+  if (!Number.isSafeInteger(metadata.generation) || metadata.generation < 1) {
+    throw new PortableSessionControlError("generation must be positive")
+  }
+  if (input.material.byteLength === 0 || input.material.byteLength > 128 * 1024) {
+    throw new PortableSessionControlError("capability material length is invalid")
+  }
+  const sessionRoot = portableSessionRoot(input.stateRoot, metadata.sessionRef)
+  const state = await readState(sessionRoot)
+  if (state === undefined) throw new PortableSessionControlError("retained session is missing")
+  if (state.ownerRef !== metadata.ownerRef || state.targetRef !== metadata.targetRef ||
+      state.sessionRef !== metadata.sessionRef || state.attachmentRef !== metadata.attachmentRef ||
+      state.generation !== metadata.generation) {
+    throw new PortableSessionControlError("capability install scope differs from retained session")
+  }
+  const leaf = createHash("sha256").update(metadata.leaseRef).digest("hex").slice(0, 24)
+  const markerPath = join(sessionRoot, "capabilities", `${leaf}.installed.json`)
+  const installationRef = stableRef("installation.agent-computer.capability", `${metadata.resourceRef}|${metadata.leaseRef}`)
+  if (await Bun.file(markerPath).exists()) {
+    const marker = publicSafe(JSON.parse(await readFile(markerPath, "utf8"))) as Record<string, unknown>
+    if (marker.leaseRef !== metadata.leaseRef || marker.evidenceRef !== metadata.evidenceRef) {
+      throw new PortableSessionControlError("capability marker conflicts with install retry")
+    }
+    return { installationRef, evidenceRef: metadata.evidenceRef, marker, material: "excluded" }
+  }
+  const materialDir = join(sessionRoot, "capability-material")
+  const markerDir = join(sessionRoot, "capabilities")
+  await mkdir(materialDir, { recursive: true, mode: 0o700 })
+  await mkdir(markerDir, { recursive: true, mode: 0o700 })
+  const materialPath = join(materialDir, `${leaf}.material`)
+  const temporary = `${materialPath}.tmp-${process.pid}`
+  await writeFile(temporary, input.material, { mode: 0o600 })
+  await rename(temporary, materialPath)
+  const marker = { leaseRef: metadata.leaseRef, evidenceRef: metadata.evidenceRef }
+  const markerTemporary = `${markerPath}.tmp-${process.pid}`
+  await writeFile(markerTemporary, canonicalJson(marker), { mode: 0o600 })
+  await rename(markerTemporary, markerPath)
+  return { installationRef, evidenceRef: metadata.evidenceRef, marker, material: "excluded" }
 }
 
 const run = async (command: ReadonlyArray<string>): Promise<string> => {
@@ -408,12 +479,21 @@ export const productionRuntime: PortableSessionGuestRuntime = {
 if (import.meta.main) {
   try {
     const encoded = Bun.argv[2]
-    if (encoded === undefined) throw new PortableSessionControlError("one JSON operation argument is required")
-    const response = await executePortableSessionControl({
-      operation: JSON.parse(encoded),
-      stateRoot: process.env.OPENAGENTS_PORTABLE_SESSION_ROOT ?? "/var/lib/openagents/portable-sessions",
-      runtime: productionRuntime,
-    })
+    if (encoded === undefined) throw new PortableSessionControlError("one fixed operation is required")
+    const stateRoot = process.env.OPENAGENTS_PORTABLE_SESSION_ROOT ?? "/var/lib/openagents/portable-sessions"
+    let response: unknown
+    if (encoded === "capability-install") {
+      const metadata = Bun.argv[3]
+      if (metadata === undefined) throw new PortableSessionControlError("capability metadata is required")
+      const material = await Bun.stdin.bytes()
+      try {
+        response = await installPortableCapability({ metadata: JSON.parse(metadata), material, stateRoot })
+      } finally {
+        material.fill(0)
+      }
+    } else {
+      response = await executePortableSessionControl({ operation: JSON.parse(encoded), stateRoot, runtime: productionRuntime })
+    }
     process.stdout.write(`${canonicalJson(publicSafe(response))}\n`)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : "portable session control failed"}\n`)

@@ -40,13 +40,29 @@ def handle(r):
             if os.path.exists(r['path']): t.add(r['path'],arcname=os.path.basename(r['path'].rstrip('/')))
         return {'code':0,'b64tar':base64.b64encode(buf.getvalue()).decode()}
     return {'code':2,'output':f'unknown op {op}'}
+def handle_with_connection(c,r):
+    if r.get('op')!='exec-stdin': return handle(r)
+    n=r.get('stdinLength')
+    if not isinstance(n,int) or n<1 or n>131072: return {'code':2,'output':'invalid stdin length'}
+    material=bytearray(rall(c,n))
+    try:
+        env=dict(os.environ)
+        p=subprocess.run(r['command'],input=material,capture_output=True,timeout=r.get('timeout',3600),cwd=r.get('cwd'),env=env)
+        output=(p.stdout or b'')+(p.stderr or b'')
+        return {'code':p.returncode,'output':output.decode(errors='replace')}
+    except Exception as e:
+        return {'code':127,'output':f'guest-exec-error: {e}'}
+    finally:
+        material[:]=b'\0'*len(material)
 def main():
     s=socket.socket(socket.AF_VSOCK,socket.SOCK_STREAM)
     s.bind((socket.VMADDR_CID_ANY,PORT)); s.listen(16)
     open('/opt/agent/ready','w').write('1')
     while True:
         c,_=s.accept()
-        try: wmsg(c,handle(rmsg(c)))
+        try:
+            request=rmsg(c)
+            wmsg(c,handle_with_connection(c,request))
         except Exception: pass
         finally: c.close()
 main()
