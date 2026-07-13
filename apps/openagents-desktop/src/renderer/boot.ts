@@ -57,6 +57,10 @@ import {
   type WorkspaceDocumentBridge,
 } from "./workspace-editor.ts"
 import {
+  unavailableProductSpecRendererBridge,
+  type ProductSpecRendererBridge,
+} from "./product-spec-workspace.ts"
+import {
   desktopShellIntents,
   desktopShellView,
   desktopConversationShortcutTargets,
@@ -149,6 +153,17 @@ type DesktopBridge = Readonly<{
   }>
   sendMessage?: (value: unknown) => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
+  productSpec?: Readonly<{
+    open?: (value: unknown) => Promise<unknown>
+    create?: (value: unknown) => Promise<unknown>
+    proposePlan?: (value: unknown) => Promise<unknown>
+    acceptPlan?: (value: unknown) => Promise<unknown>
+    admitPacket?: (value: unknown) => Promise<unknown>
+    blockPacket?: (value: unknown) => Promise<unknown>
+    recordEvidence?: (value: unknown) => Promise<unknown>
+    verifyEvidence?: (value: unknown) => Promise<unknown>
+    run?: (value: unknown) => Promise<unknown>
+  }>
   workspaceTree?: (value: unknown) => Promise<unknown>
   workspaceSearch?: (value: unknown) => Promise<unknown>
   cancelWorkspaceSearch?: (value: unknown) => Promise<unknown>
@@ -282,6 +297,18 @@ const workspaceDocumentBridge: WorkspaceDocumentBridge = {
   openWorkspaceDocument: (value) => readBridge()?.openWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.openWorkspaceDocument(value),
   saveWorkspaceDocument: (value) => readBridge()?.saveWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.saveWorkspaceDocument(value),
   saveWorkspaceDocumentAs: (value) => readBridge()?.saveWorkspaceDocumentAs?.(value) ?? unavailableWorkspaceDocumentBridge.saveWorkspaceDocumentAs(value),
+}
+
+const productSpecRendererBridge: ProductSpecRendererBridge = {
+  open: (value) => readBridge()?.productSpec?.open?.(value) ?? unavailableProductSpecRendererBridge.open(value),
+  create: (value) => readBridge()?.productSpec?.create?.(value) ?? unavailableProductSpecRendererBridge.create(value),
+  proposePlan: (value) => readBridge()?.productSpec?.proposePlan?.(value) ?? unavailableProductSpecRendererBridge.proposePlan(value),
+  acceptPlan: (value) => readBridge()?.productSpec?.acceptPlan?.(value) ?? unavailableProductSpecRendererBridge.acceptPlan(value),
+  admitPacket: (value) => readBridge()?.productSpec?.admitPacket?.(value) ?? unavailableProductSpecRendererBridge.admitPacket(value),
+  blockPacket: (value) => readBridge()?.productSpec?.blockPacket?.(value) ?? unavailableProductSpecRendererBridge.blockPacket(value),
+  recordEvidence: (value) => readBridge()?.productSpec?.recordEvidence?.(value) ?? unavailableProductSpecRendererBridge.recordEvidence(value),
+  verifyEvidence: (value) => readBridge()?.productSpec?.verifyEvidence?.(value) ?? unavailableProductSpecRendererBridge.verifyEvidence(value),
+  run: (value) => readBridge()?.productSpec?.run?.(value) ?? unavailableProductSpecRendererBridge.run(value),
 }
 
 /**
@@ -892,7 +919,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         gather: () => readBridge()?.diagnostics?.gather?.() ?? Promise.resolve(null),
         runAction: (action) => readBridge()?.diagnostics?.runAction?.(action) ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
         exportRedacted: () => readBridge()?.diagnostics?.exportRedacted?.() ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
-      }, voiceHost),
+      }, voiceHost, productSpecRendererBridge),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

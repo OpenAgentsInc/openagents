@@ -109,6 +109,15 @@ import {
   type GitGithubBridge,
   type GitPanelState,
 } from "./git-panel.ts"
+import {
+  emptyProductSpecWorkspaceState,
+  makeProductSpecWorkspaceHandlers,
+  productSpecWorkspaceIntents,
+  productSpecWorkspaceView,
+  unavailableProductSpecRendererBridge,
+  type ProductSpecRendererBridge,
+  type ProductSpecWorkspaceState,
+} from "./product-spec-workspace.ts"
 import { sidebarAccountsView } from "./sidebar-accounts.ts"
 import { idleVoiceModeState, voiceActive, voiceIndicatorText, withVoiceHostState, type VoiceModeState } from "./voice-mode.ts"
 import type { DesktopVoiceState } from "../voice-host.ts"
@@ -220,7 +229,7 @@ export type QuestionCardInteraction = Readonly<{
   answers: ReadonlyArray<QuestionAnswer> | null
 }>
 
-export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
+export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "product-spec", "review", "terminal", "inbox", "settings"] as const
 export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 export const codingSessionFilters = ["active", "recovery", "archived"] as const
 export type CodingSessionFilter = (typeof codingSessionFilters)[number]
@@ -365,6 +374,8 @@ export type DesktopShellState = Readonly<{
   terminal: TerminalWorkspaceState
   /** Typed Git/GitHub review panel (see ./git-panel.ts). */
   git: GitPanelState
+  /** ProductSpec intent, planning, packet, evidence, and verification projection. */
+  productSpec: ProductSpecWorkspaceState
 }>
 
 /** "18:04" — display-string timestamps for the typed message contract. */
@@ -441,6 +452,7 @@ export const initialDesktopShellState = (
   fleet: emptyFleetWorkspaceState(),
   terminal: emptyTerminalWorkspaceState(),
   git: emptyGitPanelState(),
+  productSpec: emptyProductSpecWorkspaceState(),
 })
 
 // ---------------------------------------------------------------------------
@@ -653,6 +665,7 @@ export const desktopShellIntents = [
   ...fleetWorkspaceIntents,
   ...terminalWorkspaceIntents,
   ...gitPanelIntents,
+  ...productSpecWorkspaceIntents,
   ...workspaceBrowserIntents,
   ...workspaceEditorIntents,
 ] as const
@@ -1308,6 +1321,7 @@ export const makeDesktopShellHandlers = (
   noticeController: CommandNoticeController = makeCommandNoticeController(state),
   diagnosticsBridge: DiagnosticsBridge = unavailableDiagnosticsBridge,
   voiceHost: DesktopVoiceRendererHost = { command: async () => null },
+  productSpecBridge: ProductSpecRendererBridge = unavailableProductSpecRendererBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
@@ -1341,6 +1355,7 @@ export const makeDesktopShellHandlers = (
       },
       workspace: "chat" as const,
     })))
+  const productSpecHandlers = makeProductSpecWorkspaceHandlers(state, productSpecBridge)
   const recoverWorkspaceEditor = Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.workspaceEditor.tabs.length > 0) return
@@ -1386,6 +1401,7 @@ export const makeDesktopShellHandlers = (
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
   ...makeTerminalWorkspaceHandlers(state, terminalBridge),
   ...gitPanelHandlers,
+  ...productSpecHandlers,
   ...workspaceBrowserHandlers,
   ...workspaceEditorHandlers,
   WorkspaceBrowserEntrySelected: (pathRef) => Effect.gen(function* () {
@@ -2653,6 +2669,7 @@ const shellSidebar = (state: DesktopShellState): View => {
             {id:"workspace-fleet",label:"Fleet",icon:"Agent",selected:state.workspace==="fleet",accessibilityLabel:"Fleet",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("fleet"))},
             {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
             {id:"workspace-files",label:"Files",icon:"Folder",selected:state.workspace==="files",accessibilityLabel:"Files",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("files"))},
+            {id:"workspace-product-spec",label:"ProductSpec",icon:"Code",selected:state.workspace==="product-spec",accessibilityLabel:"ProductSpec workroom",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("product-spec"))},
             {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
             {id:"shell-command-palette-toggle",label:"Commands",icon:"Menu",accessibilityLabel:"Open command palette",onSelect:IntentRef("DesktopCommandPaletteToggled")},
             {id:"shell-settings-toggle",label:"Settings",icon:"Settings",selected:state.workspace==="settings",accessibilityLabel:state.workspace==="settings"?"Close Settings":"Open Settings",onSelect:IntentRef("DesktopSettingsToggled")},
@@ -3783,7 +3800,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
         ],
       ),
     ],
