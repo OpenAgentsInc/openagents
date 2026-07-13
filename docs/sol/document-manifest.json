@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "1c3299cead03f36ed9287626a9957fc92d64930a63412e3d1f12f6b8d7108df6",
+  "sourceTreeSha256": "b6c4b11f3f09373f301c840b843c9d96302867b73cfb719c74acfc147e8bb2fd",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -802,11 +802,12 @@
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
         "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/issues/README.md",
         "docs/sol/receipts/README.md"
       ],
-      "inboundSourceCount": 4,
+      "inboundSourceCount": 5,
       "issueLinks": [
         8706
       ]
@@ -825,12 +826,13 @@
       "inboundLinks": [
         "docs/sol/2026-07-12-android-emulator-receipts.md",
         "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
+        "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
         "docs/sol/issues/README.md",
         "docs/sol/receipts/README.md"
       ],
-      "inboundSourceCount": 6,
+      "inboundSourceCount": 7,
       "issueLinks": [
         8547,
         8566,
@@ -1129,6 +1131,39 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md",
+      "class": "current-status",
+      "owner": "Sol reliable-client program",
+      "disposition": "retain-execution-ledger",
+      "dispatch": false,
+      "sha256": "4c684705c19f18f69ea1bf905ef1c490cee6957e081c40c85cdad3ea3f0bff04",
+      "status": "factual completion audit; no completion declaration",
+      "snapshot": "`origin/main` at `b0e579b0bba6ffbaa716f7ec42885a482d3c7ca8`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        8566,
+        8574,
+        8597,
+        8640,
+        8676,
+        8677,
+        8678,
+        8681,
+        8706,
+        8707,
+        8733,
+        8735,
+        8740,
+        8741,
+        8744,
+        8748,
+        8753
+      ]
+    },
+    {
       "path": "docs/sol/2026-07-13-port-01-durable-portable-session-authority-receipt.md",
       "class": "receipt",
       "owner": "Sol issue #8746",
@@ -1300,6 +1335,7 @@
         "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
         "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
         "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md",
         "docs/sol/CHALLENGE_LEDGER.md",
         "docs/sol/CLAIM_PROTOCOL.md",
         "docs/sol/IMPLEMENTATION_ROADMAP.md",
@@ -1325,7 +1361,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 38,
+      "inboundSourceCount": 39,
       "issueLinks": [
         8547,
         8566,
