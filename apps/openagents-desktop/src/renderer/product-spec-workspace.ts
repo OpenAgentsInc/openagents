@@ -94,6 +94,7 @@ export type ProductSpecRendererBridge = Readonly<{
   acceptPlan: (value: unknown) => Promise<unknown>
   admitPacket: (value: unknown) => Promise<unknown>
   blockPacket: (value: unknown) => Promise<unknown>
+  disposePacket: (value: unknown) => Promise<unknown>
   recordEvidence: (value: unknown) => Promise<unknown>
   verifyEvidence: (value: unknown) => Promise<unknown>
   run: (value: unknown) => Promise<unknown>
@@ -114,6 +115,7 @@ export const unavailableProductSpecRendererBridge: ProductSpecRendererBridge = {
   acceptPlan: unavailable,
   admitPacket: unavailable,
   blockPacket: unavailable,
+  disposePacket: unavailable,
   recordEvidence: unavailable,
   verifyEvidence: unavailable,
   run: unavailable,
@@ -133,6 +135,10 @@ export const ProductSpecVerifierRefChanged = defineIntent("ProductSpecVerifierRe
 export const ProductSpecBlockedReasonChanged = defineIntent("ProductSpecBlockedReasonChanged", Schema.String)
 export const ProductSpecPacketAdmitted = defineIntent("ProductSpecPacketAdmitted", Schema.String)
 export const ProductSpecPacketBlocked = defineIntent("ProductSpecPacketBlocked", Schema.String)
+export const ProductSpecPacketDispositionSelected = defineIntent("ProductSpecPacketDispositionSelected", Schema.Struct({
+  packetRef: Schema.String,
+  disposition: Schema.Literals(["failed", "cancelled", "superseded"]),
+}))
 export const ProductSpecEvidenceRecorded = defineIntent("ProductSpecEvidenceRecorded", Schema.String)
 export const ProductSpecEvidenceVerified = defineIntent("ProductSpecEvidenceVerified", Schema.String)
 export const ProductSpecRunRefreshed = defineIntent("ProductSpecRunRefreshed", Schema.Null)
@@ -152,6 +158,7 @@ export const productSpecWorkspaceIntents = [
   ProductSpecBlockedReasonChanged,
   ProductSpecPacketAdmitted,
   ProductSpecPacketBlocked,
+  ProductSpecPacketDispositionSelected,
   ProductSpecEvidenceRecorded,
   ProductSpecEvidenceVerified,
   ProductSpecRunRefreshed,
@@ -361,6 +368,13 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       reason: current.productSpec.blockedReason.trim(),
       expectedSpec: current.productSpec.run!.spec,
     })),
+    ProductSpecPacketDispositionSelected: ({ packetRef, disposition }: { packetRef: string; disposition: "failed" | "cancelled" | "superseded" }) => runOperation(packetRef, async current => bridge.disposePacket({
+      runRef: current.productSpec.run!.runRef,
+      packetRef,
+      disposition,
+      reason: current.productSpec.blockedReason.trim(),
+      expectedSpec: current.productSpec.run!.spec,
+    })),
     ProductSpecEvidenceRecorded: (packetRef: string) => runOperation(packetRef, async (current, packet) => bridge.recordEvidence({
       runRef: current.productSpec.run!.runRef,
       packetRef,
@@ -417,6 +431,11 @@ const packetView = (
         Button({ key: `product-spec-block-${packet.packetRef}`, label: "Block", variant: "secondary", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecPacketBlocked", StaticPayload(packet.packetRef)) }),
       ] : []),
       ...(packet.state === "evidence_present" ? [Button({ key: `product-spec-verify-${packet.packetRef}`, label: "Verify evidence", variant: "primary", disabled: busy || !verifierReady, onPress: IntentRef("ProductSpecEvidenceVerified", StaticPayload(packet.packetRef)) })] : []),
+      ...(["planned", "active", "blocked", "evidence_present"].includes(packet.state) ? [
+        Button({ key: `product-spec-cancel-${packet.packetRef}`, label: "Cancel", variant: "ghost", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecPacketDispositionSelected", StaticPayload({ packetRef: packet.packetRef, disposition: "cancelled" })) }),
+        Button({ key: `product-spec-supersede-${packet.packetRef}`, label: "Supersede", variant: "ghost", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecPacketDispositionSelected", StaticPayload({ packetRef: packet.packetRef, disposition: "superseded" })) }),
+      ] : []),
+      ...(["active", "blocked", "evidence_present"].includes(packet.state) ? [Button({ key: `product-spec-fail-${packet.packetRef}`, label: "Mark failed", variant: "ghost", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecPacketDispositionSelected", StaticPayload({ packetRef: packet.packetRef, disposition: "failed" })) })] : []),
     ]),
     Text({ key: `product-spec-packet-ref-${packet.packetRef}`, content: packet.packetRef, variant: "caption", color: "textMuted" }),
     Text({ key: `product-spec-packet-criteria-${packet.packetRef}`, content: `Criteria: ${packet.criterionIds.join(", ")} · Allocation: ${packet.allocation}`, variant: "caption", color: "textMuted" }),

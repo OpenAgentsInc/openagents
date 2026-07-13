@@ -274,6 +274,7 @@ import {
   ProductSpecOpenChannel,
   ProductSpecPacketAdmitChannel,
   ProductSpecPacketBlockChannel,
+  ProductSpecPacketDispositionChannel,
   ProductSpecPlanAcceptChannel,
   ProductSpecPlanProposeChannel,
   ProductSpecRunGetChannel,
@@ -284,6 +285,7 @@ import {
   decodeProductSpecOpenRequest,
   decodeProductSpecPacketAdmitRequest,
   decodeProductSpecPacketBlockRequest,
+  decodeProductSpecPacketDispositionRequest,
   decodeProductSpecPlanAcceptRequest,
   decodeProductSpecPlanProposalRequest,
   decodeProductSpecRunGetRequest,
@@ -1288,6 +1290,12 @@ ipcMain.handle(ProductSpecPacketBlockChannel, (event, raw: unknown) => {
   return request === null
     ? productSpecUnavailable("The ProductSpec packet block transition is invalid.")
     : withProductSpecWorkroom(event, authority => authority.service.blockPacket(request))
+})
+ipcMain.handle(ProductSpecPacketDispositionChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecPacketDispositionRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec packet disposition is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.disposePacket(request))
 })
 ipcMain.handle(ProductSpecEvidenceRecordChannel, (event, raw: unknown) => {
   const request = decodeProductSpecEvidenceRequest(raw)

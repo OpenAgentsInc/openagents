@@ -8,6 +8,7 @@ export const ProductSpecEditProposeChannel = "openagents:product-spec:edit-propo
 export const ProductSpecEditConfirmChannel = "openagents:product-spec:edit-confirm" as const
 export const ProductSpecPacketAdmitChannel = "openagents:product-spec:packet-admit" as const
 export const ProductSpecPacketBlockChannel = "openagents:product-spec:packet-block" as const
+export const ProductSpecPacketDispositionChannel = "openagents:product-spec:packet-disposition" as const
 export const ProductSpecEvidenceRecordChannel = "openagents:product-spec:evidence-record" as const
 export const ProductSpecEvidenceVerifyChannel = "openagents:product-spec:evidence-verify" as const
 export const ProductSpecRunGetChannel = "openagents:product-spec:run-get" as const
@@ -254,6 +255,15 @@ export const ProductSpecPacketBlockRequestSchema = Schema.Struct({
 })
 export type ProductSpecPacketBlockRequest = typeof ProductSpecPacketBlockRequestSchema.Type
 
+export const ProductSpecPacketDispositionRequestSchema = Schema.Struct({
+  runRef: RefSchema,
+  packetRef: RefSchema,
+  disposition: Schema.Literals(["failed", "cancelled", "superseded"]),
+  reason: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+  expectedSpec: ProductSpecIdentitySchema,
+})
+export type ProductSpecPacketDispositionRequest = typeof ProductSpecPacketDispositionRequestSchema.Type
+
 export const ProductSpecEvidenceRequestSchema = Schema.Struct({
   runRef: RefSchema,
   packetRef: RefSchema,
@@ -301,6 +311,7 @@ export const decodeProductSpecEditProposalRequest = (value: unknown) => decode<P
 export const decodeProductSpecEditConfirmRequest = (value: unknown) => decode<ProductSpecEditConfirmRequest>(ProductSpecEditConfirmRequestSchema, value)
 export const decodeProductSpecPacketAdmitRequest = (value: unknown) => decode<ProductSpecPacketAdmitRequest>(ProductSpecPacketAdmitRequestSchema, value)
 export const decodeProductSpecPacketBlockRequest = (value: unknown) => decode<ProductSpecPacketBlockRequest>(ProductSpecPacketBlockRequestSchema, value)
+export const decodeProductSpecPacketDispositionRequest = (value: unknown) => decode<ProductSpecPacketDispositionRequest>(ProductSpecPacketDispositionRequestSchema, value)
 export const decodeProductSpecEvidenceRequest = (value: unknown) => decode<ProductSpecEvidenceRequest>(ProductSpecEvidenceRequestSchema, value)
 export const decodeProductSpecVerificationRequest = (value: unknown) => decode<ProductSpecVerificationRequest>(ProductSpecVerificationRequestSchema, value)
 export const decodeProductSpecRunGetRequest = (value: unknown) => decode<ProductSpecRunGetRequest>(ProductSpecRunGetRequestSchema, value)

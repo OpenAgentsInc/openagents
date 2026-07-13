@@ -295,6 +295,33 @@ describe("ProductSpec workroom authority", () => {
     if (persisted.ok) expect(persisted.value.plan.state).toBe("revision_mismatch")
   })
 
+  test("persists idempotent failed, cancelled, and superseded packet dispositions", () => {
+    const { service } = harness()
+    const projection = openFixture(service)
+    const proposed = service.proposePlan(validPlan(projection.identity))
+    if (!proposed.ok) throw new Error("plan did not propose")
+    const accepted = service.acceptPlan({ planRef: proposed.value.planRef, expectedSpec: projection.identity })
+    if (!accepted.ok) throw new Error("plan did not accept")
+    const request = {
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.execution",
+      disposition: "cancelled" as const,
+      reason: "Owner removed this packet from the accepted scope.",
+      expectedSpec: projection.identity,
+    }
+    expect(service.disposePacket(request)).toMatchObject({ ok: true, value: { plan: { packets: [{}, { state: "cancelled", blockedReason: request.reason }] } } })
+    expect(service.disposePacket(request)).toMatchObject({ ok: true, reconciled: true })
+    expect(service.disposePacket({ ...request, disposition: "superseded" })).toMatchObject({ ok: false, reason: "invalid_transition" })
+    expect(service.admitPacket({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.execution",
+      leaseRef: "lease.cancelled",
+      executorRef: "agent.child",
+      executionMode: "afk",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: false, reason: "invalid_transition" })
+  })
+
   test("requires a confirmed revision bump and returns criterion reconciliation", () => {
     const { stateRoot, service } = harness()
     const current = openFixture(service)

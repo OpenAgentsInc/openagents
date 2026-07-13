@@ -27,6 +27,7 @@ import type {
   ProductSpecOperationError,
   ProductSpecPacketAdmitRequest,
   ProductSpecPacketBlockRequest,
+  ProductSpecPacketDispositionRequest,
   ProductSpecPlan,
   ProductSpecPlanAcceptRequest,
   ProductSpecPlanProposalRequest,
@@ -49,6 +50,7 @@ export type ProductSpecWorkroom = Readonly<{
   acceptPlan: (request: ProductSpecPlanAcceptRequest) => ProductSpecOperationResult<ProductSpecRun>
   admitPacket: (request: ProductSpecPacketAdmitRequest) => ProductSpecOperationResult<ProductSpecRun>
   blockPacket: (request: ProductSpecPacketBlockRequest) => ProductSpecOperationResult<ProductSpecRun>
+  disposePacket: (request: ProductSpecPacketDispositionRequest) => ProductSpecOperationResult<ProductSpecRun>
   recordEvidence: (request: ProductSpecEvidenceRequest) => ProductSpecOperationResult<ProductSpecRun>
   verifyEvidence: (request: ProductSpecVerificationRequest) => ProductSpecOperationResult<ProductSpecRun>
   run: (runRef: string) => ProductSpecOperationResult<ProductSpecRun>
@@ -619,6 +621,32 @@ export const makeProductSpecWorkroom = (
     }, now()))
   }
 
+  const disposePacket = (
+    request: ProductSpecPacketDispositionRequest,
+  ): ProductSpecOperationResult<ProductSpecRun> => {
+    const loaded = loadRun(request.runRef)
+    if (!loaded.ok) return loaded
+    if (!identitiesEqual(loaded.value.spec, request.expectedSpec)) {
+      return failure("revision_mismatch", "Packet disposition does not match the accepted ProductSpec.")
+    }
+    const current = ensureCurrentSpec(loaded.value)
+    if (!current.ok) return current
+    const packet = current.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
+    if (packet === undefined) return failure("packet_not_found", "The work packet does not exist.")
+    if (packet.state === request.disposition && packet.blockedReason === request.reason) {
+      return { ok: true, value: current.value, reconciled: true }
+    }
+    if (packet.state === "verified" || packet.state === "failed" || packet.state === "cancelled" || packet.state === "superseded") {
+      return failure("invalid_transition", `A ${packet.state} packet cannot become ${request.disposition}.`)
+    }
+    return persistRun(replacePacket(current.value, {
+      ...packet,
+      state: request.disposition,
+      blockedReason: request.reason,
+      activeLease: null,
+    }, now()))
+  }
+
   const verifyEvidence = (
     request: ProductSpecVerificationRequest,
   ): ProductSpecOperationResult<ProductSpecRun> => {
@@ -656,6 +684,7 @@ export const makeProductSpecWorkroom = (
     acceptPlan,
     admitPacket,
     blockPacket,
+    disposePacket,
     recordEvidence,
     verifyEvidence,
     run: loadRun,

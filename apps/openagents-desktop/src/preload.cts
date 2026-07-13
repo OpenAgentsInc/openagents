@@ -92,6 +92,7 @@ import {
   ProductSpecOpenChannel,
   ProductSpecPacketAdmitChannel,
   ProductSpecPacketBlockChannel,
+  ProductSpecPacketDispositionChannel,
   ProductSpecPlanAcceptChannel,
   ProductSpecPlanProposeChannel,
   ProductSpecRunGetChannel,
@@ -104,6 +105,7 @@ import {
   decodeProductSpecOpenRequest,
   decodeProductSpecPacketAdmitRequest,
   decodeProductSpecPacketBlockRequest,
+  decodeProductSpecPacketDispositionRequest,
   decodeProductSpecPlanAcceptRequest,
   decodeProductSpecPlanProposalRequest,
   decodeProductSpecPlanResult,
@@ -393,6 +395,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec packet block request is invalid." }
       return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecPacketBlockChannel, request)) ??
         { ok: false, reason: "invalid_transition", message: "The ProductSpec block response is invalid." }
+    },
+    disposePacket: async (value: unknown) => {
+      const request = decodeProductSpecPacketDispositionRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec packet disposition is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecPacketDispositionChannel, request)) ??
+        { ok: false, reason: "invalid_transition", message: "The ProductSpec disposition response is invalid." }
     },
     recordEvidence: async (value: unknown) => {
       const request = decodeProductSpecEvidenceRequest(value)

@@ -207,6 +207,7 @@ describe("ProductSpec Effect Native workroom", () => {
     expect(nodeByKey(view, "product-spec-admit-packet.ac-1")?.disabled).toBe(false)
     expect(nodeByKey(view, "product-spec-admit-packet.ac-2")?.disabled).toBe(true)
     expect(nodeByKey(view, "product-spec-admit-packet.ac-2")?.label).toBe("Waiting for dependencies")
+    expect(nodeByKey(view, "product-spec-cancel-packet.ac-1")?.disabled).toBe(true)
   })
 
   test("binds plan and packet transitions to host-confirmed authority", async () => {
