@@ -983,6 +983,51 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
+  test("provider go-online advertises a ready named Claude account", async () => {
+    await withTempHome(async (home) => {
+      const claudeHome = join(home, "accounts", "claude", "claude-one")
+      await mkdir(claudeHome, { recursive: true })
+      await writeFile(join(claudeHome, "claude-oauth-token"), "fixture-token\n")
+      await writeFile(
+        join(home, "config.json"),
+        `${JSON.stringify({
+          dev: {
+            accounts: [{
+              ref: "claude-one",
+              provider: "claude_agent",
+              home: claudeHome,
+            }],
+          },
+        }, null, 2)}\n`,
+      )
+
+      const result = await runProviderCli({
+        args: ["go-online", "--json"],
+        env: {
+          HOME: join(home, "missing-default-home"),
+          OPENAGENTS_PYLON_CLAUDE_CONCURRENCY: "1",
+          PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
+          PYLON_HOME: home,
+        },
+        timeoutMs: 20_000,
+      })
+
+      expect(result.timedOut).toBe(false)
+      expect(result.exitCode).toBe(0)
+      const json = JSON.parse(result.stdout)
+      expect(json.claudeAgent.state).toBe("ready")
+      expect(json.codingCapacity).toContainEqual({
+        available: 1,
+        busy: 0,
+        queued: 0,
+        ready: 1,
+        service: "claude",
+      })
+      expect(json.capabilityRefs).toContain(CLAUDE_AGENT_CAPABILITY_REF)
+      assertPublicProjectionSafe(json)
+    })
+  })
+
   test("provider go-online JSON uses per-account totals for Codex dispatch capacity", async () => {
     await withTempHome(async (home) => {
       const codexOne = join(home, "accounts", "codex", "codex-one")

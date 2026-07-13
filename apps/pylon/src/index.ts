@@ -17,7 +17,11 @@ import {
   probeCodexAgentReadiness,
   withCodexAgentCapability,
 } from "./codex-agent.js"
-import { loadPylonAccountRegistry, resolvePylonAccountSelection } from "./account-registry.js"
+import {
+  loadPylonAccountRegistry,
+  pylonClaudeAccountHomeHasAuth,
+  resolvePylonAccountSelection,
+} from "./account-registry.js"
 import { withWorkspaceMaterializerCapability } from "./workspace-materializer.js"
 import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips.js"
 import {
@@ -5454,15 +5458,29 @@ async function main() {
           ? undefined
           : { agentToken: providerAgentToken.token, baseUrl: providerBaseUrl }
       if (command === "go-online" || command === "online") {
+        const connectedAccounts = await loadPylonAccountRegistry(summary)
+        const connectedClaudeHomes = connectedAccounts
+          .filter((entry) => entry.provider === "claude_agent" && entry.paused !== true)
+          .map((entry) => entry.home)
         const claudeAgentReadiness = await probeClaudeAgentReadiness({
           config: await loadClaudeAgentConfig(summary),
+          ...(connectedClaudeHomes.length === 0
+            ? {}
+            : {
+                localSessionProbe: async () => {
+                  for (const home of connectedClaudeHomes) {
+                    if (await pylonClaudeAccountHomeHasAuth(home)) return true
+                  }
+                  return false
+                },
+              }),
         })
         // #6331: a Codex account connected via `accounts connect codex
         // --openagents-link` writes its auth.json into an isolated per-account
         // home, never `~/.codex`. Surface those homes so go-online declares the
         // codex capability (and the heartbeat advertises codex capacity) even
         // when the default `~/.codex` is empty.
-        const connectedCodexHomes = (await loadPylonAccountRegistry(summary))
+        const connectedCodexHomes = connectedAccounts
           .filter((entry) => entry.provider === "codex")
           .map((entry) => entry.home)
         const codexAgentReadiness = await probeCodexAgentReadiness({
