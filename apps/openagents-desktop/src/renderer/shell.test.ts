@@ -2188,18 +2188,18 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     expect(withMessageSelected(selected, "user-1").selectedMessageKey).toBe("user-1")
   })
 
-  test("chatMessageMetadataFields projects role, time, and every host-recorded fact", () => {
+  test("chatMessageMetadataFields projects MVP metadata without provider-account identities", () => {
     const fields = chatMessageMetadataFields(assistantNote)
     expect(fields).toEqual([
       { label: "Role", value: "assistant" },
       { label: "Time", value: "18:06" },
       { label: "Lane", value: "fable-local" },
       { label: "Effective model", value: "claude-fable-5" },
-      { label: "Account", value: "claude-pylon-b" },
       { label: "Turn", value: "turn.fable.abc" },
       { label: "Tokens (total)", value: "49" },
       { label: "Duration", value: "2.5s" },
     ])
+    expect(fields.some(field => field.label === "Account")).toBe(false)
     // A metadata-less message still shows its honest role + time only.
     expect(chatMessageMetadataFields({ key: "u", role: "user", text: "q", timestamp: "18:05" }))
       .toEqual([{ label: "Role", value: "user" }, { label: "Time", value: "18:05" }])
@@ -2232,9 +2232,10 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     const texts = collectNodes(nodeByKey(open, "chat-message-inspector"))
       .filter((node) => node._tag === "Text")
       .map((node) => String(node.content ?? ""))
-    for (const expected of ["fable-local", "claude-fable-5", "claude-pylon-b", "turn.fable.abc", "49", "2.5s"]) {
+    for (const expected of ["fable-local", "claude-fable-5", "turn.fable.abc", "49", "2.5s"]) {
       expect(texts.some((content) => content === expected)).toBe(true)
     }
+    expect(texts).not.toContain("claude-pylon-b")
     // A dangling key (message no longer projected) renders no inspector.
     const dangling = desktopShellView({ ...notesState, selectedMessageKey: "gone" })
     expect(nodeByKey(dangling, "chat-message-inspector")).toBeUndefined()

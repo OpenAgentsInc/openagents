@@ -3846,33 +3846,21 @@ const smokeQuestionCard = `(async () => {
 // caption, no ASSISTANT label, and the composer re-enabled.
 const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const harness = () => document.querySelector('[data-en-key="shell-harness-select"]')
-  const codexOption = () => {
-    const select = harness()
-    return select instanceof HTMLSelectElement
-      ? Array.from(select.options).find((option) => option.value === "codex")
-      : undefined
-  }
-  if (codexOption() === undefined) return { ok: false, reason: "Codex provider option never mounted" }
-  // The smoke availability gate released after the fable step: the fixture
-  // preflight VERIFIED an account, so the chip must light on that evidence.
-  {
-    const deadline = Date.now() + 10000
-    while (Date.now() < deadline && codexOption()?.disabled !== false) {
-      await wait(50)
-    }
-  }
-  if (codexOption()?.disabled !== false) return { ok: false, reason: "Codex option stayed disabled despite a fixture PROBE-VERIFIED account" }
-  const select = harness()
-  if (!(select instanceof HTMLSelectElement)) return { ok: false, reason: "provider select disappeared" }
-  select.value = "codex"
-  select.dispatchEvent(new Event("change", { bubbles: true }))
-  await wait(50)
+  const engine = document.querySelector('[data-en-key="shell-codex-engine"]')
+  if (engine?.textContent !== "Codex") return { ok: false, reason: "fixed Codex engine label never mounted" }
   const input = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
   input.value = "Stream a codex-local proof"
   input.dispatchEvent(new Event("input", { bubbles: true }))
+  const readyDeadline = Date.now() + 10000
+  while (Date.now() < readyDeadline) {
+    const send = document.querySelector('[data-en-key="shell-note"]')
+    if (send instanceof HTMLButtonElement && !send.disabled) break
+    await wait(50)
+  }
+  const send = document.querySelector('[data-en-key="shell-note"]')
+  if (!(send instanceof HTMLButtonElement) || send.disabled) return { ok: false, reason: "Codex session stayed unavailable" }
   const assistantBodies = () => Array.from(
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"] [data-en-role="body"]'),
   )
@@ -4020,10 +4008,10 @@ const smokeMessageInspector = `(async () => {
   const inspector = document.querySelector('[data-en-key="chat-message-inspector"]')
   if (inspector === null) return { ok: false, reason: "message inspector never opened" }
   const text = inspector.textContent || ""
-  const hasModel = text.includes("claude-fable-5")
-  const hasLane = text.includes("fable-local")
-  const hasAccount = text.includes("claude-pylon-3")
-  const hasTokens = text.includes("Tokens (total)") && text.includes("49")
+  const hasModel = text.includes("gpt-5.6-sol")
+  const hasLane = text.includes("codex-local")
+  const hidesAccount = !text.includes("Account") && !text.includes("codex-3")
+  const hasTokens = text.includes("Tokens (total)") && text.includes("952")
   const close = document.querySelector('[data-en-key="chat-message-inspector-close"]')
   if (close === null) return { ok: false, reason: "inspector close affordance missing" }
   close.click()
@@ -4032,11 +4020,11 @@ const smokeMessageInspector = `(async () => {
     await wait(50)
   }
   return {
-    ok: hasModel && hasLane && hasAccount && hasTokens &&
+    ok: hasModel && hasLane && hidesAccount && hasTokens &&
       document.querySelector('[data-en-key="chat-message-inspector"]') === null,
     hasModel,
     hasLane,
-    hasAccount,
+    hidesAccount,
     hasTokens,
   }
 })()`
@@ -4408,10 +4396,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // the fixture PROBE-VERIFIED evidence lights the chip for the
         // codex-local streamed step below.
         releaseSmokeCodexAvailability?.()
-        // EP250 question cards: the persisted fixture question renders as a
-        // read-only pending interactive card (no answer bridge in smoke).
-        await step("question-card-interactive-typed-answer-FIXTURE", smokeQuestionCard)
-        await captureShot(window, "10-question-card")
+        // Codex local turn is FIXTURE-driven in smoke (scripted codex exec
+        // JSONL through the REAL parser; EP250 codex-first-class proof).
+        await step("codex-local-streamed-turn-FIXTURE", smokeCodexLocalStreaming)
+        await captureShot(window, "11-codex-local-streamed")
         // EP250 (#8712): click a message -> right-side metadata inspector
         // (model/lane/account/tokens), close through the same typed intent,
         // then re-open once for the pixel receipt.
@@ -4423,10 +4411,6 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("message-metadata-inspector-reopen", smokeReopenMessageInspector)
         await captureShot(window, "08-message-inspector")
         await step("message-metadata-inspector-close", smokeCloseMessageInspector)
-        // Codex local turn is FIXTURE-driven in smoke (scripted codex exec
-        // JSONL through the REAL parser; EP250 codex-first-class proof).
-        await step("codex-local-streamed-turn-FIXTURE", smokeCodexLocalStreaming)
-        await captureShot(window, "11-codex-local-streamed")
         // Git/GitHub review panel (EP250 E2–E5): route to the review workspace
         // through the canonical command host, then assert the typed Git panel
         // rendered real read-only status of the app's own repo (no commit/push).

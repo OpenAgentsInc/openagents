@@ -2943,6 +2943,8 @@ export const desktopConversationShortcutTargets = (state: DesktopShellState): Re
 }
 
 const shellSidebar = (state: DesktopShellState): View => {
+  const visibleHistoryCount = state.history.catalog.roots.filter(thread => thread.source === "codex").length
+  const visibleSearchCount = state.history.searchResults.filter(result => result.source === "codex").length
   return Stack(
     {
       key: "shell-sidebar",
@@ -2968,15 +2970,15 @@ const shellSidebar = (state: DesktopShellState): View => {
             {id:"shell-settings-toggle",label:"Settings",icon:"Settings",selected:state.workspace==="settings",accessibilityLabel:state.workspace==="settings"?"Close Settings":"Open Settings",onSelect:IntentRef("DesktopSettingsToggled")},
           ]},
           historySearchActive(state.history)
-            ? {id:"sidebar-history-list",label:`Search · ${state.history.searchResults.length} result${state.history.searchResults.length===1?"":"s"}${state.history.searchTruncated?" (bounded)":""}`,items:historySearchResultSidebarItems(state.history)}
+            ? {id:"sidebar-history-list",label:`Search · ${visibleSearchCount} result${visibleSearchCount===1?"":"s"}${state.history.searchTruncated?" (bounded)":""}`,items:historySearchResultSidebarItems(state.history)}
             : {id:"sidebar-history-list",label:"Coding history · all time",items:sidebarConversationItems(state)},
         ],
-        a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,state.history.catalog.roots.length)} of ${state.history.catalog.roots.length} sessions`},
+        a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,visibleHistoryCount)} of ${visibleHistoryCount} sessions`},
         style:{flex:1,minHeight:0,width:"full"},
       }),
       historySearchField(state.history),
       ...(historySearchActive(state.history) && state.history.searchResults.length === 0 ? [Text({ key: "sidebar-search-empty", content: "No sessions match.", variant: "caption", color: "textMuted" })] : []),
-      ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 && !historySearchActive(state.history) ? [Text({ key: "sidebar-chats-empty", content: "No local coding history found.", variant: "body", color: "textMuted" })] : []),
+      ...(visibleHistoryCount === 0 && visibleCodexThreads(state).length === 0 && !historySearchActive(state.history) ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
     ],
   )
 }
@@ -3937,8 +3939,9 @@ const commandPalette = (state: DesktopShellState): View => {
  * I see the metadata of the message in the right sidebar"). Same visual
  * pattern as the Codex history item inspector rail, chat-scoped: role,
  * timestamp, and — for assistant messages — every fact the host recorded on
- * the persisted note (lane, SDK-reported effective model, account ref, turn
- * ref, request id, exact token total, duration).
+ * the persisted note (lane, SDK-reported effective model, turn ref, request
+ * id, exact token total, duration). Provider-account identities are not part
+ * of the Codex-session MVP surface.
  */
 export const chatMessageMetadataFields = (
   entry: DesktopNoteEntry,
@@ -3947,7 +3950,6 @@ export const chatMessageMetadataFields = (
   { label: "Time", value: entry.timestamp },
   ...(entry.meta?.lane === undefined ? [] : [{ label: "Lane", value: entry.meta.lane }]),
   ...(entry.meta?.model === undefined ? [] : [{ label: "Effective model", value: entry.meta.model }]),
-  ...(entry.meta?.accountRef === undefined ? [] : [{ label: "Account", value: entry.meta.accountRef }]),
   ...(entry.meta?.turnRef === undefined ? [] : [{ label: "Turn", value: entry.meta.turnRef }]),
   ...(entry.meta?.requestId === undefined ? [] : [{ label: "Request", value: entry.meta.requestId }]),
   ...(entry.meta?.totalTokens === undefined ? [] : [{

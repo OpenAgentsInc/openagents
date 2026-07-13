@@ -29,12 +29,14 @@ export const traceAcceptanceJourney = `(async () => {
   if (catalogResponse?.kind !== "codex_history_catalog") return {ok:false,reason:"catalog_unavailable"}
   const { roots, agents } = catalogResponse.catalog
   if (roots.length === 0) return {ok:false,reason:"real_history_empty"}
+  const visibleRoots = roots.filter(root => root.source === "codex")
+  if (visibleRoots.length === 0) return {ok:false,reason:"codex_history_empty"}
   const forbiddenTitle = /^(untitled|codex history|new chat)$/i
   if (roots.some(root => !root.title.trim() || forbiddenTitle.test(root.title.trim()))) return {ok:false,reason:"known_title_fallback"}
   if (roots.some((root,index) => index > 0 && root.updatedAt > roots[index-1].updatedAt)) return {ok:false,reason:"catalog_order"}
   const sidebarRows = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')]
-  const rootRefs = new Set(roots.map(root => root.threadRef))
-  const sidebarList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label')?.endsWith(' of ' + roots.length + ' sessions'))
+  const rootRefs = new Set(visibleRoots.map(root => root.threadRef))
+  const sidebarList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label')?.endsWith(' of ' + visibleRoots.length + ' sessions'))
   if (!sidebarList || sidebarRows.length === 0 || sidebarRows.some(row => !rootRefs.has(row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))) return {ok:false,reason:"child_leaked_to_sidebar"}
   // #8712 H3/H4: the merged catalog carries BOTH providers, and free-text
   // search returns + opens a session at its matching item. Both are additive
@@ -48,7 +50,7 @@ export const traceAcceptanceJourney = `(async () => {
   if (openedResponse?.kind !== "codex_history_page" || !openedResponse.page.items.some(item => item.itemRef === contentHit.matchItemRef)) return {ok:false,reason:"search_open_at_item_failed"}
   if ([...document.querySelectorAll('[data-en-key*="loading"]')].some(node => node.getClientRects().length > 0)) return {ok:false,reason:"stale_loading_copy"}
 
-  const rootsWithTopology = roots.map(root => {
+  const rootsWithTopology = visibleRoots.map(root => {
     const children = agents.filter(agent => agent.parentThreadRef === root.threadRef)
     const grandchild = agents.find(agent => children.some(child => agent.parentThreadRef === child.threadRef))
     return {root, children, grandchild}
@@ -143,20 +145,20 @@ export const traceAcceptanceJourney = `(async () => {
   const rootButtonAfterMetadata = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')].find(row => row.getAttribute('data-en-key') === 'sidebar-thread-' + candidate.root.threadRef)
   rootButtonAfterMetadata?.click()
   await until(() => selectedRef() === candidate.root.threadRef)
-  const candidateIndex=roots.findIndex(root=>root.threadRef===candidate.root.threadRef)
+  const candidateIndex=visibleRoots.findIndex(root=>root.threadRef===candidate.root.threadRef)
   const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
   const modifierKey=bridge.platform==='darwin'?'Meta':'Control'
   window.dispatchEvent(new KeyboardEvent('keydown',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true,...modifier}))
-  const firstHint=await until(()=>document.querySelector('[data-en-key="sidebar-thread-'+roots[0].threadRef+'"] [data-en-role="meta"]')?.textContent==='1')
+  const firstHint=await until(()=>document.querySelector('[data-en-key="sidebar-thread-'+visibleRoots[0].threadRef+'"] [data-en-role="meta"]')?.textContent==='1')
   if(!firstHint)return {ok:false,reason:'history_shortcut_hint_missing'}
   window.dispatchEvent(new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true,...modifier}))
-  const numberLoaded=await until(()=>selectedRef()===roots[0].threadRef)
+  const numberLoaded=await until(()=>selectedRef()===visibleRoots[0].threadRef)
   if(!numberLoaded)return {ok:false,reason:'history_shortcut_number_failed'}
   window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))
   const candidateButtonAgain=[...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')].find(row=>row.getAttribute('data-en-key')==='sidebar-thread-'+candidate.root.threadRef)
   candidateButtonAgain?.click()
   if(!await until(()=>selectedRef()===candidate.root.threadRef))return {ok:false,reason:'history_shortcut_restore_failed'}
-  const shortcutTarget=roots[candidateIndex+1]
+  const shortcutTarget=visibleRoots[candidateIndex+1]
   if(shortcutTarget){
     window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',bubbles:true,cancelable:true,...modifier}))
     const downLoaded=await until(()=>selectedRef()===shortcutTarget.threadRef)
@@ -165,8 +167,8 @@ export const traceAcceptanceJourney = `(async () => {
     const upLoaded=await until(()=>selectedRef()===candidate.root.threadRef)
     if(!upLoaded)return {ok:false,reason:'history_shortcut_up_failed'}
   }
-  const heldTargetIndex=Math.min(roots.length-1,candidateIndex+45)
-  const heldTarget=roots[heldTargetIndex]
+  const heldTargetIndex=Math.min(visibleRoots.length-1,candidateIndex+45)
+  const heldTarget=visibleRoots[heldTargetIndex]
   if(heldTargetIndex>candidateIndex){
     for(let index=candidateIndex;index<heldTargetIndex;index++)window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',repeat:true,bubbles:true,cancelable:true,...modifier}))
     const heldLoaded=await until(()=>selectedRef()===heldTarget.threadRef)
