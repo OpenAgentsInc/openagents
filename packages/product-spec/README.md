@@ -8,17 +8,55 @@ conventions: `specs/CONVENTIONS.md`; tracking: #8593.
 
 This is our own implementation. The upstream `@productspec/parser` is a
 conformance reference only — never a runtime dependency. The vendored fixtures
-in `fixtures/conformance/` (MIT, attributed) preserve the earlier snapshot this
-package implemented.
-
-That snapshot is no longer current. Upstream `0.19.0` at `9ef2654` added
-mandatory structured `AC-*`/`SM-*` items, Related Artifacts, evidence
-checklists, spec sessions, and stricter validator semantics. This package does
-not yet implement those features, and the current MVP ProductSpec is not valid
-under the official `0.19.0` parser. Do not describe this package as
-upstream-current until the catch-up and conformance fixtures land. The adopted
-boundary and migration plan are in
+in `fixtures/conformance/` (MIT, attributed) pin the exact upstream
+compatibility target: parser `0.19.0` at commit `9ef2654` (PSEL-0/PSEL-1,
+#8757). The `UPSTREAM_COMPATIBILITY` export states exactly which upstream
+semantics the package supports; upstream Decision Traces, the dependency graph
+resolver, and the MCP evidence checklist are explicitly out of scope. The
+adopted boundary and migration plan are in
 `docs/assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`.
+
+## Profiles
+
+`validateProductSpec(markdown, { profile })` accepts two profiles:
+
+- **`openagents`** (default) — the local profile. Legacy documents keep
+  working: prose acceptance criteria are allowed (the executable `CW-AC-*`
+  profile sits on top), and success metrics may use the OpenAgents shape
+  (snake_case semantic ids plus `segment`/`source`). Every upstream structured
+  construct — `applies_to`, `productspec-acceptance-criteria`,
+  upstream-dialect evals/metrics, `productspec-related-artifacts` — is still
+  validated strictly when a document uses it.
+- **`upstream`** — the pinned upstream `0.19.0` semantics: structured
+  `AC-<n>` criteria and `SM-<n>` metrics are mandatory,
+  `target_status`/`target_owner` rules apply, and the OpenAgents-only metric
+  fields are rejected.
+
+There is no silent ID aliasing between profiles: the revision-6 MVP
+ProductSpec (frozen with its exact digest as
+`fixtures/openagents/legacy-rev6-mvp.product-spec.md`) validates under
+`openagents`, and its exact `upstream` incompatibilities are recorded as typed
+tests, not folklore. The `CW-AC-*` → `AC-*` migration is PSEL-2.
+
+## Dual digests and evidence-attachment edits
+
+Per `docs/assurance/ASSURANCE_SPEC.md` §4:
+
+- `computeProductSpecDocumentDigest(markdown)` — SHA-256 over the exact
+  authored UTF-8 bytes (provenance, race detection).
+- `computeProductSpecIntentDigest(markdown | document)` — SHA-256 over the
+  versioned canonical intent projection (`productSpecIntentProjection`,
+  `INTENT_PROJECTION_VERSION`). The projection excludes only Related Artifact
+  attachments that are not `product_spec` dependencies plus the
+  `created_at`/`updated_at` provenance timestamps; everything else, including
+  `tool_metadata`, is intent-bound by default.
+- `planProductSpecEvidenceAttachmentEdit` /
+  `applyProductSpecEvidenceAttachmentEdit` — the typed, owner-confirmed
+  evidence-attachment-only edit path. It proves the intent projection is
+  unchanged (same intent digest, same `spec_revision`, immutable
+  `created_at`) and rechecks the exact file bytes against the reviewed
+  document digest immediately before write. Anything else is intent drift and
+  keeps the generic edit/revision rule.
 
 ## Usage
 
@@ -27,6 +65,8 @@ import { validateProductSpec, parseProductSpec, stripToolMetadata } from "@opena
 
 const result = validateProductSpec(markdown)
 if (result.valid) console.log(result.document.frontmatter.title)
+
+const upstream = validateProductSpec(markdown, { profile: "upstream" })
 ```
 
 CLI:
@@ -34,6 +74,8 @@ CLI:
 ```sh
 bun packages/product-spec/src/cli.ts validate specs/web/my-feature.product-spec.md
 bun packages/product-spec/src/cli.ts validate --specs-root specs
+bun packages/product-spec/src/cli.ts validate --profile upstream <file>
+bun packages/product-spec/src/cli.ts digest <file>
 bun packages/product-spec/src/cli.ts init specs/<area>/<name>.product-spec.md --title "My Feature"
 ```
 

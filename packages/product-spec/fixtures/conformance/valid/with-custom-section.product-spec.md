@@ -30,8 +30,16 @@ In: row-level error report, downloadable CSV, and retry guidance.
 
 ## Acceptance Criteria
 
-- Failed imports show row number, field, and actionable error reason.
+```productspec-acceptance-criteria
+- id: AC-1
+  criterion: Failed imports show row number, field, and actionable error reason.
+```
 
 ## Success Metrics
 
-- Support tickets about failed imports drop by 30%.
+```productspec-success-metrics
+- id: SM-1
+  metric: failed_import_support_ticket_reduction
+  target: ">= 30%"
+  window: within 30 days of launch
+```

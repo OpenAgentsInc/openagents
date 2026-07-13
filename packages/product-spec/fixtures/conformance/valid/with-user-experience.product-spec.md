@@ -26,9 +26,18 @@ https://example.com/calendar-reminder-prototype
 
 ## Acceptance Criteria
 
-- Users can connect Google Calendar.
-- High-priority reminders send SMS 5 minutes before the meeting.
+```productspec-acceptance-criteria
+- id: AC-1
+  criterion: Users can connect Google Calendar.
+- id: AC-2
+  criterion: High-priority reminders send SMS 5 minutes before the meeting.
+```
 
 ## Success Metrics
 
-- Missed-call self-reports decline by 25% among weekly active users.
+```productspec-success-metrics
+- id: SM-1
+  metric: missed_call_self_report_reduction
+  target: ">= 25%"
+  window: weekly active users within 30 days
+```

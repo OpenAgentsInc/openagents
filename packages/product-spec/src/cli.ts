@@ -1,18 +1,23 @@
 #!/usr/bin/env bun
-// product-spec CLI: validate `.product-spec.md` files, scaffold new ones.
+// product-spec CLI: validate `.product-spec.md` files, scaffold new ones,
+// and compute document/intent digests.
 //
-//   bun packages/product-spec/src/cli.ts validate <file...>
-//   bun packages/product-spec/src/cli.ts validate --specs-root <dir>
+//   bun packages/product-spec/src/cli.ts validate <file...> [--profile openagents|upstream]
+//   bun packages/product-spec/src/cli.ts validate --specs-root <dir> [--profile ...]
+//   bun packages/product-spec/src/cli.ts digest <file...>
 //   bun packages/product-spec/src/cli.ts init <file> [--title "..."] [--type prd|hypothesis]
 import { readdirSync, statSync } from "node:fs"
 import { basename, join } from "node:path"
 
 import {
   PRODUCT_SPEC_EXTENSION,
+  PRODUCT_SPEC_PROFILES,
+  computeProductSpecDocumentDigest,
+  computeProductSpecIntentDigest,
   starterProductSpec,
   validateProductSpec,
 } from "./index.ts"
-import type { ArtifactType } from "./index.ts"
+import type { ArtifactType, ProductSpecProfile } from "./index.ts"
 
 const collectSpecFiles = (root: string): string[] => {
   const results: string[] = []
@@ -27,11 +32,14 @@ const collectSpecFiles = (root: string): string[] => {
   return results.sort()
 }
 
-const validateFiles = async (paths: string[]): Promise<number> => {
+const validateFiles = async (
+  paths: string[],
+  profile: ProductSpecProfile,
+): Promise<number> => {
   let failures = 0
   for (const path of paths) {
     const markdown = await Bun.file(path).text()
-    const result = validateProductSpec(markdown)
+    const result = validateProductSpec(markdown, { profile })
     if (result.valid) {
       const warningNote = result.warnings.length
         ? ` (${result.warnings.length} warning${result.warnings.length === 1 ? "" : "s"})`
@@ -55,20 +63,53 @@ const main = async () => {
   const [command, ...rest] = process.argv.slice(2)
 
   if (command === "validate") {
-    const specsRootIndex = rest.indexOf("--specs-root")
+    const args = [...rest]
+    let profile: ProductSpecProfile = "openagents"
+    const profileIndex = args.indexOf("--profile")
+    if (profileIndex !== -1) {
+      const requested = args[profileIndex + 1] ?? ""
+      if (!(PRODUCT_SPEC_PROFILES as ReadonlyArray<string>).includes(requested)) {
+        console.error(`unknown --profile: ${requested} (use ${PRODUCT_SPEC_PROFILES.join("|")})`)
+        process.exit(2)
+      }
+      profile = requested as ProductSpecProfile
+      args.splice(profileIndex, 2)
+    }
+    const specsRootIndex = args.indexOf("--specs-root")
     const paths =
       specsRootIndex === -1
-        ? rest
-        : collectSpecFiles(rest[specsRootIndex + 1] ?? "specs")
+        ? args
+        : collectSpecFiles(args[specsRootIndex + 1] ?? "specs")
     if (paths.length === 0) {
-      console.error("usage: product-spec validate <file...> | --specs-root <dir>")
+      console.error("usage: product-spec validate <file...> | --specs-root <dir> [--profile openagents|upstream]")
       process.exit(2)
     }
-    const failures = await validateFiles(paths)
+    const failures = await validateFiles(paths, profile)
     if (failures > 0) {
       console.error(`${failures} invalid Product Spec file(s).`)
       process.exit(1)
     }
+    return
+  }
+
+  if (command === "digest") {
+    if (rest.length === 0) {
+      console.error("usage: product-spec digest <file...>")
+      process.exit(2)
+    }
+    let failures = 0
+    for (const path of rest) {
+      const markdown = await Bun.file(path).text()
+      const documentDigest = computeProductSpecDocumentDigest(markdown)
+      try {
+        const intentDigest = computeProductSpecIntentDigest(markdown)
+        console.log(`${path}\n  document ${documentDigest}\n  intent   ${intentDigest}`)
+      } catch (error) {
+        failures += 1
+        console.error(`FAIL ${path}\n  document ${documentDigest}\n  intent   unavailable: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    if (failures > 0) process.exit(1)
     return
   }
 
@@ -97,7 +138,7 @@ const main = async () => {
     return
   }
 
-  console.error("usage: product-spec <validate|init> ...")
+  console.error("usage: product-spec <validate|digest|init> ...")
   process.exit(2)
 }
 

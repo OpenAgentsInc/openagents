@@ -22,10 +22,20 @@ In: paste a YouTube URL, generate a transcript, search it, jump to timestamps, a
 
 ## Acceptance Criteria
 
-- Valid public YouTube URLs create transcript pages.
-- Search returns timestamped transcript passages.
-- Private or unsupported videos return clear errors.
+```productspec-acceptance-criteria
+- id: AC-1
+  criterion: Valid public YouTube URLs create transcript pages.
+- id: AC-2
+  criterion: Search returns timestamped transcript passages.
+- id: AC-3
+  criterion: Private or unsupported videos return clear errors.
+```
 
 ## Success Metrics
 
-- 60% of first-time transcript creators run at least one search.
+```productspec-success-metrics
+- id: SM-1
+  metric: first_transcript_search_rate
+  target: ">= 60%"
+  window: first transcript session
+```

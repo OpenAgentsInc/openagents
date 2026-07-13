@@ -21,4 +21,7 @@ In: missing-section conformance.
 
 ## Acceptance Criteria
 
-- Validator returns missing_required_section.
+```productspec-acceptance-criteria
+- id: AC-1
+  criterion: Validator returns missing_required_section.
+```

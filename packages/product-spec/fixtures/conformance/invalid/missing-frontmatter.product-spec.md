@@ -12,8 +12,16 @@ In: missing-frontmatter conformance.
 
 ## Acceptance Criteria
 
-- Validator returns missing_frontmatter.
+```productspec-acceptance-criteria
+- id: AC-1
+  criterion: Validator returns missing_frontmatter.
+```
 
 ## Success Metrics
 
-- Invalid fixture fails validation.
+```productspec-success-metrics
+- id: SM-1
+  metric: invalid_fixture_validation_failure
+  target: "100%"
+  window: conformance run
+```

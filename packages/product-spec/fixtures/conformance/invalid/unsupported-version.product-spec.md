@@ -21,8 +21,16 @@ In: unsupported-version conformance.
 
 ## Acceptance Criteria
 
-- Validator returns unsupported_version.
+```productspec-acceptance-criteria
+- id: AC-1
+  criterion: Validator returns unsupported_version.
+```
 
 ## Success Metrics
 
-- Invalid fixture fails validation.
+```productspec-success-metrics
+- id: SM-1
+  metric: invalid_fixture_validation_failure
+  target: "100%"
+  window: conformance run
+```

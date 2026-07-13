@@ -1,27 +1,26 @@
 ---
 spec_format_version: "0.1"
-title: "Transcript Search"
+title: "Malformed Related Artifact"
 artifact_type: "prd"
 spec_revision: 1
 author: "ProductSpec"
-created_at: "2026-07-06T00:00:00Z"
-updated_at: "2026-07-06T00:00:00Z"
+created_at: "2026-07-09T00:00:00Z"
+updated_at: "2026-07-09T00:00:00Z"
 ---
 
 ## Problem
 
-Researchers lose time finding exact quotes in long video transcripts.
+Researchers lose time finding exact video quotes.
 
 ## Hypothesis
 
-If transcript search returns timestamped passages, researchers will cite video sources more often.
+If transcript search returns timestamped passages, researchers will cite videos faster.
 
 ## Scope
 
 ```productspec-scope
 in:
   - transcript search
-  - timestamped quote copy
 out:
   - team libraries
 cut:
@@ -41,5 +40,14 @@ cut:
 - id: SM-1
   metric: copied_timestamped_quote_rate
   target: ">= 35%"
-  window: within 7 days of transcript creation
+  window: within 7 days
+```
+
+## Related Artifacts
+
+```productspec-related-artifacts
+- type: github_issue
+  url: "https://github.com/acme/transcripts/issues/123"
+  section_id: acceptance_criteria
+  item_id: CRITERION-1
 ```

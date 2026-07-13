@@ -22,20 +22,28 @@ In: transcript search, timestamp citations, and quote copy.
 
 ## Acceptance Criteria
 
-- User can search a transcript by phrase.
-- User can copy a timestamped quote.
+```productspec-acceptance-criteria
+- id: AC-1
+  criterion: User can search a transcript by phrase.
+- id: AC-2
+  criterion: User can copy a timestamped quote.
+```
 
 ```productspec-ai-evals
-- id: quote_relevance
-  type: rubric
-  input_set: evals/quote-search-cases.jsonl
-  evaluator: llm_judge
+- id: EVAL-1
+  type: llm_judge
+  cases:
+    - input: "Representative input for this eval."
+      expected: "Expected behavior for this eval."
+  evaluator: llm
   pass_threshold: 0.85
-  checks:
-    - returned passage answers the query
-    - citation links to the correct timestamp
 ```
 
 ## Success Metrics
 
-- 40% of weekly active researchers copy at least one timestamped quote.
+```productspec-success-metrics
+- id: SM-1
+  metric: weekly_active_researchers_copying_timestamped_quote
+  target: ">= 40%"
+  window: weekly
+```
