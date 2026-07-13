@@ -1,11 +1,11 @@
-# MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
+# MASTER ROADMAP — ProductSpec-native Codex Workroom MVP first
 
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-13
-- Revision: 105
+- Revision: 106
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: canonical
+- Current queue: ProductSpec-native Codex Workroom MVP
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: yes, together with live issues and
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -46,13 +46,41 @@ issue projection, and dependency order. It does not repeat implementation
 diaries. Current code, tests, live issues, deployments, and receipts own factual
 proof; dated plans and analyses are evidence only.
 
+## Immediate priority — ProductSpec-native Codex Workroom MVP
+
+The first deployable OpenAgents product is the signed, local-first OpenAgents
+Desktop Codex Workroom defined by the exact
+[`Product Spec`](../mvp/openagents-codex-workroom-mvp.product-spec.md). Its
+evidence and product-shape analysis live in the adjacent
+[`audit`](../mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md); the
+[`MVP README`](../mvp/README.md) is the entry point.
+
+Codex remains the agent engine. OpenAgents owns the durable workroom around it:
+guided ProductSpec authoring and validation, accepted criterion-addressed
+plans, systematic agent work packets, typed causal activity and blockers,
+complete child-agent topology, bounded repository/Git review, and honest
+recovery in a signed app.
+
+This MVP is the only product-expansion lane that starts new implementation work
+until its exact numbered ProductSpec acceptance criteria are satisfied. Broader
+Codex/Claude cutover, mobile and Khala Sync expansion, Fleet, managed targets,
+portable sessions, host movement, voice, and full OpenCode-parity work resume
+after MVP acceptance or an explicit later owner reprioritization.
+
+This changes sequence, not proof or issue truth. It does not close, waive,
+relabel, or rewrite an existing issue; publish a product promise; update a
+promise/behavior/Eval registry; or treat landed substrate as MVP acceptance.
+Security, privacy, data-loss, accessibility, production-outage, and supported
+compatibility repairs remain admissible. Already-claimed work may reach a safe
+landed and reconciled boundary, but does not open another expansion lane.
+
 ## Owner decisions
 
-1. **Reliable Desktop/mobile fleet software is P0.** One trustworthy system
-   carries the same authenticated identity, conversations, coding sessions,
-   FleetRuns, work, attempts, approvals, commands, outcomes, and receipts over
-   Khala Sync. Owners can start, inspect, steer, approve, pause, resume, stop,
-   and recover without guessing which device or cache owns reality.
+1. **The ProductSpec-native Codex Workroom MVP is P0 before the broader R0–R7
+   program.** Ship one independently useful signed local-first Desktop product
+   around one named isolated Codex account. The wider reliable Desktop/mobile,
+   Sync, Fleet, cloud, portability, and voice program remains valid but follows
+   this exact MVP.
 2. **Sarah is removed, not the front door.** Named-persona, relationship-first,
    avatar, opener, Sarah/persona voice, video, and presentation backlog is
    closed not-planned. `/sarah/*` is tombstoned, the Sarah app/surface is
@@ -60,9 +88,10 @@ proof; dated plans and analyses are evidence only.
    `/api/sarah/fleet-runs` intake remains a temporary typed authority adapter
    until an explicit rename/deletion gate closes; it does not authorize Sarah
    UI or product sequencing. Persona-neutral voice is governed by decision 21.
-3. **Desktop and mobile are the active clients.** Web remains a supported
-   public/API/operations surface; landing, Forum, portal, persona, and broad
-   route-conversion expansion does not preempt the reliability program.
+3. **Desktop is the active MVP client.** Mobile remains a supported retained
+   client and resumes product expansion after MVP acceptance. Web remains a
+   supported public/API/operations surface; landing, Forum, portal, persona,
+   and broad route-conversion expansion does not preempt the MVP.
 4. **Retained application UI uses Effect Native.** Web, mobile, Desktop, and
    canvas share typed components and intents. Electron, React Native/Expo, DOM,
    native, and canvas are hosts/renderers, not parallel application models.
@@ -85,30 +114,35 @@ proof; dated plans and analyses are evidence only.
    comes from live issues and claims, not a cached lane in prose. The durable
    lane contract is
    [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
-9. **Desktop reaches practical OpenCode parity.** Project/session navigation,
-   streamed agent work, composer/context, files/editor/review/terminal,
-   commands, providers/models/MCP/permissions, settings, diagnostics,
-   lifecycle, and distribution are required. This is behavior parity, not a
-   code or pixel clone; multi-window depth and WSL may follow.
-10. **Reliability is proven cross-device.** Unit tests or a one-device demo do
-    not satisfy restart, reconnect, offline catch-up, duplicate suppression,
-    conflict/refetch, real Desktop-to-mobile continuation, and mixed-fleet
-    receipts.
-11. **The useful Khala Code MVP capability set moves into mobile.** Port
-    behavior, contracts, and test vectors for auth/repositories, bound threads,
-    rich turns, targets, steering, approvals, files, changes, artifacts,
-    terminal, preview, push, handoff, fleet state, and release QA—not its legacy
-    component tree or authority shortcuts.
-12. **Remote workrooms are a mobile MVP dependency.** Phone coding uses an
-    owner-scoped workroom/Agent Computer through typed lifecycle, file,
+9. **Practical OpenCode parity remains the broader R5 exit, not an MVP
+   prerequisite.** Project/session navigation, streamed agent work,
+   composer/context, files/editor/review/terminal, commands,
+   providers/models/MCP/permissions, settings, diagnostics, lifecycle, and
+   distribution remain required after the MVP. Full editor, interactive PTY,
+   destructive Git, commit/push/PR/merge, multi-window depth, and WSL are not
+   added to the exact MVP acceptance contract.
+10. **Broader R0–R7 reliability is proven cross-device.** Unit tests or a
+    one-device demo do not satisfy its restart, reconnect, offline catch-up,
+    duplicate suppression, conflict/refetch, real Desktop-to-mobile
+    continuation, and mixed-fleet receipts. The local MVP has its own exact
+    recovery and release journey first.
+11. **The useful Khala Code capability set moves into mobile after the MVP.**
+    Then port behavior, contracts, and test vectors for auth/repositories,
+    bound threads, rich turns, targets, steering, approvals, files, changes,
+    artifacts, terminal, preview, push, handoff, fleet state, and release
+    QA—not its legacy component tree or authority shortcuts.
+12. **Remote workrooms remain a post-MVP mobile dependency.** Phone coding
+    uses an owner-scoped workroom/Agent Computer through typed lifecycle, file,
     process, preview, network, grant, writeback, and receipt APIs. The phone
     never gains raw local filesystem, shell, credential, or execution
-    authority. #8547 and #8636 are P0 integration lanes.
+    authority. Closed #8547 and #8636 remain accepted substrate, not current
+    product-expansion lanes.
 13. **Desktop is tokenless over one host-owned Runtime Gateway; mobile joins
-    at D1.** The signed renderer receives bounded projections and emits closed
-    typed intents. Identity, credentials, raw runtime events, workspace/process
-    handles, and Sync SQLite stay in the host. The first real conversation
-    slice includes mobile continuation before broad D3–D6 depth.
+    the broader program at D1 after the MVP.** The signed renderer receives
+    bounded projections and emits closed typed intents. Identity, credentials,
+    raw runtime events, workspace/process handles, and Sync SQLite stay in the
+    host. The later broader-program conversation slice includes mobile
+    continuation before broad D3–D6 depth.
 14. **There is one program parent.** #8566 owns R0–R7; #8574/#8597 are client
     tracks; #8547/#8636 are bounded remote-workroom tasks. Closed substrate,
     proofs, and `wontfix` records are not dormant epics. New defects or owner
@@ -157,12 +191,13 @@ proof; dated plans and analyses are evidence only.
     transcript. Pointer and conflict-safe hotkeys use the same intents. Replay,
     reconnect, and movement never flatten, re-root, duplicate, or leave an old
     child accepting work.
-23. **Persistent voice is a separately tracked parallel audio program.**
+23. **Persistent voice is a separately tracked post-MVP audio program.**
     [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) owns the
     Desktop Google Cloud audio MVP under #8566/#8574 through bounded leaves
-    #8734–#8741. It may proceed at P1 in parallel with the P0 cutover and remote
-    workroom work after its shared contract freeze; it does not block CUT-27,
-    #8547, or #8636. It reuses the Runtime Gateway, registered commands,
+    #8734–#8741. AUDIO-8's existing owner-only acceptance may complete without
+    engineering preemption; no new audio implementation competes with the MVP
+    unless that review exposes a bounded defect. It does not block the MVP,
+    CUT-27, #8547, or #8636. It reuses the Runtime Gateway, registered commands,
     conversation outcomes, identity, and release gates rather than widening
     them independently. For this explicit owner-dogfood MVP, clicking Voice
     accepts conspicuous retained-audio custody while the session is active;
@@ -186,13 +221,29 @@ proof; dated plans and analyses are evidence only.
     prove neither promise. This boundary applies the
     [`OpenChamber teardown`](../teardowns/2026-07-12-openchamber-product-teardown.md)
     finding without importing its restart gap.
+25. **ProductSpec is the workroom's native language of intent and systematic
+    execution.** The workroom creates, validates, revises, and digest-binds
+    Product Specs; derives user-accepted criterion-addressed plans; allocates
+    durable work packets to agents; and keeps evidence-present, technically
+    verified, owner-accepted, waived, failed, and superseded distinct. A
+    product-owned, read-only, hash-pinned `productspec-work` Codex skill supplies
+    reusable elicitation, decomposition, allocation, and evidence-reporting
+    procedure. The skill may propose but cannot approve intent, admit work,
+    change a pinned revision, or verify itself. Existing typed work, intent,
+    agent, dependency, and evidence contracts remain the execution substrate;
+    no second scheduler or authority universe is created.
 
 ## Product and authority model
 
-**OpenAgents is remote-first software for coding and fleet work from Desktop
-and mobile: one durable session can execute on, stop on, and move between
-authorized local, owner-managed, and managed hosts without forking identity,
-state, authority, secrets, topology, or receipts.**
+**First deployable shape:** OpenAgents is a local-first, ProductSpec-native
+Desktop workroom for Codex.
+
+**Broader program:** after that MVP is accepted, OpenAgents extends the same
+stable work/session/agent/criterion/evidence identity into remote-first
+Desktop/mobile, Sync, Fleet, managed targets, portable sessions, and voice. One
+durable session can then execute on, stop on, and move between authorized local,
+owner-managed, and managed hosts without forking identity, state, authority,
+secrets, topology, or receipts.
 
 ```text
 intent -> policy -> orchestration -> execution
@@ -248,6 +299,21 @@ merely to express closure. Retired UI never regrows through a compatibility
 adapter.
 
 ## Durable acceptance gates
+
+The numbered criteria in the exact
+[`MVP Product Spec`](../mvp/openagents-codex-workroom-mvp.product-spec.md) are
+the acceptance authority for the first deployable shape. These four roadmap
+gates group that contract for sequencing; they neither restate nor weaken it:
+
+| Gate | Grouped scope | Exit evidence |
+| --- | --- | --- |
+| MVP-0 — ProductSpec authority | Guided valid Product Spec, exact revision/digest, stable criterion IDs, accepted criterion-addressed plan, hash-pinned built-in skill, no skill/model authority | One `ProductSpecRun` binds the granted spec and every work packet; invalid, stale, missing-ID, cyclic, or self-verifying states fail closed |
+| MVP-1 — useful local workroom | Signed local-first Desktop app, named isolated Codex, repository grant, sessions, causal timeline, controls/blockers, complete child graph, bounded files/Git diff | A real criterion-linked Codex task and child transcript remain inspectable beside exact repository effects without an OpenAgents account or default Codex home |
+| MVP-2 — recovery and truth | Durable admission, exact retry, gap repair, renderer reload, app restart, explicit fault taxonomy, criterion evidence, redacted diagnostics | Restart/reconnect creates no duplicate work, silent retarget, flattened child, false verification, leaked private data, or invented completion |
+| MVP-3 — exact release journey | Install, valid Product Spec, accepted multi-packet plan, real child-agent work, evidence/review, terminal outcome, update, rollback, reinstall, cleanup | The exact signed artifact completes CW-AC-01 through CW-AC-18 at their narrowest proof rungs and declares only the bounded Codex Workroom scope proven |
+
+R0–R7 and D0–D6 remain the broader post-MVP gates. They are neither deleted
+nor implied complete by MVP acceptance.
 
 | Gate | Required scope | Exit evidence |
 | --- | --- | --- |
@@ -473,8 +539,10 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   least-privilege issue/redeem/renew/revoke/reissue/release/wipe outcomes across
   owner-local and accepted-managed adapters, excludes credential material from
   portable state and public evidence, and fails closed under replay, expiry,
-  mid-move revocation, denial, outage, and cleanup failure. PORT-03 #8748 is the
-  active next rung; broker tests do not manufacture a real host-movement proof.
+  mid-move revocation, denial, outage, and cleanup failure. PORT-03 #8748 remains
+  open and already-claimed work may reach a safe reconciled boundary, but the
+  ProductSpec-native MVP is now the active product-expansion priority. Broker
+  tests do not manufacture a real host-movement proof.
 - `apps/pylon/src/orchestration` and `apps/pylon/src/node` remain protected
   load-bearing Fleet core during the open correctness proof. Streamlining is a
   separately bounded post-proof program under the
@@ -484,22 +552,26 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 
 This offline projection excludes `area:docs` maintenance issues to avoid
 self-referential queue churn. Refresh live `roadmap:sol` issues and claims
-before operational selection; the table owns product dependency order, not
-the currently unclaimed worker lease.
+before operational selection; the table owns suggested MVP-first dependency
+order, not the currently unclaimed worker lease.
 
-| Issue | Current role |
-| --- | --- |
-| [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566) | Sole R0–R7 program parent |
-| [#8574](https://github.com/OpenAgentsInc/openagents/issues/8574) | Desktop D0–D6/R5 track |
-| [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597) | Mobile R0–R7/R6 track |
-| [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
-| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 owner confirmation of real-microphone and UI-stability fixes |
-| [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | PORT-03 first local↔managed graph-wide move and failback |
-| [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749) | PORT-04 owner-managed remote target lifecycle and moves |
-| [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750) | PORT-05 first audited managed-provider adapter |
-| [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751) | PORT-06 Effect Native mobile any-host control |
-| [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752) | PORT-07 persona-neutral portable-session voice |
-| [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | PORT-08 signed R7 portable-session dogfood |
+| Issue | Current role | Suggested MVP-first triage |
+| --- | --- | --- |
+| [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566) | Sole broader R0–R7 program parent | Keep open as the umbrella; record MVP-first sequencing without declaring the broader program complete. |
+| [#8574](https://github.com/OpenAgentsInc/openagents/issues/8574) | Desktop D0–D6/R5 track | Use as the immediate MVP implementation parent; file one bounded ProductSpec-native MVP child before implementation. |
+| [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597) | Mobile R0–R7/R6 track | Keep open; defer new mobile, Sync, and remote expansion until MVP acceptance, except safety and release repairs. |
+| [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 broader Codex/Claude and device cutover | Keep open and defer; provider-disabled Claude proof does not block the Codex-only MVP and must not be weakened. |
+| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 owner microphone confirmation | Keep open at the owner gate; permit review, but no new engineering preempts MVP unless the review finds a bounded defect. |
+| [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | PORT-03 first local↔managed move and failback | Let already-claimed work reach a safe reconciled boundary, then park; the direct child-bearing round trip remains unproved. |
+| [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749) | PORT-04 owner-managed remote target | Defer until MVP acceptance and accepted PORT-03 movement proof. |
+| [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750) | PORT-05 managed-provider adapter | Defer managed-provider expansion until MVP acceptance and the prior movement gates. |
+| [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751) | PORT-06 mobile any-host control | Defer until MVP acceptance and the portable movement substrate is accepted. |
+| [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752) | PORT-07 portable-session voice | Defer until MVP acceptance and mobile any-host control; voice remains modality, not authority. |
+| [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | PORT-08 signed R7 dogfood | Keep open as the final broader-program gate; defer behind MVP and the preceding PORT packet. |
+
+This is roadmap guidance only. Issue bodies, labels, claims, and the pinned live
+projection remain unchanged until a separately claimed issue-maintenance pass.
+No promise, behavior, or Eval registry is updated in this prioritization change.
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 #8642, #8643, #8646, and #8650. They are not dormant queues.
@@ -508,46 +580,26 @@ Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 
 Live issues and claims control exact selection. At this snapshot:
 
-1. Closed #8676/#8677/CUT-09 now supply the physical same-ref named-Codex
-   continuation, offline FIFO/exactly-once reconnect, revocation denial, and
-   no-replay receipt.
-2. Closed #8744 supplies the disjoint Desktop restart-recovery slice: accepted
-   turn state precedes provider dispatch; exact provider identity, ordered text
-   checkpoints, and one recovery generation survive process loss; Codex
-   continues once on its recorded thread/account while unsupported Fable
-   queries terminate explicitly. Capture remains opt-in after restart.
-3. Close CUT-27 last for the local cutover after its remaining acceptance and
-   exception-register work is satisfied. On the clean installed candidate,
-   CUT-27 still proves one
-   non-trivial named-Codex and one named-Claude repository task through
-   project/session, composer/context, questions/approvals, edits, tests/
-   preview, Git review, and durable terminal receipts; physical-iOS plus
-   Android-emulator continuation/control/interruption; accessibility, privacy,
-   security, provenance, and rollback evidence; and the product/runbook change
-   making OpenAgents Desktop the default local surface for the proven scope.
-4. Closed #8636 now retains the concurrent owner-local and managed-cloud run,
-   phone-managed named account admission, Android/Desktop same-ref projection,
-   honest usage, and zero-residue reclaim receipt. Keep graph movement,
-   owner-managed remote enrollment, provider breadth, and any-host control in
-   PORT-03 through PORT-08.
-5. Finish AUDIO-8 #8741's exact owner-launcher microphone/UI confirmation,
-   then re-close it. Treat closed #8733 as the P1 audio implementation
-   substrate and do not widen Runtime Gateway, Desktop command, Sync, or
-   release authority.
-6. Closed PORT-00 #8745, PORT-01 #8746, and PORT-02 #8747 now supply the shared
-   schema freeze, live durable Cloud SQL/Khala Sync session/graph/attachment/
-   checkpoint/directory/event/command authority, and the target-scoped
-   capability broker. Execute PORT-03 #8748 next to compose those authorities
-   into the first real local↔managed move and failback.
-7. After the shared target contract, PORT-04 #8749 owner-managed enrollment and
-   PORT-05 #8750's audited provider adapter may proceed in parallel. Then ship
-   PORT-06 #8751 mobile any-host control, PORT-07 #8752 session-neutral voice,
-   and PORT-08 #8753 signed R7 dogfood in order. The final journey must retain
-   stable topology/cursors through local→managed→owner-managed movement,
-   cross-device control, revocation, lost ACK, restart/update, failback, and
-   reclaim with no fork, duplication, leak, orphan, or false authority.
-Owner or external gates shift capacity to another ready R0–R7 slice, never to
-closed presentation backlog. Claims are refreshed before every mutation.
+1. Treat the exact [`docs/mvp` package](../mvp/README.md) as the accepted intent
+   boundary. The audit informs the product; only the exact Product Spec's
+   numbered criteria authorize and measure the MVP.
+2. Under Desktop track #8574, file and claim one bounded child issue for the
+   ProductSpec-native Codex Workroom MVP before implementation mutation. Do not
+   overload CUT-27 or silently expand its Codex/Claude cutover contract.
+3. Execute MVP-0 through MVP-3 in criterion order: pinned ProductSpec authority,
+   useful local workroom, recovery/truth, then the exact signed release journey.
+   Every packet names its accepted spec revision/digest and criterion IDs.
+4. Publish installed-artifact evidence for the numbered MVP criteria and
+   declare only the accepted Codex Workroom scope. Landed substrate, a polished
+   shell, or a transcript screenshot does not satisfy the MVP.
+5. After MVP acceptance, re-audit CUT-27 and PORT-03 through PORT-08 against
+   current evidence and choose the next dependency-ready broader-program lane.
+6. AUDIO-8's owner-only review and already-claimed PORT-03 work may reach their
+   safe dispositions without becoming competing product-expansion queues.
+
+Claims are refreshed before every mutation. Owner or external gates shift work
+to another ready MVP criterion or an admissible repair, never to closed
+presentation backlog or deferred expansion.
 
 ## Implementation laws
 
@@ -564,8 +616,9 @@ closed presentation backlog. Claims are refreshed before every mutation.
 6. **Effect Native for retained UI.** Shared components/intents move upstream;
    hosts/renderers are capability boundaries. Deletion beats conversion for
    retired surfaces.
-7. **Desktop parity is an exit.** Placeholder panes, a secure shell, or a
-   Fleet-only cockpit do not satisfy #8574.
+7. **Desktop parity is a broader post-MVP exit.** Placeholder panes, a secure
+   shell, or a Fleet-only cockpit do not satisfy #8574 or manufacture the exact
+   MVP acceptance journey.
 8. **One action contract.** Desktop/mobile/automation use the same registered
    intents, policy, approvals, idempotency, and durable outcomes. Prose/pixels
    are never authority. Material action/tool selection never uses ad hoc
@@ -669,6 +722,7 @@ superseded current-state prose instead of stacking amendments.
 The Revision 86 pre-compaction body remains in Git at `4239689e24`. Dedicated
 evidence remains discoverable here:
 
+- [`first Codex Workroom MVP package`](../mvp/README.md)
 - [`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md)
 - [`greenfield clients and Sarah-removal decision`](./decisions/2026-07-10-greenfield-clients-and-sarah-removal.md)
 - [`July 9 Backroom archive manifest`](./2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md)
