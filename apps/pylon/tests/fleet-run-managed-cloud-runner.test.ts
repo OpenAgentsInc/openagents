@@ -412,9 +412,13 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
         return Response.json({
           schema: "openagents.pylon.managed_cloud_fleet_dispatch.result.v1",
           state: "completed",
+          accountRefHash: "account.pylon.codex.aaaaaaaaaaaaaaaaaaaaaaaa",
           placementRef: "placement.cloud-coding.fc4",
           agentComputerRef: "agent-computer.fc4",
           agentComputerState: "reclaimed",
+          closeoutRef: "closeout.agent_computer.execution.fc4",
+          noMeasurementCaveatRef: "caveat.agent_computer.token_usage_not_measured.fc4",
+          terminalReceiptRef: "receipt.agent_computer.execution.fc4",
           lifecycleReceiptRefs: ["receipt.lifecycle.fc4"],
           resourceUsageReceiptRefs: ["receipt.resource_usage.fc4"],
           artifactRef: "artifact.fc4",
@@ -427,11 +431,15 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
       dispatch: dispatch({ executionTarget: "managed_cloud" }),
     })
     expect(result.status).toBe("completed")
-    expect(result.authorityReceiptRefs).toEqual(["receipt.resource_usage.fc4"])
+    expect(result.authorityReceiptRefs).toEqual([
+      "receipt.agent_computer.execution.fc4",
+      "receipt.resource_usage.fc4",
+    ])
     expect(result.artifactRefs).toEqual(["artifact.fc4"])
     expect(posted).toMatchObject({
       schema: "openagents.pylon.managed_cloud_fleet_dispatch.request.v1",
       targetPreference: "managed_cloud",
+      assignmentRef: expect.stringMatching(/^assignment\.pylon\.managed_cloud\./u),
       repository: {
         fullName: "OpenAgentsInc/openagents",
         branch: "main",
@@ -452,9 +460,13 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
       fetchImpl: async () => Response.json({
         schema: "openagents.pylon.managed_cloud_fleet_dispatch.result.v1",
         state: "completed",
+        accountRefHash: "account.pylon.codex.aaaaaaaaaaaaaaaaaaaaaaaa",
         placementRef: "placement.cloud-coding.fc4",
         agentComputerRef: "agent-computer.fc4",
         agentComputerState: "reclaimed",
+        closeoutRef: "closeout.agent_computer.execution.fc4",
+        noMeasurementCaveatRef: "caveat.agent_computer.token_usage_not_measured.fc4",
+        terminalReceiptRef: "receipt.agent_computer.execution.fc4",
         lifecycleReceiptRefs: [sharedReceipt],
         resourceUsageReceiptRefs: [sharedReceipt],
         artifactRef: "artifact.fc4",
@@ -468,10 +480,18 @@ describe("managed-cloud FleetRun claimed-work adapter (#8636)", () => {
     })
 
     expect(result.status).toBe("completed")
+    expect(result.usageEvidence).toMatchObject({
+      truth: "not_measured",
+      harnessKind: "codex",
+      tokenUsageRefs: [],
+    })
     expect(result.verification?.evidenceRefs).toContain(sharedReceipt)
     expect(result.proofRefs).toEqual(result.verification?.evidenceRefs)
     expect(new Set(result.proofRefs).size).toBe(result.proofRefs?.length)
-    expect(result.authorityReceiptRefs).toEqual([sharedReceipt])
+    expect(result.authorityReceiptRefs).toEqual([
+      "receipt.agent_computer.execution.fc4",
+      sharedReceipt,
+    ])
   })
 
   test("rejects a non-managed target before either authority port runs", async () => {

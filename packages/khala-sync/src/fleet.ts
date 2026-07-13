@@ -413,7 +413,7 @@ export type FleetAttemptExactUsageEvidence =
 export const FleetAttemptNotMeasuredUsageEvidence = S.Struct({
   schema: S.Literal("openagents.pylon.fleet_run_usage_evidence.v1"),
   truth: S.Literal("not_measured"),
-  harnessKind: S.Literal("grok"),
+  harnessKind: S.Literals(["codex", "claude", "grok"]),
   evidenceRef: FleetPublicRef,
   assignmentRef: FleetPublicRef,
   receiptRef: FleetPublicRef,

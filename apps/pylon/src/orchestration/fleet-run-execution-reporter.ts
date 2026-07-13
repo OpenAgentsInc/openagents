@@ -618,7 +618,7 @@ const usageEvidenceIsCoherent = (
     usage.harnessKind !== event.workerKind
   ) return false
   if (usage.truth === "not_measured") {
-    return event.workerKind === "grok" &&
+    return (event.workerKind === "grok" || event.capacityClass === "managed_cloud") &&
       refsAreUniqueWithin(usage.caveatRefs, 100) &&
       usage.tokenUsageRefs.length === 0
   }

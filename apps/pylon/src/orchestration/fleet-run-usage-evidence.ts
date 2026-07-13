@@ -67,7 +67,7 @@ export const PylonFleetRunExactUsageEvidenceSchema = S.Struct({
 export const PylonFleetRunNotMeasuredUsageEvidenceSchema = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_USAGE_EVIDENCE_SCHEMA),
   truth: S.Literal("not_measured"),
-  harnessKind: S.Literal("grok"),
+  harnessKind: S.Literals(["codex", "claude", "grok"]),
   evidenceRef: PublicRef,
   assignmentRef: PublicRef,
   receiptRef: PublicRef,
@@ -301,6 +301,52 @@ export function notMeasuredPylonFleetRunUsageEvidence(input: {
   })
   if (evidence.truth !== "not_measured") {
     throw new Error("Pylon FleetRun not-measured evidence decoded to the wrong variant")
+  }
+  return {
+    accountRefHash: input.accountRefHash,
+    closeoutRef: input.closeoutRef,
+    usageEvidence: evidence,
+  }
+}
+
+export function notMeasuredManagedCloudPylonFleetRunUsageEvidence(input: {
+  readonly accountRefHash: string
+  readonly assignmentRef: string
+  readonly caveatRefs: readonly string[]
+  readonly closeoutRef: string
+  readonly harnessKind: "codex" | "claude"
+  readonly pylonRef: string
+  readonly receiptRef: string
+}): PylonFleetRunUsageEvidenceCarrier & {
+  readonly accountRefHash: string
+  readonly closeoutRef: string
+  readonly usageEvidence: PylonFleetRunNotMeasuredUsageEvidence
+} {
+  const accountPrefix = input.harnessKind === "codex"
+    ? "account.pylon.codex."
+    : "account.pylon.claude_agent."
+  if (
+    !input.accountRefHash.startsWith(accountPrefix) ||
+    input.caveatRefs.length === 0 ||
+    new Set(input.caveatRefs).size !== input.caveatRefs.length
+  ) {
+    throw new Error("Managed FleetRun no-measurement evidence is invalid")
+  }
+  const evidence = decodeEvidence({
+    schema: PYLON_FLEET_RUN_USAGE_EVIDENCE_SCHEMA,
+    truth: "not_measured",
+    harnessKind: input.harnessKind,
+    evidenceRef: stableRef(
+      "evidence.public.pylon.fleet_run.not_measured",
+      `${input.assignmentRef}:${input.receiptRef}:${input.caveatRefs.join(":")}`,
+    ),
+    assignmentRef: input.assignmentRef,
+    receiptRef: input.receiptRef,
+    tokenUsageRefs: [],
+    caveatRefs: [...input.caveatRefs],
+  })
+  if (evidence.truth !== "not_measured") {
+    throw new Error("Managed FleetRun evidence decoded to the wrong variant")
   }
   return {
     accountRefHash: input.accountRefHash,

@@ -11164,6 +11164,7 @@ const dispatchManagedFleetUnitForEnv = async (
     runRef: string
     body: Readonly<{
       claimRef: string
+      assignmentRef: string
       taskId: string
       workUnitRef: string
       workerAccountRef: string
@@ -11203,6 +11204,13 @@ const dispatchManagedFleetUnitForEnv = async (
   )
   if (expectedFingerprint !== input.body.fingerprint) {
     throw new Error('managed_fleet_tuple_fingerprint_invalid')
+  }
+  const expectedAssignmentRef =
+    `assignment.pylon.managed_cloud.${(
+      await sha256Hex(input.body.fingerprint)
+    ).slice(0, 24)}`
+  if (input.body.assignmentRef !== expectedAssignmentRef) {
+    throw new Error('managed_fleet_assignment_invalid')
   }
 
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
@@ -11386,6 +11394,123 @@ const dispatchManagedFleetUnitForEnv = async (
         },
       }),
     )
+    const accountRefHash = `account.pylon.codex.${(
+      await sha256Hex(account.providerAccountRef)
+    ).slice(0, 24)}`
+    if (
+      session.state !== 'completed' ||
+      session.agentComputerState !== 'reclaimed' ||
+      session.agentComputerRef === null ||
+      session.artifactRef === null ||
+      session.placementRef === null ||
+      session.lifecycleReceiptRefs.length === 0 ||
+      session.resourceUsageReceiptRefs.length === 0
+    ) {
+      throw new Error('managed_fleet_terminal_receipts_incomplete')
+    }
+    const terminalBindingDigest = (
+      await sha256Hex(JSON.stringify({
+        accountRefHash,
+        agentComputerRef: session.agentComputerRef,
+        artifactRef: session.artifactRef,
+        assignmentRef: input.body.assignmentRef,
+        claimRef: input.body.claimRef,
+        lifecycleReceiptRefs: session.lifecycleReceiptRefs,
+        placementRef: session.placementRef,
+        resourceUsageReceiptRefs: session.resourceUsageReceiptRefs,
+        runRef: input.runRef,
+        sessionId,
+        workUnitRef: input.body.workUnitRef,
+      }))
+    ).slice(0, 24)
+    const terminalReceiptRef =
+      `receipt.agent_computer.execution.${terminalBindingDigest}`
+    const artifactRef = session.artifactRef
+    const closeoutRef =
+      `closeout.agent_computer.execution.${terminalBindingDigest}`
+    const noMeasurementCaveatRef =
+      `caveat.agent_computer.token_usage_not_measured.${terminalBindingDigest}`
+    const createdAt = currentIsoTimestamp()
+    await client.sql`
+      INSERT INTO sarah_managed_fleet_unit_receipts (
+        receipt_ref, run_ref, work_unit_ref, claim_ref, assignment_ref,
+        pylon_ref, owner_user_id, account_ref_hash, session_ref,
+        placement_ref, agent_computer_ref, artifact_ref, closeout_ref,
+        no_measurement_caveat_ref, lifecycle_receipt_refs_json,
+        resource_usage_receipt_refs_json, agent_computer_state, created_at
+      ) VALUES (
+        ${terminalReceiptRef}, ${input.runRef}, ${input.body.workUnitRef},
+        ${input.body.claimRef}, ${input.body.assignmentRef}, ${input.pylonRef},
+        ${input.ownerUserId}, ${accountRefHash}, ${sessionId},
+        ${session.placementRef}, ${session.agentComputerRef}, ${artifactRef},
+        ${closeoutRef}, ${noMeasurementCaveatRef},
+        ${JSON.stringify(session.lifecycleReceiptRefs)},
+        ${JSON.stringify(session.resourceUsageReceiptRefs)},
+        ${session.agentComputerState}, ${createdAt}
+      )
+      ON CONFLICT (receipt_ref) DO NOTHING
+    `
+    const storedReceipts = await client.sql<{
+      account_ref_hash: string
+      agent_computer_ref: string
+      agent_computer_state: string
+      artifact_ref: string
+      assignment_ref: string
+      claim_ref: string
+      closeout_ref: string
+      no_measurement_caveat_ref: string
+      placement_ref: string
+      receipt_ref: string
+      session_ref: string
+      work_unit_ref: string
+    }[]>`
+      SELECT account_ref_hash, agent_computer_ref, agent_computer_state,
+             artifact_ref, assignment_ref, claim_ref, closeout_ref,
+             no_measurement_caveat_ref, placement_ref, receipt_ref,
+             session_ref, work_unit_ref
+      FROM sarah_managed_fleet_unit_receipts
+      WHERE receipt_ref = ${terminalReceiptRef}
+      LIMIT 1
+    `
+    const stored = storedReceipts[0]
+    if (
+      stored === undefined ||
+      stored.account_ref_hash !== accountRefHash ||
+      stored.agent_computer_ref !== session.agentComputerRef ||
+      stored.agent_computer_state !== 'reclaimed' ||
+      stored.artifact_ref !== artifactRef ||
+      stored.assignment_ref !== input.body.assignmentRef ||
+      stored.claim_ref !== input.body.claimRef ||
+      stored.closeout_ref !== closeoutRef ||
+      stored.no_measurement_caveat_ref !== noMeasurementCaveatRef ||
+      stored.placement_ref !== session.placementRef ||
+      stored.receipt_ref !== terminalReceiptRef ||
+      stored.session_ref !== sessionId ||
+      stored.work_unit_ref !== input.body.workUnitRef
+    ) {
+      throw new Error('managed_fleet_terminal_receipt_readback_failed')
+    }
+    const resolvedRefs = await client.sql<{
+      kind: string
+      receipt_ref: string
+    }[]>`
+      SELECT 'artifact' AS kind, receipt_ref
+      FROM sarah_managed_fleet_unit_receipts WHERE artifact_ref = ${artifactRef}
+      UNION ALL
+      SELECT 'closeout' AS kind, receipt_ref
+      FROM sarah_managed_fleet_unit_receipts WHERE closeout_ref = ${closeoutRef}
+      UNION ALL
+      SELECT 'caveat' AS kind, receipt_ref
+      FROM sarah_managed_fleet_unit_receipts
+      WHERE no_measurement_caveat_ref = ${noMeasurementCaveatRef}
+    `
+    if (
+      resolvedRefs.length !== 3 ||
+      resolvedRefs.some(row => row.receipt_ref !== terminalReceiptRef) ||
+      new Set(resolvedRefs.map(row => row.kind)).size !== 3
+    ) {
+      throw new Error('managed_fleet_advertised_ref_readback_failed')
+    }
     return {
       schema: 'openagents.pylon.managed_cloud_fleet_dispatch.result.v1',
       runRef: input.runRef,
@@ -11394,9 +11519,13 @@ const dispatchManagedFleetUnitForEnv = async (
       placementRef: session.placementRef,
       agentComputerRef: session.agentComputerRef,
       agentComputerState: session.agentComputerState,
+      accountRefHash,
+      closeoutRef,
+      terminalReceiptRef,
       lifecycleReceiptRefs: session.lifecycleReceiptRefs,
       resourceUsageReceiptRefs: session.resourceUsageReceiptRefs,
-      artifactRef: session.artifactRef,
+      artifactRef,
+      noMeasurementCaveatRef,
       workContextRef: session.workContextRef,
     }
   } catch (error) {

@@ -760,6 +760,7 @@ type FleetRunWorkUnitCloseoutRow = Readonly<{
   blocker_refs_json: string
   observed_at: string
   event_ref: string
+  capacity_class: "owner_local" | "managed_cloud"
 }>
 
 type FleetRunAttemptRow = Readonly<{
@@ -972,7 +973,9 @@ export const decodeFleetRunExecutionBatch = (
           (usage.truth === "exact" && tokenRefs.length < 1) ||
           (usage.truth === "not_measured" && tokenRefs.length > 0) ||
           (event.workerKind === "grok" && usage.truth !== "not_measured") ||
-          (event.workerKind !== "grok" && usage.truth !== "exact") ||
+          (event.workerKind !== "grok" &&
+            usage.truth === "not_measured" &&
+            event.capacityClass !== "managed_cloud") ||
           refGroups.some((refs) => new Set(refs).size !== refs.length)
         ) {
           throw invalidRequest()
@@ -1611,7 +1614,8 @@ const closeoutFromRow = (
           (closeout.workerKind === "grok" &&
             closeout.usageEvidence.truth !== "not_measured") ||
           (closeout.workerKind !== "grok" &&
-            closeout.usageEvidence.truth !== "exact") ||
+            closeout.usageEvidence.truth === "not_measured" &&
+            row.capacity_class !== "managed_cloud") ||
           (closeout.usageEvidence.truth === "exact" &&
             closeout.usageEvidence.tokenUsageRefs.length < 1) ||
           (closeout.usageEvidence.truth === "not_measured" &&
@@ -1632,14 +1636,20 @@ const closeoutFromRow = (
   }
 }
 
+export const decodeFleetRunWorkUnitCloseoutRow = closeoutFromRow
+
 const executionProjectionFromStorage = async (
   sql: SqlTag,
   record: FleetRunAuthorityRecord,
 ): Promise<FleetRunExecutionProjection> => {
   const rows: Array<FleetRunWorkUnitCloseoutRow> = await sql`
-    SELECT * FROM sarah_fleet_run_work_unit_closeouts
-    WHERE run_ref = ${record.runRef}
-    ORDER BY unit_ref, observed_at, work_claim_ref
+    SELECT closeout.*, attempt.capacity_class
+    FROM sarah_fleet_run_work_unit_closeouts AS closeout
+    INNER JOIN sarah_fleet_run_attempts AS attempt
+      ON attempt.run_ref = closeout.run_ref
+     AND attempt.attempt_ref = closeout.work_claim_ref
+    WHERE closeout.run_ref = ${record.runRef}
+    ORDER BY closeout.unit_ref, closeout.observed_at, closeout.work_claim_ref
   `
   const closeouts = rows.map(closeoutFromRow)
   const attemptCounts: Array<{
@@ -3104,9 +3114,13 @@ const appendFleetRunExecutionEvents = async (
     )
     const storedCloseoutRows: Array<FleetRunWorkUnitCloseoutRow> =
       await writer.sql`
-        SELECT * FROM sarah_fleet_run_work_unit_closeouts
-        WHERE run_ref = ${input.runRef}
-        ORDER BY unit_ref, observed_at, work_claim_ref
+        SELECT closeout.*, attempt.capacity_class
+        FROM sarah_fleet_run_work_unit_closeouts AS closeout
+        INNER JOIN sarah_fleet_run_attempts AS attempt
+          ON attempt.run_ref = closeout.run_ref
+         AND attempt.attempt_ref = closeout.work_claim_ref
+        WHERE closeout.run_ref = ${input.runRef}
+        ORDER BY closeout.unit_ref, closeout.observed_at, closeout.work_claim_ref
       `
     const closeouts = storedCloseoutRows.map(closeoutFromRow)
     const closeoutsByClaim = new Map(

@@ -20,6 +20,7 @@ import {
   type CreatePylonDurableFleetRunPlannerInput,
 } from "./fleet-run-durable-planner.js"
 import { openPylonStandingFleetRunExecutor, type PylonStandingFleetRunExecutor } from "./fleet-run-standing-executor.js"
+import { notMeasuredManagedCloudPylonFleetRunUsageEvidence } from "./fleet-run-usage-evidence.js"
 
 export const PYLON_MANAGED_CLOUD_FLEET_TARGET_SCHEMA = "openagents.pylon.managed_cloud_fleet_target.v1" as const
 
@@ -708,6 +709,7 @@ export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
               targetPreference: "managed_cloud",
               taskId: prepared.tuple.taskId,
               claimRef: prepared.tuple.claimRef,
+              assignmentRef: prepared.assignmentRef,
               workUnitRef: prepared.tuple.workUnitRef,
               workerAccountRef: prepared.tuple.workerAccountRef,
               workerKind: "codex",
@@ -745,10 +747,15 @@ export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
         })
       }
       const result = body as {
+        accountRefHash?: unknown
         agentComputerRef?: unknown
+        agentComputerState?: unknown
+        closeoutRef?: unknown
+        noMeasurementCaveatRef?: unknown
         placementRef?: unknown
         lifecycleReceiptRefs?: unknown
         resourceUsageReceiptRefs?: unknown
+        terminalReceiptRef?: unknown
         artifactRef?: unknown
       }
       const lifecycleReceiptRefs = Array.isArray(result.lifecycleReceiptRefs)
@@ -759,7 +766,14 @@ export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
         : []
       if (
         !validPublicRef(result.agentComputerRef) ||
+        result.agentComputerState !== "reclaimed" ||
+        typeof result.accountRefHash !== "string" ||
+        !/^account\.pylon\.codex\.[a-f0-9]{24}$/u.test(result.accountRefHash) ||
+        !validPublicRef(result.closeoutRef) ||
+        !validPublicRef(result.noMeasurementCaveatRef) ||
+        !validPublicRef(result.terminalReceiptRef) ||
         !validPublicRef(result.placementRef) ||
+        !validPublicRef(result.artifactRef) ||
         lifecycleReceiptRefs.length === 0 ||
         usageRefs.length === 0 ||
         new Set(lifecycleReceiptRefs).size !== lifecycleReceiptRefs.length ||
@@ -803,15 +817,24 @@ export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
         ...lifecycleReceiptRefs,
         ...usageRefs,
       ])]
+      const usage = notMeasuredManagedCloudPylonFleetRunUsageEvidence({
+        accountRefHash: result.accountRefHash,
+        assignmentRef: prepared.assignmentRef,
+        caveatRefs: [result.noMeasurementCaveatRef],
+        closeoutRef: result.closeoutRef,
+        harnessKind: "codex",
+        pylonRef: options.pylonRef,
+        receiptRef: usageRefs[0]!,
+      })
       const completed: PylonManagedCloudFleetRunDispatchResult = {
         assignmentRef: prepared.assignmentRef,
-        accountRefHash: null,
-        closeoutRef: null,
+        accountRefHash: usage.accountRefHash,
+        closeoutRef: usage.closeoutRef,
         lifecycle,
         marginalCostClass: input.dispatch.claim.marginalCostClass ?? "not_measured",
         status: "completed",
         summary: "Managed-cloud Codex work completed on an Agent Computer with broker-held authority.",
-        usageEvidence: null,
+        usageEvidence: usage.usageEvidence,
         verification: {
           truth: "passed",
           verifierRef: prepared.verifierRef,
@@ -819,7 +842,7 @@ export function createPylonRemoteManagedCloudFleetRunClaimedWorkPort(
         },
         artifactRefs: validPublicRef(result.artifactRef) ? [result.artifactRef] : [],
         proofRefs: evidenceRefs,
-        authorityReceiptRefs: usageRefs,
+        authorityReceiptRefs: [result.terminalReceiptRef, ...usageRefs],
         target: targetProjection(prepared, targetEvidenceRef),
       }
       assertPublicProjectionSafe(completed, "pylonRemoteManagedCloudFleetRunResult")

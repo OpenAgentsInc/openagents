@@ -1130,6 +1130,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
           },
           events: [
             {
+              artifactRefs: ['sha256:artifact'],
               dataJson: JSON.stringify({
                 instanceRef: 'gce-raw-instance-name',
                 leaseRef: 'lease.gce.vm.ccs_fixed',
@@ -1203,6 +1204,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       'sha256:microvm-destroy',
     ])
     expect(body.resource_usage_receipt_refs).toEqual(['sha256:usage'])
+    expect(body.artifact_ref).toBe('sha256:artifact')
     expect(body.lease_refs).toEqual([
       'placement.cloud-coding.run_gce_1',
       'cloud-run.run_gce_1',

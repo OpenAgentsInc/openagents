@@ -21,6 +21,7 @@ import { Effect } from "effect"
 import {
   decodeFleetRunAuthorityStartRequest,
   decodeFleetRunExecutionBatch,
+  decodeFleetRunWorkUnitCloseoutRow,
   FLEET_RUN_EXECUTION_BATCH_SCHEMA,
   FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
   FLEET_RUN_EXECUTION_EVENT_SCHEMA,
@@ -501,6 +502,29 @@ describe("FleetRun authority request boundary", () => {
       }),
     ).not.toThrow()
 
+    const managedNotMeasured = {
+      ...accepted,
+      capacityClass: "managed_cloud" as const,
+      marginalCostClass: "api_metered" as const,
+      usageEvidence: {
+        schema: "openagents.pylon.fleet_run_usage_evidence.v1" as const,
+        truth: "not_measured" as const,
+        harnessKind: "codex" as const,
+        evidenceRef: "evidence.managed.no_token_measurement",
+        assignmentRef: "assignment.unit-a.edge-1",
+        receiptRef: "receipt.agent_computer.resource_usage",
+        tokenUsageRefs: [],
+        caveatRefs: ["caveat.agent_computer.token_usage_not_measured"],
+      },
+    }
+    expect(() =>
+      decodeFleetRunExecutionBatch({
+        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+        claimRef,
+        events: [managedNotMeasured],
+      }),
+    ).not.toThrow()
+
     const invalid = [
       { ...accepted, proofRefs: undefined },
       { ...accepted, rawPrompt: "must not cross" },
@@ -512,6 +536,7 @@ describe("FleetRun authority request boundary", () => {
         ...accepted,
         artifactRefs: ["artifact.duplicate", "artifact.duplicate"],
       },
+      { ...managedNotMeasured, capacityClass: "owner_local" },
       {
         ...pylonExecutionEvent(FIXTURE_RUN_REF, claimRef, 1, {
           schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
@@ -589,6 +614,30 @@ describe("FleetRun authority request boundary", () => {
         }),
       ).toThrow(FleetRunAuthorityError)
     }
+  })
+
+  test("closeout readback rejects owner-local Codex not-measured corruption", () => {
+    const row = {
+      run_ref: FIXTURE_RUN_REF,
+      unit_ref: "unit-a",
+      work_claim_ref: "work_claim.unit-a.managed",
+      assignment_ref: "assignment.unit-a.managed",
+      worker_kind: "codex" as const,
+      account_ref_hash: `account.pylon.codex.${"a".repeat(24)}`,
+      terminal_state: "accepted" as const,
+      closeout_ref: "closeout.unit-a.managed",
+      usage_truth: "not_measured" as const,
+      token_usage_refs_json: "[]",
+      blocker_refs_json: "[]",
+      observed_at: "2026-07-09T22:00:00.000Z",
+      event_ref: `event.pylon.fleet_run.${"a".repeat(24)}`,
+      capacity_class: "managed_cloud" as const,
+    }
+    expect(() => decodeFleetRunWorkUnitCloseoutRow(row)).not.toThrow()
+    expect(() => decodeFleetRunWorkUnitCloseoutRow({
+      ...row,
+      capacity_class: "owner_local",
+    })).toThrow(FleetRunAuthorityError)
   })
 })
 

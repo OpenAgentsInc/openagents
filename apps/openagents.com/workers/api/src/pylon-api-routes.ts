@@ -272,6 +272,7 @@ const FleetRunManagedUnitDispatchBody = S.Struct({
   targetPreference: S.Literal('managed_cloud'),
   taskId: S.String,
   claimRef: S.String,
+  assignmentRef: S.String,
   workUnitRef: S.String,
   workerAccountRef: S.String,
   workerKind: S.Literal('codex'),

@@ -963,6 +963,17 @@ const resourceUsageReceiptRefsFromEvents = (
     }),
   )
 
+const artifactRefsFromEvents = (
+  events: ReadonlyArray<CloudPlacementEvent>,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    events.flatMap(event => [
+      ...event.artifactRefs,
+      publicRefFromEventData(event, 'artifactRef'),
+      publicRefFromEventData(event, 'artifact_ref'),
+    ].flatMap(ref => (ref === undefined ? [] : [ref]))),
+  )
+
 const leaseRefsFromEvents = (
   events: ReadonlyArray<CloudPlacementEvent>,
 ): ReadonlyArray<string> =>
@@ -1322,6 +1333,7 @@ export const makeCloudControlCloudCodingAdapter = (
         const resourceUsageReceiptRefs = resourceUsageReceiptRefsFromEvents(
           placement.events,
         )
+        const artifactRefs = artifactRefsFromEvents(placement.events)
         const placementRef =
           placement.externalRunId !== ''
             ? `placement.cloud-coding.${placement.externalRunId}`
@@ -1338,7 +1350,7 @@ export const makeCloudControlCloudCodingAdapter = (
             placement.status,
             placement.events,
           ),
-          artifactRef: null,
+          artifactRef: artifactRefs[0] ?? null,
           createdAt: currentIsoTimestamp(),
           lane: placement.binding.lane,
           lifecycleReceiptRefs,
