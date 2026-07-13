@@ -165,6 +165,7 @@ type DesktopBridge = Readonly<{
     disposePacket?: (value: unknown) => Promise<unknown>
     recordEvidence?: (value: unknown) => Promise<unknown>
     verifyEvidence?: (value: unknown) => Promise<unknown>
+    setOwnerDisposition?: (value: unknown) => Promise<unknown>
     run?: (value: unknown) => Promise<unknown>
   }>
   workspaceTree?: (value: unknown) => Promise<unknown>
@@ -318,6 +319,7 @@ const productSpecRendererBridge: ProductSpecRendererBridge = {
   disposePacket: (value) => readBridge()?.productSpec?.disposePacket?.(value) ?? unavailableProductSpecRendererBridge.disposePacket(value),
   recordEvidence: (value) => readBridge()?.productSpec?.recordEvidence?.(value) ?? unavailableProductSpecRendererBridge.recordEvidence(value),
   verifyEvidence: (value) => readBridge()?.productSpec?.verifyEvidence?.(value) ?? unavailableProductSpecRendererBridge.verifyEvidence(value),
+  setOwnerDisposition: (value) => readBridge()?.productSpec?.setOwnerDisposition?.(value) ?? unavailableProductSpecRendererBridge.setOwnerDisposition(value),
   run: (value) => readBridge()?.productSpec?.run?.(value) ?? unavailableProductSpecRendererBridge.run(value),
 }
 

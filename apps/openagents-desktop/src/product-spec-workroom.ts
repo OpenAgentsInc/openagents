@@ -24,6 +24,7 @@ import type {
   ProductSpecEvidenceRequest,
   ProductSpecIdentity,
   ProductSpecOpenRequest,
+  ProductSpecOwnerDispositionRequest,
   ProductSpecOperationError,
   ProductSpecPacketAdmitRequest,
   ProductSpecPacketBlockRequest,
@@ -53,6 +54,7 @@ export type ProductSpecWorkroom = Readonly<{
   disposePacket: (request: ProductSpecPacketDispositionRequest) => ProductSpecOperationResult<ProductSpecRun>
   recordEvidence: (request: ProductSpecEvidenceRequest) => ProductSpecOperationResult<ProductSpecRun>
   verifyEvidence: (request: ProductSpecVerificationRequest) => ProductSpecOperationResult<ProductSpecRun>
+  setOwnerDisposition: (request: ProductSpecOwnerDispositionRequest) => ProductSpecOperationResult<ProductSpecRun>
   run: (runRef: string) => ProductSpecOperationResult<ProductSpecRun>
 }>
 
@@ -441,6 +443,7 @@ export const makeProductSpecWorkroom = (
         evidenceReceipts: [],
         verifierRefs: [],
         verificationReceipts: [],
+        ownerDisposition: null,
         activeLease: null,
       })),
       deferredCriterionIds: deferred,
@@ -467,6 +470,7 @@ export const makeProductSpecWorkroom = (
               // Forward-read legacy MVP run files without inventing proof.
               evidenceReceipts: packet.evidenceReceipts ?? [],
               verificationReceipts: packet.verificationReceipts ?? [],
+              ownerDisposition: packet.ownerDisposition ?? null,
             })),
           },
         } }
@@ -731,6 +735,40 @@ export const makeProductSpecWorkroom = (
     }, now()))
   }
 
+  const setOwnerDisposition = (
+    request: ProductSpecOwnerDispositionRequest,
+  ): ProductSpecOperationResult<ProductSpecRun> => {
+    const loaded = loadRun(request.runRef)
+    if (!loaded.ok) return loaded
+    if (!identitiesEqual(loaded.value.spec, request.expectedSpec)) {
+      return failure("revision_mismatch", "Owner disposition does not match the accepted ProductSpec.")
+    }
+    const current = ensureCurrentSpec(loaded.value)
+    if (!current.ok) return current
+    const packet = current.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
+    if (packet === undefined) return failure("packet_not_found", "The work packet does not exist.")
+    if (packet.ownerDisposition?.disposition === request.disposition &&
+      packet.ownerDisposition.ownerRef === request.ownerRef &&
+      packet.ownerDisposition.reason === request.reason) {
+      return { ok: true, value: current.value, reconciled: true }
+    }
+    if (packet.state !== "verified" || packet.verificationReceipts.length === 0) {
+      return failure("invalid_transition", "Owner acceptance or waiver requires an independently verified packet.")
+    }
+    if (request.disposition === "waived" && request.reason === undefined) {
+      return failure("invalid_request", "An owner waiver requires a bounded reason.")
+    }
+    return persistRun(replacePacket(current.value, {
+      ...packet,
+      ownerDisposition: {
+        disposition: request.disposition,
+        ownerRef: request.ownerRef,
+        reason: request.reason,
+        decidedAt: now(),
+      },
+    }, now()))
+  }
+
   return {
     open,
     create,
@@ -743,6 +781,7 @@ export const makeProductSpecWorkroom = (
     disposePacket,
     recordEvidence,
     verifyEvidence,
+    setOwnerDisposition,
     run: loadRun,
   }
 }

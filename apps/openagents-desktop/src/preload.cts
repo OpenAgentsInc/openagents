@@ -90,6 +90,7 @@ import {
   ProductSpecEvidenceRecordChannel,
   ProductSpecEvidenceVerifyChannel,
   ProductSpecOpenChannel,
+  ProductSpecOwnerDispositionChannel,
   ProductSpecPacketAdmitChannel,
   ProductSpecPacketBlockChannel,
   ProductSpecPacketDispositionChannel,
@@ -103,6 +104,7 @@ import {
   decodeProductSpecEditProposalResult,
   decodeProductSpecEvidenceRequest,
   decodeProductSpecOpenRequest,
+  decodeProductSpecOwnerDispositionRequest,
   decodeProductSpecPacketAdmitRequest,
   decodeProductSpecPacketBlockRequest,
   decodeProductSpecPacketDispositionRequest,
@@ -413,6 +415,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec verification request is invalid." }
       return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecEvidenceVerifyChannel, request)) ??
         { ok: false, reason: "invalid_transition", message: "The ProductSpec verification response is invalid." }
+    },
+    setOwnerDisposition: async (value: unknown) => {
+      const request = decodeProductSpecOwnerDispositionRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec owner disposition is invalid." }
+      return decodeProductSpecRunResult(await ipcRenderer.invoke(ProductSpecOwnerDispositionChannel, request)) ??
+        { ok: false, reason: "invalid_transition", message: "The ProductSpec owner disposition response is invalid." }
     },
     run: async (value: unknown) => {
       const request = decodeProductSpecRunGetRequest(value)

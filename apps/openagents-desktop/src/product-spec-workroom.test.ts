@@ -233,6 +233,33 @@ describe("ProductSpec workroom authority", () => {
       outputRef: "verification.output.tests.productspec",
       verdict: "passed",
     })
+    expect(restarted.setOwnerDisposition({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      disposition: "waived",
+      ownerRef: "owner.desktop.local",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: false, reason: "invalid_request" })
+    const ownerAccepted = restarted.setOwnerDisposition({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      disposition: "accepted",
+      ownerRef: "owner.desktop.local",
+      expectedSpec: projection.identity,
+    })
+    expect(ownerAccepted).toMatchObject({ ok: true })
+    if (!ownerAccepted.ok) return
+    expect(ownerAccepted.value.plan.packets[0]?.ownerDisposition).toMatchObject({
+      disposition: "accepted",
+      ownerRef: "owner.desktop.local",
+    })
+    expect(restarted.setOwnerDisposition({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      disposition: "accepted",
+      ownerRef: "owner.desktop.local",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: true, reconciled: true })
     expect(restarted.admitPacket({
       runRef: accepted.value.runRef,
       packetRef: "work.packet.execution",

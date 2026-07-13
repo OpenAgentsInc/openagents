@@ -99,6 +99,7 @@ export type ProductSpecRendererBridge = Readonly<{
   disposePacket: (value: unknown) => Promise<unknown>
   recordEvidence: (value: unknown) => Promise<unknown>
   verifyEvidence: (value: unknown) => Promise<unknown>
+  setOwnerDisposition: (value: unknown) => Promise<unknown>
   run: (value: unknown) => Promise<unknown>
 }>
 
@@ -120,6 +121,7 @@ export const unavailableProductSpecRendererBridge: ProductSpecRendererBridge = {
   disposePacket: unavailable,
   recordEvidence: unavailable,
   verifyEvidence: unavailable,
+  setOwnerDisposition: unavailable,
   run: unavailable,
 }
 
@@ -144,6 +146,10 @@ export const ProductSpecPacketDispositionSelected = defineIntent("ProductSpecPac
 }))
 export const ProductSpecEvidenceRecorded = defineIntent("ProductSpecEvidenceRecorded", Schema.String)
 export const ProductSpecEvidenceVerified = defineIntent("ProductSpecEvidenceVerified", Schema.String)
+export const ProductSpecOwnerDispositionSelected = defineIntent("ProductSpecOwnerDispositionSelected", Schema.Struct({
+  packetRef: Schema.String,
+  disposition: Schema.Literals(["accepted", "waived"]),
+}))
 export const ProductSpecRunRefreshed = defineIntent("ProductSpecRunRefreshed", Schema.Null)
 
 export const productSpecWorkspaceIntents = [
@@ -165,6 +171,7 @@ export const productSpecWorkspaceIntents = [
   ProductSpecPacketDispositionSelected,
   ProductSpecEvidenceRecorded,
   ProductSpecEvidenceVerified,
+  ProductSpecOwnerDispositionSelected,
   ProductSpecRunRefreshed,
 ] as const
 
@@ -398,6 +405,14 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
         .map(receipt => receipt.receiptRef) ?? [],
       expectedSpec: current.productSpec.run!.spec,
     })),
+    ProductSpecOwnerDispositionSelected: ({ packetRef, disposition }: { packetRef: string; disposition: "accepted" | "waived" }) => runOperation(packetRef, async current => bridge.setOwnerDisposition({
+      runRef: current.productSpec.run!.runRef,
+      packetRef,
+      disposition,
+      ownerRef: "owner.desktop.local",
+      ...(disposition === "waived" ? { reason: current.productSpec.blockedReason.trim() } : {}),
+      expectedSpec: current.productSpec.run!.spec,
+    })),
     ProductSpecRunRefreshed: () => Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
       const runRef = current.productSpec.run?.runRef
@@ -441,6 +456,10 @@ const packetView = (
         Button({ key: `product-spec-block-${packet.packetRef}`, label: "Block", variant: "secondary", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecPacketBlocked", StaticPayload(packet.packetRef)) }),
       ] : []),
       ...(packet.state === "evidence_present" ? [Button({ key: `product-spec-verify-${packet.packetRef}`, label: "Verify evidence", variant: "primary", disabled: busy || !verifierReady, onPress: IntentRef("ProductSpecEvidenceVerified", StaticPayload(packet.packetRef)) })] : []),
+      ...(packet.state === "verified" && packet.ownerDisposition === null ? [
+        Button({ key: `product-spec-owner-accept-${packet.packetRef}`, label: "Owner accept", variant: "primary", disabled: busy, onPress: IntentRef("ProductSpecOwnerDispositionSelected", StaticPayload({ packetRef: packet.packetRef, disposition: "accepted" })) }),
+        Button({ key: `product-spec-owner-waive-${packet.packetRef}`, label: "Owner waive", variant: "secondary", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecOwnerDispositionSelected", StaticPayload({ packetRef: packet.packetRef, disposition: "waived" })) }),
+      ] : []),
       ...(["planned", "active", "blocked", "evidence_present"].includes(packet.state) ? [
         Button({ key: `product-spec-cancel-${packet.packetRef}`, label: "Cancel", variant: "ghost", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecPacketDispositionSelected", StaticPayload({ packetRef: packet.packetRef, disposition: "cancelled" })) }),
         Button({ key: `product-spec-supersede-${packet.packetRef}`, label: "Supersede", variant: "ghost", disabled: busy || !blockReady, onPress: IntentRef("ProductSpecPacketDispositionSelected", StaticPayload({ packetRef: packet.packetRef, disposition: "superseded" })) }),
@@ -456,6 +475,7 @@ const packetView = (
     ...(packet.evidenceProducerRef === undefined ? [] : [Text({ key: `product-spec-packet-evidence-producer-${packet.packetRef}`, content: `Produced by: ${packet.evidenceProducerRef}`, variant: "caption", color: "textMuted" })]),
     ...(packet.verifierRefs.length === 0 ? [] : [Text({ key: `product-spec-packet-verifier-refs-${packet.packetRef}`, content: `Verified by: ${packet.verifierRefs.join(", ")}`, variant: "caption", color: "success" })]),
     ...(packet.verificationReceipts.length === 0 ? [] : [Text({ key: `product-spec-packet-verification-receipts-${packet.packetRef}`, content: `Verification receipts: ${packet.verificationReceipts.map(receipt => `${receipt.outputRef}:${receipt.receiptRef}`).join(", ")}`, variant: "caption", color: "success" })]),
+    ...(packet.ownerDisposition === null ? [Text({ key: `product-spec-packet-owner-pending-${packet.packetRef}`, content: "Owner disposition: pending", variant: "caption", color: "textMuted" })] : [Text({ key: `product-spec-packet-owner-${packet.packetRef}`, content: `Owner ${packet.ownerDisposition.disposition} · ${packet.ownerDisposition.ownerRef}${packet.ownerDisposition.reason === undefined ? "" : ` · ${packet.ownerDisposition.reason}`}`, variant: "caption", color: packet.ownerDisposition.disposition === "accepted" ? "success" : "warning" })]),
     ...(packet.blockedReason === undefined ? [] : [Text({ key: `product-spec-packet-blocked-${packet.packetRef}`, content: packet.blockedReason, variant: "caption", color: "warning" })]),
   ])
 }

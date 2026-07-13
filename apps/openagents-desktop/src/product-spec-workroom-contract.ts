@@ -11,6 +11,7 @@ export const ProductSpecPacketBlockChannel = "openagents:product-spec:packet-blo
 export const ProductSpecPacketDispositionChannel = "openagents:product-spec:packet-disposition" as const
 export const ProductSpecEvidenceRecordChannel = "openagents:product-spec:evidence-record" as const
 export const ProductSpecEvidenceVerifyChannel = "openagents:product-spec:evidence-verify" as const
+export const ProductSpecOwnerDispositionChannel = "openagents:product-spec:owner-disposition" as const
 export const ProductSpecRunGetChannel = "openagents:product-spec:run-get" as const
 
 const RefSchema = Schema.String.check(
@@ -123,6 +124,14 @@ export const ProductSpecVerificationReceiptSchema = Schema.Struct({
 })
 export type ProductSpecVerificationReceipt = typeof ProductSpecVerificationReceiptSchema.Type
 
+export const ProductSpecOwnerDispositionSchema = Schema.Struct({
+  disposition: Schema.Literals(["accepted", "waived"]),
+  ownerRef: RefSchema,
+  reason: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000))),
+  decidedAt: TimestampSchema,
+})
+export type ProductSpecOwnerDisposition = typeof ProductSpecOwnerDispositionSchema.Type
+
 export const ProductSpecWorkPacketSchema = Schema.Struct({
   packetRef: RefSchema,
   title: NonEmptyTextSchema,
@@ -136,6 +145,7 @@ export const ProductSpecWorkPacketSchema = Schema.Struct({
   evidenceProducerRef: Schema.optional(RefSchema),
   verifierRefs: Schema.Array(RefSchema),
   verificationReceipts: Schema.Array(ProductSpecVerificationReceiptSchema),
+  ownerDisposition: Schema.NullOr(ProductSpecOwnerDispositionSchema),
   activeLease: Schema.optional(Schema.NullOr(Schema.Struct({
     leaseRef: RefSchema,
     executorRef: RefSchema,
@@ -320,6 +330,16 @@ export const ProductSpecVerificationRequestSchema = Schema.Struct({
 })
 export type ProductSpecVerificationRequest = typeof ProductSpecVerificationRequestSchema.Type
 
+export const ProductSpecOwnerDispositionRequestSchema = Schema.Struct({
+  runRef: RefSchema,
+  packetRef: RefSchema,
+  disposition: Schema.Literals(["accepted", "waived"]),
+  ownerRef: RefSchema,
+  reason: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000))),
+  expectedSpec: ProductSpecIdentitySchema,
+})
+export type ProductSpecOwnerDispositionRequest = typeof ProductSpecOwnerDispositionRequestSchema.Type
+
 export const ProductSpecRunGetRequestSchema = Schema.Struct({ runRef: RefSchema })
 export type ProductSpecRunGetRequest = typeof ProductSpecRunGetRequestSchema.Type
 
@@ -353,6 +373,7 @@ export const decodeProductSpecPacketBlockRequest = (value: unknown) => decode<Pr
 export const decodeProductSpecPacketDispositionRequest = (value: unknown) => decode<ProductSpecPacketDispositionRequest>(ProductSpecPacketDispositionRequestSchema, value)
 export const decodeProductSpecEvidenceRequest = (value: unknown) => decode<ProductSpecEvidenceRequest>(ProductSpecEvidenceRequestSchema, value)
 export const decodeProductSpecVerificationRequest = (value: unknown) => decode<ProductSpecVerificationRequest>(ProductSpecVerificationRequestSchema, value)
+export const decodeProductSpecOwnerDispositionRequest = (value: unknown) => decode<ProductSpecOwnerDispositionRequest>(ProductSpecOwnerDispositionRequestSchema, value)
 export const decodeProductSpecRunGetRequest = (value: unknown) => decode<ProductSpecRunGetRequest>(ProductSpecRunGetRequestSchema, value)
 export const decodeProductSpecProjectionResult = (value: unknown) => decode(ProductSpecProjectionResultSchema, value)
 export const decodeProductSpecPlanResult = (value: unknown) => decode(ProductSpecPlanResultSchema, value)

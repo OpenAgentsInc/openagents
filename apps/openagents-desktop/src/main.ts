@@ -272,6 +272,7 @@ import {
   ProductSpecEvidenceRecordChannel,
   ProductSpecEvidenceVerifyChannel,
   ProductSpecOpenChannel,
+  ProductSpecOwnerDispositionChannel,
   ProductSpecPacketAdmitChannel,
   ProductSpecPacketBlockChannel,
   ProductSpecPacketDispositionChannel,
@@ -283,6 +284,7 @@ import {
   decodeProductSpecEditProposalRequest,
   decodeProductSpecEvidenceRequest,
   decodeProductSpecOpenRequest,
+  decodeProductSpecOwnerDispositionRequest,
   decodeProductSpecPacketAdmitRequest,
   decodeProductSpecPacketBlockRequest,
   decodeProductSpecPacketDispositionRequest,
@@ -1317,6 +1319,12 @@ ipcMain.handle(ProductSpecEvidenceVerifyChannel, (event, raw: unknown) => {
   return request === null
     ? productSpecUnavailable("The ProductSpec verification transition is invalid.")
     : withProductSpecWorkroom(event, authority => authority.service.verifyEvidence(request))
+})
+ipcMain.handle(ProductSpecOwnerDispositionChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecOwnerDispositionRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec owner disposition is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.setOwnerDisposition(request))
 })
 ipcMain.handle(ProductSpecRunGetChannel, (event, raw: unknown) => {
   const request = decodeProductSpecRunGetRequest(raw)
