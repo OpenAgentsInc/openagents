@@ -99,7 +99,9 @@ const rebindRepository = async (
   bundle: PylonPortableCheckpointBundle,
 ): Promise<PylonPortableCheckpointBundle> => {
   const revision = await git(root, ["rev-parse", "HEAD"])
-  const paths = (await git(root, ["ls-files", "-co", "--exclude-standard"])).split("\n").filter(Boolean).sort()
+  const deleted = new Set((await git(root, ["ls-files", "--deleted"])).split("\n").filter(Boolean))
+  const paths = (await git(root, ["ls-files", "-co", "--exclude-standard"])).split("\n")
+    .filter(path => path.length > 0 && !deleted.has(path)).sort()
   const postImage = createHash("sha256")
   for (const path of paths) {
     const absolute = join(root, path)
@@ -175,6 +177,50 @@ test("exports a canonical private tar.zst bound to the exact checkpoint", async 
       { path: "tracked.txt", mode: 0o644, sha256: sha("tracked\n"), size: 8 },
     ],
   })
+  const reverse = new PylonPortableCheckpointArtifactStore()
+  await reverse.registerArtifact({ bundle, artifact })
+  artifact.bytes.fill(0)
+  const replay = await reverse.resolve({
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.local",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.local.3",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  })
+  expect(sha(replay.bytes)).toBe(replay.digest)
+})
+
+test("retains managed checkpoint custody across process restart", async () => {
+  const { bundle, root } = await fixture()
+  const producer = new PylonPortableCheckpointArtifactStore()
+  producer.register({ bundle, workingDirectory: root })
+  const artifact = await producer.resolve({
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.managed",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.managed.2",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  })
+  const custody = join(root, ".private-checkpoint-custody")
+  const first = new PylonPortableCheckpointArtifactStore(custody)
+  await first.registerArtifact({ bundle, artifact })
+  artifact.bytes.fill(0)
+
+  const restarted = new PylonPortableCheckpointArtifactStore(custody)
+  const replay = await restarted.resolve({
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.local",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.local.3",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  })
+  expect(sha(replay.bytes)).toBe(replay.digest)
 })
 
 test("rejects credential-shaped post-images", async () => {
@@ -191,6 +237,27 @@ test("rejects credential-shaped post-images", async () => {
     checkpointRef: first.bundle.checkpoint.checkpointRef,
     bundle: first.bundle,
   })).rejects.toBeInstanceOf(PylonPortableCheckpointArtifactError)
+})
+
+test("preserves tracked deletions as absence from the post-image", async () => {
+  const first = await fixture()
+  await rm(join(first.root, "tracked.txt"))
+  const bundle = await rebindRepository(first.root, first.bundle)
+  const store = new PylonPortableCheckpointArtifactStore()
+  store.register({ bundle, workingDirectory: first.root })
+  const artifact = await store.resolve({
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.managed",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.managed.2",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  })
+  const files = tarFiles(Bun.zstdDecompressSync(artifact.bytes))
+  const manifest = JSON.parse(new TextDecoder().decode(files.get("manifest.json")))
+  expect(manifest.files.map((file: { path: string }) => file.path)).toEqual(["scratch.txt"])
+  expect(files.has("post-image/tracked.txt")).toBeFalse()
 })
 
 test("preserves bounded relative symlinks and rejects escaping links", async () => {

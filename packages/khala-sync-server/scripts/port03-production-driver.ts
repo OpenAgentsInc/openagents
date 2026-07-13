@@ -4,11 +4,13 @@ import type {
   PortableAgentGraph,
   PortableSessionExecutionBinding,
 } from "@openagentsinc/portable-session-contract"
+import { join } from "node:path"
 
 import type { PylonPortableControlSessionLifecycle } from "../../../apps/pylon/src/node/control-sessions.js"
 import { PylonPortableCheckpointArtifactStore } from "../../../apps/pylon/src/portable-session-checkpoint-artifact.js"
-import type { PylonPortableLocalRehydrator, PylonPortableDestinationAuthority } from "../../../apps/pylon/src/portable-session-destination.js"
+import type { PylonPortableDestinationAuthority } from "../../../apps/pylon/src/portable-session-destination.js"
 import { createPylonOwnerLocalDestinationLifecycle } from "../../../apps/pylon/src/portable-session-destination.js"
+import { createPylonPortableLocalRehydrator } from "../../../apps/pylon/src/portable-session-local-rehydrator.js"
 import { PylonPortableSessionOperationLedger } from "../../../apps/pylon/src/portable-session-operation-ledger.js"
 import { createPylonOwnerLocalExecutionTarget } from "../../../apps/pylon/src/portable-session-target.js"
 import {
@@ -47,8 +49,49 @@ import type {
   PortableSessionMoveInput,
   PortableSessionMoveResult,
 } from "../src/portable-session-move.js"
+import { readPortableSessionAuthoritySnapshot } from "../src/portable-session-authority.js"
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u
+
+const attachmentEvidenceRefs = (value: unknown): ReadonlyArray<string> => {
+  const decoded = typeof value === "string" ? JSON.parse(value) : value
+  if (!Array.isArray(decoded) || decoded.some(item => typeof item !== "string" || !SAFE_REF.test(item))) {
+    throw new PortableSessionProductionDriverError("unsafe_receipt", "attachment authority evidence is invalid")
+  }
+  return decoded
+}
+
+const createPostgresLocalDestinationAuthority = (input: Readonly<{
+  sql: PortableSessionMoveRuntimeConfig["sql"]
+  ownerRef: string
+}>): PylonPortableDestinationAuthority => ({
+  readCurrentAttachment: async sessionRef => {
+    const snapshot = await readPortableSessionAuthoritySnapshot(input.sql, {
+      sessionRef,
+      ownerUserId: input.ownerRef,
+    })
+    if (snapshot === null) throw new PortableSessionProductionDriverError("identity_mismatch", "portable authority is absent")
+    const attachmentRef = String(snapshot.session.current_attachment_ref)
+    const generation = Number(snapshot.session.current_attachment_generation)
+    const attachment = snapshot.attachments.find(row => row.attachment_ref === attachmentRef)
+    const state = attachment?.state
+    const evidenceRefs = attachmentEvidenceRefs(attachment?.evidence_refs_json)
+    if (attachment === undefined || !SAFE_REF.test(attachmentRef) || !Number.isSafeInteger(generation) || generation < 0 ||
+        (state !== "active" && state !== "quiesced" && state !== "reclaimed") ||
+        typeof attachment.target_ref !== "string" || !SAFE_REF.test(attachment.target_ref) || evidenceRefs.length === 0) {
+      throw new PortableSessionProductionDriverError("identity_mismatch", "portable current attachment is invalid")
+    }
+    return {
+      sessionRef,
+      targetRef: attachment.target_ref,
+      attachmentRef,
+      generation,
+      state,
+      ...(typeof attachment.checkpoint_ref === "string" ? { checkpointRef: attachment.checkpoint_ref } : {}),
+      authorityEvidenceRef: evidenceRefs[0]!,
+    }
+  },
+})
 
 type RuntimeMove = Pick<PostgresPortableSessionMoveRuntime, "move">
 
@@ -414,8 +457,6 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
       generation: number
       agents: ReadonlyArray<Readonly<{ agentRef: string; controlSessionRef: string }>>
     }>
-    authority: PylonPortableDestinationAuthority
-    rehydrator: PylonPortableLocalRehydrator
   }>
   managed: Readonly<{
     ownerRef: string
@@ -423,7 +464,10 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
     provisioner: Omit<OaCodexControlPortableProvisionerConfig, "checkpointArtifacts">
   }>
 }>): Promise<PortableSessionProductionDriver> => {
-  const checkpointArtifacts = new PylonPortableCheckpointArtifactStore()
+  const pylonHome = input.capabilities.local.installation.pylonHome
+  const checkpointArtifacts = new PylonPortableCheckpointArtifactStore(
+    join(pylonHome, "runtime", "portable-checkpoints", "artifacts"),
+  )
   const broker = createPortableSessionProductionBroker({
     grantAuthority: input.capabilities.grantAuthority,
     sql: input.runtime.sql,
@@ -445,8 +489,16 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
   const destination = createPylonOwnerLocalDestinationLifecycle({
     targetRef: input.local.targetRef,
     ledger: input.local.ledger,
-    authority: input.local.authority,
-    rehydrator: input.local.rehydrator,
+    authority: createPostgresLocalDestinationAuthority({
+      sql: input.runtime.sql,
+      ownerRef: input.managed.ownerRef,
+    }),
+    rehydrator: createPylonPortableLocalRehydrator({
+      targetRef: input.local.targetRef,
+      custodyRoot: join(pylonHome, "runtime", "portable-checkpoints", "rehydrated"),
+      artifacts: checkpointArtifacts,
+      lifecycle: input.local.lifecycle,
+    }),
   })
   const local = await createPylonOwnerLocalExecutionTarget({
     targetRef: input.local.targetRef,

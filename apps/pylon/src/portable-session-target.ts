@@ -164,9 +164,12 @@ const repositorySnapshot = async (cwd: string) => {
     throw new PylonPortableTargetError("checkpoint_failed", "repository revision is not a pinned commit")
   }
   const listed = new TextDecoder().decode(await runGit(cwd, ["ls-files", "-co", "--exclude-standard", "-z"]))
-    .split("\0").filter(Boolean).sort()
+    .split("\0").filter(Boolean)
+  const deleted = new Set(new TextDecoder().decode(await runGit(cwd, ["ls-files", "--deleted", "-z"]))
+    .split("\0").filter(Boolean))
+  const present = listed.filter(path => !deleted.has(path)).sort()
   const postImage = createHash("sha256")
-  for (const relativePath of listed) {
+  for (const relativePath of present) {
     const bytes = await repositoryEntryBytes(cwd, relativePath)
     postImage.update(relativePath).update("\0").update(bytes).update("\0")
   }

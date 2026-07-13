@@ -9,7 +9,6 @@ import { PylonPortableSessionOperationLedger } from "./portable-session-operatio
 import type {
   PylonPortableDestinationLifecycle,
   PylonPortableTargetActivationReceipt,
-  PylonPortableTargetStageReceipt,
   PylonPortableThreadCursor,
 } from "./portable-session-target.js"
 

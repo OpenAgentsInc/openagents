@@ -13,6 +13,8 @@ import {
   type PylonPortableLocalRehydrator,
   type PylonPortableLocalStage,
 } from "../src/portable-session-destination.js"
+import { PylonPortableCheckpointArtifactStore } from "../src/portable-session-checkpoint-artifact.js"
+import { createPylonPortableLocalRehydrator } from "../src/portable-session-local-rehydrator.js"
 import {
   type PylonPortableCheckpointBundle,
   PylonPortableSessionOperationLedger,
@@ -22,6 +24,63 @@ const roots: string[] = []
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
+})
+
+test("concrete rehydrator restores private repository bytes and activates the retained graph", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oa-port03-concrete-rehydrate-"))
+  roots.push(root)
+  const { bundle, repository } = await fixture(root)
+  const artifacts = new PylonPortableCheckpointArtifactStore()
+  artifacts.register({ bundle, workingDirectory: repository })
+  let stagedDirectory = ""
+  let stagedWorkspaceRef = ""
+  const lifecycle = {
+    bind: () => undefined,
+    quiesce: async () => ({ quiescedAgentRefs: [], evidenceRefs: [] }),
+    checkpointSource: async () => ({ workingDirectory: repository, workspaceRef: "workspace.test", artifactRefs: [], approvalRefs: [] }),
+    cleanup: async () => ({ cleanedAgentRefs: [], cleanupReceiptRef: "receipt.test.cleanup", evidenceRefs: [] }),
+    stageDestination: async (input: { workingDirectory: string; workspaceRef: string }) => {
+      stagedDirectory = input.workingDirectory
+      stagedWorkspaceRef = input.workspaceRef
+      return { evidenceRefs: ["receipt.port03.concrete.staged"] }
+    },
+    activateDestination: async (input: { workingDirectory: string; workspaceRef: string; agentRefs: ReadonlyArray<string> }) => {
+      expect(input.workingDirectory).toBe(stagedDirectory)
+      expect(input.workspaceRef).toBe(stagedWorkspaceRef)
+      return {
+        activatedAgentRefs: input.agentRefs,
+        acceptedWorkRefs: [],
+        evidenceRefs: ["receipt.port03.concrete.activated"],
+      }
+    },
+    abortDestination: async () => ({ evidenceRefs: ["receipt.port03.concrete.aborted"] }),
+  }
+  const rehydrator = createPylonPortableLocalRehydrator({
+    targetRef: "target.port03.owner.local",
+    custodyRoot: join(root, "local-rehydration"),
+    artifacts,
+    lifecycle,
+  })
+  const stage = await rehydrator.stage({
+    operationRef: "operation.port03.concrete.destination.stage",
+    bundle,
+    destinationAttachmentRef: "attachment.port03.local.3",
+    destinationGeneration: 3,
+    capabilityLeaseRefs: ["lease.port03.local.3"],
+  })
+  expect(await readFile(join(stagedDirectory, "tracked.txt"), "utf8")).toBe("changed\n")
+  expect(await readFile(join(stagedDirectory, "untracked.txt"), "utf8")).toBe("new\n")
+  expect(await rehydrator.readStage(stage.operationRef)).toEqual(stage)
+  expect(await rehydrator.activate({
+    operationRef: "operation.port03.concrete.destination.activate",
+    stage,
+    authorityEvidenceRef: "authority.port03.local.3",
+    executionBinding: bundle.executionBinding,
+  })).toEqual({
+    activatedAgentRefs: bundle.graph.nodes.map(node => node.agentRef),
+    acceptedWorkRefs: [],
+    evidenceRefs: ["authority.port03.local.3", "receipt.port03.concrete.activated"],
+  })
 })
 
 const git = async (cwd: string, ...args: string[]): Promise<Uint8Array> => {

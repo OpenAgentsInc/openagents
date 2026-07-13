@@ -301,6 +301,38 @@ export type PylonPortableControlSessionLifecycle = Readonly<{
     cleanupReceiptRef: string
     evidenceRefs: ReadonlyArray<string>
   }>>
+  stageDestination: (input: Readonly<{
+    sessionRef: string
+    sourceAttachmentRef: string
+    sourceGeneration: number
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    checkpointRef: string
+    agentRefs: ReadonlyArray<string>
+    workingDirectory: string
+    workspaceRef: string
+  }>) => Promise<Readonly<{ evidenceRefs: ReadonlyArray<string> }>>
+  activateDestination: (input: Readonly<{
+    sessionRef: string
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    checkpointRef: string
+    agentRefs: ReadonlyArray<string>
+    workingDirectory: string
+    workspaceRef: string
+  }>) => Promise<Readonly<{
+    activatedAgentRefs: ReadonlyArray<string>
+    acceptedWorkRefs: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string }>>
+    evidenceRefs: ReadonlyArray<string>
+  }>>
+  abortDestination: (input: Readonly<{
+    sessionRef: string
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    checkpointRef: string
+    agentRefs: ReadonlyArray<string>
+    workingDirectory: string
+  }>) => Promise<Readonly<{ evidenceRefs: ReadonlyArray<string> }>>
 }>
 
 export type ControlSessionLaunchContext = Readonly<{
@@ -1137,7 +1169,14 @@ export function createControlSessionActions(options: {
   const activeRuns = new Map<string, Promise<void>>()
   const portableBindings = new Map<string, {
     input: PylonPortableControlSessionBinding
-    state: "accepting" | "quiesced" | "cleaned"
+    state: "accepting" | "quiesced" | "cleaned" | "staged"
+    staged?: Readonly<{
+      destinationAttachmentRef: string
+      destinationGeneration: number
+      checkpointRef: string
+      workingDirectory: string
+      workspaceRef: string
+    }>
   }>()
   const portableRuntimeInstanceRef = options.portableRuntimeInstanceRef ??
     stableRef("runtime.pylon.control_session", randomBytes(24).toString("hex"))
@@ -1801,10 +1840,101 @@ export function createControlSessionActions(options: {
         evidenceRefs: [
           cleanupReceiptRef,
           stableRef("receipt.pylon.portable.processes_released", `${input.sessionRef}:${input.generation}`),
+          stableRef("receipt.pylon.portable.scratch_released", `${input.sessionRef}:${input.generation}`),
           stableRef("receipt.pylon.portable.ports_released", `${input.sessionRef}:${input.generation}`),
           ...cleanupRefs,
           ...checkpointReleaseRefs,
         ],
+      }
+    },
+    stageDestination: async (input) => {
+      const binding = portableBindings.get(input.sessionRef)
+      if (binding === undefined || binding.state !== "cleaned" ||
+          binding.input.attachmentRef !== input.sourceAttachmentRef ||
+          binding.input.generation !== input.sourceGeneration) {
+        throw new Error("portable destination source generation is not cleaned")
+      }
+      const expected = binding.input.agents.map(item => item.agentRef).sort()
+      const received = [...input.agentRefs].sort()
+      if (expected.length !== received.length || expected.some((value, index) => value !== received[index]) ||
+          input.destinationGeneration !== input.sourceGeneration + 1 ||
+          [...portableRecordsFor(binding)].some(({ record }) => activeRuns.has(record.sessionRef))) {
+        throw new Error("portable destination stage does not match the retained graph")
+      }
+      binding.state = "staged"
+      binding.staged = {
+        destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationGeneration: input.destinationGeneration,
+        checkpointRef: input.checkpointRef,
+        workingDirectory: input.workingDirectory,
+        workspaceRef: input.workspaceRef,
+      }
+      return {
+        evidenceRefs: input.agentRefs.map(agentRef => stableRef(
+          "receipt.pylon.portable.agent_staged",
+          `${input.sessionRef}:${input.destinationGeneration}:${agentRef}:${input.checkpointRef}`,
+        )),
+      }
+    },
+    activateDestination: async (input) => {
+      const binding = portableBindings.get(input.sessionRef)
+      const staged = binding?.staged
+      if (binding === undefined || binding.state !== "staged" || staged === undefined ||
+          staged.destinationAttachmentRef !== input.destinationAttachmentRef ||
+          staged.destinationGeneration !== input.destinationGeneration ||
+          staged.checkpointRef !== input.checkpointRef ||
+          staged.workingDirectory !== input.workingDirectory || staged.workspaceRef !== input.workspaceRef) {
+        throw new Error("portable destination activation does not match its stage")
+      }
+      const expected = binding.input.agents.map(item => item.agentRef).sort()
+      const received = [...input.agentRefs].sort()
+      if (expected.length !== received.length || expected.some((value, index) => value !== received[index])) {
+        throw new Error("portable destination activation graph does not match")
+      }
+      for (const { record } of portableRecordsFor(binding)) {
+        record.workspace = {
+          kind: "ephemeral",
+          workingDirectory: input.workingDirectory,
+          workspaceRef: input.workspaceRef,
+        }
+        record.workspaceCleanupReceiptRef = null
+        record.workspaceRetentionReasonRef = null
+        record.portableRetainWorkspace = true
+      }
+      binding.input = {
+        ...binding.input,
+        attachmentRef: input.destinationAttachmentRef,
+        generation: input.destinationGeneration,
+      }
+      binding.state = "accepting"
+      delete binding.staged
+      return {
+        activatedAgentRefs: [...input.agentRefs],
+        acceptedWorkRefs: [],
+        evidenceRefs: input.agentRefs.map(agentRef => stableRef(
+          "receipt.pylon.portable.agent_activated",
+          `${input.sessionRef}:${input.destinationGeneration}:${agentRef}:${input.checkpointRef}`,
+        )),
+      }
+    },
+    abortDestination: async (input) => {
+      const binding = portableBindings.get(input.sessionRef)
+      const staged = binding?.staged
+      if (binding === undefined || binding.state !== "staged" || staged === undefined ||
+          staged.destinationAttachmentRef !== input.destinationAttachmentRef ||
+          staged.destinationGeneration !== input.destinationGeneration ||
+          staged.checkpointRef !== input.checkpointRef ||
+          staged.workingDirectory !== input.workingDirectory) {
+        throw new Error("portable destination abort does not match its stage")
+      }
+      await rm(input.workingDirectory, { recursive: true, force: true })
+      binding.state = "cleaned"
+      delete binding.staged
+      return {
+        evidenceRefs: [stableRef(
+          "receipt.pylon.portable.destination_aborted",
+          `${input.sessionRef}:${input.destinationGeneration}:${input.checkpointRef}`,
+        )],
       }
     },
   }

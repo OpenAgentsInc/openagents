@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto"
-import { lstat, readFile, readlink } from "node:fs/promises"
+import { createHash, randomUUID } from "node:crypto"
+import { chmod, lstat, mkdir, readFile, readlink, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
@@ -40,6 +40,13 @@ export type PortableCheckpointArtifact = Readonly<{
 
 export type PortableCheckpointArtifactResolver = Readonly<{
   resolve: (input: PortableCheckpointArtifactResolverInput) => Promise<PortableCheckpointArtifact>
+}>
+
+export type PortableCheckpointArtifactStore = PortableCheckpointArtifactResolver & Readonly<{
+  registerArtifact: (input: Readonly<{
+    bundle: PylonPortableCheckpointBundle
+    artifact: PortableCheckpointArtifact
+  }>) => Promise<void>
 }>
 
 type Source = Readonly<{
@@ -91,8 +98,12 @@ const assertNoPrivateBytes = (bytes: Uint8Array): void => {
 
 const postImageEntries = async (cwd: string): Promise<ReadonlyArray<PostImageEntry>> => {
   const listedBytes = await runGit(cwd, ["ls-files", "-co", "--exclude-standard", "-z"])
-  const listed = new TextDecoder().decode(listedBytes).split("\0").filter(Boolean).sort()
+  const deletedBytes = await runGit(cwd, ["ls-files", "--deleted", "-z"])
+  const deleted = new Set(new TextDecoder().decode(deletedBytes).split("\0").filter(Boolean))
+  const listed = new TextDecoder().decode(listedBytes).split("\0")
+    .filter(path => path.length > 0 && !deleted.has(path)).sort()
   listedBytes.fill(0)
+  deletedBytes.fill(0)
   const root = resolve(cwd)
   const entries: PostImageEntry[] = []
   try {
@@ -219,6 +230,77 @@ const sameBundle = (left: PylonPortableCheckpointBundle, right: PylonPortableChe
 
 export class PylonPortableCheckpointArtifactStore implements PortableCheckpointArtifactResolver {
   private readonly sources = new Map<string, Source>()
+  private readonly artifacts = new Map<string, Readonly<{
+    bundle: PylonPortableCheckpointBundle
+    artifactRef: string
+    digest: `sha256:${string}`
+    bytes: Uint8Array
+  }>>()
+
+  constructor(private readonly custodyDirectory?: string) {
+    if (custodyDirectory !== undefined && !isAbsolute(custodyDirectory)) {
+      throw new PylonPortableCheckpointArtifactError("invalid_binding", "checkpoint artifact custody must be absolute")
+    }
+  }
+
+  private artifactPaths(checkpointRef: string): Readonly<{ bytes: string; metadata: string }> | undefined {
+    if (this.custodyDirectory === undefined) return undefined
+    const name = createHash("sha256").update(checkpointRef).digest("hex")
+    return {
+      bytes: join(this.custodyDirectory, `${name}.tar.zst`),
+      metadata: join(this.custodyDirectory, `${name}.json`),
+    }
+  }
+
+  private async loadArtifact(checkpointRef: string): Promise<Readonly<{
+    bundle: PylonPortableCheckpointBundle
+    artifactRef: string
+    digest: `sha256:${string}`
+    bytes: Uint8Array
+  }> | undefined> {
+    const cached = this.artifacts.get(checkpointRef)
+    if (cached !== undefined) return cached
+    const paths = this.artifactPaths(checkpointRef)
+    if (paths === undefined) return undefined
+    try {
+      const [metadataBytes, bytes] = await Promise.all([readFile(paths.metadata), readFile(paths.bytes)])
+      try {
+        const metadata = JSON.parse(new TextDecoder().decode(metadataBytes)) as {
+          schema?: unknown
+          checkpointRef?: unknown
+          artifactRef?: unknown
+          digest?: unknown
+          bundle?: unknown
+        }
+        if (metadata.schema !== "openagents.portable_checkpoint_artifact_custody.v1" ||
+            metadata.checkpointRef !== checkpointRef ||
+            typeof metadata.artifactRef !== "string" || !SAFE_REF.test(metadata.artifactRef) ||
+            typeof metadata.digest !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(metadata.digest) ||
+            sha256(bytes) !== metadata.digest || typeof metadata.bundle !== "object" || metadata.bundle === null) {
+          throw new PylonPortableCheckpointArtifactError("invalid_binding", "persisted managed checkpoint artifact is invalid")
+        }
+        const retained = {
+          bundle: metadata.bundle as PylonPortableCheckpointBundle,
+          artifactRef: metadata.artifactRef,
+          digest: metadata.digest as `sha256:${string}`,
+          bytes: new Uint8Array(bytes),
+        }
+        if (retained.bundle.checkpoint.checkpointRef !== checkpointRef) {
+          retained.bytes.fill(0)
+          throw new PylonPortableCheckpointArtifactError("invalid_binding", "persisted checkpoint binding is invalid")
+        }
+        this.artifacts.set(checkpointRef, retained)
+        return retained
+      } finally {
+        metadataBytes.fill(0)
+        bytes.fill(0)
+      }
+    } catch (error) {
+      if (error instanceof PylonPortableCheckpointArtifactError) throw error
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined
+      throw new PylonPortableCheckpointArtifactError("unavailable", "persisted managed checkpoint artifact is unavailable")
+    }
+  }
 
   register(input: Readonly<{
     bundle: PylonPortableCheckpointBundle
@@ -239,9 +321,83 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     })
   }
 
+  async registerArtifact(input: Readonly<{
+    bundle: PylonPortableCheckpointBundle
+    artifact: PortableCheckpointArtifact
+  }>): Promise<void> {
+    const checkpointRef = input.bundle.checkpoint.checkpointRef
+    if (!SAFE_REF.test(checkpointRef) || !SAFE_REF.test(input.artifact.artifactRef) ||
+        !/^sha256:[a-f0-9]{64}$/u.test(input.artifact.digest) ||
+        input.artifact.bytes.byteLength === 0 || sha256(input.artifact.bytes) !== input.artifact.digest) {
+      throw new PylonPortableCheckpointArtifactError("invalid_binding", "managed checkpoint artifact is invalid")
+    }
+    const existing = await this.loadArtifact(checkpointRef)
+    if (existing !== undefined &&
+        (!sameBundle(existing.bundle, input.bundle) ||
+         existing.artifactRef !== input.artifact.artifactRef ||
+         existing.digest !== input.artifact.digest)) {
+      throw new PylonPortableCheckpointArtifactError("invalid_binding", "managed checkpoint artifact conflicts with its binding")
+    }
+    // Bun may surface Buffer-compatible Uint8Arrays whose `.slice()` aliases
+    // the caller's backing store. Custody always owns a real byte-for-byte copy
+    // so the caller can zero its transport buffer immediately.
+    const owned = Uint8Array.from(input.artifact.bytes)
+    const retained = {
+      bundle: input.bundle,
+      artifactRef: input.artifact.artifactRef,
+      digest: input.artifact.digest,
+      bytes: owned,
+    }
+    const paths = this.artifactPaths(checkpointRef)
+    if (paths !== undefined) {
+      const suffix = randomUUID()
+      const bytesTemporary = `${paths.bytes}.${suffix}.tmp`
+      const metadataTemporary = `${paths.metadata}.${suffix}.tmp`
+      const metadataBytes = new TextEncoder().encode(canonicalJson({
+        schema: "openagents.portable_checkpoint_artifact_custody.v1",
+        checkpointRef,
+        artifactRef: retained.artifactRef,
+        digest: retained.digest,
+        bundle: retained.bundle,
+      }))
+      try {
+        await mkdir(this.custodyDirectory!, { recursive: true, mode: 0o700 })
+        await chmod(this.custodyDirectory!, 0o700)
+        await writeFile(bytesTemporary, owned, { mode: 0o600 })
+        await writeFile(metadataTemporary, metadataBytes, { mode: 0o600 })
+        await rename(bytesTemporary, paths.bytes)
+        await rename(metadataTemporary, paths.metadata)
+        await Promise.all([chmod(paths.bytes, 0o600), chmod(paths.metadata, 0o600)])
+      } finally {
+        metadataBytes.fill(0)
+        await Promise.all([
+          rm(bytesTemporary, { force: true }),
+          rm(metadataTemporary, { force: true }),
+        ])
+      }
+    }
+    existing?.bytes.fill(0)
+    this.artifacts.set(checkpointRef, retained)
+  }
+
   async resolve(input: PortableCheckpointArtifactResolverInput): Promise<PortableCheckpointArtifact> {
-    const source = this.sources.get(input.checkpointRef)
     const checkpoint = input.bundle.checkpoint
+    const retained = await this.loadArtifact(input.checkpointRef)
+    if (retained !== undefined) {
+      if (input.ownerRef !== input.bundle.executionBinding.ownerRef ||
+          input.sessionRef !== checkpoint.sessionRef ||
+          input.checkpointRef !== checkpoint.checkpointRef ||
+          input.generation !== checkpoint.sourceGeneration + 1 ||
+          !sameBundle(retained.bundle, input.bundle)) {
+        throw new PylonPortableCheckpointArtifactError("invalid_binding", "managed checkpoint artifact request does not match")
+      }
+      return {
+        artifactRef: retained.artifactRef,
+        digest: retained.digest,
+        bytes: Uint8Array.from(retained.bytes),
+      }
+    }
+    const source = this.sources.get(input.checkpointRef)
     if (source === undefined) {
       throw new PylonPortableCheckpointArtifactError("unavailable", "checkpoint artifact source is unavailable")
     }

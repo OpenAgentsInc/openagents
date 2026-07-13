@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import type { PortableCheckpointArtifactResolver } from "../../../apps/pylon/src/portable-session-checkpoint-artifact.js"
+import type { PortableCheckpointArtifactStore } from "../../../apps/pylon/src/portable-session-checkpoint-artifact.js"
 import type { ManagedAgentComputerPortableProvisioner } from "./portable-managed-agent-computer-target.js"
 
 const FORBIDDEN_PRIVATE_MATERIAL =
@@ -29,7 +29,7 @@ export type OaCodexControlPortableProvisionerConfig = Readonly<{
   bearerToken: string
   fetch?: FetchLike
   timeoutMs?: number
-  checkpointArtifacts: PortableCheckpointArtifactResolver
+  checkpointArtifacts: PortableCheckpointArtifactStore
 }>
 
 type OperationBase = Readonly<{
@@ -77,9 +77,11 @@ export const createOaCodexControlPortableProvisioner = (
 ): ManagedAgentComputerPortableProvisioner => {
   let endpoint: URL
   let materializeEndpoint: URL
+  let exportEndpoint: URL
   try {
     endpoint = new URL("/v1/portable-agent-computers/operations", config.baseUrl)
     materializeEndpoint = new URL("/v1/portable-agent-computers/checkpoints/materialize", config.baseUrl)
+    exportEndpoint = new URL("/v1/portable-agent-computers/checkpoints/export", config.baseUrl)
   } catch {
     throw new OaCodexControlPortableProvisionerError("invalid", "oa-codex-control base URL is invalid")
   }
@@ -198,6 +200,52 @@ export const createOaCodexControlPortableProvisioner = (
     return publicSafe(object(decoded))
   }
 
+  const exportCheckpoint = async (input: Readonly<{
+    operationRef: string
+    ownerRef: string
+    targetRef: string
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    checkpointRef: string
+  }>): Promise<Readonly<{ artifactRef: string; digest: `sha256:${string}`; bytes: Uint8Array }>> => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
+    let response: Response
+    try {
+      response = await fetcher(exportEndpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.bearerToken}`,
+          "X-OA-Operation-Ref": input.operationRef,
+          "X-OA-Owner-Ref": input.ownerRef,
+          "X-OA-Target-Ref": input.targetRef,
+          "X-OA-Session-Ref": input.sessionRef,
+          "X-OA-Attachment-Ref": input.attachmentRef,
+          "X-OA-Attachment-Generation": String(input.generation),
+          "X-OA-Checkpoint-Ref": input.checkpointRef,
+        },
+        signal: controller.signal,
+      })
+    } catch {
+      throw new OaCodexControlPortableProvisionerError("unavailable", "oa-codex-control checkpoint exporter is unavailable")
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (!response.ok || !response.headers.get("content-type")?.toLowerCase().startsWith("application/octet-stream")) {
+      throw new OaCodexControlPortableProvisionerError("rejected", `oa-codex-control refused checkpoint export (${response.status})`)
+    }
+    const artifactRef = response.headers.get("X-OA-Artifact-Ref") ?? ""
+    const digest = response.headers.get("X-OA-Artifact-Digest") ?? ""
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (!SAFE_REF.test(artifactRef) || !/^sha256:[a-f0-9]{64}$/u.test(digest) || bytes.byteLength === 0 ||
+        `sha256:${createHash("sha256").update(bytes).digest("hex")}` !== digest) {
+      bytes.fill(0)
+      throw new OaCodexControlPortableProvisionerError("rejected", "oa-codex-control returned an invalid checkpoint artifact")
+    }
+    return { artifactRef, digest: digest as `sha256:${string}`, bytes }
+  }
+
   return {
     stage: async input => {
       const prepared = await run<Readonly<{
@@ -307,23 +355,46 @@ export const createOaCodexControlPortableProvisioner = (
       generation: input.generation,
       payload: { graph: input.graph, threadCursors: input.threadCursors },
     }),
-    checkpoint: input => run({
-      operationRef: input.operationRef,
-      action: "checkpoint",
-      ownerRef: input.ownerRef,
-      targetRef: input.targetRef,
-      resourceRef: input.resourceRef,
-      sessionRef: input.sessionRef,
-      attachmentRef: input.attachmentRef,
-      generation: input.generation,
-      payload: {
+    checkpoint: async input => {
+      const bundle = await run<Awaited<ReturnType<ManagedAgentComputerPortableProvisioner["checkpoint"]>>>({
+        operationRef: input.operationRef,
+        action: "checkpoint",
+        ownerRef: input.ownerRef,
+        targetRef: input.targetRef,
+        resourceRef: input.resourceRef,
+        sessionRef: input.sessionRef,
+        attachmentRef: input.attachmentRef,
+        generation: input.generation,
+        payload: {
+          checkpointRef: input.checkpointRef,
+          eventLogCursor: input.eventLogCursor,
+          executionBinding: input.executionBinding,
+          graph: input.graph,
+          threadCursors: input.threadCursors,
+        },
+      })
+      if (bundle.checkpoint.checkpointRef !== input.checkpointRef ||
+          bundle.checkpoint.sessionRef !== input.sessionRef ||
+          bundle.checkpoint.sourceAttachmentRef !== input.attachmentRef ||
+          bundle.checkpoint.sourceGeneration !== input.generation) {
+        throw new OaCodexControlPortableProvisionerError("rejected", "managed checkpoint bundle does not match the exact source generation")
+      }
+      const artifact = await exportCheckpoint({
+        operationRef: `${input.operationRef}.export`,
+        ownerRef: input.ownerRef,
+        targetRef: input.targetRef,
+        sessionRef: input.sessionRef,
+        attachmentRef: input.attachmentRef,
+        generation: input.generation,
         checkpointRef: input.checkpointRef,
-        eventLogCursor: input.eventLogCursor,
-        executionBinding: input.executionBinding,
-        graph: input.graph,
-        threadCursors: input.threadCursors,
-      },
-    }),
+      })
+      try {
+        await config.checkpointArtifacts.registerArtifact({ bundle, artifact })
+      } finally {
+        artifact.bytes.fill(0)
+      }
+      return bundle
+    },
     reclaim: input => run({
       operationRef: input.operationRef,
       action: "reclaim",
