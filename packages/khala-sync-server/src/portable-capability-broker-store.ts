@@ -156,6 +156,7 @@ const selectRow = async (
 export class PostgresPortableCapabilityBrokerStore
 implements CapabilityBrokerAtomicStateStore {
   private readonly fingerprint: string
+  private observedRevision: number | null = null
 
   constructor(
     private readonly sql: SyncSql,
@@ -165,8 +166,31 @@ implements CapabilityBrokerAtomicStateStore {
     this.fingerprint = claimFingerprint(scope.moveClaim)
   }
 
+  /**
+   * Read the aggregate revision before attempting claim acquisition. The
+   * subsequent `acquireMoveClaim` transaction still performs the authoritative
+   * CAS, so a concurrent claimant cannot be overwritten.
+   */
+  async readRevision(): Promise<number> {
+    const row = await selectRow(this.sql, this.scope.ownerRef, this.scope.sessionRef, false)
+    const revision = row === undefined ? 0 : revisionOf(row.revision)
+    this.observedRevision = revision
+    return revision
+  }
+
+  /** Latest revision observed by this exact store instance. */
+  currentRevision(): number {
+    if (this.observedRevision === null) {
+      throw new PortableCapabilityBrokerStoreError(
+        "invalid",
+        "portable broker revision has not been observed",
+      )
+    }
+    return this.observedRevision
+  }
+
   async acquireMoveClaim(expectedRevision: number): Promise<{ readonly revision: number }> {
-    return this.sql.begin(async tx => {
+    const acquired = await this.sql.begin(async tx => {
       await tx`
         INSERT INTO khala_sync_portable_capability_brokers
           (owner_user_id, session_ref, revision)
@@ -185,7 +209,9 @@ implements CapabilityBrokerAtomicStateStore {
         throw new PortableCapabilityBrokerStoreError("stale_revision", "portable broker claim revision is stale")
       }
       if (row.active_move_ref !== null) {
-        if (this.matchesClaim(row)) return { revision }
+        if (this.matchesClaim(row)) {
+          return { revision }
+        }
         throw new PortableCapabilityBrokerStoreError("claim_conflict", "another portable move owns the broker")
       }
       const next = revision + 1
@@ -205,6 +231,8 @@ implements CapabilityBrokerAtomicStateStore {
       `
       return { revision: next }
     })
+    this.observedRevision = acquired.revision
+    return acquired
   }
 
   async load(): Promise<CapabilityBrokerAtomicLoad> {
@@ -216,7 +244,9 @@ implements CapabilityBrokerAtomicStateStore {
         "exact active portable move claim is required",
       )
     }
-    return { revision: revisionOf(row.revision), state: decodeState(row.state_json) }
+    const revision = revisionOf(row.revision)
+    this.observedRevision = revision
+    return { revision, state: decodeState(row.state_json) }
   }
 
   async commit(input: CapabilityBrokerAtomicCommit): Promise<{ readonly revision: number }> {
@@ -229,7 +259,7 @@ implements CapabilityBrokerAtomicStateStore {
         input.evidence.sessionRef !== this.scope.sessionRef) {
       throw new PortableCapabilityBrokerStoreError("invalid", "broker commit scope or schema mismatch")
     }
-    return this.sql.begin(async tx => {
+    const committed = await this.sql.begin(async tx => {
       const row = await selectRow(tx, this.scope.ownerRef, this.scope.sessionRef, true)
       if (!row) throw new PortableCapabilityBrokerStoreError("not_found", "portable broker aggregate is absent")
       const revision = revisionOf(row.revision)
@@ -262,10 +292,12 @@ implements CapabilityBrokerAtomicStateStore {
       `
       return { revision: next }
     })
+    this.observedRevision = committed.revision
+    return committed
   }
 
   async releaseMoveClaim(expectedRevision: number): Promise<{ readonly revision: number }> {
-    return this.sql.begin(async tx => {
+    const released = await this.sql.begin(async tx => {
       const row = await selectRow(tx, this.scope.ownerRef, this.scope.sessionRef, true)
       if (!row) throw new PortableCapabilityBrokerStoreError("not_found", "portable broker aggregate is absent")
       const revision = revisionOf(row.revision)
@@ -293,6 +325,8 @@ implements CapabilityBrokerAtomicStateStore {
       `
       return { revision: next }
     })
+    this.observedRevision = released.revision
+    return released
   }
 
   private matchesClaim(row: BrokerRow): boolean {

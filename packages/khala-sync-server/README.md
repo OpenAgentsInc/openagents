@@ -199,6 +199,15 @@ any new destination leases, aborts staged target state, and records one typed
 refs-only outcome. A lost post-commit activation acknowledgement reconciles
 against the completed command and never repeats accepted work.
 
+`src/portable-session-move-runtime.ts` is the owner-side production
+composition. It acquires the exact owner/session/move/command/source-generation/
+destination claim before restoring the atomic Postgres capability broker, then
+runs the coordinator with injected concrete vault and target adapters. Terminal
+completed, replayed, and failed outcomes release the claim at the broker's
+latest committed revision. Authority- or activation-pending outcomes retain it,
+so a fresh process can reacquire the same bytes and reconcile while a
+conflicting move is refused before target or vault effects.
+
 `src/portable-session-move.test.ts` runs local→OpenAgents-managed→local against
 real ephemeral Postgres and the actual capability broker boundary with a root
 plus child. It also covers exact replay, activation reconciliation, destination
@@ -206,7 +215,10 @@ rejection, source cleanup failure, stale generation/restart, checkpoint/digest/
 cursor/execution-binding tampering, refusal of unbound legacy rows, secret
 scans, one live attachment, and no duplicate parent or child accepted work.
 This is deterministic implementation evidence, not the
-live #8748 acceptance receipt.
+live #8748 acceptance receipt. `src/portable-session-move-runtime.test.ts`
+adds real-Postgres coverage for terminal claim release after an intervening
+atomic broker commit, pending-claim retention and restart replay, and
+conflicting-move refusal before coordinator construction.
 
 ## Fleet cockpit scope (KS-6.1, #8302)
 

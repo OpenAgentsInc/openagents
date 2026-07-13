@@ -39,6 +39,14 @@ evidence identity, or forbidden private material leaves state and evidence
 unchanged. A fresh broker restores the committed operation bytes and returns a
 replay without repeating the capability operation.
 
+The owner-side production composition now lives in
+`PostgresPortableSessionMoveRuntime`. It acquires the exact durable move claim
+before restoring the broker and invoking the real coordinator. Terminal
+completed, replayed, and failed outcomes release that claim at the latest
+observed broker revision; authority- and activation-pending outcomes retain it
+for same-byte process restart and reconciliation. A conflicting move is
+rejected before coordinator, vault, or target effects.
+
 ## Fault and replay evidence
 
 The real-Postgres suite proves:
@@ -73,7 +81,8 @@ already applied`.
 ```sh
 bun test packages/khala-sync-server/src/portable-session-move.test.ts \
   packages/khala-sync-server/src/portable-session-authority.test.ts \
-  packages/khala-sync-server/src/portable-capability-broker-store.test.ts
+  packages/khala-sync-server/src/portable-capability-broker-store.test.ts \
+  packages/khala-sync-server/src/portable-session-move-runtime.test.ts
 bun x tsc -p packages/khala-sync-server/tsconfig.json --noEmit --pretty false
 bun test --cwd packages/portable-session-contract
 bun x tsc -p packages/portable-session-contract/tsconfig.json --noEmit --pretty false
@@ -85,9 +94,10 @@ This is production-path implementation and real database/broker boundary
 evidence, not the real-host acceptance demanded by #8748. Migration `0069`
 was applied to staging and production on 2026-07-13 (SHA-256 prefix
 `ce9db7cddbb5`; both post-apply dry runs: `0 pending, 70 already applied`). The
-atomic store still needs owner-side composition with the real local and managed
-adapters. The issue must
-remain open until #8636 is completed and one direct live journey moves the same bounded
+atomic store is now composed into the owner-side coordinator, but concrete
+owner-local Pylon, stateful managed Agent Computer, and provider/SCM vault and
+grant-install adapters remain. The issue must remain open until those adapters
+land, #8636 is completed, and one direct live journey moves the same bounded
 child-bearing repository session from the owner's local Pylon to the accepted
 #8547 Agent Computer and back. That receipt must show actual target/runtime
 refs, exact repository/diff post-image, fresh grants, source reclaim, zero
