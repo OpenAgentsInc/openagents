@@ -220,6 +220,19 @@ adds real-Postgres coverage for terminal claim release after an intervening
 atomic broker commit, pending-claim retention and restart replay, and
 conflicting-move refusal before coordinator construction.
 
+`src/portable-managed-agent-computer-target.ts` is the durable managed-target
+adapter behind that port. Migration `0070` retains one exact staged/active/
+quiesced/reclaimed Agent Computer resource plus a byte-fingerprinted operation
+ledger. Stage cannot accept work. Activation independently verifies that
+PORT-01 has committed the exact attachment generation before it calls the
+idempotent provisioner. Pending stage/activate/abort/quiesce/checkpoint/reclaim
+effects can replay after restart without changing their bytes, and managed
+failback cannot checkpoint or reclaim until the exact active generation is
+durably quiesced. The provisioner seam returns refs-only receipts; it never
+persists raw grants or host/runtime handles. The existing live control-plane
+route still runs and tears down a one-shot VM, so this adapter does not by
+itself claim a retained live Firecracker stage or the #8748 acceptance journey.
+
 ## Fleet cockpit scope (KS-6.1, #8302)
 
 `src/fleet-projection.ts` + `src/fleet-mutators.ts` +

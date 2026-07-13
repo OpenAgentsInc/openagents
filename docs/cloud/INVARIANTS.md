@@ -201,11 +201,25 @@ design context only.
   retains the source graph fenced, and records `recovery_required`. A lost
   post-commit activation acknowledgement replays the same activation operation;
   it never creates another attachment or accepted parent/child turn.
+- The managed target's durable adapter records the exact operation bytes before
+  each provisioner effect. The provisioner operation ref is byte-idempotent, so
+  a restart may reconcile a pending effect but cannot change its session,
+  attachment, generation, checkpoint, resource, or result. Stage remains
+  non-accepting; activation independently reads PORT-01 and refuses until the
+  exact destination attachment is the current active generation.
+- Failback from a managed target uses the same adapter in source mode. Only its
+  exact active generation may quiesce; checkpoint construction requires that
+  durable non-accepting state; reclaim must prove all canonical agents plus
+  process, scratch, and port release. Abort is limited to a staged target and
+  both abort and reclaim are safe to replay after a process restart.
 - Deterministic enforcement lives in
-  `packages/khala-sync-server/src/portable-session-move.test.ts`. It is not the
-  real-host acceptance receipt. #8748 stays open until #8636 is complete and a
-  direct owner-local Pylon → accepted Agent Computer → owner-local journey
-  proves exact identity/digest/grant/cleanup behavior on live infrastructure.
+  `packages/khala-sync-server/src/portable-session-move.test.ts` and the
+  real-Postgres
+  `packages/khala-sync-server/src/portable-managed-agent-computer-target.test.ts`.
+  These are not the real-host acceptance receipt. #8748 stays open until #8636
+  is complete and a direct owner-local Pylon → accepted Agent Computer →
+  owner-local journey proves exact identity/digest/grant/cleanup behavior on
+  live infrastructure.
 
 ## Compute Versus Labor
 
