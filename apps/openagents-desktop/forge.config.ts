@@ -32,6 +32,7 @@ const macCodeSignableBasenames = new Set([
   "Electron Framework",
   "chrome_crashpad_handler",
   "codex",
+  "claude",
   "codex-code-mode-host",
   "rg",
   "ShipIt",
@@ -126,6 +127,11 @@ const config: ForgeConfig = {
       // copied workspace node_modules with that explicit runtime allowlist.
       await rm(path.join(buildPath, "node_modules"), { recursive: true, force: true })
       await copyRuntimePackage(buildPath, "@anthropic-ai/claude-agent-sdk")
+      await copyRuntimePackage(
+        buildPath,
+        `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`,
+        `@anthropic-ai/claude-agent-sdk-${platform}-${arch}/package.json`,
+      )
       await copyRuntimePackage(buildPath, "@openai/codex", "@openai/codex/bin/codex.js", 1)
       await copyRuntimePackage(buildPath, `@openai/codex-${platform}-${arch}`, `@openai/codex-${platform}-${arch}/package.json`)
     },
