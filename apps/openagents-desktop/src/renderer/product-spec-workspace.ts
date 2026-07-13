@@ -23,9 +23,12 @@ import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
   decodeProductSpecPlanResult,
+  decodeProductSpecEditConfirmationResult,
+  decodeProductSpecEditProposalResult,
   decodeProductSpecProjectionResult,
   decodeProductSpecRunResult,
   type ProductSpecPlan,
+  type ProductSpecEditProposal,
   type ProductSpecProjection,
   type ProductSpecRun,
   type ProductSpecWorkPacket,
@@ -42,11 +45,15 @@ const planResult = (value: unknown): ProductSpecResult<ProductSpecPlan> | null =
   (decodeProductSpecPlanResult(value) as ProductSpecResult<ProductSpecPlan> | null | undefined) ?? null
 const runResult = (value: unknown): ProductSpecResult<ProductSpecRun> | null =>
   (decodeProductSpecRunResult(value) as ProductSpecResult<ProductSpecRun> | null | undefined) ?? null
+const editProposalResult = (value: unknown): ProductSpecResult<ProductSpecEditProposal> | null =>
+  (decodeProductSpecEditProposalResult(value) as ProductSpecResult<ProductSpecEditProposal> | null | undefined) ?? null
 
 export type ProductSpecWorkspaceState = Readonly<{
   relativePath: string
   createTitle: string
   projection: ProductSpecProjection | null
+  editDraft: string
+  editProposal: ProductSpecEditProposal | null
   plan: ProductSpecPlan | null
   run: ProductSpecRun | null
   evidenceRef: string
@@ -61,6 +68,8 @@ export const emptyProductSpecWorkspaceState = (): ProductSpecWorkspaceState => (
   relativePath: "docs/mvp/openagents-codex-mvp.product-spec.md",
   createTitle: "OpenAgents Codex MVP",
   projection: null,
+  editDraft: "",
+  editProposal: null,
   plan: null,
   run: null,
   evidenceRef: "",
@@ -79,6 +88,8 @@ export type ProductSpecWorkspaceCapableState = Readonly<{
 export type ProductSpecRendererBridge = Readonly<{
   open: (value: unknown) => Promise<unknown>
   create: (value: unknown) => Promise<unknown>
+  proposeEdit: (value: unknown) => Promise<unknown>
+  confirmEdit: (value: unknown) => Promise<unknown>
   proposePlan: (value: unknown) => Promise<unknown>
   acceptPlan: (value: unknown) => Promise<unknown>
   admitPacket: (value: unknown) => Promise<unknown>
@@ -97,6 +108,8 @@ const unavailable = async (): Promise<unknown> => ({
 export const unavailableProductSpecRendererBridge: ProductSpecRendererBridge = {
   open: unavailable,
   create: unavailable,
+  proposeEdit: unavailable,
+  confirmEdit: unavailable,
   proposePlan: unavailable,
   acceptPlan: unavailable,
   admitPacket: unavailable,
@@ -110,6 +123,9 @@ export const ProductSpecPathChanged = defineIntent("ProductSpecPathChanged", Sch
 export const ProductSpecTitleChanged = defineIntent("ProductSpecTitleChanged", Schema.String)
 export const ProductSpecOpenRequested = defineIntent("ProductSpecOpenRequested", Schema.Null)
 export const ProductSpecCreateRequested = defineIntent("ProductSpecCreateRequested", Schema.Null)
+export const ProductSpecEditDraftChanged = defineIntent("ProductSpecEditDraftChanged", Schema.String)
+export const ProductSpecEditProposed = defineIntent("ProductSpecEditProposed", Schema.Null)
+export const ProductSpecEditConfirmed = defineIntent("ProductSpecEditConfirmed", Schema.Null)
 export const ProductSpecPlanProposed = defineIntent("ProductSpecPlanProposed", Schema.Null)
 export const ProductSpecPlanAccepted = defineIntent("ProductSpecPlanAccepted", Schema.Null)
 export const ProductSpecEvidenceRefChanged = defineIntent("ProductSpecEvidenceRefChanged", Schema.String)
@@ -126,6 +142,9 @@ export const productSpecWorkspaceIntents = [
   ProductSpecTitleChanged,
   ProductSpecOpenRequested,
   ProductSpecCreateRequested,
+  ProductSpecEditDraftChanged,
+  ProductSpecEditProposed,
+  ProductSpecEditConfirmed,
   ProductSpecPlanProposed,
   ProductSpecPlanAccepted,
   ProductSpecEvidenceRefChanged,
@@ -245,6 +264,8 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       yield* setWorkspace((workspace) => ({
         ...workspace,
         projection: result.value,
+        editDraft: result.value.sourceMarkdown,
+        editProposal: null,
         plan: null,
         run: null,
         busy: null,
@@ -261,6 +282,35 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
     ProductSpecTitleChanged: (value: string) => setWorkspace((workspace) => ({ ...workspace, createTitle: value.slice(0, 200) })),
     ProductSpecOpenRequested: () => openOrCreate("open"),
     ProductSpecCreateRequested: () => openOrCreate("create"),
+    ProductSpecEditDraftChanged: (value: string) => setWorkspace(workspace => ({ ...workspace, editDraft: value.slice(0, 1_000_000), editProposal: null })),
+    ProductSpecEditProposed: () => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const projection = current.productSpec.projection
+      const workContextRef = workContextOrError(current)
+      if (projection?.state !== "ready" || workContextRef === null || current.productSpec.busy !== null || current.productSpec.editDraft === projection.sourceMarkdown) return
+      yield* setWorkspace(workspace => ({ ...workspace, busy: "edit-propose", error: null, notice: null }))
+      const raw = yield* Effect.promise(() => bridge.proposeEdit({
+        workContextRef,
+        expectedCurrent: projection.identity,
+        proposedMarkdown: current.productSpec.editDraft,
+      }).catch(() => null))
+      const result = editProposalResult(raw)
+      yield* setWorkspace(workspace => result !== null && result.ok
+        ? { ...workspace, editProposal: result.value, busy: null, notice: "Review the exact diff and criterion reconciliation before confirming.", error: null }
+        : { ...workspace, busy: null, error: operationMessage(result, "The ProductSpec edit could not be proposed.") })
+    }),
+    ProductSpecEditConfirmed: () => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const projection = current.productSpec.projection
+      const proposal = current.productSpec.editProposal
+      if (projection?.state !== "ready" || proposal === null || current.productSpec.busy !== null) return
+      yield* setWorkspace(workspace => ({ ...workspace, busy: "edit-confirm", error: null, notice: null }))
+      const raw = yield* Effect.promise(() => bridge.confirmEdit({ proposalRef: proposal.proposalRef, expectedCurrent: projection.identity }).catch(() => null))
+      const result = decodeProductSpecEditConfirmationResult(raw) as ProductSpecResult<{ projection: ProductSpecProjection }> | null
+      yield* setWorkspace(workspace => result !== null && result.ok
+        ? { ...workspace, projection: result.value.projection, editDraft: result.value.projection.sourceMarkdown, editProposal: null, plan: null, run: null, busy: null, notice: "ProductSpec revision confirmed. Create a new plan for the new immutable identity.", error: null }
+        : { ...workspace, busy: null, error: operationMessage(result, "The ProductSpec edit confirmation failed.") })
+    }),
     ProductSpecPlanProposed: () => Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
       const projection = current.productSpec.projection
@@ -406,8 +456,9 @@ export const productSpecWorkspaceView = (
       : projection.state === "invalid" ? [Stack({ key: "product-spec-invalid", direction: "column", gap: "1", style: { width: "full" } }, [
         Badge({ key: "product-spec-invalid-badge", label: "Not executable", tone: "danger" }),
         Text({ key: "product-spec-invalid-path", content: projection.relativePath, variant: "caption", color: "textMuted" }),
-        ...projection.errors.map((issue, index) => Text({ key: `product-spec-error-${index}`, content: `${issue.code}: ${issue.message}`, variant: "body", color: "danger" })),
-        ...projection.warnings.map((issue, index) => Text({ key: `product-spec-warning-${index}`, content: `${issue.code}: ${issue.message}`, variant: "caption", color: "warning" })),
+        TextField({ key: "product-spec-invalid-source", value: projection.sourceMarkdown, multiline: true, disabled: true, a11y: { label: "Invalid ProductSpec source" }, style: { width: "full", minHeight: 240 } }),
+        ...projection.errors.map((issue, index) => Text({ key: `product-spec-error-${index}`, content: `${issue.path === undefined ? "" : `${issue.path} · `}${issue.code}: ${issue.message}`, variant: "body", color: "danger" })),
+        ...projection.warnings.map((issue, index) => Text({ key: `product-spec-warning-${index}`, content: `${issue.path === undefined ? "" : `${issue.path} · `}${issue.code}: ${issue.message}`, variant: "caption", color: "warning" })),
       ])]
         : [Stack({ key: "product-spec-ready", direction: "column", gap: "2", style: { width: "full", minWidth: 0 } }, [
           Stack({ key: "product-spec-identity", direction: "row", gap: "2", align: "center", style: { width: "full", minWidth: 0 } }, [
@@ -417,6 +468,14 @@ export const productSpecWorkspaceView = (
           ]),
           Text({ key: "product-spec-spec-ref", content: `Spec: ${projection.identity.specRef}`, variant: "caption", color: "textMuted" }),
           Text({ key: "product-spec-digest", content: projection.identity.digest, variant: "caption", color: "textMuted" }),
+          TextField({ key: "product-spec-edit-draft", value: workspace.editDraft, multiline: true, disabled: busy || workspace.run !== null, a11y: { label: "ProductSpec revision draft" }, onChange: IntentRef("ProductSpecEditDraftChanged", ComponentValueBinding()), style: { width: "full", minHeight: 240 } }),
+          ...(workspace.run !== null ? [Text({ key: "product-spec-edit-run-lock", content: "Finish or reconcile the accepted run before revising this ProductSpec.", variant: "caption", color: "warning" })] : []),
+          ...(workspace.editProposal !== null ? [Stack({ key: "product-spec-edit-review", direction: "column", gap: "2", style: { width: "full", minWidth: 0, padding: "3", backgroundColor: "surfaceRaised", borderRadius: "md" } }, [
+            Text({ key: "product-spec-edit-review-title", content: `Revision ${workspace.editProposal.previous.revision} → ${workspace.editProposal.next.revision}`, variant: "heading", color: "textPrimary" }),
+            Text({ key: "product-spec-edit-reconciliation", content: `Retained: ${workspace.editProposal.reconciliation.retainedCriterionIds.join(", ") || "none"} · Changed: ${workspace.editProposal.reconciliation.changedCriterionIds.join(", ") || "none"} · Added: ${workspace.editProposal.reconciliation.addedCriterionIds.join(", ") || "none"} · Removed: ${workspace.editProposal.reconciliation.removedCriterionIds.join(", ") || "none"}`, variant: "body", color: "warning" }),
+            Text({ key: "product-spec-edit-diff", content: workspace.editProposal.diff, variant: "caption", color: "textMuted" }),
+            Button({ key: "product-spec-edit-confirm", label: "Confirm revision and invalidate prior plan", variant: "primary", disabled: busy, onPress: IntentRef("ProductSpecEditConfirmed") }),
+          ])] : workspace.run === null && workspace.editDraft !== projection.sourceMarkdown ? [Button({ key: "product-spec-edit-propose", label: "Review revision diff", variant: "secondary", disabled: busy, onPress: IntentRef("ProductSpecEditProposed") })] : []),
           Text({ key: "product-spec-criteria-title", content: `${projection.criteria.length} acceptance criteria`, variant: "label", color: "textPrimary" }),
           ...projection.criteria.map((criterion) => Stack({ key: `product-spec-criterion-${criterion.id}`, direction: "row", gap: "2", align: "start", style: { width: "full", minWidth: 0 } }, [
             Badge({ key: `product-spec-criterion-badge-${criterion.id}`, label: criterion.id, tone: "neutral" }),

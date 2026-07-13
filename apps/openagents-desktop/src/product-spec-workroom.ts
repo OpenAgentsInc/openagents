@@ -78,6 +78,25 @@ const identitiesEqual = (left: ProductSpecIdentity, right: ProductSpecIdentity):
 
 const unique = <A>(values: ReadonlyArray<A>): A[] => [...new Set(values)]
 
+const exactEditDiff = (previous: string, next: string): string => {
+  const before = previous.split("\n")
+  const after = next.split("\n")
+  let prefix = 0
+  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix += 1
+  let suffix = 0
+  while (suffix < before.length - prefix && suffix < after.length - prefix &&
+    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix += 1
+  const removed = before.slice(prefix, before.length - suffix)
+  const added = after.slice(prefix, after.length - suffix)
+  return [
+    "--- accepted ProductSpec",
+    "+++ proposed ProductSpec",
+    `@@ -${prefix + 1},${removed.length} +${prefix + 1},${added.length} @@`,
+    ...removed.map(line => `-${line}`),
+    ...added.map(line => `+${line}`),
+  ].join("\n")
+}
+
 type StoredEditProposal = Readonly<{
   projection: ProductSpecEditProposal
   proposedMarkdown: string
@@ -175,6 +194,7 @@ export const makeProductSpecWorkroom = (
         value: {
           state: "invalid",
           relativePath: request.relativePath,
+          sourceMarkdown: markdown,
           standardValid: validation.document !== undefined,
           executable: false,
           errors: validation.errors,
@@ -194,6 +214,7 @@ export const makeProductSpecWorkroom = (
       value: {
         state: "ready",
         title: validation.document.frontmatter.title,
+        sourceMarkdown: markdown,
         identity,
         executable: true,
         criteria: validation.criteria.map(criterion => ({
@@ -267,6 +288,7 @@ export const makeProductSpecWorkroom = (
       previous: request.expectedCurrent,
       next,
       reconciliation,
+      diff: exactEditDiff(current.value.sourceMarkdown, request.proposedMarkdown),
     }))
     const proposal: ProductSpecEditProposal = {
       proposalRef: `product.edit.${proposalHash.slice(0, 24)}`,
@@ -274,6 +296,7 @@ export const makeProductSpecWorkroom = (
       previous: request.expectedCurrent,
       next,
       reconciliation,
+      diff: exactEditDiff(current.value.sourceMarkdown, request.proposedMarkdown),
       proposedAt: now(),
       state: "proposed",
     }

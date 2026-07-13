@@ -317,6 +317,10 @@ describe("ProductSpec workroom authority", () => {
       addedCriterionIds: ["FX-AC-04"],
       removedCriterionIds: ["FX-AC-03"],
     })
+    expect(proposed.value.diff).toContain("--- accepted ProductSpec")
+    expect(proposed.value.diff).toContain("+++ proposed ProductSpec")
+    expect(proposed.value.diff).toContain("+spec_revision: 2")
+    expect(proposed.value.diff).toContain("-spec_revision: 1")
     expect(openFixture(service).identity.revision).toBe(1)
 
     const confirmed = service.confirmEdit({

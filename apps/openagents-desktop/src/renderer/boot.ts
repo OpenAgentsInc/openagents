@@ -156,6 +156,8 @@ type DesktopBridge = Readonly<{
   productSpec?: Readonly<{
     open?: (value: unknown) => Promise<unknown>
     create?: (value: unknown) => Promise<unknown>
+    proposeEdit?: (value: unknown) => Promise<unknown>
+    confirmEdit?: (value: unknown) => Promise<unknown>
     proposePlan?: (value: unknown) => Promise<unknown>
     acceptPlan?: (value: unknown) => Promise<unknown>
     admitPacket?: (value: unknown) => Promise<unknown>
@@ -306,6 +308,8 @@ const workspaceDocumentBridge: WorkspaceDocumentBridge = {
 const productSpecRendererBridge: ProductSpecRendererBridge = {
   open: (value) => readBridge()?.productSpec?.open?.(value) ?? unavailableProductSpecRendererBridge.open(value),
   create: (value) => readBridge()?.productSpec?.create?.(value) ?? unavailableProductSpecRendererBridge.create(value),
+  proposeEdit: (value) => readBridge()?.productSpec?.proposeEdit?.(value) ?? unavailableProductSpecRendererBridge.proposeEdit(value),
+  confirmEdit: (value) => readBridge()?.productSpec?.confirmEdit?.(value) ?? unavailableProductSpecRendererBridge.confirmEdit(value),
   proposePlan: (value) => readBridge()?.productSpec?.proposePlan?.(value) ?? unavailableProductSpecRendererBridge.proposePlan(value),
   acceptPlan: (value) => readBridge()?.productSpec?.acceptPlan?.(value) ?? unavailableProductSpecRendererBridge.acceptPlan(value),
   admitPacket: (value) => readBridge()?.productSpec?.admitPacket?.(value) ?? unavailableProductSpecRendererBridge.admitPacket(value),

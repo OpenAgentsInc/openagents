@@ -27,6 +27,7 @@ const identity: ProductSpecIdentity = {
 const projection: ProductSpecProjection = {
   state: "ready",
   title: "OpenAgents Codex MVP",
+  sourceMarkdown: "# OpenAgents Codex MVP\n",
   identity,
   executable: true,
   criteria: [
@@ -128,6 +129,68 @@ const nodeByKey = (value: unknown, key: string): Record<string, unknown> | undef
 }
 
 describe("ProductSpec Effect Native workroom", () => {
+  test("proposes and confirms a revision only through host-confirmed edit receipts", async () => {
+    const requests: Array<{ op: string; value: unknown }> = []
+    const nextProjection: ProductSpecProjection = {
+      ...projection,
+      sourceMarkdown: projection.sourceMarkdown.replace("# OpenAgents", "# Revised OpenAgents"),
+      identity: { ...identity, revision: 8, digest: `sha256:${"b".repeat(64)}` },
+    }
+    const proposal = {
+      proposalRef: "product.edit.confirmed",
+      workContextRef: "work.context.demo",
+      previous: identity,
+      next: nextProjection.identity,
+      reconciliation: { retainedCriterionIds: ["AC-1", "AC-2"], changedCriterionIds: [], addedCriterionIds: [], removedCriterionIds: [] },
+      diff: "--- accepted ProductSpec\n+++ proposed ProductSpec\n@@ -1,1 +1,1 @@\n-# OpenAgents\n+# Revised OpenAgents",
+      proposedAt: "2026-07-13T12:00:00.000Z",
+      state: "proposed" as const,
+    }
+    const bridge: ProductSpecRendererBridge = {
+      ...unavailableProductSpecRendererBridge,
+      proposeEdit: async value => { requests.push({ op: "propose", value }); return { ok: true, value: proposal } },
+      confirmEdit: async value => { requests.push({ op: "confirm", value }); return { ok: true, value: { proposal: { ...proposal, state: "confirmed", confirmedAt: "2026-07-13T12:01:00.000Z" }, projection: nextProjection, reconciled: false } } },
+    }
+    const state = await Effect.runPromise(Effect.gen(function* () {
+      const ref = yield* SubscriptionRef.make({ ...capableState(), productSpec: { ...emptyProductSpecWorkspaceState(), projection, editDraft: nextProjection.sourceMarkdown } })
+      const handlers = makeProductSpecWorkspaceHandlers(ref, bridge)
+      yield* handlers.ProductSpecEditProposed()
+      yield* handlers.ProductSpecEditConfirmed()
+      return yield* SubscriptionRef.get(ref)
+    }))
+    expect(requests[0]).toEqual({ op: "propose", value: { workContextRef: "work.context.demo", expectedCurrent: identity, proposedMarkdown: nextProjection.sourceMarkdown } })
+    expect(requests[1]).toEqual({ op: "confirm", value: { proposalRef: proposal.proposalRef, expectedCurrent: identity } })
+    expect(state.productSpec.projection).toEqual(nextProjection)
+    expect(state.productSpec.editProposal).toBeNull()
+    expect(state.productSpec.notice).toContain("new immutable identity")
+  })
+
+  test("renders an exact revision diff and explicit confirmation control", () => {
+    const view = productSpecWorkspaceView({
+      ...emptyProductSpecWorkspaceState(),
+      projection,
+      editDraft: projection.sourceMarkdown.replace("# OpenAgents", "# Revised OpenAgents"),
+      editProposal: {
+        proposalRef: "product.edit.demo",
+        workContextRef: "work.context.demo",
+        previous: identity,
+        next: { ...identity, revision: 8, digest: `sha256:${"b".repeat(64)}` },
+        reconciliation: {
+          retainedCriterionIds: ["AC-1"],
+          changedCriterionIds: ["AC-1"],
+          addedCriterionIds: ["AC-3"],
+          removedCriterionIds: ["AC-2"],
+        },
+        diff: "--- accepted ProductSpec\n+++ proposed ProductSpec\n@@ -1,1 +1,1 @@\n-# OpenAgents\n+# Revised OpenAgents",
+        proposedAt: "2026-07-13T12:00:00.000Z",
+        state: "proposed",
+      },
+    }, "work.context.demo")
+    expect(nodeByKey(view, "product-spec-edit-diff")?.content).toContain("+# Revised OpenAgents")
+    expect(nodeByKey(view, "product-spec-edit-reconciliation")?.content).toContain("Removed: AC-2")
+    expect((nodeByKey(view, "product-spec-edit-confirm")?.onPress as { name?: string } | undefined)?.name).toBe("ProductSpecEditConfirmed")
+  })
+
   test("projects validation identity, digest, criteria, and dependency-gated packets", () => {
     const run = acceptedRun()
     const view = productSpecWorkspaceView({

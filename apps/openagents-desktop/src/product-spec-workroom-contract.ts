@@ -60,6 +60,7 @@ export const ProductSpecProjectionSchema = Schema.Union([
   Schema.Struct({
     state: Schema.Literal("invalid"),
     relativePath: RelativeSpecPathSchema,
+    sourceMarkdown: Schema.String.check(Schema.isMaxLength(1_000_000)),
     standardValid: Schema.Boolean,
     executable: Schema.Literal(false),
     errors: Schema.Array(ProductSpecValidationIssueSchema),
@@ -68,6 +69,7 @@ export const ProductSpecProjectionSchema = Schema.Union([
   Schema.Struct({
     state: Schema.Literal("ready"),
     title: NonEmptyTextSchema,
+    sourceMarkdown: Schema.String.check(Schema.isMaxLength(1_000_000)),
     identity: ProductSpecIdentitySchema,
     executable: Schema.Literal(true),
     criteria: Schema.Array(ProductSpecCriterionSchema),
@@ -144,6 +146,7 @@ export const ProductSpecEditProposalSchema = Schema.Struct({
   previous: ProductSpecIdentitySchema,
   next: ProductSpecIdentitySchema,
   reconciliation: ProductSpecReconciliationSchema,
+  diff: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_100_000)),
   proposedAt: TimestampSchema,
   state: Schema.Literals(["proposed", "confirmed", "superseded"]),
   confirmedAt: Schema.optional(TimestampSchema),
