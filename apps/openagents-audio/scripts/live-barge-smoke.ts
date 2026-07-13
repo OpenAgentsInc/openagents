@@ -9,7 +9,7 @@ const grant = mintAudioGrant({ identity, expiresAtMs: Date.now() + 5 * 60_000 },
 const turnRef = `turn:barge:${Date.now()}`; const speechRef = `speech:barge:${Date.now()}`; const messageRef = `message:barge:${Date.now()}`
 const socket = new WebSocket(`${base.replace(/^http/, "ws")}/v1/stream?token=${encodeURIComponent(grant)}`, { headers: { Authorization: `Bearer ${iam}` } } as any)
 await new Promise<void>((resolve, reject) => { socket.onopen = () => resolve(); socket.onerror = () => reject(new Error("barge websocket error")) })
-let audioStarted = false; let qualifiedAt: number | null = null; let cancelAt: number | null = null; let sequence = 0; const observedTags: string[] = []
+let audioStarted = false; let qualifiedAt: number | null = null; let cancelAt: number | null = null; let sequence = -1; const observedTags: string[] = []
 const canceled = new Promise<void>((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error("barge cancel timeout")), 30_000)
   socket.onmessage = event => {

@@ -2,9 +2,11 @@
 
 - **Date:** 2026-07-12
 - **Status:** AUDIO-1 through AUDIO-8 and epic #8733 are implementation-complete
-  on `main` with deployed lower-rung evidence and owner review. A future signed
-  release candidate remains release-system work, not an unproven implementation
-  claim or public product promise.
+  on `main`. AUDIO-8 acceptance remains open after the later full-sentence and
+  shell-stability fixes pending one current owner-reviewed physical-microphone
+  recording/provenance ref. A future signed release candidate remains
+  release-system work, not an unproven implementation claim or public product
+  promise.
 - **Destination:** `apps/openagents-desktop`
 - **Related authority:** `docs/sol/MASTER_ROADMAP.md`
 - **Effect/Rust decision:** [`2026-07-12-effect-vs-rust-audio-architecture-decision.md`](./2026-07-12-effect-vs-rust-audio-architecture-decision.md)
@@ -25,8 +27,8 @@
   authenticated transport, bounded reconnect/backpressure, and playback.
 - **AUDIO-5 through AUDIO-7:** the Effect Native HUD, registered semantic
   actions, Google Chirp 3 HD playback, and qualified barge-in are on `main`.
-- **AUDIO-8 deployed proof:** private audio revision
-  `openagents-audio-staging-00012-bbs` is reached only through public,
+- **AUDIO-8 deployed proof:** current private audio revision
+  `openagents-audio-staging-00013-mks` is reached only through public,
   grant-gated edge revision `openagents-audio-edge-staging-00001-frh`; real
   microphone, durable ACK, 60-second mute/reconcile/export/delete, full Desktop
   verification, and packaged-app lower-rung evidence are recorded in
@@ -875,11 +877,14 @@ appears in Sync, logs, analytics, or support bundles.
 Keep the implemented hybrid boundary: Rust owns bounded native media and
 Effect owns policy, UI, Google adapters, retention, commands, and receipts.
 The deployed owner-dogfood path proves real microphone capture, canonical
-assistant-to-Chirp playback, and exact retention disposition. The owner
-reviewed and explicitly accepted the documented lower rung; AUDIO-8 and the
-implementation epic are closed. Retained media remains an explicit, visible
-dogfood policy rather than a hidden side effect. Packaging this exact main in a
-new signed RC remains governed by the established Desktop release system.
+assistant-to-Chirp playback, and exact retention disposition. After that
+historical review, fragmented-final and shell-flicker defects were fixed and
+the issue was reopened. AUDIO-8 closes only after the owner reviews the current
+normal `oa` path for one complete sentence, barge-in, and stable Details/sidebar
+interaction and a public-safe recording/provenance ref is retained. Retained
+media remains an explicit, visible dogfood policy rather than a hidden side
+effect. Packaging this exact main in a new signed RC remains governed by the
+established Desktop release system.
 
 The north star is the old Onyx promise—say what you want and useful work
 happens—combined with Commander's Jarvis/StarCraft fleet surface and Sol's

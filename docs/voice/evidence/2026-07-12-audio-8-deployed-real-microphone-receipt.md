@@ -1,6 +1,7 @@
 # AUDIO-8 deployed real-microphone receipt
 
 - Date: 2026-07-12
+- Revalidated: 2026-07-13
 - Issue: [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741)
 - Epic: [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
 - Evidence rung: built and packaged real-Electron owner-dogfood candidate;
@@ -13,10 +14,15 @@ short-lived, identity-bound application grant to public Cloud Run edge revision
 `openagents-audio-edge-staging-00001-frh`. That service runs as
 `openagents-audio-edge@openagentsgemini.iam.gserviceaccount.com`, holds only
 `run.invoker` on the IAM-private audio service, and forwards a Google identity
-token plus the opaque application grant. The private service is revision
-`openagents-audio-staging-00012-bbs`, running as the dedicated
+token plus the opaque application grant. The current private service is revision
+`openagents-audio-staging-00013-mks`, running as the dedicated
 `oa-audio-retention@openagentsgemini.iam.gserviceaccount.com` identity with
 Speech, service-use, Cloud SQL, private-bucket object, and exact-secret access.
+On 2026-07-13 both services reported `Ready`; each routed 100% of traffic to the
+named revision. Authenticated `/health` on the private service and public
+`/health` on the edge both returned their exact bounded healthy response.
+The authenticated application-grant issuer was also Ready on monolith revision
+`openagents-monolith-00117-kdg` with 100% traffic at audit time.
 
 The Cloudflare bridge spike was removed after live probes returned the account
 platform limit `1027/429`; `openagents.com` itself also currently resolves
@@ -71,11 +77,43 @@ The deployed PCM/STT/storage journey separately returned exactly one final,
 deleted segments. Prior AUDIO-7 evidence records real Chirp 3 HD synthesis at
 198 ms first-byte latency and qualified barge-in acknowledgement p95 of 2 ms.
 
+## Current-main revalidation after the sentence/UI fix
+
+The issue was reopened after the earlier receipt because the normal owner path
+exposed fragmented finalization and high-frequency whole-shell reconciliation.
+The fixes landed in `43a76b849c` and `f39ce24a28`; the current audited base is
+`b0e579b0bba6ffbaa716f7ec42885a482d3c7ca8`, with Desktop package version
+`0.1.0-rc.5`. Revision `openagents-audio-staging-00013-mks` runs the matching
+server change: Google Speech-to-Text `chirp_3` now uses `SHORT` endpointing.
+Google streaming Text-to-Speech remains `google-chirp3-hd-streaming`, voice
+`en-US-Chirp3-HD-Sulafat`.
+
+Fresh ref-only live receipts on 2026-07-13 were:
+
+```json
+{"schema":"openagents.audio.stt_smoke.v1","finalCount":1,"gapCount":0,"ackCount":20,"retainedSequenceCount":20,"reconciliation":{"missingObjects":[],"orphanObjects":[],"uncoveredSequences":[]},"exportedObjects":20,"deletedSegments":20,"audioBytes":120320,"latencyMs":4796,"transcriptLogged":false}
+{"schema":"openagents.audio.tts_live_smoke.v1","ok":true,"assistantText":true,"mediaFrames":13,"adapterRef":"google-chirp3-hd-streaming","voiceRef":"en-US-Chirp3-HD-Sulafat","charsIn":36,"synthTtfbMs":185,"totalMs":565,"bytesOut":145662,"chunksOut":13,"outcome":"completed","transcriptLogged":false}
+{"schema":"openagents.audio.barge_live_smoke.v1","ok":true,"interruptAckMs":0,"speechRefBound":true,"outcomeRefObserved":true,"transcriptLogged":false}
+{"schema":"openagents.audio.long_fault_smoke.v1","durationSeconds":60,"realMicrophone":true,"muteStoppedEgress":true,"packets":565,"acks":565,"reconciliation":{"missingObjects":[],"orphanObjects":[],"uncoveredSequences":[]},"exportedObjects":565,"deletedSegments":565,"transcriptLogged":false}
+```
+
+The long fault smoke used the OS-default physical microphone and the current
+native helper built from the audited base; it did not inject PCM and did not
+record or print transcript content. The bounded STT and barge smokes used a
+generated non-owner speech fixture, so they validate the deployed provider and
+protocol path but are not represented as owner speech or owner acceptance.
+The evidence diff and emitted JSON were scanned for token/secret/credential
+values, transcript fields, raw media, local home paths, and private endpoint
+query material; none is retained here.
+
 ## Verification
 
 - `bun run --cwd apps/openagents-audio typecheck`
-- `bun run --cwd apps/openagents-audio test` — 26 pass, 0 fail
+- `bun run --cwd apps/openagents-audio test` — 27 pass, 0 fail after the
+  zero-based live-barge script regression was added
 - `cargo test -p oa-desktop-audio` — 11 pass, 0 fail
+- focused current Desktop voice/boundary/build suite — 124 pass, 0 fail;
+  Desktop typecheck and production build pass with the native helper staged
 - `bun run --cwd apps/openagents-desktop verify` — 1,072 pass, one unrelated
   documented H5 skip, build and real Electron smoke pass
 - `bun run --cwd apps/openagents-desktop package:mac` — arm64 app and packaged
@@ -100,14 +138,18 @@ GCS/SQL, mute/resume, export, and delete. Receipts and service logs contain
 counts/refs only; no transcript or raw media is printed, placed in Sync, or
 included in support output.
 
-## Owner acceptance and remaining release rung
+## Owner acceptance and remaining gates
 
-The owner recorded review in the active voice-roadmap thread on 2026-07-12:
-“i reviewed it. continue. close if nothing else. proceed.” The canonical
-assistant-message → closed `voice.speak` command → grant-gated `/v1/speak` →
-Chirp/native playback seam was then added and live-proven before closeout.
+The owner recorded review in the active voice-roadmap thread on 2026-07-12,
+before the later fragmented-final and shell-flicker report, fixes, and reopen.
+That earlier review remains valid provenance for its historical build, but it
+does not establish acceptance of `43a76b849c`/`f39ce24a28` or current main.
 
-AUDIO-8 and the implementation epic therefore close at the owner-accepted,
-documented packaged real-Electron lower rung. The earlier RC5 #8706 artifact
-predates AUDIO-8 and is not cited as proof of this code; producing a newer
-signed/notarized RC from current `main` remains ordinary release-system work.
+AUDIO-8 therefore remains open. Completion still requires one owner-reviewed
+recording/provenance ref from the normal `oa` launch showing a complete spoken
+sentence appears once, barge-in stops active playback and admits the new
+sentence once, and Details/sidebar interaction remains stable while listening.
+No transcript or audio content belongs in the public receipt. The earlier RC5
+#8706 artifact predates AUDIO-8 and is not cited as proof of this code;
+producing a newer signed/notarized RC from current `main` remains ordinary
+release-system work.
