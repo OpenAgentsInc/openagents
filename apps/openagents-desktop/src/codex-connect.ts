@@ -1,14 +1,12 @@
 /**
  * Main-process-only Codex account connect service (#8574, #8640 unblock).
  *
- * Wraps the proven Pylon isolated device-auth flow by spawning the pylon CLI
- * from the repo root:
- *
- *   bun apps/pylon/src/index.ts codex accounts list --json   (readiness list)
- *   bun apps/pylon/src/index.ts auth codex                   (device-auth connect)
+ * Uses the proven Pylon isolated custody module in-process and launches only
+ * the package-owned Codex native executable. The installed artifact therefore
+ * needs neither a Bun executable nor `apps/pylon/src/index.ts` from a checkout.
  *
  * SAFETY (repo law): this service NEVER sets or touches the default
- * `~/.codex` home. The pylon flow itself owns credential custody and runs
+ * `~/.codex` home. Pylon Core owns credential custody and runs
  * `codex login --device-auth` with an isolated per-account
  * `CODEX_HOME=<pylon home>/accounts/codex/<ref>` (see
  * packages/pylon-core/src/custody/account-connect.ts). We add no CODEX_HOME
@@ -18,7 +16,14 @@
  */
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
-import path from "node:path"
+import { join } from "node:path"
+
+import {
+  loadPylonAccountRegistry,
+  runPylonAccountsConnect,
+  type PylonAccountsConnectArgs,
+} from "@openagentsinc/pylon-core/custody"
+import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
 
 import {
   codexAccountRefPattern,
@@ -27,9 +32,11 @@ import {
   type CodexConnectStatus,
   unavailableCodexAccountsResult,
 } from "./codex-connect-contract.ts"
+import { resolveBundledCodexExecutable } from "./provider-runtime-host.ts"
 
 // ---------------------------------------------------------------------------
-// Device-auth stdout parser (pure; unit-tested against the pylon CLI format).
+// Legacy smoke-child stdout parser (pure; retained for deterministic fixture
+// mode). Installed custody parses the native Codex prompt directly below.
 //
 // `pylon auth codex` (non-JSON mode) prints exactly
 //   `${verificationUrl}\n${userCode}\n`
@@ -175,29 +182,205 @@ type ChildLike = {
 }
 
 export type CodexConnectServiceDependencies = Readonly<{
-  /** Spawn a pylon CLI invocation; overridable for tests/fixture mode. */
+  /** Legacy source-CLI seam retained only for deterministic smoke fixtures. */
   spawnPylon?: (args: ReadonlyArray<string>) => ChildLike | null
+  installedCustody?: InstalledCodexCustody
   openExternal?: (url: string) => Promise<void>
   listTimeoutMs?: number
   connectTimeoutMs?: number
 }>
 
-const repoRootFromHere = (here: string): string | null => {
-  // dist/main.js -> apps/openagents-desktop -> repo root
-  const root = path.resolve(here, "..", "..", "..")
-  return existsSync(path.join(root, "apps", "pylon", "src", "index.ts")) ? root : null
+export type InstalledCodexCustody = Readonly<{
+  listAccounts: () => Promise<CodexAccountsResult>
+  connect: (
+    ref: string | null,
+    forceDeviceLogin: boolean,
+    onPrompt: (prompt: Readonly<{ url: string; code: string }>) => void,
+  ) => Promise<string>
+  cancel: () => void
+  dispose: () => void
+}>
+
+export type InstalledCodexCustodyDependencies = Readonly<{
+  env?: Record<string, string | undefined>
+  resolveCodex?: () => string | null
+  spawnCodex?: (input: Readonly<{
+    executable: string
+    args: ReadonlyArray<string>
+    env: Record<string, string | undefined>
+  }>) => ChildLike | null
+}>
+
+const codexConnectArgs = (
+  accountRef: string,
+  forceDeviceLogin: boolean,
+): PylonAccountsConnectArgs => ({
+  provider: "codex",
+  accountRef,
+  accountLabel: accountRef,
+  agentToken: null,
+  baseUrl: null,
+  createNewOpenAgentsAccount: true,
+  home: null,
+  forceDeviceLogin,
+  json: true,
+  openAgentsAttemptId: null,
+  openAgentsLink: false,
+  providerAccountRef: null,
+  setupToken: null,
+  skipDeviceLogin: false,
+})
+
+const nextCodexAccountRef = (refs: ReadonlyArray<string>): string => {
+  const existing = new Set(refs)
+  if (!existing.has("codex")) return "codex"
+  for (let index = 2; index < 10_000; index += 1) {
+    const candidate = `codex-${index}`
+    if (!existing.has(candidate)) return candidate
+  }
+  throw new Error("codex_account_ref_capacity_exhausted")
 }
 
-const defaultSpawnPylon = (here: string) => (args: ReadonlyArray<string>): ChildLike | null => {
-  const root = repoRootFromHere(here)
-  if (root === null) return null
-  // No CODEX_HOME injection here — pylon assigns the isolated per-account
-  // home itself. Inherited env only.
-  return spawn("bun", ["apps/pylon/src/index.ts", ...args], {
-    cwd: root,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
-  }) as unknown as ChildLike
+const defaultSpawnInstalledCodex = (input: Readonly<{
+  executable: string
+  args: ReadonlyArray<string>
+  env: Record<string, string | undefined>
+}>): ChildLike | null => {
+  try {
+    return spawn(input.executable, [...input.args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: input.env as NodeJS.ProcessEnv,
+    }) as unknown as ChildLike
+  } catch {
+    return null
+  }
+}
+
+const codexDevicePrompt = (raw: string): Readonly<{ url: string; code: string }> | null => {
+  const cleaned = raw.replace(/\u001b\[[0-9;]*m/g, "")
+  const url = cleaned.match(/https:\/\/auth\.openai\.com\/codex\/device\b/)?.[0]
+  const code = cleaned.match(/\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b/)?.[0]
+  return url === undefined || code === undefined ? null : { url, code }
+}
+
+/**
+ * Installed-artifact custody path. It calls the bundled Pylon custody module
+ * and package-owned Codex executable directly; no Bun binary, source checkout,
+ * or `apps/pylon/src/index.ts` exists in this execution path.
+ */
+export const makeInstalledCodexCustody = (
+  dependencies: InstalledCodexCustodyDependencies = {},
+): InstalledCodexCustody => {
+  const env = dependencies.env ?? (process.env as Record<string, string | undefined>)
+  const paths = resolvePylonHome(env as NodeJS.ProcessEnv)
+  const summary = {
+    paths,
+    bootstrap: {
+      registerOpenAgents: false,
+      setupMdkWallet: false,
+      pylonRef: null,
+      displayName: null,
+      resourceMode: "desktop_local",
+      capabilityRefs: [],
+    },
+  }
+  const resolveCodex = dependencies.resolveCodex ?? resolveBundledCodexExecutable
+  const spawnCodex = dependencies.spawnCodex ?? defaultSpawnInstalledCodex
+  let disposed = false
+  let active: ChildLike | null = null
+
+  const registry = () => loadPylonAccountRegistry(summary)
+  const listAccounts = async (): Promise<CodexAccountsResult> => {
+    if (disposed) return unavailableCodexAccountsResult()
+    const accounts = (await registry())
+      .filter(account => account.provider === "codex" && codexAccountRefPattern.test(account.ref))
+      .map(account => ({
+        ref: account.ref,
+        readiness: existsSync(join(account.home, "auth.json")) ? "ready" : "credentials_missing",
+      }))
+    return { state: "ok", accounts }
+  }
+
+  const runLogin = (
+    input: Readonly<{ env: Record<string, string | undefined>; home: string }>,
+    onPrompt: (prompt: Readonly<{ url: string; code: string }>) => void,
+  ): Promise<{ exitCode: number }> => new Promise(resolve => {
+    const executable = resolveCodex()
+    if (disposed || executable === null) {
+      resolve({ exitCode: 1 })
+      return
+    }
+    const child = spawnCodex({
+      executable,
+      args: ["login", "--device-auth"],
+      env: { ...env, ...input.env, CODEX_HOME: input.home },
+    })
+    if (child === null) {
+      resolve({ exitCode: 1 })
+      return
+    }
+    active = child
+    let settled = false
+    let buffer = ""
+    let promptEmitted = false
+    const finish = (exitCode: number): void => {
+      if (settled) return
+      settled = true
+      if (active === child) active = null
+      resolve({ exitCode })
+    }
+    const consume = (text: string): void => {
+      buffer = `${buffer}${text}`.slice(-8_192)
+      if (promptEmitted) return
+      const prompt = codexDevicePrompt(buffer)
+      if (prompt === null) return
+      promptEmitted = true
+      onPrompt(prompt)
+    }
+    collectStream(child.stdout, consume)
+    collectStream(child.stderr, consume)
+    child.on("error", () => finish(1))
+    child.on("close", (...args: unknown[]) =>
+      finish(typeof args[0] === "number" ? args[0] : 1))
+  })
+
+  const connect = async (
+    requestedRef: string | null,
+    forceDeviceLogin: boolean,
+    onPrompt: (prompt: Readonly<{ url: string; code: string }>) => void,
+  ): Promise<string> => {
+    if (disposed) throw new Error("pylon_runtime_unavailable")
+    const accounts = await registry()
+    const ref = requestedRef ?? nextCodexAccountRef(
+      accounts.filter(account => account.provider === "codex").map(account => account.ref),
+    )
+    const projection = await runPylonAccountsConnect(
+      summary,
+      codexConnectArgs(ref, forceDeviceLogin),
+      {
+        env,
+        runCodexDeviceLogin: input => runLogin(input, onPrompt),
+      },
+    )
+    if (projection.deviceLogin.status === "blocked_invalid_auth") {
+      throw new Error("credentials_invalid_relogin_incomplete")
+    }
+    return projection.accountRef
+  }
+
+  const cancel = (): void => {
+    if (active !== null && !active.killed) active.kill("SIGTERM")
+  }
+  return {
+    listAccounts,
+    connect,
+    cancel,
+    dispose: () => {
+      if (disposed) return
+      disposed = true
+      cancel()
+    },
+  }
 }
 
 const collectStream = (stream: NodeJS.ReadableStream | null, onChunk: (text: string) => void): void => {
@@ -225,10 +408,13 @@ export type CodexConnectService = Readonly<{
 }>
 
 export const makeCodexConnectService = (
-  here: string,
+  _here: string,
   dependencies: CodexConnectServiceDependencies = {},
 ): CodexConnectService => {
-  const spawnPylon = dependencies.spawnPylon ?? defaultSpawnPylon(here)
+  const spawnPylon = dependencies.spawnPylon ?? null
+  const installedCustody = spawnPylon === null
+    ? dependencies.installedCustody ?? makeInstalledCodexCustody()
+    : null
   const listTimeoutMs = dependencies.listTimeoutMs ?? 120_000
   const connectTimeoutMs = dependencies.connectTimeoutMs ?? 15 * 60_000
   let current: CodexConnectStatus = { state: "idle" }
@@ -258,13 +444,26 @@ export const makeCodexConnectService = (
     child = null
   }
 
-  const listAccounts = (): Promise<CodexAccountsResult> =>
-    new Promise((resolve) => {
+  const rememberAccounts = (result: CodexAccountsResult): CodexAccountsResult => {
+    if (result.state === "ok") {
+      for (const account of result.accounts) knownRefs.add(account.ref)
+    }
+    return result
+  }
+
+  const listAccounts = (): Promise<CodexAccountsResult> => {
+    if (disposed) return Promise.resolve(unavailableCodexAccountsResult())
+    if (installedCustody !== null) {
+      return installedCustody.listAccounts()
+        .then(rememberAccounts)
+        .catch(() => unavailableCodexAccountsResult())
+    }
+    return new Promise((resolve) => {
       if (disposed) {
         resolve(unavailableCodexAccountsResult())
         return
       }
-      const listChild = spawnPylon(["codex", "accounts", "list", "--json"])
+      const listChild = spawnPylon?.(["codex", "accounts", "list", "--json"]) ?? null
       if (listChild === null) {
         resolve(unavailableCodexAccountsResult())
         return
@@ -278,10 +477,7 @@ export const makeCodexConnectService = (
         done = true
         if (timer !== null) clearTimeout(timer)
         if (operation !== null) listOperations.delete(operation)
-        if (result.state === "ok") {
-          for (const account of result.accounts) knownRefs.add(account.ref)
-        }
-        resolve(result)
+        resolve(rememberAccounts(result))
       }
       operation = { child: listChild, finish }
       listOperations.add(operation)
@@ -300,6 +496,7 @@ export const makeCodexConnectService = (
         finish(parseAccountsListJson(stdout))
       })
     })
+  }
 
   const launchDeviceAuth = (cliArgs: ReadonlyArray<string>): CodexConnectStatus => {
     if (disposed) return { state: "failed", reason: "pylon_runtime_unavailable" }
@@ -307,7 +504,7 @@ export const makeCodexConnectService = (
       return current // single-flight: one device-auth attempt at a time
     }
     current = { state: "starting" }
-    const connectChild = spawnPylon(cliArgs)
+    const connectChild = spawnPylon?.(cliArgs) ?? null
     if (connectChild === null) {
       current = { state: "failed", reason: "pylon_runtime_unavailable" }
       return current
@@ -352,7 +549,36 @@ export const makeCodexConnectService = (
     return current
   }
 
-  const start = (): CodexConnectStatus => launchDeviceAuth(["auth", "codex"])
+  const launchInstalledDeviceAuth = (
+    ref: string | null,
+    forceDeviceLogin: boolean,
+  ): CodexConnectStatus => {
+    if (disposed || installedCustody === null) {
+      return { state: "failed", reason: "pylon_runtime_unavailable" }
+    }
+    if (current.state === "starting" || current.state === "awaiting_browser") return current
+    current = { state: "starting" }
+    const timer = setTimeout(() => {
+      settle({ state: "failed", reason: "device_auth_timeout" })
+      installedCustody.cancel()
+    }, connectTimeoutMs)
+    void installedCustody.connect(ref, forceDeviceLogin, prompt => {
+      settle({ state: "awaiting_browser", url: prompt.url, code: prompt.code })
+    }).then(connectedRef => {
+      if (!disposed && current.state !== "failed") {
+        knownRefs.add(connectedRef)
+        current = { state: "connected", ref: connectedRef }
+      }
+    }).catch(error => {
+      const detail = publicSafeFailureDetail(error instanceof Error ? error.message : String(error))
+      settle({ state: "failed", reason: detail === "" ? "connect_failed" : detail })
+    }).finally(() => clearTimeout(timer))
+    return current
+  }
+
+  const start = (): CodexConnectStatus => installedCustody === null
+    ? launchDeviceAuth(["auth", "codex"])
+    : launchInstalledDeviceAuth(null, false)
 
   const startReconnect = (ref: string): CodexConnectStatus => {
     if (disposed) return { state: "failed", reason: "pylon_runtime_unavailable" }
@@ -372,7 +598,9 @@ export const makeCodexConnectService = (
     // Receipted per-ref re-auth (apps/pylon/src/auth.ts: --account targets
     // the existing ref; --force-device-login re-runs device auth into the
     // SAME isolated home even when a stale auth.json is present).
-    return launchDeviceAuth(["auth", "codex", "--account", ref, "--force-device-login"])
+    return installedCustody === null
+      ? launchDeviceAuth(["auth", "codex", "--account", ref, "--force-device-login"])
+      : launchInstalledDeviceAuth(ref, true)
   }
 
   return {
@@ -399,6 +627,7 @@ export const makeCodexConnectService = (
         if (!operation.child.killed) operation.child.kill("SIGTERM")
         operation.finish(unavailableCodexAccountsResult())
       }
+      installedCustody?.dispose()
     },
   }
 }

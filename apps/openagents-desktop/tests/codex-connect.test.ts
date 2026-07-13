@@ -5,6 +5,9 @@
  * renderer side must agree), and the service lifecycle with fake children.
  */
 import { describe, expect, test } from "bun:test"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
+import path from "node:path"
 
 import {
   decodeCodexAccountsResult,
@@ -16,6 +19,7 @@ import {
   fixtureDeviceAuthStdout,
   makeCodexConnectService,
   makeFixtureSpawnPylon,
+  makeInstalledCodexCustody,
   parseAccountsListJson,
   publicSafeFailureDetail,
 } from "../src/codex-connect.ts"
@@ -317,6 +321,79 @@ describe("makeCodexConnectService (fake children)", () => {
     const status = service.status()
     expect(status).toEqual({ state: "connected", ref: "codex-4" })
     expect(JSON.stringify(status)).not.toContain("owner@example.com")
+  })
+})
+
+describe("installed package Codex custody", () => {
+  test("connects and lists a named isolated account without a source checkout or Bun CLI", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "openagents-installed-codex-"))
+    const spawns: Array<Readonly<{
+      executable: string
+      args: ReadonlyArray<string>
+      env: Record<string, string | undefined>
+    }>> = []
+    try {
+      const custody = makeInstalledCodexCustody({
+        env: { PYLON_HOME: root, PATH: "" },
+        resolveCodex: () => "/Applications/OpenAgents.app/Contents/Resources/app.asar.unpacked/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+        spawnCodex: input => {
+          spawns.push(input)
+          const child = makeFakeChild()
+          queueMicrotask(() => {
+            const home = input.env.CODEX_HOME!
+            mkdirSync(home, { recursive: true })
+            writeFileSync(path.join(home, "auth.json"), "{}")
+            child.emitStdout("Open this URL: https://auth.openai.com/codex/device\n")
+            child.emitStdout("Enter \u001b[94m8260-DUG55\u001b[0m\n")
+            child.emitClose(0)
+          })
+          return child
+        },
+      })
+      const service = makeCodexConnectService(
+        "/Applications/OpenAgents.app/Contents/Resources/app.asar/dist",
+        { installedCustody: custody },
+      )
+      expect(await service.listAccounts()).toEqual({ state: "ok", accounts: [] })
+      expect(service.start()).toEqual({ state: "starting" })
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(service.status()).toEqual({ state: "connected", ref: "codex" })
+      expect(await service.listAccounts()).toEqual({
+        state: "ok",
+        accounts: [{ ref: "codex", readiness: "ready" }],
+      })
+      expect(spawns).toHaveLength(1)
+      expect(spawns[0]?.args).toEqual(["login", "--device-auth"])
+      expect(spawns[0]?.executable).toContain("app.asar.unpacked/node_modules/@openai/codex-darwin-arm64")
+      expect(spawns[0]?.env.CODEX_HOME).toBe(path.join(root, "accounts", "codex", "codex"))
+      expect(spawns[0]?.env.CODEX_HOME).not.toBe(path.join(homedir(), ".codex"))
+      const config = readFileSync(path.join(root, "config.json"), "utf8")
+      expect(config).toContain('"ref": "codex"')
+      expect(config).toContain(path.join(root, "accounts", "codex", "codex"))
+      expect(config).not.toContain("apps/pylon/src/index.ts")
+      service.dispose()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("the installed default fails explicitly when the packaged Codex executable is absent", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "openagents-installed-codex-missing-"))
+    try {
+      const service = makeCodexConnectService("/Applications/OpenAgents.app/Contents/Resources/app.asar/dist", {
+        installedCustody: makeInstalledCodexCustody({
+          env: { PYLON_HOME: root },
+          resolveCodex: () => null,
+        }),
+      })
+      expect(service.start()).toEqual({ state: "starting" })
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(service.status()).toMatchObject({ state: "failed" })
+      expect(JSON.stringify(service.status())).not.toContain("apps/pylon")
+      service.dispose()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
