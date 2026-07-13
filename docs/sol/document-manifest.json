@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "dcd0df5927377f8a08227cb561d8d98616bb3a61792046e342232e10c8fcd6b6",
+  "sourceTreeSha256": "7553c8bf337831d3a373df2472510f133c1a887fa63cb8a55254579719187f52",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1313,7 +1313,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "5af35be66a527d83300af7785a3fa711b682d37aceacaa0f71ccb5dce7ee9a39",
+      "sha256": "0736fcb6b6ad789ab7831edc10327f1eb1731f762a99435d39ba6bf37f412314",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-13",
       "reviewedAt": "2026-07-12",
