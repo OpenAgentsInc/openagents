@@ -12,7 +12,7 @@
   [current official Codex skill guidance](https://learn.chatgpt.com/docs/build-skills)
   on 2026-07-13
 - Product Spec:
-  [`openagents-codex-workroom-mvp.product-spec.md` @ `spec_revision: 4`](./openagents-codex-workroom-mvp.product-spec.md)
+  [`openagents-codex-workroom-mvp.product-spec.md` @ `spec_revision: 5`](./openagents-codex-workroom-mvp.product-spec.md)
 
 ## Post-audit owner disposition
 

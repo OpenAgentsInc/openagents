@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop Codex Workroom MVP"
 artifact_type: "prd"
-spec_revision: 4
+spec_revision: 5
 author: "OpenAgents"
 created_at: "2026-07-13T00:00:00Z"
-updated_at: "2026-07-13T14:18:23Z"
+updated_at: "2026-07-13T14:36:34Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -41,6 +41,16 @@ program before naming the first useful product makes the initial customer
 promise difficult to explain and easy to overclaim. A chat-only shell is too
 small; the whole platform is too large.
 
+Internal execution has also been split across the Codex app and CLI, Claude
+Code, Codex VR Fleet, VR Pylons, and increasingly OpenAgents Desktop. The
+productive pattern has been one coordinator, clean worktrees, explicit claims,
+and an asynchronous agent working a sequential issue list. The failure pattern
+has been dispatching to available accounts before distinct work was admitted:
+agents then overlap on issues or hot contracts, duplicate work and pull
+requests, and spend the apparent concurrency gain on cancellation and
+reconciliation. The MVP must therefore be dogfooded with the same identity,
+lease, recovery, and evidence rigor that the product will enforce.
+
 ## Hypothesis
 
 If OpenAgents ships a signed, local-first Desktop workroom that uses Codex's
@@ -73,6 +83,7 @@ in:
   - complete parent and child agent graph with causal inline cards and independent child transcripts
   - grant-bounded file tree, Git status, and exact diff review beside the conversation
   - durable intent admission, exact-retry reconciliation, stream-gap repair, renderer reload, and app restart recovery
+  - explicit Open in Codex escape hatch that preserves the admitted work identity and labels direct thread continuation versus repository-state handoff
   - explicit missing, incompatible, signed-out, quota, rate-limit, policy, revoked-grant, and unavailable states
   - update, rollback, reinstall, cleanup, and public-safe diagnostics for the compatible app and Codex set
 out:
@@ -92,6 +103,7 @@ cut:
   - model prose, connection health, optimistic UI, or issue closure as completion authority
   - skill-authored spec edits, plans, criterion status, or completion becoming authoritative without host validation and user admission
   - silent retargeting of admitted work when the ProductSpec digest or revision changes
+  - simultaneous OpenAgents and external Codex mutation of the same admitted work packet
   - public Codex, Claude, mobile, Fleet, cloud, portability, or voice claims not proven by their own current receipts
 ```
 
@@ -113,6 +125,13 @@ what is planned, active, blocked, evidenced, verified, or still open. After
 renderer reload, stream loss, or app restart, the same session returns with the
 same pinned spec revision and one honest pending, recovering, interrupted,
 failed, or completed disposition and no duplicate turn.
+
+If an OpenAgents defect prevents useful work, the developer can choose **Open
+in Codex** after OpenAgents has durably stopped or reconciled its attempt. The
+workroom says whether the official Codex surface continued the exact recorded
+thread or received a repository-state handoff, and it retains the fallback
+reason and original work-packet identity. Returning to OpenAgents never invents
+transcript continuity or counts external completion as OpenAgents-native proof.
 
 ## Solution
 
@@ -185,7 +204,8 @@ owner-local by default.
   Every packet cites the exact spec revision and one or more criterion refs;
   at least one packet can be allocated to a child agent and opened from both
   the criterion board and causal timeline. Before execution, every criterion is
-  mapped or explicitly deferred and duplicate or cyclic work packets refuse.
+  mapped or explicitly deferred, every mutating packet has at most one active
+  execution lease, and duplicate or cyclic work packets refuse.
 - **CW-AC-07:** The product-owned `productspec-work` skill ships hash-pinned in the signed
   compatibility set, is registered only into the named isolated Codex skill
   root through the native app-server surface, and can refine, decompose,
@@ -220,7 +240,10 @@ owner-local by default.
 - **CW-AC-15:** Renderer reload does not stop or duplicate host-owned work. App-process
   restart restores the exact persisted prefix and either continues the
   recorded Codex thread at most once or records an explicit interrupted
-  terminal outcome; it never silently reruns the task.
+  terminal outcome; it never silently reruns the task. Open in Codex is offered
+  only after the OpenAgents attempt is quiescent or authoritatively reconciled,
+  preserves the admitted packet identity, and labels exact-thread continuation
+  separately from repository-state handoff and transcript-gap recovery.
 - **CW-AC-16:** Lost acknowledgement, duplicate/out-of-order frame, cursor gap, stale
   generation, revoked grant, quota exhaustion, rate limit, auth revocation,
   and policy denial converge to distinct typed states. Durable repair precedes
@@ -266,6 +289,18 @@ owner-local by default.
   window: release acceptance and first 30 days of invited MVP dogfood
   segment: all MVP Codex tasks with consented diagnostic receipts
   source: acceptance_exception_register_and_public_safe_support_receipts
+- id: codex_workroom_dogfood_duplicate_execution
+  metric: admitted_mvp_work_packets_observed_with_more_than_one_active_mutation_lease_or_duplicate_executor
+  target: "0"
+  window: development dogfood through release acceptance
+  segment: ProductSpec-linked MVP implementation packets
+  source: private_ref_only_dogfood_claim_and_lease_reconciliation
+- id: codex_workroom_dogfood_fallback_accounting
+  metric: raw_codex_fallbacks_recording_reason_last_durable_openagents_state_same_work_packet_and_return_disposition
+  target: "100%"
+  window: development dogfood through first 30 days of invited MVP dogfood
+  segment: MVP packets leaving OpenAgents for an official Codex surface
+  source: private_ref_only_dogfood_fallback_ledger
 ```
 
 ## Risks
@@ -291,6 +326,12 @@ owner-local by default.
 - Opt-in metrics can bias toward expert dogfood users. Segment and consent
   provenance must remain visible; no prompt, path, account, or machine identity
   is collected to improve the number.
+- A raw Codex escape can hide an OpenAgents defect if external completion is
+  reported as workroom success. Every fallback must remain visible, and only an
+  exact OpenAgents rerun may convert that packet into OpenAgents-native proof.
+- Fleet capacity can be mistaken for available work. Concurrency is bounded by
+  distinct admitted packets, non-overlapping paths and hot contracts, and
+  review capacity—not connected accounts or idle workers.
 - Closed broader issues can tempt a premature claim. Only the exact current
   artifact and MVP journey prove this spec; CUT-27 and portable/mobile/Fleet
   claims retain their own gates.
@@ -309,6 +350,107 @@ owner-local by default.
 - Which local-only, opt-in counters are sufficient to evaluate activation and
   return without collecting stable account, machine, repository, prompt, or
   transcript identity?
+- Which pinned Codex app/CLI versions can directly continue the named isolated
+  thread, and what bounded handoff is required when direct continuation is not
+  supported?
+- What evidence would justify raising the initial dogfood concurrency ceiling
+  above two disjoint mutating packets?
+
+## Rollout
+
+### Evidence from current practice
+
+OpenAgents has already benefited from raw Codex and Claude Code sessions,
+Codex VR Fleet, VR Pylons, and early work through the actual Desktop app.
+Long-running asynchronous agents can reliably burn a sequential issue list
+when one coordinator owns integration, each agent has a clean current-main
+worktree and exact claim, and releases are reconciled before the next item.
+This remains the default background operating shape.
+
+The reviewed work logs also show that account count is not a safe concurrency
+target. Broad issues attracted overlapping claims, ostensibly file-disjoint
+changes collided on shared contracts and acceptance, and generated or orphaned
+pull requests duplicated evidence already on main. Closing or cancelling work
+before every active claim was reconciled made the ledger briefly wrong. The
+development process must now dogfood the intended product law: one accepted
+ProductSpec revision/digest, one stable work-packet identity, at most one active
+mutation lease for that packet, and evidence—not a running process, issue, or
+pull request—as completion authority.
+
+### Issue and concurrency cadence
+
+- [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
+  remains the parent, claim ledger, and evidence index. The accepted
+  ProductSpec plan holds future work; GitHub does not need one speculative
+  issue per criterion or subagent.
+- A child issue is opened just in time only when its dependency receipts are
+  green, an executor can claim it promptly, no active path or hot-contract
+  claim overlaps, and its close rule is independently satisfiable. Keep the
+  current child plus at most one next-ready child visible; smaller same-owner
+  steps stay work packets or claim updates.
+- One root coordinator owns the ProductSpec, schemas, migrations, lockfile,
+  generated catalogs, roadmap, release, issue closure, and final integration.
+  Pull requests are proposals and require current-main reconciliation, exact
+  issue/spec/criterion links, checks, and review before merge.
+- Owner-absent or AFK work defaults to one mutating packet; read-only audit or
+  verification may run in parallel. With an active owner/coordinator, at most
+  two file- and contract-disjoint packets may mutate concurrently, with one
+  additional read-only reviewer. One authorized Fleet run may use those two
+  named workers under one claim registry and one Pylon publisher; connected
+  account capacity never creates work by itself.
+- Owner presence is required for spec or plan admission, intent revision,
+  credentials or physical-device acceptance, production promotion,
+  irreversible or public writeback, waivers, and launch language. AFK agents
+  stop mutation and release their implementation claim on an owner-only block
+  unless a live resource needs a named custodian.
+- Every claim records execution mode, base SHA, spec revision/digest,
+  criterion and packet refs, paths and hot contracts, proof rung, allowed
+  external writes, fallback and stop rules. Claims are updated at durable
+  boundaries and released before their issue is closed or superseded.
+
+### OpenAgents-first execution and Codex fallback
+
+Every eligible MVP implementation packet starts in the exact installed
+OpenAgents candidate. Eligible means that candidate truthfully advertises the
+capabilities the packet needs; a missing pre-MVP capability is recorded as a
+bootstrap gap, not disguised as an OpenAgents attempt. The ledger records the
+artifact, spec revision/digest, criterion and packet refs, OpenAgents session,
+claim, base, and planned verification.
+
+If OpenAgents becomes buggy, the operator first stops or authoritatively
+reconciles the attempt to a typed blocked or interrupted state. **Open in
+Codex** may then continue the same recorded thread where the pinned
+compatibility set proves that path. Otherwise raw Codex resumes from the same
+issue/spec/criterion/packet identity and verified repository state with an
+explicit transcript gap. OpenAgents and raw Codex never mutate the packet
+concurrently, and account, model, provider, target, or worktree never switches
+silently.
+
+The preferred circuit breaker is narrow: raw Codex repairs the OpenAgents
+blocker, then the original packet reruns in OpenAgents. If consequential work
+cannot wait, Codex may complete it as a recorded `raw_codex_only_exception`;
+that preserves continuity but does not satisfy OpenAgents dogfood or acceptance,
+and the OpenAgents defect becomes a just-in-time repair packet. Claude Code,
+Fleet, and Pylons are not implicit fallback executors for the same packet. They
+may provide an independently claimed disjoint lane or read-only review, but no
+provider or fleet surface inherits a live OpenAgents mutation lease.
+
+Commit, push, pull-request, and merge remain outside the MVP workroom cut. The
+root coordinator may perform those outer integration steps, but their success
+cannot be reported as a capability exercised inside OpenAgents.
+
+### Dogfood dispositions
+
+- `openagents_completed`: the eligible packet completed and was verified in
+  the exact OpenAgents candidate.
+- `openagents_blocked_raw_repair_openagents_rerun_completed`: OpenAgents exposed
+  a defect, raw Codex repaired the blocker, and the original packet then passed
+  in OpenAgents. This counts as eventual dogfood success while retaining the
+  failure and repair evidence.
+- `openagents_blocked`: the OpenAgents attempt stopped honestly without an
+  external completion.
+- `raw_codex_only_exception`: work continued or completed outside OpenAgents.
+  It remains useful repository progress but does not count as OpenAgents proof.
 
 ## Owner Gates
 
@@ -321,6 +463,9 @@ owner-local by default.
 - Any decision to release this Codex-only shape before the broader CUT-27
   Codex/Claude/mobile declaration must be explicit and must not mark CUT-27 or
   its parents complete.
+- Accept the initial one-AFK/two-owner-present mutating-lane dogfood ceiling;
+  any increase requires reviewed collision, review-capacity, and recovery
+  evidence rather than additional connected accounts alone.
 
 ## Receipts
 
@@ -337,6 +482,10 @@ owner-local by default.
 - Deterministic fault receipts for duplicate/conflicting intent, lost ACK,
   stream gap, stale generation, revoked grant, incompatible runtime, auth,
   quota/rate limit, and policy denial.
+- Per-packet development-dogfood ledger covering the OpenAgents-first attempt,
+  artifact and exact spec identity, issue/criterion/packet/claim refs,
+  concurrency decision, duplicate-work fencing, any raw Codex fallback or
+  OpenAgents rerun, exact verification, terminal disposition, and proof rung.
 - Renderer-boundary and public-safety scans proving the cut authority and data
   classes remain absent.
 - A bounded exception register that distinguishes code-landed,
