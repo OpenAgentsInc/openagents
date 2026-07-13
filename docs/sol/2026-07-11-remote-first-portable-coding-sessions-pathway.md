@@ -533,6 +533,22 @@ broadened to pretend they already own all of this.
 Packets 1 and 2 are the critical path. Provider breadth and UI polish must not
 race ahead of the session-fencing and secret-reissue laws.
 
+### PORT-00 contract freeze
+
+PORT-00 [#8745](https://github.com/OpenAgentsInc/openagents/issues/8745) is
+landed at the schema/model rung. The intent artifact is
+[`portable-coding-sessions.product-spec.md`](../../specs/openagents/portable-coding-sessions.product-spec.md).
+`@openagentsinc/portable-session-contract` now owns the v1 public-safe schemas,
+cross-record invariant audit, target/command vocabulary, and exact real-host
+journey. The enforced behavior contract
+`openagents_apps.portable_session_contract_freeze.v1` runs its bounded oracle
+in the normal test sweep.
+
+This freeze grants no runtime authority. PORT-01 must place the schemas and
+equivalent pre-mutation checks in the canonical request/Sync authority, and
+PORT-02 must implement actual broker redemption. No movement, target, mobile,
+voice, or dogfood claim is inferred from PORT-00.
+
 ## Acceptance journey
 
 R7 should include this exact class of journey:

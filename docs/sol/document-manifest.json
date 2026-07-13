@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "fdb2c870d829314624e55909645c386d1369c48198ca8e51498afa7d81aedcf4",
+  "sourceTreeSha256": "a350514615b9b2c7e8c188092741a6e6eabff5285b33fe15c576d76bc2fbae4d",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -548,7 +548,7 @@
       "owner": "Sol portable sessions",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "86598ad011d10f04ad763229ec9490297b3498b6b41497f717143b693340819a",
+      "sha256": "dc5787e87533e94d740c9151f61ecf056a4f4cabec14e3dee16853b4046e9ca6",
       "status": "owner-directed product path; ordered implementation ledger active",
       "snapshot": "2026-07-11",
       "reviewedAt": "2026-07-12",
@@ -556,12 +556,13 @@
       "inboundLinks": [
         "docs/cloud/README.md",
         "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
+        "docs/sol/2026-07-12-port-00-portable-session-contract-freeze-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
         "docs/sol/issues/README.md",
         "docs/teardowns/README.md"
       ],
-      "inboundSourceCount": 6,
+      "inboundSourceCount": 7,
       "issueLinks": [
         8547,
         8566,
@@ -1063,6 +1064,27 @@
       ],
       "inboundSourceCount": 1,
       "issueLinks": []
+    },
+    {
+      "path": "docs/sol/2026-07-12-port-00-portable-session-contract-freeze-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8745",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "218ed5a5213258c4668c19e423c631606ba7d2f8dc9b646e0e2a0d145c6ee4cf",
+      "status": "retain-evidence",
+      "snapshot": "2026-07-12",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8745,
+        8746,
+        8747
+      ]
     },
     {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
@@ -2390,7 +2412,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "feb1c493b7e85a307a5de12e237d82b1c77a4f84b70006307b34a7aa3c0036c4",
+      "sha256": "743e98b26fe92e8640222bb299b5e53378ac68d4e54d2979c2db1a6a703ca11c",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2428,7 +2450,8 @@
         8718,
         8719,
         8720,
-        8721
+        8721,
+        8745
       ]
     }
   ]

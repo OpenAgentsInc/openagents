@@ -200,6 +200,10 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "github:OpenAgentsInc/openagents#8566",
         "github:OpenAgentsInc/openagents#8574",
         "github:OpenAgentsInc/openagents#8597",
+        "github:OpenAgentsInc/openagents#8746",
+        "github:OpenAgentsInc/openagents#8748",
+        "github:OpenAgentsInc/openagents#8749",
+        "github:OpenAgentsInc/openagents#8753",
       ],
       contractId: "openagents_apps.remote_first_portable_sessions.v1",
       enforcementTier: "unenforced",
@@ -229,7 +233,44 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Remote-first, not local-first. Sessions can be stopped on any machine and moved to any other, local or remote. i.e. handoff to cloud.",
       surface: "openagents-mobile-desktop-pylon-cloud",
       verification:
-        "Pending bounded #8566 leaves: architecture tests must reject host-derived session identity, two live attachment generations, secret-bearing checkpoints, stale-source execution, and silent target changes; then a real local-to-managed-to-owner-remote round trip must pass with matching refs and receipts.",
+        "PORT-00 #8745 freezes the executable schema/model boundary. PORT-01–PORT-08 #8746–#8753 remain pending for durable authority and real local-to-managed-to-owner-remote acceptance.",
+    },
+    {
+      authorityBoundary:
+        "This enforced contract freezes only the portable-session vocabulary, schemas, cross-record invariants, command parity, and real-host journey falsifiers. It grants no persistence, dispatch, broker redemption, target compatibility, movement, mobile control, or product acceptance authority.",
+      blockerRefs: [],
+      contractId: "openagents_apps.portable_session_contract_freeze.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "packages/portable-session-contract/src/index.ts",
+        "packages/portable-session-contract/src/model.ts",
+        "packages/portable-session-contract/src/journeys.ts",
+        "packages/portable-session-contract/src/portable-session-contract.test.ts",
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "github:OpenAgentsInc/openagents#8745",
+      ],
+      oracles: [
+        {
+          description:
+            "Decodes the versioned public-safe schemas and rejects host-derived identity, graph flattening/leakage, two live attachments, incomplete descendant fencing, stale commands, secret/process checkpoint state, and silent target changes; also freezes the real-host journey and its first-paint/action-parity falsifiers.",
+          id: "openagents_apps.portable_session_contract_freeze",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/portable-session-contract/src/portable-session-contract.test.ts",
+        },
+      ],
+      productArea: "portable coding-session contract and invariant boundary",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-11",
+      },
+      state: "enforced",
+      statement:
+        "Portable coding sessions use owner-minted host-independent identity, a canonical nested graph with independent cursors, graph-wide generation fencing, secret-free content-addressed checkpoints, provider-neutral targets, target-scoped capability refs, shared typed movement commands, detail-independent first paint, and identical pointer/tap/key action semantics.",
+      surface: "openagents-mobile-desktop-pylon-cloud",
+      verification:
+        "bun test --cwd packages/portable-session-contract and bun test --cwd packages/behavior-contracts run the executable PORT-00 contract/model and registry coverage oracles.",
     },
     {
       authorityBoundary:
@@ -237,6 +278,8 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       blockerRefs: [
         "github:OpenAgentsInc/openagents#8547",
         "github:OpenAgentsInc/openagents#8636",
+        "github:OpenAgentsInc/openagents#8749",
+        "github:OpenAgentsInc/openagents#8750",
       ],
       contractId: "openagents_cloud.user_or_managed_execution_targets.v1",
       enforcementTier: "unenforced",
@@ -275,6 +318,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       blockerRefs: [
         "github:OpenAgentsInc/openagents#8547",
         "github:OpenAgentsInc/openagents#8566",
+        "github:OpenAgentsInc/openagents#8747",
       ],
       contractId: "openagents_cloud.brokered_session_secrets.v1",
       enforcementTier: "unenforced",
@@ -312,6 +356,9 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       blockerRefs: [
         "github:OpenAgentsInc/openagents#8566",
         "github:OpenAgentsInc/openagents#8597",
+        "github:OpenAgentsInc/openagents#8751",
+        "github:OpenAgentsInc/openagents#8752",
+        "github:OpenAgentsInc/openagents#8753",
       ],
       contractId: "openagents_mobile.any_host_session_voice.v1",
       enforcementTier: "unenforced",
@@ -808,5 +855,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-12.2",
+  version: "2026-07-12.3",
 }

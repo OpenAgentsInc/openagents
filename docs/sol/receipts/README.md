@@ -17,6 +17,7 @@ scope, and rung. Live issue state and the
 | FC-4 [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | [`2026-07-12-fc4-managed-cloud-production-readiness-receipt.md`](../2026-07-12-fc4-managed-cloud-production-readiness-receipt.md) | deployed schema + production authority/registry readiness | Issue open for #8547 accepted managed execution and the real concurrent mobile/Desktop hybrid receipt |
 | CUT-09 [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`2026-07-11-cut-09-lifecycle-convergence-receipt.md`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) | fixture/built-host proven | Issue open for literal physical-iOS network-gap, reconnect, unlink/revocation, and no-replay acceptance |
 | CUT-27 [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`2026-07-12-cut27-cutover-readiness-audit.md`](../2026-07-12-cut27-cutover-readiness-audit.md) | historical additive readiness snapshot | Issue open; the audit's earlier blocker tables are not current authority |
+| PORT-00 [#8745](https://github.com/OpenAgentsInc/openagents/issues/8745) | [`2026-07-12-port-00-portable-session-contract-freeze-receipt.md`](../2026-07-12-port-00-portable-session-contract-freeze-receipt.md) | schema/model and executable contract frozen | Runtime authority remains explicitly pending PORT-01 through PORT-08 |
 
 ## Closed CUT proof
 

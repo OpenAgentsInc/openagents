@@ -1079,27 +1079,35 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-desktop/src/renderer/shell.test.ts`, and the normal Electron
   smoke journey.
 
-- Master Roadmap Revision 31 and
+- Master Roadmap and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
   define target contracts for a canonical live agent graph, graph-wide
   attachment fencing, portable per-child transcript/activity cursors, replay
-  repair, and one typed click/tap/hotkey action path. Except for the registered
-  graph/adapters/Sync entity, live root/Claude-child transaction, and confirmed
-  Gateway delivery boundaries above, these remain **pending model boundaries**,
-  not current production authority or shipped-invariant claims.
+  repair, and one typed click/tap/hotkey action path. PORT-00 #8745 freezes the
+  versioned public-safe schemas, bounded cross-record invariant audit, and
+  real-host journey in `packages/portable-session-contract`; its enforced
+  behavior contract is
+  `openagents_apps.portable_session_contract_freeze.v1`. This is schema/model
+  authority only. Persistence, dispatch, broker redemption, target adapters,
+  movement, mobile control, and owner acceptance remain pending #8746–#8753.
 - Current provider-native Codex topology remains owner-local, read-only, and
   loss-accounted. The landed inline child card is a bounded history projection;
   it does not prove live Khala Sync topology, host movement, child rehydration,
   or graph-wide fencing.
-- Before any portable/live-agent implementation claims enforcement, the owning
-  bounded issue must register the canonical schemas and production authority,
-  update this ledger and the relevant app/Worker ledger, add architecture and
-  deterministic fault tests for root-catalog separation, parent-edge/cursor
-  preservation, stale-generation fencing, orphan-child prevention, replay
-  deduplication, and action-path equivalence, then add the required real-host/
-  physical-device receipt. Until then, no client or runtime may infer topology
-  from prose, upload raw local history, or describe #8674/#8675 as portability
-  proof.
+- The PORT-00 schema/model boundary rejects host/path-shaped refs, non-owner-
+  minted identity, root-catalog child leakage, missing/cyclic parent edges,
+  duplicate or simultaneous live attachment generations, incomplete
+  descendant fences, mismatched checkpoint generations, non-excluded secret/
+  process state, lease-scope mismatch, stale movement commands, missing
+  destinations, and silent target changes. Production implementation must
+  decode these schemas and run equivalent pre-mutation checks; passing the
+  package audit alone never grants execution authority.
+- Before any later portable/live-agent implementation claims enforcement, its
+  bounded issue must register the production authority, update this ledger and
+  the relevant app/Worker ledger, add deterministic fault tests for replay and
+  repair, then add the required real-host/physical-device receipt. No client or
+  runtime may infer topology from prose, upload raw local history, or describe
+  #8674/#8675 as portability proof.
 - Mobile selects a visible conversation authority after native-session recovery
   and before mounting one Effect Native Home program: confirmed personal Sync
   when live, otherwise the existing public-local conversation. Explicit auth

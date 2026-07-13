@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(28)
+    expect(decoded.contracts).toHaveLength(29)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(10)
     expect(
@@ -169,6 +169,13 @@ describe("behavior contract registry", () => {
     expect(portableSessions?.statement).toContain(
       "Sessions can be stopped on any machine and moved to any other",
     )
+    const portableFreeze = decoded.contracts.find(
+      contract =>
+        contract.contractId ===
+        "openagents_apps.portable_session_contract_freeze.v1",
+    )
+    expect(portableFreeze?.state).toBe("enforced")
+    expect(portableFreeze?.enforcementTier).toBe("test-sweep")
     const executionTargets = decoded.contracts.find(
       contract =>
         contract.contractId ===
