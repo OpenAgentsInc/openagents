@@ -73,4 +73,11 @@ describe("ProductSpec-native MVP proof contract", () => {
     expect(source).toContain('await poll(click(key), value => value["clicked"] === true, 30_000)')
     expect(source).not.toContain('asRec(await evaluate(click(key)))')
   })
+
+  test("requires agent-produced evidence before independent host verification", () => {
+    const source = readFileSync(new URL("./mvp-proof.ts", import.meta.url), "utf8")
+    expect(source).toContain('row["value"] === "evidence_present"')
+    expect(source).toContain("packet did not retain agent-produced evidence")
+    expect(source).not.toContain('requireClick(`product-spec-evidence-${packetRef}`)')
+  })
 })

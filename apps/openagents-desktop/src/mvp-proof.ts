@@ -199,9 +199,12 @@ export const runMvpProof = (window: BrowserWindow, options: MvpProofRunOptions):
     if (!artifact.ok) throw new Error(`${packet} artifact verification failed`)
     await requireClick("workspace-product-spec")
     await poll(productSpecProbe, value => value["mounted"] === true, 30_000)
-    await requireField("product-spec-evidence-ref", artifact.receiptRef)
-    await requireClick(`product-spec-evidence-${packetRef}`)
-    await poll(productSpecProbe, value => JSON.stringify(value["packetStates"]).includes("evidence present"), 30_000)
+    await requireClick("product-spec-refresh")
+    const evidence = await poll(productSpecProbe, value =>
+      (value["packetStates"] as Array<Rec> | undefined)?.some(row =>
+        row["key"] === `product-spec-packet-state-${packetRef}` && row["value"] === "evidence_present") === true,
+    30_000)
+    if (!evidence.ok) throw new Error(`${packet} packet did not retain agent-produced evidence`)
     await requireField("product-spec-verifier-ref", "verifier.mvp-proof.host")
     await requireField("product-spec-verification-output-ref", `${artifact.receiptRef}.verified`)
     await requireClick(`product-spec-verify-${packetRef}`)
