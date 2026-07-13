@@ -299,9 +299,17 @@ Public-safe evidence retains only the queue transition, counts, terminal
 classification, and timestamp. The literal marker bodies, credential material,
 raw provider events, and private database rows are not part of the public
 receipt. The installed bundle also exposed a separate presentation regression:
-typing each character dismissed the native keyboard. That renderer defect does
-not alter the accepted durable queue/revocation result and is being repaired in
-a separately claimed source lane.
+typing each character dismissed the native keyboard. Commit `e722c253d7`
+stops the asynchronous native-edit value from being written straight back into
+the focused SwiftUI field while preserving external replacement and imperative
+send-clear behavior. A clean signed Release build from that exact commit was
+installed in place without deleting the app container; physical iPhone typing
+then retained first responder and the keyboard across a multi-character phrase.
+Renderer verification passed 13 tests / 48 assertions, the focused mobile
+composer/shell matrix passed 21 tests / 165 assertions, and both typechecks
+passed. The earlier OTA attempt is not counted as evidence: device inspection
+proved that it retained the prior launch asset, so the accepted rung is the
+direct signed-build install.
 
 ## Close decision
 
