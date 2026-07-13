@@ -153,13 +153,19 @@ export type CapabilityBrokerConfig = {
   readonly targets: ReadonlyArray<CapabilityTargetBinding>
   readonly adapters: ReadonlyArray<CapabilityTargetAdapter>
   readonly clock?: CapabilityBrokerClock
-  /** Must append idempotently to durable PORT-01 authority before resolving. */
-  readonly evidenceSink: {
+  /** Legacy split sink. Production portable moves use atomicStateStore. */
+  readonly evidenceSink?: {
     readonly append: (evidence: CapabilityBrokerEvidence) => Promise<void>
   }
   readonly maxTtlMs?: number
   /** Private refs-only persistence; never expose this state as a public snapshot. */
   readonly stateStore?: CapabilityBrokerStateStore
+  /**
+   * Production persistence seam. One CAS transaction stores the complete
+   * refs-only broker state and its operation evidence while verifying the
+   * exact active move claim bound by the concrete store.
+   */
+  readonly atomicStateStore?: CapabilityBrokerAtomicStateStore
 }
 
 export type CapabilityBrokerPrivateDurableState = {
@@ -177,6 +183,24 @@ export type CapabilityBrokerPrivateDurableState = {
 export type CapabilityBrokerStateStore = {
   readonly load: () => Promise<CapabilityBrokerPrivateDurableState | null>
   readonly save: (state: CapabilityBrokerPrivateDurableState) => Promise<void>
+}
+
+export type CapabilityBrokerAtomicLoad = {
+  readonly revision: number
+  readonly state: CapabilityBrokerPrivateDurableState | null
+}
+
+export type CapabilityBrokerAtomicCommit = {
+  readonly expectedRevision: number
+  readonly state: CapabilityBrokerPrivateDurableState
+  readonly evidence: CapabilityBrokerEvidence
+}
+
+export type CapabilityBrokerAtomicStateStore = {
+  readonly load: () => Promise<CapabilityBrokerAtomicLoad>
+  readonly commit: (
+    input: CapabilityBrokerAtomicCommit,
+  ) => Promise<{ readonly revision: number }>
 }
 
 export type IssueCapabilityInput = {
@@ -259,8 +283,23 @@ export class PortableCapabilityBroker {
   private readonly records = new Map<string, CapabilityLeaseRecord>()
   private readonly operations = new Map<string, StoredOutcome>()
   private readonly evidence: CapabilityBrokerEvidence[] = []
+  private durableRevision = 0
 
   constructor(private readonly config: CapabilityBrokerConfig) {
+    if (config.atomicStateStore && (config.stateStore || config.evidenceSink)) {
+      throw new CapabilityBrokerError(
+        "invalid_scope",
+        "operation.broker.configure",
+        "atomic broker persistence cannot be combined with split persistence",
+      )
+    }
+    if (!config.atomicStateStore && !config.evidenceSink) {
+      throw new CapabilityBrokerError(
+        "invalid_scope",
+        "operation.broker.configure",
+        "broker evidence persistence is required",
+      )
+    }
     this.clock = config.clock ?? { now: () => new Date() }
     this.maxTtlMs = config.maxTtlMs ?? DEFAULT_MAX_TTL_MS
     this.targets = new Map(config.targets.map((target) => [target.targetRef, target]))
@@ -269,7 +308,9 @@ export class PortableCapabilityBroker {
 
   static async restore(config: CapabilityBrokerConfig): Promise<PortableCapabilityBroker> {
     const broker = new PortableCapabilityBroker(config)
-    const state = await config.stateStore?.load()
+    const atomic = await config.atomicStateStore?.load()
+    if (atomic) broker.durableRevision = atomic.revision
+    const state = atomic?.state ?? await config.stateStore?.load()
     if (state === undefined || state === null) return broker
     if (state.schema !== PORTABLE_CAPABILITY_BROKER_VERSION || state.material !== "excluded") {
       throw new CapabilityBrokerError("invalid_scope", "operation.broker.restore", "durable broker state is invalid")
@@ -525,29 +566,51 @@ export class PortableCapabilityBroker {
     const evidenceRef = `evidence.capability.${outcome.operationRef}`
     const evidence = this.makeEvidence(evidenceRef, outcome, record)
     const withEvidence = { ...outcome, evidenceRefs: [evidenceRef] }
-    await this.config.evidenceSink.append(evidence)
+    if (this.config.atomicStateStore) {
+      const state = this.privateState(
+        [...this.operations.entries(), [outcome.operationRef, { fingerprint, outcome: withEvidence }]],
+        [...this.evidence, evidence],
+      )
+      const committed = await this.config.atomicStateStore.commit({
+        expectedRevision: this.durableRevision,
+        state,
+        evidence,
+      })
+      this.durableRevision = committed.revision
+      this.operations.set(outcome.operationRef, { fingerprint, outcome: withEvidence })
+      this.evidence.push(evidence)
+      return
+    }
+    await this.config.evidenceSink!.append(evidence)
     this.operations.set(outcome.operationRef, { fingerprint, outcome: withEvidence })
     this.evidence.push(evidence)
     await this.persistState()
   }
 
-  private async persistState(): Promise<void> {
-    if (!this.config.stateStore) return
-    await this.config.stateStore.save({
+  private privateState(
+    operations: ReadonlyArray<readonly [string, StoredOutcome]> = [...this.operations.entries()],
+    evidence: ReadonlyArray<CapabilityBrokerEvidence> = this.evidence,
+  ): CapabilityBrokerPrivateDurableState {
+    return {
       schema: PORTABLE_CAPABILITY_BROKER_VERSION,
       records: [...this.records.values()].map(record => ({
         ...record,
         lease: cloneLease(record.lease),
         permissions: [...record.permissions],
       })),
-      operations: [...this.operations.entries()].map(([operationRef, operation]) => ({
+      operations: operations.map(([operationRef, operation]) => ({
         operationRef,
         fingerprint: operation.fingerprint,
         outcome: { ...operation.outcome, evidenceRefs: [...operation.outcome.evidenceRefs] },
       })),
-      evidence: this.evidence.map(item => ({ ...item })),
+      evidence: evidence.map(item => ({ ...item })),
       material: "excluded",
-    })
+    }
+  }
+
+  private async persistState(): Promise<void> {
+    if (!this.config.stateStore) return
+    await this.config.stateStore.save(this.privateState())
   }
 
   private makeEvidence(evidenceRef: string, outcome: CapabilityBrokerOutcome, record?: CapabilityLeaseRecord): CapabilityBrokerEvidence {

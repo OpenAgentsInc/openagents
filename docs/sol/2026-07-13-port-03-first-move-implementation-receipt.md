@@ -31,6 +31,14 @@ node plus released process, scratch, and port state; only then may PORT-01
 detach the source and advance the one live attachment. Target activation uses
 one stable operation ref after durable commit.
 
+The production-durability follow-up adds migration `0069` and
+`PostgresPortableCapabilityBrokerStore`. The exact active move claim, complete
+refs-only broker state, operation evidence, and revision advance now share one
+Postgres transaction. A stale CAS, lost claim, conflicting move, duplicate
+evidence identity, or forbidden private material leaves state and evidence
+unchanged. A fresh broker restores the committed operation bytes and returns a
+replay without repeating the capability operation.
+
 ## Fault and replay evidence
 
 The real-Postgres suite proves:
@@ -64,7 +72,8 @@ already applied`.
 
 ```sh
 bun test packages/khala-sync-server/src/portable-session-move.test.ts \
-  packages/khala-sync-server/src/portable-session-authority.test.ts
+  packages/khala-sync-server/src/portable-session-authority.test.ts \
+  packages/khala-sync-server/src/portable-capability-broker-store.test.ts
 bun x tsc -p packages/khala-sync-server/tsconfig.json --noEmit --pretty false
 bun test --cwd packages/portable-session-contract
 bun x tsc -p packages/portable-session-contract/tsconfig.json --noEmit --pretty false
@@ -73,8 +82,10 @@ bun x tsc -p packages/portable-session-contract/tsconfig.json --noEmit --pretty 
 ## Honest remaining gate
 
 This is production-path implementation and real database/broker boundary
-evidence, not the real-host acceptance demanded by #8748. The issue must remain
-open until #8636 is completed and one direct live journey moves the same bounded
+evidence, not the real-host acceptance demanded by #8748. Migration `0069`
+still needs staging/production application, and the atomic store still needs
+owner-side composition with the real local and managed adapters. The issue must
+remain open until #8636 is completed and one direct live journey moves the same bounded
 child-bearing repository session from the owner's local Pylon to the accepted
 #8547 Agent Computer and back. That receipt must show actual target/runtime
 refs, exact repository/diff post-image, fresh grants, source reclaim, zero

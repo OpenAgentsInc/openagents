@@ -23,6 +23,25 @@ Before a move, read the owner-scoped PORT-01 snapshot and require:
 Never derive session identity from a host, path, process, provider session, or
 Agent Computer. Never accept a partial descendant or lease set.
 
+## Durable broker claim
+
+Production movement must construct PORT-02 with
+`PostgresPortableCapabilityBrokerStore`, not the legacy split evidence/state
+test seam. Before the first capability operation, acquire the exact
+owner/session move claim with the current broker revision. The claim binds the
+move and command refs, source attachment and generation, and destination
+target. Every capability operation then commits its complete refs-only broker
+state and exact evidence row under one revision-CAS Postgres transaction while
+holding and revalidating that claim.
+
+A stale revision, absent claim, or competing claim is terminal for that
+coordinator instance. Dispose it and reconcile from PORT-01 plus a fresh store
+load; never continue with its in-memory snapshot. Release the claim only after
+the durable move outcome and required cleanup are reconciled. Migration `0069`
+owns the aggregate/evidence tables. They contain refs and bounded policy facts
+only, never credential bytes, provider payloads, host paths, or repository
+content.
+
 ## Required order
 
 1. Admit the exact movement command in PORT-01.
@@ -72,16 +91,23 @@ Migration `0067` was applied to both `khala_sync_staging` and
 `khala_sync_prod` on 2026-07-13 through the direct Cloud SQL Auth Proxy. Both
 post-apply dry runs reported zero pending migrations.
 
+Migration `0069` must likewise be applied to staging and production before the
+production coordinator is enabled. Its real-Postgres store oracle is included
+below.
+
 ```sh
 bun test packages/khala-sync-server/src/portable-session-move.test.ts \
-  packages/khala-sync-server/src/portable-session-authority.test.ts
+  packages/khala-sync-server/src/portable-session-authority.test.ts \
+  packages/khala-sync-server/src/portable-capability-broker-store.test.ts
 bun x tsc -p packages/khala-sync-server/tsconfig.json --noEmit --pretty false
 ```
 
 ## Live acceptance gate
 
 Do not close #8748 from deterministic evidence. First require #8636 complete,
-then run one direct session on live infrastructure:
+apply migration `0069`, compose the atomic store plus real local/managed target
+adapters in the owner-side coordinator, then run one direct session on live
+infrastructure:
 
 1. start a bounded repository session with a root and at least one active child
    on owner-local Pylon A, recording its canonical run, repository, and pinned

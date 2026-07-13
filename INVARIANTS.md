@@ -1178,8 +1178,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   reconciles by replaying one stable activation operation after the already-
   completed durable command, never by running the move or accepting a parent/
   child turn twice. The real-Postgres fault oracle is
-  `portable-session-move.test.ts`. This landed coordinator is an implementation
-  rung only: #8748 remains open until #8636 is completed and a direct real
+  `portable-session-move.test.ts`. Migration `0069` and
+  `portable-capability-broker-store.ts` additionally make the broker's complete
+  refs-only state, exact operation evidence, revision CAS, and one active move
+  claim a single Postgres transaction. Every write locks and revalidates the
+  exact owner/session/move/command/source-generation/destination claim; a stale
+  revision or competing claim writes neither state nor evidence, and raw
+  credential or host material is rejected before the transaction. The split
+  state/evidence sink remains a deterministic-test compatibility seam only;
+  production portable movement must use the atomic store. These landed
+  coordinator and store pieces are implementation rungs only: #8748 remains
+  open until #8636 is completed, the store is composed with real target
+  adapters, and a direct real
   owner-local Pylon → accepted Agent Computer → owner-local journey proves the
   same refs, exact repository/diff digests, grants, cleanup, and rollback.
 - Mobile selects a visible conversation authority after native-session recovery
