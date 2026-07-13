@@ -372,11 +372,6 @@ const isolatedAppProofMode = isIsolatedAppProof({
   userDataPath: desktopUserDataPath,
   temporaryDirectory: app.getPath("temp"),
 })
-// Chromium otherwise asks macOS Keychain to create/access its storage key
-// before Electron reaches `ready`, so skipping only our native-session vault
-// is too late for a headless candidate proof. This switch is Chromium's
-// in-memory test keychain and inherits the same explicit + temp-only gate.
-if (isolatedAppProofMode) app.commandLine.appendSwitch("use-mock-keychain")
 const smokeFixtureRoot = smokeMode && app.isPackaged
   ? path.join(desktopUserDataPath, "smoke-fixtures")
   : smokeFixtureSourceRoot
