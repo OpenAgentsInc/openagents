@@ -1559,3 +1559,67 @@ bounded packet:
 Per the standing rule, this addendum is still design evidence. Promotion into
 implementation authority happens through the owning Effect Schema contracts,
 invariant/model note, roadmap gate, issue, tests, and receipts.
+
+## OpenChamber whole-product addendum (2026-07-12)
+
+The commit-pinned
+[OpenChamber v1.16.0 teardown](./2026-07-12-openchamber-product-teardown.md)
+strengthens the product argument for a persistent coding workroom while
+sharpening the durability boundary.
+
+OpenChamber now demonstrates a coherent end-user system across web/PWA,
+Electron, Capacitor mobile, and VS Code: dense project/worktree/session
+navigation, a typed turn/tool/blocker timeline, adjacent Git/files/diff/PTY
+review, branchable history, multiple runtime hosts, one-time pairing, outbound
+E2EE relay, notifications, dictation/read-aloud, scheduled sessions, and
+server-owned Session Goals. The correct OpenAgents adaptation is the whole
+workroom and attention model, not isolated components or a larger settings
+surface.
+
+Two implementation lessons move into the adapt-now evidence set:
+
+1. OpenChamber's measured streaming work validates touched-field reducer
+   updates, store/program separation by change frequency, event-class-aware
+   coalescing, explicit reconnect/backpressure/failure state, and a fault corpus
+   for duplicate/full-part races, offline/hidden recovery, session switching,
+   and pending blockers. OpenAgents should encode those cases through its
+   schema-valid Effect reducers and Runtime Gateway/Khala Sync subscriptions,
+   not copy Zustand.
+2. Unattended work needs server-owned blocker reconciliation. OpenChamber's
+   permission runtime persists policy, respects the nearest explicit ancestor,
+   lets child deny override parent allow, fails closed on unknown lineage, and
+   reconciles pending requests after startup/reconnect. OpenAgents should apply
+   that ownership to its scoped `runtime_interaction` authority without copying
+   blanket session-level auto-accept.
+
+The goal and scheduling implementation also adds a negative requirement.
+OpenChamber persists goal/task metadata but keeps goal quiet timers, in-flight
+continuations, scheduler timers, queues, and running claims in process memory.
+The goal loop performs no startup scan/backfill, so an already-idle active goal
+can stall after restart; a crash between persisted accounting and asynchronous
+prompt submission can leave a missing continuation. The scheduler skips
+downtime occurrences and has no durable run lease. Therefore:
+
+- metadata persistence must never be presented as execution recovery;
+- exact interrupted-turn recovery (#8744) remains distinct from a next-turn
+  objective loop;
+- a future goal contract needs startup enumeration, durable continuation
+  rows/outbox, idempotency, lease generation, reconciliation, and typed terminal
+  outcomes;
+- deterministic requirements and evidence refs outrank model audit prose; and
+- scheduled autonomous work must use the existing durable run/work/attempt
+  authority rather than creating a second process-local scheduler truth.
+
+For the parallel audio program, harvest OpenChamber's sequence/ACK dictation,
+contiguous acknowledgement, client retry retention, explicit finalization,
+partial/final UI, and accept-partial/retry controls. Keep OpenAgents' existing
+Google STT/TTS, persistent stream generation, consent/retention, Effect/Rust,
+typed command, barge-in, and raw-media-exclusion decisions. OpenChamber Voice
+Mode is dictation plus read-aloud, not proof of durable full-duplex voice.
+
+The rejection list gains four concrete entries: no Capacitor/WebView product
+architecture, no renderer-visible runtime credentials or unsandboxed generic
+invoke bridge, no duplicated TypeScript/JavaScript security protocol, and no
+model verdict as acceptance authority. As with every teardown, these are design
+inputs; current schemas, invariants, roadmap gates, issues, tests, and receipts
+remain authoritative.
