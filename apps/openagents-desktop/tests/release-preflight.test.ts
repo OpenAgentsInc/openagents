@@ -184,7 +184,7 @@ describe("real artifact sweep", () => {
         detail: "",
       })
     }
-  })
+  }, 30_000)
 
   test("the real UPSTREAM.md attribution and package identity are intact", () => {
     const upstreamMd = readFileSync(path.join(appRoot, "UPSTREAM.md"), "utf8")

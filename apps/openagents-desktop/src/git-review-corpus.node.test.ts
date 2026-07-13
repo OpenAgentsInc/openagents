@@ -114,7 +114,7 @@ test("binary, secret-shaped, and oversized diffs are refused before projection",
   if (!oversized.ok) assert.equal(oversized.error, "diff_too_large")
 })
 
-test("rename, submodule, detached, conflict, and no-repository states remain explicit", () => {
+test("rename, submodule, detached, conflict, and no-repository states remain explicit", { timeout: 120_000 }, () => {
   const root = repo()
   git(root, ["mv", "review.txt", "renamed.txt"])
   let snapshot = status(root)

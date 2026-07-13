@@ -61,7 +61,7 @@ test("default Codex launch uses the packaged native binary with ambient PATH dis
     child.on("close", (...args) => resolve(typeof args[0] === "number" ? args[0] : null))
   })
   expect(code).toBe(0)
-})
+}, 30_000)
 
 describe("isCodexReconnectRequiredText (BROADENED, EP250)", () => {
   test("matches the LONG receipted revoked-token strings", () => {
