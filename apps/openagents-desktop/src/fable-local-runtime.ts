@@ -359,6 +359,25 @@ export type FableLocalRuntimeOptions = Readonly<{
   timeoutMs?: number
   /** Pending-question window override (tests). Default 10 minutes. */
   questionTimeoutMs?: number
+  /** Durable main-owned continuity restored before the first renderer exists. */
+  initialSessions?: ReadonlyArray<Readonly<{
+    threadRef: string
+    sessionId: string
+    accountRef: string
+  }>>
+  /** Main-only dispatch receipt; never projected through the renderer bridge. */
+  onDispatch?: (input: Readonly<{
+    threadRef: string
+    turnRef: string
+    accountRef: string
+  }>) => void
+  /** Main-only provider identity receipt observed at SDK init. */
+  onProviderSession?: (input: Readonly<{
+    threadRef: string
+    turnRef: string
+    accountRef: string
+    sessionId: string
+  }>) => void
 }>
 
 const bounded = (value: string, limit: number): string =>
@@ -662,7 +681,12 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
    * the account that created it (a session is only resumable from the same
    * isolated account home).
    */
-  const sessionByThread = new Map<string, { sessionId: string; accountRef: string }>()
+  const sessionByThread = new Map<string, { sessionId: string; accountRef: string }>(
+    (options.initialSessions ?? []).map(session => [
+      session.threadRef,
+      { sessionId: session.sessionId, accountRef: session.accountRef },
+    ]),
+  )
   /**
    * Pending AskUserQuestion registry, keyed by questionRef (which embeds the
    * turnRef, so refs never collide across turns). Parallel-safe: several
@@ -1196,6 +1220,11 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
 
       try {
         const requestedModel = input.model ?? FABLE_LOCAL_MODEL
+        options.onDispatch?.({
+          threadRef: input.threadRef,
+          turnRef: input.turnRef,
+          accountRef: account.ref,
+        })
         const session = query({
           prompt,
           options: {
@@ -1258,6 +1287,12 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
           if (type === "system" && record.subtype === "init") {
             if (typeof record.session_id === "string" && record.session_id.length > 0) {
               sessionId = record.session_id
+              options.onProviderSession?.({
+                threadRef: input.threadRef,
+                turnRef: input.turnRef,
+                accountRef: account.ref,
+                sessionId,
+              })
             }
             emitStarted()
             // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE FABLE"): the init

@@ -14,6 +14,7 @@ export const DesktopNewThreadChannel = "openagents-desktop/thread-new" as const
 export const DesktopOpenThreadChannel = "openagents-desktop/thread-open" as const
 export const DesktopHydrateThreadChannel = "openagents-desktop/thread-hydrate" as const
 export const DesktopChatTurnChannel = "openagents-desktop/chat-turn" as const
+export const DesktopLocalTurnRecoveryUpdateChannel = "openagents-desktop/local-turn-recovery-update" as const
 export const DesktopLocalThreadsChannel = "openagents-desktop/history-local-threads" as const
 export const DesktopResumeLocalThreadChannel = "openagents-desktop/history-resume-local-thread" as const
 export const DesktopForkHistoryThreadChannel = "openagents-desktop/history-fork-thread" as const
@@ -53,6 +54,11 @@ export const DesktopMessageMetaSchema = Schema.Struct({
   totalTokens: Schema.optional(Schema.NullOr(Schema.Number)),
   durationMs: Schema.optional(Schema.Number),
   trace: Schema.optional(DesktopToolTraceSchema),
+  recovery: Schema.optional(Schema.Struct({
+    state: Schema.Literals(["recovering", "interrupted", "completed"]),
+    disposition: Schema.optional(Schema.Literals(["resumed_after_restart", "interrupted_by_restart"])),
+    generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  })),
 })
 export type DesktopMessageMeta = typeof DesktopMessageMetaSchema.Type
 

@@ -42,6 +42,7 @@ scope, and rung. Live issue state and the
 
 | Work | Evidence snapshot | Proof rung | Final disposition |
 | --- | --- | --- | --- |
+| Desktop restart #8744 | [`2026-07-13-desktop-local-turn-restart-recovery-receipt.md`](../2026-07-13-desktop-local-turn-restart-recovery-receipt.md) | packaged two-process Electron restart + deterministic runtime/store proofs | Closed; Codex continues once on the recorded account/thread, Fable fails honest with explicit retry |
 | PORT-00 #8745 | [`2026-07-12-port-00-portable-session-contract-freeze-receipt.md`](../2026-07-12-port-00-portable-session-contract-freeze-receipt.md) | closed schema/model contract | Runtime authority remains explicitly pending PORT-01 through PORT-08 |
 | PORT-01 #8746 | [`2026-07-13-port-01-durable-portable-session-authority-receipt.md`](../2026-07-13-port-01-durable-portable-session-authority-receipt.md) | durable Cloud SQL/Khala Sync authority | Credential redemption and real host movement remain PORT-02/PORT-03 |
 | PORT-02 #8747 | [`2026-07-13-port-02-target-scoped-capability-broker-receipt.md`](../2026-07-13-port-02-target-scoped-capability-broker-receipt.md) | general broker lifecycle plus owner-local/managed adapter fault oracle | Real provider-process/session movement remains PORT-03 |

@@ -296,6 +296,46 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(resumeArgs[resumeArgs.length - 1]).toBe("what was the codeword?")
   })
 
+  test("PROCESS RESTART: durable continuity resumes the exact recorded account/thread once and reports provider identity", async () => {
+    const captured: SpawnCapture[] = []
+    const observed: Array<Record<string, string>> = []
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      initialSessions: [{ threadRef: "thread-restart", threadId: "thread-durable-1", accountRef: "codex-2" }],
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: fixtureCodexLocalTurnStdout("thread-durable-1"), exitCode: 0 }],
+        input => captured.push(input),
+      ),
+      discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
+      onDispatch: input => observed.push({ kind: "dispatch", ...input }),
+      onProviderSession: input => observed.push({ kind: "provider", ...input }),
+    })
+    const result = await runtime.runTurn({
+      turnRef: "turn-restart",
+      threadRef: "thread-restart",
+      history: [{ role: "user", text: "the original prompt must not replay" }],
+      message: "Continue the response interrupted by the Desktop host restart. Do not repeat completed text.",
+      recovery: { threadId: "thread-durable-1", accountRef: "codex-2" },
+      emit: collect().emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(captured).toHaveLength(1)
+    expect(captured[0]!.args.slice(0, 3)).toEqual(["exec", "resume", "thread-durable-1"])
+    expect(captured[0]!.env.CODEX_HOME).toBe("/isolated/accounts/codex/codex-2")
+    expect(captured[0]!.args.join(" ")).not.toContain("the original prompt must not replay")
+    expect(observed).toEqual([
+      { kind: "dispatch", threadRef: "thread-restart", turnRef: "turn-restart", accountRef: "codex-2" },
+      {
+        kind: "provider",
+        threadRef: "thread-restart",
+        turnRef: "turn-restart",
+        accountRef: "codex-2",
+        threadId: "thread-durable-1",
+      },
+    ])
+  })
+
   test("rotation to a DIFFERENT account falls back to bounded-history prepend (a session is pinned to the account that created it)", async () => {
     const captured: SpawnCapture[] = []
     const runtime = makeCodexLocalRuntime({

@@ -61,6 +61,7 @@ import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
 import {
   DesktopChatTurnChannel,
+  DesktopLocalTurnRecoveryUpdateChannel,
   DesktopForkHistoryThreadChannel,
   DesktopForkHistoryThreadRequestSchema,
   DesktopHydrateThreadChannel,
@@ -184,6 +185,9 @@ import {
 } from "./usage-ledger-contract.ts"
 import { makeUsageLedger } from "./usage-ledger.ts"
 import { makeThreadStore } from "./thread-store.ts"
+import { openLocalTurnJournal } from "./local-turn-journal.ts"
+import { reconcileLocalTurns } from "./local-turn-recovery.ts"
+import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
@@ -352,7 +356,11 @@ const recordMainMark = (name: string): void => {
 recordMainMark("mainModuleEvaluated")
 // Startup-marks mode reuses the deterministic smoke fixtures so the benchmark
 // isolates main-process init ordering rather than live filesystem/network state.
-const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode
+const localTurnRestartProbe = process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE === "seed" ||
+    process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE === "recover"
+  ? process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_PROBE
+  : null
+const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 // Capture before any host lifecycle can change process state. This is the
 // default top-level coding workspace today; the runtime-facing getter is the
@@ -747,6 +755,11 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
 })
 
 const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
+const localTurnJournal = openLocalTurnJournal(
+  path.join(app.getPath("userData"), "local-turns", "journal.json"),
+)
+let desktopIsQuitting = false
+const localTurnFlushers = new Set<() => unknown>()
 const codexSessionsRoot = () => path.resolve(
   process.env.OPENAGENTS_DESKTOP_CODEX_SESSIONS ?? (
     smokeMode
@@ -1275,10 +1288,10 @@ ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
 // H1 resume picker: app-local threads only. Returning the exact persisted
 // thread id lets the next local turn hit fable/codex-local's existing
 // per-thread SDK resume seam; imported provider history is never mutated.
-ipcMain.handle(DesktopLocalThreadsChannel, () => threads().list().filter(thread => fableLocal.hasContinuity(thread.id)))
+ipcMain.handle(DesktopLocalThreadsChannel, () => threads().list())
 ipcMain.handle(DesktopResumeLocalThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopResumeLocalThreadRequestSchema, value) as DesktopResumeLocalThreadRequest | null
-  return request === null || !fableLocal.hasContinuity(request.threadRef) ? null : threads().open(request.threadRef)
+  return request === null ? null : threads().open(request.threadRef)
 })
 // H2 refs-only fork. Main re-reads a bounded provider-history window through
 // the history worker, projects only user/assistant prose through the existing
@@ -1446,6 +1459,23 @@ const codexLocal = makeCodexLocalRuntime({
     ? path.join(app.getPath("userData"), "fable-local", "fixture-workspace")
     : desktopLaunchWorkingDirectory,
   preflight: codexPreflight,
+  initialSessions: localTurnJournal.list().flatMap(record =>
+    record.lane === "codex-local" && record.providerSessionRef !== null && record.accountRef !== null
+      ? [{
+          threadRef: record.threadRef,
+          threadId: record.providerSessionRef,
+          accountRef: record.accountRef,
+        }]
+      : []),
+  onDispatch: input => {
+    localTurnJournal.recordDispatch({ ...input, lane: "codex-local" }, input.accountRef)
+  },
+  onProviderSession: input => {
+    localTurnJournal.recordProviderSession(
+      { ...input, lane: "codex-local" },
+      { accountRef: input.accountRef, providerSessionRef: input.threadId },
+    )
+  },
   onAccountEvidence: input => {
     if (input.evidence === "verified") {
       usageLedger.markVerified({ provider: "codex", accountRef: input.accountRef })
@@ -1455,9 +1485,14 @@ const codexLocal = makeCodexLocalRuntime({
   },
   ...(smokeMode
     ? {
-        spawnImpl: makeFixtureCodexChildSpawn([
-          { stdout: fixtureCodexLocalTurnStdout(), exitCode: 0 },
-        ]),
+        spawnImpl: input => {
+          const resumedThread = input.args[0] === "exec" && input.args[1] === "resume"
+            ? input.args[2]
+            : undefined
+          return makeFixtureCodexChildSpawn([
+            { stdout: fixtureCodexLocalTurnStdout(resumedThread), exitCode: 0 },
+          ])(input)
+        },
         discoverImpl: async () => [FIXTURE_CODEX_LOCAL_ACCOUNT],
       }
     : {}),
@@ -1482,6 +1517,23 @@ const fableLocal = makeFableLocalRuntime({
   delegate: codexChildren,
   userMcpServers: () => mcpConfigStore.servers(),
   userPlugins: () => pluginConfigStore.enabledPaths(),
+  initialSessions: localTurnJournal.list().flatMap(record =>
+    record.lane === "fable-local" && record.providerSessionRef !== null && record.accountRef !== null
+      ? [{
+          threadRef: record.threadRef,
+          sessionId: record.providerSessionRef,
+          accountRef: record.accountRef,
+        }]
+      : []),
+  onDispatch: input => {
+    localTurnJournal.recordDispatch({ ...input, lane: "fable-local" }, input.accountRef)
+  },
+  onProviderSession: input => {
+    localTurnJournal.recordProviderSession(
+      { ...input, lane: "fable-local" },
+      { accountRef: input.accountRef, providerSessionRef: input.sessionId },
+    )
+  },
   ...(smokeMode
     ? {
         queryImpl: async () => makeFixtureFableLocalQuery(),
@@ -1489,6 +1541,19 @@ const fableLocal = makeFableLocalRuntime({
         mcpImpl: async () => makeFixtureFableMcpFactory(),
       }
     : {}),
+})
+const localTurnRecovery = reconcileLocalTurns({
+  journal: localTurnJournal,
+  store: threads(),
+  codex: codexLocal,
+  onThread: thread => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send(DesktopLocalTurnRecoveryUpdateChannel, thread)
+    }
+  },
+}).catch(error => {
+  console.error("[openagents-desktop] local turn recovery failed", error instanceof Error ? error.name : "unknown")
+  throw error
 })
 ipcMain.handle(PluginConfigListChannel, () => pluginConfigStore.list())
 ipcMain.handle(PluginConfigChooseChannel, async () => {
@@ -1722,17 +1787,27 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     return { ok: false, error: "That local skill is unavailable or disabled." }
   }
   const store = threads()
+  if (store.open(request.threadRef) === null) return { ok: false, error: "That conversation no longer exists." }
+  const turnKey = { threadRef: request.threadRef, turnRef: request.turnRef, lane: "fable-local" as const }
   const user: DesktopMessage = {
-    key: randomUUID(),
+    key: `${request.turnRef}-user`,
     role: "user",
     text: userNoteText(request.message, request.images),
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   }
-  const saved = store.append(request.threadRef, user)
+  const accepted = localTurnJournal.accept({
+    ...turnKey,
+    userMessageKey: user.key,
+    assistantMessageKey: `${request.turnRef}-assistant-0`,
+    accountRef: request.target?.accountRef ?? null,
+    model: requestedModel,
+  })
+  if (!accepted.accepted) return { ok: false, error: "That turn is already accepted." }
+  const saved = store.upsert(request.threadRef, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
   // History authority is main's own thread store — the renderer supplies only
   // the new message. The just-appended user note is the prompt, not history.
-  const history = saved.notes.slice(0, -1).map(note => ({ role: note.role, text: note.text }))
+  const history = saved.notes.filter(note => note.key !== user.key).map(note => ({ role: note.role, text: note.text }))
   const sender = event.sender
   // Message metadata (#8712): record every fact this host observes for the
   // final assistant note so the renderer's inspector can project it later —
@@ -1740,26 +1815,17 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   // total, and wall-clock duration. Bounded public-safe strings only.
   const startedAt = Date.now()
   let effectiveModel: string | null = null
-  let assistantSegmentText = ""
-  let assistantSegmentSequence = 0
-  let lastAssistantSegmentKey: string | null = null
-  const flushAssistantSegment = (): void => {
-    if (assistantSegmentText === "") return
-    const key = `${request.turnRef}-assistant-${assistantSegmentSequence++}`
-    store.append(request.threadRef, {
-      key,
-      role: "assistant",
-      text: assistantSegmentText.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      meta: {
-        lane: "fable-local",
-        turnRef: request.turnRef,
-        ...(effectiveModel === null ? {} : { model: effectiveModel }),
-      },
-    })
-    lastAssistantSegmentKey = key
-    assistantSegmentText = ""
-  }
+  const textPersistence = makeLocalTurnTextPersistence({
+    journal: localTurnJournal,
+    store,
+    key: turnKey,
+    meta: () => ({
+      lane: "fable-local",
+      turnRef: request.turnRef,
+      ...(effectiveModel === null ? {} : { model: effectiveModel }),
+    }),
+  })
+  localTurnFlushers.add(textPersistence.flush)
   // EP250 wave-2 (J2/J4): track the latest plan/todo list so the FINAL plan
   // state persists into the finalized transcript (the live in-place plan card
   // is renderer-only). One persisted plan card, latest wins.
@@ -1784,8 +1850,8 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
       // into the canonical live agent graph (root + codex delegate children).
       liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
-      if (turnEvent.kind === "text_delta") assistantSegmentText += turnEvent.text
-      else flushAssistantSegment()
+      if (turnEvent.kind === "text_delta") textPersistence.append(turnEvent.text)
+      else textPersistence.boundary()
       // EP250 wave-2 J2/J4: remember the latest todo list; persist it once the
       // turn completes so the finalized transcript keeps a plan/todo card.
       if (turnEvent.kind === "plan_updated") {
@@ -1898,8 +1964,20 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
       sender.send(FableLocalEventChannel, { turnRef: request.turnRef, event })
     },
   })
-  if (!result.ok) return { ok: false, error: fableLocalFailureMessage(result.reason, result.detail) }
-  flushAssistantSegment()
+  if (!result.ok) {
+    textPersistence.flush()
+    localTurnFlushers.delete(textPersistence.flush)
+    if (!(desktopIsQuitting && result.reason === "interrupted")) {
+      localTurnJournal.terminal(
+        turnKey,
+        result.reason === "interrupted" ? "interrupted" : "failed",
+        result.reason === "interrupted" ? "owner_interrupted" : "failed",
+      )
+    }
+    return { ok: false, error: fableLocalFailureMessage(result.reason, result.detail) }
+  }
+  textPersistence.complete(result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT))
+  localTurnFlushers.delete(textPersistence.flush)
   const finalMeta = {
     lane: "fable-local" as const,
     turnRef: request.turnRef,
@@ -1908,15 +1986,12 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     totalTokens: result.totalTokens,
     durationMs: Date.now() - startedAt,
   }
-  const lastAssistant = lastAssistantSegmentKey === null
-    ? undefined
-    : store.open(request.threadRef)?.notes.find(note => note.key === lastAssistantSegmentKey)
-  const thread = lastAssistant === undefined
-    ? store.append(request.threadRef, {
-        key: randomUUID(), role: "assistant", text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), meta: finalMeta,
-      })
-    : store.upsert(request.threadRef, { ...lastAssistant, meta: finalMeta })
+  const assistantKeys = new Set(localTurnJournal.get(turnKey)?.assistantSegments.map(segment => segment.key) ?? [])
+  for (const assistant of store.open(request.threadRef)?.notes.filter(note => assistantKeys.has(note.key)) ?? []) {
+    store.upsert(request.threadRef, { ...assistant, meta: finalMeta })
+  }
+  const thread = assistantKeys.size === 0 ? null : store.open(request.threadRef)
+  localTurnJournal.terminal(turnKey, "completed", "completed")
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
     : { ok: true, thread }
@@ -1965,41 +2040,42 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     return { ok: false, error: "Plan-only permission mode is not available on the Codex lane." }
   }
   const store = threads()
+  if (store.open(request.threadRef) === null) return { ok: false, error: "That conversation no longer exists." }
+  const turnKey = { threadRef: request.threadRef, turnRef: request.turnRef, lane: "codex-local" as const }
   const user: DesktopMessage = {
-    key: randomUUID(),
+    key: `${request.turnRef}-user`,
     role: "user",
     text: userNoteText(request.message, request.images),
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   }
-  const saved = store.append(request.threadRef, user)
+  const accepted = localTurnJournal.accept({
+    ...turnKey,
+    userMessageKey: user.key,
+    assistantMessageKey: `${request.turnRef}-assistant-0`,
+    accountRef: request.target?.accountRef ?? null,
+    model: requestedModel,
+  })
+  if (!accepted.accepted) return { ok: false, error: "That turn is already accepted." }
+  const saved = store.upsert(request.threadRef, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
-  const history = saved.notes.slice(0, -1).map(note => ({ role: note.role, text: note.text }))
+  const history = saved.notes.filter(note => note.key !== user.key).map(note => ({ role: note.role, text: note.text }))
   const sender = event.sender
   // Message metadata (#8712 pattern): lane, spawn-config-truth model,
   // account ref, turn ref, exact usage total, duration — plus the codex
   // thread id (session-receipt continuity) in requestId.
   const startedAt = Date.now()
   let effectiveModel: string | null = null
-  let assistantSegmentText = ""
-  let assistantSegmentSequence = 0
-  let lastAssistantSegmentKey: string | null = null
-  const flushAssistantSegment = (): void => {
-    if (assistantSegmentText === "") return
-    const key = `${request.turnRef}-assistant-${assistantSegmentSequence++}`
-    store.append(request.threadRef, {
-      key,
-      role: "assistant",
-      text: assistantSegmentText.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      meta: {
-        lane: "codex-local",
-        turnRef: request.turnRef,
-        model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
-      },
-    })
-    lastAssistantSegmentKey = key
-    assistantSegmentText = ""
-  }
+  const textPersistence = makeLocalTurnTextPersistence({
+    journal: localTurnJournal,
+    store,
+    key: turnKey,
+    meta: () => ({
+      lane: "codex-local",
+      turnRef: request.turnRef,
+      model: effectiveModel ?? codexLocalRequestedModelLabel(requestedModel),
+    }),
+  })
+  localTurnFlushers.add(textPersistence.flush)
   // CUT-11 (#8691): the codex-local root turn joins the same canonical
   // live agent graph contract on its own thread graph.
   liveAgentGraph.beginTurn({ turnRef: request.turnRef, threadRef: request.threadRef, lane: "codex_local" })
@@ -2016,8 +2092,8 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
       // CUT-11 (#8691): same one-callback graph fold as the fable lane.
       liveAgentGraph.applyEvent(request.threadRef, { turnRef: request.turnRef, event: turnEvent })
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
-      if (turnEvent.kind === "text_delta") assistantSegmentText += turnEvent.text
-      else flushAssistantSegment()
+      if (turnEvent.kind === "text_delta") textPersistence.append(turnEvent.text)
+      else textPersistence.boundary()
       // Session usage ledger: exact usage from turn.completed, attributed to
       // the Codex account with the owner-selected model as spawn-config truth.
       if (turnEvent.kind === "turn_completed" && turnEvent.accountRef !== undefined) {
@@ -2066,8 +2142,20 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
       sender.send(CodexLocalEventChannel, { turnRef: request.turnRef, event: forwarded })
     },
   })
-  if (!result.ok) return { ok: false, error: codexLocalFailureMessage(result.reason, result.detail) }
-  flushAssistantSegment()
+  if (!result.ok) {
+    textPersistence.flush()
+    localTurnFlushers.delete(textPersistence.flush)
+    if (!(desktopIsQuitting && result.reason === "interrupted")) {
+      localTurnJournal.terminal(
+        turnKey,
+        result.reason === "interrupted" ? "interrupted" : "failed",
+        result.reason === "interrupted" ? "owner_interrupted" : "failed",
+      )
+    }
+    return { ok: false, error: codexLocalFailureMessage(result.reason, result.detail) }
+  }
+  textPersistence.complete(result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT))
+  localTurnFlushers.delete(textPersistence.flush)
   const finalMeta = {
     lane: "codex-local" as const,
     turnRef: request.turnRef,
@@ -2077,15 +2165,12 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     totalTokens: result.totalTokens,
     durationMs: Date.now() - startedAt,
   }
-  const lastAssistant = lastAssistantSegmentKey === null
-    ? undefined
-    : store.open(request.threadRef)?.notes.find(note => note.key === lastAssistantSegmentKey)
-  const thread = lastAssistant === undefined
-    ? store.append(request.threadRef, {
-        key: randomUUID(), role: "assistant", text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), meta: finalMeta,
-      })
-    : store.upsert(request.threadRef, { ...lastAssistant, meta: finalMeta })
+  const assistantKeys = new Set(localTurnJournal.get(turnKey)?.assistantSegments.map(segment => segment.key) ?? [])
+  for (const assistant of store.open(request.threadRef)?.notes.filter(note => assistantKeys.has(note.key)) ?? []) {
+    store.upsert(request.threadRef, { ...assistant, meta: finalMeta })
+  }
+  const thread = assistantKeys.size === 0 ? null : store.open(request.threadRef)
+  localTurnJournal.terminal(turnKey, "completed", "completed")
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
     : { ok: true, thread }
@@ -4087,6 +4172,55 @@ void app.whenReady().then(async () => {
     console.error("[openagents-desktop] OS-encrypted session custody unavailable")
   }
   runtimeGateway.start()
+  if (localTurnRestartProbe !== null) {
+    try {
+      await localTurnRecovery
+      if (localTurnRestartProbe === "seed") {
+        const store = threads()
+        const thread = store.newThread()
+        const key = { threadRef: thread.id, turnRef: "turn.desktop-restart-smoke", lane: "codex-local" as const }
+        localTurnJournal.accept({
+          ...key,
+          userMessageKey: `${key.turnRef}-user`,
+          assistantMessageKey: `${key.turnRef}-assistant`,
+          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
+          model: "gpt-5.6-sol",
+        })
+        store.upsert(thread.id, {
+          key: `${key.turnRef}-user`, role: "user", text: "Continue through a process restart.", timestamp: "11:55 PM",
+        })
+        localTurnJournal.recordDispatch(key, FIXTURE_CODEX_LOCAL_ACCOUNT.ref)
+        localTurnJournal.recordProviderSession(key, {
+          accountRef: FIXTURE_CODEX_LOCAL_ACCOUNT.ref,
+          providerSessionRef: "thread-desktop-restart-smoke",
+        })
+        localTurnJournal.appendAssistantText(key, "Persisted prefix. ")
+        store.upsert(thread.id, {
+          key: `${key.turnRef}-assistant`, role: "assistant", text: "Persisted prefix. ", timestamp: "11:55 PM",
+        })
+        console.log("[openagents-desktop local-turn-restart] phase-a seeded")
+        app.exit(0)
+        return
+      }
+      const record = localTurnJournal.list().find(value => value.turnRef === "turn.desktop-restart-smoke")
+      const notes = record === undefined ? [] : threads().open(record.threadRef)?.notes ?? []
+      const userCount = notes.filter(note => note.key === "turn.desktop-restart-smoke-user").length
+      const assistant = notes.filter(note => note.role === "assistant" && note.meta?.turnRef === "turn.desktop-restart-smoke" ||
+        note.key === "turn.desktop-restart-smoke-assistant")
+      const recoveryCount = notes.filter(note => note.key === "turn.desktop-restart-smoke-recovery").length
+      const ok = record?.phase === "completed" && record.disposition === "resumed_after_restart" &&
+        record.providerSessionRef === "thread-desktop-restart-smoke" && record.recoveryGeneration === 1 &&
+        userCount === 1 && assistant.length === 2 && new Set(assistant.map(note => note.key)).size === 2 &&
+        recoveryCount === 1 && assistant.map(note => note.text).join("").startsWith("Persisted prefix. ")
+      console.log("[openagents-desktop local-turn-restart] phase-b", JSON.stringify({ ok, userCount, assistantCount: assistant.length, recoveryCount }))
+      app.exit(ok ? 0 : 1)
+      return
+    } catch (error) {
+      console.error("[openagents-desktop local-turn-restart] failed", error instanceof Error ? error.message : "unknown")
+      app.exit(1)
+      return
+    }
+  }
   // Boot probe round (EP250 preflight): async and non-blocking — results
   // stream into the shared health ordering, the ledger's typed reconnect
   // flags (fleet readiness), and the composer chip's availability call.
@@ -4134,6 +4268,9 @@ app.on("window-all-closed", () => {
 })
 
 app.on("before-quit", () => {
+  desktopIsQuitting = true
+  for (const flush of localTurnFlushers) flush()
+  localTurnFlushers.clear()
   workspaceSearchRegistry.dispose()
   terminalHost.dispose()
   hostLifecycle.dispose()

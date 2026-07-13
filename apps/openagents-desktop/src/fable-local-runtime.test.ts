@@ -95,6 +95,14 @@ const makeRuntimeHarness = (input: {
   root?: string
   workspaceRoot?: string
   questionTimeoutMs?: number
+  initialSessions?: ReadonlyArray<Readonly<{ threadRef: string; sessionId: string; accountRef: string }>>
+  onDispatch?: (input: Readonly<{ threadRef: string; turnRef: string; accountRef: string }>) => void
+  onProviderSession?: (input: Readonly<{
+    threadRef: string
+    turnRef: string
+    accountRef: string
+    sessionId: string
+  }>) => void
 }) => {
   const root = input.root ?? makeAccountRoot()
   const captured: CapturedQuery[] = []
@@ -109,6 +117,9 @@ const makeRuntimeHarness = (input: {
     env: { PYLON_ACCOUNT_HOME_ROOT: root },
     queryImpl: async () => query,
     ...(input.questionTimeoutMs === undefined ? {} : { questionTimeoutMs: input.questionTimeoutMs }),
+    ...(input.initialSessions === undefined ? {} : { initialSessions: input.initialSessions }),
+    ...(input.onDispatch === undefined ? {} : { onDispatch: input.onDispatch }),
+    ...(input.onProviderSession === undefined ? {} : { onProviderSession: input.onProviderSession }),
   })
   return { runtime, captured, scratch, root }
 }
@@ -331,6 +342,49 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(second.ok).toBe(true)
     expect(harness.captured[1]!.options.resume).toBe("session-keep")
     expect(harness.captured[1]!.prompt).toBe("two")
+  })
+
+  test("PROCESS RESTART: hydrated continuity stays pinned and provider init identity is reported", async () => {
+    const observed: Array<Record<string, string>> = []
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-durable", model: FABLE_LOCAL_MODEL }
+        yield { type: "result", subtype: "success", is_error: false, result: "continued" }
+      },
+      initialSessions: [{
+        threadRef: "thread-restart",
+        sessionId: "session-durable",
+        accountRef: "claude-pylon-b",
+      }],
+      onDispatch: input => observed.push({ kind: "dispatch", ...input }),
+      onProviderSession: input => observed.push({ kind: "provider", ...input }),
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-restart",
+      threadRef: "thread-restart",
+      history: [{ role: "user", text: "old prompt" }],
+      message: "explicit owner retry",
+      accountRef: "claude-pylon-b",
+      emit: collect().emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(harness.captured[0]!.options.resume).toBe("session-durable")
+    expect(harness.captured[0]!.prompt).toBe("explicit owner retry")
+    expect(observed).toEqual([
+      {
+        kind: "dispatch",
+        threadRef: "thread-restart",
+        turnRef: "turn-restart",
+        accountRef: "claude-pylon-b",
+      },
+      {
+        kind: "provider",
+        threadRef: "thread-restart",
+        turnRef: "turn-restart",
+        accountRef: "claude-pylon-b",
+        sessionId: "session-durable",
+      },
+    ])
   })
 
   test("maps provider error results to a typed turn_failed, never a throw", async () => {

@@ -32,6 +32,7 @@ import {
 } from "./provider-accounts-contract.ts"
 import {
   DesktopChatTurnChannel,
+  DesktopLocalTurnRecoveryUpdateChannel,
   DesktopForkHistoryThreadChannel,
   DesktopForkHistoryThreadRequestSchema,
   DesktopHydrateThreadChannel,
@@ -43,6 +44,7 @@ import {
   DesktopThreadsChannel,
   decode,
   DesktopThreadRequestSchema,
+  DesktopThreadSchema,
   DesktopTurnRequestSchema,
 } from "./chat-contract.ts"
 import {
@@ -267,6 +269,16 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       : ipcRenderer.invoke(FleetStageChannel, request)
   },
   listThreads: () => ipcRenderer.invoke(DesktopThreadsChannel),
+  localTurnRecovery: {
+    onUpdate: (listener: (thread: import("./chat-contract.ts").DesktopThread) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const thread = decode(DesktopThreadSchema, value) as import("./chat-contract.ts").DesktopThread | null
+        if (thread !== null) listener(thread)
+      }
+      ipcRenderer.on(DesktopLocalTurnRecoveryUpdateChannel, handler)
+      return () => ipcRenderer.removeListener(DesktopLocalTurnRecoveryUpdateChannel, handler)
+    },
+  },
   newThread: () => ipcRenderer.invoke(DesktopNewThreadChannel),
   openThread: (value: unknown) => {
     const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null

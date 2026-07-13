@@ -52,6 +52,7 @@ These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
 
 - [`CUT-26 RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md) — #8706
+- [`Desktop local-turn restart recovery`](../2026-07-13-desktop-local-turn-restart-recovery-receipt.md) — #8744
 - [`PORT-00 portable-session contract freeze`](../2026-07-12-port-00-portable-session-contract-freeze-receipt.md) — #8745
 - [`PORT-01 durable portable-session authority`](../2026-07-13-port-01-durable-portable-session-authority-receipt.md) — #8746
 - [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) — closed #8689 physical network-gap/revocation acceptance

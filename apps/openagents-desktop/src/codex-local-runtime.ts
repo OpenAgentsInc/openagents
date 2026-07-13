@@ -106,6 +106,8 @@ export type CodexLocalTurnInput = Readonly<{
    * passes its path. Absent/empty = the prior no-image invocation, unchanged.
    */
   images?: ReadonlyArray<FableLocalImageAttachment>
+  /** Main-owned startup recovery. Exact account/thread only; never renderer supplied. */
+  recovery?: Readonly<{ threadId: string; accountRef: string }>
   emit: (event: FableLocalEvent) => void
 }>
 
@@ -147,6 +149,25 @@ export type CodexLocalRuntimeOptions = Readonly<{
   onAccountEvidence?: (input: Readonly<{
     accountRef: string
     evidence: "reconnect_required" | "verified"
+  }>) => void
+  /** Durable main-owned continuity restored before the first renderer exists. */
+  initialSessions?: ReadonlyArray<Readonly<{
+    threadRef: string
+    threadId: string
+    accountRef: string
+  }>>
+  /** Main-only dispatch receipt; never projected through the renderer bridge. */
+  onDispatch?: (input: Readonly<{
+    threadRef: string
+    turnRef: string
+    accountRef: string
+  }>) => void
+  /** Main-only provider identity receipt observed at `thread.started`. */
+  onProviderSession?: (input: Readonly<{
+    threadRef: string
+    turnRef: string
+    accountRef: string
+    threadId: string
   }>) => void
 }>
 
@@ -225,7 +246,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
    * the account that created it (resume runs on the SAME isolated home only;
    * a rotated account gets bounded-history prepend instead).
    */
-  const sessionByThread = new Map<string, { threadId: string; accountRef: string }>()
+  const sessionByThread = new Map<string, { threadId: string; accountRef: string }>(
+    (options.initialSessions ?? []).map(session => [
+      session.threadRef,
+      { threadId: session.threadId, accountRef: session.accountRef },
+    ]),
+  )
 
   const verifiedOrderedAccounts = async (): Promise<{
     accounts: ReadonlyArray<CodexChildAccount>
@@ -269,6 +295,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
 
   const runAttempt = (input: Readonly<{
     account: CodexChildAccount
+    threadRef: string
     turnRef: string
     workspace: string
     prompt: string
@@ -332,6 +359,11 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             "--skip-git-repo-check",
             input.prompt,
           ]
+      options.onDispatch?.({
+        threadRef: input.threadRef,
+        turnRef: input.turnRef,
+        accountRef: input.account.ref,
+      })
       const child = spawnCodex({
         args,
         env: input.account.source === "current_session"
@@ -446,6 +478,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         const type = typeof event.type === "string" ? event.type : ""
         if (type === "thread.started" && typeof event.thread_id === "string") {
           threadId = event.thread_id
+          options.onProviderSession?.({
+            threadRef: input.threadRef,
+            turnRef: input.turnRef,
+            accountRef: input.account.ref,
+            threadId,
+          })
           return
         }
         if (type === "item.started" || type === "item.updated" || type === "item.completed") {
@@ -629,9 +667,10 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     }
 
     const discovered = await verifiedOrderedAccounts()
-    const accounts = input.accountRef === undefined
+    const selectedAccountRef = input.recovery?.accountRef ?? input.accountRef
+    const accounts = selectedAccountRef === undefined
       ? discovered.accounts
-      : discovered.accounts.filter(account => account.ref === input.accountRef)
+      : discovered.accounts.filter(account => account.ref === selectedAccountRef)
     if (accounts.length === 0) {
       return emitFailure(failure(
         "no_codex_account",
@@ -674,8 +713,9 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       for (const account of accounts) {
         if (control.interrupted) return emitFailure(failure("interrupted", "turn interrupted"))
         const continuity = sessionByThread.get(input.threadRef)
-        const resumeThreadId =
-          continuity !== undefined && continuity.accountRef === account.ref
+        const resumeThreadId = input.recovery !== undefined
+          ? input.recovery.threadId
+          : continuity !== undefined && continuity.accountRef === account.ref
             ? continuity.threadId
             : null
         const prompt = resumeThreadId === null
@@ -683,6 +723,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           : input.message
         const attempt = await runAttempt({
           account,
+          threadRef: input.threadRef,
           turnRef: input.turnRef,
           workspace,
           prompt,

@@ -64,6 +64,7 @@ import {
   makeDesktopShellHandlers,
   withInput,
   withLiveAgentGraph,
+  withThreads,
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
 import { withVoiceHostState } from "./voice-mode.ts"
@@ -135,6 +136,9 @@ type DesktopBridge = Readonly<{
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   stageFleet?: (value: unknown) => Promise<unknown>
   listThreads?: () => Promise<unknown>
+  localTurnRecovery?: Readonly<{
+    onUpdate?: (listener: (thread: DesktopThread) => void) => () => void
+  }>
   newThread?: () => Promise<unknown>
   openThread?: (value: unknown) => Promise<unknown>
   hydrateThread?: (value: unknown) => Promise<unknown>
@@ -540,6 +544,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const state = yield* SubscriptionRef.make(initialDesktopShellState(host))
     const program = makeViewProgramFromState(state, desktopShellView)
     const bridge = readBridge()
+    if (typeof bridge?.localTurnRecovery?.onUpdate === "function") {
+      const unsubscribeRecovery = bridge.localTurnRecovery.onUpdate(thread => {
+        void Effect.runPromise(SubscriptionRef.update(state, current =>
+          withThreads(current, [thread, ...current.threads.filter(value => value.id !== thread.id)])))
+      })
+      window.addEventListener("pagehide", () => unsubscribeRecovery(), { once: true })
+    }
     const recoveryStorageKey = (workspaceSessionRef: string): string =>
       `openagents.desktop.workspace-editor.v2.${workspaceSessionRef}`
     const loadWorkspaceRecovery = (workspaceSessionRef: string) => {
@@ -1045,13 +1056,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const existing = yield* Effect.promise(chat.listThreads)
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
     if (threads.length > 0) {
-      const first = threads[0]!
-      yield* SubscriptionRef.update(state, (current) => ({
-        ...current,
-        threads,
-        activeThreadId: first.id,
-        notes: [],
-      }))
+      yield* SubscriptionRef.update(state, current => withThreads(current, threads))
     }
     // Snapshot/update delivery can precede the initial local-thread catalog;
     // replay retained newest post-images once those thread rows exist.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { makeThreadStore } from "./thread-store.ts"
@@ -33,6 +33,29 @@ describe("H2 local thread fork persistence", () => {
       store.append(thread.id, { key: "tool", role: "system", text: "tool", timestamp: "10:01" })
       const updated = store.upsert(thread.id, { key: "a", role: "assistant", text: "after", timestamp: "10:00" })
       expect(updated?.notes.map(note => `${note.key}:${note.text}`)).toEqual(["a:after", "tool:tool"])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("deterministic turn keys survive reopen without duplicate prompt or assistant rows", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-restart-"))
+    const file = path.join(root, "private", "threads.json")
+    try {
+      const first = makeThreadStore(file)
+      const thread = first.newThread()
+      first.upsert(thread.id, { key: "turn.1-user", role: "user", text: "Do the work", timestamp: "10:00" })
+      first.upsert(thread.id, { key: "turn.1-assistant", role: "assistant", text: "partial", timestamp: "10:01" })
+
+      const second = makeThreadStore(file)
+      second.upsert(thread.id, { key: "turn.1-user", role: "user", text: "Do the work", timestamp: "10:00" })
+      second.upsert(thread.id, { key: "turn.1-assistant", role: "assistant", text: "partial continued", timestamp: "10:01" })
+      expect(second.open(thread.id)?.notes).toEqual([
+        { key: "turn.1-user", role: "user", text: "Do the work", timestamp: "10:00" },
+        { key: "turn.1-assistant", role: "assistant", text: "partial continued", timestamp: "10:01" },
+      ])
+      expect(statSync(file).mode & 0o777).toBe(0o600)
+      expect(statSync(path.dirname(file)).mode & 0o777).toBe(0o700)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

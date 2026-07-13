@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 
@@ -17,10 +17,13 @@ export const makeThreadStore = (file: string) => {
   }
   const write = (threads: DesktopThread[]): DesktopThread[] => {
     const bounded = [...threads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, maxThreads)
-    mkdirSync(path.dirname(file), { recursive: true })
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+    if (process.platform !== "win32") chmodSync(path.dirname(file), 0o700)
     const temporary = `${file}.tmp`
-    writeFileSync(temporary, JSON.stringify({ version: 1, threads: bounded }), "utf8")
+    writeFileSync(temporary, JSON.stringify({ version: 1, threads: bounded }), { encoding: "utf8", mode: 0o600 })
+    if (process.platform !== "win32") chmodSync(temporary, 0o600)
     renameSync(temporary, file)
+    if (process.platform !== "win32") chmodSync(file, 0o600)
     return bounded
   }
   return {

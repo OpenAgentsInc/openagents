@@ -954,6 +954,37 @@ describe("pure transitions", () => {
     expect(next.activeThreadId).toBe("newest")
   })
 
+  test("thread hydration restores the durable transcript and recovering state", () => {
+    const recovering = {
+      id: "recovering-thread",
+      title: "Interrupted turn",
+      updatedAt: "2026-07-13T04:50:00.000Z",
+      notes: [
+        { key: "turn-1-user", role: "user" as const, text: "Keep going", timestamp: "11:49 PM" },
+        {
+          key: "turn-1-assistant",
+          role: "assistant" as const,
+          text: "I was in the middle of",
+          timestamp: "11:49 PM",
+          meta: {
+            lane: "codex-local" as const,
+            turnRef: "turn-1",
+            recovery: { state: "recovering" as const, generation: 1 },
+          },
+        },
+      ],
+    }
+
+    const restored = withThreads(
+      { ...baseState, activeThreadId: null, notes: [], pending: false },
+      [recovering],
+    )
+
+    expect(restored.activeThreadId).toBe(recovering.id)
+    expect(restored.notes).toEqual(recovering.notes)
+    expect(restored.pending).toBe(true)
+  })
+
   test("review context is visible, removable, and sent as bounded untrusted provider context", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const context = {

@@ -1151,6 +1151,9 @@ export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<Des
         threads: orderedThreads.slice(0, 5),
         activeThreadId: active.id,
         notes: active.notes,
+        // Main persists this projection before a restarted renderer asks for
+        // its catalog. Recover pending from durable truth, not process memory.
+        pending: active.notes.some(note => note.meta?.recovery?.state === "recovering"),
         agentGraph: active.agentGraph ?? null,
         agentGraphExpanded: active.agentGraph === undefined
           ? false

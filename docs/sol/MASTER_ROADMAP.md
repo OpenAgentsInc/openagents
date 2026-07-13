@@ -448,14 +448,16 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   `main`, but the exact owner launcher still needs real-microphone confirmation
   before re-close. Audio work must not silently broaden CUT, managed workroom,
   Sync, command, behavior-contract, migration, or release authority.
-- [#8744](https://github.com/OpenAgentsInc/openagents/issues/8744) is the bounded
-  Desktop process-restart defect exposed during voice
-  dogfood. Chat-title sanitation and launcher-induced restarts are repaired,
-  but accepted local provider turns still need a durable journal, startup
-  reconciliation, exact-once resume where supported, and explicit
-  `interrupted_by_restart` fallback. The OpenChamber goal loop is useful UX and
-  scheduler evidence, not a substitute: its timer/in-flight state is also
-  memory-only and it does not scan unfinished goals on startup.
+- Closed [#8744](https://github.com/OpenAgentsInc/openagents/issues/8744) now
+  supplies the bounded Desktop process-restart contract exposed during voice
+  dogfood: private accepted-turn journal, cadence-bounded ordered assistant
+  checkpoints, startup reconciliation, exact-account/thread Codex continuation
+  at most once, explicit Fable `interrupted_by_restart`, durable renderer
+  recovery truth, and no duplicate prompt/assistant segment. The packaged
+  two-process proof and exact boundary are recorded in the
+  [#8744 closure receipt](./2026-07-13-desktop-local-turn-restart-recovery-receipt.md).
+  This does not turn the OpenChamber-style completed-turn goal loop into
+  interrupted-stream recovery or make audio capture restart automatically.
 - PORT-00 through PORT-08 are now live as ordered #8745–#8753 beneath #8566.
   They own the previously unfiled remote-first session/graph/attachment/
   checkpoint, broker, first move, owner-managed target, managed-provider,
@@ -500,11 +502,11 @@ Live issues and claims control exact selection. At this snapshot:
 1. Closed #8676/#8677/CUT-09 now supply the physical same-ref named-Codex
    continuation, offline FIFO/exactly-once reconnect, revocation denial, and
    no-replay receipt.
-2. Finish #8744's disjoint Desktop restart-recovery slice: durably journal the
-   accepted turn before provider dispatch, checkpoint provider identity/cursor/
-   text, reconcile it on startup, and prove exactly one resumed or explicit
-   interrupted outcome with no duplicate prompt or assistant message. Keep
-   capture opt-in after restart.
+2. Closed #8744 supplies the disjoint Desktop restart-recovery slice: accepted
+   turn state precedes provider dispatch; exact provider identity, ordered text
+   checkpoints, and one recovery generation survive process loss; Codex
+   continues once on its recorded thread/account while unsupported Fable
+   queries terminate explicitly. Capture remains opt-in after restart.
 3. Close CUT-27 last for the local cutover after its remaining acceptance and
    exception-register work is satisfied. On the clean installed candidate,
    CUT-27 still proves one

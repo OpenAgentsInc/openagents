@@ -853,6 +853,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   invocation's original position rather than moving the card or surrounding
   assistant text. Persisted model, reasoning, lane, tool, and assistant notes
   must reopen in the same relative sequence the user saw live.
+- An accepted Desktop-local provider turn is durable before provider dispatch.
+  Electron main owns a private mode-0600 journal keyed by exact thread, turn,
+  and lane; it records the selected account, provider session identity,
+  lifecycle phase, bounded assistant segments/cursor, recovery generation, and
+  one terminal disposition. Checkpoint writes are cadence-bounded and atomic,
+  and deterministic message keys preserve live text/tool ordering without
+  duplicate prompt or assistant segments after reload. Startup reconciles each
+  nonterminal record once. Codex may issue one continuation on the exact
+  recorded account/thread and marks `resumed_after_restart`; this is semantic
+  same-thread continuation, not byte-level attachment to the dead process's
+  stream. The current Claude Agent SDK cannot reattach an interrupted query,
+  so Fable records `interrupted_by_restart` and requires an explicit retry
+  instead of silently replaying the prompt. Renderer process state is never
+  recovery authority, and restart never auto-starts microphone capture.
 - Desktop top-level local Codex turns have no automatic wall-clock deadline.
   Long or temporarily quiet coding work continues until Codex completes,
   fails, or the owner explicitly uses Stop; elapsed time alone must never send
