@@ -122,36 +122,47 @@ export const isCodexReconnectRequiredText = (text: string): boolean => {
 }
 
 /**
- * Rate-limit / quota classification (EP250 signature corpus). A rate-limited
- * account is NOT credential-broken: it rotates (another distinct account has
- * its own budget) but is never health-demoted to auth_failed, and the UI
- * reason names the quota, never a reconnect. Checked AFTER the auth-class
- * markers — auth-class wins when both would match.
+ * Quota exhaustion and transient rate-limit classification (EP250 signature
+ * corpus). Neither state means the credential is broken, but they remain
+ * distinct because an exhausted usage/credit budget and temporary throttling
+ * have different owner actions. Auth-class markers win over both.
  */
+export const CODEX_QUOTA_EXHAUSTION_MARKERS = [
+  "usage limit",
+  "quota",
+  "purchase more credits",
+] as const
+
+export const isCodexQuotaExhaustionText = (text: string): boolean => {
+  if (isCodexReconnectRequiredText(text)) return false
+  const lowered = text.toLowerCase()
+  return CODEX_QUOTA_EXHAUSTION_MARKERS.some(marker => lowered.includes(marker))
+}
+
 export const CODEX_RATE_LIMIT_MARKERS = [
   "429",
   "rate limit",
   "rate-limit",
   "too many requests",
-  "usage limit",
-  "quota",
 ] as const
 
 export const isCodexRateLimitText = (text: string): boolean => {
-  if (isCodexReconnectRequiredText(text)) return false
+  if (isCodexReconnectRequiredText(text) || isCodexQuotaExhaustionText(text)) return false
   const lowered = text.toLowerCase()
   return CODEX_RATE_LIMIT_MARKERS.some(marker => lowered.includes(marker))
 }
 
 /** The three-way signature classification the corpus table asserts per row. */
-export type CodexFailureClass = "auth" | "rate_limit" | "generic"
+export type CodexFailureClass = "auth" | "quota_exhausted" | "rate_limit" | "generic"
 
 export const classifyCodexFailureText = (text: string): CodexFailureClass =>
   isCodexReconnectRequiredText(text)
     ? "auth"
-    : isCodexRateLimitText(text)
-      ? "rate_limit"
-      : "generic"
+    : isCodexQuotaExhaustionText(text)
+      ? "quota_exhausted"
+      : isCodexRateLimitText(text)
+        ? "rate_limit"
+        : "generic"
 
 /** Streamed to the caller while ONE child runs (already public-safe). */
 export type CodexChildStreamEvent =

@@ -26,6 +26,7 @@ import { join } from "node:path"
 
 import {
   classifyCodexFailureText,
+  isCodexQuotaExhaustionText,
   isCodexRateLimitText,
   isCodexReconnectRequiredText,
   type CodexFailureClass,
@@ -55,6 +56,7 @@ import {
 } from "./codex-child-runtime.ts"
 import {
   CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
+  CODEX_CHIP_REASON_QUOTA_EXHAUSTED,
   CODEX_CHIP_REASON_RATE_LIMITED,
   CODEX_CHIP_REASON_VERIFYING,
   codexHarnessLaneFromAvailability,
@@ -157,21 +159,30 @@ const rows: ReadonlyArray<SignatureRow> = [
     uiReasonIncludes: "failed before producing content",
   },
   {
-    name: "quota / 429 rate-limit shape",
+    name: "quota / 429 exhaustion shape",
     script: { stdout: fixtureCodexRateLimitStdout, exitCode: 1 },
-    classification: "rate_limit",
+    classification: "quota_exhausted",
     rotates: true,
     healthAfter: null,
     failureText: FIXTURE_CODEX_RATE_LIMIT_MESSAGE,
     uiReasonIncludes: "failed before producing content",
   },
   {
-    name: "usage-limit quota variant (LIVE VERBATIM codex-5, EP250 live proof) — rate-limit, NEVER auth",
+    name: "usage-limit quota variant (LIVE VERBATIM codex-5, EP250 live proof) — exhausted, NEVER auth",
     script: { stdout: fixtureCodexUsageLimitStdout, exitCode: 1 },
-    classification: "rate_limit",
+    classification: "quota_exhausted",
     rotates: true,
     healthAfter: null,
     failureText: FIXTURE_CODEX_USAGE_LIMIT_MESSAGE,
+    uiReasonIncludes: "failed before producing content",
+  },
+  {
+    name: "transient rate-limit provider response without quota exhaustion",
+    script: { stdout: `${JSON.stringify({ type: "turn.failed", error: { message: "provider rate limit exceeded" } })}\n`, exitCode: 1 },
+    classification: "rate_limit",
+    rotates: true,
+    healthAfter: null,
+    failureText: "provider rate limit exceeded",
     uiReasonIncludes: "failed before producing content",
   },
   {
@@ -203,6 +214,9 @@ describe("EP250 codex connection-signature corpus (one row per signature)", () =
       expect(isCodexReconnectRequiredText(row.failureText)).toBe(row.classification === "auth")
       if (row.classification === "rate_limit") {
         expect(isCodexRateLimitText(row.failureText)).toBe(true)
+      }
+      if (row.classification === "quota_exhausted") {
+        expect(isCodexQuotaExhaustionText(row.failureText)).toBe(true)
       }
 
       // 2 + 3. ROTATION + HEALTH through the REAL child runtime and parser.
@@ -315,9 +329,11 @@ describe("EP250 chip lifecycle state machine", () => {
     // so the reason must never send the owner to Settings for one.
     expect(codexHarnessLaneFromAvailability({ state: "unavailable", reason: "rate_limited" }))
       .toEqual({ available: false, reason: CODEX_CHIP_REASON_RATE_LIMITED })
+    expect(codexHarnessLaneFromAvailability({ state: "unavailable", reason: "quota_exhausted" }))
+      .toEqual({ available: false, reason: CODEX_CHIP_REASON_QUOTA_EXHAUSTED })
   })
 
-  test("LIVE QUOTA CASE (codex-5, EP250): zero verified + a rate-limited probe → the chip reason names the rate limit, not a reconnect", async () => {
+  test("LIVE QUOTA CASE (codex-5, EP250): zero verified + exhausted usage → a distinct quota state, not reconnect or rate limit", async () => {
     const health = makeCodexAccountHealth()
     const preflight = makeCodexPreflight({
       scratchRoot: scratch,
@@ -339,9 +355,9 @@ describe("EP250 chip lifecycle state machine", () => {
       preflight,
     })
     const availability = await runtime.availability()
-    expect(availability).toEqual({ state: "unavailable", reason: "rate_limited" })
+    expect(availability).toEqual({ state: "unavailable", reason: "quota_exhausted" })
     expect(codexHarnessLaneFromAvailability(availability))
-      .toEqual({ available: false, reason: CODEX_CHIP_REASON_RATE_LIMITED })
+      .toEqual({ available: false, reason: CODEX_CHIP_REASON_QUOTA_EXHAUSTED })
     // The rate-limited account is NOT health-demoted (quota is not auth).
     expect(health.stateOf("codex-5")).toBe(null)
   })

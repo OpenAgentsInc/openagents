@@ -1,7 +1,7 @@
 /**
  * Codex preflight prober tests (EP250 anti-speedbump core). Enforces the
  * probe-verified evidence rule: the receipted minimal read-only probe recipe,
- * verified/reconnect/rate-limit/missing/failed classification through the
+ * verified/reconnect/quota/rate-limit/missing/failed classification through the
  * REAL parser, the credentials_missing fast path (NO spawn — the live
  * missing-auth probe burns ~50s of 401 retries), the host-side timeout
  * bound, health + onResult feeds, concurrent probing, and the session cache
@@ -132,7 +132,7 @@ describe("makeCodexPreflight", () => {
     expect(captured[0]!.env.CODEX_HOME).toBe("/isolated/accounts/codex/codex-5")
   })
 
-  test("classifies verified / reconnect_required / rate_limited across a concurrent round, feeding health and onResult", async () => {
+  test("classifies verified / reconnect_required / quota_exhausted / rate_limited distinctly across a concurrent round", async () => {
     const health = makeCodexAccountHealth()
     const streamed: CodexProbeResult[] = []
     const preflight = makeCodexPreflight({
@@ -142,8 +142,9 @@ describe("makeCodexPreflight", () => {
         { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
         { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
         { stdout: fixtureCodexRateLimitStdout, exitCode: 1 },
+        { stdout: `${JSON.stringify({ type: "turn.failed", error: { message: "provider rate limit exceeded" } })}\n`, exitCode: 1 },
       ]),
-      discoverImpl: async () => [account("codex"), account("codex-5"), account("codex-7")],
+      discoverImpl: async () => [account("codex"), account("codex-5"), account("codex-7"), account("codex-8")],
       health,
       onResult: result => streamed.push(result),
     })
@@ -151,12 +152,14 @@ describe("makeCodexPreflight", () => {
     const byRef = new Map(results.map(result => [result.ref, result]))
     expect(byRef.get("codex")!.state).toBe("reconnect_required")
     expect(byRef.get("codex-5")!.state).toBe("verified")
-    // Rate-limited is NOT credential-broken: no reconnect state, no demotion.
-    expect(byRef.get("codex-7")!.state).toBe("rate_limited")
+    // Exhausted quota and transient throttling are distinct; neither is auth-broken.
+    expect(byRef.get("codex-7")!.state).toBe("quota_exhausted")
+    expect(byRef.get("codex-8")!.state).toBe("rate_limited")
     expect(health.stateOf("codex")).toBe("auth_failed")
     expect(health.stateOf("codex-5")).toBe("last_good")
     expect(health.stateOf("codex-7")).toBe(null)
-    expect(streamed).toHaveLength(3)
+    expect(health.stateOf("codex-8")).toBe(null)
+    expect(streamed).toHaveLength(4)
     expect(preflight.verifiedRefs()).toEqual(["codex-5"])
     for (const result of results) {
       expect(typeof result.observedAt).toBe("string")

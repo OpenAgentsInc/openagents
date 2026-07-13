@@ -78,7 +78,9 @@ export type CodexProbeState =
   | "reconnect_required"
   /** No auth.json in the account home — no spawn was attempted. */
   | "credentials_missing"
-  /** Quota/429 — the credential is live but rate-limited right now. */
+  /** Usage/credit budget exhausted while the credential remains valid. */
+  | "quota_exhausted"
+  /** Transient provider throttling distinct from exhausted usage/credits. */
   | "rate_limited"
   /** Anything else (network, malformed home, timeout, spawn failure). */
   | "probe_failed"
@@ -219,6 +221,7 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         })
         if (outcome.outcome === "success") return finishWith("verified", "app-server probe turn completed")
         if (outcome.outcome === "reconnect_required") return finishWith("reconnect_required", outcome.detail)
+        if (outcome.quotaExhausted) return finishWith("quota_exhausted", outcome.detail)
         if (outcome.rateLimited) return finishWith("rate_limited", outcome.detail)
         return finishWith("probe_failed", outcome.detail)
       }
@@ -309,6 +312,10 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
         const failureClass = classifyCodexFailureText(failureText)
         if (failureClass === "auth" || isCodexReconnectRequiredText(failureText)) {
           settle("reconnect_required", errorMessage ?? "credentials rejected (auth-class failure)")
+          return
+        }
+        if (failureClass === "quota_exhausted") {
+          settle("quota_exhausted", errorMessage ?? "Codex usage quota exhausted")
           return
         }
         if (failureClass === "rate_limit") {

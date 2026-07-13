@@ -16,6 +16,7 @@ export type CodexAppServerTurnOutcome = Readonly<{
   threadId: string | null
   detail: string
   preContent: boolean
+  quotaExhausted: boolean
   rateLimited: boolean
 }>
 
@@ -139,7 +140,8 @@ const classifyFailure = (
   const lower = detail.toLowerCase()
   const reconnect = lower.includes("unauthorized") || lower.includes("authentication") ||
     lower.includes("login") || lower.includes("credential") || lower.includes("401")
-  const rateLimited = lower.includes("rate limit") || lower.includes("usage limit") || lower.includes("429")
+  const quotaExhausted = lower.includes("usage limit") || lower.includes("quota") || lower.includes("purchase more credits")
+  const rateLimited = !quotaExhausted && (lower.includes("rate limit") || lower.includes("429") || lower.includes("too many requests"))
   const incompatibleWorkflow = lower.includes("productspec-work") || lower.includes("dynamictools") || lower.includes("dynamic tools")
   return {
     outcome: reconnect ? "reconnect_required" : incompatibleWorkflow ? "incompatible_workflow" : "failed",
@@ -148,6 +150,7 @@ const classifyFailure = (
     threadId,
     detail,
     preContent: text.trim() === "" && (usage === null || usage.totalTokens === 0),
+    quotaExhausted,
     rateLimited,
   }
 }
@@ -414,9 +417,9 @@ export const runCodexAppServerTurn = async (
       if (turn === null) return
       const status = string(turn.status)
       if (status === "completed" && text.trim() !== "") {
-        finish({ outcome: "success", text, usage, threadId, detail: "", preContent: false, rateLimited: false })
+        finish({ outcome: "success", text, usage, threadId, detail: "", preContent: false, quotaExhausted: false, rateLimited: false })
       } else if (status === "interrupted" || input.control.interrupted) {
-        finish({ outcome: "interrupted", text, usage, threadId, detail: "turn interrupted", preContent: text === "", rateLimited: false })
+        finish({ outcome: "interrupted", text, usage, threadId, detail: "turn interrupted", preContent: text === "", quotaExhausted: false, rateLimited: false })
       } else {
         finish(classifyFailure(
           status === "completed" ? "the turn produced no agent message text" : turnError(turn),
@@ -532,6 +535,7 @@ export const runCodexAppServerTurn = async (
           threadId,
           detail: `test deadline reached (${Math.round(input.turnTimeoutMs! / 1_000)}s)`,
           preContent: text === "",
+          quotaExhausted: false,
           rateLimited: false,
         })
       }, input.turnTimeoutMs)
