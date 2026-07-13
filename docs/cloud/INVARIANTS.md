@@ -176,6 +176,37 @@ design context only.
 - Subscription capacity is never resold (`subscriptionCapacityResale: false`);
   these lanes serve only the owner the grant is scoped to.
 
+## Portable Session Attachment To Agent Computer (PORT-03, #8748)
+
+- An Agent Computer is a destination runtime beneath the canonical portable
+  session; it never mints or rewrites session, thread, run, agent, parent-edge,
+  transcript, or per-thread cursor identity.
+- Movement requires migration `0067`'s durable owner/session execution binding;
+  the target must preserve its exact run, repository, and pinned-base refs.
+  Legacy unbound rows cannot move, and host paths never supply a fallback.
+- The Agent Computer may materialize and verify an exact secret-free
+  checkpoint only in staged/non-accepting mode. It must verify checkpoint,
+  repository post-image, diff, graph, catalog generation, approvals, artifacts,
+  receipts, and per-thread cursors before reporting stage success.
+- Every provider, SCM, tool, and API capability is a new PORT-02 lease bound to
+  the destination attachment generation. A source auth home, token cache,
+  environment, process, socket, or credential-bearing workspace is never a
+  checkpoint component and is never copied into the guest.
+- PORT-01 Cloud SQL authority advances to the new sole live attachment only
+  after graph-wide source quiescence, source grant revoke/wipe, destination
+  redemption, exact target staging, and complete source process/scratch/port
+  cleanup. Only after that durable commit may the Agent Computer accept work.
+- A destination rejection or any pre-commit failure leaves no destination
+  attachment authoritative, releases any newly issued destination grants,
+  retains the source graph fenced, and records `recovery_required`. A lost
+  post-commit activation acknowledgement replays the same activation operation;
+  it never creates another attachment or accepted parent/child turn.
+- Deterministic enforcement lives in
+  `packages/khala-sync-server/src/portable-session-move.test.ts`. It is not the
+  real-host acceptance receipt. #8748 stays open until #8636 is complete and a
+  direct owner-local Pylon → accepted Agent Computer → owner-local journey
+  proves exact identity/digest/grant/cleanup behavior on live infrastructure.
+
 ## Compute Versus Labor
 
 - Bounded sandbox execution is compute only when the runtime profile, inputs,

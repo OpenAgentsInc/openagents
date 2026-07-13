@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "b00731d399dd29f68bb1eb3ef11b37646e3d876d89c5c0af4e2719ac5ef54c22",
+  "sourceTreeSha256": "02adb333485476d8f6fa1c492960464dbd7a95cd5ae9316c050c30d38e2baf9a",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1146,6 +1146,29 @@
       "inboundSourceCount": 2,
       "issueLinks": [
         8745,
+        8747,
+        8748
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-13-port-03-first-move-implementation-receipt.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8636",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "b731ef3b788ee736929a55a938470aa28e31815c2c3b1d53889557867bfde0c8",
+      "status": "implementation landed; live acceptance intentionally open",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8547,
+        8636,
+        8746,
         8747,
         8748
       ]
@@ -2477,7 +2500,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "db3882a6fbae8dc9a93d32d25519efa953e0806a72d5e5352cf3159d3bd49655",
+      "sha256": "39caa404e3f8a3c50fd5581114ecc13e58a0667054efbc5d644c2dccde1b59f6",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2519,7 +2542,8 @@
         8744,
         8745,
         8746,
-        8747
+        8747,
+        8748
       ]
     }
   ]

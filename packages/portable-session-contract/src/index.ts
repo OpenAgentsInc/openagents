@@ -120,6 +120,26 @@ export const PortableCodingSessionSchema = S.Struct({
 })
 export type PortableCodingSession = typeof PortableCodingSessionSchema.Type
 
+/**
+ * Additive PORT-03 binding for the execution identity that is applicable to a
+ * bounded repository coding session. It is separate from the frozen v1
+ * session envelope so pre-PORT-03 local-only rows remain readable, but no row
+ * may move until this owner/session binding exists.
+ */
+export const PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION =
+  "openagents.portable_session_execution_binding.v1" as const
+
+export const PortableSessionExecutionBindingSchema = S.Struct({
+  schema: S.Literal(PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION),
+  sessionRef: PortableRef,
+  ownerRef: PortableRef,
+  runRef: PortableRef,
+  repositoryRef: PortableRef,
+  pinnedBaseRef: PortableRef,
+})
+export type PortableSessionExecutionBinding =
+  typeof PortableSessionExecutionBindingSchema.Type
+
 export const PortableAttachmentState = S.Literals([
   "preparing",
   "active",

@@ -1157,6 +1157,31 @@ More specific invariant ledgers apply inside imported apps and packages.
   `packages/portable-session-contract/src/capability-broker.test.ts`. This is a
   real local/managed adapter integration seam, not proof that a process or
   session moved; PORT-03 owns that real-host movement receipt.
+- PORT-03 #8748 composes those two authorities in
+  `packages/khala-sync-server/src/portable-session-move.ts`. A movement command
+  requires migration `0067`'s owner/session execution binding and preserves
+  the exact canonical run, repository, and pinned-base refs through checkpoint,
+  stage, activation, and replay; a legacy unbound row remains readable but
+  cannot move, and no host path may synthesize the binding. A movement command
+  is admitted against the exact current attachment generation; the runtime
+  quiesces every canonical descendant; PORT-01 persists the graph-wide fence;
+  and only then may PORT-02 revoke/wipe every source lease and issue/redeem a
+  fresh destination-generation lease. The destination may stage and verify a
+  checkpoint while `acceptingWork:false`, but it cannot activate until the
+  PORT-01 completion transaction has independently required the exact durable
+  event cursor, recomputed the complete canonical graph digest, detached the
+  source, and advanced the sole live attachment generation. Source cleanup
+  must cover every agent plus process, scratch, and port state before that
+  commit. Pre-commit failure leaves the source quiesced and the session in
+  `recovery_required`; newly issued destination leases are released and a
+  refs-only typed outcome is durable. A lost activation acknowledgement
+  reconciles by replaying one stable activation operation after the already-
+  completed durable command, never by running the move or accepting a parent/
+  child turn twice. The real-Postgres fault oracle is
+  `portable-session-move.test.ts`. This landed coordinator is an implementation
+  rung only: #8748 remains open until #8636 is completed and a direct real
+  owner-local Pylon → accepted Agent Computer → owner-local journey proves the
+  same refs, exact repository/diff digests, grants, cleanup, and rollback.
 - Mobile selects a visible conversation authority after native-session recovery
   and before mounting one Effect Native Home program: confirmed personal Sync
   when live, otherwise the existing public-local conversation. Explicit auth

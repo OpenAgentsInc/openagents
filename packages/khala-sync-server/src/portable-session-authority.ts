@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import {
   EntityId,
   EntityType,
@@ -14,8 +16,10 @@ import {
   PortableCodingSessionSchema,
   PortableSessionCommandOutcomeSchema,
   PortableSessionCommandSchema,
+  PortableSessionExecutionBindingSchema,
   PortableTargetDescriptorSchema,
   auditPortableSessionSnapshot,
+  type PortableAgentGraph,
   type PortableAttachment,
   type PortableCheckpoint,
   type PortableSessionCommand,
@@ -39,6 +43,7 @@ export const PORTABLE_ATTACHMENT_ENTITY_TYPE = "portable_attachment"
 export const PORTABLE_TARGET_DIRECTORY_ENTITY_TYPE = "portable_target_directory"
 export const PORTABLE_THREAD_CURRENT_ENTITY_TYPE = "portable_thread_current"
 export const PORTABLE_COMMAND_ENTITY_TYPE = "portable_command"
+export const PORTABLE_EXECUTION_BINDING_ENTITY_TYPE = "portable_execution_binding"
 
 const forbiddenPrivateMaterial =
   /"(?:token|apiKey|authorization|sessionToken|refreshToken|mnemonic|secret|localPath|hostname|processId|providerSessionId|transportHandle|socket|pid|authHome)"\s*:|(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)/i
@@ -51,6 +56,7 @@ const decodeOutcome = S.decodeUnknownSync(PortableSessionCommandOutcomeSchema)
 const boundedTargets = S.Array(PortableTargetDescriptorSchema).check(S.isMaxLength(64))
 const RegisterPortableSessionArgsSchema = S.Struct({
   session: PortableCodingSessionSchema,
+  executionBinding: PortableSessionExecutionBindingSchema,
   targets: boundedTargets,
   attachment: PortableAttachmentSchema,
 })
@@ -108,6 +114,19 @@ const assertPublicSafe = (value: unknown): void => {
 const parseJson = (raw: unknown): unknown =>
   typeof raw === "string" ? JSON.parse(raw) : raw
 
+/** Stable content identity for the complete canonical session graph. */
+export const computePortableAgentGraphDigest = (
+  graph: PortableAgentGraph,
+): `sha256:${string}` => {
+  const normalized = {
+    rootAgentRef: graph.rootAgentRef,
+    nodes: [...graph.nodes]
+      .map((node) => ({ ...node }))
+      .sort((left, right) => left.agentRef.localeCompare(right.agentRef)),
+  }
+  return `sha256:${createHash("sha256").update(canonicalJson(normalized)).digest("hex")}`
+}
+
 const appendProjection = (
   writer: SyncTransactionWriter,
   ownerUserId: string,
@@ -146,6 +165,8 @@ export const decodePortableRegisterSessionArgs = (argsJson: string): RegisterPor
     )
   }
   if (value.session.schema !== PORTABLE_SESSION_SCHEMA_VERSION ||
+      value.executionBinding.sessionRef !== value.session.sessionRef ||
+      value.executionBinding.ownerRef !== value.session.ownerRef ||
       value.attachment.sessionRef !== value.session.sessionRef ||
       value.attachment.generation <= 0 || value.attachment.state !== "active") {
     throw new PortableSessionAuthorityError("invalid", "initial attachment is invalid")
@@ -215,6 +236,10 @@ export const registerPortableSession = async (
   if (args.session.ownerRef !== ownerUserId) {
     throw new PortableSessionAuthorityError("unauthorized", "session owner mismatch")
   }
+  if (args.executionBinding.ownerRef !== ownerUserId ||
+      args.executionBinding.sessionRef !== args.session.sessionRef) {
+    throw new PortableSessionAuthorityError("unauthorized", "execution binding owner or session mismatch")
+  }
   for (const target of args.targets) {
     await upsertTarget(writer.sql, target, ownerUserId)
   }
@@ -248,6 +273,14 @@ export const registerPortableSession = async (
        ${args.session.adoptionReceiptRef ?? null}, 'active', 0,
        ${args.attachment.attachmentRef}, ${args.attachment.generation})
   `
+  await writer.sql`
+    INSERT INTO khala_sync_portable_session_execution_bindings
+      (session_ref, owner_user_id, run_ref, repository_ref, pinned_base_ref)
+    VALUES
+      (${args.executionBinding.sessionRef}, ${ownerUserId},
+       ${args.executionBinding.runRef}, ${args.executionBinding.repositoryRef},
+       ${args.executionBinding.pinnedBaseRef})
+  `
   for (const target of args.targets) {
     await writer.sql`
       INSERT INTO khala_sync_portable_session_targets (session_ref, target_ref)
@@ -280,6 +313,8 @@ export const registerPortableSession = async (
   `
   await appendProjection(writer, ownerUserId, PORTABLE_SESSION_ENTITY_TYPE,
     args.session.sessionRef, args.session, mutationRef)
+  await appendProjection(writer, ownerUserId, PORTABLE_EXECUTION_BINDING_ENTITY_TYPE,
+    args.session.sessionRef, args.executionBinding, mutationRef)
   await appendProjection(writer, ownerUserId, PORTABLE_AGENT_GRAPH_ENTITY_TYPE,
     args.session.sessionRef, args.session.graph, mutationRef)
   await appendProjection(writer, ownerUserId, PORTABLE_ATTACHMENT_ENTITY_TYPE,
@@ -428,6 +463,118 @@ export const portableSessionMutators: ReadonlyArray<MutatorDefinition> = [
   portableRegisterSessionMutator,
   portableRequestCommandMutator,
 ]
+
+/**
+ * Persist the graph-wide source fence before any capability moves. A
+ * quiesced attachment is deliberately outside the live-attachment index, so
+ * a failed destination preparation leaves no source generation able to
+ * accept new work.
+ */
+export const quiescePortableSessionGraph = async (
+  writer: SyncTransactionWriter,
+  input: {
+    commandRef: string
+    descendantAgentRefs: ReadonlyArray<string>
+    evidenceRefs: ReadonlyArray<string>
+  },
+  mutationRef: string,
+): Promise<"quiesced" | "duplicate"> => {
+  assertPublicSafe(input)
+  const rows: Array<{
+    command_json: unknown
+    owner_user_id: string
+    status: string
+  }> = await writer.sql`
+    SELECT command_json, owner_user_id, status
+    FROM khala_sync_portable_commands
+    WHERE command_ref = ${input.commandRef}
+    FOR UPDATE
+  `
+  const row = rows[0]
+  if (row === undefined) throw new PortableSessionAuthorityError("not_found", "move command not found")
+  const command = decodeCommand(parseJson(row.command_json))
+  if (!["move", "attach", "failback"].includes(command.kind) || row.status !== "accepted") {
+    throw new PortableSessionAuthorityError("conflict", "command cannot quiesce a source graph")
+  }
+  const sessions: Array<{
+    current_attachment_ref: string | null
+    current_attachment_generation: number | string | bigint
+  }> = await writer.sql`
+    SELECT current_attachment_ref, current_attachment_generation
+    FROM khala_sync_portable_sessions
+    WHERE session_ref = ${command.sessionRef}
+    FOR UPDATE
+  `
+  const session = sessions[0]
+  if (session?.current_attachment_ref !== command.expectedAttachmentRef ||
+      Number(session.current_attachment_generation) !== command.expectedGeneration) {
+    throw new PortableSessionAuthorityError("stale_generation", "source attachment is no longer authoritative")
+  }
+  const agents: Array<{ agent_ref: string }> = await writer.sql`
+    SELECT agent_ref FROM khala_sync_portable_agent_nodes
+    WHERE session_ref = ${command.sessionRef}
+  `
+  const expected = agents.map(agent => agent.agent_ref).sort()
+  const supplied = [...new Set(input.descendantAgentRefs)].sort()
+  if (canonicalJson(expected) !== canonicalJson(supplied)) {
+    throw new PortableSessionAuthorityError("invalid", "source fence does not cover the complete graph")
+  }
+  const attachments: Array<{
+    state: string
+    target_ref: string
+    descendant_agent_refs_json: unknown
+    capability_lease_refs_json: unknown
+    checkpoint_ref: string | null
+    evidence_refs_json: unknown
+  }> = await writer.sql`
+    SELECT state, target_ref, descendant_agent_refs_json,
+           capability_lease_refs_json, checkpoint_ref, evidence_refs_json
+    FROM khala_sync_portable_attachments
+    WHERE attachment_ref = ${command.expectedAttachmentRef}
+      AND session_ref = ${command.sessionRef}
+      AND generation = ${command.expectedGeneration}
+    FOR UPDATE
+  `
+  const attachment = attachments[0]
+  if (attachment?.state === "quiesced") return "duplicate"
+  if (!["active", "quiescing"].includes(attachment?.state ?? "")) {
+    throw new PortableSessionAuthorityError("conflict", "source attachment cannot enter quiescence")
+  }
+  const evidenceRefs = [...new Set([
+    ...(parseJson(attachment!.evidence_refs_json) as ReadonlyArray<string>),
+    ...input.evidenceRefs,
+  ])]
+  await writer.sql`
+    UPDATE khala_sync_portable_agent_nodes
+    SET lifecycle = CASE WHEN lifecycle IN ('completed', 'failed', 'canceled')
+                         THEN lifecycle ELSE 'quiesced' END
+    WHERE session_ref = ${command.sessionRef}
+  `
+  await writer.sql`
+    UPDATE khala_sync_portable_attachments
+    SET state = 'quiesced', evidence_refs_json = ${canonicalJson(evidenceRefs)}::jsonb,
+        updated_at = now()
+    WHERE attachment_ref = ${command.expectedAttachmentRef}
+  `
+  await writer.sql`
+    UPDATE khala_sync_portable_sessions
+    SET state = 'quiescing', updated_at = now()
+    WHERE session_ref = ${command.sessionRef}
+  `
+  await appendProjection(writer, row.owner_user_id, PORTABLE_ATTACHMENT_ENTITY_TYPE,
+    command.expectedAttachmentRef, {
+      attachmentRef: command.expectedAttachmentRef,
+      sessionRef: command.sessionRef,
+      targetRef: attachment!.target_ref,
+      generation: command.expectedGeneration,
+      state: "quiesced",
+      descendantAgentRefs: parseJson(attachment!.descendant_agent_refs_json),
+      capabilityLeaseRefs: parseJson(attachment!.capability_lease_refs_json),
+      ...(attachment!.checkpoint_ref === null ? {} : { checkpointRef: attachment!.checkpoint_ref }),
+      evidenceRefs,
+    }, mutationRef)
+  return "quiesced"
+}
 
 type EventAuthorityRow = SessionAuthorityRow & { latest_event_cursor: number | string | bigint }
 
@@ -632,8 +779,37 @@ export const completePortableSessionMove = async (
       Number(session.current_attachment_generation) !== command.expectedGeneration) {
     throw new PortableSessionAuthorityError("stale_generation", "source attachment is no longer authoritative")
   }
-  if (checkpoint.eventLogCursor > Number(session.latest_event_cursor)) {
-    throw new PortableSessionAuthorityError("cursor_gap", "checkpoint is ahead of durable event log")
+  const sourceAttachments: Array<{ state: string }> = await writer.sql`
+    SELECT state FROM khala_sync_portable_attachments
+    WHERE attachment_ref = ${command.expectedAttachmentRef}
+      AND session_ref = ${command.sessionRef}
+      AND generation = ${command.expectedGeneration}
+    FOR UPDATE
+  `
+  if (sourceAttachments[0]?.state !== "quiesced") {
+    throw new PortableSessionAuthorityError(
+      "conflict",
+      "source graph must be durably quiesced before attachment authority advances",
+    )
+  }
+  if (checkpoint.eventLogCursor !== Number(session.latest_event_cursor)) {
+    throw new PortableSessionAuthorityError(
+      "cursor_gap",
+      "checkpoint cursor must equal the complete durable event log cursor",
+    )
+  }
+  const executionBindings: Array<{ repository_ref: string }> = await writer.sql`
+    SELECT repository_ref
+    FROM khala_sync_portable_session_execution_bindings
+    WHERE session_ref = ${command.sessionRef}
+      AND owner_user_id = ${row.owner_user_id}
+    FOR UPDATE
+  `
+  if (executionBindings[0]?.repository_ref !== checkpoint.repositoryRef) {
+    throw new PortableSessionAuthorityError(
+      "invalid",
+      "checkpoint repository does not match the canonical execution binding",
+    )
   }
   const targets: Array<{ health: string; owner_user_id: string }> = await writer.sql`
     SELECT health, owner_user_id FROM khala_sync_portable_targets
@@ -642,10 +818,49 @@ export const completePortableSessionMove = async (
   if (targets[0]?.owner_user_id !== row.owner_user_id || targets[0]?.health !== "ready") {
     throw new PortableSessionAuthorityError("target_unavailable", "destination target is not ready")
   }
-  const nodes: Array<{ agent_ref: string }> = await writer.sql`
-    SELECT agent_ref FROM khala_sync_portable_agent_nodes
+  const sessionRoots: Array<{ root_agent_ref: string }> = await writer.sql`
+    SELECT root_agent_ref FROM khala_sync_portable_sessions
     WHERE session_ref = ${command.sessionRef}
   `
+  const nodes: Array<{
+    agent_ref: string
+    parent_agent_ref: string | null
+    thread_ref: string
+    transcript_ref: string
+    activity_cursor: number | string | bigint
+    lifecycle: string
+    attachment_generation: number | string | bigint
+  }> = await writer.sql`
+    SELECT agent_ref, parent_agent_ref, thread_ref, transcript_ref,
+           activity_cursor, lifecycle, attachment_generation
+    FROM khala_sync_portable_agent_nodes
+    WHERE session_ref = ${command.sessionRef}
+  `
+  const durableGraph: PortableAgentGraph = {
+    rootAgentRef: sessionRoots[0]!.root_agent_ref,
+    nodes: nodes.map(node => ({
+      agentRef: node.agent_ref,
+      ...(node.parent_agent_ref === null ? {} : { parentAgentRef: node.parent_agent_ref }),
+      threadRef: node.thread_ref,
+      transcriptRef: node.transcript_ref,
+      activityCursor: Number(node.activity_cursor),
+      lifecycle: node.lifecycle as PortableAgentGraph["nodes"][number]["lifecycle"],
+      attachmentGeneration: Number(node.attachment_generation),
+    })),
+  }
+  if (durableGraph.nodes.some(node =>
+    !["quiesced", "completed", "failed", "canceled"].includes(node.lifecycle))) {
+    throw new PortableSessionAuthorityError(
+      "conflict",
+      "every source descendant must be quiesced or terminal before movement",
+    )
+  }
+  if (computePortableAgentGraphDigest(durableGraph) !== checkpoint.graphDigest) {
+    throw new PortableSessionAuthorityError(
+      "invalid",
+      "checkpoint graph digest does not match durable canonical graph",
+    )
+  }
   const expectedDescendants = nodes.map(value => value.agent_ref).sort()
   const suppliedDescendants = [...destination.descendantAgentRefs].sort()
   if (canonicalJson(expectedDescendants) !== canonicalJson(suppliedDescendants)) {
@@ -750,6 +965,36 @@ export const recordPortableSessionCommandOutcome = async (
   return "recorded"
 }
 
+/**
+ * A pre-commit move failure never silently reactivates the source. The
+ * durable session enters recovery_required while the graph remains fenced.
+ */
+export const recordPortableSessionMoveFailure = async (
+  writer: SyncTransactionWriter,
+  outcome: PortableSessionCommandOutcome,
+  mutationRef: string,
+): Promise<"recorded" | "duplicate"> => {
+  if (outcome.status !== "failed" && outcome.status !== "unknown_pending_reconcile") {
+    throw new PortableSessionAuthorityError("invalid", "move failure requires a failed or reconcile outcome")
+  }
+  const result = await recordPortableSessionCommandOutcome(writer, outcome, mutationRef)
+  await writer.sql`
+    UPDATE khala_sync_portable_sessions
+    SET state = 'recovery_required', updated_at = now()
+    WHERE session_ref = ${outcome.sessionRef}
+      AND current_attachment_ref = ${outcome.sourceAttachmentRef}
+      AND current_attachment_generation = ${outcome.sourceGeneration}
+  `
+  await writer.sql`
+    UPDATE khala_sync_portable_attachments
+    SET state = 'quiesced', updated_at = now()
+    WHERE attachment_ref = ${outcome.sourceAttachmentRef}
+      AND generation = ${outcome.sourceGeneration}
+      AND state IN ('active', 'quiescing', 'quiesced')
+  `
+  return result
+}
+
 /** Owner-authorized retention purge; dependent graph/log/commands cascade atomically. */
 export const purgePortableSessionAuthority = async (
   writer: SyncTransactionWriter,
@@ -782,6 +1027,7 @@ export const purgePortableSessionAuthority = async (
     mutationRef,
   })
   await tombstone(PORTABLE_SESSION_ENTITY_TYPE, input.sessionRef)
+  await tombstone(PORTABLE_EXECUTION_BINDING_ENTITY_TYPE, input.sessionRef)
   await tombstone(PORTABLE_AGENT_GRAPH_ENTITY_TYPE, input.sessionRef)
   await tombstone(PORTABLE_TARGET_DIRECTORY_ENTITY_TYPE, input.sessionRef)
   for (const row of attachments) await tombstone(PORTABLE_ATTACHMENT_ENTITY_TYPE, row.attachment_ref)
@@ -795,6 +1041,7 @@ export const purgePortableSessionAuthority = async (
 
 export type PortableSessionAuthoritySnapshot = {
   session: Record<string, unknown>
+  executionBinding: Record<string, unknown> | null
   targets: ReadonlyArray<Record<string, unknown>>
   agents: ReadonlyArray<Record<string, unknown>>
   attachments: ReadonlyArray<Record<string, unknown>>
@@ -818,6 +1065,12 @@ export const readPortableSessionAuthoritySnapshot = async (
     WHERE session_ref = ${input.sessionRef} AND owner_user_id = ${input.ownerUserId}
   `
   if (sessions[0] === undefined) return null
+  const executionBindings: Array<Record<string, unknown>> = await sql`
+    SELECT session_ref, owner_user_id, run_ref, repository_ref,
+           pinned_base_ref, created_at, updated_at
+    FROM khala_sync_portable_session_execution_bindings
+    WHERE session_ref = ${input.sessionRef} AND owner_user_id = ${input.ownerUserId}
+  `
   const targets: Array<Record<string, unknown>> = await sql`
     SELECT target.target_ref, target.target_class, target.adapter_ref,
            target.compatibility_ref, target.isolation, target.data_posture,
@@ -857,7 +1110,7 @@ export const readPortableSessionAuthoritySnapshot = async (
   const commands: Array<Record<string, unknown>> = await sql`
     SELECT command_ref, idempotency_key, kind, expected_attachment_ref,
            expected_generation, destination_target_ref, checkpoint_ref,
-           expires_at, status, outcome_json, created_at, updated_at
+           expires_at, command_json, status, outcome_json, created_at, updated_at
     FROM khala_sync_portable_commands
     WHERE session_ref = ${input.sessionRef}
     ORDER BY created_at ASC
@@ -869,5 +1122,14 @@ export const readPortableSessionAuthoritySnapshot = async (
     WHERE session_ref = ${input.sessionRef}
     ORDER BY thread_ref ASC
   `
-  return { session: sessions[0], targets, agents, attachments, checkpoints, commands, current }
+  return {
+    session: sessions[0],
+    executionBinding: executionBindings[0] ?? null,
+    targets,
+    agents,
+    attachments,
+    checkpoints,
+    commands,
+    current,
+  }
 }

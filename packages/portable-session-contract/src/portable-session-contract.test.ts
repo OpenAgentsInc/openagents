@@ -6,8 +6,10 @@ import {
   PORTABLE_ACTION_INVOCATION_PATHS,
   PORTABLE_SESSION_REAL_HOST_JOURNEY,
   PORTABLE_SESSION_SCHEMA_VERSION,
+  PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION,
   PortableCheckpointSchema,
   PortableCodingSessionSchema,
+  PortableSessionExecutionBindingSchema,
   PortableSessionCommandSchema,
   auditPortableSessionSnapshot,
   type PortableSessionSnapshot,
@@ -92,6 +94,25 @@ describe("portable session contract freeze", () => {
       ...fixture().checkpoints[0],
       secretMaterial: "copied",
       rawToken: "do-not-project",
+    })).toThrow()
+  })
+
+  test("freezes an additive owner/session run and pinned repository binding for movement", () => {
+    expect(S.decodeUnknownSync(PortableSessionExecutionBindingSchema)({
+      schema: PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION,
+      sessionRef: "coding_session.owner.1",
+      ownerRef: "owner.1",
+      runRef: "run.owner.1",
+      repositoryRef: "repository.OpenAgentsInc.openagents",
+      pinnedBaseRef: "commit.0123456789abcdef0123456789abcdef01234567",
+    })).toMatchObject({ runRef: "run.owner.1" })
+    expect(() => S.decodeUnknownSync(PortableSessionExecutionBindingSchema)({
+      schema: PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION,
+      sessionRef: "coding_session.owner.1",
+      ownerRef: "owner.1",
+      runRef: "/Users/owner/run",
+      repositoryRef: "repository.OpenAgentsInc.openagents",
+      pinnedBaseRef: "commit.0123456789abcdef0123456789abcdef01234567",
     })).toThrow()
   })
 

@@ -171,6 +171,43 @@ purges dependent authority rows. Apply migration `0066` staging first, then
 production through the normal direct migration runner below; never use
 Hyperdrive for migrations.
 
+## Graph-wide move coordinator (PORT-03, #8748)
+
+`src/portable-session-move.ts` is the execution composition over PORT-01 and
+the PORT-02 capability broker. Migration `0067` adds the one owner/session
+execution binding for canonical run, repository, and pinned-base refs. New
+session registration requires it; legacy rows remain readable but movement
+fails closed until an owner-authorized binding exists. It accepts only a
+movement command for the exact current attachment and performs this order:
+
+1. quiesce the complete parent/child graph at the source runtime;
+2. persist the quiesced attachment fence in Cloud SQL;
+3. create and verify a content-addressed secret-free checkpoint whose event
+   cursor exactly equals durable head, whose graph digest is recomputed from
+   every stored canonical node, and whose execution binding byte-matches the
+   durable canonical run/repository/pinned-base binding;
+4. revoke/wipe and reissue/redeem every source capability for the next target
+   and attachment generation;
+5. stage the checkpoint at the destination with `acceptingWork:false`;
+6. reclaim every source agent process plus scratch and port state;
+7. atomically detach source, persist checkpoint/outcome, and activate the sole
+   next attachment in PORT-01; then
+8. invoke the destination's idempotent activation operation.
+
+Pre-commit failure retains a fenced source in `recovery_required`, releases
+any new destination leases, aborts staged target state, and records one typed
+refs-only outcome. A lost post-commit activation acknowledgement reconciles
+against the completed command and never repeats accepted work.
+
+`src/portable-session-move.test.ts` runs local→OpenAgents-managed→local against
+real ephemeral Postgres and the actual capability broker boundary with a root
+plus child. It also covers exact replay, activation reconciliation, destination
+rejection, source cleanup failure, stale generation/restart, checkpoint/digest/
+cursor/execution-binding tampering, refusal of unbound legacy rows, secret
+scans, one live attachment, and no duplicate parent or child accepted work.
+This is deterministic implementation evidence, not the
+live #8748 acceptance receipt.
+
 ## Fleet cockpit scope (KS-6.1, #8302)
 
 `src/fleet-projection.ts` + `src/fleet-mutators.ts` +

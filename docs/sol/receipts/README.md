@@ -15,6 +15,7 @@ scope, and rung. Live issue state and the
 | Work | Evidence snapshot | Proof rung | Final disposition |
 | --- | --- | --- | --- |
 | FC-4 [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | [`2026-07-12-fc4-managed-cloud-production-readiness-receipt.md`](../2026-07-12-fc4-managed-cloud-production-readiness-receipt.md) | deployed schema + production authority/registry readiness | Issue open for #8547 accepted managed execution and the real concurrent mobile/Desktop hybrid receipt |
+| PORT-03 [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | [`2026-07-13-port-03-first-move-implementation-receipt.md`](../2026-07-13-port-03-first-move-implementation-receipt.md) | real-Postgres coordinator + PORT-02 broker fault oracle + migration `0067` canonical run/repository binding | Implementation landed; closure remains gated on completed #8636 and direct real local Pylon → Agent Computer → local evidence |
 | CUT-09 [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`2026-07-11-cut-09-lifecycle-convergence-receipt.md`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) | fixture/built-host proven | Issue open for literal physical-iOS network-gap, reconnect, unlink/revocation, and no-replay acceptance |
 | CUT-27 [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`2026-07-12-cut27-cutover-readiness-audit.md`](../2026-07-12-cut27-cutover-readiness-audit.md) | historical additive readiness snapshot | Issue open; the audit's earlier blocker tables are not current authority |
 

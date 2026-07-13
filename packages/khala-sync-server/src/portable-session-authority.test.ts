@@ -7,6 +7,7 @@ import {
   PortableSessionAuthorityError,
   appendPortableSessionEvent,
   completePortableSessionMove,
+  computePortableAgentGraphDigest,
   decodePortableRegisterSessionArgs,
   readPortableSessionAuthoritySnapshot,
   recordPortableSessionCommandOutcome,
@@ -14,6 +15,7 @@ import {
   repairPortableSessionCurrentProjection,
   requestPortableSessionCommand,
   purgePortableSessionAuthority,
+  quiescePortableSessionGraph,
 } from "./portable-session-authority.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test/local-postgres.js"
@@ -62,6 +64,15 @@ const session = {
   adoptedFromLocalHistory: false,
 }
 
+const executionBinding = {
+  schema: "openagents.portable_session_execution_binding.v1" as const,
+  sessionRef,
+  ownerRef: owner,
+  runRef: "run.port01.canonical",
+  repositoryRef: "repository.openagents",
+  pinnedBaseRef: "revision.port01.pinned",
+}
+
 const targets = [
   {
     targetRef: "target.owner.local",
@@ -96,6 +107,11 @@ const sourceAttachment = {
   evidenceRefs: ["evidence.source.started"],
 }
 
+const quiescedGraph = {
+  ...session.graph,
+  nodes: session.graph.nodes.map(node => ({ ...node, lifecycle: "quiesced" as const })),
+}
+
 const command = {
   schema: "openagents.portable_session_command.v1" as const,
   commandRef: "command.port01.move.1",
@@ -123,7 +139,7 @@ const checkpoint = {
   diffDigest: digest("c"),
   eventLogCursor: 2,
   catalogGenerationRef: "catalog.port01.1",
-  graphDigest: digest("d"),
+  graphDigest: computePortableAgentGraphDigest(quiescedGraph),
   approvalRefs: [],
   artifactRefs: ["artifact.port01.checkpoint"],
   receiptRefs: ["receipt.port01.checkpoint"],
@@ -166,6 +182,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
     await admin.end()
     const result = await runMigrations({ databaseUrl: pg.urlFor("khala_sync_portable_session") })
     expect(result.applied).toContain("0066_portable_session_authority.sql")
+    expect(result.applied).toContain("0067_portable_session_execution_binding.sql")
     sql = new SQL({ url: pg.urlFor("khala_sync_portable_session"), max: 10 })
   })
 
@@ -177,6 +194,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
   test("rejects private host material before any durable write", () => {
     expect(() => decodePortableRegisterSessionArgs(JSON.stringify({
       session,
+      executionBinding,
       targets,
       attachment: sourceAttachment,
       apiKey: "not-allowed",
@@ -185,7 +203,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
 
   test("survives a fresh SQL handle and repairs current solely from the durable event log", async () => {
     await withSyncTransaction(sql as unknown as SyncSql, writer =>
-      registerPortableSession(writer, { session, targets, attachment: sourceAttachment }, owner, "mutation.register"))
+      registerPortableSession(writer, { session, executionBinding, targets, attachment: sourceAttachment }, owner, "mutation.register"))
 
     await withSyncTransaction(sql as unknown as SyncSql, async writer => {
       expect(await appendPortableSessionEvent(writer, {
@@ -216,6 +234,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
       { sessionRef, ownerUserId: owner },
     )
     expect(snapshot?.agents).toHaveLength(2)
+    expect(snapshot?.executionBinding?.run_ref).toBe(executionBinding.runRef)
     expect(snapshot?.targets).toHaveLength(2)
     expect(snapshot?.current).toHaveLength(2)
     await restarted`DELETE FROM khala_sync_portable_thread_current WHERE session_ref = ${sessionRef}`
@@ -257,6 +276,37 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
   })
 
   test("moves the complete graph once, replays a lost completion ACK, and fences the source", async () => {
+    expect(await withSyncTransaction(sql as unknown as SyncSql, writer =>
+      quiescePortableSessionGraph(writer, {
+        commandRef: command.commandRef,
+        descendantAgentRefs: sourceAttachment.descendantAgentRefs,
+        evidenceRefs: ["evidence.port01.source.quiesced"],
+      }, "mutation.move.quiesce"))).toBe("quiesced")
+
+    await expect(withSyncTransaction(sql as unknown as SyncSql, writer =>
+      completePortableSessionMove(writer, {
+        commandRef: command.commandRef,
+        checkpoint: { ...checkpoint, eventLogCursor: 1 },
+        destinationAttachment,
+        outcome,
+      }, "mutation.move.stale-cursor"))).rejects.toMatchObject({ code: "cursor_gap" })
+
+    await expect(withSyncTransaction(sql as unknown as SyncSql, writer =>
+      completePortableSessionMove(writer, {
+        commandRef: command.commandRef,
+        checkpoint: { ...checkpoint, graphDigest: digest("d") },
+        destinationAttachment,
+        outcome,
+      }, "mutation.move.tampered-graph"))).rejects.toMatchObject({ code: "invalid" })
+
+    await expect(withSyncTransaction(sql as unknown as SyncSql, writer =>
+      completePortableSessionMove(writer, {
+        commandRef: command.commandRef,
+        checkpoint: { ...checkpoint, repositoryRef: "repository.other" },
+        destinationAttachment,
+        outcome,
+      }, "mutation.move.tampered-repository"))).rejects.toMatchObject({ code: "invalid" })
+
     expect(await withSyncTransaction(sql as unknown as SyncSql, writer =>
       completePortableSessionMove(writer, {
         commandRef: command.commandRef,
