@@ -1869,6 +1869,37 @@ const requestedTargetForAttempt = (
   )
 }
 
+const normalizedStoredTimestamp = (value: string | null): string | null => {
+  if (value === null) return null
+  const time = Date.parse(value)
+  if (!Number.isFinite(time)) throw invalidRequest()
+  return new Date(time).toISOString()
+}
+
+const normalizedFleetRunRequestRowTimestamps = (
+  row: FleetRunRequestRow,
+): FleetRunRequestRow => ({
+  ...row,
+  created_at: normalizedStoredTimestamp(row.created_at)!,
+  updated_at: normalizedStoredTimestamp(row.updated_at)!,
+  execution_started_at: normalizedStoredTimestamp(row.execution_started_at),
+  execution_updated_at: normalizedStoredTimestamp(row.execution_updated_at)!,
+})
+
+const normalizedFleetRunAttemptRowTimestamps = (
+  row: FleetRunAttemptRow,
+): FleetRunAttemptRow => ({
+  ...row,
+  first_remote_observed_at: normalizedStoredTimestamp(
+    row.first_remote_observed_at,
+  )!,
+  remote_observed_at: normalizedStoredTimestamp(row.remote_observed_at)!,
+  last_observed_at: normalizedStoredTimestamp(row.last_observed_at)!,
+  started_at: normalizedStoredTimestamp(row.started_at)!,
+  terminal_at: normalizedStoredTimestamp(row.terminal_at),
+  updated_at: normalizedStoredTimestamp(row.updated_at)!,
+})
+
 const listFleetRuns = async (
   sql: SyncSql,
   input: FleetRunAuthorityListInput,
@@ -1908,7 +1939,9 @@ const listFleetRuns = async (
             privateMaterialExcluded: true,
             runs: await Promise.all(
               rows.map(async (row) => {
-                const record = await recordFromRow(row)
+                const record = await recordFromRow(
+                  normalizedFleetRunRequestRowTimestamps(row),
+                )
                 const request = record.request
                 return {
                   runRef: record.runRef,
@@ -1917,7 +1950,9 @@ const listFleetRuns = async (
                   lastSequence: record.execution.lastSequence,
                   attempts: (attemptsByRun.get(row.run_ref) ?? []).map(
                     (attemptRow) => {
-                      const attempt = attemptEntityFromRow(attemptRow)
+                      const attempt = attemptEntityFromRow(
+                        normalizedFleetRunAttemptRowTimestamps(attemptRow),
+                      )
                       const usage = attempt.usageEvidence
                       return {
                         workUnitRef: attempt.workUnitRef,
