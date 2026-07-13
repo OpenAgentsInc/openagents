@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import {
   continuePortableSession,
   executePortableSessionControl,
+  exportPortableCheckpoint,
   installPortableCapability,
   materializePortableCheckpoint,
   portableSessionRoot,
@@ -74,8 +75,8 @@ const fixture = async () => {
       return turns.map((turn, index) => ({
         agentRef: turn.agentRef,
         turnRef: turn.turnRef,
-        activityCursor: index + 4,
-        eventCursor: index + 9,
+        activityCursor: turn.activityCursor + 1,
+        eventCursor: turn.eventCursor + 1,
       }))
     },
     quiesce: async () => { calls.push("quiesce") },
@@ -204,14 +205,18 @@ describe("retained Agent Computer portable-session-control", () => {
     const continuationGraph = {
       rootAgentRef: "agent.port03.guest.root",
       nodes: [
-        { agentRef: "agent.port03.guest.root", threadRef: "thread.port03.guest.root" },
-        { agentRef: "agent.port03.guest.child", parentAgentRef: "agent.port03.guest.root", threadRef: "thread.port03.guest.child" },
+        { agentRef: "agent.port03.guest.root", threadRef: "thread.port03.guest.root", activityCursor: 3 },
+        { agentRef: "agent.port03.guest.child", parentAgentRef: "agent.port03.guest.root", threadRef: "thread.port03.guest.child", activityCursor: 5 },
       ],
     }
     const continuationBundle = {
       ...bundle,
       executionBinding: { ...bundle.executionBinding, repositoryRef: "repository.OpenAgentsInc.openagents" },
       graph: continuationGraph,
+      threadCursors: [
+        { threadRef: "thread.port03.guest.root", transcriptRef: "transcript.port03.guest.root", activityCursor: 3, eventCursor: 8 },
+        { threadRef: "thread.port03.guest.child", transcriptRef: "transcript.port03.guest.child", activityCursor: 5, eventCursor: 11 },
+      ],
     }
     await executePortableSessionControl({
       operation: operation("stage", "operation.port03.guest.continue.stage", { bundle: continuationBundle, capabilityLeaseRefs: ["lease.port03.guest"] }),
@@ -234,6 +239,10 @@ describe("retained Agent Computer portable-session-control", () => {
       attachmentRef: "attachment.port03.guest.managed",
       generation: 2,
       providerLeaseRef: "lease.port03.guest",
+      expectedThreadCursors: [
+        { agentRef: "agent.port03.guest.root", threadRef: "thread.port03.guest.root", activityCursor: 3, eventCursor: 8 },
+        { agentRef: "agent.port03.guest.child", threadRef: "thread.port03.guest.child", activityCursor: 5, eventCursor: 11 },
+      ],
       turns: [
         { agentRef: "agent.port03.guest.root", turnRef: "turn.port03.guest.root", task: "Complete one bounded root turn." },
         { agentRef: "agent.port03.guest.child", turnRef: "turn.port03.guest.child", task: "Complete one bounded child turn." },
@@ -361,6 +370,9 @@ describe("retained Agent Computer portable-session-control", () => {
     })
     const preparedRuntime: PortableSessionGuestRuntime = {
       ...productionRuntime,
+      activate: async () => undefined,
+      quiesce: async () => undefined,
+      verifyCapabilities: async () => undefined,
       prepare: async ({ sessionRoot, agentRefs }) => {
         for (const agentRef of agentRefs) {
           const leaf = createHash("sha256").update(agentRef).digest("hex").slice(0, 24)
@@ -385,5 +397,53 @@ describe("retained Agent Computer portable-session-control", () => {
     expect(receipt).toMatchObject({ acceptingWork: false })
     expect(await readlink(join(portableSessionRoot(stateRoot, stage.sessionRef), "workspace", "CLAUDE.md"))).toBe("tracked.txt")
     expect(await repositorySnapshot(portableSessionRoot(stateRoot, stage.sessionRef))).toEqual(snapshot)
-  })
+
+    await executePortableSessionControl({
+      operation: operation("activate", "operation.port03.guest.materialized-activate", {
+        authorityEvidenceRef: "evidence.port03.guest.materialized-authority",
+        capabilityLeaseRefs: ["lease.port03.guest.provider"],
+      }),
+      stateRoot,
+      runtime: preparedRuntime,
+    })
+    await executePortableSessionControl({
+      operation: operation("quiesce", "operation.port03.guest.materialized-quiesce", { graph }),
+      stateRoot,
+      runtime: preparedRuntime,
+    })
+    const exportedCheckpointRef = "checkpoint.port03.guest.exported"
+    await executePortableSessionControl({
+      operation: operation("checkpoint", "operation.port03.guest.materialized-checkpoint", {
+        checkpointRef: exportedCheckpointRef,
+        eventLogCursor: 10,
+        executionBinding: materializedBundle.executionBinding,
+        graph: materializedBundle.graph,
+        threadCursors: materializedBundle.threadCursors,
+      }),
+      stateRoot,
+      runtime: preparedRuntime,
+    })
+    const exportMetadata = {
+      operationRef: "operation.port03.guest.checkpoint-export",
+      ownerRef: stage.ownerRef,
+      targetRef: stage.targetRef,
+      sessionRef: stage.sessionRef,
+      attachmentRef: stage.attachmentRef,
+      generation: stage.generation,
+      checkpointRef: exportedCheckpointRef,
+    }
+    const exported = await exportPortableCheckpoint({
+      metadata: exportMetadata,
+      stateRoot,
+      zstdBin: "/opt/homebrew/bin/zstd",
+    }) as Record<string, unknown>
+    expect(exported).toMatchObject({ checkpointRef: exportedCheckpointRef, material: "excluded" })
+    expect(await exportPortableCheckpoint({ metadata: exportMetadata, stateRoot, zstdBin: "/opt/homebrew/bin/zstd" })).toEqual(exported)
+    const exportedRoot = join(
+      portableSessionRoot(stateRoot, stage.sessionRef),
+      "exports",
+      createHash("sha256").update(exportMetadata.operationRef).digest("hex").slice(0, 24),
+    )
+    expect(sha(await readFile(join(exportedRoot, "checkpoint.tar.zst")))).toBe(exported.artifactDigest)
+  }, 15_000)
 })

@@ -1251,6 +1251,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   changed turn/evidence, cursor conflict, or stale attachment generation rolls
   the complete graph transaction back. Real-Postgres enforcement lives in
   `packages/khala-sync-server/src/portable-managed-continuation.test.ts`.
+  Continuation is cursor-fenced: every expected agent/thread/activity/event
+  cursor must equal retained pre-state, every accepted event cursor advances
+  exactly once, and the retained resource commits the returned cursor set
+  before acknowledgement. Reverse checkpoint export is allowed only for the
+  exact quiesced checkpoint; it returns the same bounded archive contract,
+  persists bytes only in a mode-0600 private host artifact store, and provides
+  byte-identical replay under one operation ref while journals retain refs and
+  digests only.
   These landed
   coordinator, store, and owner-local source pieces are implementation rungs
   only: #8748 remains

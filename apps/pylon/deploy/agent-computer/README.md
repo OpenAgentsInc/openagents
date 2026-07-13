@@ -93,7 +93,19 @@ to the guest over raw stdin. The guest executes one real `oa-workroomd codex
 session` turn per agent against the materialized workspace. Only accepted
 agent/turn refs, monotonic cursors, evidence refs, and `material: excluded` are
 journaled. Same-operation replay returns the stored result without a second
-turn; changed bytes conflict.
+turn; changed bytes conflict. The request includes the exact pre-turn graph
+cursors, the receipt must advance each event cursor by one, and the retained
+resource persists those cursors before acknowledging so checkpoint/export
+cannot regress them.
+
+After quiescence and checkpoint, the authenticated zero-body
+`POST /v1/portable-agent-computers/checkpoints/export` route derives the exact
+resource without a caller-supplied resource ref. The guest emits the same
+bounded manifest/Git-bundle/post-image tar.zst contract used by materialize.
+The host verifies the digest, retains bytes only in its mode-0600 private
+artifact store, returns them as `application/octet-stream` with artifact ref
+and digest headers, and zeroizes the response buffer. Same-operation replay is
+byte-identical; changed checkpoint scope conflicts.
 
 The 2026-07-13 capability image bake and live Firecracker boot smoke are green.
 The materializer/continuation additions require a new nested-virt rebake and a

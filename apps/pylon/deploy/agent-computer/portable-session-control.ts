@@ -52,7 +52,7 @@ export type PortableSessionGuestRuntime = Readonly<{
     ownerRef: string
     repositoryRef: string
     providerLeaseRef: string
-    turns: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string; task: string }>>
+    turns: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string; task: string; activityCursor: number; eventCursor: number }>>
   }>) => Promise<ReadonlyArray<Readonly<{ agentRef: string; turnRef: string; activityCursor: number; eventCursor: number }>>>
   quiesce: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
   reclaim: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
@@ -76,6 +76,7 @@ type Continuation = Readonly<{
   attachmentRef: string
   generation: number
   providerLeaseRef: string
+  expectedThreadCursors: ReadonlyArray<Readonly<{ agentRef: string; threadRef: string; activityCursor: number; eventCursor: number }>>
   turns: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string; task: string }>>
 }>
 
@@ -197,6 +198,18 @@ const validateContinuation = (input: unknown): Continuation => {
       task: turn.task,
     }
   })
+  if (!Array.isArray(value.expectedThreadCursors) || value.expectedThreadCursors.length !== turns.length) {
+    throw new PortableSessionControlError("expected thread cursors must cover every turn")
+  }
+  const expectedThreadCursors = value.expectedThreadCursors.map((entry, index) => {
+    const cursor = asObject(entry, `expectedThreadCursors[${index}]`)
+    const activityCursor = Number(cursor.activityCursor)
+    const eventCursor = Number(cursor.eventCursor)
+    if (!Number.isSafeInteger(activityCursor) || activityCursor < 0 || !Number.isSafeInteger(eventCursor) || eventCursor < 0) {
+      throw new PortableSessionControlError("expected thread cursor is invalid")
+    }
+    return { agentRef: asString(cursor.agentRef, "agentRef"), threadRef: asString(cursor.threadRef, "threadRef"), activityCursor, eventCursor }
+  })
   return {
     operationRef: asString(value.operationRef, "operationRef"),
     ownerRef: asString(value.ownerRef, "ownerRef"),
@@ -205,6 +218,7 @@ const validateContinuation = (input: unknown): Continuation => {
     attachmentRef: asString(value.attachmentRef, "attachmentRef"),
     generation,
     providerLeaseRef: asString(value.providerLeaseRef, "providerLeaseRef"),
+    expectedThreadCursors,
     turns,
   }
 }
@@ -231,6 +245,17 @@ export const continuePortableSession = async (input: Readonly<{
       new Set(continuation.turns.map(turn => turn.turnRef)).size !== continuation.turns.length) {
     throw new PortableSessionControlError("continuation requires one unique turn for each canonical graph agent")
   }
+  const graphNodes = (asObject(state.bundle.graph, "graph").nodes as ReadonlyArray<Record<string, unknown>>)
+  const retainedCursors = state.bundle.threadCursors as ReadonlyArray<Record<string, unknown>>
+  if (!Array.isArray(retainedCursors) || continuation.expectedThreadCursors.some((cursor, index) => {
+    const node = graphNodes[index]
+    const retained = retainedCursors.find(row => row.threadRef === cursor.threadRef)
+    return cursor.agentRef !== continuation.turns[index]?.agentRef || node?.threadRef !== cursor.threadRef ||
+      Number(node.activityCursor) !== cursor.activityCursor || Number(retained?.activityCursor) !== cursor.activityCursor ||
+      Number(retained?.eventCursor) !== cursor.eventCursor
+  })) {
+    throw new PortableSessionControlError("continuation expected cursors differ from retained graph")
+  }
   await input.runtime.verifyCapabilities({ sessionRoot, leaseRefs: [continuation.providerLeaseRef] })
   const executionBinding = asObject(state.bundle.executionBinding, "executionBinding")
   const completed = await input.runtime.continueWork({
@@ -238,16 +263,15 @@ export const continuePortableSession = async (input: Readonly<{
     ownerRef: continuation.ownerRef,
     repositoryRef: asString(executionBinding.repositoryRef, "repositoryRef"),
     providerLeaseRef: continuation.providerLeaseRef,
-    turns: continuation.turns,
+    turns: continuation.turns.map((turn, index) => ({ ...turn, ...continuation.expectedThreadCursors[index]! })),
   })
   if (completed.length !== continuation.turns.length || completed.some((row, index) =>
     row.agentRef !== continuation.turns[index]?.agentRef || row.turnRef !== continuation.turns[index]?.turnRef)) {
     throw new PortableSessionControlError("guest runtime continuation receipt differs from planned turns")
   }
-  const nodes = (asObject(state.bundle.graph, "graph").nodes as ReadonlyArray<Record<string, unknown>>)
   const cursors = completed.map((row, index) => ({
     agentRef: row.agentRef,
-    threadRef: asString(nodes[index]?.threadRef, "threadRef"),
+    threadRef: asString(graphNodes[index]?.threadRef, "threadRef"),
     activityCursor: row.activityCursor,
     eventCursor: row.eventCursor,
   }))
@@ -258,8 +282,14 @@ export const continuePortableSession = async (input: Readonly<{
     replay: "executed" as const,
     material: "excluded" as const,
   })
+  const nextGraph = {
+    ...asObject(state.bundle.graph, "graph"),
+    nodes: graphNodes.map((node, index) => ({ ...node, activityCursor: cursors[index]!.activityCursor })),
+  }
+  const nextBundle = { ...state.bundle, graph: nextGraph, threadCursors: cursors.map(({ agentRef: _, ...cursor }) => cursor) }
   await writeState(sessionRoot, {
     ...state,
+    bundle: nextBundle,
     operations: { ...state.operations, [continuation.operationRef]: { fingerprint, response } },
   })
   return response
@@ -636,6 +666,99 @@ export const materializePortableCheckpoint = async (input: Readonly<{
   }
 }
 
+export const exportPortableCheckpoint = async (input: Readonly<{
+  metadata: unknown
+  stateRoot: string
+  zstdBin?: string
+  tarBin?: string
+}>): Promise<unknown> => {
+  const metadata = publicSafe(asObject(input.metadata, "checkpoint export metadata"))
+  for (const field of ["operationRef", "ownerRef", "targetRef", "sessionRef", "attachmentRef", "checkpointRef"] as const) {
+    asString(metadata[field], field)
+  }
+  const generation = Number(metadata.generation)
+  if (!Number.isSafeInteger(generation) || generation < 1) throw new PortableSessionControlError("generation must be positive")
+  const sessionRoot = portableSessionRoot(input.stateRoot, String(metadata.sessionRef))
+  const state = await readState(sessionRoot)
+  if (state === undefined || state.state !== "quiesced" || state.ownerRef !== metadata.ownerRef ||
+      state.targetRef !== metadata.targetRef || state.attachmentRef !== metadata.attachmentRef ||
+      state.generation !== generation) {
+    throw new PortableSessionControlError("checkpoint export requires exact quiesced retained scope")
+  }
+  const checkpointRef = String(metadata.checkpointRef)
+  const checkpointBundle = Object.values(state.operations).map(record => record.response)
+    .find(response => {
+      if (response === null || typeof response !== "object" || Array.isArray(response)) return false
+      const checkpoint = (response as Record<string, unknown>).checkpoint
+      return checkpoint !== null && typeof checkpoint === "object" && !Array.isArray(checkpoint) &&
+        (checkpoint as Record<string, unknown>).checkpointRef === checkpointRef
+    }) as Record<string, unknown> | undefined
+  if (checkpointBundle === undefined) throw new PortableSessionControlError("checkpoint export receipt is unavailable")
+  const operationRef = String(metadata.operationRef)
+  const exportRoot = join(sessionRoot, "exports", createHash("sha256").update(operationRef).digest("hex").slice(0, 24))
+  const receiptPath = join(exportRoot, "receipt.json")
+  if (await Bun.file(receiptPath).exists()) return publicSafe(JSON.parse(await readFile(receiptPath, "utf8")))
+
+  const work = join(exportRoot, "work")
+  const postImage = join(work, "post-image")
+  await rm(exportRoot, { recursive: true, force: true })
+  await mkdir(postImage, { recursive: true, mode: 0o700 })
+  const workspace = workspacePath(sessionRoot)
+  const listed = new TextDecoder().decode(await git(workspace, ["ls-files", "-co", "--exclude-standard", "-z"]))
+    .split("\0").filter(Boolean).sort()
+  const files: Array<Record<string, unknown>> = []
+  for (const relativePath of listed) {
+    const safePath = safeRelativePath(relativePath)
+    const source = join(workspace, safePath)
+    const destination = join(postImage, safePath)
+    const info = await lstat(source)
+    await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
+    if (info.isSymbolicLink()) {
+      const linkTarget = safeRelativeLinkTarget(safePath, await readlink(source))
+      const bytes = new TextEncoder().encode(linkTarget)
+      await symlink(linkTarget, destination)
+      files.push({ path: safePath, mode: 0o120000, sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`, size: bytes.byteLength, linkTarget })
+    } else if (info.isFile()) {
+      const bytes = await readFile(source)
+      const mode = (info.mode & 0o111) === 0 ? 0o644 : 0o755
+      await writeFile(destination, bytes, { mode })
+      files.push({ path: safePath, mode, sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`, size: bytes.byteLength })
+    } else {
+      throw new PortableSessionControlError("checkpoint workspace contains unsupported entry")
+    }
+  }
+  const artifactRef = stableRef("artifact.portable-checkpoint", operationRef)
+  const bundle = {
+    checkpoint: checkpointBundle.checkpoint,
+    executionBinding: checkpointBundle.executionBinding,
+    graph: checkpointBundle.graph,
+    threadCursors: checkpointBundle.threadCursors,
+  }
+  await writeFile(join(work, "manifest.json"), canonicalJson({
+    schema: "openagents.portable_checkpoint_artifact.v1",
+    artifactRef,
+    checkpointRef,
+    bundle,
+    files,
+  }), { mode: 0o600 })
+  await run(["/usr/bin/git", "-C", workspace, "bundle", "create", join(work, "repository.bundle"), "HEAD"])
+  const tarPath = join(exportRoot, "checkpoint.tar")
+  const archivePath = join(exportRoot, "checkpoint.tar.zst")
+  await run([input.tarBin ?? "/usr/bin/tar", "-C", work, "-cf", tarPath, "manifest.json", "repository.bundle", "post-image"])
+  await run([input.zstdBin ?? "/usr/bin/zstd", "-q", "-f", tarPath, "-o", archivePath])
+  await rm(tarPath, { force: true })
+  await rm(work, { recursive: true, force: true })
+  const archive = await readFile(archivePath)
+  const receipt = publicSafe({
+    artifactRef,
+    artifactDigest: `sha256:${createHash("sha256").update(archive).digest("hex")}`,
+    checkpointRef,
+    material: "excluded" as const,
+  })
+  await writeFile(receiptPath, canonicalJson(receipt), { mode: 0o600 })
+  return receipt
+}
+
 const run = async (command: ReadonlyArray<string>): Promise<string> => {
   const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe", env: { PATH: "/usr/local/bin:/usr/bin:/bin" } })
   const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()])
@@ -826,7 +949,12 @@ export const productionRuntime: PortableSessionGuestRuntime = {
       if (session.status !== "idle" || !Number.isSafeInteger(turnIndex) || turnIndex < 1 || events < 1) {
         throw new PortableSessionControlError("codex continuation did not complete one bounded turn")
       }
-      completed.push({ agentRef: turn.agentRef, turnRef: turn.turnRef, activityCursor: turnIndex, eventCursor: events })
+      completed.push({
+        agentRef: turn.agentRef,
+        turnRef: turn.turnRef,
+        activityCursor: turn.activityCursor + 1,
+        eventCursor: turn.eventCursor + 1,
+      })
       await rm(assignmentPath, { force: true })
       await rm(grantPath, { force: true })
     }
@@ -877,6 +1005,10 @@ if (import.meta.main) {
       } finally {
         privateBody.fill(0)
       }
+    } else if (encoded === "checkpoint-export") {
+      const metadata = Bun.argv[3]
+      if (metadata === undefined) throw new PortableSessionControlError("checkpoint export metadata is required")
+      response = await exportPortableCheckpoint({ metadata: JSON.parse(metadata), stateRoot })
     } else {
       response = await executePortableSessionControl({ operation: JSON.parse(encoded), stateRoot, runtime: productionRuntime })
     }

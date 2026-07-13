@@ -99,7 +99,7 @@
       "status": "checkpoint_materializer_and_continuation_source_wired_rebake_pending",
       "source": "apps/pylon/deploy/agent-computer/portable-session-control.ts",
       "guestInstallPath": "/opt/agent/portable-session-control",
-      "contract": "fixed PORT-03 stage/materialize/activate/continue/abort/quiesce/checkpoint/reclaim/wipeCapability protocol; checkpoint and capability bytes plus private continuation tasks cross only authenticated bounded raw-stdin seams; no arbitrary command surface",
+      "contract": "fixed PORT-03 stage/materialize/activate/continue/quiesce/checkpoint/export/abort/reclaim/wipeCapability protocol; checkpoint and capability bytes plus private continuation tasks cross only authenticated bounded seams; no arbitrary command surface",
       "bakeReceiptField": "portableSessionControlSha256",
       "portableSessionControlSha256": "820f18c5ea9b24f072f9e41755881b8235ab5e3835e00c7793780d4ddb659437",
       "liveBootProof": {
@@ -111,7 +111,7 @@
         "provisionReceiptDigest": "sha256:371df018106efd86d8e39796956ddac881b8ea3cd5d1b68ee480ca21819e08b1",
         "cleanupReceiptDigest": "sha256:1dfa54ec2d6fd22171182d3ebbc36094a593b5b37cfbfae685560d07826ae399"
       },
-      "note": "The recorded digest proves the prior capability controller image only. Source now also verifies a bounded Git-bundle/post-image tar.zst (including safe relative symlinks), compensates failed prepares, reconciles missing-VM teardown replay, and runs one replay-fenced oa-workroomd/Codex turn for the canonical root and each child with refs-only receipts. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming PORT-03 completion."
+      "note": "The recorded digest proves the prior capability controller image only. Source now also verifies and reverse-exports a bounded Git-bundle/post-image tar.zst (including safe relative symlinks), compensates failed prepares, reconciles missing-VM teardown replay, and runs one cursor-fenced oa-workroomd/Codex turn for the canonical root and each child with refs-only receipts. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming PORT-03 completion."
     },
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,

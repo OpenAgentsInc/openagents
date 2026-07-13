@@ -6,15 +6,17 @@
 //! guest workspace and capability material stay inside the disposable VM.
 
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::cloud_vm::{
-    provisioner_for, CloudVmError, CloudVmOs, CloudVmProvisioner, CloudVmRequest, ProvisionedVm,
-    ProvisionerKind,
+    CloudVmError, CloudVmOs, CloudVmProvisioner, CloudVmRequest, ProvisionedVm, ProvisionerKind,
+    provisioner_for,
 };
 
 pub const PORTABLE_AGENT_COMPUTER_VERSION: &str =
@@ -84,7 +86,35 @@ pub struct PortableContinuationRequest {
     pub attachment_ref: String,
     pub generation: u64,
     pub provider_lease_ref: String,
+    pub expected_thread_cursors: Vec<PortableContinuationCursor>,
     pub turns: Vec<PortableContinuationTurn>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableContinuationCursor {
+    pub agent_ref: String,
+    pub thread_ref: String,
+    pub activity_cursor: u64,
+    pub event_cursor: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableCheckpointExportRequest {
+    pub operation_ref: String,
+    pub owner_ref: String,
+    pub target_ref: String,
+    pub session_ref: String,
+    pub attachment_ref: String,
+    pub generation: u64,
+    pub checkpoint_ref: String,
+}
+
+pub struct PortableCheckpointExport {
+    pub artifact_ref: String,
+    pub artifact_digest: String,
+    pub bytes: Vec<u8>,
 }
 
 pub fn staged_resource_ref(target_ref: &str, session_ref: &str) -> String {
@@ -92,6 +122,199 @@ pub fn staged_resource_ref(target_ref: &str, session_ref: &str) -> String {
         "resource.agent-computer.{}",
         short_digest(&format!("{target_ref}|{session_ref}"))
     )
+}
+
+pub fn export_checkpoint(
+    state_root: &Path,
+    configured_kind: ProvisionerKind,
+    request: PortableCheckpointExportRequest,
+) -> Result<PortableCheckpointExport, CloudVmError> {
+    for (field, value) in [
+        ("operationRef", request.operation_ref.as_str()),
+        ("ownerRef", request.owner_ref.as_str()),
+        ("targetRef", request.target_ref.as_str()),
+        ("sessionRef", request.session_ref.as_str()),
+        ("attachmentRef", request.attachment_ref.as_str()),
+        ("checkpointRef", request.checkpoint_ref.as_str()),
+    ] {
+        if !safe_ref(value) {
+            return Err(CloudVmError::InvalidRequest(format!(
+                "{field} is not a public-safe ref"
+            )));
+        }
+    }
+    if request.generation == 0 {
+        return Err(CloudVmError::InvalidRequest(
+            "checkpoint export generation is invalid".to_string(),
+        ));
+    }
+    let encoded = serde_json::to_vec(&request).map_err(|error| {
+        CloudVmError::InvalidRequest(format!("encode checkpoint export: {error}"))
+    })?;
+    let fingerprint = digest(&encoded);
+    let root = state_root.join("portable-agent-computers");
+    let operation_path = root
+        .join("operations")
+        .join(format!("{}.json", short_digest(&request.operation_ref)));
+    let export_dir = root.join("private-exports");
+    let export_path = export_dir.join(format!("{}.tar.zst", short_digest(&request.operation_ref)));
+    if let Some(record) = read_json::<OperationRecord>(&operation_path)? {
+        if record.fingerprint != fingerprint {
+            return Err(CloudVmError::InvalidRequest(
+                "operationRef was replayed with different bytes".to_string(),
+            ));
+        }
+        if record.status == "completed" {
+            let response = record.response.ok_or_else(|| {
+                CloudVmError::Runtime("completed export has no response".to_string())
+            })?;
+            let bytes = fs::read(&export_path).map_err(|error| {
+                CloudVmError::Runtime(format!("read retained checkpoint export: {error}"))
+            })?;
+            let artifact_digest = required_string(&response, "artifactDigest")?;
+            if digest(&bytes) != artifact_digest {
+                return Err(CloudVmError::Runtime(
+                    "retained checkpoint export digest differs".to_string(),
+                ));
+            }
+            return Ok(PortableCheckpointExport {
+                artifact_ref: required_string(&response, "artifactRef")?,
+                artifact_digest,
+                bytes,
+            });
+        }
+    } else {
+        fs::create_dir_all(root.join("operations"))
+            .map_err(|error| CloudVmError::Runtime(format!("create operation journal: {error}")))?;
+        write_json_atomic(
+            &operation_path,
+            &OperationRecord {
+                schema: PORTABLE_AGENT_COMPUTER_VERSION.to_string(),
+                fingerprint: fingerprint.clone(),
+                status: "pending".to_string(),
+                response: None,
+            },
+        )?;
+    }
+    let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
+    let retained_path = resource_path(&root, &resource_ref);
+    let resource = read_json::<RetainedResource>(&retained_path)?.ok_or_else(|| {
+        CloudVmError::InvalidRequest("quiesced retained resource was not found".to_string())
+    })?;
+    if resource.state != "quiesced"
+        || resource.owner_ref != request.owner_ref
+        || resource.target_ref != request.target_ref
+        || resource.session_ref != request.session_ref
+        || resource.attachment_ref != request.attachment_ref
+        || resource.generation != request.generation
+        || resource
+            .checkpoint_receipt
+            .as_ref()
+            .and_then(|value| value.get("checkpoint"))
+            .and_then(|value| value.get("checkpointRef"))
+            .and_then(Value::as_str)
+            != Some(request.checkpoint_ref.as_str())
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "checkpoint export differs from exact quiesced checkpoint".to_string(),
+        ));
+    }
+    let (provisioner, effective_kind) = provisioner_for(configured_kind);
+    if configured_kind == ProvisionerKind::Live && effective_kind != ProvisionerKind::Live {
+        return Err(CloudVmError::KvmUnavailable(
+            "checkpoint export requires the configured retained Firecracker host".to_string(),
+        ));
+    }
+    let artifact_ref = format!(
+        "artifact.portable-checkpoint.{}",
+        short_digest(&request.operation_ref)
+    );
+    let (artifact_ref, artifact_digest, bytes) = if effective_kind == ProvisionerKind::Fake {
+        let bytes =
+            format!("fake-private-checkpoint-export:{}", request.checkpoint_ref).into_bytes();
+        (artifact_ref, digest(&bytes), bytes)
+    } else {
+        let metadata = serde_json::to_string(&request).map_err(|error| {
+            CloudVmError::Runtime(format!("encode checkpoint export metadata: {error}"))
+        })?;
+        let result = provisioner.exec(
+            &resource.vm,
+            GUEST_CONTROL_BIN,
+            &["checkpoint-export".to_string(), metadata],
+        )?;
+        if result.code != 0 {
+            return Err(CloudVmError::Runtime(
+                "portable guest checkpoint export failed".to_string(),
+            ));
+        }
+        let receipt: Value = serde_json::from_str(&result.output).map_err(|_| {
+            CloudVmError::Runtime(
+                "portable guest returned invalid checkpoint export receipt".to_string(),
+            )
+        })?;
+        let artifact_ref = required_string(&receipt, "artifactRef")?;
+        let artifact_digest = required_string(&receipt, "artifactDigest")?;
+        let guest_export_path = format!(
+            "/var/lib/openagents/portable-sessions/{}/exports/{}",
+            &digest_hex(request.session_ref.as_bytes())[..24],
+            &digest_hex(request.operation_ref.as_bytes())[..24],
+        );
+        let copy_dir = root
+            .join("private-exports")
+            .join(format!("tmp-{}", short_digest(&request.operation_ref)));
+        let _ = fs::remove_dir_all(&copy_dir);
+        fs::create_dir_all(&copy_dir).map_err(|error| {
+            CloudVmError::Runtime(format!("create checkpoint export copy dir: {error}"))
+        })?;
+        #[cfg(unix)]
+        fs::set_permissions(&copy_dir, fs::Permissions::from_mode(0o700)).map_err(|error| {
+            CloudVmError::Runtime(format!("restrict checkpoint export copy dir: {error}"))
+        })?;
+        provisioner.copy_out(&resource.vm, &guest_export_path, &copy_dir)?;
+        let bytes = fs::read(copy_dir.join("checkpoint.tar.zst")).map_err(|error| {
+            CloudVmError::Runtime(format!("read guest checkpoint export: {error}"))
+        })?;
+        let _ = fs::remove_dir_all(&copy_dir);
+        if digest(&bytes) != artifact_digest {
+            return Err(CloudVmError::Runtime(
+                "guest checkpoint export digest differs".to_string(),
+            ));
+        }
+        (artifact_ref, artifact_digest, bytes)
+    };
+    fs::create_dir_all(&export_dir).map_err(|error| {
+        CloudVmError::Runtime(format!("create private checkpoint export dir: {error}"))
+    })?;
+    #[cfg(unix)]
+    fs::set_permissions(&export_dir, fs::Permissions::from_mode(0o700)).map_err(|error| {
+        CloudVmError::Runtime(format!("restrict private checkpoint export dir: {error}"))
+    })?;
+    let temporary = export_path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&temporary, &bytes).map_err(|error| {
+        CloudVmError::Runtime(format!("write private checkpoint export: {error}"))
+    })?;
+    fs::rename(&temporary, &export_path).map_err(|error| {
+        CloudVmError::Runtime(format!("commit private checkpoint export: {error}"))
+    })?;
+    #[cfg(unix)]
+    fs::set_permissions(&export_path, fs::Permissions::from_mode(0o600)).map_err(|error| {
+        CloudVmError::Runtime(format!("restrict private checkpoint export: {error}"))
+    })?;
+    let response = json!({ "artifactRef": artifact_ref, "artifactDigest": artifact_digest, "checkpointRef": request.checkpoint_ref, "material": "excluded" });
+    write_json_atomic(
+        &operation_path,
+        &OperationRecord {
+            schema: PORTABLE_AGENT_COMPUTER_VERSION.to_string(),
+            fingerprint,
+            status: "completed".to_string(),
+            response: Some(response),
+        },
+    )?;
+    Ok(PortableCheckpointExport {
+        artifact_ref,
+        artifact_digest,
+        bytes,
+    })
 }
 
 pub fn continue_work(
@@ -113,7 +336,11 @@ pub fn continue_work(
             )));
         }
     }
-    if request.generation == 0 || request.turns.is_empty() || request.turns.len() > 64 {
+    if request.generation == 0
+        || request.turns.is_empty()
+        || request.turns.len() > 64
+        || request.expected_thread_cursors.len() != request.turns.len()
+    {
         return Err(CloudVmError::InvalidRequest(
             "continuation generation or turn count is invalid".to_string(),
         ));
@@ -168,10 +395,10 @@ pub fn continue_work(
         )?;
     }
     let resource_ref = staged_resource_ref(&request.target_ref, &request.session_ref);
-    let resource = read_json::<RetainedResource>(&resource_path(&root, &resource_ref))?
-        .ok_or_else(|| {
-            CloudVmError::InvalidRequest("active retained resource was not found".to_string())
-        })?;
+    let retained_path = resource_path(&root, &resource_ref);
+    let mut resource = read_json::<RetainedResource>(&retained_path)?.ok_or_else(|| {
+        CloudVmError::InvalidRequest("active retained resource was not found".to_string())
+    })?;
     if resource.state != "active"
         || resource.owner_ref != request.owner_ref
         || resource.target_ref != request.target_ref
@@ -215,6 +442,38 @@ pub fn continue_work(
             "continuation must bind one unique turn to every graph agent".to_string(),
         ));
     }
+    let graph_nodes = resource
+        .graph
+        .get("nodes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            CloudVmError::InvalidRequest("retained graph nodes are missing".to_string())
+        })?;
+    let retained_cursors = resource.thread_cursors.as_array().ok_or_else(|| {
+        CloudVmError::InvalidRequest("retained thread cursors are missing".to_string())
+    })?;
+    for (index, expected) in request.expected_thread_cursors.iter().enumerate() {
+        let node = &graph_nodes[index];
+        let retained = retained_cursors.iter().find(|row| {
+            row.get("threadRef").and_then(Value::as_str) == Some(expected.thread_ref.as_str())
+        });
+        if expected.agent_ref != agents[index]
+            || node.get("threadRef").and_then(Value::as_str) != Some(expected.thread_ref.as_str())
+            || node.get("activityCursor").and_then(Value::as_u64) != Some(expected.activity_cursor)
+            || retained
+                .and_then(|row| row.get("activityCursor"))
+                .and_then(Value::as_u64)
+                != Some(expected.activity_cursor)
+            || retained
+                .and_then(|row| row.get("eventCursor"))
+                .and_then(Value::as_u64)
+                != Some(expected.event_cursor)
+        {
+            return Err(CloudVmError::InvalidRequest(
+                "continuation expected cursors differ from retained resource".to_string(),
+            ));
+        }
+    }
     let (provisioner, effective_kind) = provisioner_for(configured_kind);
     if configured_kind == ProvisionerKind::Live && effective_kind != ProvisionerKind::Live {
         return Err(CloudVmError::KvmUnavailable(
@@ -222,12 +481,19 @@ pub fn continue_work(
         ));
     }
     let response = if effective_kind == ProvisionerKind::Fake {
-        let cursors = request.turns.iter().enumerate().map(|(index, turn)| json!({
-            "agentRef": turn.agent_ref,
-            "threadRef": resource.graph["nodes"][index]["threadRef"],
-            "activityCursor": resource.graph["nodes"][index].get("activityCursor").and_then(Value::as_u64).unwrap_or(0) + 1,
-            "eventCursor": resource.thread_cursors.as_array().and_then(|rows| rows.get(index)).and_then(|row| row.get("eventCursor")).and_then(Value::as_u64).unwrap_or(0) + 1,
-        })).collect::<Vec<_>>();
+        let cursors = request
+            .turns
+            .iter()
+            .enumerate()
+            .map(|(index, turn)| {
+                json!({
+                    "agentRef": turn.agent_ref,
+                    "threadRef": request.expected_thread_cursors[index].thread_ref,
+                    "activityCursor": request.expected_thread_cursors[index].activity_cursor + 1,
+                    "eventCursor": request.expected_thread_cursors[index].event_cursor + 1,
+                })
+            })
+            .collect::<Vec<_>>();
         json!({
             "acceptedWorkRefs": request.turns.iter().map(|turn| json!({"agentRef": turn.agent_ref, "turnRef": turn.turn_ref})).collect::<Vec<_>>(),
             "threadCursors": cursors,
@@ -258,6 +524,66 @@ pub fn continue_work(
     response.as_object().ok_or_else(|| {
         CloudVmError::Runtime("continuation response is not an object".to_string())
     })?;
+    let returned_cursors = response
+        .get("threadCursors")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            CloudVmError::Runtime("continuation response thread cursors are missing".to_string())
+        })?;
+    if returned_cursors.len() != request.expected_thread_cursors.len()
+        || returned_cursors
+            .iter()
+            .zip(&request.expected_thread_cursors)
+            .any(|(returned, expected)| {
+                returned.get("agentRef").and_then(Value::as_str)
+                    != Some(expected.agent_ref.as_str())
+                    || returned.get("threadRef").and_then(Value::as_str)
+                        != Some(expected.thread_ref.as_str())
+                    || returned
+                        .get("activityCursor")
+                        .and_then(Value::as_u64)
+                        .is_none_or(|cursor| cursor <= expected.activity_cursor)
+                    || returned.get("eventCursor").and_then(Value::as_u64)
+                        != Some(expected.event_cursor + 1)
+            })
+    {
+        return Err(CloudVmError::Runtime(
+            "continuation response cursors differ from planned advancement".to_string(),
+        ));
+    }
+    if let Some(nodes) = resource
+        .graph
+        .get_mut("nodes")
+        .and_then(Value::as_array_mut)
+    {
+        for (node, returned) in nodes.iter_mut().zip(returned_cursors) {
+            node.as_object_mut()
+                .ok_or_else(|| CloudVmError::Runtime("retained graph node is invalid".to_string()))?
+                .insert(
+                    "activityCursor".to_string(),
+                    returned["activityCursor"].clone(),
+                );
+        }
+    }
+    if let Some(rows) = resource.thread_cursors.as_array_mut() {
+        for returned in returned_cursors {
+            let row = rows
+                .iter_mut()
+                .find(|row| row.get("threadRef") == returned.get("threadRef"))
+                .ok_or_else(|| {
+                    CloudVmError::Runtime("retained thread cursor disappeared".to_string())
+                })?;
+            let object = row.as_object_mut().ok_or_else(|| {
+                CloudVmError::Runtime("retained thread cursor is invalid".to_string())
+            })?;
+            object.insert(
+                "activityCursor".to_string(),
+                returned["activityCursor"].clone(),
+            );
+            object.insert("eventCursor".to_string(), returned["eventCursor"].clone());
+        }
+    }
+    write_json_atomic(&retained_path, &resource)?;
     reject_private_material(&serde_json::to_vec(&response).unwrap_or_default())?;
     write_json_atomic(
         &operation_path,
@@ -544,6 +870,8 @@ struct RetainedResource {
     artifact_digest: Option<String>,
     #[serde(default)]
     stage_receipt: Option<Value>,
+    #[serde(default)]
+    checkpoint_receipt: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -661,13 +989,13 @@ fn execute_effect(
                 resource.state = "reclaimed".to_string();
             }
         }
-        "checkpoint" => {}
+        "checkpoint" => resource.checkpoint_receipt = Some(response.clone()),
         "wipeCapability" => {}
         _ => {
             return Err(CloudVmError::InvalidRequest(format!(
                 "unknown portable Agent Computer action '{}'",
                 request.action
-            )))
+            )));
         }
     }
     write_json_atomic(&resource_path, &resource)?;
@@ -817,6 +1145,7 @@ fn stage(
         artifact_ref: None,
         artifact_digest: None,
         stage_receipt: None,
+        checkpoint_receipt: None,
     };
     write_json_atomic(&retained_path, &resource)?;
     Ok(prepared_stage_response(&resource))
@@ -1330,6 +1659,23 @@ mod tests {
             checkpointed["checkpoint"]["checkpointRef"],
             "checkpoint.port03.binding.managed"
         );
+        let export_request = PortableCheckpointExportRequest {
+            operation_ref: "operation.port03.binding.checkpoint.export".to_string(),
+            owner_ref: "owner.port03.binding".to_string(),
+            target_ref: "target.port03.binding.managed".to_string(),
+            session_ref: "session.port03.binding".to_string(),
+            attachment_ref: "attachment.port03.binding.managed".to_string(),
+            generation: 2,
+            checkpoint_ref: "checkpoint.port03.binding.managed".to_string(),
+        };
+        let mut exported =
+            export_checkpoint(&state_root, ProvisionerKind::Fake, export_request.clone()).unwrap();
+        let mut replayed =
+            export_checkpoint(&state_root, ProvisionerKind::Fake, export_request).unwrap();
+        assert_eq!(exported.artifact_digest, digest(&exported.bytes));
+        assert_eq!(exported.bytes, replayed.bytes);
+        exported.bytes.fill(0);
+        replayed.bytes.fill(0);
 
         let mut reclaim = request(
             "reclaim",
@@ -1375,6 +1721,12 @@ mod tests {
             attachment_ref: "attachment.port03.binding.managed".to_string(),
             generation: 2,
             provider_lease_ref: "lease.port03.binding.provider".to_string(),
+            expected_thread_cursors: vec![PortableContinuationCursor {
+                agent_ref: "agent.port03.binding.root".to_string(),
+                thread_ref: "thread.port03.binding.root".to_string(),
+                activity_cursor: 3,
+                event_cursor: 9,
+            }],
             turns: vec![PortableContinuationTurn {
                 agent_ref: "agent.port03.binding.root".to_string(),
                 turn_ref: "turn.port03.binding.root".to_string(),

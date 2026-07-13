@@ -850,6 +850,47 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
             };
             write_response(&mut stream, status, &response)
         }
+        "/v1/portable-agent-computers/checkpoints/export" => {
+            if !request.body.is_empty() {
+                request.body.fill(0);
+                return write_invalid_request(&mut stream, "checkpoint export requires an empty body".to_string());
+            }
+            let required = |name: &str| {
+                request.header(name).map(str::to_string).ok_or_else(|| format!("missing {name}"))
+            };
+            let export_request = portable_agent_computer::PortableCheckpointExportRequest {
+                operation_ref: required("x-oa-operation-ref")?,
+                owner_ref: required("x-oa-owner-ref")?,
+                target_ref: required("x-oa-target-ref")?,
+                session_ref: required("x-oa-session-ref")?,
+                attachment_ref: required("x-oa-attachment-ref")?,
+                generation: required("x-oa-attachment-generation")?.parse()
+                    .map_err(|_| "invalid attachment generation".to_string())?,
+                checkpoint_ref: required("x-oa-checkpoint-ref")?,
+            };
+            let _operation_guard = config.portable_agent_computer_lock.lock()
+                .map_err(|_| "portable Agent Computer operation lock was poisoned".to_string())?;
+            match portable_agent_computer::export_checkpoint(
+                &config.state_root,
+                config.cloud_vm_provisioner_kind,
+                export_request,
+            ) {
+                Ok(mut export) => {
+                    let result = write_octet_response(
+                        &mut stream,
+                        &export.bytes,
+                        &export.artifact_ref,
+                        &export.artifact_digest,
+                    );
+                    export.bytes.fill(0);
+                    result
+                }
+                Err(error) => {
+                    let (status, response) = cloud_vm_failed_response(error)?;
+                    write_response(&mut stream, status, &response)
+                }
+            }
+        }
         "/v1/workrooms/codex/start" => {
             let control_request = match decode_control_request(&request.body) {
                 Ok(value) => value,
@@ -4792,6 +4833,21 @@ fn write_response<T: Serialize>(
     )
     .map_err(|error| error.to_string())?;
     stream.write_all(&body).map_err(|error| error.to_string())
+}
+
+fn write_octet_response(
+    stream: &mut TcpStream,
+    body: &[u8],
+    artifact_ref: &str,
+    artifact_digest: &str,
+) -> Result<(), String> {
+    write!(
+        stream,
+        "HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\ncache-control: no-store\r\nx-oa-artifact-ref: {artifact_ref}\r\nx-oa-artifact-digest: {artifact_digest}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+        body.len(),
+    )
+    .map_err(|error| error.to_string())?;
+    stream.write_all(body).map_err(|error| error.to_string())
 }
 
 #[derive(Debug)]

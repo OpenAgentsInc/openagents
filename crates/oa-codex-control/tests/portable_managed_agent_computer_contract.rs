@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 const TOKEN: &str = "portable-agent-computer-contract-token";
@@ -203,7 +203,9 @@ fn materialize_checkpoint(daemon: &Daemon, material: &[u8]) -> (u16, Value) {
     ];
     let mut head = format!(
         "POST /v1/portable-agent-computers/checkpoints/materialize HTTP/1.1\r\nhost: {}\r\nauthorization: Bearer {}\r\ncontent-type: application/octet-stream\r\ncontent-length: {}\r\nconnection: close\r\n",
-        daemon.addr, TOKEN, material.len(),
+        daemon.addr,
+        TOKEN,
+        material.len(),
     );
     for (name, value) in headers {
         head.push_str(&format!("{name}: {value}\r\n"));
@@ -229,6 +231,64 @@ fn materialize_checkpoint(daemon: &Daemon, material: &[u8]) -> (u16, Value) {
     (
         status,
         serde_json::from_slice(&response[split + 4..]).unwrap(),
+    )
+}
+
+fn export_checkpoint_http(daemon: &Daemon) -> (u16, Vec<u8>, String, String) {
+    let mut stream = TcpStream::connect(&daemon.addr).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let headers = [
+        (
+            "X-OA-Operation-Ref",
+            "operation.port03.http.checkpoint.export",
+        ),
+        ("X-OA-Owner-Ref", "owner.port03.http"),
+        ("X-OA-Target-Ref", "target.port03.http.managed"),
+        ("X-OA-Session-Ref", "session.port03.http"),
+        ("X-OA-Attachment-Ref", "attachment.port03.http.managed"),
+        ("X-OA-Attachment-Generation", "2"),
+        ("X-OA-Checkpoint-Ref", "checkpoint.port03.http.managed"),
+    ];
+    let mut head = format!(
+        "POST /v1/portable-agent-computers/checkpoints/export HTTP/1.1\r\nhost: {}\r\nauthorization: Bearer {}\r\ncontent-length: 0\r\nconnection: close\r\n",
+        daemon.addr, TOKEN,
+    );
+    for (name, value) in headers {
+        head.push_str(&format!("{name}: {value}\r\n"));
+    }
+    head.push_str("\r\n");
+    stream.write_all(head.as_bytes()).unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    let split = response
+        .windows(4)
+        .position(|part| part == b"\r\n\r\n")
+        .unwrap();
+    let response_head = String::from_utf8_lossy(&response[..split]).to_ascii_lowercase();
+    let status = response_head
+        .lines()
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let header = |name: &str| {
+        response_head
+            .lines()
+            .find_map(|line| line.strip_prefix(name))
+            .map(str::trim)
+            .unwrap()
+            .to_string()
+    };
+    (
+        status,
+        response[split + 4..].to_vec(),
+        header("x-oa-artifact-ref:"),
+        header("x-oa-artifact-digest:"),
     )
 }
 
@@ -315,6 +375,12 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
         "attachmentRef": "attachment.port03.http.managed",
         "generation": 2,
         "providerLeaseRef": "lease.port03.http.provider",
+        "expectedThreadCursors": [{
+            "agentRef": "agent.port03.http.root",
+            "threadRef": "thread.port03.http.root",
+            "activityCursor": 1,
+            "eventCursor": 1
+        }],
         "turns": [{
             "agentRef": "agent.port03.http.root",
             "turnRef": "turn.port03.http.root",
@@ -337,6 +403,28 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
     quiesce["payload"] = stage["payload"]["bundle"]["graph"].clone();
     quiesce["payload"] = json!({ "graph": quiesce["payload"].clone() });
     assert_eq!(post(&daemon, &quiesce).0, 200);
+
+    let mut checkpoint = base(
+        "checkpoint",
+        "operation.port03.http.checkpoint",
+        Some(resource_ref),
+    );
+    checkpoint["payload"] = json!({
+        "checkpointRef": "checkpoint.port03.http.managed",
+        "eventLogCursor": 2,
+        "executionBinding": stage["payload"]["bundle"]["executionBinding"].clone(),
+        "graph": stage["payload"]["bundle"]["graph"].clone(),
+        "threadCursors": continued["threadCursors"].clone()
+    });
+    assert_eq!(post(&daemon, &checkpoint).0, 200);
+    let (status, exported, artifact_ref, artifact_digest) = export_checkpoint_http(&daemon);
+    assert_eq!(status, 200);
+    assert!(artifact_ref.starts_with("artifact.portable-checkpoint."));
+    assert_eq!(
+        artifact_digest,
+        format!("sha256:{:x}", Sha256::digest(&exported))
+    );
+    assert_eq!(export_checkpoint_http(&daemon).1, exported);
 
     let mut reclaim = base(
         "reclaim",
