@@ -1,0 +1,7 @@
+{
+  "schema": "openagents.fc4.owner_local_acceptance_fixture.v1",
+  "workUnitRef": "unit.fc4.owner_local.acceptance.202607131047",
+  "title": "Owner local acceptance",
+  "targetPreference": "owner_local",
+  "verificationRef": "command.public.pylon_khala.verify.681a8f3ba01ca51a34f842d9"
+}
