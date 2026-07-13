@@ -381,7 +381,13 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       const result = yield* Effect.promise(() => bridge.fleetRuns!().catch(() => null))
       let projection: FleetRunClientProjection | null = null
       if (typeof result === "object" && result !== null && "state" in result && result.state === "available" && "projection" in result) {
-        try { projection = decodeFleetRunClientProjection(result.projection) } catch { projection = null }
+        try {
+          // Round-trip through JSON before the renderer decode. Electron's
+          // contextBridge returns an immutable proxy-backed value; the shared
+          // Effect schema expects ordinary data and must not reject an already
+          // main-validated projection because of bridge object identity.
+          projection = decodeFleetRunClientProjection(JSON.parse(JSON.stringify(result.projection)))
+        } catch { projection = null }
       }
       yield* SubscriptionRef.update(state, next => ({ ...next, fleet: { ...next.fleet, authorityRuns: projection } }))
     }
