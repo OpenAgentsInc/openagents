@@ -169,6 +169,11 @@ import {
   CodexLocalStartChannel,
 } from "./codex-local-contract.ts"
 import {
+  CodexHandoffOpenChannel,
+  decodeCodexHandoffOpenRequest,
+  decodeCodexHandoffOpenResult,
+} from "./codex-handoff-contract.ts"
+import {
   McpConfigAddChannel,
   McpConfigListChannel,
   McpConfigRemoveChannel,
@@ -677,6 +682,16 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(CodexLocalEventChannel, handler)
       return () => ipcRenderer.removeListener(CodexLocalEventChannel, handler)
+    },
+  },
+  codexHandoff: {
+    open: async (value: unknown) => {
+      const request = decodeCodexHandoffOpenRequest(value)
+      if (request === null) {
+        return { state: "refused", reason: "invalid_request", message: "The Open in Codex request is invalid." }
+      }
+      return decodeCodexHandoffOpenResult(await ipcRenderer.invoke(CodexHandoffOpenChannel, request)) ??
+        { state: "refused", reason: "invalid_request", message: "The Open in Codex response is invalid." }
     },
   },
   /**

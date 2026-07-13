@@ -12,9 +12,9 @@
  */
 import path from "node:path"
 import { homedir } from "node:os"
-import { randomUUID } from "node:crypto"
-import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { execFileSync } from "node:child_process"
+import { createHash, randomUUID } from "node:crypto"
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { execFile, execFileSync } from "node:child_process"
 import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
 import {
@@ -180,6 +180,7 @@ import {
   codexLocalModelNoteText,
   codexLocalRequestedModelLabel,
   CODEX_LOCAL_MODEL,
+  CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF,
 } from "./codex-local-contract.ts"
 import {
   FIXTURE_CODEX_LOCAL_ACCOUNT,
@@ -287,6 +288,12 @@ import {
   type ProductSpecOperationError,
 } from "./product-spec-workroom-contract.ts"
 import { makeProductSpecWorkroom } from "./product-spec-workroom.ts"
+import {
+  CodexHandoffOpenChannel,
+  decodeCodexHandoffOpenRequest,
+  openCodexHandoffLedger,
+} from "./codex-handoff-contract.ts"
+import { makeCodexHandoffHost, openCodexHandoffBindings } from "./codex-handoff-host.ts"
 import { GitGithubChannel } from "./git-github-contract.ts"
 import { openGitGithubService } from "./git-github-host.ts"
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
@@ -814,6 +821,9 @@ const threads = () => makeThreadStore(path.join(app.getPath("userData"), "thread
 const localTurnJournal = openLocalTurnJournal(
   path.join(app.getPath("userData"), "local-turns", "journal.json"),
 )
+const codexHandoffBindings = openCodexHandoffBindings(
+  path.join(app.getPath("userData"), "codex-handoff", "bindings.json"),
+)
 let desktopIsQuitting = false
 const localTurnFlushers = new Set<() => unknown>()
 const codexSessionsRoot = () => path.resolve(
@@ -979,6 +989,8 @@ const currentProductSpecWorkroom = () => {
   const workContextRef = catalog.resolution.session.workContextRef
   return {
     workContextRef,
+    sessionRef: catalog.resolution.session.sessionRef,
+    workspaceRoot: selectedRootProjection,
     service: makeProductSpecWorkroom({
       workspaceRoot: selectedRootProjection,
       stateRoot: path.join(app.getPath("userData"), "product-spec", workContextRef),
@@ -1259,9 +1271,14 @@ ipcMain.handle(ProductSpecPlanAcceptChannel, (event, raw: unknown) => {
 })
 ipcMain.handle(ProductSpecPacketAdmitChannel, (event, raw: unknown) => {
   const request = decodeProductSpecPacketAdmitRequest(raw)
-  return request === null
-    ? productSpecUnavailable("The ProductSpec packet admission is invalid.")
-    : withProductSpecWorkroom(event, authority => authority.service.admitPacket(request))
+  if (request === null) {
+    return productSpecUnavailable("The ProductSpec packet admission is invalid.")
+  }
+  return withProductSpecWorkroom(event, authority => {
+    const result = authority.service.admitPacket(request)
+    if (result.ok) codexHandoffBindings.recordPacketAdmission(result.value, request.packetRef)
+    return result
+  })
 })
 ipcMain.handle(ProductSpecPacketBlockChannel, (event, raw: unknown) => {
   const request = decodeProductSpecPacketBlockRequest(raw)
@@ -1780,6 +1797,82 @@ const localTurnRecovery = reconcileLocalTurns({
   console.error("[openagents-desktop] local turn recovery failed", error instanceof Error ? error.name : "unknown")
   throw error
 })
+const handoffRef = (prefix: string, value: string): string =>
+  `${prefix}.${createHash("sha256").update(value).digest("hex")}`
+const runOpen = (args: ReadonlyArray<string>): Promise<boolean> => new Promise(resolve => {
+  execFile("/usr/bin/open", [...args], { timeout: 10_000 }, error => resolve(error === null))
+})
+const codexHandoffHost = makeCodexHandoffHost({
+  bindings: codexHandoffBindings,
+  ledger: openCodexHandoffLedger(
+    path.join(app.getPath("userData"), "codex-handoff", "handoffs.json"),
+  ),
+  pinnedRuntimeRef: CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF,
+  // The installed Codex app has no pinned proof that it can read the named
+  // isolated CODEX_HOME and continue that thread. Never manufacture it.
+  exactThreadProof: () => null,
+  quiesce: async (request, binding, operationRef) => {
+    const key = { threadRef: request.threadRef, turnRef: request.turnRef, lane: "codex-local" as const }
+    const terminalProof = () => {
+      const record = localTurnJournal.get(key)
+      if (record === null || record.disposition === null) return null
+      return {
+        state: "quiescent" as const,
+        proof: {
+          operationRef,
+          workPacketRef: binding.packetRef,
+          openAgentsGeneration: binding.generation,
+          disposition: record.disposition === "completed" || record.disposition === "resumed_after_restart"
+            ? "completed" as const
+            : record.disposition === "interrupted_by_restart"
+              ? "interrupted" as const
+              : "stopped" as const,
+          lastDurableEventRef: handoffRef("local-turn-event", `${record.turnRef}\0${record.persistedCursor}`),
+          proofRef: handoffRef("quiescence-proof", `${operationRef}\0${record.updatedAt}\0${record.disposition}`),
+        },
+      }
+    }
+    const existing = terminalProof()
+    if (existing !== null) return existing
+    codexLocal.interrupt(request.turnRef)
+    const deadline = Date.now() + 5_000
+    while (Date.now() < deadline) {
+      const terminal = terminalProof()
+      if (terminal !== null) return terminal
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    return { state: "not_quiescent" as const }
+  },
+  repositoryState: async binding => {
+    const status = await gitGithubService.run({ op: "status" }) as unknown
+    if (typeof status !== "object" || status === null) return null
+    const value = status as { ok?: unknown; statusRef?: unknown }
+    if (value.ok !== true || typeof value.statusRef !== "string") return null
+    return {
+      postImageRef: value.statusRef,
+      transcriptGapRef: handoffRef("transcript-gap", `${binding.bindingRef}\0${value.statusRef}`),
+    }
+  },
+  launch: async binding => {
+    if (process.platform !== "darwin") return "unavailable"
+    const authority = currentProductSpecWorkroom()
+    if (authority === null || authority.workContextRef !== binding.workContextRef) return "failed"
+    const available = existsSync("/Applications/Codex.app") ||
+      existsSync(path.join(app.getPath("home"), "Applications", "Codex.app")) ||
+      await runOpen(["-Ra", "Codex"])
+    if (!available) return "unavailable"
+    return await runOpen(["-a", "Codex", authority.workspaceRoot]) ? "opened" : "failed"
+  },
+})
+ipcMain.handle(CodexHandoffOpenChannel, (event, raw: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { state: "refused", reason: "invalid_request", message: "The handoff request did not come from the trusted Desktop renderer." }
+  }
+  const request = decodeCodexHandoffOpenRequest(raw)
+  return request === null
+    ? { state: "refused", reason: "invalid_request", message: "The Open in Codex request is invalid." }
+    : codexHandoffHost.open(request)
+})
 ipcMain.handle(PluginConfigListChannel, () => pluginConfigStore.list())
 ipcMain.handle(PluginConfigChooseChannel, async () => {
   if (liveProofDriverMode || smokeMode) return { state: "cancelled" }
@@ -2281,6 +2374,15 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
     model: requestedModel,
   })
   if (!accepted.accepted) return { ok: false, error: "That turn is already accepted." }
+  const productSpecAuthority = currentProductSpecWorkroom()
+  if (productSpecAuthority !== null) {
+    codexHandoffBindings.bindNextTurn({
+      workContextRef: productSpecAuthority.workContextRef,
+      sessionRef: productSpecAuthority.sessionRef,
+      threadRef: request.threadRef,
+      turnRef: request.turnRef,
+    })
+  }
   const saved = store.upsert(request.threadRef, user)
   if (saved === null) return { ok: false, error: "That conversation no longer exists." }
   const history = saved.notes.filter(note => note.key !== user.key).map(note => ({ role: note.role, text: note.text }))

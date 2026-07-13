@@ -208,6 +208,9 @@ type DesktopBridge = Readonly<{
     steerChild?: (value: unknown) => Promise<unknown>
     queueFollowup?: (value: unknown) => Promise<unknown>
   }>
+  codexHandoff?: Readonly<{
+    open?: (value: unknown) => Promise<unknown>
+  }>
   usageLedger?: Readonly<{
     snapshot?: () => Promise<unknown>
     onEvent?: (listener: (snapshot: unknown) => void) => () => void
@@ -919,7 +922,21 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         gather: () => readBridge()?.diagnostics?.gather?.() ?? Promise.resolve(null),
         runAction: (action) => readBridge()?.diagnostics?.runAction?.(action) ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
         exportRedacted: () => readBridge()?.diagnostics?.exportRedacted?.() ?? Promise.resolve({ ok: false, notice: "Diagnostics unavailable" }),
-      }, voiceHost, productSpecRendererBridge),
+      }, voiceHost, productSpecRendererBridge, {
+        open: async request => {
+          const result = await readBridge()?.codexHandoff?.open?.(request)
+          if (typeof result === "object" && result !== null &&
+            ((result as { state?: unknown }).state === "opened" || (result as { state?: unknown }).state === "refused") &&
+            typeof (result as { message?: unknown }).message === "string") {
+            return result as import("../codex-handoff-contract.ts").CodexHandoffOpenResult
+          }
+          return {
+            state: "refused",
+            reason: "invalid_request",
+            message: "The Open in Codex response was invalid.",
+          }
+        },
+      }),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

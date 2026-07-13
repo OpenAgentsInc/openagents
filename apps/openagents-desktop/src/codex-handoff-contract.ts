@@ -15,6 +15,7 @@ import { Schema } from "effect"
 export const CODEX_HANDOFF_LEDGER_SCHEMA = "openagents.desktop.codex_handoff_ledger.v1" as const
 export const CODEX_HANDOFF_RECORD_SCHEMA = "openagents.desktop.codex_handoff_record.v1" as const
 export const CODEX_HANDOFF_LIMIT = 128
+export const CodexHandoffOpenChannel = "openagents:codex-handoff:open" as const
 
 const RefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -36,6 +37,12 @@ export const CodexHandoffIdentitySchema = Schema.Struct({
 })
 export type CodexHandoffIdentity = typeof CodexHandoffIdentitySchema.Type
 
+export const CodexHandoffRepositoryStateSchema = Schema.Struct({
+  postImageRef: RefSchema,
+  transcriptGapRef: RefSchema,
+})
+export type CodexHandoffRepositoryState = typeof CodexHandoffRepositoryStateSchema.Type
+
 export const CodexHandoffRequestSchema = Schema.Struct({
   operationRef: RefSchema,
   identity: CodexHandoffIdentitySchema,
@@ -46,10 +53,7 @@ export const CodexHandoffRequestSchema = Schema.Struct({
     compatibilityProofRef: RefSchema,
     transcriptContinuityProofRef: RefSchema,
   })),
-  repositoryState: Schema.Struct({
-    postImageRef: RefSchema,
-    transcriptGapRef: RefSchema,
-  }),
+  repositoryState: Schema.NullOr(CodexHandoffRepositoryStateSchema),
 })
 export type CodexHandoffRequest = typeof CodexHandoffRequestSchema.Type
 
@@ -93,6 +97,7 @@ export const CodexHandoffRecordSchema = Schema.Struct({
   refusal: Schema.NullOr(Schema.Literals([
     "openagents_not_quiescent",
     "quiescence_identity_mismatch",
+    "repository_state_unavailable",
   ])),
   createdAt: Schema.String,
   updatedAt: Schema.String,
@@ -117,8 +122,48 @@ export type CodexHandoffLedger = Readonly<{
       operationRef: string
       identity: CodexHandoffIdentity
     }>) => Promise<CodexHandoffQuiesceResult>,
+    resolveRepositoryState?: () => Promise<CodexHandoffRepositoryState | null>,
   ) => Promise<CodexHandoffRecord>
 }>
+
+export const CodexHandoffOpenRequestSchema = Schema.Struct({
+  threadRef: RefSchema,
+  turnRef: RefSchema,
+})
+export type CodexHandoffOpenRequest = typeof CodexHandoffOpenRequestSchema.Type
+
+export const CodexHandoffOpenResultSchema = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("opened"),
+    operationRef: RefSchema,
+    workPacketRef: RefSchema,
+    mode: Schema.Literals(["exact_thread", "repository_state"]),
+    transcriptGap: Schema.Boolean,
+    message: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_000)),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("refused"),
+    reason: Schema.Literals([
+      "invalid_request",
+      "work_identity_unavailable",
+      "openagents_not_quiescent",
+      "quiescence_identity_mismatch",
+      "repository_state_unavailable",
+      "codex_app_unavailable",
+      "launch_failed",
+    ]),
+    message: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_000)),
+  }),
+])
+export type CodexHandoffOpenResult = typeof CodexHandoffOpenResultSchema.Type
+
+const decode = <A>(schema: any, value: unknown): A | null => {
+  try { return Schema.decodeUnknownSync(schema)(value) as A } catch { return null }
+}
+export const decodeCodexHandoffOpenRequest = (value: unknown): CodexHandoffOpenRequest | null =>
+  decode(CodexHandoffOpenRequestSchema, value)
+export const decodeCodexHandoffOpenResult = (value: unknown): CodexHandoffOpenResult | null =>
+  decode(CodexHandoffOpenResultSchema, value)
 
 export class CodexHandoffError extends Error {
   readonly _tag = "CodexHandoffError"
@@ -204,15 +249,18 @@ const sameQuiescenceIdentity = (
   proof.workPacketRef === request.identity.workPacketRef &&
   proof.openAgentsGeneration === request.identity.openAgentsGeneration
 
-const selectHandoff = (request: CodexHandoffRequest): CodexHandoffMode => {
+const selectHandoff = (
+  request: CodexHandoffRequest,
+  repositoryState: CodexHandoffRepositoryState,
+): CodexHandoffMode => {
   const exact = request.exactThreadCandidate
   if (exact !== null && exact.compatibleRuntimeRef === request.pinnedRuntimeRef) {
     return { mode: "exact_thread", ...exact }
   }
   return {
     mode: "repository_state",
-    postImageRef: request.repositoryState.postImageRef,
-    transcriptGapRef: request.repositoryState.transcriptGapRef,
+    postImageRef: repositoryState.postImageRef,
+    transcriptGapRef: repositoryState.transcriptGapRef,
     reason: "exact_thread_continuity_unproven",
   }
 }
@@ -246,7 +294,7 @@ export const openCodexHandoffLedger = (
   return {
     list: () => [...records],
     get: operationRef => records.find(record => record.operationRef === operationRef) ?? null,
-    admit: (input, quiesceOpenAgents) => serialize(async () => {
+    admit: (input, quiesceOpenAgents, resolveRepositoryState) => serialize(async () => {
       const request = decodeRequest(input)
       const digest = requestDigest(request)
       const existing = records.find(record => record.operationRef === request.operationRef)
@@ -294,11 +342,24 @@ export const openCodexHandoffLedger = (
           updatedAt,
         })
       }
+      const exact = request.exactThreadCandidate
+      const exactThreadProven = exact !== null && exact.compatibleRuntimeRef === request.pinnedRuntimeRef
+      const repositoryState = request.repositoryState ??
+        (exactThreadProven ? null : await resolveRepositoryState?.() ?? null)
+      if (!exactThreadProven && repositoryState === null) {
+        return replace({
+          ...quiescing,
+          phase: "refused",
+          quiescence: proof,
+          refusal: "repository_state_unavailable",
+          updatedAt,
+        })
+      }
       return replace({
         ...quiescing,
         phase: "admitted",
         quiescence: proof,
-        handoff: selectHandoff(request),
+        handoff: selectHandoff(request, repositoryState ?? request.repositoryState!),
         refusal: null,
         updatedAt,
       })

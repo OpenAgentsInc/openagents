@@ -96,7 +96,7 @@ describe("Open in Codex handoff admission", () => {
 
     expect(admitted.handoff).toEqual({
       mode: "repository_state",
-      postImageRef: request().repositoryState.postImageRef,
+      postImageRef: request().repositoryState!.postImageRef,
       transcriptGapRef: "transcript-gap.1",
       reason: "exact_thread_continuity_unproven",
     })

@@ -193,6 +193,7 @@ import {
 } from "./composer-images.ts"
 import type { FableLocalImageAttachment, LocalProviderTarget } from "../fable-local-contract.ts"
 import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
+import type { CodexHandoffOpenResult } from "../codex-handoff-contract.ts"
 import { parseExplicitSkillInvocation } from "./skill-invocation.ts"
 
 export type DesktopNoteEntry = Readonly<{
@@ -477,6 +478,7 @@ export const DesktopNoteSubmitted = defineIntent(
  * reverts the control to Send.
  */
 export const DesktopTurnInterrupted = defineIntent("DesktopTurnInterrupted", Schema.Null)
+export const DesktopCodexHandoffRequested = defineIntent("DesktopCodexHandoffRequested", Schema.Null)
 export const DesktopReviewContextRemoved = defineIntent("DesktopReviewContextRemoved", Schema.Null)
 export const DesktopEditorFileAttached = defineIntent("DesktopEditorFileAttached", Schema.Null)
 export const DesktopFileContextRemoved = defineIntent("DesktopFileContextRemoved", Schema.Null)
@@ -610,6 +612,7 @@ export const desktopShellIntents = [
   DesktopInputChanged,
   DesktopNoteSubmitted,
   DesktopTurnInterrupted,
+  DesktopCodexHandoffRequested,
   DesktopReviewContextRemoved,
   DesktopEditorFileAttached,
   DesktopFileContextRemoved,
@@ -1284,6 +1287,9 @@ export type DesktopWindowHost = { readonly toggleFullScreen: () => Promise<boole
 export type DesktopVoiceRendererHost = Readonly<{
   command: (command: Readonly<Record<string, unknown>>) => Promise<DesktopVoiceState | null>
 }>
+export type CodexHandoffRendererHost = Readonly<{
+  open: (request: Readonly<{ threadRef: string; turnRef: string }>) => Promise<CodexHandoffOpenResult>
+}>
 
 export const makeDesktopShellHandlers = (
   state: SubscriptionRef.SubscriptionRef<DesktopShellState>,
@@ -1322,6 +1328,13 @@ export const makeDesktopShellHandlers = (
   diagnosticsBridge: DiagnosticsBridge = unavailableDiagnosticsBridge,
   voiceHost: DesktopVoiceRendererHost = { command: async () => null },
   productSpecBridge: ProductSpecRendererBridge = unavailableProductSpecRendererBridge,
+  codexHandoffHost: CodexHandoffRendererHost = {
+    open: async () => ({
+      state: "refused",
+      reason: "work_identity_unavailable",
+      message: "Open in Codex is unavailable for this turn.",
+    }),
+  },
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
@@ -1615,6 +1628,19 @@ export const makeDesktopShellHandlers = (
       const current = yield* SubscriptionRef.get(state)
       if (!current.pending) return
       yield* Effect.promise(() => chat.interruptActive?.() ?? Promise.resolve(false))
+    }),
+  DesktopCodexHandoffRequested: () =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      if (current.activeThreadId === null) return
+      const turnRef = [...current.notes].reverse().find(note =>
+        note.meta?.lane === "codex-local" && typeof note.meta.turnRef === "string")?.meta?.turnRef
+      if (turnRef === undefined) return
+      const result = yield* Effect.promise(() => codexHandoffHost.open({
+        threadRef: current.activeThreadId!,
+        turnRef,
+      }))
+      yield* SubscriptionRef.update(state, value => ({ ...value, commandNotice: result.message }))
     }),
   DesktopChildInterruptRequested: ({ turnRef, childRef }) =>
     Effect.gen(function* () {
@@ -3072,6 +3098,25 @@ const permissionModeControl = (state: DesktopShellState): View | null => {
   })
 }
 
+const codexHandoffControl = (state: DesktopShellState): View | null => {
+  if (state.activeThreadId === null) return null
+  const hasCodexTurn = state.notes.some(note =>
+    note.meta?.lane === "codex-local" && typeof note.meta.turnRef === "string")
+  if (!hasCodexTurn) return null
+  return Button({
+    key: "shell-open-in-codex",
+    label: "Open in Codex",
+    variant: "ghost",
+    onPress: IntentRef("DesktopCodexHandoffRequested"),
+    style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", color: "textMuted" },
+    a11y: {
+      label: state.pending
+        ? "Stop and reconcile this ProductSpec work packet, then open it in Codex"
+        : "Open this ProductSpec work packet in Codex",
+    },
+  })
+}
+
 /**
  * The composer's trailing action control (EP250 Stop button, audit gap #9).
  * While a turn streams (`state.pending`) the evidence-gated Send is replaced by
@@ -3475,6 +3520,7 @@ const shellComposer = (state: DesktopShellState): View => {
           // null-collapse behavior.
           ...(providerAccountControl(state) === null ? [] : [providerAccountControl(state)!]),
           ...(permissionModeControl(state) === null ? [] : [permissionModeControl(state)!]),
+          ...(codexHandoffControl(state) === null ? [] : [codexHandoffControl(state)!]),
           // Push the send/stop control to the far right of the bar.
           Spacer({ key: "shell-composer-bar-spacer", flex: true }),
           // Voice-mode placeholder is honest presentation state only.

@@ -38,6 +38,9 @@ export const CodexLocalAvailabilityChannel = "openagents:codex-local:availabilit
 export const CodexLocalStartChannel = "openagents:codex-local:start" as const
 export const CodexLocalInterruptChannel = "openagents:codex-local:interrupt" as const
 export const CodexLocalEventChannel = "openagents:codex-local:event" as const
+/** Exact packaged Codex compatibility identity; thread handoff remains disabled
+ * unless a separately verified official-app continuity proof cites this ref. */
+export const CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF = "codex.compat.0.144.1" as const
 
 /** The lane's requested model/effort — spawn-config truth, shared with the
  * delegate children so "Codex" means ONE pinned model everywhere. */
