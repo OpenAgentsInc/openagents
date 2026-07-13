@@ -412,9 +412,12 @@ export const requestPortableSessionCommand = async (
       throw new PortableSessionAuthorityError("invalid", "movement command requires destination target")
     }
     const targets: Array<{ health: string; owner_user_id: string }> = await writer.sql`
-      SELECT health, owner_user_id
-      FROM khala_sync_portable_targets
-      WHERE target_ref = ${command.destinationTargetRef}
+      SELECT target.health, target.owner_user_id
+      FROM khala_sync_portable_targets target
+      INNER JOIN khala_sync_portable_session_targets membership
+        ON membership.target_ref = target.target_ref
+       AND membership.session_ref = ${command.sessionRef}
+      WHERE target.target_ref = ${command.destinationTargetRef}
     `
     if (targets[0]?.owner_user_id !== ownerUserId || targets[0]?.health !== "ready") {
       throw new PortableSessionAuthorityError("target_unavailable", "destination target is not ready")
@@ -812,8 +815,12 @@ export const completePortableSessionMove = async (
     )
   }
   const targets: Array<{ health: string; owner_user_id: string }> = await writer.sql`
-    SELECT health, owner_user_id FROM khala_sync_portable_targets
-    WHERE target_ref = ${destination.targetRef}
+    SELECT target.health, target.owner_user_id
+    FROM khala_sync_portable_targets target
+    INNER JOIN khala_sync_portable_session_targets membership
+      ON membership.target_ref = target.target_ref
+     AND membership.session_ref = ${command.sessionRef}
+    WHERE target.target_ref = ${destination.targetRef}
   `
   if (targets[0]?.owner_user_id !== row.owner_user_id || targets[0]?.health !== "ready") {
     throw new PortableSessionAuthorityError("target_unavailable", "destination target is not ready")

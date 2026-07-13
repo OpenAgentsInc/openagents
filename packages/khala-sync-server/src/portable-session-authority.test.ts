@@ -273,6 +273,25 @@ describe.skipIf(!hasLocalPostgres())("PORT-01 portable session authority against
       }, owner, "mutation.command.conflict"))).rejects.toMatchObject({
       code: "conflict",
     } satisfies Partial<PortableSessionAuthorityError>)
+
+    await sql`
+      INSERT INTO khala_sync_portable_targets
+        (target_ref, owner_user_id, target_class, adapter_ref,
+         compatibility_ref, isolation, data_posture, health)
+      VALUES
+        ('target.owner.same-owner-unbound', ${owner}, 'openagents_managed',
+         'adapter.unbound.v1', 'compat.portable.v1', 'dedicated_microvm',
+         'openagents_managed_region', 'ready')
+    `
+    await expect(withSyncTransaction(sql as unknown as SyncSql, writer =>
+      requestPortableSessionCommand(writer, {
+        ...command,
+        commandRef: "command.port01.unbound-target",
+        idempotencyKey: "idempotency.port01.unbound-target",
+        destinationTargetRef: "target.owner.same-owner-unbound",
+      }, owner, "mutation.command.unbound-target"))).rejects.toMatchObject({
+      code: "target_unavailable",
+    } satisfies Partial<PortableSessionAuthorityError>)
   })
 
   test("moves the complete graph once, replays a lost completion ACK, and fences the source", async () => {

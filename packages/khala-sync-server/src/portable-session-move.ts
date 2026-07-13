@@ -3,6 +3,9 @@ import { createHash } from "node:crypto"
 import { canonicalJson } from "@openagentsinc/khala-sync"
 import {
   PortableCapabilityBroker,
+  PortableAgentGraphSchema,
+  PortableCheckpointSchema,
+  PortableSessionExecutionBindingSchema,
   type PortableAgentGraph,
   type PortableAttachment,
   type PortableCheckpoint,
@@ -11,7 +14,7 @@ import {
   type PortableSessionExecutionBinding,
   type PortableTargetClass,
 } from "@openagentsinc/portable-session-contract"
-import { Effect } from "effect"
+import { Effect, Schema as S } from "effect"
 
 import type { SyncTransactionWriter } from "./outbox-writer.js"
 import {
@@ -38,6 +41,21 @@ export type PortableThreadCursor = Readonly<{
   activityCursor: number
   eventCursor: number
 }>
+
+const PortableThreadCursorSchema = S.Struct({
+  threadRef: S.String,
+  transcriptRef: S.String,
+  activityCursor: S.Number,
+  eventCursor: S.Number,
+})
+
+const PortableCheckpointBundleSchema = S.Struct({
+  checkpoint: PortableCheckpointSchema,
+  executionBinding: PortableSessionExecutionBindingSchema,
+  graph: PortableAgentGraphSchema,
+  threadCursors: S.Array(PortableThreadCursorSchema),
+})
+const decodeCheckpointBundle = S.decodeUnknownSync(PortableCheckpointBundleSchema)
 
 export type PortableCheckpointBundle = Readonly<{
   checkpoint: PortableCheckpoint
@@ -119,7 +137,9 @@ export type PortableSessionExecutionTarget = Readonly<{
   }>) => Promise<PortableTargetStageReceipt>
   activate: (input: Readonly<{
     operationRef: string
-    bundle: PortableCheckpointBundle
+    checkpointRef: string
+    sessionRef: string
+    executionBinding: PortableSessionExecutionBinding
     destinationAttachmentRef: string
     destinationGeneration: number
     capabilityLeaseRefs: ReadonlyArray<string>
@@ -149,7 +169,7 @@ export type PortableSessionMoveInput = Readonly<{
 
 export type PortableSessionMoveResult = Readonly<{
   schema: typeof PORTABLE_SESSION_MOVE_VERSION
-  status: "completed" | "replayed" | "activation_pending_reconcile" | "failed"
+  status: "completed" | "replayed" | "authority_pending_reconcile" | "activation_pending_reconcile" | "failed"
   commandRef: string
   sessionRef: string
   runRef: string
@@ -231,7 +251,9 @@ type AuthorityView = Readonly<{
   sourceAttachmentRef: string
   sourceGeneration: number
   sourceTargetRef: string
+  sourceTargetClass: PortableTargetClass
   sourceLeaseRefs: ReadonlyArray<string>
+  targets: ReadonlyArray<Readonly<{ targetRef: string; targetClass: PortableTargetClass }>>
   executionBinding: PortableSessionExecutionBinding
   graph: PortableAgentGraph
   threadCursors: ReadonlyArray<PortableThreadCursor>
@@ -244,6 +266,10 @@ const authorityView = (snapshot: PortableSessionAuthoritySnapshot): AuthorityVie
   const attachment = snapshot.attachments.find(row => row.attachment_ref === sourceAttachmentRef)
   if (attachment === undefined || Number(attachment.generation) !== sourceGeneration) {
     throw new PortableSessionMoveError("authority_rejected", "current attachment is absent from durable authority")
+  }
+  const sourceTarget = snapshot.targets.find(row => row.target_ref === attachment.target_ref)
+  if (sourceTarget === undefined) {
+    throw new PortableSessionMoveError("authority_rejected", "source target is not authorized for this session")
   }
   if (snapshot.executionBinding === null) {
     throw new PortableSessionMoveError(
@@ -297,7 +323,12 @@ const authorityView = (snapshot: PortableSessionAuthoritySnapshot): AuthorityVie
     sourceAttachmentRef,
     sourceGeneration,
     sourceTargetRef: String(attachment.target_ref),
+    sourceTargetClass: String(sourceTarget.target_class) as PortableTargetClass,
     sourceLeaseRefs: refs(parseJson<ReadonlyArray<string>>(attachment.capability_lease_refs_json), "source leases"),
+    targets: snapshot.targets.map(row => ({
+      targetRef: String(row.target_ref),
+      targetClass: String(row.target_class) as PortableTargetClass,
+    })),
     executionBinding,
     graph,
     threadCursors,
@@ -353,8 +384,12 @@ const ensureTargetMatches = (
   view: AuthorityView,
   input: PortableSessionMoveInput,
 ): void => {
+  const destinationTarget = view.targets.find(row => row.targetRef === input.command.destinationTargetRef)
   if (input.source.targetRef !== view.sourceTargetRef ||
-      input.destination.targetRef !== input.command.destinationTargetRef ||
+      input.source.targetClass !== view.sourceTargetClass ||
+      destinationTarget === undefined ||
+      input.destination.targetRef !== destinationTarget.targetRef ||
+      input.destination.targetClass !== destinationTarget.targetClass ||
       input.source.targetRef === input.destination.targetRef) {
     throw new PortableSessionMoveError("target_mismatch", "runtime targets do not match durable movement authority")
   }
@@ -398,6 +433,15 @@ const validateTransfers = (
 }
 
 const validateBundle = (view: AuthorityView, command: PortableSessionCommand, bundle: PortableCheckpointBundle): void => {
+  let decoded: typeof PortableCheckpointBundleSchema.Type
+  try {
+    decoded = decodeCheckpointBundle(bundle)
+  } catch {
+    throw new PortableSessionMoveError("checkpoint_invalid", "source checkpoint bundle schema is invalid")
+  }
+  if (!same(decoded, bundle)) {
+    throw new PortableSessionMoveError("checkpoint_invalid", "source checkpoint bundle contains unknown fields")
+  }
   const checkpoint = bundle.checkpoint
   if (checkpoint.sessionRef !== view.sessionRef ||
       checkpoint.checkpointRef !== command.checkpointRef ||
@@ -566,6 +610,7 @@ export class PortableSessionMoveCoordinator {
       durableEvidence.push(...bundle.checkpoint.receiptRefs)
 
       for (const transfer of input.capabilityTransfers) {
+        destinationLeaseRefs.push(transfer.destinationLeaseRef)
         const moved = await Effect.runPromise(this.config.broker.reissue({
           operationRef: `operation.${input.command.commandRef}.capability.${transfer.sourceLeaseRef}.reissue`,
           leaseRef: transfer.sourceLeaseRef,
@@ -579,7 +624,6 @@ export class PortableSessionMoveCoordinator {
           throw new PortableSessionMoveError("broker_failed", "capability reissue failed closed")
         })
         durableEvidence.push(...moved.evidenceRefs)
-        destinationLeaseRefs.push(transfer.destinationLeaseRef)
         const redeemed = await Effect.runPromise(this.config.broker.redeem({
           operationRef: `operation.${input.command.commandRef}.capability.${transfer.destinationLeaseRef}.redeem`,
           leaseRef: transfer.destinationLeaseRef,
@@ -632,18 +676,51 @@ export class PortableSessionMoveCoordinator {
         undefined,
         input.destinationAttachmentRef,
       )
-      await this.config.transaction(writer => completePortableSessionMove(writer, {
-        commandRef: input.command.commandRef,
-        checkpoint: bundle!.checkpoint,
-        destinationAttachment,
-        outcome,
-      }, `mutation.${input.command.commandRef}.complete`))
+      try {
+        await this.config.transaction(writer => completePortableSessionMove(writer, {
+          commandRef: input.command.commandRef,
+          checkpoint: bundle!.checkpoint,
+          destinationAttachment,
+          outcome,
+        }, `mutation.${input.command.commandRef}.complete`))
+      } catch {
+        try {
+          const afterUnknown = await readPortableSessionAuthoritySnapshot(
+            this.config.sql as unknown as SqlTag,
+            { sessionRef: input.command.sessionRef, ownerUserId: input.command.ownerRef },
+          )
+          if (afterUnknown?.commands.some(row =>
+            row.command_ref === input.command.commandRef && row.status === "completed")) {
+            return this.reconcileCompleted(input, afterUnknown)
+          }
+        } catch {
+          // The completion outcome is still unknown; destructive compensation is forbidden.
+        }
+        return {
+          schema: PORTABLE_SESSION_MOVE_VERSION,
+          status: "authority_pending_reconcile",
+          commandRef: input.command.commandRef,
+          sessionRef: view.sessionRef,
+          ...resultBinding(view),
+          sourceAttachmentRef: view.sourceAttachmentRef,
+          sourceGeneration: view.sourceGeneration,
+          destinationAttachmentRef: input.destinationAttachmentRef,
+          destinationGeneration: view.sourceGeneration + 1,
+          checkpointRef: bundle.checkpoint.checkpointRef,
+          capabilityLeaseRefs: destinationLeaseRefs,
+          acceptedWorkRefs: [],
+          evidenceRefs: refs(durableEvidence, "result evidence"),
+          reasonRef: "reason.portable_move.authority_pending_reconcile",
+        }
+      }
       authorityCompleted = true
 
       try {
         const activation = await input.destination.activate({
           operationRef: `operation.${input.command.commandRef}.destination.activate`,
-          bundle,
+          checkpointRef: bundle.checkpoint.checkpointRef,
+          sessionRef: view.sessionRef,
+          executionBinding: view.executionBinding,
           destinationAttachmentRef: input.destinationAttachmentRef,
           destinationGeneration: view.sourceGeneration + 1,
           capabilityLeaseRefs: destinationLeaseRefs,
@@ -763,16 +840,8 @@ export class PortableSessionMoveCoordinator {
         attachmentGeneration: input.command.expectedGeneration,
       })),
     })
-    const currentByThread = new Map(snapshot.current.map(row => [String(row.thread_ref), row]))
-    const threadCursors = sortCursors(graph.nodes.map(node => ({
-      threadRef: node.threadRef,
-      transcriptRef: node.transcriptRef,
-      activityCursor: node.activityCursor,
-      eventCursor: Number(currentByThread.get(node.threadRef)?.latest_cursor ?? -1),
-    })))
     const checkpoint = { ...checkpointFromRow({ ...checkpointRow, session_ref: input.command.sessionRef }) }
     const view = authorityView(snapshot)
-    const bundle = { checkpoint, executionBinding: view.executionBinding, graph, threadCursors }
     const capabilityLeaseRefs = refs(
       parseJson<ReadonlyArray<string>>(destination.capability_lease_refs_json),
       "destination leases",
@@ -780,7 +849,9 @@ export class PortableSessionMoveCoordinator {
     try {
       const activation = await input.destination.activate({
         operationRef: `operation.${input.command.commandRef}.destination.activate`,
-        bundle,
+        checkpointRef: checkpoint.checkpointRef,
+        sessionRef: input.command.sessionRef,
+        executionBinding: view.executionBinding,
         destinationAttachmentRef: String(destination.attachment_ref),
         destinationGeneration: Number(destination.generation),
         capabilityLeaseRefs,

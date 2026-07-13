@@ -158,6 +158,25 @@ export type CapabilityBrokerConfig = {
     readonly append: (evidence: CapabilityBrokerEvidence) => Promise<void>
   }
   readonly maxTtlMs?: number
+  /** Private refs-only persistence; never expose this state as a public snapshot. */
+  readonly stateStore?: CapabilityBrokerStateStore
+}
+
+export type CapabilityBrokerPrivateDurableState = {
+  readonly schema: typeof PORTABLE_CAPABILITY_BROKER_VERSION
+  readonly records: ReadonlyArray<CapabilityLeaseRecord>
+  readonly operations: ReadonlyArray<Readonly<{
+    operationRef: string
+    fingerprint: string
+    outcome: CapabilityBrokerOutcome
+  }>>
+  readonly evidence: ReadonlyArray<CapabilityBrokerEvidence>
+  readonly material: "excluded"
+}
+
+export type CapabilityBrokerStateStore = {
+  readonly load: () => Promise<CapabilityBrokerPrivateDurableState | null>
+  readonly save: (state: CapabilityBrokerPrivateDurableState) => Promise<void>
 }
 
 export type IssueCapabilityInput = {
@@ -246,6 +265,30 @@ export class PortableCapabilityBroker {
     this.maxTtlMs = config.maxTtlMs ?? DEFAULT_MAX_TTL_MS
     this.targets = new Map(config.targets.map((target) => [target.targetRef, target]))
     this.adapters = new Map(config.adapters.map((adapter) => [adapter.adapterRef, adapter]))
+  }
+
+  static async restore(config: CapabilityBrokerConfig): Promise<PortableCapabilityBroker> {
+    const broker = new PortableCapabilityBroker(config)
+    const state = await config.stateStore?.load()
+    if (state === undefined || state === null) return broker
+    if (state.schema !== PORTABLE_CAPABILITY_BROKER_VERSION || state.material !== "excluded") {
+      throw new CapabilityBrokerError("invalid_scope", "operation.broker.restore", "durable broker state is invalid")
+    }
+    for (const record of state.records) {
+      broker.records.set(record.lease.leaseRef, {
+        ...record,
+        lease: cloneLease(record.lease),
+        permissions: [...record.permissions],
+      })
+    }
+    for (const operation of state.operations) {
+      broker.operations.set(operation.operationRef, {
+        fingerprint: operation.fingerprint,
+        outcome: { ...operation.outcome, evidenceRefs: [...operation.outcome.evidenceRefs] },
+      })
+    }
+    broker.evidence.push(...state.evidence.map(item => ({ ...item })))
+    return broker
   }
 
   issue(input: IssueCapabilityInput): Effect.Effect<CapabilityBrokerOutcome, CapabilityBrokerError> {
@@ -482,9 +525,29 @@ export class PortableCapabilityBroker {
     const evidenceRef = `evidence.capability.${outcome.operationRef}`
     const evidence = this.makeEvidence(evidenceRef, outcome, record)
     const withEvidence = { ...outcome, evidenceRefs: [evidenceRef] }
+    await this.config.evidenceSink.append(evidence)
     this.operations.set(outcome.operationRef, { fingerprint, outcome: withEvidence })
     this.evidence.push(evidence)
-    await this.config.evidenceSink.append(evidence)
+    await this.persistState()
+  }
+
+  private async persistState(): Promise<void> {
+    if (!this.config.stateStore) return
+    await this.config.stateStore.save({
+      schema: PORTABLE_CAPABILITY_BROKER_VERSION,
+      records: [...this.records.values()].map(record => ({
+        ...record,
+        lease: cloneLease(record.lease),
+        permissions: [...record.permissions],
+      })),
+      operations: [...this.operations.entries()].map(([operationRef, operation]) => ({
+        operationRef,
+        fingerprint: operation.fingerprint,
+        outcome: { ...operation.outcome, evidenceRefs: [...operation.outcome.evidenceRefs] },
+      })),
+      evidence: this.evidence.map(item => ({ ...item })),
+      material: "excluded",
+    })
   }
 
   private makeEvidence(evidenceRef: string, outcome: CapabilityBrokerOutcome, record?: CapabilityLeaseRecord): CapabilityBrokerEvidence {

@@ -7,6 +7,9 @@ import {
   makeOwnerLocalCapabilityAdapter,
   PortableCapabilityBroker,
   type CapabilityBrokerEvidence,
+  type CapabilityBrokerConfig,
+  type CapabilityBrokerPrivateDurableState,
+  type CapabilityBrokerStateStore,
   type CapabilitySecretVault,
   type IssueCapabilityInput,
   type SecretMaterial,
@@ -23,6 +26,14 @@ class FixtureClock {
   }
 }
 
+class MemoryBrokerStateStore implements CapabilityBrokerStateStore {
+  state: CapabilityBrokerPrivateDurableState | null = null
+  load = async () => this.state === null ? null : structuredClone(this.state)
+  save = async (state: CapabilityBrokerPrivateDurableState) => {
+    this.state = structuredClone(state)
+  }
+}
+
 function fixture(
   options: {
     vaultOutage?: boolean
@@ -30,6 +41,7 @@ function fixture(
     managedDenial?: boolean
     managedWipeFailure?: boolean
     clock?: FixtureClock
+    stateStore?: CapabilityBrokerStateStore
   } = {},
 ) {
   const clock = options.clock ?? new FixtureClock()
@@ -77,7 +89,7 @@ function fixture(
       return { wipeReceiptRef: `receipt.wipe.${leaseRef}` }
     },
   })
-  const broker = new PortableCapabilityBroker({
+  const brokerConfig: CapabilityBrokerConfig = {
     vault,
     clock,
     targets: [
@@ -88,8 +100,10 @@ function fixture(
     ],
     adapters: [localAdapter, managedAdapter],
     evidenceSink: { append: async item => { evidence.push(item) } },
-  })
-  return { broker, clock, evidence, installed, revoked, wiped }
+    ...(options.stateStore ? { stateStore: options.stateStore } : {}),
+  }
+  const broker = new PortableCapabilityBroker(brokerConfig)
+  return { broker, brokerConfig, clock, evidence, installed, revoked, wiped }
 }
 
 type IssueOverrides = { [K in keyof IssueCapabilityInput]?: IssueCapabilityInput[K] | undefined }
@@ -181,6 +195,35 @@ describe("portable target-scoped capability broker", () => {
     expect(broker.snapshot().evidence).toHaveLength(1)
     await expectReason(broker.issue(issueInput({ targetRef: "target.agent-computer" })), "conflicting_replay")
     expect(broker.snapshot().leases).toHaveLength(1)
+  })
+
+  test("restores leases and operation replay identity into a truly fresh broker instance", async () => {
+    const stateStore = new MemoryBrokerStateStore()
+    const first = fixture({ stateStore })
+    await run(first.broker.issue(issueInput()))
+    await run(first.broker.redeem({ operationRef: "operation.redeem.before-restart", leaseRef: "lease.local.provider" }))
+    const reissueInput = {
+      operationRef: "operation.reissue.before-restart",
+      leaseRef: "lease.local.provider",
+      newLeaseRef: "lease.managed.after-restart",
+      destinationSourceGrantRef: "grant.destination.after-restart",
+      destinationAttachmentRef: "attachment.managed.after-restart",
+      destinationAttachmentGeneration: 2,
+      destinationTargetRef: "target.agent-computer",
+      expiresAt: at(12),
+    }
+    await run(first.broker.reissue(reissueInput))
+
+    const restored = await PortableCapabilityBroker.restore(first.brokerConfig)
+    expect(restored).not.toBe(first.broker)
+    expect((await run(restored.reissue(reissueInput))).status).toBe("replayed")
+    await run(restored.redeem({
+      operationRef: "operation.redeem.after-restart",
+      leaseRef: "lease.managed.after-restart",
+    }))
+    expect(restored.snapshot().leases.find(row =>
+      row.lease.leaseRef === "lease.managed.after-restart")?.lease.state).toBe("redeemed")
+    expect(JSON.stringify(restored.snapshot())).not.toContain("grant.destination.after-restart")
   })
 
   test("renew is bounded and expired grants revoke and wipe before refusing", async () => {

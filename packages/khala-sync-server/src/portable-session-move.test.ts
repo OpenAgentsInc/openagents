@@ -7,6 +7,9 @@ import {
   makeOwnerLocalCapabilityAdapter,
   type PortableAgentGraph,
   type PortableCheckpoint,
+  type CapabilityBrokerConfig,
+  type CapabilityBrokerPrivateDurableState,
+  type CapabilityBrokerStateStore,
   type SecretMaterial,
 } from "@openagentsinc/portable-session-contract"
 import { Effect } from "effect"
@@ -127,7 +130,18 @@ type BoundaryLog = {
   targetOperations: string[]
 }
 
-const makeBroker = async (log: BoundaryLog): Promise<PortableCapabilityBroker> => {
+class MemoryBrokerStateStore implements CapabilityBrokerStateStore {
+  state: CapabilityBrokerPrivateDurableState | null = null
+  load = async () => this.state === null ? null : structuredClone(this.state)
+  save = async (state: CapabilityBrokerPrivateDurableState) => {
+    this.state = structuredClone(state)
+  }
+}
+
+const makeBroker = async (
+  log: BoundaryLog,
+  options: { failFirstReissueEvidence?: boolean } = {},
+): Promise<Readonly<{ broker: PortableCapabilityBroker; config: CapabilityBrokerConfig }>> => {
   const material = new TextEncoder().encode("PORT03-CANARY-RAW-CREDENTIAL") as SecretMaterial
   const adapterRuntime = {
     install: async (input: { lease: { leaseRef: string; targetRef: string }; material: SecretMaterial }) => {
@@ -143,7 +157,9 @@ const makeBroker = async (log: BoundaryLog): Promise<PortableCapabilityBroker> =
       return { wipeReceiptRef: `receipt.${input.leaseRef}.wiped` }
     },
   }
-  const broker = new PortableCapabilityBroker({
+  let reissueEvidenceFailed = false
+  const stateStore = new MemoryBrokerStateStore()
+  const config: CapabilityBrokerConfig = {
     clock: { now: () => new Date(NOW) },
     maxTtlMs: 15 * 60 * 1_000,
     vault: {
@@ -160,8 +176,16 @@ const makeBroker = async (log: BoundaryLog): Promise<PortableCapabilityBroker> =
       makeOwnerLocalCapabilityAdapter("adapter.port03.local", adapterRuntime),
       makeOpenAgentsManagedCapabilityAdapter("adapter.port03.agent-computer", adapterRuntime),
     ],
-    evidenceSink: { append: async () => undefined },
-  })
+    evidenceSink: { append: async evidence => {
+      if (options.failFirstReissueEvidence &&
+          evidence.operation === "reissue" && !reissueEvidenceFailed) {
+        reissueEvidenceFailed = true
+        throw new Error("durable evidence sink unavailable")
+      }
+    } },
+    stateStore,
+  }
+  const broker = new PortableCapabilityBroker(config)
   for (const [index, capability] of (["provider", "scm_write"] as const).entries()) {
     const leaseRef = sourceAttachment.capabilityLeaseRefs[index]!
     await Effect.runPromise(broker.issue({
@@ -183,14 +207,14 @@ const makeBroker = async (log: BoundaryLog): Promise<PortableCapabilityBroker> =
       leaseRef,
     }))
   }
-  return broker
+  return { broker, config }
 }
 
 type TargetFaults = {
   rejectStage?: boolean
   failCleanup?: boolean
   failActivationOnce?: boolean
-  tamperCheckpoint?: "digest" | "graph" | "cursor" | "binding"
+  tamperCheckpoint?: "digest" | "graph" | "cursor" | "binding" | "secret_extra"
 }
 
 const makeTarget = (
@@ -201,6 +225,7 @@ const makeTarget = (
 ): PortableSessionExecutionTarget => {
   const checkpoints = new Map<string, PortableCheckpointBundle>()
   const activations = new Map<string, PortableTargetActivationReceipt>()
+  const activationFingerprints = new Map<string, string>()
   let activationFailed = false
   return {
     targetRef,
@@ -247,13 +272,16 @@ const makeTarget = (
           ? digest("a")
           : computePortableCheckpointDigest(withoutDigest),
       }
-      const bundle = {
+      const bundle: PortableCheckpointBundle & { password?: string } = {
         checkpoint,
         executionBinding: faults.tamperCheckpoint === "binding"
           ? { ...input.executionBinding, runRef: "run.port03.tampered" }
           : input.executionBinding,
         graph,
         threadCursors: input.threadCursors,
+        ...(faults.tamperCheckpoint === "secret_extra"
+          ? { password: "PORT03-CANARY-RAW-CREDENTIAL" }
+          : {}),
       }
       checkpoints.set(input.operationRef, bundle)
       return bundle
@@ -283,21 +311,27 @@ const makeTarget = (
     },
     activate: async input => {
       log.targetOperations.push(input.operationRef)
-      if (faults.failActivationOnce && !activationFailed) {
-        activationFailed = true
-        throw new Error("activation acknowledgement lost")
+      const fingerprint = JSON.stringify(input)
+      const priorFingerprint = activationFingerprints.get(input.operationRef)
+      if (priorFingerprint !== undefined && priorFingerprint !== fingerprint) {
+        throw new Error("activation operation ref replayed with different bytes")
       }
       const existing = activations.get(input.operationRef)
       if (existing) return existing
       const receipt = {
-        activatedAgentRefs: input.bundle.graph.nodes.map(node => node.agentRef),
-        acceptedWorkRefs: input.bundle.graph.nodes.map(node => ({
+        activatedAgentRefs: session.graph.nodes.map(node => node.agentRef),
+        acceptedWorkRefs: session.graph.nodes.map(node => ({
           agentRef: node.agentRef,
           turnRef: `turn.${input.destinationGeneration}.${node.agentRef}`,
         })),
         evidenceRefs: [`evidence.${input.operationRef}`],
       }
+      activationFingerprints.set(input.operationRef, fingerprint)
       activations.set(input.operationRef, receipt)
+      if (faults.failActivationOnce && !activationFailed) {
+        activationFailed = true
+        throw new Error("activation acknowledgement lost")
+      }
       return receipt
     },
     abortStaged: async input => {
@@ -381,17 +415,33 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     if (pg !== undefined) await pg.stop()
   })
 
-  const setup = async (faults: { local?: TargetFaults; managed?: TargetFaults } = {}) => {
+  const setup = async (faults: {
+    local?: TargetFaults
+    managed?: TargetFaults
+    loseCompletionAck?: boolean
+    failFirstReissueEvidence?: boolean
+  } = {}) => {
     const log: BoundaryLog = { installed: [], wiped: [], revoked: [], targetOperations: [] }
-    const broker = await makeBroker(log)
+    const brokerHarness = await makeBroker(log, {
+      ...(faults.failFirstReissueEvidence ? { failFirstReissueEvidence: true } : {}),
+    })
+    const { broker } = brokerHarness
     const local = makeTarget(localTargetRef, "owner_local", log, faults.local)
     const managed = makeTarget(managedTargetRef, "openagents_managed", log, faults.managed)
+    let transactionCount = 0
     const coordinator = new PortableSessionMoveCoordinator({
       sql: sql as unknown as SyncSql,
-      transaction: run => withSyncTransaction(sql as unknown as SyncSql, run),
+      transaction: async run => {
+        transactionCount += 1
+        const result = await withSyncTransaction(sql as unknown as SyncSql, run)
+        if (faults.loseCompletionAck && transactionCount === 3) {
+          throw new Error("committed completion acknowledgement lost")
+        }
+        return result
+      },
       broker,
     })
-    return { broker, coordinator, local, log, managed }
+    return { broker, brokerConfig: brokerHarness.config, coordinator, local, log, managed }
   }
 
   const firstMove = (local: PortableSessionExecutionTarget, managed: PortableSessionExecutionTarget): PortableSessionMoveInput => ({
@@ -497,7 +547,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     expect(log.targetOperations).toContain("operation.command.port03.move.1.destination.abort")
   })
 
-  test.each(["digest", "graph", "cursor", "binding"] as const)("rejects a tampered %s checkpoint before broker transfer or destination stage", async tamperCheckpoint => {
+  test.each(["digest", "graph", "cursor", "binding", "secret_extra"] as const)("rejects a tampered %s checkpoint before broker transfer or destination stage", async tamperCheckpoint => {
     const { broker, coordinator, local, managed } = await setup({ local: { tamperCheckpoint } })
     const result = await coordinator.move(firstMove(local, managed))
     expect(result).toMatchObject({ status: "failed", reasonRef: "reason.portable_move.checkpoint_invalid" })
@@ -526,6 +576,17 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     expect(broker.snapshot().leases.filter(row => row.lease.targetRef === managedTargetRef).every(row => row.lease.state === "released")).toBe(true)
   })
 
+  test("a reissue evidence failure releases the requested destination lease instead of orphaning authority", async () => {
+    const { broker, coordinator, local, managed } = await setup({ failFirstReissueEvidence: true })
+    const result = await coordinator.move(firstMove(local, managed))
+    expect(result).toMatchObject({ status: "failed", reasonRef: "reason.portable_move.broker_failed" })
+    const destination = broker.snapshot().leases.find(row =>
+      row.lease.leaseRef === "lease.port03.managed.2.0")
+    expect(destination?.lease.state).toBe("released")
+    expect(broker.snapshot().leases.filter(row =>
+      row.lease.targetRef === managedTargetRef && ["issued", "redeemed"].includes(row.lease.state))).toHaveLength(0)
+  })
+
   test("lost activation acknowledgement converges through a completed-command replay without another accepted parent or child turn", async () => {
     const { coordinator, local, managed } = await setup({ managed: { failActivationOnce: true } })
     const input = firstMove(local, managed)
@@ -544,8 +605,33 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     expect(snapshot?.attachments.filter(row => row.state === "active")).toHaveLength(1)
   })
 
+  test("a lost committed PORT-01 completion acknowledgement reconciles without aborting or releasing the authoritative destination", async () => {
+    const { broker, coordinator, local, log, managed } = await setup({ loseCompletionAck: true })
+    const result = await coordinator.move(firstMove(local, managed))
+    expect(result.status).toBe("replayed")
+    expect(result.acceptedWorkRefs).toHaveLength(2)
+    expect(log.targetOperations).not.toContain("operation.command.port03.move.1.destination.abort")
+    expect(broker.snapshot().leases.filter(row =>
+      row.lease.targetRef === managedTargetRef && row.lease.state === "redeemed")).toHaveLength(2)
+    const snapshot = await readPortableSessionAuthoritySnapshot(
+      sql as unknown as SyncSql,
+      { sessionRef, ownerUserId: owner },
+    )
+    expect(snapshot?.commands[0]?.status).toBe("completed")
+    expect(snapshot?.session.current_attachment_ref).toBe("attachment.port03.managed.2")
+  })
+
+  test("refuses a runtime target whose class does not match the durable session target", async () => {
+    const { coordinator, local, log } = await setup()
+    const masqueradingManaged = makeTarget(managedTargetRef, "owner_local" as never, log)
+    await expect(coordinator.move(firstMove(local, masqueradingManaged))).rejects.toMatchObject({
+      reason: "target_mismatch",
+    })
+    expect(log.targetOperations).toEqual([])
+  })
+
   test("a fresh coordinator and SQL handle resume an accepted quiesced move after one capability already reissued", async () => {
-    const { broker, local, log, managed } = await setup()
+    const { broker, brokerConfig, local, log, managed } = await setup()
     const input = firstMove(local, managed)
     await withSyncTransaction(sql as unknown as SyncSql, writer => requestPortableSessionCommand(
       writer,
@@ -582,16 +668,18 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     }))
 
     const restarted = new SQL({ url: pg.urlFor("khala_sync_portable_move"), max: 2 })
+    const restoredBroker = await PortableCapabilityBroker.restore(brokerConfig)
+    expect(restoredBroker).not.toBe(broker)
     const resumed = new PortableSessionMoveCoordinator({
       sql: restarted as unknown as SyncSql,
       transaction: run => withSyncTransaction(restarted as unknown as SyncSql, run),
-      broker,
+      broker: restoredBroker,
     })
     const result = await resumed.move(input)
     await restarted.end()
     expect(result.status).toBe("completed")
     expect(result.capabilityLeaseRefs).toHaveLength(2)
-    expect(broker.snapshot().leases.filter(row => row.lease.targetRef === managedTargetRef && row.lease.state === "redeemed")).toHaveLength(2)
+    expect(restoredBroker.snapshot().leases.filter(row => row.lease.targetRef === managedTargetRef && row.lease.state === "redeemed")).toHaveLength(2)
     expect(log.targetOperations.filter(operation => operation.endsWith("source.quiesce"))).toHaveLength(2)
     const snapshot = await readPortableSessionAuthoritySnapshot(sql as unknown as SyncSql, { sessionRef, ownerUserId: owner })
     expect(snapshot?.commands).toHaveLength(1)
