@@ -91,6 +91,38 @@ export const ProductSpecPacketStateSchema = Schema.Literals([
 ])
 export type ProductSpecPacketState = typeof ProductSpecPacketStateSchema.Type
 
+export const ProductSpecEvidenceKindSchema = Schema.Literals([
+  "test_run",
+  "behavior_eval",
+  "artifact",
+  "diff_review",
+  "receipt",
+])
+export type ProductSpecEvidenceKind = typeof ProductSpecEvidenceKindSchema.Type
+
+export const ProductSpecEvidenceReceiptSchema = Schema.Struct({
+  receiptRef: RefSchema,
+  evidenceRef: RefSchema,
+  kind: ProductSpecEvidenceKindSchema,
+  producerRef: RefSchema,
+  spec: ProductSpecIdentitySchema,
+  criterionIds: Schema.Array(CriterionIdSchema),
+  producedAt: TimestampSchema,
+})
+export type ProductSpecEvidenceReceipt = typeof ProductSpecEvidenceReceiptSchema.Type
+
+export const ProductSpecVerificationReceiptSchema = Schema.Struct({
+  receiptRef: RefSchema,
+  evidenceReceiptRefs: Schema.Array(RefSchema),
+  outputRef: RefSchema,
+  verifierRef: RefSchema,
+  spec: ProductSpecIdentitySchema,
+  criterionIds: Schema.Array(CriterionIdSchema),
+  verdict: Schema.Literal("passed"),
+  verifiedAt: TimestampSchema,
+})
+export type ProductSpecVerificationReceipt = typeof ProductSpecVerificationReceiptSchema.Type
+
 export const ProductSpecWorkPacketSchema = Schema.Struct({
   packetRef: RefSchema,
   title: NonEmptyTextSchema,
@@ -100,8 +132,10 @@ export const ProductSpecWorkPacketSchema = Schema.Struct({
   allocation: Schema.Literals(["root", "child"]),
   state: ProductSpecPacketStateSchema,
   evidenceRefs: Schema.Array(RefSchema),
+  evidenceReceipts: Schema.Array(ProductSpecEvidenceReceiptSchema),
   evidenceProducerRef: Schema.optional(RefSchema),
   verifierRefs: Schema.Array(RefSchema),
+  verificationReceipts: Schema.Array(ProductSpecVerificationReceiptSchema),
   activeLease: Schema.optional(Schema.NullOr(Schema.Struct({
     leaseRef: RefSchema,
     executorRef: RefSchema,
@@ -271,6 +305,7 @@ export const ProductSpecEvidenceRequestSchema = Schema.Struct({
   packetRef: RefSchema,
   leaseRef: RefSchema,
   evidenceRef: RefSchema,
+  evidenceKind: ProductSpecEvidenceKindSchema,
   expectedSpec: ProductSpecIdentitySchema,
 })
 export type ProductSpecEvidenceRequest = typeof ProductSpecEvidenceRequestSchema.Type
@@ -279,6 +314,8 @@ export const ProductSpecVerificationRequestSchema = Schema.Struct({
   runRef: RefSchema,
   packetRef: RefSchema,
   verifierRef: RefSchema,
+  outputRef: RefSchema,
+  evidenceReceiptRefs: Schema.Array(RefSchema).check(Schema.isMinLength(1)),
   expectedSpec: ProductSpecIdentitySchema,
 })
 export type ProductSpecVerificationRequest = typeof ProductSpecVerificationRequestSchema.Type

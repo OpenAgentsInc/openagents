@@ -438,7 +438,9 @@ export const makeProductSpecWorkroom = (
         dependencyRefs: [...packet.dependencyRefs],
         state: "planned",
         evidenceRefs: [],
+        evidenceReceipts: [],
         verifierRefs: [],
+        verificationReceipts: [],
         activeLease: null,
       })),
       deferredCriterionIds: deferred,
@@ -456,7 +458,18 @@ export const makeProductSpecWorkroom = (
     const value = loadJson<ProductSpecRun>(runFile(runRef))
     return value === null
       ? failure("not_found", "The ProductSpec run does not exist.")
-      : { ok: true, value }
+      : { ok: true, value: {
+          ...value,
+          plan: {
+            ...value.plan,
+            packets: value.plan.packets.map(packet => ({
+              ...packet,
+              // Forward-read legacy MVP run files without inventing proof.
+              evidenceReceipts: packet.evidenceReceipts ?? [],
+              verificationReceipts: packet.verificationReceipts ?? [],
+            })),
+          },
+        } }
   }
 
   const persistRun = (run: ProductSpecRun): ProductSpecOperationResult<ProductSpecRun> => {
@@ -606,7 +619,15 @@ export const makeProductSpecWorkroom = (
     if (!current.ok) return current
     const packet = current.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
     if (packet === undefined) return failure("packet_not_found", "The work packet does not exist.")
-    if (packet.state === "evidence_present" && packet.evidenceRefs.includes(request.evidenceRef)) {
+    const evidenceReceiptRef = `receipt.evidence.${sha256([
+      current.value.runRef,
+      packet.packetRef,
+      request.leaseRef,
+      request.evidenceRef,
+      request.evidenceKind,
+      current.value.spec.digest,
+    ].join("\n")).slice(0, 32)}`
+    if (packet.state === "evidence_present" && (packet.evidenceReceipts ?? []).some(receipt => receipt.receiptRef === evidenceReceiptRef)) {
       return { ok: true, value: current.value, reconciled: true }
     }
     if (packet.state !== "active" || packet.activeLease?.leaseRef !== request.leaseRef) {
@@ -616,6 +637,15 @@ export const makeProductSpecWorkroom = (
       ...packet,
       state: "evidence_present",
       evidenceRefs: unique([...packet.evidenceRefs, request.evidenceRef]),
+      evidenceReceipts: [...(packet.evidenceReceipts ?? []), {
+        receiptRef: evidenceReceiptRef,
+        evidenceRef: request.evidenceRef,
+        kind: request.evidenceKind,
+        producerRef: packet.activeLease.executorRef,
+        spec: current.value.spec,
+        criterionIds: packet.criterionIds,
+        producedAt: now(),
+      }],
       evidenceProducerRef: packet.activeLease.executorRef,
       activeLease: null,
     }, now()))
@@ -659,7 +689,23 @@ export const makeProductSpecWorkroom = (
     if (!current.ok) return current
     const packet = current.value.plan.packets.find(candidate => candidate.packetRef === request.packetRef)
     if (packet === undefined) return failure("packet_not_found", "The work packet does not exist.")
-    if (packet.state === "verified" && packet.verifierRefs.includes(request.verifierRef)) {
+    const resolvedEvidence = request.evidenceReceiptRefs.map(receiptRef =>
+      (packet.evidenceReceipts ?? []).find(receipt => receipt.receiptRef === receiptRef))
+    if (resolvedEvidence.some(receipt => receipt === undefined)) {
+      return failure("evidence_required", "Verification must resolve every linked evidence receipt on this packet.")
+    }
+    if (resolvedEvidence.some(receipt => !identitiesEqual(receipt!.spec, current.value.spec))) {
+      return failure("revision_mismatch", "Verification evidence belongs to a different ProductSpec revision.")
+    }
+    const verificationReceiptRef = `receipt.verification.${sha256([
+      current.value.runRef,
+      packet.packetRef,
+      request.verifierRef,
+      request.outputRef,
+      ...request.evidenceReceiptRefs,
+      current.value.spec.digest,
+    ].join("\n")).slice(0, 32)}`
+    if (packet.state === "verified" && (packet.verificationReceipts ?? []).some(receipt => receipt.receiptRef === verificationReceiptRef)) {
       return { ok: true, value: current.value, reconciled: true }
     }
     if (packet.state !== "evidence_present" || packet.evidenceRefs.length === 0) {
@@ -672,6 +718,16 @@ export const makeProductSpecWorkroom = (
       ...packet,
       state: "verified",
       verifierRefs: unique([...packet.verifierRefs, request.verifierRef]),
+      verificationReceipts: [...(packet.verificationReceipts ?? []), {
+        receiptRef: verificationReceiptRef,
+        evidenceReceiptRefs: request.evidenceReceiptRefs,
+        outputRef: request.outputRef,
+        verifierRef: request.verifierRef,
+        spec: current.value.spec,
+        criterionIds: packet.criterionIds,
+        verdict: "passed",
+        verifiedAt: now(),
+      }],
     }, now()))
   }
 

@@ -58,6 +58,7 @@ export type ProductSpecWorkspaceState = Readonly<{
   run: ProductSpecRun | null
   evidenceRef: string
   verifierRef: string
+  verificationOutputRef: string
   blockedReason: string
   busy: string | null
   notice: string | null
@@ -74,6 +75,7 @@ export const emptyProductSpecWorkspaceState = (): ProductSpecWorkspaceState => (
   run: null,
   evidenceRef: "",
   verifierRef: "",
+  verificationOutputRef: "",
   blockedReason: "",
   busy: null,
   notice: null,
@@ -132,6 +134,7 @@ export const ProductSpecPlanProposed = defineIntent("ProductSpecPlanProposed", S
 export const ProductSpecPlanAccepted = defineIntent("ProductSpecPlanAccepted", Schema.Null)
 export const ProductSpecEvidenceRefChanged = defineIntent("ProductSpecEvidenceRefChanged", Schema.String)
 export const ProductSpecVerifierRefChanged = defineIntent("ProductSpecVerifierRefChanged", Schema.String)
+export const ProductSpecVerificationOutputRefChanged = defineIntent("ProductSpecVerificationOutputRefChanged", Schema.String)
 export const ProductSpecBlockedReasonChanged = defineIntent("ProductSpecBlockedReasonChanged", Schema.String)
 export const ProductSpecPacketAdmitted = defineIntent("ProductSpecPacketAdmitted", Schema.String)
 export const ProductSpecPacketBlocked = defineIntent("ProductSpecPacketBlocked", Schema.String)
@@ -155,6 +158,7 @@ export const productSpecWorkspaceIntents = [
   ProductSpecPlanAccepted,
   ProductSpecEvidenceRefChanged,
   ProductSpecVerifierRefChanged,
+  ProductSpecVerificationOutputRefChanged,
   ProductSpecBlockedReasonChanged,
   ProductSpecPacketAdmitted,
   ProductSpecPacketBlocked,
@@ -349,6 +353,7 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
     }),
     ProductSpecEvidenceRefChanged: (value: string) => setWorkspace((workspace) => ({ ...workspace, evidenceRef: value.slice(0, 256) })),
     ProductSpecVerifierRefChanged: (value: string) => setWorkspace((workspace) => ({ ...workspace, verifierRef: value.slice(0, 256) })),
+    ProductSpecVerificationOutputRefChanged: (value: string) => setWorkspace((workspace) => ({ ...workspace, verificationOutputRef: value.slice(0, 256) })),
     ProductSpecBlockedReasonChanged: (value: string) => setWorkspace((workspace) => ({ ...workspace, blockedReason: value.slice(0, 2_000) })),
     ProductSpecPacketAdmitted: (packetRef: string) => runOperation(packetRef, async (current) => {
       const run = current.productSpec.run!
@@ -380,12 +385,17 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       packetRef,
       leaseRef: packet.activeLease?.leaseRef ?? "lease.missing",
       evidenceRef: current.productSpec.evidenceRef.trim(),
+      evidenceKind: "receipt",
       expectedSpec: current.productSpec.run!.spec,
     })),
     ProductSpecEvidenceVerified: (packetRef: string) => runOperation(packetRef, async (current) => bridge.verifyEvidence({
       runRef: current.productSpec.run!.runRef,
       packetRef,
       verifierRef: current.productSpec.verifierRef.trim(),
+      outputRef: current.productSpec.verificationOutputRef.trim(),
+      evidenceReceiptRefs: current.productSpec.run!.plan.packets
+        .find(candidate => candidate.packetRef === packetRef)?.evidenceReceipts
+        .map(receipt => receipt.receiptRef) ?? [],
       expectedSpec: current.productSpec.run!.spec,
     })),
     ProductSpecRunRefreshed: () => Effect.gen(function* () {
@@ -416,7 +426,7 @@ const packetView = (
 ): View => {
   const busy = workspace.busy !== null
   const evidenceReady = workspace.evidenceRef.trim() !== ""
-  const verifierReady = workspace.verifierRef.trim() !== ""
+  const verifierReady = workspace.verifierRef.trim() !== "" && workspace.verificationOutputRef.trim() !== ""
   const blockReady = workspace.blockedReason.trim() !== ""
   const dependenciesVerified = packet.dependencyRefs.every((dependencyRef) =>
     packets.find((candidate) => candidate.packetRef === dependencyRef)?.state === "verified")
@@ -442,8 +452,10 @@ const packetView = (
     Text({ key: `product-spec-packet-deps-${packet.packetRef}`, content: `Depends on: ${packet.dependencyRefs.length === 0 ? "none" : packet.dependencyRefs.join(", ")}`, variant: "caption", color: "textMuted" }),
     ...(packet.activeLease === undefined || packet.activeLease === null ? [] : [Text({ key: `product-spec-packet-lease-${packet.packetRef}`, content: `Lease: ${packet.activeLease.leaseRef} · ${packet.activeLease.executorRef}`, variant: "caption", color: "textMuted" })]),
     ...(packet.evidenceRefs.length === 0 ? [] : [Text({ key: `product-spec-packet-evidence-refs-${packet.packetRef}`, content: `Evidence: ${packet.evidenceRefs.join(", ")}`, variant: "caption", color: "success" })]),
+    ...(packet.evidenceReceipts.length === 0 ? [] : [Text({ key: `product-spec-packet-evidence-receipts-${packet.packetRef}`, content: `Evidence receipts: ${packet.evidenceReceipts.map(receipt => `${receipt.kind}:${receipt.receiptRef}`).join(", ")}`, variant: "caption", color: "success" })]),
     ...(packet.evidenceProducerRef === undefined ? [] : [Text({ key: `product-spec-packet-evidence-producer-${packet.packetRef}`, content: `Produced by: ${packet.evidenceProducerRef}`, variant: "caption", color: "textMuted" })]),
     ...(packet.verifierRefs.length === 0 ? [] : [Text({ key: `product-spec-packet-verifier-refs-${packet.packetRef}`, content: `Verified by: ${packet.verifierRefs.join(", ")}`, variant: "caption", color: "success" })]),
+    ...(packet.verificationReceipts.length === 0 ? [] : [Text({ key: `product-spec-packet-verification-receipts-${packet.packetRef}`, content: `Verification receipts: ${packet.verificationReceipts.map(receipt => `${receipt.outputRef}:${receipt.receiptRef}`).join(", ")}`, variant: "caption", color: "success" })]),
     ...(packet.blockedReason === undefined ? [] : [Text({ key: `product-spec-packet-blocked-${packet.packetRef}`, content: packet.blockedReason, variant: "caption", color: "warning" })]),
   ])
 }
@@ -516,6 +528,7 @@ export const productSpecWorkspaceView = (
       ...(workspace.run === null ? [] : [Stack({ key: "product-spec-receipt-inputs", direction: "row", gap: "2", style: { width: "full", minWidth: 0 } }, [
         TextField({ key: "product-spec-evidence-ref", value: workspace.evidenceRef, placeholder: "evidence.receipt.ref", a11y: { label: "Evidence receipt reference" }, onChange: IntentRef("ProductSpecEvidenceRefChanged", ComponentValueBinding()), style: { flex: 1, minWidth: 0 } }),
         TextField({ key: "product-spec-verifier-ref", value: workspace.verifierRef, placeholder: "verifier.receipt.ref", a11y: { label: "Verifier receipt reference" }, onChange: IntentRef("ProductSpecVerifierRefChanged", ComponentValueBinding()), style: { flex: 1, minWidth: 0 } }),
+        TextField({ key: "product-spec-verification-output-ref", value: workspace.verificationOutputRef, placeholder: "verification.output.ref", a11y: { label: "Verification output reference" }, onChange: IntentRef("ProductSpecVerificationOutputRefChanged", ComponentValueBinding()), style: { flex: 1, minWidth: 0 } }),
         TextField({ key: "product-spec-block-reason", value: workspace.blockedReason, placeholder: "Block reason", a11y: { label: "Packet block reason" }, onChange: IntentRef("ProductSpecBlockedReasonChanged", ComponentValueBinding()), style: { flex: 1, minWidth: 0 } }),
       ])]),
       ...plan.packets.map((packet) => packetView(workspace, packet, plan.packets)),

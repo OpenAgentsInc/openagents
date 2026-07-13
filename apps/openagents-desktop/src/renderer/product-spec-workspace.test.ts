@@ -45,9 +45,11 @@ const packets: ReadonlyArray<ProductSpecWorkPacket> = [
     criterionRefs: ["spec.openagents.codex.mvp#AC-1"],
     dependencyRefs: [],
     allocation: "root",
-    state: "planned",
-    evidenceRefs: [],
-    verifierRefs: [],
+  state: "planned",
+  evidenceRefs: [],
+  evidenceReceipts: [],
+  verifierRefs: [],
+  verificationReceipts: [],
   },
   {
     packetRef: "packet.ac-2",
@@ -56,9 +58,11 @@ const packets: ReadonlyArray<ProductSpecWorkPacket> = [
     criterionRefs: ["spec.openagents.codex.mvp#AC-2"],
     dependencyRefs: ["packet.ac-1"],
     allocation: "child",
-    state: "planned",
-    evidenceRefs: [],
-    verifierRefs: [],
+  state: "planned",
+  evidenceRefs: [],
+  evidenceReceipts: [],
+  verifierRefs: [],
+  verificationReceipts: [],
   },
 ]
 
@@ -226,7 +230,7 @@ describe("ProductSpec Effect Native workroom", () => {
       },
       recordEvidence: async (value) => {
         requests.push({ op: "evidence", value })
-        currentRun = acceptedRun([{ ...packets[0]!, state: "evidence_present", activeLease: null, evidenceRefs: ["evidence.test"] }, packets[1]!])
+        currentRun = acceptedRun([{ ...packets[0]!, state: "evidence_present", activeLease: null, evidenceRefs: ["evidence.test"], evidenceReceipts: [{ receiptRef: "receipt.evidence.test", evidenceRef: "evidence.test", kind: "receipt", producerRef: "executor.desktop.owner", spec: identity, criterionIds: ["AC-1"], producedAt: "2026-07-13T12:03:00.000Z" }] }, packets[1]!])
         return { ok: true, value: currentRun }
       },
       verifyEvidence: async (value) => {
@@ -251,6 +255,7 @@ describe("ProductSpec Effect Native workroom", () => {
       yield* handlers.ProductSpecEvidenceRefChanged("evidence.test")
       yield* handlers.ProductSpecEvidenceRecorded("packet.ac-1")
       yield* handlers.ProductSpecVerifierRefChanged("verifier.test")
+      yield* handlers.ProductSpecVerificationOutputRefChanged("verification.output.test")
       yield* handlers.ProductSpecEvidenceVerified("packet.ac-1")
       return yield* SubscriptionRef.get(state)
     }))
@@ -265,8 +270,8 @@ describe("ProductSpec Effect Native workroom", () => {
       leaseRef: "lease.desktop.uuid.test",
       expectedSpec: identity,
     })
-    expect(requests.find((entry) => entry.op === "evidence")!.value).toMatchObject({ evidenceRef: "evidence.test", leaseRef: "lease.desktop.uuid.test", expectedSpec: identity })
-    expect(requests.find((entry) => entry.op === "verify")!.value).toMatchObject({ verifierRef: "verifier.test", expectedSpec: identity })
+    expect(requests.find((entry) => entry.op === "evidence")!.value).toMatchObject({ evidenceRef: "evidence.test", evidenceKind: "receipt", leaseRef: "lease.desktop.uuid.test", expectedSpec: identity })
+    expect(requests.find((entry) => entry.op === "verify")!.value).toMatchObject({ verifierRef: "verifier.test", outputRef: "verification.output.test", evidenceReceiptRefs: ["receipt.evidence.test"], expectedSpec: identity })
     expect(dispatched).toHaveLength(1)
     expect(dispatched[0]?.packet).toMatchObject({
       packetRef: "packet.ac-1",

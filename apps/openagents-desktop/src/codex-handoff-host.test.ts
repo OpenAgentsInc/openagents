@@ -28,7 +28,7 @@ const run = (): ProductSpecRun => ({
     state: "accepted",
     packets: [{
       packetRef: "packet.1", title: "Handoff", criterionIds: ["CW-AC-15"], criterionRefs: ["criterion"],
-      dependencyRefs: [], allocation: "root", state: "active", evidenceRefs: [], verifierRefs: [],
+      dependencyRefs: [], allocation: "root", state: "active", evidenceRefs: [], evidenceReceipts: [], verifierRefs: [], verificationReceipts: [],
       activeLease: { leaseRef: "lease.1", executorRef: "executor.1", executionMode: "owner-present", admittedAt: "2026-07-13T00:00:00Z" },
     }],
     deferredCriterionIds: [], proposedAt: "2026-07-13T00:00:00Z", acceptedAt: "2026-07-13T00:00:00Z",

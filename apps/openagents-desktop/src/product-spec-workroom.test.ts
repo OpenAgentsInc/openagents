@@ -187,6 +187,8 @@ describe("ProductSpec workroom authority", () => {
       runRef: accepted.value.runRef,
       packetRef: "work.packet.authority",
       verifierRef: "verifier.agent.prose",
+      outputRef: "verification.output.precondition",
+      evidenceReceiptRefs: ["receipt.evidence.missing"],
       expectedSpec: projection.identity,
     })).toMatchObject({ ok: false, reason: "evidence_required" })
 
@@ -195,17 +197,23 @@ describe("ProductSpec workroom authority", () => {
       packetRef: "work.packet.authority",
       leaseRef: "lease.authority.1",
       evidenceRef: "evidence.tests.productspec",
+      evidenceKind: "test_run",
       expectedSpec: projection.identity,
     })
     expect(evidenced).toMatchObject({ ok: true })
     if (!evidenced.ok) return
     expect(evidenced.value.plan.packets[0]?.state).toBe("evidence_present")
     expect(evidenced.value.plan.packets[0]?.evidenceProducerRef).toBe("agent.root")
+    const evidenceReceiptRef = evidenced.value.plan.packets[0]?.evidenceReceipts[0]?.receiptRef
+    expect(evidenceReceiptRef).toStartWith("receipt.evidence.")
+    if (evidenceReceiptRef === undefined) return
 
     expect(restarted.verifyEvidence({
       runRef: accepted.value.runRef,
       packetRef: "work.packet.authority",
       verifierRef: "agent.root",
+      outputRef: "verification.output.self",
+      evidenceReceiptRefs: [evidenceReceiptRef],
       expectedSpec: projection.identity,
     })).toMatchObject({ ok: false, reason: "verifier_required" })
 
@@ -213,11 +221,18 @@ describe("ProductSpec workroom authority", () => {
       runRef: accepted.value.runRef,
       packetRef: "work.packet.authority",
       verifierRef: "verifier.tests.productspec",
+      outputRef: "verification.output.tests.productspec",
+      evidenceReceiptRefs: [evidenceReceiptRef],
       expectedSpec: projection.identity,
     })
     expect(verified).toMatchObject({ ok: true })
     if (!verified.ok) return
     expect(verified.value.plan.packets[0]?.state).toBe("verified")
+    expect(verified.value.plan.packets[0]?.verificationReceipts[0]).toMatchObject({
+      evidenceReceiptRefs: [evidenceReceiptRef],
+      outputRef: "verification.output.tests.productspec",
+      verdict: "passed",
+    })
     expect(restarted.admitPacket({
       runRef: accepted.value.runRef,
       packetRef: "work.packet.execution",
@@ -282,12 +297,15 @@ describe("ProductSpec workroom authority", () => {
       packetRef: "work.packet.authority",
       leaseRef: "lease.authority.1",
       evidenceRef: "evidence.stale",
+      evidenceKind: "receipt",
       expectedSpec: projection.identity,
     })).toMatchObject({ ok: false, reason: "revision_mismatch" })
     expect(service.verifyEvidence({
       runRef: accepted.value.runRef,
       packetRef: "work.packet.authority",
       verifierRef: "verifier.stale",
+      outputRef: "verification.output.stale",
+      evidenceReceiptRefs: ["receipt.evidence.stale"],
       expectedSpec: projection.identity,
     })).toMatchObject({ ok: false, reason: "revision_mismatch" })
     const persisted = service.run(accepted.value.runRef)
