@@ -56,6 +56,12 @@ The real-Postgres suite proves:
 
 ## Verification
 
+Migration `0067_portable_session_execution_binding.sql` was applied on
+2026-07-13 through the direct Cloud SQL Auth Proxy as `khala_migrate` to both
+`khala_sync_staging` and `khala_sync_prod`. Each ledger recorded SHA-256 prefix
+`4fa862b732d0`; a subsequent dry run in each database reported `0 pending, 68
+already applied`.
+
 ```sh
 bun test packages/khala-sync-server/src/portable-session-move.test.ts \
   packages/khala-sync-server/src/portable-session-authority.test.ts

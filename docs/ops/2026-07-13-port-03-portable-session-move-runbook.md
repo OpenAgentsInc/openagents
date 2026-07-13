@@ -68,6 +68,10 @@ child turn again.
 
 ## Deterministic gate
 
+Migration `0067` was applied to both `khala_sync_staging` and
+`khala_sync_prod` on 2026-07-13 through the direct Cloud SQL Auth Proxy. Both
+post-apply dry runs reported zero pending migrations.
+
 ```sh
 bun test packages/khala-sync-server/src/portable-session-move.test.ts \
   packages/khala-sync-server/src/portable-session-authority.test.ts
