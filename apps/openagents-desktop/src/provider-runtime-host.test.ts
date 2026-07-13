@@ -34,6 +34,17 @@ describe("provider runtime host", () => {
     expect(readInstalledClaudeAgentSdkVersion()).toBe("0.3.172")
   })
 
+  test("the installed app resolves the exact package-owned unpacked Codex binary", () => {
+    const resolved = resolveBundledCodexExecutable({
+      resourcesPath: "/Applications/OpenAgents.app/Contents/Resources",
+      exists: value => value.includes("/app.asar.unpacked/node_modules/@openai/codex-darwin-arm64/vendor/"),
+    })
+    expect(resolved).toBe(
+      "/Applications/OpenAgents.app/Contents/Resources/app.asar.unpacked/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+    )
+    expect(resolved).not.toContain("/.codex")
+  })
+
   test("concurrent observations return redacted compatible facts", async () => {
     const result = await inspectProviderRuntimeCompatibility({
       resolveCodex: () => "/private/bundled/codex",

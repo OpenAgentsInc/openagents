@@ -23,19 +23,45 @@ const codexTarget = (): Readonly<{ packageName: string; triple: string; executab
   return targets[key] ?? null
 }
 
-/** Resolves only the optional native package owned by the pinned Codex dependency. */
-export const resolveBundledCodexExecutable = (): string | null => {
+export type BundledCodexResolutionOptions = Readonly<{
+  resourcesPath?: string | null
+  exists?: (value: string) => boolean
+}>
+
+/**
+ * Resolves only the optional native package owned by the pinned Codex
+ * dependency. Forge moves native packages out of `app.asar`; package
+ * resolution is the development path and the exact `app.asar.unpacked`
+ * package location is the installed path. Ambient PATH is never consulted.
+ */
+export const resolveBundledCodexExecutable = (
+  options: BundledCodexResolutionOptions = {},
+): string | null => {
   const target = codexTarget()
   if (target === null) return null
+  const exists = options.exists ?? existsSync
   try {
     const codexEntrypoint = require.resolve("@openai/codex/bin/codex.js")
     const codexRequire = createRequire(codexEntrypoint)
     const packageJson = codexRequire.resolve(`${target.packageName}/package.json`)
     const executable = path.join(path.dirname(packageJson), "vendor", target.triple, "bin", target.executable)
-    return existsSync(executable) ? executable : null
-  } catch {
-    return null
-  }
+    if (exists(executable)) return executable
+  } catch { /* packaged fallback below */ }
+  const resourcesPath = options.resourcesPath ?? (
+    process as NodeJS.Process & { resourcesPath?: string }
+  ).resourcesPath
+  if (typeof resourcesPath !== "string" || resourcesPath.length === 0) return null
+  const unpacked = path.join(
+    resourcesPath,
+    "app.asar.unpacked",
+    "node_modules",
+    target.packageName,
+    "vendor",
+    target.triple,
+    "bin",
+    target.executable,
+  )
+  return exists(unpacked) ? unpacked : null
 }
 
 export const readInstalledClaudeAgentSdkVersion = (): string | null => {
