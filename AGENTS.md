@@ -136,6 +136,11 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `docs/mvp/` owns the canonical first-deployable-product package: its exact
   ProductSpec, supporting audit, and reading-order README. The ProductSpec owns
   intent; `docs/sol/MASTER_ROADMAP.md` still owns priority and sequencing.
+- `apps/openagents-desktop/src/product-spec-workroom*` owns the implemented
+  ProductSpec plan/packet/lease/evidence/verification-ref/owner-
+  disposition runtime loop. Assurance may feed it exact receipt references;
+  it does not replace that state or turn workroom `verified` into release or
+  public-claim authority.
 - `docs/assurance/` owns the proposed AssuranceSpec companion format, Observer
   architecture, current-system map, and MVP-first dogfood plan. It owns proof
   design, not product intent, test execution, release decisions, or public
@@ -821,10 +826,12 @@ first-class infra under `crates/*`.
 
 ## Product Specs (`specs/`)
 
-`specs/` holds `.product-spec.md` intent artifacts in the ProductSpec open
-format (v0.1) — the durable what/why for consequential product work, upstream
-of MASTER_ROADMAP sequencing, epics, behavior contracts, Eval Suites, and the
-promise registry. Read `specs/CONVENTIONS.md` before adding or editing one;
+`specs/` holds `.product-spec.md` artifacts in the ProductSpec open format
+(v0.1): durable what/why plus, in current upstream ProductSpec, a portable
+Related Artifact index for evidence held elsewhere. A link is never a
+verification verdict. ProductSpec stays upstream of MASTER_ROADMAP sequencing,
+epics, behavior contracts, Eval Suites, and the promise registry. Read
+`specs/CONVENTIONS.md` before adding or editing one;
 rationale in `docs/fable/2026-07-08-productspec-adoption-analysis.md` (#8593).
 The owner-directed first-MVP package is the single co-located exception:
 `docs/mvp/openagents-codex-workroom-mvp.product-spec.md` stays beside its audit
@@ -836,9 +843,10 @@ and is included in the ProductSpec test sweep; do not create a mirror under
   with `... validate docs/mvp/openagents-codex-workroom-mvp.product-spec.md`
   (both enforced by `bun test packages/product-spec` in the normal sweep);
   scaffold with `... init specs/<area>/<name>.product-spec.md`.
-- Specs declare, registries enforce: link behavior-contract IDs, Eval Suite
-  names, and promise IDs — never duplicate their content, and never treat a
-  spec as authority for public claims.
+- Specs declare and index: link behavior-contract IDs, Eval Suite names,
+  promise IDs, and approved durable evidence refs without duplicating their
+  content. Registries/evidence systems enforce or observe; never treat a
+  ProductSpec or Related Artifact as release or public-claim authority.
 - Never edit a spec to match implementation without a `spec_revision` bump —
   accidental behavior never silently becomes intent.
 - `tool_metadata` is stripped on public export; no secrets, customer data, or

@@ -16,6 +16,7 @@ one honest navigation/status index, not link-breaking file churn.
 ## Current entry points
 
 - [AssuranceSpec and the MVP dogfood plan](../assurance/README.md)
+- [ProductSpec Evidence Loop boundary](../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md)
 - [Current MVP definition](../mvp/README.md)
 - [Active sequencing](../sol/MASTER_ROADMAP.md)
 - [QA Runner runbook](../../apps/qa-runner/RUNBOOK.md)

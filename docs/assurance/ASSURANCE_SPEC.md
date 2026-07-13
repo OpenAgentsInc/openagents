@@ -6,8 +6,9 @@ Status: canonical design proposal; no format, compiler, adapter, or hosted
 service is claimed to exist
 
 Reference implementation studied:
-`projects/repos/ProductSpec` at `833d67d` (repository `0.7.0`, document format
-`spec_format_version: "0.1"`)
+official `gokulrajaram/ProductSpec` at `9ef2654` (parser `0.19.0`, document
+format `spec_format_version: "0.1"`). The local reference clone remains at the
+older `833d67d` snapshot.
 
 Related episode: `docs/transcripts/252-notes.md`
 
@@ -20,16 +21,21 @@ Working OpenAgents product/compiler name: **Observer**
 Create **AssuranceSpec**, a separate, human-reviewable companion to
 ProductSpec.
 
-- A **Product Spec** commits product intent: what should be true and why.
+- A **Product Spec** commits product intent and can index external evidence
+  against stable AC/EVAL/SM IDs with Related Artifacts. A link is not a
+  verdict.
 - An **Assurance Spec** commits proof design: what evidence would justify
   believing each relevant claim, in which environments, against which
   falsifiers, at which proof rung.
-- An **Assurance Manifest** is the deterministic, immutable execution IR
+- An **Assurance Manifest** is the deterministic, immutable verification IR
   compiled from admitted source artifacts.
 - **QA Swarm** and native test tools execute the manifest and explore beyond
   it.
 - **Assurance Receipts** report observations. They do not revise either spec.
-- Authorized maintainers accept, reject, waive, release, or revise claims.
+- The Desktop workroom may register a qualifying Assurance Receipt by exact
+  reference and keeps packet verification and owner disposition separate.
+- Separate review and release policy decides what the assurance evidence
+  permits.
 - The product-promise registry remains the only authority for public claims.
 
 The proposed authored filename is `<name>.assurance-spec.md`. The public
@@ -39,26 +45,23 @@ called **Observatory**. Product branding must not become protocol vocabulary.
 
 ```text
 ProductSpec
-  committed product intent
-        ↓ exact criterion bindings
-AssuranceSpec
-  committed verification intent
-        + Environment Profiles + adapter lock
-        ↓ admission review
-Observer deterministic compiler
-        ↓
-Assurance Manifest
-  immutable execution lockfile
-        ↓
-behavior contracts / Eval Suites / native tests / formal models
-  executable oracles
-        ↓
-QA Swarm + framework adapters
-  execution and exploration
-        ↓
-Assurance Receipts + evidence aggregation
-        ↓
-release projection → authorized decision
+  committed intent + Related Artifact evidence index
+        ├──> Desktop workroom plan/packet/evidence/verification loop
+        │
+        └──> AssuranceSpec committed verification intent
+                + Environment Profiles + adapter lock
+                ↓ admission review
+              Observer deterministic compiler
+                ↓
+              Assurance Manifest immutable verification lockfile
+                ↓
+              native oracles + QA Swarm execution/exploration
+                ↓
+              Assurance Receipts + evidence aggregation
+                 ├──> Desktop workroom evidence by exact ref
+                 └──> approved ProductSpec Related Artifact projection
+
+release projection → separately authorized decision
 ```
 
 This is a proposal to rebuild the QA harness *around* a proof-design control
@@ -67,8 +70,9 @@ file, not to discard the harnesses that already work.
 ## 1. Why this is a companion rather than a ProductSpec section
 
 The ProductSpec reference repository has the right architectural precedent:
-Decision Trace is a separate companion artifact. ProductSpec remains small,
-portable committed intent; the companion records a different concern with a
+Decision Trace is a separate companion artifact, while Related Artifacts are a
+small portable evidence-link section. ProductSpec now owns intent plus stable
+attachment points. It still does not own the proof-design concern or its
 different lifecycle.
 
 Assurance is also a separate concern:
@@ -90,6 +94,7 @@ The boundary is therefore:
 
 ```text
 ProductSpec says: "the signed-in user can resume the same thread."
+Related Artifact says: "inspect this external evidence against that item."
 AssuranceSpec says: "these observations would establish or refute that claim."
 Manifest says: "run these exact admitted units against these exact targets."
 Receipt says: "this is what this run observed."
@@ -143,6 +148,13 @@ one non-OpenAgents implementation demonstrate portability.
 12. **Conformance is interoperability, not quality.** A valid Assurance Spec
     can still contain a weak proof plan; a conforming runner can still observe
     a failure.
+13. **Links are not verdicts.** A ProductSpec Related Artifact is a durable
+    pointer. It does not prove reachability, authenticity, freshness,
+    sufficiency, or pass state.
+14. **Work state is not assurance state.** The Desktop ProductSpec workroom
+    loop remains authoritative for plans, packets, leases, evidence envelopes,
+    verification receipts, and owner packet disposition. AssuranceSpec does
+    not duplicate that ledger.
 
 ## 3. The v0.1 authored document
 
@@ -263,41 +275,62 @@ product_spec:
   path: "specs/qa/openagents-observer.product-spec.md"
   spec_format_version: "0.1"
   spec_revision: 1
-  digest: "sha256:<digest-of-exact-utf8-bytes>"
+  document_digest: "sha256:<digest-of-exact-utf8-bytes>"
+  intent_digest: "sha256:<digest-of-canonical-intent-projection>"
 criterion_refs:
-  - "OBS-AC-01"
-  - "OBS-AC-02"
+  - "AC-1"
+  - "AC-2"
 ```
 
-The canonical digest is SHA-256 over the exact UTF-8 file bytes committed for
-the cited revision. The compiler records byte-normalization policy explicitly;
-it never resolves “latest” during compilation.
+`document_digest` is SHA-256 over the exact UTF-8 file bytes observed during
+review. It preserves provenance and can detect intervening byte changes when
+the implementation hashes/parses one read and atomically rechecks before use.
+`intent_digest` is over a canonical semantic projection containing the
+intent-bearing frontmatter, sections, structured AC/EVAL/SM items, stable IDs,
+`applies_to`, `product_spec` dependency Related Artifacts, and every
+`tool_metadata` value consumed by execution or policy. It excludes only
+attachments a typed classifier proves are evidence-only plus explicitly
+non-intent provenance timestamps. Unknown fields are intent-bound by default.
+The projection and byte-normalization rules are versioned and
+conformance-tested; a Markdown deletion heuristic is forbidden.
 
-OpenAgents already requires positive `spec_revision` and unique,
-author-visible acceptance-criterion IDs such as `OBS-AC-01`. AssuranceSpec
-uses those IDs.
+Changed `spec_revision`, intent digest, targeted item ID, or targeted item
+meaning makes the Assurance Spec stale. A document-digest-only change with the
+same revision and intent digest does not by itself rewrite proof intent. It
+reports `evidence_index_changed` only after a typed semantic diff proves that
+only classified evidence attachments and permitted provenance fields changed.
+Until the canonical projection is implemented, exact document-digest mismatch
+still requires explicit rebind or a pre-bound stable evidence-index link.
 
-Upstream ProductSpec v0.1 ordinary Acceptance Criteria are Markdown, not a
-generic criterion AST with stable IDs. A compatibility importer may propose a
+These digests are proposed Assurance-layer semantics. Current OpenAgents
+Desktop runs remain exact-document-digest pinned; an evidence-only byte edit
+puts the old run into `revision_mismatch`, with its receipts retained as
+historical evidence under the old identity.
+
+Current upstream ProductSpec `0.19.0` requires structured Acceptance Criteria
+with `AC-<number>` IDs and Success Metrics with `SM-<number>` IDs. Optional AI
+evals, when present, use `EVAL-<number>` IDs. Related Artifacts may target those
+exact IDs. The OpenAgents local parser and revision-6 MVP still use an older
+local profile
+with author-visible IDs such as `CW-AC-04`; that profile is a bootstrap subject,
+not a portable item-level Evidence Loop claim.
+
+For a legacy/local-profile ProductSpec, a compatibility importer may propose a
 binding containing:
 
 ```yaml
 section_id: "acceptance_criteria"
 text_anchor: "Private or unsupported videos return a clear error."
-source_digest: "sha256:<product-spec-digest>"
+source_document_digest: "sha256:<product-spec-exact-byte-digest>"
 ```
 
 That proposal is stale on any subject revision, digest, or anchor change and
 must be admitted by a reviewer before compilation. It may never silently fuzzy
-match a changed sentence. For an assurance-enabled Product Spec, the preferred
-resolution is to add stable author-visible IDs without changing the upstream
-core format.
-
-A possible later upstream contribution is a structured
-`productspec-acceptance-criteria` block with stable `id` and `claim` fields.
-That proposal should be made only with the upstream change discipline: SPEC,
-schema, parser, validator codes, field guide, valid/invalid fixtures,
-round-trip tests, and changelog in one compatible change.
+match changed text. The portable resolution is an explicit ProductSpec revision
+that migrates to the current structured upstream format, carries a
+machine-readable old-to-new item mapping artifact, and uses Decision Trace
+prose plus a link to explain and approve the migration. It may never silently
+treat `CW-AC-04` as `AC-4`.
 
 ## 5. The assurance obligation model
 
@@ -580,7 +613,7 @@ Observer's compiler begins *after* semantic planning and admission. It is a
 pure function of:
 
 ```text
-ProductSpec AST + format/revision/digest
+ProductSpec intent AST + format/revision/intent digest + targeted item digests
 AssuranceSpec AST + format/revision/digest
 Environment Profile revisions/digests
 adapter lock digest
@@ -588,10 +621,16 @@ accepted review-set/admission digest
 compiler version
 ```
 
+A named legacy profile without a canonical intent projection may substitute the
+exact ProductSpec document digest as its normative subject digest. In that
+profile every byte change stales the Manifest; it cannot claim evidence-only
+carry-forward.
+
 Normative compiler requirements:
 
-- source digests cover exact UTF-8 bytes; parser line-ending normalization into
-  the semantic model is documented and never rewrites the authored source;
+- AssuranceSpec and native source digests cover exact UTF-8 bytes; the
+  separately versioned ProductSpec intent projection and targeted-item digests
+  are canonical, documented, and golden-tested;
 - output uses canonical JSON with stable key and array ordering;
 - compilation performs no network, clock, random, filesystem-discovery, or
   model calls beyond reading its declared inputs;
@@ -599,13 +638,16 @@ Normative compiler requirements:
 - identical inputs produce byte-identical output;
 - generated IDs derive from stable source anchors or content, never time;
 - the manifest embeds all source refs and `do_not_edit: true`;
+- classified evidence Related Artifacts and the observed ProductSpec document
+  digest are not normative Manifest-hash inputs. Admission and the mutable
+  Assurance Evidence Index retain that exact-document provenance;
 - the dependency graph identifies exactly which evidence becomes stale when an
   input changes;
 - golden fixtures assert exact manifest bytes.
 
 The Assurance Manifest contains resolved plans, not latest-run state:
 
-- subject and source digests;
+- subject revision, intent digest, targeted-item digests, and source digests;
 - resolved obligation graph;
 - target/environment bindings;
 - adapter and command digests;
@@ -651,7 +693,35 @@ freshness, and external decisions. It may report that a declared gate
 expression is satisfied. It cannot merge, deploy, spend, settle, accept, or
 promote a public promise.
 
-### 10.1 Exception receipts
+### 10.1 ProductSpec and workroom evidence projection
+
+Assurance Receipts remain immutable observations. A separate public-safe
+Assurance Evidence Index may select current receipt refs, preserve superseded
+history, and compute freshness. ProductSpec Related Artifacts point to that
+index or another durable artifact; link presence never becomes a pass.
+
+For OpenAgents Desktop, a typed Assurance Receipt bridge must first dereference
+and validate the immutable receipt, its subject/Manifest/obligation chain,
+currentness, sensitivity, infrastructure, stability, producer independence,
+and publication policy. It then issues a RefSchema-safe opaque handle such as
+`assurance.receipt.<digest>` for registration as `evidenceKind: receipt` on an
+exact ProductSpec work packet.
+
+The current host only checks that `verifierRef` differs from the host
+`evidenceProducerRef`, which it sets to the active lease executor. The bridge
+must independently check the Assurance receipt's real producer/reviewer policy;
+the host check does not prove authenticated identity separation. Because the
+current host verification contract has only `passed`, `REFUTED`,
+`INCONCLUSIVE`, stale, flaky, unavailable, and infrastructure-failed Assurance
+results must not enter that path as verified. They remain explicit evidence
+and block, fail, or await a richer host contract.
+
+The host evidence envelope, Assurance Receipt, and native report reference one
+another; none replaces the others. Workroom packet verification and owner
+disposition also remain distinct from full-criterion assurance, release, and
+promise state.
+
+### 10.2 Exception receipts
 
 The Assurance Spec defines exception policy; it does not carry live waivers as
 ordinary authored state. A separate authorized exception receipt contains:
@@ -669,7 +739,8 @@ not transform missing proof into a pass.
 ## 11. Assurance Decision Trace
 
 ProductSpec Decision Trace records product-intent drift. Assurance evolution
-needs a parallel optional companion:
+needs a parallel optional companion. ProductSpec Related Artifacts record
+evidence pointers; neither artifact is a run log.
 
 ```text
 <name>.assurance-decision-trace.json
@@ -700,11 +771,12 @@ result becomes a trace event. If a finding exposes ambiguous product intent,
 record both an Assurance Decision Trace event and the corresponding ProductSpec
 Decision Trace event.
 
-Until a portable assurance trace exists, ProductSpec Decision Trace can link an
-Assurance Spec or receipt using its `other` link type. Potential upstream
-extensions such as `assurance_spec`, `test_run`, `formal_model`,
-`evidence_receipt`, `assurance_drift`, and `oracle_drift` should be proposed
-only after dogfood shows the existing vocabulary is insufficient.
+Until a portable assurance trace exists, ProductSpec Related Artifacts can link
+an Assurance Spec as `engineering_spec` or `other` and an Assurance Evidence
+Index as `other`. They must not use `product_spec`, because AssuranceSpec is a
+different standard. Potential upstream types such as `assurance_spec`,
+`test_report`, `formal_model`, or `evidence_receipt` should be proposed only
+after dogfood shows that honest use of `other` loses material interoperability.
 
 ## 12. Validation, diagnostics, and conformance
 
@@ -729,7 +801,9 @@ not a claim that the product works.
 - `missing_required_frontmatter`
 - `invalid_subject`
 - `subject_revision_mismatch`
-- `subject_digest_mismatch`
+- `subject_document_digest_mismatch`
+- `subject_intent_digest_mismatch`
+- `subject_item_mismatch`
 - `missing_required_section`
 - `duplicate_section`
 - `invalid_section_order`
@@ -742,6 +816,11 @@ not a claim that the product works.
 - `invalid_gate`
 - `cyclic_obligation_dependency`
 - `invalid_formal_model_boundary`
+
+`evidence_index_changed` is a non-failing binding warning when the exact
+ProductSpec document digest changed, revision/intent/targeted items did not,
+and a typed semantic diff proves that only classified evidence attachments and
+permitted provenance fields changed.
 
 ### 12.3 Proposed adequacy diagnostics
 
@@ -806,11 +885,12 @@ Minimum tests:
 - review-annotation and Decision Trace subject binding;
 - a self-hosting Assurance Spec for Observer itself.
 
-Do not repeat gaps found in the ProductSpec reference audit: selected-field
-rather than complete schema/parser parity, date formats declared but not
-validated, nested metadata that does not round-trip, custom-section placement
-recorded but not enforced, or companion schemas without validators and
-conformance corpora.
+Do not repeat the remaining ProductSpec reference gaps: incomplete exhaustive
+schema/parser additional-property parity, flat-parser versus object-schema
+`tool_metadata`, or companion/output shapes that lack validators and
+conformance corpora. In particular, Assurance review annotations and receipts
+must bind exact subjects and have executable validation rather than existing as
+schema-only or illustrative JSON.
 
 ### 12.5 Conformance levels and technique declarations
 
@@ -836,7 +916,8 @@ Keep these versions independent:
 
 - `assurance_spec_format_version` — shape of the companion standard;
 - `assurance_revision` — one subject's committed proof-design revision;
-- bound ProductSpec format, revision, and digest;
+- bound ProductSpec format, revision, document digest, intent digest, and item
+  identities;
 - Environment Profile format, revision, and digest;
 - adapter lock version and digest;
 - Observer/compiler package version;
@@ -859,11 +940,13 @@ revision, but changes native source/command digests, produces a new manifest,
 and stales dependent evidence. Git holds the detailed diff; revision numbers
 are portable citation handles.
 
-Any ProductSpec revision or digest change stales the Assurance Spec until
-explicit reconciliation. Dependency analysis may preserve unaffected evidence
-only after a new Assurance Spec revision rebinds the unchanged criteria and a
-new manifest records the surviving dependency digests. “The text looks close”
-is not reconciliation.
+A ProductSpec revision, intent digest, targeted item ID, or targeted item
+meaning change stales the Assurance Spec until explicit reconciliation. A
+typed diff limited to classified evidence attachments refreshes the evidence
+projection without changing proof intent; `product_spec` dependency links are
+intent-bound. Dependency analysis may preserve unaffected evidence only after
+explicit reconciliation records the surviving dependency digests. “The text
+looks close” is not reconciliation.
 
 ## 14. Proposed repository layout
 
@@ -896,6 +979,8 @@ The first useful version wraps existing authoritative homes:
 | Existing artifact | AssuranceSpec role |
 | --- | --- |
 | ProductSpec criterion | Subject criterion ref |
+| ProductSpec Related Artifact | External evidence pointer to consume or publish; never a verdict |
+| Desktop ProductSpec workroom loop | Existing plan/packet/evidence workflow; register Assurance Receipt refs without replacing host state |
 | `productspec-ai-evals` | Eval obligation seed; a fractional eval threshold does not accept the whole criterion |
 | Behavior contract | Durable expectation and oracle ref |
 | Planned-feature Eval Suite | Proposed or planned-red obligation seed |
@@ -915,6 +1000,22 @@ native to each repository and framework.
 
 ## 16. Rollout
 
+### PSEL-0 — ProductSpec Evidence Loop compatibility precondition
+
+- vendor current upstream `0.19.0` conformance fixtures;
+- implement structured AC/EVAL/SM and Related Artifact parsing/validation in
+  `@openagentsinc/product-spec` without taking a runtime dependency;
+- implement and golden-test exact document and canonical intent digests;
+- preserve the current revision-6 MVP and its `CW-AC-*` bindings as an explicit
+  legacy-profile fixture;
+- plan the reviewed `CW-AC-*`/semantic-metric to portable `AC-*`/`SM-*`
+  ProductSpec revision, machine-readable ID mapping artifact, Decision Trace
+  explanation/link, single-line criterion fixtures, and custom preservation of
+  current metric `segment`/`source` context.
+
+Exit: OpenAgents can state exactly which upstream semantics it supports, and a
+typed evidence-attachment-only edit does not masquerade as intent drift.
+
 ### AS-0 — standard dossier and calibration
 
 - keep this proposal and Episode 252 honest about unshipped state;
@@ -930,6 +1031,8 @@ Exit: a reviewed format dossier and calibration packet, no runtime claim.
   CLI;
 - land valid/invalid fixtures and complete parity tests;
 - support exact ProductSpec subject binding and OpenAgents criterion IDs;
+- support both the explicit revision-6 legacy profile and the reconciled
+  upstream-current item model without silent ID aliasing;
 - add portable review annotations.
 
 Exit: AS-L1 with a self-validating example.
@@ -949,6 +1052,8 @@ Exit: AS-L2 and exact golden fixture bytes.
   adapters, and TLC;
 - normalize current receipts without moving their authoritative homes;
 - demonstrate correct/falsifier execution and partial-evidence handling.
+- register one qualifying Assurance Receipt by exact ref through the Desktop
+  workroom without converting non-confirming observations to `passed`.
 
 Exit: one end-to-end AS-L3 dogfood packet.
 
@@ -957,7 +1062,8 @@ Exit: one end-to-end AS-L3 dogfood packet.
 - use Effect Native as customer zero, not protocol shape;
 - cover shared behavior plus renderer-specific capability boundaries;
 - require real seam, release-artifact, and sensitivity evidence;
-- publish only public-safe projections.
+- publish only public-safe projections and stable ProductSpec Related Artifact
+  refs.
 
 Exit: one admitted Assurance Spec whose release projection is independently
 reviewed.
@@ -983,18 +1089,22 @@ the local OSS protocol.
 
 ## 17. Upstream and governance posture
 
-The current ProductSpec standard remains unchanged. OpenAgents consumes its
-published semantic model, checks `spec_format_version`, binds exact
-`spec_revision`, preserves Markdown/custom sections, and never mutates intent
-during QA generation.
+ProductSpec changed materially after the OpenAgents adoption snapshot. Current
+upstream `0.19.0` supplies structured AC/EVAL/SM items, Related Artifacts, an
+Evidence Loop checklist, spec sessions, and stronger validator semantics.
+OpenAgents must catch up deliberately, preserve its current legacy profile as
+a named migration input, check `spec_format_version`, bind exact revision plus
+document/intent digests, preserve Markdown/custom sections, and never mutate
+intent during QA generation.
 
-Possible upstream contributions after dogfood:
+Possible upstream contributions after dogfood are narrower now:
 
-- stable structured Acceptance Criterion IDs;
-- Decision Trace link types for Assurance Specs, test runs, formal models, and
-  evidence receipts;
-- assurance/oracle drift events if the existing event vocabulary proves
-  insufficient.
+- a first-class Related Artifact type for Assurance Specs or receipts if
+  honest use of `engineering_spec`/`other` loses interoperability;
+- assurance/oracle drift events if the existing Decision Trace vocabulary
+  proves insufficient;
+- a portable intent-projection digest only after two implementations agree on
+  its exact semantics.
 
 Any future standalone AssuranceSpec standard should have the same governance
 discipline it asks of implementers: issue-backed changes, compatibility impact,
@@ -1007,10 +1117,11 @@ vocabulary.
 
 | Layer | Owns | May not do |
 | --- | --- | --- |
-| ProductSpec | committed product intent | choose tests or grant release |
+| ProductSpec | committed product intent and portable Related Artifact index | execute/verify evidence, choose tests, or grant release |
+| Desktop ProductSpec workroom | accepted plans, packets, leases, evidence envelopes, distinct-verifier receipts, owner packet disposition | define assurance adequacy or imply release/promise state |
 | AssuranceSpec | reviewed proof design | revise product intent or claim an observation |
 | Environment Profile | declared target capabilities and policy | supply secrets or expand runtime authority |
-| Assurance Manifest | deterministic execution plan | contain mutable latest status or be hand-edited |
+| Assurance Manifest | deterministic verification plan | contain mutable latest status or be hand-edited |
 | Oracles | evaluate bounded behavior | accept their own adequacy |
 | QA Swarm/adapters | execute and explore | interpret product prose or silently skip |
 | Receipts | report exact observations | make decisions or promote claims |
@@ -1045,7 +1156,9 @@ green downstream state.
 
 ## 20. The concise product sentence
 
-> ProductSpec commits what the product should do. AssuranceSpec commits how we
-> will know. Observer compiles that reviewed proof design into an immutable
-> execution graph. QA Swarm runs it. Receipts say what happened. Authorized
-> people and policies decide what the evidence permits.
+> ProductSpec commits what the product should do and gives evidence stable
+> attachment points. Its workroom loop tracks the work and receipt references.
+> AssuranceSpec commits what proof should count. Observer compiles that reviewed
+> design into an immutable verification graph. QA Swarm runs it. Receipts say
+> what happened. Authorized people and policies decide what the evidence
+> permits.

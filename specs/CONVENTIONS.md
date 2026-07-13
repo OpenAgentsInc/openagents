@@ -11,8 +11,16 @@ the normal test sweep (`bun test packages/product-spec`).
 A Product Spec is the durable statement of **product intent before
 implementation**: problem, hypothesis, scope (in/out/**cut**), acceptance
 criteria (the pre-launch build contract), success metrics (the post-launch
-market contract). It sits upstream of MASTER_ROADMAP sequencing, epics/lanes,
-behavior contracts, Eval Suites, receipts, and the promise registry.
+market contract). Current upstream ProductSpec also permits Related Artifacts:
+typed pointers from stable intent IDs to external implementation, eval, and
+outcome evidence. A link is an index entry, not a verification verdict.
+
+The ProductSpec document sits upstream of MASTER_ROADMAP sequencing,
+epics/lanes, behavior contracts, Eval Suites, receipts, and the promise
+registry. The separate Desktop ProductSpec workroom runtime owns accepted
+plans, work packets, leases, evidence envelopes, distinct-verifier references,
+and owner packet dispositions for an exact spec. Neither the document
+nor that runtime decides assurance adequacy, release, or public claims.
 
 A spec **declares — it never enforces**:
 
@@ -21,6 +29,9 @@ A spec **declares — it never enforces**:
 - The promise registry stays the only authority for public claims. A spec's
   success metrics must be consistent with the promise verification gates it
   links.
+- Related Artifacts point at durable external evidence. ProductSpec validation
+  checks their shape and item target, not reachability, authenticity,
+  sufficiency, freshness, or outcome.
 - MASTER_ROADMAP stays the sequencing authority. Specs never re-state
   sequencing; when they disagree, the roadmap wins.
 
@@ -66,11 +77,13 @@ bun packages/product-spec/src/cli.ts init specs/<area>/<name>.product-spec.md --
 ## OpenAgents custom sections
 
 Declared in frontmatter `custom_sections` (the standard's extension point);
-`init` stubs all three:
+`init` currently stubs all three:
 
 - `custom-owner-gates` — the NEEDS_OWNER items this work will hit, up front.
-- `custom-receipts` — receipt kinds that will prove the acceptance criteria
-  (Eval Suite names, behavior-contract IDs, counters).
+- `custom-receipts` — transitional receipt-kind planning from the pre-Evidence
+  Loop profile. It is not an evidence ledger. New required-evidence semantics
+  belong in AssuranceSpec; actual portable evidence pointers belong in Related
+  Artifacts after the local upstream catch-up.
 - `custom-promise-links` — promise-registry IDs this work feeds.
 
 ## When a spec is required
@@ -100,29 +113,42 @@ The design in `docs/assurance/ASSURANCE_SPEC.md` proposes
 an authored `<name>.assurance-spec.md` beside a Product Spec. The companion
 commits **verification intent**: exact criterion bindings, risks, proof
 obligations, environments, oracles, falsifiers, evidence policy, gates, and
-authority boundaries. It does not add QA semantics to the ProductSpec parser.
+authority boundaries. It does not add QA semantics to the ProductSpec parser
+or replace the Desktop ProductSpec workroom loop. The generated Manifest is an
+assurance verification graph, not an implementation plan/work-packet graph.
+Qualifying Assurance Receipts may be registered by exact reference through the
+workroom and published as ProductSpec Related Artifacts.
 
 The proposed revision matrix is:
 
 | Change | Required action |
 | --- | --- |
 | Product intent changes | Increment `spec_revision`; reconcile and rebind the Assurance Spec |
+| Typed diff changes only classified evidence-attachment Related Artifacts and permitted provenance fields | Keep `spec_revision`; update exact document digest/evidence projection while the canonical intent digest remains stable |
 | Proof obligation, risk, proof rung, seam, oracle/falsifier meaning, gate, or evidence policy changes | Increment `assurance_revision` and append the assurance decision trace when material |
 | Native test implementation changes without changing proof intent | Recompile the manifest; source/command digests and dependent evidence become stale |
 | Environment capability or policy changes | Increment the Environment Profile revision and recompile affected obligations |
 | Observed pass/fail/inconclusive result changes | Emit a new receipt; never edit either authored spec or the generated manifest |
 
 The companion must bind the exact ProductSpec path, format version,
-`spec_revision`, digest, and stable criterion IDs. A changed subject is stale
-until explicit reconciliation. Never silently change verification intent to
-fit an implementation, silently rebind a changed criterion, or carry old green
-evidence across changed dependencies.
+`spec_revision`, canonical intent digest, observed exact document digest, and
+stable criterion IDs. A changed revision, intent digest, or targeted item is
+stale until explicit reconciliation. Only a typed diff limited to classified
+evidence attachments may change the document digest without changing intent;
+`product_spec` dependencies and consumed `tool_metadata` remain intent-bound.
+Until the canonical intent projection is implemented and conformance-tested,
+an exact digest mismatch still requires explicit rebind or a pre-bound stable
+evidence index; it may not be ignored. The current Desktop runtime remains
+exact-document-digest pinned even after that Assurance-layer classification.
 
 Authored companions live beside Product Specs. Reusable public-safe environment
 profiles belong under `assurance/environments/`; deterministic generated
 Assurance Manifests belong under `generated/assurance/` if committed; private
 or large run evidence belongs outside Git under the run-artifact store.
 
-These are proposed conventions, not current gates. Do not add AssuranceSpec
+These are proposed conventions, not current gates. The local ProductSpec
+package also has not yet implemented upstream `0.19.0` structured items or
+Related Artifacts; see
+`docs/assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`. Do not add AssuranceSpec
 files to the ProductSpec validation sweep or claim an Observer compiler until
 the schema, parser, conformance corpus, and deterministic compiler exist.

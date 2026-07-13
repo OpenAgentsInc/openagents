@@ -5,16 +5,18 @@ the proposed AssuranceSpec companion standard, Observer, Assurance Manifests,
 Environment Profiles, adapter contracts, evidence receipts, and the first
 dogfood plan.
 
-Assurance is deliberately separate from both ProductSpec and QA execution:
+Assurance is deliberately separate from ProductSpec's portable evidence index,
+the existing Desktop ProductSpec workroom loop, and QA execution:
 
 ```text
-ProductSpec       commits what the product should do and why
-AssuranceSpec     commits how we intend to know
-Observer          compiles admitted proof design into an immutable manifest
-QA tools/swarm    execute native checks and explore
-Receipts          report exact observations
-Maintainers       accept, reject, waive, or release under external policy
-Promise registry  alone governs public claims
+ProductSpec       commits intent and indexes evidence with Related Artifacts
+  ├─ workroom     runs accepted plans, packets, evidence, verification, disposition
+  └─ AssuranceSpec commits how we intend to know
+       └─ Observer compiles admitted verification obligations
+            └─ QA tools/swarm execute and emit exact Assurance Receipts
+
+Assurance Receipts may feed the workroom and ProductSpec evidence index by ref.
+Release policy remains separate. The promise registry alone governs claims.
 ```
 
 Nothing in this directory claims the proposed AssuranceSpec parser, compiler,
@@ -27,18 +29,22 @@ document names exact code and current receipts.
    proposal: document model, obligation language, environments, adapters,
    admission, deterministic compilation, receipts, versioning, conformance,
    and authority boundaries.
-2. [`CURRENT_SYSTEM_MAP.md`](./CURRENT_SYSTEM_MAP.md) — how ProductSpec,
+2. [`PRODUCTSPEC_EVIDENCE_LOOP.md`](./PRODUCTSPEC_EVIDENCE_LOOP.md) — the
+   adopted boundary for upstream Related Artifacts, the current Desktop
+   ProductSpec workroom loop, AssuranceSpec, dual document/intent digests, and
+   the OpenAgents `0.19.0` catch-up plan.
+3. [`CURRENT_SYSTEM_MAP.md`](./CURRENT_SYSTEM_MAP.md) — how ProductSpec,
    behavior contracts, Eval Suites, existing tests, formal models, QA Runner,
    QA Swarm, receipts, and product promises compose without changing their
    authoritative homes.
-3. [`OBSERVER_PRODUCT_PLAN.md`](./OBSERVER_PRODUCT_PLAN.md) — the extracted
+4. [`OBSERVER_PRODUCT_PLAN.md`](./OBSERVER_PRODUCT_PLAN.md) — the extracted
    post-MVP product-plan seed, scope, candidate acceptance criteria, metrics,
    business shape, risks, and rollout for Observer.
-4. [`MVP_FIRST_ASSURANCESPEC.md`](./MVP_FIRST_ASSURANCESPEC.md) — the concrete
+5. [`MVP_FIRST_ASSURANCESPEC.md`](./MVP_FIRST_ASSURANCESPEC.md) — the concrete
    dogfood plan for building only what is necessary to author, validate, admit,
    compile, and minimally execute the first AssuranceSpec against the current
    OpenAgents Desktop MVP ProductSpec.
-5. [`../transcripts/252-notes.md`](../transcripts/252-notes.md) — recording show
+6. [`../transcripts/252-notes.md`](../transcripts/252-notes.md) — recording show
    notes only: story, episode beats, naming discussion, candidate lines, and
    honest non-claims.
 
@@ -53,6 +59,13 @@ revision:    6
 sha256:      3396b2dd2778c724184668b045dedc3288578685386beeef67b4316e83b99aa5
 criteria:    CW-AC-01 through CW-AC-18
 ```
+
+This revision-6 artifact is the exact current baseline. It uses the existing
+OpenAgents `CW-AC-*` profile and is not valid under upstream ProductSpec
+`0.19.0`, whose item-level Related Artifacts require structured `AC-*`,
+`EVAL-*`, and `SM-*` IDs. The first dogfood preserves and tests r6; a separately
+reviewed ProductSpec revision must perform the portable ID/Related Artifact
+migration before we claim upstream-current Evidence Loop interoperability.
 
 The first authored companion is intended to live beside that ProductSpec as:
 
@@ -70,8 +83,8 @@ the existing ProductSpec test before generating anything new, then uses the
 existing duplicate-ID rejection as its falsifier. The subject block names all
 18 criteria, but the first revision admits only this narrow obligation; the
 other 17 produce `uncovered_acceptance_criterion`/`needs_design` diagnostics.
-Desktop workroom tests are the next expansion. None silently rounds up to
-green.
+Desktop workroom tests and receipt registration through the existing workroom
+loop are the next expansion. None silently rounds up to green.
 
 This dogfood validates the companion system alongside MVP development. It does
 not expand MVP product scope, declare any criterion passed, make Observer a
@@ -83,10 +96,14 @@ release prerequisite, or change a public promise.
   dogfood plans.
 - `docs/mvp/` owns the canonical MVP ProductSpec and will own its authored
   AssuranceSpec companion when the format implementation exists.
+- `apps/openagents-desktop/src/product-spec-workroom*` owns the implemented
+  plan/packet/lease/evidence/independent-verification/owner-disposition loop.
+  AssuranceSpec feeds it receipts by reference; it does not replace its state.
 - `docs/qa/` retains QA execution notes, runbooks, reports, and historical
   Khala Code evidence. It does not own AssuranceSpec semantics.
-- `packages/product-spec/` continues to implement upstream-compatible product
-  intent only.
+- `packages/product-spec/` implements the current OpenAgents ProductSpec
+  profile. It is behind upstream `0.19.0`; structured AC/SM items and Related
+  Artifacts are planned catch-up work, not current compatibility claims.
 - Future `packages/assurance-spec/` code must not be inferred from these design
   docs; it exists only when committed implementation and conformance tests do.
 - Native tests, behavior contracts, Eval Suites, and formal models stay in
@@ -98,12 +115,16 @@ release prerequisite, or change a public promise.
 | Layer | Status |
 | --- | --- |
 | ProductSpec subject | Real: MVP revision 6 is validator-managed and has stable `CW-AC-*` IDs |
+| Upstream ProductSpec Evidence Loop | Real upstream at parser `0.19.0`; not yet implemented locally |
+| Desktop ProductSpec workroom loop | Real: accepted plans, packets, leases, evidence receipts, verifier/producer ref checks, and owner dispositions |
 | AssuranceSpec design | Proposed in this directory |
 | MVP AssuranceSpec | Planned; not authored or admitted |
 | Parser/schema/conformance | Not implemented |
 | Environment Profile and adapter lock | Not implemented |
 | Deterministic Assurance Manifest compiler | Not implemented |
 | Native Bun test adapter and normalized receipt | Not implemented |
+| Typed Assurance Receipt resolver/registration in the Desktop workroom | Not implemented |
+| ProductSpec Related Artifact publication | Not implemented; portable item-level links also require explicit ID migration |
 | QA Swarm manifest consumption | Not implemented |
 | Hosted Observatory | Not implemented |
 

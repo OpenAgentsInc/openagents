@@ -3,6 +3,13 @@
 Date: 2026-07-08
 Status: analysis + recommended adoption design (owner review requested on §8 gates)
 Reference: `projects/repos/ProductSpec` (github.com/gokulrajaram/ProductSpec, MIT, repo v0.7.0, format `spec_format_version: "0.1"`)
+
+> **2026-07-13 update:** this dated analysis studied the older `0.7.0`
+> snapshot. Official ProductSpec is now parser `0.19.0` at `9ef2654` and adds
+> structured AC/SM items, Related Artifacts, the Evidence Loop checklist, spec
+> sessions, and stricter validator semantics. The local OpenAgents package and
+> current MVP spec have not yet caught up. Current boundary and migration
+> authority: [`../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`](../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md).
 Audience: owner + fleet agents + business agents (Sarah, BF engine, future AI employees)
 
 ## 0. Verdict up front
@@ -377,8 +384,11 @@ receipt-first disciplines that bind every phase.
 ## 9. AssuranceSpec companion addendum (2026-07-13)
 
 The proposed independent AssuranceSpec companion now lives under
-[`../assurance/`](../assurance/README.md). ProductSpec remains unchanged product
-intent with stable criterion binding; AssuranceSpec owns reviewed proof intent;
-the generated Manifest is execution IR; receipts are observations; the promise
-registry remains the sole authority for public claims. No AssuranceSpec parser,
-compiler, or conformance claim exists yet.
+[`../assurance/`](../assurance/README.md). Current ProductSpec owns product
+intent plus portable Related Artifact evidence pointers; it still does not run
+or verify evidence. The implemented Desktop workroom owns plans, packets,
+evidence envelopes, independent verification links, and owner packet
+disposition. AssuranceSpec owns reviewed proof intent; the generated Manifest
+is verification IR; receipts are observations; the promise registry remains
+the sole authority for public claims. No AssuranceSpec parser, compiler, or
+conformance claim exists yet.

@@ -1325,9 +1325,11 @@
         "docs/fable/2026-07-11-pylon-streamlining-audit.md",
         "docs/fable/MASTER_ROADMAP.md",
         "docs/fable/README.md",
+        "docs/fable/ROADMAP_QA.md",
         "docs/grok/README.md",
         "docs/mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md",
         "docs/mvp/README.md",
+        "docs/qa/README.md",
         "docs/sol/2026-07-10-episode-195-followup-analysis.md",
         "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
         "docs/sol/2026-07-10-terra-execution-lane.md",
@@ -1361,7 +1363,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 41,
+      "inboundSourceCount": 43,
       "issueLinks": [
         8547,
         8566,

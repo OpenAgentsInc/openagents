@@ -8,25 +8,26 @@ factual authorities
 ## Purpose
 
 AssuranceSpec is a control plane over existing QA and verification machinery,
-not a replacement runner. This map keeps each source of truth intact while
-showing how the proposed companion would compose it.
+not a replacement runner, evidence store, or ProductSpec work manager. This
+map keeps each source of truth intact while showing how the proposed companion
+would compose it.
 
 ## Authority chain
 
 ```text
-ProductSpec criterion
-  ↓ exact revision/digest/criterion binding
-AssuranceSpec obligation
-  ↓ admitted proof intent
-Assurance Manifest execution unit
-  ↓ exact adapter/environment/command/oracle/falsifier digests
-Native harness execution
-  ↓ normalized observation
-Assurance Receipt
-  ↓ independent review + gate projection
-Maintainer/release decision
-  ↓ separately authorized claim transition
-Product-promise registry
+ProductSpec intent + AC/EVAL/SM IDs + Related Artifact index
+  ├──> Desktop workroom: accepted plan -> packet/lease -> evidence envelope
+  │      -> unequal-ref verification receipt -> owner packet disposition
+  │
+  └──> AssuranceSpec obligation
+         -> admitted Assurance Manifest verification unit
+         -> native harness / QA Swarm
+         -> normalized Assurance Receipt
+                ├──> Desktop workroom evidence envelope by exact ref
+                └──> approved public-safe Related Artifact link
+
+Assurance/release projection -> separately authorized release decision
+Product-promise registry     -> separately authorized public claim transition
 ```
 
 No downstream layer may silently revise an upstream layer to manufacture
@@ -36,8 +37,9 @@ green.
 
 | Existing artifact/system | Remains authoritative for | Assurance role |
 | --- | --- | --- |
-| ProductSpec | Product intent, scope, criteria, success metrics | Exact subject and criterion refs |
-| `@openagentsinc/product-spec` | ProductSpec parsing, validation, stable criterion extraction | Subject parser; no QA semantics |
+| ProductSpec | Product intent, scope, criteria, success metrics, portable Related Artifact index | Exact subject/item refs and evidence attachment targets; links are not verdicts |
+| `@openagentsinc/product-spec` | Current local ProductSpec parsing, validation, stable criterion extraction | Subject parser; upstream `0.19.0` catch-up is still required |
+| Desktop ProductSpec workroom loop | Accepted plan, packets, dependencies, leases, evidence envelopes, unequal-ref verification receipts, owner packet disposition | Runtime integration point for Assurance Receipt refs; not authenticated identity, assurance, or release authority |
 | Behavior-contract registry | Durable micro-promises and oracle refs | Referenced contract and oracle obligations |
 | Eval Suites | Fixture-first evaluation semantics and thresholds | Eval obligations; fractional suite pass never accepts a whole criterion automatically |
 | Native unit/component/e2e tests | Framework-specific executable assertions | Existing oracle implementations |
@@ -47,22 +49,84 @@ green.
 | Property/model tests | Generated state/action sequences and minimized counterexamples | Property and model-based obligations |
 | TLA+/TLC and other checkers | Bounded formal models | Formal obligations with explicit model boundaries |
 | Release preflights | Exact artifact/environment acceptance checks | Release-rung execution units and receipts |
-| Receipts and traces | What an exact run observed | Evidence inputs; never product intent |
+| Receipts and traces | What an exact run observed | Evidence inputs and Related Artifact targets; never product intent |
 | Arbiter and `/qa` projections | Evidence-backed read models | Assurance graph visualization only |
 | Product-promise registry | Public claims and their transition authority | Informative links; remains sole claim authority |
 
 ## ProductSpec boundary
 
-OpenAgents' ProductSpec implementation already adds two dogfood-critical
-constraints to the upstream v0.1 shape:
+Upstream ProductSpec `0.19.0` now owns a portable Evidence Loop: structured
+`AC-*`, `EVAL-*`, and `SM-*` items can carry typed Related Artifact pointers.
+The validator rejects nonexistent item targets and warns about unusual
+artifact/item pairings. It does not fetch, verify, grade, or freshness-check
+the evidence.
+
+OpenAgents' current ProductSpec implementation predates that feature and adds
+two dogfood-critical local constraints to the older v0.1 shape:
 
 - positive `spec_revision`;
 - unique, author-visible Acceptance Criterion IDs such as `CW-AC-04`.
 
-AssuranceSpec references those IDs. ProductSpec does not gain test techniques,
-environments, falsifiers, release policy, or live verdict fields. A ProductSpec
-revision or byte digest change makes its companion stale until explicit
-reconciliation.
+AssuranceSpec references those IDs for the revision-6 bootstrap. ProductSpec
+does not gain test techniques, environments, falsifiers, release policy, or
+live verdict fields.
+
+The local package and MVP document are not upstream-`0.19.0` conformant: the
+MVP uses Markdown `CW-AC-*` criteria and semantic success-metric IDs, while
+portable item-level Related Artifacts require structured `AC-*`, `EVAL-*`, and
+`SM-*` items. Catch-up and ID migration must be explicit. Do not silently alias
+`CW-AC-04` to `AC-4`.
+
+Assurance subject identity will distinguish:
+
+- an exact document digest, which changes on any edit and preserves provenance;
+- a canonical intent digest, which excludes only attachments a typed classifier
+  proves are evidence-only. `product_spec` dependencies and consumed
+  `tool_metadata` remain intent-bound.
+
+A changed revision, intent digest, targeted item ID, or targeted item meaning
+stales proof design. A document-only change refreshes the evidence index
+without changing proof intent only after a typed semantic diff proves it is
+limited to classified evidence attachments and permitted provenance fields.
+Until that dual-digest projection is implemented and conformance-tested, use a
+stable public-safe evidence-index path or explicitly rebind; never wave away an
+exact digest mismatch.
+
+This is proposed Assurance-layer classification, not current Desktop identity.
+The workroom pins the exact ProductSpec document digest; any byte edit puts the
+existing run into `revision_mismatch`, while its old receipts remain historical
+under the old identity.
+
+See [`PRODUCTSPEC_EVIDENCE_LOOP.md`](./PRODUCTSPEC_EVIDENCE_LOOP.md) for the
+normative boundary and migration sequence.
+
+## Desktop ProductSpec workroom loop
+
+The implemented Desktop runtime is distinct from the ProductSpec document and
+from upstream Related Artifacts. It currently owns:
+
+- proposed and accepted ProductSpec implementation plans;
+- criterion-mapped work packets, dependencies, leases, and terminal state;
+- evidence envelopes of kind `test_run`, `behavior_eval`, `artifact`,
+  `diff_review`, or `receipt`;
+- verification receipts whose `verifierRef` must differ from the host
+  `evidenceProducerRef` (currently the active lease executor);
+- owner packet dispositions of `accepted` or `waived`, with a reason required
+  for waiver.
+
+Its current verification receipt has only the verdict `passed`, and its
+`evidenceRef` is opaque. Therefore a typed bridge must dereference and validate
+a current `CONFIRMED` Assurance Receipt before issuing an immutable opaque host
+ref and requesting packet verification. The bridge separately enforces real
+Assurance producer/reviewer policy; the host's unequal refs are not
+authenticated identity proof. It must not launder `REFUTED`,
+`INCONCLUSIVE`, stale, flaky, unavailable, or infrastructure-failed Assurance
+observations through that pass-only path. Those remain visible as evidence and
+must block, fail, or await a richer host contract.
+
+Desktop `verified` means the packet's linked evidence passed that host policy.
+It does not mean the full ProductSpec item is assured, the owner accepted the
+packet, release is allowed, or a public promise is green.
 
 ## Behavior contracts and Eval Suites
 
@@ -172,7 +236,12 @@ Wrap existing machinery before generating replacements:
 4. prove sensitivity with falsifiers;
 5. add new tests only for uncovered obligations;
 6. keep every native artifact in its normal owning package;
-7. normalize receipts without erasing native evidence.
+7. normalize receipts without erasing native evidence;
+8. resolve qualifying Assurance Receipts through a typed immutable bridge, then
+   register opaque refs through the existing Desktop workroom loop without
+   copying or upgrading their verdicts;
+9. publish only reviewed public-safe evidence pointers through ProductSpec
+   Related Artifacts after the local `0.19.0` compatibility gate.
 
 The first concrete application is
 [`MVP_FIRST_ASSURANCESPEC.md`](./MVP_FIRST_ASSURANCESPEC.md).

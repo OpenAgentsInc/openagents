@@ -23,9 +23,12 @@ read.
    ProductSpec. It plans proof-design tooling; it does not change MVP intent,
    sequencing, release state, or public claims.
 
-The Product Spec declares intent. Runtime policy, behavior contracts, Eval
-Suites, tests, reviewed artifacts, and receipts verify it; owner gates record
-approval or waiver; the promise registry alone authorizes public claims.
+The Product Spec declares intent. Current upstream ProductSpec can also index
+external evidence with Related Artifacts, but the local package has not yet
+implemented that `0.19.0` feature. Runtime policy, behavior contracts, Eval
+Suites, tests, reviewed artifacts, and receipts provide evidence; owner and
+release policies decide what it permits; the promise registry alone authorizes
+public claims.
 
 ## ProductSpec location and validation
 
@@ -42,6 +45,30 @@ bun test packages/product-spec/test/product-spec.test.ts
 Do not create a second copy under `specs/`; links, issues, dispatch prompts, and
 future decision traces should cite this path plus `spec_revision`.
 
+## Current ProductSpec workroom loop
+
+OpenAgents Desktop already implements a ProductSpec workroom loop in
+`apps/openagents-desktop/src/product-spec-workroom*`. It persists accepted
+plans, criterion-mapped packets, dependencies, mutation leases, evidence
+envelopes, verification receipts whose `verifierRef` differs from the host
+evidence-producer ref, and owner packet disposition. The current host check is
+reference inequality, not authenticated identity proof.
+
+That loop is useful without AssuranceSpec. It answers who accepted the plan,
+which packet ran, which evidence ref was registered, who verified it, and
+whether the owner accepted or waived the packet. It does not decide before the
+build which oracle is adequate, which falsifier it must reject, which
+environment/proof rung counts, whether a full criterion is assured, whether a
+release may proceed, or whether a public promise is green.
+
+The current host verification receipt has only `passed` and treats
+`evidenceRef` as opaque. A future Assurance integration therefore needs a typed
+resolver that validates a current `CONFIRMED` Assurance Receipt and issues an
+immutable RefSchema-safe handle before `evidenceKind: receipt` registration.
+It must separately enforce Assurance producer/reviewer policy and must not
+convert `REFUTED`, `INCONCLUSIVE`, stale, flaky, or infrastructure-failed
+observations into workroom `verified`.
+
 ## Planned first AssuranceSpec
 
 The first authored companion is intended to live here as
@@ -57,6 +84,21 @@ SHA-256
 `CW-AC-01` through `CW-AC-18`. A changed revision or digest requires the pilot
 binding and evidence to be reconciled; this README is not an authority for
 silently pinning stale identity.
+
+Revision 6 is valid under the current OpenAgents ProductSpec profile, but not
+under upstream ProductSpec `0.19.0`: its criteria use Markdown `CW-AC-*` IDs
+and its metrics use the existing OpenAgents shape rather than structured
+`AC-*`/`SM-*` items. The first dogfood keeps this exact r6 baseline honest. A
+separate reviewed revision must map those IDs and add portable Related
+Artifacts before we claim item-level upstream Evidence Loop interoperability.
+See
+[`../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`](../assurance/PRODUCTSPEC_EVIDENCE_LOOP.md).
+
+The pilot composes with the existing workroom rather than creating a second
+packet/status ledger: after a qualifying normalized Assurance Receipt exists,
+it is linked to an exact packet by reference. Portable ProductSpec Related
+Artifact publication is a later step gated on the local parser catch-up and ID
+reconciliation.
 
 ## Current boundary
 

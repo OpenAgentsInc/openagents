@@ -10,10 +10,11 @@ Before we let a ProductSpec drive a fleet of coding agents, commit how we will
 prove it first.
 
 The idea is a new companion called **AssuranceSpec**: ProductSpec says what the
-product should do; AssuranceSpec says what evidence would make us believe it.
-Observer compiles that reviewed agreement into an execution graph. QA Swarm and
-the product's native test tools run it. Receipts say what happened. None of
-those systems gets to accept its own work.
+product should do and gives evidence stable attachment points. Its workroom
+loop tracks the work and receipt references. AssuranceSpec says what proof
+would make us believe it. Observer compiles that reviewed agreement into a
+verification graph. QA Swarm and the product's native test tools run it.
+Receipts say what happened. None of those systems gets to accept its own work.
 
 ## Why this comes before multiplayer
 
@@ -46,8 +47,11 @@ Episode 252 defines the proof discipline. Episode 253 makes it social.
 This also picks up Episode 246's durable idea: close the gap between what we say
 and what we ship. Product promises govern the macro claim. Behavior contracts
 govern exact behavior. Tests and Eval Suites act as oracles. QA Swarm drives
-and explores. The missing layer is a reviewed proof design created early enough
-to shape the build instead of merely grading it afterward.
+and explores. ProductSpec's new Related Artifacts can point back to all of that
+evidence, and our Desktop workroom already tracks packets, evidence, independent
+verification, and owner disposition. The missing layer is still a reviewed
+proof design created early enough to say what should count before the
+implementation shapes the answer.
 
 ## Working name: Observer
 
@@ -83,16 +87,15 @@ command-console principles, not Blizzard names or assets, in a public product.
 ## The idea in one picture
 
 ```text
-ProductSpec       what the product should do
-      ↓
-AssuranceSpec     how we intend to know
-      ↓
-Observer          deterministic execution graph
-      ↓
-QA tools/swarm    run checks and explore
-      ↓
-Receipts          what was actually observed
-      ↓
+ProductSpec       intent + durable evidence attachment points
+  ├─ workroom     plan → packets → evidence refs → verification → disposition
+  └─ AssuranceSpec what proof should count
+       ↓
+     Observer      deterministic verification graph
+       ↓
+     QA tools      checks, exploration, and exact receipts
+       └─────────> workroom + ProductSpec evidence links by reference
+
 Human/policy      what the evidence permits
 ```
 
@@ -108,7 +111,8 @@ The ingredients are real:
 
 - ProductSpec parsing, validation, revision/digest binding, and stable
   criterion IDs;
-- OpenAgents Desktop ProductSpec workroom tests;
+- OpenAgents Desktop's accepted plans, criterion packets, leases, evidence
+  receipts, verifier/producer ref checks, owner disposition, and workroom tests;
 - the double-gated ProductSpec-native MVP proof driver for an isolated
   two-criterion fixture and real Codex capacity;
 - behavior contracts and fixture-first Eval Suites;
@@ -120,6 +124,12 @@ The composed AssuranceSpec system is not real yet. There is no AssuranceSpec
 parser, schema/conformance corpus, admission system, Environment Profile,
 adapter lock, deterministic Manifest compiler, normalized Assurance Receipt,
 or QA Swarm Manifest consumer today.
+
+There is also a useful ProductSpec catch-up story: the founder's current
+`0.19.0` parser has structured `AC-*`/`SM-*` items and Related Artifacts, while
+our local parser and MVP revision 6 still use the earlier `CW-AC-*` profile.
+The episode can show the boundary without pretending that portable item-level
+evidence links already work here.
 
 The episode should show that gap honestly. We are not renaming a pile of tests
 and calling the architecture shipped.
@@ -221,15 +231,16 @@ artifacts, and blockers are in
 
 1. **Cold open: move multiplayer back one slot.** “Before we add more agents,
    let us make it much harder for one agent to bullshit us.”
-2. **Show the ProductSpec gap.** Criteria tell agents what to build, but do not
-   contain the complete executable evidence graph.
+2. **Show the assurance gap.** ProductSpec now indexes evidence and the
+   workroom tracks it, but neither precommits a complete verification graph or
+   decides which proof is adequate.
 3. **Tour the real ingredients.** ProductSpec, contracts, Eval Suites, native
    tests, QA Swarm, seam probes, property/model tests, formal checks, proof
    rungs, and promises.
 4. **Tell the seam incident.** Everything passed; the real phone could not
    connect. “Both sides have tests” is not a seam test.
-5. **Name the layers.** ProductSpec, AssuranceSpec, Observer, Manifest, QA
-   Swarm, receipts, and human authority.
+5. **Name the layers.** ProductSpec, Related Artifacts, workroom Evidence Loop,
+   AssuranceSpec, Observer, Manifest, QA Swarm, receipts, and human authority.
 6. **Use the actual MVP ProductSpec.** Show revision 6 and its 18 criteria.
 7. **Write the first obligation.** Bind `CW-AC-04` to the existing exact-ID
    test and duplicate-ID falsifier.
@@ -252,8 +263,9 @@ artifacts, and blockers are in
 > at the crime scene before the code arrives.
 
 > ProductSpec says what the product should do. AssuranceSpec says how we will
-> know. Observer compiles that agreement. QA Swarm runs it. Arbiter shows the
-> receipts. None of those gets to accept its own work.
+> know. Its Evidence Loop points to what happened. Observer compiles the proof
+> agreement. QA Swarm runs it. Arbiter shows the receipts. None of those gets
+> to accept its own work.
 
 > A test suite is not impressive because it is large. It is impressive because
 > every important test can point to the bug it kills.

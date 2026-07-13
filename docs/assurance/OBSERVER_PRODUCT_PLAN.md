@@ -8,9 +8,9 @@ Spec, implementation claim, release gate, price, or public promise
 ## Product sentence
 
 Observer helps a team turn an accepted ProductSpec into a reviewed Assurance
-Spec, compile that proof design into an immutable execution graph, run it
-through native QA tools, and inspect exactly what the resulting evidence does
-and does not prove.
+Spec, compile that proof design into an immutable verification graph, run it
+through native QA tools, and return approved evidence pointers to ProductSpec's
+Evidence Loop without pretending that a link is a verdict.
 
 The framework-neutral standard is **AssuranceSpec**. Observer is the OpenAgents
 planner/compiler/product codename. The standard design lives in
@@ -18,12 +18,19 @@ planner/compiler/product codename. The standard design lives in
 
 ## Problem
 
-ProductSpec gives product teams and coding agents one durable statement of
-intent before implementation, but it does not turn that intent into executable
-proof. Acceptance criteria, behavior contracts, unit tests, browser journeys,
-device checks, seam probes, property suites, formal models, release receipts,
-and production monitors are authored in separate workflows—often after the
-implementation has biased what the tests say.
+The ProductSpec standard commits intent and now provides Related Artifacts for
+linking AC/EVAL/SM IDs to external evidence. OpenAgents Desktop also has a real
+workroom loop that turns an accepted ProductSpec plan into packets and records
+leases, evidence envelopes, unequal verifier/producer refs, and owner packet
+disposition. What neither provides is a separately reviewed pre-build proof
+design specifying adequate oracles, falsifiers, environments, seams, proof
+rungs, freshness, and evidence policy.
+
+Acceptance criteria, behavior contracts, unit tests, browser journeys, device
+checks, seam probes, property suites, formal models, release receipts, and
+production monitors are still authored in separate workflows—often after the
+implementation has biased what the tests say. Related Artifact links can make
+that evidence discoverable, but cannot say whether it is the right evidence.
 
 Agents can produce large passing suites that assert fixtures, mirror
 implementation details, miss real integration seams, skip unavailable
@@ -40,16 +47,19 @@ proof rungs, gates, and authority boundaries—then compiles that proof design
 into an immutable Assurance Manifest and uses native adapters and QA Swarm to
 execute, explore, distill, and receipt those checks, teams will detect
 specification drift and integration defects earlier, ship fewer false greens,
-and produce trustworthy release evidence without being locked to Effect Native
-or one test framework.
+and produce trustworthy release evidence. Approved receipts can then flow by
+reference through the existing workroom and ProductSpec Related Artifacts
+without being locked to Effect Native or one test framework.
 
 ## Proposed scope
 
 ### In
 
 - one validator-clean ProductSpec revision with stable criterion IDs;
+- upstream-current structured AC/EVAL/SM and Related Artifact compatibility, or
+  an explicitly named legacy profile with no portability overclaim;
 - one schema-valid, reviewed, admitted Assurance Spec bound to its exact
-  ProductSpec revision and digest;
+  ProductSpec revision, document digest, intent digest, and item IDs;
 - digest-pinned Environment Profiles and adapter lock;
 - typed semantic planning that produces proposed obligations;
 - deterministic compilation to an immutable, byte-stable Assurance Manifest;
@@ -61,6 +71,11 @@ or one test framework.
 - an explicit falsifier or sensitivity proof for every required oracle;
 - QA Swarm execution, exploration, regression distillation, and public-safe
   evidence integration;
+- a stable public-safe Assurance Evidence Index and approved ProductSpec
+  Related Artifact projection;
+- a typed immutable Assurance Receipt resolver and opaque-ref registration
+  through the existing Desktop workroom without replacing its packet/status
+  ledger;
 - exact spec, source, command, target, seed, adapter, artifact, and receipt
   digests;
 - orthogonal admission, readiness, observation, infrastructure, stability,
@@ -79,6 +94,7 @@ or one test framework.
 - replacing product, design, code, security, maintainer, or owner review;
 - perfect automatic translation of arbitrary prose into correct tests;
 - one universal runner replacing native test tools;
+- replacing ProductSpec Related Artifacts or the Desktop workroom loop;
 - formal verification of aesthetics or unbounded production systems;
 - mutating customer production by default;
 - auto-merge, auto-deploy, promise promotion, spend, payout, or settlement;
@@ -105,14 +121,19 @@ or one test framework.
 - secrets, prompts, credentials, private paths, or customer data in public
   evidence;
 - mutable latest-run status inside the generated Assurance Manifest;
-- AssuranceSpec becoming a second source of product intent.
+- AssuranceSpec becoming a second source of product intent;
+- link count, workroom `verified`, or owner packet disposition standing in for
+  assurance, release, or promise state.
 
 ## Candidate acceptance criteria
 
 - **OBS-AC-01 — Exact subject binding.** Given one validator-clean ProductSpec
   and one admitted Assurance Spec, Observer binds exact paths, format versions,
-  revisions, digests, review/admission set, Environment Profiles, adapter lock,
-  and compiler version. Any mismatch blocks compilation with a typed result.
+  revisions, ProductSpec document and intent digests, Assurance digests,
+  review/admission set, Environment Profiles, adapter lock, and compiler
+  version. An intent mismatch blocks compilation; an evidence-index-only
+  document change has its own typed refresh path only after semantic
+  classification proves that no dependency or consumed metadata changed.
 - **OBS-AC-02 — Complete criterion disposition.** Every applicable criterion
   has one or more admitted obligations or a reviewed `not_applicable`
   disposition. `needs_design`, blocked, and exceptions remain visible and do
@@ -156,7 +177,12 @@ or one test framework.
   timestamp, or absolute-path inputs.
 - **OBS-AC-14 — Durable run evidence.** Runs flush partial evidence on failure
   or interruption and keep observation separate from infrastructure, flake,
-  and freshness while recording exact inputs and artifacts.
+  and freshness while recording exact inputs and artifacts. In Desktop, a
+  typed bridge validates a qualifying `CONFIRMED` Assurance Receipt and issues
+  an immutable opaque ref for the ProductSpec workroom. The host verifier ref
+  differs from the lease executor, Assurance producer/reviewer policy is
+  checked separately, native and Assurance receipts remain intact, and
+  non-confirming states cannot become host `passed`.
 - **OBS-AC-15 — Safe external targets.** Production is blocked/read-only by
   default. Mutation requires owner arming, fresh test identity, bounded
   actions/budget, revocation, and private evidence.
@@ -170,9 +196,12 @@ or one test framework.
 - **OBS-AC-18 — Non-Effect portability.** One non-Effect reference project uses
   native tools and emits conforming receipts without changing AssuranceSpec
   semantics.
-- **OBS-AC-19 — Dependency freshness.** Subject, profile, adapter, source,
-  target, contract, or oracle change stales only dependent evidence and
-  requires explicit reconciliation.
+- **OBS-AC-19 — Dependency freshness.** Subject intent, profile, adapter,
+  source, target, contract, or oracle change stales only dependent evidence and
+  requires explicit reconciliation. A typed diff limited to classified
+  evidence attachments refreshes the index without masquerading as
+  product-intent drift; `product_spec` dependencies and consumed
+  `tool_metadata` remain intent-bound.
 - **OBS-AC-20 — Separate coverage ledgers.** Criterion traceability,
   obligation/environment execution, and reachable frontier remain separate;
   code coverage is advisory.
@@ -184,20 +213,23 @@ or one test framework.
   mismatch, subject drift, exact golden bytes, and separate gate-evaluation
   fixtures exist, plus a self-hosting Assurance Spec for Observer.
 - **OBS-AC-23 — Independent revisions.** ProductSpec intent revisions,
-  AssuranceSpec proof-intent revisions, implementation/manifest changes, and
-  run receipts advance independently under explicit stale/reconciliation laws.
-- **OBS-AC-24 — Immutable manifest.** The manifest contains resolved execution
-  and dependency/gate graphs only; all dynamic status remains in receipts and
-  projections.
+  ProductSpec evidence-index updates, AssuranceSpec proof-intent revisions,
+  implementation/manifest changes, and run receipts advance independently
+  under explicit stale/reconciliation laws.
+- **OBS-AC-24 — Immutable manifest.** The manifest contains resolved
+  verification units and dependency/gate graphs only; all dynamic status
+  remains in receipts and projections.
 
 ## Candidate artifact vocabulary
 
 - `*.assurance-spec.md` — authored proof design;
 - `*.assurance-environment.json` — reusable environment policy/capabilities;
 - `assurance-adapters.lock.json` — adapter versions and content digests;
-- `*.assurance-manifest.json` — generated immutable execution graph;
+- `*.assurance-manifest.json` — generated immutable verification graph;
 - `*.assurance-review.json` — portable proof-design review;
 - `*.assurance-decision-trace.json` — proof-policy change history;
+- `*.assurance-evidence-index.json` — public-safe mutable projection behind a
+  stable ProductSpec Related Artifact link;
 - `openagents.observer.assurance_admission_receipt.v1`;
 - `openagents.observer.oracle_sensitivity_receipt.v1`;
 - `openagents.observer.seam_receipt.v1`;
@@ -238,7 +270,8 @@ criterion they show four separate facts:
 
 The default summary says which criteria are fixture-proven, missing real-seam
 evidence, stale, blocked, or owner-gated. It does not replace those facts with a
-single “percent complete.”
+single “percent complete.” ProductSpec Related Artifact links are visible as
+evidence locations, never as an additional green state.
 
 ## Product and business shape
 
@@ -296,10 +329,15 @@ retention. It does not hold the basic proof contract hostage.
 
 1. Build the minimum MVP dogfood slice in
    [`MVP_FIRST_ASSURANCESPEC.md`](./MVP_FIRST_ASSURANCESPEC.md).
-2. Expand that admitted Assurance Spec criterion by criterion, importing
+2. Catch up `@openagentsinc/product-spec` to upstream `0.19.0`, then explicitly
+   reconcile the MVP's `CW-AC-*`/semantic metric IDs into portable structured
+   items with a linked machine-readable ID map, single-line criterion fixtures,
+   and custom preservation of metric `segment`/`source` context before claiming
+   item-level Related Artifact interoperability.
+3. Expand that admitted Assurance Spec criterion by criterion, importing
    existing tests before generating new ones.
-3. Dogfood Effect Native/OpenAgents Desktop across local, packaged, seam, and
+4. Dogfood Effect Native/OpenAgents Desktop across local, packaged, seam, and
    release tiers.
-4. Self-host Observer's own Assurance Spec and mutation-test the compiler.
-5. Prove portability on one non-Effect project.
-6. Only then consider a standalone standard repository or hosted service.
+5. Self-host Observer's own Assurance Spec and mutation-test the compiler.
+6. Prove portability on one non-Effect project.
+7. Only then consider a standalone standard repository or hosted service.
