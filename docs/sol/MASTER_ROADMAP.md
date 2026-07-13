@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-12
-- Revision: 99
+- Revision: 100
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -382,7 +382,7 @@ worker closeout, or polished UI never manufactures live or owner acceptance.
 | C0 | Closed historical implementation baseline for the durable Fleet seam |
 | C1 | Closed/deployed minimum-safe run, claim, reconnect, and supervision substrate |
 | C2 | Closed #8640 simultaneous named Codex+Claude mixed-account proof; substrate only, never client cutover or Sarah authority |
-| C3 | Open product integration boundary: #8636's schema and production claim-registry readiness are deployed and receipted; #8547 accepted managed workroom still precedes the real owner-local plus managed-cloud mobile/Desktop receipt |
+| C3 | Open product integration boundary: #8547's first managed Agent Computer is accepted in production; #8636's schema/readiness are deployed and its real owner-local plus managed-cloud mobile/Desktop hybrid receipt remains open |
 
 R7, not C2, is owner-facing software cutover. The historical C0–C3 evidence
 and fallback rules are archived in Backroom at
@@ -412,15 +412,16 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   the same refs on physical iPhone plus sign-out/revocation denial. #8677
   retains fault-convergence proof and is coupled to CUT-09's remaining literal
   physical network-gap/revocation acceptance.
-- #8547 owns the first accepted brokered Agent Computer/workroom; #8636 follows
-  with live hybrid local/managed routing. Before that live acceptance, #8636
+- Closed #8547 proves the first accepted brokered Agent Computer/workroom;
+  #8636 now owns live hybrid local/managed routing. Before that live acceptance, #8636
   may still compose its managed-cloud runner into intake/activation, remove the
   hard unconfigured placeholder, persist routing/fallback history through
   Sync, project capacity/claims, and enforce per-work-unit quota/cost/data-
   posture constraints. Portability, general broker,
   owner-managed enrollment, provider-adapter breadth, and any-host directory
-  need bounded leaves rather than silent expansion of those issues. Persistent
-  Desktop voice is now separately bounded by #8733–#8741.
+  need bounded leaves rather than silent expansion of those issues. The
+  #8733–#8741 persistent Desktop voice implementation track is closed and does
+  not expand this remote-work boundary.
 - Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
   receipt; it is not current work or a product-front-door decision.
 - #8733 is the closed persistent-audio MVP. AUDIO-1 #8734 through AUDIO-8
@@ -446,20 +447,11 @@ the currently unclaimed worker lease.
 | [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566) | Sole R0–R7 program parent |
 | [#8574](https://github.com/OpenAgentsInc/openagents/issues/8574) | Desktop D0–D6/R5 track |
 | [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597) | Mobile R0–R7/R6 track |
-| [#8547](https://github.com/OpenAgentsInc/openagents/issues/8547) | First real brokered Agent Computer/workroom |
 | [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | One claim registry across local/managed routing |
 | [#8676](https://github.com/OpenAgentsInc/openagents/issues/8676) | Real streamed Desktop-to-physical-mobile continuation |
 | [#8677](https://github.com/OpenAgentsInc/openagents/issues/8677) | Command/event/lifecycle fault convergence |
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | CUT-09 remaining lifecycle acceptance |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
-| [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | P1-parallel persistent Desktop audio epic; Google STT/TTS, retained media, typed UI actions |
-| [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | AUDIO-2 private Cloud Run gateway and Google STT V2 streaming |
-| [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | AUDIO-3 encrypted GCS media and Cloud SQL retention manifests/receipts |
-| [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | AUDIO-4 host-owned Desktop capture/playback/persistent transport lifecycle |
-| [#8738](https://github.com/OpenAgentsInc/openagents/issues/8738) | AUDIO-5 Effect Native Voice control and transcript/status HUD |
-| [#8739](https://github.com/OpenAgentsInc/openagents/issues/8739) | AUDIO-6 final speech/control frames through registered Desktop actions |
-| [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | AUDIO-7 Google Chirp 3 HD replies and qualified barge-in |
-| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 deployed real-microphone fault/privacy/storage proof |
 
 Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 #8642, #8643, #8646, and #8650. They are not dormant queues.
@@ -482,10 +474,10 @@ Live issues and claims control exact selection. At this snapshot:
    Android-emulator continuation/control/interruption; accessibility, privacy,
    security, provenance, and rollback evidence; and the product/runbook change
    making OpenAgents Desktop the default local surface for the proven scope.
-3. Continue disjoint #8636 source/persistence/capacity work, but complete
-   #8547's accepted managed workroom before #8636's live hybrid-routing receipt.
-   Keep metering, target custody, quota/cost/data posture, usage, writeback,
-   reclaim, and fallback explicit.
+3. Continue disjoint #8636 source/persistence/capacity work on top of closed
+   #8547's accepted managed workroom, then retain the real owner-local plus
+   managed-cloud hybrid-routing receipt. Keep metering, target custody,
+   quota/cost/data posture, usage, writeback, reclaim, and fallback explicit.
 4. Treat closed #8733 as the accepted P1 audio implementation substrate. Ship
    it through the existing Desktop RC system without widening Runtime Gateway,
    Desktop command, Sync, or release authority.

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "152f99c6663a27dc4149984d8b46bb9b058a47f931f4c57facb1ab4cf1e802e6",
+  "sourceTreeSha256": "8a2fdf714bf84283a3a53e0bd3ce7e54dac1ec621386e09acaf47f5ea1e1ee07",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -789,11 +789,12 @@
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
+        "docs/sol/2026-07-12-cut27-cutover-readiness-audit.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/issues/README.md",
         "docs/sol/receipts/README.md"
       ],
-      "inboundSourceCount": 3,
+      "inboundSourceCount": 4,
       "issueLinks": [
         8706
       ]
@@ -804,7 +805,7 @@
       "owner": "Sol coding cutover",
       "disposition": "retain-evidence",
       "dispatch": false,
-      "sha256": "72e085b42927ba9841b9b937811fcc4eb75c87de4046bc0347a4acbd7144139e",
+      "sha256": "ca2fe6e2d7be5abad1f337a388d101d693b9433939a70ecd1458bcbdd0ff072f",
       "status": "pinned additive snapshot; non-dispatch",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1139,7 +1140,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "9230b954d189030e1a5740ced1c8bebd5e4b8e869e742673522c01a001e06008",
+      "sha256": "021e3e30ae66bff8f9684b1be6c200a83479b3954a46b8951fb2e8e201fa72c6",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
@@ -1212,12 +1213,6 @@
         8731,
         8733,
         8734,
-        8735,
-        8736,
-        8737,
-        8738,
-        8739,
-        8740,
         8741,
         8742,
         8743
@@ -1316,7 +1311,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "817ea9b2fcee0cac9dc3c7a3e4f97c08d7642a76bda957b98667d94d97f10f2f",
+      "sha256": "8f600847a772d86ef7913a2ff9af63cf7e6fe6c833581825e19a5c3cf87620fb",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -1376,13 +1371,6 @@
         8706,
         8707,
         8733,
-        8734,
-        8735,
-        8736,
-        8737,
-        8738,
-        8739,
-        8740,
         8741
       ]
     },
@@ -2041,15 +2029,15 @@
     },
     {
       "path": "docs/sol/issues/fc-cloud-codex.md",
-      "class": "contract",
+      "class": "receipt",
       "owner": "Sol issue #8547",
-      "disposition": "retain-live-source",
+      "disposition": "retain-evidence",
       "dispatch": false,
       "sha256": "aad871130218fdbfd233f1274df0ff4eadd32f08b8050f24dfad92faf7152051",
       "status": "active P0 minimum remote-workroom path; advanced capacity follows R7",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
-      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
         "docs/sol/issues/README.md"
       ],

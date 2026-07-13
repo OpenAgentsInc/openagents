@@ -546,3 +546,120 @@ new architecture is indicated. The Agent Computer/workroom issues #8547 and
 #8636 remain a later remote-work track and do not block the local installed-app
 declaration. The separate AUDIO-0…AUDIO-8 program (#8733–#8741) likewise does
 not expand CUT-27.
+
+## Criterion evidence ledger — 2026-07-12 final-gap audit
+
+This section supersedes the earlier assertion that the combined physical-iPhone
+journey is the *only* remaining CUT-27 gate. The journey remains required for
+#8689/#8676/#8677, but closing those three records does not by itself satisfy
+the literal CUT-27 acceptance contract. This ledger maps only public-safe,
+already-retained evidence; separate component receipts are not composed into an
+end-to-end task unless one receipt actually observed the composition.
+
+### Criterion 1 — two installed-app repository tasks
+
+**Verdict: not yet proven.** The substrate is strong, but neither required
+end-to-end row exists in the retained evidence.
+
+| Required observation | Existing evidence | Narrowest true result |
+| --- | --- | --- |
+| Clean installed candidate | The exact public RC5 DMG was copied into a clean Applications directory, passed signature/staple/version checks, the full packaged smoke twice, and uninstall/reinstall. See the [RC5 closure receipt](./2026-07-12-cut-26-rc5-installed-artifact-closure.md). | Proven for the installed artifact. |
+| Named Codex and named Claude live turns in the built app | CUT-21 selected exact `codex-2` / `gpt-5.6-sol` and `claude-pylon-3` / `claude-fable-5`, observed streaming, retained midstream/final images, and exited successfully. | Proven provider selection and streaming, not repository-task completion. |
+| Project/session, history/agent inspection, composer context, question/approval, file edit, test/preview, Git diff review, durable terminal | RC5's packaged smoke covers these workbench surfaces, including a private temporary repository, typed fixture turns, structured question, editor/Git/PTY/preview, and teardown. CUT-17–CUT-20 retain their bounded component receipts. | Proven as packaged/component behavior, not as one real named-provider task. |
+| Real repository work by the named provider | The retained Codex daily-driver objective explicitly says "Do not edit files"; the retained Claude daily-driver objective likewise asks for inspection/reporting without a repository edit. #8640 is a production mixed-runtime Fleet substrate receipt, not an installed-Desktop repository workflow. | Missing for both providers. |
+
+The exact remaining run is therefore **two fresh RC5-or-newer installed-app
+tasks**, one with an exact named Codex target and one with an exact named Claude
+target. Each task's single public-safe receipt must identify the installed
+artifact and repository/session/thread refs and show: history/agent inspection;
+explicit composer file/diff context; one structured question or approval
+handled through the app; a provider-authored file edit; a real test and/or
+preview; review of the resulting Git diff; and one durable terminal outcome.
+The repository change may be deliberately small, but it must be real and
+non-trivial. Re-running fixture smoke steps or merely citing the component CUTs
+does not fill this row.
+
+### Criterion 2 — cross-device continuation and interruption during the tasks
+
+**Verdict: partial, not yet proven for the two criterion-1 tasks.** Android
+emulator is accepted by owner decision; physical Android is never required.
+
+- Physical iPhone has authenticated cross-client and accessibility receipts,
+  and the current #8676/#8689 run has now produced a real named-Codex terminal
+  continuation on the exact synced thread. The required network-gap FIFO,
+  reconnect, unlink/revocation denial, and no-replay row remains open.
+- The authenticated Android emulator has canonical Fleet retry/cancel and
+  Desktop convergence evidence, plus process-death/deep-link/offline coverage.
+  That accepted operator row used the hosted-Gemini work-context path; it was
+  not continuation of either required named-Codex or named-Claude repository
+  task.
+- No retained receipt maps both named-provider repository tasks across iOS and
+  Android with reconnect, continuation, one attention/control action, one
+  forced interruption, and Desktop convergence. The final run may reuse the
+  already-proven device primitives, but it must retain exact stable refs showing
+  that each device acted on the same two task records rather than analogous
+  fixtures.
+
+### Criterion 3 — parent proofs and zero waived cutover P0s
+
+**Verdict: partial.** #8640 and #8678 are closed. CUT-10 through CUT-26 are
+closed. #8676, #8677, and CUT-09 #8689 remain open and jointly own the final
+physical network-gap/revocation row. Close them only on their literal receipts;
+then cite those receipts here. The remote-work issues do not block CUT-27:
+#8547 is now closed with an accepted production Agent Computer, while #8636
+remains the later hybrid local/managed-routing boundary.
+
+### Criterion 4 — declaration bundle
+
+**Verdict: evidence inputs largely proven; consolidated register not yet
+published.** The final declaration must cite rather than rerun the accepted
+inputs:
+
+- accessibility: CUT-24 plus the retained Android TalkBack and physical-iOS
+  VoiceOver receipts;
+- privacy/security: host-only provider/plugin credentials and redacted
+  diagnostic/notification artifacts from CUT-23/CUT-24, hardened renderer and
+  IPC/fuse posture from CUT-26, and the #8676 revocation/no-client-secret result
+  once it passes;
+- artifact provenance and rollback: RC5 digest, signing/notarization/staple,
+  public-feed identity, interrupted-download digest equality, service rollback,
+  and client downgrade refusal in the RC5 closure receipt;
+- later remote-work boundary: the
+  [remote-first portable sessions pathway](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
+  and the roadmap's explicit non-goals.
+
+The declaration-time loss/exception register must, at minimum, preserve these
+known boundaries: Codex plugin/skill lifecycle is explicitly unsupported while
+Claude's supported lane is live-proven; mobile pause is absent pending a typed
+transport while supported controls remain authoritative; H5 context compaction
+remains `partial` without a UI marker/control or boundary-integrity harness;
+remote workrooms, host movement, Daytona, elastic placement, and voice are not
+manufactured by the local-coding declaration. Any failure or limitation found
+in the two task runs or final phone fault row is added rather than waived.
+
+### Criterion 5 — default-surface declaration and legacy lockout
+
+**Verdict: infrastructure lockout proven; product declaration intentionally
+pending.** CUT-26 proves that both legacy Desktop feeds return typed `410` and
+that the current signed OpenAgents feed remains live. No current product,
+runbook, or roadmap text yet declares OpenAgents Desktop the default ordinary
+local coding surface or says direct Codex/Claude Code UI fallback is unsupported
+for the proven scope. That wording lands only after criteria 1–4 pass, together
+with the final loss/exception register; it must not imply remote-work or
+portable-session acceptance.
+
+### Minimal close sequence
+
+1. Finish and close the shared #8689/#8676/#8677 physical-iPhone
+   network-gap/revocation journey.
+2. Run the two exact installed-app repository tasks described under criterion
+   1 and retain cross-device stable-ref evidence described under criterion 2.
+3. Publish the consolidated exception/accessibility/privacy/security/
+   provenance/rollback/remote-boundary bundle.
+4. Flip the default-local-surface documentation for the bounded proven scope,
+   reconcile this ledger, declare CUT-27, and only then close #8707 and
+   #8574's ordinary local-coding scope. Do not close #8566 or #8597 while their
+   remote-first outcomes remain open.
+
+No new CUT leaf or architecture is indicated. These are acceptance runs and a
+final declaration over already-landed capabilities.

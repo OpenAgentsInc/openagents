@@ -24,7 +24,6 @@ contain historical status; refresh the live issue/comments before dispatch.
 | [`app-program.md`](./app-program.md) | #8566 | Sole R0–R7 program parent |
 | [`app-desktop.md`](./app-desktop.md) | #8574 | Desktop D0–D6/R5 track |
 | [`app-mobile.md`](./app-mobile.md) | #8597 | Mobile R0–R7/R6 track |
-| [`fc-cloud-codex.md`](./fc-cloud-codex.md) | #8547 | First accepted brokered Agent Computer/workroom |
 | [`fc-4-hybrid-cloud.md`](./fc-4-hybrid-cloud.md) | #8636 | Local/managed routing through one claim registry |
 | [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) | #8676 | Real Desktop-to-physical-mobile continuation |
 | [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) | #8677 | Command/event/lifecycle fault proof |
@@ -39,14 +38,6 @@ must equal the pinned product-issue projection.
 | --- | --- |
 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | [`CUT-27 readiness audit`](../2026-07-12-cut27-cutover-readiness-audit.md) |
-| [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733) | [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) master epic |
-| [#8735](https://github.com/OpenAgentsInc/openagents/issues/8735) | Same plan: AUDIO-2 Google STT gateway |
-| [#8736](https://github.com/OpenAgentsInc/openagents/issues/8736) | Same plan: AUDIO-3 retained-media custody |
-| [#8737](https://github.com/OpenAgentsInc/openagents/issues/8737) | Same plan: AUDIO-4 Desktop media lifecycle |
-| [#8738](https://github.com/OpenAgentsInc/openagents/issues/8738) | Same plan: AUDIO-5 visible Voice HUD |
-| [#8739](https://github.com/OpenAgentsInc/openagents/issues/8739) | Same plan: AUDIO-6 registered action bridge |
-| [#8740](https://github.com/OpenAgentsInc/openagents/issues/8740) | Same plan: AUDIO-7 Google TTS/barge-in |
-| [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | Same plan: AUDIO-8 deployed acceptance |
 
 ## Closed proof and implementation sources
 
@@ -54,7 +45,8 @@ These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
 
 - [`CUT-26 RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md) — #8706
-- [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) — closed AUDIO-1 #8734 contract freeze
+- [`fc-cloud-codex.md`](./fc-cloud-codex.md) — closed #8547 first accepted brokered Agent Computer/workroom
+- [`persistent Desktop voice/audio plan`](../../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md) — closed AUDIO-0…AUDIO-8 #8733–#8741 implementation track
 
 - [`confirmed-agent-timeline.md`](./confirmed-agent-timeline.md) — #8672
 - [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md) — #8674
