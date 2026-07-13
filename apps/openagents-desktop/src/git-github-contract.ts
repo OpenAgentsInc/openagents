@@ -78,12 +78,14 @@ export type GitGithubErrorCode = (typeof gitGithubErrorCodes)[number]
 const StatusRequestSchema = Schema.Struct({ op: Schema.Literal("status") })
 const GitReviewPathSchema = Schema.String.check(Schema.isMaxLength(1_024))
 const GitReviewIdentitySchema = Schema.String.check(Schema.isMaxLength(160))
+const GitTimelineItemRefSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160))
 const DiffRequestSchema = Schema.Struct({
   op: Schema.Literal("diff"),
   repositoryRef: GitReviewIdentitySchema,
   statusRef: GitReviewIdentitySchema,
   path: GitReviewPathSchema,
   source: Schema.Literals(["staged", "unstaged"]),
+  causalItemRef: Schema.NullOr(GitTimelineItemRefSchema),
 })
 const DiscardRequestSchema = Schema.Struct({
   op: Schema.Literal("discard"),
@@ -204,6 +206,7 @@ const DiffResultSchema = Schema.Struct({
   statusRef: GitReviewIdentitySchema,
   path: GitReviewPathSchema,
   source: Schema.Literals(["staged", "unstaged"]),
+  causalItemRef: Schema.NullOr(GitTimelineItemRefSchema),
   content: Schema.String.check(Schema.isMaxLength(120_000)),
   hunks: Schema.Array(GitDiffHunkSchema).check(Schema.isMaxLength(500)),
   truncated: Schema.Literal(false),

@@ -18,7 +18,7 @@ describe("request decoding", () => {
   test("accepts each op with its typed params", () => {
     const valid: ReadonlyArray<unknown> = [
       { op: "status" },
-      { op: "diff", repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1", path: "a.txt", source: "unstaged" },
+      { op: "diff", repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1", path: "a.txt", source: "unstaged", causalItemRef: null },
       { op: "discard", repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1", path: "a.txt" },
       { op: "stage", paths: ["a.txt", "dir/b.ts"] },
       { op: "unstage", paths: ["a.txt"] },
@@ -49,7 +49,7 @@ describe("request decoding", () => {
       { op: "commit" }, // missing message
       { op: "stage" }, // missing paths
       { op: "stage", paths: "a.txt" }, // paths not an array
-      { op: "diff", repositoryRef: "r", statusRef: "s", path: "a.txt", source: "working" },
+      { op: "diff", repositoryRef: "r", statusRef: "s", path: "a.txt", source: "working", causalItemRef: null },
       { op: "branchCreate", name: "x" }, // missing checkout
       { op: "issueView", number: "8712" }, // number not a number
     ]
@@ -89,6 +89,7 @@ describe("result decoding", () => {
       statusRef: "workspace.git-status.1",
       path: "a.txt",
       source: "unstaged",
+      causalItemRef: "timeline.item.file-change.1",
       content: "@@ -1 +1 @@\n-old\n+new\n",
       hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "@@ -1 +1 @@\n-old\n+new\n" }],
       truncated: false,

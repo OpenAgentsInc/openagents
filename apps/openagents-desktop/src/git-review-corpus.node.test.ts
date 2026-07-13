@@ -43,6 +43,7 @@ const review = (root: string, pathRef: string, source: "staged" | "unstaged" = "
     statusRef: snapshot.statusRef,
     path: pathRef,
     source,
+    causalItemRef: null,
   })
 }
 
@@ -60,11 +61,13 @@ test("bounded diff exposes typed hunks and discard is exact-snapshot fenced", ()
     statusRef: before.statusRef,
     path: "review.txt",
     source: "unstaged",
+    causalItemRef: "timeline.item.file-change.review",
   })
   assert.equal(diff.ok, true)
   assert.equal(diff.op, "diff")
   if (diff.ok && diff.op === "diff") {
     assert.equal(diff.path, "review.txt")
+    assert.equal(diff.causalItemRef, "timeline.item.file-change.review")
     assert.ok(diff.hunks.length >= 1)
     assert.match(diff.content, /\+changed/u)
   }

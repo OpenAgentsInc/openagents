@@ -73,6 +73,7 @@ const readyDiff = (): Extract<GitGithubResult, { op: "diff" }> => ({
   statusRef: "workspace.git-status.test",
   path: "b.txt",
   source: "unstaged",
+  causalItemRef: "timeline.item.file-change.1",
   content: "@@ -1 +1 @@\n-old\n+new\n",
   hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "@@ -1 +1 @@\n-old\n+new\n" }],
   truncated: false,
@@ -345,11 +346,31 @@ describe("git panel intent loop", () => {
         statusRef: "workspace.git-status.test",
         path: "b.txt",
         source: "unstaged",
+        causalItemRef: null,
       })
       view = gitPanelView((yield* SubscriptionRef.get(state)).git)
       yield* registry.dispatch(pressIntent(view, "git-review-attach"))
       expect(attached).toHaveLength(1)
       expect(attached[0]?.path).toBe("b.txt")
+    }))
+  })
+
+  test("review preserves the exact causal timeline item in the request and view", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const { bridge, calls } = makeFakeBridge({ diff: () => readyDiff() })
+      const { state, registry } = yield* harness(
+        bridge,
+        readyState({ causalItemRef: "timeline.item.file-change.1" }),
+      )
+      let view = gitPanelView((yield* SubscriptionRef.get(state)).git)
+      yield* registry.dispatch(pressIntent(view, "git-review-u-b.txt"))
+      expect(calls[0]).toMatchObject({
+        op: "diff",
+        causalItemRef: "timeline.item.file-change.1",
+      })
+      view = gitPanelView((yield* SubscriptionRef.get(state)).git)
+      expect((nodeByKey(view, "git-review-causal-item") as { content?: string }).content)
+        .toBe("Timeline timeline.item.file-change.1")
     }))
   })
 

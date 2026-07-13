@@ -994,6 +994,7 @@ describe("pure transitions", () => {
         source: "unstaged" as const,
         content: "@@ -1 +1 @@\n-old\n+new\n",
         hunkCount: 1,
+        causalItemRef: "timeline.item.file-change.1",
       }
       const initial: DesktopShellState = { ...baseState, composerReviewContext: context, input: "Check this" }
       const view = desktopShellView(initial)
@@ -2361,6 +2362,41 @@ describe("EP250 typed tool-call cards (owner: 'not these JSON blobs')", () => {
         expect((yield* SubscriptionRef.get(state)).expandedToolCards).toEqual([])
       }),
     )
+  })
+
+  test("a completed FileChange card opens review with its exact timeline item as the causal ref", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const fileChangeState: DesktopShellState = { ...baseState, notes: [
+        {
+          key: "timeline.item.file-change.1",
+          role: "system" as const,
+          text: 'FileChange · started · {"path":"src/review.ts"}',
+          timestamp: "18:05",
+          meta: { trace: { toolName: "FileChange", phase: "started" as const, summary: '{"path":"src/review.ts"}' } },
+        },
+        {
+          key: "timeline.item.file-change.1.result",
+          role: "system" as const,
+          text: "FileChange · ok · Updated src/review.ts",
+          timestamp: "18:06",
+          meta: { trace: { toolName: "FileChange", phase: "ok" as const, summary: "Updated src/review.ts" } },
+        },
+      ] }
+      const state = yield* SubscriptionRef.make(fileChangeState)
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(state, fixedNow),
+      )
+      const view = desktopShellView(fileChangeState)
+      const review = nodeByKey(view, "tool-review-diff-timeline.item.file-change.1") as {
+        onPress: Parameters<typeof resolveIntentRef>[0]
+      }
+      expect(review).toBeDefined()
+      yield* registry.dispatch(resolveIntentRef(review.onPress, null))
+      const next = yield* SubscriptionRef.get(state)
+      expect(next.workspace).toBe("review")
+      expect(next.git.causalItemRef).toBe("timeline.item.file-change.1")
+    }))
   })
 
   test("persisted pre-typed trace notes (text only, no meta) still project as cards", () => {

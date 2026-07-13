@@ -430,6 +430,7 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
         statusRef: status.statusRef,
         path: relative,
         source: request.source,
+        causalItemRef: request.causalItemRef,
         content: output.stdout,
         hunks: parseUnifiedDiffHunks(output.stdout),
         truncated: false,

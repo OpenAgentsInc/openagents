@@ -86,6 +86,8 @@ export type GitPanelState = Readonly<{
   diff: GitDiffResult | null
   diffLoading: boolean
   discardConfirmPath: string | null
+  /** Exact user-selected timeline item that caused this review, or explicit null. */
+  causalItemRef: string | null
 }>
 
 export const emptyGitPanelState = (): GitPanelState => ({
@@ -112,6 +114,7 @@ export const emptyGitPanelState = (): GitPanelState => ({
   diff: null,
   diffLoading: false,
   discardConfirmPath: null,
+  causalItemRef: null,
 })
 
 export type GitPanelCapableState = Readonly<{ git: GitPanelState }>
@@ -399,7 +402,8 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
 
     GitPanelDiffRequested: ({ path, source }: { path: string; source: "staged" | "unstaged" }) =>
       Effect.gen(function* () {
-        const status = (yield* SubscriptionRef.get(state)).git.status
+        const current = yield* SubscriptionRef.get(state)
+        const status = current.git.status
         if (status === null) return
         yield* setGit(git => ({ ...git, diffLoading: true, actionError: null, discardConfirmPath: null }))
         const result = yield* Effect.promise(() => runOp(bridge, {
@@ -408,6 +412,7 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
           statusRef: status.statusRef,
           path,
           source,
+          causalItemRef: current.git.causalItemRef,
         }))
         if (result.ok && result.op === "diff") {
           yield* setGit(git => ({ ...git, diff: result, diffLoading: false, actionError: null }))
@@ -590,6 +595,7 @@ const reviewSection = (git: GitPanelState): ReadonlyArray<View> => {
       Stack({ key: "git-review-heading", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
         Text({ key: "git-review-path", content: `${diff.path} · ${diff.source}`, variant: "label", color: "textPrimary" }),
         Text({ key: "git-review-hunks", content: `${diff.hunks.length} ${diff.hunks.length === 1 ? "hunk" : "hunks"}`, variant: "caption", color: "textMuted" }),
+        Text({ key: "git-review-causal-item", content: diff.causalItemRef === null ? "No timeline correlation" : `Timeline ${diff.causalItemRef}`, variant: "caption", color: diff.causalItemRef === null ? "warning" : "success" }),
         Spacer({ key: "git-review-fill", flex: true }),
         Button({ key: "git-review-attach", label: "Add to composer", variant: "primary", onPress: IntentRef("GitPanelContextAttached"), a11y: { label: `Add the reviewed diff for ${diff.path} to composer context` } }),
         Button({ key: "git-review-close", label: "Close", variant: "ghost", onPress: IntentRef("GitPanelDiffClosed") }),
