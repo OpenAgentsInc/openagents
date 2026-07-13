@@ -32,6 +32,13 @@ read.
    — the signed/notarized RC8 artifact, exact installed 12-step real-Codex
    journey, renderer/app restart, and exact RC7-to-RC8 signed-update,
    rollback, diagnostics, reinstall, and cleanup receipt.
+9. [`2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md)
+   — the superseding signed/notarized candidate containing the distinct quota,
+   rate-limit, authentication-revocation, and policy-denial states, plus exact
+   installed real-Codex and RC8-to-RC9 lifecycle proof.
+10. [`2026-07-13-openagents-codex-workroom-rc9-completion-audit.md`](./2026-07-13-openagents-codex-workroom-rc9-completion-audit.md)
+    — the criterion-by-criterion implementation/evidence matrix and the exact
+    boundary between completed implementation and pending owner acceptance.
 
 The Product Spec declares intent. Current upstream ProductSpec can also index
 external evidence with Related Artifacts, but the local package has not yet
