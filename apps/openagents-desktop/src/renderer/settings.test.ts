@@ -84,7 +84,7 @@ const loadedAccounts = withSettingsAccounts(initialSettingsState(), {
 })
 
 describe("settingsView (state -> component tree)", () => {
-  test("local plugins expose opaque lifecycle state and typed controls", () => {
+  test.skip("retired out-of-scope local plugin controls", () => {
     const ref = "plugin.local.0123456789abcdef01234567" as const
     const view = settingsView({
       ...initialSettingsState(),
@@ -107,7 +107,7 @@ describe("settingsView (state -> component tree)", () => {
       .toBe("DesktopPluginChooseRequested")
     expect(JSON.stringify(view)).not.toContain("/Users/")
   })
-  test("extension lifecycle audit unifies MCP/plugin/skill grants over loaded state (CUT-23)", () => {
+  test.skip("retired out-of-scope extension lifecycle UI", () => {
     const ref = "plugin.local.0123456789abcdef01234567" as const
     const view = settingsView({
       ...initialSettingsState(),
@@ -152,7 +152,7 @@ describe("settingsView (state -> component tree)", () => {
     // The audit never leaks secret-bearing fields or absolute paths.
     expect(JSON.stringify(view)).not.toContain("/Users/")
   })
-  test("extension lifecycle audit is honestly partial while a registry is unavailable", () => {
+  test.skip("retired out-of-scope extension lifecycle placeholder", () => {
     const view = settingsView(initialSettingsState())
     expect(nodeByKey(view, "settings-lifecycle-partial")?.content).toBe(
       "Some registries are still loading or unavailable — this audit is partial.",
@@ -162,7 +162,7 @@ describe("settingsView (state -> component tree)", () => {
     expect(audit.partial).toBe(true)
     expect(audit.entries).toEqual([])
   })
-  test("renders honest OpenAgents session phases and typed actions", () => {
+  test.skip("retired out-of-scope OpenAgents account controls", () => {
     const signedOut = settingsView({
       ...initialSettingsState(),
       openAgentsSession: "signed_out",
@@ -207,6 +207,10 @@ describe("settingsView (state -> component tree)", () => {
     expect(nodeByKey(view, "settings-accounts-title")).toBeUndefined()
     expect(nodeByKey(view, "settings-account-codex-2-ref")).toBeUndefined()
     expect(nodeByKey(view, "settings-claude-accounts-title")).toBeUndefined()
+    expect(nodeByKey(view, "settings-openagents-session-action")).toBeUndefined()
+    expect(nodeByKey(view, "settings-mcp-title")).toBeUndefined()
+    expect(nodeByKey(view, "settings-plugins-title")).toBeUndefined()
+    expect(nodeByKey(view, "settings-lifecycle-title")).toBeUndefined()
   })
 
   test.skip("retired Pylon account placeholders", () => {
@@ -636,7 +640,7 @@ describe("typed intent loop end-to-end (settings)", () => {
   })
 
   // Oracle for openagents_desktop.session.effect_native_controls.v1.
-  test("OpenAgents sign-in and sign-out use typed tokenless Runtime Gateway intents", async () => {
+  test.skip("retired out-of-scope OpenAgents sign-in and sign-out controls", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const calls: Array<string> = []
@@ -1045,7 +1049,7 @@ describe("MCP servers — pure client-side validation", () => {
   })
 })
 
-describe("MCP servers — view rendering", () => {
+describe.skip("retired out-of-scope MCP server view rendering", () => {
   test("loaded servers render name, transport badge, enabled toggle, and a Remove button", () => {
     const view = settingsView(loadedMcp([
       stdioView({ name: "docs", command: "docs-mcp" }),
@@ -1166,8 +1170,8 @@ describe("MCP servers — typed intent loop (fake bridge)", () => {
     }), makeMcpBridge(calls, []), { mcp: { ...initialMcpSettingsState(), servers: { state: "loaded", servers: [], dropped: 0 } } })
     expect(calls).toEqual([])
     expect(after.formError).toContain("reserved")
-    // The inline error also renders in the view.
-    expect(nodeByKey(settingsView({ ...initialSettingsState(), mcp: after }), "settings-mcp-form-error")?.content).toContain("reserved")
+    // MCP state remains valid internally but is intentionally not projected by the MVP.
+    expect(nodeByKey(settingsView({ ...initialSettingsState(), mcp: after }), "settings-mcp-form-error")).toBeUndefined()
   })
 
   test("toggle dispatch flips enabled through the bridge; remove drops the row", async () => {

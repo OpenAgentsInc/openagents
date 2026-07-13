@@ -77,7 +77,7 @@ export const historySearchOpenAnchor = (result: CodexHistorySearchResult): Reado
 
 /** Sidebar rows for the ranked search results (source-badged, open-at-item). */
 export const historySearchResultSidebarItems = (state: HistoryWorkspaceState): ReadonlyArray<Readonly<{ id: string; label: string; meta: string; accessibilityLabel: string; onSelect: ReturnType<typeof IntentRef> }>> =>
-  state.searchResults.map(result => ({
+  state.searchResults.filter(result => result.source === "codex").map(result => ({
     id: `sidebar-search-${result.threadRef}`,
     label: result.title,
     meta: historySourceBadgeLabel(result.source),
@@ -90,8 +90,8 @@ export const historySearchField = (state: HistoryWorkspaceState): View =>
   TextField({
     key: "history-search-field",
     value: state.searchQuery,
-    placeholder: "Search all sessions…",
-    a11y: { label: "Search Codex and Claude session titles and content" },
+    placeholder: "Search Codex sessions…",
+    a11y: { label: "Search Codex session titles and content" },
     onChange: IntentRef("HistorySearchChanged", ComponentValueBinding()),
     style: { width: "full" },
   })

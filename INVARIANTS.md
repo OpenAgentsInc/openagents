@@ -790,25 +790,19 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
   linked Sync when the current gateway catalog is live, otherwise explicit
   local-only mode.
-- Desktop composer provider selection defaults to Codex and remains explicit;
-  availability evidence may disable a lane but never silently substitutes
-  Claude. The hotbar exposes typed provider, provider-scoped model, and (for
-  Codex) reasoning-effort selectors in that order. Codex permits exactly
-  `gpt-5.6-sol` and `gpt-5.5`; Claude permits exactly `claude-fable-5`,
-  `claude-opus-4-8`, and `claude-sonnet-5`. The selected model reaches the
-  exact Codex `-m` or Claude Agent SDK `Options.model` launch field, and a
-  provider-reported Claude substitution fails before content is surfaced.
-  Provider/model choices are disabled while a turn is pending.
-- The composer's leading add control remains a genuinely icon-only shared
-  Effect Native `IconButton` with a required accessible label. Its compact
-  `sm` size is 32px; it may not regress to the generic 44px circular action
-  treatment used for Send and Stop.
-- The composer trails with a compact shared `Mic` control immediately before
-  one shared `ArrowUp` Submit control. Until voice capture exists, Mic toggles
-  renderer-only presentation state that visibly says `Voice unavailable`; it
-  may not request microphone permission, start capture/transcription, touch a
-  provider or network, or imply that audio is active. Pending turns disable
-  the control and the typed handler independently refuses the toggle.
+- The first ProductSpec-native Desktop MVP composer is fixed to the ordinary
+  logged-in Codex session. It exposes no provider/account, model,
+  reasoning-effort, image-attachment, plugin, MCP, or voice selector. Internal
+  post-MVP provider/media substrates do not authorize visible affordances and
+  may never silently substitute another provider for Codex.
+- The MVP visible-surface allowlist is the exact ProductSpec Scope and User
+  Experience: chat/session navigation, repository grant/session home,
+  ProductSpec workroom, bounded files/review, typed question/approval/plan
+  controls, Open in Codex, commands, update/rollback, diagnostics, and keyboard
+  settings. Fleet, OpenAgents/Pylon account controls, Terminal, Inbox, MCP,
+  plugins, provider/model/reasoning selection, attachments, and voice are
+  absent from dock, sidebar, composer, Settings, command palette, and native
+  Commands menu.
 - AUDIO-0 #8733 is a planned, not-yet-live exception for the future Mic path.
   When AUDIO-4 #8737 lands, native capture/playback may run only in the signed
   process-opaque `crates/oa-desktop-audio` Rust helper authorized by the
@@ -817,9 +811,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   raw media and the direct authenticated media socket stay inside the helper;
   renderer, preload, Runtime Gateway events, Khala Sync, command authority,
   storage policy, Google adapters, and UI remain Effect/TypeScript. This bullet
-  does not make today's Mic active: until the AUDIO-1 cross-language model/
-  golden-vector contract and AUDIO-4 packaged boundary tests land, the existing
-  `Voice unavailable` refusal above remains the runtime invariant.
+  does not make Mic visible in the MVP: AUDIO work retains its own acceptance
+  gates and cannot expand the ProductSpec surface allowlist.
 
 ### Persistent Voice and Raw Media
 
@@ -887,10 +880,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   numbering never restarts at a source boundary. Selecting a runtime/app-local
   row always unmounts any provider-history page before projecting that row's
   transcript, so a successful selection cannot leave stale chat content visible.
-- Desktop's connected Accounts sidebar section uses the shared controlled
-  Effect Native Accordion, defaults collapsed, and expands only through its
-  typed toggle intent. Controlled rerenders replace the prior accordion item
-  tree rather than appending duplicate headers or account rows.
+- The MVP sidebar never projects connected provider accounts or usage. Any
+  retained account/Fleet state is non-visible post-MVP substrate only.
 - Desktop chat context rails are genuinely pointer-resizable from 280–480px.
   The shared SplitPane renderer targets the explicitly sized pane adjacent to
   a divider (including a trailing/right pane), and the renderer-owned typed

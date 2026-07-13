@@ -78,7 +78,7 @@ describe("contract registration (EP250 sidebar accounts box)", () => {
     const contract = openAgentsDesktopUxContractRegistry.contracts.find(
       (entry) => entry.contractId === "openagents_desktop.sidebar.connected_accounts_usage_box.v1",
     )
-    expect(contract?.state).toBe("enforced")
+    expect(contract?.state).toBe("retired")
     expect(contract?.statement).toBe(
       "in the left sidebar, in a bottom box, like letting the chats flex up but show up to 5 connected accounts with a progress bar showing remaining weekly/hourly usage (grayed out if we dont have that data).",
     )

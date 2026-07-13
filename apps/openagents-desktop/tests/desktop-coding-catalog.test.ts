@@ -349,6 +349,6 @@ describe("contract openagents_desktop.coding_catalog.restart_safe_navigation.v1"
       desktopWorkspaceForCodingFocus({ kind: "terminal", terminalRef: "terminal.fixture" }),
       desktopWorkspaceForCodingFocus({ kind: "agent", agentRef: "agent.fixture" }),
       desktopWorkspaceForCodingFocus({ kind: "none" }),
-    ]).toEqual(["chat", "files", "terminal", "home", "home"])
+    ]).toEqual(["chat", "files", "home", "home", "home"])
   })
 })

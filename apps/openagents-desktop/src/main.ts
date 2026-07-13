@@ -3280,16 +3280,37 @@ const smokeOpenSettings = `(async () => {
   const session = document.querySelector('[data-en-key="settings-codex-session-copy"]')
   const connect = document.querySelector('[data-en-key="settings-connect-codex"]')
   const accountRow = document.querySelector('[data-en-key^="settings-account-"]')
+  const openAgentsLink = document.querySelector('[data-en-key="settings-openagents-session-action"]')
+  const mcp = document.querySelector('[data-en-key="settings-mcp-title"]')
+  const plugins = document.querySelector('[data-en-key="settings-plugins-title"]')
   const screen = document.querySelector('[data-en-key="settings-screen"]')
-  const pylonCopy = screen !== null && /pylon|connect codex|device-auth/i.test(screen.textContent ?? "")
+  const outOfScopeCopy = screen !== null && /pylon|connect codex|device-auth|openagents account|mcp server|claude plugin|fleet/i.test(screen.textContent ?? "")
   return {
     ok: session !== null && /already signed in on this Mac/.test(session.textContent ?? "") &&
-      connect === null && accountRow === null && !pylonCopy,
+      connect === null && accountRow === null && openAgentsLink === null && mcp === null && plugins === null && !outOfScopeCopy,
     currentSessionCopy: session === null ? null : session.textContent,
     connectPresent: connect !== null,
     accountRowPresent: accountRow !== null,
-    pylonCopy,
+    openAgentsLinkPresent: openAgentsLink !== null,
+    mcpPresent: mcp !== null,
+    pluginsPresent: plugins !== null,
+    outOfScopeCopy,
   }
+})()`
+
+const smokeMvpSurfaceAllowlist = `(() => {
+  const forbidden = [
+    "workspace-fleet",
+    "sidebar-accounts-box",
+    "shell-attach-image",
+    "shell-harness-select",
+    "shell-model-select",
+    "shell-reasoning-select",
+    "shell-voice-toggle",
+  ]
+  const present = forbidden.filter((key) => document.querySelector('[data-en-key="' + key + '"]') !== null)
+  const codex = document.querySelector('[data-en-key="shell-codex-engine"]')
+  return { ok: present.length === 0 && codex?.textContent === "Codex", present, codex: codex?.textContent ?? null }
 })()`
 
 // Behavior contract openagents_desktop.settings.mcp_servers.v1 (I2, EP250
@@ -4372,28 +4393,16 @@ const runSmoke = (window: BrowserWindow): void => {
         // Pylon account-linking or device-auth surface in Settings.
         await step("settings-current-codex-session", smokeOpenSettings)
         await captureShot(window, "04-settings-current-codex-session")
-        // I2 (EP250 wave-2): add a fixture stdio MCP server through the real
-        // form + IPC; it persists to the real userData store and lists.
-        await step("settings-mcp-add-and-list", smokeMcpAddServer)
-        await captureShot(window, "04b-settings-mcp-server")
         // CUT-24 (#8704): diagnostics panel renders live health + redacted
         // export notice (no secrets), and preferences durable IPC round-trips.
         await step("diagnostics-and-preferences", smokeDiagnosticsAndPreferences)
         await captureShot(window, "04c-diagnostics-panel")
         await step("settings-back-to-chat", smokeCloseSettings)
         // With the historical page still loaded, New chat must yield a fresh
-        // empty transcript (the on-camera regression), then the Fleet dock
-        // button must render the fixture accounts panel.
+        // empty transcript (the on-camera regression).
         await step("new-chat-from-history-empty-transcript", smokeNewChatFromHistory)
         await captureShot(window, "06-new-chat-empty")
-        // Composer gestures (EP250): icon-only send + Shift+Tab lane toggle.
-        await step("composer-icon-send-and-shift-tab-toggle", smokeComposerGestures)
-        // Fable local turn is FIXTURE-driven in smoke (no real Claude SDK
-        // session; a scripted delta sequence flows through the real mapping).
-        await step("fable-local-streamed-turn-FIXTURE", smokeFableLocalStreaming)
-        await captureShot(window, "07-fable-local-streamed")
-        await step("persistent-voice-mode-FIXTURE", smokeVoiceMode)
-        await captureShot(window, "07b-persistent-voice")
+        await step("mvp-visible-surface-allowlist", smokeMvpSurfaceAllowlist)
         // Release the codex availability gate: the popover assertions above
         // ran against the deterministic disabled/"verifying" chip; from here
         // the fixture PROBE-VERIFIED evidence lights the chip for the
@@ -4418,8 +4427,6 @@ const runSmoke = (window: BrowserWindow): void => {
         // JSONL through the REAL parser; EP250 codex-first-class proof).
         await step("codex-local-streamed-turn-FIXTURE", smokeCodexLocalStreaming)
         await captureShot(window, "11-codex-local-streamed")
-        await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
-        await captureShot(window, "09-fleet-workspace")
         // Git/GitHub review panel (EP250 E2–E5): route to the review workspace
         // through the canonical command host, then assert the typed Git panel
         // rendered real read-only status of the app's own repo (no commit/push).
@@ -4432,25 +4439,8 @@ const runSmoke = (window: BrowserWindow): void => {
         ))
         await step("git-review-panel-real-status", smokeOpenGitReview)
         await captureShot(window, "12-git-review-panel")
-        // Workspace-bounded PTY terminal (CUT-20, #8700): route to the terminal
-        // workspace through the canonical command host, then run a real bounded
-        // command through the real PTY host and assert output + tree disposal.
-        const terminalCommand = desktopCanonicalCommandRegistry.find(command => command.id === "workspace.terminal")
-        if (terminalCommand === undefined) throw new Error("canonical workspace.terminal command missing")
-        desktopCommandHost.enqueue(deferredDesktopCommand(
-          terminalCommand,
-          "native_menu",
-          "command.desktop.smoke.terminal",
-        ))
-        await step("terminal-workspace-host-pty-receipt", smokeTerminalWorkspace)
-        await captureShot(window, "13-terminal-workspace")
-        // Cmd+N from the fleet workspace: fresh transcript + focused composer.
+        // Cmd+N from the review workspace: fresh transcript + focused composer.
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
-        // Capability I1 image attach: on the fresh chat, drop a fixture PNG,
-        // assert the thumbnail, submit, and assert the image reached the SDK
-        // payload (fable fixture image-received marker).
-        await step("fable-image-attach-FIXTURE", smokeFableImageAttach)
-        await captureShot(window, "12-fable-image-attach")
         await step("coding-catalog-host-persistence", smokeCodingCatalog)
         await captureShot(window, "10-coding-catalog")
         tracePass = 1

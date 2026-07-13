@@ -98,7 +98,6 @@ describe("EP250 chat contracts are registered and enforced (#8712)", () => {
       "openagents_desktop.chat.interactive_question_cards.v1",
       "openagents_desktop.chat.opencode_card_design_language.v1",
       "openagents_desktop.chat.composer_stop_button.v1",
-      "openagents_desktop.chat.composer_image_input.v1",
     ]) {
       expect(openAgentsDesktopUxContractRegistry.contracts.find(
         (contract) => contract.contractId === contractId,
@@ -167,7 +166,7 @@ test("provider target selection is exact and stable per conversation", () => {
   })).toEqual({ provider: "codex", accountRef: "codex-2", model: "gpt-5.6-sol" })
 })
 
-test("Claude submission prefers the current local session until a Pylon account is explicitly selected", () => {
+test.skip("retired out-of-scope Claude/Pylon composer target control", () => {
   const fleet = {
     ...baseState.fleet,
     phase: "ready" as const,
@@ -197,7 +196,7 @@ test("Claude submission prefers the current local session until a Pylon account 
   })
 })
 
-test("Fable permission posture is explicit per conversation and absent from Codex chrome", () => {
+test.skip("retired out-of-scope Fable permission control", () => {
   const fable = desktopShellView({ ...baseState, selectedHarness: "fable" })
   expect(nodeByKey(fable, "shell-permission-mode")?.label).toBe("Full tools")
   expect((nodeByKey(fable, "shell-permission-mode")?.onPress as { name?: string })?.name)
@@ -363,25 +362,27 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
-  test("New chat is the first dock item, Fleet second (owner directive), and Fleet opens the read-only workspace", () => {
+  test("MVP dock exposes only workroom surfaces and excludes Fleet", () => {
     const view = desktopShellView(baseState)
     const nav = nodeByKey(view, "sidebar-navigation")
     const dock = (nav?.sections as Array<{ id: string; items: Array<AnyNode> }>)[0]
     expect(dock?.id).toBe("sidebar-workspace-dock")
     expect(dock?.items[0]?.id).toBe("workspace-new-chat")
-    expect(dock?.items[1]?.id).toBe("workspace-fleet")
+    expect(dock?.items.map(item => item.id)).toEqual([
+      "workspace-new-chat",
+      "workspace-chat",
+      "workspace-files",
+      "workspace-product-spec",
+      "workspace-home",
+      "shell-command-palette-toggle",
+      "shell-settings-toggle",
+    ])
     expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New chat" })
     expect((navItemById(view, "workspace-new-chat")?.onSelect as { name?: string })?.name).toBe("DesktopNewChat")
-    expect(navItemById(view, "workspace-fleet")).toMatchObject({ icon: "Agent", accessibilityLabel: "Fleet" })
-    expect((navItemById(view, "workspace-fleet")?.onSelect as { name?: string })?.name).toBe("DesktopWorkspaceSelected")
-
-    const fleetView = desktopShellView(withWorkspace(baseState, "fleet"))
-    expect(nodeByKey(fleetView, "workspace-fleet-panel")?._tag).toBe("Stack")
-    expect(nodeByKey(fleetView, "shell-composer")).toBeUndefined()
-    expect(nodeByKey(fleetView, "shell-transcript")).toBeUndefined()
+    expect(navItemById(view, "workspace-fleet")).toBeUndefined()
   })
 
-  test("sidebar accounts box (EP250): chats flex up, the box pins at the bottom, and zero accounts render no box", () => {
+  test.skip("retired out-of-scope sidebar provider accounts box", () => {
     // Owner contract verbatim: "in the left sidebar, in a bottom box, like
     // letting the chats flex up but show up to 5 connected accounts with a
     // progress bar showing remaining weekly/hourly usage (grayed out if we
@@ -419,7 +420,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "sidebar-account-claude-1")).toBeDefined()
   })
 
-  test("accounts disclosure toggles through the typed intent and starts collapsed", async () => {
+  test.skip("retired out-of-scope sidebar accounts disclosure", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const initial: DesktopShellState = {
         ...baseState,
@@ -450,7 +451,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((item?.onSelect as {name?:string})?.name).toBe("DesktopChatSelected")
   })
 
-  test("local Claude/Fable chats remain visible beside imported Codex and Claude history", () => {
+  test("the MVP session rail excludes Claude history and local Claude-model threads", () => {
     const imported = {
       threadRef: "history-imported",
       parentThreadRef: null,
@@ -470,14 +471,19 @@ describe("desktopShellView (state -> component tree)", () => {
     }
     const view = desktopShellView({
       ...baseState,
+      threads: [testThread, { ...testThread, id: "local-claude", title: "Local Claude", model: "claude-fable-5" }],
       history: { ...baseState.history, catalog: { roots: [imported], agents: [imported] } },
     })
     expect(navItemById(view, `sidebar-thread-${testThread.id}`)?.label).toBe("New chat")
     expect((navItemById(view, `sidebar-thread-${testThread.id}`)?.onSelect as { name?: string })?.name)
       .toBe("DesktopChatSelected")
-    expect(navItemById(view, "sidebar-thread-history-imported")?.label).toBe("Imported Claude chat")
-    expect((navItemById(view, "sidebar-thread-history-imported")?.onSelect as { name?: string })?.name)
-      .toBe("HistoryConversationSelected")
+    expect(navItemById(view, "sidebar-thread-local-claude")).toBeUndefined()
+    expect(navItemById(view, "sidebar-thread-history-imported")).toBeUndefined()
+    expect(desktopConversationShortcutTargets({
+      ...baseState,
+      threads: [testThread, { ...testThread, id: "local-claude", model: "claude-fable-5" }],
+      history: { ...baseState.history, catalog: { roots: [imported], agents: [imported] } },
+    })).toEqual([{ kind: "runtime", threadRef: testThread.id }])
   })
 
   test("large Codex catalogs use one virtual scroll owner and pending selection is active immediately", () => {
@@ -609,45 +615,21 @@ describe("desktopShellView (state -> component tree)", () => {
     }
   })
 
-  test("composer carries the harness selector with Codex selected by default", () => {
+  test("MVP composer is fixed to Codex and exposes no provider, model, or reasoning selectors", () => {
     const view = desktopShellView(baseState)
-    const provider = nodeByKey(view, "shell-harness-select") as { _tag?: string; value?: string; onChange?: { name?: string }; options?: ReadonlyArray<{ value: string; label: string }> }
-    const reasoning = nodeByKey(view, "shell-reasoning-select") as { _tag?: string; value?: string; onChange?: { name?: string } }
-    const model = nodeByKey(view, "shell-model-select") as { _tag?: string; value?: string; onChange?: { name?: string }; options?: ReadonlyArray<{ value: string; label: string }> }
-    expect(provider?._tag).toBe("Select")
-    expect(provider?.onChange?.name).toBe("DesktopHarnessSelected")
-    expect(provider?.value).toBe("codex")
-    expect(provider?.options?.map(option => option.label)).toEqual(["Codex", "Claude"])
-    expect(model?._tag).toBe("Select")
-    expect(model?.value).toBe("gpt-5.6-sol")
-    expect(model?.options?.map(option => option.label)).toEqual(["GPT-5.6", "GPT-5.5"])
-    expect(model?.onChange?.name).toBe("DesktopModelSelected")
-    expect(reasoning?._tag).toBe("Select")
-    expect(reasoning?.value).toBe("medium")
-    expect(reasoning?.onChange?.name).toBe("DesktopCodexReasoningSelected")
-    expect(baseState.selectedHarness).toBe("codex")
-
-    const fableSelected = desktopShellView({ ...baseState, selectedHarness: "fable" })
-    expect(nodeByKey(fableSelected, "shell-harness-select")?.value).toBe("fable")
-    expect(nodeByKey(fableSelected, "shell-model-select")?.value).toBe("claude-fable-5")
-    expect((nodeByKey(fableSelected, "shell-model-select")?.options as ReadonlyArray<{ label: string }>).map(option => option.label))
-      .toEqual(["Fable", "Opus 4.8", "Sonnet 5"])
-    expect(nodeByKey(fableSelected, "shell-reasoning-select")).toBeUndefined()
-
-    const pending = desktopShellView(withPending(baseState, true))
-    expect(nodeByKey(pending, "shell-harness-select")?.disabled).toBe(true)
-    expect(nodeByKey(pending, "shell-model-select")?.disabled).toBe(true)
-    expect(nodeByKey(pending, "shell-reasoning-select")?.disabled).toBe(true)
+    expect(nodeByKey(view, "shell-codex-engine")?.content).toBe("Codex")
+    expect(nodeByKey(view, "shell-harness-select")).toBeUndefined()
+    expect(nodeByKey(view, "shell-model-select")).toBeUndefined()
+    expect(nodeByKey(view, "shell-reasoning-select")).toBeUndefined()
   })
 
-  test("EP250 OpenCode composer shape: multiline input on top; bottom bar carries attach + harness toggle + spacer + circular send", () => {
+  test("MVP composer keeps multiline input, Codex label, fallback, pending mode, and send/stop only", () => {
     const view = desktopShellView(baseState)
     // Multiline input on TOP.
     const input = nodeByKey(view, "shell-input") as { _tag?: string; multiline?: boolean }
     expect(input?._tag).toBe("TextField")
     expect(input?.multiline).toBe(true)
-    // A BOTTOM ACTION BAR row holds the controls in order: attach, harness
-    // toggle, flexible spacer, send.
+    // A bottom action bar contains only the current engine and MVP controls.
     const bar = nodeByKey(view, "shell-composer-bar") as {
       _tag?: string
       direction?: string
@@ -656,14 +638,10 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(bar?._tag).toBe("Stack")
     expect(bar?.direction).toBe("row")
     const keys = (bar?.children ?? []).map((child) => child.key)
-    expect(keys[0]).toBe("shell-attach-image")
-    expect(keys[1]).toBe("shell-harness-select")
-    expect(keys[2]).toBe("shell-model-select")
-    expect(keys[3]).toBe("shell-reasoning-select")
-    expect(bar?.children?.[4]?._tag).toBe("Spacer")
-    expect(bar?.children?.[4]?.flex).toBe(true)
-    expect(keys[5]).toBe("shell-voice-toggle")
-    expect(keys[6]).toBe("shell-note")
+    expect(keys[0]).toBe("shell-codex-engine")
+    expect(bar?.children?.[1]?._tag).toBe("Spacer")
+    expect(bar?.children?.[1]?.flex).toBe(true)
+    expect(keys[2]).toBe("shell-note")
     // The trailing send control is circular and dims to a ghost while blank.
     const blankSend = nodeByKey(view, "shell-note") as { style?: Record<string, unknown> }
     expect(blankSend?.style).toMatchObject({ backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" })
@@ -679,7 +657,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(stop?.style).toMatchObject({ borderRadius: "full" })
   })
 
-  test("microphone drives persistent voice, exposes independent truth, and fails closed on mute", async () => {
+  test.skip("retired out-of-scope persistent voice UI", async () => {
     const idle = desktopShellView(baseState)
     const mic = nodeByKey(idle, "shell-voice-toggle") as {
       _tag?: string; icon?: string; size?: string; disabled?: boolean
@@ -810,7 +788,7 @@ describe("composer image input (capability I1)", () => {
     id, mediaType: "image/png", data: "aGVsbG8=", name: `${id}.png`, sizeBytes: 5,
   })
 
-  test("renders the leading attach affordance in the composer", () => {
+  test.skip("retired out-of-scope image attach affordance", () => {
     const attach = nodeByKey(desktopShellView(baseState), "shell-attach-image") as {
       _tag?: string; icon?: string; size?: string; onPress?: { name?: string }; accessibilityLabel?: string; disabled?: boolean
     }
@@ -827,7 +805,7 @@ describe("composer image input (capability I1)", () => {
     expect(nodeByKey(view, "shell-composer-image-notice")).toBeUndefined()
   })
 
-  test("attachments render a thumbnail (Image) with a size caption and a remove control", () => {
+  test.skip("retired out-of-scope attachment thumbnail UI", () => {
     const state = withComposerImageAdded(baseState, png("a1"))
     const view = desktopShellView(state)
     expect(nodeByKey(view, "shell-composer-images")?._tag).toBe("Stack")
@@ -840,7 +818,7 @@ describe("composer image input (capability I1)", () => {
     expect(remove?.onPress?.name).toBe("DesktopComposerImageRemoved")
   })
 
-  test("a rejection notice renders (danger-toned, transient) when set", () => {
+  test.skip("retired out-of-scope attachment rejection UI", () => {
     const state = withComposerImageNotice(baseState, "That image is larger than the 10 MB limit.")
     const notice = nodeByKey(desktopShellView(state), "shell-composer-image-notice") as { _tag?: string; content?: string; color?: string }
     expect(notice?._tag).toBe("Text")
@@ -848,7 +826,7 @@ describe("composer image input (capability I1)", () => {
     expect(notice?.color).toBe("danger")
   })
 
-  test("the attach control disables at the 8-image limit with an accessible reason", () => {
+  test.skip("retired out-of-scope image attach limit UI", () => {
     let state = baseState
     for (let i = 0; i < 8; i += 1) state = withComposerImageAdded(state, png(`a${i}`))
     const attach = nodeByKey(desktopShellView(state), "shell-attach-image") as { disabled?: boolean; accessibilityLabel?: string }
@@ -1885,7 +1863,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     )
   })
 
-  test("harness selection dispatches through the registry and rides the next send", async () => {
+  test.skip("retired out-of-scope provider/model selection controls", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sent: Array<{ id: string; message: string; harness?: string; model?: string; reasoningEffort?: string }> = []
@@ -2112,7 +2090,7 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
     expect(withHarnessLanes(baseState, noLanes).selectedHarness).toBe("codex")
   })
 
-  test("EP250 owner fix 3: an unavailable lane is a disabled chip with its reason ONLY in the accessible label — NO caption text anywhere in the composer", () => {
+  test.skip("retired out-of-scope provider lane selector presentation", () => {
     // Owner statement (verbatim): "I have no idea why the bottom says Codex
     // requires Open Agent session. Don't put that shit in the UI ever.
     // Remove that."

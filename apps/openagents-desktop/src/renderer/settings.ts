@@ -1374,14 +1374,6 @@ export const settingsView = (settings: SettingsState): View => {
           ],
         ),
         Text({
-          key: "settings-openagents-title",
-          content: "Local device · optional OpenAgents account",
-          variant: "label",
-          color: "textMuted",
-        }),
-        ...openAgentsSessionSection(settings.openAgentsSession),
-        Text({key:"settings-local-first-copy",content:"Local coding, conversations, and fleets work without an account. Link an account for cross-device Sync, hosted capacity, and network participation; disconnecting never deletes local work.",variant:"body",color:"textMuted"}),
-        Text({
           key: "settings-codex-session-title",
           content: "Codex session",
           variant: "label",
@@ -1393,9 +1385,6 @@ export const settingsView = (settings: SettingsState): View => {
           variant: "body",
           color: "textMuted",
         }),
-        ...mcpSection(settings.mcp),
-        ...pluginSection(settings.plugins),
-        ...extensionLifecycleSection(settings),
       ]),
     ],
   )

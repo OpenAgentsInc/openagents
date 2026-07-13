@@ -78,27 +78,27 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
   })
 
   test("renderer resolves the same command to one typed intent after readiness and owner gates", () => {
-    const fleet = deferredDesktopCommand(
-      desktopCanonicalCommandRegistry.find(value => value.id === "workspace.fleet")!,
+    const review = deferredDesktopCommand(
+      desktopCanonicalCommandRegistry.find(value => value.id === "workspace.review")!,
       "native_menu",
-      "command.fleet",
+      "command.review",
     )
-    expect(resolveDesktopDeferredCommandIntent(fleet, {
+    expect(resolveDesktopDeferredCommandIntent(review, {
+      sessionReady: false,
+      verifiedOwner: false,
+      workspaceReady: false,
+    })).toEqual({ state: "rejected", reason: "unavailable" })
+    expect(resolveDesktopDeferredCommandIntent(review, {
       sessionReady: false,
       verifiedOwner: false,
       workspaceReady: true,
-    })).toEqual({ state: "rejected", reason: "unavailable" })
-    expect(resolveDesktopDeferredCommandIntent(fleet, {
-      sessionReady: true,
-      verifiedOwner: true,
-      workspaceReady: true,
-    })).toEqual({ state: "ready", intentName: "DesktopWorkspaceSelected", payload: "fleet" })
-    expect(resolveDesktopDeferredCommandIntent({ ...fleet, arguments: { kind: "none" } }, {
+    })).toEqual({ state: "ready", intentName: "DesktopWorkspaceSelected", payload: "review" })
+    expect(resolveDesktopDeferredCommandIntent({ ...review, arguments: { kind: "none" } }, {
       sessionReady: true,
       verifiedOwner: true,
       workspaceReady: true,
     })).toEqual({ state: "rejected", reason: "argument_mismatch" })
-    expect(resolveDesktopDeferredCommandIntent({ ...fleet, delivery: "duplicate_rejected" }, {
+    expect(resolveDesktopDeferredCommandIntent({ ...review, delivery: "duplicate_rejected" }, {
       sessionReady: true,
       verifiedOwner: true,
       workspaceReady: true,

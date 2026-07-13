@@ -6,8 +6,57 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-13.2",
+    version: "2026-07-13.3",
     contracts: [
+      {
+        contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "MVP visible workroom surface",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "remove from the interface everything not in the MVP spec.",
+        authorityBoundary:
+          "The ProductSpec Scope and User Experience sections are the visible-surface allowlist. Desktop exposes local Codex chat/session navigation, repository grant and session home, ProductSpec workroom, bounded files and review, questions/approvals/plans, Open in Codex, commands, update/rollback, diagnostics, and keyboard settings. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
+        evidenceRefs: [
+          "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+          "apps/openagents-desktop/src/desktop-command-contract.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/settings.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "github:OpenAgentsInc/openagents#8756",
+        ],
+        oracles: [
+          {
+            id: "mvp_surface.shell_allowlist",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the dock and composer contain only MVP affordances and reject Fleet, accounts, provider/model/reasoning selection, attachments, and voice.",
+          },
+          {
+            id: "mvp_surface.settings_allowlist",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/settings.test.ts",
+            description:
+              "Proves Settings contains current-Codex-session truth but no OpenAgents account, Pylon, MCP, plugin, or extension-lifecycle controls.",
+          },
+          {
+            id: "mvp_surface.command_allowlist",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/desktop-command-contract.test.ts",
+            description:
+              "Proves Fleet, Terminal, and Inbox are absent from schema-decoded palette, deep-link, shortcut, and native-menu command authority.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, shell/settings/command suites, build, and built-host smoke enforce the ProductSpec-visible allowlist.",
+      },
       {
         contractId: "openagents_desktop.mvp.uses_logged_in_codex_session.v1",
         state: "enforced",
@@ -719,7 +768,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       },
       {
         contractId: "openagents_desktop.chat.composer_image_input.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "composer image input",
         enforcementTier: "test-sweep",
@@ -904,7 +953,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       },
       {
         contractId: "openagents_desktop.seam.identity.local_first_account_link.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "two-tier native identity",
         enforcementTier: "test-sweep",
@@ -2431,7 +2480,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       },
       {
         contractId: "openagents_desktop.sidebar.connected_accounts_usage_box.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "sidebar connected-accounts usage box",
         enforcementTier: "test-sweep",
@@ -2875,7 +2924,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       // =====================================================================
       {
         contractId: "openagents_desktop.settings.mcp_servers.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "settings — user-configured MCP servers",
         enforcementTier: "test-sweep",

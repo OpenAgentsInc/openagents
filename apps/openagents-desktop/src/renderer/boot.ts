@@ -126,10 +126,6 @@ import {
   type DesktopDeferredCommand,
 } from "../desktop-command-contract.ts"
 import { resolveDesktopDeferredCommandIntent } from "./command-registry.ts"
-import {
-  handleComposerShiftTab,
-  isShellComposerInputTarget,
-} from "./composer-shortcuts.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -1311,21 +1307,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandPaletteToggled", StaticPayload(null)))),
       )
     }
-    // EP250 owner statement (verbatim): "i want shift+tab to togle between
-    // modes in composer (fable / codex) in this case". Scoped to the focused
-    // composer input only (normal Shift+Tab focus navigation everywhere
-    // else); dispatches the SAME DesktopHarnessSelected intent the chips use.
-    const onComposerShiftTab = (event: KeyboardEvent): void => {
-      handleComposerShiftTab(event, {
-        isComposerInput: isShellComposerInputTarget,
-        selectedHarness: () => Effect.runSync(SubscriptionRef.get(state)).selectedHarness,
-        selectHarness: harness => {
-          void Effect.runPromise(
-            registry.dispatch(resolveIntentRef(IntentRef("DesktopHarnessSelected", StaticPayload(harness)))),
-          )
-        },
-      })
-    }
     let historyShortcutSteps=0
     let historyShortcutAbsoluteIndex:number|null=null
     let historyShortcutRunning=false
@@ -1553,7 +1534,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     window.addEventListener("paste", onComposerPaste)
     window.addEventListener("keydown", onNewChatShortcut)
     window.addEventListener("keydown", onFullscreenShortcut)
-    window.addEventListener("keydown", onComposerShiftTab)
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryModifierDown)
     window.addEventListener("keydown", onHistoryConversationShortcut)
@@ -1568,7 +1548,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       window.removeEventListener("paste", onComposerPaste)
       window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onFullscreenShortcut)
-      window.removeEventListener("keydown", onComposerShiftTab)
       window.removeEventListener("keydown", onCommandPaletteShortcut)
       window.removeEventListener("keydown", onHistoryModifierDown)
       window.removeEventListener("keydown", onHistoryConversationShortcut)
@@ -1601,15 +1580,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const marks = ((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {})
       marks.shellMounted = Date.now()
     }
-    // Sidebar connected-accounts box (EP250): one boot-time accounts pull so
-    // the pinned bottom box has evidence without visiting the Fleet
-    // workspace. This rides the EXISTING FleetRefreshRequested flow (list +
-    // session ledger) after first paint — event-driven, not a polling loop;
-    // an absent bridge degrades to the honest unavailable projection and the
-    // box simply does not render.
-    void Effect.runPromise(
-      registry.dispatch(resolveIntentRef(IntentRef("FleetRefreshRequested", StaticPayload(null)))),
-    )
     // One boot-time diagnostics gather so the watchdog panel has live health the
     // first time Settings is opened (CUT-24 #8704). Event-driven, not a poll.
     void Effect.runPromise(

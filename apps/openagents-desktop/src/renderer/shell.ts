@@ -121,7 +121,6 @@ import {
   type ProductSpecRendererBridge,
   type ProductSpecWorkspaceState,
 } from "./product-spec-workspace.ts"
-import { sidebarAccountsView } from "./sidebar-accounts.ts"
 import { idleVoiceModeState, voiceActive, voiceIndicatorText, withVoiceHostState, type VoiceModeState } from "./voice-mode.ts"
 import type { DesktopVoiceState } from "../voice-host.ts"
 import type { GitDiffResult } from "../git-github-contract.ts"
@@ -1635,7 +1634,10 @@ export const makeDesktopShellHandlers = (
     persistWorkspaceRecovery(next)
   }),
   DesktopSettingsToggled: () => Effect.gen(function* () {
-    yield* settingsHandlers.DesktopSettingsToggled()
+    // MVP Settings is local-only. Do not wake hidden account, Fleet, MCP, or
+    // plugin bridges merely because the user opens this screen.
+    yield* SubscriptionRef.update(state, current =>
+      withWorkspace(current, current.workspace === "settings" ? "chat" : "settings"))
     const bindings = yield* Effect.promise(commandBindingHost.snapshot)
     yield* SubscriptionRef.update(state, current => ({ ...current, commandBindings: bindings }))
   }),
@@ -2250,10 +2252,8 @@ export const makeDesktopShellHandlers = (
   }),
   DesktopWorkspaceSelected: (workspace) =>
     Effect.gen(function* () {
+      if (workspace === "fleet" || workspace === "terminal" || workspace === "inbox") return
       yield* SubscriptionRef.update(state, (current) => withWorkspace(current, workspace))
-      if (workspace === "fleet") {
-        yield* refreshFleetAccounts(state, fleetBridge)
-      }
       if (workspace === "files") {
         yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
         yield* recoverWorkspaceEditor
@@ -2891,7 +2891,8 @@ export const runtimeCardMessage = (note: DesktopNoteEntry): TranscriptMessage =>
 }
 
 const historySidebarItems = (state: DesktopShellState, shortcutOffset: number, excludedIds: ReadonlySet<string>) => {
-  const roots=state.history.catalog.roots.slice(0,state.history.visibleRootCount).filter(thread => !excludedIds.has(thread.threadRef))
+  const codexRoots=state.history.catalog.roots.filter(thread => thread.source === "codex")
+  const roots=codexRoots.slice(0,state.history.visibleRootCount).filter(thread => !excludedIds.has(thread.threadRef))
   const rows=roots.map((thread,index) => ({
     id:`sidebar-thread-${thread.threadRef}`,
     label:thread.title,
@@ -2899,15 +2900,18 @@ const historySidebarItems = (state: DesktopShellState, shortcutOffset: number, e
     accessibilityLabel:`Open ${historySourceBadgeLabel(thread.source)} chat ${thread.title}, ${thread.descendantCount} descendant agents`,
     onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
   }))
-  return state.history.visibleRootCount>=state.history.catalog.roots.length?rows:[...rows,{
+  return state.history.visibleRootCount>=codexRoots.length?rows:[...rows,{
     id:"sidebar-history-load-more",
-    label:`Load ${Math.min(historyCatalogPageSize,state.history.catalog.roots.length-state.history.visibleRootCount)} more`,
-    accessibilityLabel:`Load older Codex conversations, ${state.history.visibleRootCount} of ${state.history.catalog.roots.length} shown`,
+    label:`Load ${Math.min(historyCatalogPageSize,codexRoots.length-state.history.visibleRootCount)} more`,
+    accessibilityLabel:`Load older Codex conversations, ${state.history.visibleRootCount} of ${codexRoots.length} shown`,
     onSelect:IntentRef("HistoryCatalogMoreRequested"),
   }]
 }
 
-const localSidebarItems = (state: DesktopShellState) => state.threads.map((thread,index) => ({
+const visibleCodexThreads = (state: DesktopShellState) =>
+  state.threads.filter(thread => !thread.model?.toLowerCase().startsWith("claude"))
+
+const localSidebarItems = (state: DesktopShellState) => visibleCodexThreads(state).map((thread,index) => ({
   id:`sidebar-thread-${thread.id}`,
   label:thread.title,
   meta:state.historyShortcutHintsVisible ? (index < 9 ? String(index + 1) : "") : formatRelativeTimestamp(thread.updatedAt),
@@ -2917,7 +2921,7 @@ const localSidebarItems = (state: DesktopShellState) => state.threads.map((threa
 
 const sidebarConversationItems = (state: DesktopShellState) => {
   const local = localSidebarItems(state)
-  const localThreadIds = new Set(state.threads.map(thread => thread.id))
+  const localThreadIds = new Set(visibleCodexThreads(state).map(thread => thread.id))
   return [...local, ...historySidebarItems(state, local.length, localThreadIds)]
 }
 
@@ -2928,24 +2932,17 @@ export type DesktopConversationShortcutTarget = Readonly<{
 
 /** One canonical order for visible shortcut labels and keyboard activation. */
 export const desktopConversationShortcutTargets = (state: DesktopShellState): ReadonlyArray<DesktopConversationShortcutTarget> => {
-  const localIds = new Set(state.threads.map(thread => thread.id))
+  const localThreads = visibleCodexThreads(state)
+  const localIds = new Set(localThreads.map(thread => thread.id))
   return [
-    ...state.threads.map(thread => ({ kind: "runtime" as const, threadRef: thread.id })),
+    ...localThreads.map(thread => ({ kind: "runtime" as const, threadRef: thread.id })),
     ...state.history.catalog.roots
-      .filter(thread => !localIds.has(thread.threadRef))
+      .filter(thread => thread.source === "codex" && !localIds.has(thread.threadRef))
       .map(thread => ({ kind: "history" as const, threadRef: thread.threadRef })),
   ]
 }
 
 const shellSidebar = (state: DesktopShellState): View => {
-  // Connected-accounts bottom box (EP250 owner contract verbatim: "in the
-  // left sidebar, in a bottom box, like letting the chats flex up but show
-  // up to 5 connected accounts with a progress bar showing remaining
-  // weekly/hourly usage (grayed out if we dont have that data)"). The NavRail
-  // above keeps flex:1/minHeight:0, so the chats list flexes up while this
-  // box stays pinned at the column bottom; zero connected accounts render no
-  // box at all.
-  const accountsBox = sidebarAccountsView(state.fleet, state.sidebarAccountsExpanded)
   return Stack(
     {
       key: "shell-sidebar",
@@ -2959,10 +2956,7 @@ const shellSidebar = (state: DesktopShellState): View => {
         activeId:state.history.pendingThreadRef!==null?`sidebar-thread-${state.history.pendingThreadRef}`:state.history.page!==null?`sidebar-thread-${state.history.page.rootThreadRef}`:state.activeThreadId!==null?`sidebar-thread-${state.activeThreadId}`:`workspace-${state.workspace}`,
         sections:[
           {id:"sidebar-workspace-dock",layout:"row",items:[
-            // Owner directive (#8712): New chat is the top-leftmost dock item,
-            // Fleet immediately to its right.
             {id:"workspace-new-chat",label:"New chat",icon:"ChatCompose",accessibilityLabel:"New chat",onSelect:IntentRef("DesktopNewChat")},
-            {id:"workspace-fleet",label:"Fleet",icon:"Agent",selected:state.workspace==="fleet",accessibilityLabel:"Fleet",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("fleet"))},
             {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
             {id:"workspace-files",label:"Files",icon:"Folder",selected:state.workspace==="files",accessibilityLabel:"Files",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("files"))},
             {id:"workspace-product-spec",label:"ProductSpec",icon:"Code",selected:state.workspace==="product-spec",accessibilityLabel:"ProductSpec workroom",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("product-spec"))},
@@ -2983,7 +2977,6 @@ const shellSidebar = (state: DesktopShellState): View => {
       historySearchField(state.history),
       ...(historySearchActive(state.history) && state.history.searchResults.length === 0 ? [Text({ key: "sidebar-search-empty", content: "No sessions match.", variant: "caption", color: "textMuted" })] : []),
       ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 && !historySearchActive(state.history) ? [Text({ key: "sidebar-chats-empty", content: "No local coding history found.", variant: "body", color: "textMuted" })] : []),
-      ...(accountsBox === null ? [] : [accountsBox]),
     ],
   )
 }
@@ -3791,17 +3784,9 @@ const pendingSubmitSelect = (state: DesktopShellState): View | null =>
   })
 
 /**
- * The chat composer, re-laid-out to OpenCode's prompt-input shape (EP250 owner
- * directive, verbatim: "edit our chat input composer to look exactly like the
- * opencode desktop, and put our codex/claude toggle in that bar underneath
- * it"). ONE rounded container (radius "xl"): the multiline text input sits on
- * TOP; a BOTTOM ACTION BAR sits below it inside the same card, carrying the
- * leading `+` attach affordance, the Fable|Codex harness toggle, a flexible
- * spacer, and the trailing circular send / stop control. No feature is removed
- * — the attach picker + drop/paste, harness toggle + Shift+Tab, image
- * thumbnails, Stop-while-streaming, queue-until-idle, disabled-reason popovers,
- * and the DesktopInputChanged/DesktopNoteSubmitted wiring are all preserved,
- * re-homed into the new shape.
+ * The MVP composer is deliberately fixed to Codex. It keeps the multiline
+ * input, stop, steer/queue, Open in Codex fallback, and send controls while
+ * omitting provider/model selection, attachments, voice, and plugin chrome.
  */
 const shellComposer = (state: DesktopShellState): View => {
   const hud = voiceHud(state)
@@ -3824,10 +3809,6 @@ const shellComposer = (state: DesktopShellState): View => {
       },
     },
     [
-      // Capability I1: pending image thumbnails + transient rejection notice
-      // sit ABOVE the input (OpenCode renders attachments before the editor);
-      // empty when nothing is attached.
-      ...composerImageRegion(state),
       ...composerReviewContextRegion(state),
       ...composerFileContextRegion(state),
       ...(hud === null ? [] : [hud]),
@@ -3873,22 +3854,11 @@ const shellComposer = (state: DesktopShellState): View => {
           style: { width: "full" },
         },
         [
-          // Leading attach affordance (capability I1) — picker + drop/paste.
-          composerAttachControl(state),
-          harnessSelect(state),
-          modelSelect(state),
-          ...(reasoningSelect(state) === null ? [] : [reasoningSelect(state)!]),
-          // Provider-account + permission-mode controls kept from the old
-          // harness row (landed after the restyle was cut) — same bar, same
-          // null-collapse behavior.
-          ...(providerAccountControl(state) === null ? [] : [providerAccountControl(state)!]),
-          ...(permissionModeControl(state) === null ? [] : [permissionModeControl(state)!]),
+          Text({ key: "shell-codex-engine", content: "Codex", variant: "label", color: "textMuted" }),
           ...(codexHandoffControl(state) === null ? [] : [codexHandoffControl(state)!]),
           ...(pendingSubmitSelect(state) === null ? [] : [pendingSubmitSelect(state)!]),
           // Push the send/stop control to the far right of the bar.
           Spacer({ key: "shell-composer-bar-spacer", flex: true }),
-          // Voice-mode placeholder is honest presentation state only.
-          ...composerVoiceControls(state),
           // Circular Send (idle) or Stop (streaming) — see composerActionControl.
           composerActionControl(state),
         ],
@@ -4210,7 +4180,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
         ],
       ),
     ],

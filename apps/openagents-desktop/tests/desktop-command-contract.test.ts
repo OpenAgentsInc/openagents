@@ -28,10 +28,12 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
       "settings.open",
       "workspace.choose",
       "workspace.files",
-      "workspace.fleet",
       "workspace.home",
-      "workspace.inbox",
       "workspace.review",
+    ]))
+    expect(desktopCanonicalCommandRegistry.map(value => value.id)).not.toEqual(expect.arrayContaining([
+      "workspace.fleet",
+      "workspace.inbox",
       "workspace.terminal",
     ]))
   })
@@ -55,15 +57,20 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
     const deferred = decodeDesktopDeferredCommand({
       schema: "openagents.desktop.deferred_command.v1",
       requestRef: "command.fixture.1",
-      commandId: "workspace.fleet",
-      arguments: { kind: "workspace", workspace: "fleet" },
+      commandId: "workspace.review",
+      arguments: { kind: "workspace", workspace: "review" },
       source: "second_instance",
       delivery: "dispatch",
     })
-    expect(deferred.commandId).toBe("workspace.fleet")
+    expect(deferred.commandId).toBe("workspace.review")
     expect(() => decodeDesktopDeferredCommand({ ...deferred, commandId: "shell.exec" })).toThrow()
-    const fleet = desktopCanonicalCommandRegistry.find(value => value.id === "workspace.fleet")!
-    expect(desktopCommandIsAvailable(fleet, { sessionReady: true, workspaceReady: true, verifiedOwner: false })).toBe(false)
-    expect(desktopCommandIsAvailable(fleet, { sessionReady: true, workspaceReady: false, verifiedOwner: true })).toBe(true)
+    expect(() => decodeDesktopDeferredCommand({
+      ...deferred,
+      commandId: "workspace.fleet",
+      arguments: { kind: "workspace", workspace: "fleet" },
+    })).toThrow()
+    const review = desktopCanonicalCommandRegistry.find(value => value.id === "workspace.review")!
+    expect(desktopCommandIsAvailable(review, { sessionReady: true, workspaceReady: false, verifiedOwner: true })).toBe(false)
+    expect(desktopCommandIsAvailable(review, { sessionReady: false, workspaceReady: true, verifiedOwner: false })).toBe(true)
   })
 })
