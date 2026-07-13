@@ -115,6 +115,10 @@ import {
   type DesktopCodingCatalogProjection,
 } from "../coding-catalog-contract.ts"
 import {
+  decodeDesktopUpdateProjection,
+  emptyDesktopUpdateProjection,
+} from "../update-staging-contract.ts"
+import {
   decodeDesktopCommandBindingProjectionOrNull,
   desktopCanonicalCommandRegistry,
   type DesktopCommandBindingProjection,
@@ -232,6 +236,7 @@ type DesktopBridge = Readonly<{
     delete?: (value: unknown) => Promise<unknown>
     recover?: (value: unknown) => Promise<unknown>
   }>
+  updates?: Readonly<{ run?: (value: unknown) => Promise<unknown> }>
   commands?: Readonly<{
     onCommand?: (listener: (command: DesktopDeferredCommand) => void) => () => void
     ready?: () => Promise<unknown>
@@ -778,6 +783,16 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           : () => bridge.codingCatalog!.recover!({ sessionRef }),
       ),
     }
+    const updateRendererHost = {
+      run: async (action: "snapshot" | "check" | "download" | "open_installer") => {
+        try {
+          const value = await bridge?.updates?.run?.({ action })
+          return decodeDesktopUpdateProjection(value) ?? emptyDesktopUpdateProjection()
+        } catch {
+          return emptyDesktopUpdateProjection()
+        }
+      },
+    }
     const decodeCommandBindings = (value: unknown): DesktopCommandBindingProjection | null =>
       decodeDesktopCommandBindingProjectionOrNull(value)
     const commandBindingHost = {
@@ -959,7 +974,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             message: "The Open in Codex response was invalid.",
           }
         },
-      }),
+      }, updateRendererHost),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({
@@ -1127,6 +1142,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         codingCatalog,
       }))
     }
+    const update = yield* Effect.promise(() => updateRendererHost.run("snapshot"))
+    yield* SubscriptionRef.update(state, current => ({ ...current, update }))
     const existing = yield* Effect.promise(chat.listThreads)
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
     if (threads.length > 0) {

@@ -73,6 +73,8 @@ import {
 import { chatMarkdownBody } from "./markdown.ts"
 import { runtimeAgentGraphView } from "./runtime-agent-graph.ts"
 import { localDelegateAgentRef } from "../live-agent-graph-local.ts"
+import { emptyDesktopUpdateProjection } from "../update-staging-contract.ts"
+import type { DesktopUpdateProjection } from "../update-staging-host.ts"
 import { desktopCommandRegistry, formatCommandChord } from "./command-registry.ts"
 import { makeCommandNoticeController, type CommandNoticeController } from "./command-notice.ts"
 import {
@@ -382,6 +384,7 @@ export type DesktopShellState = Readonly<{
   git: GitPanelState
   /** ProductSpec intent, planning, packet, evidence, and verification projection. */
   productSpec: ProductSpecWorkspaceState
+  update: DesktopUpdateProjection
 }>
 
 /** "18:04" — display-string timestamps for the typed message contract. */
@@ -461,6 +464,7 @@ export const initialDesktopShellState = (
   terminal: emptyTerminalWorkspaceState(),
   git: emptyGitPanelState(),
   productSpec: emptyProductSpecWorkspaceState(),
+  update: emptyDesktopUpdateProjection(),
 })
 
 // ---------------------------------------------------------------------------
@@ -613,6 +617,9 @@ export const DesktopCodingSessionDeleteRequested = defineIntent("DesktopCodingSe
 export const DesktopCodingSessionDeleteCancelled = defineIntent("DesktopCodingSessionDeleteCancelled", Schema.Null)
 export const DesktopCodingSessionDeleteConfirmed = defineIntent("DesktopCodingSessionDeleteConfirmed", Schema.String)
 export const DesktopCodingSessionRecovered = defineIntent("DesktopCodingSessionRecovered", Schema.String)
+export const DesktopUpdateChecked = defineIntent("DesktopUpdateChecked", Schema.Null)
+export const DesktopUpdateDownloaded = defineIntent("DesktopUpdateDownloaded", Schema.Null)
+export const DesktopUpdateInstallerOpened = defineIntent("DesktopUpdateInstallerOpened", Schema.Null)
 export const DesktopWorkspaceSelected = defineIntent(
   "DesktopWorkspaceSelected",
   Schema.Literals(desktopWorkspaceNames),
@@ -685,6 +692,9 @@ export const desktopShellIntents = [
   DesktopCodingSessionDeleteCancelled,
   DesktopCodingSessionDeleteConfirmed,
   DesktopCodingSessionRecovered,
+  DesktopUpdateChecked,
+  DesktopUpdateDownloaded,
+  DesktopUpdateInstallerOpened,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
   DesktopCommandPaletteToggled,
@@ -1179,6 +1189,12 @@ export type CodingCatalogHost = Readonly<{
   delete: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
   recover: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
 }>
+export type DesktopUpdateRendererHost = Readonly<{
+  run: (action: "snapshot" | "check" | "download" | "open_installer") => Promise<DesktopUpdateProjection>
+}>
+const unavailableDesktopUpdateRendererHost: DesktopUpdateRendererHost = {
+  run: async () => emptyDesktopUpdateProjection(),
+}
 
 const unavailableCodingCatalogHost: CodingCatalogHost = {
   snapshot: async () => emptyDesktopCodingCatalogProjection(),
@@ -1380,6 +1396,7 @@ export const makeDesktopShellHandlers = (
       message: "Open in Codex is unavailable for this turn.",
     }),
   },
+  updateHost: DesktopUpdateRendererHost = unavailableDesktopUpdateRendererHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
@@ -2053,6 +2070,20 @@ export const makeDesktopShellHandlers = (
       codingCatalog,
       workspace: desktopWorkspaceForCodingFocus(codingCatalog.focus),
     }))
+  }),
+  DesktopUpdateChecked: () => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({ ...current, update: { ...current.update, phase: "checking" as const, reason: null } }))
+    const update = yield* Effect.promise(() => updateHost.run("check"))
+    yield* SubscriptionRef.update(state, current => ({ ...current, update }))
+  }),
+  DesktopUpdateDownloaded: () => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({ ...current, update: { ...current.update, phase: "downloading" as const, reason: null } }))
+    const update = yield* Effect.promise(() => updateHost.run("download"))
+    yield* SubscriptionRef.update(state, current => ({ ...current, update }))
+  }),
+  DesktopUpdateInstallerOpened: () => Effect.gen(function* () {
+    const update = yield* Effect.promise(() => updateHost.run("open_installer"))
+    yield* SubscriptionRef.update(state, current => ({ ...current, update }))
   }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
     yield* SubscriptionRef.update(state, current => ({
@@ -3162,6 +3193,32 @@ const workspaceReview = (state: DesktopShellState): View => {
   )
 }
 
+const desktopUpdateSettings = (update: DesktopUpdateProjection): View => Card(
+  { key: "desktop-update-settings", padding: "3", radius: "lg", style: { width: "full", borderColor: "borderSubtle", borderWidth: 1 } },
+  [Stack({ key: "desktop-update-settings-content", direction: "column", gap: "2" }, [
+    Text({ key: "desktop-update-title", content: "Desktop updates", variant: "title", color: "textPrimary" }),
+    Text({
+      key: "desktop-update-status",
+      content: update.phase === "current"
+        ? `OpenAgents ${update.installedVersion} is current on ${update.channel}.`
+        : update.phase === "available"
+          ? `OpenAgents ${update.candidateVersion ?? "update"} is available.`
+          : update.phase === "staged"
+            ? `OpenAgents ${update.candidateVersion ?? "update"} is verified and ready to install.`
+            : update.phase === "checking" ? "Checking the signed update feed…"
+              : update.phase === "downloading" ? "Downloading and verifying the signed artifact…"
+                : `Update unavailable: ${update.reason ?? "unknown rejection"}`,
+      variant: "body",
+      color: update.phase === "rejected" ? "warning" : "textMuted",
+    }),
+    Stack({ key: "desktop-update-actions", direction: "row", gap: "2", align: "center" }, [
+      Button({ key: "desktop-update-check", label: "Check for updates", variant: "secondary", disabled: update.phase === "checking" || update.phase === "downloading", onPress: IntentRef("DesktopUpdateChecked") }),
+      ...(update.phase === "available" ? [Button({ key: "desktop-update-download", label: "Download and verify", variant: "primary", onPress: IntentRef("DesktopUpdateDownloaded") })] : []),
+      ...(update.phase === "staged" ? [Button({ key: "desktop-update-open-installer", label: "Open installer", variant: "primary", onPress: IntentRef("DesktopUpdateInstallerOpened") })] : []),
+    ]),
+  ])],
+)
+
 const fleetDesk = (state: DesktopShellState): View => {
   const dispatching = state.fleetDeployment === "dispatching"
   const accepted = state.fleetDeployment === "accepted"
@@ -4128,7 +4185,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : state.workspace === "terminal" ? [terminalWorkspaceView(state.terminal)] : [projectHome(state)]),
         ],
       ),
     ],

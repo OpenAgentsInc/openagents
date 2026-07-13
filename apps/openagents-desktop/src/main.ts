@@ -26,6 +26,11 @@ import {
   buildStartTurnIntent,
 } from "@openagentsinc/khala-sync-client"
 import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
+import { openDesktopUpdateStagingHost } from "./update-staging-host.ts"
+import {
+  DesktopUpdateStagingChannel,
+  decodeDesktopUpdateStagingAction,
+} from "./update-staging-contract.ts"
 
 // macOS derives Electron safeStorage's Keychain service from the application
 // name. Keep production stable while isolating unsigned development and smoke
@@ -843,6 +848,12 @@ const localTurnJournal = openLocalTurnJournal(
 const codexHandoffBindings = openCodexHandoffBindings(
   path.join(app.getPath("userData"), "codex-handoff", "bindings.json"),
 )
+const desktopUpdateHost = openDesktopUpdateStagingHost({
+  root: path.join(app.getPath("userData"), "updates"),
+  installedVersion: app.getVersion(),
+  channel: app.getVersion().includes("-rc.") ? "rc" : "stable",
+  openPath: artifactPath => shell.openPath(artifactPath),
+})
 let desktopIsQuitting = false
 const localTurnFlushers = new Set<() => unknown>()
 const codexSessionsRoot = () => path.resolve(
@@ -1918,6 +1929,17 @@ ipcMain.handle(CodexHandoffOpenChannel, (event, raw: unknown) => {
   return request === null
     ? { state: "refused", reason: "invalid_request", message: "The Open in Codex request is invalid." }
     : codexHandoffHost.open(request)
+})
+ipcMain.handle(DesktopUpdateStagingChannel, (event, raw: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return desktopUpdateHost.snapshot()
+  const request = decodeDesktopUpdateStagingAction(raw)
+  if (request === null) return desktopUpdateHost.snapshot()
+  switch (request.action) {
+    case "snapshot": return desktopUpdateHost.snapshot()
+    case "check": return desktopUpdateHost.check()
+    case "download": return desktopUpdateHost.download()
+    case "open_installer": return desktopUpdateHost.openInstaller()
+  }
 })
 ipcMain.handle(PluginConfigListChannel, () => pluginConfigStore.list())
 ipcMain.handle(PluginConfigChooseChannel, async () => {

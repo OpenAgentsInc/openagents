@@ -1267,6 +1267,27 @@ describe("pure transitions", () => {
     expect(nodeByKey(view, "desktop-command-bindings-reset")?._tag).toBe("Button")
   })
 
+  test("settings exposes only typed signed-update staging actions", () => {
+    const available = desktopShellView({
+      ...baseState,
+      workspace: "settings",
+      update: { phase: "available", channel: "rc", installedVersion: "0.1.0-rc.5", candidateVersion: "0.1.0-rc.6", reason: null },
+    })
+    expect(nodeByKey(available, "desktop-update-status")?.content).toContain("0.1.0-rc.6")
+    expect(nodeByKey(available, "desktop-update-check")?._tag).toBe("Button")
+    expect(nodeByKey(available, "desktop-update-download")?._tag).toBe("Button")
+    expect(nodeByKey(available, "desktop-update-open-installer")).toBeUndefined()
+
+    const staged = desktopShellView({
+      ...baseState,
+      workspace: "settings",
+      update: { phase: "staged", channel: "rc", installedVersion: "0.1.0-rc.5", candidateVersion: "0.1.0-rc.6", reason: null },
+    })
+    expect(nodeByKey(staged, "desktop-update-open-installer")?._tag).toBe("Button")
+    expect(JSON.stringify(staged)).not.toContain("https://")
+    expect(JSON.stringify(staged)).not.toContain("/Applications/")
+  })
+
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
     const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
     expect(activeFleet.fleetDeskOpen).toBe(true)

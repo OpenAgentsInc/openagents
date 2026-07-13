@@ -236,6 +236,12 @@ import {
   emptyDesktopCodingCatalogProjection,
 } from "./coding-catalog-contract.ts"
 import {
+  DesktopUpdateStagingChannel,
+  decodeDesktopUpdateProjection,
+  decodeDesktopUpdateStagingAction,
+  emptyDesktopUpdateProjection,
+} from "./update-staging-contract.ts"
+import {
   DesktopCommandEventChannel,
   DesktopCommandReadyChannel,
   DesktopCommandBindingsChannel,
@@ -806,6 +812,15 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return decodeDesktopCodingCatalogProjection(
         await ipcRenderer.invoke(DesktopCodingCatalogFocusChannel, request),
       ) ?? emptyDesktopCodingCatalogProjection()
+    },
+  },
+  updates: {
+    run: async (value: unknown) => {
+      const request = decodeDesktopUpdateStagingAction(value)
+      if (request === null) return emptyDesktopUpdateProjection()
+      return decodeDesktopUpdateProjection(
+        await ipcRenderer.invoke(DesktopUpdateStagingChannel, request),
+      ) ?? emptyDesktopUpdateProjection()
     },
   },
   /**
