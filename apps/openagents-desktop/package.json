@@ -13,6 +13,7 @@
     "make:mac": "bun scripts/prepare-macos-maker.ts && electron-forge make --platform=darwin --arch=arm64",
     "dev": "bun scripts/build.ts && electron .",
     "live-proof": "bun scripts/build.ts && bun scripts/run-live-proof.ts",
+    "mvp-proof": "bun scripts/build.ts && bun scripts/run-mvp-proof.ts",
     "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
     "startup-bench": "bun scripts/startup-bench.ts",
     "test": "bun test",

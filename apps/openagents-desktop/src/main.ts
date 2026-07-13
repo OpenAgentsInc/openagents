@@ -357,6 +357,7 @@ import {
 import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
 import { traceAcceptanceJourney, traceAcceptanceReload } from "./electron-trace-acceptance.ts"
 import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
+import { resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
 import {
   signInDesktopSession,
   signOutDesktopSession,
@@ -433,13 +434,14 @@ const localTurnRestartProbe = process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_
   : null
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
+const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
 // Capture before any host lifecycle can change process state. This is the
 // default top-level coding workspace today; the runtime-facing getter is the
 // seam a future persisted directory setting/picker will replace.
 const desktopLaunchWorkingDirectory = path.resolve(app.getPath("home"))
 const productionUserDataPath = path.join(app.getPath("appData"), "OpenAgents")
 const legacyDevelopmentUserDataPath = path.join(app.getPath("appData"), "OpenAgentsDesktopDev")
-if (!smokeMode && !liveProofDriverMode && process.env.OPENAGENTS_DESKTOP_USER_DATA === undefined &&
+if (!smokeMode && !liveProofDriverMode && !mvpProofDriverMode && process.env.OPENAGENTS_DESKTOP_USER_DATA === undefined &&
     !existsSync(productionUserDataPath) && existsSync(legacyDevelopmentUserDataPath)) {
   try {
     // Same-parent rename preserves the complete durable profile atomically.
@@ -449,10 +451,10 @@ if (!smokeMode && !liveProofDriverMode && process.env.OPENAGENTS_DESKTOP_USER_DA
   } catch { /* retain the legacy profile without deleting or partially copying it */ }
 }
 const desktopUserDataPath = process.env.OPENAGENTS_DESKTOP_USER_DATA ?? (
-  smokeMode || liveProofDriverMode
+  smokeMode || liveProofDriverMode || mvpProofDriverMode
     ? path.join(
         app.getPath("temp"),
-        `openagents-desktop-${startupMarksMode ? "startup-marks" : smokeMode ? "smoke" : "live-proof"}-${process.pid}`,
+        `openagents-desktop-${startupMarksMode ? "startup-marks" : smokeMode ? "smoke" : liveProofDriverMode ? "live-proof" : "mvp-proof"}-${process.pid}`,
       )
     : productionUserDataPath
 )
@@ -4699,26 +4701,52 @@ void app.whenReady().then(async () => {
   // Episode 250 live-proof driver (#8712): REAL adapters (no smoke fixtures),
   // mutually exclusive with smoke. See ./live-proof.ts — additive only.
   const liveProof = resolveLiveProofConfig(process.env, app.getPath("userData"))
+  const mvpProof = resolveMvpProofConfig(process.env, app.getPath("userData"))
   if (liveProof.enabled && liveProof.conflict) {
     console.error("[openagents-desktop live-proof] OPENAGENTS_DESKTOP_LIVE_PROOF and OPENAGENTS_DESKTOP_SMOKE are mutually exclusive; refusing to run either")
     app.exit(1)
     return
   }
+  if (mvpProof.enabled && (mvpProof.conflict || !isolatedAppProofMode)) {
+    console.error("[openagents-desktop mvp-proof] the MVP proof requires an isolated temp profile, an isolated workspace, a safe ProductSpec path, and no other driver mode")
+    app.exit(1)
+    return
+  }
+  const closeProof = (code: number): void => {
+    workspaceSearchRegistry.dispose()
+    terminalHost.dispose()
+    hostLifecycle.dispose()
+    providerAccounts.dispose()
+    desktopCorrelationJournal.dispose()
+    app.exit(code)
+  }
   if (smokeMode) runSmoke(window)
+  else if (mvpProof.enabled) {
+    const workspaceRoot = isolatedAppProofWorkspaceRoot({ enabled: isolatedAppProofMode, env: process.env })
+    runMvpProof(window, {
+      outDir: mvpProof.outDir,
+      specPath: mvpProof.specPath,
+      verifyArtifact: packet => {
+        if (workspaceRoot === null) return { ok: false, receiptRef: `receipt.mvp-proof.${packet}.unavailable` }
+        const expected = `${packet} packet complete\n`
+        try {
+          const bytes = readFileSync(path.join(workspaceRoot, "mvp-proof", `${packet}-output.txt`), "utf8")
+          const digest = createHash("sha256").update(bytes).digest("hex").slice(0, 16)
+          return { ok: bytes === expected, receiptRef: `receipt.mvp-proof.${packet}.sha256.${digest}` }
+        } catch {
+          return { ok: false, receiptRef: `receipt.mvp-proof.${packet}.missing` }
+        }
+      },
+      exit: closeProof,
+    })
+  }
   else if (liveProof.enabled) {
     runLiveProof(window, {
       outDir: liveProof.outDir,
       // Step 0 (EP250): the REAL account preflight over the real registry —
       // per-account verified/broken journal entries with reasons.
       preflight: () => codexPreflight.probeAll("live_proof"),
-      exit: (code) => {
-        workspaceSearchRegistry.dispose()
-        terminalHost.dispose()
-        hostLifecycle.dispose()
-        providerAccounts.dispose()
-        desktopCorrelationJournal.dispose()
-        app.exit(code)
-      },
+      exit: closeProof,
     })
   }
 })
