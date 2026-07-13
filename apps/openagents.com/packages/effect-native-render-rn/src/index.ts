@@ -4203,6 +4203,14 @@ interface ExpoUiNativeComposerProps {
   readonly useState: NonNullable<ReactRuntime["useState"]>
 }
 
+interface ExpoUiTextFieldRef {
+  readonly clear: () => Promise<void>
+}
+
+interface ExpoUiPendingComposerClear {
+  current: string | null
+}
+
 // Keep this component at module scope. Defining it inside
 // `renderExpoUiComposer` creates a new React component type for every emitted
 // Effect Native view. A controlled draft emits after every character, so that
@@ -4211,20 +4219,38 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
   const { view, expoUi, dependencies, report, theme, useEffect, useState } = props
   const controlledValue = composerPlainText(view.doc)
   const textState = expoUi.useNativeState(controlledValue)
-  // `runReportedIntent` starts an Effect fiber. The controlled draft therefore
-  // clears on the next app emission, not in the button's call stack. Remember
-  // the submitted value so an intervening render cannot copy that stale draft
-  // back into the native TextField after `clearOnSubmit` cleared it locally.
-  const [pendingClearValue, setPendingClearValue] = useState<string | null>(null)
+  // @expo/ui ObservableState writes from JS are scheduled asynchronously on
+  // the UI thread. Keep an immediate, stable JS-side guard as well as a native
+  // TextField ref: React state alone leaves the already-committed
+  // `onTextChange` closure able to replay the submitted value before the next
+  // render, and ObservableState.set("") alone does not synchronously clear the
+  // SwiftUI control.
+  const [pendingClear] = useState<ExpoUiPendingComposerClear>(() => ({ current: null }))
+  const [textFieldRef] = useState<{ current: ExpoUiTextFieldRef | null }>(() => ({ current: null }))
+  const clearNativeText = (): void => {
+    textState.set("")
+    const clear = textFieldRef.current?.clear()
+    if (clear !== undefined) {
+      // A disappearing native host can reject an in-flight imperative clear.
+      // The ObservableState write remains the source-of-truth fallback.
+      void clear.catch(() => undefined)
+    }
+  }
   useEffect(() => {
-    if (pendingClearValue !== null) {
-      if (controlledValue === pendingClearValue) return
-      setPendingClearValue(null)
+    const submittedValue = pendingClear.current
+    if (submittedValue !== null) {
+      if (controlledValue === submittedValue || controlledValue === "") {
+        clearNativeText()
+        return
+      }
+      // A distinct controlled value is a real external replacement, not the
+      // stale submitted echo. Resume ordinary controlled synchronization.
+      pendingClear.current = null
     }
     if (textState.get() !== controlledValue) {
       textState.set(controlledValue)
     }
-  }, [controlledValue, pendingClearValue, textState])
+  }, [controlledValue, pendingClear, textFieldRef, textState])
   const submitDisabled = view.disabled === true || view.submitting === true ||
     view.onSubmit === undefined
   const submit = (): void => {
@@ -4232,8 +4258,8 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
     const value = textState.get()
     runReportedIntent(report, view.onSubmit, value)
     if (view.clearOnSubmit === true) {
-      setPendingClearValue(value)
-      textState.set("")
+      pendingClear.current = value
+      clearNativeText()
     }
   }
   return createElement(
@@ -4251,14 +4277,27 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
     },
     createElement(dependencies, expoUi.TextField, {
       key: "control",
+      ref: textFieldRef,
       text: textState,
       placeholder: view.placeholder,
       axis: "vertical",
       accessibilityLabel: view.placeholder,
       onTextChange: (value: string) => {
-        if (view.disabled !== true && view.onChange !== undefined) {
-          runReportedIntent(report, view.onChange, value)
+        const submittedValue = pendingClear.current
+        // Native delivery is asynchronous. Ignore both the clear event and a
+        // late echo of the just-submitted value; either one would otherwise
+        // repopulate the controlled app draft after the field was cleared.
+        if (submittedValue !== null && value === submittedValue) {
+          // The stale event means SwiftUI is visibly holding the old value;
+          // reassert the native clear in the same callback, without waiting
+          // for another React/app emission.
+          clearNativeText()
+          return
         }
+        if (submittedValue !== null && value === "") return
+        if (view.disabled === true || view.onChange === undefined) return
+        if (submittedValue !== null) pendingClear.current = null
+        runReportedIntent(report, view.onChange, value)
       },
       modifiers: [expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 })]
     }),

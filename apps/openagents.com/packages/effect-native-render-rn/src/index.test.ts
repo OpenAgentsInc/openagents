@@ -202,14 +202,18 @@ describe("React Native renderer host boundaries", () => {
     expect(secondComposer.props.view).not.toBe(firstComposer.props.view)
   })
 
-  test("does not restore a submitted draft while the controlled clear is still emitting", () => {
+  test("imperatively clears SwiftUI and rejects stale native echoes while the controlled clear commits", async () => {
     const hookValues: unknown[] = []
     let hookIndex = 0
     let nativeValue = ""
     let nativeInitialized = false
+    const scheduledNativeWrites: string[] = []
     const nativeState = {
       get: () => nativeValue,
-      set: (value: string) => { nativeValue = value },
+      // This matches @expo/ui useNativeState: JS writes are scheduled to the
+      // native UI thread and get() continues to expose the old value until the
+      // scheduled update is applied.
+      set: (value: string) => { scheduledNativeWrites.push(value) },
     }
     const dependencies: ReactNativeDependencies = {
       React: {
@@ -257,6 +261,10 @@ describe("React Native renderer host boundaries", () => {
         frame: value => ({ kind: "frame", value }),
       },
     }
+    const events: Array<readonly [string, unknown]> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => {
+      events.push([ref.name, payload])
+    })
     const renderNative = (text: string): ReactElementLike => {
       hookIndex = 0
       const rendered = renderReactNativeView(
@@ -266,11 +274,12 @@ describe("React Native renderer host boundaries", () => {
           mode: "normal",
           placeholder: "Message",
           clearOnSubmit: true,
+          onChange: IntentRef("Changed"),
           onSubmit: IntentRef("Submitted"),
           style: { surface: "glass" },
         }),
         dependencies,
-        () => Effect.void,
+        report,
         { expoUi, platform: "ios" },
       )
       const host = rendered.props.children as ReactElementLike
@@ -280,17 +289,57 @@ describe("React Native renderer host boundaries", () => {
     }
 
     const first = renderNative("submitted draft")
-    const submit = (first.props.children as ReadonlyArray<ReactElementLike>)[1]!
+    const firstChildren = first.props.children as ReadonlyArray<ReactElementLike>
+    const field = firstChildren[0]!
+    const submit = firstChildren[1]!
+    const fieldRef = field.props.ref as { current: { clear: () => Promise<void> } | null }
+    let imperativeClearCount = 0
+    fieldRef.current = {
+      clear: async () => {
+        imperativeClearCount += 1
+        nativeValue = ""
+      },
+    }
+    nativeValue = "submitted draft"
     ;(submit.props.onPress as () => void)()
+    await Effect.runPromise(nextTask)
     expect(nativeValue).toBe("")
+    expect(imperativeClearCount).toBe(1)
+    expect(events).toEqual([["Submitted", "submitted draft"]])
+
+    // A delayed native change can arrive from the already-committed TextField
+    // closure before React has rendered the app's cleared controlled value.
+    // It must neither restore app state nor remain visible in SwiftUI.
+    nativeValue = "submitted draft"
+    ;(field.props.onTextChange as (value: string) => void)("submitted draft")
+    await Effect.runPromise(nextTask)
+    expect(nativeValue).toBe("")
+    expect(imperativeClearCount).toBe(2)
+    expect(events).toEqual([["Submitted", "submitted draft"]])
 
     // The app's Effect has not emitted its cleared controlled draft yet. This
     // render used to copy the stale submitted text back into SwiftUI.
     renderNative("submitted draft")
     expect(nativeValue).toBe("")
 
-    renderNative("")
+    const cleared = renderNative("")
     expect(nativeValue).toBe("")
+
+    // A late clear notification is also internal synchronization, not a new
+    // user edit. A distinct subsequent edit ends suppression and propagates.
+    const clearedField = (cleared.props.children as ReadonlyArray<ReactElementLike>)[0]!
+    ;(clearedField.props.onTextChange as (value: string) => void)("")
+    ;(clearedField.props.onTextChange as (value: string) => void)("n")
+    await Effect.runPromise(nextTask)
+    expect(events).toEqual([
+      ["Submitted", "submitted draft"],
+      ["Changed", "n"],
+    ])
+
+    // Applying queued ObservableState writes after those callbacks cannot
+    // invalidate the proof: the imperative field clear already happened in
+    // the native view, and the next controlled emission owns the new draft.
+    expect(scheduledNativeWrites).toContain("")
   })
 
   test("keeps the accessible RN composer fallback on Android", () => {
