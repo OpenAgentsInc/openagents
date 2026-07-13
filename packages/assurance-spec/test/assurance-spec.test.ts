@@ -10,8 +10,30 @@ import {
 } from "../src/index.ts"
 
 const mvpPath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
+const mvpAssurancePath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md")
 
 describe("AssuranceSpec format and proposal", () => {
+  test("keeps the checked-in MVP proposal bound to the current ProductSpec", async () => {
+    const productSpecMarkdown = await Bun.file(mvpPath).text()
+    const generatedMarkdown = await Bun.file(mvpAssurancePath).text()
+    const expected = proposeAssuranceSpec({
+      productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+      productSpecMarkdown,
+    })
+    if (!expected.ok) throw new Error("current ProductSpec proposal failed")
+    const validation = validateAssuranceSpec(generatedMarkdown)
+    expect(validation.valid).toBe(true)
+    if (validation.document === undefined) throw new Error("checked-in AssuranceSpec failed validation")
+    expect(validation.document.subject).toEqual(expected.document.subject)
+    expect(assessAssuranceSpec(validation.document).coverage).toEqual({
+      criteria: 18,
+      obligations: 18,
+      ready: 0,
+      needs_design: 18,
+    })
+    expect(serializeAssuranceSpec(validation.document)).toBe(generatedMarkdown)
+  })
+
   test("proposes exact criterion coverage for the current MVP without inventing proof", async () => {
     const source = await Bun.file(mvpPath).text()
     const result = proposeAssuranceSpec({ productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md", productSpecMarkdown: source })

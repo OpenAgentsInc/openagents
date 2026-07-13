@@ -21,7 +21,8 @@ not proof.
 bun packages/assurance-spec/src/cli.ts propose \
   docs/mvp/openagents-codex-workroom-mvp.product-spec.md \
   --repo . \
-  --out docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md
+  --out docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md \
+  --force
 
 bun packages/assurance-spec/src/cli.ts validate \
   docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md

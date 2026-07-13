@@ -105,7 +105,8 @@ real format.
 **[05:16] Speaker:** Let's just do it with the MVP.
 
 **[On screen: run `assurance-spec propose` against the MVP ProductSpec with
-`--repo .` and the co-located output path.]**
+`--repo .`, the co-located output path, and `--force` because the checked-in
+proposal already exists.]**
 
 **[05:31] Speaker:** All right. Eighteen obligations. Eighteen need design.
 Zero ready. Structurally valid. Design ready: no. Execution authorized: no.
