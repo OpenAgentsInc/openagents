@@ -73,7 +73,7 @@ export const buildDesktop = async (): Promise<string> => {
     "codex-history-worker",
     await Bun.build({
       entrypoints: [path.join(appRoot, "src/codex-history-worker.ts")],
-      outdir: dist,
+      outdir: path.join(dist, "workers"),
       target: "node",
       format: "esm",
       minify: BUILD_MINIFY,
@@ -84,7 +84,7 @@ export const buildDesktop = async (): Promise<string> => {
     "workspace-search-worker",
     await Bun.build({
       entrypoints: [path.join(appRoot, "src/workspace-search-worker.ts")],
-      outdir: dist,
+      outdir: path.join(dist, "workers"),
       target: "node",
       format: "esm",
       minify: BUILD_MINIFY,

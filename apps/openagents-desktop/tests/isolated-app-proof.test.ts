@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import {
   IsolatedAppProofEnvironment,
+  IsolatedAppProofWorkspaceEnvironment,
   ProviderAccountsBootstrapReceiptEnvironment,
   isolatedAppProofChromiumSwitches,
+  isolatedAppProofWorkspaceRoot,
   isolatedProofReceiptPath,
   isIsolatedAppProof,
 } from "../src/isolated-app-proof.ts"
@@ -27,5 +29,12 @@ describe("isIsolatedAppProof", () => {
   test("allows the mock keychain only inside an accepted proof", () => {
     expect(isolatedAppProofChromiumSwitches(true)).toEqual(["use-mock-keychain"])
     expect(isolatedAppProofChromiumSwitches(false)).toEqual([])
+  })
+
+  test("accepts an explicit absolute workspace only inside the proof", () => {
+    const env = { [IsolatedAppProofWorkspaceEnvironment]: "/tmp/cut27/repository" }
+    expect(isolatedAppProofWorkspaceRoot({ enabled: true, env })).toBe("/tmp/cut27/repository")
+    expect(isolatedAppProofWorkspaceRoot({ enabled: false, env })).toBeNull()
+    expect(isolatedAppProofWorkspaceRoot({ enabled: true, env: { [IsolatedAppProofWorkspaceEnvironment]: "relative" } })).toBeNull()
   })
 })

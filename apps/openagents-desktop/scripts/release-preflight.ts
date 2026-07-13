@@ -138,8 +138,8 @@ export const checkAppIdentity = (packageJson: {
 export const REQUIRED_ARTIFACTS = [
   "main.js",
   "preload.cjs",
-  "codex-history-worker.js",
-  "workspace-search-worker.js",
+  "workers/codex-history-worker.js",
+  "workers/workspace-search-worker.js",
   "renderer/boot.js",
   "renderer/index.html",
   "renderer/app.css",

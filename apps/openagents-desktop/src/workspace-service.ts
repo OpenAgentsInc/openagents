@@ -22,6 +22,7 @@ import {
   type WorkspaceSearchHost,
   type WorkspaceSearchTask,
 } from "./workspace-search-host.ts"
+import { desktopWorkerUrl } from "./desktop-worker-location.ts"
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
 
 const maxEntries = 120
@@ -992,7 +993,7 @@ export const openWorkspaceService = (
   const searchHost = options.searchHostFactory?.(root, grantRef) ?? makeWorkspaceSearchHost(
     root,
     grantRef,
-    new URL("./workspace-search-worker.js", import.meta.url),
+    desktopWorkerUrl(import.meta.url, "workspace-search-worker.js"),
   )
   let disposed = false
   let epoch = 0

@@ -2,10 +2,21 @@ import path from "node:path"
 
 export const IsolatedAppProofEnvironment = "OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF"
 export const ProviderAccountsBootstrapReceiptEnvironment = "OPENAGENTS_DESKTOP_PROVIDER_ACCOUNTS_BOOTSTRAP_RECEIPT"
+export const IsolatedAppProofWorkspaceEnvironment = "OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT"
 
 /** Chromium switches allowed only for the double-gated temporary proof. */
 export const isolatedAppProofChromiumSwitches = (enabled: boolean): ReadonlyArray<string> =>
   enabled ? ["use-mock-keychain"] : []
+
+export const isolatedAppProofWorkspaceRoot = (input: Readonly<{
+  enabled: boolean
+  env: NodeJS.ProcessEnv
+}>): string | null => {
+  const candidate = input.env[IsolatedAppProofWorkspaceEnvironment]
+  return input.enabled && candidate !== undefined && path.isAbsolute(candidate)
+    ? path.resolve(candidate)
+    : null
+}
 
 /**
  * Allows a signed candidate to exercise local coding surfaces without opening

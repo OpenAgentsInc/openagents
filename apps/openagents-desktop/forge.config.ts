@@ -74,7 +74,11 @@ const config: ForgeConfig = {
       // `unpack` glob matching is rooted differently by Electron Packager;
       // the prior brace expression left these files inside app.asar. The
       // dedicated directory option is the authoritative real-file boundary.
-      unpackDir: "dist/renderer",
+      // Node worker_threads must execute from a real file. Electron 43 can
+      // address a worker entry inside ASAR but traps in V8 thread isolation
+      // when that worker starts. Keep only the two bounded worker entrypoints
+      // beside the renderer on the signed, unpacked filesystem.
+      unpackDir: "dist/{renderer,workers}",
     },
     // Forge's npm-oriented dependency walker cannot resolve Bun workspace
     // links. Ignore the workspace node_modules tree entirely: the application

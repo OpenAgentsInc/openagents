@@ -80,6 +80,7 @@ import {
 import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
 import {
   isolatedAppProofChromiumSwitches,
+  isolatedAppProofWorkspaceRoot,
   isolatedProofReceiptPath,
   isIsolatedAppProof,
 } from "./isolated-app-proof.ts"
@@ -88,6 +89,7 @@ import {
   desktopRendererEntryUrl,
   isTrustedDesktopRendererUrl,
 } from "./desktop-renderer-location.ts"
+import { desktopWorkerUrl } from "./desktop-worker-location.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
@@ -794,7 +796,7 @@ const claudeProjectsRoot = (): string | null => {
       : path.join(app.getPath("home"), ".claude", "projects"),
   )
 }
-const codexHistoryHost = makeCodexHistoryHost(new URL("./codex-history-worker.js", import.meta.url))
+const codexHistoryHost = makeCodexHistoryHost(desktopWorkerUrl(import.meta.url, "codex-history-worker.js"))
 const hostLifecycle = makeDesktopHostLifecycle({
   runtime: runtimeGateway,
   account: codexConnect,
@@ -4149,6 +4151,11 @@ void app.whenReady().then(async () => {
       randomId: randomUUID,
     })
     hostLifecycle.replaceSync(syncHost)
+    const isolatedWorkspaceRoot = isolatedAppProofWorkspaceRoot({
+      enabled: isolatedAppProofMode,
+      env: process.env,
+    })
+    if (isolatedWorkspaceRoot !== null) syncHost.codingCatalog()?.selectWorkspace(isolatedWorkspaceRoot)
     if (smokeMode) {
       // Deterministic CUT-13 built-host fixture: real local SQLite/catalog and
       // private binding path, without provider or remote authority claims.

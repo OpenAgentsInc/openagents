@@ -29,8 +29,8 @@ describe("openagents-desktop build", () => {
 
     for (const artifact of [
       "main.js",
-      "codex-history-worker.js",
-      "workspace-search-worker.js",
+      "workers/codex-history-worker.js",
+      "workers/workspace-search-worker.js",
       "preload.cjs",
       "renderer/boot.js",
       "renderer/index.html",
@@ -76,7 +76,7 @@ describe("openagents-desktop build", () => {
     try {
       writeFileSync(path.join(workspaceRoot, "README.md"), "built worker needle")
       const workerResult = await new Promise<unknown>((resolve, reject) => {
-        const worker = new Worker(path.join(dist, "workspace-search-worker.js"), {
+        const worker = new Worker(path.join(dist, "workers", "workspace-search-worker.js"), {
           workerData: {
             root: workspaceRoot,
             grantRef: "workspace.grant.build-test",
