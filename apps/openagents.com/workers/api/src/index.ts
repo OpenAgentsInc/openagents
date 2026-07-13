@@ -11264,7 +11264,8 @@ const dispatchManagedFleetUnitForEnv = async (
     )
     if (
       request.workSource?.kind !== 'plan_dag' ||
-      request.workerPolicy?.workerKind !== 'codex' ||
+      (request.workerPolicy?.workerKind !== 'codex' &&
+        request.workerPolicy?.workerKind !== 'auto') ||
       unit?.placement?.targetPreference !== 'managed_cloud' ||
       unit.objective !== input.body.unitObjective ||
       `${request.repository?.owner}/${request.repository?.name}` !==
