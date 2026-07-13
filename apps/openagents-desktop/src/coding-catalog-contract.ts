@@ -13,6 +13,7 @@ export const DesktopCodingCatalogSnapshotChannel = "openagents-desktop/coding-ca
 export const DesktopCodingCatalogChooseChannel = "openagents-desktop/coding-catalog-choose"
 export const DesktopCodingCatalogOpenChannel = "openagents-desktop/coding-catalog-open"
 export const DesktopCodingCatalogArchiveChannel = "openagents-desktop/coding-catalog-archive"
+export const DesktopCodingCatalogDeleteChannel = "openagents-desktop/coding-catalog-delete"
 export const DesktopCodingCatalogRecoverChannel = "openagents-desktop/coding-catalog-recover"
 export const DesktopCodingCatalogFocusChannel = "openagents-desktop/coding-catalog-focus"
 

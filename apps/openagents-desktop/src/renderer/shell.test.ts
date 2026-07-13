@@ -1349,7 +1349,7 @@ describe("pure transitions", () => {
 
 describe("typed chat intent loop end-to-end (registry -> state -> re-render)", () => {
 
-  test("coding catalog choose, filter, open, and archive use the typed registry", async () => {
+  test("coding catalog choose, filter, open, archive, and confirmed delete use the typed registry", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const state = yield* SubscriptionRef.make(withWorkspace(baseState, "home"))
@@ -1360,6 +1360,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           sessions: codingCatalogFixture.sessions.map(value => ({ ...value, state: "archived" as const })),
         }
         const opened: string[] = []
+        const deleted: string[] = []
         const registry = yield* makeIntentRegistry(
           desktopShellIntents,
           makeDesktopShellHandlers(
@@ -1379,6 +1380,10 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
               choose: async () => codingCatalogFixture,
               open: async sessionRef => { opened.push(sessionRef); return codingCatalogFixture },
               archive: async () => archived,
+              delete: async sessionRef => {
+                deleted.push(sessionRef)
+                return { ...archived, sessions: [] }
+              },
               recover: async () => codingCatalogFixture,
             },
           ),
@@ -1410,6 +1415,21 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         }
         yield* registry.dispatch(resolveIntentRef(archivedFilter.onPress, null))
         expect((yield* SubscriptionRef.get(state)).codingSessionFilter).toBe("archived")
+
+        let deleteView = desktopShellView(yield* SubscriptionRef.get(state))
+        const requestDelete = nodeByKey(deleteView, "workspace-home-session-delete-session.desktop.fixture") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(requestDelete.onPress, null))
+        expect(deleted).toEqual([])
+        deleteView = desktopShellView(yield* SubscriptionRef.get(state))
+        expect(nodeByKey(deleteView, "workspace-home-session-delete-warning-session.desktop.fixture")).toBeDefined()
+        const confirmDelete = nodeByKey(deleteView, "workspace-home-session-delete-confirm-session.desktop.fixture") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(confirmDelete.onPress, null))
+        expect(deleted).toEqual(["session.desktop.fixture"])
+        expect((yield* SubscriptionRef.get(state)).codingCatalog.sessions).toEqual([])
       }),
     )
   })

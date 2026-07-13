@@ -212,6 +212,7 @@ import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
+  DesktopCodingCatalogDeleteChannel,
   DesktopCodingCatalogFocusChannel,
   DesktopCodingCatalogOpenChannel,
   DesktopCodingCatalogRecoverChannel,
@@ -1352,6 +1353,15 @@ ipcMain.handle(DesktopCodingCatalogArchiveChannel, (_event, raw: unknown) => {
   const catalog = hostLifecycle.sync()?.codingCatalog()
   if (request === null || catalog === null || catalog === undefined) return codingCatalogSnapshot()
   const snapshot = catalog.archiveSession(request.sessionRef)
+  publishCodingCatalog()
+  activateCodingCatalogRoot()
+  return projectDesktopCodingCatalog(snapshot)
+})
+ipcMain.handle(DesktopCodingCatalogDeleteChannel, (_event, raw: unknown) => {
+  const request = decodeDesktopCodingSessionRequest(raw)
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  if (request === null || catalog === null || catalog === undefined) return codingCatalogSnapshot()
+  const snapshot = catalog.deleteSession(request.sessionRef)
   publishCodingCatalog()
   activateCodingCatalogRoot()
   return projectDesktopCodingCatalog(snapshot)

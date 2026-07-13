@@ -229,6 +229,7 @@ type DesktopBridge = Readonly<{
     choose?: () => Promise<unknown>
     open?: (value: unknown) => Promise<unknown>
     archive?: (value: unknown) => Promise<unknown>
+    delete?: (value: unknown) => Promise<unknown>
     recover?: (value: unknown) => Promise<unknown>
   }>
   commands?: Readonly<{
@@ -760,6 +761,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         bridge?.codingCatalog?.archive === undefined
           ? undefined
           : () => bridge.codingCatalog!.archive!({ sessionRef }),
+      ),
+      delete: (sessionRef: string) => codingCatalogCall(
+        bridge?.codingCatalog?.delete === undefined
+          ? undefined
+          : () => bridge.codingCatalog!.delete!({ sessionRef }),
       ),
       recover: (sessionRef: string) => codingCatalogCall(
         bridge?.codingCatalog?.recover === undefined

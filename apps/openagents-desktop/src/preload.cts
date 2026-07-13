@@ -224,6 +224,7 @@ import {
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
+  DesktopCodingCatalogDeleteChannel,
   DesktopCodingCatalogFocusChannel,
   DesktopCodingCatalogOpenChannel,
   DesktopCodingCatalogRecoverChannel,
@@ -778,6 +779,13 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       if (request === null) return emptyDesktopCodingCatalogProjection()
       return decodeDesktopCodingCatalogProjection(
         await ipcRenderer.invoke(DesktopCodingCatalogArchiveChannel, request),
+      ) ?? emptyDesktopCodingCatalogProjection()
+    },
+    delete: async (value: unknown) => {
+      const request = decodeDesktopCodingSessionRequest(value)
+      if (request === null) return emptyDesktopCodingCatalogProjection()
+      return decodeDesktopCodingCatalogProjection(
+        await ipcRenderer.invoke(DesktopCodingCatalogDeleteChannel, request),
       ) ?? emptyDesktopCodingCatalogProjection()
     },
     recover: async (value: unknown) => {

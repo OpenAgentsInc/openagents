@@ -345,6 +345,7 @@ export type DesktopShellState = Readonly<{
   codingCatalog: DesktopCodingCatalogProjection
   codingSessionFilter: CodingSessionFilter
   codingSessionQuery: string
+  codingSessionDeleteConfirmRef: string | null
   workspace: DesktopWorkspaceName
   /** Grant-scoped, root-relative Files workspace projection. */
   workspaceBrowser: WorkspaceBrowserState
@@ -438,6 +439,7 @@ export const initialDesktopShellState = (
   codingCatalog: emptyDesktopCodingCatalogProjection(),
   codingSessionFilter: "active",
   codingSessionQuery: "",
+  codingSessionDeleteConfirmRef: null,
   workspace: "chat",
   workspaceBrowser: emptyWorkspaceBrowserState(),
   workspaceEditor: emptyWorkspaceEditorState(),
@@ -606,6 +608,9 @@ export const DesktopCodingCatalogQueryChanged = defineIntent("DesktopCodingCatal
 export const DesktopCodingCatalogChooseRequested = defineIntent("DesktopCodingCatalogChooseRequested", Schema.Null)
 export const DesktopCodingSessionOpened = defineIntent("DesktopCodingSessionOpened", Schema.String)
 export const DesktopCodingSessionArchived = defineIntent("DesktopCodingSessionArchived", Schema.String)
+export const DesktopCodingSessionDeleteRequested = defineIntent("DesktopCodingSessionDeleteRequested", Schema.String)
+export const DesktopCodingSessionDeleteCancelled = defineIntent("DesktopCodingSessionDeleteCancelled", Schema.Null)
+export const DesktopCodingSessionDeleteConfirmed = defineIntent("DesktopCodingSessionDeleteConfirmed", Schema.String)
 export const DesktopCodingSessionRecovered = defineIntent("DesktopCodingSessionRecovered", Schema.String)
 export const DesktopWorkspaceSelected = defineIntent(
   "DesktopWorkspaceSelected",
@@ -674,6 +679,9 @@ export const desktopShellIntents = [
   DesktopCodingCatalogChooseRequested,
   DesktopCodingSessionOpened,
   DesktopCodingSessionArchived,
+  DesktopCodingSessionDeleteRequested,
+  DesktopCodingSessionDeleteCancelled,
+  DesktopCodingSessionDeleteConfirmed,
   DesktopCodingSessionRecovered,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
@@ -1165,6 +1173,7 @@ export type CodingCatalogHost = Readonly<{
   choose: () => Promise<DesktopCodingCatalogProjection>
   open: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
   archive: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
+  delete: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
   recover: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
 }>
 
@@ -1173,6 +1182,7 @@ const unavailableCodingCatalogHost: CodingCatalogHost = {
   choose: async () => emptyDesktopCodingCatalogProjection(),
   open: async () => emptyDesktopCodingCatalogProjection(),
   archive: async () => emptyDesktopCodingCatalogProjection(),
+  delete: async () => emptyDesktopCodingCatalogProjection(),
   recover: async () => emptyDesktopCodingCatalogProjection(),
 }
 
@@ -1999,6 +2009,22 @@ export const makeDesktopShellHandlers = (
       workspace: codingCatalog.selectedSessionRef === null
         ? "home"
         : desktopWorkspaceForCodingFocus(codingCatalog.focus),
+      codingSessionDeleteConfirmRef: null,
+    }))
+  }),
+  DesktopCodingSessionDeleteRequested: (sessionRef) =>
+    SubscriptionRef.update(state, current => ({ ...current, codingSessionDeleteConfirmRef: sessionRef })),
+  DesktopCodingSessionDeleteCancelled: () =>
+    SubscriptionRef.update(state, current => ({ ...current, codingSessionDeleteConfirmRef: null })),
+  DesktopCodingSessionDeleteConfirmed: (sessionRef) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.codingSessionDeleteConfirmRef !== sessionRef) return
+    const codingCatalog = yield* Effect.promise(() => codingCatalogHost.delete(sessionRef))
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      codingCatalog,
+      codingSessionDeleteConfirmRef: null,
+      workspace: "home" as const,
     }))
   }),
   DesktopCodingSessionRecovered: (sessionRef) => Effect.gen(function* () {
@@ -3046,6 +3072,31 @@ const projectHome = (state: DesktopShellState): View => {
             onPress: IntentRef("DesktopCodingSessionArchived", StaticPayload(session.sessionRef)),
             a11y: { label: `Archive coding session for ${session.projectLabel}` },
           })]),
+          ...(session.state !== "archived" ? [] : state.codingSessionDeleteConfirmRef === session.sessionRef
+            ? [
+                Text({ key: `workspace-home-session-delete-warning-${session.sessionRef}`, content: "Permanently remove this local session and its orphaned workspace identity?", variant: "caption", color: "warning" }),
+                Button({
+                  key: `workspace-home-session-delete-confirm-${session.sessionRef}`,
+                  label: "Delete permanently",
+                  variant: "primary",
+                  onPress: IntentRef("DesktopCodingSessionDeleteConfirmed", StaticPayload(session.sessionRef)),
+                  a11y: { label: `Permanently delete coding session for ${session.projectLabel}` },
+                }),
+                Button({
+                  key: `workspace-home-session-delete-cancel-${session.sessionRef}`,
+                  label: "Keep",
+                  variant: "secondary",
+                  onPress: IntentRef("DesktopCodingSessionDeleteCancelled"),
+                  a11y: { label: `Keep coding session for ${session.projectLabel}` },
+                }),
+              ]
+            : [Button({
+                key: `workspace-home-session-delete-${session.sessionRef}`,
+                label: "Delete",
+                variant: "ghost",
+                onPress: IntentRef("DesktopCodingSessionDeleteRequested", StaticPayload(session.sessionRef)),
+                a11y: { label: `Delete archived coding session for ${session.projectLabel}` },
+              })]),
         ],
       ))),
     ],
