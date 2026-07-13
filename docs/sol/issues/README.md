@@ -44,7 +44,7 @@ duplicated checked-in issue bodies.
 
 | Live issues | Owning plan |
 | --- | --- |
-| [#8747](https://github.com/OpenAgentsInc/openagents/issues/8747), [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748), [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749), [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750), [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751), [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752), [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | [`remote-first portable coding sessions`](../2026-07-11-remote-first-portable-coding-sessions-pathway.md) |
+| [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748), [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749), [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750), [#8751](https://github.com/OpenAgentsInc/openagents/issues/8751), [#8752](https://github.com/OpenAgentsInc/openagents/issues/8752), [#8753](https://github.com/OpenAgentsInc/openagents/issues/8753) | [`remote-first portable coding sessions`](../2026-07-11-remote-first-portable-coding-sessions-pathway.md) |
 
 ## Closed proof and implementation sources
 
@@ -55,6 +55,7 @@ They are evidence, not ready leaves.
 - [`Desktop local-turn restart recovery`](../2026-07-13-desktop-local-turn-restart-recovery-receipt.md) — #8744
 - [`PORT-00 portable-session contract freeze`](../2026-07-12-port-00-portable-session-contract-freeze-receipt.md) — #8745
 - [`PORT-01 durable portable-session authority`](../2026-07-13-port-01-durable-portable-session-authority-receipt.md) — #8746
+- [`PORT-02 target-scoped capability broker`](../2026-07-13-port-02-target-scoped-capability-broker-receipt.md) — #8747
 - [`CUT-09 lifecycle receipt`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md) — closed #8689 physical network-gap/revocation acceptance
 - [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) — closed #8676
 - [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) — closed #8677

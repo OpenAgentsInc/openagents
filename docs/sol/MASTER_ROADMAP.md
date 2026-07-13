@@ -2,8 +2,8 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-12
-- Revision: 104
+- Updated: 2026-07-13
+- Revision: 105
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: canonical
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -464,6 +464,13 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   mobile any-host, session-neutral voice, and R7 dogfood contracts. They do
   not broaden CUT-27 or #8636, and shared schemas, migrations, command IDs,
   catalogs, and policy remain serialized in packet order.
+- PORT-02 #8747 is closed on `main` at `28a91a50b2` plus the durable-evidence
+  hardening `e65fddb743`. The general target-scoped broker now enforces typed
+  least-privilege issue/redeem/renew/revoke/reissue/release/wipe outcomes across
+  owner-local and accepted-managed adapters, excludes credential material from
+  portable state and public evidence, and fails closed under replay, expiry,
+  mid-move revocation, denial, outage, and cleanup failure. PORT-03 #8748 is the
+  active next rung; broker tests do not manufacture a real host-movement proof.
 - `apps/pylon/src/orchestration` and `apps/pylon/src/node` remain protected
   load-bearing Fleet core during the open correctness proof. Streamlining is a
   separately bounded post-proof program under the
@@ -484,7 +491,6 @@ the currently unclaimed worker lease.
 | [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | One claim registry across local/managed routing |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
 | [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 owner confirmation of real-microphone and UI-stability fixes |
-| [#8747](https://github.com/OpenAgentsInc/openagents/issues/8747) | PORT-02 general target-scoped capability broker |
 | [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | PORT-03 first local↔managed graph-wide move and failback |
 | [#8749](https://github.com/OpenAgentsInc/openagents/issues/8749) | PORT-04 owner-managed remote target lifecycle and moves |
 | [#8750](https://github.com/OpenAgentsInc/openagents/issues/8750) | PORT-05 first audited managed-provider adapter |
@@ -526,11 +532,11 @@ Live issues and claims control exact selection. At this snapshot:
    then re-close it. Treat closed #8733 as the P1 audio implementation
    substrate and do not widen Runtime Gateway, Desktop command, Sync, or
    release authority.
-6. Closed PORT-00 #8745 and PORT-01 #8746 now supply the shared schema freeze
-   plus live durable Cloud SQL/Khala Sync session, graph, attachment,
-   checkpoint, directory, event, projection-repair, and command authority.
-   Execute PORT-02 #8747 next; PORT-03 #8748 then composes the authority and
-   broker into the first real local↔managed move and failback.
+6. Closed PORT-00 #8745, PORT-01 #8746, and PORT-02 #8747 now supply the shared
+   schema freeze, live durable Cloud SQL/Khala Sync session/graph/attachment/
+   checkpoint/directory/event/command authority, and the target-scoped
+   capability broker. Execute PORT-03 #8748 next to compose those authorities
+   into the first real local↔managed move and failback.
 7. After the shared target contract, PORT-04 #8749 owner-managed enrollment and
    PORT-05 #8750's audited provider adapter may proceed in parallel. Then ship
    PORT-06 #8751 mobile any-host control, PORT-07 #8752 session-neutral voice,

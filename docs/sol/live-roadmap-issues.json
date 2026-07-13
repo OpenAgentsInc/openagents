@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T04:55:29.000Z",
+  "generatedAt": "2026-07-13T08:33:19.000Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -94,17 +94,6 @@
       "state": "OPEN",
       "title": "AUDIO-8: deploy and prove the real-microphone persistent voice MVP",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8741"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "priority:P0",
-        "roadmap:sol"
-      ],
-      "number": 8747,
-      "state": "OPEN",
-      "title": "PORT-02 — General target-scoped capability broker for provider, SCM, tool, and API grants",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8747"
     },
     {
       "labels": [
