@@ -102,4 +102,7 @@ test("CUT-17 real worker bounds a 20k-entry repository and project close drains 
     rmSync(root, { recursive: true, force: true })
     rmSync(workerOut, { recursive: true, force: true })
   }
-}, 30_000)
+// Fixture creation/removal is intentionally outside the measured search SLA
+// and can exceed 30s on a loaded dogfood workstation. Keep the search itself
+// pinned to 20s above while allowing bounded setup/teardown headroom.
+}, 60_000)
