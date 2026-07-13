@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto"
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import {
   loadPylonAccountRegistry,
@@ -60,6 +60,7 @@ import { assertPublicProjectionSafe } from "../state.js"
 import {
   materializeGitCheckoutWorkspaceWithLease,
   releaseWorkspace,
+  releaseWorkspaceAfterPortableCheckpoint,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
 } from "../workspace-materializer.js"
@@ -242,7 +243,54 @@ export type ControlSessionActions = {
     artifact: unknown | null
   }>
   eventStream: (sessionRef: string) => ReadableStream<Uint8Array>
+  /** Owner-local process/workspace lifecycle. Never exposed on the control wire. */
+  portable: PylonPortableControlSessionLifecycle
 }
+
+export type PylonPortableControlSessionBinding = Readonly<{
+  sessionRef: string
+  attachmentRef: string
+  generation: number
+  agents: ReadonlyArray<Readonly<{
+    agentRef: string
+    controlSessionRef: string
+  }>>
+}>
+
+export type PylonPortableCheckpointSource = Readonly<{
+  workingDirectory: string
+  workspaceRef: string
+  artifactRefs: ReadonlyArray<string>
+  approvalRefs: ReadonlyArray<string>
+}>
+
+export type PylonPortableControlSessionLifecycle = Readonly<{
+  bind: (input: PylonPortableControlSessionBinding) => void
+  quiesce: (input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    agentRefs: ReadonlyArray<string>
+  }>) => Promise<Readonly<{ quiescedAgentRefs: ReadonlyArray<string>; evidenceRefs: ReadonlyArray<string> }>>
+  checkpointSource: (input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    agentRefs: ReadonlyArray<string>
+  }>) => Promise<PylonPortableCheckpointSource>
+  cleanup: (input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    agentRefs: ReadonlyArray<string>
+    checkpointRef: string
+    checkpointDigest: string
+  }>) => Promise<Readonly<{
+    cleanedAgentRefs: ReadonlyArray<string>
+    cleanupReceiptRef: string
+    evidenceRefs: ReadonlyArray<string>
+  }>>
+}>
 
 export type ControlSessionLaunchContext = Readonly<{
   /** Internal server trust fact; never parsed from the command or bridge wire. */
@@ -306,6 +354,7 @@ export type ControlSessionExecutor = (
 type WorkspaceSelection = {
   workspaceRef: string
   workingDirectory: string
+  kind: "managed" | "ephemeral" | "injected"
   cleanupRef?: string
   workspaceStateRoot?: string
 }
@@ -379,6 +428,7 @@ type SessionRecord = {
   events: ControlSessionEvent[]
   cloudRunner: ControlSessionCloudRunner | null
   resourceUsageReceiptRef: string | null
+  portableRetainWorkspace: boolean
 }
 
 function stableRef(prefix: string, value: string) {
@@ -772,6 +822,7 @@ async function workspaceForCommand(input: {
   })
   return {
     cleanupRef: materialized.cleanupRef,
+    kind: "managed",
     workingDirectory: materialized.workingDirectory,
     workspaceStateRoot: join(input.summary.paths.cache, "workspace-leases"),
     workspaceRef: materialized.workspaceRef,
@@ -795,7 +846,7 @@ async function workspaceForEphemeralScratch(input: {
   )
   const workingDirectory = join(input.cacheRoot, workspaceRef)
   await mkdir(workingDirectory, { recursive: true })
-  return { workingDirectory, workspaceRef }
+  return { workingDirectory, workspaceRef, kind: "ephemeral" }
 }
 
 async function workspaceForWorktreePath(worktreePath: string): Promise<WorkspaceSelection> {
@@ -807,6 +858,7 @@ async function workspaceForWorktreePath(worktreePath: string): Promise<Workspace
     throw new Error("worktree_path_missing")
   }
   return {
+    kind: "injected",
     workingDirectory,
     workspaceRef: stableRef("workspace.pylon.control_session.injected", workingDirectory),
   }
@@ -1067,6 +1119,11 @@ export function createControlSessionActions(options: {
 }): ControlSessionActions {
   const encoder = new TextEncoder()
   const records = new Map<string, SessionRecord>()
+  const activeRuns = new Map<string, Promise<void>>()
+  const portableBindings = new Map<string, {
+    input: PylonPortableControlSessionBinding
+    state: "accepting" | "quiesced" | "cleaned"
+  }>()
   const subscribers = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>()
   const executor = options.executor ?? defaultControlSessionExecutor
   const baseEnv = options.env ?? (Bun.env as Record<string, string | undefined>)
@@ -1281,8 +1338,16 @@ export function createControlSessionActions(options: {
   }
 
   const releaseManagedWorkspace = async (record: SessionRecord) => {
-    if (record.workspace.workspaceStateRoot === undefined) return
     if (record.workspaceCleanupReceiptRef !== null || record.workspaceRetentionReasonRef !== null) return
+    if (record.workspace.kind === "ephemeral") {
+      await rm(record.workspace.workingDirectory, { recursive: true, force: true })
+      record.workspaceCleanupReceiptRef = stableRef(
+        "receipt.pylon.control_session.workspace_cleanup",
+        record.workspace.workspaceRef,
+      )
+      return
+    }
+    if (record.workspace.workspaceStateRoot === undefined) return
     const result = await releaseWorkspace({
       workspaceStateRoot: record.workspace.workspaceStateRoot,
       workspaceRef: record.workspace.workspaceRef,
@@ -1309,7 +1374,7 @@ export function createControlSessionActions(options: {
     record.completedAt = nowIso()
     record.errorClass = "cancelled"
     record.errorDigestRef = stableRef("digest.pylon.control_session.cancelled", record.sessionRef)
-    await releaseManagedWorkspace(record)
+    if (!record.portableRetainWorkspace) await releaseManagedWorkspace(record)
     record.state = "cancelled"
     emit(record, {
       phase: "cancelled",
@@ -1497,6 +1562,144 @@ export function createControlSessionActions(options: {
     }
   }
 
+  const startSession = (record: SessionRecord): void => {
+    const running = runSession(record).finally(() => {
+      if (activeRuns.get(record.sessionRef) === running) activeRuns.delete(record.sessionRef)
+    })
+    activeRuns.set(record.sessionRef, running)
+  }
+
+  const portableBindingFor = (input: Readonly<{
+    sessionRef: string
+    attachmentRef: string
+    generation: number
+    agentRefs: ReadonlyArray<string>
+  }>) => {
+    const binding = portableBindings.get(input.sessionRef)
+    if (binding === undefined ||
+        binding.input.attachmentRef !== input.attachmentRef ||
+        binding.input.generation !== input.generation) {
+      throw new Error("portable control-session binding is stale")
+    }
+    const expected = binding.input.agents.map(item => item.agentRef).sort()
+    const received = [...input.agentRefs].sort()
+    if (expected.length !== received.length || expected.some((value, index) => value !== received[index])) {
+      throw new Error("portable control-session graph does not match the bound root/children")
+    }
+    return binding
+  }
+
+  const portableRecordsFor = (binding: { input: PylonPortableControlSessionBinding }) =>
+    binding.input.agents.map(({ agentRef, controlSessionRef }) => {
+      const record = records.get(controlSessionRef)
+      if (record === undefined) throw new Error(`portable agent is not backed by a control session: ${agentRef}`)
+      return { agentRef, record }
+    })
+
+  const portable: PylonPortableControlSessionLifecycle = {
+    bind: (input) => {
+      const agents = [...input.agents]
+      if (agents.length === 0 || new Set(agents.map(item => item.agentRef)).size !== agents.length ||
+          new Set(agents.map(item => item.controlSessionRef)).size !== agents.length) {
+        throw new Error("portable control-session binding must contain unique agents and sessions")
+      }
+      for (const item of agents) {
+        if (!records.has(item.controlSessionRef)) throw new Error("portable control session is absent")
+      }
+      const existing = portableBindings.get(input.sessionRef)
+      if (existing !== undefined) {
+        if (JSON.stringify(existing.input) !== JSON.stringify(input)) {
+          throw new Error("portable control-session binding conflicts")
+        }
+        return
+      }
+      portableBindings.set(input.sessionRef, { input, state: "accepting" })
+    },
+    quiesce: async (input) => {
+      const binding = portableBindingFor(input)
+      if (binding.state === "cleaned") throw new Error("portable control-session graph was already cleaned")
+      const bound = portableRecordsFor(binding)
+      for (const { record } of bound) {
+        record.portableRetainWorkspace = true
+        if (record.state !== "completed" && record.state !== "failed" && record.state !== "cancelled") {
+          record.abort.abort()
+        }
+      }
+      await Promise.all(bound.map(({ record }) => activeRuns.get(record.sessionRef) ?? Promise.resolve()))
+      if (bound.some(({ record }) => activeRuns.has(record.sessionRef))) {
+        throw new Error("portable control-session process did not settle")
+      }
+      binding.state = "quiesced"
+      return {
+        quiescedAgentRefs: bound.map(item => item.agentRef),
+        evidenceRefs: bound.map(item => stableRef(
+          "receipt.pylon.portable.agent_quiesced",
+          `${input.sessionRef}:${input.generation}:${item.agentRef}`,
+        )),
+      }
+    },
+    checkpointSource: async (input) => {
+      const binding = portableBindingFor(input)
+      if (binding.state !== "quiesced") throw new Error("portable graph must quiesce before checkpoint")
+      const bound = portableRecordsFor(binding)
+      const root = bound[0]!.record
+      if (bound.some(({ record }) =>
+        record.workspace.workspaceRef !== root.workspace.workspaceRef ||
+        record.workspace.workingDirectory !== root.workspace.workingDirectory ||
+        activeRuns.has(record.sessionRef))) {
+        throw new Error("portable graph does not have one settled repository workspace")
+      }
+      return {
+        workingDirectory: root.workspace.workingDirectory,
+        workspaceRef: root.workspace.workspaceRef,
+        artifactRefs: bound.flatMap(({ record }) => record.artifactRef === null ? [] : [record.artifactRef]),
+        approvalRefs: [],
+      }
+    },
+    cleanup: async (input) => {
+      const binding = portableBindingFor(input)
+      if (binding.state === "accepting") throw new Error("portable graph must quiesce before cleanup")
+      const bound = portableRecordsFor(binding)
+      const unique = new Map(bound.map(({ record }) => [record.workspace.workspaceRef, record]))
+      const checkpointReleaseRefs: string[] = []
+      for (const record of unique.values()) {
+        if (record.workspace.kind === "managed" && record.workspace.workspaceStateRoot !== undefined) {
+          const result = await releaseWorkspaceAfterPortableCheckpoint({
+            workspaceStateRoot: record.workspace.workspaceStateRoot,
+            workspaceRef: record.workspace.workspaceRef,
+            checkpointRef: input.checkpointRef,
+            checkpointDigest: input.checkpointDigest,
+          })
+          record.workspaceCleanupReceiptRef = result.cleanupReceiptRef
+          checkpointReleaseRefs.push(result.checkpointCleanupReceiptRef)
+        } else {
+          await releaseManagedWorkspace(record)
+        }
+      }
+      const cleanupRefs = [...unique.values()].map(record =>
+        record.workspaceCleanupReceiptRef ?? stableRef(
+          "receipt.pylon.control_session.workspace_retained",
+          record.workspace.workspaceRef,
+        ))
+      const cleanupReceiptRef = stableRef(
+        "receipt.pylon.portable.source_cleanup",
+        `${input.sessionRef}:${input.generation}:${cleanupRefs.sort().join(":")}`,
+      )
+      binding.state = "cleaned"
+      return {
+        cleanedAgentRefs: bound.map(item => item.agentRef),
+        cleanupReceiptRef,
+        evidenceRefs: [
+          cleanupReceiptRef,
+          stableRef("receipt.pylon.portable.processes_released", `${input.sessionRef}:${input.generation}`),
+          stableRef("receipt.pylon.portable.ports_released", `${input.sessionRef}:${input.generation}`),
+          ...cleanupRefs,
+          ...checkpointReleaseRefs,
+        ],
+      }
+    },
+  }
+
   return {
     spawn: async (raw, context) => {
       const command = parseSpawnCommand(raw)
@@ -1557,16 +1760,22 @@ export function createControlSessionActions(options: {
         events: [],
         cloudRunner: null,
         resourceUsageReceiptRef: null,
+        portableRetainWorkspace: false,
       }
       records.set(sessionRef, record)
       emit(record, { phase: "queued" })
-      void runSession(record)
+      startSession(record)
       return { sessionRef, state: record.state }
     },
     reply: async (raw, context) => {
       const command = parseReplyCommand(raw)
       const parent = records.get(command.sessionRef)
       if (!parent) throw new Error("session.reply parent session not found")
+      if ([...portableBindings.values()].some(binding =>
+        binding.state !== "accepting" &&
+        binding.input.agents.some(agent => agent.controlSessionRef === parent.sessionRef))) {
+        throw new Error("portable control-session generation is not accepting work")
+      }
       const runRef = randomBytes(12).toString("hex")
       const objective = buildContinuationObjective(parent.objective, command.objective)
       const sessionRef = stableRef(
@@ -1610,10 +1819,11 @@ export function createControlSessionActions(options: {
         events: [],
         cloudRunner: null,
         resourceUsageReceiptRef: null,
+        portableRetainWorkspace: false,
       }
       records.set(sessionRef, record)
       emit(record, { phase: "queued", messageText: "Continuation session queued" })
-      void runSession(record)
+      startSession(record)
       return { sessionRef, parentSessionRef: parent.sessionRef, state: record.state }
     },
     startAppleFm: async (raw) => {
@@ -1675,13 +1885,14 @@ export function createControlSessionActions(options: {
         events: [],
         cloudRunner: null,
         resourceUsageReceiptRef: null,
+        portableRetainWorkspace: false,
       }
       records.set(sessionRef, record)
       emit(record, {
         phase: "queued",
         messageText: "Apple FM local session queued",
       })
-      void runSession(record)
+      startSession(record)
       return { ok: true, sessionRef, state: record.state }
     },
     list: async () =>
@@ -1741,5 +1952,6 @@ export function createControlSessionActions(options: {
         },
       })
     },
+    portable,
   }
 }

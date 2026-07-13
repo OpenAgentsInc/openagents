@@ -806,3 +806,18 @@ bun run release:gate
 The local release gate runs tests, JSON smokes, dashboard startup smoke, package
 dry-run, and local package install smoke. Public copy must stay inside the
 allowed claim matrix in `docs/launch-gates-no-overclaim.md`.
+
+## Portable owner-local session source
+
+PORT-03's owner-local source adapter composes the file-backed SQLite operation
+ledger with the real control-session executor and workspace lease lifecycle. It
+binds the canonical root/child graph to local control sessions, aborts and joins
+the complete graph without prematurely releasing its workspace, builds an exact
+secret-free repository/diff/graph checkpoint, replays that checkpoint after a
+ledger reopen, rejects stale replies, and performs checkpoint-authorized source
+cleanup exactly once. `tests/portable-session-target.test.ts` is the focused
+root/child process, repository, restart, and cleanup receipt.
+
+This is not yet a complete move claim. Owner-local destination rehydration,
+managed Agent Computer stage/activate/reclaim, provider/SCM grant installation,
+and the direct local → managed → local acceptance journey remain open in #8748.

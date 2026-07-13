@@ -3416,6 +3416,49 @@ export async function releaseWorkspace(input: {
   return null
 }
 
+/**
+ * PORT-03 source reclaim. Unlike ordinary closeout, a dirty workspace may be
+ * removed only after the caller supplies the exact durable checkpoint identity
+ * that sealed its repository and diff post-image. The lease still has to name
+ * a Pylon-owned workspace; arbitrary paths never enter this boundary.
+ */
+export async function releaseWorkspaceAfterPortableCheckpoint(input: {
+  workspaceStateRoot: string
+  workspaceRef: string
+  checkpointRef: string
+  checkpointDigest: string
+  now?: Date
+}): Promise<{ cleanupReceiptRef: string; checkpointCleanupReceiptRef: string }> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u.test(input.checkpointRef) ||
+      !/^sha256:[a-f0-9]{64}$/u.test(input.checkpointDigest)) {
+    throw new Error("portable checkpoint cleanup requires an exact public-safe checkpoint")
+  }
+  const record = await readLeaseRecord(
+    leaseRecordPath(input.workspaceStateRoot, input.workspaceRef),
+  )
+  if (record === null) throw new Error("portable checkpoint workspace lease is absent")
+  const checkpointCleanupReceiptRef = stableRef(
+    "receipt.pylon.workspace_cleanup.portable_checkpoint",
+    `${input.workspaceRef}:${input.checkpointRef}:${input.checkpointDigest}`,
+  )
+  if (record.state === "cleaned") {
+    if (record.cleanupReceiptRef === undefined) {
+      throw new Error("portable checkpoint workspace has no cleanup receipt")
+    }
+    return { cleanupReceiptRef: record.cleanupReceiptRef, checkpointCleanupReceiptRef }
+  }
+  assertPylonOwnedWorkspaceTarget({
+    cacheRoot: record.local.cacheRoot,
+    workingDirectory: record.local.workingDirectory,
+  })
+  const cleaned = await removeWorkspaceAndWriteCleanupReceipt({
+    workspaceStateRoot: input.workspaceStateRoot,
+    record,
+    now: input.now ?? new Date(),
+  })
+  return { cleanupReceiptRef: cleaned.cleanupReceiptRef, checkpointCleanupReceiptRef }
+}
+
 /** Reads one lease record by workspace ref (local diagnostics only). */
 export async function workspaceLeaseRecordFor(input: {
   workspaceStateRoot: string

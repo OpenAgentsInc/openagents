@@ -1186,8 +1186,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   revision or competing claim writes neither state nor evidence, and raw
   credential or host material is rejected before the transaction. The split
   state/evidence sink remains a deterministic-test compatibility seam only;
-  production portable movement must use the atomic store. These landed
-  coordinator and store pieces are implementation rungs only: #8748 remains
+  production portable movement must use the atomic store. The owner-local
+  Pylon source adapter binds that same exact session/attachment/generation to
+  the canonical root/child control sessions. Quiescence rejects new replies,
+  aborts and joins every bound executor, and retains the one workspace until a
+  secret-free repository/diff/graph checkpoint is durably stored in the local
+  SQLite operation ledger. Ordinary cancellation continues to retain dirty
+  workspaces; only portable cleanup carrying the exact checkpoint ref and
+  SHA-256 digest may reclaim a dirty Pylon-owned lease and record its cleaned
+  state. Checkpoint and cleanup replay after SQLite reopen do not repeat
+  process or workspace effects. This source-side boundary is enforced by
+  `apps/pylon/tests/portable-session-target.test.ts` and
+  `apps/pylon/tests/portable-session-operation-ledger.test.ts`. These landed
+  coordinator, store, and owner-local source pieces are implementation rungs
+  only: #8748 remains
   open until #8636 is completed, the store is composed with real target
   adapters, and a direct real
   owner-local Pylon → accepted Agent Computer → owner-local journey proves the

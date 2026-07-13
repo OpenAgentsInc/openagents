@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto"
 import type { Database } from "bun:sqlite"
 import { Effect, Schema } from "effect"
+import {
+  PortableAgentGraphSchema,
+  PortableCheckpointSchema,
+  PortableSessionExecutionBindingSchema,
+} from "@openagentsinc/portable-session-contract"
 
 export const PYLON_PORTABLE_OPERATION_LEDGER_VERSION =
   "openagents.pylon.portable_operation_ledger.v1" as const
@@ -34,6 +39,21 @@ const PylonPortableOperationOutcomeSchema = Schema.Struct({
   graphDigest: Schema.optionalKey(Schema.String),
   cleanupReceiptRef: Schema.optionalKey(Schema.String),
 })
+
+const PylonPortableThreadCursorSchema = Schema.Struct({
+  threadRef: Schema.String,
+  transcriptRef: Schema.String,
+  activityCursor: Schema.Number,
+  eventCursor: Schema.Number,
+})
+
+export const PylonPortableCheckpointBundleSchema = Schema.Struct({
+  checkpoint: PortableCheckpointSchema,
+  executionBinding: PortableSessionExecutionBindingSchema,
+  graph: PortableAgentGraphSchema,
+  threadCursors: Schema.Array(PylonPortableThreadCursorSchema),
+})
+export type PylonPortableCheckpointBundle = typeof PylonPortableCheckpointBundleSchema.Type
 
 export type PylonPortableSessionFence = Readonly<{
   schema: typeof PYLON_PORTABLE_OPERATION_LEDGER_VERSION
@@ -186,6 +206,11 @@ export class PylonPortableSessionOperationLedger {
       );
       CREATE INDEX IF NOT EXISTS pylon_portable_session_operations_scope
         ON pylon_portable_session_operations(session_ref, generation, kind);
+      CREATE TABLE IF NOT EXISTS pylon_portable_checkpoint_bundles (
+        operation_ref TEXT PRIMARY KEY,
+        bundle_json TEXT NOT NULL,
+        FOREIGN KEY (operation_ref) REFERENCES pylon_portable_session_operations(operation_ref) ON DELETE CASCADE
+      );
     `)
   }
 
@@ -252,6 +277,58 @@ export class PylonPortableSessionOperationLedger {
         WHERE operation_ref = ? AND state = 'admitted'
       `).run(JSON.stringify(outcome), input.operationRef)
       return { status: "completed" as const, record: operationRecord(this.requireOperation(input.operationRef)) }
+    })
+  }
+
+  storeCheckpointBundle(input: Readonly<{
+    operationRef: string
+    bundle: PylonPortableCheckpointBundle
+  }>): Effect.Effect<Readonly<{ status: "stored" | "replayed"; bundle: PylonPortableCheckpointBundle }>, PylonPortableOperationLedgerError> {
+    return this.effect(() => {
+      assertRef(input.operationRef, "operationRef")
+      const operation = this.requireOperation(input.operationRef)
+      if (operation.kind !== "checkpoint") {
+        throw new PylonPortableOperationLedgerError("invalid_scope", "checkpoint bundle requires a checkpoint operation")
+      }
+      let bundle: PylonPortableCheckpointBundle
+      try {
+        bundle = Schema.decodeUnknownSync(PylonPortableCheckpointBundleSchema)(input.bundle)
+      } catch {
+        throw new PylonPortableOperationLedgerError("unsafe_result", "portable checkpoint bundle is invalid")
+      }
+      const serialized = canonical(bundle)
+      if (FORBIDDEN_PRIVATE_MATERIAL.test(serialized)) {
+        throw new PylonPortableOperationLedgerError("unsafe_result", "portable checkpoint bundle contains private material")
+      }
+      const existing = this.database.query(
+        "SELECT bundle_json FROM pylon_portable_checkpoint_bundles WHERE operation_ref = ?",
+      ).get(input.operationRef) as { bundle_json: string } | null
+      if (existing !== null) {
+        const stored = Schema.decodeUnknownSync(PylonPortableCheckpointBundleSchema)(JSON.parse(existing.bundle_json))
+        if (canonical(stored) !== serialized) {
+          throw new PylonPortableOperationLedgerError("conflicting_replay", "portable checkpoint bundle conflicts")
+        }
+        return { status: "replayed" as const, bundle: stored }
+      }
+      this.database.query(
+        "INSERT INTO pylon_portable_checkpoint_bundles (operation_ref, bundle_json) VALUES (?, ?)",
+      ).run(input.operationRef, JSON.stringify(bundle))
+      return { status: "stored" as const, bundle }
+    })
+  }
+
+  readCheckpointBundle(operationRef: string): Effect.Effect<PylonPortableCheckpointBundle, PylonPortableOperationLedgerError> {
+    return this.effect(() => {
+      assertRef(operationRef, "operationRef")
+      const row = this.database.query(
+        "SELECT bundle_json FROM pylon_portable_checkpoint_bundles WHERE operation_ref = ?",
+      ).get(operationRef) as { bundle_json: string } | null
+      if (row === null) throw new PylonPortableOperationLedgerError("not_found", "portable checkpoint bundle is absent")
+      try {
+        return Schema.decodeUnknownSync(PylonPortableCheckpointBundleSchema)(JSON.parse(row.bundle_json))
+      } catch {
+        throw new PylonPortableOperationLedgerError("unsafe_result", "stored portable checkpoint bundle is invalid")
+      }
     })
   }
 
