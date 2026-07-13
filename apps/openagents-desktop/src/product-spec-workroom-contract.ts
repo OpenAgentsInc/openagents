@@ -99,6 +99,7 @@ export const ProductSpecWorkPacketSchema = Schema.Struct({
   allocation: Schema.Literals(["root", "child"]),
   state: ProductSpecPacketStateSchema,
   evidenceRefs: Schema.Array(RefSchema),
+  evidenceProducerRef: Schema.optional(RefSchema),
   verifierRefs: Schema.Array(RefSchema),
   activeLease: Schema.optional(Schema.NullOr(Schema.Struct({
     leaseRef: RefSchema,

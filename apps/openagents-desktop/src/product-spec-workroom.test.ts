@@ -200,6 +200,14 @@ describe("ProductSpec workroom authority", () => {
     expect(evidenced).toMatchObject({ ok: true })
     if (!evidenced.ok) return
     expect(evidenced.value.plan.packets[0]?.state).toBe("evidence_present")
+    expect(evidenced.value.plan.packets[0]?.evidenceProducerRef).toBe("agent.root")
+
+    expect(restarted.verifyEvidence({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      verifierRef: "agent.root",
+      expectedSpec: projection.identity,
+    })).toMatchObject({ ok: false, reason: "verifier_required" })
 
     const verified = restarted.verifyEvidence({
       runRef: accepted.value.runRef,

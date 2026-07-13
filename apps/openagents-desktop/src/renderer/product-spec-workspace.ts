@@ -423,6 +423,7 @@ const packetView = (
     Text({ key: `product-spec-packet-deps-${packet.packetRef}`, content: `Depends on: ${packet.dependencyRefs.length === 0 ? "none" : packet.dependencyRefs.join(", ")}`, variant: "caption", color: "textMuted" }),
     ...(packet.activeLease === undefined || packet.activeLease === null ? [] : [Text({ key: `product-spec-packet-lease-${packet.packetRef}`, content: `Lease: ${packet.activeLease.leaseRef} · ${packet.activeLease.executorRef}`, variant: "caption", color: "textMuted" })]),
     ...(packet.evidenceRefs.length === 0 ? [] : [Text({ key: `product-spec-packet-evidence-refs-${packet.packetRef}`, content: `Evidence: ${packet.evidenceRefs.join(", ")}`, variant: "caption", color: "success" })]),
+    ...(packet.evidenceProducerRef === undefined ? [] : [Text({ key: `product-spec-packet-evidence-producer-${packet.packetRef}`, content: `Produced by: ${packet.evidenceProducerRef}`, variant: "caption", color: "textMuted" })]),
     ...(packet.verifierRefs.length === 0 ? [] : [Text({ key: `product-spec-packet-verifier-refs-${packet.packetRef}`, content: `Verified by: ${packet.verifierRefs.join(", ")}`, variant: "caption", color: "success" })]),
     ...(packet.blockedReason === undefined ? [] : [Text({ key: `product-spec-packet-blocked-${packet.packetRef}`, content: packet.blockedReason, variant: "caption", color: "warning" })]),
   ])

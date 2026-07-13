@@ -614,6 +614,7 @@ export const makeProductSpecWorkroom = (
       ...packet,
       state: "evidence_present",
       evidenceRefs: unique([...packet.evidenceRefs, request.evidenceRef]),
+      evidenceProducerRef: packet.activeLease.executorRef,
       activeLease: null,
     }, now()))
   }
@@ -635,6 +636,9 @@ export const makeProductSpecWorkroom = (
     }
     if (packet.state !== "evidence_present" || packet.evidenceRefs.length === 0) {
       return failure("evidence_required", "Evidence-present is required before independent verification.")
+    }
+    if (packet.evidenceProducerRef === undefined || packet.evidenceProducerRef === request.verifierRef) {
+      return failure("verifier_required", "Independent verification requires a verifier distinct from the evidence producer.")
     }
     return persistRun(replacePacket(current.value, {
       ...packet,
