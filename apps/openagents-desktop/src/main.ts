@@ -14,7 +14,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, safeStorage, session, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, session, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
 import { Effect } from "effect"
 import {
   buildCloseTurnIntent,
@@ -4033,9 +4033,14 @@ void app.whenReady().then(async () => {
     desktopSessionState = "signed_out"
     console.warn("[openagents-desktop] isolated app proof: native session vault disabled (temporary user data only)")
   } else try {
+    // Electron's `safeStorage` export can initialize macOS Keychain custody as
+    // soon as the property is resolved. Keep the getter entirely outside the
+    // isolated proof branch so a temp-only local-coding proof never opens OS
+    // authorization UI; ordinary launches still require the native backend.
+    const nativeSafeStorage = (await import("electron")).safeStorage
     desktopSessionVault = openDesktopSessionVault({
       filePath: path.join(app.getPath("userData"), "session", "native-session.enc"),
-      safeStorage,
+      safeStorage: nativeSafeStorage,
     })
     desktopSessionState = desktopSessionVault.recover().state
     if (desktopSessionState === "credential_present_unverified") {
