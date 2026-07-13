@@ -105,9 +105,11 @@ describe('authoritative Postgres provider grant repository', () => {
     expect(used?.status).toBe('used')
     expect(fixture.current().status).toBe('used')
     expect(fixture.auditCount()).toBe(1)
-    await expect(resolveProviderAccountGrant(fixture.repository, input)).rejects.toMatchObject({
-      _tag: 'ProviderGrantNotIssued',
-    })
+    await expect(
+      resolveProviderAccountGrant(fixture.repository, input, {
+        now: () => new Date('2026-07-12T22:11:00.000Z'),
+      }),
+    ).rejects.toMatchObject({ _tag: 'ProviderGrantNotIssued' })
     expect(fixture.auditCount()).toBe(1)
   })
 
