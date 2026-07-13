@@ -141,6 +141,25 @@ const nodeByKey = (value: unknown, key: string): Record<string, unknown> | undef
 }
 
 describe("ProductSpec Effect Native workroom", () => {
+  test("restores the host-owned accepted run when an executable spec is reopened after renderer reload", async () => {
+    const run = acceptedRun()
+    const state = await Effect.runPromise(Effect.gen(function* () {
+      const state = yield* SubscriptionRef.make(capableState())
+      const handlers = makeProductSpecWorkspaceHandlers(state, {
+        ...unavailableProductSpecRendererBridge,
+        open: async () => ({ ok: true, value: { ...projection, activeRunRef: run.runRef } }),
+        run: async (value) => typeof value === "object" && value !== null && "runRef" in value && value.runRef === run.runRef
+          ? { ok: true, value: run }
+          : { ok: false, reason: "not_found", message: "missing" },
+      })
+      yield* handlers.ProductSpecOpenRequested()
+      return yield* SubscriptionRef.get(state)
+    }))
+    expect(state.productSpec.run?.runRef).toBe(run.runRef)
+    expect(state.productSpec.plan?.state).toBe("accepted")
+    expect(state.productSpec.notice).toContain("accepted run was restored")
+  })
+
   test("proposes and confirms a revision only through host-confirmed edit receipts", async () => {
     const requests: Array<{ op: string; value: unknown }> = []
     const nextProjection: ProductSpecProjection = {

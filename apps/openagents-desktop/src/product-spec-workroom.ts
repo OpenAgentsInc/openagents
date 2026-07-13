@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   chmodSync,
@@ -213,6 +214,15 @@ export const makeProductSpecWorkroom = (
       revision: validation.document.frontmatter.spec_revision!,
       digest,
     }
+    const activeRunRef = readdirSync(resolve(stateRoot, "runs"), { withFileTypes: true })
+      .filter(entry => entry.isFile() && entry.name.endsWith(".json"))
+      .flatMap(entry => {
+        const run = loadJson<ProductSpecRun>(resolve(stateRoot, "runs", entry.name))
+        return run !== null && identitiesEqual(run.spec, identity) && run.workContextRef === request.workContextRef
+          ? [run]
+          : []
+      })
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.runRef
     return {
       ok: true,
       value: {
@@ -220,6 +230,7 @@ export const makeProductSpecWorkroom = (
         title: validation.document.frontmatter.title,
         sourceMarkdown: markdown,
         identity,
+        ...(activeRunRef === undefined ? {} : { activeRunRef }),
         executable: true,
         criteria: validation.criteria.map(criterion => ({
           ...criterion,

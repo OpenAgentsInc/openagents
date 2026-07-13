@@ -73,6 +73,7 @@ export const ProductSpecProjectionSchema = Schema.Union([
     title: NonEmptyTextSchema,
     sourceMarkdown: Schema.String.check(Schema.isMaxLength(1_000_000)),
     identity: ProductSpecIdentitySchema,
+    activeRunRef: Schema.optional(RefSchema),
     executable: Schema.Literal(true),
     criteria: Schema.Array(ProductSpecCriterionSchema),
     warnings: Schema.Array(ProductSpecValidationIssueSchema),

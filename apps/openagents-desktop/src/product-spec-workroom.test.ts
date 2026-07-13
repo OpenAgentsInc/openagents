@@ -156,6 +156,10 @@ describe("ProductSpec workroom authority", () => {
       now: () => "2026-07-13T12:01:00.000Z",
     })
     expect(restarted.run(accepted.value.runRef)).toEqual({ ok: true, value: accepted.value })
+    expect(restarted.open({
+      workContextRef: "work.context.fixture",
+      relativePath: "specs/fixture.product-spec.md",
+    })).toMatchObject({ ok: true, value: { state: "ready", activeRunRef: accepted.value.runRef } })
 
     const blockedByDependency = restarted.admitPacket({
       runRef: accepted.value.runRef,

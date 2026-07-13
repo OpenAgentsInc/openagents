@@ -283,15 +283,21 @@ export const makeProductSpecWorkspaceHandlers = <S extends ProductSpecWorkspaceC
       : bridge.create({ workContextRef, relativePath, title })).catch(() => null))
     const result = projectionResult(raw)
     if (result !== null && result.ok) {
+      const activeRunRef = result.value.state === "ready" ? result.value.activeRunRef : undefined
+      const recovered = activeRunRef !== undefined
+        ? runResult(yield* Effect.promise(() => bridge.run({ runRef: activeRunRef }).catch(() => null)))
+        : null
       yield* setWorkspace((workspace) => ({
         ...workspace,
         projection: result.value,
         editDraft: result.value.sourceMarkdown,
         editProposal: null,
-        plan: null,
-        run: null,
+        plan: recovered !== null && recovered.ok ? recovered.value.plan : null,
+        run: recovered !== null && recovered.ok ? recovered.value : null,
         busy: null,
-        notice: result.value.state === "ready" ? "ProductSpec is executable." : "ProductSpec validation completed with blockers.",
+        notice: result.value.state === "ready"
+          ? recovered !== null && recovered.ok ? "ProductSpec is executable and its accepted run was restored." : "ProductSpec is executable."
+          : "ProductSpec validation completed with blockers.",
         error: null,
       }))
     } else {
