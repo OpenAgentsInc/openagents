@@ -345,6 +345,7 @@ import {
   handleBusinessAgentGuide,
   handleBusinessNewPage,
 } from './business-new-routes'
+import { handleObserverPage } from './observer-routes'
 import { makeD1BusinessOutreachStore } from './business-outreach'
 import {
   ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
@@ -15677,6 +15678,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/business-new',
     handler: (request, env, ctx) => handleBusinessNewPage(request, env, ctx),
+  },
+  // Observer product landing page (lander-family shell; content source
+  // docs/assurance — see observer-routes.ts).
+  {
+    path: '/observer',
+    handler: request => handleObserverPage(request),
   },
   // Lowercase aliases for the served agent-doc set. Cloudflare static assets
   // are case-sensitive, so a typed /install.md previously fell through to the

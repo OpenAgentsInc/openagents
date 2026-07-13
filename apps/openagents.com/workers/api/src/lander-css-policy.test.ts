@@ -6,6 +6,7 @@ import { renderLander2Html } from './lander2-routes'
 import { renderLander3Html } from './lander3-routes'
 import { renderLander4Html } from './lander4-routes'
 import { renderLander5Html } from './lander5-routes'
+import { renderObserverHtml } from './observer-routes'
 
 // Guard for the 2026-07-02 incident class: a `padding`/`margin` SHORTHAND on
 // one selector silently zeroed the sides another rule owned, twice — the
@@ -49,6 +50,7 @@ const pages: ReadonlyArray<readonly [string, string]> = [
   ['lander4', renderLander4Html(1)],
   ['lander5', renderLander5Html(1)],
   ['business-new', renderBusinessNewHtml(1)],
+  ['observer', renderObserverHtml()],
 ]
 
 describe('lander CSS policy (specificity-collision guard)', () => {
