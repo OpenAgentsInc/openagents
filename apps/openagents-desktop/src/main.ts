@@ -3513,10 +3513,16 @@ const smokeVoiceMode = `(async () => {
   const truth = ["shell-voice-capture", "shell-voice-egress", "shell-voice-retention", "shell-voice-playback"].map(key => find(key)?.textContent ?? "")
   const mute = find("shell-voice-mute")
   if (!(mute instanceof HTMLElement)) return { ok: false, reason: "mute control missing" }
-  mute.click(); await wait(50)
+  mute.click()
+  const muteDeadline = Date.now() + 5000
+  while (Date.now() < muteDeadline && (find("shell-voice-capture")?.textContent !== "Mic off" || find("shell-voice-egress")?.textContent !== "Not sending")) await wait(25)
   const muted = find("shell-voice-capture")?.textContent === "Mic off" && find("shell-voice-egress")?.textContent === "Not sending"
   const unmute = find("shell-voice-mute")
-  if (unmute instanceof HTMLElement) { unmute.click(); await wait(50) }
+  if (unmute instanceof HTMLElement) {
+    unmute.click()
+    const unmuteDeadline = Date.now() + 5000
+    while (Date.now() < unmuteDeadline && find("shell-voice-capture")?.textContent !== "Mic capturing") await wait(25)
+  }
   while (Date.now() < deadline && find("workspace-home-panel") === null) await wait(25)
   const registeredFocus = find("workspace-home-panel") !== null
   const chat = find("workspace-chat")
@@ -3524,7 +3530,11 @@ const smokeVoiceMode = `(async () => {
   while (Date.now() < deadline && find("shell-voice-playback-outcome") === null) await wait(25)
   const bargeInOutcome = find("shell-voice-playback-outcome")?.textContent?.includes("outcome.smoke.interrupt.1") === true
   const stop = find("shell-voice-toggle")
-  if (stop instanceof HTMLElement) { stop.click(); await wait(50) }
+  if (stop instanceof HTMLElement) {
+    stop.click()
+    const stopDeadline = Date.now() + 5000
+    while (Date.now() < stopDeadline && find("shell-voice-hud") !== null) await wait(25)
+  }
   return { ok: registeredFocus && muted && bargeInOutcome && truth.includes("Not retained") && find("shell-voice-hud") === null, truth, registeredFocus, muted, bargeInOutcome, stopped: find("shell-voice-hud") === null }
 })()`
 
