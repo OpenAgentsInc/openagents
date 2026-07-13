@@ -1240,6 +1240,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   journals; same-operation replay cannot execute a second turn. Focused
   enforcement lives in `apps/pylon/tests/portable-session-control.test.ts` and
   `crates/oa-codex-control/tests/portable_managed_agent_computer_contract.rs`.
+  The server does not treat that host acknowledgement as canonical activity.
+  `PostgresPortableManagedContinuationAuthority` re-locks the exact owner,
+  active attachment, generation, complete parent/child graph, agent activity
+  cursors, and thread cursors in one transaction. For every stable agent/turn
+  pair it appends an exact next `running` event and then a `waiting` settled
+  event, advances that agent's activity cursor, and returns the canonical
+  final per-thread cursors. A lost acknowledgement replays those same accepted
+  refs, evidence refs, and cursors without another event; a partial operation,
+  changed turn/evidence, cursor conflict, or stale attachment generation rolls
+  the complete graph transaction back. Real-Postgres enforcement lives in
+  `packages/khala-sync-server/src/portable-managed-continuation.test.ts`.
   These landed
   coordinator, store, and owner-local source pieces are implementation rungs
   only: #8748 remains

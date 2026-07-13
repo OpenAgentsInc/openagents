@@ -11,6 +11,7 @@ import {
 
 import { runMigrations } from "../src/migrate.js"
 import type { SyncSql } from "../src/sql.js"
+import type { PortableManagedContinuationAuthority } from "../src/portable-managed-continuation.js"
 import {
   PostgresPortableSessionMoveRuntime,
 } from "../src/portable-session-move-runtime.js"
@@ -139,14 +140,14 @@ const managedContinuation = {
   })),
 }
 
-const continuationAuthority = {
+const continuationAuthority: PortableManagedContinuationAuthority = {
   readExpectedCursors: async (input: { expectedGraph: PortableAgentGraph }) => input.expectedGraph.nodes.map(node => ({
     agentRef: node.agentRef,
     threadRef: node.threadRef,
     activityCursor: node.activityCursor,
     eventCursor: 1,
   })),
-  commit: async () => undefined,
+  commit: async input => input.receipt,
 }
 
 const result = (input: PortableSessionMoveInput): PortableSessionMoveResult => ({

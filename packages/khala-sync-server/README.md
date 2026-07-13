@@ -245,6 +245,19 @@ landed, but rebuilding the production guest image with that controller and the
 owner-local destination rehydrator, then running the direct local→managed→local
 journey, remain required before #8748 can close.
 
+`src/portable-managed-continuation.ts` separates the private host execution
+acknowledgement from canonical session activity. The HTTP client accepts only
+one stable agent/turn pair per canonical graph node and a refs-only monotonic
+host result. `PostgresPortableManagedContinuationAuthority` then locks and
+revalidates the exact owner, active attachment generation, complete parent/
+child graph, per-agent activity cursor, and per-thread cursor in one
+transaction. It appends a `running` and a settled `waiting` event for every
+turn, advances each agent and thread to the canonical final cursors, and
+returns those refs/cursors. Same-byte lost-ACK replay returns the same outcome
+without another event. Partial graph state, changed turn/evidence, cursor
+conflict, or stale generation rolls back the whole graph transaction. The
+real-Postgres oracle is `src/portable-managed-continuation.test.ts`.
+
 `src/portable-capability-runtime-adapters.ts` composes PORT-02 with the real
 provider-account and GitHub grant authorities. Exact source revocation and
 caller-named destination reissue use the internal service-actor routes and

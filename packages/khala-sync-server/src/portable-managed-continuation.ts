@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import type { PortableAgentGraph } from "@openagentsinc/portable-session-contract"
 
 import {
@@ -71,7 +72,7 @@ export type PortableManagedContinuationAuthority = Readonly<{
     expectedThreadCursors: PortableManagedContinuationInput["expectedThreadCursors"]
     plan: PortableManagedContinuationPlan
     receipt: PortableManagedContinuationReceipt
-  }>) => Promise<void>
+  }>) => Promise<PortableManagedContinuationReceipt>
 }>
 
 export class PortableManagedContinuationError extends Error {
@@ -259,6 +260,30 @@ const jsonRecord = (value: unknown): Record<string, unknown> => {
     : {}
 }
 
+const continuationEventRef = (
+  operationScope: string,
+  agentRef: string,
+  phase: "running" | "settled",
+): string => `event.portable.continuation.${createHash("sha256")
+  .update(`${operationScope}:${agentRef}:${phase}`)
+  .digest("hex")
+  .slice(0, 32)}`
+
+const continuationMutationRef = (
+  operationScope: string,
+  agentRef: string,
+  phase: "running" | "settled",
+): string => `mutation.portable.continuation.${createHash("sha256")
+  .update(`${operationScope}:${agentRef}:${phase}`)
+  .digest("hex")
+  .slice(0, 32)}`
+
+const continuationEvidenceSetRef = (evidenceRefs: ReadonlyArray<string>): string =>
+  `evidence.portable.continuation.set.${createHash("sha256")
+    .update(JSON.stringify([...evidenceRefs].sort()))
+    .digest("hex")
+    .slice(0, 32)}`
+
 export class PostgresPortableManagedContinuationAuthority
   implements PortableManagedContinuationAuthority
 {
@@ -300,53 +325,237 @@ export class PostgresPortableManagedContinuationAuthority
     })
   }
 
-  async commit(input: Parameters<PortableManagedContinuationAuthority["commit"]>[0]): Promise<void> {
+  async commit(
+    input: Parameters<PortableManagedContinuationAuthority["commit"]>[0],
+  ): Promise<PortableManagedContinuationReceipt> {
+    refs([input.ownerRef], "continuation commit owner")
+    refs([input.sessionRef], "continuation commit session")
+    refs([input.attachmentRef], "continuation commit attachment")
+    refs([input.plan.operationRef], "continuation commit operation")
+    refs([input.plan.providerLeaseRef], "continuation commit provider lease")
+    if (!Number.isSafeInteger(input.generation) || input.generation <= 0) {
+      throw new PortableManagedContinuationError("rejected", "continuation commit generation is invalid")
+    }
     const turns = new Map(input.plan.turns.map(row => [row.agentRef, row]))
     const prior = new Map(input.expectedThreadCursors.map(row => [row.agentRef, row]))
     const cursors = new Map(input.receipt.threadCursors.map(row => [row.agentRef, row]))
-    await this.config.transaction(async writer => {
-      for (const node of input.expectedGraph.nodes) {
+    const accepted = new Map(input.receipt.acceptedWorkRefs.map(row => [row.agentRef, row]))
+    refs(input.expectedGraph.nodes.map(node => node.agentRef), "continuation commit graph agents")
+    refs(input.expectedGraph.nodes.map(node => node.threadRef), "continuation commit graph threads")
+    refs(input.plan.turns.map(row => row.agentRef), "continuation commit plan agents")
+    refs(input.plan.turns.map(row => row.turnRef), "continuation commit plan turns")
+    refs(input.expectedThreadCursors.map(row => row.agentRef), "continuation commit prior agents")
+    refs(input.receipt.threadCursors.map(row => row.agentRef), "continuation commit cursor agents")
+    refs(input.receipt.acceptedWorkRefs.map(row => row.agentRef), "continuation commit accepted agents")
+    refs(input.receipt.acceptedWorkRefs.map(row => row.turnRef), "continuation commit accepted turns")
+    refs(input.receipt.evidenceRefs, "continuation commit evidence")
+    if (turns.size !== input.expectedGraph.nodes.length || prior.size !== input.expectedGraph.nodes.length ||
+        cursors.size !== input.expectedGraph.nodes.length || accepted.size !== input.expectedGraph.nodes.length) {
+      throw new PortableManagedContinuationError("rejected", "continuation commit does not cover the exact graph")
+    }
+    const evidenceRefs = [...input.receipt.evidenceRefs].sort()
+    if (evidenceRefs.length === 0) {
+      throw new PortableManagedContinuationError("rejected", "continuation commit requires evidence")
+    }
+    const evidenceSetRef = continuationEvidenceSetRef(evidenceRefs)
+    const operationScope = `${input.sessionRef}:${input.attachmentRef}:${input.generation}:${input.plan.operationRef}`
+    const orderedNodes = [...input.expectedGraph.nodes].sort((left, right) =>
+      left.agentRef.localeCompare(right.agentRef))
+    const graphAgentRefs = new Set(orderedNodes.map(node => node.agentRef))
+    if (orderedNodes.length === 0 || !graphAgentRefs.has(input.expectedGraph.rootAgentRef) ||
+        orderedNodes.filter(node => node.parentAgentRef === undefined).length !== 1 ||
+        orderedNodes.some(node => node.parentAgentRef !== undefined && !graphAgentRefs.has(node.parentAgentRef))) {
+      throw new PortableManagedContinuationError("rejected", "continuation commit graph is invalid")
+    }
+
+    return this.config.transaction(async writer => {
+      const sessions: ReadonlyArray<Record<string, unknown>> = await writer.sql`
+        SELECT s.owner_user_id, s.root_agent_ref, s.current_attachment_ref, s.current_attachment_generation,
+               a.state AS attachment_state
+        FROM khala_sync_portable_sessions s
+        JOIN khala_sync_portable_attachments a
+          ON a.attachment_ref = s.current_attachment_ref
+        WHERE s.session_ref = ${input.sessionRef}
+        FOR UPDATE OF s, a
+      `
+      const session = sessions[0]
+      if (session === undefined || session.owner_user_id !== input.ownerRef ||
+          session.root_agent_ref !== input.expectedGraph.rootAgentRef ||
+          session.current_attachment_ref !== input.attachmentRef ||
+          Number(session.current_attachment_generation) !== input.generation ||
+          session.attachment_state !== "active") {
+        throw new PortableManagedContinuationError("rejected", "continuation commit attachment generation is stale")
+      }
+
+      const nodeRows: ReadonlyArray<Record<string, unknown>> = await writer.sql`
+        SELECT agent_ref, parent_agent_ref, thread_ref, transcript_ref,
+               activity_cursor, lifecycle, attachment_generation
+        FROM khala_sync_portable_agent_nodes
+        WHERE session_ref = ${input.sessionRef}
+        ORDER BY agent_ref ASC
+        FOR UPDATE
+      `
+      const storedNodes = new Map(nodeRows.map(row => [String(row.agent_ref), row]))
+      if (storedNodes.size !== orderedNodes.length) {
+        throw new PortableManagedContinuationError("rejected", "continuation commit graph is stale")
+      }
+
+      let replayed = true
+      let durableAgentCount = 0
+      for (const node of orderedNodes) {
         const turn = turns.get(node.agentRef)
         const before = prior.get(node.agentRef)
         const after = cursors.get(node.agentRef)
+        const acceptedWork = accepted.get(node.agentRef)
+        const storedNode = storedNodes.get(node.agentRef)
         if (turn === undefined || before === undefined || after === undefined ||
+            acceptedWork === undefined || acceptedWork.turnRef !== turn.turnRef ||
             after.threadRef !== node.threadRef || after.activityCursor <= before.activityCursor ||
-            after.eventCursor !== before.eventCursor + 1) {
+            after.eventCursor !== before.eventCursor + 1 ||
+            before.threadRef !== node.threadRef ||
+            storedNode === undefined || storedNode.thread_ref !== node.threadRef ||
+            storedNode.transcript_ref !== node.transcriptRef ||
+            (storedNode.parent_agent_ref ?? undefined) !== node.parentAgentRef ||
+            Number(storedNode.attachment_generation) !== input.generation) {
           throw new PortableManagedContinuationError("rejected", "continuation commit does not cover the exact graph")
         }
-        const eventRef = `event.${input.plan.operationRef}.${node.agentRef}`
+        const runningEventRef = continuationEventRef(operationScope, node.agentRef, "running")
+        const settledEventRef = continuationEventRef(operationScope, node.agentRef, "settled")
         const existing: ReadonlyArray<Record<string, unknown>> = await writer.sql`
           SELECT thread_ref, thread_cursor, attachment_ref, attachment_generation, event_json
           FROM khala_sync_portable_events
-          WHERE session_ref = ${input.sessionRef} AND event_ref = ${eventRef}
+          WHERE session_ref = ${input.sessionRef}
+            AND event_ref IN (${runningEventRef}, ${settledEventRef})
+          ORDER BY thread_cursor ASC
         `
-        const current = {
-          lifecycle: "waiting",
-          activityCursor: after.activityCursor,
-          turnRef: turn.turnRef,
-        }
-        if (existing[0] !== undefined) {
-          if (existing[0].thread_ref !== node.threadRef ||
-              Number(existing[0].thread_cursor) !== after.eventCursor ||
-              existing[0].attachment_ref !== input.attachmentRef ||
-              Number(existing[0].attachment_generation) !== input.generation ||
-              jsonRecord(existing[0].event_json).lifecycle !== current.lifecycle ||
-              Number(jsonRecord(existing[0].event_json).activityCursor) !== current.activityCursor ||
-              jsonRecord(existing[0].event_json).turnRef !== current.turnRef) {
-            throw new PortableManagedContinuationError("rejected", "continuation event replay conflicts with authority")
-          }
+        if (existing.length === 0) {
+          replayed = false
           continue
         }
+        if (existing.length !== 2) {
+          throw new PortableManagedContinuationError("rejected", "continuation commit has a partial durable replay")
+        }
+        durableAgentCount += 1
+        const expectedStates = [
+          {
+            eventRef: runningEventRef,
+            cursor: before.eventCursor + 1,
+            lifecycle: "running",
+            activityCursor: before.activityCursor,
+            phase: "running",
+          },
+          {
+            eventRef: settledEventRef,
+            cursor: before.eventCursor + 2,
+            lifecycle: "waiting",
+            activityCursor: after.activityCursor,
+            phase: "settled",
+          },
+        ] as const
+        for (const [index, durable] of existing.entries()) {
+          const expected = expectedStates[index]!
+          const current = jsonRecord(durable.event_json)
+          if (durable.thread_ref !== node.threadRef || Number(durable.thread_cursor) !== expected.cursor ||
+              durable.attachment_ref !== input.attachmentRef ||
+              Number(durable.attachment_generation) !== input.generation ||
+              current.lifecycle !== expected.lifecycle ||
+              Number(current.activityCursor) !== expected.activityCursor ||
+              current.turnRef !== turn.turnRef || current.phase !== expected.phase ||
+              current.evidenceRef !== evidenceSetRef) {
+            throw new PortableManagedContinuationError("rejected", "continuation event replay conflicts with authority")
+          }
+        }
+        if (Number(storedNode.activity_cursor) !== after.activityCursor || storedNode.lifecycle !== "waiting") {
+          throw new PortableManagedContinuationError("rejected", "continuation replay conflicts with agent state")
+        }
+      }
+
+      if (durableAgentCount !== 0 && durableAgentCount !== orderedNodes.length) {
+        throw new PortableManagedContinuationError("rejected", "continuation commit has a partial graph replay")
+      }
+
+      if (replayed) {
+        return {
+          acceptedWorkRefs: orderedNodes.map(node => ({
+            agentRef: node.agentRef,
+            turnRef: turns.get(node.agentRef)!.turnRef,
+          })),
+          threadCursors: orderedNodes.map(node => ({
+            agentRef: node.agentRef,
+            threadRef: node.threadRef,
+            activityCursor: cursors.get(node.agentRef)!.activityCursor,
+            eventCursor: prior.get(node.agentRef)!.eventCursor + 2,
+          })),
+          evidenceRefs,
+          replay: "replayed" as const,
+        }
+      }
+
+      for (const node of orderedNodes) {
+        const turn = turns.get(node.agentRef)!
+        const before = prior.get(node.agentRef)!
+        const after = cursors.get(node.agentRef)!
+        const storedNode = storedNodes.get(node.agentRef)!
+        if (Number(storedNode.activity_cursor) !== before.activityCursor ||
+            !["waiting", "running"].includes(String(storedNode.lifecycle))) {
+          throw new PortableManagedContinuationError("rejected", "continuation agent cursor is stale")
+        }
+        const threadRows: ReadonlyArray<Record<string, unknown>> = await writer.sql`
+          SELECT latest_cursor FROM khala_sync_portable_thread_current
+          WHERE session_ref = ${input.sessionRef} AND thread_ref = ${node.threadRef}
+          FOR UPDATE
+        `
+        if (Number(threadRows[0]?.latest_cursor ?? 0) !== before.eventCursor) {
+          throw new PortableManagedContinuationError("rejected", "continuation thread cursor is stale")
+        }
+        const running = {
+          lifecycle: "running",
+          activityCursor: before.activityCursor,
+          turnRef: turn.turnRef,
+          phase: "running",
+          evidenceRef: evidenceSetRef,
+        }
         await appendPortableSessionEvent(writer, {
-          eventRef,
+          eventRef: continuationEventRef(operationScope, node.agentRef, "running"),
           sessionRef: input.sessionRef,
           threadRef: node.threadRef,
-          threadCursor: after.eventCursor,
+          threadCursor: before.eventCursor + 1,
           attachmentRef: input.attachmentRef,
           attachmentGeneration: input.generation,
           eventKind: "activity_cursor",
-          current,
-        }, `mutation.${input.plan.operationRef}.${node.agentRef}`)
+          current: running,
+        }, continuationMutationRef(operationScope, node.agentRef, "running"))
+        const markedRunning: ReadonlyArray<Record<string, unknown>> = await writer.sql`
+          UPDATE khala_sync_portable_agent_nodes
+          SET lifecycle = 'running'
+          WHERE session_ref = ${input.sessionRef}
+            AND agent_ref = ${node.agentRef}
+            AND thread_ref = ${node.threadRef}
+            AND attachment_generation = ${input.generation}
+            AND activity_cursor = ${before.activityCursor}
+            AND lifecycle IN ('waiting', 'running')
+          RETURNING agent_ref
+        `
+        if (markedRunning.length !== 1) {
+          throw new PortableManagedContinuationError("rejected", "continuation running transition conflicted")
+        }
+        const settled = {
+          lifecycle: "waiting",
+          activityCursor: after.activityCursor,
+          turnRef: turn.turnRef,
+          phase: "settled",
+          evidenceRef: evidenceSetRef,
+        }
+        await appendPortableSessionEvent(writer, {
+          eventRef: continuationEventRef(operationScope, node.agentRef, "settled"),
+          sessionRef: input.sessionRef,
+          threadRef: node.threadRef,
+          threadCursor: before.eventCursor + 2,
+          attachmentRef: input.attachmentRef,
+          attachmentGeneration: input.generation,
+          eventKind: "activity_cursor",
+          current: settled,
+        }, continuationMutationRef(operationScope, node.agentRef, "settled"))
         const updated: ReadonlyArray<Record<string, unknown>> = await writer.sql`
           UPDATE khala_sync_portable_agent_nodes
           SET activity_cursor = ${after.activityCursor}, lifecycle = 'waiting',
@@ -361,6 +570,21 @@ export class PostgresPortableManagedContinuationAuthority
         if (updated.length !== 1) {
           throw new PortableManagedContinuationError("rejected", "continuation agent cursor update conflicted")
         }
+      }
+
+      return {
+        acceptedWorkRefs: orderedNodes.map(node => ({
+          agentRef: node.agentRef,
+          turnRef: turns.get(node.agentRef)!.turnRef,
+        })),
+        threadCursors: orderedNodes.map(node => ({
+          agentRef: node.agentRef,
+          threadRef: node.threadRef,
+          activityCursor: cursors.get(node.agentRef)!.activityCursor,
+          eventCursor: prior.get(node.agentRef)!.eventCursor + 2,
+        })),
+        evidenceRefs,
+        replay: "executed" as const,
       }
     })
   }

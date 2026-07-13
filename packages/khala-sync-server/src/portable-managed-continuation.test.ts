@@ -240,7 +240,7 @@ describe.skipIf(!hasLocalPostgres())("durable managed continuation authority", (
       evidenceRefs: ["evidence.continuation.durable"],
       replay: "executed" as const,
     }
-    const commit = () => authority.commit({
+    const commit = (overrides: Partial<Parameters<typeof authority.commit>[0]> = {}) => authority.commit({
       ownerRef: "owner.continuation",
       sessionRef: "session.continuation",
       attachmentRef: "attachment.continuation.managed.2",
@@ -249,14 +249,38 @@ describe.skipIf(!hasLocalPostgres())("durable managed continuation authority", (
       expectedThreadCursors: expected,
       plan,
       receipt,
+      ...overrides,
     })
-    await commit()
-    await commit()
+    const committed = await commit()
+    const replayed = await commit()
+    expect(committed).toMatchObject({
+      acceptedWorkRefs: plan.turns.map(({ agentRef, turnRef }) => ({ agentRef, turnRef }))
+        .sort((left, right) => left.agentRef.localeCompare(right.agentRef)),
+      threadCursors: expected.map(row => ({
+        ...row,
+        activityCursor: row.activityCursor + 1,
+        eventCursor: row.eventCursor + 2,
+      })).sort((left, right) => left.agentRef.localeCompare(right.agentRef)),
+      evidenceRefs: ["evidence.continuation.durable"],
+      replay: "executed",
+    })
+    expect(replayed).toEqual({ ...committed, replay: "replayed" })
     const events = await sql`
-      SELECT event_ref FROM khala_sync_portable_events
-      WHERE session_ref = 'session.continuation' AND event_ref LIKE 'event.operation.continuation.%'
+      SELECT thread_ref, thread_cursor, event_json FROM khala_sync_portable_events
+      WHERE session_ref = 'session.continuation'
+        AND event_ref LIKE 'event.portable.continuation.%'
+      ORDER BY thread_ref, thread_cursor
     `
-    expect(events).toHaveLength(2)
+    expect(events).toHaveLength(4)
+    expect(events.map((row: Record<string, unknown>) => {
+      const current = typeof row.event_json === "string" ? JSON.parse(row.event_json) : row.event_json
+      return [row.thread_ref, Number(row.thread_cursor), current.lifecycle, current.phase, current.turnRef]
+    })).toEqual([
+      ["thread.continuation.child", 2, "running", "running", "turn.continuation.agent.continuation.child"],
+      ["thread.continuation.child", 3, "waiting", "settled", "turn.continuation.agent.continuation.child"],
+      ["thread.continuation.root", 2, "running", "running", "turn.continuation.agent.continuation.root"],
+      ["thread.continuation.root", 3, "waiting", "settled", "turn.continuation.agent.continuation.root"],
+    ])
     const agents = await sql`
       SELECT agent_ref, activity_cursor, lifecycle FROM khala_sync_portable_agent_nodes
       WHERE session_ref = 'session.continuation' ORDER BY agent_ref
@@ -265,5 +289,86 @@ describe.skipIf(!hasLocalPostgres())("durable managed continuation authority", (
       ["agent.continuation.child", 5, "waiting"],
       ["agent.continuation.root", 4, "waiting"],
     ])
+
+    const eventCountBefore = Number((await sql`
+      SELECT count(*) AS count FROM khala_sync_portable_events
+      WHERE session_ref = 'session.continuation'
+    `)[0]!.count)
+    await expect(commit({
+      generation: 1,
+      attachmentRef: "attachment.continuation.managed.2",
+    })).rejects.toMatchObject({ code: "rejected" })
+    await expect(commit({
+      plan: {
+        ...plan,
+        turns: plan.turns.map((turn, index) => index === 0
+          ? { ...turn, turnRef: "turn.continuation.conflict" }
+          : turn),
+      },
+    })).rejects.toMatchObject({ code: "rejected" })
+    await expect(commit({
+      expectedGraph: { ...graph, rootAgentRef: "agent.continuation.child" },
+    })).rejects.toMatchObject({ code: "rejected" })
+    expect(Number((await sql`
+      SELECT count(*) AS count FROM khala_sync_portable_events
+      WHERE session_ref = 'session.continuation'
+    `)[0]!.count)).toBe(eventCountBefore)
+
+    const nextGraph = {
+      ...graph,
+      nodes: graph.nodes.map(node => ({
+        ...node,
+        activityCursor: node.activityCursor + 1,
+        lifecycle: "waiting" as const,
+      })),
+    }
+    const nextExpected = await authority.readExpectedCursors({
+      ownerRef: "owner.continuation",
+      sessionRef: "session.continuation",
+      attachmentRef: "attachment.continuation.managed.2",
+      generation: 2,
+      expectedGraph: nextGraph,
+    })
+    const nextPlan = {
+      ...plan,
+      operationRef: "operation.continuation.root-child.2",
+      turns: plan.turns.map(turn => ({ ...turn, turnRef: `${turn.turnRef}.2` })),
+    }
+    const nextReceipt = {
+      acceptedWorkRefs: nextPlan.turns.map(({ agentRef, turnRef }) => ({ agentRef, turnRef })),
+      threadCursors: nextExpected.map(row => ({
+        ...row,
+        activityCursor: row.activityCursor + 1,
+        eventCursor: row.eventCursor + 1,
+      })),
+      evidenceRefs: ["evidence.continuation.atomic.rollback"],
+      replay: "executed" as const,
+    }
+    await sql`
+      UPDATE khala_sync_portable_agent_nodes SET activity_cursor = 999
+      WHERE session_ref = 'session.continuation' AND agent_ref = ${graph.rootAgentRef}
+    `
+    await expect(commit({
+      expectedGraph: nextGraph,
+      expectedThreadCursors: nextExpected,
+      plan: nextPlan,
+      receipt: nextReceipt,
+    })).rejects.toMatchObject({ code: "rejected" })
+    expect(Number((await sql`
+      SELECT count(*) AS count FROM khala_sync_portable_events
+      WHERE session_ref = 'session.continuation'
+    `)[0]!.count)).toBe(eventCountBefore)
+    const childAfterRollback = await sql`
+      SELECT activity_cursor, lifecycle FROM khala_sync_portable_agent_nodes
+      WHERE session_ref = 'session.continuation' AND agent_ref = 'agent.continuation.child'
+    `
+    expect({
+      activity_cursor: Number(childAfterRollback[0]!.activity_cursor),
+      lifecycle: childAfterRollback[0]!.lifecycle,
+    }).toEqual({ activity_cursor: 5, lifecycle: "waiting" })
+    await sql`
+      UPDATE khala_sync_portable_agent_nodes SET activity_cursor = 4
+      WHERE session_ref = 'session.continuation' AND agent_ref = ${graph.rootAgentRef}
+    `
   })
 })
