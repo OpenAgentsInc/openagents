@@ -191,6 +191,15 @@ describe("Codex app-server native integration", () => {
     })
     fake.respond(7, { turnId: "codex-turn-1" })
     await expect(steer).resolves.toBe(true)
+    fake.notify("turn/plan/updated", {
+      threadId: "codex-thread-1",
+      turnId: "codex-turn-1",
+      explanation: "Implementation order",
+      plan: [
+        { step: "Inspect acceptance criterion", status: "completed" },
+        { step: "Implement native path", status: "inProgress" },
+      ],
+    })
     fake.notify("item/started", {
       threadId: "codex-thread-1",
       turnId: "codex-turn-1",
@@ -259,6 +268,13 @@ describe("Codex app-server native integration", () => {
       usage: { totalTokens: 44 },
     })
     expect(events).toContainEqual({ kind: "text_delta", text: "Native app-server answer." })
+    expect(events).toContainEqual({
+      kind: "plan_updated",
+      entries: [
+        { step: "Inspect acceptance criterion", status: "completed" },
+        { step: "Implement native path", status: "in_progress" },
+      ],
+    })
     expect(events).toContainEqual(expect.objectContaining({
       kind: "child_started",
       childRef: "child-thread-1",

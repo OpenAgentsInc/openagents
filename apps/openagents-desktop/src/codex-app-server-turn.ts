@@ -304,6 +304,22 @@ export const runCodexAppServerTurn = async (
       usage = usageFromNotification(params) ?? usage
       return
     }
+    if (message.method === "turn/plan/updated") {
+      const entries = Array.isArray(params.plan) ? params.plan.slice(0, 64).flatMap(value => {
+        const item = record(value)
+        const step = string(item?.step)
+        const status = string(item?.status)
+        if (step === null || (status !== "pending" && status !== "inProgress" && status !== "completed")) return []
+        const projectedStatus: "pending" | "in_progress" | "completed" =
+          status === "inProgress" ? "in_progress" : status
+        return [{
+          step: step.slice(0, 400),
+          status: projectedStatus,
+        }]
+      }) : []
+      if (entries.length > 0) input.emit({ kind: "plan_updated", entries })
+      return
+    }
     if (message.method === "item/started" || message.method === "item/completed") {
       const item = record(params.item)
       if (item === null) return
