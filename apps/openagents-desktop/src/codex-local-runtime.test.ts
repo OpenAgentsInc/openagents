@@ -147,6 +147,32 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       threadRef: "thread-native-question",
       message: "Run the checks next",
     })).toMatchObject({ ok: true, queued: true, position: 1 })
+    fake.request(91, "item/commandExecution/requestApproval", {
+      threadId: "native-thread",
+      turnId: "native-turn",
+      itemId: "command-item",
+      startedAtMs: Date.now(),
+      command: "bun test",
+      reason: "Run the focused checks",
+    })
+    for (let attempt = 0; attempt < 100 && !sink.events.some(event =>
+      event.kind === "question_pending" && event.interactionKind === "tool_approval"); attempt += 1) await Bun.sleep(1)
+    const approval = sink.events.find(event =>
+      event.kind === "question_pending" && event.interactionKind === "tool_approval")
+    expect(approval).toMatchObject({
+      kind: "question_pending",
+      interactionKind: "tool_approval",
+      decisionRef: "91",
+      questions: [{ header: "Command approval", question: "bun test" }],
+    })
+    if (approval?.kind !== "question_pending") throw new Error("approval was not projected")
+    expect(runtime.answerQuestion({
+      turnRef: "turn-native-question",
+      questionRef: approval.questionRef,
+      answers: [{ question: "bun test", labels: ["Allow once"] }],
+    })).toBe(true)
+    await waitFor(fake.messages, 9)
+    expect(fake.messages[8]).toEqual({ id: 91, result: { decision: "accept" } })
     fake.request(90, "item/tool/requestUserInput", {
       threadId: "native-thread",
       turnId: "native-turn",
@@ -158,8 +184,9 @@ describe("makeCodexLocalRuntime.runTurn", () => {
         options: [{ label: "Native", description: "Use app-server" }],
       }],
     })
-    for (let attempt = 0; attempt < 100 && !sink.events.some(event => event.kind === "question_pending"); attempt += 1) await Bun.sleep(1)
-    const pending = sink.events.find(event => event.kind === "question_pending")
+    for (let attempt = 0; attempt < 100 && !sink.events.some(event =>
+      event.kind === "question_pending" && event.interactionKind === undefined); attempt += 1) await Bun.sleep(1)
+    const pending = sink.events.find(event => event.kind === "question_pending" && event.interactionKind === undefined)
     expect(pending).toMatchObject({ kind: "question_pending", questions: [{ question: "Which implementation?" }] })
     if (pending?.kind !== "question_pending") throw new Error("question was not projected")
     expect(runtime.answerQuestion({
@@ -167,8 +194,8 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       questionRef: pending.questionRef,
       answers: [{ question: "Which implementation?", labels: ["Native"] }],
     })).toBe(true)
-    await waitFor(fake.messages, 9)
-    expect(fake.messages[8]).toEqual({ id: 90, result: { answers: { choice: { answers: ["Native"] } } } })
+    await waitFor(fake.messages, 10)
+    expect(fake.messages[9]).toEqual({ id: 90, result: { answers: { choice: { answers: ["Native"] } } } })
     fake.notify("item/agentMessage/delta", { threadId: "native-thread", turnId: "native-turn", delta: "Done." })
     fake.notify("turn/completed", { threadId: "native-thread", turn: { id: "native-turn", status: "completed", error: null } })
     await expect(running).resolves.toMatchObject({ ok: true, text: "Done.", accountRef: "codex", threadId: "native-thread" })

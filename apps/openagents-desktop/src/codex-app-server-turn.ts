@@ -44,6 +44,7 @@ export type RunCodexAppServerTurnInput = Readonly<{
   ephemeral?: boolean
   sandbox?: "read-only" | "danger-full-access"
   includeProductSpecSkill?: boolean
+  approvalPolicy?: "never" | "on-request"
   control: CodexAppServerTurnControl
   emit: (event: FableLocalEvent) => void
   spawnImpl?: CodexAppServerSpawn
@@ -153,6 +154,7 @@ export const runCodexAppServerTurn = async (
   input: RunCodexAppServerTurnInput,
 ): Promise<CodexAppServerTurnOutcome> => {
   const sandbox = input.sandbox ?? "danger-full-access"
+  const approvalPolicy = input.approvalPolicy ?? "on-request"
   let client: CodexAppServerClient | null = null
   let threadId: string | null = input.resumeThreadId
   let turnId: string | null = null
@@ -414,7 +416,7 @@ export const runCodexAppServerTurn = async (
         ? {
             model: input.model,
             cwd: input.workspace,
-            approvalPolicy: "never",
+            approvalPolicy,
             sandbox,
             ephemeral: input.ephemeral ?? false,
             threadSource: "appServer",
@@ -423,7 +425,7 @@ export const runCodexAppServerTurn = async (
             threadId: input.resumeThreadId,
             model: input.model,
             cwd: input.workspace,
-            approvalPolicy: "never",
+            approvalPolicy,
             sandbox,
           },
     ))
@@ -444,7 +446,7 @@ export const runCodexAppServerTurn = async (
       cwd: input.workspace,
       model: input.model,
       effort: input.reasoningEffort,
-      approvalPolicy: "never",
+      approvalPolicy,
       sandboxPolicy: sandbox === "read-only"
         ? { type: "readOnly", networkAccess: true }
         : { type: "dangerFullAccess" },

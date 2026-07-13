@@ -270,6 +270,8 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             turnRef,
             questionRef: event.questionRef,
             status: "pending",
+            ...(event.interactionKind === undefined ? {} : { kind: event.interactionKind }),
+            ...(event.decisionRef === undefined ? {} : { decisionRef: event.decisionRef }),
             questions: event.questions,
           },
         })

@@ -203,6 +203,7 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
           ephemeral: true,
           sandbox: "read-only",
           includeProductSpecSkill: false,
+          approvalPolicy: "never",
           control,
           emit: () => {},
           ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),

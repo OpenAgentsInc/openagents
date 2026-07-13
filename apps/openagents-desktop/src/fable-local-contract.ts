@@ -344,6 +344,8 @@ export const FableLocalEventSchema = Schema.Union([
     kind: Schema.Literal("question_pending"),
     /** Stable per AskUserQuestion invocation within the turn. */
     questionRef: Schema.String.check(Schema.isMaxLength(120)),
+    interactionKind: Schema.optional(Schema.Literals(["provider_question", "tool_approval", "plan_review"])),
+    decisionRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     questions: Schema.Array(FableLocalQuestionSchema).check(Schema.isMaxLength(4)),
   }),
   Schema.Struct({

@@ -50,6 +50,8 @@ export const localRuntimePersistenceOperation = (input: Readonly<{
           turnRef,
           questionRef: event.questionRef,
           status: "pending",
+          ...(event.interactionKind === undefined ? {} : { kind: event.interactionKind }),
+          ...(event.decisionRef === undefined ? {} : { decisionRef: event.decisionRef }),
           questions: event.questions,
         },
       },

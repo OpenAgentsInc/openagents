@@ -412,6 +412,68 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         accountRef: input.account.ref,
       })
       const onServerRequest = async (request: CodexAppServerRequest): Promise<unknown> => {
+        const isApproval = request.method === "item/commandExecution/requestApproval" ||
+          request.method === "item/fileChange/requestApproval"
+        if (isApproval) {
+          const params = request.params !== null && typeof request.params === "object"
+            ? request.params as Record<string, unknown>
+            : {}
+          const requestSummary = request.method === "item/commandExecution/requestApproval"
+            ? (typeof params.command === "string" && params.command.trim() !== ""
+                ? params.command
+                : typeof params.reason === "string" ? params.reason : "Run the requested command")
+            : (typeof params.reason === "string" && params.reason.trim() !== ""
+                ? params.reason
+                : "Apply the requested file changes")
+          const questionRef = bounded(`approval.${input.turnRef}.${++questionSequence}`, 120)
+          return new Promise(resolve => {
+            let finished = false
+            const finish = (decision: "accept" | "acceptForSession" | "decline", outcome: "answered" | "denied"): void => {
+              if (finished) return
+              finished = true
+              pendingQuestions.delete(questionRef)
+              input.emit({ kind: "question_resolved", questionRef, outcome })
+              resolve({ decision })
+            }
+            const question = bounded(redactChildText(requestSummary, input.workspace), FABLE_LOCAL_SUMMARY_LIMIT)
+            pendingQuestions.set(questionRef, {
+              turnRef: input.turnRef,
+              accept: answer => {
+                const labels = answer.answers.flatMap(item => item.labels)
+                if (labels.includes("Allow once")) {
+                  finish("accept", "answered")
+                  return true
+                }
+                if (labels.includes("Allow for session")) {
+                  finish("acceptForSession", "answered")
+                  return true
+                }
+                if (labels.includes("Decline")) {
+                  finish("decline", "denied")
+                  return true
+                }
+                return false
+              },
+              deny: () => finish("decline", "denied"),
+            })
+            input.emit({
+              kind: "question_pending",
+              questionRef,
+              interactionKind: "tool_approval",
+              decisionRef: bounded(String(request.id), 120),
+              questions: [{
+                question,
+                header: request.method === "item/commandExecution/requestApproval" ? "Command approval" : "File approval",
+                options: [
+                  { label: "Allow once", description: "Approve only this request." },
+                  { label: "Allow for session", description: "Approve matching requests for this Codex session." },
+                  { label: "Decline", description: "Refuse this request." },
+                ],
+                multiSelect: false,
+              }],
+            })
+          })
+        }
         if (request.method !== "item/tool/requestUserInput") {
           if (options.appServer?.onServerRequest !== undefined) return options.appServer.onServerRequest(request)
           throw new Error(`unsupported Codex server request: ${request.method}`)
