@@ -38,7 +38,10 @@ read.
    installed real-Codex and RC8-to-RC9 lifecycle proof.
 10. [`2026-07-13-openagents-codex-workroom-rc9-completion-audit.md`](./2026-07-13-openagents-codex-workroom-rc9-completion-audit.md)
     — the criterion-by-criterion implementation/evidence matrix and the exact
-    boundary between completed implementation and pending owner acceptance.
+    boundary between accepted implementation and conditional rollout gates.
+11. [`2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md`](./2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md)
+    — the exact owner acceptance, close-rule disposition, and boundaries that
+    permit #8756 to close without implying publication or broader rollout.
 
 The Product Spec declares intent. Current upstream ProductSpec can also index
 external evidence with Related Artifacts, but the local package has not yet

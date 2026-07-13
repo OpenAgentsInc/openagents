@@ -8,7 +8,7 @@
   [`2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md)
 - Implementation verdict: all 18 acceptance criteria are implemented and have
   passing evidence at their narrowest required proof level
-- Release verdict: not owner-accepted or published
+- Closure verdict: owner-accepted implementation/evidence lane; not published
 
 ## Criterion matrix
 
@@ -46,10 +46,12 @@
 
 ## What remains
 
-Implementation is complete against the 18 frozen criteria. Closing #8756 as
-the accepted implementation/evidence lane still requires one product-owner
-decision: accept the exact installed journey and its read-only review boundary.
-That decision cannot be inferred from passing tests and was not fabricated.
+Implementation is complete against the 18 frozen criteria. After installation
+of the exact signed/stapled RC9 candidate, the product owner explicitly
+accepted the installed ProductSpec-native journey and its read-only review
+boundary. The separate
+[`closure receipt`](./2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md)
+records the exact statement and close-rule disposition.
 
 The other ProductSpec owner gates remain explicit but are conditional on later
 actions rather than unconditional #8756 close blockers: public
@@ -60,6 +62,6 @@ the initial concurrency ceiling requires the stated dogfood-governance
 decision. Closing an unpublished implementation/evidence issue does not take
 any of those actions.
 
-This audit does not publish RC9, update registries, authorize public promises,
-or close #8756. Closure follows the installed-journey acceptance; rollout and
-governance actions retain their separate gates.
+This audit does not publish RC9, update registries, or authorize public
+promises. With installed-journey acceptance recorded, #8756 can close while
+rollout and governance actions retain their separate gates.
