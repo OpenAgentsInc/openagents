@@ -585,7 +585,7 @@ export const FleetRunAuthorityRecord = S.Struct({
   scope: FleetRunScope,
   ownerUserId: PublicOwnerRef,
   requestFingerprint: S.String.check(S.isPattern(/^[0-9a-f]{64}$/u)),
-  status: S.Literals(["pending_executor", "claimed_by_pylon"]),
+  status: S.Literals(["pending_executor", "claimed_by_pylon", "cancelled"]),
   request: FleetRunAuthorityStartRequest,
   execution: FleetRunExecutionProjection,
   createdAt: IsoTimestamp,
@@ -1997,8 +1997,8 @@ const listFleetRuns = async (
                       }
                     },
                   ),
-                  createdAt: row.created_at,
-                  updatedAt: row.updated_at,
+                  createdAt: record.createdAt,
+                  updatedAt: record.updatedAt,
                 }
               }),
             ),
