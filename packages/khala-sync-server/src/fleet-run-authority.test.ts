@@ -190,8 +190,8 @@ describe("FleetRun authority request boundary", () => {
           kind: "plan_dag",
           planRef: "plan.fc4.hybrid",
           units: [
-            { unitRef: "unit.local", title: "Local", placement: placement("owner_local") },
-            { unitRef: "unit.managed", title: "Managed", placement: placement("managed_cloud") },
+            { unitRef: "unit.local", title: "Local", objective: "Implement the local unit.", placement: placement("owner_local") },
+            { unitRef: "unit.managed", title: "Managed", objective: "Implement the managed unit.", placement: placement("managed_cloud") },
           ],
         },
       },
@@ -200,8 +200,8 @@ describe("FleetRun authority request boundary", () => {
       kind: "plan_dag",
       planRef: "plan.fc4.hybrid",
       units: [
-        { unitRef: "unit.local", title: "Local", dependsOn: [], placement: placement("owner_local") },
-        { unitRef: "unit.managed", title: "Managed", dependsOn: [], placement: placement("managed_cloud") },
+        { unitRef: "unit.local", title: "Local", objective: "Implement the local unit.", dependsOn: [], placement: placement("owner_local") },
+        { unitRef: "unit.managed", title: "Managed", objective: "Implement the managed unit.", dependsOn: [], placement: placement("managed_cloud") },
       ],
     })
   })

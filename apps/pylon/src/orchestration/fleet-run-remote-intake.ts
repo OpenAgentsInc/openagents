@@ -76,6 +76,7 @@ const RemoteIssueListSource = S.Struct({
 const RemotePlanUnit = S.Struct({
   unitRef: PublicRef,
   title: S.String,
+  objective: S.optionalKey(S.String),
   dependsOn: S.optionalKey(S.Array(PublicRef)),
   placement: S.optionalKey(FleetWorkUnitPlacementPolicy),
 })
@@ -488,7 +489,7 @@ const descriptorFrom = (
           nodes: request.workSource.units.map(unit => ({
             ref: unit.unitRef,
             title: unit.title,
-            objective: request.objective,
+            objective: unit.objective ?? request.objective,
             dependsOn: unit.dependsOn ?? [],
             ...(unit.placement === undefined ? {} : { placement: unit.placement }),
             ...pins,

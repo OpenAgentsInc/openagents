@@ -178,6 +178,7 @@ export type FleetRunIssueListSource = typeof FleetRunIssueListSource.Type
 export const FleetRunPlanUnit = S.Struct({
   unitRef: PlanUnitRef,
   title: PlanUnitTitle,
+  objective: S.optionalKey(Objective),
   dependsOn: S.optionalKey(S.Array(PlanUnitRef)),
   placement: S.optionalKey(FleetWorkUnitPlacementPolicy),
 })
@@ -1069,6 +1070,7 @@ const validatePlanDag = (
     return {
       unitRef: unit.unitRef,
       title: unit.title,
+      ...(unit.objective === undefined ? {} : { objective: unit.objective }),
       dependsOn,
       ...(unit.placement === undefined ? {} : { placement: unit.placement }),
     }
