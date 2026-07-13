@@ -285,6 +285,42 @@ describe("makeProviderAccountsService", () => {
     service.dispose()
   })
 
+  test("packaged app.asar path uses the source-independent Pylon core projection", async () => {
+    let spawnCount = 0
+    const service = makeProviderAccountsService(
+      "/Applications/OpenAgents.app/Contents/Resources/app.asar/dist",
+      {
+        spawnPylon: () => {
+          spawnCount++
+          return null
+        },
+        packagedProjection: {
+          list: async () => fixtureProviderAccountsListStdout,
+          usage: async () => fixtureProviderAccountUsageStdout,
+        },
+        now: () => new Date(generatedAt),
+        inspectRuntimes: async () => [],
+      },
+    )
+
+    expect(await service.listProviderAccounts()).toMatchObject({
+      ok: true,
+      accounts: [
+        { ref: "codex-3", provider: "codex", readiness: "ready" },
+        { ref: "codex", provider: "codex", readiness: "ready" },
+        { ref: "codex-2", provider: "codex", readiness: "credentials-missing" },
+        { ref: "claude-pylon-3", provider: "claude_agent", readiness: "ready" },
+      ],
+    })
+    expect(await service.fetchProviderAccountUsage("codex")).toMatchObject({
+      ok: true,
+      ref: "codex",
+      summary: { totalTokens: 1540 },
+    })
+    expect(spawnCount).toBe(0)
+    service.dispose()
+  })
+
   test("unavailable pylon runtime yields typed failures with no paths, never a throw", async () => {
     const service = makeProviderAccountsService("/nonexistent", { spawnPylon: () => null })
     const list = await service.listProviderAccounts()

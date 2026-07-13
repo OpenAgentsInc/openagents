@@ -16,6 +16,11 @@
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import path from "node:path"
+import {
+  collectPylonAccountsList,
+  collectPylonAccountsUsage,
+} from "@openagentsinc/pylon-core/custody"
+import { resolvePylonHome } from "@openagentsinc/pylon-core/shared"
 import { inspectProviderRuntimeCompatibility } from "./provider-runtime-host.ts"
 import type { ProviderRuntimeCompatibility } from "./provider-runtime-compatibility.ts"
 
@@ -200,6 +205,16 @@ export type ProviderAccountsServiceDependencies = Readonly<{
   usageTimeoutMs?: number
   now?: () => Date
   inspectRuntimes?: () => Promise<ReadonlyArray<ProviderRuntimeCompatibility>>
+  /**
+   * Source-independent projection used by packaged Desktop builds. The CLI
+   * adapter remains the development path; an installed app cannot derive an
+   * `apps/pylon` checkout from `app.asar` and therefore reads the same typed
+   * Pylon core directly instead.
+   */
+  packagedProjection?: Readonly<{
+    list: () => Promise<string>
+    usage: (ref: string) => Promise<string>
+  }>
 }>
 
 const repoRootFromHere = (here: string): string | null => {
@@ -218,6 +233,22 @@ const defaultSpawnPylon = (here: string) => (args: ReadonlyArray<string>): Child
     stdio: ["ignore", "pipe", "pipe"],
     env: process.env,
   }) as unknown as ChildLike
+}
+
+const defaultPackagedProjection = (): NonNullable<ProviderAccountsServiceDependencies["packagedProjection"]> => {
+  const summary = { paths: resolvePylonHome(process.env) }
+  const env = process.env as Record<string, string | undefined>
+  return {
+    list: async () => JSON.stringify(await collectPylonAccountsList(summary, { env })),
+    usage: async (ref) => JSON.stringify(await collectPylonAccountsUsage(summary, {
+      accountRef: ref,
+      provider: null,
+      all: false,
+      refresh: true,
+      reportLocalCodexUsage: false,
+      json: true,
+    }, { env })),
+  }
 }
 
 const collectStream = (stream: NodeJS.ReadableStream | null, onChunk: (text: string) => void): void => {
@@ -242,6 +273,11 @@ export const makeProviderAccountsService = (
   const usageTimeoutMs = dependencies.usageTimeoutMs ?? 30_000
   const now = dependencies.now ?? (() => new Date())
   const inspectRuntimes = dependencies.inspectRuntimes ?? inspectProviderRuntimeCompatibility
+  const packagedProjection = dependencies.packagedProjection ?? (
+    dependencies.spawnPylon === undefined && repoRootFromHere(here) === null
+      ? defaultPackagedProjection()
+      : null
+  )
   let disposed = false
   const operations = new Set<Readonly<{ child: ChildLike; cancel: () => void }>>()
 
@@ -297,12 +333,16 @@ export const makeProviderAccountsService = (
 
   return {
     listProviderAccounts: async () => {
-      const result = await runProjection({
-        args: ["accounts", "list", "--json"],
-        timeoutMs: listTimeoutMs,
-        parse: (stdout) => parseProviderAccountsListJson(stdout, now().toISOString()),
-        unavailable: unavailableProviderAccountsListResult,
-      })
+      const result = packagedProjection === null
+        ? await runProjection({
+            args: ["accounts", "list", "--json"],
+            timeoutMs: listTimeoutMs,
+            parse: (stdout) => parseProviderAccountsListJson(stdout, now().toISOString()),
+            unavailable: unavailableProviderAccountsListResult,
+          })
+        : await packagedProjection.list()
+            .then(stdout => parseProviderAccountsListJson(stdout, now().toISOString()))
+            .catch(() => unavailableProviderAccountsListResult("accounts_command_failed"))
       if (!result.ok) return result
       const runtimes = await inspectRuntimes().catch(() => [])
       return runtimes.length === 0 ? result : { ...result, runtimes: runtimes.slice(0, 2) }
@@ -311,12 +351,16 @@ export const makeProviderAccountsService = (
       if (!providerAccountRefPattern.test(ref)) {
         return Promise.resolve(unavailableProviderAccountUsageResult(ref, "invalid_account_ref"))
       }
-      return runProjection({
-        args: ["accounts", "usage", "--account", ref, "--refresh", "--json"],
-        timeoutMs: usageTimeoutMs,
-        parse: (stdout) => parseProviderAccountUsageJson(stdout, ref, now().toISOString()),
-        unavailable: (reason) => unavailableProviderAccountUsageResult(ref, reason),
-      })
+      return packagedProjection === null
+        ? runProjection({
+            args: ["accounts", "usage", "--account", ref, "--refresh", "--json"],
+            timeoutMs: usageTimeoutMs,
+            parse: (stdout) => parseProviderAccountUsageJson(stdout, ref, now().toISOString()),
+            unavailable: (reason) => unavailableProviderAccountUsageResult(ref, reason),
+          })
+        : packagedProjection.usage(ref)
+            .then(stdout => parseProviderAccountUsageJson(stdout, ref, now().toISOString()))
+            .catch(() => unavailableProviderAccountUsageResult(ref, "accounts_command_failed"))
     },
     dispose: () => {
       if (disposed) return
