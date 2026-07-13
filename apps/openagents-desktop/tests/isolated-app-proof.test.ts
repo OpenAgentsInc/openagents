@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { IsolatedAppProofEnvironment, ProviderAccountsBootstrapReceiptEnvironment, isolatedProofReceiptPath, isIsolatedAppProof } from "../src/isolated-app-proof.ts"
+import {
+  IsolatedAppProofEnvironment,
+  ProviderAccountsBootstrapReceiptEnvironment,
+  isolatedAppProofChromiumSwitches,
+  isolatedProofReceiptPath,
+  isIsolatedAppProof,
+} from "../src/isolated-app-proof.ts"
 
 describe("isIsolatedAppProof", () => {
   test("requires the explicit flag and a user-data directory strictly below temp", () => {
@@ -16,5 +22,10 @@ describe("isIsolatedAppProof", () => {
     expect(isolatedProofReceiptPath({ env, temporaryDirectory: "/tmp" })).toBe("/tmp/cut27/accounts.json")
     expect(isolatedProofReceiptPath({ env, temporaryDirectory: "/var/folders/temp" })).toBeNull()
     expect(isolatedProofReceiptPath({ env: {}, temporaryDirectory: "/tmp" })).toBeNull()
+  })
+
+  test("allows the mock keychain only inside an accepted proof", () => {
+    expect(isolatedAppProofChromiumSwitches(true)).toEqual(["use-mock-keychain"])
+    expect(isolatedAppProofChromiumSwitches(false)).toEqual([])
   })
 })

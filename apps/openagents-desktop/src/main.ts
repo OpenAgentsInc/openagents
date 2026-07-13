@@ -30,7 +30,6 @@ import {
 app.setName("OpenAgents")
 process.title = "OpenAgents"
 
-const DesktopRendererScheme = "openagents-app"
 protocol.registerSchemesAsPrivileged([{
   scheme: DesktopRendererScheme,
   privileges: {
@@ -79,7 +78,16 @@ import {
   type DesktopResumeLocalThreadRequest,
 } from "./chat-contract.ts"
 import { historyForkFetchPlan, historyForkSeed } from "./history-thread-actions.ts"
-import { isolatedProofReceiptPath, isIsolatedAppProof } from "./isolated-app-proof.ts"
+import {
+  isolatedAppProofChromiumSwitches,
+  isolatedProofReceiptPath,
+  isIsolatedAppProof,
+} from "./isolated-app-proof.ts"
+import {
+  DesktopRendererScheme,
+  desktopRendererEntryUrl,
+  isTrustedDesktopRendererUrl,
+} from "./desktop-renderer-location.ts"
 import {
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FableLocalAnswerQuestionChannel,
@@ -380,6 +388,13 @@ const isolatedAppProofMode = isIsolatedAppProof({
   userDataPath: desktopUserDataPath,
   temporaryDirectory: app.getPath("temp"),
 })
+const desktopRendererEntry = desktopRendererEntryUrl
+for (const chromiumSwitch of isolatedAppProofChromiumSwitches(isolatedAppProofMode)) {
+  // Chromium normally initializes macOS cookie encryption when its default
+  // session is created. The signed, signed-out acceptance candidate uses an
+  // OS-temp profile and must neither prompt for nor read the owner's Keychain.
+  app.commandLine.appendSwitch(chromiumSwitch)
+}
 const smokeFixtureRoot = smokeMode && app.isPackaged
   ? path.join(desktopUserDataPath, "smoke-fixtures")
   : smokeFixtureSourceRoot
@@ -391,6 +406,11 @@ const primaryDesktopInstance = app.requestSingleInstanceLock()
 if (!primaryDesktopInstance) app.quit()
 const desktopCommandHost = makeDesktopCommandHost()
 let desktopCommandWindow: BrowserWindow | null = null
+// BrowserWindow is a native resource whose JavaScript wrapper must remain
+// strongly reachable even before the renderer completes its IPC handshake.
+// Production normally attaches quickly; isolated proof deliberately exercises
+// a fresh browser profile and must not let GC close the only window mid-bootstrap.
+let primaryDesktopWindow: BrowserWindow | null = null
 let desktopCommandBindings: DesktopCommandBindingStore | null = null
 
 const focusDesktopCommandWindow = (): void => {
@@ -676,14 +696,10 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
   if (frame === null || frame !== event.sender.mainFrame) return false
-  try {
-    const url = new URL(frame.url)
-    return url.protocol === `${DesktopRendererScheme}:` &&
-      url.hostname === "renderer" &&
-      url.pathname === "/index.html"
-  } catch {
-    return false
-  }
+  return isTrustedDesktopRendererUrl({
+    trustedEntryUrl: desktopRendererEntry,
+    value: frame.url,
+  })
 }
 
 ipcMain.handle(DesktopCommandReadyChannel, (event) => {
@@ -2257,7 +2273,6 @@ const createWindow = (): BrowserWindow => {
     title: "OpenAgents",
     icon: desktopIconPath,
     webPreferences: {
-      ...(isolatedAppProofMode ? { partition: `openagents-isolated-proof-${process.pid}` } : {}),
       contextIsolation: true,
       nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
@@ -2270,6 +2285,7 @@ const createWindow = (): BrowserWindow => {
       preload: path.join(here, "preload.cjs"),
     },
   })
+  primaryDesktopWindow = window
   if (isolatedAppProofMode) hardenSession(window.webContents.session)
   const unsubscribeRuntime = runtimeGateway.subscribe(event => {
     if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
@@ -2284,6 +2300,7 @@ const createWindow = (): BrowserWindow => {
     if (!window.isDestroyed()) window.webContents.send(UsageLedgerEventChannel, snapshot)
   })
   window.once("closed", () => {
+    if (primaryDesktopWindow === window) primaryDesktopWindow = null
     if (desktopCommandWindow === window) {
       desktopCommandWindow = null
       desktopCommandHost.detach()
@@ -2298,7 +2315,7 @@ const createWindow = (): BrowserWindow => {
     recordMainMark("windowReadyToShow")
     window.show()
   })
-  void window.loadURL(`${DesktopRendererScheme}://renderer/index.html`)
+  void window.loadURL(desktopRendererEntry)
   return window
 }
 
