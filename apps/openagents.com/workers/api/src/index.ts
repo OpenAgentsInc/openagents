@@ -11227,7 +11227,14 @@ const dispatchManagedFleetUnitForEnv = async (
       LIMIT 1
     `
     const row = rows[0]
-    if (row === undefined || row.status !== 'running') {
+    // Accepting the whole-run lease intentionally leaves the intake row at
+    // `claimed_by_pylon`; the first execution batch advances it. Managed-unit
+    // dispatch necessarily precedes that batch, so the accepted lease is the
+    // authority here, not a circular `running` precondition.
+    if (
+      row === undefined ||
+      (row.status !== 'claimed_by_pylon' && row.status !== 'running')
+    ) {
       throw new Error('managed_fleet_authority_invalid')
     }
     const request = JSON.parse(row.request_json) as {
