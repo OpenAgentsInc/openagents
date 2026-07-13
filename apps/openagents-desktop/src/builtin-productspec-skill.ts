@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { readFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import { Schema } from "@effect-native/core/effect"
@@ -51,6 +51,13 @@ export type VerifiedProductSpecWorkSkill = Readonly<{
   sha256: typeof ProductSpecWorkSkillSha256
 }>
 
+export type InstalledProductSpecWorkSkill = Readonly<{
+  skillRoot: string
+  skillPath: string
+  sha256: typeof ProductSpecWorkSkillSha256
+  reconciled: boolean
+}>
+
 /**
  * Verify the product-owned asset before it can be installed into a named
  * isolated Codex home. The expected digest is compiled into the signed host,
@@ -99,4 +106,50 @@ export const verifyBuiltinProductSpecWorkSkill = (
     )
   }
   return { manifest, skillPath, sha256: ProductSpecWorkSkillSha256 }
+}
+
+/**
+ * Materialize the signed asset inside one named, isolated Codex home. The
+ * caller must provide the ambient/default home explicitly so this function can
+ * fail closed rather than ever mutating the owner's normal Codex installation.
+ */
+export const installBuiltinProductSpecWorkSkill = (input: Readonly<{
+  builtinSkillsRoot: string
+  namedCodexHome: string
+  defaultCodexHome: string
+}>): InstalledProductSpecWorkSkill => {
+  const namedHome = path.resolve(input.namedCodexHome)
+  if (namedHome === path.resolve(input.defaultCodexHome)) {
+    throw new BuiltinProductSpecSkillError(
+      "asset_unavailable",
+      "productspec-work refuses installation into the default Codex home",
+    )
+  }
+  const verified = verifyBuiltinProductSpecWorkSkill(input.builtinSkillsRoot)
+  const skillRoot = path.join(namedHome, "skills")
+  const installRoot = path.join(skillRoot, ProductSpecWorkSkillName)
+  const skillPath = path.join(installRoot, "SKILL.md")
+  mkdirSync(installRoot, { recursive: true, mode: 0o700 })
+  if (process.platform !== "win32") chmodSync(installRoot, 0o700)
+  if (existsSync(skillPath) && digest(readFileSync(skillPath)) === verified.sha256) {
+    return { skillRoot, skillPath, sha256: verified.sha256, reconciled: true }
+  }
+  const pending = `${skillPath}.${process.pid}.pending`
+  try {
+    rmSync(pending, { force: true })
+    writeFileSync(pending, readFileSync(verified.skillPath), { flag: "wx", mode: 0o600 })
+    if (process.platform !== "win32") chmodSync(pending, 0o600)
+    renameSync(pending, skillPath)
+    if (process.platform !== "win32") chmodSync(skillPath, 0o600)
+  } catch (error) {
+    rmSync(pending, { force: true })
+    throw new BuiltinProductSpecSkillError(
+      "asset_unavailable",
+      error instanceof Error ? error.message : "productspec-work installation failed",
+    )
+  }
+  if (digest(readFileSync(skillPath)) !== verified.sha256) {
+    throw new BuiltinProductSpecSkillError("asset_digest_mismatch", "installed productspec-work digest mismatched")
+  }
+  return { skillRoot, skillPath, sha256: verified.sha256, reconciled: false }
 }

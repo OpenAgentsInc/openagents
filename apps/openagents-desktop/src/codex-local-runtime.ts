@@ -89,7 +89,17 @@ import {
   type FableLocalHistoryMessage,
 } from "./fable-local-runtime.ts"
 import type { CodexPreflight } from "./codex-preflight.ts"
-import type { CodexModel, CodexReasoningEffort } from "./fable-local-contract.ts"
+import type {
+  CodexModel,
+  CodexReasoningEffort,
+  FableLocalAnswerQuestionRequest,
+  FableLocalQuestion,
+} from "./fable-local-contract.ts"
+import {
+  runCodexAppServerTurn,
+  type CodexAppServerTurnControl,
+} from "./codex-app-server-turn.ts"
+import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts"
 
 export type CodexLocalTurnInput = Readonly<{
   turnRef: string
@@ -142,6 +152,20 @@ export type CodexLocalRuntimeOptions = Readonly<{
   /** Test-only host deadline. Production turns have no automatic cutoff. */
   timeoutMs?: number
   /**
+   * Product runtime path. When present every real Codex turn uses the pinned
+   * app-server protocol; the legacy exec parser remains only for deterministic
+   * fixtures and compatibility tests that omit this option.
+   */
+  appServer?: Readonly<{
+    binary: () => string | null
+    installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
+      skillRoot: string
+      skillPath: string
+    }>
+    spawnImpl?: CodexAppServerSpawn
+    onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
+  }>
+  /**
    * Typed per-account evidence feed (main wires this into the usage ledger
    * so the fleet readiness projection sees turn-observed reconnect evidence
    * and turn-verified recoveries without parsing display strings).
@@ -175,6 +199,7 @@ export type CodexLocalRuntime = Readonly<{
   availability: () => Promise<CodexLocalAvailability>
   runTurn: (input: CodexLocalTurnInput) => Promise<CodexLocalTurnResult>
   interrupt: (turnRef: string) => boolean
+  answerQuestion: (request: FableLocalAnswerQuestionRequest) => boolean
   dispose: () => void
 }>
 
@@ -240,7 +265,17 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
   const discover = options.discoverImpl ?? (() => discoverRegisteredCodexAccounts(env))
   const health = options.health ?? sharedCodexAccountHealth
   const timeoutMs = options.timeoutMs
-  const activeTurns = new Map<string, { interrupted: boolean; child: ChildLike | null }>()
+  const activeTurns = new Map<string, {
+    interrupted: boolean
+    child: ChildLike | null
+    interrupt: (() => void) | null
+  }>()
+  const pendingQuestions = new Map<string, Readonly<{
+    turnRef: string
+    accept: (request: FableLocalAnswerQuestionRequest) => boolean
+    deny: () => void
+  }>>()
+  let questionSequence = 0
   /**
    * In-memory continuity: threadRef -> the codex thread session, pinned to
    * the account that created it (resume runs on the SAME isolated home only;
@@ -261,7 +296,13 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     // this session every registered account gets the real validity probe;
     // probe results land in the SAME health memory this ordering uses.
     if (options.preflight !== undefined) await options.preflight.ensureProbed()
-    const accounts = health.order(await discover())
+    const discovered = health.order(await discover())
+    // The MVP admits one named isolated Codex account. The ambient/default
+    // session is intentionally excluded from app-server dispatch because the
+    // product-owned skill must never mutate the user's default Codex home.
+    const accounts = options.appServer === undefined
+      ? discovered
+      : discovered.filter(account => account.source !== "current_session")
     const verifiedRefs = new Set(options.preflight?.verifiedRefs() ?? [])
     return {
       accounts,
@@ -293,7 +334,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     return { state: "available", accountRef: first.ref, verifiedCount: verified.length }
   }
 
-  const runAttempt = (input: Readonly<{
+  const runAttempt = async (input: Readonly<{
     account: CodexChildAccount
     threadRef: string
     turnRef: string
@@ -308,9 +349,131 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     reasoningEffort?: CodexReasoningEffort
     model: CodexModel
     emit: (event: FableLocalEvent) => void
-    control: { interrupted: boolean; child: ChildLike | null }
-  }>): Promise<ParsedTurnAttempt> =>
-    new Promise(resolve => {
+    control: { interrupted: boolean; child: ChildLike | null; interrupt: (() => void) | null }
+  }>): Promise<ParsedTurnAttempt> => {
+    if (options.appServer !== undefined) {
+      const binary = options.appServer.binary()
+      if (binary === null) {
+        return {
+          outcome: "failed",
+          text: "",
+          usage: null,
+          threadId: input.resumeThreadId,
+          detail: "the package-owned Codex app-server executable is unavailable",
+          preContent: true,
+          rateLimited: false,
+        }
+      }
+      let skill: Readonly<{ skillRoot: string; skillPath: string }>
+      try {
+        skill = options.appServer.installProductSpecSkill(input.account)
+      } catch (error) {
+        return {
+          outcome: "failed",
+          text: "",
+          usage: null,
+          threadId: input.resumeThreadId,
+          detail: error instanceof Error ? error.message : "productspec-work skill installation failed",
+          preContent: true,
+          rateLimited: false,
+        }
+      }
+      const selection: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: input.account.ref,
+        accountRefHash: hashPylonAccountRef("codex", input.account.ref),
+        home: input.account.home,
+      }
+      options.onDispatch?.({
+        threadRef: input.threadRef,
+        turnRef: input.turnRef,
+        accountRef: input.account.ref,
+      })
+      const onServerRequest = async (request: CodexAppServerRequest): Promise<unknown> => {
+        if (request.method !== "item/tool/requestUserInput") {
+          if (options.appServer?.onServerRequest !== undefined) return options.appServer.onServerRequest(request)
+          throw new Error(`unsupported Codex server request: ${request.method}`)
+        }
+        const params = request.params !== null && typeof request.params === "object"
+          ? request.params as Record<string, unknown>
+          : {}
+        const rawQuestions = Array.isArray(params.questions) ? params.questions.slice(0, 4) : []
+        const originals = rawQuestions.flatMap(raw => {
+          if (raw === null || typeof raw !== "object") return []
+          const value = raw as Record<string, unknown>
+          if (typeof value.id !== "string" || typeof value.question !== "string") return []
+          const options = Array.isArray(value.options) ? value.options.slice(0, 4).flatMap(option => {
+            if (option === null || typeof option !== "object") return []
+            const item = option as Record<string, unknown>
+            return typeof item.label === "string"
+              ? [{ label: bounded(item.label, 200), ...(typeof item.description === "string"
+                  ? { description: bounded(item.description, FABLE_LOCAL_SUMMARY_LIMIT) }
+                  : {}) }]
+              : []
+          }) : []
+          const projected: FableLocalQuestion = {
+            question: bounded(value.question, FABLE_LOCAL_SUMMARY_LIMIT),
+            header: bounded(typeof value.header === "string" ? value.header : "Input", 120),
+            options,
+            multiSelect: false,
+          }
+          return [{ id: value.id, originalQuestion: value.question, projected }]
+        })
+        if (originals.length === 0) return { answers: {} }
+        const questionRef = bounded(`q.${input.turnRef}.${++questionSequence}`, 120)
+        return new Promise(resolve => {
+          let finished = false
+          const finish = (response: unknown, outcome: "answered" | "denied"): void => {
+            if (finished) return
+            finished = true
+            pendingQuestions.delete(questionRef)
+            input.emit({ kind: "question_resolved", questionRef, outcome })
+            resolve(response)
+          }
+          pendingQuestions.set(questionRef, {
+            turnRef: input.turnRef,
+            accept: answer => {
+              const answers: Record<string, { answers: string[] }> = {}
+              for (const original of originals) {
+                const selected = answer.answers.find(candidate => candidate.question === original.projected.question)
+                if (selected !== undefined) answers[original.id] = { answers: [...selected.labels] }
+              }
+              if (Object.keys(answers).length === 0) return false
+              finish({ answers }, "answered")
+              return true
+            },
+            deny: () => finish({ answers: {} }, "denied"),
+          })
+          input.emit({ kind: "question_pending", questionRef, questions: originals.map(item => item.projected) })
+        })
+      }
+      return runCodexAppServerTurn({
+        binary,
+        env: pylonAccountEnvironment(env, selection),
+        workspace: input.workspace,
+        threadRef: input.threadRef,
+        turnRef: input.turnRef,
+        prompt: input.prompt,
+        imagePaths: input.imagePaths,
+        resumeThreadId: input.resumeThreadId,
+        model: input.model,
+        reasoningEffort: input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT,
+        productSpecSkill: skill,
+        control: input.control as CodexAppServerTurnControl,
+        emit: input.emit,
+        ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+        onServerRequest,
+        ...(timeoutMs === undefined ? {} : { turnTimeoutMs: timeoutMs, requestTimeoutMs: timeoutMs }),
+        onProviderSession: threadId => options.onProviderSession?.({
+          threadRef: input.threadRef,
+          turnRef: input.turnRef,
+          accountRef: input.account.ref,
+          threadId,
+        }),
+      })
+    }
+    return new Promise(resolve => {
       const redact = (value: string): string => redactChildText(value, input.workspace)
       const selection: ResolvedPylonAccountSelection = {
         provider: "codex",
@@ -652,6 +815,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         })
       })
     })
+  }
 
   const runTurn = async (input: CodexLocalTurnInput): Promise<CodexLocalTurnResult> => {
     const failure = (
@@ -699,7 +863,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       return emitFailure(failure("session_failed", "could not stage attached images"))
     }
 
-    const control = { interrupted: false, child: null as ChildLike | null }
+    const control = { interrupted: false, child: null as ChildLike | null, interrupt: null as (() => void) | null }
     activeTurns.set(input.turnRef, control)
     input.emit({ kind: "turn_started" })
     // Spawn-config truth caption (the exec stream echoes no model back).
@@ -828,13 +992,26 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     interrupt: turnRef => {
       const active = activeTurns.get(turnRef)
       if (active === undefined) return false
+      for (const pending of pendingQuestions.values()) {
+        if (pending.turnRef === turnRef) pending.deny()
+      }
       active.interrupted = true
+      active.interrupt?.()
       active.child?.kill("SIGTERM")
       return true
     },
+    answerQuestion: request => {
+      const pending = pendingQuestions.get(request.questionRef)
+      return pending !== undefined && pending.turnRef === request.turnRef
+        ? pending.accept(request)
+        : false
+    },
     dispose: () => {
+      for (const pending of pendingQuestions.values()) pending.deny()
+      pendingQuestions.clear()
       for (const active of activeTurns.values()) {
         active.interrupted = true
+        active.interrupt?.()
         active.child?.kill("SIGTERM")
       }
       activeTurns.clear()

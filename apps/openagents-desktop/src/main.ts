@@ -11,6 +11,7 @@
  * Plain TypeScript, bundled by `scripts/build.ts` (Bun) into `dist/`.
  */
 import path from "node:path"
+import { homedir } from "node:os"
 import { randomUUID } from "node:crypto"
 import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
@@ -187,6 +188,8 @@ import {
   makeCodexLocalRuntime,
 } from "./codex-local-runtime.ts"
 import { makeCodexPreflight, type CodexProbeResult } from "./codex-preflight.ts"
+import { resolveBundledCodexExecutable } from "./provider-runtime-host.ts"
+import { installBuiltinProductSpecWorkSkill } from "./builtin-productspec-skill.ts"
 import {
   LiveAgentGraphSnapshotChannel,
   LiveAgentGraphUpdateChannel,
@@ -257,6 +260,7 @@ import {
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
+import { openAdmittedDesktopWorkspace } from "./desktop-workspace-admission.ts"
 import {
   ProductSpecCreateChannel,
   ProductSpecEditConfirmChannel,
@@ -357,6 +361,9 @@ import {
 } from "./desktop-command-bindings.ts"
 
 const here = import.meta.dirname
+const builtinSkillsRoot = app.isPackaged
+  ? path.join(process.resourcesPath, "builtin-skills")
+  : path.join(here, "..", "builtin-skills")
 const rendererRoot = app.isPackaged
   ? path.join(process.resourcesPath, "app.asar.unpacked", "dist", "renderer")
   : path.join(here, "renderer")
@@ -996,6 +1003,23 @@ const openSelectedWorkspace = (root: string) => openWorkspaceService(root, {
     return true
   },
 })
+const installAdmittedCodingWorkspace = (root: string): boolean => {
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  if (catalog === null || catalog === undefined) return false
+  const admitted = openAdmittedDesktopWorkspace(
+    catalog,
+    root,
+    (selectedRoot, grantRef) => openWorkspaceService(selectedRoot, {
+      grantRef,
+      reveal: absolutePath => {
+        shell.showItemInFolder(absolutePath)
+        return true
+      },
+    }),
+  )
+  hostLifecycle.replaceWorkspace(admitted.workspace)
+  return true
+}
 const codingCatalogSnapshot = () => {
   const catalog = hostLifecycle.sync()?.codingCatalog()
   return catalog === null || catalog === undefined
@@ -1040,7 +1064,9 @@ const activateCodingCatalogRoot = () => {
   const root = hostLifecycle.sync()?.codingCatalog()?.selectedRoot() ?? null
   if (root !== null) {
     revokeOutgoingWorkspaceTerminals()
-    hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
+    if (!installAdmittedCodingWorkspace(root)) {
+      hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
+    }
     rebindWorkspaceChangeSubscriptions()
   }
 }
@@ -1048,11 +1074,12 @@ const chooseCodingWorkspace = async (registerCatalog = true) => {
   const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
   if (result.canceled || result.filePaths[0] === undefined) return null
   const root = result.filePaths[0]
-  revokeOutgoingWorkspaceTerminals()
-  hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
-  rebindWorkspaceChangeSubscriptions()
   if (registerCatalog) {
-    hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
+    revokeOutgoingWorkspaceTerminals()
+    if (!installAdmittedCodingWorkspace(root)) {
+      hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
+    }
+    rebindWorkspaceChangeSubscriptions()
     publishCodingCatalog()
   }
   return root
@@ -1292,6 +1319,11 @@ ipcMain.handle(DesktopCodingCatalogRecoverChannel, async (_event, raw: unknown) 
     ? codingCatalogSnapshot()
     : (() => {
         const snapshot = catalog.recoverSession(request.sessionRef, root)
+        revokeOutgoingWorkspaceTerminals()
+        if (!installAdmittedCodingWorkspace(root)) {
+          hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
+        }
+        rebindWorkspaceChangeSubscriptions()
         publishCodingCatalog()
         return projectDesktopCodingCatalog(snapshot)
       })()
@@ -1658,6 +1690,21 @@ const codexLocal = makeCodexLocalRuntime({
       usageLedger.markReconnectRequired({ provider: "codex", accountRef: input.accountRef })
     }
   },
+  ...(!smokeMode
+    ? {
+        appServer: {
+          binary: resolveBundledCodexExecutable,
+          installProductSpecSkill: (account: import("./codex-child-runtime.ts").CodexChildAccount) => {
+            const installed = installBuiltinProductSpecWorkSkill({
+              builtinSkillsRoot,
+              namedCodexHome: account.home,
+              defaultCodexHome: path.join(homedir(), ".codex"),
+            })
+            return { skillRoot: installed.skillRoot, skillPath: installed.skillPath }
+          },
+        },
+      }
+    : {}),
   ...(smokeMode
     ? {
         spawnImpl: input => {
@@ -1905,7 +1952,7 @@ ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
 // rejection) and never throw.
 ipcMain.handle(FableLocalAnswerQuestionChannel, (_event, value: unknown) => {
   const request = decodeFableLocalAnswerQuestionRequest(value)
-  return request === null ? false : fableLocal.answerQuestion(request)
+  return request === null ? false : fableLocal.answerQuestion(request) || codexLocal.answerQuestion(request)
 })
 // EP250 runtime-capability substrate (additive; renderer UI is a wave-2 lane).
 // Steer/interrupt a running delegate child (G4). Schema-checked; an unknown
@@ -4330,7 +4377,9 @@ void app.whenReady().then(async () => {
       syncHost.codingCatalog()?.selectWorkspace(path.join(smokeFixtureRoot, "codex-smoke"))
     }
     const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
-    if (restoredRoot !== null) hostLifecycle.replaceWorkspace(openSelectedWorkspace(restoredRoot))
+    if (restoredRoot !== null && !installAdmittedCodingWorkspace(restoredRoot)) {
+      hostLifecycle.replaceWorkspace(openSelectedWorkspace(restoredRoot))
+    }
   } catch {
     console.error("[openagents-desktop] local Sync persistence unavailable")
   }

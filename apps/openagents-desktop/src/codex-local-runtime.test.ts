@@ -10,8 +10,11 @@
  */
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, readFileSync } from "node:fs"
+import { EventEmitter } from "node:events"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { PassThrough } from "node:stream"
+import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
 
 import {
   fixtureCodexShortAuthStdout,
@@ -50,7 +53,112 @@ const verifiedPreflight = (refs: ReadonlyArray<string>) => ({
   verifiedRefs: () => refs,
 })
 
+const appServerFixture = () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: PassThrough
+    stdout: PassThrough
+    stderr: PassThrough
+    kill: () => boolean
+  }
+  child.stdin = stdin
+  child.stdout = stdout
+  child.stderr = new PassThrough()
+  child.kill = () => { child.emit("close", 0); return true }
+  const messages: Array<Record<string, unknown>> = []
+  let buffered = ""
+  stdin.on("data", chunk => {
+    buffered += chunk.toString("utf8")
+    while (buffered.includes("\n")) {
+      const newline = buffered.indexOf("\n")
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      if (line !== "") messages.push(JSON.parse(line))
+    }
+  })
+  return {
+    messages,
+    spawn: (() => child) as unknown as CodexAppServerSpawn,
+    respond: (id: number, result: unknown) => stdout.write(`${JSON.stringify({ id, result })}\n`),
+    request: (id: number, method: string, params: unknown) => stdout.write(`${JSON.stringify({ id, method, params })}\n`),
+    notify: (method: string, params: unknown) => stdout.write(`${JSON.stringify({ method, params })}\n`),
+  }
+}
+
+const waitFor = async (messages: ReadonlyArray<unknown>, count: number): Promise<void> => {
+  for (let attempt = 0; attempt < 100 && messages.length < count; attempt += 1) await Bun.sleep(1)
+  expect(messages.length).toBeGreaterThanOrEqual(count)
+}
+
 describe("makeCodexLocalRuntime.runTurn", () => {
+  test("production app-server path excludes ambient Codex and completes a native question round-trip", async () => {
+    const fake = appServerFixture()
+    const sink = collect()
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      workspaceRoot: scratch,
+      discoverImpl: async () => [
+        { ref: "ambient", home: "/owner/.codex", source: "current_session" },
+        accounts[0]!,
+      ],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient", "codex"]),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: account => ({
+          skillRoot: `${account.home}/skills`,
+          skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
+        }),
+        spawnImpl: fake.spawn,
+      },
+    })
+    expect(await runtime.availability()).toEqual({ state: "available", accountRef: "codex", verifiedCount: 1 })
+    const running = runtime.runTurn({
+      turnRef: "turn-native-question",
+      threadRef: "thread-native-question",
+      history: [],
+      message: "Ask then answer",
+      emit: sink.emit,
+    })
+    await waitFor(fake.messages, 1); fake.respond(1, {})
+    await waitFor(fake.messages, 3); fake.respond(2, {})
+    await waitFor(fake.messages, 4); fake.respond(3, {})
+    await waitFor(fake.messages, 5); fake.respond(4, { data: [{ skills: [{
+      name: "productspec-work",
+      path: "/isolated/accounts/codex/codex/skills/productspec-work/SKILL.md",
+      enabled: true,
+    }] }] })
+    await waitFor(fake.messages, 6); fake.respond(5, { thread: { id: "native-thread" } })
+    await waitFor(fake.messages, 7); fake.respond(6, { turn: { id: "native-turn" } })
+    fake.request(90, "item/tool/requestUserInput", {
+      threadId: "native-thread",
+      turnId: "native-turn",
+      itemId: "question-item",
+      questions: [{
+        id: "choice",
+        header: "Approach",
+        question: "Which implementation?",
+        options: [{ label: "Native", description: "Use app-server" }],
+      }],
+    })
+    for (let attempt = 0; attempt < 100 && !sink.events.some(event => event.kind === "question_pending"); attempt += 1) await Bun.sleep(1)
+    const pending = sink.events.find(event => event.kind === "question_pending")
+    expect(pending).toMatchObject({ kind: "question_pending", questions: [{ question: "Which implementation?" }] })
+    if (pending?.kind !== "question_pending") throw new Error("question was not projected")
+    expect(runtime.answerQuestion({
+      turnRef: "turn-native-question",
+      questionRef: pending.questionRef,
+      answers: [{ question: "Which implementation?", labels: ["Native"] }],
+    })).toBe(true)
+    await waitFor(fake.messages, 8)
+    expect(fake.messages[7]).toEqual({ id: 90, result: { answers: { choice: { answers: ["Native"] } } } })
+    fake.notify("item/agentMessage/delta", { threadId: "native-thread", turnId: "native-turn", delta: "Done." })
+    fake.notify("turn/completed", { threadId: "native-thread", turn: { id: "native-turn", status: "completed", error: null } })
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Done.", accountRef: "codex", threadId: "native-thread" })
+    expect(sink.events).toContainEqual({ kind: "question_resolved", questionRef: pending.questionRef, outcome: "answered" })
+  })
+
   test("an explicit workspace root is the exact Codex cwd", async () => {
     const captured: SpawnCapture[] = []
     const workspace = scratch()
