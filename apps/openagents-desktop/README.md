@@ -171,6 +171,28 @@ encrypted blob, purges invalid records, and projects at most signed-out,
 credential-present-unverified, or unavailable through the Runtime Gateway.
 No owner ref, access token, or refresh token crosses preload.
 
+### Unattended macOS verification
+
+Never diagnose this custody with the macOS `security` CLI. A
+`security find-generic-password` probe can open a blocking login-Keychain
+password dialog, and repeated probes create repeated dialogs while the owner is
+away. Automated checks must not inspect or decrypt `OpenAgents Safe Storage`.
+
+Use the existing isolated proof mode for signed-out/local-only packaged checks:
+
+```sh
+tmp_profile="$(mktemp -d "${TMPDIR%/}/openagents-proof.XXXXXX")"
+OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1 \
+OPENAGENTS_DESKTOP_USER_DATA="$tmp_profile" \
+apps/openagents-desktop/out/OpenAgents-darwin-arm64/OpenAgents.app/Contents/MacOS/OpenAgents
+```
+
+The user-data path must remain below the OS temporary directory. This mode
+enables Chromium's mock keychain and disables native session custody, so it is
+not authenticated-Sync evidence. Authenticated checks instead launch the
+signed app with its existing normal profile and inspect only public-safe
+session/IPC state and visible UI; they never extract credential material.
+
 At startup, a recovered encrypted record is now validated through the existing
 native-session GET. Main rewrites valid OpenAuth rotation before projecting
 `session_ready`, purges 401/403 or server-derived owner mismatch, and retains

@@ -57,6 +57,25 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   stalls the loop. The owner's reply interrupts and takes priority, but you do
   not wait for it.
 
+## Unattended macOS Credential Checks
+
+- Never invoke `/usr/bin/security`, `security find-generic-password`, or an
+  equivalent Keychain dump/probe during an unattended run. Those commands can
+  open one blocking password dialog per probe and make owner-AFK automation
+  unusable. Do not inspect or decrypt the `OpenAgents Safe Storage` item.
+- For signed-out or local-only Desktop verification, use the existing
+  double-gated isolated app proof: set
+  `OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1` and place
+  `OPENAGENTS_DESKTOP_USER_DATA` strictly beneath the OS temporary directory.
+  That mode uses Chromium's mock keychain and deliberately disables the native
+  session vault; it can never prove authenticated Sync.
+- For authenticated Desktop verification, launch the signed app against its
+  existing normal profile and consume only the app's public-safe session state,
+  IPC results, and visible UI. Never extract credentials as a diagnostic. If a
+  genuinely new Keychain authorization is unavoidable, record the exact owner
+  action in `NEEDS_OWNER.md` and continue another lane instead of opening a
+  prompt.
+
 ## Repo Layout
 
 - `apps/openagents.com/` owns the single OpenAgents web app. The retained
