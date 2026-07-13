@@ -192,9 +192,10 @@ one generation only after a public-safe authority evidence ref, restoring one
 accepting attachment. Completed and in-flight operations survive process reopen
 and replay without repeating effects, while stale generations, conflicting
 bytes, duplicate-but-different outcomes, paths, secrets, process details, and
-topology-shaped result material fail closed. This ledger is necessary adapter
-substrate; #8748 still requires the control-session/workspace/process hooks and
-the direct local → managed → local acceptance journey.
+topology-shaped result material fail closed. The source lifecycle and local
+destination rehydration adapters below now consume this fence; #8748 still
+requires the remaining production composition and the direct local → managed →
+local acceptance journey.
 
 ## Dashboard (TUI)
 
@@ -818,6 +819,20 @@ ledger reopen, rejects stale replies, and performs checkpoint-authorized source
 cleanup exactly once. `tests/portable-session-target.test.ts` is the focused
 root/child process, repository, restart, and cleanup receipt.
 
-This is not yet a complete move claim. Owner-local destination rehydration,
-managed Agent Computer stage/activate/reclaim, provider/SCM grant installation,
-and the direct local → managed → local acceptance journey remain open in #8748.
+`portable-session-destination.ts` supplies the matching owner-local destination
+adapter for managed → local failback. It checks the exact current PORT-01
+source attachment before private workspace restoration, verifies the restored
+repository post-image, binary diff, root/child graph, and per-thread cursors,
+and leaves that generation non-accepting. Activation re-reads PORT-01 and opens
+the local generation only when the exact destination attachment, checkpoint,
+and next generation are authoritative. Stage, activation, and abort are
+byte-idempotent across SQLite reopen; abort must release every staged agent and
+capability plus process, scratch, and port state. The private rehydrator may
+handle local paths and checkpoint bytes, but its durable/public port returns
+only digests and refs. `tests/portable-session-destination.test.ts` exercises a
+real modified Git checkout, restart/lost-ACK replay, stale authority, digest
+mismatch, and zero-residue abort.
+
+This is not yet a complete move claim. Concrete managed Firecracker composition,
+provider/SCM grant installation, and the direct local → managed → local
+acceptance journey remain open in #8748.

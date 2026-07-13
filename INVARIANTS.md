@@ -1197,7 +1197,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   state. Checkpoint and cleanup replay after SQLite reopen do not repeat
   process or workspace effects. This source-side boundary is enforced by
   `apps/pylon/tests/portable-session-target.test.ts` and
-  `apps/pylon/tests/portable-session-operation-ledger.test.ts`. These landed
+  `apps/pylon/tests/portable-session-operation-ledger.test.ts`. Managed → local
+  failback stages through `apps/pylon/src/portable-session-destination.ts`.
+  Before any restore effect it requires the exact active remote attachment from
+  PORT-01, then verifies the repository post-image, binary diff, complete
+  root/child graph, per-thread cursors, and fresh destination capability refs
+  while the local destination remains non-accepting. It may activate only after
+  PORT-01 reports the exact checkpoint-bound local attachment at the next
+  generation. Its SQLite replay cannot reopen the old local generation; a
+  staged abort must prove every agent and capability plus process, scratch, and
+  port state released. Private paths and checkpoint bytes remain behind the
+  local rehydrator and never enter ledger outcomes. This destination boundary
+  is enforced by `apps/pylon/tests/portable-session-destination.test.ts`.
+  These landed
   coordinator, store, and owner-local source pieces are implementation rungs
   only: #8748 remains
   open until #8636 is completed, the store is composed with real target

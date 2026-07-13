@@ -247,6 +247,165 @@ export class PylonPortableSessionOperationLedger {
     })
   }
 
+  /**
+   * Admits work for a future owner-local destination without pretending the
+   * old local fence owns the currently-active remote generation. PORT-01 is
+   * still the authority for that source fact; the local ledger only requires
+   * its prior generation to be quiesced and prevents two local stages for the
+   * same destination generation.
+   */
+  admitDestinationOperation(input: Readonly<{
+    operationRef: string
+    sessionRef: string
+    sourceAttachmentRef: string
+    sourceGeneration: number
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    kind: Extract<PylonPortableOperationKind, "stage" | "activate" | "abort">
+    exactInput: unknown
+  }>): Effect.Effect<Readonly<{ status: "admitted" | "replayed"; record: PylonPortableOperationRecord }>, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() =>
+      this.admitDestinationOperationSync(input)).immediate())
+  }
+
+  private admitDestinationOperationSync(input: Readonly<{
+    operationRef: string
+    sessionRef: string
+    sourceAttachmentRef: string
+    sourceGeneration: number
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    kind: Extract<PylonPortableOperationKind, "stage" | "activate" | "abort">
+    exactInput: unknown
+  }>): Readonly<{ status: "admitted" | "replayed"; record: PylonPortableOperationRecord }> {
+    assertRef(input.operationRef, "operationRef")
+    assertRef(input.sessionRef, "sessionRef")
+    assertRef(input.sourceAttachmentRef, "sourceAttachmentRef")
+    assertRef(input.destinationAttachmentRef, "destinationAttachmentRef")
+    assertGeneration(input.sourceGeneration)
+    assertGeneration(input.destinationGeneration)
+    if (input.destinationGeneration !== input.sourceGeneration + 1) {
+      throw new PylonPortableOperationLedgerError("stale_generation", "destination generation must advance exactly once")
+    }
+    const operationFingerprint = fingerprint(input.exactInput)
+    const existing = this.readOperationRow(input.operationRef)
+    if (existing !== null) {
+      if (existing.fingerprint !== operationFingerprint ||
+          existing.session_ref !== input.sessionRef ||
+          existing.attachment_ref !== input.destinationAttachmentRef ||
+          Number(existing.generation) !== input.destinationGeneration ||
+          existing.kind !== input.kind) {
+        throw new PylonPortableOperationLedgerError("conflicting_replay", "destination operation conflicts")
+      }
+      return { status: "replayed" as const, record: operationRecord(existing) }
+    }
+    const fence = this.requireSession(input.sessionRef)
+    if (Number(fence.accepting_work) !== 0 || Number(fence.generation) > input.sourceGeneration) {
+      throw new PylonPortableOperationLedgerError("stale_generation", "prior local generation is not durably quiesced")
+    }
+    const candidates = this.database.query(`
+      SELECT operation_ref, session_ref, attachment_ref, generation, kind,
+             fingerprint, state, outcome_json
+      FROM pylon_portable_session_operations
+      WHERE session_ref = ? AND generation = ? AND kind = ?
+    `).all(input.sessionRef, input.destinationGeneration, input.kind) as OperationRow[]
+    const competing = candidates.some(candidate => {
+      if (input.kind !== "stage") return candidate.attachment_ref === input.destinationAttachmentRef
+      const abortRef = candidate.operation_ref.endsWith(".destination.stage")
+        ? `${candidate.operation_ref.slice(0, -".destination.stage".length)}.destination.abort`
+        : ""
+      const abort = abortRef.length === 0 ? null : this.readOperationRow(abortRef)
+      return abort?.kind !== "abort" || abort.state !== "completed"
+    })
+    if (competing) {
+      throw new PylonPortableOperationLedgerError("conflicting_replay", "destination generation already has an operation")
+    }
+    this.database.query(`
+      INSERT INTO pylon_portable_session_operations
+        (operation_ref, session_ref, attachment_ref, generation, kind, fingerprint, state, outcome_json)
+      VALUES (?, ?, ?, ?, ?, ?, 'admitted', NULL)
+    `).run(
+      input.operationRef,
+      input.sessionRef,
+      input.destinationAttachmentRef,
+      input.destinationGeneration,
+      input.kind,
+      operationFingerprint,
+    )
+    return {
+      status: "admitted" as const,
+      record: operationRecord(this.requireOperation(input.operationRef)),
+    }
+  }
+
+  commitDestinationGeneration(input: Readonly<{
+    operationRef: string
+    sessionRef: string
+    sourceAttachmentRef: string
+    sourceGeneration: number
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    stageOperationRef: string
+    authorityEvidenceRef: string
+    evidenceRefs: ReadonlyArray<string>
+    exactInput: unknown
+  }>): Effect.Effect<Readonly<{ status: "completed" | "replayed"; fence: PylonPortableSessionFence; record: PylonPortableOperationRecord }>, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() => {
+      const admitted = this.admitDestinationOperationSync({
+        ...input,
+        kind: "activate",
+        exactInput: input.exactInput,
+      })
+      const outcome = decodeOutcome(JSON.stringify({
+        evidenceRefs: [input.authorityEvidenceRef, ...input.evidenceRefs],
+      }))
+      if (admitted.record.state === "completed") {
+        if (canonical(admitted.record.outcome) !== canonical(outcome)) {
+          throw new PylonPortableOperationLedgerError("conflicting_replay", "destination activation outcome conflicts")
+        }
+        return {
+          status: "replayed" as const,
+          fence: sessionFence(this.requireSession(input.sessionRef)),
+          record: admitted.record,
+        }
+      }
+      const stage = this.requireOperation(input.stageOperationRef)
+      if (stage.kind !== "stage" || stage.state !== "completed" ||
+          stage.session_ref !== input.sessionRef ||
+          stage.attachment_ref !== input.destinationAttachmentRef ||
+          Number(stage.generation) !== input.destinationGeneration) {
+        throw new PylonPortableOperationLedgerError("invalid_scope", "destination activation requires the exact completed stage")
+      }
+      const fence = this.requireSession(input.sessionRef)
+      if (Number(fence.accepting_work) !== 0 || Number(fence.generation) > input.sourceGeneration) {
+        throw new PylonPortableOperationLedgerError("stale_generation", "prior local generation is not fenced")
+      }
+      const advanced = this.database.query(`
+        UPDATE pylon_portable_session_fences
+        SET attachment_ref = ?, generation = ?, accepting_work = 1, revision = revision + 1
+        WHERE session_ref = ? AND accepting_work = 0 AND generation <= ?
+      `).run(
+        input.destinationAttachmentRef,
+        input.destinationGeneration,
+        input.sessionRef,
+        input.sourceGeneration,
+      )
+      if (advanced.changes !== 1) {
+        throw new PylonPortableOperationLedgerError("stale_generation", "destination fence advance lost its authority race")
+      }
+      this.database.query(`
+        UPDATE pylon_portable_session_operations
+        SET state = 'completed', outcome_json = ?
+        WHERE operation_ref = ? AND state = 'admitted'
+      `).run(JSON.stringify(outcome), input.operationRef)
+      return {
+        status: "completed" as const,
+        fence: sessionFence(this.requireSession(input.sessionRef)),
+        record: operationRecord(this.requireOperation(input.operationRef)),
+      }
+    }).immediate())
+  }
+
   admitOperation(input: Readonly<{
     operationRef: string
     sessionRef: string
