@@ -111,6 +111,10 @@ import {
 } from "./account-usage.js"
 import { reportDirectLocalCodexUsage } from "./codex-direct-local-usage-reporter.js"
 import {
+  recordCodexUsageRefreshFailure,
+  recordCodexUsageRefreshSuccess,
+} from "./account-usage-refresh-health.js"
+import {
   claudeProviderDisabledFailure,
   clearClaudeAccountHealth,
   recordClaudeProviderDisabled,
@@ -1009,6 +1013,7 @@ async function runAccountsUsageRefresh(
           timeoutMs: 60_000,
           usageStateSummary: summary,
         })
+        await recordCodexUsageRefreshSuccess(summary, target.accountRefHash)
       } else if (target.provider === "claude_agent") {
         const config = await loadClaudeAgentConfig(summary)
         await runClaudeComposerStream(prompt, {
@@ -1026,6 +1031,14 @@ async function runAccountsUsageRefresh(
         await clearClaudeAccountHealth(summary, target.accountRefHash)
       }
     } catch (error) {
+      if (target.provider === "codex") {
+        failureBlockerRefs.push(
+          ...await recordCodexUsageRefreshFailure(summary, {
+            accountRefHash: target.accountRefHash,
+            error,
+          }),
+        )
+      }
       if (target.provider === "claude_agent" && claudeProviderDisabledFailure(error)) {
         await recordClaudeProviderDisabled(summary, target.accountRefHash)
         failureBlockerRefs.push("blocker.pylon.claude_account.provider_disabled")
