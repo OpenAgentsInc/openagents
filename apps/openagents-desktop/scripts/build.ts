@@ -119,6 +119,14 @@ export const buildDesktop = async (): Promise<string> => {
 
   await cp(path.join(appRoot, "index.html"), path.join(dist, "renderer/index.html"))
   await cp(path.join(appRoot, "src/renderer/app.css"), path.join(dist, "renderer/app.css"))
+  // Product-owned built-in skills are signed application resources, not
+  // ambient user/plugin content. Keep the checked-in manifest and immutable
+  // asset together so packaging and release preflight can prove visibility.
+  await cp(
+    path.join(appRoot, "resources", "builtin-skills"),
+    path.join(dist, "builtin-skills"),
+    { recursive: true },
+  )
   // Packaged smoke cannot reach the source checkout (and must not depend on
   // it). Keep the bounded public fixtures beside the already-unpacked static
   // renderer; main copies them into the per-run writable userData directory.
@@ -147,5 +155,5 @@ export const buildDesktop = async (): Promise<string> => {
 
 if (import.meta.main) {
   await buildDesktop()
-  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, native voice helper)")
+  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, built-in skills, native voice helper)")
 }

@@ -112,6 +112,12 @@ describe("pure preflight checks", () => {
     const result = checkArtifactSet(withoutPreload)
     expect(result.ok).toBe(false)
     expect(result.detail).toContain("preload.cjs")
+    const withoutBuiltinSkill = REQUIRED_ARTIFACTS.filter(
+      artifact => artifact !== "builtin-skills/productspec-work/SKILL.md",
+    )
+    const missingSkill = checkArtifactSet(withoutBuiltinSkill)
+    expect(missingSkill.ok).toBe(false)
+    expect(missingSkill.detail).toContain("builtin-skills/productspec-work/SKILL.md")
   })
 
   test("updater-remnant oracle fails on every forbidden marker", () => {

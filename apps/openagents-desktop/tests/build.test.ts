@@ -36,6 +36,8 @@ describe("openagents-desktop build", () => {
       "renderer/index.html",
       "renderer/app.css",
       "assets/openagents-icon.png",
+      "builtin-skills/manifest.json",
+      "builtin-skills/productspec-work/SKILL.md",
       ...(process.platform === "darwin" ? [
         `native/${process.arch}/oa-desktop-audio`,
         `native/${process.arch}/manifest.json`,
@@ -71,6 +73,16 @@ describe("openagents-desktop build", () => {
     const mobileIcon = readFileSync(path.join(appRoot, "..", "openagents-mobile", "assets", "images", "icon.png"))
     const desktopIcon = readFileSync(path.join(dist, "assets", "openagents-icon.png"))
     expect(fingerprint(desktopIcon)).toBe(fingerprint(mobileIcon))
+
+    const builtSkillRoot = path.join(dist, "builtin-skills")
+    const builtSkillManifest = JSON.parse(
+      readFileSync(path.join(builtSkillRoot, "manifest.json"), "utf8"),
+    ) as { skills: Array<{ name: string; sha256: string }> }
+    const builtSkill = readFileSync(path.join(builtSkillRoot, "productspec-work", "SKILL.md"))
+    expect(builtSkillManifest.skills).toEqual([expect.objectContaining({
+      name: "productspec-work",
+      sha256: createHash("sha256").update(builtSkill).digest("hex"),
+    })])
 
     const workspaceRoot = mkdtempSync(path.join(tmpdir(), "openagents-workspace-search-build-"))
     try {

@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.desktop.builtin_skill_manifest.v1",
+  "compatibilitySetVersion": 1,
+  "skills": [
+    {
+      "name": "productspec-work",
+      "version": "0.1.0",
+      "relativePath": "productspec-work/SKILL.md",
+      "sha256": "3858748c8d3ef533f6da3e0568788b93807ef63eb484771edebd7ff67c63e10e",
+      "authority": "proposal_only",
+      "installationScope": "named_isolated_codex_home",
+      "registrationSurface": "codex_app_server_native",
+      "ambientFallback": false,
+      "defaultCodexHomeAllowed": false
+    }
+  ]
+}

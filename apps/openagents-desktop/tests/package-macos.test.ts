@@ -56,6 +56,7 @@ describe("CUT-26 macOS artifact contract", () => {
 
   test("packages the fixed architecture voice helper as an executable signed resource", () => {
     expect(config.packagerConfig?.extraResource).toContain("dist/native")
+    expect(config.packagerConfig?.extraResource).toContain("dist/builtin-skills")
     const source = readFileSync(path.join(root, "forge.config.ts"), "utf8")
     expect(source).toContain('"oa-desktop-audio"')
     expect(source).toContain('"claude"')
@@ -64,6 +65,19 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(source).toContain("chmodSync(destination, 0o755)")
     expect(source).toContain("manifest.json")
     expect(config.packagerConfig?.extendInfo).toMatchObject({ NSMicrophoneUsageDescription: expect.any(String) })
+  })
+
+  test("packages the product-owned productspec-work compatibility asset", () => {
+    const resources = config.packagerConfig?.extraResource
+    expect(resources).toContain("dist/builtin-skills")
+    const manifest = JSON.parse(
+      readFileSync(path.join(root, "resources", "builtin-skills", "manifest.json"), "utf8"),
+    ) as { skills: Array<{ name: string; authority: string; ambientFallback: boolean }> }
+    expect(manifest.skills).toEqual([expect.objectContaining({
+      name: "productspec-work",
+      authority: "proposal_only",
+      ambientFallback: false,
+    })])
   })
 
   test("entitlements stay minimal and never disable library validation or permit debugging", () => {

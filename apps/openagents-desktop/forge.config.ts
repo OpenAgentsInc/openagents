@@ -93,7 +93,7 @@ const config: ForgeConfig = {
     prune: false,
     derefSymlinks: true,
     icon: "dist/assets/openagents-icon.png",
-    extraResource: ["dist/native"],
+    extraResource: ["dist/native", "dist/builtin-skills"],
     ignore: path => ignoredCheckoutPath.test(path),
     protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],
     osxSign: developerIdApplication === undefined ? undefined : {
