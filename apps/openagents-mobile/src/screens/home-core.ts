@@ -504,6 +504,20 @@ export const renderDrawerView = (state: HomeState): View =>
       Spacer({ key: "drawer-top-space", size: "10" }),
       drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
       drawerRow({ key: "drawer-khala", label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })), selected: state.surfaceMode === "khala" }, state.accessibility),
+      ...(state.fleetRuns?.runs ?? []).flatMap(run => [
+        Text({
+          key: `fleet-run-${run.runRef}`,
+          content: `Fleet run · ${run.executionState}\n${run.runRef}`,
+          variant: "caption",
+          color: "textPrimary",
+        }),
+        ...run.attempts.map(attempt => Text({
+          key: `fleet-attempt-${attempt.workClaimRef}`,
+          content: `${attempt.requestedTarget} → ${attempt.selectedTarget} · ${attempt.outcome}\n${attempt.workClaimRef}\n${attempt.assignmentRef ?? "Assignment pending"}\n${attempt.closeoutRef ?? "Closeout pending"}`,
+          variant: "caption",
+          color: "textMuted",
+        })),
+      ]),
       ...(state.codingDirectory?.authority === "confirmed" && state.codingDirectory.sessions.length > 0
         ? [
             Text({
@@ -541,20 +555,6 @@ export const renderDrawerView = (state: HomeState): View =>
         selected: state.activeThreadRef === thread.threadRef,
       }, state.accessibility)),
       ...codingOfflineCacheAccountingRows(state),
-      ...(state.fleetRuns?.runs ?? []).flatMap(run => [
-        Text({
-          key: `fleet-run-${run.runRef}`,
-          content: `Fleet run · ${run.executionState}\n${run.runRef}`,
-          variant: "caption",
-          color: "textPrimary",
-        }),
-        ...run.attempts.map(attempt => Text({
-          key: `fleet-attempt-${attempt.workClaimRef}`,
-          content: `${attempt.requestedTarget} → ${attempt.selectedTarget} · ${attempt.outcome}\n${attempt.workClaimRef}\n${attempt.assignmentRef ?? "Assignment pending"}\n${attempt.closeoutRef ?? "Closeout pending"}`,
-          variant: "caption",
-          color: "textMuted",
-        })),
-      ]),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
       Text({ key: "drawer-bundle", content: `Bundle ${BUNDLE_TAG}`, variant: "caption", color: "textMuted" }),

@@ -51,7 +51,11 @@ export type FleetRunClientAttemptProjection =
 
 export const FleetRunClientRunProjection = S.Struct({
   runRef: FleetRunRef,
-  authorityStatus: S.Literals(["pending_executor", "claimed_by_pylon"]),
+  authorityStatus: S.Literals([
+    "pending_executor",
+    "claimed_by_pylon",
+    "cancelled",
+  ]),
   executionState: S.Literals([
     "pending",
     "running",
