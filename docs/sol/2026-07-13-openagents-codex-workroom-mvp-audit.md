@@ -7,14 +7,20 @@
 - Owner: Sol product analysis
 - Source snapshot: `OpenAgentsInc/openagents` `c68ed0b2a06bd2c615eea29ee7a3acc1245aecad`
   plus live GitHub issue state at `2026-07-13T13:37:50Z`
+- ProductSpec amendment: reviewed against `OpenAgentsInc/openagents`
+  `3a3a2e388f6a0173eb0d56ece744407a292ceec9` and
+  [current official Codex skill guidance](https://learn.chatgpt.com/docs/build-skills)
+  on 2026-07-13
 - Product Spec:
-  [`specs/openagents/codex-workroom-mvp.product-spec.md` @ `spec_revision: 1`](../../specs/openagents/codex-workroom-mvp.product-spec.md)
+  [`specs/openagents/codex-workroom-mvp.product-spec.md` @ `spec_revision: 2`](../../specs/openagents/codex-workroom-mvp.product-spec.md)
 
 ## Executive finding
 
 **OpenAgents' first deployable Codex product should be a signed, local-first
 Desktop workroom around Codex—not another agent engine, a chat skin, or the
-entire OpenAgents platform at once.**
+entire OpenAgents platform at once. ProductSpec should be its native unit of
+intent and systematic execution, not an artifact users must manage beside the
+workroom.**
 
 The relationship is exact enough to guide the product:
 
@@ -35,9 +41,11 @@ The smallest complete OpenAgents adaptation is therefore:
 
 > A developer can install OpenAgents Desktop, use it without an OpenAgents
 > account, connect a named Codex account without touching the default Codex
-> home, grant a repository, start or resume a Codex thread, supervise typed
-> live work and child agents, resolve blockers, inspect the resulting files and
-> Git diff, quit and reopen, and return to one honest session outcome.
+> home, grant a repository, define or open a valid Product Spec, approve a plan
+> derived from its exact revision, and have Codex agents systematically work
+> through its acceptance criteria. The developer can supervise typed live work
+> and child agents, resolve blockers, inspect criterion evidence and the
+> resulting Git diff, quit and reopen, and return to one honest outcome.
 
 This definition is narrower than the current R0–R7 program and CUT-27. It does
 not change their sequence, split their issues, or authorize a public cutover
@@ -86,12 +94,12 @@ kept the narrowest proven rung.
 | Concern | OpenChamber around OpenCode | OpenAgents around Codex |
 | --- | --- | --- |
 | Engine owner | OpenCode owns sessions, model/tool execution, permissions, files, Git, and PTY | Codex owns Thread → Turn → Item execution, tools, approvals, sandboxing, rollout history, and provider-native child threads |
-| Product owner | OpenChamber owns the persistent workroom, navigation, review, attention, and cross-shell reachability | OpenAgents owns the hardened workroom, stable product identity, typed command/outcome projection, review, and supervision |
+| Product owner | OpenChamber owns the persistent workroom, navigation, review, attention, and cross-shell reachability | OpenAgents owns the hardened workroom, stable product identity, ProductSpec execution projection, typed command/outcome projection, review, and supervision |
 | Adapter seam | OpenChamber server and SDK adapt OpenCode plus host capabilities | Host-owned Runtime Gateway adapts Codex app-server plus grant-bounded workspace services |
 | Identity | Reconnect to the same OpenCode host/session | Stable OpenAgents session/work-context refs map to Codex thread refs; neither host path nor provider ID becomes product identity |
 | Persistence | OpenCode state, OpenChamber metadata, and client caches coexist | Codex rollout/index stays engine evidence; OpenAgents persists admitted intents, product mappings, bounded projections, and durable outcomes only |
 | Client trust | Broad authenticated server surface; Electron renderer receives runtime credentials | Sandboxed tokenless renderer; fixed schema-decoded queries, intents, and events only |
-| First product value | Make OpenCode feel like an ongoing place to work | Make Codex work findable, inspectable, steerable, reviewable, and restart-safe in a signed app |
+| First product value | Make OpenCode feel like an ongoing place to work | Turn a Product Spec into findable, inspectable, steerable, reviewable, and restart-safe Codex work in a signed app |
 | Later expansion | Web, mobile, VS Code, relay, schedules, goals, voice | Khala Sync, mobile, Fleet, remote workrooms, portable sessions, managed targets, voice, and durable goals after their own gates |
 
 The analogy has a boundary. OpenChamber principally reconnects clients to an
@@ -105,8 +113,9 @@ first local Codex workroom.
 ### Product sentence
 
 **OpenAgents Desktop Codex Workroom is the open, installable operating surface
-for local Codex work: one place to find sessions, run and steer turns, inspect
-agents and blockers, review workspace effects, and recover honest state.**
+for ProductSpec-guided local Codex work: one place to define intent, turn its
+acceptance criteria into supervised agent work, inspect agents and evidence,
+review workspace effects, and recover honest state.**
 
 Codex remains independently useful and owns its agent loop. OpenAgents earns
 its place by reducing reorientation and uncertainty around that loop.
@@ -121,17 +130,24 @@ its place by reducing reorientation and uncertainty around that loop.
 3. Select or connect one **named isolated** Codex account. Device auth never
    writes to the default `~/.codex` home.
 4. Grant one repository and open a recent thread or create a new one.
-5. Submit one durably admitted task. Observe typed text, reasoning summary,
-   plan, tool/file-change activity, usage, and terminal state.
-6. Resolve one question, approval, or plan-review blocker, or explicitly stop
+5. Create a Product Spec through guided conversation or bounded fields, or
+   open an existing `.product-spec.md`; fix section-addressed validation errors
+   and review the exact `spec_revision` plus digest.
+6. Review and accept a derived work plan whose packets cite that exact spec
+   revision and one or more acceptance-criterion refs. Start the plan through
+   the built-in `productspec-work` agent skill.
+7. Observe typed text, reasoning summary, plan, criterion/work-packet state,
+   tool/file-change activity, usage, evidence, and terminal state.
+8. Resolve one question, approval, or plan-review blocker, or explicitly stop
    or steer the active turn.
-7. Inspect the full child-agent roster, open one child's independent
+9. Inspect the full child-agent roster, open one child's independent
    transcript, and follow its causal edge from the parent timeline.
-8. Inspect the bounded file tree, Git status, and exact diff beside the
-   conversation.
-9. Reload the renderer and quit/relaunch the app without duplicating the turn,
-   losing the catalog, flattening children, or inventing completion.
-10. Export bounded diagnostics and complete update/rollback/uninstall checks
+10. Inspect the bounded file tree, Git status, exact diff, and evidence attached
+    to each criterion beside the conversation.
+11. Reload the renderer and quit/relaunch the app without duplicating the turn,
+    losing the catalog, flattening children, changing the pinned spec revision,
+    or inventing completion.
+12. Export bounded diagnostics and complete update/rollback/uninstall checks
     without exposing credentials, prompts, absolute repository roots, or raw
     provider payloads.
 
@@ -140,6 +156,7 @@ its place by reducing reorientation and uncertainty around that loop.
 | Surface | MVP requirement | Why it is irreducible |
 | --- | --- | --- |
 | Session rail | Metadata-first named top-level sessions, status/attention, paging, resume/new/fork/archive/delete | A persistent workroom must make repeated work cheap to find and resume |
+| ProductSpec workbench | Create/open, guided refinement, format validation, revision/digest diff, accepted derived plan, criterion/work-packet board, and evidence links | The workroom needs a durable unit of intent and a visible definition of done, not an unstructured prompt backlog |
 | Causal timeline | Typed Thread/Turn/Item projection for text, plans, tools, patches, blockers, usage, errors, interruption, terminal outcome | Strings and spinners cannot explain what Codex is doing |
 | Composer and controls | Send, stop, steer-current-turn, queue-next-turn, account/model selection, durable question/approval/plan response | The app must control the engine, not merely watch history |
 | Agent topology | Full parent/child graph, inline causal child cards, lifecycle, independent transcripts, explicit unknown/gap state | Codex subagents are product state, not one flattened status line |
@@ -153,6 +170,57 @@ workflow may remain present in the broader Desktop product. They are not
 required to make this first Codex workroom independently useful or to accept
 this MVP.
 
+### ProductSpec execution options
+
+Three implementation shapes were considered:
+
+| Option | Strength | Failure in this product |
+| --- | --- | --- |
+| Built-in agent skill only | Small, reusable, and aligned with Codex skills as packaged instructions, references, and scripts for repeatable workflows | A model-invoked workflow cannot be the durable authority for spec revision, validation, admission, criterion state, evidence, or completion |
+| Native workroom only | Strong typed UX and host-owned persistence | Does not carry the authoring/decomposition method into Codex and child turns or other Codex surfaces, and risks duplicating procedure in UI code |
+| **Hybrid: native ProductSpec workbench plus built-in skill** | Separates durable product truth from reusable agent method | Requires an explicit protocol between the workbench projection and the skill, but preserves both inspectability and portability |
+
+The MVP should choose the **hybrid**. A product-owned, built-in
+`productspec-work` skill teaches Codex how to elicit missing intent, propose a
+valid spec edit, decompose accepted criteria into work packets, select bounded
+agent lanes, and report evidence. It is shipped and versioned with the signed
+compatibility set; users do not install an arbitrary plugin to reach the core
+flow.
+
+That read-only, hash-pinned skill belongs in an app-managed Codex skill root in
+the named isolated Codex environment. Runtime Gateway registers that root
+through the native app-server skill surface, verifies it through the skill
+catalog, and selects its exact typed identity—never prose or keyword routing.
+It never touches the default Codex home. It is not routed through Desktop's
+current user plugin/skill lifecycle, whose audited Codex lane is explicitly
+unsupported, and it does not turn arbitrary extensions into an MVP dependency.
+This is new MVP work; CUT-23 proved the Claude plugin/skill lane, not this
+Codex-native built-in.
+
+The skill is not authority. The host-owned ProductSpec workbench parses and
+validates the document, assigns the immutable spec digest and revision, and
+creates a typed `ProductSpecRun` bound to work context, granted spec path,
+revision, digest, and plan ref. Workroom-executable acceptance criteria require
+unique author-visible IDs such as `CW-AC-01`; older unlabeled specs remain
+viewable and validator-clean but must be revised and confirmed before execution.
+Work packets cite `path@revision+digest#criterion-id`. Retained IDs can map
+across revisions; changed or removed IDs require explicit reconciliation.
+
+The host shows every proposed edit as a diff, persists the user-accepted plan,
+and projects that plan into existing typed work-unit, dependency, intent, agent,
+and evidence contracts wherever possible—never a parallel scheduler or claim
+universe. Systematic execution is the accepted foreground plan and stops on
+blockers; it does not imply autonomous goals, schedules, or Fleet dispatch.
+Agent prose may propose `satisfied`, but only linked test/verifier output,
+behavior/Eval oracles, artifact or diff review, and receipts can verify it.
+Owner acceptance or waiver stays distinct from technical verification.
+Changing intent creates a new `spec_revision`; already admitted work remains
+pinned to the old revision until the user reconciles, supersedes, or cancels it.
+
+This preserves the existing ProductSpec law: the spec declares intent and does
+not replace roadmap sequencing, runtime policy, behavior/Eval oracles, receipt
+truth, or promise authority.
+
 ## Architecture and authority boundary
 
 The MVP should preserve the current architecture sentence:
@@ -162,12 +230,12 @@ sandboxed Effect Native renderer
         |
 fixed typed projections and intents
         |
-host-owned Runtime Gateway
+host-owned Runtime Gateway + ProductSpec service
         |----------------------|
 Codex app-server          workspace/Git capabilities
 ```
 
-The boundary has eight non-negotiable consequences:
+The boundary has ten non-negotiable consequences:
 
 1. Codex owns the model/tool loop. Runtime Gateway is an adapter and lifecycle
    supervisor, never a second conversation engine.
@@ -187,6 +255,12 @@ The boundary has eight non-negotiable consequences:
 8. Raw Codex history stays owner-local by default. Bounded projections and
    opt-in public-safe receipts never contain prompts, repository bodies,
    credentials, account identity, or stable private refs.
+9. The built-in ProductSpec skill may propose spec edits, plans, work packets,
+   agent assignments, and evidence links. It cannot persist or approve them,
+   revise intent, grant authority, or declare a criterion verified.
+10. ProductSpec revision/digest, accepted plan, criterion state, and evidence
+    refs are host-owned typed state. Revision mismatch blocks new dispatch
+    until explicit reconciliation; it never silently retargets active work.
 
 ## Issue audit
 
@@ -217,13 +291,13 @@ Codex/Claude default-surface declaration.
 | [#8674](https://github.com/OpenAgentsInc/openagents/issues/8674), [#8675](https://github.com/OpenAgentsInc/openagents/issues/8675) | Loss-accounted Codex history, subagent inspector, and real-Electron trace acceptance | Historical import is read-only and does not by itself authorize resume or dispatch |
 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) | Composer, questions, approvals, and runtime controls | Fixture and component proof do not replace the counted installed Codex journey |
 | [#8699](https://github.com/OpenAgentsInc/openagents/issues/8699), [#8700](https://github.com/OpenAgentsInc/openagents/issues/8700) | Typed Git review/context plus bounded PTY/preview | MVP requires review; interactive PTY/preview breadth is optional for this first shape |
-| [#8701](https://github.com/OpenAgentsInc/openagents/issues/8701), [#8703](https://github.com/OpenAgentsInc/openagents/issues/8703) | Named runtime/account/model plus MCP/skill/plugin/permission/settings integration | MVP requires one compatible named Codex lane, not general provider or extension breadth |
+| [#8701](https://github.com/OpenAgentsInc/openagents/issues/8701), [#8703](https://github.com/OpenAgentsInc/openagents/issues/8703) | Named runtime/account/model plus MCP/skill/plugin/permission/settings integration | Named Codex capacity is substrate, but CUT-23's skill receipt is Claude-only and records Codex unsupported; the app-managed built-in Codex skill remains new MVP work |
 | [#8706](https://github.com/OpenAgentsInc/openagents/issues/8706) | Signed/notarized/stapled installed artifact, update, rollback, reinstall, and diagnostics evidence | Distribution evidence must be repeated against the exact MVP compatibility set |
 | [#8744](https://github.com/OpenAgentsInc/openagents/issues/8744) | Durable local-turn journal and one bounded Codex continuation after process restart | Does not prove byte-identical live-stream reattachment, autonomous goals, or scheduled work |
 | [#8676](https://github.com/OpenAgentsInc/openagents/issues/8676), [#8677](https://github.com/OpenAgentsInc/openagents/issues/8677) | Same-ref mobile continuation and command/event fault convergence | Valuable stronger-program evidence; mobile is not required for the local Codex MVP |
 | [#8547](https://github.com/OpenAgentsInc/openagents/issues/8547), [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | Managed Agent Computer and bounded hybrid-routing acceptance | Neither proves portable movement and neither is needed for the first local workroom |
 | [#8745](https://github.com/OpenAgentsInc/openagents/issues/8745)–[#8747](https://github.com/OpenAgentsInc/openagents/issues/8747) | Portable-session contract, durable authority, and target-scoped broker | Schema/control-plane/broker closure is not a real move; [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) owns that proof |
-| [#8593](https://github.com/OpenAgentsInc/openagents/issues/8593) | ProductSpec v0.1 tooling and OpenAgents extensions | Specs declare intent; behavior contracts, Eval Suites, receipts, promises, roadmap, and issues enforce it |
+| [#8593](https://github.com/OpenAgentsInc/openagents/issues/8593) | ProductSpec v0.1 tooling and OpenAgents extensions | The parser, validator, generator, and spec@revision discipline are ready substrate; the workroom adds a typed authoring/execution projection without making the spec an oracle |
 
 The issue history shows that much of the required substrate is already
 code-landed or accepted at stronger scopes. The product gap is not another
@@ -243,7 +317,8 @@ The first deployable shape does **not** require:
   adapters, host movement, or failback;
 - a full editor, interactive PTY, commit/push/PR/merge, or destructive Git;
 - arbitrary MCP installation, third-party plugins in the authority process,
-  marketplace, or model-authored Code Mode;
+  marketplace, user-installed workflow dependency for the core ProductSpec
+  path, or model-authored Code Mode;
 - autonomous Session Goals, schedules, or background workflow execution;
 - voice, computer use, browser automation, or ambient memory; or
 - a public statement that the broader Codex/Claude/mobile cutover is complete.
@@ -260,6 +335,9 @@ the required user journey above, plus deterministic failure cases for:
   policy-disabled;
 - duplicate/conflicting intent identity, lost acknowledgement, stream gap,
   renderer reload, app-process restart, and stale generation;
+- invalid ProductSpec, missing/duplicate criterion ID, rejected spec edit, stale
+  spec revision/digest, conflicting or cyclic work packet, missing/stale
+  criterion evidence, and attempted completion with an unverified criterion;
 - missing child history, unknown event/item type, explicit redaction/gap,
   revoked workspace grant, and Git post-image conflict; and
 - update interruption, rollback/downgrade refusal, diagnostics export,
@@ -277,6 +355,9 @@ credentials, raw runtime events, or provider payloads.
 | --- | --- |
 | OpenAgents becomes a second Codex engine | Any provider/model/tool loop implemented outside the Codex adapter blocks launch and must be removed or separately justified |
 | The workroom is only a prettier chat | A user cannot find an old session, understand child/tool state, resolve a blocker, and inspect the exact diff in one journey |
+| ProductSpec becomes decorative | Agent work can start without an exact spec revision/criterion ref, or the workroom cannot show which evidence supports each claimed result |
+| The built-in skill becomes authority | Skill output can approve its own spec edit, grant dispatch, change a pinned revision, or mark a criterion verified without host evidence |
+| Spec ceremony overwhelms small work | A user cannot reach a valid first draft and accepted plan through one guided conversation, or every mechanical task is forced through ProductSpec |
 | Local-first is nominal | First useful Codex work requires OpenAgents sign-in, hosted availability, or remote authority |
 | Persistence is mistaken for recovery | Restart can leave a silent idle state, duplicate dispatch, reopened terminal work, or unowned pending turn |
 | Renderer trust expands for speed | Any credential, generic IPC, raw provider event, absolute root, or general filesystem/process handle crosses preload |
@@ -287,7 +368,7 @@ credentials, raw runtime events, or provider payloads.
 ## Recommendation
 
 Adopt
-[`specs/openagents/codex-workroom-mvp.product-spec.md` @ `spec_revision: 1`](../../specs/openagents/codex-workroom-mvp.product-spec.md)
+[`specs/openagents/codex-workroom-mvp.product-spec.md` @ `spec_revision: 2`](../../specs/openagents/codex-workroom-mvp.product-spec.md)
 as the durable what/why for this bounded product. Keep the master roadmap and
 live issues as sequence and coordination authority. Do not open a parallel epic
 or change public promises from this audit alone.
@@ -295,8 +376,8 @@ or change public promises from this audit alone.
 The decisive scope test is simple:
 
 > If Codex were removed, this MVP would have no engine. If OpenAgents were
-> removed, the developer would lose the persistent workroom, typed
-> supervision, integrated review, and restart-safe product state.
+> removed, the developer would lose the ProductSpec-to-evidence workroom,
+> typed supervision, integrated review, and restart-safe product state.
 
 That is the relationship OpenChamber demonstrates for OpenCode, expressed in
 the smallest deployable OpenAgents form.

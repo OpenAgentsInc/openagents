@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop Codex Workroom MVP"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-13T00:00:00Z"
-updated_at: "2026-07-13T00:00:00Z"
+updated_at: "2026-07-13T13:52:48Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -22,6 +22,7 @@ tool_metadata:
   openagents_lane: "Desktop #8574; CUT-27 #8707 remains the broader cutover authority"
   openagents_assurance_level: "signed-local-codex-workroom"
   openagents_evidence: "docs/sol/2026-07-13-openagents-codex-workroom-mvp-audit.md"
+  openagents_productspec_workflow: "native ProductSpec workbench plus built-in productspec-work skill"
 ---
 
 ## Problem
@@ -29,7 +30,10 @@ tool_metadata:
 Codex is a capable local agent engine, but its execution power does not by
 itself provide the OpenAgents product: one signed, durable place to find work,
 understand typed turns and child agents, resolve blockers, inspect repository
-effects, and return after restart without guessing what is authoritative.
+effects, and return after restart without guessing what is authoritative. It
+also lacks an easy native path from product intent to systematic agent work:
+users should be able to define a Product Spec, approve a plan derived from its
+acceptance criteria, and see agents work those criteria through evidence.
 
 The broader OpenAgents program combines Desktop, mobile, Sync, Fleet, managed
 workrooms, portability, voice, and multiple runtimes. Requiring that entire
@@ -43,9 +47,10 @@ If OpenAgents ships a signed, local-first Desktop workroom that uses Codex's
 app-server as its only model/tool engine and surrounds it with metadata-first
 session navigation, a typed causal timeline, durable controls and blockers,
 complete child-agent topology, adjacent file/Git review, and honest restart
-recovery, then developers will complete and resume real Codex tasks inside
-OpenAgents without needing an OpenAgents account or falling back to another
-Codex interface.
+recovery—and makes ProductSpec the native unit for guided authoring, accepted
+decomposition, agent allocation, and evidence-backed completion—then developers
+will complete and resume consequential Codex tasks inside OpenAgents without
+needing an OpenAgents account or falling back to another Codex interface.
 
 ## Scope
 
@@ -55,6 +60,12 @@ in:
   - local-first use without an OpenAgents account
   - one compatible host-owned Codex app-server and one named isolated Codex account
   - explicit repository grant and stable OpenAgents coding-session and WorkContext refs
+  - create or open a ProductSpec v0.1 artifact through guided conversation or bounded fields with section-addressed validation
+  - immutable ProductSpec digest and spec revision, explicit edit diff, and user confirmation for intent revisions
+  - unique author-visible acceptance-criterion IDs for executable specs and explicit cross-revision criterion reconciliation
+  - accepted execution plan whose durable work packets cite the exact spec revision and one or more acceptance-criterion refs
+  - product-owned built-in productspec-work skill for refinement, decomposition, bounded agent allocation, and evidence reporting
+  - criterion and work-packet board with typed planned, active, blocked, evidence-present, verified, failed, superseded, and cancelled states
   - metadata-first top-level session catalog with paging and new, resume, fork, archive, and delete
   - typed text, reasoning-summary, plan, tool, patch, usage, error, interruption, and terminal timeline items
   - send, stop, steer-current-turn, queue-next-turn, question, approval, and plan-review controls
@@ -70,6 +81,7 @@ out:
   - managed Agent Computers, remote workrooms, owner-managed targets, provider adapters, host movement, or failback
   - full editor, interactive PTY, preview, destructive Git, commit, push, pull request, or merge as MVP requirements
   - arbitrary MCP installation, third-party plugin marketplace, or model-authored Code Mode
+  - a user-installed skill or plugin dependency for the core ProductSpec workflow
   - autonomous Session Goals, schedules, persistent voice, computer use, browser automation, or ambient memory
 cut:
   - a second OpenAgents-owned model or tool loop beside Codex
@@ -77,6 +89,8 @@ cut:
   - renderer credentials, loopback secrets, generic IPC, raw MessagePort, Node, filesystem, process, or absolute-root authority
   - use of the default Codex home for device login or automatic work dispatch
   - model prose, connection health, optimistic UI, or issue closure as completion authority
+  - skill-authored spec edits, plans, criterion status, or completion becoming authoritative without host validation and user admission
+  - silent retargeting of admitted work when the ProductSpec digest or revision changes
   - public Codex, Claude, mobile, Fleet, cloud, portability, or voice claims not proven by their own current receipts
 ```
 
@@ -84,16 +98,20 @@ cut:
 
 A developer installs OpenAgents Desktop and reaches a useful local workroom
 without creating an OpenAgents account. The app either shows ready named Codex
-capacity or one precise prerequisite. The developer grants a repository,
-opens an existing top-level Codex thread or starts a new one, submits a task,
-and watches typed work rather than terminal text.
+capacity or one precise prerequisite. The developer grants a repository, then
+creates a Product Spec conversationally or opens an existing one. The workroom
+shows validation at the relevant section, an exact revision/digest, and a
+reviewable plan derived from the acceptance criteria. After the developer
+accepts that plan, its work packets become the units Codex agents execute.
 
 Questions and approvals remain visible until durably resolved. Child agents
 appear at their causal parent event and in a complete navigable graph; selecting
 one opens its own transcript. File changes and the exact Git diff stay beside
-the conversation. After renderer reload, stream loss, or app restart, the same
-session returns with one honest pending, recovering, interrupted, failed, or
-completed disposition and no duplicate turn.
+the conversation and criterion evidence. The ProductSpec board always shows
+what is planned, active, blocked, evidenced, verified, or still open. After
+renderer reload, stream loss, or app restart, the same session returns with the
+same pinned spec revision and one honest pending, recovering, interrupted,
+failed, or completed disposition and no duplicate turn.
 
 ## Solution
 
@@ -108,49 +126,101 @@ Codex identity into stable OpenAgents session and agent refs, durably admits
 mutations before dispatch, reconciles current projection plus durable history
 before live resubscription, and composes grant-bounded workspace/Git reads.
 
+The host also owns a ProductSpec service backed by
+`@openagentsinc/product-spec`. It parses and validates specs, assigns an
+immutable digest, and persists a `ProductSpecRun` bound to work context,
+granted spec path, revision, digest, and plan ref. Workroom-executable specs
+require unique author-visible criterion IDs; work packets cite
+`path@revision+digest#criterion-id`. The accepted plan projects into existing
+typed work-unit, dependency, intent, agent, and evidence contracts rather than
+creating a second scheduler or claim universe.
+
+A product-owned, read-only, hash-pinned `productspec-work` skill supplies the
+reusable Codex method for elicitation, spec-edit proposals, decomposition,
+agent allocation, and evidence reporting. Runtime Gateway registers the
+app-managed skill root into the named isolated Codex environment through the
+native app-server skill surface and selects its exact typed catalog identity,
+never prose or keyword routing; it never uses the default Codex home or the
+current user-plugin `/skill` path.
+The skill can propose but cannot approve a spec edit, grant work, change a
+pinned revision, or verify its own result. Systematic execution is bounded to
+the user-accepted foreground plan and stops on blockers.
+
 Runtime Gateway is an adapter and lifecycle owner, not a second conversation
-engine, public server, or parallel session database. Raw Codex history stays
+engine, public server, or parallel session database. ProductSpec declares
+intent but does not replace roadmap sequence, behavior contracts, Eval Suites,
+receipts, owner gates, or the promise registry. Raw Codex history stays
 owner-local by default.
 
 ## Acceptance Criteria
 
-- A signed/notarized release candidate installs and launches without a source
+- **CW-AC-01:** A signed/notarized release candidate installs and launches without a source
   checkout, resolves only its pinned compatible Codex runtime path, and reports
   missing or incompatible runtime state explicitly.
-- Local-first mode can reach the first useful Codex workroom without an
+- **CW-AC-02:** Local-first mode can reach the first useful Codex workroom without an
   OpenAgents account or hosted service. Connecting Codex uses a named isolated
   home and never mutates the default Codex home.
-- Granting one repository creates a stable WorkContext and product session ref
+- **CW-AC-03:** Granting one repository creates a stable WorkContext and product session ref
   that do not derive from a path, process, port, machine, or provider thread ID.
-- The session rail paints bounded metadata before transcript hydration, lists
+- **CW-AC-04:** From one guided conversation, the workroom creates a validator-clean
+  ProductSpec v0.1 draft or opens an existing spec. Validation failures identify
+  the exact section. An unlabeled legacy spec remains viewable, but executable
+  criteria require unique author-visible IDs and no work starts while any ID is
+  missing or duplicated.
+- **CW-AC-05:** The workroom shows the exact ProductSpec digest and `spec_revision`, previews
+  every intent-changing edit as a diff, requires user confirmation plus a
+  revision bump, and retains the prior revision for already admitted work.
+  Retained criterion IDs may map across revisions; changed or removed IDs
+  require explicit reconciliation.
+- **CW-AC-06:** A user-accepted execution plan contains at least two durable work packets.
+  Every packet cites the exact spec revision and one or more criterion refs;
+  at least one packet can be allocated to a child agent and opened from both
+  the criterion board and causal timeline. Before execution, every criterion is
+  mapped or explicitly deferred and duplicate or cyclic work packets refuse.
+- **CW-AC-07:** The product-owned `productspec-work` skill ships hash-pinned in the signed
+  compatibility set, is registered only into the named isolated Codex skill
+  root through the native app-server surface, and can refine, decompose,
+  allocate, and report through typed host tools. Removing, corrupting, or
+  version-mismatching it produces an explicit incompatible workflow state; it
+  never falls back to an ambient/user-installed skill or the default Codex home.
+- **CW-AC-08:** Skill or agent prose cannot approve a spec edit, admit a work packet, change
+  the pinned revision, or mark a criterion verified. Evidence-present and
+  verified remain distinct. Verification requires linked test/verifier output,
+  behavior/Eval oracle, artifact or diff review, or receipt; owner acceptance
+  or waiver remains a separate typed disposition.
+- **CW-AC-09:** A spec revision/digest change while work is active produces a typed mismatch.
+  New dispatch stops until the user reconciles, supersedes, or cancels the old
+  plan; active work is never silently retargeted and no evidence crosses
+  revisions without an explicit mapping.
+- **CW-AC-10:** The session rail paints bounded metadata before transcript hydration, lists
   only top-level sessions, pages without an age ceiling, and preserves stable
   titles, status, attention, ordering, and selected session through restart.
-- One real Codex task is durably admitted before dispatch and renders typed
+- **CW-AC-11:** One real Codex task is durably admitted before dispatch and renders typed
   text plus at least one non-text plan, tool, patch/file-change, usage, blocker,
   or lifecycle item and exactly one terminal disposition.
-- Exact retry reconciles to the admitted intent; conflicting reuse refuses.
+- **CW-AC-12:** Exact retry reconciles to the admitted intent; conflicting reuse refuses.
   Send, stop, steer, queue, question, approval, and plan-review actions use the
   same registered command identities across direct, keyboard, palette, and
   native-menu entry points.
-- The complete child graph retains exact parentage and lifecycle. A causal
+- **CW-AC-13:** The complete child graph retains exact parentage and lifecycle. A causal
   inline card opens one child's independent transcript; reload/reconnect never
   flattens, duplicates, re-roots, or leaks a child into the top-level catalog.
-- The granted repository exposes a bounded file tree, Git status, and exact
+- **CW-AC-14:** The granted repository exposes a bounded file tree, Git status, and exact
   diff correlated to timeline item refs. Revocation and post-image conflict
   fail visibly without exposing general filesystem or Git mutation authority.
-- Renderer reload does not stop or duplicate host-owned work. App-process
+- **CW-AC-15:** Renderer reload does not stop or duplicate host-owned work. App-process
   restart restores the exact persisted prefix and either continues the
   recorded Codex thread at most once or records an explicit interrupted
   terminal outcome; it never silently reruns the task.
-- Lost acknowledgement, duplicate/out-of-order frame, cursor gap, stale
+- **CW-AC-16:** Lost acknowledgement, duplicate/out-of-order frame, cursor gap, stale
   generation, revoked grant, quota exhaustion, rate limit, auth revocation,
   and policy denial converge to distinct typed states. Durable repair precedes
   live resubscription.
-- The renderer contract and diagnostics contain no credential, account
+- **CW-AC-17:** The renderer contract and diagnostics contain no credential, account
   identity, loopback URL/secret, raw provider event, prompt/transcript body,
   repository content, absolute root, generic IPC, process handle, or general
   filesystem handle.
-- The exact release candidate passes install, launch, one real Codex workroom
+- **CW-AC-18:** The exact release candidate passes install, launch, one real Codex workroom
   task, renderer reload, app restart, interrupted update, rollback/downgrade
   refusal, diagnostics export, uninstall/reinstall, and cleanup receipts.
 
@@ -158,7 +228,7 @@ owner-local by default.
 
 ```productspec-success-metrics
 - id: codex_workroom_activation
-  metric: opted_in_first_launches_reaching_a_durably_admitted_codex_task_with_visible_typed_activity_within_15_minutes
+  metric: opted_in_first_launches_creating_or_opening_a_valid_spec_accepting_a_plan_and_starting_its_first_criterion_within_15_minutes
   target: ">= 60%"
   window: first 30 days of invited MVP dogfood
   segment: developers with a supported macOS host and an eligible Codex account
@@ -169,6 +239,12 @@ owner-local by default.
   window: first 30 days of invited MVP dogfood
   segment: opted-in repository tasks that pass the supported-runtime preflight
   source: consented_public_safe_task_and_review_receipts
+- id: productspec_guided_execution_integrity
+  metric: accepted_productspec_plans_whose_work_packets_all_retain_exact_revision_criterion_and_terminal_evidence_links
+  target: "100%"
+  window: release acceptance and first 30 days of invited MVP dogfood
+  segment: consequential MVP tasks started from a ProductSpec plan
+  source: consented_public_safe_spec_execution_receipts
 - id: codex_workroom_seven_day_return
   metric: activated_developers_starting_a_second_durably_admitted_codex_task_within_7_days
   target: ">= 40%"
@@ -190,6 +266,12 @@ owner-local by default.
   provider protocol.
 - The Runtime Gateway can accidentally become a second engine or database.
   Any alternate model/tool loop or independent session truth blocks launch.
+- The built-in skill can accidentally become hidden authority. All durable
+  spec, plan, work-packet, criterion, and evidence transitions must remain
+  host-validated typed operations that the workroom can inspect.
+- ProductSpec ceremony can slow small work. The guided draft must be quick, and
+  the workroom must not require a spec for mechanical tasks outside the repo's
+  consequential-work threshold.
 - A polished timeline can hide data loss. Completeness, explicit gaps, durable
   admission, and restart fault receipts remain acceptance requirements.
 - Named isolated account custody adds first-run friction. The activation metric
@@ -213,14 +295,16 @@ owner-local by default.
   does one narrow conflict-safe edit action become necessary before launch?
 - Which stable Codex app-server capability/version window is supported, and
   what is the user-visible upgrade path when it closes?
+- What authoring affordance best preserves stable criterion IDs through a
+  revision while keeping the underlying ProductSpec plain Markdown?
 - Which local-only, opt-in counters are sufficient to evaluate activation and
   return without collecting stable account, machine, repository, prompt, or
   transcript identity?
 
 ## Owner Gates
 
-- Accept the exact installed-app Codex workroom journey and its explicit
-  read-only-review boundary.
+- Accept the exact installed-app Codex workroom journey, its ProductSpec-native
+  execution loop, and its explicit read-only-review boundary.
 - Approve any public language describing OpenAgents as a Codex workroom or
   companion; this spec and code/fixture proof alone authorize no claim.
 - Approve the MVP telemetry/consent copy before any post-launch success metric
@@ -234,8 +318,13 @@ owner-local by default.
 - Exact signed/notarized artifact, component-version, install, update,
   rollback/downgrade-refusal, diagnostics, reinstall, and cleanup receipts.
 - Packaged real-Codex vertical journey covering named isolated account,
-  repository grant, durable admission, typed stream, blocker/control, child
-  transcript, exact diff, terminal outcome, renderer reload, and app restart.
+  repository grant, guided valid ProductSpec, accepted revision-pinned plan,
+  two criterion-linked work packets, built-in skill use, one child transcript,
+  evidence/verification distinction, exact diff, terminal outcome, renderer
+  reload, and app restart.
+- Deterministic ProductSpec receipts for invalid input, rejected spec edit,
+  revision/digest mismatch, conflicting work-packet identity, missing evidence,
+  unavailable built-in skill, and attempted false completion.
 - Deterministic fault receipts for duplicate/conflicting intent, lost ACK,
   stream gap, stale generation, revoked grant, incompatible runtime, auth,
   quota/rate limit, and policy denial.
