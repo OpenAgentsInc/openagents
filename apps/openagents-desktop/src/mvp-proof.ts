@@ -43,6 +43,16 @@ export type MvpProofConfig = Readonly<{
   specPath: string
 }>
 
+export const resolveMvpProofCommand = (
+  installedExecutable: string | undefined,
+  packageRoot: string,
+): string[] => {
+  const installed = installedExecutable?.trim() ?? ""
+  return installed === ""
+    ? [path.join(path.resolve(packageRoot), "node_modules", ".bin", "electron"), "."]
+    : [path.resolve(installed)]
+}
+
 const validRelativeSpecPath = (value: string): boolean =>
   value.endsWith(".product-spec.md") && !path.isAbsolute(value) &&
   value.split(/[\\/]/).every(part => part !== "" && part !== "." && part !== "..")

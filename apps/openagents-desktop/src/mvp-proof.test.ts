@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
 
-import { mvpCodexReadyProbe, mvpProofRequiredSteps, resolveMvpProofConfig } from "./mvp-proof.ts"
+import { mvpCodexReadyProbe, mvpProofRequiredSteps, resolveMvpProofCommand, resolveMvpProofConfig } from "./mvp-proof.ts"
 
 describe("ProductSpec-native MVP proof contract", () => {
   test("requires the exact execution, child, verification, and owner-gate journey", () => {
@@ -55,5 +55,15 @@ describe("ProductSpec-native MVP proof contract", () => {
     expect(mvpCodexReadyProbe).not.toContain("shell-harness-select")
     expect(mvpCodexReadyProbe).not.toContain("CODEX_HOME")
     expect(mvpCodexReadyProbe).not.toContain("account")
+  })
+
+  test("launches with the package-owned Electron unless an installed executable is explicit", () => {
+    expect(resolveMvpProofCommand(undefined, "/repo/apps/openagents-desktop")).toEqual([
+      "/repo/apps/openagents-desktop/node_modules/.bin/electron",
+      ".",
+    ])
+    expect(resolveMvpProofCommand(" /Applications/OpenAgents.app/Contents/MacOS/OpenAgents ", "/repo/app")).toEqual([
+      "/Applications/OpenAgents.app/Contents/MacOS/OpenAgents",
+    ])
   })
 })
