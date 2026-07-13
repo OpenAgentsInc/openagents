@@ -1271,7 +1271,7 @@ describe("pure transitions", () => {
     const available = desktopShellView({
       ...baseState,
       workspace: "settings",
-      update: { phase: "available", channel: "rc", installedVersion: "0.1.0-rc.5", candidateVersion: "0.1.0-rc.6", reason: null },
+      update: { phase: "available", channel: "rc", installedVersion: "0.1.0-rc.5", candidateVersion: "0.1.0-rc.6", rollbackVersion: null, reason: null },
     })
     expect(nodeByKey(available, "desktop-update-status")?.content).toContain("0.1.0-rc.6")
     expect(nodeByKey(available, "desktop-update-check")?._tag).toBe("Button")
@@ -1281,11 +1281,19 @@ describe("pure transitions", () => {
     const staged = desktopShellView({
       ...baseState,
       workspace: "settings",
-      update: { phase: "staged", channel: "rc", installedVersion: "0.1.0-rc.5", candidateVersion: "0.1.0-rc.6", reason: null },
+      update: { phase: "staged", channel: "rc", installedVersion: "0.1.0-rc.5", candidateVersion: "0.1.0-rc.6", rollbackVersion: null, reason: null },
     })
+    expect(nodeByKey(staged, "desktop-update-apply")?._tag).toBe("Button")
     expect(nodeByKey(staged, "desktop-update-open-installer")?._tag).toBe("Button")
     expect(JSON.stringify(staged)).not.toContain("https://")
     expect(JSON.stringify(staged)).not.toContain("/Applications/")
+
+    const rollback = desktopShellView({
+      ...baseState,
+      workspace: "settings",
+      update: { phase: "rollback_available", channel: "rc", installedVersion: "0.1.0-rc.6", candidateVersion: null, rollbackVersion: "0.1.0-rc.5", reason: null },
+    })
+    expect(nodeByKey(rollback, "desktop-update-rollback")?.label).toContain("0.1.0-rc.5")
   })
 
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {

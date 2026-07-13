@@ -27,6 +27,7 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
 import { openDesktopUpdateStagingHost } from "./update-staging-host.ts"
+import { openMacOSUpdateApplier } from "./macos-update-applier.ts"
 import {
   DesktopUpdateStagingChannel,
   decodeDesktopUpdateStagingAction,
@@ -848,11 +849,25 @@ const localTurnJournal = openLocalTurnJournal(
 const codexHandoffBindings = openCodexHandoffBindings(
   path.join(app.getPath("userData"), "codex-handoff", "bindings.json"),
 )
-const desktopUpdateHost = openDesktopUpdateStagingHost({
-  root: path.join(app.getPath("userData"), "updates"),
+const desktopUpdateRoot = path.join(app.getPath("userData"), "updates")
+const desktopUpdateChannel = app.getVersion().includes("-rc.") ? "rc" : "stable"
+const desktopUpdateApplier = openMacOSUpdateApplier({
+  root: desktopUpdateRoot,
+  installedAppPath: path.resolve(path.dirname(app.getPath("exe")), "../.."),
   installedVersion: app.getVersion(),
-  channel: app.getVersion().includes("-rc.") ? "rc" : "stable",
+  channel: desktopUpdateChannel,
+  packaged: app.isPackaged,
+})
+const desktopUpdateHost = openDesktopUpdateStagingHost({
+  root: desktopUpdateRoot,
+  installedVersion: app.getVersion(),
+  channel: desktopUpdateChannel,
   openPath: artifactPath => shell.openPath(artifactPath),
+  applier: desktopUpdateApplier,
+  restart: () => setTimeout(() => {
+    app.relaunch()
+    app.quit()
+  }, 350),
 })
 let desktopIsQuitting = false
 const localTurnFlushers = new Set<() => unknown>()
@@ -1939,6 +1954,8 @@ ipcMain.handle(DesktopUpdateStagingChannel, (event, raw: unknown) => {
     case "check": return desktopUpdateHost.check()
     case "download": return desktopUpdateHost.download()
     case "open_installer": return desktopUpdateHost.openInstaller()
+    case "apply": return desktopUpdateHost.apply()
+    case "rollback": return desktopUpdateHost.rollback()
   }
 })
 ipcMain.handle(PluginConfigListChannel, () => pluginConfigStore.list())

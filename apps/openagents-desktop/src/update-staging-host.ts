@@ -11,6 +11,7 @@ import {
   verifySignedUpdateManifest,
 } from "./update-contract.ts"
 import { assertCredentialFreeHttpsUrl, decodeUpdateManifest } from "./release-publish.ts"
+import type { MacOSUpdateApplier } from "./macos-update-applier.ts"
 
 const MAX_MANIFEST_BYTES = 32 * 1024
 const MAX_SIGNATURE_BYTES = 8 * 1024
@@ -19,10 +20,11 @@ const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
 const SAFE_FAILURE_REASONS = new Set(["feed_unavailable", "response_too_large"])
 
 export type DesktopUpdateProjection = Readonly<{
-  phase: "current" | "checking" | "available" | "downloading" | "staged" | "rejected"
+  phase: "current" | "checking" | "available" | "downloading" | "staged" | "applying" | "restarting" | "rollback_available" | "rolling_back" | "rejected"
   channel: UpdateChannel
   installedVersion: string
   candidateVersion: string | null
+  rollbackVersion: string | null
   reason: string | null
 }>
 
@@ -48,6 +50,8 @@ export type DesktopUpdateStagingHost = Readonly<{
   check: () => Promise<DesktopUpdateProjection>
   download: () => Promise<DesktopUpdateProjection>
   openInstaller: () => Promise<DesktopUpdateProjection>
+  apply: () => Promise<DesktopUpdateProjection>
+  rollback: () => Promise<DesktopUpdateProjection>
 }>
 
 const decodeReleasePointer = (value: unknown): ReleasePointer | null => {
@@ -121,6 +125,8 @@ export const openDesktopUpdateStagingHost = (input: Readonly<{
   fetch?: typeof globalThis.fetch
   pin?: PinnedReleaseKey
   openPath: (artifactPath: string) => Promise<string>
+  applier?: Pick<MacOSUpdateApplier, "rollbackAvailable" | "rollbackVersion" | "install" | "rollback">
+  restart?: () => void
   baseUrl?: string
 }>): DesktopUpdateStagingHost => {
   const fetchImpl = input.fetch ?? globalThis.fetch
@@ -143,10 +149,12 @@ export const openDesktopUpdateStagingHost = (input: Readonly<{
       ? "rejected"
       : document.stagedArtifactName !== null && stagedPath() !== null && existsSync(stagedPath()!)
         ? "staged"
-        : document.candidate !== null ? "available" : "current"),
+        : document.candidate !== null ? "available"
+          : input.applier?.rollbackAvailable() === true ? "rollback_available" : "current"),
     channel: input.channel,
     installedVersion: input.installedVersion,
     candidateVersion: document.candidate?.version ?? null,
+    rollbackVersion: input.applier?.rollbackVersion() ?? null,
     reason: document.reason,
   })
   const reject = (reason: string): DesktopUpdateProjection => {
@@ -235,5 +243,45 @@ export const openDesktopUpdateStagingHost = (input: Readonly<{
     return snapshot()
   }
 
-  return { snapshot, check, download, openInstaller }
+  const apply = async (): Promise<DesktopUpdateProjection> => {
+    const artifact = stagedPath()
+    const candidateVersion = document.candidate?.version ?? null
+    if (busy || artifact === null || candidateVersion === null || !existsSync(artifact)) return snapshot()
+    if (input.applier === undefined) return reject("update_apply_unavailable")
+    busy = true
+    transient = "applying"
+    try {
+      const result = await input.applier.install(artifact, candidateVersion)
+      if (!result.ok) return reject(result.reason)
+      clearStaged()
+      document = { ...document, candidate: null, artifactUrl: null, stagedArtifactName: null, reason: null }
+      writeDocument(documentFile, document)
+      transient = "restarting"
+      input.restart?.()
+      return snapshot()
+    } catch {
+      return reject("update_apply_failed")
+    } finally {
+      busy = false
+    }
+  }
+
+  const rollback = async (): Promise<DesktopUpdateProjection> => {
+    if (busy || input.applier?.rollbackAvailable() !== true) return snapshot()
+    busy = true
+    transient = "rolling_back"
+    try {
+      const result = await input.applier.rollback()
+      if (!result.ok) return reject(result.reason)
+      transient = "restarting"
+      input.restart?.()
+      return snapshot()
+    } catch {
+      return reject("rollback_failed")
+    } finally {
+      busy = false
+    }
+  }
+
+  return { snapshot, check, download, openInstaller, apply, rollback }
 }

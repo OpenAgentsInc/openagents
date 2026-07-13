@@ -77,6 +77,7 @@ describe("macOS signed update applier", () => {
       return { exitCode: 0, stdout: "", stderr: "" }
     } })
     expect(restarted.rollbackAvailable()).toBe(true)
+    expect(restarted.rollbackVersion()).toBe("0.1.0-rc.5")
     expect(await restarted.rollback()).toEqual({ ok: true, action: "rolled_back", installedVersion: "0.1.0-rc.5", previousVersion: null })
     expect(restarted.rollbackAvailable()).toBe(false)
     expect(await restarted.rollback()).toEqual({ ok: false, reason: "rollback_unavailable" })

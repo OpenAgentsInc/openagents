@@ -5,14 +5,15 @@ import type { DesktopUpdateProjection } from "./update-staging-host.ts"
 
 export const DesktopUpdateStagingChannel = "openagents-desktop/update-staging" as const
 export const DesktopUpdateStagingActionSchema = Schema.Struct({
-  action: Schema.Literals(["snapshot", "check", "download", "open_installer"]),
+  action: Schema.Literals(["snapshot", "check", "download", "open_installer", "apply", "rollback"]),
 })
 const UpdateChannelSchema = Schema.Literals(["stable", "rc"])
 export const DesktopUpdateProjectionSchema = Schema.Struct({
-  phase: Schema.Literals(["current", "checking", "available", "downloading", "staged", "rejected"]),
+  phase: Schema.Literals(["current", "checking", "available", "downloading", "staged", "applying", "restarting", "rollback_available", "rolling_back", "rejected"]),
   channel: UpdateChannelSchema,
   installedVersion: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
   candidateVersion: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
+  rollbackVersion: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
   reason: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
 })
 
@@ -33,5 +34,6 @@ export const emptyDesktopUpdateProjection = (): DesktopUpdateProjection => ({
   channel: "rc" satisfies UpdateChannel,
   installedVersion: "0.0.0",
   candidateVersion: null,
+  rollbackVersion: null,
   reason: "update_host_unavailable",
 })

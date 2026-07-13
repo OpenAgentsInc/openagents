@@ -101,4 +101,35 @@ describe("Desktop signed update staging host", () => {
     expect(downloadProjection).toMatchObject({ phase: "rejected", reason: "update_download_failed" })
     expect(JSON.stringify(downloadProjection)).not.toContain(download.root)
   })
+
+  test("applies the verified artifact, requests restart, and projects the retained rollback after restart", async () => {
+    const h = fixture()
+    let restarts = 0
+    let rollback = false
+    const installed: string[] = []
+    const applier = {
+      rollbackAvailable: () => rollback,
+      rollbackVersion: () => rollback ? "0.1.0-rc.5" : null,
+      install: async (artifactPath: string, candidateVersion: string) => {
+        installed.push(`${path.basename(artifactPath)}:${candidateVersion}`)
+        rollback = true
+        return { ok: true, action: "installed", installedVersion: candidateVersion, previousVersion: "0.1.0-rc.5" } as const
+      },
+      rollback: async () => {
+        rollback = false
+        return { ok: true, action: "rolled_back", installedVersion: "0.1.0-rc.5", previousVersion: null } as const
+      },
+    }
+    const host = openDesktopUpdateStagingHost({ root: h.root, installedVersion: "0.1.0-rc.5", channel: "rc", baseUrl: h.base, pin: h.pin, fetch: h.fetch, openPath: async () => "", applier, restart: () => { restarts += 1 } })
+    expect((await host.check()).phase).toBe("available")
+    expect((await host.download()).phase).toBe("staged")
+    expect(await host.apply()).toMatchObject({ phase: "restarting", candidateVersion: null, rollbackVersion: "0.1.0-rc.5" })
+    expect(installed).toEqual(["OpenAgents-0.1.0-rc.6-arm64.dmg:0.1.0-rc.6"])
+    expect(restarts).toBe(1)
+
+    const restarted = openDesktopUpdateStagingHost({ root: h.root, installedVersion: "0.1.0-rc.6", channel: "rc", baseUrl: h.base, pin: h.pin, fetch: h.fetch, openPath: async () => "", applier, restart: () => { restarts += 1 } })
+    expect(restarted.snapshot()).toMatchObject({ phase: "rollback_available", rollbackVersion: "0.1.0-rc.5" })
+    expect(await restarted.rollback()).toMatchObject({ phase: "restarting", rollbackVersion: null })
+    expect(restarts).toBe(2)
+  })
 })

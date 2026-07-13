@@ -620,6 +620,8 @@ export const DesktopCodingSessionRecovered = defineIntent("DesktopCodingSessionR
 export const DesktopUpdateChecked = defineIntent("DesktopUpdateChecked", Schema.Null)
 export const DesktopUpdateDownloaded = defineIntent("DesktopUpdateDownloaded", Schema.Null)
 export const DesktopUpdateInstallerOpened = defineIntent("DesktopUpdateInstallerOpened", Schema.Null)
+export const DesktopUpdateApplied = defineIntent("DesktopUpdateApplied", Schema.Null)
+export const DesktopUpdateRolledBack = defineIntent("DesktopUpdateRolledBack", Schema.Null)
 export const DesktopWorkspaceSelected = defineIntent(
   "DesktopWorkspaceSelected",
   Schema.Literals(desktopWorkspaceNames),
@@ -695,6 +697,8 @@ export const desktopShellIntents = [
   DesktopUpdateChecked,
   DesktopUpdateDownloaded,
   DesktopUpdateInstallerOpened,
+  DesktopUpdateApplied,
+  DesktopUpdateRolledBack,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
   DesktopCommandPaletteToggled,
@@ -1190,7 +1194,7 @@ export type CodingCatalogHost = Readonly<{
   recover: (sessionRef: string) => Promise<DesktopCodingCatalogProjection>
 }>
 export type DesktopUpdateRendererHost = Readonly<{
-  run: (action: "snapshot" | "check" | "download" | "open_installer") => Promise<DesktopUpdateProjection>
+  run: (action: "snapshot" | "check" | "download" | "open_installer" | "apply" | "rollback") => Promise<DesktopUpdateProjection>
 }>
 const unavailableDesktopUpdateRendererHost: DesktopUpdateRendererHost = {
   run: async () => emptyDesktopUpdateProjection(),
@@ -2083,6 +2087,16 @@ export const makeDesktopShellHandlers = (
   }),
   DesktopUpdateInstallerOpened: () => Effect.gen(function* () {
     const update = yield* Effect.promise(() => updateHost.run("open_installer"))
+    yield* SubscriptionRef.update(state, current => ({ ...current, update }))
+  }),
+  DesktopUpdateApplied: () => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({ ...current, update: { ...current.update, phase: "applying" as const, reason: null } }))
+    const update = yield* Effect.promise(() => updateHost.run("apply"))
+    yield* SubscriptionRef.update(state, current => ({ ...current, update }))
+  }),
+  DesktopUpdateRolledBack: () => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({ ...current, update: { ...current.update, phase: "rolling_back" as const, reason: null } }))
+    const update = yield* Effect.promise(() => updateHost.run("rollback"))
     yield* SubscriptionRef.update(state, current => ({ ...current, update }))
   }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
@@ -3205,6 +3219,10 @@ const desktopUpdateSettings = (update: DesktopUpdateProjection): View => Card(
           ? `OpenAgents ${update.candidateVersion ?? "update"} is available.`
           : update.phase === "staged"
             ? `OpenAgents ${update.candidateVersion ?? "update"} is verified and ready to install.`
+            : update.phase === "applying" ? "Verifying the app bundle and preserving the rollback slot…"
+              : update.phase === "restarting" ? "Update applied. Restarting OpenAgents…"
+                : update.phase === "rollback_available" ? `OpenAgents ${update.installedVersion} is installed. Rollback to ${update.rollbackVersion ?? "the retained release"} is available.`
+                  : update.phase === "rolling_back" ? "Verifying and restoring the retained release…"
             : update.phase === "checking" ? "Checking the signed update feed…"
               : update.phase === "downloading" ? "Downloading and verifying the signed artifact…"
                 : `Update unavailable: ${update.reason ?? "unknown rejection"}`,
@@ -3212,9 +3230,13 @@ const desktopUpdateSettings = (update: DesktopUpdateProjection): View => Card(
       color: update.phase === "rejected" ? "warning" : "textMuted",
     }),
     Stack({ key: "desktop-update-actions", direction: "row", gap: "2", align: "center" }, [
-      Button({ key: "desktop-update-check", label: "Check for updates", variant: "secondary", disabled: update.phase === "checking" || update.phase === "downloading", onPress: IntentRef("DesktopUpdateChecked") }),
+      Button({ key: "desktop-update-check", label: "Check for updates", variant: "secondary", disabled: ["checking", "downloading", "applying", "restarting", "rolling_back"].includes(update.phase), onPress: IntentRef("DesktopUpdateChecked") }),
       ...(update.phase === "available" ? [Button({ key: "desktop-update-download", label: "Download and verify", variant: "primary", onPress: IntentRef("DesktopUpdateDownloaded") })] : []),
-      ...(update.phase === "staged" ? [Button({ key: "desktop-update-open-installer", label: "Open installer", variant: "primary", onPress: IntentRef("DesktopUpdateInstallerOpened") })] : []),
+      ...(update.phase === "staged" ? [
+        Button({ key: "desktop-update-apply", label: "Install and restart", variant: "primary", onPress: IntentRef("DesktopUpdateApplied") }),
+        Button({ key: "desktop-update-open-installer", label: "Open DMG", variant: "secondary", onPress: IntentRef("DesktopUpdateInstallerOpened") }),
+      ] : []),
+      ...(update.phase === "rollback_available" ? [Button({ key: "desktop-update-rollback", label: `Roll back to ${update.rollbackVersion ?? "previous"} and restart`, variant: "secondary", onPress: IntentRef("DesktopUpdateRolledBack") })] : []),
     ]),
   ])],
 )

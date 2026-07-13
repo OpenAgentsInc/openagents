@@ -784,7 +784,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       ),
     }
     const updateRendererHost = {
-      run: async (action: "snapshot" | "check" | "download" | "open_installer") => {
+      run: async (action: "snapshot" | "check" | "download" | "open_installer" | "apply" | "rollback") => {
         try {
           const value = await bridge?.updates?.run?.({ action })
           return decodeDesktopUpdateProjection(value) ?? emptyDesktopUpdateProjection()

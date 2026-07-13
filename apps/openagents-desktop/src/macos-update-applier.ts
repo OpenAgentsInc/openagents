@@ -76,6 +76,7 @@ const output = (result: UpdateCommandResult): string => `${result.stdout}\n${res
 
 export type MacOSUpdateApplier = Readonly<{
   rollbackAvailable: () => boolean
+  rollbackVersion: () => string | null
   install: (artifactPath: string, candidateVersion: string) => Promise<MacOSUpdateResult>
   rollback: () => Promise<MacOSUpdateResult>
 }>
@@ -176,6 +177,8 @@ export const openMacOSUpdateApplier = (input: Readonly<{
     transaction.channel === input.channel &&
     transaction.previousVersion !== null && existsSync(rollbackApp)
 
+  const rollbackVersion = (): string | null => rollbackAvailable() ? transaction?.previousVersion ?? null : null
+
   const install = async (artifactPath: string, candidateVersion: string): Promise<MacOSUpdateResult> => {
     const unsupported = supported()
     if (unsupported !== null) return { ok: false, reason: unsupported }
@@ -236,5 +239,5 @@ export const openMacOSUpdateApplier = (input: Readonly<{
     return { ok: true, action: "rolled_back", installedVersion: previousVersion, previousVersion: null }
   }
 
-  return { rollbackAvailable, install, rollback }
+  return { rollbackAvailable, rollbackVersion, install, rollback }
 }
