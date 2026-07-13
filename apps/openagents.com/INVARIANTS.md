@@ -2393,6 +2393,18 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   failures to fixed typed responses, and returns only
   `publicFleetRunAuthorityRecord`; cross-owner observation is the same fixed
   `run_not_found` as an absent run.
+- `GET /api/sarah/fleet-runs` without a `runRef` returns the same owner-scoped
+  authority as a bounded shared-client projection: at most 20 newest runs and
+  at most 25 newest attempts per run. It is read-only, refs-only, explicitly
+  marks `privateMaterialExcluded: true`, and never grants either client
+  placement, claim, dispatch, account-custody, or terminal authority.
+- OpenAgents mobile and Desktop consume that one projection rather than
+  defining client-specific Fleet schemas. The mobile host and Desktop main
+  process retain the owner token; renderer/UI code receives only the decoded
+  public projection. Legacy authority timestamps are normalized at the shared
+  decoding boundary. Desktop requests server authority before its optional
+  local-Pylon projection, so a missing local runtime cannot hide a valid
+  server FleetRun or promote a local cache into authority.
 - The actual Sarah `coding_fleet_start` tool reaches this adapter through the
   canonical OpenAgents base resolver (`SARAH_OPENAGENTS_BASE_URL`, production
   default `https://openagents.com`) plus the fixed route. The Cloud Run request

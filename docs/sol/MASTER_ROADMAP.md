@@ -352,7 +352,9 @@ The detailed gap analysis is
 [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md).
 FC-4's bounded deployed-schema/registry proof is retained in the
 [`managed-cloud production readiness receipt`](./2026-07-12-fc4-managed-cloud-production-readiness-receipt.md);
-it does not advance C3 past the live managed-executor and cross-client gates.
+the later
+[`hybrid client acceptance receipt`](./2026-07-13-fc4-hybrid-client-acceptance-receipt.md)
+closes those live managed-executor and cross-client gates.
 
 ## Mobile capability contract
 
@@ -393,7 +395,7 @@ worker closeout, or polished UI never manufactures live or owner acceptance.
 | C0 | Closed historical implementation baseline for the durable Fleet seam |
 | C1 | Closed/deployed minimum-safe run, claim, reconnect, and supervision substrate |
 | C2 | Closed #8640 simultaneous named Codex+Claude mixed-account proof; substrate only, never client cutover or Sarah authority |
-| C3 | Open product integration boundary: #8547's first managed Agent Computer is accepted in production; #8636's schema/readiness, per-unit hybrid placement, and remote Agent Computer dispatch seams are code/fixture-proven while its real owner-local plus managed-cloud mobile/Desktop hybrid receipt remains open |
+| C3 | Closed product integration boundary: #8547 accepts the first managed Agent Computer in production; #8636 accepts one concurrent owner-local plus managed-cloud run, one claim registry, mobile management of the admitted managed account, same-ref Android/Desktop projection, honest usage, and zero-residue reclaim |
 
 R7, not C2, is owner-facing software cutover. The historical C0–C3 evidence
 and fallback rules are archived in Backroom at
@@ -430,14 +432,16 @@ GitHub before dispatch and age-checked by the offline documentation guard.
   replay after relink. These completed conversation/fault gates do not prove
   process-restart continuation of an in-flight local provider turn.
 - Closed #8547 proves the first accepted brokered Agent Computer/workroom;
-  #8636's structural hybrid-routing gap is now code- and fixture-proven. One
+  closed #8636 proves the bounded hybrid routing path. One
   `auto` plan can place each unit independently against typed quota, cost, data
   posture, repository, and task/isolation constraints through one claim
   registry (`dc88054e7c`), and managed units can cross the authenticated Pylon
-  route to the broker-owned Agent Computer dispatch seam (`8244bd64e9`). #8636
-  remains open for the literal concurrent owner-local plus managed Agent
-  Computer run, Android control, Desktop observation, matching refs, and zero-
-  residue stop/reclaim receipt. Portability, general broker, owner-managed
+  route to the broker-owned Agent Computer dispatch seam (`8244bd64e9`). The
+  [FC-4 receipt](./2026-07-13-fc4-hybrid-client-acceptance-receipt.md) records
+  the literal concurrent owner-local plus managed Agent Computer run, phone-
+  selected managed-account custody, Android and Desktop same-ref projection,
+  honest exact/`not_measured` usage, and zero-residue reclaim. Portability,
+  general broker, owner-managed
   enrollment, provider-adapter breadth, and any-host directory remain in the
   PORT packet rather than silently expanding #8636.
 - Closed #8640 remains the accepted simultaneous named Codex+Claude substrate
@@ -488,7 +492,7 @@ the currently unclaimed worker lease.
 | [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566) | Sole R0–R7 program parent |
 | [#8574](https://github.com/OpenAgentsInc/openagents/issues/8574) | Desktop D0–D6/R5 track |
 | [#8597](https://github.com/OpenAgentsInc/openagents/issues/8597) | Mobile R0–R7/R6 track |
-| [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | One claim registry across local/managed routing |
+| [#8636](https://github.com/OpenAgentsInc/openagents/issues/8636) | Closed: one accepted claim registry across owner-local/managed routing; [receipt](./2026-07-13-fc4-hybrid-client-acceptance-receipt.md) |
 | [#8707](https://github.com/OpenAgentsInc/openagents/issues/8707) | CUT-27 local coding cutover declaration |
 | [#8741](https://github.com/OpenAgentsInc/openagents/issues/8741) | AUDIO-8 owner confirmation of real-microphone and UI-stability fixes |
 | [#8748](https://github.com/OpenAgentsInc/openagents/issues/8748) | PORT-03 first local↔managed graph-wide move and failback |
@@ -522,12 +526,11 @@ Live issues and claims control exact selection. At this snapshot:
    Android-emulator continuation/control/interruption; accessibility, privacy,
    security, provenance, and rollback evidence; and the product/runbook change
    making OpenAgents Desktop the default local surface for the proven scope.
-4. Complete #8636's remaining live acceptance on top of closed #8547 and the
-   landed per-unit placement plus remote Agent Computer dispatch seams: run
-   concurrent owner-local and managed-cloud units, control the managed unit
-   from Android, observe/resume from Desktop, and retain matching routing,
-   claim, outcome, usage, writeback, fallback, stop, and reclaim refs with zero
-   residue or duplicate claims.
+4. Closed #8636 now retains the concurrent owner-local and managed-cloud run,
+   phone-managed named account admission, Android/Desktop same-ref projection,
+   honest usage, and zero-residue reclaim receipt. Keep graph movement,
+   owner-managed remote enrollment, provider breadth, and any-host control in
+   PORT-03 through PORT-08.
 5. Finish AUDIO-8 #8741's exact owner-launcher microphone/UI confirmation,
    then re-close it. Treat closed #8733 as the P1 audio implementation
    substrate and do not widen Runtime Gateway, Desktop command, Sync, or
