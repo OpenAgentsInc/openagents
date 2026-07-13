@@ -14,7 +14,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { cpSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, session, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron"
+import { BrowserWindow, Menu, app, dialog, ipcMain, protocol, session, shell, systemPreferences, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session } from "electron"
 import { Effect } from "effect"
 import {
   buildCloseTurnIntent,
@@ -726,9 +726,9 @@ ipcMain.handle(DesktopRuntimeGatewayInvokeChannel, (event, value: unknown) => {
 // explicitly given the same root. Normal development retains this stable path.
 // The frozen packaged identity remains the owner decision tracked by #8574.
 
-const hardenSession = (): void => {
+const hardenSession = (target: Session = session.defaultSession): void => {
   // Deny-by-default: this shell requests no runtime permissions.
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+  target.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false)
   })
 }
@@ -2169,6 +2169,7 @@ const createWindow = (): BrowserWindow => {
     title: "OpenAgents",
     icon: desktopIconPath,
     webPreferences: {
+      ...(isolatedAppProofMode ? { partition: `openagents-isolated-proof-${process.pid}` } : {}),
       contextIsolation: true,
       nodeIntegration: false,
       nodeIntegrationInSubFrames: false,
@@ -2181,6 +2182,7 @@ const createWindow = (): BrowserWindow => {
       preload: path.join(here, "preload.cjs"),
     },
   })
+  if (isolatedAppProofMode) hardenSession(window.webContents.session)
   const unsubscribeRuntime = runtimeGateway.subscribe(event => {
     if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
   })
@@ -4011,7 +4013,15 @@ void app.whenReady().then(async () => {
     path.join(app.getPath("userData"), "commands", "bindings.json"),
   )
   installDesktopCommandMenu(desktopCommandBindings.snapshot())
-  hardenSession()
+  if (isolatedAppProofMode) {
+    // Resolving Electron's default session initializes Chromium's persistent
+    // cookie encryption and can invoke macOS Keychain before BrowserWindow.
+    // The temp-only proof has no account/network session to harden; avoid
+    // constructing it entirely instead of weakening the production session.
+    console.warn("[openagents-desktop] isolated app proof: persistent browser session disabled")
+  } else {
+    hardenSession()
+  }
   try {
     const syncHost = openDesktopSyncHost({
       databasePath: path.join(app.getPath("userData"), "sync", "khala-sync.sqlite"),
