@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop Codex Workroom MVP"
 artifact_type: "prd"
-spec_revision: 5
+spec_revision: 6
 author: "OpenAgents"
 created_at: "2026-07-13T00:00:00Z"
-updated_at: "2026-07-13T14:36:34Z"
+updated_at: "2026-07-13T22:15:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -248,10 +248,13 @@ owner-local by default.
   generation, revoked grant, quota exhaustion, rate limit, auth revocation,
   and policy denial converge to distinct typed states. Durable repair precedes
   live resubscription.
-- **CW-AC-17:** The renderer contract and diagnostics contain no credential, account
-  identity, loopback URL/secret, raw provider event, prompt/transcript body,
-  repository content, absolute root, generic IPC, process handle, or general
-  filesystem handle.
+- **CW-AC-17:** Diagnostics and non-content renderer control envelopes contain no
+  credential, account identity, loopback URL/secret, raw provider event,
+  prompt/transcript body, repository content, absolute root, generic IPC,
+  process handle, or general filesystem handle. Content views receive only
+  bounded transcript and repository projections admitted for the selected
+  work context; they never receive raw provider payloads, credentials,
+  absolute roots, or general process/filesystem authority.
 - **CW-AC-18:** The exact release candidate passes install, launch, one real Codex workroom
   task, renderer reload, app restart, interrupted update, rollback/downgrade
   refusal, diagnostics export, uninstall/reinstall, and cleanup receipts.
