@@ -40,23 +40,35 @@ A spec **declares — it never enforces**:
 ```text
 specs/<area>/<name>.product-spec.md          # e.g. specs/web/, specs/khala-code/, specs/sarah/
 specs/<area>/<name>.decision-trace.json      # optional companion (PS-5, later)
-specs/<area>/<name>.assurance-spec.md        # proposed proof-design companion (not implemented)
+specs/<area>/<name>.assurance-spec.md        # proposed proof-design companion
 specs/<area>/<name>.assurance-decision-trace.json # proposed assurance-policy history
 ```
 
 Owner-directed exception: the first deployable-product package keeps its one
 canonical Product Spec beside its audit at
 `docs/mvp/openagents-codex-workroom-mvp.product-spec.md`. The ProductSpec test
-sweep validates that co-located file. Its proposed first AssuranceSpec will
-likewise live beside it as
-`docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md` once the companion
-implementation exists. Do not mirror either artifact back into `specs/`.
+sweep validates that co-located file. Its generated AssuranceSpec proposal
+likewise lives beside it as
+`docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md`. Do not mirror either
+artifact back into `specs/`.
 
 Scaffold with:
 
 ```sh
 bun packages/product-spec/src/cli.ts init specs/<area>/<name>.product-spec.md --title "..."
 ```
+
+Generate a structurally valid AssuranceSpec proposal from an executable
+ProductSpec, optionally with committed repository context:
+
+```sh
+bun packages/assurance-spec/src/cli.ts propose \
+  specs/<area>/<name>.product-spec.md --repo .
+```
+
+The generated proposal is not admitted or executable. Its repository
+candidates remain unbound and every unresolved proof-design field reports
+`needs_design`.
 
 ## Frontmatter policy
 
@@ -146,9 +158,11 @@ profiles belong under `assurance/environments/`; deterministic generated
 Assurance Manifests belong under `generated/assurance/` if committed; private
 or large run evidence belongs outside Git under the run-artifact store.
 
-These are proposed conventions, not current gates. The local ProductSpec
-package also has not yet implemented upstream `0.19.0` structured items or
-Related Artifacts; see
-`docs/assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`. Do not add AssuranceSpec
-files to the ProductSpec validation sweep or claim an Observer compiler until
-the schema, parser, conformance corpus, and deterministic compiler exist.
+These are proposed conventions, not current gates. The bounded proposal
+profile has a schema, parser, serializer, validators, and CLI in
+`packages/assurance-spec`; full conformance, custom-section preservation,
+admission, and compilation remain planned. The local ProductSpec package also
+has not yet implemented upstream `0.19.0` structured items or Related
+Artifacts; see `docs/assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`. Do not add
+AssuranceSpec files to the ProductSpec validation sweep or claim an Observer
+compiler until the full conformance corpus and deterministic compiler exist.

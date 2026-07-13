@@ -185,7 +185,7 @@
     },
     "apps/openagents-desktop": {
       "name": "@openagentsinc/openagents-desktop",
-      "version": "0.1.0-rc.5",
+      "version": "0.1.0-rc.6",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.172",
         "@effect-native/core": "workspace:*",
@@ -195,6 +195,7 @@
         "@openagentsinc/behavior-contracts": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/khala-sync-client": "workspace:*",
+        "@openagentsinc/product-spec": "workspace:*",
         "@openagentsinc/pylon-core": "workspace:*",
         "@openai/codex": "0.144.1",
         "@openai/codex-darwin-arm64": "npm:@openai/codex@0.144.1-darwin-arm64",
@@ -805,6 +806,21 @@
       "dependencies": {
         "effect": "catalog:",
         "foldkit": "^0.102.1",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/assurance-spec": {
+      "name": "@openagentsinc/assurance-spec",
+      "version": "0.1.0",
+      "bin": {
+        "assurance-spec": "./src/cli.ts",
+      },
+      "dependencies": {
+        "@openagentsinc/product-spec": "workspace:*",
+        "effect": "catalog:",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
@@ -2056,6 +2072,8 @@
     "@openagentsinc/api-worker": ["@openagentsinc/api-worker@workspace:apps/openagents.com/workers/api"],
 
     "@openagentsinc/arbiter-effect": ["@openagentsinc/arbiter-effect@workspace:packages/arbiter-effect"],
+
+    "@openagentsinc/assurance-spec": ["@openagentsinc/assurance-spec@workspace:packages/assurance-spec"],
 
     "@openagentsinc/atif": ["@openagentsinc/atif@workspace:packages/atif"],
 
@@ -5164,6 +5182,8 @@
     "@openagentsinc/api-worker/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/arbiter-effect/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
+
+    "@openagentsinc/assurance-spec/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/atif/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 

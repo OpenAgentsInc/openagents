@@ -2,8 +2,9 @@
 
 Date: 2026-07-13
 
-Status: implementation plan; the authored Assurance Spec and supporting code do
-not yet exist
+Status: implementation plan in progress; the bounded proposal package and
+generated MVP proposal exist, while review/admission, compiler, adapters,
+execution, and receipt integration remain unimplemented
 
 ## Outcome
 
@@ -13,7 +14,7 @@ Desktop MVP ProductSpec.
 
 The first vertical slice is successful when:
 
-1. an authored Assurance Spec binds the exact current MVP ProductSpec and all
+1. a reviewed Assurance Spec binds the exact current MVP ProductSpec and all
    18 criterion IDs;
 2. the format parser/validator accepts it and rejects known invalid fixtures;
 3. an external review/admission artifact binds its exact revision/digest;
@@ -60,7 +61,7 @@ portable Related Artifact for `CW-AC-04`. The first AssuranceSpec still tests
 the current MVP as requested; upstream-current evidence publication follows a
 separately reviewed ID/spec revision migration.
 
-The first authored companion target is:
+The first generated companion is:
 
 ```text
 docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md
@@ -71,11 +72,12 @@ second subject copy under `specs/` or `docs/assurance/`.
 
 ## Narrow first obligation
 
-The first Assurance Spec names all 18 subject criteria, but initially admits
-one narrow obligation:
+The generated proposal names all 18 subject criteria and creates one unresolved
+required obligation per criterion. It admits none. The first reviewed revision
+should complete this narrow generated obligation:
 
 ```yaml
-id: "MVP-AO-001"
+id: "AO-CW-AC-04-01"
 title: "The MVP ProductSpec exposes exact stable executable criterion identity"
 criterion_refs:
   - "CW-AC-04"
@@ -112,9 +114,10 @@ an existing spec through the packaged product, or the rule that no work starts
 while IDs are absent. Those require later obligations, including the existing
 Desktop workroom tests and eventually packaged-product evidence.
 
-The remaining 17 criteria produce `uncovered_acceptance_criterion` adequacy
-diagnostics and a `needs_design` readiness projection. They are not
-`not_applicable`, waived, deferred out of sight, or counted toward green.
+All 18 generated obligations initially produce one `obligation_needs_design`
+diagnostic. After the narrow `AO-CW-AC-04-01` proof design is reviewed, the
+other 17 remain `needs_design`. They are not `not_applicable`, waived,
+deferred out of sight, or counted toward green.
 
 ## Existing evidence to bind first
 
@@ -162,7 +165,7 @@ root/child real turns, independent artifact verification, child-transcript,
 and pending owner-gate steps with screenshots and a journal. That makes it a
 high-value later packaged/real-Codex adapter candidate.
 
-It does **not** replace `MVP-AO-001`. The current script authors its own
+It does **not** replace `AO-CW-AC-04-01`. The current script authors its own
 two-criterion `FX-AC-01`/`FX-AC-02` ProductSpec fixture and therefore does not
 bind or prove the canonical revision-6 `CW-AC-01…18` subject. Assurance must
 record that distinction. The first slice establishes exact subject identity;
@@ -282,7 +285,7 @@ variant fails with a stable code.
 
 ### AS-MVP-1 — AssuranceSpec document core
 
-Create `packages/assurance-spec/` with:
+Implemented bounded proposal slice in `packages/assurance-spec/`:
 
 - Effect Schema semantic model for v0.1 frontmatter, mandatory sections, and
   the subject/environment/obligation/gate/evidence/authority blocks needed by
@@ -290,25 +293,34 @@ Create `packages/assurance-spec/` with:
 - Markdown parser and serializer;
 - structural validator with stable error codes;
 - adequacy validator separated from structural validity;
-- CLI `validate` and `coverage` commands;
-- valid/invalid fixture corpus;
+- CLI `propose`, `validate`, and `coverage` commands;
+- deterministic one-unresolved-obligation-per-criterion proposal;
+- optional committed-HEAD/tree repository inventory that never auto-maps
+  candidate artifacts to proof;
+- focused valid/invalid and clean/dirty repository fixtures;
 - parse → serialize → parse semantic equality;
-- schema/parser parity and unsupported-version tests;
-- custom-section preservation.
+- unsupported-version rejection.
+
+Still required for the full document-core exit:
+
+- comprehensive schema/parser parity and conformance fixtures;
+- custom-section preservation rather than explicit rejection;
+- reviewed proof-design and admission annotations;
+- the upstream-current ProductSpec item profile.
 
 Do not implement speculative techniques not used by the pilot. Keep the schema
 extensible and make unsupported techniques typed gaps.
 
-Exit: the hand-authored MVP Assurance Spec is structurally valid, round-trips,
-binds the exact subject, and reports 17 uncovered criteria without pretending
-they pass.
+Current: the generated MVP AssuranceSpec is structurally valid, round-trips,
+binds the exact subject, and reports 18 obligations needing design without
+pretending they pass. Exit remains open until the full items above land.
 
 ### AS-MVP-2 — review and admission
 
 - define minimal Assurance review-annotation and admission schemas;
 - require review of subject fidelity, traceability, oracle adequacy, falsifier
   strength, environment fidelity, evidence sufficiency, and authority
-  containment for `MVP-AO-001`;
+  containment for `AO-CW-AC-04-01`;
 - bind exact AssuranceSpec revision/digest, ProductSpec revision/digest, and
   review-set digest;
 - make compilation refuse missing, stale, mismatched, or unauthorized
@@ -335,7 +347,7 @@ differs.
 Compile only admitted inputs into canonical JSON containing:
 
 - exact subject, AssuranceSpec, admission, profile, lock, and compiler refs;
-- resolved `MVP-AO-001` candidate and falsifier units;
+- resolved `AO-CW-AC-04-01` candidate and falsifier units;
 - dependency and dogfood-gate graph;
 - JUnit and sensitivity-receipt requirements;
 - repository-relative command argv and symbolic run-relative artifact slots;
@@ -407,7 +419,7 @@ state.
 - make the evidence packet's criterion IDs exactly `[CW-AC-04]`, never a
   broader set. A second packet may implement the receipt bridge under the
   narrow independent-verification portion of `CW-AC-08`; it has its own tests
-  and does not inherit `MVP-AO-001` evidence. The `CW-AC-04` evidence packet
+  and does not inherit `AO-CW-AC-04-01` evidence. The `CW-AC-04` evidence packet
   depends on that bridge packet reaching host `verified`;
 - admit the bridge packet and evidence packet only while each is `active` with
   its exact live lease. The host cannot append evidence to an
@@ -520,7 +532,7 @@ evidence-chain diagnostics only in their proper layers, including
 
 | Case | Expected result |
 | --- | --- |
-| Exact MVP r6 subject, valid AssuranceSpec | Structurally valid; one obligation; 17 coverage gaps |
+| Exact MVP r6 subject, generated proposal | Structurally valid; 18 obligations; 18 `needs_design`; non-executable |
 | ProductSpec revision changed | `subject_revision_mismatch`; no compile |
 | ProductSpec bytes changed | `subject_document_digest_mismatch`; no compile |
 | Criterion missing/duplicated | binding failure; no compile |
@@ -538,27 +550,28 @@ evidence-chain diagnostics only in their proper layers, including
 | Eval artifact targets `SM-*` after PSEL-MVP-1 | valid with `unusual_related_artifact_target` warning |
 | Typed evidence-attachment-only edit after dual-digest support | document digest changes; intent digest/revision stay stable; existing Desktop run mismatches |
 
-## Current blocker already observed
+## Current package check
 
-In the clean documentation worktree used to design this pilot,
+After bootstrapping the pinned workspace lockfile,
 
 ```text
-bun test packages/product-spec
+bun test packages/assurance-spec
 ```
 
-cannot start because the workspace dependency `effect` is not installed. No
-test assertion runs. The first execution environment must bootstrap the pinned
-lockfile before declaring `ENV-OA-LOCAL-BUN-1` ready. Until then this state is
-`infrastructure: unavailable`, not a product refutation and not a skipped green.
+passes the proposal, round-trip, invalid-criterion, structural/adequacy split,
+and committed-repository inventory tests. This is package verification, not an
+admitted `ENV-OA-LOCAL-BUN-1` Assurance run and not product evidence.
 
 ## Explicit non-goals for the first slice
 
-- no prose-to-obligation generation;
+- no semantic prose-to-proof generation beyond the deterministic
+  criterion-to-unresolved-obligation skeleton;
 - no automatic test generation;
 - no browser, native, device, staging, release, or production adapter;
 - no QA Swarm sharding;
 - no full `CW-AC-04` acceptance;
-- no obligations claiming the other 17 MVP criteria;
+- no proof-design fields or readiness claims inferred for any of the 18
+  generated obligations;
 - no hosted Observatory;
 - no public report beyond approved fixture-safe artifacts;
 - no change to the r6 MVP ProductSpec, scope, sequencing, release gate, or

@@ -19,9 +19,12 @@ Assurance Receipts may feed the workroom and ProductSpec evidence index by ref.
 Release policy remains separate. The promise registry alone governs claims.
 ```
 
-Nothing in this directory claims the proposed AssuranceSpec parser, compiler,
-adapter protocol, hosted service, or Observatory is implemented unless a
-document names exact code and current receipts.
+The bounded proposal profile is implemented in `packages/assurance-spec`: it
+can parse, serialize, structurally validate, assess, and deterministically
+propose criterion-coverage scaffolding. Nothing here claims that richer
+semantic planning, admission, compilation, adapters, execution, receipts, the
+hosted service, or Observatory exists unless a document names exact code and
+current receipts.
 
 ## Read in this order
 
@@ -67,22 +70,25 @@ OpenAgents `CW-AC-*` profile and is not valid under upstream ProductSpec
 reviewed ProductSpec revision must perform the portable ID/Related Artifact
 migration before we claim upstream-current Evidence Loop interoperability.
 
-The first authored companion is intended to live beside that ProductSpec as:
+The first generated proposal lives beside that ProductSpec as:
 
 ```text
 docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md
 ```
 
-That file does **not** exist yet. We will first build the bounded format,
-validation, subject binding, admission, Environment Profile, deterministic
-manifest, and one native test adapter necessary to make it real.
+The proposal utility creates that file from the exact ProductSpec plus optional
+committed-repository inventory. It is structurally valid but deliberately not
+executable: all 18 generated obligations begin as `needs_design`. Admission,
+Environment Profiles, deterministic manifests, and native adapters remain
+future slices.
 
-The first executable vertical slice targets `CW-AC-04`: validator-clean
+The first reviewed executable vertical slice will target `CW-AC-04`: validator-clean
 ProductSpec creation/opening with stable Acceptance Criterion IDs. It binds
 the existing ProductSpec test before generating anything new, then uses the
-existing duplicate-ID rejection as its falsifier. The subject block names all
-18 criteria, but the first revision admits only this narrow obligation; the
-other 17 produce `uncovered_acceptance_criterion`/`needs_design` diagnostics.
+existing duplicate-ID rejection as its falsifier. The generated revision names
+all 18 criteria and creates one unresolved obligation for each. A later
+reviewed revision may fully design this one narrow obligation while the other
+17 remain `needs_design`.
 Desktop workroom tests and receipt registration through the existing workroom
 loop are the next expansion. None silently rounds up to green.
 
@@ -94,8 +100,8 @@ release prerequisite, or change a public promise.
 
 - `docs/assurance/` owns current proof-design standards, architecture, and
   dogfood plans.
-- `docs/mvp/` owns the canonical MVP ProductSpec and will own its authored
-  AssuranceSpec companion when the format implementation exists.
+- `docs/mvp/` owns the canonical MVP ProductSpec and its generated, unadmitted
+  AssuranceSpec proposal.
 - `apps/openagents-desktop/src/product-spec-workroom*` owns the implemented
   plan/packet/lease/evidence/independent-verification/owner-disposition loop.
   AssuranceSpec feeds it receipts by reference; it does not replace its state.
@@ -104,8 +110,9 @@ release prerequisite, or change a public promise.
 - `packages/product-spec/` implements the current OpenAgents ProductSpec
   profile. It is behind upstream `0.19.0`; structured AC/SM items and Related
   Artifacts are planned catch-up work, not current compatibility claims.
-- Future `packages/assurance-spec/` code must not be inferred from these design
-  docs; it exists only when committed implementation and conformance tests do.
+- `packages/assurance-spec/` owns the implemented bounded proposal profile,
+  parser, serializer, structural validator, adequacy assessment, repository
+  inventory, and CLI. It does not own test execution or release authority.
 - Native tests, behavior contracts, Eval Suites, and formal models stay in
   their owning packages. AssuranceSpec references them; it does not duplicate
   them.
@@ -118,8 +125,9 @@ release prerequisite, or change a public promise.
 | Upstream ProductSpec Evidence Loop | Real upstream at parser `0.19.0`; not yet implemented locally |
 | Desktop ProductSpec workroom loop | Real: accepted plans, packets, leases, evidence receipts, verifier/producer ref checks, and owner dispositions |
 | AssuranceSpec design | Proposed in this directory |
-| MVP AssuranceSpec | Planned; not authored or admitted |
-| Parser/schema/conformance | Not implemented |
+| MVP AssuranceSpec | Generated proposal; structurally valid, 18/18 obligations need design, not admitted |
+| Proposal schema/parser/serializer/validation | Implemented bounded profile in `packages/assurance-spec`; full conformance/custom-section support remains planned |
+| ProductSpec-to-AssuranceSpec proposal | Implemented; deterministic coverage skeleton only, with no semantic proof inference |
 | Environment Profile and adapter lock | Not implemented |
 | Deterministic Assurance Manifest compiler | Not implemented |
 | Native Bun test adapter and normalized receipt | Not implemented |

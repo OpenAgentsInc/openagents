@@ -2,8 +2,9 @@
 
 Date: 2026-07-13
 
-Status: canonical design proposal; no format, compiler, adapter, or hosted
-service is claimed to exist
+Status: canonical design proposal; the bounded `0.1` proposal profile and CLI
+exist in `packages/assurance-spec`; semantic planning, admission, compilation,
+adapters, execution, receipts, and hosted service are not implemented
 
 Reference implementation studied:
 official `gokulrajaram/ProductSpec` at `9ef2654` (parser `0.19.0`, document
@@ -66,6 +67,22 @@ release projection → separately authorized decision
 
 This is a proposal to rebuild the QA harness *around* a proof-design control
 file, not to discard the harnesses that already work.
+
+The implemented first slice has one deliberately narrow transformation:
+
+```text
+executable ProductSpec + optional committed-repository inventory
+  → exact subject binding
+  → one unresolved required obligation per criterion
+  → structurally valid, non-executable AssuranceSpec proposal
+```
+
+This mapping is deterministic because it makes no semantic proof choices. It
+does not infer a technique, environment, oracle, falsifier, evidence policy,
+gate, or authority from prose, filenames, scripts, or repository layout.
+Repository candidates remain unbound context. A model may later propose richer
+design, but that output remains reviewable proposal material, never compiler
+output or admitted policy.
 
 ## 1. Why this is a companion rather than a ProductSpec section
 
@@ -172,9 +189,11 @@ compare or execute.
   └── typed fenced blocks inside the relevant sections
 ```
 
-The parsed semantic model—not raw Markdown—is the schema target. A reference
-parser and serializer must preserve unknown valid custom sections and support
-exact parse → serialize → parse semantic round trips.
+The parsed semantic model—not raw Markdown—is the schema target. The current
+bounded proposal profile supports the mandatory ordered sections and exact
+parse → serialize → parse semantic round trips. Full v0.1 conformance must also
+preserve unknown valid custom sections; until that lands, the parser rejects
+unsupported sections instead of dropping them.
 
 Suggested frontmatter:
 
@@ -338,7 +357,9 @@ An obligation is a reviewed proof claim, not a generated test filename. One
 criterion may require many obligations; one obligation may support several
 criteria when the relationship is explicit.
 
-Minimum normative fields:
+Minimum fields for a proof-designed obligation to become ready for admission
+and execution (a structurally valid generated proposal may omit them and must
+then project `needs_design`):
 
 ```yaml
 - id: "OBS-AO-001"
@@ -1018,24 +1039,33 @@ typed evidence-attachment-only edit does not masquerade as intent drift.
 
 ### AS-0 — standard dossier and calibration
 
-- keep this proposal and Episode 252 honest about unshipped state;
-- hand-author one example Assurance Spec against a real Product Spec;
+- keep this proposal and Episode 252 exact about the implemented proposal-only
+  state;
+- generate one example Assurance Spec against a real Product Spec;
 - review strong/weak obligation and falsifier examples;
 - settle mandatory sections, status vocabulary, and admission policy.
 
-Exit: a reviewed format dossier and calibration packet, no runtime claim.
+Current: the format dossier and generated MVP proposal exist; calibration and
+admission review remain open. No runtime claim.
 
 ### AS-1 — document implementation
 
-- add `packages/assurance-spec` with schema, parser, serializer, validator, and
-  CLI;
-- land valid/invalid fixtures and complete parity tests;
-- support exact ProductSpec subject binding and OpenAgents criterion IDs;
+- **implemented:** `packages/assurance-spec` schema, parser, serializer,
+  structural validator, separate adequacy assessment, repository inventory,
+  and `propose`/`validate`/`coverage` CLI;
+- **implemented:** deterministic one-obligation-per-criterion proposal, exact
+  byte-digest/revision/path/criterion binding, stable invalid-input failures,
+  semantic round trips, and clean/dirty committed-tree inventory tests;
+- land a fuller valid/invalid conformance corpus and complete schema/parser
+  parity tests;
 - support both the explicit revision-6 legacy profile and the reconciled
   upstream-current item model without silent ID aliasing;
+- preserve supported custom sections rather than rejecting them;
 - add portable review annotations.
 
-Exit: AS-L1 with a self-validating example.
+Current: the bounded legacy-profile proposal slice is self-validating. Exit
+still requires the remaining conformance, upstream-current, custom-section,
+and review-annotation work.
 
 ### AS-2 — deterministic compiler
 

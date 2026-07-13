@@ -1,311 +1,208 @@
-# Episode 252 Notes — Preemptive Quality Assurance
-
-## Working title
-
-**Preemptive Quality Assurance**
-
-## One-line pitch
-
-Before we let a ProductSpec drive a fleet of coding agents, commit how we will
-prove it first.
-
-The idea is a new companion called **AssuranceSpec**: ProductSpec says what the
-product should do and gives evidence stable attachment points. Its workroom
-loop tracks the work and receipt references. AssuranceSpec says what proof
-would make us believe it. Observer compiles that reviewed agreement into a
-verification graph. QA Swarm and the product's native test tools run it.
-Receipts say what happened. None of those systems gets to accept its own work.
-
-## Why this comes before multiplayer
-
-Episode 251 deliberately reduced the first OpenAgents Desktop release to a
-useful base hit: a signed, local-first, Codex-only, ProductSpec-native workroom.
-The multiplayer plan moved to Episode 253.
-
-That is the right order. The multiplayer project board wants to show public
-progress against ProductSpec criteria. Before many agents race through those
-criteria, we need a shared answer to a more basic question: what evidence would
-make a criterion count?
-
-Otherwise the multiplayer system will beautifully visualize issues, pull
-requests, traces, and passing test commands without knowing whether any of them
-test what the ProductSpec actually promised.
-
-Episode 252 defines the proof discipline. Episode 253 makes it social.
-
-## Continuity from episodes 248–251
-
-- Episode 248 made local Codex history predictable and contract-gated.
-- Episode 249 made child agents first-class, named, clickable threads.
-- Episode 250 connected those conversations to Fleet, multiple accounts,
-  delegation, usage, and evidence-backed identity.
-- Episode 251 cut the initial product back to a ProductSpec-native Codex
-  workroom and made Acceptance Criteria the durable units of agent work.
-- Episode 252 asks what must exist between “the ProductSpec says this” and “the
-  agent says it is done.”
-
-This also picks up Episode 246's durable idea: close the gap between what we say
-and what we ship. Product promises govern the macro claim. Behavior contracts
-govern exact behavior. Tests and Eval Suites act as oracles. QA Swarm drives
-and explores. ProductSpec's new Related Artifacts can point back to all of that
-evidence, and our Desktop workroom already tracks packets, evidence, independent
-verification, and owner disposition. The missing layer is still a reviewed
-proof design created early enough to say what should count before the
-implementation shapes the answer.
-
-## Working name: Observer
-
-Recommended internal codename: **Observer**.
-
-The StarCraft Observer reveals what would otherwise remain hidden. That is the
-job here: inspect the ProductSpec, reveal invisible failure surfaces, and keep
-watching as the implementation changes.
-
-The names stay distinct:
-
-- **AssuranceSpec** — the framework-neutral companion standard.
-- **Observer** — the OpenAgents planner/compiler/product codename.
-- **QA Swarm** — execution, exploration, and regression distillation.
-- **Arbiter** — an evidence-graph visualization surface.
-- **Observatory** — a possible later multi-project hosted surface.
-
-Other names worth discussing on camera:
-
-- **Defensive Matrix** — excellent metaphor for wrapping the build in
-  preemptive protection.
-- **Scanner Sweep** — a strong name for one assurance run.
-- **Shield Battery** — fun, but sounds more like recovery than verification.
-- **Photon Gate** — communicates a release gate, but is an invented noun.
-- **Oracle** — perfect testing language and a Protoss unit, but commercially
-  confusing.
-- **Sentry** — strong metaphor, already inseparable from the monitoring
-  company.
-
-Observer is a working codename, not public brand clearance. Use StarCraft's
-command-console principles, not Blizzard names or assets, in a public product.
-
-## The idea in one picture
-
-```text
-ProductSpec       intent + durable evidence attachment points
-  ├─ workroom     plan → packets → evidence refs → verification → disposition
-  └─ AssuranceSpec what proof should count
-       ↓
-     Observer      deterministic verification graph
-       ↓
-     QA tools      checks, exploration, and exact receipts
-       └─────────> workroom + ProductSpec evidence links by reference
-
-Human/policy      what the evidence permits
-```
-
-The product-promise registry remains the only authority for public claims.
-
-The full format, versioning, conformance, environment, adapter, admission,
-manifest, receipt, and authority design has moved out of these recording notes
-to [`../assurance/README.md`](../assurance/README.md).
-
-## What exists and what does not
-
-The ingredients are real:
-
-- ProductSpec parsing, validation, revision/digest binding, and stable
-  criterion IDs;
-- OpenAgents Desktop's accepted plans, criterion packets, leases, evidence
-  receipts, verifier/producer ref checks, owner disposition, and workroom tests;
-- the double-gated ProductSpec-native MVP proof driver for an isolated
-  two-criterion fixture and real Codex capacity;
-- behavior contracts and fixture-first Eval Suites;
-- QA Runner, QA Swarm, traces, screenshots, and run receipts;
-- seam probes, property/model tests, mutation specs, and bounded formal models;
-- release preflights, proof rungs, and product-promise gates.
-
-The composed AssuranceSpec system is not real yet. There is no AssuranceSpec
-parser, schema/conformance corpus, admission system, Environment Profile,
-adapter lock, deterministic Manifest compiler, normalized Assurance Receipt,
-or QA Swarm Manifest consumer today.
-
-There is also a useful ProductSpec catch-up story: the founder's current
-`0.19.0` parser has structured `AC-*`/`SM-*` items and Related Artifacts, while
-our local parser and MVP revision 6 still use the earlier `CW-AC-*` profile.
-The episode can show the boundary without pretending that portable item-level
-evidence links already work here.
-
-The episode should show that gap honestly. We are not renaming a pile of tests
-and calling the architecture shipped.
-
-The new MVP proof driver is a particularly useful example of the distinction:
-it proves a real fixture journey, but its `FX-AC-*` fixture is not the canonical
-revision-6 `CW-AC-*` ProductSpec. AssuranceSpec should make that boundary
-impossible to blur.
-
-## First dogfood: the current MVP ProductSpec
-
-We should test the idea on the exact product we are building now, not on a toy
-spec and not on a hypothetical future framework.
-
-The first subject is the current OpenAgents Desktop Codex Workroom MVP
-ProductSpec:
-
-```text
-docs/mvp/openagents-codex-workroom-mvp.product-spec.md
-ProductSpec format 0.1
-spec_revision 6
-CW-AC-01 through CW-AC-18
-```
-
-The first Assurance Spec will bind all 18 criteria but make only one narrow
-slice executable: the stable criterion-identity portion of `CW-AC-04`. We will
-reuse the existing test proving the MVP spec exposes the exact unique
-`CW-AC-01…18` set, then run the existing duplicate-ID rejection as its
-known-bad falsifier.
-
-The other criteria remain visible as uncovered/`needs_design`. They do not
-become not-applicable, waived, or green because we have not built their proof
-yet.
-
-This is the useful first test of the whole thesis: can we bind real intent,
-reuse a real oracle, prove that oracle can fail, compile the plan
-deterministically, and tell the truth about everything still missing?
-
-## What we build first
-
-Only the thin vertical slice needed for that first real Assurance Spec:
-
-1. the bounded AssuranceSpec document model, parser, serializer, validator,
-   stable diagnostics, and conformance fixtures;
-2. exact ProductSpec path/revision/digest/criterion binding;
-3. a review annotation and explicit admission artifact;
-4. one local Bun Environment Profile and pinned Bun-test adapter;
-5. a deterministic immutable Assurance Manifest compiler;
-6. candidate and falsifier execution through existing tests;
-7. normalized receipts, an honest partial projection, and stale-input proof.
-
-We do not begin with generated tests, a universal adapter taxonomy, browser and
-device farms, a hosted Observatory, or a fake “100% covered” dashboard.
-
-The concrete build sequence, exact subject digest, first obligation, tests,
-artifacts, and blockers are in
-[`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md).
-
-## Risks to confront on camera
-
-- **Generated-test theater.** Many files and high coverage can still test
-  nothing. The test must point to the bug it kills.
-- **Specification laundering.** A vague criterion must become `needs_design`,
-  not an arbitrary test that makes ambiguity look resolved.
-- **Testing the mocks.** A green client and green server can coexist with a
-  dead seam.
-- **Framework capture.** Effect Native is customer zero, not protocol shape.
-- **Formal-method cosplay.** A beautiful model of the wrong boundary proves
-  very little.
-- **Flake laundering.** Retry-until-green destroys evidence.
-- **Exception entropy.** Missing proof remains visible even when an authorized
-  exception permits progress.
-- **Unsafe production testing.** Production is blocked or read-only unless
-  explicitly armed.
-- **Customer-data leakage.** Source, prompts, traces, screenshots, and logs are
-  private by default.
-- **Authority creep.** A compiler, runner, verifier, or dashboard cannot approve
-  intent, merge, deploy, accept, spend, or flip a promise.
-- **Slow factory over useful product.** One real criterion end to end is more
-  valuable than a universal taxonomy that runs nothing.
-
-## Open questions for the recording
-
-- Which parts of Observer are planner, compiler, coordinator, and hosted
-  product?
-- Who may admit proof design for each risk class?
-- What minimum falsifier qualifies for subjective UI and human-evaluation
-  obligations?
-- Which proof classes belong in every product packet, and which activate only
-  at integration or release?
-- Should deterministic Manifests be committed or regenerated and
-  byte-compared?
-- Which evidence can survive a semantically equivalent source refactor, and who
-  admits that equivalence?
-- What is the first non-Effect reference project after MVP dogfood?
-- How should Episode 253's agents propose tests without grading their own work?
-
-## Proposed episode structure
-
-1. **Cold open: move multiplayer back one slot.** “Before we add more agents,
-   let us make it much harder for one agent to bullshit us.”
-2. **Show the assurance gap.** ProductSpec now indexes evidence and the
-   workroom tracks it, but neither precommits a complete verification graph or
-   decides which proof is adequate.
-3. **Tour the real ingredients.** ProductSpec, contracts, Eval Suites, native
-   tests, QA Swarm, seam probes, property/model tests, formal checks, proof
-   rungs, and promises.
-4. **Tell the seam incident.** Everything passed; the real phone could not
-   connect. “Both sides have tests” is not a seam test.
-5. **Name the layers.** ProductSpec, Related Artifacts, workroom Evidence Loop,
-   AssuranceSpec, Observer, Manifest, QA Swarm, receipts, and human authority.
-6. **Use the actual MVP ProductSpec.** Show revision 6 and its 18 criteria.
-7. **Write the first obligation.** Bind `CW-AC-04` to the existing exact-ID
-   test and duplicate-ID falsifier.
-8. **Break it on purpose.** If the known-bad version stays green, the oracle is
-   decorative.
-9. **Show all the honest gaps.** Seventeen uncovered criteria are the correct
-   first result.
-10. **Draw the growth path.** Local fixture → Desktop workroom → real seam →
-    packaged artifact → release evidence.
-11. **Close on sequencing.** Build the MVP, grow its Assurance Spec one real
-    obligation at a time, then open the multiplayer lobby.
-
-## Candidate lines for the recording
-
-> Before we let a ProductSpec generate a bunch of code, let it generate a bunch
-> of ways the code can be wrong.
-
-> QA usually shows up after the implementation and politely asks the
-> implementation what it would like to be tested on. I want the tests waiting
-> at the crime scene before the code arrives.
-
-> ProductSpec says what the product should do. AssuranceSpec says how we will
-> know. Its Evidence Loop points to what happened. Observer compiles the proof
-> agreement. QA Swarm runs it. Arbiter shows the receipts. None of those gets
-> to accept its own work.
-
-> A test suite is not impressive because it is large. It is impressive because
-> every important test can point to the bug it kills.
-
-> If I delete the fix and your test stays green, your test is decorative.
-
-> The client has a test. The server has a test. The product is still broken.
-> The seam is a third thing and it needs its own contract.
-
-> Formal verification is for the small state machine where one bad transition
-> ruins your week. It is not a blue checkmark we sprinkle on a screenshot.
-
-> Expected red is honest before the feature exists. Green because we skipped
-> the environment is not.
-
-> Effect Native is customer zero, not the only customer.
-
-> Multiplayer needs a shared definition of progress. Observer gives it a proof
-> graph instead of a pull-request counter.
-
-## Honest ending
-
-Episode 252 names and plans the missing proof-design layer. It does not claim
-that AssuranceSpec, Observer, automatic test planning, universal adapters,
-Effect Native conformance, formal-counterexample conversion, hosted device
-labs, Observatory, or an Observer product promise are live.
-
-The next action is deliberately small: build enough of the real format and
-toolchain to author and admit the first Assurance Spec for the exact current
-MVP ProductSpec, make one criterion's oracle and falsifier real, and leave all
-other gaps visible. Then widen the graph criterion by criterion.
-
-Build the base hit. Prove one real thing. Then open the multiplayer lobby.
-
-## Further reading
-
-- [Assurance documentation index](../assurance/README.md)
-- [AssuranceSpec companion proposal](../assurance/ASSURANCE_SPEC.md)
-- [Current-system integration map](../assurance/CURRENT_SYSTEM_MAP.md)
-- [Observer product-plan seed](../assurance/OBSERVER_PRODUCT_PLAN.md)
-- [First MVP AssuranceSpec dogfood plan](../assurance/MVP_FIRST_ASSURANCESPEC.md)
-- [Current MVP package](../mvp/README.md)
-- [Episode 253 multiplayer notes](./253-notes.md)
+# Episode 252: Preemptive Quality Assurance
+
+### Draft Video Transcript
+
+Before recording, have the exact revision-6 MVP ProductSpec open in the
+OpenAgents Desktop workroom. Keep a clean checkout and a terminal ready to run
+the AssuranceSpec proposal utility, then open the generated companion beside
+the ProductSpec. Nothing on screen should imply that a proposal has been
+admitted, executed, or verified.
+
+**[00:00] Speaker:** All right, we're back. So we've got the first release
+candidate for the new OpenAgents Desktop app getting put together right now,
+which is great. In the last video, I showed you this ProductSpec that we're
+using to build the first basic version of the app. The agents can take the
+acceptance criteria, turn them into a plan, and then actually start working
+through the plan.
+
+**[On screen: OpenAgents Desktop with the revision-6 MVP ProductSpec open.]**
+
+**[00:28] Speaker:** Cool. But there is an obvious question here, which is:
+when one of these agents says it finished one of these things, how do I know?
+Not just, did it make a pull request? Not just, did it write some tests? Does
+the product actually do the thing that we designed it to do?
+
+**[00:49] Speaker:** Because agents are very good at doing a bunch of work and
+then giving you a very convincing little summary at the end. Everything is
+green, everything is done, here are eleven files I changed, blah blah blah.
+Okay. According to whom? What did we actually check?
+
+**[01:08] Speaker:** And actually, funny timing here: Gokul, who created
+ProductSpec, just added this Evidence Loop idea to the standard, and I think
+the boundary he draws is exactly right.
+
+**[On screen: Gokul's ProductSpec Evidence Loop post.]**
+
+> ProductSpec defines intent.
+>
+> Evidence shows what happened.
+>
+> Decision Trace records what changed.
+
+**[01:28] Speaker:** So an acceptance criterion can point to the pull request,
+the test, the release, whatever implemented it. An eval can point to the eval
+run. A success metric can point to the actual dashboard where you see whether
+the thing worked. ProductSpec doesn't need to become GitHub or Datadog or a
+test runner. It gives all of that stuff a stable place to attach back to the
+original product intent. Super good.
+
+**[02:02] Speaker:** But a link to a test still doesn't tell me whether it is a
+good test. A test can pass because it tested the mock. A UI can say Fable while
+the thing underneath actually ran Sonnet—which literally happened to us in
+the last video. An agent gave me a launch command that did not exist. All the
+surrounding words sounded correct; the one load-bearing piece was wrong.
+
+**[02:31] Speaker:** So I don't want QA to show up at the end and ask the
+implementation what it would like to be tested on. I want to decide what proof
+should count while we are designing the product—before the feature gets to
+pick the easiest possible test for itself.
+
+**[02:51] Speaker:** We went through basically everything we've built around
+quality so far. We have the QA swarm, behavior contracts, product promises,
+Eval Suites, browser tests, device tests, property tests, little formal models,
+receipts, all this stuff scattered around the repo. There is a lot of good
+shit here. What we did not have was one rigorous companion to the ProductSpec
+that says how we intend to know.
+
+**[On screen: `docs/assurance/README.md`, then briefly
+`docs/assurance/ASSURANCE_SPEC.md`.]**
+
+**[03:21] Speaker:** So for now I'm calling that an **AssuranceSpec**.
+ProductSpec says what the product should do. It also gives the evidence a place
+to attach. AssuranceSpec says: all right, what would make us believe it? What
+environment matters? What's the oracle? How do we try to break it on purpose?
+What evidence has to come back, and who is allowed to review it?
+
+**[03:50] Speaker:** That's really the whole idea. There is a lot of detailed
+spec work in here—admission, adapters, deterministic manifests, receipts,
+versioning, blah blah blah. We don't need to read all that right now. The
+important thing is that the proof plan is a real reviewed artifact, not a test
+the implementation quietly invented after it was already done.
+
+**[04:13] Speaker:** The working internal name for our thing is **Observer**,
+because in StarCraft the Observer reveals hidden stuff. That's what I want
+this to do: show me the failure surfaces I cannot see from the pull request. I
+thought about Arbiter, but that sounds like it gets to decide, and we already
+have an Arbiter. Science Vessel is funny but terrible to say. Overseer sounds
+like management software. Observer feels right. Name can change. We're not
+shipping Blizzard's little eyeball guy, don't sue me.
+
+**[04:33] Speaker:** And obviously we should use our thing on our thing. This
+is the actual OpenAgents Desktop MVP ProductSpec: revision six, exact digest,
+eighteen acceptance criteria. Not a toy example. This is what the agents are
+working on right now.
+
+**[On screen: the ProductSpec identity, revision, digest, and criteria in the
+Desktop workroom.]**
+
+**[04:55] Speaker:** So the first thing I wanted was not a dashboard. I wanted
+a boring little program I could actually run. Give it a ProductSpec, optionally
+give it the repo, and have it produce the first AssuranceSpec proposal in the
+real format.
+
+**[On screen: `packages/assurance-spec/README.md`, then the terminal.]**
+
+**[05:16] Speaker:** Let's just do it with the MVP.
+
+**[On screen: run `assurance-spec propose` against the MVP ProductSpec with
+`--repo .` and the co-located output path.]**
+
+**[05:31] Speaker:** All right. Eighteen obligations. Eighteen need design.
+Zero ready. Structurally valid. Design ready: no. Execution authorized: no.
+Good. That is exactly the answer. It did not read eighteen English sentences,
+hallucinate a bunch of Playwright tests, and tell me we're covered.
+
+**[05:53] Speaker:** Let's take a look.
+
+**[On screen: open the generated `.assurance-spec.md` beside the ProductSpec.
+Show exact path, revision, digest, criterion IDs, then one generated
+obligation.]**
+
+**[06:08] Speaker:** This is bound to the exact ProductSpec bytes. Same
+revision, same digest, all eighteen acceptance-criterion IDs. Each one gets a
+stable proposed obligation and the exact source claim it came from. If this
+ProductSpec changes, we do not let the assurance plan kind of vaguely float
+over to the new thing.
+
+**[06:34] Speaker:** And because I gave it the repo, it records the committed
+Git tree and the test-looking artifacts and package scripts that exist there.
+But—and this is the important part—it does not say any of those tests prove
+anything. They are candidates. A filename that happens to contain `CW-AC-04`
+is not an oracle. A passing `test` script is not evidence for every criterion.
+
+**[07:02] Speaker:** So now run validation.
+
+**[On screen: run `assurance-spec validate`, then `assurance-spec coverage`.]**
+
+**[07:16] Speaker:** The document is valid. The proof plan is not adequate.
+Those are different questions. Every obligation is still missing its domain,
+technique, environment, oracle, falsifier, evidence policy, independence rule,
+and activation gate. This is a very useful failure report.
+
+**[07:43] Speaker:** The first one we should actually design is intentionally
+boring. `CW-AC-04` says, among other things, that executable ProductSpec
+criteria need unique, author-visible IDs and duplicate or missing IDs stop
+work. We already have a good-case test and a bad-case test for that narrow
+piece.
+
+**[On screen: show the existing tests for “the MVP spec is executable with
+unique author-visible criteria” and “duplicate criterion IDs refuse executable
+admission.” Do not edit the generated AssuranceSpec on camera yet.]**
+
+**[08:07] Speaker:** The tempting thing would be for the generator to notice
+those names and wire everything together. No. We have to review the claim.
+The oracle could be: the exact MVP exposes all eighteen IDs. The falsifier
+could be: inject a duplicate ID and require the validator to reject it. Same
+local Bun environment, exact source digest. Then a reviewer can commit that
+proof design as a new AssuranceSpec revision.
+
+**[08:40] Speaker:** Even after that, it still would not prove all of
+`CW-AC-04`. It doesn't prove the guided conversation creates a valid spec. It
+doesn't prove the UI points to the exact broken section. It doesn't prove the
+packaged app refuses to start work. It would prove one small contract at the
+local-test level. So the right display later is partial support, not
+“criterion complete.”
+
+**[09:06] Speaker:** This is also why I want the UI to come second. The UI
+should parse and visualize this actual document—proposed, needs design, not
+run—not have some hardcoded mock version of the plan that quietly becomes a
+second source of truth. We can make it editable later, but the artifact comes
+first.
+
+**[09:32] Speaker:** Then we grow it one real obligation at a time. Browser
+tests where the promise is in the browser. A real signed Mac app journey where
+the promise is about installation. Device tests where the seam is the product.
+Maybe formal verification for one small nasty state machine where a bad
+transition can ruin your week. Human review where the thing is actually
+subjective. The environment is part of the claim.
+
+**[10:03] Speaker:** Agents can absolutely propose that richer proof design.
+But model output is a proposal. The agent that wrote the feature does not get
+to invent a weak test, run the weak test, and grade its own homework. Admission,
+evidence production, verification, owner acceptance, and release are different
+steps.
+
+**[10:28] Speaker:** So now we have the first piece: ProductSpec in,
+AssuranceSpec proposal out, exact repo context if you give it one, and an
+honest list of everything we still have to design. Next we review the first
+real obligation, compile it into an immutable run manifest, execute the good
+and bad cases, produce a receipt, and attach that receipt back through the
+ProductSpec Evidence Loop.
+
+**[10:54] Speaker:** All right. This is cool. We can actually start testing
+the QA system against the product while the product is still being built,
+which is kind of the whole point. See ya soon!
+
+## On-screen artifacts
+
+- `docs/mvp/openagents-codex-workroom-mvp.product-spec.md`
+- `docs/assurance/README.md`
+- `docs/assurance/ASSURANCE_SPEC.md`
+- `docs/assurance/MVP_FIRST_ASSURANCESPEC.md`
+- `packages/assurance-spec/README.md`
+- `packages/assurance-spec/src/cli.ts`
+- `docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md`
+- `packages/product-spec/test/product-spec.test.ts`
+
+The architectural specification, evidence-boundary rules, and implementation
+plan remain in `docs/assurance/`. These notes only script the recording.

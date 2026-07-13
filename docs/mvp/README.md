@@ -72,14 +72,16 @@ It must separately enforce Assurance producer/reviewer policy and must not
 convert `REFUTED`, `INCONCLUSIVE`, stale, flaky, or infrastructure-failed
 observations into workroom `verified`.
 
-## Planned first AssuranceSpec
+## First AssuranceSpec proposal
 
-The first authored companion is intended to live here as
+The generated companion lives here as
 `openagents-codex-workroom-mvp.assurance-spec.md`, beside the ProductSpec it
-binds. It does not exist yet. The pilot first builds the schema, parser,
-validator, exact revision/digest/criterion binder, review/admission artifacts,
-local Environment Profile, deterministic Manifest compiler, Bun-test adapter,
-falsifier, and receipt path necessary to make that file real.
+binds. `packages/assurance-spec` deterministically creates its exact subject
+binding and one unresolved required obligation per criterion. The generated
+document is structurally valid and non-executable; all 18 obligations still
+need reviewed proof design. Review/admission artifacts, a local Environment
+Profile, deterministic Manifest compiler, Bun-test adapter, falsifier run, and
+receipt path remain later pilot work.
 
 The target subject is currently ProductSpec format `0.1`, `spec_revision: 6`,
 SHA-256

@@ -144,9 +144,9 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `docs/assurance/` owns the proposed AssuranceSpec companion format, Observer
   architecture, current-system map, and MVP-first dogfood plan. It owns proof
   design, not product intent, test execution, release decisions, or public
-  claims. The first authored MVP companion will live beside its ProductSpec in
-  `docs/mvp/` only after the required parser, validation, admission, and
-  conformance implementation exists.
+  claims. `packages/assurance-spec/` owns the bounded proposal-format parser,
+  serializer, validators, repository inventory, and CLI. The generated,
+  unadmitted MVP proposal lives beside its ProductSpec in `docs/mvp/`.
 - `docs/qa/` owns QA execution notes, operational runbooks, oracle descriptions,
   and retained historical evidence. Most current files describe the frozen
   Khala Code migration source; their dated green state is not evidence for
