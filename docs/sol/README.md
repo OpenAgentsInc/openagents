@@ -66,6 +66,10 @@ not current queues:
 - [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
   — pinned competitor-capability and OpenAgents implementation baseline; its
   score is historical, not current product status.
+- [`2026-07-13-openagents-codex-workroom-mvp-audit.md`](./2026-07-13-openagents-codex-workroom-mvp-audit.md)
+  — point-in-time OpenChamber/OpenCode/Codex comparison and the evidence for
+  the first local Codex workroom Product Spec; it is not a dispatch queue or a
+  CUT-27 completion claim.
 - [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
   — legacy capability disposition and remote-workroom design evidence; the
   master owns current acceptance and sequence.
