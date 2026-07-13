@@ -247,6 +247,10 @@ export async function openPylonOwnedStandingFleetRunExecutor(
                   ...(await ownerCapacity.accounts(capacityInput)).map((account) => ({
                     ...account,
                     executionTarget: "owner_local" as const,
+                    // Named Codex homes are owner subscription capacity. Do
+                    // not inherit `not_measured` just because no incremental
+                    // per-turn charge exists for the local subscription.
+                    marginalCostClass: "subscription" as const,
                     quotaAvailable: true,
                     acceptedDataPostures: ["owner_private", "broker_safe"] as const,
                     repositoryAccess: true,
