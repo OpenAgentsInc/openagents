@@ -20,7 +20,9 @@ const fixture = (fail: string | null = null) => {
   const run: UpdateCommandRunner = async (executable, args) => {
     const name = path.basename(executable)
     calls.push(`${name} ${args.join(" ")}`)
-    if (fail !== null && name === fail) return { exitCode: 1, stdout: "", stderr: "refused" }
+    if (fail !== null && (name === fail || (fail === "syspolicy_check" && args[0] === "syspolicy_check"))) {
+      return { exitCode: 1, stdout: "", stderr: "refused" }
+    }
     if (name === "ditto" && fail === "second_ditto" && ++dittoCalls === 2) return { exitCode: 1, stdout: "", stderr: "refused" }
     if (name === "hdiutil" && args[0] === "attach") {
       const mountpoint = args[args.indexOf("-mountpoint") + 1]!
@@ -43,7 +45,7 @@ const fixture = (fail: string | null = null) => {
     return { exitCode: 0, stdout: "", stderr: "" }
   }
   const applier = () => openMacOSUpdateApplier({ root: path.join(root, "updates"), installedAppPath: installed, installedVersion: "0.1.0-rc.5", channel: "rc", platform: "darwin", packaged: true, run })
-  return { root, installed, artifact, calls, applier }
+  return { root, installed, artifact, calls, applier, run }
 }
 
 const existsSync = (file: string): boolean => {
@@ -58,7 +60,9 @@ describe("macOS signed update applier", () => {
     expect(existsSync(path.join(h.installed, "Contents", "candidate"))).toBe(true)
     expect(existsSync(path.join(h.root, "updates", "rollback", "OpenAgents.app", "Contents", "current"))).toBe(true)
     expect(h.calls.some(call => call.startsWith("codesign --verify --deep --strict"))).toBe(true)
-    expect(h.calls.some(call => call.startsWith("spctl --assess"))).toBe(true)
+    expect(h.calls.some(call => call.startsWith("xcrun --find syspolicy_check"))).toBe(true)
+    expect(h.calls.some(call => call.startsWith("xcrun syspolicy_check distribution"))).toBe(true)
+    expect(h.calls.some(call => call.startsWith("spctl --assess"))).toBe(false)
     expect(h.calls.some(call => call.startsWith("xcrun stapler validate"))).toBe(true)
     expect(JSON.parse(readFileSync(path.join(h.root, "updates", "apply-transaction.json"), "utf8"))).toEqual({ schema: MACOS_UPDATE_TRANSACTION_SCHEMA, status: "installed", previousVersion: "0.1.0-rc.5", installedVersion: "0.1.0-rc.6", channel: "rc" })
   })
@@ -84,7 +88,7 @@ describe("macOS signed update applier", () => {
   })
 
   test("fails closed before mutation on identity/notarization failure and restores the running app on swap failure", async () => {
-    const identity = fixture("spctl")
+    const identity = fixture("syspolicy_check")
     expect(await identity.applier().install(identity.artifact, "0.1.0-rc.6")).toEqual({ ok: false, reason: "notarization_invalid" })
     expect(existsSync(path.join(identity.installed, "Contents", "current"))).toBe(true)
     expect(existsSync(path.join(identity.root, "updates", "rollback", "OpenAgents.app"))).toBe(false)
@@ -97,5 +101,25 @@ describe("macOS signed update applier", () => {
     expect(await swap.applier().install(swap.artifact, "0.1.0-rc.6")).toEqual({ ok: false, reason: "install_failed" })
     expect(existsSync(path.join(swap.installed, "Contents", "current"))).toBe(true)
     expect(existsSync(path.join(swap.root, "updates", "rollback", "OpenAgents.app"))).toBe(false)
+  })
+
+  test("falls back to legacy Gatekeeper assessment only when syspolicy_check is unavailable", async () => {
+    const h = fixture()
+    const fallback = openMacOSUpdateApplier({
+      root: path.join(h.root, "fallback-updates"),
+      installedAppPath: h.installed,
+      installedVersion: "0.1.0-rc.5",
+      channel: "rc",
+      platform: "darwin",
+      packaged: true,
+      run: async (executable, args) => {
+        if (path.basename(executable) === "xcrun" && args[0] === "--find") {
+          return { exitCode: 1, stdout: "", stderr: "unable to find utility" }
+        }
+        return await h.run(executable, args)
+      },
+    })
+    expect((await fallback.install(h.artifact, "0.1.0-rc.6")).ok).toBe(true)
+    expect(h.calls.some(call => call.startsWith("spctl --assess"))).toBe(true)
   })
 })

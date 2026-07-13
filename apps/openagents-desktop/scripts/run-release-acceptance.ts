@@ -132,7 +132,8 @@ try {
   const recovered = host()
   assert(recovered.snapshot().phase === "staged", "staged update did not survive process interruption")
   record("interrupted-update", "digest-verified staged RC8 survived host destruction and reopen")
-  assert((await recovered.apply()).phase === "restarting", "RC8 apply did not request restart")
+  const applied = await recovered.apply()
+  assert(applied.phase === "restarting", `RC8 apply did not request restart: ${JSON.stringify(applied)}`)
   verifyInstalled(candidateVersion)
   record("signed-update", "real notarized RC7 app atomically replaced by notarized RC8")
 

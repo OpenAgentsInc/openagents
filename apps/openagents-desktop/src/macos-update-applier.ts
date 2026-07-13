@@ -130,7 +130,11 @@ export const openMacOSUpdateApplier = (input: Readonly<{
     const identityText = identity === null ? "" : output(identity)
     if (!identityText.includes(`TeamIdentifier=${teamId}`) ||
       !identityText.includes(`Authority=Developer ID Application: OpenAgents, Inc. (${teamId})`)) return "identity_mismatch"
-    if (await commandOk("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", appPath]) === null ||
+    const modernDistributionVerifier = await commandOk("/usr/bin/xcrun", ["--find", "syspolicy_check"])
+    const distribution = modernDistributionVerifier === null
+      ? await commandOk("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", appPath])
+      : await commandOk("/usr/bin/xcrun", ["syspolicy_check", "distribution", appPath])
+    if (distribution === null ||
       await commandOk("/usr/bin/xcrun", ["stapler", "validate", appPath]) === null) return "notarization_invalid"
     return null
   }
