@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { mvpCodexReadyProbe, mvpProofRequiredSteps, resolveMvpProofCommand, resolveMvpProofConfig } from "./mvp-proof.ts"
+import { mvpCodexReadyProbe, mvpProofEnvironmentFromArgv, mvpProofRequiredSteps, resolveMvpProofCommand, resolveMvpProofConfig } from "./mvp-proof.ts"
 
 describe("ProductSpec-native MVP proof contract", () => {
   test("requires the exact execution, child, verification, and owner-gate journey", () => {
@@ -66,6 +66,26 @@ describe("ProductSpec-native MVP proof contract", () => {
     expect(resolveMvpProofCommand(" /Applications/OpenAgents.app/Contents/MacOS/OpenAgents ", "/repo/app")).toEqual([
       "/Applications/OpenAgents.app/Contents/MacOS/OpenAgents",
     ])
+  })
+
+  test("reconstructs the closed isolated proof environment from packaged-app argv", () => {
+    expect(mvpProofEnvironmentFromArgv([
+      "/Applications/OpenAgents.app/Contents/MacOS/OpenAgents",
+      "--openagents-mvp-proof",
+      "--openagents-mvp-proof-user-data=/tmp/oa proof/user-data",
+      "--openagents-mvp-proof-workspace=/tmp/oa proof/workspace",
+      "--openagents-mvp-proof-receipts=/tmp/oa proof/receipts",
+      "--openagents-mvp-proof-spec=specs/mvp.product-spec.md",
+    ])).toEqual({
+      OPENAGENTS_DESKTOP_MVP_PROOF: "1",
+      OPENAGENTS_DESKTOP_MVP_PROOF_DIR: "/tmp/oa proof/receipts",
+      OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: "specs/mvp.product-spec.md",
+      OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
+      OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: "/tmp/oa proof/workspace",
+      OPENAGENTS_DESKTOP_USER_DATA: "/tmp/oa proof/user-data",
+    })
+    expect(mvpProofEnvironmentFromArgv(["OpenAgents", "--openagents-mvp-proof"])).toBeNull()
+    expect(mvpProofEnvironmentFromArgv(["OpenAgents"])).toBeNull()
   })
 
   test("waits across Effect Native render boundaries before declaring a proof control unavailable", () => {

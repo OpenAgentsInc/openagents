@@ -360,7 +360,7 @@ import {
 import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
 import { traceAcceptanceJourney, traceAcceptanceReload } from "./electron-trace-acceptance.ts"
 import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
-import { resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
+import { mvpProofEnvironmentFromArgv, resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
 import {
   signInDesktopSession,
   signOutDesktopSession,
@@ -421,6 +421,8 @@ const smokeFixtureSourceRoot = app.isPackaged
 // the smoke composer flow. `desktopStartupT0` is the wall-clock (ms epoch) of
 // this main process's performance origin (≈ process start); every reported mark
 // is `Date.now()` minus this origin.
+const argvMvpProofEnvironment = mvpProofEnvironmentFromArgv(process.argv)
+if (argvMvpProofEnvironment !== null) Object.assign(process.env, argvMvpProofEnvironment)
 const startupMarksFile = process.env.OPENAGENTS_DESKTOP_STARTUP_MARKS ?? null
 const startupMarksMode = startupMarksFile !== null
 const desktopStartupT0 = performance.timeOrigin

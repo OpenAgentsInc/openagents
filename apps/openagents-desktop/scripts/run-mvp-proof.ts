@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { mvpProofRequiredSteps, resolveMvpProofCommand, type MvpProofJournalEntry } from "../src/mvp-proof.ts"
+import { MvpProofArg, mvpProofRequiredSteps, resolveMvpProofCommand, type MvpProofJournalEntry } from "../src/mvp-proof.ts"
 
 const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-mvp-proof-"))
 const workspace = path.join(root, "workspace")
@@ -71,7 +71,14 @@ for (const args of [
 
 const installedExecutable = process.env.OPENAGENTS_DESKTOP_MVP_PROOF_APP?.trim()
 const packageRoot = path.resolve(import.meta.dir, "..")
-const command = resolveMvpProofCommand(installedExecutable, packageRoot)
+const command = [
+  ...resolveMvpProofCommand(installedExecutable, packageRoot),
+  MvpProofArg,
+  `--openagents-mvp-proof-user-data=${userData}`,
+  `--openagents-mvp-proof-workspace=${workspace}`,
+  `--openagents-mvp-proof-receipts=${receipts}`,
+  `--openagents-mvp-proof-spec=${specPath}`,
+]
 const child = Bun.spawn(command, {
   cwd: packageRoot,
   env: {

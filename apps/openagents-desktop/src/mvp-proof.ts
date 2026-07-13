@@ -4,6 +4,38 @@ import path from "node:path"
 import type { BrowserWindow } from "electron"
 
 export const MvpProofEnvironment = "OPENAGENTS_DESKTOP_MVP_PROOF"
+export const MvpProofArg = "--openagents-mvp-proof"
+
+const proofArgValue = (argv: ReadonlyArray<string>, name: string): string | null => {
+  const prefix = `${name}=`
+  const value = argv.find(arg => arg.startsWith(prefix))?.slice(prefix.length).trim() ?? ""
+  return value === "" ? null : value
+}
+
+/**
+ * Signed macOS app launches cannot rely on a caller's custom environment
+ * surviving LaunchServices/process handoff. Carry the already-isolated proof
+ * coordinates as explicit argv, then reconstruct only this closed env set
+ * before Electron chooses its user-data path or driver mode.
+ */
+export const mvpProofEnvironmentFromArgv = (
+  argv: ReadonlyArray<string>,
+): Readonly<Record<string, string>> | null => {
+  if (!argv.includes(MvpProofArg)) return null
+  const userData = proofArgValue(argv, "--openagents-mvp-proof-user-data")
+  const workspace = proofArgValue(argv, "--openagents-mvp-proof-workspace")
+  const receipts = proofArgValue(argv, "--openagents-mvp-proof-receipts")
+  const specPath = proofArgValue(argv, "--openagents-mvp-proof-spec")
+  if (userData === null || workspace === null || receipts === null || specPath === null) return null
+  return {
+    OPENAGENTS_DESKTOP_MVP_PROOF: "1",
+    OPENAGENTS_DESKTOP_MVP_PROOF_DIR: receipts,
+    OPENAGENTS_DESKTOP_MVP_PROOF_SPEC_PATH: specPath,
+    OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
+    OPENAGENTS_DESKTOP_ISOLATED_WORKSPACE_ROOT: workspace,
+    OPENAGENTS_DESKTOP_USER_DATA: userData,
+  }
+}
 
 export type MvpProofStepName =
   | "shell"
