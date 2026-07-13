@@ -184,6 +184,18 @@ metadata, and repo refs only. It intentionally omits task prompts and replaces
 local worktree paths with `null`; raw prompts, verification details, and local
 paths remain local-only execution state.
 
+`portable-session-operation-ledger.ts` is the PORT-03 owner-local movement
+fence. Its file-backed SQLite rows bind every operation to exact session,
+attachment, generation, kind, and canonical input bytes. Quiescence disables
+new work for that generation transactionally; activation can advance exactly
+one generation only after a public-safe authority evidence ref, restoring one
+accepting attachment. Completed and in-flight operations survive process reopen
+and replay without repeating effects, while stale generations, conflicting
+bytes, duplicate-but-different outcomes, paths, secrets, process details, and
+topology-shaped result material fail closed. This ledger is necessary adapter
+substrate; #8748 still requires the control-session/workspace/process hooks and
+the direct local → managed → local acceptance journey.
+
 ## Dashboard (TUI)
 
 Running `pylon` with no subcommand opens the observational dashboard: an
