@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Contributor-side executor for the CS336 A1 real-gradient multi-device
  * run (issue #4678) over `src/cs336-a1-real-gradient-workload.ts`.
@@ -55,7 +56,7 @@ const requireFlag = (flag: string): string => {
 }
 
 const readValuesFile = async (path: string): Promise<Float64Array> => {
-  const parsed = JSON.parse(await Bun.file(path).text()) as {
+  const parsed = JSON.parse(await Runtime.file(path).text()) as {
     values: ReadonlyArray<number>
   }
 
@@ -66,7 +67,7 @@ const writeValuesFile = async (
   path: string,
   values: Float64Array,
 ): Promise<void> => {
-  await Bun.write(path, JSON.stringify({ values: Array.from(values) }))
+  await Runtime.write(path, JSON.stringify({ values: Array.from(values) }))
 }
 
 const emit = (payload: Record<string, unknown>): void => {

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * FEED-1 (openagents #8783): the OpenAgents harness MCP server.
  *
@@ -412,7 +413,7 @@ export function startHarnessMcpServer(input: StartHarnessMcpServerInput): Harnes
     now: nowFn(),
     ...(input.ttlSeconds === undefined ? {} : { ttlSeconds: input.ttlSeconds }),
   })
-  const server = Bun.serve({
+  const server = Runtime.serve({
     fetch: async (request) => {
       const url = new URL(request.url)
       if (url.pathname !== HARNESS_MCP_ENDPOINT_PATH) {

@@ -18,7 +18,7 @@ import {
   parseCodexRollout,
 } from "./codex-to-atif";
 
-const FIXTURE = readFileSync(join(import.meta.dir, "fixtures", "codex-rollout.sample.jsonl"), "utf8");
+const FIXTURE = readFileSync(join(import.meta.dirname, "fixtures", "codex-rollout.sample.jsonl"), "utf8");
 
 describe("convertCodexRolloutToAtif", () => {
   test("converts the committed fixture into a VALID ATIF-v1.7 trajectory", () => {

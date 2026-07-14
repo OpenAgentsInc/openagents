@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Khala Sync capture daemon on Cloud Run (#8554).
 //
 // The live-tail delivery pipe: this always-on service tails the
@@ -68,7 +69,7 @@ void daemon.listenerReady.then(() => {
 
 // Minimal health server. Cloud Run needs the container to answer on $PORT for
 // readiness; the capture work happens in the resident daemon, not per request.
-const server = Bun.serve({
+const server = Runtime.serve({
   port: PORT,
   fetch(request) {
     const url = new URL(request.url)

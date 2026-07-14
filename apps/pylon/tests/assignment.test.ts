@@ -35,8 +35,8 @@ import { hashPylonAccountRef } from "../src/account-registry"
 import { loadCodexAccountHealthRecord } from "../src/codex-account-health-ledger"
 import { activeCodingRunCounts } from "../src/active-assignment-runs"
 
-const INDEX = join(import.meta.dir, "..", "src", "index.ts")
-const CWD = join(import.meta.dir, "..")
+const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
+const CWD = join(import.meta.dirname, "..")
 const servers: ReturnType<typeof Bun.serve>[] = []
 
 afterEach(() => {

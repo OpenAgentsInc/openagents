@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { randomUUID } from "node:crypto";
 import { Effect, Schema as S } from "effect";
 import { APPLE_FM_BACKEND_KIND } from "./contract";
@@ -266,7 +267,7 @@ export function startAppleFmToolCallbackServer(
   session: AppleFmToolCallbackSession,
   options: { readonly port?: number } = {},
 ): AppleFmToolCallbackServer {
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: options.port ?? 0,
     fetch: async (request) => {
       const authorization = request.headers.get("Authorization") ?? "";

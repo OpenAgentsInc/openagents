@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 // Guard logic for the vendored @effect-native/* snapshot.
 //

@@ -13,7 +13,7 @@
  * installed into ANY Postgres database (including app-owned ones) without
  * dragging khala-sync's ledger along.
  */
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import { createHash } from "node:crypto"
 import { readdir, readFile } from "node:fs/promises"
 import * as path from "node:path"
@@ -110,7 +110,7 @@ export interface RunOaInfraMigrationsResult {
   readonly alreadyApplied: ReadonlyArray<string>
 }
 
-export const defaultMigrationsDir = path.join(import.meta.dir, "..", "migrations")
+export const defaultMigrationsDir = path.join(import.meta.dirname, "..", "migrations")
 
 export const runOaInfraMigrations = async (
   options: RunOaInfraMigrationsOptions,
@@ -120,7 +120,7 @@ export const runOaInfraMigrations = async (
   const files = await readMigrationFiles(options.migrationsDir ?? defaultMigrationsDir)
 
   // max: 1 so the advisory lock and all statements share one connection.
-  const sql = new SQL({ url: options.databaseUrl, max: 1 })
+  const sql = SQL({ url: options.databaseUrl, max: 1 })
   try {
     if (!dryRun) {
       await sql`SELECT pg_advisory_lock(hashtext(${MIGRATIONS_TABLE})::bigint)`

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Harness glue: run a Khala north-star HTML artifact through the REAL executed
 // acceptance runner, then through verifyKhalaCodeCompletion, and print the executed
 // verdict (EPIC #6017, M8 #6016).

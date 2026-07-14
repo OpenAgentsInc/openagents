@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // OpenAgents release/provenance signer (ed25519). Produces a detached signature
 // over an artifact or manifest so clients (Pylon, Autopilot, Psionic) can verify
 // it came from OpenAgents infra and FAIL CLOSED otherwise (docs/ota plan §6b).

@@ -44,9 +44,9 @@ const sampleWorkItem = (): ForgeDispatchWorkItem =>
     },
     verification_command: {
       command_ref: "verification-command.forge.6751",
-      runner_ref: "forge.verification.runner.docker_bun.v0.1",
+      runner_ref: "forge.verification.runner.docker_node.v0.1",
       working_directory: ".",
-      args: ["bun", "test", "apps/pylon/src/forge-dispatch-protocol.test.ts"],
+      args: ["node", "--test", "apps/pylon/src/forge-dispatch-protocol.test.ts"],
       timeout_seconds: 900,
     },
     lease_ref: "lease.forge.6751",
@@ -108,8 +108,8 @@ describe("forge dispatch protocol adapter", () => {
         },
       },
       verificationCommand: {
-        runnerRef: "forge.verification.runner.docker_bun.v0.1",
-        args: ["bun", "test", "apps/pylon/src/forge-dispatch-protocol.test.ts"],
+        runnerRef: "forge.verification.runner.docker_node.v0.1",
+        args: ["node", "--test", "apps/pylon/src/forge-dispatch-protocol.test.ts"],
       },
     })
 

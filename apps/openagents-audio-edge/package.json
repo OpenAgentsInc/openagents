@@ -5,6 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "bun build src/cloudrun.ts --target=bun --outfile=dist/server.js",
-    "deploy": "bash deploy-cloudrun.sh"
+    "deploy": "bash deploy-cloudrun.sh",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "catalog:"
   }
 }

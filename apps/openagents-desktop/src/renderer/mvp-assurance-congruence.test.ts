@@ -15,12 +15,12 @@ describe("MVP assurance/visible-surface congruence (UX-5 #8791)", () => {
     const contractIds = new Set(openAgentsDesktopUxContractRegistry.contracts.filter(contract => contract.state === "enforced").map(contract => contract.contractId))
     for (const item of mvpAssuranceCoverageMatrix) {
       for (const contractRef of item.contractRefs) expect(contractIds.has(contractRef)).toBe(true)
-      for (const oracleRef of item.oracleRefs) expect(readFileSync(resolve(import.meta.dir, "../../../..", oracleRef), "utf8").length).toBeGreaterThan(0)
+      for (const oracleRef of item.oracleRefs) expect(readFileSync(resolve(import.meta.dirname, "../../../..", oracleRef), "utf8").length).toBeGreaterThan(0)
     }
   })
 
   test("the checked-in coverage document is the exact matrix projection", () => {
-    const path = resolve(import.meta.dir, "../../../..", "docs/mvp/openagents-codex-workroom-mvp-assurance-coverage-matrix.md")
+    const path = resolve(import.meta.dirname, "../../../..", "docs/mvp/openagents-codex-workroom-mvp-assurance-coverage-matrix.md")
     expect(readFileSync(path, "utf8")).toBe(renderMvpAssuranceCoverageMarkdown())
   })
 

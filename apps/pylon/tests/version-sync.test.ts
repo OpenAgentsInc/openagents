@@ -13,7 +13,7 @@ import { PYLON_CLIENT_VERSION, PYLON_VERSION } from "../src/version"
 // rc.12). This test makes that drift fail in the suite, not in production.
 describe("Pylon release version sync", () => {
   const pkg = JSON.parse(
-    readFileSync(join(import.meta.dir, "../package.json"), "utf8"),
+    readFileSync(join(import.meta.dirname, "../package.json"), "utf8"),
   ) as { version: string }
 
   test("src/version.ts PYLON_VERSION matches package.json version", () => {

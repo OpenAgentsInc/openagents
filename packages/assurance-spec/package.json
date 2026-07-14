@@ -29,6 +29,7 @@
     "verify:distribution": "bun scripts/verify-distribution.ts"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/product-spec": "workspace:*",
     "effect": "catalog:"
   },

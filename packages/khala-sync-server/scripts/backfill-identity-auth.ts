@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * KS-8.18 (#8329): Identity and auth core backfill CLI — D1 → Postgres.
  * The LAST and most sensitive KS-8 domain.
@@ -42,7 +42,7 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import * as path from "node:path"
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import {
   buildIdentityAuthVerifyReport,
   d1IdentityAuthNewestHashes,
@@ -87,7 +87,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     verify: false,
     verifyNewest: 50,
     wranglerCwd: path.resolve(
-      import.meta.dir,
+      import.meta.dirname,
       "../../../apps/openagents.com/workers/api",
     ),
   }
@@ -315,7 +315,7 @@ const main = async (): Promise<number> => {
     return 2
   }
 
-  const sql = new SQL(options.databaseUrl) as unknown as SyncSql
+  const sql = SQL(options.databaseUrl) as unknown as SyncSql
   // CFG-4 Domain 2 (#8519) HARD CUTOVER GUARD: `users` / `auth_identities`
   // are Postgres-AUTHORITATIVE once the identity hard-cut deploy is live.
   // This script's converge upsert copies D1 -> Postgres and would CLOBBER

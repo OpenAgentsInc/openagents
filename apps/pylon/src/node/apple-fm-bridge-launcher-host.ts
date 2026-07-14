@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Host assembly for the supervised local Apple FM bridge launcher.
  *
@@ -11,7 +12,7 @@
  * What was still missing is the *host wiring*: nothing constructed the launcher
  * with the production defaults the named remaining step calls for — a
  * `setTimeout`-backed `AppleFmBridgeSupervisorTimer`, `Date.now`, the
- * `Bun.spawn`-backed process spawner, and the result of
+ * `Runtime.spawn`-backed process spawner, and the result of
  * `discoverAppleFmBridgeHelper()` — while still returning a clear `null` when no
  * helper is present (so a non-Apple host degrades gracefully rather than
  * throwing). This module supplies exactly that assembly seam.
@@ -64,7 +65,7 @@ export type CreateDefaultAppleFmBridgeLauncherOptions = {
   readonly discoverHelper?: (
     options: DiscoverAppleFmBridgeHelperOptions,
   ) => DiscoveredAppleFmBridgeHelper | null
-  /** Process-spawning seam; defaults to the `Bun.spawn`-backed spawner. */
+  /** Process-spawning seam; defaults to the `Runtime.spawn`-backed spawner. */
   readonly spawnProcess?: AppleFmBridgeProcessSpawner
   /** Backoff timer; defaults to the `setTimeout`-backed timer. */
   readonly timer?: AppleFmBridgeSupervisorTimer

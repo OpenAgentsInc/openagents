@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Scripted desktop release publish flow (CUT-26, #8706).
  *
@@ -59,7 +60,7 @@ interface Args {
   readonly dryRun: boolean
 }
 
-const appRoot = resolve(import.meta.dir, "..")
+const appRoot = resolve(import.meta.dirname, "..")
 const defaultDistDir = resolve(appRoot, "../oa-updates/openagents-desktop-dist")
 /** Public GCS mirror of gs://openagentsgemini-oa-updates (see DEPLOYMENT.md). */
 const DEFAULT_ARTIFACT_BASE_URL =
@@ -211,7 +212,7 @@ const resolveExistingReleases = async (
 }
 
 const main = async (): Promise<void> => {
-  const args = parseArgs(Bun.argv.slice(2))
+  const args = parseArgs(Runtime.argv.slice(2))
 
   const artifactName = basename(args.artifact)
   const extension = artifactExtension(artifactName)

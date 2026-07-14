@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createServer } from "node:net"
 
 export type KhalaQaViteServer = Readonly<{
@@ -112,7 +113,7 @@ const allocateEphemeralPort = (): Promise<number> =>
 export const startKhalaQaViteServer = (
   input: KhalaQaStartViteServerOptions,
 ): KhalaQaViteServer => {
-  const proc = Bun.spawn(
+  const proc = Runtime.spawn(
     [
       "bunx",
       "vite",
@@ -164,7 +165,7 @@ export const waitForKhalaQaHttp = async (
   const fetchLike = options.fetch ?? fetch
   const intervalMs = options.intervalMs ?? 250
   const now = options.now ?? Date.now
-  const sleep = options.sleep ?? Bun.sleep
+  const sleep = options.sleep ?? Runtime.sleep
   const deadline = now() + (options.timeoutMs ?? 30_000)
   let lastError: unknown = null
   while (now() < deadline) {

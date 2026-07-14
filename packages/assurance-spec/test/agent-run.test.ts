@@ -16,7 +16,7 @@ import {
   type AgentRunSelfReportEvidence,
 } from "../src/index.ts"
 
-const fixtureRoot = resolve(import.meta.dir, "..", "fixtures", "agent-run")
+const fixtureRoot = resolve(import.meta.dirname, "..", "fixtures", "agent-run")
 const temporaryRoots: string[] = []
 
 afterEach(() => {
@@ -133,7 +133,7 @@ describe("Agent Run ingest", () => {
 
   test("the CLI exposes agent-run ingest with machine-readable output", async () => {
     const fixture = workspace()
-    const cli = resolve(import.meta.dir, "../src/cli.ts")
+    const cli = resolve(import.meta.dirname, "../src/cli.ts")
     const child = Bun.spawn([process.execPath, cli, "agent-run", "ingest", fixture.runPath, "--root", fixture.root, "--json"], {
       stdout: "pipe",
       stderr: "pipe",

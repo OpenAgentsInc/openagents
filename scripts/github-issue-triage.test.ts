@@ -201,11 +201,11 @@ describe("github issue triage output", () => {
       process.execPath,
       ["run", "scripts/github-issue-triage.ts", "--repo", "OpenAgentsInc/openagents", "--limit", "1"],
       {
-        cwd: import.meta.dir + "/..",
+        cwd: import.meta.dirname + "/..",
         encoding: "utf8",
         env: {
           ...process.env,
-          PATH: `${import.meta.dir}/fixtures/github-issue-triage/bin:${process.env.PATH ?? ""}`,
+          PATH: `${import.meta.dirname}/fixtures/github-issue-triage/bin:${process.env.PATH ?? ""}`,
         },
       },
     )

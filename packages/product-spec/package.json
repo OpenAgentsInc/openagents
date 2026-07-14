@@ -21,6 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

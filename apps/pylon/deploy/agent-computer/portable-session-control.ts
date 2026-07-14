@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 
 /**
  * Fixed in-guest PORT-03 controller for retained Agent Computers.
@@ -465,7 +466,7 @@ export const installPortableCapability = async (input: Readonly<{
   const leaf = createHash("sha256").update(metadata.leaseRef).digest("hex").slice(0, 24)
   const markerPath = join(sessionRoot, "capabilities", `${leaf}.installed.json`)
   const installationRef = stableRef("installation.agent-computer.capability", `${metadata.resourceRef}|${metadata.leaseRef}`)
-  if (await Bun.file(markerPath).exists()) {
+  if (await Runtime.file(markerPath).exists()) {
     const marker = publicSafe(JSON.parse(await readFile(markerPath, "utf8"))) as Record<string, unknown>
     if (marker.leaseRef !== metadata.leaseRef || marker.evidenceRef !== metadata.evidenceRef) {
       throw new PortableSessionControlError("capability marker conflicts with install retry")
@@ -697,7 +698,7 @@ export const exportPortableCheckpoint = async (input: Readonly<{
   const operationRef = String(metadata.operationRef)
   const exportRoot = join(sessionRoot, "exports", createHash("sha256").update(operationRef).digest("hex").slice(0, 24))
   const receiptPath = join(exportRoot, "receipt.json")
-  if (await Bun.file(receiptPath).exists()) return publicSafe(JSON.parse(await readFile(receiptPath, "utf8")))
+  if (await Runtime.file(receiptPath).exists()) return publicSafe(JSON.parse(await readFile(receiptPath, "utf8")))
 
   const work = join(exportRoot, "work")
   const postImage = join(work, "post-image")
@@ -760,7 +761,7 @@ export const exportPortableCheckpoint = async (input: Readonly<{
 }
 
 const run = async (command: ReadonlyArray<string>): Promise<string> => {
-  const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe", env: { PATH: "/usr/local/bin:/usr/bin:/bin" } })
+  const child = Runtime.spawn(command, { stdout: "pipe", stderr: "pipe", env: { PATH: "/usr/local/bin:/usr/bin:/bin" } })
   const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()])
   if (exitCode !== 0) throw new PortableSessionControlError(`fixed guest runtime command failed (${command[0]})`)
   return stdout
@@ -797,7 +798,7 @@ const repositoryEntryBytes = async (cwd: string, relativePath: string): Promise<
 }
 
 const git = async (cwd: string, args: ReadonlyArray<string>): Promise<Uint8Array> => {
-  const child = Bun.spawn(["/usr/bin/git", "-C", cwd, ...args], {
+  const child = Runtime.spawn(["/usr/bin/git", "-C", cwd, ...args], {
     stdout: "pipe", stderr: "pipe", env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
   })
   const [exitCode, bytes] = await Promise.all([child.exited, new Response(child.stdout).bytes()])
@@ -853,7 +854,7 @@ export const productionRuntime: PortableSessionGuestRuntime = {
       throw new PortableSessionControlError("materialized repository does not match checkpoint")
     }
     for (const agentRef of graphAgentRefs(bundle.graph)) {
-      if (!(await Bun.file(join(agentStatePath(sessionRoot, agentRef), "lifecycle-state.json")).exists())) {
+      if (!(await Runtime.file(join(agentStatePath(sessionRoot, agentRef), "lifecycle-state.json")).exists())) {
         throw new PortableSessionControlError("materialized agent lifecycle state is missing")
       }
     }
@@ -879,7 +880,7 @@ export const productionRuntime: PortableSessionGuestRuntime = {
   continueWork: async ({ sessionRoot, ownerRef, repositoryRef, providerLeaseRef, turns }) => {
     const materialLeaf = createHash("sha256").update(providerLeaseRef).digest("hex").slice(0, 24)
     const authJsonPath = join(sessionRoot, "capability-material", `${materialLeaf}.material`)
-    if (!(await Bun.file(authJsonPath).exists())) throw new PortableSessionControlError("provider capability material is unavailable")
+    if (!(await Runtime.file(authJsonPath).exists())) throw new PortableSessionControlError("provider capability material is unavailable")
     const completed: Array<Readonly<{ agentRef: string; turnRef: string; activityCursor: number; eventCursor: number }>> = []
     for (const turn of turns) {
       const stateDir = agentStatePath(sessionRoot, turn.agentRef)
@@ -923,7 +924,7 @@ export const productionRuntime: PortableSessionGuestRuntime = {
         audit_context: turn.turnRef,
       }), { mode: 0o600 })
       const sessionStatePath = join(stateDir, "codex-session-state.json")
-      const existingSession = await Bun.file(sessionStatePath).exists()
+      const existingSession = await Runtime.file(sessionStatePath).exists()
       if (!existingSession) {
         const codexWorkspaceRoot = join(stateDir, "codex-workspaces")
         await mkdir(codexWorkspaceRoot, { recursive: true, mode: 0o700 })
@@ -974,39 +975,39 @@ export const productionRuntime: PortableSessionGuestRuntime = {
   },
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   try {
-    const encoded = Bun.argv[2]
+    const encoded = Runtime.argv[2]
     if (encoded === undefined) throw new PortableSessionControlError("one fixed operation is required")
     const stateRoot = process.env.OPENAGENTS_PORTABLE_SESSION_ROOT ?? "/var/lib/openagents/portable-sessions"
     let response: unknown
     if (encoded === "capability-install") {
-      const metadata = Bun.argv[3]
+      const metadata = Runtime.argv[3]
       if (metadata === undefined) throw new PortableSessionControlError("capability metadata is required")
-      const material = await Bun.stdin.bytes()
+      const material = await Runtime.stdin.bytes()
       try {
         response = await installPortableCapability({ metadata: JSON.parse(metadata), material, stateRoot })
       } finally {
         material.fill(0)
       }
     } else if (encoded === "checkpoint-materialize") {
-      const metadata = Bun.argv[3]
+      const metadata = Runtime.argv[3]
       if (metadata === undefined) throw new PortableSessionControlError("checkpoint metadata is required")
-      const archive = await Bun.stdin.bytes()
+      const archive = await Runtime.stdin.bytes()
       try {
         response = await materializePortableCheckpoint({ metadata: JSON.parse(metadata), archive, stateRoot, runtime: productionRuntime })
       } finally {
         archive.fill(0)
       }
     } else if (encoded === "continue") {
-      const privateBody = await Bun.stdin.bytes()
+      const privateBody = await Runtime.stdin.bytes()
       try {
         response = await continuePortableSession({ continuation: JSON.parse(new TextDecoder().decode(privateBody)), stateRoot, runtime: productionRuntime })
       } finally {
         privateBody.fill(0)
       }
     } else if (encoded === "checkpoint-export") {
-      const metadata = Bun.argv[3]
+      const metadata = Runtime.argv[3]
       if (metadata === undefined) throw new PortableSessionControlError("checkpoint export metadata is required")
       response = await exportPortableCheckpoint({ metadata: JSON.parse(metadata), stateRoot })
     } else {

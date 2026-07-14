@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Throwaway RC test helper: registers ONE pylon (identity from PYLON_HOME) under
 // the agent token in OPENAGENTS_AGENT_TOKEN and heartbeats it online every 20s,
 // so the live homepage network viz shows more pylons. NOT committed for prod use;
@@ -5,15 +6,15 @@
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { registerPylon, sendHeartbeat } from "../src/presence"
 
-const baseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL ?? "https://openagents.com"
-const agentToken = Bun.env.OPENAGENTS_AGENT_TOKEN
-const name = Bun.env.RC_PYLON_NAME ?? "rc-test"
+const baseUrl = Runtime.env.PYLON_OPENAGENTS_BASE_URL ?? "https://openagents.com"
+const agentToken = Runtime.env.OPENAGENTS_AGENT_TOKEN
+const name = Runtime.env.RC_PYLON_NAME ?? "rc-test"
 if (!agentToken) {
   console.error(`[${name}] no OPENAGENTS_AGENT_TOKEN`)
   process.exit(1)
 }
-const summary = createBootstrapSummary(parseBootstrapArgs(["--json", "--display-name", name]), Bun.env)
-const opts = { baseUrl, agentToken, env: Bun.env } as const
+const summary = createBootstrapSummary(parseBootstrapArgs(["--json", "--display-name", name]), Runtime.env)
+const opts = { baseUrl, agentToken, env: Runtime.env } as const
 
 try {
   const reg = await registerPylon(summary, opts)

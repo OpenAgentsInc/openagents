@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Khala Sync migration CLI (KS-0.3).
  *

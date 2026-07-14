@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // One-shot QA run with REAL chromium against a Target.
 //
 // This is the real-chromium proof path (NOT in default CI): it provisions the

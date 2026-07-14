@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 
-import { Database } from 'bun:sqlite'
+import { openLegacySqliteDatabase, type LegacySqliteDatabase as Database } from '@openagentsinc/sqlite-runtime'
 import { readFile } from 'node:fs/promises'
 import { existsSync, writeSync } from 'node:fs'
 import { loadClaudeAgentConfig, probeClaudeAgentReadiness, withClaudeAgentCapability } from './claude-agent.js'
@@ -266,13 +267,13 @@ let verboseMode = false
 // registry is in-memory, so we re-register on an interval to survive cold
 // starts. Best-effort and unref'd — never blocks or holds the process open.
 function startDiscoveryHeartbeat(opts: { controlPort: number; controlToken: string; boundHost: string }): void {
-  const broker = Bun.env.OA_DISCOVERY_BROKER
+  const broker = Runtime.env.OA_DISCOVERY_BROKER
   if (!broker) return
-  const owner = Bun.env.OA_DISCOVERY_OWNER ?? 'chris'
-  const nodeRef = Bun.env.PYLON_NODE_REF ?? hostname()
+  const owner = Runtime.env.OA_DISCOVERY_OWNER ?? 'chris'
+  const nodeRef = Runtime.env.PYLON_NODE_REF ?? hostname()
   // An externally-reachable HTTPS endpoint (e.g. `tailscale serve`): advertised
   // verbatim, reachable on any network the phone's tailnet covers, and ATS-safe.
-  const publicUrl = Bun.env.OA_DISCOVERY_PUBLIC_URL
+  const publicUrl = Runtime.env.OA_DISCOVERY_PUBLIC_URL
   const hosts: BrokerRegistrationHosts = {}
   if (opts.boundHost.startsWith('127.')) hosts.loopback = opts.boundHost
   else if (opts.boundHost.startsWith('100.')) hosts.tailnet = opts.boundHost
@@ -547,7 +548,7 @@ function startCoordinator(
     list: () => Promise<Array<{ sessionRef: string; state: string }>>
   },
 ): CoordinatorRuntime | null {
-  if (Bun.env.OA_COORDINATOR === '0') return null
+  if (Runtime.env.OA_COORDINATOR === '0') return null
   const repoRoot = process.cwd()
   const runtime = createCoordinatorRuntime({
     intentQueue,
@@ -568,12 +569,12 @@ function startCoordinator(
     createWorktree: async (intentId, index) => {
       const safe = intentId.replace(/[^a-zA-Z0-9._-]/g, '-')
       const dir = `/tmp/oa-coord/${safe}-${index}`
-      await Bun.spawn(['git', 'worktree', 'remove', '--force', dir], {
+      await Runtime.spawn(['git', 'worktree', 'remove', '--force', dir], {
         cwd: repoRoot,
         stderr: 'ignore',
         stdout: 'ignore',
       }).exited
-      const proc = Bun.spawn(['git', 'worktree', 'add', '--detach', '--force', dir, 'HEAD'], {
+      const proc = Runtime.spawn(['git', 'worktree', 'add', '--detach', '--force', dir, 'HEAD'], {
         cwd: repoRoot,
         stderr: 'pipe',
         stdout: 'ignore',
@@ -587,7 +588,7 @@ function startCoordinator(
     // with no configured budget (default 0) it DENIES, so an autonomous ship
     // escalates to the owner rather than spending without an explicit budget.
     shipContext: async () => {
-      const env = Bun.env
+      const env = Runtime.env
       const num = (v: string | undefined, d: number) => {
         const n = Number(v)
         return Number.isFinite(n) ? n : d
@@ -623,7 +624,7 @@ function startCoordinator(
       // explicit opt-in OA_SHIP_AUTO_EXECUTE=1. Dormant by default — with no
       // budget the spend gate denies, so this never fires unexpectedly.
       if (!decision.eligible || decision.decision !== 'auto') return
-      if (Bun.env.OA_SHIP_AUTO_EXECUTE !== '1') {
+      if (Runtime.env.OA_SHIP_AUTO_EXECUTE !== '1') {
         logToUi(
           `[ship] ${intentId} eligible for ${decision.shipMode} — auto-execute disabled (set OA_SHIP_AUTO_EXECUTE=1)`,
           'info',
@@ -634,7 +635,7 @@ function startCoordinator(
       if (decision.shipMode === 'ota') {
         // CL-38: auto OTA publish to our updates server when OTA-eligible.
         logToUi(`[ship] ${intentId} auto OTA publish -> publish-ota.sh`, 'info')
-        Bun.spawn(['bash', 'apps/oa-updates/scripts/publish-ota.sh'], {
+        Runtime.spawn(['bash', 'apps/oa-updates/scripts/publish-ota.sh'], {
           cwd: repoRoot,
           stdout: 'ignore',
           stderr: 'ignore',
@@ -642,7 +643,7 @@ function startCoordinator(
       } else if (decision.shipMode === 'rebuild') {
         // CL-39: auto local build + Apple altool submit when a rebuild is needed
         // (no EAS). Requires the extra OA_SHIP_REBUILD_AUTO=1 since builds are heavy.
-        if (Bun.env.OA_SHIP_REBUILD_AUTO !== '1') {
+        if (Runtime.env.OA_SHIP_REBUILD_AUTO !== '1') {
           logToUi(
             `[ship] ${intentId} rebuild needed — escalating (set OA_SHIP_REBUILD_AUTO=1 to auto-build locally)`,
             'info',
@@ -650,7 +651,7 @@ function startCoordinator(
           return
         }
         logToUi(`[ship] ${intentId} auto local rebuild -> build-and-submit.sh`, 'info')
-        Bun.spawn(['bash', 'clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh'], {
+        Runtime.spawn(['bash', 'clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh'], {
           cwd: repoRoot,
           stdout: 'ignore',
           stderr: 'ignore',
@@ -667,10 +668,10 @@ function startCoordinator(
 // OpenAgents base URL is configured; leases are cached between poll and
 // accept so accept can resolve a leaseRef back to the full lease payload.
 function makeAssignmentActions() {
-  const baseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
+  const baseUrl = Runtime.env.PYLON_OPENAGENTS_BASE_URL
   if (!baseUrl) return null
-  const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
-  const agentToken = Bun.env.OPENAGENTS_AGENT_TOKEN
+  const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
+  const agentToken = Runtime.env.OPENAGENTS_AGENT_TOKEN
   const clientOptions = { ...(agentToken ? { agentToken } : {}), baseUrl }
   let cachedLeases: PylonAssignmentLease[] = []
   return {
@@ -693,7 +694,7 @@ function makeAssignmentActions() {
 }
 
 function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) {
-  const portableDatabase = new Database(`${summary.paths.home}/portable-session-operations.sqlite`, { create: true })
+  const portableDatabase = openLegacySqliteDatabase(`${summary.paths.home}/portable-session-operations.sqlite`)
   return createControlSessionActions({
     summary,
     portableLedger: new PylonPortableSessionOperationLedger(portableDatabase),
@@ -710,7 +711,7 @@ function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) 
 }
 
 function codexComposerWorkingDirectory() {
-  const configured = Bun.env.PYLON_CODEX_CWD ?? Bun.env.PYLON_ACTIVE_REPO
+  const configured = Runtime.env.PYLON_CODEX_CWD ?? Runtime.env.PYLON_ACTIVE_REPO
   return configured && configured.trim().length > 0 ? configured : process.cwd()
 }
 
@@ -721,7 +722,7 @@ async function runAccountsUsageRefresh(
   readonly attemptedCount: number
   readonly blockerRefs: readonly string[]
 }> {
-  const targets = await resolvePylonAccountUsageRefreshTargets(summary, options, { env: Bun.env })
+  const targets = await resolvePylonAccountUsageRefreshTargets(summary, options, { env: Runtime.env })
   if (targets.length > 0 && targets.every((target) => target.provider === 'grok')) {
     throw new Error('Grok account usage refresh is unavailable; Grok usage truth remains not_measured')
   }
@@ -740,7 +741,7 @@ async function runAccountsUsageRefresh(
         const config = await loadCodexAgentConfig(summary)
         const custodyReprime = await reprimePylonCodexAccountAuthFromCustody({
           account: target.account,
-          env: Bun.env,
+          env: Runtime.env,
         })
         if (custodyReprime.status === 'blocked') {
           continue
@@ -765,7 +766,7 @@ async function runAccountsUsageRefresh(
           account: target.account,
           config,
           cwd: codexComposerWorkingDirectory(),
-          env: Bun.env,
+          env: Runtime.env,
           executionMode: 'local_bounded',
           maxTurns: 1,
           ...(config.model === undefined ? {} : { model: config.model }),
@@ -802,7 +803,7 @@ async function runAccountsUsageRefresh(
 }
 
 const assignmentWorkerIntervalMs = () => {
-  const seconds = Number(Bun.env.PYLON_ASSIGNMENT_WORKER_INTERVAL_SECONDS ?? 30)
+  const seconds = Number(Runtime.env.PYLON_ASSIGNMENT_WORKER_INTERVAL_SECONDS ?? 30)
   return Number.isFinite(seconds) && seconds >= 5 ? seconds * 1000 : 30_000
 }
 
@@ -856,7 +857,7 @@ const retiredMoneyControlActions: ControlCommandActions = {
 // Headless node-core (issue #4740): services + event stream + control API,
 // no TUI, no Solid. Logs print to stdout with the same verbosity rules.
 const runHeadlessNode = Effect.gen(function* () {
-  verboseMode = Bun.argv.includes('--verbose') || Bun.env.PYLON_VERBOSE === '1'
+  verboseMode = Runtime.argv.includes('--verbose') || Runtime.env.PYLON_VERBOSE === '1'
   const runtime = yield* makePylonNodeRuntime
   nodeRuntime = runtime
 
@@ -890,7 +891,7 @@ const runHeadlessNode = Effect.gen(function* () {
     }),
   )
 
-  const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+  const bootstrapSummary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
   const persistedTail = yield* Effect.promise(() =>
     readPersistedLogTail(bootstrapSummary.paths.home, 300).catch(() => []),
   )
@@ -903,7 +904,7 @@ const runHeadlessNode = Effect.gen(function* () {
   yield* forkLogPersistence(runtime, feedWriter)
 
   const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
-  const controlPort = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const controlPort = Number(Runtime.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const headlessAssignmentActions = makeAssignmentActions()
   const headlessSessionActions = makeSessionActions(bootstrapSummary)
   const headlessExternalTailer = startExternalSessionTailer()
@@ -916,11 +917,11 @@ const runHeadlessNode = Effect.gen(function* () {
     try: () => ensurePylonLocalState(bootstrapSummary),
     catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
   })
-  const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
+  const presenceBaseUrl = Runtime.env.PYLON_OPENAGENTS_BASE_URL
   const currentPresenceClientOptions = () =>
     presenceClientOptionsFromEnv({
       baseUrl: presenceBaseUrl ?? '',
-      env: Bun.env,
+      env: Runtime.env,
     })
   const presenceClientOptions = currentPresenceClientOptions()
   const fleetRunExecutionRemote = yield* Effect.try({
@@ -939,7 +940,7 @@ const runHeadlessNode = Effect.gen(function* () {
         summary: bootstrapSummary,
         pylonRef: localState.identity.pylonRef,
         baseUrl: presenceBaseUrl,
-        env: Bun.env,
+        env: Runtime.env,
         ...(presenceClientOptions.agentToken === undefined ? {} : { agentToken: presenceClientOptions.agentToken }),
         ...(fleetRunExecutionRemote === undefined ? {} : { executionRemote: fleetRunExecutionRemote }),
         ...(presenceClientOptions.agentToken === undefined || presenceBaseUrl === undefined
@@ -972,7 +973,7 @@ const runHeadlessNode = Effect.gen(function* () {
     try: async () => {
       const agentToken = presenceClientOptions.agentToken
       if (agentToken === undefined || presenceBaseUrl === undefined) return null
-      const configuredInterval = Number(Bun.env.PYLON_FLEET_RUN_INTAKE_POLL_INTERVAL_MS ?? 5_000)
+      const configuredInterval = Number(Runtime.env.PYLON_FLEET_RUN_INTAKE_POLL_INTERVAL_MS ?? 5_000)
       const intervalMs =
         Number.isInteger(configuredInterval) && configuredInterval >= 250 && configuredInterval <= 300_000
           ? configuredInterval
@@ -984,7 +985,7 @@ const runHeadlessNode = Effect.gen(function* () {
       const intake = await openPylonFleetRunRemoteIntakeService({
         activation: fleetRunActivation,
         bootstrap: bootstrapSummary,
-        env: Bun.env,
+        env: Runtime.env,
         pylonRef: localState.identity.pylonRef,
         remote,
       })
@@ -1005,7 +1006,7 @@ const runHeadlessNode = Effect.gen(function* () {
   // helper exists, the launch is inert (supervisorStatus undefined) and the
   // action returns the unsupervised projection byte-for-byte unchanged.
   appleFmSupervisedLaunch =
-    Bun.env.PYLON_APPLE_FM_SUPERVISE === '1' ? createAppleFmSupervisedLaunch({ discover: { env: Bun.env } }) : null
+    Runtime.env.PYLON_APPLE_FM_SUPERVISE === '1' ? createAppleFmSupervisedLaunch({ discover: { env: Runtime.env } }) : null
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -1030,7 +1031,7 @@ const runHeadlessNode = Effect.gen(function* () {
                 json: true,
                 reset: true,
               },
-              { env: Bun.env },
+              { env: Runtime.env },
             )
           : input?.detailed
             ? collectPylonAccountsStatus(
@@ -1042,7 +1043,7 @@ const runHeadlessNode = Effect.gen(function* () {
                   json: true,
                   reset: false,
                 },
-                { env: Bun.env },
+                { env: Runtime.env },
               )
             : collectPylonOperatorAccountStatus(bootstrapSummary),
       // The supervisor-status provider comes from the launch lifecycle owner
@@ -1050,7 +1051,7 @@ const runHeadlessNode = Effect.gen(function* () {
       // so by default this is the unsupervised projection unchanged.
       // See node/apple-fm-supervised-launch.ts + node/apple-fm-supervised-status.ts.
       appleFmStatus: createSupervisedAppleFmStatusAction(
-        { summary: bootstrapSummary, env: Bun.env },
+        { summary: bootstrapSummary, env: Runtime.env },
         appleFmSupervisedLaunch?.supervisorStatus === undefined
           ? {}
           : { supervisorStatus: appleFmSupervisedLaunch.supervisorStatus },
@@ -1061,7 +1062,7 @@ const runHeadlessNode = Effect.gen(function* () {
       fleetRunIntakeStatus: async () => fleetRunIntakePoller?.status() ?? disabledPylonFleetRunIntakePollerStatus(),
     },
     port: controlPort,
-    hostname: Bun.env.PYLON_CONTROL_HOST ?? '127.0.0.1',
+    hostname: Runtime.env.PYLON_CONTROL_HOST ?? '127.0.0.1',
   })
   yield* logMessage(
     runtime,
@@ -1072,7 +1073,7 @@ const runHeadlessNode = Effect.gen(function* () {
   startDiscoveryHeartbeat({
     controlPort,
     controlToken,
-    boundHost: Bun.env.PYLON_CONTROL_HOST ?? '127.0.0.1',
+    boundHost: Runtime.env.PYLON_CONTROL_HOST ?? '127.0.0.1',
   })
   // CL-36: close the self-driving loop on the headless node (the launchd path).
   headlessCoordinatorHolder.rt = startCoordinator(headlessIntentQueue, headlessSessionActions)
@@ -1092,7 +1093,7 @@ const runHeadlessNode = Effect.gen(function* () {
       heartbeat: () => sendHeartbeat(bootstrapSummary, currentPresenceClientOptions()),
     },
   })
-  if (presenceBaseUrl && Bun.env.PYLON_ASSIGNMENT_WORKER === '1') {
+  if (presenceBaseUrl && Runtime.env.PYLON_ASSIGNMENT_WORKER === '1') {
     yield* superviseLoop(
       runtime,
       'Assignments',
@@ -1101,7 +1102,7 @@ const runHeadlessNode = Effect.gen(function* () {
           runHeadlessAssignmentWorkerLoop(
             bootstrapSummary,
             {
-              ...(Bun.env.OPENAGENTS_AGENT_TOKEN ? { agentToken: Bun.env.OPENAGENTS_AGENT_TOKEN } : {}),
+              ...(Runtime.env.OPENAGENTS_AGENT_TOKEN ? { agentToken: Runtime.env.OPENAGENTS_AGENT_TOKEN } : {}),
               baseUrl: presenceBaseUrl,
             },
             (message, level) => logToUi(message, level ?? classifyServiceLogLevel(message)),
@@ -1234,7 +1235,7 @@ type RunningNodeProbe = {
   token: string | null
 }
 
-function controlBaseUrlFromEnv(env: NodeJS.ProcessEnv = Bun.env): string {
+function controlBaseUrlFromEnv(env: NodeJS.ProcessEnv = Runtime.env): string {
   const explicit = env.PYLON_CONTROL_URL?.trim()
   if (explicit) return explicit.replace(/\/+$/, '')
   const host = env.PYLON_CONTROL_HOST ?? '127.0.0.1'
@@ -1242,11 +1243,11 @@ function controlBaseUrlFromEnv(env: NodeJS.ProcessEnv = Bun.env): string {
   return `http://${host}:${Number.isFinite(port) ? port : defaultControlPort}`
 }
 
-function remoteReadRequested(args: string[], env: NodeJS.ProcessEnv = Bun.env): boolean {
+function remoteReadRequested(args: string[], env: NodeJS.ProcessEnv = Runtime.env): boolean {
   return args.includes('--remote') || args.includes('--connect') || env.PYLON_CONNECT_REMOTE === '1'
 }
 
-async function probeRunningNode(state: PylonLocalState, env: NodeJS.ProcessEnv = Bun.env): Promise<RunningNodeProbe> {
+async function probeRunningNode(state: PylonLocalState, env: NodeJS.ProcessEnv = Runtime.env): Promise<RunningNodeProbe> {
   const baseUrl = controlBaseUrlFromEnv(env)
   let token: string | null = null
   const envToken = env.PYLON_CONTROL_TOKEN?.trim()
@@ -1254,7 +1255,7 @@ async function probeRunningNode(state: PylonLocalState, env: NodeJS.ProcessEnv =
     token = envToken
   } else {
     try {
-      const file = Bun.file(controlTokenPath(state.paths.home))
+      const file = Runtime.file(controlTokenPath(state.paths.home))
       if (await file.exists()) {
         const text = (await file.text()).trim()
         if (text.length >= 16) token = text
@@ -1562,7 +1563,7 @@ async function activeDispatchBreakersForPlanning(summary: BootstrapSummary): Pro
   if (!existsSync(dbPath)) return []
   let db: Database | null = null
   try {
-    db = new Database(dbPath)
+    db = openLegacySqliteDatabase(dbPath)
     db.exec('PRAGMA busy_timeout = 250')
     const store = createPylonOrchestrationStore(db)
     return store.listActiveDispatchBreakers(new Date())
@@ -1577,7 +1578,7 @@ async function codingCapacityForDispatch(
   summary: BootstrapSummary,
   state: PylonLocalState,
   options?: AssignmentLeaseNetworkOptions,
-  env: NodeJS.ProcessEnv = Bun.env,
+  env: NodeJS.ProcessEnv = Runtime.env,
 ) {
   const activeCounts = maxActiveCodingRunCounts(
     await activeCodingRunCounts(state.paths),
@@ -1607,7 +1608,7 @@ async function availableCodexAssignments(
   summary: BootstrapSummary,
   state: PylonLocalState,
   options?: AssignmentLeaseNetworkOptions,
-  env: NodeJS.ProcessEnv = Bun.env,
+  env: NodeJS.ProcessEnv = Runtime.env,
 ): Promise<number> {
   const codexAccounts = await localCodexDispatchAccounts(summary, state, env, options)
   if (codexAccounts.length > 0) {
@@ -1621,7 +1622,7 @@ async function availableClaudeAssignments(
   summary: BootstrapSummary,
   state: PylonLocalState,
   options?: AssignmentLeaseNetworkOptions,
-  env: NodeJS.ProcessEnv = Bun.env,
+  env: NodeJS.ProcessEnv = Runtime.env,
 ): Promise<number> {
   const claudeAccounts = await localClaudeDispatchAccounts(summary, state, env, options)
   if (claudeAccounts.length > 0) {
@@ -1634,7 +1635,7 @@ async function availableClaudeAssignments(
 async function localCodexDispatchAccounts(
   summary: BootstrapSummary,
   state: PylonLocalState,
-  env: NodeJS.ProcessEnv = Bun.env,
+  env: NodeJS.ProcessEnv = Runtime.env,
   options?: AssignmentLeaseNetworkOptions,
 ) {
   return localCodexAccountCapacities(
@@ -1648,7 +1649,7 @@ async function localCodexDispatchAccounts(
 async function localClaudeDispatchAccounts(
   summary: BootstrapSummary,
   state: PylonLocalState,
-  env: NodeJS.ProcessEnv = Bun.env,
+  env: NodeJS.ProcessEnv = Runtime.env,
   options?: AssignmentLeaseNetworkOptions,
 ) {
   return localClaudeAccountCapacities(
@@ -1702,7 +1703,7 @@ function positiveIntegerEnv(value: string | undefined): number | null {
 }
 
 async function localGitText(args: string[], cwd = process.cwd()): Promise<string> {
-  const proc = Bun.spawn(['git', ...args], {
+  const proc = Runtime.spawn(['git', ...args], {
     cwd,
     stderr: 'pipe',
     stdout: 'pipe',
@@ -1782,7 +1783,7 @@ async function waitForControlSessionTerminal(sessionRef: string, timeoutSeconds:
   let session: ControlSessionProjection | null = null
   for (;;) {
     polls += 1
-    const { result } = await runControlCommand({ type: 'session.list' }, Bun.env)
+    const { result } = await runControlCommand({ type: 'session.list' }, Runtime.env)
     const sessions = Array.isArray(result) ? (result as ControlSessionProjection[]) : []
     session = sessions.find((entry) => entry.sessionRef === sessionRef) ?? null
     if (session !== null && isTerminalSessionState(session.state)) break
@@ -1794,18 +1795,18 @@ async function waitForControlSessionTerminal(sessionRef: string, timeoutSeconds:
         driver: { elapsedMs: Date.now() - startedAt, polls, timedOut: true },
       }
     }
-    await Bun.sleep(250)
+    await Runtime.sleep(250)
   }
 
   let events: unknown = null
   try {
-    events = (await runControlCommand({ type: 'session.events', sessionRef }, Bun.env)).result
+    events = (await runControlCommand({ type: 'session.events', sessionRef }, Runtime.env)).result
   } catch {
     events = null
   }
   let artifact: unknown = null
   try {
-    artifact = (await runControlCommand({ type: 'session.artifact', sessionRef }, Bun.env)).result
+    artifact = (await runControlCommand({ type: 'session.artifact', sessionRef }, Runtime.env)).result
   } catch {
     artifact = null
   }
@@ -1846,15 +1847,15 @@ function describeCheck(result: Awaited<ReturnType<typeof checkForUpdate>>): stri
 // falls back to running the current version — an update never blocks startup.
 async function maybeAutoUpdate(): Promise<void> {
   try {
-    const disabled = autoUpdateDisabledReason(Bun.env)
+    const disabled = autoUpdateDisabledReason(Runtime.env)
     if (disabled !== null) return
     const target = resolveSelfBinaryPath()
     if (target === null) return // dev / interpreter run — nothing to replace
-    const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+    const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
     const state = await ensurePylonLocalState(summary)
     const result = await checkForUpdate({
       clientId: state.identity.nodeId,
-      env: Bun.env,
+      env: Runtime.env,
     })
     if (result.status !== 'update-available') return
     process.stderr.write(`Pylon: auto-updating ${result.currentVersion} -> ${result.release.version}...\n`)
@@ -1865,11 +1866,11 @@ async function maybeAutoUpdate(): Promise<void> {
     process.stderr.write(`Pylon: updated to ${applied.version}; relaunching.\n`)
     // Re-exec the freshly written binary with the same args, inheriting stdio so
     // a launchd/systemd/terminal supervisor stays attached, then exit with its code.
-    const child = Bun.spawn([target, ...Bun.argv.slice(2)], {
+    const child = Runtime.spawn([target, ...Runtime.argv.slice(2)], {
       stdin: 'inherit',
       stdout: 'inherit',
       stderr: 'inherit',
-      env: Bun.env,
+      env: Runtime.env,
     })
     const exitCode = await child.exited
     process.exit(exitCode)
@@ -1880,12 +1881,12 @@ async function maybeAutoUpdate(): Promise<void> {
 
 // Format a node-startup failure into a clear, actionable message. The most
 // common operational failure is the control port already being held by a
-// running Pylon daemon (Bun.serve throws an EADDRINUSE-class error whose
+// running Pylon daemon (Runtime.serve throws an EADDRINUSE-class error whose
 // message mentions the port). Surface that as guidance instead of a raw crash
 // dump, and keep the real release version in the banner.
 function formatNodeStartupError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
-  const port = Number(Bun.env.PYLON_CONTROL_PORT ?? defaultControlPort)
+  const port = Number(Runtime.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const looksLikePortInUse =
     /EADDRINUSE/i.test(message) ||
     /port .* in use/i.test(message) ||
@@ -1904,7 +1905,7 @@ function formatNodeStartupError(error: unknown): string {
 }
 
 async function main() {
-  const args = Bun.argv.slice(2)
+  const args = Runtime.argv.slice(2)
 
   // `pylon --version` / `pylon -V`: print the authoritative release version
   // and exit BEFORE any runtime or control-server boot. Without this guard,
@@ -1947,7 +1948,7 @@ async function main() {
     const command = args[0] as PublicActivityCliCommand
     try {
       const result = await runPublicActivityCliCommand(command, args.slice(1), {
-        env: Bun.env,
+        env: Runtime.env,
       })
       process.stdout.write(result.json ? `${JSON.stringify(result, null, 2)}\n` : formatPublicActivityCliText(result))
       if (!result.ok) process.exitCode = 1
@@ -1968,7 +1969,7 @@ async function main() {
     const options = parseCliOptions(args.slice(2))
     try {
       if (command === 'list') {
-        const { result } = await runControlCommand({ type: 'session.list' }, Bun.env)
+        const { result } = await runControlCommand({ type: 'session.list' }, Runtime.env)
         process.stdout.write(`${JSON.stringify({ ok: true, sessions: result }, null, 2)}\n`)
         return
       }
@@ -2009,7 +2010,7 @@ async function main() {
             verify,
             ...(repoRef ? { repoRef } : worktree ? { worktreePath: worktree } : {}),
           },
-          Bun.env,
+          Runtime.env,
         )
         process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
         return
@@ -2031,7 +2032,7 @@ async function main() {
             objective,
             ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
           },
-          Bun.env,
+          Runtime.env,
         )
         const reply = result as {
           sessionRef: string
@@ -2052,7 +2053,7 @@ async function main() {
         const sessionRef =
           optionString(options, 'session-ref') ?? (args[2] && !args[2].startsWith('--') ? args[2] : undefined)
         if (!sessionRef) throw new Error('sessions cancel requires --session-ref <ref>')
-        const { result } = await runControlCommand({ type: 'session.cancel', sessionRef }, Bun.env)
+        const { result } = await runControlCommand({ type: 'session.cancel', sessionRef }, Runtime.env)
         process.stdout.write(`${JSON.stringify({ ok: true, session: result }, null, 2)}\n`)
         return
       }
@@ -2089,23 +2090,23 @@ async function main() {
         const lane = sessionLaneOption(options, 'sessions batch')
         const control: SessionsExecControl = {
           spawn: async (cmd) => {
-            const { result } = await runControlCommand(cmd, Bun.env)
+            const { result } = await runControlCommand(cmd, Runtime.env)
             return result as { sessionRef: string; state: any }
           },
           list: async () => {
-            const { result } = await runControlCommand({ type: 'session.list' }, Bun.env)
+            const { result } = await runControlCommand({ type: 'session.list' }, Runtime.env)
             return result as any
           },
           events: async (sessionRef) => {
-            const { result } = await runControlCommand({ type: 'session.events', sessionRef }, Bun.env)
+            const { result } = await runControlCommand({ type: 'session.events', sessionRef }, Runtime.env)
             return result as any
           },
           artifact: async (sessionRef) => {
-            const { result } = await runControlCommand({ type: 'session.artifact', sessionRef }, Bun.env)
+            const { result } = await runControlCommand({ type: 'session.artifact', sessionRef }, Runtime.env)
             return result as any
           },
           approvalsList: async () => {
-            const { result } = await runControlCommand({ type: 'approvals.list' }, Bun.env)
+            const { result } = await runControlCommand({ type: 'approvals.list' }, Runtime.env)
             return result as {
               approvals: Array<{ approvalRef: string; kind: string }>
             }
@@ -2214,29 +2215,29 @@ async function main() {
         // authority — this only spawns + observes the existing session surface.
         const control: SessionsExecControl = {
           spawn: async (cmd) => {
-            const { result } = await runControlCommand(cmd, Bun.env)
+            const { result } = await runControlCommand(cmd, Runtime.env)
             return result as { sessionRef: string; state: any }
           },
           list: async () => {
-            const { result } = await runControlCommand({ type: 'session.list' }, Bun.env)
+            const { result } = await runControlCommand({ type: 'session.list' }, Runtime.env)
             return result as any
           },
           events: async (sessionRef) => {
-            const { result } = await runControlCommand({ type: 'session.events', sessionRef }, Bun.env)
+            const { result } = await runControlCommand({ type: 'session.events', sessionRef }, Runtime.env)
             return result as any
           },
           artifact: async (sessionRef) => {
-            const { result } = await runControlCommand({ type: 'session.artifact', sessionRef }, Bun.env)
+            const { result } = await runControlCommand({ type: 'session.artifact', sessionRef }, Runtime.env)
             return result as any
           },
           approvalsList: async () => {
-            const { result } = await runControlCommand({ type: 'approvals.list' }, Bun.env)
+            const { result } = await runControlCommand({ type: 'approvals.list' }, Runtime.env)
             return result as {
               approvals: Array<{ approvalRef: string; kind: string }>
             }
           },
           approvalsResolve: async (approvalRef, decision) => {
-            const { result } = await runControlCommand({ type: 'approvals.resolve', approvalRef, decision }, Bun.env)
+            const { result } = await runControlCommand({ type: 'approvals.resolve', approvalRef, decision }, Runtime.env)
             return result
           },
         }
@@ -2282,7 +2283,7 @@ async function main() {
     const options = parseCliOptions(args.slice(2))
     try {
       if (command === 'list') {
-        const { result } = await runControlCommand({ type: 'approvals.list' }, Bun.env)
+        const { result } = await runControlCommand({ type: 'approvals.list' }, Runtime.env)
         process.stdout.write(`${JSON.stringify({ ok: true, ...(result as Record<string, unknown>) }, null, 2)}\n`)
         return
       }
@@ -2299,7 +2300,7 @@ async function main() {
             decision: command,
             ...(answer ? { answer } : {}),
           },
-          Bun.env,
+          Runtime.env,
         )
         process.stdout.write(`${JSON.stringify({ ok: true, resolution: result }, null, 2)}\n`)
         return
@@ -2349,7 +2350,7 @@ async function main() {
     const options = parseCliOptions(args.slice(2))
     try {
       if (command === 'status') {
-        const { result } = await runControlCommand({ type: 'deploy.status' }, Bun.env)
+        const { result } = await runControlCommand({ type: 'deploy.status' }, Runtime.env)
         process.stdout.write(`${JSON.stringify({ ok: true, deploy: result }, null, 2)}\n`)
         return
       }
@@ -2360,7 +2361,7 @@ async function main() {
         const env = optionString(options, 'env')
         const { result } = await runControlCommand(
           { type: 'deploy.cloud', target, ref, ...(env ? { env } : {}) },
-          Bun.env,
+          Runtime.env,
         )
         const accepted = (result as { accepted?: boolean } | null)?.accepted === true
         process.stdout.write(`${JSON.stringify({ ok: accepted, deploy: result }, null, 2)}\n`)
@@ -2377,7 +2378,7 @@ async function main() {
   if (args[0] === 'bootstrap') {
     try {
       const options = parseBootstrapArgs(args.slice(1))
-      const summary = createBootstrapSummary(options, Bun.env)
+      const summary = createBootstrapSummary(options, Runtime.env)
       if (!summary.platform.inScope) {
         // WSL reports `platform === "linux"`, so it would pass the raw `supported`
         // check; gate on `inScope` and guide a WSL contributor to a native host
@@ -2414,10 +2415,10 @@ async function main() {
   // projection. `--remote`/`--connect` force the remote
   // read (error if no node is reachable instead of falling back).
   if (args[0] === 'status') {
-    const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+    const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
     const state = await ensurePylonLocalState(summary)
-    const probe = await probeRunningNode(state, Bun.env)
-    const forceRemote = remoteReadRequested(args, Bun.env)
+    const probe = await probeRunningNode(state, Runtime.env)
+    const forceRemote = remoteReadRequested(args, Runtime.env)
     if (forceRemote && !probe.reachable) {
       const payload = {
         ok: false,
@@ -2427,7 +2428,7 @@ async function main() {
       process.exitCode = 1
       return
     }
-    const inventory = await discoverHostInventory({ env: Bun.env })
+    const inventory = await discoverHostInventory({ env: Runtime.env })
     const projection = projectPublicStatus(state, inventory)
     const output = {
       ...projection,
@@ -2441,7 +2442,7 @@ async function main() {
   }
 
   if (args[0] === 'inventory' && args.includes('--json')) {
-    const inventory = await discoverHostInventory({ env: Bun.env })
+    const inventory = await discoverHostInventory({ env: Runtime.env })
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`)
     return
   }
@@ -2455,12 +2456,12 @@ async function main() {
   // the seed), whether a seed/identity is present, whether a node is running,
   // and whether a node is running. `--remote`/`--connect` force the remote read.
   if (args[0] === 'doctor') {
-    const homeResolution = selectPylonHomeResolution(Bun.env)
-    const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+    const homeResolution = selectPylonHomeResolution(Runtime.env)
+    const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
     const state = await ensurePylonLocalState(summary)
     const seedPresent = existsSync(state.paths.identityMnemonic)
-    const probe = await probeRunningNode(state, Bun.env)
-    const forceRemote = remoteReadRequested(args, Bun.env)
+    const probe = await probeRunningNode(state, Runtime.env)
+    const forceRemote = remoteReadRequested(args, Runtime.env)
     if (forceRemote && !probe.reachable) {
       const payload = {
         ok: false,
@@ -2502,11 +2503,11 @@ async function main() {
     const json = options.json === true
     const checkOnly = options.check === true
     try {
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const state = await ensurePylonLocalState(summary)
       const result = await checkForUpdate({
         clientId: state.identity.nodeId,
-        env: Bun.env,
+        env: Runtime.env,
         ...(optionString(options, 'channel') ? { channel: optionString(options, 'channel') } : {}),
         ...(optionString(options, 'feed-base') ? { feedBase: optionString(options, 'feed-base') } : {}),
       })
@@ -2563,7 +2564,7 @@ async function main() {
   if (args[0] === 'auth') {
     try {
       const options = parsePylonAuthArgs(args.slice(1))
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const onDevicePrompt = options.json
         ? undefined
         : (prompt: { userCode: string; verificationUrl: string }) => {
@@ -2572,7 +2573,7 @@ async function main() {
 
       if (options.target === 'openagents') {
         const result = await runPylonAuthOpenAgents(summary, options, {
-          env: Bun.env,
+          env: Runtime.env,
           onDevicePrompt,
         })
         if (options.json) {
@@ -2583,7 +2584,7 @@ async function main() {
 
       if (options.target === 'claude') {
         const projection = await runPylonAuthClaude(summary, options, {
-          env: Bun.env,
+          env: Runtime.env,
         })
         if (options.json) {
           process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
@@ -2595,7 +2596,7 @@ async function main() {
       }
 
       const projection = await runPylonAuthCodex(summary, options, {
-        env: Bun.env,
+        env: Runtime.env,
         onDevicePrompt,
       })
       if (options.json) {
@@ -2620,7 +2621,7 @@ async function main() {
         let email: string | null = null
         try {
           const codexAccounts = await collectPylonCodexAccountsLocal(summary, {
-            env: Bun.env,
+            env: Runtime.env,
           })
           email = codexAccounts.find((account) => account.accountRef === projection.accountRef)?.email ?? null
         } catch {
@@ -2667,7 +2668,7 @@ async function main() {
           'usage: pylon codex fleet offload-plan --accounts <refs> --target <host:capacity> [--target <host:capacity> ...] --json',
         )
       }
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const plan = await createCodexFleetOffloadPlan(summary, options)
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`)
       return
@@ -2682,17 +2683,17 @@ async function main() {
     try {
       const command = accountCommandArgs[0]
       if (command === 'list') {
-        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
         if (accountCommandArgs.includes('--json')) {
           const projection = await collectPylonAccountsList(summary, {
-            env: Bun.env,
+            env: Runtime.env,
           })
           process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
           return
         }
         if (!codexAccountsAlias) {
           const projection = await collectPylonAccountsList(summary, {
-            env: Bun.env,
+            env: Runtime.env,
           })
           const present = projection.accounts.filter((account) => account.homeState === 'present')
           if (present.length === 0) {
@@ -2708,7 +2709,7 @@ async function main() {
         }
         // The Codex namespace alias retains its local-only email/linked-at view.
         const codex = await collectPylonCodexAccountsLocal(summary, {
-          env: Bun.env,
+          env: Runtime.env,
         })
         const presentCodex = codex.filter((account) => account.homeState === 'present')
         if (presentCodex.length === 0) {
@@ -2731,13 +2732,13 @@ async function main() {
             'usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] [--report-local-codex-usage] --json',
           )
         }
-        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
         const refreshResult = options.refresh
           ? await runAccountsUsageRefresh(summary, options)
           : { attemptedCount: 0, blockerRefs: [] }
-        const directLocalCodexReport = await reportDirectLocalCodexUsage(summary, options, { env: Bun.env })
+        const directLocalCodexReport = await reportDirectLocalCodexUsage(summary, options, { env: Runtime.env })
         const projection = await collectPylonAccountsUsage(summary, options, {
-          env: Bun.env,
+          env: Runtime.env,
         })
         process.stdout.write(
           `${JSON.stringify(
@@ -2764,9 +2765,9 @@ async function main() {
             'usage: pylon accounts status [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--reset] --json',
           )
         }
-        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
         const projection = await collectPylonAccountsStatus(summary, options, {
-          env: Bun.env,
+          env: Runtime.env,
         })
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
@@ -2778,9 +2779,9 @@ async function main() {
             'usage: pylon accounts connect codex|claude|grok --account <ref> [provider-specific options] --json',
           )
         }
-        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
         const projection = await runPylonAccountsConnect(summary, options, {
-          env: Bun.env,
+          env: Runtime.env,
         })
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
@@ -2795,8 +2796,8 @@ async function main() {
             'usage: pylon accounts maintenance [--update --harness <codex|claude|opencode> [--channel <c>] [--allow-channel-jump]] --json',
           )
         }
-        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
-        const deps = { env: Bun.env as Record<string, string | undefined> }
+        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
+        const deps = { env: Runtime.env as Record<string, string | undefined> }
         if (!maintenanceArgs.includes('--update')) {
           const projection = await collectHarnessMaintenanceStatus(deps)
           process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
@@ -2846,11 +2847,11 @@ async function main() {
   if (args[0] === 'context') {
     try {
       if (!args.includes('--json')) throw new Error('usage: pylon context --json [--codex-danger]')
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const projection = await collectPylonContextProjection({
         cwd: codexComposerWorkingDirectory(),
         dangerFlag: args.includes('--codex-danger'),
-        env: Bun.env,
+        env: Runtime.env,
         summary,
       })
       process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
@@ -2863,7 +2864,7 @@ async function main() {
   }
 
   if (args[0] === 'operator' && args[1] === 'snapshot' && args.includes('--json')) {
-    const inventory = await discoverHostInventory({ env: Bun.env })
+    const inventory = await discoverHostInventory({ env: Runtime.env })
     const snapshot = createOperatorSnapshot({ inventory })
     process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`)
     return
@@ -2878,18 +2879,18 @@ async function main() {
       // idempotent no-op for supervisor/runbook parity with other Pylon
       // machine-readable commands.
       void optionFlag(options, 'json')
-      const baseUrl = optionString(options, 'base-url') ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, 'base-url') ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) {
         throw new Error('presence commands require --base-url or PYLON_OPENAGENTS_BASE_URL')
       }
-      const summary = await createPresenceBootstrapSummary(presenceArgs, Bun.env)
+      const summary = await createPresenceBootstrapSummary(presenceArgs, Runtime.env)
       const resolvedAgentToken = await resolveOpenAgentsAgentToken({
-        env: Bun.env,
+        env: Runtime.env,
         explicitAgentToken: optionString(options, 'agent-token') ?? null,
         summary,
       })
       const clientOptions = {
-        ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
+        ...presenceClientOptionsFromEnv({ baseUrl, env: Runtime.env }),
         ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
         ...(command === 'heartbeat'
           ? {
@@ -2915,7 +2916,7 @@ async function main() {
                 ? await refreshPylonLink(summary, clientOptions)
                 : null
       if (!result) throw new Error(`unknown presence command: ${command ?? ''}`)
-      if (Bun.env.PYLON_PRESENCE_ONESHOT_TEST_HOLD_HANDLE === '1') {
+      if (Runtime.env.PYLON_PRESENCE_ONESHOT_TEST_HOLD_HANDLE === '1') {
         setInterval(() => undefined, 60_000)
       }
       writeJsonAndExit(result)
@@ -2930,11 +2931,11 @@ async function main() {
     try {
       const surfaceArgs = args[0] === 'ask-artanis' ? args.slice(2) : args.slice(args[0] === 'forum' ? 2 : 1)
       const options = parseKeyValueOptions(surfaceArgs)
-      const baseUrl = optionString(options, 'base-url') ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const baseUrl = optionString(options, 'base-url') ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const state = await ensurePylonLocalState(summary)
       const networkOptions = {
-        agentToken: optionString(options, 'agent-token') ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        agentToken: optionString(options, 'agent-token') ?? Runtime.env.OPENAGENTS_AGENT_TOKEN,
         baseUrl: baseUrl ?? 'https://openagents.com',
       }
       if (args[0] === 'memories') {
@@ -2996,9 +2997,9 @@ async function main() {
       if (!question || question.startsWith('--')) {
         throw new Error('usage: pylon ask-artanis "your question" [--base-url URL]')
       }
-      const inventory = await discoverHostInventory({ env: Bun.env })
+      const inventory = await discoverHostInventory({ env: Runtime.env })
       const memories = await readMemories(summary.paths.home, 10)
-      const adapter = resolveModelAdapter(Bun.env)
+      const adapter = resolveModelAdapter(Runtime.env)
       const composed = await composeAskArtanisBody(
         {
           deviceContext: {
@@ -3044,12 +3045,12 @@ async function main() {
       if (!args.includes('--json')) {
         throw new Error('usage: pylon dev doctor --json [--codex-danger] [--claude-danger]')
       }
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const projection = await collectPylonDevDoctor({
         claudeDangerFlag: args.includes('--claude-danger'),
         cwd: process.cwd(),
         dangerFlag: args.includes('--codex-danger'),
-        env: Bun.env,
+        env: Runtime.env,
         summary,
       })
       process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
@@ -3073,7 +3074,7 @@ async function main() {
       if (options.command && command !== 'check') {
         throw new Error('--command is only supported for pylon dev check')
       }
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const cwd = codexComposerWorkingDirectory()
       const result =
         command === 'check'
@@ -3081,19 +3082,19 @@ async function main() {
               allowDirty: options.allowDirty,
               commands: devCommandSpecFromOption(options.command, cwd),
               cwd,
-              env: Bun.env,
+              env: Runtime.env,
               summary,
             })
           : command === 'apply'
             ? await runPylonDevApply({
                 allowDirty: options.allowDirty,
                 cwd,
-                env: Bun.env,
+                env: Runtime.env,
                 summary,
               })
             : await runPylonDevReload({
                 cwd,
-                env: Bun.env,
+                env: Runtime.env,
                 summary,
               })
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
@@ -3113,11 +3114,11 @@ async function main() {
       const command = args[1]
       const workArgs = args.slice(2).flatMap((arg) => (arg === '--events' ? ['--events', 'true'] : [arg]))
       const options = parseKeyValueOptions(workArgs)
-      const baseUrl = optionString(options, 'base-url') ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, 'base-url') ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) throw new Error('work commands require --base-url or PYLON_OPENAGENTS_BASE_URL')
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const networkOptions = {
-        agentToken: optionString(options, 'agent-token') ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        agentToken: optionString(options, 'agent-token') ?? Runtime.env.OPENAGENTS_AGENT_TOKEN,
         baseUrl,
       }
 
@@ -3261,7 +3262,7 @@ async function main() {
       const command = args[1]
       const optionArgs = command === 'config' ? args.slice(2) : args.slice(1)
       const options = parseKeyValueOptions(optionArgs)
-      const baseUrl = optionString(options, 'base-url') ?? Bun.env.PYLON_OPENAGENTS_BASE_URL ?? 'https://openagents.com'
+      const baseUrl = optionString(options, 'base-url') ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL ?? 'https://openagents.com'
       if (command === 'config') {
         process.stdout.write(
           `${JSON.stringify(
@@ -3276,9 +3277,9 @@ async function main() {
         return
       }
 
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const resolvedAgentToken = await resolveOpenAgentsAgentToken({
-        env: Bun.env,
+        env: Runtime.env,
         explicitAgentToken: optionString(options, 'agent-token') ?? null,
         summary,
       })
@@ -3303,11 +3304,11 @@ async function main() {
       const command = args[1]
       const khalaArgs = args.slice(2)
       const options = parseKeyValueOptions(khalaArgs)
-      const baseUrl = optionString(options, 'base-url') ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, 'base-url') ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) throw new Error('khala commands require --base-url or PYLON_OPENAGENTS_BASE_URL')
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const resolvedAgentToken = await resolveOpenAgentsAgentToken({
-        env: Bun.env,
+        env: Runtime.env,
         explicitAgentToken: optionString(options, 'agent-token') ?? null,
         summary,
       })
@@ -3383,8 +3384,8 @@ async function main() {
           optionString(options, 'pylon-ref') ?? optionString(options, 'target-pylon-ref') ?? localPylonTargetRef(state)
         const capacityEnv =
           spawnWorkflow === 'claude_agent_task'
-            ? khalaClaudeCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
-            : khalaCodexCapacityAdvertisementEnv(Bun.env, Math.max(count, maxParallel ?? 0))
+            ? khalaClaudeCapacityAdvertisementEnv(Runtime.env, Math.max(count, maxParallel ?? 0))
+            : khalaCodexCapacityAdvertisementEnv(Runtime.env, Math.max(count, maxParallel ?? 0))
         if (optionFlag(options, 'execute')) {
           try {
             await sendHeartbeat(summary, {
@@ -3496,7 +3497,7 @@ async function main() {
         if (optionFlag(options, 'execute')) {
           try {
             await sendHeartbeat(summary, {
-              ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
+              ...presenceClientOptionsFromEnv({ baseUrl, env: Runtime.env }),
               ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
               activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
               activeRunCountsByAccount: await serverActiveCodingRunAccountCounts(summary, networkOptions),
@@ -3514,9 +3515,9 @@ async function main() {
               )
             : parseKhalaBurndownIssueNumbers(issuesOption)
         const accounts = await collectPylonAccountsList(summary, {
-          env: Bun.env,
+          env: Runtime.env,
         })
-        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, Bun.env, networkOptions)
+        const advertisedCodexAccounts = await localCodexDispatchAccounts(summary, state, Runtime.env, networkOptions)
         const dispatchBreakers = await activeDispatchBreakersForPlanning(summary)
         const maxParallel = positiveIntegerOption(options, 'max-parallel', 'khala burndown --max-parallel')
         const iterations = positiveIntegerOption(options, 'iterations', 'khala burndown --iterations')
@@ -3574,7 +3575,7 @@ async function main() {
         const targetPylonRef =
           optionString(options, 'pylon-ref') ?? optionString(options, 'target-pylon-ref') ?? localPylonTargetRef(state)
         const accounts = await collectPylonAccountsList(summary, {
-          env: Bun.env,
+          env: Runtime.env,
         })
         const wantedAccounts = new Set(
           accountTargetsArg
@@ -3670,7 +3671,7 @@ async function main() {
           explicitTargetPylonRef ?? (requestState === null ? undefined : localPylonTargetRef(requestState))
         if (requestState !== null && targetPylonRef === localPylonTargetRef(requestState)) {
           const requestPresenceEnv =
-            workflow === 'codex_agent_task' ? khalaCodexCapacityAdvertisementEnv(Bun.env, 5) : Bun.env
+            workflow === 'codex_agent_task' ? khalaCodexCapacityAdvertisementEnv(Runtime.env, 5) : Runtime.env
           await sendHeartbeat(summary, {
             ...presenceClientOptionsFromEnv({
               baseUrl,
@@ -3831,13 +3832,13 @@ async function main() {
       rejectClaudeLocalDangerForPublicPath(args.slice(1), 'pylon assignment')
       const command = args[1]
       const options = parseKeyValueOptions(args.slice(2))
-      const baseUrl = optionString(options, 'base-url') ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const baseUrl = optionString(options, 'base-url') ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) {
         throw new Error('assignment commands require --base-url or PYLON_OPENAGENTS_BASE_URL')
       }
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const resolvedAgentToken = await resolveOpenAgentsAgentToken({
-        env: Bun.env,
+        env: Runtime.env,
         explicitAgentToken: optionString(options, 'agent-token') ?? null,
         summary,
       })
@@ -3912,14 +3913,14 @@ async function main() {
       rejectClaudeLocalDangerForPublicPath(args.slice(1), 'pylon provider')
       const command = args[1]
       const options = parseKeyValueOptions(args.slice(2))
-      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+      const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
       const state = await ensurePylonLocalState(summary)
-      const providerBaseUrl = optionString(options, 'base-url') ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const providerBaseUrl = optionString(options, 'base-url') ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL
       const providerAgentToken =
         providerBaseUrl === undefined
           ? null
           : await resolveOpenAgentsAgentToken({
-              env: Bun.env,
+              env: Runtime.env,
               explicitAgentToken: optionString(options, 'agent-token') ?? null,
               summary,
             })
@@ -3958,7 +3959,7 @@ async function main() {
           codexAccountHomes: connectedCodexHomes,
         })
         const appleFmStatus = await collectPylonAppleFmStatus({
-          env: Bun.env,
+          env: Runtime.env,
           summary,
         })
         const nextRuntime = {
@@ -3996,7 +3997,7 @@ async function main() {
         const codexAccounts = await localCodexAccountCapacities(
           { ...state, runtime: nextRuntime },
           summary,
-          Bun.env,
+          Runtime.env,
           codexBusyByAccount(
             await codingAccountBusyCountsForDispatch(
               summary,
@@ -4127,9 +4128,9 @@ async function main() {
   if (args[0] === 'node') {
     if (args[1] === 'fleet-run-intake-status') {
       try {
-        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Bun.env)
+        const summary = createBootstrapSummary(parseBootstrapArgs(['--json']), Runtime.env)
         const state = await ensurePylonLocalState(summary)
-        const probe = await probeRunningNode(state, Bun.env)
+        const probe = await probeRunningNode(state, Runtime.env)
         const status = await readControlCommand(probe, {
           type: 'fleet_run.intake_status',
         })
@@ -4168,7 +4169,7 @@ async function main() {
 
   if (args[0] === 'runtime' || runtimeCommandNamespaces.has(args[0] ?? '')) {
     const runtimeArgs = args[0] === 'runtime' ? args.slice(1) : args
-    const result = await Effect.runPromise(runProbeCli(runtimeArgs, { env: Bun.env }))
+    const result = await Effect.runPromise(runProbeCli(runtimeArgs, { env: Runtime.env }))
     if (result.stdout) process.stdout.write(result.stdout)
     if (result.stderr) process.stderr.write(result.stderr)
     process.exitCode = result.exitCode

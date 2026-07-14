@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // LIVE post-deploy identity smoke — the harness that should have caught
 // "Khala still says 'I am Gemini' in prod" (2026-06-23). Unit/route tests prove
 // the CODE is correct; this proves the DEPLOYED endpoint is. Run AFTER every

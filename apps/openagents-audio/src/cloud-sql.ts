@@ -1,12 +1,12 @@
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import { RetentionError, type AccessReceipt, type GapManifest, type RetainedSessionReceipt, type SegmentManifest } from "./model.js"
 
 /** Private Cloud SQL manifest adapter. Its API accepts metadata only. */
 export class CloudSqlAudioRepository {
   readonly sql: SQL
-  constructor(databaseUrl: string) { this.sql = new SQL({ url: databaseUrl, max: 4 }) }
+  constructor(databaseUrl: string) { this.sql = SQL({ url: databaseUrl, max: 4 }) }
 
-  async close(): Promise<void> { await this.sql.close() }
+  async close(): Promise<void> { await this.sql.end() }
 
   async saveSession(value: RetainedSessionReceipt): Promise<void> {
     await this.sql`INSERT INTO audio_retained_sessions

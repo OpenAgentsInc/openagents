@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Blueprint Signature — `fleet-liveness` (#6646)
  *
@@ -249,7 +250,7 @@ function parsePositiveInt(raw: string | undefined): number | null {
 
 async function readTextOrNull(path: string): Promise<string | null> {
   try {
-    return await Bun.file(path).text()
+    return await Runtime.file(path).text()
   } catch {
     return null
   }
@@ -356,7 +357,7 @@ export async function runFleetLivenessCli(): Promise<number> {
   return FLEET_LIVENESS_EXIT[result.status]
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   runFleetLivenessCli()
     .then((code) => process.exit(code))
     .catch((err) => {

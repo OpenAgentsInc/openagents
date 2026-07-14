@@ -25,7 +25,7 @@ import {
   SOL_DOCUMENT_MANIFEST_PATH,
 } from "./generate-sol-doc-manifest"
 
-const repositoryRoot = resolve(import.meta.dir, "..")
+const repositoryRoot = resolve(import.meta.dirname, "..")
 const generatedAt = "2026-07-12T20:45:00.000Z"
 
 function issue(number = 1001): RoadmapIssue {

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * oa-infra migration CLI (CFG-2, issue #8517).
  *

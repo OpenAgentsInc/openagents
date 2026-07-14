@@ -28,8 +28,8 @@ const sse = (id: string, content: string) =>
   })}\n\ndata: [DONE]\n\n`
 
 const servers: ReturnType<typeof Bun.serve>[] = []
-const INDEX = join(import.meta.dir, "..", "src", "index.ts")
-const CWD = join(import.meta.dir, "..")
+const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
+const CWD = join(import.meta.dirname, "..")
 type CloseoutProofResult = Parameters<typeof evaluatePylonKhalaCloseoutChecklist>[1]
 type CloseoutTraceStatus = Parameters<typeof evaluatePylonKhalaCloseoutChecklist>[0]
 type ProofPayload = Parameters<typeof evaluatePylonKhalaProofChecklist>[0]

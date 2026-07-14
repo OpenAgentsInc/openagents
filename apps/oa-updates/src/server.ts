@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import {
   createInMemoryAssetStore,
   type AssetStore,
@@ -245,7 +246,7 @@ export function createUpdatesServer(
           // bounded memory regardless of size.
           const disk = diskAssets.get(hash)
           if (disk !== undefined) {
-            return new Response(Bun.file(disk.path), {
+            return new Response(Runtime.file(disk.path).stream(), {
               headers: {
                 "cache-control": "public, max-age=31536000, immutable",
                 "content-type": disk.contentType,
@@ -343,7 +344,7 @@ export function createUpdatesServer(
             // update.json must not be cached (it's the freshness signal); the
             // immutable artifacts can cache hard.
             const noCache = desktopOtaMatch[1].endsWith("update.json")
-            return new Response(Bun.file(file.path), {
+            return new Response(Runtime.file(file.path).stream(), {
               headers: {
                 "cache-control": noCache
                   ? "no-store"
@@ -455,19 +456,19 @@ export function createUpdatesServer(
   }
 }
 
-if (import.meta.main) {
-  const port = Number(Bun.env.PORT ?? defaultPort)
+if (Runtime.isMain(import.meta.url)) {
+  const port = Number(Runtime.env.PORT ?? defaultPort)
   const { resolveLegacyDesktopLockoutMode, LEGACY_DESKTOP_LOCKOUT_ENV } = await import(
     "./legacy-desktop-lockout.ts"
   )
   const server = createUpdatesServer({
     port,
     legacyDesktopLockout: resolveLegacyDesktopLockoutMode(
-      Bun.env[LEGACY_DESKTOP_LOCKOUT_ENV],
+      Runtime.env[LEGACY_DESKTOP_LOCKOUT_ENV],
     ),
   })
 
-  Bun.serve({
+  Runtime.serve({
     port,
     fetch: server.fetch,
   })

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 
 import { CLAUDE_AGENT_SDK_PACKAGE } from "./claude-agent.js"
@@ -160,7 +161,7 @@ export async function runClaudeSecondPassReview(input: ClaudeSecondPassReviewInp
   if (input.account === undefined || input.account === null || input.account.provider !== "claude_agent") {
     throw new Error("Claude second-pass reviewer requires an isolated claude_agent account")
   }
-  const env = pylonAccountEnvironment(input.env ?? Bun.env, input.account)
+  const env = pylonAccountEnvironment(input.env ?? Runtime.env, input.account)
   const sdk = input.sdkImporter === undefined
     ? await import(CLAUDE_AGENT_SDK_PACKAGE) as { query: (args: unknown) => AsyncIterable<unknown> }
     : await input.sdkImporter(CLAUDE_AGENT_SDK_PACKAGE)

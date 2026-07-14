@@ -4,7 +4,7 @@ import { spawn as nodeSpawn } from "node:child_process"
 //
 // The Khala CLI is published to npm and must run for ANY new user, whether they
 // launch it with `node` (the common case after `npm i -g`) or `bun`. Bun-only
-// globals (`Bun.spawn`, `Bun.stdin`, `Bun.env`, `Bun.argv`) crash under node
+// globals (`Runtime.spawn`, `Runtime.stdin`, `Runtime.env`, `Runtime.argv`) crash under node
 // with "Bun is not defined", so every process/stdio touchpoint goes through
 // these node:child_process-based helpers, which work identically under both
 // runtimes.

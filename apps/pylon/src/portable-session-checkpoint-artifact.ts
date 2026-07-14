@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash, randomUUID } from "node:crypto"
 import { chmod, lstat, mkdir, readFile, readlink, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
@@ -58,7 +59,7 @@ const stableRef = (prefix: string, value: string): string =>
   `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 32)}`
 
 const runGit = async (cwd: string, args: ReadonlyArray<string>): Promise<Uint8Array> => {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   const [stdout, exitCode] = await Promise.all([
     new Response(proc.stdout).bytes(),
     proc.exited,
@@ -444,7 +445,7 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
           ...(entry.linkTarget === undefined ? {} : { linkTarget: entry.linkTarget }),
         })),
       ])
-      const compressed = Bun.zstdCompressSync(tarBytes)
+      const compressed = Runtime.zstdCompressSync(tarBytes)
       return {
         artifactRef,
         digest: sha256(compressed),

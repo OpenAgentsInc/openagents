@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // PORTAL-1 (#8652 reopen): REAL-BROWSER smoke for openagents.com/portal.
 //
 // Why this exists: the original PORTAL-1 closeout proved the client path with
@@ -144,7 +145,7 @@ const loginViaEmailOtp = async (
   let code: string | undefined
   const deadline = Date.now() + 120_000
   while (code === undefined && Date.now() < deadline) {
-    const probe = Bun.spawnSync(['bash', '-lc', otpCommand], {
+    const probe = Runtime.spawnSync(['bash', '-lc', otpCommand], {
       env: { ...process.env, PORTAL_SMOKE_OTP_REQUESTED_AT: String(requestedAt) },
     })
     const output = new TextDecoder().decode(probe.stdout).trim()

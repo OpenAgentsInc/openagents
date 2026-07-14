@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Real-bundle e2e: feed an actual `expo export` dist through readExportedUpdate
 // into the server, then fetch the manifest + the real Hermes bundle over HTTP.
 // Usage: bunx expo export --platform ios --output-dir /tmp/oa-export
@@ -29,7 +30,7 @@ const { update } = await readExportedUpdate({
 })
 server.registerUpdate(update)
 
-const http = Bun.serve({ port: PORT, fetch: server.fetch })
+const http = Runtime.serve({ port: PORT, fetch: server.fetch })
 try {
   const res = await fetch(`http://localhost:${PORT}/autopilot/manifest`, {
     headers: { "Expo-Platform": "ios", "Expo-Runtime-Version": RUNTIME, "Expo-Channel-Name": "production" },

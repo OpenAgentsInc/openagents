@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Prepare the two native addons used by Electron Forge's DMG maker.
  *
@@ -10,7 +11,7 @@
 import { readdirSync } from "node:fs"
 import path from "node:path"
 
-const workspaceRoot = path.resolve(import.meta.dir, "../../..")
+const workspaceRoot = path.resolve(import.meta.dirname, "../../..")
 const bunStore = path.join(workspaceRoot, "node_modules", ".bun")
 const nativePackages = ["macos-alias", "fs-xattr"] as const
 
@@ -22,7 +23,7 @@ for (const packageName of nativePackages) {
   }
 
   const packageRoot = path.join(bunStore, storeEntry, "node_modules", packageName)
-  const result = Bun.spawnSync(
+  const result = Runtime.spawnSync(
     ["npm", "exec", "--yes", "--package=node-gyp", "--", "node-gyp", "rebuild"],
     { cwd: packageRoot, stdout: "inherit", stderr: "inherit" },
   )

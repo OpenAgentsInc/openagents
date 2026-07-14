@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Site Speed Lane — Mode L lab harness for the openagents.com landing page.
 // Spec: docs/fable/2026-07-02-site-speed-lane-spec.md (schema
 // openagents.site_speed.run_report.v1). Read-only against the target: issues

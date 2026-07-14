@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * RL-4: concurrent Grok workers with worktree-ish cwd isolation and a
  * tool-using (always-approve) prompt — harder than RL-1 tiny plain chat.

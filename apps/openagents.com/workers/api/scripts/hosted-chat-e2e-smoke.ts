@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Live hosted-Khala chat "send a message -> get an assistant reply" smoke.
  *

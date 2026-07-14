@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * A minimal Bun-hostable Durable Streams server backed by per-stream in-memory
  * stores. This is the local target for the conformance subset tests (the
@@ -38,7 +39,7 @@ export class TestStreamRegistry {
 export const startTestServer = (
   registry: TestStreamRegistry = new TestStreamRegistry(),
 ): { baseUrl: string; stop: () => void; registry: TestStreamRegistry } => {
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     fetch: (req) => registry.fetch(req),
   })

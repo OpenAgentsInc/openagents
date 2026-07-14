@@ -1,6 +1,7 @@
 import { openBunSqliteDatabase } from "./bun-database.ts"
 import { openNodeSqliteDatabase } from "./node-database.ts"
 import {
+  type LegacySqliteDatabase,
   detectSqliteRuntime,
   type SqliteDatabase,
   type SqliteDatabaseOptions,
@@ -22,3 +23,20 @@ export const openSqliteDatabase = (
   detectSqliteRuntime() === "bun"
     ? openBunSqliteDatabase(path, options)
     : openNodeSqliteDatabase(path, options)
+
+export const openLegacySqliteDatabase = (
+  path: string,
+  options: SqliteDatabaseOptions = {},
+): LegacySqliteDatabase => {
+  const database = openSqliteDatabase(path, options)
+  return {
+    exec: database.exec,
+    run: (sql, ...params) => database.query(sql).run(...params),
+    query: <Row = any, Params extends Array<any> = Array<any>>(sql: string) => database.query<Row, Params>(sql),
+    transaction: <A>(fn: () => A) => {
+      const run = () => database.transaction(fn)
+      return Object.assign(run, { immediate: run })
+    },
+    close: database.close,
+  }
+}

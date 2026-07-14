@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * CFG-9 (#8524): render the Cloud Run --env-vars-file YAML for the monolith
  * from wrangler.jsonc, so the committed wrangler `vars` blocks stay the
@@ -72,7 +72,7 @@ if (target !== 'production' && target !== 'staging') {
   process.exit(2)
 }
 
-const apiDir = path.resolve(import.meta.dir, '..', '..')
+const apiDir = path.resolve(import.meta.dirname, '..', '..')
 const wrangler = JSON.parse(
   stripJsonComments(readFileSync(path.join(apiDir, 'wrangler.jsonc'), 'utf8')),
 ) as {

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Retroactive assignment-PR recovery (issue #6439).
  *
@@ -127,7 +128,7 @@ async function leaseBaseFor(leasesDir: string, workspaceRef: string): Promise<{ 
 }
 
 async function run(args: string[], cwd: string, timeoutMs = 5 * 60 * 1000) {
-  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
   let timedOut = false
   const timer = setTimeout(() => {
     timedOut = true
@@ -206,7 +207,7 @@ async function reconstructAndOpen(input: {
 }
 
 async function main() {
-  const args = parseArgs(Bun.argv.slice(2))
+  const args = parseArgs(Runtime.argv.slice(2))
   if (args.open && args.map === undefined) {
     console.error(
       "refused: --open requires --map <D1 assignmentRef->{issue,verify}>. " +

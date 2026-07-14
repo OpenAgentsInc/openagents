@@ -4,7 +4,7 @@
  * Split from kv-store-postgres.ts (CFG-3, issue #8518) so that module stays
  * importable under non-Bun type environments (the `openagents.com` Worker
  * reuses `makePostgresKvStore` over its postgres.js client); this file is
- * the only place the KvStore backend touches `OaInfraSql`/Bun.
+ * the only place the KvStore backend touches `OaInfraSql`/Runtime.
  */
 import { Effect, Layer } from "effect"
 import { KvStore } from "./kv-store.ts"
@@ -16,6 +16,6 @@ export const layerPostgres: Layer.Layer<KvStore, never, OaInfraSql> = Layer.effe
   KvStore,
   Effect.gen(function* () {
     const { sql } = yield* OaInfraSql
-    return makePostgresKvStore(sql)
+    return makePostgresKvStore(sql as unknown as Parameters<typeof makePostgresKvStore>[0])
   }),
 )

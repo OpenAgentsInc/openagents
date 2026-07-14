@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 type CliArgs = Readonly<{
   baseUrl: string

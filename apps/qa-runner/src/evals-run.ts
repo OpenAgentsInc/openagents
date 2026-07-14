@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Chill-eval CLI (#6183): one command kicks an eval; the result is a link.
 //
 // Holds the /login scenario fixed and compares two agent-config variants over

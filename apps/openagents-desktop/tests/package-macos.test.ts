@@ -4,7 +4,7 @@ import path from "node:path"
 
 import config, { OPENAGENTS_DESKTOP_BUNDLE_ID, OPENAGENTS_DESKTOP_PROTOCOL } from "../forge.config.ts"
 
-const root = path.resolve(import.meta.dir, "..")
+const root = path.resolve(import.meta.dirname, "..")
 const mainSource = readFileSync(path.join(root, "src", "main.ts"), "utf8")
 
 describe("CUT-26 macOS artifact contract", () => {

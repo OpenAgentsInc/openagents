@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * KS-8.5 follow-up (#8334): agent runtime remainder backfill CLI.
  *
@@ -18,7 +18,7 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import * as path from "node:path"
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import {
   AGENT_RUNTIME_REMAINDER_SCALAR_TALLIES,
   AGENT_RUNTIME_REMAINDER_TABLE_KEY,
@@ -68,7 +68,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     verify: false,
     verifyNewest: 50,
     wranglerCwd: path.resolve(
-      import.meta.dir,
+      import.meta.dirname,
       "../../../apps/openagents.com/workers/api",
     ),
   }
@@ -353,7 +353,7 @@ const main = async (): Promise<void> => {
     throw new Error("missing --database-url or KHALA_SYNC_DATABASE_URL")
   }
 
-  const sql = new SQL({ url: options.databaseUrl, max: 4 }) as unknown as SyncSql
+  const sql = SQL({ url: options.databaseUrl, max: 4 }) as unknown as SyncSql
   try {
     const tables =
       options.table === undefined ? AGENT_RUNTIME_REMAINDER_TABLES : [options.table]

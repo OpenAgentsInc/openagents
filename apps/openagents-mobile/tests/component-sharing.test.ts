@@ -6,7 +6,7 @@ import { CatalogVersion } from "@effect-native/core"
 
 import { initialHomeState, renderContentView, renderDrawerView, renderHomeView } from "../src/screens/home-core"
 
-const appRoot = join(import.meta.dir, "..")
+const appRoot = join(import.meta.dirname, "..")
 
 const sourceFiles = (directory: string): ReadonlyArray<string> =>
   readdirSync(directory).flatMap((entry) => {

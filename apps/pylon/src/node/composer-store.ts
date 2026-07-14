@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Composer history + stash persistence (issue #4741), the staged subset of
 // opencode's prompt/history.tsx and prompt/stash.tsx: submitted prompts and
 // an unsent draft survive restarts via composer-history.json in the Pylon
@@ -21,7 +22,7 @@ export function composerStorePath(homeDir: string): string {
 }
 
 export async function loadComposerState(homeDir: string): Promise<ComposerPersistedState> {
-  const file = Bun.file(composerStorePath(homeDir))
+  const file = Runtime.file(composerStorePath(homeDir))
   if (!(await file.exists())) return { history: [], stash: "" }
   try {
     const parsed = JSON.parse(await file.text()) as Partial<ComposerPersistedState>

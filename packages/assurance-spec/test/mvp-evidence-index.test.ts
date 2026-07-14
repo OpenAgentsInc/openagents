@@ -11,7 +11,7 @@ import {
   type ToolOutcome,
 } from "../src/index.ts"
 
-const root = resolve(import.meta.dir, "../../..")
+const root = resolve(import.meta.dirname, "../../..")
 const specPath = "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md"
 const indexPath = "assurance/openagents-desktop-mvp.evidence-index.json"
 const read = (path: string): string => readFileSync(resolve(root, path), "utf8")

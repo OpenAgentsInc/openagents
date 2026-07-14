@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { Database } from "bun:sqlite"
+import type { LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { Effect, Schema } from "effect"
 import { PylonPortableCheckpointBundleSchema } from "@openagentsinc/portable-session-contract"
 import type { PylonPortableCheckpointBundle } from "@openagentsinc/portable-session-contract"

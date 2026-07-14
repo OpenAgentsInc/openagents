@@ -1,3 +1,5 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
+import WebSocket from "ws"
 const STREAM = "/v1/stream"
 const HTTP_PATHS = new Set(["/v1/speak", "/v1/retention/reconcile", "/v1/retention/export", "/v1/retention/delete"])
 const origin = (process.env.OPENAGENTS_AUDIO_CLOUD_RUN_URL ?? "").replace(/\/$/u, "")
@@ -23,7 +25,7 @@ type SocketData = {
   pendingBytes: number
 }
 
-const server = Bun.serve<SocketData>({
+const server = Runtime.serve<SocketData>({
   port: Number(process.env.PORT ?? 8080), idleTimeout: 240,
   async fetch(request, server) {
     const url = new URL(request.url)

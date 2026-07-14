@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { isAbsolute, resolve } from "node:path"
 import type {
@@ -5,8 +6,8 @@ import type {
   ForgeDispatchWorkItem,
 } from "@openagentsinc/forge-protocol"
 
-export const FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF =
-  "forge.verification.runner.docker_bun.v0.1"
+export const FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF =
+  "forge.verification.runner.docker_node.v0.1"
 
 export type ForgeDockerVerificationLimits = Readonly<{
   cpus?: number
@@ -27,7 +28,7 @@ export type ResolvedForgeDockerVerificationLimits = Readonly<{
 }>
 
 export type ForgeDockerVerificationCommandPlan = Readonly<{
-  runnerRef: typeof FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF
+  runnerRef: typeof FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF
   commandRef: string
   verificationRef: string
   workspaceRef: string
@@ -52,7 +53,7 @@ export type ForgeDockerCommandRunner = (input: {
 
 export type ForgeDockerVerificationResult = Readonly<{
   schema: "openagents.forge.verification.docker_bun.result.v0.1"
-  runnerRef: typeof FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF
+  runnerRef: typeof FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF
   commandRef: string
   verificationRef: string
   workspaceRef: string
@@ -90,7 +91,7 @@ export type RunForgeDockerVerificationInput = PlanForgeDockerVerificationInput &
     now?: () => Date
   }>
 
-const DEFAULT_IMAGE = "oven/bun:1.3.11"
+const DEFAULT_IMAGE = "node:24.13.1-bookworm-slim"
 const DEFAULT_LIMITS: ResolvedForgeDockerVerificationLimits = {
   cpus: 1,
   memory: "2g",
@@ -100,7 +101,7 @@ const DEFAULT_LIMITS: ResolvedForgeDockerVerificationLimits = {
   homeTmpfsSize: "64m",
 }
 
-const allowedBunSubcommands = new Set(["test", "run", "--version"])
+const allowedNodeSubcommands = new Set(["--test", "--version"])
 const memoryLimitPattern = /^[1-9][0-9]*(m|g)$/i
 const dockerImagePattern =
   /^[A-Za-z0-9][A-Za-z0-9_.:/@-]{0,191}[A-Za-z0-9]$/
@@ -165,7 +166,7 @@ const cleanWorkingDirectory = (value: string): string => {
 
 const cleanCommandArgs = (args: readonly string[]): string[] => {
   if (args.length < 2 || args.length > 32) {
-    throw new Error("Forge Docker verification requires a bounded bun argv")
+    throw new Error("Forge Docker verification requires a bounded node argv")
   }
   const cleaned = args.map((arg) => {
     if (
@@ -180,8 +181,8 @@ const cleanCommandArgs = (args: readonly string[]): string[] => {
     }
     return arg
   })
-  if (cleaned[0] !== "bun" || !allowedBunSubcommands.has(cleaned[1])) {
-    throw new Error("Forge Docker verification only accepts bun test/run argv")
+  if (cleaned[0] !== "node" || !allowedNodeSubcommands.has(cleaned[1])) {
+    throw new Error("Forge Docker verification only accepts node --test argv")
   }
   return cleaned
 }
@@ -244,7 +245,7 @@ const resolveLimits = (
 export const planForgeDockerVerificationCommand = (
   input: PlanForgeDockerVerificationInput,
 ): ForgeDockerVerificationCommandPlan => {
-  if (input.command.runner_ref !== FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF) {
+  if (input.command.runner_ref !== FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF) {
     throw new Error("Forge Docker verification command targets a different runner")
   }
 
@@ -280,11 +281,11 @@ export const planForgeDockerVerificationCommand = (
     "--tmpfs",
     `/tmp:rw,noexec,nosuid,nodev,size=${limits.tmpfsSize}`,
     "--tmpfs",
-    `/home/bun:rw,noexec,nosuid,nodev,size=${limits.homeTmpfsSize}`,
+    `/home/node:rw,noexec,nosuid,nodev,size=${limits.homeTmpfsSize}`,
     "--env",
-    "HOME=/home/bun",
+    "HOME=/home/node",
     "--env",
-    "BUN_INSTALL_CACHE_DIR=/tmp/bun-cache",
+    "NODE_COMPILE_CACHE=/tmp/node-compile-cache",
     "--mount",
     `type=bind,src=${workspacePath},dst=/workspace,readonly`,
     "--workdir",
@@ -296,10 +297,10 @@ export const planForgeDockerVerificationCommand = (
   ]
 
   return {
-    runnerRef: FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF,
+    runnerRef: FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF,
     commandRef: input.command.command_ref,
     verificationRef: stableRef(
-      "verification.forge.docker_bun",
+      "verification.forge.docker_node",
       `${workspacePath}\0${workingDirectory}\0${args.join("\0")}`,
     ),
     workspaceRef: stableRef("workspace.forge.verify", workspacePath),
@@ -332,7 +333,7 @@ const defaultDockerCommandRunner: ForgeDockerCommandRunner = async (input) => {
   let timedOut = false
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const proc = Bun.spawn(input.args, {
+    const proc = Runtime.spawn(input.args, {
       cwd: input.cwd,
       stderr: "pipe",
       stdout: "pipe",

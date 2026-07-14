@@ -46,7 +46,7 @@ import {
   SyncError,
 } from "./index.js"
 
-const fixturesDir = join(import.meta.dir, "..", "fixtures")
+const fixturesDir = join(import.meta.dirname, "..", "fixtures")
 
 type AnyCodec = S.Codec<any, any, never, never>
 

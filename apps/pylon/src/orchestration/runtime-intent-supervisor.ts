@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 
-import { Database } from "bun:sqlite"
+import { openLegacySqliteDatabase, type LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { createHash } from "node:crypto"
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
@@ -53,7 +54,7 @@ import { runtimeSiblingAccountDiscoveryEnv } from "./runtime-account-discovery.j
  * between ticks and exits cleanly rather than mid-tick.
  */
 
-const args = Bun.argv.slice(2)
+const args = Runtime.argv.slice(2)
 
 const option = (name: string, fallback?: string): string | undefined => {
   const prefix = `${name}=`
@@ -82,7 +83,10 @@ const required = (name: string, envValue: string | undefined): string => {
 }
 
 const stableRef = (prefix: string, value: string): string =>
-  `${prefix}.${Bun.hash(value).toString(16).padStart(16, "0")}`
+  // v2 deliberately names the Node/SHA-256 identity scheme. Bun's prior
+  // unversioned Wyhash refs remain valid records; a runtime migration must
+  // never make a new algorithm masquerade as the same persisted identity.
+  `${prefix}.v2.${createHash("sha256").update(value).digest("hex").slice(0, 16)}`
 
 // Bug found while testing #8425 cross-device dispatch: this used to default
 // bare-unset-PYLON_HOME straight to `join(homedir(), ".pylon")`, reintroducing
@@ -92,32 +96,32 @@ const stableRef = (prefix: string, value: string): string =>
 // An explicit `--pylon-home`/`PYLON_HOME` still always wins; only the
 // bare-unset fallback changes, to the same smart resolution the rest of
 // Pylon already uses.
-const pylonHome = option("--pylon-home") ?? Bun.env.PYLON_HOME ?? resolvePylonHome(process.env).home
+const pylonHome = option("--pylon-home") ?? Runtime.env.PYLON_HOME ?? resolvePylonHome(process.env).home
 const dbPath = option("--db", join(pylonHome, "orchestration.sqlite"))!
 const configPath = option("--config", join(pylonHome, "config.json"))!
 const workspaceRoot = option("--workspace-root", join(pylonHome, "cache", "runtime-turns"))!
-const baseUrl = option("--base-url") ?? Bun.env.OPENAGENTS_BASE_URL ?? Bun.env.PYLON_OPENAGENTS_BASE_URL ?? "https://openagents.com"
-const adminToken = required("--admin-token", Bun.env.OPENAGENTS_ADMIN_API_TOKEN)
-const agentToken = required("--agent-token", Bun.env.OPENAGENTS_AGENT_TOKEN)
-const ownerUserId = option("--owner-user-id") ?? Bun.env.OPENAGENTS_RUNTIME_OWNER_USER_ID
+const baseUrl = option("--base-url") ?? Runtime.env.OPENAGENTS_BASE_URL ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL ?? "https://openagents.com"
+const adminToken = required("--admin-token", Runtime.env.OPENAGENTS_ADMIN_API_TOKEN)
+const agentToken = required("--agent-token", Runtime.env.OPENAGENTS_AGENT_TOKEN)
+const ownerUserId = option("--owner-user-id") ?? Runtime.env.OPENAGENTS_RUNTIME_OWNER_USER_ID
 const pylonRef = option("--pylon-ref") ?? stableRef("pylon.runtime_supervisor", pylonHome)
 const pollIntervalMs = intOption("--poll-interval-ms", 3_000)
 const limit = intOption("--limit", 20)
 const executorMode =
   option("--executor-mode") ??
-  Bun.env.OPENAGENTS_RUNTIME_EXECUTOR_MODE ??
+  Runtime.env.OPENAGENTS_RUNTIME_EXECUTOR_MODE ??
   (ownerUserId === undefined ? "org_cloud" : "owner_local")
 const usageReceiptsEnabled =
   (option("--usage-receipts-enabled") ??
-    Bun.env.OPENAGENTS_RUNTIME_USAGE_RECEIPTS_ENABLED ??
+    Runtime.env.OPENAGENTS_RUNTIME_USAGE_RECEIPTS_ENABLED ??
     (executorMode === "org_cloud" ? "1" : "0")) !== "0"
 const hostedKhalaEnabled =
   (option("--hosted-khala-enabled") ??
-    Bun.env.OPENAGENTS_RUNTIME_HOSTED_KHALA_ENABLED ??
+    Runtime.env.OPENAGENTS_RUNTIME_HOSTED_KHALA_ENABLED ??
     (executorMode === "org_cloud" ? "1" : "0")) !== "0"
 const hostedKhalaModel =
   option("--hosted-khala-model") ??
-  Bun.env.OPENAGENTS_RUNTIME_HOSTED_KHALA_MODEL ??
+  Runtime.env.OPENAGENTS_RUNTIME_HOSTED_KHALA_MODEL ??
   DEFAULT_HOSTED_KHALA_RUNTIME_MODEL
 const runtimeInteractionAuthority = executorMode === "owner_local" && ownerUserId !== undefined
   ? createRuntimeInteractionHttpAuthority({ adminToken, baseUrl, ownerUserId })
@@ -126,7 +130,7 @@ const runtimeInteractionAuthority = executorMode === "owner_local" && ownerUserI
 await mkdir(pylonHome, { recursive: true })
 await mkdir(workspaceRoot, { recursive: true })
 
-const db = new Database(dbPath)
+const db = openLegacySqliteDatabase(dbPath)
 db.exec("PRAGMA journal_mode = WAL")
 db.exec("PRAGMA busy_timeout = 5000")
 const store = createPylonOrchestrationStore(db)
@@ -184,7 +188,7 @@ const registryWithSiblingAccounts = async (): Promise<ReadonlyArray<PylonAccount
   const siblings = await discoverPylonSiblingAccountHomes(
     runtimeSiblingAccountDiscoveryEnv(
       pylonHome,
-      Bun.env as Record<string, string | undefined>,
+      Runtime.env as Record<string, string | undefined>,
     ),
   )
   const siblingEntries: PylonAccountRegistryEntry[] = siblings
@@ -237,7 +241,7 @@ try {
         limit,
         listCandidateAccounts: async () =>
           candidateAccountsFromRegistry(await registryWithSiblingAccounts(), {
-            env: Bun.env as Record<string, string | undefined>,
+            env: Runtime.env as Record<string, string | undefined>,
             summary: readinessSummary,
           }),
         log: (line) => console.error(`runtime-intent-supervisor: ${line}`),

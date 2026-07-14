@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -35,7 +36,7 @@ const workerFiles = sourceFiles.filter(path =>
 )
 
 // The `workers/api/src/cloudrun/` modules are the Cloud Run process
-// entrypoint (CFG-9, #8524): a `Bun.serve` HTTP boundary that wraps the same
+// entrypoint (CFG-9, #8524): a `Runtime.serve` HTTP boundary that wraps the same
 // Worker handler and runs OUT of the workerd runtime. Like the already-exempt
 // standalone `*/cli.ts` entrypoints, they are process/HTTP-boundary code, not
 // Worker request-handling domain modules — so the Worker-internal zero-debt

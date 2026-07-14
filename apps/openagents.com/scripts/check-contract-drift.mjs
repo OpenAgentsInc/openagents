@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 // ---------------------------------------------------------------------------
 // Provider-account / blueprint-export security-contract drift guard.
@@ -26,7 +26,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-const repoRoot = join(import.meta.dir, '..', '..', '..')
+const repoRoot = join(import.meta.dirname, '..', '..', '..')
 
 // The canonical authority files. Definitions are allowed ONLY here.
 const CANONICAL_FILES = new Set(

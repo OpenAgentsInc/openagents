@@ -2,7 +2,7 @@ import { cpSync, mkdirSync, mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
-export const repoRoot = resolve(import.meta.dir, "../../..")
+export const repoRoot = resolve(import.meta.dirname, "../../..")
 
 /** Frozen revision-1 proposal used by proposal/tooling regression tests. */
 export const MVP_SPEC = "packages/assurance-spec/conformance/valid/mvp-proposal.assurance-spec.md"

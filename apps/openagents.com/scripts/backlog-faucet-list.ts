@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Backlog faucet maintainer CLI (#4781): decorate real budgeted GitHub backlog
 // issues into ref-only NIP-LBR work requests via the LIVE
 // POST /api/forum/work-requests surface, then post the lifecycle-linkage comment
@@ -46,7 +47,7 @@ if (issueNumbers.length === 0) {
 }
 
 async function ghText(cliArgs: string[]): Promise<string> {
-  const proc = Bun.spawn(['gh', ...cliArgs], { stdout: 'pipe', stderr: 'pipe' })
+  const proc = Runtime.spawn(['gh', ...cliArgs], { stdout: 'pipe', stderr: 'pipe' })
   const [out, err, code] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -126,7 +127,7 @@ for (const n of issueNumbers) {
         workRequestId: wr?.workRequestId ?? 'pending',
       })
       const tmp = `/tmp/faucet-${n}.md`
-      await Bun.write(tmp, comment)
+      await Runtime.write(tmp, comment)
       await ghText(['issue', 'comment', String(n), '--repo', repository, '--body-file', tmp])
       console.log(`#${n} lifecycle comment posted to issue`)
     } else if (postComment) {

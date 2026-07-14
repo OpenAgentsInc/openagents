@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Live ACP smoke (env-armed). Requires `grok login` or XAI_API_KEY.
  *

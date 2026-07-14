@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { createHash } from "node:crypto"
@@ -222,7 +223,7 @@ export function detectConfiguredLaborAgent(input: {
   const env = input.env ?? process.env
   const configured = env.PYLON_LABOR_AGENT?.trim().toLowerCase()
   if (configured === "codex" || configured === "opencode" || configured === "claude_code") return configured
-  const which = input.which ?? ((name: string) => Bun.which(name))
+  const which = input.which ?? ((name: string) => Runtime.which(name))
   if (which("codex")) return "codex"
   if (which("opencode")) return "opencode"
   if (which("claude")) return "claude_code"
@@ -231,11 +232,11 @@ export function detectConfiguredLaborAgent(input: {
 
 export function makeConfiguredLaborRuntime(input: {
   env?: Readonly<Record<string, string | undefined>>
-  spawn?: typeof Bun.spawn
+  spawn?: typeof Runtime.spawn
   which?: (name: string) => string | null
 } = {}): LaborRuntime {
   const env = input.env ?? process.env
-  const spawn = input.spawn ?? Bun.spawn
+  const spawn = input.spawn ?? Runtime.spawn
   return {
     async runLabor(run) {
       const agentKind = run.agentKind
@@ -286,7 +287,7 @@ function laborCommand(
   if (configuredCommand) {
     return configuredCommand.split(/\s+/).concat([prompt])
   }
-  const find = which ?? ((name: string) => Bun.which(name))
+  const find = which ?? ((name: string) => Runtime.which(name))
   if (agentKind === "codex") {
     const path = find("codex")
     // `codex exec` in the bounded labor workspace is a fresh non-git temp dir,

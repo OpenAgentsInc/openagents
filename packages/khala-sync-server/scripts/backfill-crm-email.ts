@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * KS-8.11 (#8322): CRM / email / enrichment domain backfill CLI — D1 →
  * Postgres.
@@ -43,7 +43,7 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import * as path from "node:path"
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import {
   CRM_EMAIL_TABLE_SPECS,
   compareCrmEmailTallies,
@@ -129,7 +129,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     verify: false,
     verifyNewest: 50,
     wranglerCwd: path.resolve(
-      import.meta.dir,
+      import.meta.dirname,
       "../../../apps/openagents.com/workers/api",
     ),
   }
@@ -373,7 +373,7 @@ const main = async (): Promise<number> => {
     return 2
   }
 
-  const sql = new SQL(options.databaseUrl) as unknown as SyncSql
+  const sql = SQL(options.databaseUrl) as unknown as SyncSql
   const tables = options.table === undefined ? TABLES : [options.table]
   try {
     if (options.verify) {

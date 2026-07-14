@@ -9,7 +9,7 @@ import { makeWorkspaceSearchHost } from "../src/workspace-search-host.ts"
 import { openWorkspaceService } from "../src/workspace-service.ts"
 import { runGitFixture } from "./git-fixture.ts"
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 
 test("CUT-17 real worker bounds a 20k-entry repository and project close drains watcher/search ownership", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "openagents-workspace-scale-"))

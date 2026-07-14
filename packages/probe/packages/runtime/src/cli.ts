@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
@@ -1436,7 +1437,7 @@ function searchWorkspaceCode(
 
     const output = yield* Effect.tryPromise({
       try: async () => {
-        const child = Bun.spawn(["rg", "--line-number", "--no-heading", "--color", "never", query, resolved.relativePath], {
+        const child = Runtime.spawn(["rg", "--line-number", "--no-heading", "--color", "never", query, resolved.relativePath], {
           cwd: workspace,
           stderr: "pipe",
           stdout: "pipe",
@@ -1686,17 +1687,17 @@ function safeJson(value: unknown): string {
   }
 }
 
-if (import.meta.main) {
-  const argv = Bun.argv.slice(2);
+if (Runtime.isMain(import.meta.url)) {
+  const argv = Runtime.argv.slice(2);
 
   if (argv[0] === "chat" && stringOption(parseOptions(argv.slice(1)), "prompt") === undefined) {
     const chatArgs = argv.slice(1);
     const chatOptions = parseOptions(chatArgs);
     const useTui = chatOptions.tui === true && process.stdout.isTTY;
-    process.exit(await runGeminiInteractiveChat(chatArgs, { colors: process.stdout.isTTY, env: Bun.env }, useTui));
+    process.exit(await runGeminiInteractiveChat(chatArgs, { colors: process.stdout.isTTY, env: Runtime.env }, useTui));
   }
 
-  const result = await Effect.runPromise(runProbeCli(argv, { colors: process.stdout.isTTY, env: Bun.env }));
+  const result = await Effect.runPromise(runProbeCli(argv, { colors: process.stdout.isTTY, env: Runtime.env }));
 
   if (result.stdout.length > 0) {
     process.stdout.write(result.stdout);

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { cpSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
@@ -60,6 +60,6 @@ export const verifyDistribution = (repositoryRoot: string): Readonly<Record<stri
 }
 
 if (import.meta.main) {
-  const root = resolve(import.meta.dir, "../../..")
+  const root = resolve(import.meta.dirname, "../../..")
   console.log(JSON.stringify(verifyDistribution(root), null, 2))
 }

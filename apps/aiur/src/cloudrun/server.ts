@@ -1,7 +1,9 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
+import WebSocket from 'ws'
 /**
  * Aiur Cloud Run entrypoint (CFG-11, #8526).
  *
- * A thin Bun adapter that replaces the Cloudflare Worker runtime
+ * A thin Node adapter that replaces the Cloudflare Worker runtime
  * (`src/server.ts`) with the exact same surface:
  *
  * - static assets from the Vite client build (`dist/client`),
@@ -11,7 +13,7 @@
  * - the shared owner-gated surface (`shared-surface.ts`): OpenAuth
  *   sign-in/callback/logout, `/api/aiur/access`, the admin credits proxy,
  *   and the Khala Sync proxy — all FAIL CLOSED on `AIUR_OWNER_USER_IDS`,
- * - a Bun-native WebSocket bridge for `/api/sync/connect` (the Workers
+ * - a Node-native WebSocket bridge for `/api/sync/connect` (the Workers
  *   `WebSocketPair` bridge does not exist outside workerd).
  *
  * Config comes from plain env vars; `AIUR_OWNER_USER_IDS` is mounted from
@@ -170,7 +172,7 @@ export const sanitizeCloseCode = (code: number | undefined): number =>
     : 1000
 
 const serveAiurCloudRun = async (): Promise<void> => {
-  const appRoot = path.resolve(import.meta.dir, '..', '..')
+  const appRoot = path.resolve(import.meta.dirname, '..', '..')
   const clientDir = path.resolve(
     process.env['AIUR_CLIENT_DIST'] ?? path.join(appRoot, 'dist', 'client'),
   )
@@ -179,7 +181,7 @@ const serveAiurCloudRun = async (): Promise<void> => {
   const handler = createAiurCloudRunFetchHandler({ env, clientDir, shellHtml })
   const port = Number(process.env['PORT'] ?? 8080)
 
-  const server = Bun.serve<SyncBridgeData>({
+  const server = Runtime.serve<SyncBridgeData>({
     port,
     hostname: '0.0.0.0',
     async fetch(request, bunServer) {
@@ -233,12 +235,11 @@ const serveAiurCloudRun = async (): Promise<void> => {
       // request timeout (set at deploy time) rather than a short idle cut.
       idleTimeout: 960,
       open(ws) {
-        // Bun extension: WebSocket client options accept `headers`, which
-        // browsers do not — exactly what the Worker relied on workerd
-        // `fetch` upgrades for.
+        // The Node `ws` client accepts upgrade headers, preserving the
+        // authenticated workerd bridge contract that browser WebSocket lacks.
         const upstream = new WebSocket(ws.data.targetUrl, {
           headers: { authorization: `Bearer ${ws.data.bearer}` },
-        } as unknown as string[])
+        })
         upstream.binaryType = 'arraybuffer'
         ws.data.upstream = upstream
 
@@ -261,7 +262,7 @@ const serveAiurCloudRun = async (): Promise<void> => {
         })
         upstream.addEventListener('message', event => {
           try {
-            const data = (event as MessageEvent).data
+            const data = event.data
             ws.send(
               typeof data === 'string' ? data : new Uint8Array(data as ArrayBuffer),
             )
@@ -272,8 +273,8 @@ const serveAiurCloudRun = async (): Promise<void> => {
         upstream.addEventListener('close', event => {
           try {
             ws.close(
-              sanitizeCloseCode((event as CloseEvent).code),
-              (event as CloseEvent).reason,
+              sanitizeCloseCode(event.code),
+              event.reason,
             )
           } catch {
             // already closed
@@ -317,6 +318,6 @@ const serveAiurCloudRun = async (): Promise<void> => {
   console.log(`aiur cloudrun server listening on :${server.port}`)
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   await serveAiurCloudRun()
 }

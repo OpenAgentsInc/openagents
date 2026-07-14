@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite"
+import type { LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"

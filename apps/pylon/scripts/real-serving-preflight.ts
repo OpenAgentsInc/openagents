@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Owner-gated live Pylon serving evidence runner (#6089).
  *

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Bless (or verify) captured iOS-simulator Maestro screenshots into the owned
  * `openagents.khala_visual_baselines.v1` engine (QAM-4, #8539).
@@ -28,7 +29,7 @@ import {
   type KhalaMobileVisualTierCapture,
 } from "./mobile-visual-tier.js"
 
-const repoRoot = resolve(import.meta.dir, "../../..")
+const repoRoot = resolve(import.meta.dirname, "../../..")
 const baselineDir = join(repoRoot, "docs/khala-code/receipts/qam-4-baselines")
 
 const [, , rawCandidateDir, rawReportPath, ...rest] = process.argv
@@ -54,7 +55,7 @@ for (const file of files) {
   const segments = id.split(".")
   const colorScheme = segments[segments.length - 1] === "light" ? "light" : "dark"
   const device = segments[segments.length - 2] ?? "iphone-17-pro"
-  const png = Buffer.from(await Bun.file(join(candidateDir, file)).arrayBuffer())
+  const png = Buffer.from(await Runtime.file(join(candidateDir, file)).arrayBuffer())
   captures.push({ colorScheme, device, id, png, source: "maestro-checkpoint" })
 }
 

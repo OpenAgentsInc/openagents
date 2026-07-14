@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Shared OpenCode CLI streaming helper. Spawns `opencode run` with JSON
 // event output and surfaces progress through plain callbacks, so callers
 // (e.g. the agent-runtime adapter) reuse one parser without touching
@@ -41,7 +42,7 @@ export async function runOpencodeStream(
   callbacks: OpencodeStreamCallbacks = {},
   model: string = OPENCODE_DEFAULT_MODEL,
 ): Promise<OpencodeStreamResult> {
-  const proc = Bun.spawn([opencodePath, "run", prompt, "--model", model, "--format", "json"], {
+  const proc = Runtime.spawn([opencodePath, "run", prompt, "--model", model, "--format", "json"], {
     stdout: "pipe",
     stderr: "pipe",
   })

@@ -29,8 +29,9 @@
       "apps/oa-updates",
       "apps/openagents-mobile",
       "apps/nostr-relay",
-      "apps/openagents-audio",
-      "apps/openagents-desktop",
+    "apps/openagents-audio",
+    "apps/openagents-audio-edge",
+    "apps/openagents-desktop",
       "apps/openagents-world",
       "apps/pylon",
       "apps/pylon/packages/*",
@@ -47,6 +48,8 @@
     }
   },
   "scripts": {
+    "check:vp2-node-runtime": "node scripts/vp2-node-runtime-guard.mjs",
+    "test:vp2-node": "node --test packages/runtime-platform/src/runtime-platform.node-suite.ts packages/sqlite-runtime/src/node-database.node-suite.ts scripts/public-cli-artifacts.node.test.mjs scripts/vp2-node-runtime-guard.test.mjs scripts/vp2-retained-service.node.test.mjs",
     "dev:openagents.com": "bun run --cwd apps/openagents.com dev",
     "dev:aiur": "bun run --cwd apps/aiur dev",
     "dev:forge": "bun run --cwd apps/forge dev",
@@ -200,6 +203,7 @@
     "prepare": "effect-language-service patch"
   },
   "devDependencies": {
+    "tsdown": "0.22.4",
     "@effect/language-service": "^0.86.2",
     "@playwright/test": "^1.61.0",
     "bun-types": "^1.0.0",

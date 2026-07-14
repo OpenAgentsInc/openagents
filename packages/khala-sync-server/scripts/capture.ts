@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Khala Sync capture worker CLI (KS-4.1, #8294).
  *

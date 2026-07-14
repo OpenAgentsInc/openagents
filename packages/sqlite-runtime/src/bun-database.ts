@@ -63,6 +63,7 @@ export const openBunSqliteDatabase = (
     },
     all: <Row>(sql: string, params: ReadonlyArray<SqliteValue> = []) =>
       db.query(sql).all(...(params as Array<SqliteValue>)) as ReadonlyArray<Row>,
+    query: (sql) => db.query(sql) as unknown as import("./sqlite-database.ts").SqliteStatement,
     transaction: (fn) => db.transaction(fn)(),
     close: () => {
       try {

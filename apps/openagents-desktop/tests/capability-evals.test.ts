@@ -73,7 +73,7 @@ const AUDIT_CAPABILITY_IDS = [
   "K1", "K2",
 ] as const
 
-const repoRoot = path.resolve(import.meta.dir, "..", "..", "..")
+const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..")
 const resolveRef = (ref: string): string => path.join(repoRoot, ref)
 
 // ---------------------------------------------------------------------------

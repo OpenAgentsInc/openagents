@@ -1,5 +1,6 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Worker-only route imports are isolated from the portable harness bridge so the daemon
-// unit suite does not eagerly load `cloudflare:workers` through effect-cf under plain Bun.
+// unit suite does not eagerly load `cloudflare:workers` through effect-cf under plain Runtime.
 // The in-process Worker proof imports this boundary explicitly.
 export {
   handleAcceptanceVerdictCallback,

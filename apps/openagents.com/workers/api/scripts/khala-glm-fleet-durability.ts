@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { readFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -22,7 +23,7 @@ const flag = (name: string): boolean => args.includes(name)
 
 const readinessUrl =
   option('--readiness-url') ??
-  Bun.env.KHALA_GLM_FLEET_READINESS_URL ??
+  Runtime.env.KHALA_GLM_FLEET_READINESS_URL ??
   'https://openagents.com/v1/gateway/glm-fleet/readiness'
 const readinessJson = option('--readiness-json')
 const outputDir = option('--output-dir')
@@ -87,15 +88,15 @@ const bundle = buildGlmFleetDurabilityOperatorBundle({
 if (outputDir !== undefined) {
   await mkdir(outputDir, { recursive: true })
   await Promise.all([
-    Bun.write(
+    Runtime.write(
       join(outputDir, 'glm-fleet-durability-readiness.public.json'),
       `${JSON.stringify(bundle.readiness, null, 2)}\n`,
     ),
-    Bun.write(
+    Runtime.write(
       join(outputDir, 'glm-fleet-durability-operator-bundle.public.json'),
       `${JSON.stringify(bundle, null, 2)}\n`,
     ),
-    Bun.write(
+    Runtime.write(
       join(outputDir, 'README.public.md'),
       formatGlmFleetDurabilityOperatorReadme(bundle),
     ),

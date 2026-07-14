@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 /**
  * Publish the orange-check forum identity signal to the OWNED Nostr relay.

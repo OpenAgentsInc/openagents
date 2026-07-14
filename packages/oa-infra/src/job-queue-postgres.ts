@@ -18,7 +18,7 @@ import {
   type LeasedJob,
 } from "./job-queue.ts"
 import { OaInfraSql } from "./sql.ts"
-import type { SQL } from "bun"
+import type { SQL } from "@openagentsinc/postgres-runtime"
 
 const BACKEND = "postgres"
 

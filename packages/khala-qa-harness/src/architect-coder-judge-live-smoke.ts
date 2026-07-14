@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 const schema = "openagents.khala_code.architect_coder_judge_live_smoke.v1" as const
 
 type SmokeEvidence = {
@@ -37,7 +38,7 @@ const validateArchivedEvidence = async (path: string): Promise<SmokeEvidence> =>
   if (path.trim().length === 0) {
     fail("KHALA_CODE_ARCHITECT_CODER_JUDGE_LIVE_EVIDENCE_JSON is required when the live smoke is armed.")
   }
-  const raw = await Bun.file(path).text().catch((error) =>
+  const raw = await Runtime.file(path).text().catch((error) =>
     fail(`Could not read KHALA_CODE_ARCHITECT_CODER_JUDGE_LIVE_EVIDENCE_JSON: ${error instanceof Error ? error.message : String(error)}`)
   )
   const parsed = JSON.parse(raw) as unknown

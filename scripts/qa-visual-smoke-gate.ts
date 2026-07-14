@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Scoped OpenAgents Desktop gate for desktop/UI-touching main pushes.
 
 import { execFileSync } from "node:child_process"

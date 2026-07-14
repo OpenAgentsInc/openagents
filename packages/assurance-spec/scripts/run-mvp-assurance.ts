@@ -23,7 +23,7 @@ import {
   type AssuranceSpecDocument,
 } from "../src/index.ts"
 
-const root = resolve(import.meta.dir, "../../..")
+const root = resolve(import.meta.dirname, "../../..")
 const relative = {
   productSpec: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
   assuranceSpec: "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",

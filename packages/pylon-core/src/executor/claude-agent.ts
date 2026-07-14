@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { access, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -72,7 +73,7 @@ export const CLAUDE_AGENT_LOCAL_SESSION_SOURCE_REF =
  */
 export async function localClaudeSessionPresent(
   platform: string = process.platform,
-  env: Record<string, string | undefined> = Bun.env as Record<string, string | undefined>,
+  env: Record<string, string | undefined> = Runtime.env as Record<string, string | undefined>,
 ): Promise<boolean> {
   // A per-account OAuth token (CLAUDE_CODE_OAUTH_TOKEN) outranks the macOS
   // Keychain credential and is how Pylon pools multiple Claude accounts. When
@@ -97,7 +98,7 @@ export async function localClaudeSessionPresent(
   }
   if (platform === "darwin") {
     try {
-      const proc = Bun.spawn(
+      const proc = Runtime.spawn(
         ["security", "find-generic-password", "-s", "Claude Code-credentials"],
         { stdout: "ignore", stderr: "ignore" },
       )
@@ -166,7 +167,7 @@ function readiness(
 export async function probeClaudeAgentReadiness(
   options: ClaudeAgentProbeOptions = {},
 ): Promise<ClaudeAgentReadiness> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const platform = options.platform ?? process.platform
   const enabled = options.config?.enabled !== false
   const credentialSourceRef = claudeAgentCredentialSource(env)

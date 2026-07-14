@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { basename, extname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
@@ -25,11 +26,11 @@ type Args = {
   readonly outDir: string
 }
 
-const repoRoot = resolve(import.meta.dir, "../../..")
+const repoRoot = resolve(import.meta.dirname, "../../..")
 const defaultOutDir = join(repoRoot, "apps/oa-updates/desktop-dist")
 
 async function main(): Promise<void> {
-  const args = parseArgs(Bun.argv.slice(2))
+  const args = parseArgs(Runtime.argv.slice(2))
   assertDesktopReleaseProductPublishable(args.product)
   const artifactBytes = await readFile(args.artifact)
   const artifactHash = assetKeyFromBytes(new Uint8Array(artifactBytes))
@@ -161,7 +162,7 @@ async function runBsdiff(
   artifact: string,
   patchPath: string,
 ): Promise<void> {
-  const proc = Bun.spawn(["bsdiff", previousArtifact, artifact, patchPath], {
+  const proc = Runtime.spawn(["bsdiff", previousArtifact, artifact, patchPath], {
     stdout: "pipe",
     stderr: "pipe",
   })

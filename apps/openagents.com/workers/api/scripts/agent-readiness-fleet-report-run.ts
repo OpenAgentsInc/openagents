@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 // OB-3 (#8560): fleet lane — run the LG-1 agent-readiness prober across
 // pending pipeline rows and render one hosted, tokenized, public-safe
 // 15-step report per prospect in bulk.
@@ -103,7 +104,7 @@ if (domainMapPath === undefined) {
 }
 
 const apiBase = option('--api-base') ?? 'https://openagents.com'
-const adminToken = option('--admin-token') ?? Bun.env.OPENAGENTS_ADMIN_API_TOKEN
+const adminToken = option('--admin-token') ?? Runtime.env.OPENAGENTS_ADMIN_API_TOKEN
 const limit = Number(option('--limit') ?? Number.POSITIVE_INFINITY)
 const concurrency = Math.max(1, Number(option('--concurrency') ?? 4))
 const timeoutMs = Number(option('--timeout-ms') ?? 15_000)
@@ -243,7 +244,7 @@ const summary = {
 
 if (outputDir !== undefined) {
   await mkdir(outputDir, { recursive: true })
-  await Bun.write(
+  await Runtime.write(
     join(outputDir, 'agent-readiness-fleet-run-receipts.json'),
     `${JSON.stringify(summary, null, 2)}\n`,
   )

@@ -12,7 +12,7 @@ import {
   renderHomeView,
 } from "../src/screens/home-core"
 
-const appRoot = join(import.meta.dir, "..")
+const appRoot = join(import.meta.dirname, "..")
 
 const settle = Effect.gen(function* () {
   yield* Effect.promise<void>(() => new Promise(resolve => setTimeout(resolve, 0)))

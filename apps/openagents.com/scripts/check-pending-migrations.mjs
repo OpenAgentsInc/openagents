@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Deploy-migration safety guard (AAR 2026-06-25 — the keystone fix).
 //
 // WHY THIS EXISTS. The 2026-06-25 gateway-wide 500 outage was caused by shipping

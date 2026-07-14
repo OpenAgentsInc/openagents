@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Build the self-contained, standalone `qa` CLI bundle (issue #6191 / Rhys req #5).
 //
 // WHY THIS EXISTS
@@ -61,7 +62,7 @@ const aliasProbeRuntimeToComputerUse = {
 
 mkdirSync(dirname(outFile), { recursive: true });
 
-const result = await Bun.build({
+const result = await Runtime.build({
   entrypoints: [entry],
   outdir: dirname(outFile),
   naming: "qa.js",
@@ -86,12 +87,12 @@ if (!result.success) {
 // single, portable node shebang so `node dist/qa.js` and the `bin` symlink both
 // work without bun present. Strip any leading shebang/marker lines, then prepend
 // exactly one node shebang.
-const built = await Bun.file(outFile).text();
+const built = await Runtime.file(outFile).text();
 const withoutLeadingMarkers = built.replace(/^(#![^\n]*\n|\/\/ @bun\n)+/, "");
-await Bun.write(outFile, `#!/usr/bin/env node\n${withoutLeadingMarkers}`);
+await Runtime.write(outFile, `#!/usr/bin/env node\n${withoutLeadingMarkers}`);
 
 chmodSync(outFile, 0o755);
 
-const bytes = (await Bun.file(outFile).arrayBuffer()).byteLength;
+const bytes = (await Runtime.file(outFile).arrayBuffer()).byteLength;
 console.log(`built ${outFile} (${(bytes / 1024).toFixed(1)} KiB)`);
 console.log("externals kept out of the bundle: playwright");

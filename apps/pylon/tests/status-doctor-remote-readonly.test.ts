@@ -16,7 +16,7 @@ import { startControlServer } from "../src/node/control-server"
 // CLI still tried to bind, it would crash with EADDRINUSE. Instead it must
 // detect the running node and report it READ-ONLY.
 
-const CLI_ENTRY = join(import.meta.dir, "..", "src", "index.ts")
+const CLI_ENTRY = join(import.meta.dirname, "..", "src", "index.ts")
 
 const dirs: string[] = []
 function tempHome(token: string): string {

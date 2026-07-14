@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import { loadManifest, reduceKhalaHeadToHeadManifest } from "./reduce-head-to-head.mjs";
 

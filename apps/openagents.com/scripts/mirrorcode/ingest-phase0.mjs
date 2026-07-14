@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Ingest a MirrorCode Phase-0 result JSON into the demo surface (#6378, epic
 // #6376). This is the OWNER-GATED launch/record path: it POSTs a public-safe
 // MirrorCode run record to `/api/gym/mirrorcode/runs`, which rebuilds it through

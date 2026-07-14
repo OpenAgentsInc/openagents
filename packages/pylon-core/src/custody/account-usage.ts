@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
@@ -998,7 +999,7 @@ export async function resolvePylonAccountUsageRefreshTargets(
   args: Pick<PylonAccountsUsageArgs, "accountRef" | "provider" | "all">,
   options: { env?: Record<string, string | undefined> } = {},
 ): Promise<PylonAccountUsageRefreshTarget[]> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const targets = await selectAccountUsageTargets(summary, args, env)
   return targets.map((target) => ({
     provider: target.provider,
@@ -1048,7 +1049,7 @@ export async function collectPylonAccountsList(
     grokReadinessProbe?: PylonGrokAccountReadinessProbe
   } = {},
 ): Promise<PylonAccountsListProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const observedAt = (options.now ?? new Date()).toISOString()
   const accounts: PylonAccountListEntry[] = []
   for (const target of await discoverAccountTargets(summary, env)) {
@@ -1119,7 +1120,7 @@ export async function collectPylonCodexAccountsLocal(
   summary: Pick<BootstrapSummary, "paths">,
   options: { env?: Record<string, string | undefined> } = {},
 ): Promise<PylonCodexAccountLocal[]> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const accounts: PylonCodexAccountLocal[] = []
   for (const target of await discoverAccountTargets(summary, env)) {
     if (target.provider !== "codex") continue
@@ -1408,7 +1409,7 @@ export async function collectPylonAccountsStatus(
     grokReadinessProbe?: PylonGrokAccountReadinessProbe
   } = {},
 ): Promise<PylonAccountsStatusProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const now = options.now ?? new Date()
   const observedAt = now.toISOString()
   const targets = await selectAccountUsageTargets(summary, args, env)
@@ -1522,7 +1523,7 @@ export async function collectPylonAccountsUsage(
     grokReadinessProbe?: PylonGrokAccountReadinessProbe
   } = {},
 ): Promise<PylonAccountsUsageProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const now = options.now ?? new Date()
   const observedAt = now.toISOString()
   const store = await loadAccountUsageStore(summary)

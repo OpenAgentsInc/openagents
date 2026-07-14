@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { CLAUDE_AGENT_SDK_PACKAGE, probeClaudeAgentReadiness, type ClaudeAgentConfig } from "./claude-agent.js"
 import {
@@ -189,7 +190,7 @@ export async function runClaudeComposerStream(prompt: string, options: ClaudeCom
         }
       : null)
   const env = pylonAccountEnvironment(
-    options.env ?? (Bun.env as Record<string, string | undefined>),
+    options.env ?? (Runtime.env as Record<string, string | undefined>),
     account,
   )
   const executionMode = options.executionMode ?? "local_bounded"

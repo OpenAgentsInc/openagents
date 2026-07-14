@@ -15,7 +15,7 @@ type TemplatePlan = Readonly<{
   template: string
 }>
 
-const mobileRoot = join(import.meta.dir, "..")
+const mobileRoot = join(import.meta.dirname, "..")
 
 const plans: Record<GeneratorKind, readonly TemplatePlan[]> = {
   "api-core": [

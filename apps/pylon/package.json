@@ -70,6 +70,8 @@
     "build:rc-binaries": "bash scripts/build-rc-binaries.sh"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
+    "@openagentsinc/sqlite-runtime": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",

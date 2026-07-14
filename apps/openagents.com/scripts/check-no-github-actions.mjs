@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Enforce INVARIANTS.md "No GitHub-Hosted CI / Cloud Actions": .github/workflows
 // must contain NO workflow files. CI / PR-evidence / scheduling run on owned infra
 // and are AGENT/MANUAL-triggered (e.g. `apps/qa-runner/src/pr-comment-run.ts` run by

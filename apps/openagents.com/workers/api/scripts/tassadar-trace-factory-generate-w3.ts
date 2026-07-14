@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Tassadar verified trace factory — W3 100M-token corpus snapshot
  * (issue #4749, RESEARCH_PLAN.md W3; scale stage of the W2 factory from
@@ -433,7 +434,7 @@ const main = async (): Promise<void> => {
   appendFileSync(recordsPath, recordsJsonlText)
   recordsJsonlText = ''
   const recordsJsonlDigest = await sha256HexOfText(
-    await Bun.file(recordsPath).text(),
+    await Runtime.file(recordsPath).text(),
   )
   const shardDigestLines = shardSummaries
     .map(summary => `${summary.shard}:${summary.shardSha256}`)

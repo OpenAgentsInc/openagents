@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite"
+import { openLegacySqliteDatabase, type LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { chmod, mkdir } from "node:fs/promises"
 import { join } from "node:path"
 
@@ -60,7 +60,7 @@ export async function openPylonFleetRunRuntime(
   await mkdir(bootstrap.paths.home, { recursive: true, mode: 0o700 })
 
   const databasePath = pylonFleetRunDatabasePath(bootstrap)
-  const database = new Database(databasePath, { create: true })
+  const database = openLegacySqliteDatabase(databasePath)
   try {
     // The store is process-shared by the standing Pylon. A bounded wait avoids
     // turning a short reader/writer overlap into a false startup failure.

@@ -12,7 +12,7 @@ import {
   type DesktopServiceTopologyEntry,
 } from "../src/service-topology.ts"
 
-const repoRoot = path.resolve(import.meta.dir, "../../..")
+const repoRoot = path.resolve(import.meta.dirname, "../../..")
 
 const service = (
   override: Partial<DesktopServiceTopologyEntry> & Pick<DesktopServiceTopologyEntry, "id" | "scope">,

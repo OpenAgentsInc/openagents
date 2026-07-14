@@ -13,7 +13,7 @@ import {
   type AssuranceManifest,
 } from "../src/index.ts"
 
-const root = resolve(import.meta.dir, "../../..")
+const root = resolve(import.meta.dirname, "../../..")
 const roots: string[] = []
 afterEach(() => {
   for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true })

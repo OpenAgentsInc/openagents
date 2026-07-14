@@ -28,7 +28,7 @@ import {
   gatherArtifactFiles,
 } from "../scripts/release-preflight.ts"
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 
 describe("pure preflight checks", () => {
   test("clean origin/main passes; dirty tree or drifted HEAD fails", () => {

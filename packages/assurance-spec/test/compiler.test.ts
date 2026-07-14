@@ -20,7 +20,7 @@ import {
   type AssuranceSpecDocument,
 } from "../src/index.ts"
 
-const root = resolve(import.meta.dir, "../../..")
+const root = resolve(import.meta.dirname, "../../..")
 const productSpecBytes = readFileSync(resolve(root, "docs/mvp/openagents-codex-workroom-mvp.product-spec.md"), "utf8")
 const proposalBytes = readFileSync(resolve(root, "packages/assurance-spec/conformance/valid/mvp-proposal.assurance-spec.md"), "utf8")
 

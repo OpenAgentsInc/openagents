@@ -28,6 +28,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/effect-boundary": "workspace:*",
     "@openagentsinc/grok-harness": "workspace:*",

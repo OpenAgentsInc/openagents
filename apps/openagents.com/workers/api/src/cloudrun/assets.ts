@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * CFG-9 (#8524): `env.ASSETS` Fetcher for the Cloud Run monolith.
  *
@@ -10,7 +11,7 @@
  * (index.ts `handle_asset_request`) and for a handful of companion files
  * (HEARTBEAT.md, RULES.md, skill.json, onboarding shell).
  *
- * Uses node:fs (not `Bun.file`) so the unit suite runs under vitest/node.
+ * Uses node:fs (not `Runtime.file`) so the unit suite runs under vitest/node.
  */
 
 import { existsSync } from 'node:fs'

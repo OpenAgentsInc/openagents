@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Stateful driver that turns the pure Apple FM bridge supervision policy into
  * something a real launcher can run.
@@ -13,7 +14,7 @@
  * This module supplies exactly that glue while keeping ALL real I/O injected:
  * the caller provides `spawn`, an optional `markRunning`/`giveUp`, a `now()`
  * clock, and a `timer` abstraction. A live launcher passes real
- * `Bun.spawn` + `setTimeout`; tests pass fakes. The driver itself never reads
+ * `Runtime.spawn` + `setTimeout`; tests pass fakes. The driver itself never reads
  * the wall clock, never spawns a process, opens a socket, or emits prompts,
  * file contents, paths, tokens, URLs, or bearer material.
  *
@@ -54,7 +55,7 @@ export type AppleFmBridgeSupervisorTimer = {
 export type AppleFmBridgeSupervisorDriverOptions = {
   /** Policy overrides; defaults come from APPLE_FM_BRIDGE_SUPERVISOR_DEFAULTS. */
   readonly config?: Partial<AppleFmBridgeSupervisorConfig>
-  /** Perform the actual helper launch (e.g. Bun.spawn). Required. */
+  /** Perform the actual helper launch (e.g. Runtime.spawn). Required. */
   readonly spawn: () => void
   /** Optional hook fired when the helper transitions to running. */
   readonly markRunning?: () => void

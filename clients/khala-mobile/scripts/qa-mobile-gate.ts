@@ -29,8 +29,8 @@ type MobileGateReceipt = Readonly<{
   schema: "openagents.khala_mobile.release_gate.v1"
 }>
 
-const repoRoot = resolve(import.meta.dir, "../../..")
-const mobileRoot = resolve(import.meta.dir, "..")
+const repoRoot = resolve(import.meta.dirname, "../../..")
+const mobileRoot = resolve(import.meta.dirname, "..")
 const receiptPath = resolve(
   repoRoot,
   process.env.KHALA_MOBILE_GATE_RECEIPT ??

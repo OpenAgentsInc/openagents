@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
     "@openagentsinc/world-contract": "workspace:*",
     "effect": "catalog:"

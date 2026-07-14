@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import {
   type McpResponseEnvelope,
   type McpToolCallResult,
@@ -428,7 +429,7 @@ export async function runPylonKhalaMcpStdio(
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ""
-  for await (const chunk of Bun.stdin.stream()) {
+  for await (const chunk of Runtime.stdin.stream()) {
     buffer += decoder.decode(chunk, { stream: true })
     let newline = buffer.indexOf("\n")
     while (newline >= 0) {

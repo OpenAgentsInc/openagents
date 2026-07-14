@@ -11,7 +11,7 @@ import {
   verifyBuiltinProductSpecWorkSkill,
 } from "./builtin-productspec-skill.ts"
 
-const sourceRoot = path.resolve(import.meta.dir, "../resources/builtin-skills")
+const sourceRoot = path.resolve(import.meta.dirname, "../resources/builtin-skills")
 const withCopy = (run: (root: string) => void): void => {
   const root = mkdtempSync(path.join(tmpdir(), "openagents-productspec-work-"))
   try {
@@ -70,7 +70,7 @@ describe("built-in productspec-work compatibility asset", () => {
 
     const assuranceText = readFileSync(assurance.skillPath, "utf8")
     const publicAssuranceText = readFileSync(
-      path.resolve(import.meta.dir, "../../../packages/assurance-spec/skills/assurancespec-work/SKILL.md"),
+      path.resolve(import.meta.dirname, "../../../packages/assurance-spec/skills/assurancespec-work/SKILL.md"),
       "utf8",
     )
     expect(assuranceText).toBe(publicAssuranceText)

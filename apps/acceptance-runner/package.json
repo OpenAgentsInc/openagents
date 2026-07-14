@@ -11,6 +11,7 @@
     "playwright:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:",
     "playwright": "^1.61.0"
   },

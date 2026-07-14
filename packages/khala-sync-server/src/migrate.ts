@@ -1,4 +1,4 @@
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import { createHash } from "node:crypto"
 import { readdir, readFile } from "node:fs/promises"
 import * as path from "node:path"
@@ -183,7 +183,7 @@ export interface RunMigrationsResult {
   readonly plan: MigrationPlan
 }
 
-export const defaultMigrationsDir = path.join(import.meta.dir, "..", "migrations")
+export const defaultMigrationsDir = path.join(import.meta.dirname, "..", "migrations")
 
 /**
  * Run (or dry-run) the migration set. Refuses with
@@ -205,7 +205,7 @@ export const runMigrations = async (
 
   // max: 1 so the session advisory lock and all statements share one
   // direct connection.
-  const sql = new SQL({ url: options.databaseUrl, max: 1 })
+  const sql = SQL({ url: options.databaseUrl, max: 1 })
   try {
     if (!dryRun) {
       await sql`SELECT pg_advisory_lock(hashtext(${MIGRATIONS_TABLE})::bigint)`

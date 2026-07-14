@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Minimal in-process ACP JSON-RPC server for fixture tests.
  * Speaks the same surface as `grok agent stdio` for initialize /
@@ -149,7 +150,7 @@ export async function runMockAcpStdioMain(): Promise<void> {
   let buffer = ""
 
   // Read stdin line-by-line
-  for await (const chunk of Bun.stdin.stream()) {
+  for await (const chunk of Runtime.stdin.stream()) {
     buffer += decoder.decode(chunk)
     let idx: number
     while ((idx = buffer.indexOf("\n")) >= 0) {

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // `qa` — the OSS, local-first, BYO-model QA CLI (issue #6191 / Rhys req #5).
 //
 // Runs an autonomous e2e scenario LOCALLY against any target, driven by an

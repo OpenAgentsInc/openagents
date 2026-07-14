@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { realpathSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
@@ -214,7 +215,7 @@ const CLAUDE_AGENT_FIXTURES: Record<string, ClaudeAgentFixture> = {
       )}\n`,
       "sum.ts": "export const sum = (left: number, right: number) => left - right\n",
       "sum.test.ts": [
-        'import { describe, expect, test } from "bun:test"',
+        'import { describe, expect, test } from "vite-plus/test"',
         'import { sum } from "./sum"',
         "",
         'describe("sum fixture", () => {',
@@ -387,7 +388,7 @@ function shellPathTokenFrom(rawToken: string): string | null {
 }
 
 async function runCommand(input: { args: string[]; cwd: string }) {
-  const proc = Bun.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).arrayBuffer(),
     new Response(proc.stderr).arrayBuffer(),
@@ -674,7 +675,7 @@ export async function runWithClaudeAgentSdk(
   input: ClaudeAgentRunInput,
 ): Promise<ClaudeAgentRunResult> {
   const env = pylonAccountEnvironment(
-    input.env ?? (Bun.env as Record<string, string | undefined>),
+    input.env ?? (Runtime.env as Record<string, string | undefined>),
     input.account,
   )
   const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as {
@@ -708,7 +709,7 @@ export async function runWithClaudeAgentSdk(
     const record = hookInput as { tool_name?: string; tool_input?: unknown }
     if (toolInputEscapesWorkspace(record.tool_name, record.tool_input, input.cwd)) {
       escapeDenials += 1
-      if (Bun.env.PYLON_CLAUDE_GUARD_DEBUG === "1") {
+      if (Runtime.env.PYLON_CLAUDE_GUARD_DEBUG === "1") {
         // Owner-local diagnostic only; tool_input may carry local paths so it
         // must never reach public projections or closeout refs.
         console.error(
@@ -1035,7 +1036,7 @@ export async function executeClaudeAgentAssignment(
   )
 
   const config = await loadClaudeAgentConfig({ paths: { config: state.paths.config } })
-  const env = pylonAccountEnvironment(options.claudeAgentProbe?.env ?? Bun.env, options.account)
+  const env = pylonAccountEnvironment(options.claudeAgentProbe?.env ?? Runtime.env, options.account)
   const probed = await probeClaudeAgentReadiness({ ...options.claudeAgentProbe, config, env })
   if (probed.state !== "ready") {
     return refusalRecord({

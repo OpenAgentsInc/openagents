@@ -4,7 +4,7 @@ import {
   type ForgeDispatchVerificationCommand,
 } from "@openagentsinc/forge-protocol"
 import {
-  FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF,
+  FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF,
   planForgeDockerVerificationCommand,
   planForgeDockerVerificationForWorkItem,
   runForgeDockerVerification,
@@ -14,9 +14,9 @@ import {
 const workspacePath = "/tmp/forge/worktree"
 const command = (): ForgeDispatchVerificationCommand => ({
   command_ref: "verification-command.forge.6752",
-  runner_ref: FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF,
+  runner_ref: FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF,
   working_directory: "packages/forge-protocol",
-  args: ["bun", "test", "src/index.test.ts"],
+  args: ["node", "--test", "src/index.test.ts"],
   timeout_seconds: 120,
 })
 
@@ -39,7 +39,7 @@ describe("forge Docker verification runner", () => {
       },
     })
 
-    expect(plan.runnerRef).toBe(FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF)
+    expect(plan.runnerRef).toBe(FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF)
     expect(plan.timeoutMs).toBe(120_000)
     expect(valueAfter(plan.dockerArgs, "--network")).toBe("none")
     expect(valueAfter(plan.dockerArgs, "--cpus")).toBe("2")
@@ -60,7 +60,7 @@ describe("forge Docker verification runner", () => {
       `type=bind,src=${workspacePath},dst=/workspace,readonly`,
     )
     expect(plan.dockerArgs.slice(-4)).toEqual([
-      "oven/bun:1.3.11",
+      "node:24.13.1-bookworm-slim",
       "bun",
       "test",
       "src/index.test.ts",
@@ -105,7 +105,7 @@ describe("forge Docker verification runner", () => {
     const plan = planForgeDockerVerificationForWorkItem({ item, workspacePath })
 
     expect(plan.commandRef).toBe("verification-command.forge.6752")
-    expect(plan.verificationRef).toStartWith("verification.forge.docker_bun.")
+    expect(plan.verificationRef).toStartWith("verification.forge.docker_node.")
     expect(plan.workspaceRef).toStartWith("workspace.forge.verify.")
   })
 
@@ -133,7 +133,7 @@ describe("forge Docker verification runner", () => {
         workspacePath,
         command: { ...command(), args: ["bash", "-lc", "bun test"] },
       }),
-    ).toThrow("only accepts bun test/run argv")
+    ).toThrow("only accepts node --test argv")
   })
 
   test("runs through an injectable executor and returns a redacted receipt", async () => {
@@ -165,7 +165,7 @@ describe("forge Docker verification runner", () => {
     expect(calls[0]?.args).toContain("none")
     expect(result).toMatchObject({
       schema: "openagents.forge.verification.docker_bun.result.v0.1",
-      runnerRef: FORGE_DOCKER_BUN_VERIFICATION_RUNNER_REF,
+      runnerRef: FORGE_DOCKER_NODE_VERIFICATION_RUNNER_REF,
       commandRef: "verification-command.forge.6752",
       status: "passed",
       exitCode: 0,

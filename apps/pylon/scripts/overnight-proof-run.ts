@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * M10 overnight unattended proof harness (#4768).
  *
@@ -243,7 +244,7 @@ function classifyError(error: unknown): { errorClass: string; errorDigestRef: st
 }
 
 async function runGit(cwd: string, args: string[]): Promise<void> {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "ignore", stderr: "ignore" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "ignore", stderr: "ignore" })
   await proc.exited
 }
 
@@ -344,7 +345,7 @@ async function runWorkOrderTask(input: {
   try {
     const summary = createBootstrapSummary(
       parseBootstrapArgs(["--display-name", "M10 Overnight Proof"]),
-      { ...Bun.env, PYLON_HOME: input.args.pylonHome },
+      { ...Runtime.env, PYLON_HOME: input.args.pylonHome },
     )
     const state = await ensurePylonLocalState(summary)
     await writeFile(
@@ -423,7 +424,7 @@ async function runWorkOrderTask(input: {
 }
 
 async function main() {
-  const args = parseOvernightArgs(Bun.argv.slice(2))
+  const args = parseOvernightArgs(Runtime.argv.slice(2))
   const startedAt = nowIso()
   const deadlineAtMs = Date.now() + args.deadlineMinutes * 60 * 1000
   const runRef = stableRef("run.m10.overnight", args.runId)
@@ -604,6 +605,6 @@ async function main() {
   )
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   await main()
 }

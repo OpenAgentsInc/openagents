@@ -10,7 +10,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { Worker } from "node:worker_threads"
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 
 describe("openagents-desktop build", () => {
   test("bundles main, workers, preload, and the EN renderer into dist/", async () => {

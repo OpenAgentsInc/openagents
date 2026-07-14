@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { arch, cpus, freemem, networkInterfaces, platform, totalmem } from "node:os"
 import { statfs } from "node:fs/promises"
 import { assertPublicProjectionSafe } from "./state.js"
@@ -236,8 +237,8 @@ function defaultAccelerator(platformValue: InventoryPlatform, archValue: string)
 }
 
 function discoverNvidiaAccelerator(): HostAcceleratorFixture | undefined {
-  if (platform() !== "linux" || !Bun.which("nvidia-smi")) return undefined
-  const result = Bun.spawnSync({
+  if (platform() !== "linux" || !Runtime.which("nvidia-smi")) return undefined
+  const result = Runtime.spawnSync({
     cmd: [
       "nvidia-smi",
       "--query-gpu=name,memory.total",
@@ -263,7 +264,7 @@ export async function discoverHostInventory(input: { now?: Date; env?: Record<st
   const net = countNetworkInterfaces()
   let homeFreeBytes: number | null = null
   try {
-    const fs = await statfs(Bun.env.HOME ?? ".")
+    const fs = await statfs(Runtime.env.HOME ?? ".")
     homeFreeBytes = fs.bavail * fs.bsize
   } catch {
     homeFreeBytes = null
@@ -280,10 +281,10 @@ export async function discoverHostInventory(input: { now?: Date; env?: Record<st
     homeFreeBytes,
     networkInterfaceCount: net.interfaceCount,
     externalNetworkInterfaceCount: net.externalInterfaceCount,
-    opencodeInstalled: Boolean(Bun.which("opencode")),
-    geminiConfigured: Boolean((input.env ?? Bun.env).GEMINI_API_KEY || (input.env ?? Bun.env).GOOGLE_GENERATIVE_AI_API_KEY),
+    opencodeInstalled: Boolean(Runtime.which("opencode")),
+    geminiConfigured: Boolean((input.env ?? Runtime.env).GEMINI_API_KEY || (input.env ?? Runtime.env).GOOGLE_GENERATIVE_AI_API_KEY),
     appleFmReady: false,
-    psionicConfigured: Boolean((input.env ?? Bun.env).PYLON_PSIONIC_BASE_URL || (input.env ?? Bun.env).PROBE_PSIONIC_BASE_URL),
+    psionicConfigured: Boolean((input.env ?? Runtime.env).PYLON_PSIONIC_BASE_URL || (input.env ?? Runtime.env).PROBE_PSIONIC_BASE_URL),
     psionicReady: false,
     psionicModelRefs: [],
     localModelRefs: [],

@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Bounded local-Claude real-task smoke (issue #4720). See
  * docs/claude-agent-task-smoke.md for the runbook.
@@ -23,9 +24,9 @@ const flag = (name: string, fallback?: string) => {
 const result = live
   ? await runClaudeAgentTaskLiveSmoke({
       baseUrl: flag("--base-url", "https://openagents.com") as string,
-      ...(Bun.env.PYLON_AGENT_TOKEN === undefined
+      ...(Runtime.env.PYLON_AGENT_TOKEN === undefined
         ? {}
-        : { agentToken: Bun.env.PYLON_AGENT_TOKEN }),
+        : { agentToken: Runtime.env.PYLON_AGENT_TOKEN }),
     })
   : await runClaudeAgentTaskCiSmoke()
 

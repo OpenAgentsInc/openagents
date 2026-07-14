@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
@@ -118,7 +118,7 @@ if (import.meta.main) {
     console.error("usage: bun scripts/pack-public.ts --out <directory>")
     process.exit(2)
   }
-  const root = resolve(import.meta.dir, "../../..")
+  const root = resolve(import.meta.dirname, "../../..")
   const receipt = buildPublicTarballs(root, resolve(out))
   console.log(JSON.stringify(receipt, null, 2))
 }

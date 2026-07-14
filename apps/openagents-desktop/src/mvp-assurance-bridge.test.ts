@@ -8,7 +8,7 @@ import { decodeAssuranceReceipt, sha256Digest } from "@openagentsinc/assurance-s
 import { bridgeAssuranceReceipt } from "./assurance-receipt-bridge.ts"
 import { makeProductSpecWorkroom } from "./product-spec-workroom.ts"
 
-const repositoryRoot = resolve(import.meta.dir, "../../..")
+const repositoryRoot = resolve(import.meta.dirname, "../../..")
 const productSpecPath = join(repositoryRoot, "docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
 const assuranceSpecPath = join(repositoryRoot, "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md")
 const manifestPath = join(repositoryRoot, "assurance/openagents-desktop-mvp.assurance-manifest.json")

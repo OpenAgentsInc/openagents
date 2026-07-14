@@ -16,6 +16,7 @@
     "cf:typegen": "wrangler types"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/design-tokens": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
@@ -33,7 +34,8 @@
     "effect": "4.0.0-beta.94",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.42.0",
@@ -42,6 +44,7 @@
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "19.2.3",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.1",
     "happy-dom": "^20.9.0",
     "tailwindcss": "^4.2.2",

@@ -7,7 +7,7 @@
  * oa-infra Postgres Layers depend on this one service so a single pool is
  * shared across primitives (Layer memoization keeps it single).
  */
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import { Config, Context, Effect, Layer } from "effect"
 
 export interface OaInfraSqlShape {
@@ -35,7 +35,7 @@ export class OaInfraSql extends Context.Service<OaInfraSql, OaInfraSqlShape>()(
         Config.withDefault(10),
       )
       const sql = yield* Effect.acquireRelease(
-        Effect.sync(() => new SQL({ url, max })),
+        Effect.sync(() => SQL({ url, max })),
         (pool) => Effect.promise(() => pool.end()),
       )
       return { sql }

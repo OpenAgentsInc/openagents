@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Pre-notarization gate for Khala macOS Apple FM support.
  *

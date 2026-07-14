@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { runAgentReadinessCli } from "./index.js"
 
 const exitCode = await runAgentReadinessCli(process.argv.slice(2))

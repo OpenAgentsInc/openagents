@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Khala Sync migration deploy gate (openagents issue #8410 follow-up).
  *

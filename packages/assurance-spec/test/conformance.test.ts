@@ -37,7 +37,7 @@ import {
 } from "../src/index.ts"
 import { sha256Digest } from "../src/tooling.ts"
 
-const conformanceDir = resolve(import.meta.dir, "../conformance")
+const conformanceDir = resolve(import.meta.dirname, "../conformance")
 const mvpAssurancePath = resolve(conformanceDir, "valid/mvp-proposal.assurance-spec.md")
 
 const fixture = (relative: string): string => readFileSync(resolve(conformanceDir, relative), "utf8")

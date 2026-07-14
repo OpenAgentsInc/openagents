@@ -33,6 +33,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/khala-fleet-intents": "workspace:*",

@@ -84,5 +84,8 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.8",
     "wrangler": "^4.50.0"
+  },
+  "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*"
   }
 }

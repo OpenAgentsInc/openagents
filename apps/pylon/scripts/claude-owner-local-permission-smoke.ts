@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 
 import { createHash } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -24,7 +25,7 @@ if (accountRef === undefined || accountRef.trim().length === 0) {
   throw new Error("usage: smoke:claude-owner-local-permission --account-ref <named-claude-account>")
 }
 
-const realSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+const realSummary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Runtime.env)
 const account = await resolvePylonAccountSelection(realSummary, {
   provider: "claude_agent",
   accountRef,

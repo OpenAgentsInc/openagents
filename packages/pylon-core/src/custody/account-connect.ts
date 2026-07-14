@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Account connect (custody) — moved from `apps/pylon/src/account-connect.ts`
  * (issue #8578, PY-1). Its only remaining out-of-package dependency was
@@ -427,7 +428,7 @@ function resolveClaudeSetupToken(
 }
 
 const defaultCodexDeviceLoginRunner: PylonCodexDeviceLoginRunner = async input => {
-  const child = Bun.spawn(["codex", "login", "--device-auth"], {
+  const child = Runtime.spawn(["codex", "login", "--device-auth"], {
     env: {
       ...process.env,
       ...input.env,
@@ -445,7 +446,7 @@ const defaultGrokDeviceLoginRunner: PylonGrokDeviceLoginRunner = async input => 
     ...process.env,
     ...input.env,
   }, input.home)
-  const child = Bun.spawn(["grok", "login", "--device-auth"], {
+  const child = Runtime.spawn(["grok", "login", "--device-auth"], {
     env,
     stdin: "inherit",
     stdout: "inherit",
@@ -678,7 +679,7 @@ export async function runPylonAccountsConnect(
     grokReadinessProbe?: PylonGrokReadinessProbe
   } = {},
 ): Promise<PylonAccountConnectProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   if (
     args.provider === "grok" &&
     (args.home !== null ||

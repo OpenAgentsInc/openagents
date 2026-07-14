@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Re-export shim — moved to `@openagentsinc/pylon-core/custody/account-connect`
  * (issue #8578, PY-1).
@@ -49,7 +50,7 @@ export const defaultCodexAuthValidityProbe: PylonCodexAuthValidityProbe = async 
     if (pathDirs.length > 0) {
       env.PATH = `${pathDirs.join(pathDelimiter)}${env.PATH ? `${pathDelimiter}${env.PATH}` : ""}`
     }
-    const child = Bun.spawn(
+    const child = Runtime.spawn(
       [executablePath, "exec", "--skip-git-repo-check", "--sandbox", "read-only", "--color", "never", "ping"],
       { cwd: input.home, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
     )

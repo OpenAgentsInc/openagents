@@ -171,7 +171,7 @@ describe("release-publish core", () => {
 
 // --- CLI end-to-end against a fixture dist dir -----------------------------
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 const scriptPath = path.join(appRoot, "scripts/publish-release.ts")
 const workDir = mkdtempSync(path.join(tmpdir(), "cut26-publish-"))
 afterAll(() => rmSync(workDir, { recursive: true, force: true }))

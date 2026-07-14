@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash, randomUUID } from "node:crypto"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -307,7 +308,7 @@ export const candidateAccountsFromRegistry = async (
               await readinessForTarget(
                 options.summary,
                 accountDiscoveryTargetForRegistryEntry(entry, accountRefHash),
-                options.env ?? (Bun.env as Record<string, string | undefined>),
+                options.env ?? (Runtime.env as Record<string, string | undefined>),
               )
             ).readiness.state,
           )

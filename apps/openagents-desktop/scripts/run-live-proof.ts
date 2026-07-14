@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -8,8 +9,8 @@ import { liveProofJournalVerdict } from "../src/live-proof-verdict.ts"
 const outDir = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF_DIR?.trim() ||
   mkdtempSync(path.join(tmpdir(), "openagents-desktop-live-proof-"))
 
-const child = Bun.spawn(["electron", "."], {
-  cwd: path.resolve(import.meta.dir, ".."),
+const child = Runtime.spawn(["electron", "."], {
+  cwd: path.resolve(import.meta.dirname, ".."),
   env: {
     ...process.env,
     OPENAGENTS_DESKTOP_LIVE_PROOF: "1",

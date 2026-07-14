@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * CFG-9 (#8524): the openagents.com monolith on Google Cloud Run.
  *
@@ -95,7 +96,7 @@ const main = async (): Promise<void> => {
       : undefined
   })()
 
-  const server = Bun.serve<SyncBridgeData, never>({
+  const server = Runtime.serve<SyncBridgeData, never>({
     fetch: async (incoming, bunServer): Promise<Response | undefined> => {
       const request = withForwardedHost(
         withForwardedProto(incoming),
@@ -259,6 +260,6 @@ const main = async (): Promise<void> => {
   process.on('SIGINT', () => void shutdown('SIGINT'))
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   await main()
 }

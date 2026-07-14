@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Long-running daemon ENTRYPOINT for the out-of-Worker acceptance runner (EPIC #6017).
 //
 // This is what runs on the host (our GCE box / Cloud Run / a Pylon). It reads the

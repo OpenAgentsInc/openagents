@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Axis B — Grok worker executor behind a pylon-core-shaped port.
  * Does not live in apps/pylon; importable by pylon-core when PY-1 lands.
@@ -279,7 +280,7 @@ export async function probeGrokReadiness(options: {
   const runCommand: GrokReadinessProbeCommand =
     options.runCommand ??
     (async ({ argv, env: commandEnv, timeoutMs: commandTimeoutMs }) => {
-      const proc = Bun.spawn([...argv], {
+      const proc = Runtime.spawn([...argv], {
         stdout: "pipe",
         stderr: "pipe",
         env: commandEnv,

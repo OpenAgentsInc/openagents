@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // CL-26 "Deploy to Cloud": a node-triggered deploy through OUR cloud pipeline
 // (Cloud Run / Workers), surfaced as a button + status on the desktop and
 // mobile clients. The deployable target is one of the node's OWN cloud services
@@ -48,7 +49,7 @@ export type LastDeploy = {
 }
 
 // Minimal shape of a fire-and-forget spawn. We never read stdout/stderr; the
-// command is launched and we move on. Bun.spawn satisfies this; tests inject a
+// command is launched and we move on. Runtime.spawn satisfies this; tests inject a
 // recording stub so they never actually deploy.
 export type DeploySpawn = (command: string, args: string[]) => void
 
@@ -61,20 +62,20 @@ export interface DeployCloudActionsOptions {
   // Returns whether execution is enabled. Defaults to reading OA_DEPLOY_ENABLE.
   // Injectable so tests can flip the gate without touching the real env.
   isEnabled?: () => boolean
-  // Fire-and-forget spawn. Defaults to Bun.spawn with stdout/stderr ignored.
+  // Fire-and-forget spawn. Defaults to Runtime.spawn with stdout/stderr ignored.
   // Injectable so tests assert it is/ isn't called.
   spawn?: DeploySpawn
   now?: () => Date
 }
 
 function defaultIsEnabled(): boolean {
-  return Bun.env.OA_DEPLOY_ENABLE === "1"
+  return Runtime.env.OA_DEPLOY_ENABLE === "1"
 }
 
 function defaultSpawn(command: string, args: string[]): void {
   // Fire-and-forget: stdout/stderr ignored. We do NOT await the child; the
   // node records "queued" and surfaces it via deploy.status.
-  Bun.spawn([command, ...args], { stdout: "ignore", stderr: "ignore", stdin: "ignore" })
+  Runtime.spawn([command, ...args], { stdout: "ignore", stderr: "ignore", stdin: "ignore" })
 }
 
 export function createDeployCloudActions(options: DeployCloudActionsOptions = {}): DeployCloudActions {

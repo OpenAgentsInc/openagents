@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Mixed two-harness FleetRun exit receipt (MH-2, issue #8583).
  *

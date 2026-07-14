@@ -32,7 +32,7 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import { buildDesktop } from "./build.ts"
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 
 type Args = Readonly<{ runs: number; warmup: number; out: string; label: string | null; build: boolean }>
 

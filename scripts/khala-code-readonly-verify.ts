@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 const status = await git(["status", "--porcelain=v1", "--untracked-files=all"])
 const dirtyLines = status

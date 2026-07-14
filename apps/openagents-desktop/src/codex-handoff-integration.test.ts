@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-const root = import.meta.dir
+const root = import.meta.dirname
 const read = (relative: string): string => readFileSync(path.join(root, relative), "utf8")
 
 describe("Open in Codex trusted Desktop integration", () => {

@@ -214,7 +214,7 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
 
   test("CLI entrypoint dry-runs and applies via --database-url", async () => {
     const url = await freshDatabaseUrl()
-    const script = path.join(import.meta.dir, "..", "scripts", "migrate.ts")
+    const script = path.join(import.meta.dirname, "..", "scripts", "migrate.ts")
 
     const dry = Bun.spawnSync(
       ["bun", script, "--dry-run", "--database-url", url],

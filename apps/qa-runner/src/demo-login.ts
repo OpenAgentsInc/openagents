@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Headline demo (#6177): Khala verifies a real openagents.com flow on video.
 //
 // Wires the computer-use tools (#6175) + the QA runner (#6176) + localBackend +

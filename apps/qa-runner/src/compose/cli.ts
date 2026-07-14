@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // `compose` CLI — render a polished, shareable mp4 from a completed run dir.
 //
 //   bun run --cwd apps/qa-runner compose -- --run <dir> --out <mp4>

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * PORTAL-1 (#8652): serve the /portal client-portal surface from the Cloud
  * Run monolith.
@@ -57,15 +58,15 @@ export const PORTAL_PAGE_HTML = `<!doctype html>
 let portalBundlePromise: Promise<string | null> | null = null
 
 const servePortalBundle = async (): Promise<Response | null> => {
-  const built = Bun.file(join(PORTAL_UI_DIR, 'app.js'))
+  const built = Runtime.file(join(PORTAL_UI_DIR, 'app.js'))
   if (await built.exists()) {
-    return new Response(built, {
+    return new Response(built.stream(), {
       headers: { 'content-type': 'application/javascript; charset=utf-8' },
     })
   }
   portalBundlePromise ??= (async () => {
-    if (!(await Bun.file(PORTAL_ENTRY_SOURCE).exists())) return null
-    const result = await Bun.build({
+    if (!(await Runtime.file(PORTAL_ENTRY_SOURCE).exists())) return null
+    const result = await Runtime.build({
       entrypoints: [PORTAL_ENTRY_SOURCE],
       target: 'browser',
       minify: false,

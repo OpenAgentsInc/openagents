@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * LIVE-TAIL proof for the Khala Sync capture -> LiveHub -> WebSocket pipe
  * (#8554). Unlike hosted-chat-e2e-smoke.ts (which polls /api/sync/bootstrap

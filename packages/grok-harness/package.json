@@ -24,6 +24,7 @@
     "live-acp-smoke": "bun scripts/live-acp-smoke.ts"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

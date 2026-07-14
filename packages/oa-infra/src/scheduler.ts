@@ -91,7 +91,7 @@ const json = (status: number, body: unknown): Response =>
 
 /**
  * Build a fetch-shaped handler (`Request -> Promise<Response>`) that runs
- * the due tasks on each POST tick. Mount it in any HTTP server (Bun.serve,
+ * the due tasks on each POST tick. Mount it in any HTTP server (Runtime.serve,
  * Cloud Run service, test harness).
  *
  * Responses: 404 wrong path, 405 non-POST, 401 bad/missing token, 200 all

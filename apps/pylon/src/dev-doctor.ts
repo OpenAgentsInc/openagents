@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
@@ -129,7 +130,7 @@ function digestRef(prefix: string, bytes: string) {
 
 async function defaultGitRunner(cwd: string, args: string[]): Promise<string | null> {
   try {
-    const proc = Bun.spawn(["git", ...args], {
+    const proc = Runtime.spawn(["git", ...args], {
       cwd,
       stderr: "ignore",
       stdout: "pipe",
@@ -220,7 +221,7 @@ function activeRepoCwd(env: Record<string, string | undefined>, fallback: string
 export async function collectPylonDevDoctor(
   options: PylonDevDoctorOptions = {},
 ): Promise<PylonDevDoctorProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const observedAt = (options.now ?? new Date()).toISOString()
   const summary = options.summary ?? createBootstrapSummary(parseBootstrapArgs(["--json"]), env as NodeJS.ProcessEnv)
   const cwd = activeRepoCwd(env, options.cwd ?? process.cwd())
@@ -308,7 +309,7 @@ export async function collectPylonDevDoctor(
     importer: options.claudeImporter,
     localSessionProbe: options.localClaudeSessionProbe,
   })
-  const codexCliPath = options.codexCliPath === undefined ? Bun.which("codex") : options.codexCliPath
+  const codexCliPath = options.codexCliPath === undefined ? Runtime.which("codex") : options.codexCliPath
   const inventory = options.inventory ?? await discoverHostInventory({ env, now: options.now })
   const backendRefs = inventory.backendHealth.map((backend) => ({
     backendRef: backend.backendRef,

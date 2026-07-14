@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync, realpathSync } from "node:fs"
 import { chmod, cp, lstat, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
@@ -723,7 +724,7 @@ async function spawnGitCommand(
   args: string[],
   cwd: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -820,7 +821,7 @@ export async function gitCredentialHelperRuntimePathsFor(
   }
 }
 
-const GIT_CREDENTIAL_HELPER_SCRIPT = `#!/usr/bin/env bun
+const GIT_CREDENTIAL_HELPER_SCRIPT = `#!/usr/bin/env node
 import { chmod, readFile, writeFile } from "node:fs/promises"
 
 const CONFIG_PATH = process.argv[2]

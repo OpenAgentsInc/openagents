@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Stage a Pylon RC build (output of apps/pylon/scripts/build-rc-binaries.sh) into
 // the oa-updates pylon-dist/ tree the server seeds from. Reads the per-platform
 // signed binaries + .sig.json, copies each into assets/<hash>, and writes
@@ -24,7 +25,7 @@ import {
   type PylonReleaseSeed,
 } from "../src/pylon-seed.ts"
 
-const repoRoot = resolve(import.meta.dir, "../../..")
+const repoRoot = resolve(import.meta.dirname, "../../..")
 const defaultOutDir = join(repoRoot, "apps/oa-updates/pylon-dist")
 
 type BuildManifest = {
@@ -34,7 +35,7 @@ type BuildManifest = {
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(Bun.argv.slice(2))
+  const args = parseArgs(Runtime.argv.slice(2))
   const manifest = JSON.parse(
     await readFile(join(args.buildDir, "manifest.json"), "utf8"),
   ) as BuildManifest

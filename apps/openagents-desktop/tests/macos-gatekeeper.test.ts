@@ -222,7 +222,7 @@ describe("-UNSIGNED-DEV artifact naming", () => {
     const result = Bun.spawnSync(
       [
         process.execPath,
-        path.join(import.meta.dir, "..", "scripts", "publish-release.ts"),
+        path.join(import.meta.dirname, "..", "scripts", "publish-release.ts"),
         "--channel",
         "rc",
         "--version",

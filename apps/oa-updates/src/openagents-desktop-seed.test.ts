@@ -7,9 +7,9 @@ import { sha256 } from "./openagents-desktop-release.ts"
 
 describe("OpenAgents Desktop release seed", () => {
   test("release image copies an independent seed directory", () => {
-    const dockerfile = readFileSync(path.resolve(import.meta.dir, "../Dockerfile"), "utf8")
+    const dockerfile = readFileSync(path.resolve(import.meta.dirname, "../Dockerfile"), "utf8")
     expect(dockerfile).toContain("COPY openagents-desktop-dist ./openagents-desktop-dist")
-    const deploy = readFileSync(path.resolve(import.meta.dir, "../scripts/deploy-cloudrun.sh"), "utf8")
+    const deploy = readFileSync(path.resolve(import.meta.dirname, "../scripts/deploy-cloudrun.sh"), "utf8")
     expect(deploy).toContain('(cd "$app_dir" && gcloud')
     expect(deploy).toContain("--source .")
     expect(deploy).not.toContain("--source apps/oa-updates")

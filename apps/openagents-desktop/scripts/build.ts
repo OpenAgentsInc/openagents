@@ -1,6 +1,7 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Build (#8574): bundles the Electron main process, the sandboxed CommonJS
- * preload, and the Effect Native renderer into `dist/` with Bun. Plain
+ * preload, and the Effect Native renderer into `dist/` with Runtime. Plain
  * TypeScript in, three artifacts out — no Vite/Forge pipeline in this exit
  * (packaging/signing is a later #8574 exit; see UPSTREAM.md).
  */
@@ -34,7 +35,7 @@ const stageDevelopmentVoiceHelper = async (dist: string): Promise<void> => {
   )
 }
 
-const assertSuccess = (label: string, result: Awaited<ReturnType<typeof Bun.build>>): void => {
+const assertSuccess = (label: string, result: Awaited<ReturnType<typeof Runtime.build>>): void => {
   if (!result.success) {
     for (const log of result.logs) console.error(`[build:${label}]`, log)
     throw new Error(`openagents-desktop build failed: ${label}`)
@@ -59,7 +60,7 @@ export const buildDesktop = async (): Promise<string> => {
 
   assertSuccess(
     "main",
-    await Bun.build({
+    await Runtime.build({
       entrypoints: [path.join(appRoot, "src/main.ts")],
       outdir: dist,
       target: "node",
@@ -83,7 +84,7 @@ export const buildDesktop = async (): Promise<string> => {
 
   assertSuccess(
     "codex-history-worker",
-    await Bun.build({
+    await Runtime.build({
       entrypoints: [path.join(appRoot, "src/codex-history-worker.ts")],
       outdir: path.join(dist, "workers"),
       target: "node",
@@ -94,7 +95,7 @@ export const buildDesktop = async (): Promise<string> => {
 
   assertSuccess(
     "workspace-search-worker",
-    await Bun.build({
+    await Runtime.build({
       entrypoints: [path.join(appRoot, "src/workspace-search-worker.ts")],
       outdir: path.join(dist, "workers"),
       target: "node",
@@ -105,7 +106,7 @@ export const buildDesktop = async (): Promise<string> => {
 
   assertSuccess(
     "preload",
-    await Bun.build({
+    await Runtime.build({
       entrypoints: [path.join(appRoot, "src/preload.cts")],
       outdir: dist,
       target: "node",
@@ -120,7 +121,7 @@ export const buildDesktop = async (): Promise<string> => {
 
   assertSuccess(
     "renderer",
-    await Bun.build({
+    await Runtime.build({
       entrypoints: [path.join(appRoot, "src/renderer/boot.ts")],
       outdir: path.join(dist, "renderer"),
       target: "browser",
@@ -171,7 +172,7 @@ export const buildDesktop = async (): Promise<string> => {
   return dist
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   await buildDesktop()
   console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, built-in skills, native voice helper)")
 }

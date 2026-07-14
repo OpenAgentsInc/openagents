@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { readFile, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -187,7 +188,7 @@ function readiness(
 export async function probeCodexAgentReadiness(
   options: CodexAgentProbeOptions = {},
 ): Promise<CodexAgentReadiness> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const platform = options.platform ?? process.platform
   const enabled = options.config?.enabled !== false
   const codexCliLoginPresent = options.codexCliLoginPresent ?? (await detectCodexCliLogin(env))

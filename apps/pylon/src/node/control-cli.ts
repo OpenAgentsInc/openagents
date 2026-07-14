@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // CLI bridge to the loopback control server (issue #5035). The Autopilot
 // desktop GUI drives a running `pylon node` over the loopback control API
 // (127.0.0.1:4716 + a per-home bearer token). These helpers give the headless
@@ -66,7 +67,7 @@ export async function resolveControlEndpoint(
   const envToken = env.PYLON_CONTROL_TOKEN
   let token = envToken && envToken.trim().length > 0 ? envToken.trim() : ""
   if (token.length === 0) {
-    const file = Bun.file(tokenPath)
+    const file = Runtime.file(tokenPath)
     if (await file.exists()) {
       token = (await file.text()).trim()
     }
@@ -85,7 +86,7 @@ export async function resolveControlEndpoint(
 // control port so callers can emit honest JSON + a nonzero exit.
 export async function runControlCommand(
   command: ControlCommand,
-  env: NodeJS.ProcessEnv = Bun.env,
+  env: NodeJS.ProcessEnv = Runtime.env,
 ): Promise<{ endpoint: ResolvedControlEndpoint; result: unknown }> {
   const endpoint = await resolveControlEndpoint(env)
   try {

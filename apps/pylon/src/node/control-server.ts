@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Control server for the Pylon node (issue #4740): serializes the Phase 0
 // PylonEvent seam over HTTP + SSE so a TUI can attach to a running node, and
 // exposes a small typed command API. Binds loopback by default; every
@@ -187,7 +188,7 @@ export interface ControlCommandActions {
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
   const path = join(homeDir, controlTokenFileName)
-  const file = Bun.file(path)
+  const file = Runtime.file(path)
   if (await file.exists()) {
     const existing = (await file.text()).trim()
     if (existing.length >= 16) return existing
@@ -437,7 +438,7 @@ export const startControlServer = (
     const server = yield* Effect.try({
       try: () => {
         assertControlBindSafe(options)
-        return Bun.serve({
+        return Runtime.serve({
           hostname: options.hostname ?? "127.0.0.1",
           port: options.port ?? defaultControlPort,
           idleTimeout: 0,

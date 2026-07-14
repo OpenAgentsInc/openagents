@@ -19,8 +19,8 @@ import {
   loadHarnessMaintenanceReceipts,
 } from "@openagentsinc/pylon-core/custody/harness-maintenance"
 
-const INDEX = join(import.meta.dir, "..", "src", "index.ts")
-const CWD = join(import.meta.dir, "..")
+const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
+const CWD = join(import.meta.dirname, "..")
 
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
   const proc = Bun.spawn(["bun", INDEX, ...args], {

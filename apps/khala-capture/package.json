@@ -12,6 +12,7 @@
     "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-server": "workspace:*",
     "postgres": "3.4.9"

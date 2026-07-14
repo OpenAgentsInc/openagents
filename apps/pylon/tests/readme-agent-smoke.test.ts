@@ -4,7 +4,7 @@ import { join } from "node:path"
 
 import { PYLON_VERSION } from "../src/version"
 
-const readme = readFileSync(join(import.meta.dir, "../README.md"), "utf8")
+const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8")
 
 describe("Pylon README agent smoke path", () => {
   const marker = "### Agent smoke path"

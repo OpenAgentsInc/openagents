@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import type { AssetStore } from "./asset-store.ts"
 import { readExportedUpdate } from "./export-reader.ts"
 import type { PublishExportResult } from "./publish.ts"
@@ -54,7 +55,7 @@ export async function seedFromDist(
   return result
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   const port = Number(process.env.PORT ?? 8080)
   const server = createUpdatesServer({
     port,
@@ -135,6 +136,6 @@ if (import.meta.main) {
     }
   }
 
-  Bun.serve({ port, fetch: server.fetch })
+  Runtime.serve({ port, fetch: server.fetch })
   console.log(`oa-updates listening on http://localhost:${port}`)
 }

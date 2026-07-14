@@ -11,8 +11,8 @@ import {
 import { buildPublicTarballs } from "../scripts/pack-public.ts"
 import { verifyDistribution } from "../scripts/verify-distribution.ts"
 
-const repositoryRoot = resolve(import.meta.dir, "../../..")
-const starterRoot = resolve(import.meta.dir, "../starter-kit")
+const repositoryRoot = resolve(import.meta.dirname, "../../..")
+const starterRoot = resolve(import.meta.dirname, "../starter-kit")
 
 describe("AT-6 starter kit and owned-runner contract", () => {
   test("the one-commit kit validates, pins its subject, and reports ledgers without a threshold", () => {

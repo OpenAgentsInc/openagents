@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // CLI for the headless Khala acceptance runner (EPIC #6017).
 //
 // Runs OUT of the CF Worker. Given an HTML artifact file, it derives the crossy-road

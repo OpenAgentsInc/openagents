@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Long-running QA-runner daemon.
 //
 // TWO modes:

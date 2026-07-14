@@ -14,6 +14,8 @@
     "smoke:barge:live": "bun scripts/live-barge-smoke.ts"
   },
   "dependencies": {
+    "@openagentsinc/postgres-runtime": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@google-cloud/speech": "^7.2.1",
     "@google-cloud/text-to-speech": "^6.4.1",
     "@openagentsinc/audio-contract": "workspace:*",

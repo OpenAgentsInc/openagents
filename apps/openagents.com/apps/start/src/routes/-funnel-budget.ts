@@ -66,7 +66,7 @@ const routeBudgets = [
   },
 ] as const
 
-const assetDir = join(import.meta.dir, '../../dist/client/assets')
+const assetDir = join(import.meta.dirname, '../../dist/client/assets')
 
 const isVendorChunk = (filename: string): boolean =>
   /^(react|tanstack-|icons|rolldown-runtime|start-|router-|index-)/.test(

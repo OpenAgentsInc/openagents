@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, join, resolve } from "node:path"
@@ -172,7 +173,7 @@ function activeRepoCwd(env: Record<string, string | undefined>, fallback: string
 
 async function defaultGitRunner(cwd: string, args: string[]): Promise<string | null> {
   try {
-    const proc = Bun.spawn(["git", ...args], {
+    const proc = Runtime.spawn(["git", ...args], {
       cwd,
       stderr: "ignore",
       stdout: "pipe",
@@ -240,7 +241,7 @@ function safeChangedFileRef(repoRoot: string, path: string, status: PylonDevChan
 export async function collectPylonDevChangeSummary(
   options: PylonDevLoopOptions = {},
 ): Promise<PylonDevChangeSummary> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const cwd = activeRepoCwd(env, options.cwd ?? process.cwd())
   const git = options.gitRunner ?? defaultGitRunner
 
@@ -309,7 +310,7 @@ function commandRef(command: PylonDevCommandSpec) {
 async function defaultCommandRunner(command: PylonDevCommandSpec): Promise<PylonDevCommandResult> {
   const started = Date.now()
   try {
-    const proc = Bun.spawn(command.argv, {
+    const proc = Runtime.spawn(command.argv, {
       cwd: command.cwd,
       stderr: "pipe",
       stdout: "pipe",
@@ -408,7 +409,7 @@ async function writeLatestRecord(
 }
 
 export async function runPylonDevCheck(options: PylonDevLoopOptions = {}): Promise<PylonDevCheckProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const summary = options.summary ?? createBootstrapSummary(parseBootstrapArgs(["--json"]), env as NodeJS.ProcessEnv)
   const observedAt = (options.now ?? new Date()).toISOString()
   const changeSummary = await collectPylonDevChangeSummary(options)
@@ -466,7 +467,7 @@ export async function runPylonDevCheck(options: PylonDevLoopOptions = {}): Promi
 }
 
 export async function runPylonDevApply(options: PylonDevLoopOptions = {}): Promise<PylonDevApplyProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const summary = options.summary ?? createBootstrapSummary(parseBootstrapArgs(["--json"]), env as NodeJS.ProcessEnv)
   const changeSummary = await collectPylonDevChangeSummary(options)
   const blockers =
@@ -492,7 +493,7 @@ export async function runPylonDevApply(options: PylonDevLoopOptions = {}): Promi
 }
 
 export async function runPylonDevReload(options: PylonDevLoopOptions = {}): Promise<PylonDevReloadProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const summary = options.summary ?? createBootstrapSummary(parseBootstrapArgs(["--json"]), env as NodeJS.ProcessEnv)
   const changeSummary = await collectPylonDevChangeSummary(options)
   const projection: Omit<PylonDevReloadProjection, "latestRecordRef"> & { latestRecordRef: string | null } = {
@@ -526,7 +527,7 @@ export async function recordPylonDevCodexRun(
   },
   options: PylonDevLoopOptions = {},
 ): Promise<PylonDevCodexRunRecord> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const summary = options.summary ?? createBootstrapSummary(parseBootstrapArgs(["--json"]), env as NodeJS.ProcessEnv)
   const changeSummary = await collectPylonDevChangeSummary({ ...options, cwd: input.cwd })
   const projection: Omit<PylonDevCodexRunRecord, "latestRecordRef"> & { latestRecordRef: string | null } = {

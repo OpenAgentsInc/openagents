@@ -17,7 +17,7 @@ import {
   README_NARROWED_PLATFORM_SENTENCE,
 } from "../src/consumer-install-platform-support"
 
-const readme = readFileSync(join(import.meta.dir, "../README.md"), "utf8")
+const readme = readFileSync(join(import.meta.dirname, "../README.md"), "utf8")
 
 describe("README consumer-install platform copy guard", () => {
   const audit = auditReadmePlatformCopy(readme)

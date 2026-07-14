@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Khala Sync changelog compaction CLI (KS-2.3 #8289).
  *
@@ -18,7 +18,7 @@
  *
  * The connection URL comes from --database-url or KHALA_SYNC_DATABASE_URL.
  */
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import { compactAll, type CompactScopeResult } from "../src/compaction.js"
 
 const DEFAULT_MAX_RETAINED_ENTRIES = 10_000
@@ -111,7 +111,7 @@ const main = async (argv: ReadonlyArray<string>): Promise<number> => {
     return 2
   }
 
-  const sql = new SQL({ url: databaseUrl, max: 1 })
+  const sql = SQL({ url: databaseUrl, max: 1 })
   try {
     const summary = await compactAll(sql, {
       maxRetainedEntries,

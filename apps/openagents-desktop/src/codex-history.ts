@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Read-only, deliberately narrow projection of local Codex JSONL rollouts.
  * It never returns source paths, raw events, tool calls, or non-conversation
@@ -226,7 +227,7 @@ export const redactCodexHistoryText = (value: string): Readonly<{ text: string; 
   return { text, redacted }
 }
 
-const historyText = (file: string): string => file.endsWith(".zst") ? Buffer.from(Bun.zstdDecompressSync(readFileSync(file))).toString("utf8") : readFileSync(file,"utf8")
+const historyText = (file: string): string => file.endsWith(".zst") ? Buffer.from(Runtime.zstdDecompressSync(readFileSync(file))).toString("utf8") : readFileSync(file,"utf8")
 
 /**
  * Stream complete JSONL lines from a rollout WITHOUT materializing the file

@@ -149,7 +149,7 @@ describe("dependency cycle detection (stable structural codes)", () => {
 
   test("the crafted conformance corpus fixture is invalid with exactly the cycle code", () => {
     const fixture = resolve(
-      import.meta.dir,
+      import.meta.dirname,
       "../conformance/invalid/cyclic-obligation-dependency.assurance-spec.md",
     )
     const markdown = readFileSync(fixture, "utf8")
@@ -368,7 +368,7 @@ describe("handler exposure (shared by CLI and MCP)", () => {
 })
 
 describe("CLI graph command", () => {
-  const cli = resolve(import.meta.dir, "../src/cli.ts")
+  const cli = resolve(import.meta.dirname, "../src/cli.ts")
 
   const run = (
     args: ReadonlyArray<string>,

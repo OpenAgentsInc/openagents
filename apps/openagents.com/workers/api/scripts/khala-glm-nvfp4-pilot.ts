@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -142,21 +143,21 @@ const servingStackFinding = (
 }
 
 const endpointUrl =
-  option('--endpoint-url') ?? Bun.env.KHALA_GLM_NVFP4_ENDPOINT_URL ?? null
+  option('--endpoint-url') ?? Runtime.env.KHALA_GLM_NVFP4_ENDPOINT_URL ?? null
 const endpointRef =
-  option('--endpoint-ref') ?? Bun.env.KHALA_GLM_NVFP4_ENDPOINT_REF ?? null
+  option('--endpoint-ref') ?? Runtime.env.KHALA_GLM_NVFP4_ENDPOINT_REF ?? null
 const ownerApprovalRef =
   option('--owner-approval-ref') ??
-  Bun.env.KHALA_GLM_NVFP4_OWNER_APPROVAL_REF ??
+  Runtime.env.KHALA_GLM_NVFP4_OWNER_APPROVAL_REF ??
   null
 const decisionRef =
-  option('--decision-ref') ?? Bun.env.KHALA_GLM_NVFP4_DECISION_REF ?? null
+  option('--decision-ref') ?? Runtime.env.KHALA_GLM_NVFP4_DECISION_REF ?? null
 const bootLoadEvidenceRef =
   option('--boot-load-evidence-ref') ??
-  Bun.env.KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF ??
+  Runtime.env.KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF ??
   null
-const apiKey = Bun.env.KHALA_GLM_NVFP4_API_KEY ?? undefined
-const samplesFromEnv = Number(Bun.env.KHALA_GLM_NVFP4_TOOL_LOOP_SAMPLES ?? '')
+const apiKey = Runtime.env.KHALA_GLM_NVFP4_API_KEY ?? undefined
+const samplesFromEnv = Number(Runtime.env.KHALA_GLM_NVFP4_TOOL_LOOP_SAMPLES ?? '')
 const samples =
   numberOption('--samples') ??
   (Number.isFinite(samplesFromEnv) && samplesFromEnv > 0
@@ -182,15 +183,15 @@ if (flag('--print-owner-command')) {
 const config: GlmNvfp4PilotConfig = {
   generatedAt: new Date().toISOString(),
   ownerArmed:
-    flag('--arm') || boolFromEnv(Bun.env.KHALA_GLM_NVFP4_PILOT_ARM),
+    flag('--arm') || boolFromEnv(Runtime.env.KHALA_GLM_NVFP4_PILOT_ARM),
   ownerApprovalRef,
   endpointUrl,
   endpointRef,
-  model: option('--model') ?? Bun.env.KHALA_GLM_NVFP4_MODEL ?? GLM_NVFP4_PILOT_MODEL,
+  model: option('--model') ?? Runtime.env.KHALA_GLM_NVFP4_MODEL ?? GLM_NVFP4_PILOT_MODEL,
   decisionRef,
   bootLoadStatus:
     bootLoadStatus(option('--boot-load-status')) ??
-    bootLoadStatus(Bun.env.KHALA_GLM_NVFP4_BOOT_LOAD_STATUS),
+    bootLoadStatus(Runtime.env.KHALA_GLM_NVFP4_BOOT_LOAD_STATUS),
   bootLoadEvidenceRef,
   servingStackFindings: options('--serving-stack-finding').flatMap(value => {
     const finding = servingStackFinding(value)
@@ -199,25 +200,25 @@ const config: GlmNvfp4PilotConfig = {
   measuredMaxModelLen:
     numberOption('--measured-max-model-len') ??
     (() => {
-      const value = Number(Bun.env.KHALA_GLM_NVFP4_MEASURED_MAX_MODEL_LEN ?? '')
+      const value = Number(Runtime.env.KHALA_GLM_NVFP4_MEASURED_MAX_MODEL_LEN ?? '')
       return Number.isFinite(value) && value > 0 ? value : null
     })(),
   measuredMaxModelLenEvidenceRef:
     option('--measured-max-model-len-evidence-ref') ??
-    Bun.env.KHALA_GLM_NVFP4_MAX_MODEL_LEN_EVIDENCE_REF ??
+    Runtime.env.KHALA_GLM_NVFP4_MAX_MODEL_LEN_EVIDENCE_REF ??
     null,
   qualityParity:
     (option('--quality-parity') ??
-      Bun.env.KHALA_GLM_NVFP4_QUALITY_PARITY ??
+      Runtime.env.KHALA_GLM_NVFP4_QUALITY_PARITY ??
       'not_measured') as GlmNvfp4PilotConfig['qualityParity'],
   qualityEvidenceRef:
     option('--quality-evidence-ref') ??
-    Bun.env.KHALA_GLM_NVFP4_QUALITY_EVIDENCE_REF ??
+    Runtime.env.KHALA_GLM_NVFP4_QUALITY_EVIDENCE_REF ??
     null,
   reapBaselineTps:
     numberOption('--reap-baseline-tps') ??
     (() => {
-      const value = Number(Bun.env.KHALA_GLM_NVFP4_REAP_BASELINE_TPS ?? '')
+      const value = Number(Runtime.env.KHALA_GLM_NVFP4_REAP_BASELINE_TPS ?? '')
       return Number.isFinite(value) && value > 0 ? value : null
     })(),
   requiredToolLoopSamples: samples,
@@ -280,19 +281,19 @@ const bundle = buildGlmNvfp4PilotOperatorBundle({
 if (outputDir !== undefined) {
   await mkdir(outputDir, { recursive: true })
   await Promise.all([
-    Bun.write(
+    Runtime.write(
       join(outputDir, 'glm-nvfp4-pilot-result.public.json'),
       `${JSON.stringify(bundle.result, null, 2)}\n`,
     ),
-    Bun.write(
+    Runtime.write(
       join(outputDir, 'glm-nvfp4-pilot-summary.public.json'),
       `${JSON.stringify(bundle.summary, null, 2)}\n`,
     ),
-    Bun.write(
+    Runtime.write(
       join(outputDir, 'glm-nvfp4-pilot-operator-bundle.public.json'),
       `${JSON.stringify(bundle, null, 2)}\n`,
     ),
-    Bun.write(
+    Runtime.write(
       join(outputDir, 'README.public.md'),
       formatGlmNvfp4PilotOperatorReadme(bundle),
     ),

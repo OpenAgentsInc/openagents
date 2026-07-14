@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // One-shot ENTRYPOINT for the out-of-Worker acceptance runner (EPIC #6017).
 //
 // Runs the SAME canonical harness the daemon runs, but against a LOCAL artifact file and

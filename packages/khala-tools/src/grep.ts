@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { readFile, realpath, readdir, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path"
 import { Effect } from "effect"
@@ -216,7 +217,7 @@ async function findGrepMatchesWithRipgrep(
     const cwd = target.kind === "file" ? dirname(target.realPath) : target.realPath
     const rootDisplayPath = target.kind === "file" ? displayDirname(target.displayPath) : target.displayPath
     const targetArgs = target.kind === "file" ? [basename(target.realPath)] : []
-    const proc = Bun.spawn(
+    const proc = Runtime.spawn(
       [
         "rg",
         "--json",

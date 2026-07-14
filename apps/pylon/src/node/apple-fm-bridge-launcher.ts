@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Live launcher that runs the local Apple FM Foundation Models bridge helper
  * under the bounded supervision policy.
@@ -14,7 +15,7 @@
  * `apple_fm.status` surface. This module supplies exactly that.
  *
  * ALL real process I/O is injected via `AppleFmBridgeProcessSpawner`. A live
- * caller passes the `Bun.spawn`-backed default (`createBunAppleFmBridgeProcessSpawner`);
+ * caller passes the `Runtime.spawn`-backed default (`createBunAppleFmBridgeProcessSpawner`);
  * tests pass a fake spawner so the lifecycle stays deterministic with no real
  * processes. The launcher itself never reads the wall clock, never spawns a
  * process directly, and never emits prompts, file contents, tokens, URLs, or
@@ -62,7 +63,7 @@ export type AppleFmBridgeSpawnSpec = {
 }
 
 /**
- * Injected process-spawning seam. A live caller backs this with `Bun.spawn`;
+ * Injected process-spawning seam. A live caller backs this with `Runtime.spawn`;
  * tests back it with a recording fake. The spawner is responsible for invoking
  * `callbacks.onStarted` once the child is up and `callbacks.onExited` once it
  * leaves, and for returning a handle that can stop the child.
@@ -75,7 +76,7 @@ export type AppleFmBridgeProcessSpawner = (
 export type AppleFmBridgeLauncherOptions = {
   /** Resolved helper binary (from discoverAppleFmBridgeHelper). */
   readonly helper: DiscoveredAppleFmBridgeHelper
-  /** Process-spawning seam (Bun.spawn-backed in production, fake in tests). */
+  /** Process-spawning seam (Runtime.spawn-backed in production, fake in tests). */
   readonly spawnProcess: AppleFmBridgeProcessSpawner
   /** Injected clock so the launcher stays reproducible (no wall-clock reads). */
   readonly now: () => number
@@ -182,13 +183,13 @@ export function createAppleFmBridgeLauncher(
 }
 
 /**
- * Production `Bun.spawn`-backed spawner. This is the thin I/O edge: it launches
+ * Production `Runtime.spawn`-backed spawner. This is the thin I/O edge: it launches
  * the helper, reports started immediately, and wires `subprocess.exited` to the
  * exit callback. stdio is ignored so no prompt or model content is captured.
  */
 export function createBunAppleFmBridgeProcessSpawner(): AppleFmBridgeProcessSpawner {
   return (spec, callbacks) => {
-    const subprocess = Bun.spawn([spec.command, ...spec.args], {
+    const subprocess = Runtime.spawn([spec.command, ...spec.args], {
       stdout: "ignore",
       stderr: "ignore",
       stdin: "ignore",

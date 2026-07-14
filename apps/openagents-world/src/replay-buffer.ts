@@ -15,7 +15,7 @@
  * equivalence conformance cases are the test ORACLE for the replay semantics
  * here, not a mandate to reshape `world-contract`.
  *
- * This module is pure and Cloudflare-free so it is unit-testable under Bun. The
+ * This module is pure and Cloudflare-free so it is unit-testable under Runtime. The
  * Region DO wires it to `ctx.storage.sql`.
  */
 import type { WorldDelta } from "@openagentsinc/world-contract"

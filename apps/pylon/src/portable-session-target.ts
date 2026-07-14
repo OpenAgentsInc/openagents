@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { lstat, readFile, readlink } from "node:fs/promises"
 import { join } from "node:path"
@@ -140,7 +141,7 @@ const checkpointDigest = (checkpoint: Omit<PortableCheckpoint, "digest">): `sha2
   digest(canonicalJson(checkpoint))
 
 const runGit = async (cwd: string, args: ReadonlyArray<string>): Promise<Uint8Array> => {
-  const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   const [stdout, _stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).bytes(),
     new Response(proc.stderr).text(),

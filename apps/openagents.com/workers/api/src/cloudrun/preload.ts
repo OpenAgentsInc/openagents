@@ -1,20 +1,17 @@
 /**
- * CFG-9 (#8524): Bun preload that maps the `cloudflare:workers` built-in to
- * the structural stub, mirroring the vitest alias in vitest.config.ts.
- *
- * Loaded via `bun --preload ./src/cloudrun/preload.ts` (see Dockerfile /
- * package.json `start:cloudrun`). Must be a plugin (not a plain import
- * rewrite) because `cloudflare:workers` is imported by node_modules
- * (`@cloudflare/containers`, `effect-cf`) that we do not patch.
+ * CFG-9 (#8524): Node preload mapping the Cloudflare-only built-in to the
+ * structural Cloud Run stub. The production build emits the adjacent `.js`
+ * module, so the runtime never needs a TypeScript loader or Bun plugin.
  */
-import { plugin } from 'bun'
+import { registerHooks } from "node:module"
 
-plugin({
-  name: 'cloudflare-workers-stub',
-  setup(build) {
-    build.module('cloudflare:workers', () => ({
-      exports: require('./cloudflare-workers-stub.ts'),
-      loader: 'object',
-    }))
+const stubUrl = new URL("./cloudflare-workers-stub.js", import.meta.url).href
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "cloudflare:workers") {
+      return { url: stubUrl, format: "module", shortCircuit: true }
+    }
+    return nextResolve(specifier, context)
   },
 })

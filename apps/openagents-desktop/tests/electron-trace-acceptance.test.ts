@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import path from "node:path"
 import { traceAcceptanceJourney, traceAcceptanceReload } from "../src/electron-trace-acceptance.ts"
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 
 describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
   test("the built-Electron journey names every video-blocking regression", () => {

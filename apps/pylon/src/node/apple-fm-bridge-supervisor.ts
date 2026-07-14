@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Pure restart/backoff supervision policy for the local Apple FM Foundation
  * Models bridge helper.
@@ -7,7 +8,7 @@
  * or *when to stop trying* after repeated crashes. This module supplies that
  * decision layer as a deterministic, side-effect-free reducer so a launcher
  * (Pylon node host or a signed-installer helper supervisor) can drive an actual
- * `Bun.spawn`/`child_process` lifecycle on top of testable policy.
+ * `Runtime.spawn`/`child_process` lifecycle on top of testable policy.
  *
  * It advances:
  *   blocker.product_promises.local_apple_fm_helper_supervision_missing

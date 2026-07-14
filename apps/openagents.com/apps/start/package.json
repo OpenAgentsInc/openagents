@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@effect-native/core": "workspace:*",
     "@effect-native/render-dom": "workspace:*",
     "@effect-native/tokens": "workspace:*",

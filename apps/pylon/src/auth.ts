@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { mkdir, readFile, rename, writeFile, chmod } from "node:fs/promises"
 import { dirname, join } from "node:path"
@@ -540,7 +541,7 @@ export async function runPylonAuthOpenAgents(
   args: PylonAuthArgs,
   options: PylonAuthOptions = {},
 ): Promise<{ agentToken: string; projection: PylonAuthOpenAgentsProjection }> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const fetcher = options.fetcher ?? fetch
   const sleep = options.sleep ?? defaultSleep
   const baseUrl = baseUrlFrom(args, env)
@@ -1001,7 +1002,7 @@ async function collectCodexLoginStream(input: {
 const quietCodexDeviceLoginRunner = (
   onDevicePrompt: PylonAuthOptions["onDevicePrompt"],
 ): PylonCodexDeviceLoginRunner => async input => {
-  const child = Bun.spawn(["codex", "login", "--device-auth"], {
+  const child = Runtime.spawn(["codex", "login", "--device-auth"], {
     env: {
       ...process.env,
       ...input.env,
@@ -1041,7 +1042,7 @@ export async function runPylonAuthCodex(
   args: PylonAuthArgs,
   options: PylonAuthOptions = {},
 ): Promise<PylonAuthCodexProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const fetcher = options.fetcher ?? fetch
   const sleep = options.sleep ?? defaultSleep
   const baseUrl = baseUrlFrom(args, env)
@@ -1202,7 +1203,7 @@ export async function runPylonAuthClaude(
   args: PylonAuthArgs,
   options: PylonAuthOptions = {},
 ): Promise<PylonAuthClaudeProjection> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const accountRef = args.accountRef ?? await nextClaudeAccountRef(summary)
   const started = await runPylonAccountsConnect(
     summary,

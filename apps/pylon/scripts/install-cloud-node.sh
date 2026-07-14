@@ -90,6 +90,7 @@ fi
 
 run chown -R "$service_user:$service_user" "$install_dir"
 run sudo -u "$service_user" env HOME="$pylon_home" PYLON_HOME="$pylon_home" bun install --cwd "$install_dir"
+run sudo -u "$service_user" env HOME="$pylon_home" PYLON_HOME="$pylon_home" node "$install_dir/scripts/build-public-cli-artifacts.mjs" --filter @openagentsinc/pylon
 
 bootstrap_args=(
   bootstrap
@@ -103,7 +104,7 @@ bootstrap_args=(
 if [[ -n "${PYLON_REF:-}" ]]; then
   bootstrap_args+=(--pylon-ref "$PYLON_REF")
 fi
-run sudo -u "$service_user" env HOME="$pylon_home" PYLON_HOME="$pylon_home" bun "$install_dir/apps/pylon/src/index.ts" "${bootstrap_args[@]}"
+run sudo -u "$service_user" env HOME="$pylon_home" PYLON_HOME="$pylon_home" node "$install_dir/apps/pylon/dist/index.mjs" "${bootstrap_args[@]}"
 
 {
   echo "PYLON_HOME=${pylon_home}"
@@ -138,7 +139,7 @@ Type=simple
 User=${service_user}
 WorkingDirectory=${install_dir}
 EnvironmentFile=${env_file}
-ExecStart=/usr/bin/env bun ${install_dir}/apps/pylon/src/index.ts node
+ExecStart=/usr/bin/env node ${install_dir}/apps/pylon/dist/index.mjs node
 Restart=always
 RestartSec=10
 KillSignal=SIGTERM
@@ -156,6 +157,6 @@ Installed ${service_name}.
 Next checks:
   systemctl status ${service_name} --no-pager
   journalctl -u ${service_name} -f
-  sudo -u ${service_user} env PYLON_HOME=${pylon_home} PYLON_OPENAGENTS_BASE_URL=${base_url} bun ${install_dir}/apps/pylon/src/index.ts presence heartbeat --base-url ${base_url}
-  sudo -u ${service_user} env PYLON_HOME=${pylon_home} bun ${install_dir}/apps/pylon/src/index.ts status --json
+  sudo -u ${service_user} env PYLON_HOME=${pylon_home} PYLON_OPENAGENTS_BASE_URL=${base_url} node ${install_dir}/apps/pylon/dist/index.mjs presence heartbeat --base-url ${base_url}
+  sudo -u ${service_user} env PYLON_HOME=${pylon_home} node ${install_dir}/apps/pylon/dist/index.mjs status --json
 EOF

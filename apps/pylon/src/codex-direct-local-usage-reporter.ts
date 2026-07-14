@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 
 import type { BootstrapSummary } from "./bootstrap.js"
@@ -155,7 +156,7 @@ export async function reportDirectLocalCodexUsage(
   args: PylonAccountsUsageArgs,
   options: PylonCodexDirectLocalUsageReporterOptions = {},
 ): Promise<PylonDirectLocalCodexUsageReportStatus> {
-  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
   const requested = directLocalCodexUsageReportRequested(args, env)
   if (!requested) return defaultDirectLocalCodexUsageReportStatus(false)
 

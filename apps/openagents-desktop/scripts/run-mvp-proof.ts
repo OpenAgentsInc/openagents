@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -65,12 +66,12 @@ for (const args of [
   ["add", "."],
   ["commit", "-m", "fixture: initialize MVP proof workspace"],
 ]) {
-  const result = Bun.spawnSync(["git", ...args], { cwd: workspace, stdout: "pipe", stderr: "pipe" })
+  const result = Runtime.spawnSync(["git", ...args], { cwd: workspace, stdout: "pipe", stderr: "pipe" })
   if (result.exitCode !== 0) throw new Error(`MVP proof workspace setup failed at git ${args[0]}`)
 }
 
 const installedExecutable = process.env.OPENAGENTS_DESKTOP_MVP_PROOF_APP?.trim()
-const packageRoot = path.resolve(import.meta.dir, "..")
+const packageRoot = path.resolve(import.meta.dirname, "..")
 const launch = async (phase: "initial" | "restart"): Promise<number> => {
   const command = [
     ...resolveMvpProofCommand(installedExecutable, packageRoot),
@@ -81,7 +82,7 @@ const launch = async (phase: "initial" | "restart"): Promise<number> => {
     `--openagents-mvp-proof-spec=${specPath}`,
     `--openagents-mvp-proof-phase=${phase}`,
   ]
-  const child = Bun.spawn(command, {
+  const child = Runtime.spawn(command, {
     cwd: packageRoot,
     env: {
       ...process.env,

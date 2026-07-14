@@ -62,8 +62,8 @@ bash "$REPO/apps/oa-updates/scripts/deploy-cloudrun.sh"
 # traffic to a newly created revision. Treat deploy as candidate creation, then
 # inspect the candidate's exact bytes before promotion. This prevents a
 # successful source deploy from leaving clients on an older launch asset.
-EXPECTED_BUNDLE="$(bun -e '
-  const metadata = await Bun.file(process.argv[1]).json()
+EXPECTED_BUNDLE="$(node -e '
+  const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))
   const platform = process.argv[2]
   const bundle = metadata?.fileMetadata?.[platform]?.bundle
   if (typeof bundle !== "string" || bundle.length === 0) process.exit(1)

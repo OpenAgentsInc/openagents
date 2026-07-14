@@ -31,8 +31,8 @@ import {
   recordClaudeProviderDisabled,
 } from "@openagentsinc/pylon-core/custody/claude-account-health-ledger"
 
-const INDEX = join(import.meta.dir, "..", "src", "index.ts")
-const CWD = join(import.meta.dir, "..")
+const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
+const CWD = join(import.meta.dirname, "..")
 
 async function withHome<T>(fn: (home: string) => Promise<T>) {
   const home = await mkdtemp(join(tmpdir(), "pylon-account-usage-"))

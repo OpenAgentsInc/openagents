@@ -8,7 +8,7 @@ type CriterionContract = Readonly<{
   requiredTokens: ReadonlyArray<string>
 }>
 
-const root = resolve(import.meta.dir, "../../..")
+const root = resolve(import.meta.dirname, "../../..")
 
 /**
  * Criterion-local anchors complement, but never replace, the complete Desktop

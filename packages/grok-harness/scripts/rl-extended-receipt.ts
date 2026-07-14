@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Write the MH-4 extended RL matrix receipt (RL-3/5/6 policy + measured floors).
  *

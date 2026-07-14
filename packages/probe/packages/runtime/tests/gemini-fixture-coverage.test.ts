@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-const runtimeRoot = join(import.meta.dir, "..");
+const runtimeRoot = join(import.meta.dirname, "..");
 
 const requiredFixtureCoverage = [
   {

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -100,7 +101,7 @@ function runSandboxedCommand(
       sandbox => Effect.promise(() => sandbox.cleanup()).pipe(Effect.orDie),
     )
     const proc = yield* Effect.acquireRelease(
-      Effect.sync(() => Bun.spawn([...sandbox.prefix, ...commandArgs(input)], {
+      Effect.sync(() => Runtime.spawn([...sandbox.prefix, ...commandArgs(input)], {
         cwd: input.cwd,
         detached: true,
         stderr: "pipe",
@@ -160,7 +161,7 @@ function startSandboxedSession(
     catch: error => processRuntimeFailure("process_sandbox_profile_failed", error),
     try: () => makeSandboxArgs(input, sandboxExecPath, deniedReadPaths),
   })
-  const proc = Bun.spawn([...sandbox.prefix, ...commandArgs(input)], {
+  const proc = Runtime.spawn([...sandbox.prefix, ...commandArgs(input)], {
     cwd: input.cwd,
     detached: true,
     stderr: "pipe",
@@ -269,7 +270,7 @@ type MacosSeatbeltProcessSession = {
   exitCode: number | null
   khalaSessionId: string
   maxCaptureBytes: number
-  proc: ReturnType<typeof Bun.spawn>
+  proc: ReturnType<typeof Runtime.spawn>
   sessionId: string
   stderr: string
   stderrTruncated: boolean
@@ -375,7 +376,7 @@ function tailByBytes(text: string, maxBytes: number): string {
   return bytes.subarray(bytes.byteLength - maxBytes).toString("utf8")
 }
 
-function killSandboxedProcessGroup(proc: ReturnType<typeof Bun.spawn>, signal: NodeJS.Signals = "SIGTERM"): void {
+function killSandboxedProcessGroup(proc: ReturnType<typeof Runtime.spawn>, signal: NodeJS.Signals = "SIGTERM"): void {
   try {
     process.kill(-proc.pid, signal)
   } catch {

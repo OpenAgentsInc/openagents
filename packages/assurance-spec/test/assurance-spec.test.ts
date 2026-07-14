@@ -9,9 +9,9 @@ import {
   validateAssuranceSpec,
 } from "../src/index.ts"
 
-const mvpPath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
-const mvpAssurancePath = resolve(import.meta.dir, "../conformance/valid/mvp-proposal.assurance-spec.md")
-const admittedMvpAssurancePath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md")
+const mvpPath = resolve(import.meta.dirname, "../../../docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
+const mvpAssurancePath = resolve(import.meta.dirname, "../conformance/valid/mvp-proposal.assurance-spec.md")
+const admittedMvpAssurancePath = resolve(import.meta.dirname, "../../../docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md")
 
 describe("AssuranceSpec format and proposal", () => {
   test("keeps the checked-in MVP proposal bound to the current ProductSpec", async () => {

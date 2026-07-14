@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Durable log feed persistence (issue #4739). Every runtime log entry is
 // appended as one JSON line to `feed-log.jsonl` in the Pylon home directory,
 // so the TUI is a window onto durable history (and attach mode, issue #4740,
@@ -94,7 +95,7 @@ export function createFeedLogWriter(
 export async function readPersistedLogTail(homeDir: string, max: number): Promise<PylonLogEntry[]> {
   const entries: PylonLogEntry[] = []
   for (const name of [feedLogRotatedFileName, feedLogFileName]) {
-    const file = Bun.file(join(homeDir, name))
+    const file = Runtime.file(join(homeDir, name))
     if (!(await file.exists())) continue
     const text = await file.text()
     for (const line of text.split("\n")) {

@@ -9,8 +9,8 @@ import { recordPylonAccountUsageObservation } from "../src/account-usage"
 import { PYLON_CODEX_DIRECT_LOCAL_USAGE_INGEST_PATH } from "../src/codex-direct-local-usage-reporter"
 import { assertPublicProjectionSafe, ensurePylonLocalState } from "../src/state"
 
-const INDEX = join(import.meta.dir, "..", "src", "index.ts")
-const CWD = join(import.meta.dir, "..")
+const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
+const CWD = join(import.meta.dirname, "..")
 
 const servers: ReturnType<typeof Bun.serve>[] = []
 

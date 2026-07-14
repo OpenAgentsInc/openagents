@@ -98,6 +98,7 @@
     "codex:to-atif": "bun run src/codex-to-atif.ts"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/assurance-spec": "workspace:*",
     "@openagentsinc/khala-qa-harness": "workspace:*",

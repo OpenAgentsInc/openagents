@@ -102,7 +102,7 @@ describe("theme contrast meets WCAG AA for core coding text", () => {
 })
 
 describe("reduced-motion is honored (WCAG 2.3.3 / user preference)", () => {
-  const css = readFileSync(path.join(import.meta.dir, "..", "src", "renderer", "app.css"), "utf8")
+  const css = readFileSync(path.join(import.meta.dirname, "..", "src", "renderer", "app.css"), "utf8")
 
   test("the OS prefers-reduced-motion media query zeroes transitions", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)")

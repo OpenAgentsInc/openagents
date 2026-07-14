@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // User-configurable keybinds for the Pylon TUI (issue #4738), following
 // opencode's user-editable keybind config approach. The file lives in the
 // Pylon home directory as `keybinds.json`:
@@ -33,7 +34,7 @@ export function parseKeybindsConfig(content: string): KeybindOverrides {
 
 export async function loadKeybindOverrides(homeDir: string): Promise<KeybindsLoadResult> {
   const path = join(homeDir, keybindsFileName)
-  const file = Bun.file(path)
+  const file = Runtime.file(path)
   if (!(await file.exists())) {
     return { overrides: {}, path, state: "absent" }
   }

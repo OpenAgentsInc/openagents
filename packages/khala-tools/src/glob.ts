@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { readFile, realpath, readdir, stat } from "node:fs/promises"
 import { basename, isAbsolute, relative, resolve } from "node:path"
 import { Effect } from "effect"
@@ -147,7 +148,7 @@ async function findGlobMatchesWithRipgrep(input: {
   readonly workspaceRoot: string
 }): Promise<ReadonlyArray<string> | undefined> {
   try {
-    const proc = Bun.spawn(
+    const proc = Runtime.spawn(
       ["rg", "--files", "--hidden", "--glob", input.pattern, "--glob", "!.git/**"],
       {
         cwd: input.searchRoot,

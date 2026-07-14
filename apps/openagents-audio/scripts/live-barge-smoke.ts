@@ -1,8 +1,9 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mintAudioGrant } from "../src/auth"
 import { mediaFrame } from "../src/test-support"
 
 const required = (name: string) => { const value = process.env[name]; if (!value) throw new Error(`missing ${name}`); return value }
-const pcm = new Uint8Array(await Bun.file(required("OPENAGENTS_AUDIO_SMOKE_PCM")).arrayBuffer())
+const pcm = new Uint8Array(await Runtime.file(required("OPENAGENTS_AUDIO_SMOKE_PCM")).arrayBuffer())
 const base = required("OPENAGENTS_AUDIO_URL"); const iam = required("OPENAGENTS_AUDIO_CLOUD_RUN_ID_TOKEN")
 const identity = { ownerRef: "smoke:barge-owner", deviceRef: "smoke:barge-device", threadRef: "smoke:barge-thread", sessionRef: `smoke:barge:${Date.now()}`, generation: 1 }
 const grant = mintAudioGrant({ identity, expiresAtMs: Date.now() + 5 * 60_000 }, required("OPENAGENTS_AUDIO_TOKEN_SECRET"))
@@ -23,8 +24,8 @@ const canceled = new Promise<void>((resolve, reject) => {
     if (!audioStarted) {
       audioStarted = true
       void (async () => {
-        for (let offset = 0; offset < pcm.byteLength; offset += 8_000) { socket.send(Buffer.from(mediaFrame(++sequence, pcm.slice(offset, offset + 8_000), identity))); await Bun.sleep(100) }
-        for (let n = 0; n < 4; n++) { socket.send(Buffer.from(mediaFrame(++sequence, new Uint8Array(8_000), identity))); await Bun.sleep(100) }
+        for (let offset = 0; offset < pcm.byteLength; offset += 8_000) { socket.send(Buffer.from(mediaFrame(++sequence, pcm.slice(offset, offset + 8_000), identity))); await Runtime.sleep(100) }
+        for (let n = 0; n < 4; n++) { socket.send(Buffer.from(mediaFrame(++sequence, new Uint8Array(8_000), identity))); await Runtime.sleep(100) }
       })()
     }
   }

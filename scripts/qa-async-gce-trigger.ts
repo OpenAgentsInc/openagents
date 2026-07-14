@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Warning-only Tier 2 QA trigger (#6238).
 //
 // The full autonomous-QA matrix belongs on owned OpenAgents infrastructure, not

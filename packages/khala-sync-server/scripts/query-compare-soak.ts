@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Compare-mode soak observability query (#8282 shared follow-up).
  *

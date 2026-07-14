@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
-const root = resolve(import.meta.dir, "..")
+const root = resolve(import.meta.dirname, "..")
 const removedPath = "clients/khala-code-desktop"
 const executableDependencyFiles = [
   "package.json",

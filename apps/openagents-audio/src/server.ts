@@ -1,4 +1,4 @@
-import type { Server, ServerWebSocket } from "bun"
+import { Runtime, type RuntimeServerWebSocket } from "@openagentsinc/runtime-platform"
 import type { VoiceIdentity } from "@openagentsinc/audio-contract"
 import { verifyAudioGrant } from "./auth"
 import { AudioSession, type AcceptedAudioFrame } from "./session"
@@ -25,7 +25,7 @@ export const startAudioServer = (config: AudioServerConfig) => {
   const log = config.log ?? (() => {})
   const sessions = new Map<string, AudioSession>()
   const sessionKey = (identity: VoiceIdentity) => `${identity.ownerRef}\u0000${identity.deviceRef}\u0000${identity.threadRef}\u0000${identity.sessionRef}\u0000${identity.generation}`
-  const server = Bun.serve<SocketData>({
+  const server = Runtime.serve<SocketData>({
     port: config.port ?? 8080, idleTimeout: 240,
     async fetch(request, srv) {
       const url = new URL(request.url)
@@ -76,7 +76,7 @@ export const startAudioServer = (config: AudioServerConfig) => {
         if (ws.data.retention) ws.data.session.announceRetention({ schema: "openagents.audio.v1", _tag: "retention_receipt", identity: ws.data.identity, receiptRef: ws.data.retention.receipt.receiptRef, disclosureRef: "audio-retention.mvp.v1", policyRef: "audio-retention.mvp.v1", expiresAtMs: ws.data.retention.receipt.expiresAtMs, maxRetentionSeconds: 2_592_000 })
         log({ event: "audio_session_open", generation: ws.data.identity.generation })
       },
-      message(ws: ServerWebSocket<SocketData>, message) {
+      message(ws: RuntimeServerWebSocket<SocketData>, message) {
         if (typeof message === "string") { ws.close(4003, "binary_required"); return }
         const bytes = new Uint8Array(message).slice()
         ws.data.receiveTail = (ws.data.receiveTail ?? Promise.resolve()).then(() => ws.data.session?.receive(bytes)).catch(() => { ws.close(4011, "retention_or_media_failed") })

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 /**
  * Builds public-safe conversation bundles for NIP-DS data sales.

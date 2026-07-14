@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 
-import { Database } from "bun:sqlite"
+import { openLegacySqliteDatabase, type LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { createHash } from "node:crypto"
 import { mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
@@ -12,7 +13,7 @@ import {
   type OrchestrationRunnerKind,
 } from "./store.js"
 
-const args = Bun.argv.slice(2)
+const args = Runtime.argv.slice(2)
 
 const fail = (message: string, code = 2): never => {
   console.error(message)
@@ -72,10 +73,10 @@ const withSqliteBusyRetry = <T>(fn: () => T): T => {
   throw lastError
 }
 
-const pylonHome = option("--pylon-home") ?? Bun.env.PYLON_HOME ?? join(homedir(), ".pylon")
+const pylonHome = option("--pylon-home") ?? Runtime.env.PYLON_HOME ?? join(homedir(), ".pylon")
 const dbPath = option("--db", join(pylonHome, "orchestration.sqlite"))!
 await mkdir(pylonHome, { recursive: true })
-const db = new Database(dbPath)
+const db = openLegacySqliteDatabase(dbPath)
 withSqliteBusyRetry(() => {
   db.exec("PRAGMA journal_mode = WAL")
   db.exec("PRAGMA busy_timeout = 5000")
@@ -148,10 +149,10 @@ try {
     // (KS-3.2 #8332). The token is read from the environment and NEVER
     // echoed into stdout, logs, or the persisted outcome rows.
     const baseUrl = option("--base-url")
-      ?? Bun.env.OPENAGENTS_BASE_URL
-      ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      ?? Runtime.env.OPENAGENTS_BASE_URL
+      ?? Runtime.env.PYLON_OPENAGENTS_BASE_URL
       ?? "https://openagents.com"
-    const adminToken = option("--admin-token") ?? Bun.env.OPENAGENTS_ADMIN_API_TOKEN ?? ""
+    const adminToken = option("--admin-token") ?? Runtime.env.OPENAGENTS_ADMIN_API_TOKEN ?? ""
     if (adminToken.trim() === "") {
       print({ ok: false, error: "missing_admin_token", reason: "set OPENAGENTS_ADMIN_API_TOKEN" })
       process.exitCode = 1

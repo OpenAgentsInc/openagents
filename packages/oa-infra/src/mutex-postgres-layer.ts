@@ -6,7 +6,7 @@
  * stays importable under non-Bun type environments — the Cloud Run monolith
  * / `openagents.com` Worker seam reuses `makePostgresMutex` over its
  * postgres.js client. This file is the only place the Mutex backend touches
- * `OaInfraSql`/Bun.
+ * `OaInfraSql`/Runtime.
  */
 import { Effect, Layer } from "effect"
 import { Mutex } from "./mutex.ts"

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -656,7 +657,7 @@ async function runCommand(input: {
   args: string[]
   cwd: string
 }): Promise<{ exitCode: number; stderrBytes: number; stdoutBytes: number }> {
-  const proc = Bun.spawn(input.args, {
+  const proc = Runtime.spawn(input.args, {
     cwd: input.cwd,
     stderr: "pipe",
     stdout: "pipe",
@@ -820,7 +821,7 @@ async function executeRuntimeGate(
   await writeFile(
     join(workspace, "sum.test.ts"),
     [
-      'import { describe, expect, test } from "bun:test"',
+      'import { describe, expect, test } from "vite-plus/test"',
       'import { sum } from "./sum"',
       "",
       'describe("sum fixture", () => {',
@@ -1851,7 +1852,7 @@ async function resolveAgentAccountForAssignment(
   // Codex auto-select; the Claude probe reads each account's isolated home env.
   const probeOptions =
     provider === "claude_agent" ? options.claudeAgentProbe : options.codexAgentProbe
-  const env = probeOptions?.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = probeOptions?.env ?? (Runtime.env as Record<string, string | undefined>)
   const { env: _ignoredProbeEnv, ...probeOverrides } = probeOptions ?? {}
   const codexConfig =
     provider === "codex" ? await loadCodexAgentConfig(summary) : undefined

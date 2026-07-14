@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Warning-only Tier 1 QA pre-push smoke (#6245).
 //
 // This script mirrors the desktop "run only when changed" gate, but keeps QA

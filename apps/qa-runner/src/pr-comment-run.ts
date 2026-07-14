@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Agentic PR-evidence entrypoint (#6185): diff-scope -> run eval -> compose PR comment.
 // NOT a GitHub Action (see the No-GitHub-Hosted-CI invariant): an agent/operator runs this
 // on owned infra and posts the comment itself (e.g. via `gh pr comment`), as on PR #6224.

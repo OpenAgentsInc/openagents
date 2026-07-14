@@ -12,6 +12,7 @@
     "deploy": "bash scripts/deploy-cloudrun.sh"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/oa-infra": "workspace:*",
     "effect": "catalog:"
   },

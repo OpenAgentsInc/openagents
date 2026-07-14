@@ -28,6 +28,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/khala-tools": "workspace:*",
     "@openai/codex-sdk": "^0.144.1"
   },

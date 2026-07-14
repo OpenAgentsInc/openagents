@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 // Generate / verify the canonical OpenAgents repo study-packet artifact (SA-1, EPIC #5337).
 //
 // Runs the existing study-packet / corpus-manifest / study-graph / verification /
@@ -44,7 +45,7 @@ import {
   readOpenAgentsRepoHeadCommit,
 } from "../src/benchmark/openagents-study-freshness";
 
-const RUNTIME_ROOT = resolve(import.meta.dir, "..");
+const RUNTIME_ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_REPO_ROOT = resolve(RUNTIME_ROOT, "..", "..", "..", "..");
 const DEFAULT_INDEX_RELATIVE =
   "docs/research/machine-studying/openagents-studybench/study-packets/openagents.study-artifact-index.json";
@@ -118,7 +119,7 @@ function stableIndexJson(index: OpenAgentsRepoStudyArtifactIndex): string {
   return `${JSON.stringify(sortKeysDeep(index), null, 2)}\n`;
 }
 
-const cli = parseCli(Bun.argv.slice(2));
+const cli = parseCli(Runtime.argv.slice(2));
 
 const program = Effect.gen(function* () {
   const artifact = yield* generateOpenAgentsRepoStudyArtifact({

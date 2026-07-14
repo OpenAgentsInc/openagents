@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { spawn } from "node:child_process"
 import { readdir, readFile, mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve } from "node:path"

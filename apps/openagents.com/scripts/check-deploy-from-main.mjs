@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Predeploy guard: refuse to deploy unless the local checkout is EXACTLY origin/main.
 //
 // `bun run deploy` builds and uploads from the local working tree, so a checkout

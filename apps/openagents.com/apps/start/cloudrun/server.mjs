@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -127,7 +128,7 @@ if (!existsSync(CLIENT_DIR)) {
   throw new Error(`OPENAGENTS_START_CLIENT_DIR missing: ${CLIENT_DIR}`)
 }
 
-Bun.serve({
+Runtime.serve({
   fetch: async (request) => {
     const url = new URL(request.url)
 

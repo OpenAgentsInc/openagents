@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // khala-live-hub server — Bun WS/HTTP surface (CFG-5, #8520).
 //
 // The owned Cloud Run service replacing the Worker's `KhalaSyncHubDO`. It
@@ -35,8 +36,8 @@
 // point documented in src/service.ts (`hubFor`).
 
 import { createHash, timingSafeEqual } from "node:crypto"
-import type { Server, ServerWebSocket } from "bun"
-import { SQL } from "bun"
+import type { RuntimeServer as Server, RuntimeServerWebSocket as ServerWebSocket } from "@openagentsinc/runtime-platform"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import { Schema as S } from "effect"
 
 import { SyncScope } from "@openagentsinc/khala-sync"
@@ -162,7 +163,7 @@ export const startLiveHubServer = (
   const sql =
     config.databaseUrl === undefined
       ? undefined
-      : new SQL({ url: config.databaseUrl, max: 3 })
+      : SQL({ url: config.databaseUrl, max: 3 })
   const rebuildVersions = config.rebuildVersions ?? DEFAULT_REBUILD_VERSIONS
 
   const service = new LiveHubService({
@@ -177,7 +178,7 @@ export const startLiveHubServer = (
     log,
   })
 
-  const server = Bun.serve<SocketData>({
+  const server = Runtime.serve<SocketData>({
     port: config.port ?? 8080,
     // Generous socket idle timeout (seconds); the ping interval below keeps
     // healthy sockets far under it.
@@ -381,7 +382,7 @@ export const startLiveHubServer = (
   return { server, service, port: server.port ?? config.port ?? 8080, stop }
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   const running = startLiveHubServer(liveHubConfigFromEnv())
   const shutdown = () => {
     running

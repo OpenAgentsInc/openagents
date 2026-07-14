@@ -196,7 +196,7 @@ describe("artifact digest admission", () => {
 describe("production pin drift oracle", () => {
   test("the embedded pin equals the committed public release key file", () => {
     // PUBLIC key material only — committed, client-pinned, safe to read.
-    const pubkeyPath = path.resolve(import.meta.dir, "../../oa-updates/keys/release-pubkey.json")
+    const pubkeyPath = path.resolve(import.meta.dirname, "../../oa-updates/keys/release-pubkey.json")
     const committed = JSON.parse(readFileSync(pubkeyPath, "utf8")) as {
       alg: string
       kid: string

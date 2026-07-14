@@ -46,6 +46,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/postgres-runtime": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@google-cloud/storage": "^7.16.0",
     "effect": "catalog:",
     "aws4fetch": "^1.0.20"

@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Retained supervised daily-driver proof runner (#4847 Claude lane,
  * #4860 Codex lane).
@@ -212,10 +213,10 @@ export function parseProofRunArgs(argv: string[]): ProofRunArgs {
 }
 
 export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverProof> {
-  const baseEnv = Bun.env as Record<string, string | undefined>
+  const baseEnv = Runtime.env as Record<string, string | undefined>
   const cwd = args.cwd ?? process.cwd()
   const observedAt = new Date().toISOString()
-  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Runtime.env)
   const account = await resolvePylonAccountSelection(summary, {
     provider: args.adapter === "codex" ? "codex" : "claude_agent",
     ...(args.accountRef === null ? {} : { accountRef: args.accountRef }),
@@ -386,7 +387,7 @@ export async function runProof(args: ProofRunArgs): Promise<RetainedDailyDriverP
 }
 
 async function main() {
-  const args = parseProofRunArgs(Bun.argv.slice(2))
+  const args = parseProofRunArgs(Runtime.argv.slice(2))
   const proof = await runProof(args)
   const proofsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "proofs")
   await mkdir(args.proofOutput === null ? proofsDir : dirname(resolve(args.proofOutput)), { recursive: true })
@@ -413,6 +414,6 @@ async function main() {
   }
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   await main()
 }

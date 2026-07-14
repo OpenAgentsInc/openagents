@@ -4,7 +4,7 @@ import {
   type SyncScope,
   type SyncVersion,
 } from "@openagentsinc/khala-sync"
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import postgres from "postgres"
 import {
   KhalaSyncCursorBehindRetainedWindowError,
@@ -723,15 +723,14 @@ export const runCapturePass = async (
  */
 const makeCaptureSql = (config: ResolvedCaptureConfig, max: number): SQL =>
   config.socket !== undefined
-    ? new SQL({
-        adapter: "postgres",
-        path: config.socket.socketPath,
+    ? SQL({
+        host: config.socket.socketPath,
         username: config.socket.username,
         password: config.socket.password,
         database: config.socket.database,
         max,
       })
-    : new SQL({ url: config.databaseUrl!, max })
+    : SQL({ url: config.databaseUrl!, max })
 
 /**
  * The dedicated postgres.js LISTEN connection (session mode — never a

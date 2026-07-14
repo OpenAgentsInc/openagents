@@ -24,7 +24,7 @@ import {
   validateProductSpec,
 } from "../src/index.ts"
 
-const packageRoot = resolve(import.meta.dir, "..")
+const packageRoot = resolve(import.meta.dirname, "..")
 const repoRoot = resolve(packageRoot, "../..")
 
 const readFixture = async (relativePath: string): Promise<string> =>

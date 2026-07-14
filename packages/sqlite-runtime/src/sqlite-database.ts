@@ -35,6 +35,25 @@ export const detectSqliteRuntime = (): SqliteRuntime =>
  */
 export type SqliteValue = string | number | bigint | null | Uint8Array
 
+export interface SqliteStatement<Row = any, Params extends Array<any> = Array<any>> {
+  // Driver compatibility requires the same variadic binding surface exposed
+  // by both bun:sqlite and node:sqlite.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly run: (...params: Params) => { readonly changes: number | bigint }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly get: (...params: Params) => Row | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly all: (...params: Params) => Array<Row>
+}
+
+export interface LegacySqliteDatabase {
+  exec(sql: string): unknown
+  run(sql: string, ...params: ReadonlyArray<never>): unknown
+  query<Row = any, Params extends Array<any> = Array<any>>(sql: string): SqliteStatement<Row, Params>
+  transaction<A>(fn: () => A): (() => A) & { readonly immediate: () => A }
+  close(): void
+}
+
 export interface SqliteDatabaseOptions {
   /** Open read-only; the file must already exist. Default: read-write, creating the file if missing. */
   readonly readonly?: boolean
@@ -59,6 +78,8 @@ export interface SqliteDatabase {
     sql: string,
     params?: ReadonlyArray<SqliteValue>,
   ) => ReadonlyArray<Row>
+  /** Prepared-statement compatibility for retained stores during VP-2. */
+  readonly query: <Row = any, Params extends Array<any> = Array<any>>(sql: string) => SqliteStatement<Row, Params>
   /** Run `fn` in ONE transaction (nesting via savepoints); rethrow after rollback on failure. */
   readonly transaction: <A>(fn: () => A) => A
   /** Close the underlying handle; later calls throw. */

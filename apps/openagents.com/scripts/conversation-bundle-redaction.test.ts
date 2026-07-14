@@ -11,7 +11,7 @@ import {
 } from './conversation-bundle-redaction.ts'
 
 const fixture = (name: string) =>
-  join(import.meta.dir, 'fixtures', 'conversation-bundle-redaction', name)
+  join(import.meta.dirname, 'fixtures', 'conversation-bundle-redaction', name)
 
 describe('conversation bundle redaction', () => {
   test('creates a deterministic public-safe bundle manifest with a matching NIP-DS digest', async () => {

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * CFG-7 (#8522): oa-queue-worker — Cloud Run pump for the oa-infra Postgres
  * JobQueue (epic #8515, Cloudflare→GCP consolidation).
@@ -67,7 +68,7 @@ const program = Effect.gen(function* () {
 
 const port = Number.parseInt(process.env['PORT'] ?? '8080', 10)
 
-Bun.serve({
+Runtime.serve({
   fetch: () =>
     Response.json({
       cycles: state.cycles,

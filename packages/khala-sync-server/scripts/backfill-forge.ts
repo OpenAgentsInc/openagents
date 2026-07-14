@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * KS-8.16 (#8327): Forge (git intake + coordination) backfill CLI —
  * D1 → Postgres.
@@ -44,7 +44,7 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import * as path from "node:path"
-import { SQL } from "bun"
+import { SQL } from "@openagentsinc/postgres-runtime"
 import {
   buildForgeDomainVerifyReport,
   compareMergeQueueReplays,
@@ -98,7 +98,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     verify: false,
     verifyNewest: 50,
     wranglerCwd: path.resolve(
-      import.meta.dir,
+      import.meta.dirname,
       "../../../apps/openagents.com/workers/api",
     ),
   }
@@ -385,7 +385,7 @@ const main = async (): Promise<number> => {
     return 2
   }
 
-  const sql = new SQL(options.databaseUrl) as unknown as SyncSql
+  const sql = SQL(options.databaseUrl) as unknown as SyncSql
   const tables = options.table === undefined ? FORGE_DOMAIN_TABLES : [options.table]
 
   try {

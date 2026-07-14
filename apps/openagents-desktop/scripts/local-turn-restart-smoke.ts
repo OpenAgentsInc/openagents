@@ -1,8 +1,9 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 const userData = mkdtempSync(path.join(tmpdir(), "openagents-desktop-turn-restart-"))
 const packagedBinary = path.join(appRoot, "out", "OpenAgents-darwin-arm64", "OpenAgents.app", "Contents", "MacOS", "OpenAgents")
 const electronBinary = path.join(appRoot, "node_modules", ".bin", "electron")
@@ -11,7 +12,7 @@ const command = process.platform === "darwin" && existsSync(packagedBinary)
   : [electronBinary, "."]
 
 const runPhase = (phase: "seed" | "recover"): void => {
-  const result = Bun.spawnSync({
+  const result = Runtime.spawnSync({
     cmd: command,
     cwd: appRoot,
     env: {

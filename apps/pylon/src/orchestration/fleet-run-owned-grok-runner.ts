@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { join, relative, resolve, sep } from "node:path"
@@ -352,7 +353,7 @@ const defaultWorkspacePort = (
     const verifier = [
       process.execPath,
       "--eval",
-      `const actual=await Bun.file(${JSON.stringify(GROK_FIXTURE_VERIFICATION_FILE)}).json();const expected=${JSON.stringify(expected)};if(JSON.stringify(actual)!==JSON.stringify(expected))process.exit(1)`,
+      `const {readFile}=await import("node:fs/promises");const actual=JSON.parse(await readFile(${JSON.stringify(GROK_FIXTURE_VERIFICATION_FILE)},"utf8"));const expected=${JSON.stringify(expected)};if(JSON.stringify(actual)!==JSON.stringify(expected))process.exit(1)`,
     ]
     return {
       checkout: null,
@@ -389,7 +390,7 @@ const defaultWorkspacePort = (
 }
 
 const defaultVerifier: PylonOwnedGrokVerifierPort = async input => {
-  const child = Bun.spawn([...input.args], {
+  const child = Runtime.spawn([...input.args], {
     cwd: input.cwd,
     stdin: "ignore",
     stdout: "ignore",

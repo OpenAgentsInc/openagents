@@ -54,7 +54,7 @@
 // scope→shard lookup). Nothing in this class assumes a single process beyond
 // the in-memory socket map, which is already per-scope.
 
-import { Database } from "bun:sqlite"
+import { openLegacySqliteDatabase, type LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { Schema as S } from "effect"
 
 import {
@@ -207,7 +207,7 @@ export class ScopeHub {
 
     // In-memory SQLite per scope: the same window/eviction SQL the DO ran
     // over DO SQLite, so the semantics port is 1:1 auditably.
-    this.db = new Database(":memory:")
+    this.db = openLegacySqliteDatabase(":memory:")
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS entries (
         version INTEGER NOT NULL,

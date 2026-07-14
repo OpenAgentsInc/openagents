@@ -35,7 +35,7 @@ import type { ProviderAccountsServiceDependencies } from "../src/provider-accoun
 import { classifyProviderRuntimeCompatibility } from "../src/provider-runtime-compatibility.ts"
 
 const fixtureListStdout = readFileSync(
-  path.join(import.meta.dir, "fixtures", "provider-accounts", "accounts-list.json"),
+  path.join(import.meta.dirname, "fixtures", "provider-accounts", "accounts-list.json"),
   "utf8",
 )
 

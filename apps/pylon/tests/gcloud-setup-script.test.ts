@@ -4,16 +4,16 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 
-const script = join(import.meta.dir, "..", "deploy", "gcloud", "setup-pylon.sh")
+const script = join(import.meta.dirname, "..", "deploy", "gcloud", "setup-pylon.sh")
 const agentComputerScript = join(
-  import.meta.dir,
+  import.meta.dirname,
   "..",
   "deploy",
   "agent-computer",
   "setup-gce-host.sh",
 )
 const agentComputerImageManifest = join(
-  import.meta.dir,
+  import.meta.dirname,
   "..",
   "deploy",
   "agent-computer",

@@ -31,8 +31,9 @@ import {
  */
 
 interface NodeStatementSyncLike {
-  run(...params: ReadonlyArray<SqliteValue>): unknown
-  all(...params: ReadonlyArray<SqliteValue>): unknown
+  run(...params: ReadonlyArray<SqliteValue | Readonly<Record<string, SqliteValue>>>): { readonly changes: number | bigint }
+  get<Row>(...params: ReadonlyArray<SqliteValue | Readonly<Record<string, SqliteValue>>>): Row | undefined
+  all<Row>(...params: ReadonlyArray<SqliteValue | Readonly<Record<string, SqliteValue>>>): ReadonlyArray<Row>
 }
 
 interface NodeDatabaseSyncLike {
@@ -119,6 +120,14 @@ export const openNodeSqliteDatabase = (
     },
     all: <Row>(sql: string, params: ReadonlyArray<SqliteValue> = []) =>
       prepare(sql).all(...params) as ReadonlyArray<Row>,
+    query: <Row = any, Params extends Array<any> = Array<any>>(sql: string) => {
+      const statement = prepare(sql)
+      return {
+        run: (...params: Params) => statement.run(...params),
+        get: (...params: Params) => statement.get<Row>(...params) ?? null,
+        all: (...params: Params) => [...statement.all<Row>(...params)],
+      }
+    },
     transaction,
     close: () => {
       statements.clear()

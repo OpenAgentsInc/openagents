@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Khala Sync fleet-burst load harness CLI (KS-9.1, #8310).
  *

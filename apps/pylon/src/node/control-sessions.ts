@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash, randomBytes } from "node:crypto"
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
@@ -1212,7 +1213,7 @@ export function createControlSessionActions(options: {
   }
   const subscribers = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>()
   const executor = options.executor ?? defaultControlSessionExecutor
-  const baseEnv = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const baseEnv = options.env ?? (Runtime.env as Record<string, string | undefined>)
   // Resolve the cloud executor lazily: explicit injection wins (tests), else a
   // factory-from-env builds one when cloud config is present. `null` means "no
   // cloud configured" and cloud lanes degrade to the local executor.

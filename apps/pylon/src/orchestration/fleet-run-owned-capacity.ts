@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
@@ -276,7 +277,7 @@ const boundedSlots = (
 export function createPylonOwnedFleetRunSupervisorCapacity(
   input: CreatePylonOwnedFleetRunSupervisorCapacityInput,
 ): PylonOwnedFleetRunSupervisorCapacity {
-  const env = input.env ?? (Bun.env as Record<string, string | undefined>)
+  const env = input.env ?? (Runtime.env as Record<string, string | undefined>)
   const defaultHomes = {
     codex: normalizeAccountHome(input.defaultHomes?.codex ?? join(homedir(), ".codex")),
     claudeAgent: normalizeAccountHome(input.defaultHomes?.claudeAgent ?? join(homedir(), ".claude")),

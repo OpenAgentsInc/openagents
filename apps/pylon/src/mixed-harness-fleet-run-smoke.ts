@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite"
+import { openLegacySqliteDatabase, type LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import {
   createPylonOrchestrationStore,
   type PylonOrchestrationStore,
@@ -200,7 +200,7 @@ const legReceipted = (leg: MixedHarnessFleetRunHarnessLeg): boolean =>
 
 export async function runMixedHarnessFleetRunCiSmoke(): Promise<MixedHarnessFleetRunSmokeResult> {
   const now = new Date()
-  const store = createPylonOrchestrationStore(new Database(":memory:"))
+  const store = createPylonOrchestrationStore(openLegacySqliteDatabase(":memory:"))
 
   const { codexClaim, claudeClaim, crossKindCollisionsPrevented, doubleLiveClaims } =
     claimMixedWorkUnits(store, now)

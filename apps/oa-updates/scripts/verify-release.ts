@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // OpenAgents release/provenance verifier (ed25519) — the reference fail-closed
 // check clients (Pylon, Autopilot, Psionic) embed. Verifies that a file was
 // signed by the PINNED OpenAgents public key. Exit 0 = valid; exit 1 = missing/
@@ -11,7 +11,7 @@ import { createHash } from "node:crypto"
 
 // Pinned public key (committed; clients embed this at build time).
 const PUBKEY_PATH = process.env.OPENAGENTS_RELEASE_PUBKEY_PATH
-  ?? `${import.meta.dir}/../keys/release-pubkey.json`
+  ?? `${import.meta.dirname}/../keys/release-pubkey.json`
 
 const file = process.argv[2]
 const sigPath = process.argv[3]

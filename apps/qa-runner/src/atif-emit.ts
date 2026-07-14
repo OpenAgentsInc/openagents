@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // ATIF emit CLI (epic #6174): turn a completed Khala run directory into the hero
 // deliverable — ONE beautiful ATIF-v1.7 `trajectory.json` + a self-contained,
 // beautiful `trace.html` (dark, command-surface timeline; plays the video).

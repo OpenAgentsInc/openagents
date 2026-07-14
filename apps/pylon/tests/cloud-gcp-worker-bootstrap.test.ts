@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 
 const script = join(
-  import.meta.dir,
+  import.meta.dirname,
   "..",
   "deploy",
   "cloud-gcp-worker",

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-const app = path.resolve(import.meta.dir, "..")
+const app = path.resolve(import.meta.dirname, "..")
 const read = (file: string) => readFileSync(path.join(app, file), "utf8")
 const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//gu, "").replace(/^\s*\/\/.*$/gmu, "")
 describe("voice media authority boundary", () => {

@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 
 /**
  * Bundle a Harbor job directory and upload the full raw trace archive to the
@@ -268,7 +269,8 @@ const uploadArchive = async (
   }
 
   const response = await fetchImpl(url, {
-    body: Bun.file(archive.archivePath),
+    body: Runtime.file(archive.archivePath).stream(),
+    duplex: 'half' as never,
     headers,
     method: 'POST',
   })
@@ -328,6 +330,6 @@ export const runHarborFullTraceArchive = async (
   }
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   process.exitCode = await runHarborFullTraceArchive(process.argv.slice(2))
 }

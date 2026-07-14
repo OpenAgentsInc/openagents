@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // One-shot Khala Sync TRANSPORT run against a live deployment (ST-6, #8512).
 //
 // The seam-explorer entrypoint: drives the REAL `createHttpKhalaSyncTransport`

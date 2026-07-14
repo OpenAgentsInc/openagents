@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // The QA control HTTP daemon (#6196): drive the full autonomous-QA / eval flow
 // over HTTP, not just the CLI.
 //
@@ -191,7 +192,7 @@ export interface ServeOptions {
  *   QA_CONTROL_TOKENS     comma-separated agent:token allowlist (fail closed if empty)
  *   QA_SWARM_PUBLISH_TOKEN admin bearer for public-safe run projection publication
  */
-export function serveControlApi(opts: ServeOptions = {}): ReturnType<typeof Bun.serve> {
+export function serveControlApi(opts: ServeOptions = {}): ReturnType<typeof Runtime.serve> {
   const env = process.env;
   const port = opts.port ?? Number(env.QA_CONTROL_PORT ?? 8787);
   const hostname = opts.hostname ?? env.QA_CONTROL_HOSTNAME ?? "127.0.0.1";
@@ -213,5 +214,5 @@ export function serveControlApi(opts: ServeOptions = {}): ReturnType<typeof Bun.
   const verifier = opts.verifier ?? makeTokenVerifier(allowlistFromEnv(env));
   const handler = makeFetchHandler({ control, verifier });
 
-  return Bun.serve({ port, hostname, fetch: handler });
+  return Runtime.serve({ port, hostname, fetch: handler });
 }

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { createHash } from "node:crypto"
@@ -165,7 +166,7 @@ export class PylonRuntimeConfig extends Context.Service<
   PylonRuntimeConfigShape
 >()("PylonRuntimeConfig") {}
 
-export function makePylonRuntimeConfigLayer(env: Record<string, string | undefined> = Bun.env) {
+export function makePylonRuntimeConfigLayer(env: Record<string, string | undefined> = Runtime.env) {
   return Layer.succeed(PylonRuntimeConfig, {
     getEnv: (name) =>
       Effect.sync(() => env[name]),

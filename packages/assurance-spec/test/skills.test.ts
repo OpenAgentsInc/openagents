@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-const packageRoot = path.resolve(import.meta.dir, "..")
+const packageRoot = path.resolve(import.meta.dirname, "..")
 const readSkill = (name: string): string =>
   readFileSync(path.join(packageRoot, "skills", name, "SKILL.md"), "utf8")
 

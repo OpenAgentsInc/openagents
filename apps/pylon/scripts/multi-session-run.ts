@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Concurrent local coding-session runner (#4869).
  *
@@ -428,7 +429,7 @@ async function workspaceForSession(input: {
   const repoRef = input.entry.repoRef
   if (repoRef === undefined) throw new Error("workspace_selector_missing")
   const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
-    ...Bun.env,
+    ...Runtime.env,
     PYLON_HOME: input.args.pylonHome,
   })
   const checkout: GitCheckoutWorkspace = {
@@ -480,7 +481,7 @@ async function defaultProofChildRunner(input: ProofChildInput): Promise<ProofChi
     "--",
     ...input.verify,
   ]
-  const proc = Bun.spawn(args, {
+  const proc = Runtime.spawn(args, {
     cwd: input.cwd,
     env: input.env,
     stderr: "pipe",
@@ -579,7 +580,7 @@ export async function runOneSession(input: {
     })
 
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
-      ...Bun.env,
+      ...Runtime.env,
       PYLON_HOME: input.args.pylonHome,
     })
     const workspace = await workspaceForSession(input)
@@ -630,7 +631,7 @@ export async function runOneSession(input: {
         accountHome: account?.accountRef === null ? account.home : null,
         accountRef: account?.accountRef ?? null,
         cwd: workspace.workingDirectory,
-        env: { ...Bun.env, PYLON_HOME: input.args.pylonHome },
+        env: { ...Runtime.env, PYLON_HOME: input.args.pylonHome },
         issueRefs: ["OpenAgentsInc/openagents#4884"],
         objective: input.entry.objective,
         proofOutput,
@@ -936,12 +937,12 @@ export async function runMultiSessionPlan(
 }
 
 async function main() {
-  const args = parseCliArgs(Bun.argv.slice(2))
+  const args = parseCliArgs(Runtime.argv.slice(2))
   const summary = await runMultiSessionPlan(args)
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
   if (summary.failedCount > 0) process.exitCode = 1
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   await main()
 }

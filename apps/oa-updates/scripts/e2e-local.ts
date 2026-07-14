@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 // End-to-end local proof of the OpenAgents Updates server: stand up the server,
 // publish an update (content-addressed assets), then over REAL HTTP fetch the
 // Expo-Updates manifest and an asset — proving the protocol works on our own
@@ -37,7 +38,7 @@ const update = buildUpdateFromExport({
 })
 server.registerUpdate(update)
 
-const http = Bun.serve({ port: PORT, fetch: server.fetch })
+const http = Runtime.serve({ port: PORT, fetch: server.fetch })
 try {
   // 1) manifest for matching runtime/channel
   const res = await fetch(`http://localhost:${PORT}/autopilot/manifest`, {

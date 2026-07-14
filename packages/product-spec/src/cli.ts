@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 // product-spec CLI: validate `.product-spec.md` files, scaffold new ones,
 // and compute document/intent digests.
 //
@@ -39,7 +40,7 @@ const validateFiles = async (
 ): Promise<number> => {
   let failures = 0
   for (const path of paths) {
-    const markdown = await Bun.file(path).text()
+    const markdown = await Runtime.file(path).text()
     const result = validateProductSpec(markdown, { profile })
     if (result.valid) {
       const warningNote = result.warnings.length
@@ -134,7 +135,7 @@ const main = async () => {
     }
     let failures = 0
     for (const path of rest) {
-      const markdown = await Bun.file(path).text()
+      const markdown = await Runtime.file(path).text()
       const documentDigest = computeProductSpecDocumentDigest(markdown)
       try {
         const intentDigest = computeProductSpecIntentDigest(markdown)
@@ -164,11 +165,11 @@ const main = async () => {
             .join(" ")
         : (flags[titleIndex + 1] ?? "Untitled")
     const artifactType = (typeIndex === -1 ? "prd" : flags[typeIndex + 1]) as ArtifactType
-    if (await Bun.file(file).exists()) {
+    if (await Runtime.file(file).exists()) {
       console.error(`refusing to overwrite existing file: ${file}`)
       process.exit(1)
     }
-    await Bun.write(file, starterProductSpec({ title, artifactType }))
+    await Runtime.write(file, starterProductSpec({ title, artifactType }))
     console.log(`created ${file}`)
     return
   }

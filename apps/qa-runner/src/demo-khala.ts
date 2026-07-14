@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Headline demo (epic #6174): Khala AUTONOMOUSLY drives real developer tools and
 // distills the session into a committed e2e test.
 //

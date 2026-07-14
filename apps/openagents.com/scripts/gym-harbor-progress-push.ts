@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 /**
  * Push live Gym / Harbor run progress to the Worker ingest endpoint (#6271).

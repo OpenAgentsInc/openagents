@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Run ONE scenario across N targets with REAL chromium (#6190, Rhys req #3).
 //
 // The multi-target proof path (NOT in default CI): it resolves a SELECTION of

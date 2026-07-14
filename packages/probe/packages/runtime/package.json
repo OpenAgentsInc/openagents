@@ -24,6 +24,7 @@
     "typecheck:baseline:update": "node scripts/verify-test-typecheck.mjs --update-baseline"
   },
   "dependencies": {
+    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
     "@openrouter/sdk": "^0.13.7",

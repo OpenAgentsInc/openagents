@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // Submit the crossy-road north-star prompt to openagents/khala-code via the STREAMING
 // path (the 524 fix), save the produced single-file HTML artifact, and print the
 // receipt (tokens / cost_msat) so a caller can run it through the executed acceptance

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { spawn } from "node:child_process"
 import { statSync } from "node:fs"
@@ -615,7 +616,7 @@ export async function runCodexComposerStream(
         }
       : null)
   const accountEnv = pylonAccountEnvironment(
-    options.env ?? (Bun.env as Record<string, string | undefined>),
+    options.env ?? (Runtime.env as Record<string, string | undefined>),
     account,
   )
   const env = installCodexRipgrepGuard({ env: accountEnv }).env

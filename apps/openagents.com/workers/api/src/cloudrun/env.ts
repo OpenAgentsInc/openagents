@@ -62,7 +62,7 @@ export const buildCloudRunRuntime = (
 ): CloudRunRuntime => {
   const webDistDir = path.resolve(
     processEnv['OPENAGENTS_WEB_DIST'] ??
-      path.resolve(import.meta.dir, '..', '..', '..', '..', 'apps/web/dist'),
+      path.resolve(import.meta.dirname, '..', '..', '..', '..', 'apps/web/dist'),
   )
 
   const khalaSyncUrl = processEnv['KHALA_SYNC_DATABASE_URL']

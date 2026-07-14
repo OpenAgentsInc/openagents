@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { access, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { createHash, randomUUID } from "node:crypto"
@@ -258,7 +259,7 @@ const CODEX_AGENT_FIXTURES: Record<string, CodexAgentFixture> = {
       )}\n`,
       "sum.ts": "export const sum = (left: number, right: number) => left - right\n",
       "sum.test.ts": [
-        'import { describe, expect, test } from "bun:test"',
+        'import { describe, expect, test } from "vite-plus/test"',
         'import { sum } from "./sum"',
         "",
         'describe("sum fixture", () => {',
@@ -341,7 +342,7 @@ export function fileChangeEscapesWorkspace(path: string, workspace: string): boo
 }
 
 async function runCommand(input: { args: string[]; cwd: string; timeoutMs?: number }): Promise<LocalCommandResult> {
-  const proc = Bun.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Runtime.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
   let timedOut = false
   const timer =
     input.timeoutMs === undefined
@@ -1010,7 +1011,7 @@ async function reportCodexEventChunk(input: {
  */
 export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexAgentRunResult> {
   const env = pylonAccountEnvironment(
-    input.env ?? (Bun.env as Record<string, string | undefined>),
+    input.env ?? (Runtime.env as Record<string, string | undefined>),
     input.account,
   )
   const sdk = (await import(CODEX_AGENT_SDK_PACKAGE)) as {
@@ -1651,7 +1652,7 @@ export async function executeCodexAgentAssignment(
   )
 
   const config = await loadCodexAgentConfig({ paths: { config: state.paths.config } })
-  const baseEnv = pylonAccountEnvironment(options.codexAgentProbe?.env ?? Bun.env, options.account)
+  const baseEnv = pylonAccountEnvironment(options.codexAgentProbe?.env ?? Runtime.env, options.account)
   const custodyReprime = await reprimePylonCodexAccountAuthFromCustody({
     account: options.account,
     ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
@@ -2185,7 +2186,7 @@ function skippedClaudeSecondPassContribution(reason: ClaudeSecondPassSkipReason)
 }
 
 async function runGitForClaudeSecondPass(args: string[], workspace: string): Promise<{ stdout: string; exitCode: number }> {
-  const proc = Bun.spawn(args, { cwd: workspace, stdout: "pipe", stderr: "pipe" })
+  const proc = Runtime.spawn(args, { cwd: workspace, stdout: "pipe", stderr: "pipe" })
   const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   return { stdout, exitCode }
 }
@@ -2378,7 +2379,7 @@ async function maybePublishAssignmentPullRequest(input: {
   if (!input.passed) return EMPTY_PULL_REQUEST_CONTRIBUTION
   const workspace = input.task.workspace
   if (workspace === undefined) return EMPTY_PULL_REQUEST_CONTRIBUTION
-  if (Bun.env.OPENAGENTS_PYLON_DISABLE_ASSIGNMENT_PR === "1") {
+  if (Runtime.env.OPENAGENTS_PYLON_DISABLE_ASSIGNMENT_PR === "1") {
     return {
       resultRefs: ["result.public.pylon.codex_agent_task.pull_request_disabled"],
       previewRefs: [],
@@ -2391,7 +2392,7 @@ async function maybePublishAssignmentPullRequest(input: {
   // fallback inside the publisher covers any failure. The kill switch disables
   // the extra model turn entirely.
   const generateTitleBody =
-    Bun.env.OPENAGENTS_PYLON_DISABLE_PR_TITLE_MODEL === "1"
+    Runtime.env.OPENAGENTS_PYLON_DISABLE_PR_TITLE_MODEL === "1"
       ? undefined
       : createOwnCapacityTitleBodyGenerator({
           cwd: input.materialized.workspace,

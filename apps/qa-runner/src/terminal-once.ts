@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // One-shot TERMINAL/TUI run with a REAL local PTY (no network).
 //
 // The terminal-surface analogue of run-once.ts: it spawns a command/TUI inside

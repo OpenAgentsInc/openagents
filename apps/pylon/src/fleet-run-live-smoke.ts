@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { validatePlanDagWorkSource, type PlanDagWorkUnit } from "./orchestration/work-planner.js"
@@ -423,7 +424,7 @@ export async function executeFleetRunSmoke(
   if (pylonRef === "") return failedResult(plan, ["armed smoke plan is missing pylon ref"])
 
   const now = options.now ?? (() => new Date())
-  const sleep = options.sleep ?? Bun.sleep
+  const sleep = options.sleep ?? Runtime.sleep
   const startedAt = now()
   const counterUrl = publicCounterUrl(plan.baseUrl)
   const beforeCounter = await fetchPublicKhalaTokensServed(counterUrl, options.fetch)
@@ -559,7 +560,7 @@ export async function readPylonKhalaCloseoutEvidence(
   plan: FleetRunSmokePlan,
 ): Promise<FleetRunSmokeCloseoutEvidence> {
   const env = cleanEnv(plan.managerEnv)
-  const proc = Bun.spawn([
+  const proc = Runtime.spawn([
     resolveBunExecutable(plan.managerEnv),
     "src/index.ts",
     "khala",

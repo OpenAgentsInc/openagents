@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -109,7 +110,7 @@ const ciFixingRunner: CodexAgentRunner = async (input) => {
  */
 export function ciHarness(lease: PylonAssignmentLease) {
   const retained: string[] = []
-  const server = Bun.serve({
+  const server = Runtime.serve({
     port: 0,
     async fetch(request) {
       const url = new URL(request.url)
@@ -245,7 +246,7 @@ export async function runCodexAgentTaskCiSmoke(): Promise<CodexAgentTaskSmokeRes
 export async function runCodexAgentTaskLiveSmoke(
   options: Pick<AssignmentClientOptions, "agentToken" | "baseUrl">,
 ): Promise<CodexAgentTaskSmokeResult> {
-  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Runtime.env)
   const run = await runNoSpendAssignment(summary, { ...options })
   const serialized = JSON.stringify("closeout" in run ? run.closeout : {})
   const redactionScan = { scannedRequestCount: 1, violations: scanRetainedProjection(serialized) }

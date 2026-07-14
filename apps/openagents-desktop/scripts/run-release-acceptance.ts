@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+import { Runtime } from "@openagentsinc/runtime-platform"
 /** Exact-candidate macOS update/rollback/reinstall acceptance without deployment. */
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -14,7 +15,7 @@ type Step = Readonly<{ step: string; ok: boolean; detail: string }>
 
 const argument = (name: string): string => {
   const prefix = `--${name}=`
-  const found = Bun.argv.slice(2).find(arg => arg.startsWith(prefix))?.slice(prefix.length).trim() ?? ""
+  const found = Runtime.argv.slice(2).find(arg => arg.startsWith(prefix))?.slice(prefix.length).trim() ?? ""
   if (found === "") throw new Error(`missing ${prefix}<value>`)
   return found
 }
@@ -45,7 +46,7 @@ const assert: (condition: unknown, message: string) => asserts condition = (cond
   if (!condition) throw new Error(message)
 }
 const command = (executable: string, args: string[]): string => {
-  const result = Bun.spawnSync([executable, ...args], { stdout: "pipe", stderr: "pipe" })
+  const result = Runtime.spawnSync([executable, ...args], { stdout: "pipe", stderr: "pipe" })
   if (result.exitCode !== 0) throw new Error(`${path.basename(executable)} failed`)
   return result.stdout.toString("utf8").trim()
 }
@@ -106,7 +107,7 @@ try {
     if (url === `${feedBase}/manifest.json`) return new Response(Buffer.from(publish.payloadBytes))
     if (url === `${feedBase}/manifest.sig.json`) return Response.json(publish.envelope)
     if (url === `${feedBase}/release.json`) return Response.json(release)
-    if (url === artifactUrl) return new Response(Bun.file(candidateDmg))
+    if (url === artifactUrl) return new Response(Buffer.from(await Runtime.file(candidateDmg).bytes()))
     return new Response("not found", { status: 404 })
   }
   record("signed-feed", `production-pinned manifest self-verified for ${candidateVersion}`)
@@ -176,7 +177,7 @@ try {
   record("diagnostics-export", "schema-valid public-safe owner-only diagnostic receipt written")
 
   rmSync(installedApp, { recursive: true, force: true })
-  assert(!Bun.file(path.join(installedApp, "Contents", "Info.plist")).size, "uninstall did not remove app")
+  assert(!(await Runtime.file(path.join(installedApp, "Contents", "Info.plist")).exists()), "uninstall did not remove app")
   record("uninstall", "reversible proof app removed")
   mountedCopy(candidateDmg, installedApp)
   verifyInstalled(candidateVersion)

@@ -4,7 +4,7 @@ import { join, resolve } from "node:path"
 
 import { MVP_SPEC, MVP_SUBJECT, makeFixtureRoot, repoRoot } from "./fixture.ts"
 
-const cli = resolve(import.meta.dir, "../src/cli.ts")
+const cli = resolve(import.meta.dirname, "../src/cli.ts")
 
 type CliResult = Readonly<{ exitCode: number; stdout: string; stderr: string }>
 

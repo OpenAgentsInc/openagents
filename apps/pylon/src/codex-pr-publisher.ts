@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { join, resolve } from "node:path"
@@ -179,7 +180,7 @@ async function defaultRunner(input: {
   stdin?: string
   timeoutMs?: number
 }): Promise<AssignmentPrCommandResult> {
-  const proc = Bun.spawn(input.args, {
+  const proc = Runtime.spawn(input.args, {
     cwd: input.cwd,
     env: input.env === undefined ? process.env : { ...process.env, ...input.env },
     stderr: "pipe",

@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
 import { chmod, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
@@ -82,7 +83,7 @@ const parseTar = (bytes: Uint8Array): Map<string, TarEntry> => {
 }
 
 const runGit = async (cwd: string, args: ReadonlyArray<string>): Promise<Uint8Array> => {
-  const process = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const process = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   const [stdout, exitCode] = await Promise.all([new Response(process.stdout).bytes(), process.exited])
   if (exitCode !== 0) throw new Error("local checkpoint repository restore failed")
   return Uint8Array.from(stdout)
@@ -207,7 +208,7 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
       const directory = operationDirectory(operation.operationRef)
       try {
         if (sha256(compressed) !== artifact.digest) throw new Error("checkpoint artifact digest is invalid")
-        tarBytes = Bun.zstdDecompressSync(compressed)
+        tarBytes = Runtime.zstdDecompressSync(compressed)
         entries = parseTar(tarBytes)
         const manifestEntry = entries.get("manifest.json")
         const bundleEntry = entries.get("repository.bundle")

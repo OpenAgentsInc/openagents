@@ -1,3 +1,4 @@
+import { Runtime } from "@openagentsinc/runtime-platform"
 /**
  * Release preflight (CUT-26, #8706) — the CI/release oracle set that must be
  * GREEN before any OpenAgents Desktop artifact is packaged, signed, or
@@ -272,10 +273,10 @@ export const checkNoSourceCheckoutPaths = (
 // CLI wrapper — gathers real inputs, prints the table, fails closed
 // ---------------------------------------------------------------------------
 
-const appRoot = path.resolve(import.meta.dir, "..")
+const appRoot = path.resolve(import.meta.dirname, "..")
 
 const git = (...args: Array<string>): string => {
-  const result = Bun.spawnSync(["git", ...args], { cwd: appRoot, stdout: "pipe", stderr: "pipe" })
+  const result = Runtime.spawnSync(["git", ...args], { cwd: appRoot, stdout: "pipe", stderr: "pipe" })
   if (result.exitCode !== 0) {
     throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString().trim()}`)
   }
@@ -344,7 +345,7 @@ export const runPreflight = (options: {
   ]
 }
 
-if (import.meta.main) {
+if (Runtime.isMain(import.meta.url)) {
   const args = process.argv.slice(2)
   const readFlag = (flag: string): string | null => {
     const index = args.indexOf(flag)

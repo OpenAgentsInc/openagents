@@ -14,7 +14,7 @@ import { join } from "node:path"
  *    icon (`clients/khala-mobile/assets/images/icon.png`), pinned by SHA-256.
  */
 
-const appRoot = join(import.meta.dir, "..")
+const appRoot = join(import.meta.dirname, "..")
 
 const appConfig = JSON.parse(
   readFileSync(join(appRoot, "app.json"), "utf8"),

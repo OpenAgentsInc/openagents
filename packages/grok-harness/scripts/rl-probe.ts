@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Live RL-1 probe: measure max concurrent free-CLI Grok workers.
  *

@@ -229,7 +229,7 @@ describe("@openagentsinc/forge-protocol", () => {
       },
       verification_command: {
         command_ref: "verification-command.forge.6751",
-        runner_ref: "forge.verification.runner.docker_bun.v0.1",
+        runner_ref: "forge.verification.runner.docker_node.v0.1",
         working_directory: ".",
         args: ["bun", "run", "check:deploy"],
         timeout_seconds: 1800,

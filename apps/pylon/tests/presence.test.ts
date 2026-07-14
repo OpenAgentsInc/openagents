@@ -26,8 +26,8 @@ import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 import { registerActiveCodingRun } from "../src/active-assignment-runs"
 import { PYLON_APPLE_FM_STATUS_SCHEMA, type PylonAppleFmStatusProjection } from "../src/node/apple-fm-status"
 
-const INDEX = join(import.meta.dir, "..", "src", "index.ts")
-const CWD = join(import.meta.dir, "..")
+const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
+const CWD = join(import.meta.dirname, "..")
 
 // Inject a deterministic wallet probe for heartbeat tests that exercise the
 // #5151 readiness path. Without one, heartbeats omit wallet readiness instead

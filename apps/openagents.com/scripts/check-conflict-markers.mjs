@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 // Guard: fail the deploy gate if any unresolved Git merge-conflict marker is
 // left in tracked source. A marker accidentally committed inside a TypeScript
