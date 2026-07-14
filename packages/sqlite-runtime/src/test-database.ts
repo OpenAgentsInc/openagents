@@ -2,8 +2,6 @@ import { createRequire } from "node:module"
 
 export type SqliteTestBinding = string | number | bigint | boolean | null | Uint8Array
 
-type Bindings = ReadonlyArray<SqliteTestBinding> | Readonly<Record<string, SqliteTestBinding>>
-
 interface StatementSync {
   run(...params: ReadonlyArray<unknown>): { readonly changes: number | bigint; readonly lastInsertRowid: number | bigint }
   get(...params: ReadonlyArray<unknown>): unknown
@@ -18,6 +16,19 @@ interface DatabaseSync {
 
 interface NodeSqlite {
   DatabaseSync: new (path: string, options?: { readonly readOnly?: boolean }) => DatabaseSync
+}
+
+interface BunSqliteDatabase {
+  exec(sql: string): void
+  query(sql: string): StatementSync
+  close(): void
+}
+
+interface BunSqlite {
+  Database: new (
+    path: string,
+    options?: { readonly create?: boolean; readonly readonly?: boolean },
+  ) => BunSqliteDatabase
 }
 
 const requireModule = createRequire(import.meta.url)
@@ -35,19 +46,38 @@ const normalizeParams = (params: ReadonlyArray<unknown>): ReadonlyArray<unknown>
     return normalize(value as SqliteTestBinding)
   })
 
-/** Stock-Node SQLite harness used by retained VP-3 suites. */
+/** Stock-Node SQLite harness with a temporary Bun fallback for pre-VP-4 hooks. */
 export class NodeTestDatabase {
   readonly #database: DatabaseSync
   readonly #statements = new Map<string, StatementSync>()
   #transactionDepth = 0
 
   constructor(path: string, options: { readonly create?: boolean; readonly readonly?: boolean } = {}) {
+    if (typeof process.versions.bun === "string") {
+      const { Database } = requireModule("bun:sqlite") as BunSqlite
+      const database = options.readonly === true
+        ? new Database(path, { readonly: true })
+        : options.create === true
+          ? new Database(path, { create: true })
+          : new Database(path)
+      this.#database = {
+        close: () => database.close(),
+        exec: sql => database.exec(sql),
+        prepare: sql => database.query(sql),
+      }
+      return
+    }
+
     const { DatabaseSync } = requireModule("node:sqlite") as NodeSqlite
     this.#database = new DatabaseSync(path, { readOnly: options.readonly ?? false })
   }
 
   exec(sql: string): void {
     this.#database.exec(sql)
+  }
+
+  run(sql: string, ...params: ReadonlyArray<SqliteTestBinding>): void {
+    this.#database.prepare(sql).run(...normalizeParams(params))
   }
 
   query<Row = Record<string, unknown>, Params extends Array<SqliteTestBinding> = Array<SqliteTestBinding>>(
@@ -62,8 +92,8 @@ export class NodeTestDatabase {
     }
   }
 
-  transaction<A extends ReadonlyArray<unknown>, B>(body: (...args: A) => B): (...args: A) => B {
-    return (...args) => {
+  transaction<A extends ReadonlyArray<unknown>, B>(body: (...args: A) => B): ((...args: A) => B) & { readonly immediate: (...args: A) => B } {
+    const execute = (...args: A): B => {
       const depth = this.#transactionDepth
       const savepoint = `vp3_test_${depth}`
       this.#database.exec(depth === 0 ? "BEGIN" : `SAVEPOINT ${savepoint}`)
@@ -83,6 +113,7 @@ export class NodeTestDatabase {
         throw error
       }
     }
+    return Object.assign(execute, { immediate: execute })
   }
 
   close(): void {

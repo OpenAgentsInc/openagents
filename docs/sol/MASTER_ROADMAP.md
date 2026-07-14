@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-14
-- Revision: 114
+- Revision: 115
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: active bounded Node/pnpm/Vite Plus cutover under #8777; the
   AssuranceSpec distribution program remains complete and no product-expansion
@@ -640,8 +640,8 @@ At this snapshot:
    [reconciliation/decommission receipt](./2026-07-14-node-pnpm-vite-plus-vp1-reconciliation-decommission-receipt.md).
    VP-2 #8796 is also closed with its
    [Node-runtime receipt](./2026-07-14-node-pnpm-vite-plus-vp2-node-runtime-receipt.md).
-   Execute VP-3 #8797 next, then atomic VP-4 #8798 (including #8772–#8774),
-   VP-5 #8799, and VP-6 #8800 in order.
+   VP-3 #8797 is complete. Execute atomic VP-4 #8798 next (including
+   #8772–#8774), then VP-5 #8799 and VP-6 #8800 in order.
 
 This is an infrastructure-retirement queue, not a successor product queue.
 The completed AssuranceSpec lane has no remaining owner action.

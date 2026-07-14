@@ -3,7 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { loadManifest, reduceKhalaHeadToHeadManifest } from "./reduce-head-to-head.mjs";
 
 const fixturePath = new URL(
-  "../../docs/inference/fixtures/khala-head-to-head-dry-run.v1.json",
+  "../../docs/khala/fixtures/khala-head-to-head-dry-run.v1.json",
   import.meta.url,
 );
 const M7_CONDUCTOR_PREFLIGHT_REF = "preflight.khala.m7.conductor.publishable.v0_1";

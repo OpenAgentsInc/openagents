@@ -8,7 +8,7 @@ const runScan = async (
   args: readonly string[],
 ): Promise<{ readonly exitCode: number; readonly stdout: string }> => {
   const proc = Runtime.spawn(
-    [process.execPath, "scripts/bun-api-perimeter-scan.ts", ...args],
+    [process.execPath, "--import", "tsx", "scripts/bun-api-perimeter-scan.ts", ...args],
     {
       cwd: process.cwd(),
       stderr: "pipe",

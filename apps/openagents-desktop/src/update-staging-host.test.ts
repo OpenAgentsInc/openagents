@@ -51,7 +51,7 @@ describe("Desktop signed update staging host", () => {
     const restarted = make()
     expect(restarted.snapshot()).toMatchObject({ phase: "staged", candidateVersion: "0.1.0-rc.6" })
     expect(await restarted.openInstaller()).toMatchObject({ phase: "staged" })
-    expect(opened[0]).toEndWith("OpenAgents-0.1.0-rc.6-arm64.dmg")
+    expect(opened[0]?.endsWith("OpenAgents-0.1.0-rc.6-arm64.dmg")).toBe(true)
     expect(JSON.stringify(restarted.snapshot())).not.toContain(h.artifactUrl)
     expect(JSON.stringify(restarted.snapshot())).not.toContain(h.root)
   })

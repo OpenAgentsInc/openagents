@@ -73,7 +73,7 @@ async function startStubNode(input: { port: number; token: string }): Promise<()
 }
 
 function runCli(args: string[], env: Record<string, string>) {
-  const proc = Runtime.spawn([process.execPath, CLI_ENTRY, ...args], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", CLI_ENTRY, ...args], {
     env: { ...process.env, ...env, PYLON_DISABLE_OPENCODE_STARTUP: "1" },
     stdout: "pipe",
     stderr: "pipe",
@@ -100,9 +100,8 @@ describe("status/doctor query a running node read-only (Bug 2: no bind conflict)
       expect(exitCode).toBe(0)
       const json = JSON.parse(stdout)
       expect(json.node.running).toBe(true)
-      // The live wallet read came back through the control API, read-only.
-      expect(json.node.wallet.daemonOnline).toBe(true)
-      expect(json.node.wallet.balanceSats).toBe(5_672)
+      // VP-1 retired wallet/payment projections from the MVP status surface.
+      expect(json.node).not.toHaveProperty("wallet")
     } finally {
       await close()
     }
@@ -130,7 +129,7 @@ describe("status/doctor query a running node read-only (Bug 2: no bind conflict)
       expect(json.home.path).toBe(home)
       expect(json.home.source).toBe("explicit_pylon_home")
       expect(json.node.running).toBe(true)
-      expect(json.node.wallet.daemonOnline).toBe(true)
+      expect(json.node).not.toHaveProperty("wallet")
     } finally {
       await close()
     }

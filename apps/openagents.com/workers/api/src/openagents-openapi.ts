@@ -17187,20 +17187,11 @@ const paths = (): JsonSchema => ({
 // path definition from re-advertising retired capability while the underlying
 // 410 tombstones remain stable for old clients.
 const retiredDiscoveryPathPattern =
-  /(?:^|[\/-])(?:balances?|billing|checkout|credits?|earnings?|labor(?:-earnings)?|marketplace|markets?|payments?|payouts?|revenue|rewards?|settlements?|sites?|spend|tips?|treasury|wallets?)(?:[\/-]|$)|paid-privacy|l402/i
-
-const isHistoricalReceiptRead = (path: string, pathItem: unknown): boolean => {
-  if (!/(?:^|[\/-])receipts?(?:[\/-]|$)/i.test(path)) return false
-  if (typeof pathItem !== 'object' || pathItem === null) return false
-
-  const methods = Object.keys(pathItem)
-  return methods.length === 1 && methods[0] === 'get'
-}
+  /(?:^|[\/-])(?:adjutant|balances?|billing|checkout|credits?|earnings?|labor(?:-earnings)?|marketplace|markets?|payments?|payouts?|revenue|rewards?|settled|settlements?|sites?|spend|tips?|treasury|wallets?|work-requests)(?:[\/-]|$)|paid-privacy|l402/i
 
 const activeOpenApiPaths = (): JsonSchema =>
   Object.fromEntries(
     Object.entries(paths()).filter(([path, pathItem]) => {
-      if (isHistoricalReceiptRead(path, pathItem)) return true
       if (retiredDiscoveryPathPattern.test(path)) return false
 
       const serialized = JSON.stringify(pathItem)

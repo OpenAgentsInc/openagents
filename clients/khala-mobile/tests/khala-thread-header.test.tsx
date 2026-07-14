@@ -21,7 +21,7 @@ import { act, create as createTestRenderer } from "react-test-renderer"
  * `accessibilityLabel`/`onPress`/`disabled` straight through, so the header's
  * own button-wiring is still exercised for real.
  */
-vi.vi.fn("../src/components/touchable-feedback", () => ({
+vi.mock("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -57,7 +57,7 @@ vi.vi.fn("../src/components/touchable-feedback", () => ({
 // which dereferences `globalThis.expo.EventEmitter` at module-evaluation time —
 // dead outside a native host. Same stand-in the composer mount test uses; no
 // real font rendering is needed for this header-structure test.
-vi.vi.fn("../src/theme/typography", () => ({
+vi.mock("../src/theme/typography", () => ({
   khalaMobileFontsToLoad: {},
   khalaMobileTextSizes: {
     lg: { fontSize: 20, lineHeight: 32 },

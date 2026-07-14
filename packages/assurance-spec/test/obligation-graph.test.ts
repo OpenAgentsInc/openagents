@@ -375,7 +375,7 @@ describe("CLI graph command", () => {
     args: ReadonlyArray<string>,
     cwd: string = repoRoot,
   ): Readonly<{ exitCode: number; stdout: string; stderr: string }> => {
-    const result = Runtime.spawnSync([process.execPath, cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+    const result = Runtime.spawnSync([process.execPath, "--import", "tsx", cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
     return {
       exitCode: result.exitCode,
       stdout: result.stdout.toString("utf8"),

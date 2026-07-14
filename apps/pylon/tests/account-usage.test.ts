@@ -46,7 +46,7 @@ async function withHome<T>(fn: (home: string) => Promise<T>) {
 }
 
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
-  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, ...args], {
     cwd: CWD,
     env,
     stderr: "pipe",

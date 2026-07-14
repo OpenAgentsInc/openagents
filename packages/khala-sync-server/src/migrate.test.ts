@@ -215,20 +215,20 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
     const script = path.join(import.meta.dirname, "..", "scripts", "migrate.ts")
 
     const dry = Runtime.spawnSync(
-      ["bun", script, "--dry-run", "--database-url", url],
+      [process.execPath, "--import", "tsx", script, "--dry-run", "--database-url", url],
       { stdout: "pipe", stderr: "pipe" },
     )
     expect(dry.exitCode).toBe(0)
     expect(dry.stdout.toString()).toContain("would apply      0001_khala_sync_core.sql")
 
-    const apply = Runtime.spawnSync([process.execPath, script, "--database-url", url], {
+    const apply = Runtime.spawnSync([process.execPath, "--import", "tsx", script, "--database-url", url], {
       stdout: "pipe",
       stderr: "pipe",
     })
     expect(apply.exitCode).toBe(0)
     expect(apply.stdout.toString()).toContain("applied          0001_khala_sync_core.sql")
 
-    const again = Runtime.spawnSync([process.execPath, script, "--database-url", url], {
+    const again = Runtime.spawnSync([process.execPath, "--import", "tsx", script, "--database-url", url], {
       stdout: "pipe",
       stderr: "pipe",
     })

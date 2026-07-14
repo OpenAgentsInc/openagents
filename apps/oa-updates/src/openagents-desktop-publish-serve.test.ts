@@ -103,10 +103,10 @@ describe("publish → seed → serve → client-verify (all fixture)", () => {
 
       // Client-side verification of the exact served bytes.
       const verified = verifySignedUpdateManifest(manifestBytes, envelope, clientPin, channel)
-      expect(verified.ok).toBeTrue()
+      expect(verified.ok).toBe(true)
       if (!verified.ok) throw new Error("unreachable")
       expect(verified.manifest.version).toBe(expectedVersion)
-      expect(verifyArtifactDigest(verified.manifest, artifactBytes)).toBeTrue()
+      expect(verifyArtifactDigest(verified.manifest, artifactBytes)).toBe(true)
 
       // release.json carries the transport pointer for the artifact.
       const releaseResponse = await server.fetch(

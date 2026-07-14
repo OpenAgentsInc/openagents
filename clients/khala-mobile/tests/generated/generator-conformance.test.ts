@@ -1,4 +1,4 @@
-import { Runtime } from "@openagentsinc/runtime-platform"
+import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -20,19 +20,20 @@ describe("QAM-3 generator conformance", () => {
   test("generate screen emits the full test/story/contract/Maestro/visual bundle with no manual authoring", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "khala-mobile-generate-"))
     try {
-      const proc = Runtime.spawn({
-        cmd: [process.execPath, "scripts/generate.ts", "screen", "Conformance Probe"],
-        cwd: mobileRoot,
-        env: {
-          ...process.env,
-          KHALA_MOBILE_GENERATE_OUT_DIR: tempRoot,
+      const proc = spawnSync(
+        "node",
+        ["--import", "tsx", "scripts/generate.ts", "screen", "Conformance Probe"],
+        {
+          cwd: mobileRoot,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            KHALA_MOBILE_GENERATE_OUT_DIR: tempRoot,
+          },
         },
-        stderr: "pipe",
-        stdout: "pipe",
-      })
-      const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()])
-      expect(stderr).toBe("")
-      expect(exitCode).toBe(0)
+      )
+      expect(proc.stderr).toBe("")
+      expect(proc.status).toBe(0)
 
       for (const path of [
         "src/screens/conformance-probe-screen.tsx",

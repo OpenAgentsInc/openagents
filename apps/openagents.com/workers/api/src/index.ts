@@ -10255,6 +10255,9 @@ const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
   bindingForEnv: env => env.KHALA_SYNC_DB,
 })
 
+const RetiredCapabilityRoutePattern =
+  /(?:^|[\/-])(?:adjutant|balances?|billing|checkout|credits?|markets?|marketplace|payments?|payouts?|settled|settlements?|sites?|tips?|treasury|wallets?|work-requests)(?:[\/-]|$)|paid-privacy|l402/i
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -13220,7 +13223,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
 
-])
+].filter(route => !RetiredCapabilityRoutePattern.test(route.path)))
 
 export const exactRoutePathManifest = exactRouteRegistry.paths
 

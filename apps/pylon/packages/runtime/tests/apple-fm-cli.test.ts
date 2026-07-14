@@ -188,6 +188,8 @@ describe("Probe CLI Apple FM commands", () => {
         "http://127.0.0.1:11439",
         "--path",
         "README.md",
+        "--root",
+        import.meta.dirname.replace(/\/tests$/, ""),
         "--prompt",
         "Use the read_file tool to inspect README.md.",
       ], {

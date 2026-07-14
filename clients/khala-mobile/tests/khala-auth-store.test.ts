@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test"
  */
 const store = new Map<string, string>()
 
-vi.vi.fn("expo-secure-store", () => ({
+vi.mock("expo-secure-store", () => ({
   deleteItemAsync: async (key: string) => {
     store.delete(key)
   },

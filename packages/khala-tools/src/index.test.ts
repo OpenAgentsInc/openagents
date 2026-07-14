@@ -291,8 +291,8 @@ describe("@openagentsinc/khala-tools foundation", () => {
     expect(result.redacted).toBe(true)
   })
 
-  test("loads the Rampart contextual model under Bun and redacts names by default", async () => {
-    const { result, revealed } = await runBunJson<{
+  test("loads the Rampart contextual model under Node and redacts names by default", async () => {
+    const { result, revealed } = await runNodeJson<{
       readonly result: KhalaPrivacyRedactionResult
       readonly revealed: string
     }>(
@@ -377,8 +377,8 @@ describe("@openagentsinc/khala-tools foundation", () => {
 
 const khalaToolsRoot = fileURLToPath(new URL("..", import.meta.url))
 
-async function runBunJson<T>(script: string, cwd: string): Promise<T> {
-  const proc = Runtime.spawn([process.execPath, "--eval", script], {
+async function runNodeJson<T>(script: string, cwd: string): Promise<T> {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", "--eval", script], {
     cwd,
     env: process.env,
     stderr: "pipe",
@@ -390,11 +390,11 @@ async function runBunJson<T>(script: string, cwd: string): Promise<T> {
     proc.exited,
   ])
   if (exitCode !== 0) {
-    throw new Error(`bun child process failed with exit ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`)
+    throw new Error(`node child process failed with exit ${exitCode}\nstdout:\n${stdout}\nstderr:\n${stderr}`)
   }
   const line = stdout.trim().split(/\n/u).filter(Boolean).at(-1)
   if (line === undefined) {
-    throw new Error(`bun child process produced no JSON\nstderr:\n${stderr}`)
+    throw new Error(`node child process produced no JSON\nstderr:\n${stderr}`)
   }
   return JSON.parse(line) as T
 }

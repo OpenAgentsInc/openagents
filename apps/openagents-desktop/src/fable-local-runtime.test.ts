@@ -232,7 +232,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(call.options.disallowedTools).not.toContain("AskUserQuestion")
     expect(call.options.skills).toEqual([])
     expect(call.options.settingSources).toEqual([])
-    expect(String(call.options.cwd)).toStartWith(harness.scratch)
+    expect(String(call.options.cwd).startsWith(harness.scratch)).toBe(true)
     const env = call.options.env as Record<string, string | undefined>
     expect(env.CLAUDE_CONFIG_DIR).toBe(join(harness.root, ".claude-pylon-b"))
     expect(env.CLAUDE_CONFIG_DIR).not.toBe(join(homedir(), ".claude"))
@@ -793,7 +793,7 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
     // first turn wrote. Different thread -> a different bounded workspace.
     expect(cwds[1]).toBe(cwds[0]!)
     expect(cwds[2]).not.toBe(cwds[0]!)
-    expect(cwds[0]!).toStartWith(join(harness.scratch, "threads"))
+    expect(cwds[0]!.startsWith(join(harness.scratch, "threads"))).toBe(true)
     expect(cwds[0]!).toContain(fableThreadWorkspaceSlug("thread-persist"))
     expect(existsSync(join(cwds[1]!, "greetings.md"))).toBe(true)
   })

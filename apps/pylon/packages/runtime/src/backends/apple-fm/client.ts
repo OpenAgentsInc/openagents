@@ -176,7 +176,9 @@ export function streamAppleFmSessionWithTools(
 ): Effect.Effect<AppleFmToolStreamResult, AppleFmBackendError> {
   return Effect.acquireUseRelease(
     Effect.sync(() => startAppleFmToolCallbackServer(input.toolSession)),
-    (callbackServer) => streamAppleFmSessionWithCallbackServer(profile, input, callbackServer, fetchImpl, observedAt),
+    (callbackServer) => Effect.promise(() => callbackServer.ready).pipe(
+      Effect.flatMap(() => streamAppleFmSessionWithCallbackServer(profile, input, callbackServer, fetchImpl, observedAt)),
+    ),
     (callbackServer) => Effect.sync(() => callbackServer.stop()),
   );
 }

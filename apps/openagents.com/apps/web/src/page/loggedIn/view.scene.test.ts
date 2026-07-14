@@ -950,7 +950,6 @@ describe('logged-in workroom sidebar', () => {
       ),
       Scene.expect(Scene.text('Workroom')).not.toExist(),
       Scene.expect(Scene.text('Dashboard')).toBeAbsent(),
-      Scene.expect(Scene.text('Billing')).toExist(),
       Scene.expect(Scene.text('Settings')).toExist(),
       Scene.expect(Scene.role('link', { name: 'Files' })).toHaveAttr(
         'href',

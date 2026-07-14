@@ -371,6 +371,7 @@ export type HarnessMcpServer = Readonly<{
   /** Full MCP endpoint URL injected into the harness config. */
   url: string
   credential: HarnessMcpSessionCredential
+  ready: Promise<void>
   stop: () => void
 }>
 
@@ -448,15 +449,15 @@ export function startHarnessMcpServer(input: StartHarnessMcpServerInput): Harnes
     idleTimeout: 60,
     port: input.port ?? 0,
   })
-  const origin = `http://127.0.0.1:${server.port}`
   return {
     credential,
     endpointPath: HARNESS_MCP_ENDPOINT_PATH,
-    origin,
+    get origin() { return `http://127.0.0.1:${server.port}` },
+    ready: server.ready,
     stop: () => {
       server.stop(true)
     },
-    url: `${origin}${HARNESS_MCP_ENDPOINT_PATH}`,
+    get url() { return `http://127.0.0.1:${server.port}${HARNESS_MCP_ENDPOINT_PATH}` },
   }
 }
 

@@ -135,7 +135,7 @@ describe("Agent Run ingest", () => {
   test("the CLI exposes agent-run ingest with machine-readable output", async () => {
     const fixture = workspace()
     const cli = resolve(import.meta.dirname, "../src/cli.ts")
-    const child = Runtime.spawn([process.execPath, cli, "agent-run", "ingest", fixture.runPath, "--root", fixture.root, "--json"], {
+    const child = Runtime.spawn([process.execPath, "--import", "tsx", cli, "agent-run", "ingest", fixture.runPath, "--root", fixture.root, "--json"], {
       stdout: "pipe",
       stderr: "pipe",
     })

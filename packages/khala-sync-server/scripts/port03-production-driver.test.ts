@@ -437,6 +437,6 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 production round-trip driver", () 
       managedContinuation,
       ...legs,
     })).rejects.toBeInstanceOf(PortableSessionProductionDriverError)
-    expect(moved).toBeFalse()
+    expect(moved).toBe(false)
   })
 })

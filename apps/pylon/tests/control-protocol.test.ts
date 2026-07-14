@@ -1339,23 +1339,23 @@ describe("control protocol", () => {
         adapter: "codex",
         repoRef,
         objective: "clean managed session",
-        verify: ["bun", "--version"],
+        verify: ["node", "--version"],
       })
       const dirty = await actions.spawn({
         type: "session.spawn",
         adapter: "codex",
         repoRef,
         objective: "dirty managed session",
-        verify: ["bun", "--version"],
+        verify: ["node", "--version"],
       })
 
       let list = await actions.list()
-      for (let attempt = 0; attempt < 20; attempt += 1) {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
         list = await actions.list()
         const cleanState = list.find((entry) => entry.sessionRef === clean.sessionRef)?.state
         const dirtyState = list.find((entry) => entry.sessionRef === dirty.sessionRef)?.state
         if (cleanState === "completed" && dirtyState === "completed") break
-        await sleep(10)
+        await sleep(20)
       }
       const cleanRow = list.find((entry) => entry.sessionRef === clean.sessionRef)
       const dirtyRow = list.find((entry) => entry.sessionRef === dirty.sessionRef)

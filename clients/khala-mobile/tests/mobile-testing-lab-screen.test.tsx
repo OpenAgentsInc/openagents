@@ -4,7 +4,7 @@ import { describe, expect, test } from "vite-plus/test"
 import { createElement } from "react"
 import { act, create, type ReactTestRenderer } from "react-test-renderer"
 
-import "./support/rn-test-environment"
+import "./support/rn-vitest-setup"
 
 type MobileTestingLabScreenState = "empty" | "error" | "loading" | "populated"
 const states: readonly MobileTestingLabScreenState[] = ["loading", "error", "empty", "populated"]

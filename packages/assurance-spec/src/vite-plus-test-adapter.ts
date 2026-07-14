@@ -8,10 +8,10 @@ import type { AssuranceExecutionUnit, AssuranceManifest } from "./manifest.ts"
 import { ASSURANCE_RECEIPT_FORMAT_VERSION, type AssuranceReceipt } from "./receipt.ts"
 import { sha256Digest } from "./tooling.ts"
 
-export const OPENAGENTS_BUN_TEST_ADAPTER_REF = "openagents.bun_test.v1" as const
-export const OPENAGENTS_BUN_TEST_ADAPTER_VERSION = "1.0.0" as const
+export const OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF = "openagents.vite_plus_test.v1" as const
+export const OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION = "1.0.0" as const
 
-export type BunTestAdapterResult = Readonly<{
+export type VitePlusTestAdapterResult = Readonly<{
   receipt: AssuranceReceipt
   receiptBytes: string
   receiptDigest: string
@@ -22,11 +22,11 @@ export type BunTestAdapterResult = Readonly<{
   exitCode: number | null
 }>
 
-export class BunTestAdapterError extends Error {
+export class VitePlusTestAdapterError extends Error {
   readonly code: string
   constructor(code: string, message: string) {
     super(message)
-    this.name = "BunTestAdapterError"
+    this.name = "VitePlusTestAdapterError"
     this.code = code
   }
 }
@@ -38,7 +38,7 @@ const xmlDecode = (value: string): string => value
   .replaceAll("&gt;", ">")
   .replaceAll("&amp;", "&")
 
-export const inspectBunJUnit = (xml: string): Readonly<{
+export const inspectVitePlusJUnit = (xml: string): Readonly<{
   total: number
   skipped: number
   failed: number
@@ -64,15 +64,15 @@ export const inspectBunJUnit = (xml: string): Readonly<{
 }
 
 const expectedTestName = (argv: ReadonlyArray<string>): string => {
-  const index = argv.indexOf("--test-name-pattern")
+  const index = argv.indexOf("--testNamePattern")
   const value = index < 0 ? undefined : argv[index + 1]
   if (value === undefined || value.trim() === "") {
-    throw new BunTestAdapterError("missing_test_name", "Bun execution units require one exact --test-name-pattern.")
+    throw new VitePlusTestAdapterError("missing_test_name", "Vite Plus execution units require one exact --testNamePattern.")
   }
   return value
 }
 
-export const executeBunTestUnit = (input: Readonly<{
+export const executeVitePlusTestUnit = (input: Readonly<{
   workspaceRoot: string
   runRoot: string
   manifest: AssuranceManifest
@@ -82,27 +82,27 @@ export const executeBunTestUnit = (input: Readonly<{
   producerRef: string
   reviewerRef: string
   sourceDigest: string
-  bunExecutable?: string
-}>): BunTestAdapterResult => {
-  if (input.unit.adapter_ref !== OPENAGENTS_BUN_TEST_ADAPTER_REF) {
-    throw new BunTestAdapterError("adapter_ref_mismatch", "Execution unit is not locked to openagents.bun_test.v1.")
+  vitePlusExecutable?: string
+}>): VitePlusTestAdapterResult => {
+  if (input.unit.adapter_ref !== OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF) {
+    throw new VitePlusTestAdapterError("adapter_ref_mismatch", "Execution unit is not locked to openagents.vite_plus_test.v1.")
   }
   if (input.unit.environment_ref !== input.environment.profile_id) {
-    throw new BunTestAdapterError("environment_ref_mismatch", "Execution unit and Environment Profile differ.")
+    throw new VitePlusTestAdapterError("environment_ref_mismatch", "Execution unit and Environment Profile differ.")
   }
-  if (!input.environment.capabilities.includes("bun_test") || !input.environment.capabilities.includes("junit")) {
-    throw new BunTestAdapterError("missing_environment_capability", "Environment lacks bun_test or junit capability.")
+  if (!input.environment.capabilities.includes("vite_plus_test") || !input.environment.capabilities.includes("junit")) {
+    throw new VitePlusTestAdapterError("missing_environment_capability", "Environment lacks vite_plus_test or junit capability.")
   }
   if (!input.environment.forbidden_actions.includes("network")) {
-    throw new BunTestAdapterError("environment_network_not_forbidden", "Local fixture environment must forbid network access.")
+    throw new VitePlusTestAdapterError("environment_network_not_forbidden", "Local fixture environment must forbid network access.")
   }
-  if (input.unit.argv[0] !== "bun" || input.unit.argv[1] !== "test") {
-    throw new BunTestAdapterError("invalid_bun_argv", "Adapter accepts only explicit bun test argv.")
+  if (input.unit.argv[0] !== "vp" || input.unit.argv[1] !== "test") {
+    throw new VitePlusTestAdapterError("invalid_vite_plus_argv", "Adapter accepts only explicit vp test argv.")
   }
   const testName = expectedTestName(input.unit.argv)
   const nativeReportRef = input.unit.artifact_slots[0]
   if (nativeReportRef === undefined || nativeReportRef.startsWith("/") || nativeReportRef.includes("..")) {
-    throw new BunTestAdapterError("invalid_artifact_slot", "Execution unit requires one safe run-relative JUnit slot.")
+    throw new VitePlusTestAdapterError("invalid_artifact_slot", "Execution unit requires one safe run-relative JUnit slot.")
   }
   const workspaceRoot = resolve(input.workspaceRoot)
   const runRoot = resolve(input.runRoot)
@@ -111,8 +111,8 @@ export const executeBunTestUnit = (input: Readonly<{
   const stderrPath = resolve(runRoot, `${input.unit.role}.stderr.txt`)
   mkdirSync(dirname(nativeReportPath), { recursive: true })
 
-  const argv = [...input.unit.argv.slice(1), "--reporter=junit", "--reporter-outfile", nativeReportPath]
-  const result = spawnSync(input.bunExecutable ?? process.execPath, argv, {
+  const argv = [...input.unit.argv.slice(1), "--run", "--reporter=junit", "--outputFile", nativeReportPath]
+  const result = spawnSync(input.vitePlusExecutable ?? "vp", argv, {
     cwd: workspaceRoot,
     encoding: "utf8",
     env: {
@@ -134,8 +134,11 @@ export const executeBunTestUnit = (input: Readonly<{
   } catch {
     // Partial stdout/stderr remains retained; missing JUnit is never green.
   }
-  const inspection = inspectBunJUnit(nativeBytes)
-  const selectedExactlyOne = inspection.unskippedNames.length === 1 && inspection.unskippedNames[0] === testName
+  const inspection = inspectVitePlusJUnit(nativeBytes)
+  const selectedName = inspection.unskippedNames[0]
+  const selectedExactlyOne = inspection.unskippedNames.length === 1 && (
+    selectedName === testName || selectedName?.endsWith(` > ${testName}`) === true
+  )
   const oraclePassed = result.status === 0 && inspection.failed === 0
   const oracleRefuted = result.status !== null && result.status !== 0 && inspection.failed > 0
   const infrastructureReady = nativeBytes !== "" && selectedExactlyOne && (oraclePassed || oracleRefuted)
@@ -146,7 +149,7 @@ export const executeBunTestUnit = (input: Readonly<{
       : input.unit.expected_observation === "CONFIRMED" ? "REFUTED" as const : "CONFIRMED" as const
   const criterionRefs = input.manifest.obligation_graph.find((entry) =>
     entry.obligation_id === input.unit.obligation_id)?.criterion_refs ?? []
-  const commandDigest = sha256Digest(JSON.stringify({ argv: input.unit.argv, adapter: OPENAGENTS_BUN_TEST_ADAPTER_REF }))
+  const commandDigest = sha256Digest(JSON.stringify({ argv: input.unit.argv, adapter: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF }))
   const nativeDigest = sha256Digest(nativeBytes)
   const receiptSeed = {
     manifest_digest: input.manifestDigest,

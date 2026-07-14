@@ -2,7 +2,6 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { plugin } from "bun"
 import { MemoryStreamStore } from "@openagentsinc/durable-stream"
 import { afterEach, describe, expect, test } from "vite-plus/test"
 
@@ -27,28 +26,6 @@ import type {
   PylonApiRegistrationRecord,
   PylonApiStore,
 } from "../../openagents.com/workers/api/src/pylon-api"
-
-// The Worker modules pulled into this E2E test transitively import
-// `effect-cf`, which imports Cloudflare's virtual `cloudflare:workers` module.
-// Bun's local test runtime does not provide that module, so keep the same
-// test-only stub pattern used by `security-adversarial-harness.test.ts` and
-// load Worker modules dynamically after the stub is registered.
-plugin({
-  name: "cloudflare-workers-test-stub",
-  setup(build) {
-    build.module("cloudflare:workers", () => ({
-      exports: {
-        DurableObject: class {},
-        RpcStub: class {},
-        RpcTarget: class {},
-        WorkerEntrypoint: class {},
-        WorkflowEntrypoint: class {},
-        env: {},
-      },
-      loader: "object",
-    }))
-  },
-})
 
 const {
   khalaDurableRequestIsLinkedToPrincipal,
@@ -275,7 +252,7 @@ const json = (payload: unknown, init: ResponseInit = {}) =>
     status: init.status,
   })
 
-const makeOpenAgentsFixtureServer = (input: {
+const makeOpenAgentsFixtureServer = async (input: {
   agentStore: AgentRegistrationStore
   durableStores: Map<string, MemoryStreamStore>
   ids?: string[]
@@ -571,7 +548,7 @@ describe("Khala MCP end-to-end smoke", () => {
       const agentStore = makeAgentStore()
       const pylonStore = makePylonStore([registration(state.identity.pylonRef)])
       const durableStores = new Map<string, MemoryStreamStore>()
-      const fixture = makeOpenAgentsFixtureServer({
+      const fixture = await makeOpenAgentsFixtureServer({
         agentStore,
         durableStores,
         pylonStore,
@@ -713,7 +690,7 @@ describe("Khala MCP end-to-end smoke", () => {
           ],
         }),
       ])
-      const fixture = makeOpenAgentsFixtureServer({
+      const fixture = await makeOpenAgentsFixtureServer({
         agentStore,
         durableStores: new Map<string, MemoryStreamStore>(),
         ids: [

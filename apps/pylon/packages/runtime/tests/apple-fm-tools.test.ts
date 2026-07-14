@@ -42,6 +42,7 @@ describe("Apple FM tool callback session", () => {
       now: new Date("2026-06-07T00:00:00.000Z"),
     });
     const server = startAppleFmToolCallbackServer(session);
+    await server.ready;
 
     try {
       const response = await fetch(server.callbackUrl, {
@@ -80,6 +81,7 @@ describe("Apple FM tool callback session", () => {
       now: new Date("2026-06-07T00:00:00.000Z"),
     });
     const server = startAppleFmToolCallbackServer(session);
+    await server.ready;
 
     try {
       const response = await fetch(server.callbackUrl, {

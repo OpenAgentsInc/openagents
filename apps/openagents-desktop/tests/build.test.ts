@@ -18,7 +18,7 @@ describe("openagents-desktop build", () => {
     // Run the real build in its own process with the app as cwd — module
     // resolution for the vendored EN workspace packages is cwd-sensitive
     // when Runtime.build runs inside `bun test` from the repo root.
-    const result = Runtime.spawnSync([process.execPath, "scripts/build.ts"], {
+    const result = Runtime.spawnSync(["node", "--import", "tsx", "scripts/build.ts"], {
       cwd: appRoot,
       stdout: "pipe",
       stderr: "pipe",

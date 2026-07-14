@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 import { routeSharedAgentSurface } from './server'
 
@@ -41,15 +41,9 @@ describe('Start shared agent surfaces', () => {
     expect(body.host.displayName).toBe('OpenAgents')
   })
 
-  test('serves robots, sitemap, and llms from the shared Worker helpers', async () => {
-    const robots = await routeSharedAgentSurface(request('/robots.txt'))
-    const sitemap = await routeSharedAgentSurface(request('/sitemap.xml'))
+  test('serves llms from the shared Worker helpers', async () => {
     const llms = await routeSharedAgentSurface(request('/llms.txt'))
 
-    expect(await robots?.text()).toContain('Sitemap: https://openagents.com/sitemap.xml')
-    expect(await sitemap?.text()).toContain(
-      '<loc>https://openagents.com/.well-known/mcp.json</loc>',
-    )
     expect(await llms?.text()).toContain('openagents/khala')
   })
 

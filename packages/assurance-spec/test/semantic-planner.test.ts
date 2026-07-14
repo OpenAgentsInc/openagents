@@ -14,7 +14,7 @@ import {
   type SemanticPlannerOutput,
 } from "../src/index.ts"
 
-const mvpPath = resolve(import.meta.dir, "../../../docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
+const mvpPath = resolve(import.meta.dirname, "../../../docs/mvp/openagents-codex-workroom-mvp.product-spec.md")
 const subjectPath = "docs/mvp/openagents-codex-workroom-mvp.product-spec.md"
 const acceptedSubject: ProductSpecSubject = {
   profile: "openagents_executable_v0.1_exact_document",

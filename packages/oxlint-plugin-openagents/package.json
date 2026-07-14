@@ -1,0 +1,21 @@
+{
+  "name": "@openagentsinc/oxlint-plugin-openagents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test --run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@oxlint/plugins": "1.68.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "catalog:",
+    "vite-plus": "0.2.4"
+  }
+}

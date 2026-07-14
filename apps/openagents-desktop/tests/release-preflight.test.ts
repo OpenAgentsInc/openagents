@@ -159,7 +159,7 @@ describe("real artifact sweep", () => {
   test("the actual built dist/ carries no updater remnants, legacy UI, or checkout paths", () => {
     const dist = path.join(appRoot, "dist")
     if (!existsSync(path.join(dist, "main.js"))) {
-      const result = Runtime.spawnSync([process.execPath, "scripts/build.ts"], {
+      const result = Runtime.spawnSync([process.execPath, "--import", "tsx", "scripts/build.ts"], {
         cwd: appRoot,
         stdout: "pipe",
         stderr: "pipe",

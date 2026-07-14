@@ -25,7 +25,7 @@ describe("Khala mobile OTA and build policy", () => {
   test("publish script no longer points at retired AutopilotRemoteControl", async () => {
     const script = await readFile(
       new URL("../../../apps/oa-updates/scripts/publish-ota.sh", import.meta.url),
-    , "utf8")
+    "utf8")
 
     expect(script).toContain("clients/khala-mobile")
     expect(script).toContain("OA_MOBILE_PLATFORM")

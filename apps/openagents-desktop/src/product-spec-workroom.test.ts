@@ -222,7 +222,7 @@ describe("ProductSpec workroom authority", () => {
     expect(evidenced.value.plan.packets[0]?.state).toBe("evidence_present")
     expect(evidenced.value.plan.packets[0]?.evidenceProducerRef).toBe("agent.root")
     const evidenceReceiptRef = evidenced.value.plan.packets[0]?.evidenceReceipts[0]?.receiptRef
-    expect(evidenceReceiptRef).toStartWith("receipt.evidence.")
+    expect(evidenceReceiptRef.startsWith("receipt.evidence.")).toBe(true)
     if (evidenceReceiptRef === undefined) return
 
     expect(restarted.verifyEvidence({

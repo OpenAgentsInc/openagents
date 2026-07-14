@@ -299,7 +299,6 @@ describe('Artanis public report', () => {
         'blocker.public.pylon_v0_2.runtime_smoke_missing',
         'blocker.public.pylon_v0_2.eligibility_telemetry_missing',
         'blocker.public.pylon_v0_2.accepted_work_proof_missing',
-        'blocker.mdk.hosted_programmatic_payouts_disabled',
         'blocker.public.artanis.dispatch_authority_not_granted',
         'blocker.public.artanis.forum_auto_publish_not_granted',
         'blocker.public.artanis.provider_mutation_not_granted',
@@ -426,8 +425,6 @@ describe('Artanis public report', () => {
         'receipt.public.artanis.tick_closeout.gepa_status_projection',
         'receipt_projection.public.forum_reward.alice_to_ben',
         'receipt_projection.public.forum_reward.ben_to_alice',
-        'receipt.nexus.issue_438.settlement.issue_438_artanis_1780822221',
-        'receipt.nexus_pylon.settlement.artanis_mdk_bridge_8b378373002501f3e896dcd3',
       ]),
     )
     expect(report.publicCaveatRefs).toEqual(
@@ -435,7 +432,6 @@ describe('Artanis public report', () => {
         'caveat.public.retained_smoke_not_public_score',
         'caveat.public.pylon_work_unpaid_smoke_no_settlement_claim',
         'caveat.public.gepa_text_optimization_not_model_training',
-        'caveat.mdk_agent_wallet.local_bridge_not_hosted_direct_payout',
       ]),
     )
     expect(artanisPublicReportHasPrivateMaterial(report)).toBe(false)

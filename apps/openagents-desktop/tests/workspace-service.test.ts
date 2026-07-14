@@ -828,7 +828,7 @@ describe("Desktop bounded workspace service", () => {
     started[1]!.resolve(currentPage)
     expect(await current.result).toEqual(currentPage)
     const cached = workspace.search({ query: "needle", mode: "content", limit: 12 })
-    expect(cached.taskRef).toStartWith("workspace.search.cache.")
+    expect(cached.taskRef.startsWith("workspace.search.cache.")).toBe(true)
     expect(await cached.result).toEqual(currentPage)
     expect(started).toHaveLength(2)
 

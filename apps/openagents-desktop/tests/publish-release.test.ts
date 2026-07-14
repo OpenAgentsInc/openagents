@@ -72,7 +72,7 @@ describe("release-publish core", () => {
     const publish = publishOnce(null, "0.1.0-rc.1")
     const verified = verifySignedUpdateManifest(publish.payloadBytes, publish.envelope, fixturePin, "rc")
     expect(verified).toEqual({ ok: true, manifest: publish.manifest })
-    expect(verifyArtifactDigest(publish.manifest, artifactBytes)).toBeTrue()
+    expect(verifyArtifactDigest(publish.manifest, artifactBytes)).toBe(true)
     expect(publish.manifestFileName).toBe("manifest-rc-0.1.0-rc.1.json")
     expect(publish.signatureFileName).toBe("manifest-rc-0.1.0-rc.1.sig.json")
     expect(publish.descriptorEntry).toEqual({
@@ -239,9 +239,9 @@ describe("publish-release CLI (fixture dist dir, fixture key)", () => {
       await readFile(path.join(distDir, descriptor1!.releases[0]!.signaturePath), "utf8"),
     ) as unknown
     const verified1 = verifySignedUpdateManifest(manifestBytes1, envelope1, fixturePin, "rc")
-    expect(verified1.ok).toBeTrue()
+    expect(verified1.ok).toBe(true)
     if (!verified1.ok) throw new Error("unreachable")
-    expect(verifyArtifactDigest(verified1.manifest, artifactBytes)).toBeTrue()
+    expect(verifyArtifactDigest(verified1.manifest, artifactBytes)).toBe(true)
 
     // Monotonic second rc publish succeeds and replaces the rc entry…
     const second = runCli([

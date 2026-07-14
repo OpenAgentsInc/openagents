@@ -27,7 +27,7 @@ const valueAfter = (args: string[], flag: string): string => {
 }
 
 describe("forge Docker verification runner", () => {
-  test("plans no-network read-only Docker execution for bun verification", () => {
+  test("plans no-network read-only Docker execution for Node verification", () => {
     const plan = planForgeDockerVerificationCommand({
       workspacePath,
       command: command(),
@@ -61,8 +61,8 @@ describe("forge Docker verification runner", () => {
     )
     expect(plan.dockerArgs.slice(-4)).toEqual([
       "node:24.13.1-bookworm-slim",
-      "bun",
-      "test",
+      "node",
+      "--test",
       "src/index.test.ts",
     ])
     expect(plan.dockerArgs).not.toContain("--privileged")

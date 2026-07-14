@@ -258,7 +258,7 @@ test("preserves tracked deletions as absence from the post-image", async () => {
   const files = tarFiles(Runtime.zstdDecompressSync(artifact.bytes))
   const manifest = JSON.parse(new TextDecoder().decode(files.get("manifest.json")))
   expect(manifest.files.map((file: { path: string }) => file.path)).toEqual(["scratch.txt"])
-  expect(files.has("post-image/tracked.txt")).toBeFalse()
+  expect(files.has("post-image/tracked.txt")).toBe(false)
 })
 
 test("preserves bounded relative symlinks and rejects escaping links", async () => {

@@ -142,7 +142,8 @@ export function ciHarness(lease: PylonAssignmentLease) {
     },
   })
   return {
-    baseUrl: `http://127.0.0.1:${server.port}`,
+    get baseUrl() { return `http://127.0.0.1:${server.port}` },
+    ready: server.ready,
     retained,
     stop: () => server.stop(true),
   }
@@ -189,6 +190,7 @@ export async function runCodexAgentTaskCiSmoke(): Promise<CodexAgentTaskSmokeRes
   const home = await mkdtemp(join(tmpdir(), "pylon-codex-agent-smoke-"))
   const lease = codexAgentSmokeLease()
   const harness = ciHarness(lease)
+  await harness.ready
   try {
     const summary = createBootstrapSummary(
       parseBootstrapArgs(["--display-name", "Codex Agent Smoke"]),

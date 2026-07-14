@@ -71,19 +71,21 @@ import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 // while adding a second, separate reanimated mock in
 // tests/repo-picker-screen.test.tsx for the arcade-fidelity audit's list
 // stagger — see that file for the twin fix).
-const reanimatedMock = () => ({
-  default: {
-    View: RNView,
-    createAnimatedComponent: (Component: unknown) => Component
-  },
-  useAnimatedStyle: (factory: () => unknown) => factory(),
-  useDerivedValue: (factory: () => unknown) => ({ value: factory() }),
-  useSharedValue: (initial: unknown) => ({ value: initial }),
-  withTiming: (toValue: unknown) => toValue
+vi.mock("react-native-reanimated", async () => {
+  const { View } = await import("react-native")
+  return {
+    default: {
+      View,
+      createAnimatedComponent: (Component: unknown) => Component
+    },
+    useAnimatedStyle: (factory: () => unknown) => factory(),
+    useDerivedValue: (factory: () => unknown) => ({ value: factory() }),
+    useSharedValue: (initial: unknown) => ({ value: initial }),
+    withTiming: (toValue: unknown) => toValue
+  }
 })
-vi.vi.fn("react-native-reanimated", reanimatedMock)
 
-vi.vi.fn("../src/components/arwes-button", () => ({
+vi.mock("../src/components/arwes-button", () => ({
   ArwesButton: ({
     accessibilityLabel,
     children,
@@ -102,12 +104,12 @@ vi.vi.fn("../src/components/arwes-button", () => ({
     )
 }))
 
-vi.vi.fn("../src/components/background-gradient", () => ({
+vi.mock("../src/components/background-gradient", () => ({
   BackgroundGradient: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("BackgroundGradient", null, children)
 }))
 
-vi.vi.fn("../src/components/activity-indicator", () => ({
+vi.mock("../src/components/activity-indicator", () => ({
   ActivityIndicator: () => React.createElement("ActivityIndicator", null)
 }))
 
@@ -118,7 +120,7 @@ vi.vi.fn("../src/components/activity-indicator", () => ({
 // problem as Reanimated above. Same mock shape as
 // `tests/khala-ui-primitives.test.tsx` / `tests/repo-picker-screen.test.tsx`
 // — kept in sync so all three files' mocks are compatible, not conflicting.
-vi.vi.fn("../src/components/touchable-feedback", () => ({
+vi.mock("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -157,7 +159,7 @@ vi.vi.fn("../src/components/touchable-feedback", () => ({
 // real Expo native host. No real device/simulator equivalent is needed for
 // THIS test's purpose (composer state/render/effect logic, not font
 // rendering), so the font-name lookup is stood in with plain strings.
-vi.vi.fn("../src/theme/typography", () => ({
+vi.mock("../src/theme/typography", () => ({
   khalaMobileFontsToLoad: {},
   khalaMobileTextSizes: {
     lg: { fontSize: 20, lineHeight: 32 },
@@ -184,7 +186,7 @@ vi.vi.fn("../src/theme/typography", () => ({
 const pushToTalkAvailability: { status: "available" | "denied" | "unavailable"; reason?: string } = {
   status: "unavailable"
 }
-vi.vi.fn("../src/native/modules", () => ({
+vi.mock("../src/native/modules", () => ({
   khalaNativeModules: {
     pushToTalkStt: {
       getAvailabilityAsync: () => Promise.resolve(pushToTalkAvailability),
@@ -194,7 +196,7 @@ vi.vi.fn("../src/native/modules", () => ({
   }
 }))
 
-vi.vi.fn("../src/auth/khala-auth-context", () => ({
+vi.mock("../src/auth/khala-auth-context", () => ({
   useKhalaAuth: () => ({
     baseUrl: "https://openagents.test",
     ownerUserId: "user_test",
@@ -204,7 +206,7 @@ vi.vi.fn("../src/auth/khala-auth-context", () => ({
 }))
 
 export const registerForPushNotificationsAsyncMock = vi.fn(() => Promise.resolve({ ok: true, deviceId: "device_test" }))
-vi.vi.fn("../src/push/push-notifications-client", () => ({
+vi.mock("../src/push/push-notifications-client", () => ({
   registerForPushNotificationsAsync: registerForPushNotificationsAsyncMock
 }))
 

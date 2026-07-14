@@ -380,8 +380,8 @@ describe.skipIf(!hasLocalPostgres())("outbox writer against local Postgres", () 
         `
       }),
     ).rejects.toMatchObject({
-      _tag: "KhalaSyncStorageError",
-      reason: "constraint_violation",
+      code: "23514",
+      constraint_name: "khala_sync_changelog_post_image_shape",
     })
     // The whole transaction rolled back — counter included.
     expect(await lastVersion(scope)).toBe(0)

@@ -148,6 +148,7 @@ export type LiveHubServer = Readonly<{
   server: Server<SocketData>
   service: LiveHubService
   port: number
+  ready: Promise<void>
   stop: () => Promise<void>
 }>
 
@@ -379,7 +380,15 @@ export const startLiveHubServer = (
       `(rebuild ${sql === undefined ? "disabled" : `enabled, ${rebuildVersions} versions`})`,
   )
 
-  return { server, service, port: server.port ?? config.port ?? 8080, stop }
+  return {
+    server,
+    service,
+    get port() {
+      return server.port ?? config.port ?? 8080
+    },
+    ready: server.ready,
+    stop,
+  }
 }
 
 if (Runtime.isMain(import.meta.url)) {

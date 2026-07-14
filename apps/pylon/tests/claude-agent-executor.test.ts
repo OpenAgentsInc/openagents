@@ -77,8 +77,8 @@ const gitCheckoutCodingAssignment = {
       visibility: "public",
     },
     verificationCommand: {
-      args: ["bun", "test", "sum.test.ts"],
-      commandRef: "command.public.autopilot_coder.bun_test_sum",
+      args: ["vp", "test", "sum.test.ts", "--globals", "--run"],
+      commandRef: "command.public.autopilot_coder.vite_plus_test_sum",
     },
   },
 }
@@ -125,13 +125,12 @@ const checkoutRunner: ClaudeAgentCheckoutRunner = async (workspace) => {
   await mkdir(workspace, { recursive: true })
   await writeFile(
     join(workspace, "package.json"),
-    `${JSON.stringify({ private: true, scripts: { test: "bun test sum.test.ts" }, type: "module" }, null, 2)}\n`,
+    `${JSON.stringify({ private: true, scripts: { test: "vp test sum.test.ts --globals --run" }, type: "module" }, null, 2)}\n`,
   )
   await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left - right\n")
   await writeFile(
     join(workspace, "sum.test.ts"),
     [
-      'import { describe, expect, test, vi } from "vite-plus/test"',
       'import { sum } from "./sum"',
       "",
       'describe("sum checkout", () => {',
@@ -196,7 +195,7 @@ describe("claude agent task recognition", () => {
   })
 
   test("preserves the SDK oauth_org_not_allowed code when the iterator throws after its error result", async () => {
-    vi.vi.fn(CLAUDE_AGENT_SDK_PACKAGE, () => ({
+    vi.doMock(CLAUDE_AGENT_SDK_PACKAGE, () => ({
       query: () => (async function* () {
         yield {
           type: "system",
@@ -246,7 +245,7 @@ describe("claude agent task recognition", () => {
 
   test("forwards canUseTool only when an explicit supervised controller is injected", async () => {
     const captured: Array<Record<string, unknown>> = []
-    vi.vi.fn(CLAUDE_AGENT_SDK_PACKAGE, () => ({
+    vi.doMock(CLAUDE_AGENT_SDK_PACKAGE, () => ({
       query: ({ options }: { options: Record<string, unknown> }) => {
         captured.push(options)
         return (async function* () {
@@ -551,7 +550,7 @@ describe("claude agent task recognition", () => {
       let fixedText: string | null = null
       const observingRunner: ClaudeAgentRunner = async (input) => {
         workspaceDir = input.cwd
-        expect(input.instructions).toContain("command.public.autopilot_coder.bun_test_sum")
+        expect(input.instructions).toContain("command.public.autopilot_coder.vite_plus_test_sum")
         expect(input.instructions).toContain("Repair the public sum fixture.")
         expect(input.allowedTools).toEqual(["Edit", "Read", "Bash"])
         const result = await fixingRunner(input)

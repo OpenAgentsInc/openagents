@@ -1,8 +1,8 @@
-// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`AS-L2 deterministic compiler identical admitted inputs produce byte-identical golden-ready manifests 1`] = `
+exports[`AS-L2 deterministic compiler > identical admitted inputs produce byte-identical golden-ready manifests 1`] = `
 "{
-  "adapter_lock_digest": "sha256:12a6caede9e1b16cfa123154e418bb12dcbff339072f5f3884740cf930a44548",
+  "adapter_lock_digest": "sha256:f5a9b2f161e91f88ce9c40cfcb321f497b81eed7273db0248d31ff1fc22338b7",
   "admission": {
     "digest": "sha256:4b077bd605a189c2864800628956e23b9ede309a6cb4b537d8141ca727b3a21a",
     "ref": "admission.mvp.full.1",
@@ -20,7 +20,7 @@ exports[`AS-L2 deterministic compiler identical admitted inputs produce byte-ide
   },
   "do_not_edit": true,
   "environment": {
-    "digest": "sha256:b3ebc5be6901d9800475bcfe32f9aa676164a9c2737275737210d555a957a2a7",
+    "digest": "sha256:66716ac0535ce6cfa9dab788b94ed59cae4b603e25618bb4e2d208be8c4ef370",
     "profile_id": "ENV-OA-LOCAL-BUN-1",
     "revision": 1
   },
@@ -31,12 +31,12 @@ exports[`AS-L2 deterministic compiler identical admitted inputs produce byte-ide
   ],
   "execution_units": [
     {
-      "adapter_ref": "openagents.bun_test.v1",
+      "adapter_ref": "openagents.vite_plus_test.v1",
       "argv": [
-        "bun",
+        "vp",
         "test",
         "packages/product-spec/test/product-spec.test.ts",
-        "--test-name-pattern",
+        "--testNamePattern",
         "MVP executable"
       ],
       "artifact_slots": [
@@ -49,12 +49,12 @@ exports[`AS-L2 deterministic compiler identical admitted inputs produce byte-ide
       "unit_ref": "unit.ao-cw-ac-04-01.candidate"
     },
     {
-      "adapter_ref": "openagents.bun_test.v1",
+      "adapter_ref": "openagents.vite_plus_test.v1",
       "argv": [
-        "bun",
+        "vp",
         "test",
         "packages/product-spec/test/product-spec.test.ts",
-        "--test-name-pattern",
+        "--testNamePattern",
         "duplicate criterion IDs"
       ],
       "artifact_slots": [

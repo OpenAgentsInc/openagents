@@ -1308,9 +1308,10 @@ export function createUnsandboxedKhalaProcessService(
         timedOut: false,
       }
       defaultProcessSessions.set(sessionId, session)
-      void pumpSessionStream(session, proc.stdout, "stdout", runtime)
-      void pumpSessionStream(session, proc.stderr, "stderr", runtime)
-      void waitForChildExit(proc).then(exit => {
+      const stdoutPump = pumpSessionStream(session, proc.stdout, "stdout", runtime)
+      const stderrPump = pumpSessionStream(session, proc.stderr, "stderr", runtime)
+      void waitForChildExit(proc).then(async exit => {
+        await Promise.all([stdoutPump, stderrPump])
         session.exitCode = exit.exitCode
         session.signal = exit.signal
       })

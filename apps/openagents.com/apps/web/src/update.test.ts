@@ -176,8 +176,6 @@ describe('app link routing', () => {
       'LoadKhalaTokensServedSnapshot',
       'LoadPublicKhalaTokensServed',
       'LoadPublicKhalaTokensServedHistory',
-      'LoadPublicForumLaunchStatus',
-      'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',
       'RedirectToHome',
     ])

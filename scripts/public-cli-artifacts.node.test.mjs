@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
-import { test } from "node:test"
+import { test } from "vite-plus/test"
 
 import { publicCliArtifacts } from "./public-cli-artifact-catalog.mjs"
 
@@ -12,7 +12,11 @@ const root = resolve(import.meta.dirname, "..")
 test("seven staged public CLI packages contain compiled Node artifacts and no Bun runtime", () => {
   const stage = mkdtempSync(join(tmpdir(), "openagents-public-cli-"))
   try {
-    const build = spawnSync(process.execPath, [join(root, "scripts/build-public-cli-artifacts.mjs"), "--stage-dir", stage], { cwd: root, encoding: "utf8" })
+    const build = spawnSync(process.execPath, [join(root, "scripts/build-public-cli-artifacts.mjs"), "--stage-dir", stage], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=8192" },
+    })
     assert.equal(build.status, 0, `${build.stdout}\n${build.stderr}`)
     assert.equal(publicCliArtifacts.length, 7)
     for (const record of publicCliArtifacts) {

@@ -400,7 +400,7 @@ const parseArgs = (
 }
 
 const main = () => {
-  const options = parseArgs(Bun.argv.slice(2))
+  const options = parseArgs(process.argv.slice(2))
   const repositoryFiles = listRepositoryFiles(process.cwd())
   const candidates = listCandidateIssues(options.repo, options.limit, options.includeLabeled).filter(
     issue => options.includeLabeled || issueNeedsPriorityTriage(issue),

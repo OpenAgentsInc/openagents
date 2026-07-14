@@ -64,6 +64,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — aggregate-only production reconciliation, immutable private-archive
   digests, service/Cloud SQL shutdown evidence, and the recovery boundary for
   the retired money, markets, and Sites graph.
+- [`2026-07-14-node-pnpm-vite-plus-vp2-node-runtime-receipt.md`](./2026-07-14-node-pnpm-vite-plus-vp2-node-runtime-receipt.md)
+  — stock-Node runtime, retained-service, SQLite, and public executable proof.
+- [`2026-07-14-node-pnpm-vite-plus-vp3-parity-receipt.md`](./2026-07-14-node-pnpm-vite-plus-vp3-parity-receipt.md)
+  — complete Vite Plus test parity, Effect TSGo disposition, host exceptions,
+  architecture-plugin proof, and bounded VP-4 debt.
 
 ## Evidence and historical baselines
 

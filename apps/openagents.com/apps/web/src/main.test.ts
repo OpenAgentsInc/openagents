@@ -596,8 +596,6 @@ describe('authenticated startup routing', () => {
       'LoadKhalaTokensServedSnapshot',
       'LoadPublicKhalaTokensServed',
       'LoadPublicKhalaTokensServedHistory',
-      'LoadPublicForumLaunchStatus',
-      'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',
     ])
   })
@@ -668,8 +666,6 @@ describe('authenticated startup routing', () => {
       'LoadPublicKhalaTokensServedHistory',
       'LoadPublicKhalaTokensServedModelMix',
       'LoadPublicKhalaTokensServedChannelMix',
-      'LoadPublicForumLaunchStatus',
-      'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',
     ])
   })
@@ -691,8 +687,6 @@ describe('authenticated startup routing', () => {
       'LoadKhalaTokensServedSnapshot',
       'LoadPublicKhalaTokensServed',
       'LoadPublicKhalaTokensServedHistory',
-      'LoadPublicForumLaunchStatus',
-      'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',
       'RedirectToHome',
     ])

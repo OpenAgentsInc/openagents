@@ -16,8 +16,8 @@ import { startTestServer } from "./test-server.ts"
 let baseUrl: string
 let stop: () => void
 
-beforeAll(() => {
-  const s = startTestServer()
+beforeAll(async () => {
+  const s = await startTestServer()
   baseUrl = s.baseUrl
   stop = s.stop
 })

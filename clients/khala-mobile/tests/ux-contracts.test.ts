@@ -103,7 +103,7 @@ describe("contract khala_mobile.auth.github_sign_in_primary_action.v1", () => {
     })
     const authProviderSource = await readFile(
       repoPath("clients/khala-mobile/src/auth/khala-auth-context.tsx"),
-    , "utf8")
+    "utf8")
 
     expect(state.status).not.toBe("discovering")
     expect(authProviderSource).not.toContain("discoverKhalaMobilePairing")
@@ -228,7 +228,7 @@ describe("contract khala_mobile.android.stt_module_typed_asyncfunction_signature
       repoPath(
         "clients/khala-mobile/modules/khala-push-to-talk-stt/android/src/main/java/com/openagents/khalaptt/KhalaPushToTalkSttModule.kt",
       ),
-    , "utf8")
+    "utf8")
     expect(source).toContain('AsyncFunction<Map<String, Any>, String?>("startRecognitionAsync")')
   })
 })

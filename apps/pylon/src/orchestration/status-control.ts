@@ -138,6 +138,7 @@ export function agentRunnerStatusEventForAssignmentLifecycleEvent(input: {
     supportedControlVerbs: PYLON_AGENT_RUNNER_CONTROL_VERBS,
     refs: [
       `assignment-event.pylon.${input.event.event.replaceAll("_", "-").replaceAll(".", "-")}`,
+      ...(input.event.phase === undefined ? [] : [`assignment-phase.pylon.${input.event.phase}`]),
       ...(input.event.status === undefined ? [] : [`assignment-status.pylon.${input.event.status}`]),
       ...(input.event.statusRef === undefined ? [] : [stableRef("status.public.pylon", input.event.statusRef)]),
       ...(input.event.progressRef === undefined ? [] : [stableRef("status.public.pylon", input.event.progressRef)]),

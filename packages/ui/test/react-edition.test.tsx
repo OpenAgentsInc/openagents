@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vite-plus/test'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
@@ -12,8 +12,8 @@ import {
   openAgentsReactTailwindTokens,
 } from '../src/react'
 
-const reactCssPath = fileURLToPath(new URL('../src/react.css', import.meta.url))
-const require = createRequire(import.meta.url)
+const reactCssPath = resolve(import.meta.dirname, '../src/react.css')
+const require = createRequire(resolve(import.meta.dirname, 'react-edition.test.tsx'))
 const { openAgentsNativeWindTokens: cjsNativeWindTokens } = require(
   '../src/react/nativewind-tokens.cjs',
 ) as { openAgentsNativeWindTokens: typeof openAgentsNativeWindTokens }

@@ -3,7 +3,7 @@ import { decodeLiveAgentGraphEntity, type LiveAgentGraphEntity } from "@openagen
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
-vi.vi.fn("../src/theme/typography", () => ({
+vi.mock("../src/theme/typography", () => ({
   khalaMobileFontsToLoad: {},
   khalaMobileTextSizes: {
     lg: { fontSize: 20, lineHeight: 32 }, md: { fontSize: 18, lineHeight: 26 },

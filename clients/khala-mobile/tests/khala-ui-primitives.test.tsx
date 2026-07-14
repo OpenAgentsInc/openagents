@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vite-plus/test"
 import * as React from "react"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
-vi.vi.fn("../src/components/touchable-feedback", () => ({
+vi.mock("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,

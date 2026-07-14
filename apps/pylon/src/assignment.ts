@@ -809,7 +809,7 @@ async function executeRuntimeGate(
     `${JSON.stringify({
       private: true,
       scripts: {
-        test: "bun test sum.test.ts",
+        test: "vp test sum.test.ts --globals --run",
       },
       type: "module",
     }, null, 2)}\n`,
@@ -821,7 +821,6 @@ async function executeRuntimeGate(
   await writeFile(
     join(workspace, "sum.test.ts"),
     [
-      'import { describe, expect, test } from "vite-plus/test"',
       'import { sum } from "./sum"',
       "",
       'describe("sum fixture", () => {',
@@ -838,11 +837,11 @@ async function executeRuntimeGate(
   )
 
   const command = await runCommand({
-    args: ["bun", "test", "sum.test.ts"],
+    args: ["vp", "test", "sum.test.ts", "--globals", "--run"],
     cwd: workspace,
   })
   const commandRef = stableRef(
-    "command.pylon.runtime_gate.bun_test",
+    "command.pylon.runtime_gate.vite_plus_test",
     `${lease.leaseRef}:${command.exitCode}:${command.stdoutBytes}:${command.stderrBytes}`,
   )
   const runRef = stableRef(
@@ -2021,22 +2020,30 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       ).catch(() => {})
     }
     let tickTail = Promise.resolve<void>(undefined)
+    let timeout: ReturnType<typeof setTimeout> | undefined
     const enqueueTick = (): Promise<void> => {
       const tickGeneration = generation
       const scheduled = tickTail.then(() => tick(tickGeneration))
       tickTail = scheduled.catch(() => undefined)
       return scheduled
     }
-    const interval = setInterval(() => {
-      void enqueueTick().catch(() => undefined)
-    }, runtimeProgressIntervalMs)
+    const scheduleNextTick = () => {
+      if (stopped) return
+      timeout = setTimeout(() => {
+        void enqueueTick()
+          .catch(() => undefined)
+          .finally(scheduleNextTick)
+      }, runtimeProgressIntervalMs)
+      ;(timeout as { unref?: () => void }).unref?.()
+    }
     try {
       await enqueueTick()
+      scheduleNextTick()
       return await input.run()
     } finally {
       stopped = true
       generation += 1
-      clearInterval(interval)
+      if (timeout !== undefined) clearTimeout(timeout)
       await tickTail
     }
   }

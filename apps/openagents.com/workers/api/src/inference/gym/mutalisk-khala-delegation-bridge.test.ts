@@ -119,7 +119,7 @@ describe('Mutalisk Khala delegation Gym bridge (#7754)', () => {
     expect(serialized).not.toContain('secret local scratch text')
   })
 
-  test('keeps the bridge out of Mutalisk Python DSPy GEPA runtime code', () => {
+  test('keeps the retained bridge out of Mutalisk Python DSPy GEPA runtime code', () => {
     const root = join(
       dirname(fileURLToPath(import.meta.url)),
       '../../../../../../..',
@@ -131,14 +131,7 @@ describe('Mutalisk Khala delegation Gym bridge (#7754)', () => {
       ),
       'utf8',
     )
-    const scriptSource = readFileSync(
-      join(
-        root,
-        'clients/khala-code-desktop/scripts/part2-gepa-manifest-bridge.ts',
-      ),
-      'utf8',
-    )
-    const combined = `${bridgeSource}\n${scriptSource}`.toLowerCase()
+    const combined = bridgeSource.toLowerCase()
 
     expect(combined).not.toContain('child_process')
     expect(combined).not.toContain('spawn(')

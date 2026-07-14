@@ -40,7 +40,7 @@ import { describe, expect, test, vi } from "vite-plus/test"
  * specifier (verified empirically: a cache-busted specifier bypasses an
  * active `vi.mock` registration on the bare path entirely).
  */
-vi.vi.fn("khala-push-to-talk-stt", () => ({
+vi.mock("khala-push-to-talk-stt", () => ({
   default: {
     getAvailabilityAsync: () => Promise.reject(new Error("bridge disconnected: native binary out of sync")),
     startRecognitionAsync: () => Promise.reject(new Error("not implemented in test")),
@@ -48,7 +48,7 @@ vi.vi.fn("khala-push-to-talk-stt", () => ({
   }
 }))
 
-vi.vi.fn("khala-apple-foundation-models", () => ({
+vi.mock("khala-apple-foundation-models", () => ({
   default: {
     getAvailabilityAsync: () =>
       Promise.resolve({ blockerRefs: [], status: "available", summary: "Apple Foundation Models are ready." })

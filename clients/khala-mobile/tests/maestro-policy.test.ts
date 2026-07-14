@@ -185,9 +185,9 @@ describe("Khala mobile Maestro flows", () => {
     expect(iosEntries.map(entry => entry.id).sort()).toEqual(iosScreenIds)
     for (const entry of iosEntries) {
       expect(entry.viewport).toBe("iphone-17-pro")
-      await expect(
+      expect(
         existsSync(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)),
-      ).resolves.toBe(true)
+      ).toBe(true)
     }
 
     const reportedIds = report.results.filter(result => iosScreenIds.includes(result.id))
@@ -245,9 +245,9 @@ describe("Khala mobile Maestro flows", () => {
       "khala.mobile.android.launch-fallback.pixel-8.dark",
     ])
     for (const entry of androidEntries) {
-      await expect(
+      expect(
         existsSync(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)),
-      ).resolves.toBe(true)
+      ).toBe(true)
     }
   })
 })

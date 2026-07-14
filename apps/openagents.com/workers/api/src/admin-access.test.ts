@@ -569,24 +569,6 @@ describe('OpenAgents admin access policy', () => {
       } as never,
       executionContext,
     )
-    const wrongBillingToken = await worker.fetch(
-      new Request('https://openagents.com/api/omni/operator/billing/credits', {
-        body: JSON.stringify({
-          amountCents: 1000,
-          email: 'chris@openagents.com',
-        }),
-        headers: { authorization: 'Bearer wrong' },
-        method: 'POST',
-      }) as never,
-      {
-        ASSETS: {
-          fetch: () => Response.json({ unused: true }),
-        },
-        OPENAGENTS_ADMIN_API_TOKEN: 'expected',
-        ...requiredWorkerConfig,
-      } as never,
-      executionContext,
-    )
     const wrongTeamChatToken = await worker.fetch(
       new Request(
         'https://openagents.com/api/omni/operator/team-chat/messages',
@@ -618,8 +600,6 @@ describe('OpenAgents admin access policy', () => {
     expect(wrongToken.headers.get('cache-control')).toBe('no-store')
     expect(wrongDetailToken.status).toBe(401)
     expect(wrongDetailToken.headers.get('cache-control')).toBe('no-store')
-    expect(wrongBillingToken.status).toBe(401)
-    expect(wrongBillingToken.headers.get('cache-control')).toBe('no-store')
     expect(wrongTeamChatToken.status).toBe(401)
     expect(wrongTeamChatToken.headers.get('cache-control')).toBe('no-store')
   })

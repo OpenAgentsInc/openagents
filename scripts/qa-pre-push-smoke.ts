@@ -7,7 +7,7 @@
 // only so the hook can print a warning while still letting check:deploy own the
 // push decision.
 
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import { join, resolve } from "node:path"
 
@@ -140,13 +140,12 @@ export const runBoundedCommand = async (
   }>,
 ): Promise<Readonly<{ elapsedMs: number; exitCode: number; timedOut: boolean }>> => {
   const startedAt = Date.now()
-  const child = Bun.spawn({
-    cmd: [...input.command],
+  const [command, ...args] = input.command
+  if (command === undefined) throw new Error("qa_pre_push_empty_command")
+  const child = spawn(command, args, {
     cwd: input.cwd,
     detached: true,
-    stderr: "inherit",
-    stdin: "inherit",
-    stdout: "inherit",
+    stdio: "inherit",
   })
 
   let timedOut = false
@@ -172,7 +171,10 @@ export const runBoundedCommand = async (
     killTimer = setTimeout(() => killTree("SIGKILL"), 5_000)
   }, input.timeoutMs)
 
-  const exitCode = await child.exited
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject)
+    child.once("exit", resolve)
+  })
   clearTimeout(timer)
   if (killTimer !== undefined) clearTimeout(killTimer)
 

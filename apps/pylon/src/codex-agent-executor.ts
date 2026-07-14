@@ -251,7 +251,7 @@ const CODEX_AGENT_FIXTURES: Record<string, CodexAgentFixture> = {
       "package.json": `${JSON.stringify(
         {
           private: true,
-          scripts: { test: "bun test sum.test.ts" },
+          scripts: { test: "vp test sum.test.ts --globals --run" },
           type: "module",
         },
         null,
@@ -259,7 +259,6 @@ const CODEX_AGENT_FIXTURES: Record<string, CodexAgentFixture> = {
       )}\n`,
       "sum.ts": "export const sum = (left: number, right: number) => left - right\n",
       "sum.test.ts": [
-        'import { describe, expect, test } from "vite-plus/test"',
         'import { sum } from "./sum"',
         "",
         'describe("sum fixture", () => {',
@@ -274,10 +273,10 @@ const CODEX_AGENT_FIXTURES: Record<string, CodexAgentFixture> = {
       "You are working in a bounded fixture workspace.",
       "The test in sum.test.ts fails because sum.ts has a bug.",
       "Fix the implementation in sum.ts so the test passes, then run",
-      "`bun test sum.test.ts` to confirm. Only modify files inside this",
+      "`vp test sum.test.ts --globals --run` to confirm. Only modify files inside this",
       "working directory.",
     ].join(" "),
-    verificationArgs: ["bun", "test", "sum.test.ts"],
+    verificationArgs: ["vp", "test", "sum.test.ts", "--globals", "--run"],
   },
 }
 
@@ -1874,6 +1873,7 @@ export async function executeCodexAgentAssignment(
           sessionRef: runRef,
         },
       })
+      await harnessMcp.ready
     } catch {
       await releaseCodexAgentWorkspace({ materialized, now })
       return refusalRecord({

@@ -91,7 +91,7 @@ describe("AT-6 public package readiness", () => {
     }
   })
 
-  test("the public registry receipt binds the exact tested tarballs and safe runner policy", () => {
+  test("the historical public registry receipt remains safe while the converted tarballs await publication", () => {
     const distribution = JSON.parse(readFileSync(resolve(
       repositoryRoot,
       "assurance/assurance-spec-public-distribution-receipt.json",
@@ -101,15 +101,10 @@ describe("AT-6 public package readiness", () => {
       "assurance/assurance-spec-public-registry-receipt.json",
     ), "utf8"))
     expect(registry.publish_order).toEqual(distribution.publish_order)
-    expect(registry.packages.map((entry: { name: string; version: string; tarball_sha256: string }) => ({
-      name: entry.name,
-      version: entry.version,
-      sha256: entry.tarball_sha256,
-    }))).toEqual(distribution.package_tarballs.map((entry: { name: string; version: string; sha256: string }) => ({
-      name: entry.name,
-      version: entry.version,
-      sha256: entry.sha256,
-    })))
+    expect(registry.packages.map((entry: { name: string }) => entry.name)).toEqual(
+      distribution.package_tarballs.map((entry: { name: string }) => entry.name),
+    )
+    expect(distribution.npm_publication).toBe("owner_authentication_required")
     expect(registry.clean_registry_consumer).toMatchObject({
       result: "pass",
       authentication: "none",

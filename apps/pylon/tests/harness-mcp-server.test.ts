@@ -138,6 +138,7 @@ describe("harness MCP session credential", () => {
 describe("harness MCP server round trip", () => {
   test("fixture harness-side client lists tools and fetches assignment context", async () => {
     const server = startHarnessMcpServer({ now: () => new Date(), session: sessionFixture() })
+    await server.ready
     try {
       const client = fixtureMcpClient(server.url, server.credential.token)
 
@@ -210,6 +211,7 @@ describe("harness MCP server round trip", () => {
 
   test("rejects absent, wrong, and expired credentials with 401", async () => {
     const server = startHarnessMcpServer({ session: sessionFixture(), ttlSeconds: 3600 })
+    await server.ready
     try {
       const absent = await fixtureMcpClient(server.url, undefined).call("tools/list")
       expect(absent.status).toBe(401)
@@ -229,6 +231,7 @@ describe("harness MCP server round trip", () => {
       session: sessionFixture(),
       ttlSeconds: 60,
     })
+    await expiringServer.ready
     try {
       const client = fixtureMcpClient(expiringServer.url, expiringServer.credential.token)
       expect((await client.call("tools/list")).status).toBe(200)
@@ -242,6 +245,7 @@ describe("harness MCP server round trip", () => {
 
   test("unknown paths and non-POST methods are rejected", async () => {
     const server = startHarnessMcpServer({ session: sessionFixture() })
+    await server.ready
     try {
       const wrongPath = await fetch(`${server.origin}/other`, { method: "POST" })
       expect(wrongPath.status).toBe(404)

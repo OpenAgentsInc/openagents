@@ -11,7 +11,7 @@ import {
 } from "./fixtures/mobile-screen-fixtures"
 import { reduceRuntimeTranscript } from "../src/sync/khala-runtime-transcript-core"
 
-vi.vi.fn("../src/components/touchable-feedback", () => ({
+vi.mock("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -23,7 +23,7 @@ vi.vi.fn("../src/components/touchable-feedback", () => ({
   }) => React.createElement("TouchableFeedback", { accessibilityLabel, accessibilityRole }, children),
 }))
 
-vi.vi.fn("react-native-safe-area-context", () => ({
+vi.mock("react-native-safe-area-context", () => ({
   SafeAreaView: ({ children }: { children?: React.ReactNode }) => React.createElement("SafeAreaView", null, children),
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))

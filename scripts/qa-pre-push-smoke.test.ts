@@ -71,7 +71,7 @@ describe("qa pre-push smoke command", () => {
 
   test("bounds a hanging command as timed out", async () => {
     const result = await runBoundedCommand({
-      command: ["bun", "-e", "setInterval(() => {}, 1000)"],
+      command: [process.execPath, "-e", "setInterval(() => {}, 1000)"],
       cwd: process.cwd(),
       timeoutMs: 10,
     })

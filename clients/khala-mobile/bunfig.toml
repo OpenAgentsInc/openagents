@@ -1,2 +1,2 @@
 [test]
-preload = ["./tests/support/rn-test-environment.ts"]
+preload = ["./tests/support/rn-bun-compat.ts"]

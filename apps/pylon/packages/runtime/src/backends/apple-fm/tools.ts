@@ -260,6 +260,7 @@ export function makeAppleFmToolCallbackSession(
 export interface AppleFmToolCallbackServer {
   readonly callbackUrl: string;
   readonly redactedCallbackUrl: string;
+  readonly ready: Promise<void>;
   readonly stop: () => void;
 }
 
@@ -349,11 +350,14 @@ export function startAppleFmToolCallbackServer(
       return Response.json(callbackResponse, { status: callbackResponse.status === "unauthorized" ? 401 : 200 });
     },
   });
-  const callbackUrl = `http://127.0.0.1:${server.port}/apple-fm/tool-callback`;
-
   return {
-    callbackUrl,
-    redactedCallbackUrl: redactCallbackUrl(callbackUrl),
+    get callbackUrl() {
+      return `http://127.0.0.1:${server.port}/apple-fm/tool-callback`;
+    },
+    get redactedCallbackUrl() {
+      return redactCallbackUrl(`http://127.0.0.1:${server.port}/apple-fm/tool-callback`);
+    },
+    ready: server.ready,
     stop: () => server.stop(true),
   };
 }

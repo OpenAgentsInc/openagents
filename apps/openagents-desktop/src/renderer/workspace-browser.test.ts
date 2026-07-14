@@ -432,7 +432,9 @@ describe("workspace browser typed intent loop", () => {
 
       yield* handlers.WorkspaceBrowserRevealRequested("notes.md")
       expect((yield* SubscriptionRef.get(state)).workspaceBrowser.operation).toEqual({ state: "revealed", pathRef: "notes.md" })
-      expect(calls.map(call => call.op)).toContainAllValues(["create", "rename", "delete", "reveal"])
+      expect(calls.map(call => call.op)).toEqual(
+        expect.arrayContaining(["create", "rename", "delete", "reveal"]),
+      )
     }))
   })
 

@@ -41,11 +41,17 @@ export const verifyDistribution = (repositoryRoot: string): Readonly<Record<stri
     },
   }, null, 2)}\n`)
   cpSync(resolve(repositoryRoot, "packages/assurance-spec/starter-kit"), consumer, { recursive: true })
-  run("bun", ["install", "--ignore-scripts", "--offline"], consumer)
-  const ownedRunner = JSON.parse(run("bunx", [
-    "assurance-spec", "owned-runner", "assurance/owned-runner.json", "--root", ".", "--json",
+  run("npm", ["install", "--ignore-scripts", "--offline"], consumer)
+  const tsxLoader = resolve(repositoryRoot, "node_modules/tsx/dist/loader.mjs")
+  const cli = resolve(consumer, "node_modules/@openagentsinc/assurance-spec/src/cli.ts")
+  const ownedRunner = JSON.parse(run("node", [
+    "--import", tsxLoader, cli,
+    "owned-runner", "assurance/owned-runner.json", "--root", ".", "--json",
   ], consumer)) as { blocking_verdict: string }
-  run("bunx", ["assurance-spec", "validate", "assurance/example.assurance-spec.md", "--json"], consumer)
+  run("node", [
+    "--import", tsxLoader, cli,
+    "validate", "assurance/example.assurance-spec.md", "--json",
+  ], consumer)
   const receipt = {
     distribution_proof_format_version: "0.1",
     clean_checkout: "pass",

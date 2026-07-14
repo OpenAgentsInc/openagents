@@ -81,8 +81,8 @@ describe('ai-elements shimmer', () => {
 
   test('ships token-backed CSS with reduced-motion fallback', async () => {
     const css = await readFile(
-      new URL('../src/ai-elements/shimmer.css', import.meta.url),
-    , "utf8")
+      new URL('../src/ai-elements/shimmer.css', `file://${import.meta.dirname}/`),
+    "utf8")
 
     expect(css).toContain('.oa-ai-shimmer')
     expect(css).toContain('@keyframes oa-ai-shimmer-sweep')

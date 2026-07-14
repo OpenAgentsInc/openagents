@@ -6,22 +6,19 @@ import { openSqliteDatabase } from "./open.ts"
 import { detectSqliteRuntime, SqliteRuntimeError } from "./sqlite-database.ts"
 
 /**
- * Bun half of the dual-runtime proof (BUN-1, openagents#8779): under
- * `bun test`, `openSqliteDatabase` must select the `bun:sqlite` client and
- * pass the full runtime-agnostic conformance suite. The Node half runs the
- * SAME conformance cases against the `node:sqlite` client under real
- * `node --test` (`node-database.node-suite.ts`) — honestly, not via a
- * mocked `process.versions.bun`.
+ * Canonical Node half of the former dual-runtime proof (BUN-1,
+ * openagents#8779). The retained Bun adapter remains a bounded rollback seam,
+ * while Vite Plus exercises the production `node:sqlite` client.
  */
 
-describe("sqlite-runtime under Bun", () => {
-  test("detects the bun runtime", () => {
-    expect(detectSqliteRuntime()).toBe("bun")
+describe("sqlite-runtime under Node", () => {
+  test("detects the node runtime", () => {
+    expect(detectSqliteRuntime()).toBe("node")
   })
 
   for (const conformanceCase of sqliteDatabaseConformanceCases(
     (path) => openSqliteDatabase(path),
-    "bun",
+    "node",
   )) {
     test(conformanceCase.name, () => {
       conformanceCase.run()

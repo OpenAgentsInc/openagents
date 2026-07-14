@@ -167,22 +167,6 @@ describe('programmatic agent home', () => {
           status: 'available',
         }),
         expect.objectContaining({
-          id: 'customer_orders',
-          status: 'available_scoped',
-        }),
-        expect.objectContaining({
-          id: 'customer_order_create',
-          status: 'not_granted',
-        }),
-        expect.objectContaining({
-          id: 'site_feedback_submit',
-          status: 'available_scoped',
-        }),
-        expect.objectContaining({
-          id: 'forum_post_reward_preview',
-          status: 'available_contract',
-        }),
-        expect.objectContaining({
           id: 'forum_topic_create',
           status: 'available',
         }),
@@ -211,10 +195,6 @@ describe('programmatic agent home', () => {
           status: 'available_public',
         }),
         expect.objectContaining({
-          id: 'forum_paid_action_confirm_payment',
-          status: 'available_contract',
-        }),
-        expect.objectContaining({
           id: 'forum_receipt_lookup',
           status: 'available_public',
         }),
@@ -235,24 +215,8 @@ describe('programmatic agent home', () => {
           status: 'available_public_no_token',
         }),
         expect.objectContaining({
-          id: 'public_agent_proposal_rate_limit_preview',
-          status: 'not_granted',
-        }),
-        expect.objectContaining({
-          id: 'public_agent_proposal_rate_limit_redeem',
-          status: 'not_granted',
-        }),
-        expect.objectContaining({
           id: 'agent_hosted_search',
           status: 'available_free_limited',
-        }),
-        expect.objectContaining({
-          id: 'agent_hosted_search_payment_preview',
-          status: 'available_contract',
-        }),
-        expect.objectContaining({
-          id: 'agent_hosted_search_payment_redeem',
-          status: 'available_contract',
         }),
         expect.objectContaining({
           id: 'pylon_register',
@@ -260,14 +224,6 @@ describe('programmatic agent home', () => {
         }),
         expect.objectContaining({
           id: 'pylon_heartbeat',
-          status: 'available_owned',
-        }),
-        expect.objectContaining({
-          id: 'pylon_wallet_readiness',
-          status: 'available_owned',
-        }),
-        expect.objectContaining({
-          id: 'pylon_payment_receipts',
           status: 'available_owned',
         }),
       ]),
@@ -284,12 +240,8 @@ describe('programmatic agent home', () => {
       'pylons.artifacts.write',
       'pylons.assignments.write',
       'pylons.heartbeat.write',
-      'pylons.payment_receipts.write',
-      'pylons.payout_target_admission.write',
       'pylons.read',
       'pylons.register',
-      'pylons.settlement_status.write',
-      'pylons.wallet_readiness.write',
     ])
     expect(home.forum.notifications).toMatchObject({
       href: 'https://openagents.com/api/agents/notifications',
@@ -314,7 +266,7 @@ describe('programmatic agent home', () => {
     )
   })
 
-  test('builds available paid proposal recovery from active owner spend grants', () => {
+  test('does not advertise retired paid proposal recovery from historical grants', () => {
     const home = buildProgrammaticAgentHome(
       {
         credential: {
@@ -356,19 +308,11 @@ describe('programmatic agent home', () => {
         status: 'active',
       },
     ])
-    expect(home.authority.liveScopes.rateLimitRecovery).toEqual([
-      'public_agent_proposals.recover',
-    ])
-    expect(home.authorizedResources).toEqual(
+    expect(home.authority.liveScopes.rateLimitRecovery).toEqual([])
+    expect(home.authorizedResources.map(resource => resource.id)).not.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          id: 'public_agent_proposal_rate_limit_preview',
-          status: 'available_scoped',
-        }),
-        expect.objectContaining({
-          id: 'public_agent_proposal_rate_limit_redeem',
-          status: 'available_scoped',
-        }),
+        'public_agent_proposal_rate_limit_preview',
+        'public_agent_proposal_rate_limit_redeem',
       ]),
     )
   })
@@ -411,7 +355,7 @@ describe('programmatic agent home', () => {
         authenticated: true,
         authority: {
           liveScopes: {
-            customerOrders: ['customer_orders.write'],
+            customerOrders: [],
           },
         },
       },

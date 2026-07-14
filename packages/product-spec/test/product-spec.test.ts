@@ -142,7 +142,7 @@ describe("Decision Trace v0.1", () => {
 
   test("validate-trace CLI distinguishes success, validation failure, and usage", () => {
     const cli = join(packageRoot, "src", "cli.ts")
-    const run = (...args: string[]) => spawnSync(process.execPath, [cli, "validate-trace", ...args], {
+    const run = (...args: string[]) => spawnSync(process.execPath, ["--import", "tsx", cli, "validate-trace", ...args], {
       encoding: "utf8",
     })
     expect(run(traceFixturePath("valid/minimal.decision-trace.json")).status).toBe(0)
@@ -781,7 +781,7 @@ describe("openagents extensions", () => {
   test("the MVP spec is executable with unique author-visible criteria", async () => {
     const markdown = await readFile(
       join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.product-spec.md"),
-    , "utf8")
+    "utf8")
     const result = validateExecutableProductSpec(markdown)
     expect(result.executable).toBe(true)
     expect(result.errors).toEqual([])
@@ -816,7 +816,7 @@ describe("openagents extensions", () => {
   test("duplicate criterion IDs refuse executable admission", async () => {
     const markdown = await readFile(
       join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.product-spec.md"),
-    , "utf8")
+    "utf8")
     const duplicate = markdown.replace("**CW-AC-02:**", "**CW-AC-01:**")
     const result = validateExecutableProductSpec(duplicate)
     expect(result.executable).toBe(false)

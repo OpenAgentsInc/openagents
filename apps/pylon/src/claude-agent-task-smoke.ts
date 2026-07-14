@@ -144,7 +144,8 @@ function ciHarness(lease: PylonAssignmentLease) {
     },
   })
   return {
-    baseUrl: `http://127.0.0.1:${server.port}`,
+    get baseUrl() { return `http://127.0.0.1:${server.port}` },
+    ready: server.ready,
     retained,
     stop: () => server.stop(true),
   }
@@ -192,6 +193,7 @@ export async function runClaudeAgentTaskCiSmoke(): Promise<ClaudeAgentTaskSmokeR
   const home = await mkdtemp(join(tmpdir(), "pylon-claude-agent-smoke-"))
   const lease = claudeAgentSmokeLease()
   const harness = ciHarness(lease)
+  await harness.ready
   try {
     const summary = createBootstrapSummary(
       parseBootstrapArgs(["--display-name", "Claude Agent Smoke"]),

@@ -85,11 +85,11 @@ import { act, create as createTestRenderer } from "react-test-renderer"
 // `app-header` stand-ins used. Everything the test actually exercises (the real
 // Ignite `ListItem`, `TextField`, `EmptyState`, `Text`, and the real
 // khala-mobile-repos-api client + repo-search-core filters) stays REAL.
-vi.vi.fn("../src/ignite/components/Screen", () => ({
+vi.mock("../src/ignite/components/Screen", () => ({
   Screen: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
 
-vi.vi.fn("../src/ignite/components/Header", () => ({
+vi.mock("../src/ignite/components/Header", () => ({
   Header: ({ title }: { title?: string }) => React.createElement("Header", null, title),
 }))
 
@@ -99,7 +99,7 @@ vi.vi.fn("../src/ignite/components/Header", () => ({
 // harness ("Requested module is already fetched"). This screen never renders a
 // safe-area style (Screen/Header are mocked above), so a bare stand-in for the
 // hook keeps the barrel importable without pulling the native module in.
-vi.vi.fn("react-native-safe-area-context", () => ({
+vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))
 
@@ -113,7 +113,7 @@ vi.vi.fn("react-native-safe-area-context", () => ({
 // vi.mock registry re-invokes it from a different file's context —
 // confirmed empirically while fixing this). Only the two APIs this screen
 // actually uses are stood in.
-vi.vi.fn("react-native-reanimated", () => {
+vi.mock("react-native-reanimated", () => {
   const chainable = () => ({ duration: () => chainable() })
   return {
     default: { View: RNView },
@@ -123,7 +123,7 @@ vi.vi.fn("react-native-reanimated", () => {
 
 // Same shape as tests/khala-ui-primitives.test.tsx's mock — kept in sync so
 // both files' mocks are compatible, not conflicting, in a shared process.
-vi.vi.fn("../src/components/touchable-feedback", () => ({
+vi.mock("../src/components/touchable-feedback", () => ({
   TouchableFeedback: ({
     accessibilityLabel,
     accessibilityRole,
@@ -154,7 +154,7 @@ vi.vi.fn("../src/components/touchable-feedback", () => ({
     ),
 }))
 
-vi.vi.fn("../src/auth/khala-auth-context", () => ({
+vi.mock("../src/auth/khala-auth-context", () => ({
   useKhalaAuth: () => ({
     baseUrl: "https://openagents.test",
     ownerUserId: "user_test",
@@ -164,7 +164,7 @@ vi.vi.fn("../src/auth/khala-auth-context", () => ({
 }))
 
 export const bindThreadRepoMock = vi.fn(() => Promise.resolve({ ok: true as const }))
-vi.vi.fn("../src/sync/khala-mobile-sync-runtime-context", () => ({
+vi.mock("../src/sync/khala-mobile-sync-runtime-context", () => ({
   useKhalaMobileSyncRuntime: () => ({
     runtime: { bindThreadRepo: bindThreadRepoMock },
     status: "ready",

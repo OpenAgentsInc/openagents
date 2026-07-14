@@ -19,9 +19,8 @@ import {
 } from "../src/presence"
 import { hashPylonAccountRef } from "../src/account-registry"
 import { verifyNip98Authorization } from "../src/nostr-identity"
-import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
+import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "@openagentsinc/pylon-core/presence"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, writePresenceState } from "../src/state"
-import { registerSparkPayoutTarget, sparkPayoutTargetRef } from "../src/wallet"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 import { registerActiveCodingRun } from "../src/active-assignment-runs"
@@ -55,7 +54,7 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>) {
   }
 }
 
-function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
+async function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
   const requests: { path: string; body: any; headers: Headers }[] = []
   let heartbeatFailures = input.failHeartbeats ?? 0
   const server = Runtime.serve({
@@ -117,7 +116,7 @@ function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
   }
 }
 
-function fakePresenceCliServer() {
+async function fakePresenceCliServer() {
   const requests: { path: string; body: any; headers: Headers }[] = []
   const server = Runtime.serve({
     port: 0,
@@ -221,7 +220,7 @@ async function runPresenceCli(input: {
   env: Record<string, string>
   timeoutMs?: number
 }): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
-  const proc = Runtime.spawn([process.execPath, INDEX, "presence", ...input.args], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, "presence", ...input.args], {
     cwd: CWD,
     env: {
       ...process.env,
@@ -256,7 +255,7 @@ async function runProviderCli(input: {
   env: Record<string, string>
   timeoutMs?: number
 }): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
-  const proc = Runtime.spawn([process.execPath, INDEX, "provider", ...input.args], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, "provider", ...input.args], {
     cwd: CWD,
     env: {
       ...process.env,
@@ -386,48 +385,9 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
-  test("heartbeat publishes live wallet receive-readiness (#5151)", async () => {
-    await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
-      const summary = createBootstrapSummary(
-        parseBootstrapArgs(["--display-name", "Readiness Test"]),
-        { PYLON_HOME: home },
-        "darwin",
-      )
-      await registerPylon(summary, { baseUrl: fake.baseUrl })
-
-      // A receive-ready local wallet must publish walletReady:true so the public
-      // walletReadyNow projection flips without a separate report-readiness.
-      await sendHeartbeat(summary, {
-        baseUrl: fake.baseUrl,
-        walletProbe: async () => ({
-          configured: true,
-          daemonOnline: true,
-          receiveReady: true,
-          sendReady: false,
-        }),
-      })
-      const ready = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
-      expect(ready.body.walletReadiness).toBe("receive-ready")
-      expect(ready.body.walletReady).toBe(true)
-
-      // A probe failure leaves walletReadiness "unknown" and OMITS walletReady,
-      // so the server keeps the last known value (no flap to false).
-      await sendHeartbeat(summary, {
-        baseUrl: fake.baseUrl,
-        walletProbe: async () => {
-          throw new Error("daemon unreachable")
-        },
-      })
-      const failed = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
-      expect(failed.body.walletReadiness).toBe("unknown")
-      expect("walletReady" in failed.body).toBe(false)
-    })
-  })
-
   test("heartbeat publishes per-service coding capacity dimensions (#6276)", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
+      const fake = await fakePresenceServer()
       const summary = createBootstrapSummary(
         parseBootstrapArgs([
           "--display-name",
@@ -484,7 +444,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("heartbeat subtracts server-side per-account Codex leases before local runtime starts", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
+      const fake = await fakePresenceServer()
       const summary = createBootstrapSummary(
         parseBootstrapArgs([
           "--display-name",
@@ -550,7 +510,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("heartbeat advertises Apple FM inference capacity only after live readiness", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
+      const fake = await fakePresenceServer()
       const summary = createBootstrapSummary(
         parseBootstrapArgs([
           "--display-name",
@@ -613,7 +573,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("heartbeat defaults Codex capacity to connected account homes", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
+      const fake = await fakePresenceServer()
       const summary = createBootstrapSummary(
         parseBootstrapArgs([
           "--display-name",
@@ -677,7 +637,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("registers, heartbeats, completes link, and refreshes link against a fake server", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
+      const fake = await fakePresenceServer()
       const summary = createBootstrapSummary(
         parseBootstrapArgs(["--display-name", "Presence Test", "--capability-ref", "cap.gepa.retained.v1"]),
         { PYLON_HOME: home },
@@ -746,7 +706,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("CLI presence register, heartbeat, link-complete, and link-refresh accept --json as a no-op", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceCliServer()
+      const fake = await fakePresenceCliServer()
       const env = {
         PYLON_HOME: home,
         PYLON_OPENAGENTS_BASE_URL: fake.baseUrl,
@@ -777,7 +737,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("CLI one-shot presence heartbeat exits after JSON even when a runtime handle is left open (#8712)", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceCliServer()
+      const fake = await fakePresenceCliServer()
       const result = await runPresenceCli({
         args: ["heartbeat", "--json", "--display-name", "Presence One Shot Exit Test"],
         env: {
@@ -803,7 +763,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("retries transient heartbeat failure and records fresh state after success", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer({ failHeartbeats: 1 })
+      const fake = await fakePresenceServer({ failHeartbeats: 1 })
       const summary = createBootstrapSummary(parseBootstrapArgs(["--display-name", "Retry Test"]), { PYLON_HOME: home }, "linux")
       const retries: number[] = []
 
@@ -840,7 +800,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("carries provider discovery fields when the NIP-90 provider lane is declared (#4864)", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
+      const fake = await fakePresenceServer()
       const summary = createBootstrapSummary(
         parseBootstrapArgs([
           "--display-name",
@@ -871,7 +831,7 @@ describe("Pylon presence registration and heartbeat", () => {
 
   test("omits provider discovery fields when no NIP-90 provider lane is declared (#4864)", async () => {
     await withTempHome(async (home) => {
-      const fake = fakePresenceServer()
+      const fake = await fakePresenceServer()
       const summary = createBootstrapSummary(
         parseBootstrapArgs(["--display-name", "Non Provider Test"]),
         { PYLON_HOME: home },
@@ -920,7 +880,7 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
-  test("provider go-online JSON distinguishes own Codex dispatch slots from NIP-90 policy", async () => {
+  test("provider go-online JSON reports own Codex dispatch slots", async () => {
     await withTempHome(async (home) => {
       const codexHome = join(home, "codex-home")
       await mkdir(codexHome, { recursive: true })
@@ -936,8 +896,6 @@ describe("Pylon presence registration and heartbeat", () => {
           OPENAGENTS_PYLON_CODEX_QUEUED: "0",
           PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
           PYLON_HOME: home,
-          PYLON_NIP90_MAX_INFLIGHT: "1",
-          PYLON_NIP90_PER_BUYER_MAX_INFLIGHT: "1",
         },
         timeoutMs: 20_000,
       })
@@ -946,8 +904,6 @@ describe("Pylon presence registration and heartbeat", () => {
       expect(result.exitCode).toBe(0)
       const json = JSON.parse(result.stdout)
       expect(json.codexAgent.state).toBe("ready")
-      expect(json.policy.maxInflight).toBe(1)
-      expect(json.policy.perBuyerMaxInflight).toBe(1)
       expect(json.ownCapacityDispatch).toMatchObject({
         assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
         availableCodexAssignments: 5,
@@ -1199,82 +1155,5 @@ describe("Pylon presence registration and heartbeat", () => {
         },
       }),
     ).not.toThrow()
-  })
-})
-
-
-describe("auto-register Spark payout target idempotency + redaction (#5305)", () => {
-  test("presence state round-trips sparkPayoutTargetRef and defaults to null", async () => {
-    await withTempHome(async (home) => {
-      const summary = createBootstrapSummary(
-        parseBootstrapArgs(["--display-name", "Payout Target Idempotency"]),
-        { PYLON_HOME: home },
-        "darwin",
-      )
-      const state = await ensurePylonLocalState(summary)
-      const fresh = await loadOrCreatePresenceState(state.paths, state.identity)
-      // A fresh node has not registered a payout target yet.
-      expect(fresh.sparkPayoutTargetRef).toBeNull()
-
-      const rawSparkAddress = "spark1qpqqqqqq000000000000000000000000autoregister"
-      const digestRef = sparkPayoutTargetRef(rawSparkAddress)
-      await writePresenceState(state.paths, { ...fresh, sparkPayoutTargetRef: digestRef })
-
-      // The digest persists, so a later boot SKIPS re-registration (idempotent).
-      const reloaded = await loadOrCreatePresenceState(state.paths, state.identity)
-      expect(reloaded.sparkPayoutTargetRef).toBe(digestRef)
-
-      // Redaction: the persisted presence state holds ONLY the digest ref, never
-      // the raw spark1… address.
-      expect(JSON.stringify(reloaded)).not.toContain(rawSparkAddress)
-      expect(JSON.stringify(reloaded)).not.toContain("spark1")
-      // The persisted presence state is public-projection safe.
-      expect(() => assertPublicProjectionSafe(reloaded)).not.toThrow()
-    })
-  })
-
-  test("idempotent register: once sparkPayoutTargetRef is set, the register call is skipped", async () => {
-    await withTempHome(async (home) => {
-      const summary = createBootstrapSummary(
-        parseBootstrapArgs(["--display-name", "Payout Target Skip"]),
-        { PYLON_HOME: home },
-        "darwin",
-      )
-      const state = await ensurePylonLocalState(summary)
-      const rawSparkAddress = "spark1qpqqqqqq000000000000000000000000skipsecond"
-      const digestRef = sparkPayoutTargetRef(rawSparkAddress)
-
-      // Simulate the idempotent guard the auto-register closure uses: register
-      // only when the presence state has no recorded digest yet.
-      let registerCalls = 0
-      const fetchImpl: typeof fetch = async () => {
-        registerCalls += 1
-        return new Response(JSON.stringify({ ok: true, payoutTargetRef: digestRef }), { status: 200 })
-      }
-      const maybeRegister = async () => {
-        const presence = await loadOrCreatePresenceState(state.paths, state.identity)
-        if (presence.sparkPayoutTargetRef && presence.sparkPayoutTargetRef.trim() !== "") return
-        const result = await registerSparkPayoutTarget(
-          { rawSparkAddress },
-          {
-            agentToken: "oa_agent_test",
-            baseUrl: "https://openagents.test",
-            fetch: fetchImpl,
-            pylonRef: state.identity.pylonRef,
-          },
-        )
-        const next = await loadOrCreatePresenceState(state.paths, state.identity)
-        await writePresenceState(state.paths, { ...next, sparkPayoutTargetRef: result.payoutTargetRef })
-      }
-
-      await maybeRegister() // first online -> registers
-      await maybeRegister() // second boot -> skipped (idempotent)
-      expect(registerCalls).toBe(1)
-
-      const finalState = await loadOrCreatePresenceState(state.paths, state.identity)
-      expect(finalState.sparkPayoutTargetRef).toBe(digestRef)
-      // Redaction holds end-to-end.
-      expect(JSON.stringify(finalState)).not.toContain("spark1")
-    })
   })
 })

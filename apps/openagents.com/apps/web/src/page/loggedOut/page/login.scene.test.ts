@@ -161,9 +161,6 @@ describe('homepage scene', () => {
       // panels live on /stats.
       Scene.expect(Scene.text('Pylons online')).toExist(),
       Scene.expect(Scene.text('Pylons seen 24h')).toExist(),
-      Scene.expect(Scene.text('Tip sats paid')).toExist(),
-      Scene.expect(Scene.text('Tip sats settled')).toExist(),
-      Scene.expect(Scene.text('Accepted-work sats')).toExist(),
       Scene.expect(Scene.text('Detailed network stats →')).toExist(),
     )
   })

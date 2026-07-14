@@ -70,6 +70,7 @@ describe("codex agent task smoke (CI-safe leg)", () => {
       leaseRef: "lease.public.codex_agent_task.account_route",
     })
     const harness = ciHarness(lease)
+    await harness.ready
     const seenAccountRefs: string[] = []
 
     try {

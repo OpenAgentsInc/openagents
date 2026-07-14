@@ -233,7 +233,8 @@ describe("khala up fresh-machine smoke", () => {
     const env = tempEnv("khala-up-fresh-")
     const packageDir = dirname(dirname(fileURLToPath(import.meta.url)))
     const transcript = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
-      const child = spawn(process.execPath, [join(packageDir, "src", "index.ts"), "up", "--smoke"], {
+      const tsxLoader = join(packageDir, "..", "..", "node_modules", "tsx", "dist", "loader.mjs")
+      const child = spawn(process.execPath, ["--import", tsxLoader, join(packageDir, "src", "index.ts"), "up", "--smoke"], {
         cwd: packageDir,
         env: {
           PATH: process.env.PATH,

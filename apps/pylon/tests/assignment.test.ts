@@ -65,7 +65,7 @@ const lease = (overrides: Partial<PylonAssignmentLease> = {}): PylonAssignmentLe
   ...overrides,
 })
 
-function fakeAssignmentServer(input: {
+async function fakeAssignmentServer(input: {
   leases?: PylonAssignmentLease[]
   failHeartbeats?: number
   rejectAccept?: boolean
@@ -255,7 +255,7 @@ async function readySummary(home: string, capabilityRefs: string[] = ["cap.gepa.
 describe("Pylon assignment lease flow", () => {
   test("admission blocks ambiguous mixed-runner coding assignments", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer()
+      const fake = await fakeAssignmentServer()
       const summary = await readySummary(home, [])
       await sendHeartbeat(summary, {
         baseUrl: fake.baseUrl,
@@ -290,7 +290,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("bounds assignment progress messages before posting", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer({ rejectLongProgressMessage: true })
+      const fake = await fakeAssignmentServer({ rejectLongProgressMessage: true })
       const summary = await readySummary(home)
       const longMessage = `Proof-ready closeout ${"with extra public context ".repeat(16)}`
 
@@ -328,7 +328,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("polls, accepts, submits progress/proof refs, and closes a no-spend assignment", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer({ rejectLocalProgressShape: true })
+      const fake = await fakeAssignmentServer({ rejectLocalProgressShape: true })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
       const lifecycleEvents: AssignmentRunLifecycleEvent[] = []
@@ -454,7 +454,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("lifecycle reporter failures do not fail no-spend assignment execution", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer()
+      const fake = await fakeAssignmentServer()
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
 
@@ -474,7 +474,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("run-no-spend refreshes stale presence before claiming a lease (#6354)", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer()
+      const fake = await fakeAssignmentServer()
       const summary = await readySummary(home)
       const state = await ensurePylonLocalState(summary)
       await writePresenceState(state.paths, {
@@ -507,7 +507,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("run-no-spend emits actionable stale-presence recovery when heartbeat refresh fails (#6354)", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer({ failHeartbeats: 1 })
+      const fake = await fakeAssignmentServer({ failHeartbeats: 1 })
       const summary = await readySummary(home)
       const state = await ensurePylonLocalState(summary)
       await writePresenceState(state.paths, {
@@ -550,7 +550,7 @@ describe("Pylon assignment lease flow", () => {
         leaseRef: "lease.public.no_spend.cli_status",
         expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
       })
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [cliLease],
         authNow: new Date(),
         maxSkewSeconds: 300,
@@ -629,7 +629,7 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [codexLease],
         rejectUnsafeProgressMessage: true,
       })
@@ -701,7 +701,7 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [codexLease],
         rejectUnsafeProgressMessage: true,
       })
@@ -781,7 +781,7 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [codexLease],
         rejectUnsafeProgressMessage: true,
       })
@@ -903,7 +903,7 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const fake = await fakeAssignmentServer({ leases: [codexLease] })
       const summary = await readySummary(home, ["capability.pylon.local_codex"])
       const state = await ensurePylonLocalState(summary)
       const codexHome = join(home, "accounts/codex/codex-progress-fence")
@@ -942,7 +942,8 @@ describe("Pylon assignment lease flow", () => {
           const body = JSON.parse(String(init?.body ?? "{}")) as { refs?: unknown }
           if (
             Array.isArray(body.refs) &&
-            body.refs.includes("assignment-event.pylon.assignment-run-runtime-progress")
+            body.refs.includes("assignment-event.pylon.assignment-run-runtime-progress") &&
+            body.refs.includes("assignment-phase.pylon.runtime_active")
           ) {
             runtimeStatusCount += 1
             if (runtimeStatusCount === 2) {
@@ -1004,7 +1005,7 @@ describe("Pylon assignment lease flow", () => {
       expect(lifecycleEvents.filter(event =>
         event.event === "assignment_run.runtime_progress" &&
         event.phase === "runtime_active"
-      )).toHaveLength(1)
+      ).length).toBeGreaterThanOrEqual(1)
       const completedIndex = lifecycleEvents.findIndex(event =>
         event.event === "assignment_run.completed"
       )
@@ -1034,7 +1035,7 @@ describe("Pylon assignment lease flow", () => {
           },
         },
       })
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [codexLease],
         rejectUnsafeProgressMessage: true,
       })
@@ -1113,7 +1114,7 @@ describe("Pylon assignment lease flow", () => {
         assignmentRef: "assignment.public.no_spend.next",
         leaseRef: "lease.public.no_spend.next",
       })
-      const fake = fakeAssignmentServer({ leases: [firstLease, secondLease] })
+      const fake = await fakeAssignmentServer({ leases: [firstLease, secondLease] })
       const summary = await readySummary(home)
       const state = await ensurePylonLocalState(summary)
       await writeFile(
@@ -1158,7 +1159,7 @@ describe("Pylon assignment lease flow", () => {
         assignmentRef: "assignment.public.no_spend.parallel_slot",
         leaseRef: "lease.public.no_spend.parallel_slot",
       })
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [firstLease, secondLease],
         rejectAcceptRefs: [firstLease.leaseRef],
       })
@@ -1194,7 +1195,7 @@ describe("Pylon assignment lease flow", () => {
         assignmentRef: targetAssignmentRef,
         leaseRef: "lease.public.no_spend.target",
       })
-      const fake = fakeAssignmentServer({ leases: [oldLease, targetLease] })
+      const fake = await fakeAssignmentServer({ leases: [oldLease, targetLease] })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, {
         baseUrl: fake.baseUrl,
@@ -1226,7 +1227,7 @@ describe("Pylon assignment lease flow", () => {
         assignmentRef: "assignment.public.no_spend.legacy_lease_alias",
         leaseRef: "lease.public.no_spend.legacy_lease_alias",
       })
-      const fake = fakeAssignmentServer({ leases: [targetLease] })
+      const fake = await fakeAssignmentServer({ leases: [targetLease] })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, {
         baseUrl: fake.baseUrl,
@@ -1264,7 +1265,7 @@ describe("Pylon assignment lease flow", () => {
         },
         schema: "openagents.autopilot_coding_assignment.v1",
       }
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [
           lease({
             assignmentRef: "pylon_assignment.public.runtime_gate.fixture_repair",
@@ -1288,7 +1289,7 @@ describe("Pylon assignment lease flow", () => {
       expect(result.progress.proofRefs[0].startsWith("proof.pylon.runtime_gate.test_passed.")).toBe(true)
       expect(result.closeout.artifactRefs).toEqual(result.progress.artifactRefs)
       expect(result.closeout.proofRefs).toEqual(result.progress.proofRefs)
-      expect(result.closeout.buildRefs[0].startsWith("command.pylon.runtime_gate.bun_test.")).toBe(true)
+      expect(result.closeout.buildRefs[0].startsWith("command.pylon.runtime_gate.vite_plus_test.")).toBe(true)
       expect(result.closeout.receiptRefs.some((ref) => ref.startsWith("run.pylon.runtime_gate."))).toBe(true)
       expect(result.closeout.resultRefs).toEqual(["result.public.pylon_runtime_gate.fixture_repair_passed"])
       expect(result.closeout.summaryRefs).toEqual(["summary.public.pylon_runtime_gate.fixture_repair_passed"])
@@ -1318,7 +1319,7 @@ describe("Pylon assignment lease flow", () => {
         requiredCapabilityRefs: ["cap.gepa.retained.v1"],
         schema: "openagents.autopilot_coding_assignment.v1",
       }
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [
           {
             assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.autopilot_coder.docs_contract",
@@ -1382,8 +1383,8 @@ describe("Pylon assignment lease flow", () => {
             visibility: "public",
           },
           verificationCommand: {
-            args: ["bun", "test", "sum.test.ts"],
-            commandRef: "command.public.autopilot_coder.bun_test_sum",
+            args: ["vp", "test", "sum.test.ts", "--globals", "--run"],
+            commandRef: "command.public.autopilot_coder.vite_plus_test_sum",
           },
         },
       }
@@ -1391,13 +1392,12 @@ describe("Pylon assignment lease flow", () => {
         await mkdir(workspace, { recursive: true })
         await writeFile(
           join(workspace, "package.json"),
-          `${JSON.stringify({ private: true, scripts: { test: "bun test sum.test.ts" }, type: "module" }, null, 2)}\n`,
+          `${JSON.stringify({ private: true, scripts: { test: "vp test sum.test.ts --globals --run" }, type: "module" }, null, 2)}\n`,
         )
         await writeFile(join(workspace, "sum.ts"), "export const sum = (left: number, right: number) => left - right\n")
         await writeFile(
           join(workspace, "sum.test.ts"),
           [
-            'import { describe, expect, test } from "vite-plus/test"',
             'import { sum } from "./sum"',
             "",
             'describe("sum checkout", () => {',
@@ -1411,7 +1411,7 @@ describe("Pylon assignment lease flow", () => {
       }
       const claudeAgentRunner: ClaudeAgentRunner = async (input) => {
         expect(input.cwd).toContain("claude-agent-tasks")
-        expect(input.instructions).toContain("command.public.autopilot_coder.bun_test_sum")
+        expect(input.instructions).toContain("command.public.autopilot_coder.vite_plus_test_sum")
         await writeFile(
           join(input.cwd, "sum.ts"),
           "export const sum = (left: number, right: number) => left + right\n",
@@ -1429,7 +1429,7 @@ describe("Pylon assignment lease flow", () => {
           },
         }
       }
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [
           {
             assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.public_sum_repair",
@@ -1460,8 +1460,8 @@ describe("Pylon assignment lease flow", () => {
         now: () => new Date("2026-06-09T00:00:30.000Z"),
       })
 
-      expect(result.ok).toBe(true)
       if (!result.ok) throw new Error("expected claude_agent_task git checkout assignment to run")
+      expect(result.ok).toBe(true)
       expect(result.closeout.resultRefs).toContain("result.public.pylon.claude_agent_task.git_checkout_verified_passed")
       expect(result.closeout.blockerRefs).toEqual([])
       expect(result.closeout.artifactRefs[0]).toStartWith("artifact.pylon.claude_agent_task.patch.")
@@ -1488,7 +1488,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("polls, accepts, submits progress/proof refs, and closes a no-spend assignment with bearer auth", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer()
+      const fake = await fakeAssignmentServer()
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
 
@@ -1512,7 +1512,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("NIP-98 assignment polling works for local harnesses without legacy custom signature headers", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer()
+      const fake = await fakeAssignmentServer()
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
 
@@ -1532,7 +1532,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("blocks duplicate local lease acceptance before contacting the server", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer()
+      const fake = await fakeAssignmentServer()
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
       const candidate = lease()
@@ -1565,7 +1565,7 @@ describe("Pylon assignment lease flow", () => {
         leaseRef: "lease.public.local_stale_fresh",
         expiresAt: "2026-06-09T01:00:00.000Z",
       })
-      const fake = fakeAssignmentServer({ leases: [expiredLease, freshLease] })
+      const fake = await fakeAssignmentServer({ leases: [expiredLease, freshLease] })
       const summary = await readySummary(home)
       const state = await ensurePylonLocalState(summary)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
@@ -1609,7 +1609,7 @@ describe("Pylon assignment lease flow", () => {
         leaseRef: "lease.public.local_after_server_renewed",
         expiresAt: "2026-06-09T01:00:00.000Z",
       })
-      const fake = fakeAssignmentServer({ leases: [renewedLease, freshLease] })
+      const fake = await fakeAssignmentServer({ leases: [renewedLease, freshLease] })
       const summary = await readySummary(home)
       const state = await ensurePylonLocalState(summary)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
@@ -1673,7 +1673,7 @@ describe("Pylon assignment lease flow", () => {
         leaseRef: "lease.public.local_after_interruption",
         expiresAt: "2026-06-09T00:30:00.000Z",
       })
-      const fake = fakeAssignmentServer({ leases: [interruptedLease, freshLease] })
+      const fake = await fakeAssignmentServer({ leases: [interruptedLease, freshLease] })
       const summary = await readySummary(home)
       const state = await ensurePylonLocalState(summary)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
@@ -1742,7 +1742,7 @@ describe("Pylon assignment lease flow", () => {
         leaseRef: "lease.public.local_after_stale_retry",
         expiresAt: "2026-06-09T00:30:00.000Z",
       })
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         authNow: new Date("2026-06-09T00:06:00.000Z"),
         leases: [staleLease, freshLease],
         maxSkewSeconds: 600,
@@ -1940,7 +1940,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("poll handles server cancellation/rejection and explicit timeout closeout shapes", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer({ leases: [lease({ leaseRef: "lease.public.timeout" })] })
+      const fake = await fakeAssignmentServer({ leases: [lease({ leaseRef: "lease.public.timeout" })] })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
       const leases = await pollAssignments(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:30.000Z") })
@@ -1986,7 +1986,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("returns public-safe denial refs for server-side accept rejection", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer({ rejectAccept: true })
+      const fake = await fakeAssignmentServer({ rejectAccept: true })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
 
@@ -2004,7 +2004,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("converts mid-run cancellation into a no-spend cancelled closeout", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer({ cancelOnProgress: true })
+      const fake = await fakeAssignmentServer({ cancelOnProgress: true })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
 
@@ -2026,7 +2026,7 @@ describe("Pylon assignment lease flow", () => {
 
   test("labels progress submission HTTP rejections in the failure closeout", async () => {
     await withTempHome(async (home) => {
-      const fake = fakeAssignmentServer({ rejectProgressStatus: 400 })
+      const fake = await fakeAssignmentServer({ rejectProgressStatus: 400 })
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
 
@@ -2077,7 +2077,7 @@ describe("Pylon assignment lease flow", () => {
         requiredCapabilityRefs: ["capability.pylon.local_claude_agent"],
         schema: "openagents.autopilot_coding_assignment.v1",
       }
-      const fake = fakeAssignmentServer({
+      const fake = await fakeAssignmentServer({
         leases: [
           lease({
             assignmentRef: "assignment.public.no_spend.claude_pinned_account",

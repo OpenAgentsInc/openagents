@@ -23,7 +23,6 @@ import { Runtime } from "@openagentsinc/runtime-platform"
 // leaking, a rogue node admitted, an admin tool reachable by a non-owner). Do
 // NOT weaken the assertion to force green — fix the production boundary.
 
-import { plugin } from "bun"
 import { afterEach, describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 
@@ -43,29 +42,6 @@ import type {
   TraceRecord,
   TraceStore,
 } from "../../openagents.com/workers/api/src/trace-store-d1"
-
-// The worker-api runtime module (`./runtime`) statically imports `effect-cf`,
-// which imports the Cloudflare-only virtual module `cloudflare:workers`. Under
-// `bun test` that module does not exist, so we register a harmless virtual-module
-// stub (test infrastructure only, never shipped) and then load the real
-// production handlers dynamically AFTER the stub is in place. The security
-// logic under test is the unmodified production code.
-plugin({
-  name: "cloudflare-workers-test-stub",
-  setup(build) {
-    build.module("cloudflare:workers", () => ({
-      exports: {
-        DurableObject: class {},
-        RpcStub: class {},
-        RpcTarget: class {},
-        WorkerEntrypoint: class {},
-        WorkflowEntrypoint: class {},
-        env: {},
-      },
-      loader: "object",
-    }))
-  },
-})
 
 const { authenticateProgrammaticAgent, sha256Hex } = await import(
   "../../openagents.com/workers/api/src/agent-registration"

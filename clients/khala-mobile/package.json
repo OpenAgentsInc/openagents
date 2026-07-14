@@ -79,7 +79,6 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
-    "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/sqlite-runtime": "workspace:*",
     "@babel/core": "7.29.7",
     "@babel/plugin-transform-react-jsx": "7.29.7",
@@ -97,6 +96,7 @@
     "dependency-cruiser": "^17.0.2",
     "react-test-renderer": "19.2.7",
     "tailwindcss": "3.4.19",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite-plus": "0.2.4"
   }
 }

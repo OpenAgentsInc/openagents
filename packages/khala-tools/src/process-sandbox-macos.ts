@@ -44,6 +44,12 @@ export function createMacosSeatbeltKhalaProcessService(
     marker: "khala.process_service",
     startSession: input =>
       Effect.gen(function* () {
+        // The retained Seatbelt session adapter writes through BunFileSink.
+        // Node interactive sessions use the portable PTY bridge in the
+        // fallback process service until this adapter is replaced outright.
+        if (process.versions.bun === undefined && fallback !== undefined) {
+          return yield* fallback.startSession(input)
+        }
         if (process.platform !== "darwin") {
           if (fallback !== undefined) return yield* fallback.startSession(input)
           return yield* processRuntimeError("process_sandbox_unavailable", "macOS Seatbelt sandbox is only available on Darwin")

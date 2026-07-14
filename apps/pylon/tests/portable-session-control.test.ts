@@ -449,4 +449,3 @@ describe("retained Agent Computer portable-session-control", () => {
     expect(sha(await readFile(join(exportedRoot, "checkpoint.tar.zst")))).toBe(exported.artifactDigest)
   }, 15_000)
 })
-import { createHash } from "node:crypto"

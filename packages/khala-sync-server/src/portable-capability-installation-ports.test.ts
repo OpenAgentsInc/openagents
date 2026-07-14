@@ -220,7 +220,7 @@ describe("retained managed portable capability installation", () => {
       "application/octet-stream",
     )
     expect(seen[0]?.headers.get("X-OA-Owner-Ref")).toBe(managedLease.ownerRef)
-    expect(seen[0]?.headers.has("X-OA-Resource-Ref")).toBeFalse()
+    expect(seen[0]?.headers.has("X-OA-Resource-Ref")).toBe(false)
     expect(seen[0]?.headers.get("X-OA-Capability")).toBe("provider")
     expect(new TextDecoder().decode(seen[0]?.transmittedBody)).toBe(
       "fixture-port03-capability-bytes",

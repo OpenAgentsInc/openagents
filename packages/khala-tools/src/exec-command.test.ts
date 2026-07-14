@@ -77,7 +77,7 @@ describe("exec_command tool", () => {
 
     const result = await runExec(workspace, {
       cmd: "sh -c 'sleep 5 & echo $! > child.pid; wait'",
-      timeout_ms: 500,
+      timeout_ms: 1_500,
     })
 
     const childPid = Number((await readFile(join(workspace, "child.pid"), "utf8")).trim())

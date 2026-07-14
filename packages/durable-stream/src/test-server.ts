@@ -36,13 +36,14 @@ export class TestStreamRegistry {
 }
 
 /** Spin up a Bun HTTP server; returns the base URL and a stop function. */
-export const startTestServer = (
+export const startTestServer = async (
   registry: TestStreamRegistry = new TestStreamRegistry(),
-): { baseUrl: string; stop: () => void; registry: TestStreamRegistry } => {
+) => {
   const server = Runtime.serve({
     port: 0,
     fetch: (req) => registry.fetch(req),
   })
+  await server.ready
   return {
     baseUrl: `http://${server.hostname}:${server.port}`,
     stop: () => server.stop(true),

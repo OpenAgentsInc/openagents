@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { describe, test } from "node:test"
+import { describe, test } from "vite-plus/test"
 import assert from "node:assert/strict"
 
 import {

@@ -57,7 +57,7 @@ interface FakeHub {
   readonly stop: () => void
 }
 
-const makeFakeHub = (): FakeHub => {
+const makeFakeHub = async (): Promise<FakeHub> => {
   const token = "test-admin-token"
   const scopes = new Map<string, FakeHubScopeState>()
   const failing = new Set<string>()
@@ -347,7 +347,7 @@ describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
     expect(result.applied).toContain("0001_khala_sync_core.sql")
     expect(result.applied).toContain("0002_khala_sync_capture.sql")
     sql = SQL({ url: databaseUrl, max: 10 })
-    hub = makeFakeHub()
+    hub = await makeFakeHub()
   })
 
   afterAll(async () => {
@@ -611,7 +611,7 @@ describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
   })
 
   test("mirror hub receives every acknowledged batch; a failing mirror never gates the checkpoint (CFG-5)", async () => {
-    const mirror = makeFakeHub()
+    const mirror = await makeFakeHub()
     try {
       const scope = freshScope()
       await upsert(scope, "m1", { id: "m1" })

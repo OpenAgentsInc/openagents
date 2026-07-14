@@ -434,7 +434,11 @@ function appleFmToolStreamDemo(
         },
       },
       executors: {
-        "tool.probe.read_file": (input) => readWorkspaceFile(input, requestedPath),
+        "tool.probe.read_file": (input) => readWorkspaceFile(
+          input,
+          requestedPath,
+          stringOption(options, "root"),
+        ),
       },
       menu,
     }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
@@ -1392,10 +1396,11 @@ function formatAppleFmToolStreamDemo(
 function readWorkspaceFile(
   input: Readonly<Record<string, unknown>>,
   allowedPath: string,
+  root?: string,
 ): Effect.Effect<{ readonly path: string; readonly content?: string; readonly error?: string }, never> {
   return Effect.gen(function* () {
     const path = typeof input.path === "string" ? input.path : allowedPath;
-    const workspace = resolveProbeWorkspaceRoot();
+    const workspace = resolveProbeWorkspaceRoot(root);
     const absolutePath = resolve(workspace, path);
     const relativePath = relative(workspace, absolutePath);
 

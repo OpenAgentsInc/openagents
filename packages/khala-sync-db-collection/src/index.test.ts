@@ -161,7 +161,7 @@ const loadFleetRunFixture = async (): Promise<FleetRunEntity> =>
   decodeFleetRunEntity(
     (await JSON.parse(await readFile(
       new URL("../../khala-sync/fixtures/FleetRunEntity.json", import.meta.url),
-    , "utf8"))) as unknown,
+    "utf8"))) as unknown,
   )
 
 type FakeChange = Readonly<{

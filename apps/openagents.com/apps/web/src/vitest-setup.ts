@@ -1,4 +1,7 @@
 import { setup } from 'foldkit/test/vitest'
+import { resolve } from 'node:path'
+
+process.chdir(resolve(import.meta.dirname, '..'))
 
 const processEnv = (
   globalThis as { process?: { env?: Record<string, string | undefined> } }

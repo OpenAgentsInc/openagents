@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from 'vite-plus/test/config'
 
 export default defineConfig({
   resolve: {
@@ -16,5 +16,11 @@ export default defineConfig({
   },
   ssr: {
     noExternal: ['effect-cf'],
+  },
+  test: {
+    setupFiles: [
+      resolve(import.meta.dirname, 'src/test/vitest-cwd-setup.ts'),
+      resolve(import.meta.dirname, '../../../../scripts/vp3-vitest-setup.ts'),
+    ],
   },
 })

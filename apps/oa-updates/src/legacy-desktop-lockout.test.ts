@@ -45,9 +45,9 @@ describe("lockout mode resolution (fail closed)", () => {
       "autopilot-desktop",
       "khala-code-desktop",
     ])
-    expect(isLegacyLockedDesktopProduct("khala-code-desktop")).toBeTrue()
-    expect(isLegacyLockedDesktopProduct("autopilot-desktop")).toBeTrue()
-    expect(isLegacyLockedDesktopProduct("openagents-desktop")).toBeFalse()
+    expect(isLegacyLockedDesktopProduct("khala-code-desktop")).toBe(true)
+    expect(isLegacyLockedDesktopProduct("autopilot-desktop")).toBe(true)
+    expect(isLegacyLockedDesktopProduct("openagents-desktop")).toBe(false)
   })
 })
 
@@ -57,7 +57,7 @@ const expectLockout = async (response: Response, subject: string) => {
   const body = await response.json() as Record<string, unknown>
   expect(body.schema).toBe(LEGACY_DESKTOP_LOCKOUT_SCHEMA_ID)
   expect(body.subject).toBe(subject)
-  expect(body.lockedOut).toBeTrue()
+  expect(body.lockedOut).toBe(true)
   expect(body.reason).toBe("legacy_desktop_client_locked_out")
   expect(body.replacementApp).toBe("openagents-desktop")
   expect(body.policyRef).toBe("openagents#8706")

@@ -1,4 +1,5 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
+import { request as httpRequest } from "node:http"
 // khala-live-hub server E2E tests (CFG-5, #8520): the REAL Runtime.serve
 // surface — shared-bearer auth (header AND ?token=, the b45071b9b6
 // query-token channel), append→log round trips, real WebSocket connects
@@ -21,8 +22,9 @@ let running: LiveHubServer
 let base: string
 let wsBase: string
 
-beforeAll(() => {
+beforeAll(async () => {
   running = startLiveHubServer({ token: TOKEN, port: 0 })
+  await running.ready
   base = `http://127.0.0.1:${running.port}`
   wsBase = `ws://127.0.0.1:${running.port}`
 })
@@ -56,6 +58,16 @@ const appendHttp = async (
       "content-type": "application/json",
     },
     body: JSON.stringify({ entries, scope }),
+  })
+
+const rawUpgradeStatus = (url: string): Promise<number | undefined> =>
+  new Promise((resolve, reject) => {
+    const request = httpRequest(url, { headers: { upgrade: "websocket" } }, (response) => {
+      response.resume()
+      resolve(response.statusCode)
+    })
+    request.on("error", reject)
+    request.end()
   })
 
 type OpenSocket = Readonly<{
@@ -258,15 +270,12 @@ describe("live websocket", () => {
     })
     expect(plain.status).toBe(426)
 
-    const badScope = await fetch(`${base}/connect?scope=nonsense&token=${TOKEN}`, {
-      headers: { upgrade: "websocket" },
-    })
-    expect(badScope.status).toBe(400)
+    const badScope = await rawUpgradeStatus(`${base}/connect?scope=nonsense&token=${TOKEN}`)
+    expect(badScope).toBe(400)
 
-    const badCursor = await fetch(
+    const badCursor = await rawUpgradeStatus(
       `${base}/connect?scope=${SCOPE}&cursor=abc&token=${TOKEN}`,
-      { headers: { upgrade: "websocket" } },
     )
-    expect(badCursor.status).toBe(400)
+    expect(badCursor).toBe(400)
   })
 })

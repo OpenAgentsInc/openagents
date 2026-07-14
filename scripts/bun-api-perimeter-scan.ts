@@ -27,6 +27,7 @@ import {
   bunApiGrandfathered,
   bunApiPerimeter,
 } from "./bun-api-perimeter-allowlist"
+import { readdir, readFile, stat } from "node:fs/promises"
 
 type Category = "bun-import" | "bun-global"
 
@@ -86,7 +87,7 @@ const walk = async (root: string): Promise<readonly string[]> => {
   const visit = async (dir: string): Promise<void> => {
     let entries: string[]
     try {
-      entries = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: dir, onlyFiles: false }))
+      entries = await readdir(dir)
     } catch {
       return
     }
@@ -97,10 +98,10 @@ const walk = async (root: string): Promise<readonly string[]> => {
       }
 
       const path = `${dir}/${entry}`
-      const stat = await Bun.file(path).stat()
-      if (stat.isDirectory()) {
+      const metadata = await stat(path)
+      if (metadata.isDirectory()) {
         await visit(path)
-      } else if (stat.isFile() && hasSourceExtension(path) && isProductionSource(path)) {
+      } else if (metadata.isFile() && hasSourceExtension(path) && isProductionSource(path)) {
         files.push(path)
       }
     }
@@ -157,7 +158,7 @@ const collectFindings = async (roots: readonly string[]): Promise<readonly Findi
   for (const root of roots) {
     for (const absolutePath of await walk(root)) {
       const path = relativePath(absolutePath)
-      const text = await Bun.file(absolutePath).text()
+      const text = await readFile(absolutePath, "utf8")
       const lines = text.split(/\r?\n/)
 
       for (let index = 0; index < lines.length; index += 1) {

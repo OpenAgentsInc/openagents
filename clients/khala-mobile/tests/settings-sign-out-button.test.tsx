@@ -26,48 +26,48 @@ import { act, create as createTestRenderer } from "react-test-renderer"
 // wrappers at module-eval; AccountSection only needs Card as a passthrough
 // wrapper, so stand them in with compatible shapes (same idea as the
 // repo-picker/onboarding mount tests).
-vi.vi.fn("../src/ignite/components/Screen", () => ({
+vi.mock("../src/ignite/components/Screen", () => ({
   Screen: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
-vi.vi.fn("../src/ignite/components/Header", () => ({
+vi.mock("../src/ignite/components/Header", () => ({
   Header: ({ title }: { title?: string }) => React.createElement("Header", null, title),
 }))
-vi.vi.fn("../src/ignite/components/Card", () => ({
+vi.mock("../src/ignite/components/Card", () => ({
   Card: ({ ContentComponent, heading }: { ContentComponent?: React.ReactNode; heading?: string }) =>
     React.createElement(React.Fragment, null, React.createElement("Text", null, heading), ContentComponent),
 }))
 
 // The `../ignite` barrel re-exports `useSafeAreaInsetsStyle` (native). Same
 // stand-in the other mount tests use.
-vi.vi.fn("react-native-safe-area-context", () => ({
+vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))
 
 // Native-bridge / expo modules the settings-screen module graph pulls at eval
 // but that AccountSection's Sign out button does not exercise.
-vi.vi.fn("expo-constants", () => ({ default: { expoConfig: { version: "0.0.0" } } }))
-vi.vi.fn("expo-notifications", () => ({
+vi.mock("expo-constants", () => ({ default: { expoConfig: { version: "0.0.0" } } }))
+vi.mock("expo-notifications", () => ({
   getPermissionsAsync: async () => ({ canAskAgain: true, granted: false }),
 }))
-vi.vi.fn("../src/push/push-notifications-client", () => ({
+vi.mock("../src/push/push-notifications-client", () => ({
   registerForPushNotificationsAsync: async () => undefined,
 }))
-vi.vi.fn("../src/native/use-on-device-readiness", () => ({
+vi.mock("../src/native/use-on-device-readiness", () => ({
   useOnDeviceReadiness: () => ({ status: "loading" }),
 }))
-vi.vi.fn("../src/sync/khala-mobile-credits-api", () => ({
+vi.mock("../src/sync/khala-mobile-credits-api", () => ({
   fetchKhalaMobileCreditsBalance: async () => ({ ok: false }),
 }))
-vi.vi.fn("../src/sync/khala-mobile-model-preference-api", () => ({
+vi.mock("../src/sync/khala-mobile-model-preference-api", () => ({
   fetchKhalaMobileModelPreference: async () => ({ ok: false }),
   putKhalaMobileModelPreference: async () => ({ ok: false }),
 }))
-vi.vi.fn("../src/auth/mobile-openauth", () => ({
+vi.mock("../src/auth/mobile-openauth", () => ({
   KHALA_ACCOUNT_DELETION_POLICY_COPY: "…",
 }))
 
 const signOut = vi.fn(() => undefined)
-vi.vi.fn("../src/auth/khala-auth-context", () => ({
+vi.mock("../src/auth/khala-auth-context", () => ({
   useKhalaAuth: () => ({
     baseUrl: "https://openagents.test",
     deleteAccount: async () => undefined,

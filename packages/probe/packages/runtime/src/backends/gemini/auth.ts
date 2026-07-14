@@ -4,7 +4,6 @@ import {
   GEMINI_BACKEND_KIND,
   GeminiAuthResolutionReceipt,
   type GeminiApiKeySource,
-  type GeminiAuthResolutionReceipt,
 } from "./contract";
 
 export interface ResolveGeminiApiKeyOptions {

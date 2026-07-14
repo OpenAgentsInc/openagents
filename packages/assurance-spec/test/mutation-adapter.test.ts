@@ -6,6 +6,8 @@ import { resolve } from "node:path"
 import { computeEnvironmentProfileDigest, decodeAssuranceReceipt, decodeMutationPlan, decodeOracleSensitivityReceipt, executeMutationPlan, mutationSetDigestForPlan, OPENAGENTS_MUTATION_MAX_MUTANTS, sha256Digest, type AssuranceEnvironmentProfileDocument, type AssuranceExecutionUnit, type AssuranceManifest } from "../src/index.ts"
 
 const roots: string[] = []
+const repositoryRoot = resolve(import.meta.dirname, "../../..")
+const vitePlusExecutable = resolve(repositoryRoot, "node_modules/vite-plus/bin/vp")
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
@@ -37,10 +39,10 @@ const environmentPayload = {
   platform: {
     os: "macos",
     architecture: "arm64",
-    runtime: "Bun",
+    runtime: "Node 25",
     framework: "Effect",
   },
-  capabilities: ["bun_test", "junit", "isolated_run_artifacts"],
+  capabilities: ["vite_plus_test", "junit", "isolated_run_artifacts"],
   authentication_strategy: "none" as const,
   isolation: {
     fresh_identity: true,
@@ -51,10 +53,10 @@ const environmentPayload = {
   evidence_visibility: "reviewed_public_safe" as const,
   retention: "private native report",
   redaction_policy: "public-safe refs only",
-  permitted_actions: ["read_repository", "run_bun_tests", "write_isolated_artifacts"],
+  permitted_actions: ["read_repository", "run_vite_plus_tests", "write_isolated_artifacts"],
   forbidden_actions: ["network", "credentials", "production_mutation", "customer_data"],
-  required_commands: ["bun"],
-  dependency_lock: { path: "bun.lock", digest: sha256Digest("fixture-lock") },
+  required_commands: ["vp"],
+  dependency_lock: { path: "pnpm-lock.yaml", digest: sha256Digest("fixture-lock") },
 }
 const environment: AssuranceEnvironmentProfileDocument = {
   ...environmentPayload,
@@ -66,8 +68,8 @@ const unit = (testName: string): AssuranceExecutionUnit => ({
   role: "candidate",
   obligation_id: "AO-CW-AC-04-01",
   environment_ref: environment.profile_id,
-  adapter_ref: "openagents.bun_test.v1",
-  argv: ["bun", "test", "oracle.test.ts", "--test-name-pattern", testName],
+  adapter_ref: "openagents.vite_plus_test.v1",
+  argv: ["vp", "test", "oracle.test.ts", "--testNamePattern", testName],
   artifact_slots: ["oracle.junit.xml"],
   expected_observation: "CONFIRMED",
 })
@@ -135,6 +137,9 @@ const fixture = (testName: string) => {
   const workspaceRoot = resolve(root, "workspace")
   const runRoot = resolve(root, "run")
   mkdirSync(workspaceRoot, { recursive: true })
+  mkdirSync(resolve(workspaceRoot, "node_modules"), { recursive: true })
+  symlinkSync(resolve(repositoryRoot, "node_modules/vite-plus"), resolve(workspaceRoot, "node_modules/vite-plus"), "dir")
+  writeFileSync(resolve(workspaceRoot, "package.json"), '{"name":"assurance-mutation-fixture","private":true,"type":"module"}')
   writeFileSync(resolve(workspaceRoot, "subject.ts"), subject)
   writeFileSync(resolve(workspaceRoot, "oracle.test.ts"), oracle)
   const oracleUnit = unit(testName)
@@ -166,6 +171,7 @@ const execute = (testName: string) => {
       environment,
       producerRef: "runner.mutation.local.1",
       reviewerRef: "reviewer.independent.1",
+      vitePlusExecutable,
     }),
   }
 }
@@ -241,6 +247,7 @@ describe("openagents.mutation.v1", () => {
       environment,
       producerRef: "runner.mutation.local.1",
       reviewerRef: "reviewer.independent.1",
+      vitePlusExecutable,
     })).toThrow("remain inside the isolated workspace")
   })
 })

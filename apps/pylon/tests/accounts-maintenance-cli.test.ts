@@ -24,7 +24,7 @@ const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
 const CWD = join(import.meta.dirname, "..")
 
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
-  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, ...args], {
     cwd: CWD,
     env,
     stderr: "pipe",

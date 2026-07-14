@@ -271,7 +271,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 managed Agent Computer target", ()
       capabilityLeaseRefs: ["lease.port03.managed.provider"],
     }
 
-    expect((await target.stageCheckpoint(stageInput)).acceptingWork).toBeFalse()
+    expect((await target.stageCheckpoint(stageInput)).acceptingWork).toBe(false)
     const staged = await sql`
       SELECT state, accepting_work FROM khala_sync_portable_managed_targets
       WHERE session_ref = ${fixture.sessionRef}

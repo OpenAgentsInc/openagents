@@ -49,7 +49,7 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>) {
 }
 
 async function runPylonCli(args: string[], env: Record<string, string>) {
-  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, ...args], {
     cwd: CWD,
     env: {
       ...process.env,
@@ -272,7 +272,7 @@ function completeProof(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function khalaAutoRunServer(input: { activeCodexLease?: boolean } = {}) {
+async function khalaAutoRunServer(input: { activeCodexLease?: boolean } = {}) {
   const assignmentRef = "assignment.public.khala_coding.cli_auto_run"
   const leaseRef = "lease.public.khala_coding.cli_auto_run"
   const requests: Array<{ body: Record<string, unknown>; method: string; path: string }> = []
@@ -501,7 +501,7 @@ describe("pylon khala requester API", () => {
   test("CLI request auto-runs the returned no-spend assignment unless disabled", async () => {
     await withTempHome(async (home) => {
       const localPylonRef = await markAssignmentReady(home)
-      const fake = khalaAutoRunServer()
+      const fake = await khalaAutoRunServer()
 
       const proc = await runPylonCli(
         [
@@ -574,7 +574,7 @@ describe("pylon khala requester API", () => {
     await withTempHome(async (home) => {
       await markAssignmentReady(home, ["capability.pylon.local_codex"])
       await writeCodexAccounts(home, ["codex-one"])
-      const fake = khalaAutoRunServer()
+      const fake = await khalaAutoRunServer()
 
       const proc = await runPylonCli(
         [
@@ -630,7 +630,7 @@ describe("pylon khala requester API", () => {
     await withTempHome(async (home) => {
       await markAssignmentReady(home, ["capability.pylon.local_codex"])
       await writeCodexAccounts(home, ["codex-one", "codex-two"])
-      const fake = khalaAutoRunServer({ activeCodexLease: true })
+      const fake = await khalaAutoRunServer({ activeCodexLease: true })
 
       const proc = await runPylonCli(
         [

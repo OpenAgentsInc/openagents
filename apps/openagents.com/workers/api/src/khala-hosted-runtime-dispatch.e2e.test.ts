@@ -256,7 +256,7 @@ describe('hosted chat send -> assistant reply E2E guard (khala_sync.hosted_chat.
     const summary = await runHostedRuntimeTurnDispatch(
       baseDeps(singleTurnTables({ bodyRef: 'chat_message.msg.1' }), push, okComplete('Paris')),
     )
-    expect(summary).toEqual({ answered: 1, claimed: 1, failed: 0, refused: 0, scanned: 1, skipped: 0 })
+    expect(summary).toEqual({ answered: 1, claimed: 1, failed: 0, scanned: 1, skipped: 0 })
     assertAssistantReplied(push.recorded, 'turn.t1', 'Paris')
   })
 
@@ -308,7 +308,7 @@ describe('hosted chat send -> assistant reply E2E guard (khala_sync.hosted_chat.
     const summary = await runHostedRuntimeTurnDispatch(baseDeps(tables, push, complete))
 
     // BOTH owners answered — the crux of the #1 regression.
-    expect(summary).toEqual({ answered: 2, claimed: 2, failed: 0, refused: 0, scanned: 2, skipped: 0 })
+    expect(summary).toEqual({ answered: 2, claimed: 2, failed: 0, scanned: 2, skipped: 0 })
     assertAssistantReplied(
       push.recorded.filter(r => r.ownerUserId === ownerA),
       'turn.a',

@@ -16,7 +16,7 @@ async function runOperatorSnapshot(env: Record<string, string>): Promise<{
   timedOut: boolean
 }> {
   const started = Date.now()
-  const proc = Runtime.spawn([process.execPath, INDEX, "operator", "snapshot", "--json"], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, "operator", "snapshot", "--json"], {
     cwd: CWD,
     env: {
       ...process.env,
@@ -68,7 +68,7 @@ describe("#5401 operator snapshot one-shot clean exit", () => {
       expect(result.stdout).not.toContain("Breez SDK")
 
       const body = JSON.parse(result.stdout)
-      expect(body.schema).toBe("openagents.pylon.operator_snapshot.v0.3")
+      expect(body.schema).toBe("openagents.pylon.operator_snapshot.v0.4")
       expect(body.recovery.headlessCommandRefs).toContain(
         "command.pylon.status_json",
       )

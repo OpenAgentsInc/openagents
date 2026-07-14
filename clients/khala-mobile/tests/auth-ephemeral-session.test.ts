@@ -27,7 +27,7 @@ describe("contract khala_mobile.auth.signout_ends_web_session_for_account_switch
   test("signout_ephemeral_web_session.source — OAuth prompt is ephemeral and sign-out revokes the server session", async () => {
     const source = await readFile(
       repoPath("clients/khala-mobile/src/auth/khala-auth-context.tsx"),
-    , "utf8")
+    "utf8")
 
     // (1) Ephemeral web session on the prompt — the reliable "let the user
     // choose the account" fix. Must be passed to promptAsync. (expo-auth-session

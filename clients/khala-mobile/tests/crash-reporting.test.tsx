@@ -8,17 +8,17 @@ import {
   type KhalaCrashReport,
 } from "../src/diagnostics/crash-reporting"
 
-vi.vi.fn("../src/components/khala-screen", () => ({
+vi.mock("../src/components/khala-screen", () => ({
   KhalaScreen: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("KhalaScreen", null, children),
 }))
 
-vi.vi.fn("../src/components/khala-text", () => ({
+vi.mock("../src/components/khala-text", () => ({
   KhalaText: ({ children, text }: { children?: React.ReactNode; text?: string }) =>
     React.createElement("KhalaText", null, text ?? children),
 }))
 
-vi.vi.fn("../src/components/khala-button", () => ({
+vi.mock("../src/components/khala-button", () => ({
   KhalaButton: ({ onPress, text }: { onPress?: () => void; text?: string }) =>
     React.createElement("KhalaButton", { accessibilityRole: "button", onPress }, text),
 }))

@@ -49,6 +49,23 @@ import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 
 const decodeCustomerOrderGrant = S.decodeUnknownOption(CustomerOrderAgentGrant)
 
+const RetiredAgentHomeResourceIds = new Set([
+  'agent_hosted_search_payment_preview',
+  'agent_hosted_search_payment_redeem',
+  'public_agent_proposal_rate_limit_preview',
+  'public_agent_proposal_rate_limit_redeem',
+  'forum_post_reward_preview',
+  'forum_paid_action_confirm_payment',
+  'pylon_wallet_readiness',
+  'pylon_payout_target_admission',
+  'pylon_spark_payout_target',
+  'pylon_payment_receipts',
+  'pylon_settlement_status',
+  'customer_orders',
+  'customer_order_create',
+  'site_feedback_submit',
+])
+
 type ProgrammaticAgentHomeForumNotifications = Readonly<{
   href: string
   markReadHref: string
@@ -407,7 +424,7 @@ export const buildProgrammaticAgentHome = (
         }),
       ),
       liveScopes: {
-        customerOrders: liveCustomerOrderScopes,
+        customerOrders: [],
         forum: [
           'forum.bookmark',
           'forum.follow',
@@ -420,16 +437,10 @@ export const buildProgrammaticAgentHome = (
           'pylons.artifacts.write',
           'pylons.assignments.write',
           'pylons.heartbeat.write',
-          'pylons.payment_receipts.write',
-          'pylons.payout_target_admission.write',
           'pylons.read',
           'pylons.register',
-          'pylons.settlement_status.write',
-          'pylons.wallet_readiness.write',
         ],
-        rateLimitRecovery: canRecoverPublicProposalRateLimit
-          ? ['public_agent_proposals.recover']
-          : [],
+        rateLimitRecovery: [],
         search: ['agent_search.basic'],
       },
     },
@@ -682,7 +693,7 @@ export const buildProgrammaticAgentHome = (
         href: 'https://openagents.com/api/customer-orders',
         status: canWriteCustomerOrders ? 'available_scoped' : 'not_granted',
       },
-    ],
+    ].filter(resource => !RetiredAgentHomeResourceIds.has(resource.id)),
     plannedOrGated: [],
     forum: {
       notifications: forumNotifications,

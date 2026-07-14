@@ -4,7 +4,7 @@ import { dirname, resolve, sep } from "node:path"
 import { Schema as S } from "effect"
 
 import { canonicalArtifact } from "./artifact.ts"
-import { executeBunTestUnit, type BunTestAdapterResult } from "./bun-test-adapter.ts"
+import { executeVitePlusTestUnit, type VitePlusTestAdapterResult } from "./vite-plus-test-adapter.ts"
 import type { AssuranceEnvironmentProfileDocument } from "./environment.ts"
 import type { AssuranceExecutionUnit, AssuranceManifest } from "./manifest.ts"
 import { ASSURANCE_RECEIPT_FORMAT_VERSION, makeOracleSensitivityReceipt, type AssuranceReceipt, type OracleSensitivityMutantResult, type OracleSensitivityReceipt } from "./receipt.ts"
@@ -122,7 +122,7 @@ export const mutationSetDigestForPlan = (candidate: unknown): string =>
   mutationSetDigestForDecodedPlan(decodeMutationPlan(candidate))
 
 const normalizedMutationReceipt = (
-  run: BunTestAdapterResult,
+  run: VitePlusTestAdapterResult,
   input: Readonly<{
     manifestDigest: string
     mutationUnitRef: string
@@ -176,7 +176,7 @@ export const executeMutationPlan = (
     plan: unknown
     producerRef: string
     reviewerRef: string
-    bunExecutable?: string
+    vitePlusExecutable?: string
   }>,
 ): MutationAdapterResult => {
   const plan = decodeMutationPlan(input.plan)
@@ -229,7 +229,7 @@ export const executeMutationPlan = (
   const runOracle = (label: string, sourceBytes: string): MutationNormalizedReceipt => {
     const runRoot = resolve(input.runRoot, label)
     mkdirSync(runRoot, { recursive: true })
-    const run = executeBunTestUnit({
+    const run = executeVitePlusTestUnit({
       workspaceRoot,
       runRoot,
       manifest: input.manifest,
@@ -239,7 +239,7 @@ export const executeMutationPlan = (
       producerRef: input.producerRef,
       reviewerRef: input.reviewerRef,
       sourceDigest: sha256Digest(sourceBytes),
-      ...(input.bunExecutable === undefined ? {} : { bunExecutable: input.bunExecutable }),
+      ...(input.vitePlusExecutable === undefined ? {} : { vitePlusExecutable: input.vitePlusExecutable }),
     })
     return normalizedMutationReceipt(run, {
       manifestDigest: input.manifestDigest,

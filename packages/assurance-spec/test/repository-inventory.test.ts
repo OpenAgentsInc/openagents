@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import { afterEach, describe, expect, test } from "vite-plus/test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -21,7 +21,9 @@ const fixture = async (): Promise<string> => {
   const root = mkdtempSync(join(tmpdir(), "assurance-spec-repo-"))
   roots.push(root)
   git(root, ["init", "-q"])
-  await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "bun test", verify: "bun test && tsc --noEmit" } }, null, 2))
+  await mkdir(join(root, "tests"))
+  await mkdir(join(root, "src"))
+  await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "vp test", verify: "vp test && tsc --noEmit" } }, null, 2))
   await writeFile(join(root, "tests", "CW-AC-04-passes.test.ts"), "test('looks persuasive', () => expect(true).toBe(true))\n")
   await writeFile(join(root, "src", "main.ts"), "export const value = 1\n")
   git(root, ["add", "."])

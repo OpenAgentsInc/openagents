@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import test from "node:test"
+import { afterAll, test } from "vite-plus/test"
 
 import { openGitGithubService } from "./git-github-host.ts"
 import { runGitFixture } from "../tests/git-fixture.ts"
@@ -47,7 +47,7 @@ const review = (root: string, pathRef: string, source: "staged" | "unstaged" = "
   })
 }
 
-test.after(() => {
+afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true })
 })
 

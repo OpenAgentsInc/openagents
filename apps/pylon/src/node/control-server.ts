@@ -914,6 +914,10 @@ export const startControlServer = (
       },
       catch: (error) => new Error(`control server failed to start: ${String(error)}`),
     })
+    yield* Effect.tryPromise({
+      try: () => server.ready,
+      catch: (error) => new Error(`control server failed to become ready: ${String(error)}`),
+    })
 
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {

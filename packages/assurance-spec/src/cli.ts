@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Runtime } from "@openagentsinc/runtime-platform"
+import { access, readFile, writeFile } from "node:fs/promises"
 /**
  * assurance-spec CLI (AT-1, docs/assurance/AGENT_TOOLING.md §2).
  *
@@ -40,6 +40,11 @@ import {
   type ProductSpecSubject,
   type ToolFailure,
 } from "./index.ts"
+
+const file = (path: string) => ({
+  exists: async (): Promise<boolean> => access(path).then(() => true, () => false),
+  text: (): Promise<string> => readFile(path, "utf8"),
+})
 
 const usage = (): never => {
   console.error("usage:")
@@ -127,7 +132,7 @@ const propose = async (args: ReadonlyArray<string>): Promise<void> => {
   if (input === undefined || input.startsWith("--")) usage()
   const json = jsonFlag(args)
   const inputAbsolute = resolve(input)
-  if (!(await Runtime.file(inputAbsolute).exists())) {
+  if (!(await file(inputAbsolute).exists())) {
     console.error(`ProductSpec does not exist: ${input}`)
     process.exit(1)
   }
@@ -136,14 +141,14 @@ const propose = async (args: ReadonlyArray<string>): Promise<void> => {
   const base = repositoryRoot ?? process.cwd()
   const productSpecPath = relative(base, inputAbsolute).replaceAll("\\", "/")
   const output = resolve(flagValue(args, "--out") ?? defaultOutput(input))
-  if (await Runtime.file(output).exists() && !args.includes("--force")) {
+  if (await file(output).exists() && !args.includes("--force")) {
     console.error(`refusing to overwrite existing file: ${output}`)
     process.exit(1)
   }
   const repositoryInventory = repositoryRoot === undefined ? undefined : inventoryRepository(repositoryRoot)
   const result = proposeAssuranceSpec({
     productSpecPath,
-    productSpecMarkdown: await Runtime.file(inputAbsolute).text(),
+    productSpecMarkdown: await file(inputAbsolute).text(),
     ...(repositoryInventory === undefined ? {} : { repositoryInventory }),
     ...(flagValue(args, "--id") === undefined ? {} : { assuranceSpecId: flagValue(args, "--id")! }),
     ...(flagValue(args, "--title") === undefined ? {} : { title: flagValue(args, "--title")! }),
@@ -157,10 +162,10 @@ const propose = async (args: ReadonlyArray<string>): Promise<void> => {
     }
     process.exit(1)
   }
-  await Runtime.write(output, result.markdown)
+  await writeFile(output, result.markdown)
   const inventoryOut = flagValue(args, "--inventory-out")
   if (inventoryOut !== undefined) {
-    await Runtime.write(resolve(inventoryOut), `${JSON.stringify(result.document.environments.repository_inventory, null, 2)}\n`)
+    await writeFile(resolve(inventoryOut), `${JSON.stringify(result.document.environments.repository_inventory, null, 2)}\n`)
   }
   if (json) {
     printJson({ ok: true, output, adequacy: result.adequacy })
@@ -183,8 +188,8 @@ const observerPropose = async (args: ReadonlyArray<string>): Promise<void> => {
   }
   const json = jsonFlag(args)
   const inputAbsolute = resolve(input)
-  const subjectFile = Runtime.file(resolve(acceptedSubjectPath!))
-  if (!(await Runtime.file(inputAbsolute).exists()) || !(await subjectFile.exists())) {
+  const subjectFile = file(resolve(acceptedSubjectPath!))
+  if (!(await file(inputAbsolute).exists()) || !(await subjectFile.exists())) {
     console.error("ProductSpec and accepted-subject pin must both exist.")
     process.exit(1)
   }
@@ -200,7 +205,7 @@ const observerPropose = async (args: ReadonlyArray<string>): Promise<void> => {
   const prepared = prepareSemanticPlannerInput({
     acceptedSubject: acceptedSubject as ProductSpecSubject,
     productSpecPath: relative(repositoryRoot ?? process.cwd(), inputAbsolute).replaceAll("\\", "/"),
-    productSpecMarkdown: await Runtime.file(inputAbsolute).text(),
+    productSpecMarkdown: await file(inputAbsolute).text(),
     ...(repositoryRoot === undefined ? {} : { repositoryInventory: inventoryRepository(repositoryRoot) }),
   })
   if (!prepared.ok) {
@@ -219,11 +224,11 @@ const observerPropose = async (args: ReadonlyArray<string>): Promise<void> => {
     process.exit(1)
   }
   const output = resolve(flagValue(args, "--out") ?? defaultOutput(input))
-  if (await Runtime.file(output).exists() && !args.includes("--force")) {
+  if (await file(output).exists() && !args.includes("--force")) {
     console.error(`refusing to overwrite existing file: ${output}`)
     process.exit(1)
   }
-  await Runtime.write(output, result.markdown)
+  await writeFile(output, result.markdown)
   if (json) {
     printJson({
       ok: true,
@@ -247,7 +252,7 @@ const validate = async (args: ReadonlyArray<string>): Promise<void> => {
   let failures = 0
   const results: Array<unknown> = []
   for (const path of paths) {
-    const result = validateAssuranceSpec(await Runtime.file(path).text())
+    const result = validateAssuranceSpec(await file(path).text())
     results.push({ path, valid: result.valid, errors: result.errors, warnings: result.warnings })
     if (result.valid) {
       if (!json) console.log(`ok ${path}`)
@@ -266,12 +271,12 @@ const validate = async (args: ReadonlyArray<string>): Promise<void> => {
 const coverage = async (args: ReadonlyArray<string>): Promise<void> => {
   const path = args[0]
   if (path === undefined || path.startsWith("--")) usage()
-  const validation = validateAssuranceSpec(await Runtime.file(path).text())
+  const validation = validateAssuranceSpec(await file(path).text())
   if (!validation.valid || validation.document === undefined) {
     for (const error of validation.errors) console.error(`${error.code}: ${error.message}`)
     process.exit(1)
   }
-  const assessment = assessAssuranceSpec(parseAssuranceSpec(await Runtime.file(path).text()))
+  const assessment = assessAssuranceSpec(parseAssuranceSpec(await file(path).text()))
   if (jsonFlag(args)) {
     printJson(assessment)
     return
@@ -310,12 +315,12 @@ const sessionCheck = async (args: ReadonlyArray<string>): Promise<void> => {
   if (against === undefined && (specDigest === undefined || subjectDigest === undefined)) usage()
   let pin: unknown
   if (against !== undefined) {
-    const file = Runtime.file(resolve(against))
-    if (!(await file.exists())) {
+    const againstFile = file(resolve(against))
+    if (!(await againstFile.exists())) {
       return failWith({ ok: false, code: "file_not_found", message: `Session file does not exist: ${against}` }, json)
     }
     try {
-      pin = JSON.parse(await file.text())
+      pin = JSON.parse(await againstFile.text())
     } catch {
       return failWith({ ok: false, code: "invalid_session_pin", message: `Session file is not valid JSON: ${against}` }, json)
     }
@@ -350,7 +355,7 @@ const inventory = async (args: ReadonlyArray<string>): Promise<void> => {
   const json = jsonFlag(args)
   const report = runOrExit(getRepositoryInventory({ root: repoDir }), json)
   const out = flagValue(args, "--out")
-  if (out !== undefined) await Runtime.write(resolve(out), `${JSON.stringify(report, null, 2)}\n`)
+  if (out !== undefined) await writeFile(resolve(out), `${JSON.stringify(report, null, 2)}\n`)
   if (json) {
     printJson(report)
     return

@@ -8,7 +8,7 @@ import {
   canonicalArtifact,
   compileAssuranceManifest,
   computeEnvironmentProfileDigest,
-  executeBunTestUnit,
+  executeVitePlusTestUnit,
   makeOracleSensitivityReceipt,
   parseAssuranceSpec,
   serializeAssuranceReviewAnnotation,
@@ -51,7 +51,7 @@ const narratives: Readonly<Record<string, string>> = {
   subject: "This admitted assurance revision remains byte-bound to ProductSpec revision 6 and its legacy CW-AC identities. A later ProductSpec identity migration must create a new admission and may not retarget these receipts or rewrite this historical proof chain.",
   risk_model: "The proof design treats runtime compatibility, ordinary Codex-session custody, durable work identity, authority containment, restart safety, privacy, and release lifecycle fidelity as separate risks. Candidate evidence is never sufficient without a named falsifier, an exact environment, independent review, and current immutable bindings.",
   assurance_scope: "Every executable ProductSpec criterion is required and has exactly one obligation in this MVP run. No criterion is deferred or marked not applicable; release and public-promise authority remain outside the execution grant even after all observations are confirmed.",
-  environments: "Execution uses the admitted first-party macOS ARM64 Bun environment with network and credential access forbidden. Native JUnit remains private; normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.",
+  environments: "Execution uses the admitted first-party macOS ARM64 Node/Vite Plus environment with network and credential access forbidden. Native JUnit remains private; normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.",
   obligations: "Each obligation binds one criterion to a criterion-local contract oracle and a deterministic missing-anchor falsifier. The complete Desktop suite and installed RC9 journey are required companion evidence, so a narrow contract result cannot independently authorize release or a public completion claim.",
   gates: "The MVP assurance gate passes only when exact admission and environment bindings are current, every candidate is CONFIRMED, every falsifier is REFUTED, infrastructure is ready, observations are stable, independent review accepts each candidate, no exception remains, and the full Desktop regression gate is green.",
   evidence_policy: "Links remain evidence locations rather than verdicts. Native output stays private, normalized receipts are reviewed public-safe projections, and missing or stale artifacts remain INCONCLUSIVE. Candidate, sensitivity, installed-release, and full-regression evidence must all remain independently visible.",
@@ -136,23 +136,23 @@ const productSpecDigest = sha256Digest(productSpecBytes)
 
 const profilePayload = {
   environment_format_version: "0.1" as const,
-  profile_id: "ENV-OA-DESKTOP-MVP-BUN-1",
+  profile_id: "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
   revision: 1,
   owner: "first_party" as const,
   target_class: "release_artifact" as const,
   mutability: "isolated_write" as const,
-  platform: { os: "macos", architecture: "arm64", runtime: "Bun 1.3.11", framework: "Effect Native / Electron" },
-  capabilities: ["bun_test", "junit", "isolated_run_artifacts", "reviewed_installed_release_receipt"],
+  platform: { os: "macos", architecture: "arm64", runtime: "Node 25", framework: "Effect Native / Electron" },
+  capabilities: ["vite_plus_test", "junit", "isolated_run_artifacts", "reviewed_installed_release_receipt"],
   authentication_strategy: "none" as const,
   isolation: { fresh_identity: true, reset_between_runs: true, restart_supported: true },
   data_classification: "private_local" as const,
   evidence_visibility: "reviewed_public_safe" as const,
   retention: "Private native JUnit under var/; reviewed normalized receipts committed by digest.",
   redaction_policy: "No raw output, hostname, absolute path, credential, prompt, transcript, or repository content in public projections.",
-  permitted_actions: ["read_repository", "run_bun_tests", "write_isolated_artifacts"],
+  permitted_actions: ["read_repository", "run_vite_plus_tests", "write_isolated_artifacts"],
   forbidden_actions: ["network", "credentials", "production_mutation", "customer_data", "release_publication"],
-  required_commands: ["bun"],
-  dependency_lock: { path: "bun.lock", digest: sha256Digest(read("bun.lock")) },
+  required_commands: ["vp"],
+  dependency_lock: { path: "package.json", digest: sha256Digest(read("package.json")) },
 }
 const environment: AssuranceEnvironmentProfileDocument = {
   ...profilePayload,
@@ -163,11 +163,11 @@ write(relative.environment, canonicalArtifact(environment).bytes)
 const adapterLock: AssuranceAdapterLock = {
   adapter_lock_format_version: "0.1",
   adapters: [{
-    adapter_ref: "openagents.bun_test.v1",
+    adapter_ref: "openagents.vite_plus_test.v1",
     version: "1.0.0",
-    content_digest: sha256Digest(read("packages/assurance-spec/src/bun-test-adapter.ts")),
+    content_digest: sha256Digest(read("packages/assurance-spec/src/vite-plus-test-adapter.ts")),
     techniques: ["criterion_contract_with_sensitivity"],
-    capabilities: ["bun_test", "junit", "normalized_receipt"],
+    capabilities: ["vite_plus_test", "junit", "normalized_receipt"],
   }],
 }
 const adapterLockArtifact = canonicalArtifact(adapterLock)
@@ -229,9 +229,9 @@ const executionUnits: ReadonlyArray<AssuranceExecutionUnit> = document.obligatio
     role,
     obligation_id: obligation.id,
     environment_ref: environment.profile_id,
-    adapter_ref: "openagents.bun_test.v1",
+    adapter_ref: "openagents.vite_plus_test.v1",
     argv: [
-      "bun", "test", testPath, "--test-name-pattern",
+      "vp", "test", testPath, "--testNamePattern",
       role === "candidate"
         ? `${criterion} candidate evidence remains bound`
         : `${criterion} missing-anchor falsifier is rejected`,
@@ -261,7 +261,7 @@ mkdirSync(absolute(relative.runRoot), { recursive: true })
 const receiptRows: Array<Record<string, unknown>> = []
 for (const obligation of document.obligations) {
   const units = executionUnits.filter((unit) => unit.obligation_id === obligation.id)
-  const results = units.map((unit) => executeBunTestUnit({
+  const results = units.map((unit) => executeVitePlusTestUnit({
     workspaceRoot: root,
     runRoot: absolute(`${relative.runRoot}/${obligation.id}`),
     manifest: compiled.manifest,
@@ -271,6 +271,7 @@ for (const obligation of document.obligations) {
     producerRef: "runner.openagents.local.20260713",
     reviewerRef: "reviewer.codex.assurance.20260713",
     sourceDigest: sha256Digest(read(testPath)),
+    vitePlusExecutable: resolve(root, "node_modules/vite-plus/bin/vp"),
   }))
   const candidateResult = results.find((result) => result.receipt.axes.observation === "CONFIRMED")
   const falsifierResult = results.find((result) => result.receipt.axes.observation === "REFUTED")

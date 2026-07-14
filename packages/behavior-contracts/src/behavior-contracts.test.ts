@@ -1016,7 +1016,7 @@ describe("customer behavior contract engagements", () => {
   test("validates the committed public-demo pilot registry for issue 8186", async () => {
     const raw = await JSON.parse(await readFile(
       new URL("../../../docs/qa-demo/customer-behavior-contract-pilot.json", import.meta.url),
-    , "utf8"))
+    "utf8"))
     const pilot = decodeCustomerBehaviorContractEngagementDocument(raw)
     const validation = validateCustomerBehaviorContractEngagement(pilot)
 

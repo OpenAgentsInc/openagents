@@ -230,7 +230,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 production move runtime", () => {
       },
     })
     await expect(runtime.move(conflicting)).rejects.toBeInstanceOf(PortableCapabilityBrokerStoreError)
-    expect(invoked).toBeFalse()
+    expect(invoked).toBe(false)
     expect(await activeClaim(first.move.command.sessionRef)).toBe(first.moveRef)
   })
 })

@@ -6,11 +6,12 @@ import { join, resolve } from "node:path"
 import { MVP_SPEC, MVP_SUBJECT, makeFixtureRoot, repoRoot } from "./fixture.ts"
 
 const cli = resolve(import.meta.dirname, "../src/cli.ts")
+const tsxLoader = resolve(repoRoot, "node_modules/tsx/dist/loader.mjs")
 
 type CliResult = Readonly<{ exitCode: number; stdout: string; stderr: string }>
 
 const run = (args: ReadonlyArray<string>, cwd: string = repoRoot): CliResult => {
-  const result = Runtime.spawnSync([process.execPath, cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  const result = Runtime.spawnSync([process.execPath, "--import", tsxLoader, cli, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
   return {
     exitCode: result.exitCode,
     stdout: result.stdout.toString("utf8"),

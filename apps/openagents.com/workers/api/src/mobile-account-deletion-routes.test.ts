@@ -157,7 +157,7 @@ const deleteAccountRequest = (body?: unknown): Request => {
 }
 
 describe('Khala mobile account deletion route', () => {
-  test('deletes account-owned D1 rows, calls Khala Sync cleanup, forfeits credits, revokes bearer, and supports retry', async () => {
+  test('deletes account-owned D1 rows, calls Khala Sync cleanup, revokes bearer, and supports retry', async () => {
     const sqlite = makeDb()
     const kv = makeMemoryKv()
     const syncCalls: Array<{ binding: unknown; userId: string }> = []
@@ -209,7 +209,6 @@ describe('Khala mobile account deletion route', () => {
       expect(response.status).toBe(200)
       expect(body).toMatchObject({
         cleanup: {
-          credits: { forfeitedBalanceMsat: 120000 },
           github: { connectionsDisconnected: 1, writeGrantsRevoked: 1 },
           openAuth: { refreshRevoked: true, storageRowsRemoved: 1 },
           push: { deviceTokensRemoved: 1 },
@@ -238,7 +237,7 @@ describe('Khala mobile account deletion route', () => {
         )
         .bind(`agent:${USER_ID}`)
         .first<{ balance_msat: number; held_msat: number; usd_credit_msat: number }>()
-      expect(balance).toEqual({ balance_msat: 0, held_msat: 0, usd_credit_msat: 0 })
+      expect(balance).toEqual({ balance_msat: 120000, held_msat: 20000, usd_credit_msat: 100000 })
       const pushRows = await sqlite.db
         .prepare(`SELECT COUNT(*) AS count FROM push_device_tokens WHERE user_id = ?`)
         .bind(USER_ID)

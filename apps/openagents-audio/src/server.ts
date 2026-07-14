@@ -85,7 +85,9 @@ export const startAudioServer = (config: AudioServerConfig) => {
     },
   })
   return {
-    server, port: server.port ?? config.port ?? 8080,
+    server,
+    get port() { return server.port ?? config.port ?? 8080 },
+    ready: server.ready,
     speak: async (input: Readonly<{ identity: VoiceIdentity; turnRef: string; speechRef: string; messageRef: string; text: string }>): Promise<TtsReceipt | null> => sessions.get(sessionKey(input.identity))?.speak(input) ?? null,
     stop: async () => { for (const session of sessions.values()) session.stop(); sessions.clear(); await server.stop(true); await config.retention?.close() },
   }

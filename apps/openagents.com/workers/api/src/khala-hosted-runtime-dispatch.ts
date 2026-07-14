@@ -696,7 +696,6 @@ export const runHostedRuntimeTurnDispatch = async (
       } else if (outcome === 'failed') {
         failed += 1
         claimed += 1
-        claimed += 1
       } else {
         skipped += 1
       }

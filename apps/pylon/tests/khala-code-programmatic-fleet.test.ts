@@ -60,7 +60,7 @@ async function seedLocalCodexRuntime(home: string) {
 }
 
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
-  const proc = Runtime.spawn([process.execPath, INDEX, ...args], {
+  const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, ...args], {
     cwd: CWD,
     env,
     stderr: "pipe",
@@ -131,7 +131,7 @@ function devCheck() {
   }
 }
 
-function makeControlServer(token: string) {
+async function makeControlServer(token: string) {
   type Session = {
     adapter: "codex" | "claude_agent"
     completeAt: number
@@ -286,7 +286,7 @@ function makeControlServer(token: string) {
   }
 }
 
-function makeStatsIngestServer() {
+async function makeStatsIngestServer() {
   const ingests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> = []
   let total = 10_000
   const server = Runtime.serve({
@@ -354,7 +354,7 @@ describe("Khala Code programmatic CLI fleet and stats coverage", () => {
       expect(planBody.slots).toHaveLength(2)
 
       const controlToken = "control-token-programmatic-fixture"
-      const control = makeControlServer(controlToken)
+      const control = await makeControlServer(controlToken)
       const tasksPath = join(home, "khala-code-programmatic-tasks.json")
       await writeFile(
         tasksPath,
@@ -441,7 +441,7 @@ describe("Khala Code programmatic CLI fleet and stats coverage", () => {
         observedAt: new Date("2026-07-01T13:00:03.000Z"),
       })
 
-      const stats = makeStatsIngestServer()
+      const stats = await makeStatsIngestServer()
       const usage = await runPylonCli(
         [
           "accounts",

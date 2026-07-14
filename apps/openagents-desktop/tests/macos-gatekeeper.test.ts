@@ -240,7 +240,7 @@ describe("-UNSIGNED-DEV artifact naming", () => {
 })
 
 describe("fixture-artifact sweep (fail-closed without owner credentials)", () => {
-  test.if(process.platform === "darwin")(
+  test.skipIf(process.platform !== "darwin")(
     "an unsigned/unstapled fixture dmg and app fail EVERY Gatekeeper oracle",
     () => {
       const dir = mkdtempSync(path.join(tmpdir(), "oa-gatekeeper-fixture-"))
@@ -258,7 +258,7 @@ describe("fixture-artifact sweep (fail-closed without owner credentials)", () =>
     30_000,
   )
 
-  test.if(process.platform === "darwin")(
+  test.skipIf(process.platform !== "darwin")(
     "runPreflight surfaces the Gatekeeper rows and fails closed on the fixture artifact",
     () => {
       const dir = mkdtempSync(path.join(tmpdir(), "oa-preflight-fixture-"))

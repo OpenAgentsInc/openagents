@@ -199,7 +199,7 @@ describe("github issue triage output", () => {
   test("prints the searched queue when no candidates are found", () => {
     const result = spawnSync(
       process.execPath,
-      ["run", "scripts/github-issue-triage.ts", "--repo", "OpenAgentsInc/openagents", "--limit", "1"],
+      ["--import", "tsx", "scripts/github-issue-triage.ts", "--repo", "OpenAgentsInc/openagents", "--limit", "1"],
       {
         cwd: import.meta.dirname + "/..",
         encoding: "utf8",

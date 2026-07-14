@@ -1,4 +1,6 @@
+import { glob, readFile } from "node:fs/promises"
 import { dirname, relative, resolve } from "node:path"
+import { Runtime } from "@openagentsinc/runtime-platform"
 
 import {
   completionTargets,
@@ -28,12 +30,11 @@ export const workspacePatterns = (manifest: PackageJson): readonly string[] =>
   Array.isArray(manifest.workspaces) ? manifest.workspaces : manifest.workspaces?.packages ?? []
 
 export const discoverWorkspaceDirectories = async (root: string): Promise<readonly string[]> => {
-  const rootManifest = (await Bun.file(resolve(root, "package.json")).json()) as PackageJson
+  const rootManifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8")) as PackageJson
   const directories = new Set<string>()
 
   for (const pattern of workspacePatterns(rootManifest)) {
-    const glob = new Bun.Glob(`${normalize(pattern)}/package.json`)
-    for await (const match of glob.scan({ cwd: root, onlyFiles: true })) {
+    for await (const match of glob(`${normalize(pattern)}/package.json`, { cwd: root })) {
       directories.add(normalize(dirname(match)))
     }
   }
@@ -50,13 +51,13 @@ export const discoverWorkspaceTargets = async (
 
   for (const directory of await discoverWorkspaceDirectories(root)) {
     if (excluded.has(directory)) continue
-    const manifest = (await Bun.file(resolve(root, directory, "package.json")).json()) as PackageJson
+    const manifest = JSON.parse(await readFile(resolve(root, directory, "package.json"), "utf8")) as PackageJson
     const script = componentOverrides[directory]?.[component] ??
       (component === "fmt" ? (manifest.scripts?.fmt ? "fmt" : manifest.scripts?.format ? "format" : undefined) : manifest.scripts?.[component] ? component : undefined)
     if (!script) continue
     targets.push({
       name: `${manifest.name ?? directory}:${script}`,
-      command: ["bun", "run", "--cwd", directory, script],
+      command: ["vp", "run", "--filter", `./${directory}`, script],
       directory,
       component,
     })
@@ -68,8 +69,8 @@ export const discoverWorkspaceTargets = async (
 const runTarget = async (root: string, target: CheckTarget): Promise<void> => {
   const started = performance.now()
   console.error(`\n[check] ${target.name}`)
-  const process = Bun.spawn(target.command, { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit" })
-  const exitCode = await process.exited
+  const child = Runtime.spawn(target.command, { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+  const exitCode = await child.exited
   const elapsed = ((performance.now() - started) / 1_000).toFixed(1)
   if (exitCode !== 0) throw new Error(`${target.name} failed with exit ${exitCode} after ${elapsed}s`)
   console.error(`[check] ${target.name} green (${elapsed}s)`)

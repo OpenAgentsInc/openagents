@@ -55,7 +55,7 @@ describe("contract openagents_mobile.ota.temporary_3s_poll.v1", () => {
     // gets dialed down deliberately, not forgotten.
     const source = await readFile(
       new URL("../src/updates/ota-polling.ts", import.meta.url).pathname,
-    , "utf8")
+    "utf8")
     expect(source).toContain("TEMPORARY CADENCE")
     expect(source).toContain("TEMPORARY_OTA_POLL_INTERVAL_MS")
   })

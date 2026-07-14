@@ -131,6 +131,7 @@ describe.skipIf(!hasLocalPostgres())(
         port: 0,
         pingIntervalMs: 3_600_000,
       })
+      await server.ready
     })
 
     afterAll(async () => {

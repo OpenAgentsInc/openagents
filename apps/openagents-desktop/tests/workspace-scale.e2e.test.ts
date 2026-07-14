@@ -81,7 +81,7 @@ test("CUT-17 real worker bounds a 20k-entry repository and project close drains 
       mode: "content",
       limit: 100,
     })
-    expect(cached.taskRef).toStartWith("workspace.search.cache.")
+    expect(cached.taskRef.startsWith("workspace.search.cache.")).toBe(true)
     expect(await cached.result).toEqual(first)
     const cachedElapsedMs = performance.now() - cachedStartedAt
     expect(cachedElapsedMs).toBeLessThan(50)

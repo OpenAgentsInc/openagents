@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from 'vite-plus/test'
 
 import {
   type AgentRunBundle,
@@ -14,7 +14,6 @@ import { makeOmniAssignmentService } from './omni/assignments'
 import { makeOmniDeploymentRepository } from './omni/deployment-repository'
 import { makeOmniDispatchService } from './omni/dispatch-service'
 import {
-  OmniBillingError,
   OmniDispatchError,
   OmniDispatchMalformedResponse,
   OmniDispatchMissingCredentials,
@@ -25,30 +24,11 @@ import {
   OmniRepositoryError,
   OmniRunnerCallbackDecodeError,
 } from './omni/errors'
-import { makeOmniOperatorService } from './omni/operator-service'
 import { makeOmniPublicProjectionService } from './omni/public-service'
 import { makeOmniRunRepository } from './omni/run-repository'
 import { makeOmniRunnerEventService } from './omni/runner-events'
 
 const repository = parseGithubRepository('OpenAgentsInc/autopilot-omega')
-
-const unusedDatabase: D1Database = {
-  batch: () => {
-    throw new Error('unused database')
-  },
-  dump: () => {
-    throw new Error('unused database')
-  },
-  exec: () => {
-    throw new Error('unused database')
-  },
-  prepare: () => {
-    throw new Error('unused database')
-  },
-  withSession: () => {
-    throw new Error('unused database')
-  },
-}
 
 const makeQueuedAgentRun = () =>
   createQueuedAgentRun({
@@ -558,61 +538,6 @@ describe('Omni Effect services', () => {
         ),
       ),
     ).rejects.toThrow(OmniRepositoryError)
-  })
-
-  test('operator service represents credit checks and debits as typed billing Effects', async () => {
-    const queued = makeQueuedAgentRun()
-    const service = makeOmniOperatorService({
-      requireMinimumRunCredits: async (_db, _userId, _runtime) => ({
-        billing: {
-          activeRuns: [],
-          autoTopUp: {
-            events: [],
-            policy: {
-              amountCents: 2500,
-              amountFormatted: '$25.00',
-              enabled: false,
-              monthlyCapCents: 10000,
-              monthlyCapFormatted: '$100.00',
-              pauseReason: null,
-              spentThisMonthCents: 0,
-              spentThisMonthFormatted: '$0.00',
-              status: 'disabled',
-              thresholdCents: 500,
-              thresholdFormatted: '$5.00',
-              updatedAt: '2026-06-11T00:00:00.000Z',
-            },
-            savedPaymentMethod: null,
-          },
-          balanceCents: 0,
-          balanceFormatted: '$0.00',
-          currency: 'USD',
-          minimumRunCreditCents: 5,
-          minimumRunCreditFormatted: '$0.05',
-          packages: [],
-          rates: {
-            codexCentsPerThousandTokens: 2,
-            containerCentsPerMinute: 5,
-          },
-          recentEntries: [],
-          status: 'active',
-        },
-        message: 'Add credits before launching Autopilot.',
-        ok: false,
-      }),
-      recordContainerUsageDebitForRun: async () => {
-        throw new Error('ledger write failed')
-      },
-    })
-
-    await expect(
-      Effect.runPromise(service.requireRunCredits(unusedDatabase, 'github:1')),
-    ).rejects.toThrow(OmniBillingError)
-    await expect(
-      Effect.runPromise(
-        service.recordContainerUsageDebit(unusedDatabase, queued.run),
-      ),
-    ).rejects.toThrow(OmniBillingError)
   })
 
   test('public projection service redacts runner callback token refs', async () => {

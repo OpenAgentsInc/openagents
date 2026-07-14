@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { Effect } from "effect";
+import { resolve } from "node:path";
 import { runProbeCli } from "../src";
 
 const sse = (...events: ReadonlyArray<unknown>): string =>
@@ -260,7 +261,7 @@ describe("Probe CLI Gemini backend commands", () => {
         candidates: [{ content: { role: "model", parts: [{ text: "Read it." }] }, finishReason: "STOP" }],
       }),
     ];
-    const workspaceRoot = process.cwd().endsWith("packages/runtime") ? "../.." : ".";
+    const workspaceRoot = resolve(import.meta.dirname, "..");
     const result = await Effect.runPromise(
       runProbeCli(["chat", "--prompt", "read README"], {
         env: { GEMINI_API_KEY: "test-gemini-key", PROBE_WORKSPACE_ROOT: workspaceRoot },

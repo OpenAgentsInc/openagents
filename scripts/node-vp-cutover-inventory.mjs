@@ -20,7 +20,7 @@ const SELF_EXCLUDED_PATHS = new Set([
 
 const CONTENT_RULES = [
   { id: "bun-api", pattern: /\bBun\.[A-Za-z_$][A-Za-z0-9_$]*/g },
-  { id: "bun-test", pattern: /\bvite-plus/test\b/g },
+  { id: "bun-test", pattern: /\bbun:test\b/g },
   { id: "bun-module", pattern: /\bbun:[a-z0-9_-]+\b|["']bun["']/gi },
   { id: "bun-shebang", pattern: /^#![^\n]*\bbun\b/gm },
   {

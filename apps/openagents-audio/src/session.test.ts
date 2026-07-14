@@ -10,7 +10,7 @@ test("session ACK/gap/generation/interim/final/cancel behavior", async () => {
   adapter.streams[0]!.events({ _tag: "interim", text: "hel", stability: 0.5 }); adapter.streams[0]!.events({ _tag: "interim", text: "hello", stability: 0.9 }); adapter.streams[0]!.events({ _tag: "final", text: "hello" })
   expect(sent.slice(-3).map((x) => [x._tag, x.utteranceRef])).toEqual([["transcript_interim", "utterance:session:1:1"], ["transcript_interim", "utterance:session:1:1"], ["transcript_final", "utterance:session:1:1"]])
   await expect(session.receive(mediaFrame(1, undefined, { ...identity, generation: 2 }))).rejects.toThrow("identity_or_generation")
-  expect(adapter.streams[0]!.cancelled).toBeTrue(); expect(closed).toHaveLength(1)
+  expect(adapter.streams[0]!.cancelled).toBe(true); expect(closed).toHaveLength(1)
 })
 test("provider quota/deadline are public-safe and stop has cancellation semantics", () => {
   const adapter = new FakeSttAdapter(); const sent: any[] = []; const session = new AudioSession(identity, adapter, { sendText: (x) => { sent.push(x); return true }, close: () => {} })

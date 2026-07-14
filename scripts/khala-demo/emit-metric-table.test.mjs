@@ -13,11 +13,11 @@ import {
 } from "./emit-metric-table.mjs";
 
 const recordedPath = new URL(
-  "../../docs/inference/fixtures/khala-head-to-head-recorded-run.v1.json",
+  "../../docs/khala/fixtures/khala-head-to-head-recorded-run.v1.json",
   import.meta.url,
 );
 const dryRunPath = new URL(
-  "../../docs/inference/fixtures/khala-head-to-head-dry-run.v1.json",
+  "../../docs/khala/fixtures/khala-head-to-head-dry-run.v1.json",
   import.meta.url,
 );
 

@@ -213,9 +213,9 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
     expect(requests.map(item => item.body?.action ?? (item.path.endsWith("/export") ? "export" : "materialize"))).toEqual([
       "stage", "materialize", "activate", "quiesce", "checkpoint", "export", "reclaim",
     ])
-    expect(requests.every(item => item.authorization === "Bearer fixture-control-token")).toBeTrue()
-    expect(issuedArtifact?.every(byte => byte === 0)).toBeTrue()
-    expect(registeredArtifact?.every(byte => byte === 0)).toBeTrue()
+    expect(requests.every(item => item.authorization === "Bearer fixture-control-token")).toBe(true)
+    expect(issuedArtifact?.every(byte => byte === 0)).toBe(true)
+    expect(registeredArtifact?.every(byte => byte === 0)).toBe(true)
     expect(JSON.stringify(requests.map(item => item.body))).not.toContain("fixture-control-token")
   })
 
