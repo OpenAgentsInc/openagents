@@ -1,45 +1,54 @@
-# OpenAgents first MVP
+# OpenAgents MVP ProductSpecs
 
-This directory is the canonical product-definition package for the first
-deployable OpenAgents shape: a ProductSpec-native, local-first Codex workroom.
-It keeps the committed intent and its supporting audit separate and easy to
-read.
+This directory is the canonical product-definition package for the closed
+first deployable OpenAgents shape and the proposed next Desktop phase. Phase 1
+remains the ProductSpec-native, local-first Codex workroom and its immutable
+proof chain. Phase 2 narrows the next intent to a React-backed basic Codex
+workbench without rewriting that history. The package keeps intent,
+supporting audits, and evidence boundaries separate and easy to read.
 
 ## Read in this order
 
-1. [`openagents-codex-workroom-mvp.product-spec.md`](./openagents-codex-workroom-mvp.product-spec.md)
+1. [`openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md)
+   — the proposed Phase 2 ProductSpec for the React-backed basic Codex
+   workbench. It defines the focused shell, session, timeline, composer,
+   decision, read-only review, accessibility, performance, React/Effect Native
+   ownership, reference-code, and installed-journey boundary. It depends on
+   the closed Phase 1 product but creates a new intent and proof chain; it is
+   not admitted work or release authority.
+2. [`openagents-codex-workroom-mvp.product-spec.md`](./openagents-codex-workroom-mvp.product-spec.md)
    — the exact ProductSpec v0.1 intent artifact. It owns the MVP problem,
    hypothesis, in/out/cut scope, user experience, solution, stable acceptance
    criteria, success metrics, risks, owner gates, and required receipts.
-2. [`2026-07-13-openagents-codex-workroom-mvp-audit.md`](./2026-07-13-openagents-codex-workroom-mvp-audit.md)
+3. [`2026-07-13-openagents-codex-workroom-mvp-audit.md`](./2026-07-13-openagents-codex-workroom-mvp-audit.md)
    — the dated OpenChamber/OpenCode/Codex/OpenAgents evidence and option analysis
    behind that spec. It does not dispatch work or manufacture current proof.
-3. [`../sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) — the sequencing,
+4. [`../sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) — the sequencing,
    priority, live-gate, and issue-triage authority.
-4. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
+5. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
    — the closed-completed implementation/evidence ledger for this MVP.
-5. [`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md)
+6. [`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md)
    — the original first-dogfood plan. The live admitted companion and its
    reviewed receipts now execute that plan without changing MVP intent,
    release state, or promise authority.
-6. [`2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md)
+7. [`2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md)
    — the narrow signed/notarized RC6 build, installed-smoke, restore, cleanup,
    and remaining-gates receipt.
-7. [`2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md)
+8. [`2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc7-candidate-receipt.md)
    — the signed/notarized RC7 artifact, source-launched real-Codex journey, and
    installed-driver falsifier for the ordinary logged-in-session MVP boundary.
-8. [`2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md)
+9. [`2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc8-candidate-receipt.md)
    — the signed/notarized RC8 artifact, exact installed 12-step real-Codex
    journey, renderer/app restart, and exact RC7-to-RC8 signed-update,
    rollback, diagnostics, reinstall, and cleanup receipt.
-9. [`2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md)
+10. [`2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md)
    — the superseding signed/notarized candidate containing the distinct quota,
    rate-limit, authentication-revocation, and policy-denial states, plus exact
    installed real-Codex and RC8-to-RC9 lifecycle proof.
-10. [`2026-07-13-openagents-codex-workroom-rc9-completion-audit.md`](./2026-07-13-openagents-codex-workroom-rc9-completion-audit.md)
+11. [`2026-07-13-openagents-codex-workroom-rc9-completion-audit.md`](./2026-07-13-openagents-codex-workroom-rc9-completion-audit.md)
     — the criterion-by-criterion implementation/evidence matrix and the exact
     boundary between accepted implementation and conditional rollout gates.
-11. [`2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md`](./2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md)
+12. [`2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md`](./2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md)
     — the exact owner acceptance, close-rule disposition, and boundaries that
     permit #8756 to close without implying publication or broader rollout.
 
@@ -53,18 +62,22 @@ promise registry alone authorizes public claims.
 
 ## ProductSpec location and validation
 
-The MVP Product Spec is intentionally co-located with its audit here by owner
-direction. It remains a normal `.product-spec.md` file and is validated by the
-repository ProductSpec test sweep alongside `specs/**/*.product-spec.md`.
+The MVP ProductSpecs are intentionally co-located with their audits here by
+owner direction. They remain normal `.product-spec.md` files and are validated
+by the repository ProductSpec test sweep alongside
+`specs/**/*.product-spec.md`.
 
 ```sh
 node --import tsx packages/product-spec/src/cli.ts validate \
   docs/mvp/openagents-codex-workroom-mvp.product-spec.md
+node --import tsx packages/product-spec/src/cli.ts validate \
+  docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md \
+  --profile upstream
 pnpm test packages/product-spec/test/product-spec.test.ts
 ```
 
-Do not create a second copy under `specs/`; links, issues, dispatch prompts, and
-future decision traces should cite this path plus `spec_revision`.
+Do not create second copies under `specs/`; links, issues, dispatch prompts,
+and future decision traces should cite the exact path plus `spec_revision`.
 
 ## Current ProductSpec workroom loop
 
