@@ -29,6 +29,7 @@ import {
   Icon,
   NavRail,
   Select,
+  SegmentedControl,
   Spacer,
   SplitPane,
   Stack,
@@ -3075,11 +3076,19 @@ const projectHome = (state: DesktopShellState): View => {
         }),
         Text({ key: "workspace-home-focus", content: focusLabel, variant: "caption", color: "textMuted" }),
       ]),
-      Stack({ key: "workspace-home-filters", direction: "row", gap: "1", align: "center" }, [
-        Button({ key: "workspace-home-filter-active", label: `Active ${activeCount}`, variant: state.codingSessionFilter === "active" ? "secondary" : "ghost", onPress: IntentRef("DesktopCodingCatalogFilterSelected", StaticPayload("active")) }),
-        Button({ key: "workspace-home-filter-recovery", label: `Needs recovery ${recoveryCount}`, variant: state.codingSessionFilter === "recovery" ? "secondary" : "ghost", onPress: IntentRef("DesktopCodingCatalogFilterSelected", StaticPayload("recovery")) }),
-        Button({ key: "workspace-home-filter-archived", label: `Archived ${archivedCount}`, variant: state.codingSessionFilter === "archived" ? "secondary" : "ghost", onPress: IntentRef("DesktopCodingCatalogFilterSelected", StaticPayload("archived")) }),
-      ]),
+      // A single-choice filter switch (harmonization #8811 category 8): three
+      // buttons manually toggling variant secondary/ghost by selection was the
+      // exact one-off SegmentedControl now exists to replace.
+      SegmentedControl({
+        key: "workspace-home-filters",
+        value: state.codingSessionFilter,
+        options: [
+          { id: "active", label: `Active ${activeCount}` },
+          { id: "recovery", label: `Needs recovery ${recoveryCount}` },
+          { id: "archived", label: `Archived ${archivedCount}` },
+        ],
+        onChange: IntentRef("DesktopCodingCatalogFilterSelected", ComponentValueBinding()),
+      }),
       TextField({
         key: "workspace-home-query",
         value: state.codingSessionQuery,
@@ -3103,13 +3112,19 @@ const projectHome = (state: DesktopShellState): View => {
             : "No archived sessions.",
         variant: "body",
         color: "textMuted",
-      })] : visible.map((session) => Stack(
+      })] : visible.map((session) => Card(
+        {
+          key: `workspace-home-session-box-${session.sessionRef}`,
+          padding: "3",
+          radius: "lg",
+          style: { width: "full", borderColor: "borderSubtle", borderWidth: 1 },
+        },
+        [Stack(
         {
           key: `workspace-home-session-${session.sessionRef}`,
           direction: "row",
           gap: "3",
           align: "center",
-          style: { width: "full", padding: "3", borderColor: "borderSubtle", borderWidth: 1, borderRadius: "lg" },
         },
         [
           Stack({ key: `workspace-home-session-copy-${session.sessionRef}`, direction: "column", gap: "0.5", style: { flex: 1, minWidth: 0 } }, [
@@ -3167,6 +3182,7 @@ const projectHome = (state: DesktopShellState): View => {
                 a11y: { label: `Delete archived coding session for ${session.projectLabel}` },
               })]),
         ],
+      )],
       ))),
       ...(state.codingCatalog.nextOffset === null ? [] : [Button({
         key: "workspace-home-load-more",
@@ -3529,13 +3545,13 @@ const voiceHud = (state: DesktopShellState): View | null => {
   const indicators = voiceIndicatorText(state.voice)
   const transcript = state.voice.host.transcript
   const proposal = state.voice.host.proposal
-  return Stack({
+  return Card({
     key: "shell-voice-hud",
-    direction: "column",
-    gap: "1.5",
-    style: { width: "full", backgroundColor: "surfaceRaised", borderRadius: "md", padding: "2" },
+    padding: "2",
+    radius: "md",
+    style: { width: "full", backgroundColor: "surfaceRaised" },
     a11y: { role: "group", label: `Voice status: ${indicators.status}. ${indicators.capture}. ${indicators.egress}. ${indicators.retention}. ${indicators.playback}.` },
-  }, [
+  }, [Stack({ key: "shell-voice-hud-content", direction: "column", gap: "1.5" }, [
     Stack({ key: "shell-voice-status-row", direction: "row", gap: "1", align: "center", style: { width: "full" } }, [
       Icon({ key: "shell-voice-status-icon", name: "Mic", size: "sm", color: state.voice.host.capture ? "info" : "textMuted", label: indicators.status }),
       Text({ key: "shell-voice-status", content: indicators.status, variant: "label", color: "textPrimary" }),
@@ -3561,7 +3577,7 @@ const voiceHud = (state: DesktopShellState): View | null => {
     ])]),
     ...(state.voice.errorText === null ? [] : [Text({ key: "shell-voice-error", content: state.voice.errorText, variant: "caption", color: "danger", a11y: { role: "region", label: `Voice error: ${state.voice.errorText}` } })]),
     ...(state.voice.host.playbackOutcomeRef === undefined ? [] : [Text({ key: "shell-voice-playback-outcome", content: `Playback interrupted · ${state.voice.host.playbackOutcomeRef}`, variant: "caption", color: "textMuted", a11y: { role: "region", label: `Playback interruption outcome ${state.voice.host.playbackOutcomeRef}` } })]),
-  ])
+  ])])
 }
 
 const composerVoiceControls = (state: DesktopShellState): ReadonlyArray<View> => [
@@ -3586,19 +3602,19 @@ const composerVoiceControls = (state: DesktopShellState): ReadonlyArray<View> =>
  * `img-src data:`); the base64 itself never renders as text.
  */
 const composerImageThumbnail = (attachment: ComposerImageAttachment): View =>
-  Stack(
+  Card(
     {
       key: `composer-image-${attachment.id}`,
+      padding: "1",
+      radius: "md",
+      style: { backgroundColor: "surfaceRaised", borderColor: "border", borderWidth: 1 },
+    },
+    [Stack(
+    {
+      key: `composer-image-frame-${attachment.id}`,
       direction: "column",
       gap: "0.5",
       align: "center",
-      style: {
-        backgroundColor: "surfaceRaised",
-        borderRadius: "md",
-        borderColor: "border",
-        borderWidth: 1,
-        padding: "1",
-      },
     },
     [
       Image({
@@ -3634,6 +3650,7 @@ const composerImageThumbnail = (attachment: ComposerImageAttachment): View =>
         ],
       ),
     ],
+  )],
   )
 
 /** The composer attachments strip + transient rejection notice (capability I1). */
@@ -3666,55 +3683,59 @@ const composerImageRegion = (state: DesktopShellState): ReadonlyArray<View> => {
 const composerReviewContextRegion = (state: DesktopShellState): ReadonlyArray<View> => {
   const context = state.composerReviewContext
   if (context === null) return []
-  return [Stack(
+  return [Card(
     {
       key: "shell-composer-review-context",
-      direction: "row",
-      gap: "2",
-      align: "center",
-      style: { width: "full", backgroundColor: "surfaceRaised", borderRadius: "md", padding: "2" },
+      padding: "2",
+      radius: "md",
+      style: { width: "full", backgroundColor: "surfaceRaised" },
       a11y: { role: "group", label: `Attached review context for ${context.path}` },
     },
-    [
-      Icon({ key: "shell-composer-review-icon", name: "Compare", size: "sm", color: "textMuted", label: "Diff" }),
-      Text({ key: "shell-composer-review-path", content: context.path, variant: "label", color: "textPrimary" }),
-      Text({ key: "shell-composer-review-meta", content: `${context.source} · ${context.hunkCount} ${context.hunkCount === 1 ? "hunk" : "hunks"}`, variant: "caption", color: "textMuted" }),
-      Text({ key: "shell-composer-review-causal-item", content: context.causalItemRef === null ? "Uncorrelated" : `Timeline ${context.causalItemRef}`, variant: "caption", color: context.causalItemRef === null ? "warning" : "success" }),
-      Spacer({ key: "shell-composer-review-fill", flex: true }),
-      IconButton({ key: "shell-composer-review-remove", icon: "X", accessibilityLabel: `Remove review context for ${context.path}`, onPress: IntentRef("DesktopReviewContextRemoved") }),
-    ],
+    [Stack(
+      { key: "shell-composer-review-context-row", direction: "row", gap: "2", align: "center" },
+      [
+        Icon({ key: "shell-composer-review-icon", name: "Compare", size: "sm", color: "textMuted", label: "Diff" }),
+        Text({ key: "shell-composer-review-path", content: context.path, variant: "label", color: "textPrimary" }),
+        Text({ key: "shell-composer-review-meta", content: `${context.source} · ${context.hunkCount} ${context.hunkCount === 1 ? "hunk" : "hunks"}`, variant: "caption", color: "textMuted" }),
+        Text({ key: "shell-composer-review-causal-item", content: context.causalItemRef === null ? "Uncorrelated" : `Timeline ${context.causalItemRef}`, variant: "caption", color: context.causalItemRef === null ? "warning" : "success" }),
+        Spacer({ key: "shell-composer-review-fill", flex: true }),
+        IconButton({ key: "shell-composer-review-remove", icon: "X", accessibilityLabel: `Remove review context for ${context.path}`, onPress: IntentRef("DesktopReviewContextRemoved") }),
+      ],
+    )],
   )]
 }
 
 const composerFileContextRegion = (state: DesktopShellState): ReadonlyArray<View> => {
   const context = state.composerFileContext
   if (context === null) return []
-  return [Stack(
+  return [Card(
     {
       key: "shell-composer-file-context",
-      direction: "row",
-      gap: "2",
-      align: "center",
-      style: { width: "full", backgroundColor: "surfaceRaised", borderRadius: "md", padding: "2" },
+      padding: "2",
+      radius: "md",
+      style: { width: "full", backgroundColor: "surfaceRaised" },
       a11y: { role: "group", label: `Mentioned file ${context.path}` },
     },
-    [
-      Icon({ key: "shell-composer-file-icon", name: "Code", size: "sm", color: "textMuted", label: "File" }),
-      Text({ key: "shell-composer-file-path", content: `@file:${context.path}`, variant: "label", color: "textPrimary" }),
-      Text({
-        key: "shell-composer-file-meta",
-        content: `${context.languageMode} · ${context.dirty ? "unsaved draft" : "workspace revision"}`,
-        variant: "caption",
-        color: "textMuted",
-      }),
-      Spacer({ key: "shell-composer-file-fill", flex: true }),
-      IconButton({
-        key: "shell-composer-file-remove",
-        icon: "X",
-        accessibilityLabel: `Remove mentioned file ${context.path}`,
-        onPress: IntentRef("DesktopFileContextRemoved"),
-      }),
-    ],
+    [Stack(
+      { key: "shell-composer-file-context-row", direction: "row", gap: "2", align: "center" },
+      [
+        Icon({ key: "shell-composer-file-icon", name: "Code", size: "sm", color: "textMuted", label: "File" }),
+        Text({ key: "shell-composer-file-path", content: `@file:${context.path}`, variant: "label", color: "textPrimary" }),
+        Text({
+          key: "shell-composer-file-meta",
+          content: `${context.languageMode} · ${context.dirty ? "unsaved draft" : "workspace revision"}`,
+          variant: "caption",
+          color: "textMuted",
+        }),
+        Spacer({ key: "shell-composer-file-fill", flex: true }),
+        IconButton({
+          key: "shell-composer-file-remove",
+          icon: "X",
+          accessibilityLabel: `Remove mentioned file ${context.path}`,
+          onPress: IntentRef("DesktopFileContextRemoved"),
+        }),
+      ],
+    )],
   )]
 }
 

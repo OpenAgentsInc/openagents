@@ -1458,10 +1458,10 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         expect((yield* SubscriptionRef.get(state)).codingCatalog.sessions[0]?.state).toBe("archived")
 
         const archivedView = desktopShellView(yield* SubscriptionRef.get(state))
-        const archivedFilter = nodeByKey(archivedView, "workspace-home-filter-archived") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
+        const filters = nodeByKey(archivedView, "workspace-home-filters") as {
+          onChange: Parameters<typeof resolveIntentRef>[0]
         }
-        yield* registry.dispatch(resolveIntentRef(archivedFilter.onPress, null))
+        yield* registry.dispatch(resolveIntentRef(filters.onChange, "archived"))
         expect((yield* SubscriptionRef.get(state)).codingSessionFilter).toBe("archived")
 
         let deleteView = desktopShellView(yield* SubscriptionRef.get(state))
