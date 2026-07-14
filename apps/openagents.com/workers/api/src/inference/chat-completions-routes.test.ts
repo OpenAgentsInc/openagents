@@ -32,7 +32,7 @@ const request = (headers?: HeadersInit): Request =>
       messages: [{ content: 'hello', role: 'user' }],
       model: KHALA_MODEL_ID,
     }),
-    headers,
+    ...(headers === undefined ? {} : { headers }),
     method: 'POST',
   })
 

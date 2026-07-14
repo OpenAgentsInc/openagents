@@ -125,7 +125,7 @@ describe('estimateBudgetCapacity', () => {
     expect(budget.leftoverCredits).toBeCloseTo(budget.budgetCredits, 4)
   })
 
-  it('carries the unknown-model and free-tier flags from the per-request quote', () => {
+  it('carries the unknown-model flag from the per-request quote', () => {
     const unknown = estimateBudgetCapacity({
       budgetCredits: 1000,
       completionTokens: 100,
@@ -134,13 +134,5 @@ describe('estimateBudgetCapacity', () => {
       promptTokens: 100,
     })
     expect(unknown.perRequest.isUnknownModel).toBe(true)
-
-    const free = estimateBudgetCapacity({
-      budgetCredits: 1000,
-      completionTokens: 100,
-      fundingKind: 'card',
-      model: 'gemini-3.5-flash',
-      promptTokens: 100,
-    })
   })
 })

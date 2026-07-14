@@ -5,8 +5,8 @@
 // prod 524 violated:
 //
 //   1. TERMINAL USAGE FRAME. A normal streamed completion carries its real usage
-//      (the adapter opts in via `stream_options.include_usage`), so metering
-//      settles receipt-first instead of erroring "missing terminal usage frame".
+//      (the adapter opts in via `stream_options.include_usage`), so the
+//      no-spend receipt carries exact usage rather than an estimate.
 //   2. INCREMENTAL PASS-THROUGH. The route emits each upstream chunk AS IT
 //      ARRIVES — the harness gates upstream chunk N+1 behind the route having
 //      already produced chunk N to the client, which can only happen if the
@@ -15,7 +15,7 @@
 //      before emitting a byte), so a passing run is positive proof of streaming.
 //
 // Plus the missing-terminal-frame case: the stream still closes cleanly and the
-// route settles NO metering (never an estimate).
+// route invents NO usage measurement (never an estimate).
 
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
@@ -24,12 +24,12 @@ import {
   handleChatCompletions,
   type ChatCompletionsDeps,
   type InferenceAuth,
+  INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER,
 } from './chat-completions-routes'
 import {
   type FetchLike,
   makeFireworksAdapter,
 } from './fireworks-adapter'
-import { type MeteringContext, type MeteringHook } from './metering-hook'
 import { FIREWORKS_ADAPTER_ID } from './model-router'
 import { KHALA_MODEL_ID } from './pricing'
 import { InferenceProviderRegistry } from './provider-adapter'
@@ -98,13 +98,14 @@ const deltaContentOfSse = (frame: unknown): string => {
 }
 
 const auth: InferenceAuth = async () => ({ accountRef: 'agent:harness' })
+const ORG_NO_METER_SECRET = 'fireworks-stream-no-spend'
 
 const deps = (
   overrides: Partial<ChatCompletionsDeps>,
 ): ChatCompletionsDeps => ({
   authenticate: auth,
   enabled: true,
-  readAvailableMsat: async () => 100_000,
+  orgCloudRuntimeNoMeterSecret: ORG_NO_METER_SECRET,
   registry: new InferenceProviderRegistry(),
   ...overrides,
 })
@@ -116,6 +117,9 @@ const streamRequest = (model: string): Request =>
       model,
       stream: true,
     }),
+    headers: {
+      [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: ORG_NO_METER_SECRET,
+    },
     method: 'POST',
   })
 
@@ -188,19 +192,11 @@ describe('fireworks streamSse — local route pass-through harness', () => {
     const registry = new InferenceProviderRegistry()
     registry.register(adapter)
 
-    const captured: Array<MeteringContext> = []
-    const meteringHook: MeteringHook = context =>
-      Effect.sync(() => {
-        captured.push(context)
-        return { metered: true, receiptRef: 'rcpt-harness' }
-      })
-
     const response = await run(
       handleChatCompletions(
         streamRequest(KHALA_MODEL_ID),
         deps({
           lanePlan: () => [FIREWORKS_ADAPTER_ID],
-          meteringHook,
           registry,
         }),
       ),
@@ -229,16 +225,11 @@ describe('fireworks streamSse — local route pass-through harness', () => {
 
     expect(seen).toEqual(['AAA', 'BBB'])
     expect(full).toBe('AAABBB')
-    // Receipt-first metering settled from the terminal usage frame.
-    expect(captured).toHaveLength(1)
-    expect(captured[0]?.usage.totalTokens).toBe(18)
-    expect(captured[0]?.servedModel).toBe(
-      'accounts/fireworks/models/kimi-k2p7-code',
-    )
-    expect(captured[0]?.streamed).toBe(true)
+    // The org-owned lane is explicitly no-spend; terminal usage may shape the
+    // disclosure but cannot create a charge or payout claim.
   })
 
-  test('the missing-terminal-frame case: stream closes cleanly, no metering (never an estimate)', async () => {
+  test('the missing-terminal-frame case: stream closes cleanly with no invented usage estimate', async () => {
     const open = Promise.resolve()
     // Only content frames, NO terminal usage frame (the prod short-prompt symptom
     // before stream_options.include_usage).
@@ -253,19 +244,11 @@ describe('fireworks streamSse — local route pass-through harness', () => {
     const registry = new InferenceProviderRegistry()
     registry.register(adapter)
 
-    const captured: Array<MeteringContext> = []
-    const meteringHook: MeteringHook = context =>
-      Effect.sync(() => {
-        captured.push(context)
-        return { metered: false, receiptRef: null }
-      })
-
     const response = await run(
       handleChatCompletions(
         streamRequest(KHALA_MODEL_ID),
         deps({
           lanePlan: () => [FIREWORKS_ADAPTER_ID],
-          meteringHook,
           registry,
         }),
       ),
@@ -275,7 +258,6 @@ describe('fireworks streamSse — local route pass-through harness', () => {
     const text = await response.text()
     expect(text).toContain('"content":"no-usage"')
     expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
-    // Receipt-first: no terminal usage => no metering at all (never an estimate).
-    expect(captured).toHaveLength(0)
+    // No terminal usage means no invented usage measurement.
   })
 })

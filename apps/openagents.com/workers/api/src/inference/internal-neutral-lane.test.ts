@@ -25,6 +25,7 @@ import { describe, expect, test } from 'vitest'
 import {
   type ChatCompletionsDeps,
   handleChatCompletions,
+  INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER,
   isToolBearingKhalaRequest,
   khalaRequestForAdapter,
 } from './chat-completions-routes'
@@ -63,13 +64,21 @@ const run = <A>(effect: Effect.Effect<A>): Promise<A> =>
 
 const INTERNAL_ACCOUNT = 'agent:user_sarah_internal'
 const EXTERNAL_ACCOUNT = 'agent:user_external'
+const ORG_NO_METER_SECRET = 'internal-neutral-no-spend'
 
-const chatRequest = (body: unknown, init: RequestInit = {}): Request =>
-  new Request('https://openagents.com/v1/chat/completions', {
-    body: JSON.stringify(body),
-    method: 'POST',
+const chatRequest = (body: unknown, init: RequestInit = {}): Request => {
+  const headers = new Headers(init.headers)
+  headers.set(
+    INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER,
+    ORG_NO_METER_SECRET,
+  )
+  return new Request('https://openagents.com/v1/chat/completions', {
     ...init,
+    body: JSON.stringify(body),
+    headers,
+    method: 'POST',
   })
+}
 
 // A capture adapter: records every InferenceRequest it serves and returns a
 // FIXED completion so guard behavior is observable (the completion text is a
@@ -131,7 +140,7 @@ const depsFor = (
     internalAccountRefs: new Set([INTERNAL_ACCOUNT]),
     lanePlan: () => [CAPTURE_ADAPTER_ID],
     nowEpochMillis: () => 0,
-    readAvailableMsat: async () => 100_000,
+    orgCloudRuntimeNoMeterSecret: ORG_NO_METER_SECRET,
     registry,
     ...overrides,
   }

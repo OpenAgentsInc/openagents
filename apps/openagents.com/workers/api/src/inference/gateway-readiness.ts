@@ -1,13 +1,12 @@
 // Gateway readiness projection for the OpenAgents inference gateway
-// (blocker.product_promises.public_paid_model_gateway_missing on
-// api.hosted_gemini.v1).
+// for the no-spend/BYOK gateway surface.
 //
 // THE GAP this closes: the provider serving policy (model-serving-policy.ts)
 // already gates all three public gateway surfaces (`/v1/models`, `/v1/quote`,
 // and the `/v1/chat/completions` dispatch path) to lanes whose upstream
 // credential is provisioned. But that gating is applied surface-by-surface;
 // there is NO single, dereferenceable FACT that answers the launch question
-// "can the paid gateway actually serve anything right now, and how degraded is
+// "can the gateway actually serve anything right now, and how degraded is
 // its catalog?" Without it an operator (or the launch dashboard) cannot verify
 // gateway readiness without replaying each surface and counting by hand. This
 // module is the SINGLE readiness summary, derived from the SAME catalog +
@@ -42,7 +41,7 @@ const LANE_ORDER: ReadonlyArray<SupplyLane> = [
 // Overall gateway readiness, derived from how many published catalog models are
 // servable right now:
 //   - 'unavailable' : ZERO models are servable (no lane armed, or no armed lane
-//                     carries a published model) -- the paid gateway cannot
+//                     carries a published model) -- the gateway cannot
 //                     serve any request.
 //   - 'degraded'    : SOME models are servable but at least one published model
 //                     is hidden because its lane is unarmed.
@@ -61,7 +60,7 @@ export type GatewayLaneReadiness = Readonly<{
   hiddenModelCount: number
 }>
 
-// The single readiness summary for the paid gateway.
+// The single readiness summary for the gateway.
 export type GatewayReadiness = Readonly<{
   status: GatewayReadinessStatus
   // Total published catalog models considered.

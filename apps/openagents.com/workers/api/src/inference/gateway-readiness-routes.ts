@@ -1,9 +1,8 @@
 // Public `GET /v1/gateway/readiness` route for the inference gateway
-// (blocker.product_promises.public_paid_model_gateway_missing on
-// api.hosted_gemini.v1).
+// for the no-spend/BYOK gateway surface.
 //
 // THE GAP this closes: `projectGatewayReadiness` (gateway-readiness.ts) already
-// derives the SINGLE readiness fact ("can the paid gateway serve anything right
+// derives the SINGLE readiness fact ("can the gateway serve anything right
 // now, and how degraded is its catalog?") from the SAME published catalog +
 // serving policy the three live surfaces (`/v1/models`, `/v1/quote`, the
 // `/v1/chat/completions` dispatch path) gate on. But it was NOT wired to a
@@ -17,7 +16,7 @@
 // like `/v1/models`, `/v1/quote`, and `/v1/chat/completions`. No auth is
 // required and the body is public-safe (servable/hidden model COUNTS + per-lane
 // arming booleans + dereferenceable reason refs only — no prompts, completions,
-// credentials, prices, or balances). PURE apart from the injected arming the
+// credentials or provider-key material). PURE apart from the injected arming the
 // Worker derives from credential PRESENCE (model-serving-policy.ts), so this
 // route never reads a credential value and moves no money.
 

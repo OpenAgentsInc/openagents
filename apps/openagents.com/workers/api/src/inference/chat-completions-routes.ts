@@ -8,8 +8,8 @@
 //     org-runtime no-meter channel; platform-funded paid capacity is unavailable
 //   - provider-adapter seam dispatch (registry resolves model -> adapter; ships
 //     wired to the stub/echo adapter so the route works end-to-end in tests)
-//   - metering-hook seam (#5477 decrements credits from provider `usage`;
-//     stubbed here as a no-op/log)
+//   - no-spend usage-measurement seam records provider `usage` without debit or
+//     serving-payout authority
 //
 // Streaming and non-streaming shapes are both supported. The response mirrors
 // the OpenAI Chat Completions contract so off-the-shelf clients work by changing
@@ -124,7 +124,6 @@ import {
 import {
   type MeteringHook,
   type MeteringOutcome,
-  stubMeteringHook,
 } from './metering-hook'
 import {
   type DispatchDeps,
@@ -199,6 +198,14 @@ import { DEFAULT_GEMINI_MODEL_ID } from './vertex-gemini-adapter'
 // collapsed to Khala; internal callers may say `khala`, external OpenAI-style
 // clients should say `openagents/khala`.
 export const DEFAULT_CHAT_MODEL = KHALA_MODEL_ID
+
+const NO_SPEND_METERING_OUTCOME: MeteringOutcome = {
+  metered: false,
+  paymentMode: 'no-spend',
+  payoutClaimAllowed: false,
+  receiptRef: null,
+  settlementState: 'not_applicable',
+}
 
 export const INFERENCE_DEMAND_KIND_HEADER = 'x-openagents-demand-kind'
 export const INFERENCE_DEMAND_SOURCE_HEADER = 'x-openagents-demand-source'
@@ -605,22 +612,19 @@ export type ChatCompletionsDeps = Readonly<{
   // never waits. Ignored unless `lanePlan` is supplied.
   dispatch?: ChatCompletionsDispatchDeps | undefined
   routeAdmission?: Omit<DispatchRouteAdmissionPolicy, 'demandClass'> | undefined
-  // Defaults to the no-op/log metering stub. The Worker supplies the live
-  // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
+  // Migration-compatible usage-measurement seam. VP1 ignores legacy ledger
+  // authority and always resolves a typed no-spend outcome.
   meteringHook?: MeteringHook
   // SERVED-TOKENS RECORDER (issue #6227). Records one canonical
   // `token_usage_events` row per SERVED completion so the public "Khala Tokens
   // Served" counter (GET /api/public/khala-tokens-served) reflects
   // all real Khala served-token traffic. Internal dogfood rows remain exact in
   // the ledger and move the aggregate public product counter, but demand labels
-  // are never exposed by that scalar. Invoked AFTER the metering hook on every
+  // are never exposed by that scalar. Invoked after usage measurement on every
   // completion path (non-streaming, buffered stream, true
   // pass-through stream) and only when the request produced real provider usage
   // — so a failed / 4xx / refused call is never recorded. It runs INDEPENDENTLY
-  // of which metering wrapper handled the request, so a FREE-TIER completion
-  // (whose credit-ledger hook is short-circuited in `withFreeTierKhala`) STILL
-  // records its served tokens (the tokens were served and must count, even though
-  // no credit was debited). The
+  // of which measurement wrapper handled the request. The
   // row is idempotent per request id (one served completion = one row); a
   // retry/replay is a no-op insert. Default undefined => no-op (the inert/test
   // path is byte-for-byte unchanged). The recorder never throws and never fails
@@ -2298,7 +2302,7 @@ const makePassThroughResponseStream = (
       ...(input.cacheAffinityKeyRaw === undefined
         ? {}
         : { cacheAffinityKeyRaw: input.cacheAffinityKeyRaw }),
-      metering: streamMetering ?? { metered: false, receiptRef: null },
+      metering: streamMetering ?? NO_SPEND_METERING_OUTCOME,
       requestedModel: input.requestedModel,
       responseId: input.responseId,
       result: streamResult,
@@ -3372,7 +3376,7 @@ export const handleChatCompletions = (
         // `openAgentsReceiptForResult` requires a MeteringOutcome; when no terminal
         // usage frame was served (so no metering ran) fall back to the stub
         // outcome shape so a Khala stream without usage still discloses.
-        metering: streamMetering ?? { metered: false, receiptRef: null },
+        metering: streamMetering ?? NO_SPEND_METERING_OUTCOME,
         requestedModel,
         responseId,
         result: streamResult,
