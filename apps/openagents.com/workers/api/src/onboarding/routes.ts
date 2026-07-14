@@ -1,9 +1,5 @@
 import { Effect, Layer, Match as M, Schema as S } from 'effect'
 
-import {
-  expiredCookie,
-  parseCookies,
-} from '../auth-cookies'
 import { type AuthKvStore, authKvStoreForEnv } from '../auth/auth-kv'
 import { readBearerToken } from '../auth/bearer-token'
 import {
@@ -21,23 +17,11 @@ import {
   type CustomerOrderRuntime,
   CustomerOrderStorageError,
   CustomerOrderStore,
-  SubmitCustomerSiteFeedbackRequest,
 } from '../customer-orders'
-import { businessDomainDatabaseForEnv } from '../business-domain-store'
 import { methodNotAllowed, noStoreJsonResponse } from '../http/responses'
 import { identityDbForEnv, type IdentityDb, type IdentityDbEnv } from '../identity-db'
 import { logWorkerRouteError } from '../observability'
-import { openAgentsDatabase, scheduleBackgroundWork } from '../runtime'
-import {
-  PENDING_REFERRAL_COOKIE,
-} from '../site-referrals'
-import {
-  type ReferralConsumptionResult,
-  SiteReferralConsumptionStorageError,
-  consumePendingReferralForUser,
-  linkPendingReferralToOrder,
-} from '../site-referral-attribution-consumption'
-import type { OnboardingDripOrderState } from '../email-onboarding-drip'
+import { openAgentsDatabase } from '../runtime'
 import {
   GITHUB_REPOSITORY_DEFAULT_PER_PAGE,
   GITHUB_REPOSITORY_MAX_PER_PAGE,
@@ -120,16 +104,6 @@ type OnboardingRouteDependencies<
   // handle backing OnboardingStateStore (`users` is Postgres-authoritative);
   // defaults to the env KHALA_SYNC_DB wiring.
   identityDb?: (env: RouteEnv) => IdentityDb
-  siteReferralOnboarding?: (
-    input: Readonly<{
-      env: RouteEnv
-      orderId: string | null
-      orderState: OnboardingDripOrderState
-      referralResult: ReferralConsumptionResult
-      request: Request
-      session: Session
-    }>,
-  ) => Promise<unknown>
   agentRegistrationStore?: AgentRegistrationStore
 }>
 
@@ -188,7 +162,6 @@ type OnboardingRouteError =
   | OnboardingStorageError
   | OnboardingUnauthorized
   | OnboardingUserNotFound
-  | SiteReferralConsumptionStorageError
 
 const routeErrorResponse = (error: OnboardingRouteError): Response => {
   if (error instanceof CustomerOrderStorageError) {
@@ -199,12 +172,6 @@ const routeErrorResponse = (error: OnboardingRouteError): Response => {
 
   if (error instanceof OnboardingStorageError) {
     logWorkerRouteError('onboarding_storage_error', error.error, {
-      operation: error.operation,
-    })
-  }
-
-  if (error instanceof SiteReferralConsumptionStorageError) {
-    logWorkerRouteError('site_referral_consumption_storage_error', error.error, {
       operation: error.operation,
     })
   }
@@ -254,8 +221,6 @@ const routeErrorResponse = (error: OnboardingRouteError): Response => {
       OnboardingSessionError: () =>
         noStoreJsonResponse({ error: 'session_error' }, { status: 500 }),
       OnboardingStorageError: () =>
-        noStoreJsonResponse({ error: 'storage_error' }, { status: 500 }),
-      SiteReferralConsumptionStorageError: () =>
         noStoreJsonResponse({ error: 'storage_error' }, { status: 500 }),
       OnboardingUnauthorized: () =>
         noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
@@ -543,61 +508,6 @@ const routeLayer = (
     githubRepositoryServiceLayer,
   )
 
-const pendingReferralId = (request: Request): string | undefined =>
-  parseCookies(request).get(PENDING_REFERRAL_COOKIE)
-
-const clearPendingReferralCookie = (response: globalThis.Response) => {
-  response.headers.append('set-cookie', expiredCookie(PENDING_REFERRAL_COOKIE))
-
-  return response
-}
-
-const shouldClearPendingReferralCookie = (
-  result: Awaited<ReturnType<typeof consumePendingReferralForUser>>,
-): boolean => result._tag !== 'none'
-
-const scheduleReferralOnboarding = <
-  Session extends OnboardingSession,
-  RouteEnv extends OnboardingEnv,
->(
-  dependencies: OnboardingRouteDependencies<Session, RouteEnv>,
-  input: Readonly<{
-    ctx: ExecutionContext
-    env: RouteEnv
-    orderId: string | null
-    orderState: OnboardingDripOrderState
-    referralResult: ReferralConsumptionResult
-    request: Request
-    session: Session
-  }>,
-): void => {
-  if (
-    dependencies.siteReferralOnboarding === undefined ||
-    input.referralResult._tag !== 'consumed'
-  ) {
-    return
-  }
-
-  scheduleBackgroundWork(
-    input.ctx,
-    dependencies
-      .siteReferralOnboarding({
-        env: input.env,
-        orderId: input.orderId,
-        orderState: input.orderState,
-        referralResult: input.referralResult,
-        request: input.request,
-        session: input.session,
-      })
-      .catch(error =>
-        logWorkerRouteError('site_referral_onboarding_route_failed', error, {
-          orderId: input.orderId,
-          userId: input.session.user.userId,
-        }),
-      ),
-  )
-}
-
 export const makeOnboardingRoutes = <
   Session extends OnboardingSession,
   RouteEnv extends OnboardingEnv,
@@ -669,90 +579,11 @@ export const makeOnboardingRoutes = <
           return noStoreJsonResponse({ order })
         }
 
-        const orderState: OnboardingDripOrderState =
-          order === null
-            ? 'none'
-            : order.status === 'delivered'
-              ? 'delivered'
-              : 'active'
-        const pendingAttributionId = pendingReferralId(request)
-        const referralResult =
-          order === null
-            ? yield* Effect.tryPromise({
-                catch: error =>
-                  error instanceof SiteReferralConsumptionStorageError
-                    ? error
-                    : new SiteReferralConsumptionStorageError({
-                        error,
-                        operation: 'siteReferralConsumption.userRoute.consume',
-                      }),
-                try: () =>
-                  // KS-8.14 (#8359): referral consumption UPDATEs
-                  // referral_attributions + INSERTs user_referral_attributions
-                  // — ride the business funnel dual-write mirror seam.
-                  consumePendingReferralForUser(
-                    businessDomainDatabaseForEnv(env),
-                    {
-                      nowIso:
-                        dependencies.customerOrderRuntime?.nowIso ??
-                        systemOnboardingRuntime.nowIso,
-                    },
-                    {
-                      pendingAttributionId,
-                      userId: actor.userId,
-                    },
-                  ),
-              })
-            : yield* Effect.tryPromise({
-                catch: error =>
-                  error instanceof SiteReferralConsumptionStorageError
-                    ? error
-                    : new SiteReferralConsumptionStorageError({
-                        error,
-                        operation: 'siteReferralConsumption.orderRoute.link',
-                      }),
-                try: () =>
-                  // KS-8.14 (#8359): order referral linkage writes the
-                  // business-domain order_referral_attributions table —
-                  // ride the business funnel dual-write mirror seam.
-                  linkPendingReferralToOrder(
-                    businessDomainDatabaseForEnv(env),
-                    {
-                      nowIso:
-                        dependencies.customerOrderRuntime?.nowIso ??
-                        systemOnboardingRuntime.nowIso,
-                    },
-                    {
-                      orderId: order.id,
-                      pendingAttributionId,
-                      userId: actor.userId,
-                    },
-                  ),
-              })
-
-        if (actor._tag === 'BrowserSession') {
-          yield* Effect.sync(() =>
-            scheduleReferralOnboarding(dependencies, {
-              ctx,
-              env,
-              orderId: order?.id ?? null,
-              orderState,
-              referralResult,
-              request,
-              session: actor.session,
-            }),
-          )
-        }
-
-        const response = appendCustomerOrderActorCookies(
+        return appendCustomerOrderActorCookies(
           dependencies.appendRefreshedSessionCookies,
           noStoreJsonResponse({ order }),
           actor,
         )
-
-        return shouldClearPendingReferralCookie(referralResult)
-          ? clearPendingReferralCookie(response)
-          : response
       }),
     )
 
@@ -836,9 +667,6 @@ export const makeOnboardingRoutes = <
         const order =
           existingOrder ??
           (yield* store.createOrder(actor.userId, body, idempotencyKey))
-        const orderState: OnboardingDripOrderState =
-          order.status === 'delivered' ? 'delivered' : 'active'
-
         if (actor._tag === 'Agent') {
           return noStoreJsonResponse(
             { idempotent: existingOrder !== null, order },
@@ -846,54 +674,11 @@ export const makeOnboardingRoutes = <
           )
         }
 
-        const referralResult = yield* Effect.tryPromise({
-          catch: error =>
-            error instanceof SiteReferralConsumptionStorageError
-              ? error
-              : new SiteReferralConsumptionStorageError({
-                  error,
-                  operation: 'siteReferralConsumption.orderCreate.link',
-                }),
-          try: () =>
-            // KS-8.14 (#8359): order referral linkage writes the
-            // business-domain order_referral_attributions table — ride the
-            // business funnel dual-write mirror seam.
-            linkPendingReferralToOrder(
-              businessDomainDatabaseForEnv(env),
-              {
-                nowIso:
-                  dependencies.customerOrderRuntime?.nowIso ??
-                  systemOnboardingRuntime.nowIso,
-              },
-              {
-                orderId: order.id,
-                pendingAttributionId: pendingReferralId(request),
-                userId: actor.userId,
-              },
-            ),
-        })
-
-        yield* Effect.sync(() =>
-          scheduleReferralOnboarding(dependencies, {
-            ctx,
-            env,
-            orderId: order.id,
-            orderState,
-            referralResult,
-            request,
-            session: actor.session,
-          }),
-        )
-
-        const response = appendCustomerOrderActorCookies(
+        return appendCustomerOrderActorCookies(
           dependencies.appendRefreshedSessionCookies,
           noStoreJsonResponse({ order }, { status: 201 }),
           actor,
         )
-
-        return shouldClearPendingReferralCookie(referralResult)
-          ? clearPendingReferralCookie(response)
-          : response
       }),
     )
 
@@ -919,47 +704,6 @@ export const makeOnboardingRoutes = <
         return appendCustomerOrderActorCookies(
           dependencies.appendRefreshedSessionCookies,
           noStoreJsonResponse({ order }),
-          actor,
-        )
-      }),
-    )
-
-  const customerOrderSiteRevisionsResponse = (
-    orderId: string,
-    request: Request,
-    env: RouteRuntimeEnv,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        const actor = yield* requireCustomerOrderActor(
-          dependencies,
-          request,
-          env,
-          ctx,
-          'customer_orders.read',
-        )
-        const store = yield* CustomerOrderStore
-        const revisions = yield* store.listSiteRevisions(
-          actor.userId,
-          orderId,
-        )
-
-        if (revisions === null) {
-          return appendCustomerOrderActorCookies(
-            dependencies.appendRefreshedSessionCookies,
-            noStoreJsonResponse(
-              { error: 'customer_order_not_found' },
-              { status: 404 },
-            ),
-            actor,
-          )
-        }
-
-        return appendCustomerOrderActorCookies(
-          dependencies.appendRefreshedSessionCookies,
-          noStoreJsonResponse({ revisions }),
           actor,
         )
       }),
@@ -1001,106 +745,6 @@ export const makeOnboardingRoutes = <
         return appendCustomerOrderActorCookies(
           dependencies.appendRefreshedSessionCookies,
           noStoreJsonResponse({ artifacts }),
-          actor,
-        )
-      }),
-    )
-
-  const customerOrderSiteFeedbackListResponse = (
-    orderId: string,
-    request: Request,
-    env: RouteRuntimeEnv,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        const actor = yield* requireCustomerOrderActor(
-          dependencies,
-          request,
-          env,
-          ctx,
-          'customer_orders.read',
-        )
-        const store = yield* CustomerOrderStore
-        const feedback = yield* store.listSiteFeedback(
-          actor.userId,
-          orderId,
-        )
-
-        if (feedback === null) {
-          return appendCustomerOrderActorCookies(
-            dependencies.appendRefreshedSessionCookies,
-            noStoreJsonResponse(
-              { error: 'customer_order_not_found' },
-              { status: 404 },
-            ),
-            actor,
-          )
-        }
-
-        return appendCustomerOrderActorCookies(
-          dependencies.appendRefreshedSessionCookies,
-          noStoreJsonResponse({ feedback }),
-          actor,
-        )
-      }),
-    )
-
-  const customerOrderSiteFeedbackSubmitResponse = (
-    orderId: string,
-    request: Request,
-    env: RouteRuntimeEnv,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        const actor = yield* requireCustomerOrderActor(
-          dependencies,
-          request,
-          env,
-          ctx,
-          'customer_orders.feedback',
-        )
-        const input = yield* decodeJsonBody(
-          request,
-          SubmitCustomerSiteFeedbackRequest,
-        )
-        const body = input.body.trim()
-
-        if (body === '' || body.length > 4000) {
-          return appendCustomerOrderActorCookies(
-            dependencies.appendRefreshedSessionCookies,
-            noStoreJsonResponse(
-              { error: 'bad_request', reason: 'feedback body is required' },
-              { status: 400 },
-            ),
-            actor,
-          )
-        }
-
-        const store = yield* CustomerOrderStore
-        const feedback = yield* store.submitSiteFeedback(
-          actor.userId,
-          orderId,
-          body,
-        )
-
-        if (feedback === null) {
-          return appendCustomerOrderActorCookies(
-            dependencies.appendRefreshedSessionCookies,
-            noStoreJsonResponse(
-              { error: 'customer_order_not_found' },
-              { status: 404 },
-            ),
-            actor,
-          )
-        }
-
-        return appendCustomerOrderActorCookies(
-          dependencies.appendRefreshedSessionCookies,
-          noStoreJsonResponse({ feedback }, { status: 201 }),
           actor,
         )
       }),
@@ -1452,20 +1096,6 @@ export const makeOnboardingRoutes = <
           : Effect.succeed(methodNotAllowed(['GET']))
       }
 
-      const customerOrderSiteRevisionsMatch =
-        /^\/api\/customer-orders\/([^/]+)\/site-revisions$/.exec(url.pathname)
-
-      if (customerOrderSiteRevisionsMatch !== null) {
-        return request.method === 'GET'
-          ? customerOrderSiteRevisionsResponse(
-              customerOrderSiteRevisionsMatch[1] ?? '',
-              request,
-              env,
-              ctx,
-            )
-          : Effect.succeed(methodNotAllowed(['GET']))
-      }
-
       const customerOrderFulfillmentArtifactsMatch =
         /^\/api\/customer-orders\/([^/]+)\/fulfillment-artifacts$/.exec(
           url.pathname,
@@ -1480,29 +1110,6 @@ export const makeOnboardingRoutes = <
               ctx,
             )
           : Effect.succeed(methodNotAllowed(['GET']))
-      }
-
-      const customerOrderSiteFeedbackMatch =
-        /^\/api\/customer-orders\/([^/]+)\/site-feedback$/.exec(url.pathname)
-
-      if (customerOrderSiteFeedbackMatch !== null) {
-        if (request.method === 'GET') {
-          return customerOrderSiteFeedbackListResponse(
-            customerOrderSiteFeedbackMatch[1] ?? '',
-            request,
-            env,
-            ctx,
-          )
-        }
-
-        return request.method === 'POST'
-          ? customerOrderSiteFeedbackSubmitResponse(
-              customerOrderSiteFeedbackMatch[1] ?? '',
-              request,
-              env,
-              ctx,
-            )
-          : Effect.succeed(methodNotAllowed(['GET', 'POST']))
       }
 
       if (url.pathname === '/api/onboarding/repository/select') {

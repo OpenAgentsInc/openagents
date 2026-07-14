@@ -86,14 +86,6 @@ import {
   makeAdjutantTaskPacketFreshnessService,
 } from './adjutant-task-packet-freshness'
 import {
-  ADJUTANT_TASK_PACKET_REPOSITORY,
-  type AdjutantTaskPacketError,
-  AdjutantTaskPacketRefMissing,
-  AdjutantTaskPacketRefValidationFailed,
-  type AdjutantTaskPacketRefValidationInput,
-  buildAdjutantTaskPacket,
-} from './adjutant-task-packets'
-import {
   type AdjutantUsageReceipt,
   type AdjutantUsageReceiptError,
   type AdjutantUsageReceiptSummary,
@@ -129,13 +121,13 @@ import { githubIdentityTokenKey } from './onboarding/github'
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
 import { businessDomainDatabaseForEnv } from './business-domain-store'
-import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
+const openAgentsDatabase = (env: OperatorAdjutantEnv): D1Database =>
+  env.OPENAGENTS_DB
 import {
   compactRandomId,
   currentEpochMillis,
   currentIsoTimestamp,
 } from './runtime-primitives'
-import { AutopilotSiteLaunchChecklist } from './sites'
 import {
   makeSupervisionLongtailMirrorForEnv,
   type SupervisionLongtailMirror,
@@ -244,9 +236,6 @@ type OperatorAdjutantRouteDependencies<
     env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
-  validateAdjutantTaskPacketRef: (
-    input: AdjutantTaskPacketRefValidationInput,
-  ) => Promise<boolean>
 }>
 
 class OperatorAdjutantUnauthorized extends S.TaggedErrorClass<OperatorAdjutantUnauthorized>()(
@@ -330,7 +319,6 @@ type OperatorAdjutantRouteError =
   | AdjutantResearchBriefError
   | AdjutantResearchPolicyError
   | AdjutantTaskPacketFreshnessError
-  | AdjutantTaskPacketError
   | AdjutantUsageReceiptError
   | ExaError
   | OperatorAdjutantBadRequest
@@ -365,21 +353,6 @@ export class PreflightOperatorAdjutantAssignmentRequest extends S.Class<Prefligh
 )({
   includeCallbackLag: S.optionalKey(S.Boolean),
   launchChecklist: S.optionalKey(AutopilotSiteLaunchChecklist),
-}) {}
-
-export class GenerateOperatorAdjutantTaskPacketRequest extends S.Class<GenerateOperatorAdjutantTaskPacketRequest>(
-  'GenerateOperatorAdjutantTaskPacketRequest',
-)({
-  commitSha: S.String,
-  operatorNotes: S.optionalKey(S.String),
-  taskSpecPath: S.optionalKey(S.String),
-}) {}
-
-export class KeepCurrentOperatorAdjutantTaskPacketRequest extends S.Class<KeepCurrentOperatorAdjutantTaskPacketRequest>(
-  'KeepCurrentOperatorAdjutantTaskPacketRequest',
-)({
-  customerSafeSummary: S.String,
-  reason: S.String,
 }) {}
 
 export class ClearOperatorAdjutantCurrentRunRequest extends S.Class<ClearOperatorAdjutantCurrentRunRequest>(
@@ -1027,21 +1000,6 @@ const routeErrorResponse = (error: OperatorAdjutantRouteError): HttpResponse =>
           { error: 'research_policy_validation_error', reason },
           { status: 400 },
         ),
-      AdjutantTaskPacketUnsafe: ({ reason }) =>
-        noStoreJsonResponse(
-          { error: 'unsafe_task_packet', reason },
-          { status: 400 },
-        ),
-      AdjutantTaskPacketRefMissing: ({ commitSha, path, reason }) =>
-        noStoreJsonResponse(
-          { commitSha, error: 'task_packet_ref_missing', path, reason },
-          { status: 409 },
-        ),
-      AdjutantTaskPacketRefValidationFailed: ({ reason }) =>
-        noStoreJsonResponse(
-          { error: 'task_packet_ref_validation_failed', reason },
-          { status: 502 },
-        ),
       AdjutantTaskPacketFreshnessStorageError: () =>
         noStoreJsonResponse(
           { error: 'task_packet_freshness_storage_error' },
@@ -1055,11 +1013,6 @@ const routeErrorResponse = (error: OperatorAdjutantRouteError): HttpResponse =>
       AdjutantTaskPacketFreshnessValidationError: ({ reason }) =>
         noStoreJsonResponse(
           { error: 'task_packet_freshness_validation_error', reason },
-          { status: 400 },
-        ),
-      AdjutantTaskPacketValidationError: ({ reason }) =>
-        noStoreJsonResponse(
-          { error: 'task_packet_validation_error', reason },
           { status: 400 },
         ),
       AdjutantUsageReceiptStorageError: () =>
@@ -5585,192 +5538,6 @@ export const makeOperatorAdjutantRoutes = <
       }),
     )
 
-  const generateTaskPacket = (
-    assignmentId: string,
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      request,
-      ['POST'],
-      Effect.gen(function* () {
-        const session = yield* requireAdminSession(
-          dependencies,
-          request,
-          env,
-          ctx,
-        )
-        const body = yield* decodeJsonBody(
-          request,
-          GenerateOperatorAdjutantTaskPacketRequest,
-        )
-        const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
-
-        const site =
-          assignment.siteId === null
-            ? null
-            : yield* readPreflightSite(
-                makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
-                assignment.siteId,
-              )
-
-        if (assignment.siteId !== null && site === null) {
-          return yield* new AdjutantAssignmentSiteNotFound({
-            siteId: assignment.siteId,
-          })
-        }
-
-        const researchBrief = yield* latestApprovedResearchBrief(
-          makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
-          assignment.id,
-        )
-        const packet = yield* buildAdjutantTaskPacket({
-          assignment,
-          commitSha: body.commitSha,
-          operatorNotes: body.operatorNotes,
-          researchBrief,
-          site:
-            site === null
-              ? null
-              : {
-                  id: site.id,
-                  slug: site.slug,
-                  title: site.title,
-                },
-          taskSpecPath: body.taskSpecPath,
-        })
-        const githubAccessToken = yield* Effect.promise(() =>
-          readOperatorGitHubIdentityToken(env, session.user.userId),
-        )
-        const packetExists = yield* Effect.tryPromise({
-          catch: error =>
-            new AdjutantTaskPacketRefValidationFailed({
-              reason:
-                error instanceof Error
-                  ? error.message
-                  : 'Unable to validate the task packet ref.',
-            }),
-          try: () =>
-            dependencies.validateAdjutantTaskPacketRef({
-              commitSha: packet.commitSha,
-              ...(githubAccessToken === undefined ? {} : { githubAccessToken }),
-              path: packet.path,
-              repositoryName: ADJUTANT_TASK_PACKET_REPOSITORY.name,
-              repositoryOwner: ADJUTANT_TASK_PACKET_REPOSITORY.owner,
-            }),
-        })
-
-        if (!packetExists) {
-          return yield* new AdjutantTaskPacketRefMissing({
-            commitSha: packet.commitSha,
-            path: packet.path,
-            reason: 'Task packet was not found at the pushed commit SHA.',
-          })
-        }
-
-        const updatedAssignment = yield* assignments.updateAssignment({
-          assignmentId: assignment.id,
-          commitSha: packet.commitSha,
-          taskSpecPath: packet.path,
-        })
-        const taskPacketFreshness =
-          yield* makeAdjutantTaskPacketFreshnessService(
-            openAgentsDatabase(env),
-            undefined,
-            makeSupervisionLongtailMirrorForEnv(env),
-          ).recordGenerated({
-            assignment: updatedAssignment,
-            researchBrief,
-          })
-        yield* assignments.recordEvent({
-          actorUserId: session.user.userId,
-          assignmentId: assignment.id,
-          eventType: 'adjutant.task_packet_generated',
-          payload: {
-            researchBriefId: researchBrief?.id ?? null,
-            status: taskPacketFreshness.status,
-            taskSpecPath: packet.path,
-          },
-          summary: 'Autopilot task packet was generated.',
-        })
-
-        return dependencies.appendRefreshedSessionCookies(
-          noStoreJsonResponse({
-            assignment: updatedAssignment,
-            packet,
-            taskPacketFreshness,
-          }),
-          session,
-        )
-      }),
-    )
-
-  const keepCurrentTaskPacket = (
-    assignmentId: string,
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      request,
-      ['POST'],
-      Effect.gen(function* () {
-        const session = yield* requireAdminSession(
-          dependencies,
-          request,
-          env,
-          ctx,
-        )
-        const body = yield* decodeJsonBody(
-          request,
-          KeepCurrentOperatorAdjutantTaskPacketRequest,
-        )
-        const assignments = yield* AdjutantAssignmentService
-        const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
-
-        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
-        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
-        const latestApprovedBrief = yield* latestApprovedResearchBrief(
-          db,
-          assignment.id,
-        )
-        const taskPacketFreshness =
-          yield* makeAdjutantTaskPacketFreshnessService(
-            crmEmailAuthorityDb(db),
-            undefined,
-            supervisionMirror,
-          ).keepCurrent({
-            actorUserId: session.user.userId,
-            assignment,
-            customerSafeSummary: body.customerSafeSummary,
-            latestApprovedBrief,
-            reason: body.reason,
-          })
-        yield* assignments.recordEvent({
-          actorUserId: session.user.userId,
-          assignmentId: assignment.id,
-          eventType: 'adjutant.task_packet_kept_current',
-          payload: {
-            latestApprovedResearchBriefId:
-              taskPacketFreshness.latestApprovedResearchBriefId,
-            status: taskPacketFreshness.status,
-            taskSpecPath: taskPacketFreshness.taskSpecPath,
-          },
-          summary:
-            'Operator kept the current Autopilot task packet after research review.',
-        })
-
-        return dependencies.appendRefreshedSessionCookies(
-          noStoreJsonResponse({ taskPacketFreshness }),
-          session,
-        )
-      }),
-    )
-
   const clearCurrentRun = (
     assignmentId: string,
     request: Request,
@@ -6537,34 +6304,6 @@ export const makeOperatorAdjutantRoutes = <
       if (clearCurrentRunMatch !== null) {
         return clearCurrentRun(
           decodeURIComponent(clearCurrentRunMatch[1] ?? ''),
-          request,
-          env,
-          ctx,
-        )
-      }
-
-      const taskPacketKeepCurrentMatch =
-        /^\/api\/operator\/adjutant\/assignments\/([^/]+)\/task-packet\/keep-current$/.exec(
-          url.pathname,
-        )
-
-      if (taskPacketKeepCurrentMatch !== null) {
-        return keepCurrentTaskPacket(
-          decodeURIComponent(taskPacketKeepCurrentMatch[1] ?? ''),
-          request,
-          env,
-          ctx,
-        )
-      }
-
-      const taskPacketMatch =
-        /^\/api\/operator\/adjutant\/assignments\/([^/]+)\/task-packet$/.exec(
-          url.pathname,
-        )
-
-      if (taskPacketMatch !== null) {
-        return generateTaskPacket(
-          decodeURIComponent(taskPacketMatch[1] ?? ''),
           request,
           env,
           ctx,

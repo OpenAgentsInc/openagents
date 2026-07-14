@@ -15,17 +15,8 @@ import {
 import { CustomerOrderStatus } from './customer-orders'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonRecord } from './json-boundary'
-// KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
-// mirroring database is a passthrough for non-scoped statements and
-// degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
 import { businessDomainDatabaseForEnv } from './business-domain-store'
-import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
-import {
-  type AutopilotSiteError,
-  type AutopilotSiteProject,
-  AutopilotSitesService,
-} from './sites'
 
 type OperatorOrderTriageEnv = IdentityDbEnv &
   Readonly<{
@@ -39,7 +30,7 @@ type OperatorOrderTriageEnv = IdentityDbEnv &
 // non-scoped statements pass through both layers. Degrades to raw D1
 // with no KHALA_SYNC_DB binding.
 const openAgentsDatabase = (env: OperatorOrderTriageEnv): D1Database =>
-  businessDomainDatabaseForEnv(env, { d1: sitesContentDatabaseForEnv(env) })
+  businessDomainDatabaseForEnv(env, { d1: env.OPENAGENTS_DB })
 
 type HttpResponse = globalThis.Response
 

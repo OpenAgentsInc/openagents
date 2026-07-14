@@ -1,7 +1,5 @@
 import { Effect, Layer } from 'effect'
 
-import { applyAdjutantRunLifecycleEvents } from './adjutant-run-lifecycle'
-import { artifactsBucketForEnv } from './artifacts-binding'
 import {
   AgentGoalAccountingService,
   AgentGoalAccountingServiceLive,
@@ -113,9 +111,6 @@ import {
   runnerWorkloadTrustFromSelector,
 } from './runner-backend-readiness'
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
-import { businessDomainDatabaseForEnv } from './business-domain-store'
-import { sitesContentDatabaseForEnv } from './sites-content-store'
-import { makeSupervisionLongtailMirrorForEnv } from './supervision-longtail-domain-store'
 import { noopExecutionContextTracing } from './execution-context-tracing'
 import {
   notifyAgentRunSyncScopes,
@@ -2899,41 +2894,6 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
         postIngestFailures.push({
           error: publicErrorName(error),
           operation: 'goal_callback_status_accounting',
-        })
-      }
-
-      try {
-        await observedEffect(
-          'OmniRunnerCallback.applyAdjutantRunLifecycleEvents',
-          // KS-8.12 (#8323): lifecycle events write site_deployments /
-          // site_events — ride the sites dual-write mirror seam.
-          // KS-8.14 (#8359): the same events also flip software_orders
-          // status; compose the business funnel mirror OVER the sites
-          // proxy so order writes mirror to the business Postgres twin.
-          // KS-8.17 (#8361): the adjutant_assignments / assignment_events /
-          // adjustment_requests writes in this same call chain are a THIRD,
-          // separate supervision long-tail Postgres twin/flag lane.
-          applyAdjutantRunLifecycleEvents(
-            businessDomainDatabaseForEnv(env, {
-              d1: sitesContentDatabaseForEnv(env),
-            }),
-            {
-              actorUserId: 'openagents:runner-ingest',
-              appOrigin: dependencies.getAppOrigin(env),
-              artifacts: artifactsBucketForEnv(env),
-              emailConfig: dependencies.getResendEmailConfig(env),
-              events: ingestResult.value.records,
-              identityDb: identityDbForEnv(env),
-              runId,
-              status: ingestResult.value.status,
-            },
-            makeSupervisionLongtailMirrorForEnv(env),
-          ),
-        )
-      } catch (error) {
-        postIngestFailures.push({
-          error: publicErrorName(error),
-          operation: 'adjutant_callback_lifecycle',
         })
       }
 

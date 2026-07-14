@@ -27,10 +27,6 @@ import {
   OperatorEmailInspectionScope,
   inspectOperatorEmailDelivery,
 } from './operator-email-inspection'
-// KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
-// mirroring database is a passthrough for non-scoped statements and
-// degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
-import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
   makeSupervisionLongtailMirrorForEnv,
@@ -42,6 +38,9 @@ type OperatorEmailInspectionEnv = IdentityDbEnv &
     OPENAGENTS_DB: D1Database
   }>
 type HttpResponse = globalThis.Response
+
+const openAgentsDatabase = (env: OperatorEmailInspectionEnv): D1Database =>
+  env.OPENAGENTS_DB
 
 type OperatorEmailInspectionSession = Readonly<{
   user: Readonly<{
