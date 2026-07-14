@@ -152,8 +152,8 @@ export function validateSnapshot(
     }
   }
 
-  if (!Array.isArray(snapshot.issues) || snapshot.issues.length === 0) {
-    errors.push("snapshot issues must be a non-empty array")
+  if (!Array.isArray(snapshot.issues)) {
+    errors.push("snapshot issues must be an array")
     return errors
   }
 
@@ -272,7 +272,12 @@ export function validateCleanAgentReading(
     if (!proof.includes(rung)) errors.push(`clean-agent proof vocabulary is missing ${rung}`)
   }
   const order = extractSection(master, "## Current execution order")
-  if (!/#\d{3,}/.test(order)) errors.push("clean-agent current execution order has no issue-backed next action")
+  if (snapshot.issues.length > 0 && !/#\d{3,}/.test(order)) {
+    errors.push("clean-agent current execution order has no issue-backed next action")
+  }
+  if (snapshot.issues.length === 0 && !/no (?:active|successor) product/i.test(order)) {
+    errors.push("clean-agent current execution order does not state that the product queue is empty")
+  }
 
   const claims = documents["docs/sol/CLAIM_PROTOCOL.md"] ?? ""
   if (!/```text\nCLAIM\n/.test(claims)) errors.push("clean-agent claim protocol lacks CLAIM shape")

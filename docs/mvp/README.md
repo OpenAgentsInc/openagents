@@ -17,7 +17,7 @@ read.
 3. [`../sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) — the sequencing,
    priority, live-gate, and issue-triage authority.
 4. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
-   — the sole active Sol product lane and current claim/evidence ledger.
+   — the closed-completed implementation/evidence ledger for this MVP.
 5. [`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md)
    — the proposed first AssuranceSpec dogfood slice bound to this exact MVP
    ProductSpec. It plans proof-design tooling; it does not change MVP intent,

@@ -1,25 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-13T14:12:26.947Z",
+  "generatedAt": "2026-07-14T00:00:26.711Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
     "area:docs"
   ],
   "maxAgeHours": 168,
-  "issues": [
-    {
-      "labels": [
-        "priority:P0",
-        "area:desktop",
-        "codex",
-        "type:proof",
-        "roadmap:sol"
-      ],
-      "number": 8756,
-      "state": "OPEN",
-      "title": "MVP-01 — Ship and prove the ProductSpec-native OpenAgents Desktop Codex Workroom",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8756"
-    }
-  ]
+  "issues": []
 }

@@ -19,28 +19,23 @@ These files correspond to open issues in the schema-versioned
 [`product-issue snapshot`](../live-roadmap-issues.json). Their bodies may
 contain historical status; refresh the live issue/comments before dispatch.
 
-There is no checked-in issue-body source for the sole live MVP issue. Its exact
-intent authority is the ProductSpec classified below.
+There is no live product issue and no checked-in live issue-body source.
 
 ## Live issues represented by receipts
 
 No live issue is represented only by a receipt. Receipts remain evidence, not
-the active MVP dispatch authority.
+dispatch authority.
 
 ## Live issues represented by an owning plan
 
-The sole live issue executes one exact ProductSpec rather than duplicating its
-acceptance language in a checked-in issue-body source.
-
-| Live issue | Owning ProductSpec |
-| --- | --- |
-| [#8756](https://github.com/OpenAgentsInc/openagents/issues/8756) | [`OpenAgents Desktop Codex Workroom MVP`](../../mvp/openagents-codex-workroom-mvp.product-spec.md) |
+No live issue is represented by an owning plan.
 
 ## Closed proof and implementation sources
 
 These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
 
+- [`ProductSpec-native Codex Workroom MVP closure`](../../mvp/2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md) — #8756
 - [`CUT-26 RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md) — #8706
 - [`Desktop local-turn restart recovery`](../2026-07-13-desktop-local-turn-restart-recovery-receipt.md) — #8744
 - [`PORT-00 portable-session contract freeze`](../2026-07-12-port-00-portable-session-contract-freeze-receipt.md) — #8745

@@ -50,6 +50,10 @@ function snapshot(number = 1001): RoadmapIssueSnapshot {
   }
 }
 
+function emptySnapshot(): RoadmapIssueSnapshot {
+  return { ...snapshot(), issues: [] }
+}
+
 describe("positive repository fixture", () => {
   test("the checked-in Sol documentation passes offline", async () => {
     const errors = await collectSolDocErrors({
@@ -114,11 +118,24 @@ describe("snapshot freshness and connected equality", () => {
     expect(validateSnapshot(snapshot(), new Date(generatedAt))).toEqual([])
   })
 
+  test("accepts a fresh empty queue", () => {
+    expect(validateSnapshot(emptySnapshot(), new Date(generatedAt))).toEqual([])
+  })
+
   test("rejects malformed, future, and expired artifacts", () => {
     const malformed = { ...snapshot(), schemaVersion: 2, excludedLabels: [] }
     expect(validateSnapshot(malformed, new Date(generatedAt)).join("\n")).toContain("schemaVersion")
     expect(validateSnapshot(snapshot(), new Date("2026-07-10T00:00:00.000Z")).join("\n")).toContain("future")
     expect(validateSnapshot(snapshot(), new Date("2026-07-25T00:00:00.000Z")).join("\n")).toContain("older")
+  })
+
+  test("rejects a non-array issue collection", () => {
+    expect(
+      validateSnapshot(
+        { ...snapshot(), issues: null as unknown as RoadmapIssue[] },
+        new Date(generatedAt),
+      ).join("\n"),
+    ).toContain("must be an array")
   })
 
   test("rejects a live GitHub divergence", () => {

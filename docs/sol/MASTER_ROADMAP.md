@@ -3,12 +3,12 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-13
-- Revision: 107
+- Revision: 108
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: ProductSpec-native Codex Workroom MVP
+- Current queue: none; the ProductSpec-native Codex Workroom MVP is complete
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
-- Dispatch: yes, together with live issues and
-  [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
+- Dispatch: no product-expansion lane; new outcomes require a bounded owner
+  decision and live issue under [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
 - Documentation cleanup: SOL-DOC-01 through SOL-DOC-11 are closed; the
@@ -46,7 +46,7 @@ issue projection, and dependency order. It does not repeat implementation
 diaries. Current code, tests, live issues, deployments, and receipts own factual
 proof; dated plans and analyses are evidence only.
 
-## Immediate priority — ProductSpec-native Codex Workroom MVP
+## Completed priority — ProductSpec-native Codex Workroom MVP
 
 The first deployable OpenAgents product is the signed, local-first OpenAgents
 Desktop Codex Workroom defined by the exact
@@ -54,8 +54,10 @@ Desktop Codex Workroom defined by the exact
 evidence and product-shape analysis live in the adjacent
 [`audit`](../mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md); the
 [`MVP README`](../mvp/README.md) is the entry point. [MVP-01
-#8756](https://github.com/OpenAgentsInc/openagents/issues/8756) is the sole
-active Sol product lane.
+#8756](https://github.com/OpenAgentsInc/openagents/issues/8756) closed completed
+after the exact RC9 evidence and installed-journey owner acceptance recorded in
+the [`closure receipt`](../mvp/2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md).
+There is no active Sol product-expansion lane.
 
 Codex remains the agent engine. OpenAgents owns the durable workroom around it:
 guided ProductSpec authoring and validation, accepted criterion-addressed
@@ -63,11 +65,16 @@ plans, systematic agent work packets, typed causal activity and blockers,
 complete child-agent topology, bounded repository/Git review, and honest
 recovery in a signed app.
 
-This MVP is the only product-expansion lane. The broader Codex/Claude cutover,
+This MVP was the only product-expansion lane and is now the accepted completed
+baseline. The broader Codex/Claude cutover,
 mobile and Khala Sync expansion, Fleet, managed targets, portable sessions,
 host movement, voice, and full OpenCode-parity issues are closed `not planned`,
 not deferred follow-on queues. Any future revival requires a new bounded owner
 decision and issue; MVP completion does not reopen them.
+
+Closure does not automatically activate #8770 or any AssuranceSpec, Observer,
+Observatory, mobile, Fleet, provider, portability, voice, or parity backlog.
+A successor product lane requires a new bounded owner decision and live issue.
 
 The triage changed issue state, not proof: no issue body or acceptance history
 was rewritten, and no unproved outcome became accepted. It does not publish a
@@ -78,8 +85,9 @@ closed lane stops; code already landed on `main` remains dormant substrate.
 
 ## Owner decisions
 
-1. **The ProductSpec-native Codex Workroom MVP is the whole active P0 product
-   program.** Ship one independently useful signed local-first Desktop product
+1. **The ProductSpec-native Codex Workroom MVP was the whole active P0 product
+   program and is now the accepted completion baseline.** It ships one
+   independently useful signed local-first Desktop product
    around the user's ordinary logged-in Codex session. The former R0–R7 Desktop/mobile,
    Sync, Fleet, cloud, portability, and voice program is closed not-planned;
    landed contracts remain evidence and safe reusable substrate only.
@@ -90,7 +98,7 @@ closed lane stops; code already landed on `main` remains dormant substrate.
    `/api/sarah/fleet-runs` intake remains a temporary typed authority adapter
    until an explicit rename/deletion gate closes; it does not authorize Sarah
    UI or product sequencing. Persona-neutral voice is governed by decision 21.
-3. **Desktop is the only active MVP client.** Mobile remains a supported
+3. **Desktop is the accepted MVP client.** Mobile remains a supported
    retained client without an active expansion lane. Web remains a supported
    public/API/operations surface; landing, Forum, portal, persona, and broad
    route-conversion expansion does not preempt the MVP.
@@ -135,7 +143,8 @@ closed lane stops; code already landed on `main` remains dormant substrate.
     Identity, credentials, raw runtime events, workspace/process handles, and
     local durable state stay in the host. Mobile joining this path is not an
     active outcome.
-14. **There is one live product issue: #8756.** Broad program/client issues
+14. **There is no live product-expansion issue.** MVP-01 #8756 closed completed.
+    Broad program/client issues
     #8566, #8574, and #8597 and their CUT/AUDIO/PORT residuals are closed
     `not planned`. Closed substrate, proofs, and `wontfix` records are not
     dormant epics. New defects receive criterion-bounded child issues; new
@@ -539,9 +548,7 @@ self-referential queue churn. Refresh live `roadmap:sol` issues and claims
 before operational selection; this table owns the complete product queue, not
 the currently unclaimed worker lease.
 
-| Issue | Current role |
-| --- | --- |
-| [#8756](https://github.com/OpenAgentsInc/openagents/issues/8756) | Sole ProductSpec-native Codex Workroom MVP implementation, integration, release, and evidence lane |
+There are no open product issues in the current projection.
 
 The superseded broad program/client, CUT-27, AUDIO-8, and PORT-03 through PORT-08
 issues are closed `not planned` with comments; their bodies were not rewritten.
@@ -553,29 +560,25 @@ Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 
 ## Current execution order
 
-Live issues and claims control exact selection. At this snapshot:
+At this snapshot:
 
-1. Treat the exact [`docs/mvp` package](../mvp/README.md) as the accepted intent
-   boundary. The audit informs the product; only the exact Product Spec's
-   numbered criteria authorize and measure the MVP.
-2. Claim [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
-   before implementation mutation. Every claim names the exact ProductSpec
-   revision/digest and criterion IDs; missing work becomes a bounded child, not
-   an expansion of MVP-01.
-3. Execute MVP-0 through MVP-3 in criterion order: pinned ProductSpec authority,
-   useful local workroom, recovery/truth, then the exact signed release journey.
-   Every packet names its accepted spec revision/digest and criterion IDs.
-4. Publish installed-artifact evidence for the numbered MVP criteria and
-   declare only the accepted Codex Workroom scope. Landed substrate, a polished
-   shell, or a transcript screenshot does not satisfy the MVP.
+1. The exact [`docs/mvp` package](../mvp/README.md) is the accepted MVP intent,
+   evidence, and closure boundary.
+2. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756) is
+   closed completed; its claim no longer dispatches work.
+3. MVP-0 through MVP-3 passed against exact signed/stapled RC9 and the owner
+   accepted the installed ProductSpec-native journey/read-only boundary.
+4. RC9 remains unpublished. Conditional public-language, telemetry, release,
+   concurrency, registry, and successor-lane gates remain unchanged.
 
-Claims are refreshed before every mutation. Owner or external gates shift work
-to another ready MVP criterion or an admissible repair, never to closed
-presentation, mobile, Fleet, provider, portability, or voice backlog.
+There is no active product queue and no successor product queue to claim.
+Supported security, privacy, data-loss, accessibility, production-outage, or
+compatibility defects may use new bounded repair issues; product expansion
+waits for owner direction.
 
 ## Implementation laws
 
-These laws govern the active MVP and prevent already-landed inactive substrate
+These laws govern the accepted MVP baseline and prevent already-landed inactive substrate
 from regressing. Mobile, Fleet, remote-target, movement, and voice laws do not
 authorize new work on those closed outcomes.
 
