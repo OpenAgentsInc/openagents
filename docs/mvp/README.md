@@ -19,9 +19,9 @@ read.
 4. [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
    — the closed-completed implementation/evidence ledger for this MVP.
 5. [`../assurance/MVP_FIRST_ASSURANCESPEC.md`](../assurance/MVP_FIRST_ASSURANCESPEC.md)
-   — the proposed first AssuranceSpec dogfood slice bound to this exact MVP
-   ProductSpec. It plans proof-design tooling; it does not change MVP intent,
-   sequencing, release state, or public claims.
+   — the original first-dogfood plan. The live admitted companion and its
+   reviewed receipts now execute that plan without changing MVP intent,
+   release state, or promise authority.
 6. [`2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md`](./2026-07-13-openagents-codex-workroom-rc6-candidate-receipt.md)
    — the narrow signed/notarized RC6 build, installed-smoke, restore, cleanup,
    and remaining-gates receipt.
@@ -89,16 +89,18 @@ It must separately enforce Assurance producer/reviewer policy and must not
 convert `REFUTED`, `INCONCLUSIVE`, stale, flaky, or infrastructure-failed
 observations into workroom `verified`.
 
-## First AssuranceSpec proposal
+## Admitted AssuranceSpec dogfood
 
-The generated companion lives here as
+The live companion lives here as
 `openagents-codex-workroom-mvp.assurance-spec.md`, beside the ProductSpec it
-binds. `packages/assurance-spec` deterministically creates its exact subject
-binding and one unresolved required obligation per criterion. The generated
-document is structurally valid and non-executable; all 18 obligations still
-need reviewed proof design. Review/admission artifacts, a local Environment
-Profile, deterministic Manifest compiler, Bun-test adapter, falsifier run, and
-receipt path remain later pilot work.
+binds. Its revision-1 proposal remains frozen in the conformance corpus; the
+live revision 2 is reviewed, admitted, and fully designed. The exact
+Environment Profile, adapter lock, review, admission, deterministic Manifest,
+18 candidate receipts, 18 falsifier receipts, 18 sensitivity receipts, and
+full Desktop gate are committed under [`../../assurance`](../../assurance).
+The reviewed Evidence Index projects every obligation across eight independent
+axes without a blended score. Native JUnit and full-gate output remain private
+under ignored `var/assurance` paths.
 
 The target subject is currently ProductSpec format `0.1`, `spec_revision: 6`,
 SHA-256

@@ -3,9 +3,9 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-13
-- Revision: 108
+- Revision: 109
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: none; the ProductSpec-native Codex Workroom MVP is complete
+- Current queue: AssuranceSpec distribution owner action only; no product-expansion lane
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: no product-expansion lane; new outcomes require a bounded owner
   decision and live issue under [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -72,9 +72,11 @@ host movement, voice, and full OpenCode-parity issues are closed `not planned`,
 not deferred follow-on queues. Any future revival requires a new bounded owner
 decision and issue; MVP completion does not reopen them.
 
-Closure does not automatically activate #8770 or any AssuranceSpec, Observer,
-Observatory, mobile, Fleet, provider, portability, voice, or parity backlog.
-A successor product lane requires a new bounded owner decision and live issue.
+The owner subsequently activated the bounded #8770 AssuranceSpec/Observer/
+Observatory proof program and accepted all independently verified MVP packets.
+That proof program does not reopen mobile, Fleet, provider, portability, voice,
+or parity backlog and does not create a successor Desktop product-expansion
+lane.
 
 The triage changed issue state, not proof: no issue body or acceptance history
 was rewritten, and no unproved outcome became accepted. It does not publish a
@@ -82,6 +84,38 @@ product promise or update a promise/behavior/Eval registry. Security, privacy,
 data-loss, accessibility, production-outage, and supported compatibility repairs
 remain admissible as separately bounded defects. Work claimed only under a
 closed lane stops; code already landed on `main` remains dormant substrate.
+
+## Completed successor proof program — AssuranceSpec and Observatory
+
+The owner explicitly directed the repository to finish the AssuranceSpec
+program and put the accepted MVP through every assurance gate. The live
+[`MVP AssuranceSpec`](../mvp/openagents-codex-workroom-mvp.assurance-spec.md)
+is now a reviewed and admitted revision bound to the exact revision-6 MVP
+ProductSpec. Its committed
+[`Evidence Index`](../../assurance/openagents-desktop-mvp.evidence-index.json)
+keeps 18 candidate receipts, 18 falsifier receipts, and 18 sensitivity receipts
+separate. All 18 obligations are mapped, executable, `CONFIRMED`, independently
+reviewed, current, stable, and accepted; no blended score exists.
+
+The exact `AO-CW-AC-04-01` receipt traverses the immutable Desktop bridge before
+owner disposition. The owner accepted the installed ProductSpec-native journey,
+its read-only review boundary, and every independently verified MVP packet.
+`openagents.mutation.v1` proves strong-oracle kills and weak-oracle survivors
+without mutation-score theater or added authority. The owned-runner starter kit
+installs both exact package tarballs in a clean offline checkout and keeps
+ledger output informational. Repository policy still forbids GitHub Actions.
+
+The public [Observatory trace](https://openagents.com/observer/traces/openagents-desktop-codex-workroom-mvp)
+is deployed from `main` and presents mapped, executable, observed, and accepted
+as four independent criterion facts. It reads only reviewed public-safe refs
+and grants no merge, deploy, spend, settlement, or promise authority.
+
+The sole remaining program action is publishing
+`@openagentsinc/assurance-spec` to npm and proving `bunx` from the registry.
+The package is publication-ready, but this Mac has no npm credentials and both
+browser profiles were signed out. That is an owner authentication action under
+#8767, not an engineering or product-expansion queue. #8770 closes after that
+registry receipt; all other children are completed.
 
 ## Owner decisions
 
@@ -568,10 +602,18 @@ At this snapshot:
    closed completed; its claim no longer dispatches work.
 3. MVP-0 through MVP-3 passed against exact signed/stapled RC9 and the owner
    accepted the installed ProductSpec-native journey/read-only boundary.
-4. RC9 remains unpublished. Conditional public-language, telemetry, release,
-   concurrency, registry, and successor-lane gates remain unchanged.
+4. The owner-authorized AssuranceSpec successor proof run passed all 18
+   candidate/falsifier/sensitivity rows, the full Desktop gate, mutation
+   sensitivity, immutable workroom bridge, and deployed Observatory projection.
+5. The owned-runner starter kit passes a clean offline checkout. #8767 remains
+   open only for owner-authenticated npm publication and the registry `bunx`
+   receipt; #8770 closes after that receipt.
+6. RC9 remains unpublished. Conditional public-language, telemetry, release,
+   concurrency, registry, and product-successor gates remain unchanged.
 
-There is no active product queue and no successor product queue to claim.
+There is no active product queue or successor product queue to claim. The
+remaining npm authentication step is an external distribution owner action,
+not a product-expansion work packet.
 Supported security, privacy, data-loss, accessibility, production-outage, or
 compatibility defects may use new bounded repair issues; product expansion
 waits for owner direction.
