@@ -1,7 +1,7 @@
 # Vercel Native SDK, Effect Native, and OpenAgents Desktop audit
 
 - Date: 2026-07-14
-- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; parity pass based on OpenAgents `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)
+- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)
 - Class: architecture and dependency audit
 - Status: recommendation with bounded hybrid implementation receipt; no
   migration or release authority
@@ -148,7 +148,7 @@ Native SDK 0.5.1 source:
 
 ```text
 pnpm run typecheck             -> exit 0
-vp test --run frontend/src     -> 1 file, 7 tests passed
+vp test --run frontend/src     -> 2 files, 9 tests passed
 vp build                       -> exit 0; 200 modules transformed
 zig build test                 -> exit 0; 6 native tests passed
 zig build                      -> exit 0
@@ -172,24 +172,31 @@ composition. The parity increment then added
 to `pnpm verify`. The new gate builds with automation, launches the actual
 binary on the bundled `zero://app` asset source, binds snapshots to the exact
 child PID and protocol 6, resolves each short-lived widget id from current
-semantic role/name, and produces this seven-step private record:
+semantic role/name, and produces this nine-step private record:
 
 ```text
 1  initial production Effect projection
-2  native session click -> higher-revision Effect-confirmed selection
-3  native workspace round trip -> higher-revision Effect projections
-4  deterministic retained-canvas screenshot
-5  Effect WebView reload -> state restored
-6  native process restart -> state restored
-7  New chat after restart -> no selected fixture session
+2  macOS composited capture -> native rail + live Effect Native pixels
+3  native session click -> higher-revision Effect-confirmed selection
+4  native workspace round trip -> higher-revision Effect projections
+5  deterministic retained-canvas screenshot
+6  Effect WebView reload -> state restored
+7  native process restart -> state restored under a distinct PID
+8  New chat after restart -> no selected fixture session
+9  clean teardown of both attested process generations
 ```
 
 The passing run had zero dispatch errors, a nonblank 1200×800 Metal surface,
 17 retained widgets / 17 semantics, a 19.4 ms first native frame inside the
 150 ms SDK budget, a named 968×800 child WebView, an accessibility projection,
-and a 3.7 MiB deterministic native-canvas PNG. Its private
-`openagents.native-sdk.host-gate.v1` JSON plus snapshots, accessibility text,
-PNG, and bounded native log live under
+and a 3.7 MiB deterministic native-canvas PNG. The continuation also captured
+a 2536×1736 macOS window PNG containing the composited native rail and live
+Effect Native transcript/composer. Its private, schema-decoded
+`openagents.native-sdk.host-gate.v2` JSON binds a run nonce, exact
+initial/restart PIDs, protocol 6, macOS ARM64, Node 24.13.1, Zig 0.16.0, the
+exact Native SDK commit, command, binary, frontend-bundle, source-set, and every
+evidence digest. The artifact plus snapshots, accessibility text, both PNGs,
+and bounded native log live under
 `var/native-sdk-effect-native-spike/host-smoke/`; those are ignored runtime
 artifacts, not committed Assurance Receipts.
 
@@ -200,12 +207,13 @@ functional when `native dev` injected a Vite URL. The wrapper now supplies the
 production asset source and environment-aware development source, and rejects
 bridge projections from every WebView label except `effect-native-surface`.
 
-The composited live window shows the Native SDK controls and the live Effect
-Native catalog together. The deterministic PNG still covers only the retained
-GPU surface; Native SDK 0.5.1 does not include system-WebView pixels or DOM
-semantics in that artifact. Native catalog lowering, full-window composited
-capture, packaging/signing, accessibility acceptance, provider execution, and
-Electron host parity remain unproven.
+The composited live window and new macOS capture show the Native SDK controls
+and the live Effect Native catalog together. Native SDK's deterministic PNG
+still covers only the retained GPU surface, so the two artifacts remain
+separate: deterministic native render evidence and composited-pixel evidence.
+Neither extracts child-WebView DOM semantics. Native catalog lowering,
+packaging/signing, accessibility acceptance, provider execution, and Electron
+host parity remain unproven.
 
 This receipt changes two conclusions from hypothetical to observed: Option A,
 the hybrid WebView shell works, and Effect can remain authoritative while a
@@ -239,22 +247,34 @@ replace the complete Desktop suite and installed journey. Reusing them while
 changing only the final command would produce a green label with no Native
 criterion evidence. This audit therefore rejects that shortcut.
 
-### Two pre-existing integrity failures to close first
+### Two pre-existing integrity failures found and repaired
 
-The read-only audit also found two problems in the current Electron assurance
-chain that are independent of Native SDK:
+The assurance continuation found two problems in the current Electron chain
+that are independent of Native SDK:
 
-1. `assurance/openagents-desktop-mvp.session.json` pins an older AssuranceSpec
-   digest. Running the owned runner reports `assurance_spec_changed` and a
-   blocking failure against the current admitted bytes.
-2. The admitted environment requires Node 24.13.1, while this run used Node
-   25.8.2. `vite-plus-test-adapter.ts` checks declared capabilities but not the
-   executing `process.version`, so it can currently mint an environment-current
-   receipt under the wrong runtime.
+1. `assurance/openagents-desktop-mvp.session.json` pinned an older
+   AssuranceSpec digest. The deterministic session ID and spec digest now pin
+   the current already-admitted bytes; `session check` reports `unchanged` and
+   the owned runner passes. This operational repair is not new admission.
+2. The admitted environment requires Node 24.13.1, while the ambient shell was
+   Node 25.8.2. The Vite Plus adapter now rejects OS, architecture, runtime,
+   required-command, and dependency-lock drift before execution. It invokes
+   the exact Vite Plus entrypoint with the already-attested `process.execPath`,
+   so a different Node earlier on `PATH` cannot execute the oracle, and binds
+   Node, adapter version, entrypoint, and lock digests into command identity.
 
-Neither problem should be copied into a Native adapter. Exact Node, Zig,
-Native SDK, platform, architecture, binary, frontend, and adapter versions must
-be observed and digest-bound before a Native receipt can be current.
+The committed session records freshness rather than admission, and the current
+receipt schema still needs a normalized environment-observation digest. The
+Native v2 private host artifact supplies the underlying Node, Zig, Native SDK,
+platform, architecture, binary, frontend, command, process, and evidence
+observations; a Native Assurance adapter must carry those into normalized
+receipts before any criterion can be current.
+
+The runner also now stages all spec, review, admission, manifest, receipt, and
+index bytes in memory. A failed full host gate leaves the last admitted public
+chain untouched; publication occurs only after all 36 units and the complete
+host gate are green. This closes the partial-publication failure exposed by a
+timing-sensitive Electron smoke retry during this continuation.
 
 ### Honest Native target boundary
 
@@ -277,19 +297,23 @@ manifest namespace  assurance/openagents-desktop-native-sdk-mvp.*
 run namespace       var/assurance/openagents-desktop-native-sdk-mvp/
 ```
 
-The historical Electron artifacts must remain byte-stable. A target descriptor
-should bind the target ref, repository path, criterion catalog, environment,
-adapter, exact verify argv, host-gate schema, source digests, output namespace,
-and companion evidence. The same 18 logical criteria and candidate/falsifier
-shape may be preserved, but every Native unit requires a Native-owned
-integration or release anchor; missing proof remains `INCONCLUSIVE`.
+The historical Electron artifacts remain separately named. The runner now has
+typed `electron` and `native-sdk` target descriptors binding target ref,
+repository path, criterion catalog, environment, adapter, exact verify argv,
+host-gate schema, source set, output namespace, and companion evidence. No-arg
+execution remains Electron-compatible; unknown or extra target arguments fail
+before writes. `--target=native-sdk` deliberately fails before writes until its
+separate reviewed admission, criterion catalog, and adapter exist. Every Native
+unit requires a Native-owned integration or release anchor; missing proof
+remains `INCONCLUSIVE`.
 
-The Native full-gate adapter should consume a typed host-gate file rather than
-parse log prose. At minimum it must bind exact PID/liveness, automation protocol,
-binary and frontend digests, command/adapter digests, pre/post snapshot digests,
-artifact digests, typecheck/tests/build observations, native smoke observation,
-and clean teardown. Timeout, crash, permission refusal, missing composited
-evidence, or stale output is `INCONCLUSIVE`, never green.
+The headed gate now decodes its typed v2 artifact rather than trusting the
+success marker: incomplete steps, malformed digests, PID reuse or mismatch,
+missing composited/canvas/reload/restart evidence, wrong runtime, or wrong SDK
+identity fails the gate. The next Assurance adapter must additionally bind the
+manifest, Environment Profile, adapter lock, typecheck/test/build summary, and
+freshness policy when normalizing it. Timeout, crash, permission refusal,
+missing evidence, or stale output remains `INCONCLUSIVE`, never green.
 
 ### Native automation blockers for parallel assurance
 
@@ -302,17 +326,18 @@ Four upstream behaviors matter before admission:
   `native automate bridge` can observe a background projection response rather
   than its own request unless the SDK correlates exact request ids;
 - Native snapshots and deterministic screenshots omit child-WebView DOM and
-  pixels, so a browser/DOM adapter and macOS window-scoped capture must
-  accompany canvas evidence;
+  pixels. The gate now adds macOS window-scoped composited capture; a separate
+  browser/DOM or accessibility adapter is still needed for semantic controls;
 - widget ids are runtime-ephemeral; authored scenarios must select by a unique
   current `(view, role, accessibleName, occurrence)` and resolve the id just
   before each action, as the new smoke does.
 
-The next honest sequence is: fix current owned-runner/runtime fidelity; add a
-target descriptor and namespaced Native environment/adapter; normalize this
-host gate into a typed adapter receipt; add browser and macOS-composited
-evidence; create Native criterion catalogs that start red/`INCONCLUSIVE`; port
-real Effect/host services criterion by criterion; then obtain fresh review,
+The completed steps are owned-runner freshness, outer/child runtime fidelity,
+target descriptors, typed v2 host evidence, and macOS composited capture. The
+next honest sequence is: add the namespaced Native environment and adapter;
+normalize this host gate into a target-bound receipt; add browser/semantic
+evidence; create the Native criterion catalog red/`INCONCLUSIVE`; port real
+Effect and host services criterion by criterion; then obtain fresh review,
 admission, signed lifecycle evidence, and only then run all 36 Native-bound
 units plus the full Native gate.
 

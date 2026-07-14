@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { resolve } from "node:path"
 
@@ -10,6 +10,7 @@ import {
   computeEnvironmentProfileDigest,
   executeVitePlusTestUnit,
   makeOracleSensitivityReceipt,
+  OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION,
   parseAssuranceSpec,
   serializeAssuranceReviewAnnotation,
   serializeAssuranceSpec,
@@ -23,28 +24,56 @@ import {
   type AssuranceSpecDocument,
 } from "../src/index.ts"
 import { parseVitePlusTestSummary } from "../src/full-gate.ts"
+import { parseMvpAssuranceTargetArgs } from "./mvp-assurance-target.ts"
 
 const root = resolve(import.meta.dirname, "../../..")
+const target = parseMvpAssuranceTargetArgs(process.argv.slice(2))
+if (target.name !== "electron") {
+  throw new Error("Native SDK MVP assurance remains fail-closed until its separate reviewed admission, criterion catalog, and adapter are present.")
+}
 const relative = {
-  productSpec: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
-  assuranceSpec: "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
-  proposalFixture: "packages/assurance-spec/conformance/valid/mvp-proposal.assurance-spec.md",
-  environment: "assurance/environments/openagents-desktop-mvp.assurance-environment.json",
-  adapterLock: "assurance/openagents-desktop-mvp.adapter-lock.json",
-  review: "assurance/openagents-desktop-mvp.assurance-review.json",
-  admission: "assurance/openagents-desktop-mvp.assurance-admission.json",
-  manifest: "assurance/openagents-desktop-mvp.assurance-manifest.json",
-  evidenceIndex: "assurance/openagents-desktop-mvp.evidence-index.json",
-  fullDesktopGateReceipt: "assurance/openagents-desktop-mvp.full-desktop-gate-receipt.json",
-  receiptRoot: "assurance/receipts/openagents-desktop-mvp",
-  runRoot: "var/assurance/openagents-desktop-mvp",
+  productSpec: target.productSpecPath,
+  assuranceSpec: target.assuranceSpec.path,
+  proposalFixture: target.paths.proposalFixture,
+  environment: target.paths.environment,
+  adapterLock: target.paths.adapterLock,
+  review: target.paths.review,
+  admission: target.paths.admission,
+  manifest: target.paths.manifest,
+  evidenceIndex: target.paths.evidenceIndex,
+  fullDesktopGateReceipt: target.paths.fullGateReceipt,
+  receiptRoot: target.paths.receiptRoot,
+  runRoot: target.paths.runRoot,
 } as const
 
 const absolute = (path: string): string => resolve(root, path)
 const read = (path: string): string => readFileSync(absolute(path), "utf8")
+const stagedPublications = new Map<string, string>()
+const isPublicArtifact = (path: string): boolean => path === relative.assuranceSpec || path.startsWith("assurance/")
 const write = (path: string, bytes: string): void => {
+  if (isPublicArtifact(path)) {
+    stagedPublications.set(path, bytes)
+    return
+  }
   mkdirSync(resolve(absolute(path), ".."), { recursive: true })
   writeFileSync(absolute(path), bytes)
+}
+const publishStagedPublications = (): void => {
+  const rows = [...stagedPublications].map(([path, bytes], index) => ({
+    path,
+    bytes,
+    destination: absolute(path),
+    temporary: `${absolute(path)}.assurance-tmp-${process.pid}-${index}`,
+  }))
+  try {
+    for (const row of rows) {
+      mkdirSync(resolve(row.destination, ".."), { recursive: true })
+      writeFileSync(row.temporary, row.bytes, "utf8")
+    }
+    for (const row of rows) renameSync(row.temporary, row.destination)
+  } finally {
+    for (const row of rows) rmSync(row.temporary, { force: true })
+  }
 }
 
 const narratives: Readonly<Record<string, string>> = {
@@ -61,7 +90,7 @@ const narratives: Readonly<Record<string, string>> = {
 
 const designDocument = (): AssuranceSpecDocument => {
   const proposal = parseAssuranceSpec(read(relative.proposalFixture))
-  const testPath = "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+  const testPath = target.criterion.testPath
   return {
     ...proposal,
     frontmatter: { ...proposal.frontmatter, assurance_revision: 2, lifecycle_state: "admitted" },
@@ -80,14 +109,14 @@ const designDocument = (): AssuranceSpecDocument => {
     },
     environments: {
       ...proposal.environments,
-      profiles: [{ id: "ENV-OA-DESKTOP-MVP-VITE-PLUS-1", status: "admitted" }],
+      profiles: [{ id: target.criterion.environmentRef, status: "admitted" }],
     },
     obligations: proposal.obligations.map((obligation) => ({
       ...obligation,
       candidate_artifact_refs: [testPath, "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md"],
       domains: ["desktop_workroom", "release_artifact"],
       technique: "criterion_contract_with_sensitivity",
-      environment_refs: ["ENV-OA-DESKTOP-MVP-VITE-PLUS-1"],
+      environment_refs: [target.criterion.environmentRef],
       oracle: {
         statement: `The exact ${obligation.criterion_refs[0]} implementation/release anchors remain present and the criterion-local candidate test passes.`,
         evaluator_ref: testPath,
@@ -137,7 +166,7 @@ const productSpecDigest = sha256Digest(productSpecBytes)
 
 const profilePayload = {
   environment_format_version: "0.1" as const,
-  profile_id: "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
+  profile_id: target.criterion.environmentRef,
   revision: 1,
   owner: "first_party" as const,
   target_class: "release_artifact" as const,
@@ -153,7 +182,7 @@ const profilePayload = {
   permitted_actions: ["read_repository", "run_vite_plus_tests", "write_isolated_artifacts"],
   forbidden_actions: ["network", "credentials", "production_mutation", "customer_data", "release_publication"],
   required_commands: ["vp"],
-  dependency_lock: { path: "package.json", digest: sha256Digest(read("package.json")) },
+  dependency_lock: { path: target.dependencyLockPath, digest: sha256Digest(read(target.dependencyLockPath)) },
 }
 const environment: AssuranceEnvironmentProfileDocument = {
   ...profilePayload,
@@ -164,9 +193,9 @@ write(relative.environment, canonicalArtifact(environment).bytes)
 const adapterLock: AssuranceAdapterLock = {
   adapter_lock_format_version: "0.1",
   adapters: [{
-    adapter_ref: "openagents.vite_plus_test.v1",
-    version: "1.0.0",
-    content_digest: sha256Digest(read("packages/assurance-spec/src/vite-plus-test-adapter.ts")),
+    adapter_ref: target.criterion.adapterRef,
+    version: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION,
+    content_digest: sha256Digest(read(target.criterion.adapterSourcePath)),
     techniques: ["criterion_contract_with_sensitivity"],
     capabilities: ["vite_plus_test", "junit", "normalized_receipt"],
   }],
@@ -222,7 +251,7 @@ const admission: AssuranceAdmission = {
 const admissionArtifact = canonicalArtifact(admission)
 write(relative.admission, admissionArtifact.bytes)
 
-const testPath = "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"
+const testPath = target.criterion.testPath
 const executionUnits: ReadonlyArray<AssuranceExecutionUnit> = document.obligations.flatMap((obligation) => {
   const criterion = obligation.criterion_refs[0]!
   return (["candidate", "falsifier"] as const).map((role) => ({
@@ -230,7 +259,7 @@ const executionUnits: ReadonlyArray<AssuranceExecutionUnit> = document.obligatio
     role,
     obligation_id: obligation.id,
     environment_ref: environment.profile_id,
-    adapter_ref: "openagents.vite_plus_test.v1",
+    adapter_ref: target.criterion.adapterRef,
     argv: [
       "vp", "test", testPath, "--testNamePattern",
       role === "candidate"
@@ -307,7 +336,8 @@ for (const obligation of document.obligations) {
   })
 }
 
-const fullGate = spawnSync("pnpm", ["--dir", "apps/openagents-desktop", "run", "verify"], {
+const [fullGateExecutable, ...fullGateArgv] = target.fullGate.argv
+const fullGate = spawnSync(fullGateExecutable, fullGateArgv, {
   cwd: root,
   encoding: "utf8",
   env: { ...process.env, NO_COLOR: "1", CI: "1" },
@@ -317,7 +347,7 @@ const fullGate = spawnSync("pnpm", ["--dir", "apps/openagents-desktop", "run", "
 const fullGateOutput = `${fullGate.stdout ?? ""}${fullGate.stderr ?? ""}`
 write(`${relative.runRoot}/full-desktop-gate.log`, fullGateOutput)
 const fullGateSummary = parseVitePlusTestSummary(fullGateOutput)
-if (fullGate.status !== 0 || fullGateSummary === null || fullGateSummary.failed !== 0 || !fullGateOutput.includes("[openagents-desktop smoke] OK")) {
+if (fullGate.status !== 0 || fullGateSummary === null || fullGateSummary.failed !== 0 || !fullGateOutput.includes(target.fullGate.successMarker)) {
   throw new Error(`Full Desktop gate failed with exit ${String(fullGate.status)}.`)
 }
 const passCount = fullGateSummary.passed
@@ -325,22 +355,18 @@ const skipCount = fullGateSummary.skipped
 const failCount = fullGateSummary.failed
 const fullGateReceipt = canonicalArtifact({
   full_desktop_gate_receipt_format_version: "0.1",
-  command: "pnpm --dir apps/openagents-desktop run verify",
+  command: target.fullGate.argv.join(" "),
   command_digest: sha256Digest(
-    JSON.stringify(["pnpm", "--dir", "apps/openagents-desktop", "run", "verify"]),
+    JSON.stringify(target.fullGate.argv),
   ),
   output_digest: sha256Digest(fullGateOutput),
-  source_digest: sha256Digest([
-    read(testPath),
-    read("apps/openagents-desktop/src/renderer/assurance-spec-workspace.ts"),
-    read("apps/openagents-desktop/package.json"),
-  ].join("\n")),
+  source_digest: sha256Digest(target.fullGate.sourcePaths.map(read).join("\n")),
   exit_code: fullGate.status,
   verdict: "green",
   typecheck: "passed",
   tests: { passed: passCount, skipped_retired: skipCount, failed: failCount },
   build: "passed",
-  electron_smoke: "passed",
+  [target.fullGate.smokeField]: "passed",
   native_output: { visibility: "private", path: `${relative.runRoot}/full-desktop-gate.log` },
   public_safety: { classification: "reviewed_public_safe", contains_raw_output: false },
 })
@@ -368,14 +394,11 @@ const evidenceIndex = canonicalArtifact({
     full_desktop_gate: "green",
   },
   receipts: receiptRows,
-  companion_evidence_refs: [
-    "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-candidate-receipt.md",
-    "docs/mvp/2026-07-13-openagents-codex-workroom-rc9-completion-audit.md",
-    relative.fullDesktopGateReceipt,
-  ],
+  companion_evidence_refs: target.companionEvidenceRefs,
   public_safety: { classification: "reviewed_public_safe", raw_artifacts_public: false },
 })
 write(relative.evidenceIndex, evidenceIndex.bytes)
+publishStagedPublications()
 
 console.log(JSON.stringify({
   assurance_spec_digest: assuranceSpecDigest,

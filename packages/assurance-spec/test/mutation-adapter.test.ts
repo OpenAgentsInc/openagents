@@ -140,6 +140,7 @@ const fixture = (testName: string) => {
   mkdirSync(resolve(workspaceRoot, "node_modules"), { recursive: true })
   symlinkSync(resolve(repositoryRoot, "node_modules/vite-plus"), resolve(workspaceRoot, "node_modules/vite-plus"), "dir")
   writeFileSync(resolve(workspaceRoot, "package.json"), '{"name":"assurance-mutation-fixture","private":true,"type":"module"}')
+  writeFileSync(resolve(workspaceRoot, "pnpm-lock.yaml"), "fixture-lock")
   writeFileSync(resolve(workspaceRoot, "subject.ts"), subject)
   writeFileSync(resolve(workspaceRoot, "oracle.test.ts"), oracle)
   const oracleUnit = unit(testName)

@@ -1,9 +1,9 @@
 {
-  "session_id": "assurance-session-5bc6f7fb13eaca43accfe539",
+  "session_id": "assurance-session-1a635a13b281e591aadeef84",
   "assurance_spec": {
     "path": "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
     "revision": 2,
-    "document_digest": "sha256:3f4766324f513d8bf7932ba774ff490fef1be584080a2b79c986c827e708ab09"
+    "document_digest": "sha256:66e1b49d3089b141a9bd5fb6221d002a0d364259ab719a46a254a507fb0dee72"
   },
   "subject": {
     "path": "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",

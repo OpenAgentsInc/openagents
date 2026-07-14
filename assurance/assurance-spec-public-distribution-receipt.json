@@ -13,7 +13,7 @@
       "name": "@openagentsinc/assurance-spec",
       "version": "0.1.1",
       "filename": "openagentsinc-assurance-spec-0.1.1.tgz",
-      "sha256": "sha256:20d1613a7e9b0877a3d3200266c2313f96aebdff14238c7677af693f52c4466e"
+      "sha256": "sha256:5b977ad5d3df9dea09a637c90eef4c94b3af1bd312c12d7df1c258b9be59666d"
     }
   ],
   "publish_order": ["@openagentsinc/product-spec", "@openagentsinc/assurance-spec"],

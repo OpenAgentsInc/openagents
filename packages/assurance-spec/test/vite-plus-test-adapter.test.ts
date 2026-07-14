@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 
 import {
+  assertVitePlusRuntimeFidelity,
   computeEnvironmentProfileDigest,
   executeVitePlusTestUnit,
   inspectVitePlusJUnit,
@@ -90,6 +91,34 @@ const unit = (role: "candidate" | "falsifier"): AssuranceExecutionUnit => ({
 })
 
 describe("openagents.vite_plus_test.v1", () => {
+  test("fails closed when the observed runtime differs from the admitted profile", () => {
+    expect(() => assertVitePlusRuntimeFidelity(environment, {
+      os: "macos",
+      architecture: "arm64",
+      runtime: "Node 99.0.0",
+    })).toThrowError(expect.objectContaining({ code: "runtime_fidelity_mismatch" }))
+  })
+
+  test("fails closed before execution when the admitted dependency lock drifts", () => {
+    const runRoot = mkdtempSync(resolve(tmpdir(), "assurance-lock-drift-"))
+    roots.push(runRoot)
+    expect(() => executeVitePlusTestUnit({
+      workspaceRoot: root,
+      runRoot,
+      manifest,
+      manifestDigest: sha256Digest("manifest"),
+      environment: {
+        ...environment,
+        dependency_lock: { ...environment.dependency_lock, digest: sha256Digest("stale") },
+      },
+      unit: unit("candidate"),
+      producerRef: "runner.local.1",
+      reviewerRef: "reviewer.independent.1",
+      sourceDigest: sha256Digest("source"),
+      vitePlusExecutable,
+    })).toThrowError(expect.objectContaining({ code: "dependency_lock_mismatch" }))
+  })
+
   test("runs exactly one named candidate and one falsifier, retaining native JUnit", () => {
     for (const role of ["candidate", "falsifier"] as const) {
       const runRoot = mkdtempSync(resolve(tmpdir(), `assurance-${role}-`))

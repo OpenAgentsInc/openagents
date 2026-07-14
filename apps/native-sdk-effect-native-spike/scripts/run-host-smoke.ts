@@ -1,5 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createHash } from "node:crypto";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -12,6 +12,15 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import {
+  decodeNativeSdkHostGate,
+  nativeSdkAutomationProtocol,
+  nativeSdkCommit,
+  nativeSdkHostGateFormat,
+  nativeSdkHostGateSteps,
+  nativeSdkTargetRef,
+} from "./host-gate.ts";
+
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(packageRoot, "../..");
 const binary = path.join(packageRoot, "zig-out/bin/native-sdk-effect-native-spike");
@@ -21,6 +30,23 @@ const evidenceDir = process.env.NATIVE_SDK_HOST_SMOKE_DIR?.trim() ||
 const snapshotPath = path.join(automationDir, "snapshot.txt");
 const accessibilityPath = path.join(automationDir, "accessibility.txt");
 const screenshotPath = path.join(automationDir, "screenshot-native-shell.png");
+const expectedNodeVersion = "24.13.1";
+const expectedZigVersion = "0.16.0";
+const sourcePaths = [
+  "apps/native-sdk-effect-native-spike/app.zon",
+  "apps/native-sdk-effect-native-spike/build.zig",
+  "apps/native-sdk-effect-native-spike/build.zig.zon",
+  "apps/native-sdk-effect-native-spike/package.json",
+  "apps/native-sdk-effect-native-spike/src/main.zig",
+  "apps/native-sdk-effect-native-spike/src/tests.zig",
+  "apps/native-sdk-effect-native-spike/frontend/src/main.ts",
+  "apps/native-sdk-effect-native-spike/frontend/src/native-bridge.ts",
+  "apps/native-sdk-effect-native-spike/frontend/src/program.ts",
+  "apps/native-sdk-effect-native-spike/frontend/src/state-storage.ts",
+  "apps/native-sdk-effect-native-spike/frontend/src/style.css",
+  "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
+  "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
+] as const;
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -28,9 +54,27 @@ const sleep = (milliseconds: number): Promise<void> =>
 const sha256 = (bytes: Buffer | string): string =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
+const filesUnder = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+  const absolute = path.join(directory, entry.name);
+  return entry.isDirectory() ? filesUnder(absolute) : [absolute];
+});
+
+const fileSetDigest = (paths: ReadonlyArray<string>, base: string): string => sha256(JSON.stringify(
+  [...paths].sort().map((absolute) => ({
+    path: path.relative(base, absolute).split(path.sep).join("/"),
+    digest: sha256(readFileSync(absolute)),
+  })),
+));
+
 const publisherPid = (snapshot: string): number | null => {
   const value = snapshot.match(/\bpublisher_pid=(\d+)\b/u)?.[1];
   return value === undefined ? null : Number(value);
+};
+
+const requiredPublisherPid = (snapshot: string, expected: number): number => {
+  const observed = publisherPid(snapshot);
+  if (observed !== expected) throw new Error(`Expected snapshot publisher ${expected}; observed ${String(observed)}`);
+  return observed;
 };
 
 const processIsLive = (pid: number): boolean => {
@@ -131,17 +175,51 @@ const stop = async (child: ChildProcessWithoutNullStreams): Promise<void> => {
   }
 };
 
+const compositedWindowCapture = async (child: ChildProcessWithoutNullStreams, outputPath: string): Promise<void> => {
+  if (child.pid === undefined) throw new Error("Native SDK child PID is unavailable");
+  const deadline = Date.now() + 10_000;
+  let windowId = "";
+  do {
+    const query = spawnSync("swift", ["-e", [
+      "import CoreGraphics",
+      `let target = Int32(${child.pid})`,
+      "let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []",
+      "for row in rows where (row[kCGWindowOwnerPID as String] as? Int32) == target {",
+      "  if let number = row[kCGWindowNumber as String] as? Int { print(number); break }",
+      "}",
+    ].join("\n")], { encoding: "utf8" });
+    if (query.status === 0) windowId = query.stdout.trim();
+    if (/^\d+$/u.test(windowId)) break;
+    await sleep(100);
+  } while (Date.now() < deadline);
+  if (!/^\d+$/u.test(windowId)) throw new Error("Could not resolve the Native SDK macOS window id");
+  const capture = spawnSync("screencapture", ["-x", `-l${windowId}`, outputPath], { encoding: "utf8" });
+  if (capture.status !== 0 || !existsSync(outputPath) || statSync(outputPath).size < 10_000) {
+    throw new Error(`Composited Native SDK window capture failed: ${capture.stderr.trim()}`);
+  }
+};
+
 const copySnapshot = (name: string, snapshot: string): void => {
   writeFileSync(path.join(evidenceDir, `${name}.snapshot.txt`), snapshot, { mode: 0o600 });
 };
 
 if (!existsSync(binary)) throw new Error(`Automation-enabled Native SDK binary is missing: ${binary}`);
+if (process.platform !== "darwin" || process.arch !== "arm64" || process.versions.node !== expectedNodeVersion) {
+  throw new Error(`Native host gate runtime mismatch: expected darwin/arm64/Node ${expectedNodeVersion}, observed ${process.platform}/${process.arch}/Node ${process.versions.node}`);
+}
+const zig = spawnSync("zig", ["version"], { encoding: "utf8" });
+if (zig.status !== 0 || zig.stdout.trim() !== expectedZigVersion) {
+  throw new Error(`Native host gate Zig mismatch: expected ${expectedZigVersion}, observed ${zig.stdout.trim() || "unavailable"}`);
+}
 assertNoLivePublisher();
 rmSync(automationDir, { recursive: true, force: true });
 rmSync(evidenceDir, { recursive: true, force: true });
 mkdirSync(evidenceDir, { recursive: true, mode: 0o700 });
 
 const logs: string[] = [];
+const runNonce = randomUUID();
+let initialProcess: { pid: number; publisherPid: number; stopped: true } | null = null;
+let restartedProcess: { pid: number; publisherPid: number; stopped: true } | null = null;
 let child: ChildProcessWithoutNullStreams | null = null;
 try {
   child = launch(logs);
@@ -151,6 +229,8 @@ try {
     value.includes('url="zero://app/index.html"') &&
     value.includes('name="Effect state synchronized"')
   );
+  if (child.pid === undefined) throw new Error("Initial Native SDK process has no PID");
+  initialProcess = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid), stopped: true };
   let revision = projectionRevision(snapshot);
   copySnapshot("01-initial", snapshot);
   copyFileSync(accessibilityPath, path.join(evidenceDir, "01-initial.accessibility.txt"));
@@ -161,6 +241,7 @@ try {
     value.includes(`name="2 messages · revision ${revision + 1}"`)
   );
   revision += 1;
+  await compositedWindowCapture(child, path.join(evidenceDir, "01-composited-window.png"));
 
   await queueCommand(`widget-click native-shell ${widgetId(snapshot, "listitem", "Renderer boundary")}`, child);
   snapshot = await waitForSnapshot(child, "Effect-confirmed session selection", (value) =>
@@ -218,6 +299,8 @@ try {
     projectionRevision(value) > revision &&
     value.includes('name="Effect state synchronized"')
   );
+  if (child.pid === undefined) throw new Error("Restarted Native SDK process has no PID");
+  restartedProcess = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid), stopped: true };
   revision = projectionRevision(snapshot);
   copySnapshot("05-process-restart", snapshot);
 
@@ -228,27 +311,42 @@ try {
   );
   copySnapshot("06-new-chat", snapshot);
 
+  await stop(child);
+  child = null;
+  if (initialProcess === null || restartedProcess === null) throw new Error("Native host process attestations are incomplete");
+
   const evidence = readdirSync(evidenceDir).sort().map((name) => {
     const bytes = readFileSync(path.join(evidenceDir, name));
     return { name, digest: sha256(bytes), bytes: bytes.length };
   });
-  writeFileSync(path.join(evidenceDir, "host-gate.json"), `${JSON.stringify({
-    formatVersion: "openagents.native-sdk.host-gate.v1",
-    targetRef: "openagents.desktop.native-sdk.spike",
-    automationProtocol: 6,
+  const hostGate = decodeNativeSdkHostGate({
+    formatVersion: nativeSdkHostGateFormat,
+    targetRef: nativeSdkTargetRef,
+    runNonce,
+    automationProtocol: nativeSdkAutomationProtocol,
     frontendAuthority: "effect-native",
     result: "passed",
-    steps: [
-      "initial-projection",
-      "session-selection",
-      "workspace-round-trip",
-      "native-canvas-screenshot",
-      "renderer-reload-restored",
-      "process-restart-restored",
-      "new-chat-after-restart",
-    ],
+    runtime: {
+      os: process.platform,
+      architecture: process.arch,
+      node: process.versions.node,
+      zig: zig.stdout.trim(),
+      nativeSdkCommit,
+    },
+    inputs: {
+      commandDigest: sha256(JSON.stringify({
+        build: ["zig", "build", "-Dautomation=true"],
+        execute: ["node", "--import", "tsx", "scripts/run-host-smoke.ts"],
+      })),
+      binaryDigest: sha256(readFileSync(binary)),
+      frontendDigest: fileSetDigest(filesUnder(path.join(packageRoot, "frontend/dist")), packageRoot),
+      sourceDigest: fileSetDigest(sourcePaths.map((entry) => path.join(repositoryRoot, entry)), repositoryRoot),
+    },
+    processes: { initial: initialProcess, restarted: restartedProcess },
+    steps: nativeSdkHostGateSteps.map((id) => ({ id, result: "passed", evidence: id === "composited-window-capture" ? ["01-composited-window.png"] : [] })),
     evidence,
-  }, null, 2)}\n`, { mode: 0o600 });
+  });
+  writeFileSync(path.join(evidenceDir, "host-gate.json"), `${JSON.stringify(hostGate, null, 2)}\n`, { mode: 0o600 });
   console.log(`[native-sdk-effect-native-spike smoke] OK evidence=${evidenceDir}`);
 } finally {
   if (child !== null) await stop(child);

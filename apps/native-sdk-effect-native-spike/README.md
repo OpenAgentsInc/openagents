@@ -36,7 +36,7 @@ From this directory:
 pnpm verify
 ```
 
-That runs TypeScript checking, seven Effect Native intent/contract tests, the
+That runs TypeScript checking, nine Effect Native intent/contract tests, the
 Vite frontend build, six Native SDK Zig tests, the native binary build, and a
 headed production-asset host gate. The host gate:
 
@@ -46,12 +46,16 @@ headed production-asset host gate. The host gate:
 - resolves fresh widget ids from roles and accessible names before acting;
 - drives session and workspace intents through the native canvas and waits for
   higher-revision Effect projections;
-- captures the retained-canvas PNG and accessibility/snapshot evidence;
+- captures the retained-canvas PNG, accessibility/snapshot evidence, and a
+  composited macOS window PNG containing the live Effect Native WebView;
 - reloads the Effect WebView, restarts the native process, and proves the
   Effect-owned fixture state is restored before creating a new chat;
+- attests distinct initial/restart PIDs, exact Node/Zig/Native SDK identities,
+  and command, binary, frontend, source, and evidence digests in a
+  schema-decoded `openagents.native-sdk.host-gate.v2` artifact;
 - leaves private evidence under
   `var/native-sdk-effect-native-spike/host-smoke/` and prints
-  `[native-sdk-effect-native-spike smoke] OK` only after all seven steps.
+  `[native-sdk-effect-native-spike smoke] OK` only after all nine steps.
 
 The wrapper now installs Native SDK's production asset source explicitly, so
 the built binary loads `zero://app/index.html`; the proof no longer depends on
@@ -86,10 +90,10 @@ pnpm run smoke
 ```
 
 The script drives the file protocol directly and therefore does not need a
-machine-global Native SDK CLI. The deterministic Native SDK screenshot covers
-the retained GPU surface; on the system WebView host the composited Effect
-pane is not included in that CPU-rendered PNG. Browser-level or macOS
-window-level evidence is still required for the Effect DOM pixels and controls.
+machine-global Native SDK CLI. Native SDK's deterministic screenshot covers
+the retained GPU surface; a separate window-scoped macOS capture covers the
+composited Effect pane. The latter proves pixels, not DOM semantics, so a
+browser/accessibility adapter is still required before MVP assurance admission.
 
 ## Adoption rule
 

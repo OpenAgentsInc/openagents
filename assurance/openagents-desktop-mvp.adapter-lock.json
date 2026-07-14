@@ -8,11 +8,11 @@
         "junit",
         "normalized_receipt"
       ],
-      "content_digest": "sha256:53c6ee84bf745546c92d27eeb3755206313923ba8bf8a7f0df270838d53faf7e",
+      "content_digest": "sha256:25209fd3a332745f2b05619c8b2cca61a0eecb6797ed54d081b651a083bcf588",
       "techniques": [
         "criterion_contract_with_sensitivity"
       ],
-      "version": "1.0.0"
+      "version": "1.1.0"
     }
   ]
 }

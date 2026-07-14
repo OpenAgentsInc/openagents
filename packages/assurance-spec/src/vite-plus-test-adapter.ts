@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { dirname, resolve } from "node:path"
+import { delimiter, dirname, resolve } from "node:path"
 
 import { canonicalArtifact } from "./artifact.ts"
 import type { AssuranceEnvironmentProfileDocument } from "./environment.ts"
@@ -9,7 +9,13 @@ import { ASSURANCE_RECEIPT_FORMAT_VERSION, type AssuranceReceipt } from "./recei
 import { sha256Digest } from "./tooling.ts"
 
 export const OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF = "openagents.vite_plus_test.v1" as const
-export const OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION = "1.0.0" as const
+export const OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION = "1.1.0" as const
+
+export type NodeRuntimeObservation = Readonly<{
+  os: string
+  architecture: string
+  runtime: string
+}>
 
 export type VitePlusTestAdapterResult = Readonly<{
   receipt: AssuranceReceipt
@@ -72,6 +78,29 @@ const expectedTestName = (argv: ReadonlyArray<string>): string => {
   return value
 }
 
+const normalizedNodeOs = (platform: NodeJS.Platform): string => platform === "darwin" ? "macos" : platform
+
+export const observeNodeRuntime = (): NodeRuntimeObservation => ({
+  os: normalizedNodeOs(process.platform),
+  architecture: process.arch,
+  runtime: `Node ${process.versions.node}`,
+})
+
+export const assertVitePlusRuntimeFidelity = (
+  environment: AssuranceEnvironmentProfileDocument,
+  observed: NodeRuntimeObservation,
+): void => {
+  const expected = environment.platform
+  const mismatches = (["os", "architecture", "runtime"] as const).filter((field) => expected[field] !== observed[field])
+  if (mismatches.length > 0) {
+    const details = mismatches.map((field) => `${field}: expected ${expected[field]}, observed ${observed[field]}`).join("; ")
+    throw new VitePlusTestAdapterError(
+      "runtime_fidelity_mismatch",
+      `Observed runtime does not match the admitted Environment Profile (${details}).`,
+    )
+  }
+}
+
 export const executeVitePlusTestUnit = (input: Readonly<{
   workspaceRoot: string
   runRoot: string
@@ -96,6 +125,10 @@ export const executeVitePlusTestUnit = (input: Readonly<{
   if (!input.environment.forbidden_actions.includes("network")) {
     throw new VitePlusTestAdapterError("environment_network_not_forbidden", "Local fixture environment must forbid network access.")
   }
+  assertVitePlusRuntimeFidelity(input.environment, observeNodeRuntime())
+  if (!input.environment.required_commands.includes("vp")) {
+    throw new VitePlusTestAdapterError("required_command_mismatch", "Environment Profile must require the Vite Plus executable.")
+  }
   if (input.unit.argv[0] !== "vp" || input.unit.argv[1] !== "test") {
     throw new VitePlusTestAdapterError("invalid_vite_plus_argv", "Adapter accepts only explicit vp test argv.")
   }
@@ -106,17 +139,34 @@ export const executeVitePlusTestUnit = (input: Readonly<{
   }
   const workspaceRoot = resolve(input.workspaceRoot)
   const runRoot = resolve(input.runRoot)
+  const dependencyLockPath = resolve(workspaceRoot, input.environment.dependency_lock.path)
+  let dependencyLockBytes: string
+  try {
+    dependencyLockBytes = readFileSync(dependencyLockPath, "utf8")
+  } catch {
+    throw new VitePlusTestAdapterError("dependency_lock_unavailable", "Admitted dependency lock could not be read.")
+  }
+  if (sha256Digest(dependencyLockBytes) !== input.environment.dependency_lock.digest) {
+    throw new VitePlusTestAdapterError("dependency_lock_mismatch", "Observed dependency lock differs from the admitted Environment Profile.")
+  }
+  const vitePlusEntrypoint = resolve(input.vitePlusExecutable ?? resolve(workspaceRoot, "node_modules/vite-plus/bin/vp"))
+  let vitePlusEntrypointBytes: string
+  try {
+    vitePlusEntrypointBytes = readFileSync(vitePlusEntrypoint, "utf8")
+  } catch {
+    throw new VitePlusTestAdapterError("vite_plus_entrypoint_unavailable", "Vite Plus entrypoint could not be read.")
+  }
   const nativeReportPath = resolve(runRoot, `${input.unit.role}.junit.xml`)
   const stdoutPath = resolve(runRoot, `${input.unit.role}.stdout.txt`)
   const stderrPath = resolve(runRoot, `${input.unit.role}.stderr.txt`)
   mkdirSync(dirname(nativeReportPath), { recursive: true })
 
   const argv = [...input.unit.argv.slice(1), "--run", "--reporter=junit", "--outputFile", nativeReportPath]
-  const result = spawnSync(input.vitePlusExecutable ?? "vp", argv, {
+  const result = spawnSync(process.execPath, [vitePlusEntrypoint, ...argv], {
     cwd: workspaceRoot,
     encoding: "utf8",
     env: {
-      PATH: process.env.PATH ?? "",
+      PATH: [dirname(process.execPath), process.env.PATH ?? ""].filter((entry) => entry !== "").join(delimiter),
       HOME: resolve(runRoot, "isolated-home"),
       TMPDIR: resolve(runRoot, "tmp"),
       NO_COLOR: "1",
@@ -149,7 +199,14 @@ export const executeVitePlusTestUnit = (input: Readonly<{
       : input.unit.expected_observation === "CONFIRMED" ? "REFUTED" as const : "CONFIRMED" as const
   const criterionRefs = input.manifest.obligation_graph.find((entry) =>
     entry.obligation_id === input.unit.obligation_id)?.criterion_refs ?? []
-  const commandDigest = sha256Digest(JSON.stringify({ argv: input.unit.argv, adapter: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF }))
+  const commandDigest = sha256Digest(JSON.stringify({
+    argv: input.unit.argv,
+    adapter: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF,
+    adapter_version: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION,
+    node_version: process.versions.node,
+    vite_plus_entrypoint_digest: sha256Digest(vitePlusEntrypointBytes),
+    dependency_lock_digest: input.environment.dependency_lock.digest,
+  }))
   const nativeDigest = sha256Digest(nativeBytes)
   const receiptSeed = {
     manifest_digest: input.manifestDigest,
