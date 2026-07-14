@@ -343,8 +343,6 @@
         "@effect/platform-browser": "4.0.0-beta.94",
         "@openagentsinc/arbiter-effect": "workspace:*",
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
-        "@openagentsinc/autopilot-ui": "workspace:*",
-        "@openagentsinc/design-tokens": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",

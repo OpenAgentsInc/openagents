@@ -5,16 +5,21 @@
  * #6046: central theme injection.
  *
  * The ONE typed token source is `@openagentsinc/design-tokens` (re-exported via
- * `@openagentsinc/ui/tokens`). `theme.css` is its generated `:root { --oa-*: … }`
- * projection — importing it makes every `--oa-*` token resolvable here. The two
- * component barrels below expose the `oa-ui-*` / `oa-ai-*` /
- * `oa-autopilot-*` classes. They reference the `--oa-*` tokens, so importing
- * them styles the components from the central
- * theme instead of leaving them unstyled.
+ * `@openagentsinc/ui/tokens`). `@openagentsinc/ui/styles.css` already imports
+ * that package's generated `:root { --oa-*: … }` `theme.css` projection first,
+ * so importing it here too would be a redundant duplicate `--oa-*` definition
+ * (openagents#8813 Lane C) — apps/web gets the tokens transitively through the
+ * `ui` component barrel below rather than depending on `design-tokens`
+ * directly. The component barrel exposes the `oa-ui-*` / `oa-ai-*` classes,
+ * which reference the `--oa-*` tokens, so importing it styles the components
+ * from the central theme instead of leaving them unstyled.
+ *
+ * `@openagentsinc/autopilot-ui/styles.css` (`oa-autopilot-domain-*` /
+ * `oa-autopilot-session-*`) was dropped in the same change: no page in this
+ * app renders those classes (verified by repo-wide grep), so the import was
+ * dead weight left over from an earlier shared-styles setup.
  */
-@import '@openagentsinc/design-tokens/theme.css';
 @import '@openagentsinc/ui/styles.css';
-@import '@openagentsinc/autopilot-ui/styles.css';
 
 @theme {
   --color-background-base: var(--background-base);
