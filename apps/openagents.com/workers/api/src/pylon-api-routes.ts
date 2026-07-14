@@ -1051,6 +1051,9 @@ export const controlledPylonAssignmentDispatchGate = (
     ...(paidModeMissingSpendCap
       ? ['blocker.public.pylon_dispatch.paid_mode_missing_spend_cap']
       : []),
+    ...(paidModeRequiresWallet
+      ? ['blocker.public.pylon_dispatch.paid_capacity_retired']
+      : []),
     ...(registration === undefined
       ? ['blocker.public.pylon_dispatch.pylon_missing']
       : []),

@@ -166,6 +166,10 @@ import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { makeOperatorArtanisDashboardRoutes } from './artanis-operator-dashboard-routes'
 import {
+  isRetiredMoneySurfaceRequest,
+  moneySurfaceRetiredResponse,
+} from './money-surface-retirement'
+import {
   makeArtanisDispatchExecution,
   readEffectiveArtanisApproval,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
@@ -290,7 +294,6 @@ import {
   markOutOfCreditsNotificationFailed,
   markOutOfCreditsNotificationSent,
   readBillingSummary,
-  recordContainerUsageDebitForRun,
   requireMinimumRunCredits,
   reserveOutOfCreditsNotification,
   suspendBillingAccountIfOutOfCredits,
@@ -1077,7 +1080,6 @@ import {
   type AgentRunRecord,
   type OmniEventRecord,
   cancelAgentRunOnShc,
-  listActiveAgentRunsForBilling,
 } from './omni-runs'
 import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
 import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
@@ -1436,7 +1438,6 @@ import {
   type BufferPayFn,
   checkTipsBufferBackingInvariant,
   reconcileForwardingBufferPayments,
-  runTipsSweepScheduled,
 } from './tips-sweep'
 import {
   type TokenLedgerRouteEnvSlice,
@@ -1555,7 +1556,6 @@ import { makeWorkerRouteRequest } from './worker-routes'
 import {
   makeD1XClaimRewardTreasuryDispatchStore,
   readXClaimRewardTreasuryDispatchConfig,
-  runXClaimRewardTreasuryDispatchScheduled,
   xClaimRewardDispatchDayStartIso,
 } from './x-claim-reward-treasury-dispatcher'
 
@@ -2143,83 +2143,6 @@ const artanisComposerForumPostForEnv =
       return {
         error:
           error instanceof Error ? error.message.slice(0, 120) : 'post_failed',
-      }
-    }
-  }
-
-const artanisComposerTipForEnv =
-  (environment: Env) =>
-  async (input: {
-    postId: string
-    amountSat: number
-    idempotencyKey: string
-    publicReceiptRef: string
-  }): Promise<
-    | {
-        ladderReason: string
-        payInId: string
-        receiptRef: string
-        rung: string
-      }
-    | { error: string }
-  > => {
-    const token = (environment as { ARTANIS_AGENT_TOKEN?: string })
-      .ARTANIS_AGENT_TOKEN
-    if (token === undefined || token === '') {
-      return { error: 'artanis_agent_token_missing' }
-    }
-    try {
-      const response = await runArtanisForumRouteEffect(
-        forumRoutes.routeForumRequest(
-          new Request(
-            `https://openagents.com/api/forum/posts/${input.postId}/tips/ladder`,
-            {
-              body: JSON.stringify({
-                amountSat: input.amountSat,
-                publicReceiptRef: input.publicReceiptRef,
-              }),
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Idempotency-Key': input.idempotencyKey,
-              },
-              method: 'POST',
-            },
-          ),
-          forumContentDatabaseForEnv(environment),
-          {
-            agentStore: makeAgentRegistrationStoreForEnv(environment),
-            identityDb: identityDbForEnv(environment),
-            ledgerDb: paymentsLedgerDbForEnv(environment),
-            tipsBufferPay: tipsBufferPayFnForEnv(environment),
-          },
-        ),
-      )
-      if (response === undefined) {
-        return { error: 'forum_route_unmatched' }
-      }
-      const payload = (await response.json()) as {
-        error?: string
-        ladderReason?: string
-        payInId?: string
-        receiptRef?: string
-        rung?: string
-      }
-      return payload.rung === undefined ||
-        payload.receiptRef === undefined ||
-        payload.payInId === undefined ||
-        payload.ladderReason === undefined
-        ? { error: String(payload.error ?? response.status) }
-        : {
-            ladderReason: payload.ladderReason,
-            payInId: payload.payInId,
-            receiptRef: payload.receiptRef,
-            rung: payload.rung,
-          }
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message.slice(0, 120) : 'tip_failed',
       }
     }
   }
@@ -7488,29 +7411,6 @@ const readSelectedInferenceCreditTargetUser = (
     selector,
     OPENAGENTS_ADMIN_EMAILS[0],
   )
-
-const sweepActiveAgentRunBilling = async (
-  env: OpenAgentsWorkerEnv,
-  ctx?: ExecutionContext,
-): Promise<void> => {
-  const billUntil = workerRuntime.nowIso()
-  const activeRuns = await listActiveAgentRunsForBilling(
-    openAgentsDatabase(env),
-    100,
-  )
-
-  for (const run of activeRuns) {
-    await recordContainerUsageDebitForRun(
-      openAgentsDatabase(env),
-      run,
-      {
-        billUntil,
-      },
-      billingRuntimeForEnv(env),
-    )
-    await enforceOutOfCreditsPolicy(env, ctx, run.userId)
-  }
-}
 
 const handleAdminSyncNotifyApi = async (
   request: Request,
@@ -18023,6 +17923,10 @@ const workerFetchProgram = Effect.gen(function* () {
       )
     }
 
+    if (isRetiredMoneySurfaceRequest(request.method, url.pathname)) {
+      return moneySurfaceRetiredResponse()
+    }
+
     return yield* routeRequest()
   }).pipe(
     Effect.catchCause(cause =>
@@ -18200,7 +18104,7 @@ export default {
     // rejection is still logged (with its array index) instead of going
     // silent, and every already-fail-soft entry here is unaffected.
     const scheduledTaskResults = await Promise.allSettled([
-      sweepActiveAgentRunBilling(env, ctx),
+      Promise.resolve(undefined),
       // #8556: Khala Sync capture liveness probe. Every minute, read the
       // capture checkpoints and, ONLY when a backlog exists AND checkpoints
       // have stopped advancing past the threshold (stuck-but-running), emit
@@ -18412,28 +18316,8 @@ export default {
           store: makeAutopilotContinuationStoreForEnv(env),
         }),
       ),
-      observedEffect(
-        'TipsSweep.runTick',
-        runTipsSweepScheduled(makeTreasuryDatabaseForEnv(env), {
-          ledgerDb: paymentsLedgerDbForEnv(env),
-          makeId: randomUuid,
-          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-          payFromBuffer: tipsBufferPayFnForEnv(env),
-        }),
-      ),
-      observedEffect(
-        'XClaimRewardTreasuryDispatcher.runTick',
-        runXClaimRewardTreasuryDispatchScheduled(
-          makeTreasuryDatabaseForEnv(env),
-          {
-            config: readXClaimRewardTreasuryDispatchConfig(
-              env,
-              epochMillisToIsoTimestamp(event.scheduledTime),
-            ),
-            fetchTreasury: fetchMdkTreasuryPath(env),
-          },
-        ),
-      ),
+      Promise.resolve(undefined),
+      Promise.resolve(undefined),
       observedEffect(
         'ArtanisResponder.scan',
         runArtanisResponderScanScheduled(makeArtanisDatabaseForEnv(env), {
@@ -18610,7 +18494,7 @@ export default {
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-          tip: artanisComposerTipForEnv(env),
+          tip: async () => ({ error: 'money_surface_retired' }),
         }),
       ),
       observedEffect(
