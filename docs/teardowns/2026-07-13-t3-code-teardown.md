@@ -633,6 +633,98 @@ be better at, not merely equal to.
    mobile supervision is a differentiating surface for the OpenAgents mobile
    app.
 
+### Adapt as a program: the Vite Plus toolchain contract
+
+T3 Code runs its entire monorepo on Voidzero's **Vite Plus** (`vp`) — the
+unified vite/vitest/oxlint/oxfmt toolchain — and the way it is wired is more
+interesting than the tool choice itself. The facts [source]:
+
+- **One binary, one verb set.** Every package script is `vp run` / `vp test`
+  / `vp lint` / `vp fmt` / `vp pack`; install is `vp i`; the recursive runner
+  is `vpr`. The pnpm catalog aliases `vite` itself to
+  `npm:@voidzero-dev/vite-plus-core@0.2.2`, and `packageExtensions` inject
+  `vite-plus` into `@effect/vitest` while making upstream `vitest` optional —
+  the test framework runs on the unified toolchain without forking it.
+  Contributor bootstrap is one line (`curl -fsSL https://vite.plus | bash`).
+- **One root config owns the whole repo.** A single root `vite.config.ts`
+  configures tests (environment, excludes, timeouts), the formatter
+  (ignore patterns, package.json sorting, per-file overrides), the linter
+  (plugin sets, category severities, rule table), and the staged hook — no
+  per-package lint/fmt/test config drift across 15+ packages.
+- **The same verb is the human command, the CI command, and the agent
+  gate.** `.github/workflows/ci.yml` runs `voidzero-dev/setup-vp@v1` →
+  `vp check` → `vpr typecheck`; `AGENTS.md` line one tells every coding
+  agent "`vp check` and `vp run typecheck` must pass before considering
+  tasks completed"; a contributor types the identical commands. There is
+  exactly one definition of "green."
+- **Architecture invariants are lint rules, not prose.** The custom
+  `oxlint-plugin-t3code` is loaded as a `jsPlugins` entry in the root
+  config and enforces Effect/architecture law mechanically:
+  `no-manual-effect-runtime-in-tests` (error), `no-global-process-runtime`
+  (error), `namespace-node-imports` (error), `no-inline-schema-compile`
+  (warn), plus `eslint/no-restricted-imports` making
+  `@t3tools/client-runtime` subpath-only. Agents cannot merge a violation
+  because the same `vp check` that gates their task completion runs the
+  plugin.
+- **The commit/push gradient is deliberate.** The pre-commit hook is two
+  words (`vp staged`) and the staged config runs the formatter only —
+  commits stay instant; correctness gating lives in `vp check` at CI and at
+  the agent task boundary.
+- **The boundaries are honest.** Type-aware linting is explicitly off with a
+  comment ("revisit once Oxlint's tsgolint path can integrate with
+  `@effect/tsgo` diagnostics"), and generated/vendored trees (`.repos/`,
+  `routeTree.gen.ts`, native mobile dirs) are ignored rather than
+  half-linted.
+
+`[inferred]` The insight is not "use Vite." It is that a monorepo built and
+maintained by coding agents needs **one machine-checkable definition of
+done**, cheap enough to run on every task, with the project's architectural
+laws compiled into it. T3's velocity (§14) is downstream of this: an agent
+that ships hundreds of PRs a month cannot be governed by a style guide, only
+by a gate.
+
+How OpenAgents should mimic, in order:
+
+1. **Unify the verb set first (no new tools required).** Define one root
+   `check` (and `test`, `lint`, `fmt`, `typecheck`) whose meaning is
+   identical for a human, CI, and the agent-contract gate in
+   `CLAUDE.md`/`AGENTS.md` — collapsing today's per-app script spread
+   (`check:deploy`, per-package sweeps) behind one entrypoint on the
+   existing Bun toolchain. The T3 rule to copy verbatim: the agent
+   task-completion gate names exactly the commands CI runs, and nothing
+   else.
+2. **Build `oxlint-plugin-openagents`.** Oxlint and its JS-plugin API run
+   standalone (no vp dependency). Encode the workspace laws that currently
+   live in prose and review memory as error-level rules in the standard
+   sweep: no ad hoc keyword/string routing for intent or tool selection, no
+   `Effect.runPromise`/manual runtimes outside named perimeter modules, no
+   inline schema compilation in hot paths, schema-only packages stay
+   runtime-free, subpath-only packages reject root imports, no renderer
+   import of runtime credentials or provider SDKs. Each rule cites the
+   owning invariant. This is the highest-leverage single item: it converts
+   INVARIANTS.md from documentation into enforcement at agent speed.
+3. **Adopt the staged gradient.** Format-only on commit (fast, unskippable),
+   full `check` at push/CI/agent-completion — the current heavier pre-push
+   guard keeps its role while commits stop paying the latency.
+4. **Evaluate `@effect/tsgo` in a bounded lane.** T3 typechecks ~531k lines
+   of deep Effect code with the native-preview compiler; as an Effect shop
+   with growing typecheck times, OpenAgents should pilot it on one package
+   with a drift comparison against `tsc` before any wide cutover, and
+   inherit T3's honesty about the type-aware-lint gap.
+5. **Pilot `vp` itself only where Vite already is.** The OpenAgents monorepo
+   is Bun-first; `vp` is pnpm/Node-shaped and 0.2.x. Wholesale adoption
+   would trade a working toolchain for a pre-1.0 one. The right experiment
+   is one Vite-built surface (web or desktop renderer build) behind the
+   unified verb set, judged on speed and config deletion — while the
+   *contract* (one verb, one config, laws-as-lint, agent gate) is adopted
+   everywhere immediately, tool-independently.
+
+What not to copy: aliasing the ecosystem's core package to a fork
+(`vite` → `vite-plus-core`) and `packageExtensions` rewiring of a test
+framework are clever but couple the whole repo to one vendor's pre-1.0
+release train — T3 already stacks that bet on top of a patched Effect beta
+and a preview compiler. OpenAgents takes the contract, not the coupling.
+
 ### Adapt with stronger boundaries
 
 - **Multi-instance provider homes** — already the Pylon pattern; T3 confirms
