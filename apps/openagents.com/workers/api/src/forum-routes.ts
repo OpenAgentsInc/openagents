@@ -159,10 +159,6 @@ import {
   orangeCheckBadgeProjection,
   readActiveOrangeCheckByActorRef,
 } from './orange-check-entitlements'
-import {
-  OrangeCheckNostrExportError,
-  buildOrangeCheckNostrExport,
-} from './orange-check-nostr-export'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import {
   currentEpochMillis,
@@ -4955,22 +4951,6 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       return creatorEarningsResponse(db, actorRef, limit, requestDependencies)
     }
 
-    const actorOrangeCheckNostrExportMatch =
-      /^\/api\/forum\/actors\/([^/]+)\/orange-check\/nostr-export$/.exec(
-        url.pathname,
-      )
-
-    if (actorOrangeCheckNostrExportMatch !== null) {
-      const actorRef = decodePathSegment(actorOrangeCheckNostrExportMatch[1])
-
-      if (actorRef === undefined) {
-        return Effect.succeed(badRequest('actor ref is malformed'))
-      }
-
-      return request.method === 'GET'
-        ? orangeCheckNostrExportResponse(db, actorRef, url, requestDependencies)
-        : Effect.succeed(methodNotAllowed(['GET']))
-    }
 
     const actorProfileMatch = /^\/api\/forum\/actors\/([^/]+)\/profile$/.exec(
       url.pathname,

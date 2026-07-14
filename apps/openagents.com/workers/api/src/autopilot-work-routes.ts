@@ -929,7 +929,6 @@ const paymentChallengeRefForRequest = (
     : null
 }
 
-const safePaymentProofRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const safeExecutionCloseoutRefPattern =
   /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const unsafeExecutionCloseoutRefPattern =
@@ -985,13 +984,6 @@ const AutopilotWorkFallbackCloseoutRequest = S.Struct({
 })
 type AutopilotWorkFallbackCloseoutRequest =
   typeof AutopilotWorkFallbackCloseoutRequest.Type
-
-const safeBuyerPaymentProofRef = (value: string | null): string | undefined =>
-  value !== null &&
-  safePaymentProofRefPattern.test(value) &&
-  !/(invoice|lnbc|lntb|lnbcrt|preimage|secret|token|wallet)/iu.test(value)
-    ? value
-    : undefined
 
 export const publicSafeExecutionCloseoutRef = (value: string): boolean =>
   safeExecutionCloseoutRefPattern.test(value) &&

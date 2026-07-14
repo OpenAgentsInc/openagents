@@ -55,8 +55,6 @@ type WorkerRouteDependencies = Readonly<{
   routeAutopilotOnboardingTurnRequest: OptionalEffectRoute
   routeKhalaChatRequest: OptionalEffectRoute
   routeAgentOwnerClaimRequest: OptionalEffectRoute
-  routeCheckoutPageRequest: OptionalEffectRoute
-  routeTreasuryPageRequest: OptionalEffectRoute
   routeAgentProposalRequest: OptionalEffectRoute
   routeAgentSearchRequest: OptionalEffectRoute
   routeAgentScopedGrantRequest: OptionalEffectRoute
@@ -79,10 +77,7 @@ type WorkerRouteDependencies = Readonly<{
   routeMulletRequest: OptionalEffectRoute
   routeOmniRequest: OptionalEffectRoute
   routeOnboardingRequest: OptionalEffectRoute
-  routeNexusPylonVisibilityRequest: OptionalEffectRoute
-  routePublicCardCreditSpendReceiptRequest: OptionalEffectRoute
   routePublicCloudPrimitiveReceiptRequest: OptionalEffectRoute
-  routePublicFirstDollarEvidenceRequest: OptionalEffectRoute
   routePublicInferenceReceiptRequest: OptionalEffectRoute
   routePublicKhalaCodeOutsideUserRunReceiptRequest: OptionalEffectRoute
   routePublicKhalaCodeTracePluginRevenueShareRequest: OptionalEffectRoute
@@ -102,10 +97,7 @@ type WorkerRouteDependencies = Readonly<{
   routeVerticalFunnelRequest: OptionalEffectRoute
   routeGithubScmAuthBrokerRequest: OptionalEffectRoute
   routePylonApiRequest: OptionalEffectRoute
-  routeSiteCommerceRequest: OptionalEffectRoute
   routeSiteReferralInspectionRequest: OptionalEffectRoute
-  routeSiteReferralPayoutLedgerRequest: OptionalEffectRoute
-  routeInferenceReferralRequest: OptionalEffectRoute
   routeSiteReferralRequest: OptionalEffectRoute
   routeOperatorAdjutantRequest: OptionalEffectRoute
   routeOperatorArtanisChatRequest: OptionalEffectRoute
@@ -117,9 +109,6 @@ type WorkerRouteDependencies = Readonly<{
   routeOperatorBusinessPipelineRequest: OptionalEffectRoute
   routeOperatorAgentReadinessReportRequest: OptionalEffectRoute
   routePublicAgentReadinessReportRequest: OptionalEffectRoute
-  routeOperatorSarahSalesCheckoutRequest: OptionalEffectRoute
-  routeOperatorBusinessStarterCreditRequest: OptionalEffectRoute
-  routeOperatorPylonMarketplaceRequest: OptionalEffectRoute
   routeOperatorProviderAccountRequest: OptionalEffectRoute
   routeOperatorSitesRequest: OptionalEffectRoute
   routeProviderAccountRequest: OptionalEffectRoute
@@ -129,8 +118,6 @@ type WorkerRouteDependencies = Readonly<{
     env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ) => Effect.Effect<Response>
-  routeHygieneLaneSettlementRequest: OptionalEffectRoute
-  routeFirmupLaneSettlementRequest: OptionalEffectRoute
   routeTassadarTraceContributionRequest: OptionalEffectRoute
   routeTraceRequest: OptionalEffectRoute
   routeTeamChatRequest: () => Effect.Effect<
@@ -440,25 +427,6 @@ export const makeWorkerRouteRequest =
         return yield* agentOwnerClaimResponse
       }
 
-      const checkoutPageResponse = dependencies.routeCheckoutPageRequest(
-        request,
-        env,
-        ctx,
-      )
-
-      if (checkoutPageResponse !== undefined) {
-        return yield* checkoutPageResponse
-      }
-
-      const treasuryPageResponse = dependencies.routeTreasuryPageRequest(
-        request,
-        env,
-        ctx,
-      )
-
-      if (treasuryPageResponse !== undefined) {
-        return yield* treasuryPageResponse
-      }
 
       const agentProposalResponse = dependencies.routeAgentProposalRequest(
         request,
@@ -511,15 +479,6 @@ export const makeWorkerRouteRequest =
         return yield* forgeControlPlaneResponse
       }
 
-      const siteCommerceResponse = dependencies.routeSiteCommerceRequest(
-        request,
-        env,
-        ctx,
-      )
-
-      if (siteCommerceResponse !== undefined) {
-        return yield* siteCommerceResponse
-      }
 
       const siteReferralResponse = dependencies.routeSiteReferralRequest(
         request,
@@ -538,19 +497,6 @@ export const makeWorkerRouteRequest =
         return yield* siteReferralInspectionResponse
       }
 
-      const siteReferralPayoutLedgerResponse =
-        dependencies.routeSiteReferralPayoutLedgerRequest(request, env, ctx)
-
-      if (siteReferralPayoutLedgerResponse !== undefined) {
-        return yield* siteReferralPayoutLedgerResponse
-      }
-
-      const inferenceReferralResponse =
-        dependencies.routeInferenceReferralRequest(request, env, ctx)
-
-      if (inferenceReferralResponse !== undefined) {
-        return yield* inferenceReferralResponse
-      }
 
       const githubScmAuthBrokerResponse =
         dependencies.routeGithubScmAuthBrokerRequest(request, env, ctx)
@@ -589,19 +535,6 @@ export const makeWorkerRouteRequest =
         return yield* trainingRunWindowResponse
       }
 
-      const hygieneLaneSettlementResponse =
-        dependencies.routeHygieneLaneSettlementRequest(request, env, ctx)
-
-      if (hygieneLaneSettlementResponse !== undefined) {
-        return yield* hygieneLaneSettlementResponse
-      }
-
-      const firmupLaneSettlementResponse =
-        dependencies.routeFirmupLaneSettlementRequest(request, env, ctx)
-
-      if (firmupLaneSettlementResponse !== undefined) {
-        return yield* firmupLaneSettlementResponse
-      }
 
       const trainingVerificationResponse =
         dependencies.routeTrainingVerificationRequest(request, env, ctx)
@@ -610,12 +543,6 @@ export const makeWorkerRouteRequest =
         return yield* trainingVerificationResponse
       }
 
-      const nexusPylonVisibilityResponse =
-        dependencies.routeNexusPylonVisibilityRequest(request, env, ctx)
-
-      if (nexusPylonVisibilityResponse !== undefined) {
-        return yield* nexusPylonVisibilityResponse
-      }
 
       const publicInferenceReceiptResponse =
         dependencies.routePublicInferenceReceiptRequest(request, env, ctx)
@@ -657,12 +584,6 @@ export const makeWorkerRouteRequest =
         return yield* publicQaSwarmFirstEngagementResponse
       }
 
-      const publicFirstDollarEvidenceResponse =
-        dependencies.routePublicFirstDollarEvidenceRequest(request, env, ctx)
-
-      if (publicFirstDollarEvidenceResponse !== undefined) {
-        return yield* publicFirstDollarEvidenceResponse
-      }
 
       const publicCloudPrimitiveReceiptResponse =
         dependencies.routePublicCloudPrimitiveReceiptRequest(request, env, ctx)
@@ -671,12 +592,6 @@ export const makeWorkerRouteRequest =
         return yield* publicCloudPrimitiveReceiptResponse
       }
 
-      const publicCardCreditSpendReceiptResponse =
-        dependencies.routePublicCardCreditSpendReceiptRequest(request, env, ctx)
-
-      if (publicCardCreditSpendReceiptResponse !== undefined) {
-        return yield* publicCardCreditSpendReceiptResponse
-      }
 
       const publicStripeCheckoutReceiptResponse =
         dependencies.routePublicStripeCheckoutReceiptRequest(request, env, ctx)
@@ -856,26 +771,6 @@ export const makeWorkerRouteRequest =
         return yield* publicAgentReadinessReportResponse
       }
 
-      const operatorSarahSalesCheckoutResponse =
-        dependencies.routeOperatorSarahSalesCheckoutRequest(request, env, ctx)
-
-      if (operatorSarahSalesCheckoutResponse !== undefined) {
-        return yield* operatorSarahSalesCheckoutResponse
-      }
-
-      const operatorBusinessStarterCreditResponse =
-        dependencies.routeOperatorBusinessStarterCreditRequest(request, env, ctx)
-
-      if (operatorBusinessStarterCreditResponse !== undefined) {
-        return yield* operatorBusinessStarterCreditResponse
-      }
-
-      const operatorPylonMarketplaceResponse =
-        dependencies.routeOperatorPylonMarketplaceRequest(request, env, ctx)
-
-      if (operatorPylonMarketplaceResponse !== undefined) {
-        return yield* operatorPylonMarketplaceResponse
-      }
 
       const operatorProviderAccountResponse =
         dependencies.routeOperatorProviderAccountRequest(request, env, ctx)
