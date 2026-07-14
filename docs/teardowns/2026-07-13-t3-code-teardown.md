@@ -690,6 +690,80 @@ It is to land the same supervision ergonomics on top of the typed authority,
 receipts, cross-device durable truth, and portable identity that none of the
 incumbents — closed or open — has claimed.
 
+## Addendum (2026-07-13, evening): Sidebar v2 concepts — live-state-grounded supervision design
+
+A same-day design artifact surfaced that is worth pinning beside the source
+audit: a "T3 Code Sidebar v2 Concepts" document at
+[hsyscdqldmk5.postplan.dev](https://hsyscdqldmk5.postplan.dev/), presenting
+five alternative thread-sidebar treatments for T3 Code, each rendered as a
+full mock against real local data. [public]
+
+Its own provenance line is the interesting part: "thread titles, branches,
+models, statuses, diff stats, and message snippets are from your live
+`~/.t3/userdata/state.sqlite` (Jul 13)," with states not present in the live
+data (approval, input, plan-ready, failed) explicitly labeled as mocked onto
+real threads "so every state renders in every concept." Design exploration is
+grounded in the product's actual event-store projections rather than lorem
+data, and the mock honestly discloses which states are synthetic. It also
+confirms the local state-directory layout (`~/.t3/userdata/state.sqlite`)
+from outside the repository. [public]
+
+The five concepts, per the document [public]:
+
+1. **Status Rail** — recency-sorted three-line cards with a colored status
+   edge; the middle line answers "what is it doing?" with live activity text;
+   ~10 threads per screen.
+2. **Inbox** — email-shaped triage: project avatars, bold unread titles,
+   two-line latest-assistant-message snippets; the lowest density (~72 px
+   rows).
+3. **Attention Tiers** — three automatic tiers: "Needs you" (pinned, with
+   inline actions such as an Approve button carrying the exact command),
+   "Running," and "Recent"; actionable items cannot scroll away.
+4. **Adaptive Density** — one recency list whose row height varies by state:
+   live threads expand with spinners, tools, and elapsed timers; settled
+   threads collapse to one-liners ("the list breathes").
+5. **Ops Grid** — a two-line monospace ledger with fixed columns (status
+   glyph, branch, PR, diff stats, model); ~15 threads per screen, "highest
+   information per pixel."
+
+Locked decisions shared by all five: recency sorting, always-visible status
+text, surfaced errors, visible wait-time for blocked threads, and "nothing
+actionable is ever collapsed" / active work never hidden behind "show more."
+The stated likely ship is a hybrid: "concept 4's adaptive density + concept
+3's needs-you pinning + concept 1's meta row." [public]
+
+Three observations for OpenAgents:
+
+1. **Independent convergence on the attention model.** "Needs you" pinning
+   with inline approval actions, recency-first ordering with no age ceiling
+   in sight, explicit blocked-wait-time, and never-collapse-actionable are,
+   nearly clause for clause, the episode 248/249 product calibration this
+   repository already encodes (metadata-first startup, recent-first
+   loss-accounted disclosure, causal inline activity, one action path). A
+   competitor's design process reaching the same rules from its own live
+   data strengthens those contracts as market truth rather than house taste.
+   The delta remains authority: T3's inline Approve button dispatches a
+   command string; OpenAgents' equivalent must dispatch a typed intent whose
+   approval is policy-checked and receipted. [inferred]
+2. **The factory designs itself.** The rendered live data visibly contains a
+   running thread named "Sidebar v2 UX Redesign" building these very mocks —
+   the sidebar redesign is being executed as a T3 Code agent thread inside
+   T3 Code, and the artifact ships with machine-readable provenance of what
+   is real versus mocked. This extends the §14 finding: not just
+   agent-authored commits, but agent-run product design grounded in the
+   product's own state store. [public] [inferred]
+3. **Design-from-live-projections is worth adopting; the disclosure rule is
+   the transferable part.** Rendering design concepts from real projection
+   rows — with synthetic states explicitly labeled — is a cheap honesty
+   convention OpenAgents design lanes (Desktop workbench, fleet cockpit,
+   mobile supervision) should copy outright: every mock states which data is
+   live, which is mocked, and from which store it came. [inferred]
+
+`[limitation]` The document carries no explicit author attribution and is
+hosted on an ephemeral-looking artifact domain; it is treated here as a
+design-evidence snapshot fetched 2026-07-13, not as a committed T3 Code
+roadmap.
+
 ## Primary source map
 
 All paths relative to the pinned clone at `projects/repos/t3code`.
