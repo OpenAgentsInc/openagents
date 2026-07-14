@@ -68,7 +68,29 @@ const ConfirmedRuntimeInteractionSchema = Schema.declare<ConfirmedRuntimeInterac
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 10 as const
+export const DesktopRuntimeGatewayProtocolVersion = 11 as const
+
+// Typed per-harness maintenance (MAINT-1, #8785). The renderer projection is
+// public-safe by construction: versions, channel, and advisory only — never
+// binary paths, home paths, or command output.
+export const DesktopMaintenanceHarnessSchema = Schema.Literals(["codex", "claude_code", "opencode"])
+export type DesktopMaintenanceHarness = typeof DesktopMaintenanceHarnessSchema.Type
+export const DesktopHarnessMaintenanceEntrySchema = Schema.Struct({
+  harness: DesktopMaintenanceHarnessSchema,
+  installed: Schema.Boolean,
+  installedVersion: Schema.NullOr(Schema.String),
+  latestVersion: Schema.NullOr(Schema.String),
+  channel: Schema.Literals(["npm-global", "bun-global", "pnpm-global", "homebrew", "native", "unknown"]),
+  advisory: Schema.Literals(["current", "behind_latest", "unknown"]),
+  updateSupported: Schema.Boolean,
+})
+export type DesktopHarnessMaintenanceEntry = typeof DesktopHarnessMaintenanceEntrySchema.Type
+export const DesktopHarnessMaintenanceOutcomeSchema = Schema.Literals([
+  "updated",
+  "already_current",
+  "channel_jump_refused",
+  "failed",
+])
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -146,6 +168,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     query: Schema.Struct({ id: Schema.Literal("conversation.catalog") }),
   }),
   Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("codex.history.catalog") }) }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("maintenance.harness_status") }) }),
   Schema.Struct({
     ...OperationContextField,
     kind: Schema.Literal("query"), requestId: Schema.String,
@@ -253,6 +276,10 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
       }),
       Schema.Struct({ id: Schema.Literal("session.sign_in") }),
       Schema.Struct({ id: Schema.Literal("session.sign_out") }),
+      Schema.Struct({
+        id: Schema.Literal("maintenance.harness_update"),
+        harness: DesktopMaintenanceHarnessSchema,
+      }),
       Schema.Struct({ id: Schema.Literal("voice.start"), protocolVersion: Schema.Literal(1), threadRef: PublicRefSchema, sessionRef: PublicRefSchema, disclosureRef: PublicRefSchema }),
       Schema.Struct({ id: Schema.Literals(["voice.stop", "voice.mute", "voice.unmute", "voice.suspend", "voice.resume", "voice.revoke"]), protocolVersion: Schema.Literal(1) }),
       Schema.Struct({
@@ -413,6 +440,25 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     commandId: Schema.String,
     status: Schema.Literals(["completed", "cancelled", "unavailable"]),
     phase: Schema.Literals(["session_ready", "signed_out", "unavailable"]),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("harness_maintenance_status"),
+    requestId: Schema.String,
+    observedAt: Schema.String,
+    harnesses: Schema.Array(DesktopHarnessMaintenanceEntrySchema),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("harness_maintenance_outcome"),
+    commandId: Schema.String,
+    harness: DesktopMaintenanceHarnessSchema,
+    status: Schema.Literals(["completed", "unavailable"]),
+    outcome: Schema.NullOr(DesktopHarnessMaintenanceOutcomeSchema),
+    failureReason: Schema.NullOr(Schema.String),
+    beforeVersion: Schema.NullOr(Schema.String),
+    afterVersion: Schema.NullOr(Schema.String),
+    receiptId: Schema.NullOr(Schema.String),
   }),
   Schema.Struct({
     ...OperationContextField,

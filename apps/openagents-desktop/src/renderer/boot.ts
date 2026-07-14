@@ -29,6 +29,7 @@ import {
   type McpConfigSettingsBridge,
   unavailablePluginConfigSettingsBridge,
   type PluginConfigSettingsBridge,
+  type HarnessMaintenanceSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
 } from "./settings.ts"
@@ -582,6 +583,31 @@ const openAgentsSessionSettingsBridge: OpenAgentsSessionSettingsBridge = {
   },
 }
 
+// Typed per-harness maintenance (MAINT-1, #8785): the settings surface drives
+// the gateway's maintenance query/command; the renderer sees only the
+// public-safe typed projection.
+let harnessMaintenanceRequestSequence = 0
+const harnessMaintenanceSettingsBridge: HarnessMaintenanceSettingsBridge = {
+  status: async () => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return null
+    return bridge.runtimeRequest({
+      kind: "query",
+      requestId: `renderer-harness-maintenance-status-${++harnessMaintenanceRequestSequence}`,
+      query: { id: "maintenance.harness_status" },
+    })
+  },
+  update: async harness => {
+    const bridge = readBridge()
+    if (typeof bridge?.runtimeRequest !== "function") return null
+    return bridge.runtimeRequest({
+      kind: "command",
+      commandId: `renderer-harness-maintenance-update-${++harnessMaintenanceRequestSequence}`,
+      command: { id: "maintenance.harness_update", harness },
+    })
+  },
+}
+
 export const decodeBridgeHost = (bridge: unknown): string => {
   const decoded = Schema.decodeUnknownExit(DesktopBridgeSchema)(bridge)
   return Exit.isSuccess(decoded)
@@ -973,7 +999,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             message: "The Open in Codex response was invalid.",
           }
         },
-      }, updateRendererHost),
+      }, updateRendererHost, harnessMaintenanceSettingsBridge),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

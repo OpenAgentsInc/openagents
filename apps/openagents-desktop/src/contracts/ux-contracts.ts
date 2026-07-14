@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-14.1",
+    version: "2026-07-14.2",
     contracts: [
       {
         contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
@@ -19,7 +19,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "remove from the interface everything not in the MVP spec.",
         authorityBoundary:
-          "The ProductSpec Scope and User Experience sections, plus the owner's subsequent explicit AssuranceSpec document-format visualization direction, are the visible-surface allowlist. Desktop exposes local Codex chat/session navigation, repository grant and session home, ProductSpec workroom, the read-only AssuranceSpec document inspector, bounded files and review, questions/approvals/plans, Open in Codex, commands, update/rollback, diagnostics, and keyboard settings. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
+          "The ProductSpec Scope and User Experience sections, plus the owner's subsequent explicit AssuranceSpec document-format visualization direction and the owner-issued MAINT-1 harness-maintenance surface (#8785: per-harness version/channel truth with a one-click binary update in Settings), are the visible-surface allowlist. Desktop exposes local Codex chat/session navigation, repository grant and session home, ProductSpec workroom, the read-only AssuranceSpec document inspector, bounded files and review, questions/approvals/plans, Open in Codex, commands, update/rollback, harness maintenance, diagnostics, and keyboard settings. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
         evidenceRefs: [
           "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
           "apps/openagents-desktop/src/desktop-command-contract.ts",
@@ -3412,6 +3412,58 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop typecheck and tests/turn-checkpoints.test.ts in the normal sweep; the suite also proves main.ts wires capture at turn_start and turn_completed on both local lanes.",
+      },
+      {
+        contractId: "openagents_desktop.settings.harness_maintenance_one_click.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Settings harness maintenance",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-issue", statedBy: "owner", statedOn: "2026-07-13" },
+        statement:
+          "fleet(MAINT-1): one-click provider install/update with ledger pinning and provenance receipts — typed per-harness maintenance actions: detect installed version + channel, resolve latest per channel, execute update via the harness's native path, then RE-PROBE the harness before reporting success; version pinning (record expected version/hash before update; refuse silent channel jumps); a provenance receipt for the swapped binary; one click in Desktop Settings per connected harness driving the typed action through the existing command path; CLI parity via pylon command; NEVER touch the default ~/.codex login home during update flows.",
+        authorityBoundary:
+          "The maintenance engine lives in @openagentsinc/pylon-core (custody/harness-maintenance) and updates BINARIES only: every probe and update spawn scrubs CODEX_HOME/CLAUDE_CONFIG_DIR/GROK_HOME from its environment, login/auth-flow arguments are refused by a typed guard, and the default ~/.codex home is never read or written. Success is only reported after a post-update version RE-PROBE answers on the same channel (launch-receipt lesson 4); a failed re-probe, a channel change, or an unchanged version is a typed maintenance failure with the previous state recorded intact. A pre-update pin (expected version + binary sha256 + channel) and a provenance receipt (source, command, output excerpt, before/after states, re-probe result) persist append-only under the shared Pylon home; the renderer projection carries versions/channel/advisory only — never paths, tokens, or raw command output. Settings renders the per-harness rows and the update affordance driving the typed gateway command; Electron main wires the actions post-window and adds nothing to the pre-window startup path.",
+        evidenceRefs: [
+          "packages/pylon-core/src/custody/harness-maintenance.ts",
+          "packages/pylon-core/src/custody/harness-maintenance.test.ts",
+          "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+          "apps/openagents-desktop/src/runtime-gateway.ts",
+          "apps/openagents-desktop/src/renderer/settings.ts",
+          "apps/pylon/tests/accounts-maintenance-cli.test.ts",
+          "docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md",
+          "docs/receipts/2026-07-14-harness-maintenance/README.md",
+          "github:OpenAgentsInc/openagents#8785",
+        ],
+        oracles: [
+          {
+            id: "harness_maintenance.engine_round_trip_and_guards",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/pylon-core/src/custody/harness-maintenance.test.ts",
+            description:
+              "Fixture-harness round trip with REAL spawned fixture binaries: detect → pin → update → re-probe → receipt; failure paths (update fails, post-update probe fails, version unchanged) keep the previous state intact in the receipt; channel jumps are refused without execution; the fixture ~/.codex/auth.json is byte-identical after every flow and auth-flow arguments are refused.",
+          },
+          {
+            id: "harness_maintenance.cli_parity",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/pylon/tests/accounts-maintenance-cli.test.ts",
+            description:
+              "`pylon accounts maintenance --json` projects version/channel/advisory and `--update --harness codex` runs the same engine end to end against fixture binaries and a local registry: provenance receipt persisted under the Pylon home, channel jump refused with non-zero exit, fixture ~/.codex untouched.",
+          },
+          {
+            id: "harness_maintenance.desktop_gateway_and_settings",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/harness-maintenance.test.ts",
+            description:
+              "The maintenance query/command decode through the versioned gateway contract (unknown harnesses refused), dispatch to injected host actions with per-harness single-flight, and Settings renders version/channel truth with the one-click update affordance driving the typed intent; failure and channel-jump-refusal outcomes surface honestly.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, the three oracle suites in the normal sweep, and the built-host smoke settings capture (docs/receipts/2026-07-14-harness-maintenance/) showing the rendered harness rows.",
       },
     ],
   };

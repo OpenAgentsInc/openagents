@@ -346,6 +346,12 @@ import {
 } from "./runtime-gateway-contract.ts"
 import { createDesktopRuntimeGateway } from "./runtime-gateway.ts"
 import { desktopRuntimeCapabilities } from "./runtime-gateway.ts"
+import {
+  collectHarnessMaintenanceStatus,
+  persistHarnessMaintenanceReceipt,
+  runHarnessMaintenanceUpdate,
+} from "@openagentsinc/pylon-core/custody/harness-maintenance"
+import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
 import { createDesktopRuntimeLiveSubscriptions } from "./runtime-live-subscriptions.ts"
 import {
   desktopOperationRef,
@@ -780,7 +786,45 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     list: threadRef => Effect.runSync(service.list(threadRef)),
     decide: command => Number(Effect.runSync(service.decide(command))),
   }
-}, () => hostLifecycle.voice())
+}, () => hostLifecycle.voice(), {
+  // Typed per-harness maintenance (MAINT-1, #8785). Runs entirely on user
+  // action through the gateway — nothing here touches the pre-window startup
+  // path. Updates BINARIES only: the engine scrubs CODEX_HOME/CLAUDE_CONFIG_DIR
+  // from every spawn and never runs a login flow, so the default ~/.codex
+  // login home stays untouched. Receipts persist to the shared Pylon home so
+  // Desktop and `pylon accounts maintenance` project one provenance ledger.
+  status: async () => {
+    const projection = await collectHarnessMaintenanceStatus()
+    return {
+      observedAt: projection.observedAt,
+      harnesses: projection.harnesses.map(entry => ({
+        harness: entry.harness,
+        installed: entry.installed,
+        installedVersion: entry.installedVersion,
+        latestVersion: entry.latestVersion,
+        channel: entry.channel,
+        advisory: entry.advisory,
+        updateSupported: entry.updateSupported,
+      })),
+    }
+  },
+  update: async harness => {
+    const receipt = await runHarnessMaintenanceUpdate({ harness })
+    try {
+      await persistHarnessMaintenanceReceipt({ paths: resolvePylonHome(process.env) }, receipt)
+    } catch {
+      // Receipt persistence failure never converts a finished maintenance
+      // outcome into a phantom success/failure; the typed outcome stands.
+    }
+    return {
+      outcome: receipt.outcome,
+      failureReason: receipt.failureReason,
+      beforeVersion: receipt.before.installedVersion,
+      afterVersion: receipt.after?.installedVersion ?? null,
+      receiptId: receipt.receiptId,
+    }
+  },
+})
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
@@ -3362,6 +3406,37 @@ const smokeOpenSettings = `(async () => {
   }
 })()`
 
+// MAINT-1 (#8785): with Settings open, the harness maintenance section must
+// leave its loading state (live detection through the typed gateway) and
+// render per-harness rows (or the honest unavailable state) plus the update
+// affordance for any updatable harness.
+const smokeSettingsHarnessMaintenance = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 30000
+  while (
+    Date.now() < deadline &&
+    document.querySelector('[data-en-key="settings-harness-maintenance-loading"]') !== null
+  ) {
+    await wait(100)
+  }
+  const title = document.querySelector('[data-en-key="settings-harness-maintenance-title"]')
+  const loading = document.querySelector('[data-en-key="settings-harness-maintenance-loading"]')
+  const unavailable = document.querySelector('[data-en-key="settings-harness-maintenance-unavailable"]')
+  const versions = [...document.querySelectorAll('[data-en-key^="settings-harness-"]')]
+    .filter((node) => (node.getAttribute("data-en-key") ?? "").endsWith("-version"))
+    .map((node) => ({ key: node.getAttribute("data-en-key"), text: node.textContent }))
+  const updateButtons = [...document.querySelectorAll('[data-en-key^="settings-harness-"]')]
+    .filter((node) => (node.getAttribute("data-en-key") ?? "").endsWith("-update"))
+    .map((node) => node.getAttribute("data-en-key"))
+  return {
+    ok: title !== null && loading === null && (versions.length > 0 || unavailable !== null),
+    loadingStuck: loading !== null,
+    unavailablePresent: unavailable !== null,
+    versions,
+    updateButtons,
+  }
+})()`
+
 const smokeMvpSurfaceAllowlist = `(() => {
   const forbidden = [
     "workspace-fleet",
@@ -4482,6 +4557,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // Pylon account-linking or device-auth surface in Settings.
         await step("settings-current-codex-session", smokeOpenSettings)
         await captureShot(window, "04-settings-current-codex-session")
+        // MAINT-1 (#8785): the per-harness maintenance rows resolve from live
+        // detection and render version/channel truth + the update affordance.
+        await step("settings-harness-maintenance", smokeSettingsHarnessMaintenance)
+        await captureShot(window, "04b-settings-harness-maintenance")
         // CUT-24 (#8704): diagnostics panel renders live health + redacted
         // export notice (no secrets), and preferences durable IPC round-trips.
         await step("diagnostics-and-preferences", smokeDiagnosticsAndPreferences)

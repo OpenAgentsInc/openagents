@@ -781,6 +781,37 @@ coding-agent tool-loop quality row. Machines that cannot or do not want to run
 local ML keep working with precise Psionic blocker refs and no binary/model
 download.
 
+## Harness Maintenance (MAINT-1, #8785)
+
+```sh
+pylon accounts maintenance --json
+pylon accounts maintenance --update --harness codex --json
+```
+
+Typed per-harness maintenance for the local coding harnesses (Codex CLI,
+Claude Code, OpenCode), sharing one engine with the Desktop Settings
+one-click update (`@openagentsinc/pylon-core/custody/harness-maintenance`):
+
+- Status projects installed version, install channel (npm/bun/pnpm global,
+  Homebrew, or the harness's native installer), the latest published version,
+  and a `current`/`behind_latest`/`unknown` advisory per harness.
+- `--update` runs detect → pin → update → **re-probe** → receipt. The pin
+  records the expected version, binary sha256, and channel before anything
+  runs; success is only reported after the swapped binary answers a version
+  probe on the same channel. A failed re-probe, a channel change, or an
+  unchanged version is a typed maintenance failure (non-zero exit) with the
+  previous state recorded intact.
+- An explicit `--channel` differing from the detected channel is refused as a
+  channel jump unless `--allow-channel-jump` is passed. Silent channel jumps
+  never happen.
+- Every run appends a provenance receipt (source, command, bounded output
+  excerpt, before/after states, re-probe result) under
+  `<pylon home>/harness-maintenance/`, and stdout prints the public-safe
+  projection (home paths collapse to `~`; never tokens or auth state).
+- Maintenance updates BINARIES only: spawns scrub `CODEX_HOME` /
+  `CLAUDE_CONFIG_DIR` / `GROK_HOME`, login/auth arguments are refused by a
+  typed guard, and the default `~/.codex` login home is never read or written.
+
 ## Operator Snapshot
 
 ```sh

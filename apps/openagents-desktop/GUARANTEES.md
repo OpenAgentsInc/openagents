@@ -531,6 +531,39 @@ turn completion, on both local lanes) as hidden Git refs under
 Contract:
 `openagents_desktop.workbench.turn_checkpoints.v1`.
 
+### One-click harness maintenance with re-probe, pinning, and provenance receipts
+
+Settings shows per-harness version/channel truth for the local coding
+harnesses (Codex CLI, Claude Code, OpenCode) and a one-click update that
+drives a typed Runtime Gateway command into the shared
+`@openagentsinc/pylon-core` maintenance engine (`pylon accounts maintenance`
+is the CLI parity surface over the same engine).
+
+- Detection classifies the installed binary's channel (npm/bun/pnpm global,
+  Homebrew, or the harness's native installer) and updates only through that
+  channel's own path; an unclassifiable install refuses one-click updates
+  instead of guessing.
+- Before an update runs, a pin records the expected version, binary sha256,
+  and channel. An explicit different channel is refused as a channel jump —
+  never silently switched.
+- Success is only reported after the swapped binary RE-PROBES: it must answer
+  a version probe on the same channel with a moved version. A failed re-probe,
+  a channel change, or an unchanged version is a typed maintenance failure
+  with the previous state recorded intact.
+- Every run persists an append-only provenance receipt (source, command,
+  bounded output excerpt, before/after states, re-probe result) under the
+  shared Pylon home; the renderer projection carries versions, channel, and
+  advisory only — never paths, tokens, or raw command output.
+- Maintenance updates binaries, never auth state: probe and update spawns
+  scrub `CODEX_HOME`/`CLAUDE_CONFIG_DIR`/`GROK_HOME`, login/auth-flow
+  arguments are refused by a typed guard, and the default `~/.codex` login
+  home is never read or written.
+- One update per harness runs at a time, and Electron main wires the actions
+  post-window — nothing is added to the pre-window startup path.
+
+Contract:
+`openagents_desktop.settings.harness_maintenance_one_click.v1`.
+
 ## Desktop safety boundary
 
 The normal desktop test sweep also mechanically enforces these host boundaries:

@@ -122,7 +122,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     spends: false,
     json: true,
     args: [
-      pos("connect|list|usage|status", "Subcommand."),
+      pos("connect|list|usage|status|maintenance", "Subcommand."),
       pos("codex|claude|grok", "connect: provider to connect (claude aliases claude_agent; grok always uses an isolated Pylon-owned GROK_HOME).", false),
       opt("--account", "connect/usage/status: stable local account ref."),
       opt("--account-label", "connect --openagents-link: provider-account label."),
@@ -139,6 +139,10 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       flag("--json", "Emit JSON (required)."),
       flag("--refresh", "usage: refresh provider snapshots."),
       flag("--reset", "status: consume one manual quota reset for the selected account."),
+      opt("--harness", "maintenance update: harness to update (codex|claude|opencode)."),
+      opt("--channel", "maintenance update: explicit install channel; a channel differing from the detected one is refused unless --allow-channel-jump."),
+      flag("--allow-channel-jump", "maintenance update: permit an explicit channel change (never silent)."),
+      flag("--update", "maintenance: run the typed update (detect → pin → update → re-probe → receipt) instead of projecting status. Updates BINARIES only; never touches ~/.codex or any auth state."),
     ],
   },
   {

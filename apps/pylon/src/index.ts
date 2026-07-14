@@ -122,6 +122,14 @@ import {
   recordClaudeProviderDisabled,
 } from "@openagentsinc/pylon-core/custody/claude-account-health-ledger"
 import { collectPylonOperatorAccountStatus } from "./account-status.js"
+import {
+  collectHarnessMaintenanceStatus,
+  normalizeMaintenanceHarness,
+  persistHarnessMaintenanceReceipt,
+  projectPublicHarnessMaintenanceReceipt,
+  runHarnessMaintenanceUpdate,
+  type HarnessInstallChannel,
+} from "@openagentsinc/pylon-core/custody/harness-maintenance"
 import { createCodexFleetOffloadPlan, parseCodexFleetOffloadArgs } from "./codex-fleet-offload.js"
 import {
   recordPylonDevCodexRun,
@@ -3650,7 +3658,59 @@ async function main() {
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
       }
-      throw new Error("usage: pylon accounts list|usage|status|connect ...")
+      if (command === "maintenance") {
+        // Typed per-harness maintenance (MAINT-1, #8785): status projection or
+        // detect → pin → update → RE-PROBE → provenance receipt. Updates
+        // BINARIES only; never runs a login flow and never touches ~/.codex.
+        const maintenanceArgs = accountCommandArgs.slice(1)
+        if (!maintenanceArgs.includes("--json")) {
+          throw new Error(
+            "usage: pylon accounts maintenance [--update --harness <codex|claude|opencode> [--channel <c>] [--allow-channel-jump]] --json",
+          )
+        }
+        const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+        const deps = { env: Bun.env as Record<string, string | undefined> }
+        if (!maintenanceArgs.includes("--update")) {
+          const projection = await collectHarnessMaintenanceStatus(deps)
+          process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+          return
+        }
+        const harnessIndex = maintenanceArgs.indexOf("--harness")
+        const harnessRaw = harnessIndex >= 0 ? maintenanceArgs[harnessIndex + 1] : undefined
+        const harness = harnessRaw === undefined ? null : normalizeMaintenanceHarness(harnessRaw)
+        if (harness === null) {
+          throw new Error(
+            "usage: pylon accounts maintenance --update --harness <codex|claude|opencode> [--channel <c>] [--allow-channel-jump] --json",
+          )
+        }
+        const channelIndex = maintenanceArgs.indexOf("--channel")
+        const channelRaw = channelIndex >= 0 ? maintenanceArgs[channelIndex + 1] : undefined
+        const knownChannels: readonly HarnessInstallChannel[] = [
+          "npm-global",
+          "bun-global",
+          "pnpm-global",
+          "homebrew",
+          "native",
+        ]
+        if (channelRaw !== undefined && !knownChannels.includes(channelRaw as HarnessInstallChannel)) {
+          throw new Error(`unknown --channel ${channelRaw}; expected one of ${knownChannels.join("|")}`)
+        }
+        const receipt = await runHarnessMaintenanceUpdate({
+          harness,
+          ...(channelRaw === undefined ? {} : { channel: channelRaw as HarnessInstallChannel }),
+          allowChannelJump: maintenanceArgs.includes("--allow-channel-jump"),
+          deps,
+        })
+        await persistHarnessMaintenanceReceipt(summary, receipt)
+        process.stdout.write(
+          `${JSON.stringify(projectPublicHarnessMaintenanceReceipt(receipt), null, 2)}\n`,
+        )
+        if (receipt.outcome === "failed" || receipt.outcome === "channel_jump_refused") {
+          process.exitCode = 1
+        }
+        return
+      }
+      throw new Error("usage: pylon accounts list|usage|status|connect|maintenance ...")
     } catch (error) {
       process.stderr.write(`Pylon accounts failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1

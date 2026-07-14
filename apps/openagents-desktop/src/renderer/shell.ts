@@ -169,10 +169,12 @@ import {
   settingsIntents,
   settingsView,
   unavailableCodexSettingsBridge,
+  unavailableHarnessMaintenanceSettingsBridge,
   unavailableMcpConfigSettingsBridge,
   unavailableOpenAgentsSessionSettingsBridge,
   unavailableProviderAccountsSettingsBridge,
   type CodexSettingsBridge,
+  type HarnessMaintenanceSettingsBridge,
   type McpConfigSettingsBridge,
   type PluginConfigSettingsBridge,
   unavailablePluginConfigSettingsBridge,
@@ -1411,8 +1413,9 @@ export const makeDesktopShellHandlers = (
     }),
   },
   updateHost: DesktopUpdateRendererHost = unavailableDesktopUpdateRendererHost,
+  harnessMaintenanceBridge: HarnessMaintenanceSettingsBridge = unavailableHarnessMaintenanceSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
-  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge)
+  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge, mcpConfigBridge, pluginConfigBridge, harnessMaintenanceBridge)
   const diagnosticsHandlers = makeDiagnosticsHandlers(state, diagnosticsBridge)
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
     state,
@@ -1649,10 +1652,28 @@ export const makeDesktopShellHandlers = (
   DesktopSettingsToggled: () => Effect.gen(function* () {
     // MVP Settings is local-only. Do not wake hidden account, Fleet, MCP, or
     // plugin bridges merely because the user opens this screen.
+    const before = yield* SubscriptionRef.get(state)
+    const opening = before.workspace !== "settings"
     yield* SubscriptionRef.update(state, current =>
       withWorkspace(current, current.workspace === "settings" ? "chat" : "settings"))
     const bindings = yield* Effect.promise(commandBindingHost.snapshot)
     yield* SubscriptionRef.update(state, current => ({ ...current, commandBindings: bindings }))
+    if (opening) {
+      // MAINT-1 (#8785): refresh per-harness version/channel truth on open.
+      // The gateway maintenance query is an owner-directed allowed surface;
+      // hidden account, Fleet, MCP, and plugin bridges still stay asleep.
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: {
+          ...current.settings,
+          harnessMaintenance: {
+            ...current.settings.harnessMaintenance,
+            view: { state: "loading" as const },
+          },
+        },
+      }))
+      yield* settingsHandlers.DesktopHarnessMaintenanceRefreshRequested()
+    }
   }),
   DesktopCommandBindingSelected: (commandId) => SubscriptionRef.update(state, current => {
     const row = current.commandBindings?.rows.find(value => value.commandId === commandId)

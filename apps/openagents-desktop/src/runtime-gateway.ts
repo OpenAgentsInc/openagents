@@ -1,4 +1,6 @@
 import type {
+  DesktopHarnessMaintenanceEntry,
+  DesktopMaintenanceHarness,
   DesktopRuntimeCapabilityId,
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayRequest,
@@ -187,11 +189,26 @@ export const createDesktopRuntimeGateway = (
   liveSubscriptions: () => DesktopRuntimeLiveSubscriptions | null = () => null,
   runtimeInteractions: () => DesktopRuntimeInteractions | null = () => null,
   voice: () => DesktopVoiceHost | null = () => null,
+  maintenance?: Readonly<{
+    status: () => Promise<Readonly<{
+      observedAt: string
+      harnesses: ReadonlyArray<DesktopHarnessMaintenanceEntry>
+    }>>
+    update: (harness: DesktopMaintenanceHarness) => Promise<Readonly<{
+      outcome: "updated" | "already_current" | "channel_jump_refused" | "failed"
+      failureReason: string | null
+      beforeVersion: string | null
+      afterVersion: string | null
+      receiptId: string | null
+    }>>
+  }>,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
   let sessionActionInFlight = false
   let sessionActionAbort: AbortController | null = null
+  // Per-harness single flight: one maintenance update per harness at a time.
+  const maintenanceUpdateInFlight = new Set<DesktopMaintenanceHarness>()
   const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
   let unsubscribeVoice: (() => void) | null = null
 
@@ -238,6 +255,18 @@ export const createDesktopRuntimeGateway = (
           } catch {
             return { kind: "conversation_unavailable", requestId: request.requestId, reason: "read_failed" }
           }
+        }
+        if (request.query.id === "maintenance.harness_status") {
+          const requestId = request.requestId
+          if (maintenance === undefined) return { kind: "request_rejected", reason: "invalid_request" }
+          return maintenance.status()
+            .then(result => ({
+              kind: "harness_maintenance_status" as const,
+              requestId,
+              observedAt: result.observedAt,
+              harnesses: [...result.harnesses],
+            }))
+            .catch(() => ({ kind: "request_rejected" as const, reason: "invalid_request" as const }))
         }
         if (request.query.id === "codex.history.catalog") {
           const service = codexHistory()
@@ -624,6 +653,42 @@ export const createDesktopRuntimeGateway = (
           .finally(() => {
             if (sessionActionAbort === abort) sessionActionAbort = null
             sessionActionInFlight = false
+          })
+      }
+      if (request.command.id === "maintenance.harness_update") {
+        const command = request.command
+        const commandId = request.commandId
+        const unavailable = (failureReason: string | null) => ({
+          kind: "harness_maintenance_outcome" as const,
+          commandId,
+          harness: command.harness,
+          status: "unavailable" as const,
+          outcome: null,
+          failureReason,
+          beforeVersion: null,
+          afterVersion: null,
+          receiptId: null,
+        })
+        if (maintenance === undefined) return Promise.resolve(unavailable(null))
+        if (maintenanceUpdateInFlight.has(command.harness)) {
+          return Promise.resolve(unavailable("update_already_running"))
+        }
+        maintenanceUpdateInFlight.add(command.harness)
+        return maintenance.update(command.harness)
+          .then(result => ({
+            kind: "harness_maintenance_outcome" as const,
+            commandId,
+            harness: command.harness,
+            status: "completed" as const,
+            outcome: result.outcome,
+            failureReason: result.failureReason,
+            beforeVersion: result.beforeVersion,
+            afterVersion: result.afterVersion,
+            receiptId: result.receiptId,
+          }))
+          .catch(() => unavailable(null))
+          .finally(() => {
+            maintenanceUpdateInFlight.delete(command.harness)
           })
       }
       return {
