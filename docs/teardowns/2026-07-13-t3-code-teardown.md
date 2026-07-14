@@ -764,6 +764,125 @@ hosted on an ephemeral-looking artifact domain; it is treated here as a
 design-evidence snapshot fetched 2026-07-13, not as a committed T3 Code
 roadmap.
 
+## Addendum (2026-07-13, night): installed-artifact verification and two flows to copy
+
+A first-run pass of the released product on this Mac (macOS 26.4) adds
+`[runtime]`-class evidence in three directions: one distribution failure the
+source audit had only predicted, and two product flows worth adopting.
+
+### The macOS download is Gatekeeper-dead on arrival — and the app inside is innocent
+
+Downloading `T3-Code-0.0.28-arm64.dmg` from t3.codes (a GitHub release
+asset) and double-clicking it produces the macOS dialog:
+
+> "T3-Code-0.0.28-arm64.dmg" is damaged and can’t be opened. You should
+> move it to the Trash.
+
+Artifact inspection of that exact download [runtime]:
+
+- the DMG container is **completely unsigned**: `codesign` reports "code
+  object is not signed at all" and `spctl -a -t open --context
+  context:primary-signature` rejects it with "no usable signature"; the
+  Chrome quarantine attribute is present;
+- the app **inside** the image is fully correct: `Developer ID Application:
+  T3 Tools, Inc. (ARK85ZXQ4Z)`, hardened runtime, `codesign --verify --deep
+  --strict` passes ("valid on disk … satisfies its Designated
+  Requirement"), and `xcrun stapler validate` confirms a **stapled
+  notarization ticket**.
+
+Diagnosis [inferred]: the release pipeline signs and notarizes the `.app`
+during packaging but ships the DMG container unsigned and un-notarized —
+electron-builder’s `dmg.sign` defaults to false, and nothing submits or
+staples the image. On current macOS, Gatekeeper assesses the quarantined
+disk image itself at open time, and an unsigned, un-notarized DMG fails with
+the misleading "damaged" wording — so the correctly notarized app inside is
+unreachable through the normal double-click path. Users who know the
+`xattr -d com.apple.quarantine` folklore get in; everyone else trashes the
+download, exactly as the dialog instructs.
+
+This upgrades the §13/§15 release-engineering finding from a `[docs]` risk
+("unsigned artifacts still release") to a `[runtime]`-confirmed distribution
+failure with a sharper lesson: **notarizing the app is not shipping a
+notarized product — the outermost quarantined artifact is what Gatekeeper
+judges.** A pipeline can be 95% correct on signing and still deliver a 100%
+broken first-run experience.
+
+Deployment consequence for OpenAgents (CUT-26/#8706 lane): the current
+`apps/openagents-desktop/forge.config.ts` is already ahead of T3’s default —
+it signs the DMG through the maker’s `code-sign` option and notarizes the
+app when credentials are present [source] — but three gaps would leave
+OpenAgents exposed to a cousin of the same failure:
+
+1. signing and notarization are env-conditional (`OA_DEVELOPER_ID_APPLICATION`,
+   `ASC_API_*`), so a build without them still produces an artifact instead
+   of failing closed;
+2. the DMG is signed but not itself notarized/stapled — on macOS 15+ a
+   signed-but-unnotarized image still draws a Gatekeeper block, just with
+   different wording; and
+3. the publish lane (`publish-release.ts`, `release-preflight.ts`) enforces
+   manifest signing and version monotonicity but has no Gatekeeper oracle on
+   the artifact.
+
+The rule to encode as release oracles, not checklist prose: **notarize the
+DMG (which covers the nested app), staple the ticket to both the `.dmg` and
+the `.app`, then gate publish on `codesign --verify --deep --strict` (app),
+`spctl -a -t open --context context:primary-signature` (image),
+`spctl -a -t exec` (app), and `xcrun stapler validate` (both) — and refuse to
+publish when the identity or notary credentials are absent.** This is the
+concrete mechanization of Adapt-with-stronger-boundaries item 5 ("unsigned
+release fallbacks") and joins the Cursor teardown’s plain-HTTP-update-URL
+finding as artifact-level evidence for the signed component ledger.
+
+### `npx t3@latest` is the onboarding bar
+
+Running `npx t3@latest` on a machine that had never installed T3 Code
+produced, in one command and a few seconds [runtime]:
+
+1. package fetch, then `Running all migrations...` (the SQLite event
+   store/projections initialize in place — migration `32` at this version,
+   matching the source audit);
+2. `Listening on http://127.0.0.1:3773`;
+3. a provider session reaper and agent-activity standby starting; and
+4. `Authentication required. Open T3 Code using the pairing URL.` with
+   `http://localhost:3773/pair#token=...` — a short token in the URL
+   fragment, per the pairing design in §6.
+
+Zero install, zero account, zero configuration, and the security-relevant
+pairing gate is on by default rather than an open localhost port. The gap
+between this and the broken DMG above is instructive: their npm path is
+excellent while their macOS artifact path is broken, and most users will
+judge the product by whichever door they happen to try first.
+
+**Adapt:** the owner wants this exact gradient for OpenAgents — one
+`npx`-shaped command that boots the local runtime, migrates its store,
+prints a pairing URL with a fragment token, and is fully usable before any
+account exists. The `khala` CLI onboarding
+(`npm install -g @openagentsinc/khala` → `khala fleet connect`) is close but
+still install-first and fleet-scoped; the local-first tier recorded in the
+adaptation analysis (auth as an upgrade, not a gate) should get this
+zero-install front door as its entry point. [runtime] [inferred]
+
+### One-click provider maintenance is the harness-fleet flow to steal
+
+On first open, the UI surfaced the connected harnesses with an
+install/update affordance, and one click updated both the local Codex CLI
+and OpenCode — no terminal, no docs page, no version hunting. The source
+audit shows the mechanism: each provider driver owns a maintenance resolver
+(e.g. the Claude driver’s package-managed resolver knows both the npm
+`@anthropic-ai/claude-code` path and the native `claude update` installer)
+so install/update is a typed per-harness capability, not a support FAQ.
+[runtime] [source]
+
+**Adapt:** Pylon/Desktop should own harness install/update lifecycle the
+same way — a typed maintenance action per provider (detect installed
+version, resolve channel, execute update, re-probe capability) surfaced as
+one click in Settings — with the two additions T3 does not show: version
+pinning against the component ledger, and provenance verification plus a
+receipt for the binary that was just swapped under the user’s agent fleet.
+An unverified auto-updater for the tools that hold `danger-full-access` is
+also a supply-chain lesson in the other direction; adopt the ergonomics,
+keep the ledger. [inferred]
+
 ## Primary source map
 
 All paths relative to the pinned clone at `projects/repos/t3code`.
