@@ -152,6 +152,7 @@ describe("FleetRun execution projection restart receipt", () => {
         artifactRefs: [],
         proofRefs: [],
         authorityReceiptRefs: [],
+        executionTarget: "owner_local",
       },
     })
     const failed = projected[1]
@@ -189,6 +190,7 @@ describe("FleetRun execution projection restart receipt", () => {
         artifactRefs: [],
         proofRefs: [],
         authorityReceiptRefs: [],
+        executionTarget: "owner_local",
       },
     })[1]
     expect(unprovenCompletion).toMatchObject({
@@ -220,6 +222,7 @@ describe("FleetRun execution projection restart receipt", () => {
       artifactRefs: ["artifact.public.cardinality"],
       proofRefs: ["proof.public.cardinality"],
       authorityReceiptRefs: [claimRef],
+      executionTarget: "owner_local" as const,
     }
     const invalidCardinalityEvents = [
       {
