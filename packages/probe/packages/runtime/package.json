@@ -19,7 +19,9 @@
   },
   "scripts": {
     "probe": "bun src/cli.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "node scripts/verify-test-typecheck.mjs",
+    "typecheck:baseline:update": "node scripts/verify-test-typecheck.mjs --update-baseline"
   },
   "dependencies": {
     "@openagentsinc/blueprint-contracts": "workspace:*",
@@ -29,5 +31,9 @@
     "diff": "^9.0.0",
     "effect": "catalog:",
     "marked": "^18.0.5"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14",
+    "typescript": "catalog:"
   }
 }

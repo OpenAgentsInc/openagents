@@ -1126,6 +1126,10 @@
         "effect": "catalog:",
         "marked": "^18.0.5",
       },
+      "devDependencies": {
+        "bun-types": "^1.3.14",
+        "typescript": "catalog:",
+      },
     },
     "packages/product-spec": {
       "name": "@openagentsinc/product-spec",

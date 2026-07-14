@@ -141,6 +141,38 @@ for real callers first. If a deprecated command, protocol, adapter, or runtime
 mode has no current caller and no clear final-product role, harvest its useful
 idea into tests or notes and leave the surface deleted.
 
+## TypeScript test gate
+
+Probe remains an active workspace dependency rather than an isolated archive:
+`apps/qa-runner` imports and bundles its browser, Playwright, terminal/PTY, and
+OpenRouter runtime modules. Its Docker build copies this package, and current
+product-promise and contract-drift gates cite Probe contracts. Wholesale
+deletion therefore requires a deliberate consumer migration and promise/gate
+reconciliation first.
+
+Run the canonical checks from the Probe workspace root:
+
+```sh
+npm run typecheck
+npm run test
+```
+
+`typecheck` mechanically enumerates every `*.test.ts`, `*.test.tsx`,
+`*.spec.ts`, and `*.spec.tsx` file under the runtime and proves all of them are
+root inputs of the strict, no-emit `tsconfig.tests.json` project. It also runs a
+negative fixture that must fail when the required `ProbeRunAssignment.goal`
+field is missing.
+
+The imported runtime currently has a checked-in diagnostic baseline. The gate
+rejects new diagnostics and also rejects stale entries after a diagnostic is
+fixed. After fixing existing diagnostics, shrink it explicitly with:
+
+```sh
+npm --prefix packages/runtime run typecheck:baseline:update
+```
+
+The update command refuses additions; the baseline can only get smaller.
+
 ## Direction
 
 The next Probe should start from the final shape:
