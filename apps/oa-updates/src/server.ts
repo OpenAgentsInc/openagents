@@ -172,7 +172,7 @@ export function createUpdatesServer(
           const release = openAgentsDesktopReleases.get(openAgentsDesktopMatch[1])
           if (release === undefined) return new Response("Not found", { status: 404 })
           if (openAgentsDesktopMatch[2] === "manifest") {
-            return new Response(release.manifestBytes, {
+            return new Response(Uint8Array.from(release.manifestBytes).buffer, {
               headers: { "cache-control": "no-store", "content-type": "application/json" },
             })
           }
@@ -259,7 +259,7 @@ export function createUpdatesServer(
             return new Response("Not found", { status: 404 })
           }
 
-          return new Response(bytes, {
+          return new Response(Uint8Array.from(bytes).buffer, {
             headers: {
               "cache-control": "public, max-age=31536000, immutable",
               "content-type":

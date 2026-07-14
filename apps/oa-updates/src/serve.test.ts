@@ -94,11 +94,13 @@ describe("seedFromDist", () => {
     expect(bundleResponse.headers.get("content-type")).toBe(
       "application/javascript",
     )
-    expect(new Uint8Array(await bundleResponse.arrayBuffer())).toEqual(
-      bundleBytes,
+    expect(Array.from(new Uint8Array(await bundleResponse.arrayBuffer()))).toEqual(
+      Array.from(bundleBytes),
     )
     expect(iconResponse.status).toBe(200)
     expect(iconResponse.headers.get("content-type")).toBe("image/png")
-    expect(new Uint8Array(await iconResponse.arrayBuffer())).toEqual(iconBytes)
+    expect(Array.from(new Uint8Array(await iconResponse.arrayBuffer()))).toEqual(
+      Array.from(iconBytes),
+    )
   })
 })

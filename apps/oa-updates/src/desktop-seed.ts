@@ -38,7 +38,7 @@ export async function seedDesktopReleases(
   const releasesBytes = await readFile(releasesPath)
   const raw = JSON.parse(new TextDecoder().decode(releasesBytes)) as unknown
   const seeds = normalizeDesktopReleaseList(raw)
-  const releases: SeedDesktopReleasesResult["releases"] = []
+  const releases: Array<SeedDesktopReleasesResult["releases"][number]> = []
 
   for (const seed of seeds) {
     const artifactBytes = await readFile(join(input.distDir, seed.artifactPath))

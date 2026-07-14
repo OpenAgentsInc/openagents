@@ -192,6 +192,7 @@
     "typecheck:world-contract": "bun run --cwd packages/world-contract typecheck",
     "typecheck:world-client": "bun run --cwd packages/world-client typecheck",
     "typecheck:autopilot-ui": "bun run --cwd packages/autopilot-ui typecheck",
+    "typecheck:oa-updates": "bun run --cwd apps/oa-updates typecheck",
     "typecheck:durable-stream": "bun run --cwd packages/durable-stream typecheck",
     "typecheck:sqlite-runtime": "bun run --cwd packages/sqlite-runtime typecheck",
     "typecheck:oa-infra": "bun run --cwd packages/oa-infra typecheck",

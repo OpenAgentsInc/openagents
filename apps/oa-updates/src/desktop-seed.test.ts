@@ -83,6 +83,8 @@ describe("desktop release seeding", () => {
     const deltaResponse = await server.fetch(new Request(feed[0].bsdiffUrl))
     expect(deltaResponse.status).toBe(200)
     expect(deltaResponse.headers.get("content-type")).toBe("application/octet-stream")
-    expect(new Uint8Array(await deltaResponse.arrayBuffer())).toEqual(bsdiffBytes)
+    expect(Array.from(new Uint8Array(await deltaResponse.arrayBuffer()))).toEqual(
+      Array.from(bsdiffBytes),
+    )
   })
 })

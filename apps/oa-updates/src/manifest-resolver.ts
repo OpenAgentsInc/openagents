@@ -1,21 +1,21 @@
 export type Asset = {
-  hash: string
-  key: string
-  contentType: string
-  fileExtension?: string
-  url: string
+  readonly hash: string
+  readonly key: string
+  readonly contentType: string
+  readonly fileExtension?: string
+  readonly url: string
 }
 
 export type Update = {
-  id: string
-  platform: "ios" | "android"
-  branch: string
-  runtimeVersion: string
-  createdAt: string
-  launchAsset: Asset
-  assets: Asset[]
-  metadata: Record<string, string>
-  extra: Record<string, unknown>
+  readonly id: string
+  readonly platform: "ios" | "android"
+  readonly branch: string
+  readonly runtimeVersion: string
+  readonly createdAt: string
+  readonly launchAsset: Asset
+  readonly assets: ReadonlyArray<Asset>
+  readonly metadata: Readonly<Record<string, string>>
+  readonly extra: Readonly<Record<string, unknown>>
 }
 
 export type ParsedRequest = {
