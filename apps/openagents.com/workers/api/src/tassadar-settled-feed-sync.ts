@@ -4,6 +4,7 @@ import {
   makeD1SyncOutboxRepository,
   publicSettledFeedScope,
 } from '@openagentsinc/sync-worker'
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect } from 'effect'
 
 import {
@@ -11,7 +12,6 @@ import {
   type SettledFeedProjectionLog,
 } from './khala-sync-public-settled-feed'
 import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
-import { assertNexusPylonPublicSafe } from './nexus-pylon-visibility'
 import {
   logWorkerRouteError,
   observedPromise,
@@ -94,6 +94,8 @@ const stableRefSuffix = (value: string): string =>
 // broadcast even though the payload never contains them by construction.
 const rawPaymentMaterialPattern =
   /(spark1[a-z0-9]+|bc1[a-z0-9]+|lnbc[0-9]|lntb[0-9]|lnbcrt[0-9]|lno1[a-z0-9]+|preimage|[0-9a-f]{64})/i
+const privateMaterialPattern =
+  /(@|access[_-]?token|bearer|cookie|customer[_-]?(email|name)|invoice|macaroon|mnemonic|oauth|private[_-]?key|provider[_-]?(credential|secret|token)|raw[_-]?(payment|payload|payout)|secret|wallet[_-]?(mnemonic|secret|seed)|webhook[_-]?secret)/i
 
 const scanForRawPaymentMaterial = (
   value: unknown,
@@ -134,7 +136,15 @@ export const assertSettledFeedPayloadPublicSafe = (
   label: string,
   payload: unknown,
 ): void => {
-  assertNexusPylonPublicSafe(label, payload)
+  const serialized = JSON.stringify(payload)
+  if (
+    containsProviderSecretMaterial(serialized) ||
+    privateMaterialPattern.test(serialized)
+  ) {
+    throw new SettledFeedPayloadUnsafe(
+      `${label} contains private material.`,
+    )
+  }
 
   const unsafePath = scanForRawPaymentMaterial(payload)
 

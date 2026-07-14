@@ -3,7 +3,6 @@ import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
-import type { SiteReferralPayoutState } from './site-referral-payout-ledger'
 
 export const SITE_REFERRAL_PAYOUT_RECEIPT_SCHEMA_VERSION =
   'openagents.site_referral_payout_receipt.v1'
@@ -25,7 +24,7 @@ export type PublicSiteReferralPayoutReceiptProjection = Readonly<{
   receiptRef: string
   resolution: Readonly<{
     settlementRail: SiteReferralPayoutReceiptSettlementRail
-    state: Extract<SiteReferralPayoutState, 'settled'>
+    state: 'settled'
     status: 'ok'
   }>
   schemaVersion: typeof SITE_REFERRAL_PAYOUT_RECEIPT_SCHEMA_VERSION
