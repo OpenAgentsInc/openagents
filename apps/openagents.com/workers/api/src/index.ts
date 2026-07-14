@@ -324,10 +324,6 @@ import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { handleBusinessSignupApi } from './business-signup-routes'
-import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
-import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
-import { buyModeEvalBridgeForEnv } from './buy-mode-live-eval-bridge'
-import { buyModeRelayPublisherForEnv } from './buy-mode-live-publisher'
 import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
@@ -657,16 +653,8 @@ import {
   isKhalaChatTraceEmitEnabled,
   isKhalaFreeTierTraceCaptureDefaultEnabled,
 } from './inference/khala-chat-trace-emitter'
-import { isKhalaCodeLightningPaymentsEnabled } from './inference/khala-code-lightning-payments'
-import { isKhalaCodePaidPlansEnabled } from './inference/khala-code-plan-catalog'
 import { isComponentChannelEnabled } from './inference/khala-component-channel'
-import {
-  type KhalaSettlementDispatch,
-  makeDryRunSettlementDispatch,
-  makeKhalaLoopSettlementDispatch,
-  readKhalaLoopArming,
-} from './inference/khala-loop-integration'
-import { makeLedgerMeteringHook } from './inference/metering-hook'
+import { stubMeteringHook } from './inference/metering-hook'
 import {
   AUTO_EXECUTION_TARGET_ID,
   type AutoExecutionTargetCandidate,
@@ -889,15 +877,6 @@ import {
   handleKhalaSyncRuntimeInteraction,
 } from './khala-sync-runtime-interaction-routes'
 import {
-  type UserCreditBalanceProjectionDeps,
-  recordUserCreditBalanceDeltaBestEffort,
-  userIdFromAgentRef,
-} from './khala-sync-user-credit-balance'
-import {
-  KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH,
-  handleKhalaSyncUserCreditBalanceBackfill,
-} from './khala-sync-user-credit-balance-backfill-routes'
-import {
   handleOperatorKhalaTraceReview,
   makeD1KhalaTraceReviewStore,
 } from './khala-trace-review-routes'
@@ -906,7 +885,6 @@ import {
   makeD1KhalaUnsupportedRequestStore,
 } from './khala-unsupported-request-routes'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
-import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
 import { handleLander2Page } from './lander2-routes'
 import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
@@ -941,7 +919,6 @@ import {
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
-import { makeNexusPylonVisibilityRoutes } from './nexus-pylon-visibility-routes'
 import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
 import {
   OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
@@ -1025,7 +1002,6 @@ import {
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
-import { readAgentBalance } from './payments-ledger'
 import { paymentsLedgerDbForEnv } from './payments-ledger-db'
 import { makePortalRoutes } from './portal-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
@@ -1222,8 +1198,6 @@ import {
 } from './signature-usage-metering-routes'
 import { routeSiteCrawlSurfaceRequest } from './site-crawl-surfaces-routes'
 import { resolveSiteFormSpec } from './site-form-spec-registry'
-import { makeD1SiteMdkAccountBindingStore } from './site-mdk-account-bindings'
-import { omegaMdkDemoSitePaymentCatalog } from './site-mdk-demo-product'
 import {
   isSiteFormCaptureEnabled,
   makeSitePageFormCaptureRoutes,
@@ -1234,9 +1208,6 @@ import {
 } from './site-referral-attribution-consumption'
 import { makeSiteReferralInspectionRoutes } from './site-referral-inspection-routes'
 import { sendSiteReferralOnboardingForConsumption } from './site-referral-onboarding'
-import { makeSiteReferralPayoutAdapter } from './site-referral-payout-adapter'
-import { makeSiteReferralPayoutLedgerRoutes } from './site-referral-payout-ledger-routes'
-import { handleSiteReferralPayoutsPublicApi } from './site-referral-payout-public-routes'
 import { makeD1SiteReferralPayoutReceiptStore } from './site-referral-payout-receipts'
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
@@ -1249,7 +1220,6 @@ import {
 import {
   makeAutopilotContinuationStoreForEnv,
   makeAutopilotWorkStoreForEnv,
-  makeHygieneDebtReceiptStoreForEnv,
   makeOmniPublicProofBundleCompareReader,
   makeOmniPublicProofBundlePostgresServerForEnv,
   makeRelayHealthStoreForEnv,
@@ -1403,7 +1373,6 @@ import {
   runTrainingVerificationClass,
 } from './training-verification'
 import { makeTrainingVerificationRoutes } from './training-verification-routes'
-import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
 import {
@@ -1494,136 +1463,6 @@ class ManagedFleetAuthorityError extends S.TaggedErrorClass<ManagedFleetAuthorit
 const fetchMdkTreasuryPath = (
   _environment: Env,
 ): ContainerPathFetch | undefined => undefined
-const makeAcceptedOutcomeSettlementSink = (
-  env: OpenAgentsWorkerEnv,
-): AcceptedOutcomeSettlementSink | undefined => {
-  // FIRST gate: the loop-arming flag. OFF (default) => no sink => no settlement.
-  if (
-    !readKhalaLoopArming(env as unknown as Record<string, unknown>).loopArmed
-  ) {
-    return undefined
-  }
-
-  const ledger = makeD1NexusTreasuryPayoutLedgerStore(
-    makeTreasuryDatabaseForEnv(env),
-  )
-  const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
-  const contributionStore = makeTrainingTraceContributionStoreForEnv(env)
-
-  // Owner resolver for a contributor's Spark payout destination — same shape as the
-  // Tassadar autostream: direct registered-pylon lookup, then the owner-scoped fallback
-  // via the contributor's most-recent worker pylon. Never crosses agent ownership.
-  const resolveContributorOwnerAgentUserId = async (
-    contributorRef: string,
-  ): Promise<string | undefined> => {
-    const pylonApiStore = makePylonApiStoreForEnv(env)
-    const direct = await pylonApiStore
-      .readRegistration(contributorRef)
-      .then(registration => registration?.ownerAgentUserId)
-    if (direct !== undefined && direct.trim() !== '') {
-      return direct
-    }
-    const pylonRefForDevice =
-      await contributionStore.readMostRecentPylonRefByDeviceRef(contributorRef)
-    if (pylonRefForDevice === undefined) {
-      return undefined
-    }
-    return pylonApiStore
-      .readRegistration(pylonRefForDevice)
-      .then(registration => registration?.ownerAgentUserId)
-  }
-
-  // The REAL Spark dispatch (the proven receipt-first idempotent core). Performs a
-  // real send once every gate downstream authorizes it. The Khala records are
-  // structurally identical to the Tassadar run-settlement records the core takes.
-  const realDispatch: KhalaSettlementDispatch = dispatchInput =>
-    dispatchRealRunSettlementCore<WorkerBindings>(
-      {
-        env,
-        makeSettlementPaymentAuthority: (authorityEnv, context) =>
-          makeTreasuryPaymentAuthority({
-            adapters: [
-              makeSparkTreasuryPayoutAdapter({
-                fetchTreasury: fetchMdkTreasuryPath(authorityEnv),
-                providerRef: context.providerRef,
-                resolveDestination: () =>
-                  Effect.succeed(context.privatePayoutDestination),
-              }),
-            ],
-            ledgerStore: context.ledgerStore,
-          }),
-        readSettlementWalletReadiness: async authorityEnv => {
-          const fetchTreasury = fetchMdkTreasuryPath(authorityEnv)
-          if (fetchTreasury === undefined) {
-            return 'absent'
-          }
-          try {
-            const response = await fetchTreasury('/spark/balance')
-            return response.ok ? 'ready' : 'absent'
-          } catch {
-            return 'absent'
-          }
-        },
-        resolveSettlementPayoutDestination: (_authorityEnv, ref) =>
-          resolveSparkPayoutDestination(
-            sparkTargetStore,
-            ref,
-            resolveContributorOwnerAgentUserId,
-          ),
-      },
-      {
-        contributorRef: dispatchInput.contributorRef,
-        ledger,
-        settlement: dispatchInput.settlement,
-      },
-    )
-
-  // The DRY-RUN dispatch (records the dereferenceable receipt, NEVER a real send).
-  // It is the fail-closed fallback the gated selector routes to whenever the loop
-  // flag or the owner gate does not authorize a real payout for this exact outcome.
-  const dryRunDispatch = makeDryRunSettlementDispatch({
-    readReceiptByRef: ref => ledger.readPaymentAuthorityReceiptByRef(ref),
-    recordReceipt: record => ledger.createPaymentAuthorityReceipt(record),
-  })
-
-  return outcome => {
-    // The gate allowlist enrolls a specific accepted outcome by its derived run ref.
-    const settlementRunRef = `accepted_outcome.${outcome.verificationReceiptRef
-      .replace(/[^A-Za-z0-9_.:/-]/g, '_')
-      .slice(0, 180)}`
-    // GATED dispatch: real Spark send ONLY when the loop flag is armed AND the
-    // owner real-settlement gate authorizes THIS payout (adapter + cap + run
-    // allowlist + daily cap); otherwise the dry-run. This is a SECOND, independent
-    // fail-closed gate evaluation at the dispatch boundary, on top of the engine's
-    // own GATE 3, so a real send is unreachable without the owner's gate JSON + flag.
-    const gatedDispatch = makeKhalaLoopSettlementDispatch({
-      arming: readKhalaLoopArming(env as unknown as Record<string, unknown>),
-      dryRunDispatch,
-      readGate: () => readTassadarRealSettlementGate(env),
-      realDispatch,
-      settlementRunRef,
-    })
-    return settleVerifiedAcceptedOutcome(
-      {
-        dispatchRealSettlement: gatedDispatch,
-        ledger,
-        nowIso: currentIsoTimestamp(),
-        readGate: () => readTassadarRealSettlementGate(env),
-        resolvePayoutDestination: ref =>
-          resolveSparkPayoutDestination(
-            sparkTargetStore,
-            ref,
-            resolveContributorOwnerAgentUserId,
-          ),
-        settlementRunRef,
-      },
-      outcome,
-    ).pipe(
-      Effect.map(result => summarizeAcceptedOutcomeSettlement(outcome, result)),
-    )
-  }
-}
-
 const runArtanisForumRouteEffect = async (
   effect: ReturnType<typeof forumRoutes.routeForumRequest> | undefined,
 ) => (effect === undefined ? undefined : Effect.runPromise(effect))
@@ -3328,7 +3167,7 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
         mobileClientId: config.openauth.mobileClientId,
         webClientId: config.openauth.clientId,
       }),
-    success: async (ctx, response, req) => {
+    success: async (ctx, response) => {
       if (response.provider === 'code') {
         const claimedEmail =
           typeof response.claims.email === 'string' ? response.claims.email : ''
@@ -3373,47 +3212,6 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
         response.tokenset.access,
         { expirationTtl: SESSION_MAX_AGE_SECONDS },
       )
-
-      // MM-D1 (#8478): grant the $10 GitHub-account-keyed signup credit.
-      // Idempotent forever on the GitHub account id (safe to call on every
-      // login, not just "the first" — see github-signup-credit-grant.ts).
-      // Never blocks or fails sign-in: a grant-path error is logged
-      // public-safe and the user still gets a session; the idempotent grant
-      // call will simply retry itself on their next login.
-      try {
-        const clientIp =
-          req.headers.get('cf-connecting-ip') ??
-          req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-        await Effect.runPromise(
-          grantGithubSignupCredit(
-            {
-              githubUserId: subject.githubId ?? subject.userId,
-              userId: subject.userId,
-              ...(user.created_at === undefined
-                ? {}
-                : { githubAccountCreatedAtIso: user.created_at }),
-              ...(clientIp === undefined
-                ? {}
-                : { ipHash: await sha256Hex(clientIp) }),
-            },
-            {
-              // #8515: the grant's idempotency/audit + abuse-floor writes
-              // (github_signup_credit_grants / github_signup_credit_ip_mints)
-              // ran on the 401-dead D1 bridge, so the grant threw and new
-              // signups silently got $0. Route them through the Postgres
-              // product-state adapter handle (khala-sync migration 0047).
-              db: khalaCodeProductStateDatabaseForEnv(env),
-              ledgerDb: paymentsLedgerDbForEnv(env),
-              recordCreditBalanceProjection:
-                creditBalanceProjectionRecorderForEnv(env),
-            },
-          ),
-        )
-      } catch (error) {
-        logWorkerRouteError('github_signup_credit_grant_failed', error, {
-          userId: subject.userId,
-        })
-      }
 
       return ctx.subject('user', subject, {
         subject: subject.userId,
@@ -3559,39 +3357,6 @@ const { requireUserBearerSession } = makeUserBearerSessionBoundary<
   persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
   verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
     verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
-})
-
-// AIUR-2 (#8500): the Aiur admin panel forwards the owner's OWN OpenAuth
-// bearer token (the same token that authenticated Aiur's own owner-only
-// session, apps/aiur/src/auth/) to these admin-credits routes — never a
-// shared static token in a client bundle. This composes the SAME user
-// bearer-session boundary every mobile-bearer route uses with the SAME
-// admin-email allowlist the cookie-based admin routes use
-// (`isOpenAgentsAdminEmail`), so there is no new auth primitive here, only
-// a new combination of two existing ones. FAIL CLOSED: any verification
-// failure or a non-admin email both resolve to `undefined`. Defined inline
-// (rather than as a standalone named function with an explicit Cloudflare
-// binding parameter type) so its second parameter's type flows from
-// `makeAdminCreditsRoutes<Env>`'s generic instead of a literal annotation —
-// this repo's zero-debt architecture check budgets raw binding-type
-// parameter annotations (#8498) and this composition does not need one of
-// its own.
-const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
-  db: openAgentsDatabase,
-  // #8515: the signup-grant tracking table moved to Postgres (migration 0047);
-  // read it through the same adapter handle the grant now writes. admin_credit_
-  // grants stays on `db` (separate un-migrated table, out of this cut's scope).
-  signupGrantsDb: env => khalaCodeProductStateDatabaseForEnv(env),
-  identityDb: env => identityDbForEnv(env),
-  ledgerDb: env => paymentsLedgerDbForEnv(env),
-  recordCreditBalanceProjection: env =>
-    creditBalanceProjectionRecorderForEnv(env),
-  requireAdminCaller: async (request, env, ctx) => {
-    const session = await requireUserBearerSession(request, env, ctx)
-    if (session === undefined) return undefined
-    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
-    return { userId: session.user.userId }
-  },
 })
 
 // AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the
@@ -3796,7 +3561,6 @@ const readAuthenticatedPageContext = async (
     providerAccounts: ProviderAccountBundle
     githubWriteConnections: GitHubWriteConnectionBundle
     tokenLeaderboards: AutopilotTokenLeaderboards
-    billing: BillingSummary
     onboarding: Awaited<ReturnType<typeof readOnboardingStatusForUser>>
   }>
 > => {
@@ -3810,7 +3574,6 @@ const readAuthenticatedPageContext = async (
     providerAccounts,
     githubWriteConnections,
     tokenLeaderboards,
-    billing,
     onboarding,
   ] = await Promise.all([
     isOpenAgentsAdminEmail(session.user.email)
@@ -3827,7 +3590,6 @@ const readAuthenticatedPageContext = async (
       session.user.userId,
     ),
     readTokenUsageLeaderboardsForUser(env, session.user.userId),
-    readBillingSummary(openAgentsDatabase(env), session.user.userId),
     readOnboardingStatusForUser(env, session.user.userId),
   ])
 
@@ -3837,10 +3599,6 @@ const readAuthenticatedPageContext = async (
     providerAccounts,
     githubWriteConnections,
     tokenLeaderboards,
-    // Attach the purchasable credit catalog from the server Stripe config so the
-    // billing page renders buy buttons whose packageId the checkout endpoint
-    // accepts on first render, before any client-side billing refresh.
-    billing: withBillingCreditPackages(billing, readBillingCreditPackages(env)),
     onboarding,
   }
 }
@@ -4735,7 +4493,6 @@ const handleSessionApi = async (
       },
       teams: accountContext.teams,
       tokenLeaderboards: accountContext.tokenLeaderboards,
-      billing: accountContext.billing,
       onboarding: accountContext.onboarding,
       providerAccounts: accountContext.providerAccounts,
       isAdmin: isOpenAgentsAdminEmail(session.user.email),
@@ -7696,10 +7453,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
     onIngestedEvent: makeTokensServedProjectionObserver(env),
     ...tokenLedgerWriteStoreOptionForEnv(env),
   })
-  const meteringHook = makeLedgerMeteringHook({
-    ledgerDb: paymentsLedgerDbForEnv(env),
-    recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
-  })
+  const meteringHook = stubMeteringHook
 
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   try {
@@ -7707,17 +7461,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       complete,
       // Balance gate (#8555, #8467). Refuse a positively-empty owner; a missing
       // balance row or a read failure is UNDETERMINED (null) and never blocks.
-      readOwnerBalanceMsat: async ownerUserId => {
-        try {
-          const row = await readAgentBalance(
-            paymentsLedgerDbForEnv(env),
-            hostedKhalaOwnerCreditAccountRef(ownerUserId),
-          )
-          return row === null ? null : row.availableMsat
-        } catch {
-          return null
-        }
-      },
+      readOwnerBalanceMsat: async () => null,
       recordUsage: input =>
         recordHostedTurnUsageAndCharge(
           {
@@ -7913,48 +7657,6 @@ const resolveCloudGcpRuntimeDispatchContext = async (
   }
 }
 
-// Issue #8505 (Part 2): shared fail-soft producer deps for the per-user
-// credit-balance projection (scope.user.<userId>). Reused at every D1 ledger
-// write site that charges/grants/claws back credit — see
-// khala-sync-user-credit-balance.ts's header for the full design.
-const userCreditBalanceProjectionDepsForEnv = (
-  env: Readonly<{ KHALA_SYNC_DB?: Readonly<{ connectionString: string }> }>,
-): UserCreditBalanceProjectionDeps => ({
-  binding: env.KHALA_SYNC_DB,
-  log: (event, fields) => logWorkerRouteWarning(event, fields),
-})
-
-// Issue #8505 (Part 2): the shared `recordCreditBalanceProjection` callback
-// shape every D1 ledger write site (`metering-hook.ts`, `cloud-metering.ts`)
-// injects. Parses the stable OpenAgents user id back out of the ledger's
-// `agent:<userId>` account ref (`userIdFromAgentRef` — a ref that doesn't
-// match this shape is intentionally skipped, never guessed) and forwards to
-// the fail-soft producer. Always resolves (never throws): the caller's real
-// D1 charge/grant already committed and must never be blocked or reversed by
-// this best-effort projection.
-const creditBalanceProjectionRecorderForEnv =
-  (env: Readonly<{ KHALA_SYNC_DB?: Readonly<{ connectionString: string }> }>) =>
-  async (
-    event: Readonly<{
-      accountRef: string
-      idempotencyKey: string
-      deltaUsdCents: number
-      observedAt: string
-    }>,
-  ): Promise<void> => {
-    const userId = userIdFromAgentRef(event.accountRef)
-    if (userId === undefined) return
-    await recordUserCreditBalanceDeltaBestEffort(
-      userCreditBalanceProjectionDepsForEnv(env),
-      {
-        deltaUsdCents: event.deltaUsdCents,
-        idempotencyKey: event.idempotencyKey,
-        observedAt: event.observedAt,
-        userId,
-      },
-    )
-  }
-
 type PylonCodexRawEventProducerEnv = Parameters<typeof openAgentsDatabase>[0] &
   OaJobQueueProducerEnv &
   Readonly<{ ARTIFACTS?: R2Bucket | undefined }>
@@ -8033,147 +7735,15 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
       onIngestedEvent: makeTokensServedProjectionObserver(env),
       ...tokenLedgerWriteStoreOptionForEnv(env),
     }),
-  meteringHook: env =>
-    makeLedgerMeteringHook({
-      ledgerDb: paymentsLedgerDbForEnv(env),
-      recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
+  meteringHook: () => stubMeteringHook,
+  publishInsufficientCreditEvent: () =>
+    Effect.succeed({
+      eventRef: null,
+      published: false,
+      reason: 'khala_sync_storage_unconfigured' as const,
     }),
-  publishInsufficientCreditEvent: (env, input) =>
-    publishKhalaCloudRuntimeInsufficientCreditEvent(
-      {
-        binding: env.KHALA_SYNC_DB,
-        registry: khalaSyncMutatorRegistry,
-      },
-      input,
-    ),
 })
 
-const hostedMdkClientForEnv = (
-  _env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => makeMissingOpenAgentsHostedMdkClient('provider.retired.vp1')
-
-// The PRIMARY Spark-backed BOLT11 invoice issuer for Khala Code Lightning
-// purchases. Owner directive: Spark is the primary rail for agent payments
-// (it supports OFFLINE RECEIVES). Returns undefined when the Spark
-// treasury container is not reachable (the `MDK_TREASURY` binding is absent), so
-// the selector can fall back to MDK. POSTs `/spark/funding-invoice` to the SAME
-// `MDK_TREASURY` container the Spark payout/balance paths already reach
-// (`fetchMdkTreasuryPath` → the `@breeztech/breez-sdk-spark` SDK) and reads the
-// RAW bolt11 + decoded paymentHash. Both are public (they go into the 402
-// challenge); the preimage is never seen here (verified LOCALLY in the Worker).
-const sparkLightningInvoiceIssuerForEnv = (
-  _env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => undefined
-
-// The FALLBACK MDK-backed BOLT11 invoice issuer for Khala Code Lightning
-// purchases. MDK is permitted ONLY as an explicit fallback Lightning issuer
-// (never primary) and remains checkouts-only otherwise. Returns undefined when
-// no MDK route is configured (route URL + secret). POSTs `create_checkout` to the
-// SAME route/sidecar the Forum L402 flow uses (the `self_hosted_mdkd_sidecar`
-// route kind goes through the MDK_SIDECAR container) and reads the RAW bolt11 +
-// paymentHash. Uses the tighter FALLBACK mint timeout so a Spark primary timeout
-// plus this MDK attempt together stay under the route's per-rail guard (#6149).
-const mdkLightningInvoiceIssuerForEnv = (
-  _env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => undefined
-
-// The Khala Code Lightning invoice issuer for this env: SPARK PRIMARY, MDK
-// FALLBACK (owner directive). Tries Spark first; if Spark is
-// unavailable/unconfigured/slow, falls back to the MDK Lightning issuer. Returns
-// undefined only when NEITHER is reachable, so the Lightning rail is never
-// offered without a working invoice issuer (honesty gate). The combined issuer
-// keeps each leg's bounded mint timeout and stays under the route's per-rail
-// guard (#6149) so a slow/failed issuer can only ever drop the Lightning rail.
-const lightningInvoiceIssuerForEnv = (
-  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) =>
-  makeFallbackLightningInvoiceIssuer(
-    sparkLightningInvoiceIssuerForEnv(env),
-    mdkLightningInvoiceIssuerForEnv(env),
-  )
-
-const forumL402SigningBoundaryForEnv = async (
-  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => {
-  const checkout = getOpenAgentsWorkerConfig(env).mdk.checkout
-  const routeSecret = redactedValue(checkout.routeSecret)
-
-  if (
-    !checkout.configured ||
-    checkout.credentialBindingRef === null ||
-    routeSecret === undefined
-  ) {
-    return null
-  }
-
-  return makeOpenAgentsL402HmacSigningBoundary({
-    secretKeyMaterial: routeSecret,
-    signerRef: checkout.credentialBindingRef,
-  })
-}
-
-const hostedMdkWebhookConfigForEnv = (
-  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) => {
-  const checkout = getOpenAgentsWorkerConfig(env).mdk.checkout
-  const webhookSecret = redactedValue(checkout.webhookSecret)
-
-  if (webhookSecret === undefined || checkout.webhookBindingRef === null) {
-    return undefined
-  }
-
-  return {
-    bindingRef: checkout.webhookBindingRef,
-    secret: webhookSecret,
-    source: checkout.webhookSource,
-  }
-}
-
-const siteCommerceRoutesForEnv = (
-  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
-) =>
-  makeSiteCommerceRoutes({
-    authorizeCommerceReviewDecision: request =>
-      requireAdminApiToken(request, env),
-    authorizePaidActionAgent: async request => {
-      const bearerToken = readBearerToken(request)
-
-      if (bearerToken === undefined) {
-        return false
-      }
-
-      const session = await authenticateProgrammaticAgent(
-        makeAgentRegistrationStoreForEnv(env),
-        bearerToken,
-      )
-
-      return session !== undefined
-    },
-    authorizeMdkAccountBinding: request => requireAdminApiToken(request, env),
-    authorizePayoutBridge: request => requireAdminApiToken(request, env),
-    buyerPaymentLedgerStore: withBuyerPaymentLedgerMirror(
-      openAgentsDatabase(env),
-      makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
-      billingDomainMirrorFromEnv(env),
-    ),
-    challengeExpiresAt: () => isoTimestampAfter(currentDate(), 10 * 60_000),
-    checkoutCatalog: omegaMdkDemoSitePaymentCatalog,
-    checkoutIntentStore: makeD1SiteMdkCheckoutIntentStore(
-      openAgentsDatabase(env),
-      billingDomainMirrorFromEnv(env),
-    ),
-    hostedMdkClient: hostedMdkClientForEnv(env),
-    mdkWebhookConfig: hostedMdkWebhookConfigForEnv(env),
-    mdkAccountBindingStore: makeD1SiteMdkAccountBindingStore(
-      openAgentsDatabase(env),
-    ),
-    nowEpochMillis: () => currentDate().getTime(),
-    nowIso: () => currentDate().toISOString(),
-    payoutLedgerStore: makeD1NexusTreasuryPayoutLedgerStore(
-      makeTreasuryDatabaseForEnv(env),
-    ),
-    reviewStore: makeD1SiteCommerceReviewStore(openAgentsDatabase(env)),
-  })
 
 const siteReferralRoutes = makeSiteReferralRoutes()
 
@@ -8540,11 +8110,6 @@ const providerAccountRoutes = makeProviderAccountRoutes({
     ),
 })
 
-const billingApiHandlers = makeBillingApiHandlers({
-  appendRefreshedSessionCookies,
-  requireBrowserSession,
-})
-
 const onboardingRoutes = makeOnboardingRoutes({
   appendRefreshedSessionCookies,
   requireBrowserSession,
@@ -8564,61 +8129,6 @@ const onboardingRoutes = makeOnboardingRoutes({
 const siteReferralInspectionRoutes = makeSiteReferralInspectionRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
-  requireBrowserSession,
-})
-
-// Referral payout settlement adapter (RL-1 settle wire, #5511). This is the
-// PRODUCTION hosted-MDK programmatic-payout adapter the shared dispatcher
-// (`dispatchReferralPayoutSettlement`) invokes to record a `settled` referral
-// payout with a real, redacted, dereferenceable receipt ref -- replacing the
-// throwing placeholder that could never pay.
-//
-// OWNER-ARMED / INERT (the #5512 boundary): two independent gates keep this
-// inert until the owner arms live payouts:
-//   1. `readReadiness` below is the OWNER-ARMED OFF gate
-//      (`hostedMdkDirectPayoutDisabledGate` -> `livePayoutClaimAllowed: false`),
-//      so the dispatcher REFUSES before ever reaching the adapter; and
-//   2. the adapter's `client` is null (no funded programmatic-payout client
-//      armed) and its destination resolver returns null (no registered referrer
-//      destination), so even if reached it FAILS CLOSED (throws) -- no money
-//      moves and NO settled state is recorded.
-// Arming the gate + configuring a funded client + a registered destination is
-// the owner step (#5512); the rail itself is now wired and ready.
-const referralPayoutSettlementAdapter = makeSiteReferralPayoutAdapter({
-  // Not armed: no funded hosted-MDK programmatic-payout client is wired into the
-  // referral rail yet. Fail closed until the owner arms it (#5512).
-  client: null,
-  // Not armed: referrer payout-destination registration is owner-gated (#5512).
-  // Returns null so the adapter fails closed if ever reached.
-  resolveDestination: async () => null,
-})
-
-const siteReferralPayoutLedgerRoutes = makeSiteReferralPayoutLedgerRoutes({
-  dispatchDependencies: {
-    adapter: referralPayoutSettlementAdapter,
-    nowIso: currentIsoTimestamp,
-    readReadiness: async () => hostedMdkDirectPayoutDisabledGate(),
-  },
-  nowIso: currentIsoTimestamp,
-  requireAdminApiToken,
-})
-
-// Inference referral revshare routes (sub-EPIC #5475: #5491 dashboard read +
-// #5490 dispatch). The dispatch readiness gate defaults to the OWNER-ARMED OFF
-// gate, so the first real referral payout is owner-armed: dispatch REFUSES (no
-// money moves, the adapter is never reached) until the owner arms a live payout
-// mode. The adapter is now the real hosted-MDK rail (`referralPayoutSettlement
-// Adapter`), which also fails closed (unconfigured client) on the not-armed
-// path -- so the placeholder that could never pay is replaced by a real,
-// readiness-gated rail.
-const inferenceReferralRoutes = makeInferenceReferralRoutes({
-  appendRefreshedSessionCookies,
-  dispatchDependencies: {
-    adapter: referralPayoutSettlementAdapter,
-    nowIso: currentIsoTimestamp,
-    readReadiness: async () => hostedMdkDirectPayoutDisabledGate(),
-  },
-  requireAdminApiToken,
   requireBrowserSession,
 })
 
@@ -8744,14 +8254,6 @@ const autopilotWorkRouteDependencies = {
   // prior behaviour when no executor was wired. Reads the config off the live
   // `Env` the route already receives; carries no secret into any closeout.
   executeReadyWork: makeHostedGeminiExecuteReadyWork(),
-  l402SigningBoundary: (env: WorkerBindings) =>
-    forumL402SigningBoundaryForEnv(env),
-  makeBuyerPaymentLedgerStore: (env: WorkerBindings) =>
-    withBuyerPaymentLedgerMirror(
-      openAgentsDatabase(env),
-      makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
-      billingDomainMirrorFromEnv(env),
-    ),
   makePylonApiStore: (env: WorkerBindings) => makePylonApiStoreForEnv(env),
   makeStore: (env: WorkerBindings) => makeAutopilotWorkStoreForEnv(env),
   // Feed the registered-pylon registry into the work-order placement selector
@@ -8764,18 +8266,6 @@ const autopilotWorkRouteDependencies = {
   pylonRegistrations: (env: WorkerBindings) =>
     makePylonApiStoreForEnv(env).listRegistrations(100),
   requireBrowserSession,
-  verifyL402PaymentProof: (
-    env: WorkerBindings,
-    input: Parameters<typeof verifyAutopilotL402PaymentProofFromBuyerLedger>[1],
-  ) =>
-    verifyAutopilotL402PaymentProofFromBuyerLedger(
-      withBuyerPaymentLedgerMirror(
-        openAgentsDatabase(env),
-        makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
-        billingDomainMirrorFromEnv(env),
-      ),
-      input,
-    ),
 }
 
 const autopilotWorkRoutes = makeAutopilotWorkRoutes<Env>(
@@ -9009,25 +8499,6 @@ const sitesOrchestrationRoutes = makeSitesOrchestrationRoutes({
   requireBrowserSession,
 })
 
-const partnerPayoutLedgerRoutes = makePartnerPayoutLedgerRoutes<WorkerBindings>(
-  {
-    dispatchDependencies: {
-      adapter: {
-        adapterKind: 'owner_armed_partner_payout',
-        dispatch: async () => {
-          throw new PartnerPayoutDispatchError(
-            'partner_payout_adapter_unconfigured: owner has not armed a live partner payout rail',
-          )
-        },
-      },
-      nowIso: currentIsoTimestamp,
-      readReadiness: async () => hostedMdkDirectPayoutDisabledGate(),
-    },
-    nowIso: currentIsoTimestamp,
-    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-  },
-)
-
 const partnerAgreementRoutes = makePartnerAgreementRoutes<WorkerBindings>({
   nowIso: currentIsoTimestamp,
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
@@ -9122,12 +8593,6 @@ const crmApprovalBatchAdminRoutes =
   })
 
 const crmReplyRoutes = makeCrmReplyRoutes<WorkerBindings>({
-  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
-
-// OB-5 (#8562): pack-priced CRM/Sarah checkout-link issuance.
-const crmSalesCheckoutRoutes = makeCrmSalesCheckoutRoutes<WorkerBindings>({
-  database: env => openAgentsDatabase(env),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
@@ -9373,21 +8838,6 @@ const shareRoutes = makeShareRoutes({
   requireBrowserSession,
 })
 
-const operatorBillingHandlers = makeOperatorBillingHandlers({
-  readSelectedInferenceCreditTargetUser,
-  readSelectedOperatorTargetUser,
-  requireAdminApiToken,
-})
-
-const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
-  makeEvalBridge: env => buyModeEvalBridgeForEnv(env),
-  makePaymentBridge: env => buyModePaymentBridgeForEnv(env),
-  makeRelayPublisher: env => buyModeRelayPublisherForEnv(env),
-  makeStore: env =>
-    makeD1BuyModeDispatcherStore(businessDomainDatabaseForEnv(env)),
-  requireAdminApiToken,
-})
-
 const ecommerceCampaignSelfServeRoutes =
   makeEcommerceCampaignSelfServeRoutes<Env>({
     makeStore: env =>
@@ -9512,16 +8962,6 @@ const businessCaseStudyRoutes = makeBusinessCaseStudyRoutes<Env>({
 const marketingAgencySelfServePublicRoutes =
   makeMarketingAgencySelfServePublicRoutes<Env>({
     makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([]),
-  })
-
-const publicCardCreditSpendReceiptRoutes =
-  makePublicCardCreditSpendReceiptRoutes<Env>({
-    makeStore: env =>
-      makeCardCreditSpendReceiptStore({
-        db: openAgentsDatabase(env),
-        ledgerDb: paymentsLedgerDbForEnv(env),
-      }),
-    nowIso: currentIsoTimestamp,
   })
 
 const publicStripeCheckoutReceiptRoutes =
@@ -10117,11 +9557,6 @@ const operatorAgentReadinessReportRoutes =
     requireAdminApiToken,
   })
 
-const operatorSarahSalesCheckoutRoutes = makeOperatorSarahSalesCheckoutRoutes({
-  makeDb: env => openAgentsDatabase(env),
-  requireAdminApiToken,
-})
-
 const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
   makeStore: env => {
     // KS-8.11 (#8322) x KS-8.14 (#8325): outreach tables ride the CRM/email
@@ -10135,25 +9570,6 @@ const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
   },
   requireAdminApiToken,
 })
-
-const operatorBusinessStarterCreditRoutes =
-  makeOperatorBusinessStarterCreditRoutes({
-    makeStore: env => {
-      const db = businessDomainDatabaseForEnv(env)
-      // KS-8.7 (#8318/#8337): mirror the pay_ins/pay_in_legs rows the USD
-      // credit grant creates fail-soft (absent when KHALA_SYNC_DB/dual-write
-      // is unavailable — degrades to D1-only, converged by the next backfill
-      // sweep).
-      // CFG-4 (#8519): grant ledger rows run on the Postgres credits ledger;
-      // business_starter_credit_grants / business_pipeline_rows stay on D1.
-      return makeD1BusinessStarterCreditStore(
-        db,
-        paymentsLedgerDbForEnv(env),
-        makeD1BusinessPipelineStore(db),
-      )
-    },
-    requireAdminApiToken,
-  })
 
 const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
   authenticateAgentToken: async (request, env) => {
@@ -10186,53 +9602,6 @@ const operatorProStatusRoutes = makeOperatorProStatusRoutes({
       ? Promise.resolve([])
       : agentStore.listLinkedAgentsForOpenAuthUser(openauthUserId, limit)
   },
-  requireAdminApiToken,
-  requireBrowserSession,
-})
-
-const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
-  appendRefreshedSessionCookies,
-  currentIsoTimestamp,
-  isOpenAgentsAdminEmail,
-  makeArtanisAdminCloseoutReceiptStore: env =>
-    makeD1ArtanisAdminCloseoutReceiptStore(openAgentsDatabase(env)),
-  makeLedgerStore: env =>
-    makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
-  makePaymentAuthority: (env, context) => {
-    const config = getOpenAgentsWorkerConfig(env)
-    const ledgerStore = makeD1NexusTreasuryPayoutLedgerStore(
-      makeTreasuryDatabaseForEnv(env),
-    )
-
-    return makeTreasuryPaymentAuthority({
-      adapters:
-        context.adapterKind === 'hosted_mdk'
-          ? [
-              makeHostedMdkPayoutAdapter({
-                accessToken: redactedValue(config.mdk.accessToken),
-                providerRef: context.providerRef,
-                resolveDestination: () =>
-                  Effect.succeed(context.privatePayoutDestination ?? ''),
-              }),
-            ]
-          : context.adapterKind === 'spark_treasury'
-            ? [
-                makeSparkTreasuryPayoutAdapter({
-                  fetchTreasury: fetchMdkTreasuryPath(env),
-                  providerRef: context.providerRef,
-                  resolveDestination: () =>
-                    Effect.succeed(context.privatePayoutDestination ?? ''),
-                }),
-              ]
-            : [],
-      ledgerStore,
-    })
-  },
-  makePylonApiStore: env => makePylonApiStoreForEnv(env),
-  makeTipRecipientReadinessReader: env => ({
-    readForActor: actorRef =>
-      readForumTipRecipientReadinessForActor(openAgentsDatabase(env), actorRef),
-  }),
   requireAdminApiToken,
   requireBrowserSession,
 })
@@ -10564,7 +9933,7 @@ const dispatchManagedFleetUnitForEnv = async (
     const session = await Effect.runPromise(
       adapter.launch({
         sessionId,
-        accountRef: agentRefForUser(input.ownerUserId),
+        accountRef: `agent:${input.ownerUserId}`,
         lane: 'cloud-gcp',
         request: {
           adapter: 'codex',
@@ -10830,214 +10199,9 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
       built.event,
     )
   },
-  makePayoutLedgerStore: env =>
-    makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
-  // REAL Bitcoin settlement wiring (openagents #5232, Gate 2). INERT by default:
-  // these are only consulted on the real branch, which is unreachable unless the
-  // owner sets OPENAGENTS_REAL_SETTLEMENT_GATE (enabled + allowlisted + capped).
-  // The rail is the proven Spark treasury payout adapter driven through the
-  // treasury payment authority (idempotency-keyed dispatch, dedupe, redaction,
-  // pause/cap/wallet-readiness gates).
-  makeSettlementPaymentAuthority: (env, context) =>
-    makeTreasuryPaymentAuthority({
-      adapters: [
-        makeSparkTreasuryPayoutAdapter({
-          fetchTreasury: fetchMdkTreasuryPath(env),
-          providerRef: context.providerRef,
-          resolveDestination: () =>
-            Effect.succeed(context.privatePayoutDestination),
-        }),
-      ],
-      ledgerStore: context.ledgerStore,
-    }),
-  // Wallet readiness for the gated payout: the treasury Spark rail is ready only
-  // when its container is reachable and reports a spendable balance. Any failure
-  // fails closed to 'absent' (no payout).
-  readSettlementWalletReadiness: async env => {
-    const fetchTreasury = fetchMdkTreasuryPath(env)
-
-    if (fetchTreasury === undefined) {
-      return 'absent'
-    }
-
-    try {
-      const response = await fetchTreasury('/spark/balance')
-
-      return response.ok ? 'ready' : 'absent'
-    } catch {
-      return 'absent'
-    }
-  },
-  // #5252: resolve the (private, never-projected) payout destination for the
-  // gated recipient (the contributor at lease.pylonRef) from the recipient's
-  // OWN registered raw Spark address. The raw `spark1…` lives only in the
-  // private operator store keyed to its pylonRef; we return it here as the
-  // native Spark send destination so #5232's real settlement (and #5225 native
-  // send) pay it natively over Spark. The destination never enters any receipt
-  // projection — only the adapter's redacted refs do.
-  //
-  // Fails closed: when the recipient has no registered Spark target (or the
-  // store read fails), this returns undefined and the real settlement branch
-  // does not send. The owner may later add a BOLT12/Lightning-Address fallback
-  // resolver here; until then, no vetted Spark target == no native send.
-  resolveSettlementPayoutDestination: (env, contributorRef) =>
-    resolveSparkPayoutDestination(
-      makePylonSparkPayoutTargetStoreForEnv(env),
-      contributorRef,
-      pylonRef =>
-        makePylonApiStoreForEnv(env)
-          .readRegistration(pylonRef)
-          .then(registration => registration?.ownerAgentUserId),
-    ),
   makeStore: env => makeTrainingAuthorityStoreForEnv(env),
   requireAdminApiToken,
 })
-
-// Honest hygiene-lane settlement DISPATCH route (openagents #5372, EPIC #5335).
-// Settles ONE merged, benchmark-verified hygiene debt receipt to the
-// contributor's registered Spark target through the SAME proven #5232 Spark
-// treasury rail and the SAME owner gate as the Tassadar run settlement, but with
-// an HONEST `hygiene_merged_reviewed` verification basis (merged PR + reviewer
-// acceptance + debt receipt) instead of a fabricated exact_trace_replay verdict.
-//
-// INERT by default: with the owner gate OFF (the default everywhere) every
-// settle resolves to the simulation chain. The real branch is unreachable until
-// the owner arms OPENAGENTS_REAL_SETTLEMENT_GATE with the hygiene run-ref.
-//
-// Create-side (#5335 process step 1): POST /api/hygiene-lane/debt-receipts is
-// admin-only and persists a PAYABLE funded debt receipt in the durable D1 store
-// (one row per DebtReceiptKey, #5340). `resolveDebtReceiptProjection` reads that
-// store as the single source of truth for payability — an operator cannot assert
-// payability through the settle request body. It is fail-closed: no row, or a
-// retired row, yields a non-payable projection so the route reports
-// `debt_receipt_not_found` / `duplicate_replay` and never pays. Once real bitcoin
-// moves, the settle route marks the key retired, so a second settle on the same
-// key is `duplicate_replay`.
-const hygieneLaneSettlementRoutes =
-  makeHygieneLaneSettlementRoutes<WorkerBindings>({
-    makePayoutLedgerStore: env =>
-      makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
-    // REAL Bitcoin settlement wiring (openagents #5232): the SAME proven Spark
-    // treasury rail the Tassadar run settlement uses. INERT unless the gate is
-    // armed.
-    makeSettlementPaymentAuthority: (env, context) =>
-      makeTreasuryPaymentAuthority({
-        adapters: [
-          makeSparkTreasuryPayoutAdapter({
-            fetchTreasury: fetchMdkTreasuryPath(env),
-            providerRef: context.providerRef,
-            resolveDestination: () =>
-              Effect.succeed(context.privatePayoutDestination),
-          }),
-        ],
-        ledgerStore: context.ledgerStore,
-      }),
-    readSettlementWalletReadiness: async env => {
-      const fetchTreasury = fetchMdkTreasuryPath(env)
-
-      if (fetchTreasury === undefined) {
-        return 'absent'
-      }
-
-      try {
-        const response = await fetchTreasury('/spark/balance')
-
-        return response.ok ? 'ready' : 'absent'
-      } catch {
-        return 'absent'
-      }
-    },
-    resolveSettlementPayoutDestination: (env, contributorRef) =>
-      resolveSparkPayoutDestination(
-        makePylonSparkPayoutTargetStoreForEnv(env),
-        contributorRef,
-        pylonRef =>
-          makePylonApiStoreForEnv(env)
-            .readRegistration(pylonRef)
-            .then(registration => registration?.ownerAgentUserId),
-      ),
-    // Durable, payable debt-receipt store (#5335 process step 1, #5372). The
-    // admin create endpoint (POST /api/hygiene-lane/debt-receipts) persists a
-    // payable funded receipt here; the settle route reads payability from it
-    // and marks it retired once real bitcoin moves, so a second settle on the
-    // same DebtReceiptKey reprojects to duplicate_replay.
-    makeDebtReceiptStore: env => makeHygieneDebtReceiptStoreForEnv(env),
-    // The settle route's source of truth for payability: the durable store.
-    // Fail-closed — no row (or a retired row) yields a non-payable projection,
-    // so the operator cannot assert payability through the request body.
-    resolveDebtReceiptProjection: (env, debtReceiptKeyRef) =>
-      makeHygieneDebtReceiptStoreForEnv(env).resolveProjection(
-        debtReceiptKeyRef,
-      ),
-    requireAdminApiToken,
-  })
-
-// Firm-up escrow -> real Bitcoin settlement DISPATCH route (openagents #5459,
-// EPIC #5457). Settles ONE firmed-up, EXECUTED-verified labor job to the
-// worker's registered Spark target through the SAME proven #5232 Spark treasury
-// rail and the SAME owner gate as the Tassadar + hygiene lanes, but against an
-// EXECUTED verification verdict (not a manual attestation).
-//
-// INERT by default: with the owner gate OFF (the default everywhere) every
-// settle resolves to the simulation chain. The real branch is unreachable until
-// the owner deliberately arms OPENAGENTS_REAL_SETTLEMENT_GATE with a firm-up
-// run-ref (run.firmup.lane.YYYYMMDD). No firm-up run-ref is armed by this code;
-// the first real firm-up payout is a separate, deliberate prod event.
-//
-// `resolveSettleableEscrow` is the SOURCE OF TRUTH for settleability: it reads
-// the escrow + acceptance + work request server-side. Fail-closed — the escrow
-// must be a `reserved` firm-up escrow with an accepted offer (the provider) and
-// a declared verification command. The operator cannot assert settleability
-// through the request body.
-const firmupBitcoinSettlementRoutes =
-  makeFirmupBitcoinSettlementRoutes<WorkerBindings>({
-    makePayoutLedgerStore: env =>
-      makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
-    resolveSettleableEscrow: (env, escrowRef) =>
-      readFirmupSettleableEscrow(
-        { db: openAgentsDatabase(env), ledgerDb: paymentsLedgerDbForEnv(env) },
-        escrowRef,
-      ),
-    // REAL Bitcoin settlement wiring (openagents #5232): the SAME proven Spark
-    // treasury rail. INERT unless the gate is armed.
-    makeSettlementPaymentAuthority: (env, context) =>
-      makeTreasuryPaymentAuthority({
-        adapters: [
-          makeSparkTreasuryPayoutAdapter({
-            fetchTreasury: fetchMdkTreasuryPath(env),
-            providerRef: context.providerRef,
-            resolveDestination: () =>
-              Effect.succeed(context.privatePayoutDestination),
-          }),
-        ],
-        ledgerStore: context.ledgerStore,
-      }),
-    readSettlementWalletReadiness: async env => {
-      const fetchTreasury = fetchMdkTreasuryPath(env)
-
-      if (fetchTreasury === undefined) {
-        return 'absent'
-      }
-
-      try {
-        const response = await fetchTreasury('/spark/balance')
-
-        return response.ok ? 'ready' : 'absent'
-      } catch {
-        return 'absent'
-      }
-    },
-    resolveSettlementPayoutDestination: (env, contributorRef) =>
-      resolveSparkPayoutDestination(
-        makePylonSparkPayoutTargetStoreForEnv(env),
-        contributorRef,
-        pylonRef =>
-          makePylonApiStoreForEnv(env)
-            .readRegistration(pylonRef)
-            .then(registration => registration?.ownerAgentUserId),
-      ),
-    requireAdminApiToken,
-  })
 
 // #5052 (epic #5051): agent-gated worker -> validator executor-trace completion
 // routes. These add the contributor-callable submit/verify path; they are inert
@@ -11083,173 +10247,6 @@ const tassadarTraceContributionRoutes =
     },
     makeContributionStore: env => makeTrainingTraceContributionStoreForEnv(env),
     makeStore: env => makeTrainingAuthorityStoreForEnv(env),
-    // Hands-off auto-stream of the real per-window reward on each Verified
-    // exact_trace_replay pair (openagents #5309 + #5310): worker 5 sats AND
-    // validator 5 sats, NO operator POST. INERT until the owner arms
-    // OPENAGENTS_REAL_SETTLEMENT_GATE — every leg resolves to skip while the
-    // gate is OFF (the default everywhere). FAIL-SOFT: the verdict route wraps
-    // this in catchAll so a blocked/failed settlement never breaks the verdict.
-    onVerifiedExactTraceReplayPair: (env, input) =>
-      Effect.gen(function* () {
-        const ledger = makeD1NexusTreasuryPayoutLedgerStore(
-          makeTreasuryDatabaseForEnv(env),
-        )
-        const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
-        const contributionStore = makeTrainingTraceContributionStoreForEnv(env)
-        const run = yield* Effect.promise(() =>
-          makeTrainingAuthorityStoreForEnv(env).readRun(
-            input.lease.trainingRunRef,
-          ),
-        )
-
-        if (run === undefined) {
-          return
-        }
-
-        // Owner resolver for the Spark payout destination (#5306/#5310). The
-        // WORKER leg's contributorRef is the verified registered `pylonRef`, so
-        // the direct registration lookup resolves its owner. The VALIDATOR leg's
-        // contributorRef is the validator's device-ref (its nodeId) — NOT a
-        // `pylonRef` — so the direct lookup misses; we then map that device-ref
-        // to the most recent `pylon_ref` it acted as a worker under and resolve
-        // THAT pylon's owner. This binds the validator strictly to its own
-        // owning agent (its own historical worker pylon), never crosses agent
-        // ownership, and arms no new authority — it only lets the owner-scoped
-        // `readByOwner` fallback in resolveSparkPayoutDestination find the
-        // validator's OWN registered Spark target so the autostream pays it with
-        // NO operator step.
-        const resolveContributorOwnerAgentUserId = async (
-          contributorRef: string,
-        ): Promise<string | undefined> => {
-          const pylonApiStore = makePylonApiStoreForEnv(env)
-          const direct = await pylonApiStore
-            .readRegistration(contributorRef)
-            .then(registration => registration?.ownerAgentUserId)
-
-          if (direct !== undefined && direct.trim() !== '') {
-            return direct
-          }
-
-          const pylonRefForDevice =
-            await contributionStore.readMostRecentPylonRefByDeviceRef(
-              contributorRef,
-            )
-
-          if (pylonRefForDevice === undefined) {
-            return undefined
-          }
-
-          return pylonApiStore
-            .readRegistration(pylonRefForDevice)
-            .then(registration => registration?.ownerAgentUserId)
-        }
-
-        const settlementOutcome = yield* autoSettleVerifiedPair<WorkerBindings>(
-          {
-            dispatchRealSettlement: dispatchInput =>
-              dispatchRealRunSettlementCore<WorkerBindings>(
-                {
-                  env,
-                  makeSettlementPaymentAuthority: (authorityEnv, context) =>
-                    makeTreasuryPaymentAuthority({
-                      adapters: [
-                        makeSparkTreasuryPayoutAdapter({
-                          fetchTreasury: fetchMdkTreasuryPath(authorityEnv),
-                          providerRef: context.providerRef,
-                          resolveDestination: () =>
-                            Effect.succeed(context.privatePayoutDestination),
-                        }),
-                      ],
-                      ledgerStore: context.ledgerStore,
-                    }),
-                  readSettlementWalletReadiness: async authorityEnv => {
-                    const fetchTreasury = fetchMdkTreasuryPath(authorityEnv)
-
-                    if (fetchTreasury === undefined) {
-                      return 'absent'
-                    }
-
-                    try {
-                      const response = await fetchTreasury('/spark/balance')
-
-                      return response.ok ? 'ready' : 'absent'
-                    } catch {
-                      return 'absent'
-                    }
-                  },
-                  resolveSettlementPayoutDestination: (_authorityEnv, ref) =>
-                    resolveSparkPayoutDestination(
-                      sparkTargetStore,
-                      ref,
-                      resolveContributorOwnerAgentUserId,
-                    ),
-                },
-                {
-                  contributorRef: dispatchInput.contributorRef,
-                  ledger,
-                  settlement: dispatchInput.settlement,
-                },
-              ),
-            ledger,
-            nowIso: currentIsoTimestamp(),
-            readGate: () => readTassadarRealSettlementGate(env),
-            resolvePayoutDestination: ref =>
-              resolveSparkPayoutDestination(
-                sparkTargetStore,
-                ref,
-                resolveContributorOwnerAgentUserId,
-              ),
-            run,
-          },
-          {
-            challenge: input.challenge,
-            lease: input.lease,
-            validatorContributorRef: input.validatorContributorRef,
-          },
-        )
-
-        // ADDITIVE + FAIL-SOFT live settled feed (openagents #5311): broadcast
-        // ONE public-safe event per actually-settled leg onto the public sync
-        // room so the homepage updates in real-time as sats stream. This never
-        // touches the settlement dispatch above; any failure is swallowed so a
-        // broadcast problem can never break or slow settlement.
-        const settledLegs = settlementOutcome.legs.filter(leg => leg.settled)
-
-        if (settledLegs.length > 0) {
-          const settledAt = currentIsoTimestamp()
-          const workerContributorRef = input.lease.pylonRef.trim()
-          const contributorRefForParty = (party: 'validator' | 'worker') =>
-            party === 'worker'
-              ? workerContributorRef
-              : input.validatorContributorRef.trim()
-          const dayReceipts = yield* Effect.tryPromise({
-            catch: () => [],
-            try: () => ledger.listPaymentAuthorityReceipts(5000),
-          }).pipe(Effect.orElseSucceed(() => []))
-          const priorSettledSats =
-            tassadarRealSettledSatsForDay(
-              dayReceipts,
-              tassadarRealSettlementUtcDayKey(settledAt),
-            ) - settledLegs.reduce((sum, leg) => sum + leg.amountSats, 0)
-          const events = buildSettledFeedEvents({
-            legs: settledLegs.map(leg => ({
-              amountSats: leg.amountSats,
-              challengeRef: input.challenge.challengeRef,
-              contributorRef: contributorRefForParty(leg.party),
-              party: leg.party,
-              runRef: run.trainingRunRef,
-              windowRef: input.lease.windowRef,
-            })),
-            priorCount: 0,
-            priorSettledSats: Math.max(0, priorSettledSats),
-            settledAt,
-          })
-
-          yield* Effect.promise(() =>
-            publishSettledFeedEvents(env, events).catch(() => undefined),
-          )
-        }
-      }),
     resolvePylonOwnerUserId: async (env, pylonRef) => {
       const registration =
         await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
@@ -11272,53 +10269,6 @@ const omniRoutes = makeOmniRoutes({
   handleAutopilotTokenLeaderboardsApi: (request, env, ctx) =>
     routeEffect('handle_autopilot_token_leaderboards_api', () =>
       omniHandlers.handleAutopilotTokenLeaderboardsApi(request, env, ctx),
-    ),
-  handleBillingCheckoutApi: (request, env, ctx) =>
-    routeEffect('handle_billing_checkout_api', () =>
-      billingApiHandlers.handleBillingCheckoutApi(request, env, ctx),
-    ),
-  handleBillingInferenceCreditApi: (request, env, ctx) =>
-    routeEffect('handle_billing_inference_credit_api', () =>
-      billingApiHandlers.handleBillingInferenceCreditApi(request, env, ctx),
-    ),
-  handleBillingAutoTopUpPolicyApi: (request, env, ctx) =>
-    routeEffect('handle_billing_auto_top_up_policy_api', () =>
-      billingApiHandlers.handleBillingAutoTopUpPolicyApi(request, env, ctx),
-    ),
-  handleBillingAutoTopUpRunApi: (request, env, ctx) =>
-    routeEffect('handle_billing_auto_top_up_run_api', () =>
-      billingApiHandlers.handleBillingAutoTopUpRunApi(request, env, ctx),
-    ),
-  handleBillingCouponRedeemApi: (request, env, ctx) =>
-    routeEffect('handle_billing_coupon_redeem_api', () =>
-      billingApiHandlers.handleBillingCouponRedeemApi(request, env, ctx),
-    ),
-  handleBillingSummaryApi: (request, env, ctx) =>
-    routeEffect('handle_billing_summary_api', () =>
-      billingApiHandlers.handleBillingSummaryApi(request, env, ctx),
-    ),
-  handleBillingStripeCheckoutReturnApi: (request, environment) =>
-    routeEffect('handle_billing_stripe_checkout_return_api', () =>
-      billingApiHandlers.handleBillingStripeCheckoutReturnApi(
-        request,
-        environment,
-      ),
-    ),
-  handleBillingStripeSetupIntentApi: (request, env, ctx) =>
-    routeEffect('handle_billing_stripe_setup_intent_api', () =>
-      billingApiHandlers.handleBillingStripeSetupIntentApi(request, env, ctx),
-    ),
-  handleBillingStripeSetupIntentSaveApi: (request, env, ctx) =>
-    routeEffect('handle_billing_stripe_setup_intent_save_api', () =>
-      billingApiHandlers.handleBillingStripeSetupIntentSaveApi(
-        request,
-        env,
-        ctx,
-      ),
-    ),
-  handleBillingStripeWebhookApi: (request, environment) =>
-    routeEffect('handle_billing_stripe_webhook_api', () =>
-      billingApiHandlers.handleBillingStripeWebhookApi(request, environment),
     ),
   handleEmailResendWebhookApi: (request, environment) =>
     routeEffect('handle_email_resend_webhook_api', () =>
@@ -11355,17 +10305,6 @@ const omniRoutes = makeOmniRoutes({
   handleOmniOperatorAgentRunsApi: (request, env) =>
     routeEffect('handle_omni_operator_agent_runs_api', () =>
       omniHandlers.handleOmniOperatorAgentRunsApi(request, env),
-    ),
-  handleOmniOperatorBillingCreditsApi: (request, env) =>
-    routeEffect('handle_omni_operator_billing_credits_api', () =>
-      operatorBillingHandlers.handleOmniOperatorBillingCreditsApi(request, env),
-    ),
-  handleOmniOperatorInferenceCreditApi: (request, env) =>
-    routeEffect('handle_omni_operator_inference_credit_api', () =>
-      operatorBillingHandlers.handleOmniOperatorInferenceCreditApi(
-        request,
-        env,
-      ),
     ),
   handleOmniOperatorDeploymentsApi: (request, env) =>
     routeEffect('handle_omni_operator_deployments_api', () =>
@@ -12410,19 +11349,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: request => handleFreeTierDataSharingDisclosureApi(request),
   },
   {
-    // Frozen Khala Code plan compatibility catalog. Stable IDs and historical
-    // entitlement/receipt meaning remain readable, but the legacy flag reader
-    // is permanently false and cannot rearm purchases.
-    path: '/api/public/khala-code/plans',
-    handler: (request, env) =>
-      handleKhalaCodePlanCatalogApi(request, {
-        nowIso: currentIsoTimestamp,
-        paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
-          env.KHALA_CODE_PAID_PLANS_ENABLED,
-        ),
-      }),
-  },
-  {
     // Khala Code download counter (RL-2, #8246). Public-safe and exact-only:
     // reads counted rows from the download ledger, or returns counts: [] with a
     // blocker when the ledger/table has no rows. It never fabricates a public
@@ -13226,36 +12152,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
-    path: '/api/operator/buy-mode',
-    handler: (request, env) =>
-      operatorBuyModeRoutes.handleOperatorBuyModeStatusApi(request, env),
-  },
-  {
-    path: '/api/operator/buy-mode/start',
-    handler: (request, env) =>
-      operatorBuyModeRoutes.handleOperatorBuyModeStartApi(request, env),
-  },
-  {
-    path: '/api/operator/buy-mode/stop',
-    handler: (request, env) =>
-      operatorBuyModeRoutes.handleOperatorBuyModeStopApi(request, env),
-  },
-  {
-    path: '/api/operator/buy-mode/dispatch',
-    handler: (request, env) =>
-      operatorBuyModeRoutes.handleOperatorBuyModeDispatchApi(request, env),
-  },
-  {
-    path: '/api/operator/buy-mode/eval',
-    handler: (request, env) =>
-      operatorBuyModeRoutes.handleOperatorBuyModeEvalApi(request, env),
-  },
-  {
-    path: '/api/operator/buy-mode/results/settle',
-    handler: (request, env) =>
-      operatorBuyModeRoutes.handleOperatorBuyModeSettleApi(request, env),
-  },
-  {
     path: '/chat',
     handler: () => Effect.succeed(notFound()),
   },
@@ -13421,39 +12317,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
-    // #8505 Part 1 (fixes #8480's shipped-but-dead REST routes): mobile-bearer
-    // credit balance read, backed directly by the authoritative D1
-    // `agent_balances` ledger. Same boundary as the routes above.
-    path: MOBILE_CREDITS_BALANCE_PATH,
-    handler: (request, env, ctx) =>
-      handleMobileCreditsBalanceRequest(
-        {
-          ledgerDb: paymentsLedgerDbForEnv,
-          requireUserBearerSession,
-          userIdFromSession: session => session.user.userId,
-        },
-        request,
-        env,
-        ctx,
-      ),
-  },
-  {
-    // #8505 Part 1: mobile-bearer credit transaction history, backed directly
-    // by the authoritative D1 `pay_ins` ledger. Same boundary as above.
-    path: MOBILE_CREDITS_TRANSACTIONS_PATH,
-    handler: (request, env, ctx) =>
-      handleMobileCreditsTransactionsRequest(
-        {
-          ledgerDb: paymentsLedgerDbForEnv,
-          requireUserBearerSession,
-          userIdFromSession: session => session.user.userId,
-        },
-        request,
-        env,
-        ctx,
-      ),
-  },
-  {
     // MM-I2b (#8502): in-app account deletion for Khala Mobile App Review
     // 5.1.1(v). Same mobile bearer boundary as the session/push routes;
     // deletes owner-scoped Khala Sync rows, push registrations, GitHub/OpenAuth
@@ -13537,86 +12400,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       ),
   },
   {
-    // MM-E2 (#8482): RevenueCat IAP webhook ingestion. Auth PIN: #8481
-    // (RevenueCat account/client) is HELD, so no live webhook secret exists
-    // yet — this reads REVENUECAT_WEBHOOK_SECRET and fails closed
-    // (401 unauthenticated) until an owner configures one.
-    path: IAP_REVENUECAT_WEBHOOK_PATH,
-    handler: (request, env) =>
-      handleIapRevenueCatWebhookRequest(
-        {
-          db: openAgentsDatabase,
-          ledgerDb: paymentsLedgerDbForEnv,
-          webhookSecret: e =>
-            (e as Env & { REVENUECAT_WEBHOOK_SECRET?: string })
-              .REVENUECAT_WEBHOOK_SECRET,
-        },
-        request,
-        env,
-      ),
-  },
-  {
     path: '/api/auth/totals',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleAuthTotalsApi(request, env, ctx)),
   },
   {
-    path: '/api/mdk',
-    handler: (request, env) => routeMdkSidecarRequest(request, env),
-  },
-  {
     path: '/api/admin/overview',
     handler: (request, env, ctx) =>
       adminOverviewHandlers.handleAdminOverviewApi(request, env, ctx),
-  },
-  {
-    // AIUR-2 (#8500): Aiur credits console — recent signups + grant status.
-    path: ADMIN_CREDITS_USERS_PATH,
-    handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminCreditsRoutes.handleAdminCreditsUsersApi(request, env, ctx),
-      ),
-  },
-  {
-    // AIUR-2 (#8500): a user's balance (msat + display-only USD-cents).
-    path: ADMIN_CREDITS_BALANCE_PATH,
-    handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminCreditsRoutes.handleAdminCreditsBalanceApi(request, env, ctx),
-      ),
-  },
-  {
-    // AIUR-2 (#8500): a user's merged admin + signup grant history.
-    path: ADMIN_CREDITS_HISTORY_PATH,
-    handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminCreditsRoutes.handleAdminCreditsHistoryApi(request, env, ctx),
-      ),
-  },
-  {
-    // AIUR-2 (#8500): the recent-grants ledger view across all users.
-    path: ADMIN_CREDITS_RECENT_GRANTS_PATH,
-    handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminCreditsRoutes.handleAdminCreditsRecentGrantsApi(request, env, ctx),
-      ),
-  },
-  {
-    // AIUR-2 (#8500): grant credit to a user (idempotent on a caller-
-    // supplied grantRef), replacing IAP for the first Khala Code mobile MVP.
-    path: ADMIN_CREDITS_GRANT_PATH,
-    handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminCreditsRoutes.handleAdminCreditsGrantApi(request, env, ctx),
-      ),
-  },
-  {
-    // AIUR-2 (#8500): claw back previously granted credit.
-    path: ADMIN_CREDITS_CLAWBACK_PATH,
-    handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminCreditsRoutes.handleAdminCreditsClawbackApi(request, env, ctx),
-      ),
   },
   {
     // AIUR-3 (#8501): recent org-cloud coding turns with exact usage
@@ -13721,25 +12512,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleKhalaSyncTokensServedReconcile(request, {
         reconcileDeps: makeTokensServedReconcileDeps(env),
-        requireOperator: () => requireAdminApiToken(request, env),
-      }),
-  },
-  {
-    // Per-user credit-balance backfill/reconcile (issue #8505, Part 2).
-    // Admin bearer only. POST { limit?, cursor? } pages through every human
-    // user and seeds/realigns their scope.user.<userId> credit_balance
-    // projection against the exact current D1 agent_balances balance —
-    // required before any client can read the entity (same
-    // refuse-until-backfilled discipline as the public tokens-served
-    // counter). Repeat with the returned nextCursor until it is null.
-    path: KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH,
-    handler: (request, env) =>
-      handleKhalaSyncUserCreditBalanceBackfill(request, {
-        backfillDeps: {
-          binding: env.KHALA_SYNC_DB,
-          ledgerDb: paymentsLedgerDbForEnv(env),
-          log: (event, fields) => logWorkerRouteWarning(event, fields),
-        },
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },
@@ -14139,10 +12911,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePylonCapacityFunnelHistoryApi(request, env),
   },
   {
-    path: '/api/public/site-referral-payouts',
-    handler: (request, env) => handleSiteReferralPayoutsPublicApi(request, env),
-  },
-  {
     path: '/api/public/partner-payouts',
     handler: (request, env) => handlePartnerPayoutsPublicApi(request, env),
   },
@@ -14174,18 +12942,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handlePublicLaborEarningsApi(request, {
         ledgerDb: paymentsLedgerDbForEnv(env),
-      }),
-  },
-  {
-    path: '/api/public/labor-earnings/payout',
-    handler: (request, env) =>
-      handleSelfServeLaborPayoutApi(request, {
-        ledgerDb: paymentsLedgerDbForEnv(env),
-        authenticate: agentBalanceAuthForStore(
-          makeAgentRegistrationStoreForEnv(env),
-        ),
-        // INERT flag: defaults to false so it plans but lists nothing.
-        enabled: env.LABOR_SELF_SERVE_PAYOUT_ENABLED === 'true',
       }),
   },
   {
@@ -14794,85 +13550,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
-    // Current Khala Code plan for the calling agent account, resolved
-    // server-side from the privacy-entitlement seam (khala_code.
-    // free_paid_plans.v1, #7966). Fail-closed: an entitlement read error
-    // returns 503 instead of fabricating a plan.
-    path: '/v1/khala-code/plan',
-    handler: (request, env) =>
-      handleKhalaCodePlanStatus(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
-          if (token === undefined) {
-            return undefined
-          }
-          const session = await authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
-        },
-        confidentialComputeEnabled: isConfidentialComputeEnabled(
-          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
-        ),
-        db: openAgentsDatabase(env),
-        nowIso: currentIsoTimestamp,
-        paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
-          env.KHALA_CODE_PAID_PLANS_ENABLED,
-        ),
-      }),
-  },
-  {
-    // Retired Khala Code purchase compatibility route. Production always
-    // supplies paidPlanPurchaseArmed=false, preserving the stable 503 response
-    // and historical receipt/status reads without creating new purchase
-    // authority. A future OpenAgents plan needs a new API/promise path.
-    path: '/v1/khala-code/plans/purchases',
-    handler: (request, env) => {
-      const lightningEnabled = isKhalaCodeLightningPaymentsEnabled(
-        env.KHALA_MPP_LIGHTNING_ENABLED,
-      )
-      const mintLightningInvoice = lightningEnabled
-        ? lightningInvoiceIssuerForEnv(env)
-        : undefined
-
-      return handleKhalaCodePlanPurchase(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
-          if (token === undefined) {
-            return undefined
-          }
-          const session = await authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
-        },
-        confidentialComputeEnabled: isConfidentialComputeEnabled(
-          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
-        ),
-        createStripePaidPlanCheckout: input =>
-          makeStripeCheckoutServiceForRoutes(
-            env,
-          ).createKhalaCodePaidPlanCheckout(input),
-        db: openAgentsDatabase(env),
-        ...(mintLightningInvoice === undefined ? {} : { mintLightningInvoice }),
-        mirror: billingDomainMirrorFromEnv(env),
-        nowIso: currentIsoTimestamp,
-        paidPlanPriceSats: readKhalaCodePaidPlanPriceSats(
-          env.KHALA_CODE_PAID_PLAN_PRICE_SATS,
-        ),
-        paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
-          env.KHALA_CODE_PAID_PLANS_ENABLED,
-        ),
-      })
-    },
-  },
-  {
     path: '/v1/inference/privacy/confidential-compute/executions',
     handler: (request, env) =>
       handleConfidentialComputeExecutionReceipt(request, {
@@ -15023,46 +13700,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // non-Khala models, and over-quota requests fall through to the normal
         // path. Inert (identity) when the flag is off. Each decorator acts only on
         // its own lane, so the order among the free wrappers is independent.
-        meteringHook: (baseHook =>
-          operatorExemptionEnabled
-            ? withOperatorCredit(baseHook, {
-                db: openAgentsDatabase(env),
-                gateReads: entitlementsRouting?.gateReads,
-                resolveOwnerIdentity,
-              })
-            : baseHook)(
-          withFreeAllowance(
-            (innerHook =>
-              freeTierEnabled
-                ? withFreeTierKhala(innerHook, {
-                    db: openAgentsDatabase(env),
-                    gateReads: entitlementsRouting?.gateReads,
-                    mirror: entitlementsRouting?.mirror,
-                    quota: freeTierQuota,
-                    internalAccountRefs,
-                    internalAccountDailyTokenCaps,
-                  })
-                : innerHook)(
-              withReferralAccrual(
-                makeLedgerMeteringHook({
-                  ledgerDb: paymentsLedgerDbForEnv(env),
-                  recordCreditBalanceProjection:
-                    creditBalanceProjectionRecorderForEnv(env),
-                }),
-                {
-                  db: openAgentsDatabase(env),
-                  mirror: entitlementsRouting?.mirror,
-                },
-              ),
-            ),
-            {
-              db: openAgentsDatabase(env),
-              gateReads: entitlementsRouting?.gateReads,
-              mirror: entitlementsRouting?.mirror,
-              resolveOwnerIdentity,
-            },
-          ),
-        ),
+        meteringHook: stubMeteringHook,
         // SERVED-TOKENS COUNTER (issue #6227/#6358). Records one canonical
         // `token_usage_events` row per SERVED completion so the public "Khala
         // Tokens Served" counter (GET /api/public/khala-tokens-served) reflects
@@ -15206,13 +13844,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return link?.openauth_user_id ?? undefined
           },
         },
-        readAvailableMsat: async accountRef => {
-          const balance = await readAgentBalance(
-            paymentsLedgerDbForEnv(env),
-            accountRef,
-          )
-          return balance === null ? 0 : balance.availableMsat
-        },
+        readAvailableMsat: async () => Number.MAX_SAFE_INTEGER,
         // FREE-ALLOWANCE PRE-FLIGHT (EPIC #5474 §1): read-only mirror of the
         // gate inside `withFreeAllowance` (wired just above as the metering
         // hook). It lets the balance gate admit a zero-balance account when the
@@ -15487,13 +14119,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         nowIso: currentIsoTimestamp,
         store: makeKhalaVerificationStoreForEnv(env),
-        // Accepted-outcome settlement (#6011): fires worker+validator Bitcoin payout on
-        // the first VERIFIED+EXECUTED backfill. Double-gated + inert by default (undefined
-        // unless the KHALA loop flag is armed; even then the owner real-settlement gate +
-        // caps + destination fail-close inside the engine). NEEDS-OWNER to arm real money.
-        ...(sink => (sink === undefined ? {} : { settlement: sink }))(
-          makeAcceptedOutcomeSettlementSink(env),
-        ),
       }),
   },
   {
@@ -15636,82 +14261,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },
-  {
-    // Fine-tuning service (EPIC #5510, #5516) — sellable Cloud primitive
-    // SCAFFOLD. INERT by default: gated behind CLOUD_FINE_TUNING_ENABLED
-    // (default off). Ships wired to the stub/accepting runtime adapter + no-op
-    // metering stub; #5516 registers the real training-lane runtime adapter and
-    // live credit metering. The promise `cloud.fine_tuning_service.v1` STAYS red
-    // — this surface produces no paid/servable result and no green flip lands
-    // without a dereferenceable paid receipt.
-    path: '/v1/fine_tuning/jobs',
-    handler: (request, env) =>
-      handleFineTuningJobSubmit(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
-          if (token === undefined) {
-            return undefined
-          }
-          const session = await authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
-        },
-        adapter: makeD1FineTuningRuntimeAdapter(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
-        enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
-        meteringHook: makeLedgerFineTuningMeteringHook({
-          ledgerDb: paymentsLedgerDbForEnv(env),
-          priceUsd: () => 0,
-          recordCreditBalanceProjection:
-            creditBalanceProjectionRecorderForEnv(env),
-          usdToMsat: usd => Math.ceil(usd * 1000),
-        }),
-      }),
-  },
-  {
-    // Sandbox compute service (EPIC #5510, #5517) — sellable Cloud primitive
-    // SCAFFOLD. INERT by default: gated behind CLOUD_SANDBOX_COMPUTE_ENABLED
-    // (default off). Ships wired to the stub/accepting runtime adapter + no-op
-    // metering stub; #5517 registers the real isolated-session runtime adapter
-    // and live credit metering. The promise `cloud.sandbox_compute_service.v1`
-    // STAYS red — this surface provisions no real sandbox and no green flip
-    // lands without a dereferenceable paid receipt.
-    path: '/v1/sandboxes',
-    handler: (request, env) =>
-      handleSandboxRequest(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
-          if (token === undefined) {
-            return undefined
-          }
-          const session = await authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
-        },
-        enabled: isSandboxComputeServiceEnabled(
-          env.CLOUD_SANDBOX_COMPUTE_ENABLED,
-        ),
-        adapter: makeD1SandboxRuntimeAdapter(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
-        meteringHook: makeLedgerSandboxMeteringHook({
-          ledgerDb: paymentsLedgerDbForEnv(env),
-          priceUsd: () => 0,
-          recordCreditBalanceProjection:
-            creditBalanceProjectionRecorderForEnv(env),
-          usdToMsat: usd => Math.ceil(usd * 1000),
-        }),
-      }),
-  },
+
 ])
 
 export const exactRoutePathManifest = exactRouteRegistry.paths
@@ -15763,7 +14313,7 @@ const routeRequest = makeWorkerRouteRequest({
         if (session === undefined) {
           return undefined
         }
-        return { accountRef: agentRefForUser(session.user.userId) }
+        return { accountRef: `agent:${session.user.userId}` }
       },
       admissionGate: makeD1CloudCodingAdmissionGate({
         capacity: async () =>
@@ -16161,11 +14711,6 @@ const routeRequest = makeWorkerRouteRequest({
       env,
       ctx,
     ) ??
-    partnerPayoutLedgerRoutes.routePartnerPayoutLedgerRequest(
-      request,
-      env,
-      ctx,
-    ) ??
     partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx) ??
     crmImportRoutes.routeCrmImportRequest(request, env, ctx) ??
     crmEmailRoutes.routeCrmEmailRequest(request, env, ctx) ??
@@ -16175,7 +14720,6 @@ const routeRequest = makeWorkerRouteRequest({
     crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
     crmApprovalBatchRoutes.routeCrmApprovalBatchRequest(request, env, ctx) ??
     crmReplyRoutes.routeCrmReplyRequest(request, env, ctx) ??
-    crmSalesCheckoutRoutes.routeCrmSalesCheckoutRequest(request, env, ctx) ??
     portalRoutes.routePortalRequest(request, env, ctx) ??
     crmMcpDiscoveryRoutes.routeCrmMcpDiscoveryRequest(request, env, ctx) ??
     crmMcpGrantRoutes.routeCrmMcpGrantRequest(request, env, ctx) ??
@@ -16185,10 +14729,6 @@ const routeRequest = makeWorkerRouteRequest({
     routeWellKnownAgentSurfaceRequest(request, env, ctx) ??
     routeSiteCrawlSurfaceRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
-  routeNexusPylonVisibilityRequest:
-    nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
-  routePublicCardCreditSpendReceiptRequest:
-    publicCardCreditSpendReceiptRoutes.routePublicCardCreditSpendReceiptRequest,
   routePublicInferenceReceiptRequest:
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
   routePublicKhalaCodeOutsideUserRunReceiptRequest:
@@ -16348,14 +14888,8 @@ const routeRequest = makeWorkerRouteRequest({
       requireAdminApiToken: (authRequest, authEnv) =>
         requireAdminApiToken(authRequest, authEnv),
     }).routeForgeControlPlaneRequest(request, env),
-  routeSiteCommerceRequest: (request, _env, _ctx) =>
-    siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),
   routeSiteReferralInspectionRequest:
     siteReferralInspectionRoutes.routeSiteReferralInspectionRequest,
-  routeSiteReferralPayoutLedgerRequest:
-    siteReferralPayoutLedgerRoutes.routeSiteReferralPayoutLedgerRequest,
-  routeInferenceReferralRequest:
-    inferenceReferralRoutes.routeInferenceReferralRequest,
   routeSiteReferralRequest: siteReferralRoutes.routeSiteReferralRequest,
   routeOperatorAdjutantRequest:
     operatorAdjutantRoutes.routeOperatorAdjutantRequest,
@@ -16388,10 +14922,6 @@ const routeRequest = makeWorkerRouteRequest({
       OPENAGENTS_DB: openAgentsDatabase(env),
     })
   },
-  routeOperatorSarahSalesCheckoutRequest:
-    operatorSarahSalesCheckoutRoutes.routeOperatorSarahSalesCheckoutRequest,
-  routeOperatorBusinessStarterCreditRequest:
-    operatorBusinessStarterCreditRoutes.routeOperatorBusinessStarterCreditRequest,
   routeOperatorPylonMarketplaceRequest:
     operatorPylonMarketplaceRoutes.routeOperatorPylonMarketplaceRequest,
   routeOperatorProviderAccountRequest: (request, env) => {
@@ -16417,13 +14947,6 @@ const routeRequest = makeWorkerRouteRequest({
   routeSyncRequest: syncRoutes.routeSyncRequest,
   routeTeamChatRequest: teamChatRoutes.routeTeamChatRequest,
   routeThreadFileRequest: threadFileRoutes.routeThreadFileRequest,
-  routeHygieneLaneSettlementRequest: (request, env) =>
-    hygieneLaneSettlementRoutes.routeHygieneLaneSettlementRequest(request, env),
-  routeFirmupLaneSettlementRequest: (request, env) =>
-    firmupBitcoinSettlementRoutes.routeFirmupLaneSettlementRequest(
-      request,
-      env,
-    ),
   routeTassadarTraceContributionRequest:
     tassadarTraceContributionRoutes.routeTassadarTraceContributionRequest,
   routeTraceRequest: traceStoreRoutes.routeTraceRequest,
