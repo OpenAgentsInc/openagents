@@ -88,11 +88,15 @@ export const stage1EffectNativeTheme = defineTheme({
     xl: 1280,
   },
   dimension: {
+    '4xs': 4,
+    '3xs': 56,
+    '2xs': 64,
     xs: 160,
     sm: 240,
     md: 320,
     lg: 480,
     xl: 640,
+    '2xl': 840,
     full: '100%',
   },
   motion: {
