@@ -13,14 +13,15 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     )
 
     expect(deployScript).toMatch(
-      /vp pack src\/cloudrun\/preload\.ts[\s\S]*?--no-clean/,
+      /vp pack src\/cloudrun\/preload\.ts src\/cloudrun\/cloudflare-workers-stub\.ts[\s\S]*?--no-clean/,
     )
     expect(deployScript).toContain('! -f dist-cloudrun/server.mjs')
     expect(deployScript).toContain('! -f dist-cloudrun/preload.mjs')
-    expect(deployScript).toContain('assert-self-contained-bundle.mjs')
     expect(deployScript).toContain(
-      'pnpm --config.node-linker=hoisted',
+      '! -f dist-cloudrun/cloudflare-workers-stub.mjs',
     )
+    expect(deployScript).toContain('assert-self-contained-bundle.mjs')
+    expect(deployScript).toContain('pnpm --config.node-linker=hoisted')
     expect(deployScript).toContain('--filter @openagentsinc/api-worker deploy')
     expect(deployScript).toContain('pnpm install --frozen-lockfile')
     expect(deployScript).toContain('cd "$REPO_ROOT"')

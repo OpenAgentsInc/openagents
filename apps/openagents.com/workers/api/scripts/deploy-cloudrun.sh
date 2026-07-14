@@ -61,11 +61,13 @@ echo "==> Bundling Node server + preload (Vite Plus pack)"
 rm -rf dist-cloudrun
 vp pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm \
   --platform node --target node24 >/dev/null
-vp pack src/cloudrun/preload.ts --out-dir dist-cloudrun --format esm \
-  --platform node --target node24 --no-clean >/dev/null
+vp pack src/cloudrun/preload.ts src/cloudrun/cloudflare-workers-stub.ts \
+  --out-dir dist-cloudrun --format esm --platform node --target node24 \
+  --no-clean >/dev/null
 # `vp pack` cleans its output directory by default. The preload pass must
 # preserve server.mjs and any split server chunks produced by the first pass.
-if [[ ! -f dist-cloudrun/server.mjs || ! -f dist-cloudrun/preload.mjs ]]; then
+if [[ ! -f dist-cloudrun/server.mjs || ! -f dist-cloudrun/preload.mjs || \
+      ! -f dist-cloudrun/cloudflare-workers-stub.mjs ]]; then
   echo "FATAL: Vite Plus Cloud Run bundles are incomplete" >&2
   exit 1
 fi
