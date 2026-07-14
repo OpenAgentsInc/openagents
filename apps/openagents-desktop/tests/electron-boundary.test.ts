@@ -284,9 +284,13 @@ describe("OpenAI Apps SDK icon catalog", () => {
   test("Effect Native DOM resolves its closed icon contract through the shared catalog", () => {
     const domRenderer = read("../openagents.com/packages/effect-native-render-dom/src/index.ts")
     const catalog = read("../openagents.com/packages/effect-native-core/src/index.ts")
-    expect(domRenderer).toContain('from "@openagentsinc/ui/icon"')
+    // openagents#8813 Lane A: render-dom owns its icon SVG registry
+    // (./icons.ts, iconAssetSvg) instead of depending on legacy
+    // `@openagentsinc/ui/icon` — EN must never depend on legacy ui.
+    expect(domRenderer).toContain('from "./icons"')
+    expect(domRenderer).not.toContain("@openagentsinc/ui")
     expect(domRenderer).toContain('name === "Compose" ? "ChatCompose" : name')
-    expect(domRenderer).toContain("openAiIconSvg(assetName)")
+    expect(domRenderer).toContain("iconAssetSvg[assetName]")
     expect(catalog).toContain('"ChatCompose"')
     expect(catalog).toContain('"Agent"')
   })
