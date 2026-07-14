@@ -87,6 +87,8 @@ import {
   ProductSpecCreateChannel,
   ProductSpecEditConfirmChannel,
   ProductSpecEditProposeChannel,
+  ProductSpecEvidenceAttachmentConfirmChannel,
+  ProductSpecEvidenceAttachmentProposeChannel,
   ProductSpecEvidenceRecordChannel,
   ProductSpecEvidenceVerifyChannel,
   ProductSpecOpenChannel,
@@ -103,6 +105,10 @@ import {
   decodeProductSpecEditConfirmationResult,
   decodeProductSpecEditProposalRequest,
   decodeProductSpecEditProposalResult,
+  decodeProductSpecEvidenceAttachmentConfirmRequest,
+  decodeProductSpecEvidenceAttachmentConfirmationResult,
+  decodeProductSpecEvidenceAttachmentProposalRequest,
+  decodeProductSpecEvidenceAttachmentProposalResult,
   decodeProductSpecEvidenceRequest,
   decodeProductSpecOpenRequest,
   decodeProductSpecOwnerDispositionRequest,
@@ -383,6 +389,18 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec edit confirmation is invalid." }
       return decodeProductSpecEditConfirmationResult(await ipcRenderer.invoke(ProductSpecEditConfirmChannel, request)) ??
         { ok: false, reason: "write_failed", message: "The ProductSpec confirmation response is invalid." }
+    },
+    proposeEvidenceAttachment: async (value: unknown) => {
+      const request = decodeProductSpecEvidenceAttachmentProposalRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec evidence-attachment proposal is invalid." }
+      return decodeProductSpecEvidenceAttachmentProposalResult(await ipcRenderer.invoke(ProductSpecEvidenceAttachmentProposeChannel, request)) ??
+        { ok: false, reason: "write_failed", message: "The ProductSpec evidence-attachment response is invalid." }
+    },
+    confirmEvidenceAttachment: async (value: unknown) => {
+      const request = decodeProductSpecEvidenceAttachmentConfirmRequest(value)
+      if (request === null) return { ok: false, reason: "invalid_request", message: "The ProductSpec evidence-attachment confirmation is invalid." }
+      return decodeProductSpecEvidenceAttachmentConfirmationResult(await ipcRenderer.invoke(ProductSpecEvidenceAttachmentConfirmChannel, request)) ??
+        { ok: false, reason: "write_failed", message: "The ProductSpec evidence-attachment confirmation response is invalid." }
     },
     proposePlan: async (value: unknown) => {
       const request = decodeProductSpecPlanProposalRequest(value)

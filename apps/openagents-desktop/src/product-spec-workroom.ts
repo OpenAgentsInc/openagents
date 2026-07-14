@@ -11,6 +11,8 @@ import {
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
 
 import {
+  applyProductSpecEvidenceAttachmentEdit,
+  planProductSpecEvidenceAttachmentEdit,
   PRODUCT_SPEC_EXTENSION,
   starterProductSpec,
   validateExecutableProductSpec,
@@ -22,6 +24,10 @@ import type {
   ProductSpecEditConfirmRequest,
   ProductSpecEditProposal,
   ProductSpecEditProposalRequest,
+  ProductSpecEvidenceAttachmentConfirmation,
+  ProductSpecEvidenceAttachmentConfirmRequest,
+  ProductSpecEvidenceAttachmentProposal,
+  ProductSpecEvidenceAttachmentProposalRequest,
   ProductSpecEvidenceRequest,
   ProductSpecIdentity,
   ProductSpecOpenRequest,
@@ -49,6 +55,8 @@ export type ProductSpecWorkroom = Readonly<{
   create: (request: ProductSpecCreateRequest) => ProductSpecOperationResult<ProductSpecProjection>
   proposeEdit: (request: ProductSpecEditProposalRequest) => ProductSpecOperationResult<ProductSpecEditProposal>
   confirmEdit: (request: ProductSpecEditConfirmRequest) => ProductSpecOperationResult<ProductSpecEditConfirmation>
+  proposeEvidenceAttachment: (request: ProductSpecEvidenceAttachmentProposalRequest) => ProductSpecOperationResult<ProductSpecEvidenceAttachmentProposal>
+  confirmEvidenceAttachment: (request: ProductSpecEvidenceAttachmentConfirmRequest) => ProductSpecOperationResult<ProductSpecEvidenceAttachmentConfirmation>
   proposePlan: (request: ProductSpecPlanProposalRequest) => ProductSpecOperationResult<ProductSpecPlan>
   acceptPlan: (request: ProductSpecPlanAcceptRequest) => ProductSpecOperationResult<ProductSpecRun>
   admitPacket: (request: ProductSpecPacketAdmitRequest) => ProductSpecOperationResult<ProductSpecRun>
@@ -106,6 +114,11 @@ const exactEditDiff = (previous: string, next: string): string => {
 
 type StoredEditProposal = Readonly<{
   projection: ProductSpecEditProposal
+  proposedMarkdown: string
+}>
+
+type StoredEvidenceAttachmentProposal = Readonly<{
+  projection: ProductSpecEvidenceAttachmentProposal
   proposedMarkdown: string
 }>
 
@@ -173,6 +186,7 @@ export const makeProductSpecWorkroom = (
   const planFile = (planRef: string): string => resolve(stateRoot, "plans", `${planRef}.json`)
   const runFile = (runRef: string): string => resolve(stateRoot, "runs", `${runRef}.json`)
   const editFile = (proposalRef: string): string => resolve(stateRoot, "edits", `${proposalRef}.json`)
+  const evidenceEditFile = (proposalRef: string): string => resolve(stateRoot, "evidence-edits", `${proposalRef}.json`)
   const snapshotFile = (identity: ProductSpecIdentity): string =>
     resolve(stateRoot, "snapshots", `${identity.digest.slice("sha256:".length)}.product-spec.md`)
   const loadJson = <A>(path: string): A | null => {
@@ -379,6 +393,141 @@ export const makeProductSpecWorkroom = (
       return failure("write_failed", "The ProductSpec confirmation receipt could not be persisted.")
     }
     return { ok: true, value: { proposal: confirmed, projection: reopened.value, reconciled: false, criterionDisposition: request.criterionDisposition } }
+  }
+
+  const proposeEvidenceAttachment = (
+    request: ProductSpecEvidenceAttachmentProposalRequest,
+  ): ProductSpecOperationResult<ProductSpecEvidenceAttachmentProposal> => {
+    const current = open({
+      workContextRef: request.workContextRef,
+      relativePath: request.expectedCurrent.relativePath,
+    })
+    if (!current.ok || current.value.state !== "ready" ||
+        !identitiesEqual(current.value.identity, request.expectedCurrent)) {
+      return failure("proposal_stale", "The ProductSpec changed before this evidence-attachment proposal was created.")
+    }
+    const planned = planProductSpecEvidenceAttachmentEdit({
+      currentMarkdown: current.value.sourceMarkdown,
+      proposedMarkdown: request.proposedMarkdown,
+    })
+    if (!planned.ok) {
+      const reason = planned.code === "invalid_current_document" || planned.code === "invalid_proposed_document"
+        ? "not_executable"
+        : "revision_not_incremented"
+      return failure(reason, planned.message)
+    }
+    const revision = current.value.identity.revision
+    const proposalHash = sha256(JSON.stringify({
+      kind: planned.kind,
+      workContextRef: request.workContextRef,
+      relativePath: request.expectedCurrent.relativePath,
+      before: planned.before,
+      after: planned.after,
+    }))
+    const proposal: ProductSpecEvidenceAttachmentProposal = {
+      proposalRef: `product.evidence-edit.${proposalHash.slice(0, 24)}`,
+      kind: "evidence_attachment_only",
+      workContextRef: request.workContextRef,
+      relativePath: request.expectedCurrent.relativePath,
+      before: { ...planned.before, revision },
+      after: { ...planned.after, revision },
+      diff: exactEditDiff(current.value.sourceMarkdown, request.proposedMarkdown),
+      proposedAt: now(),
+      state: "proposed",
+    }
+    const existing = loadJson<StoredEvidenceAttachmentProposal>(evidenceEditFile(proposal.proposalRef))
+    if (existing !== null) return { ok: true, value: existing.projection, reconciled: true }
+    try {
+      atomicJson(evidenceEditFile(proposal.proposalRef), {
+        projection: proposal,
+        proposedMarkdown: request.proposedMarkdown,
+      })
+    } catch {
+      return failure("write_failed", "The evidence-attachment proposal could not be persisted.")
+    }
+    return { ok: true, value: proposal }
+  }
+
+  const confirmEvidenceAttachment = (
+    request: ProductSpecEvidenceAttachmentConfirmRequest,
+  ): ProductSpecOperationResult<ProductSpecEvidenceAttachmentConfirmation> => {
+    const stored = loadJson<StoredEvidenceAttachmentProposal>(evidenceEditFile(request.proposalRef))
+    if (stored === null) return failure("not_found", "The evidence-attachment proposal does not exist.")
+    const proposal = stored.projection
+    if (proposal.before.documentDigest !== request.expectedCurrent.digest ||
+        proposal.before.revision !== request.expectedCurrent.revision ||
+        proposal.relativePath !== request.expectedCurrent.relativePath) {
+      return failure("proposal_stale", "The confirmation does not match the exact reviewed ProductSpec bytes.")
+    }
+    if (proposal.state === "confirmed") {
+      const reopened = open({ workContextRef: proposal.workContextRef, relativePath: proposal.relativePath })
+      if (!reopened.ok || reopened.value.state !== "ready" ||
+          reopened.value.identity.digest !== proposal.after.documentDigest ||
+          reopened.value.identity.revision !== proposal.after.revision) {
+        return failure("proposal_stale", "The confirmed evidence attachment no longer matches its retained document identity.")
+      }
+      const historicalRun = reopened.value.activeRunRef === undefined
+        ? null
+        : loadJson<ProductSpecRun>(runFile(reopened.value.activeRunRef))
+      return { ok: true, value: { proposal, projection: reopened.value, historicalRun, reconciled: true }, reconciled: true }
+    }
+    const current = open({ workContextRef: proposal.workContextRef, relativePath: proposal.relativePath })
+    if (!current.ok || current.value.state !== "ready" ||
+        !identitiesEqual(current.value.identity, request.expectedCurrent)) {
+      return failure("proposal_stale", "The ProductSpec changed before owner confirmation.")
+    }
+    const path = targetPath(proposal.relativePath)
+    if (path === null) return failure("invalid_request", "The ProductSpec path is outside the granted workspace.")
+    const applied = applyProductSpecEvidenceAttachmentEdit({
+      path,
+      expectedDocumentDigest: proposal.before.documentDigest,
+      proposedMarkdown: stored.proposedMarkdown,
+      ownerConfirmed: true,
+    })
+    if (!applied.ok) {
+      const reason = applied.code === "document_digest_mismatch" ? "proposal_stale"
+        : applied.code === "invalid_current_document" || applied.code === "invalid_proposed_document" ? "not_executable"
+        : applied.code === "owner_confirmation_required" ? "invalid_request"
+        : "revision_not_incremented"
+      return failure(reason, applied.message)
+    }
+    const reopened = open({ workContextRef: proposal.workContextRef, relativePath: proposal.relativePath })
+    if (!reopened.ok || reopened.value.state !== "ready" ||
+        reopened.value.identity.digest !== proposal.after.documentDigest ||
+        reopened.value.identity.revision !== proposal.after.revision) {
+      return failure("write_failed", "The owner-confirmed evidence attachment did not read back exactly.")
+    }
+    let historicalRun: ProductSpecRun | null = null
+    if (current.value.activeRunRef !== undefined) {
+      const retained = loadJson<ProductSpecRun>(runFile(current.value.activeRunRef))
+      if (retained !== null) {
+        historicalRun = {
+          ...retained,
+          updatedAt: now(),
+          plan: { ...retained.plan, state: "revision_mismatch" },
+        }
+        try {
+          atomicJson(runFile(historicalRun.runRef), historicalRun)
+          atomicJson(planFile(historicalRun.plan.planRef), historicalRun.plan)
+        } catch {
+          return failure("write_failed", "The historical run could not be retained as revision-mismatched.")
+        }
+      }
+    }
+    const confirmed: ProductSpecEvidenceAttachmentProposal = {
+      ...proposal,
+      state: "confirmed",
+      confirmedAt: now(),
+    }
+    try {
+      atomicJson(evidenceEditFile(confirmed.proposalRef), {
+        projection: confirmed,
+        proposedMarkdown: stored.proposedMarkdown,
+      })
+    } catch {
+      return failure("write_failed", "The evidence-attachment confirmation receipt could not be persisted.")
+    }
+    return { ok: true, value: { proposal: confirmed, projection: reopened.value, historicalRun, reconciled: false } }
   }
 
   const proposePlan = (
@@ -823,6 +972,8 @@ export const makeProductSpecWorkroom = (
     create,
     proposeEdit,
     confirmEdit,
+    proposeEvidenceAttachment,
+    confirmEvidenceAttachment,
     proposePlan,
     acceptPlan,
     admitPacket,

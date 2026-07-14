@@ -92,6 +92,8 @@ export type ProductSpecRendererBridge = Readonly<{
   create: (value: unknown) => Promise<unknown>
   proposeEdit: (value: unknown) => Promise<unknown>
   confirmEdit: (value: unknown) => Promise<unknown>
+  proposeEvidenceAttachment: (value: unknown) => Promise<unknown>
+  confirmEvidenceAttachment: (value: unknown) => Promise<unknown>
   proposePlan: (value: unknown) => Promise<unknown>
   acceptPlan: (value: unknown) => Promise<unknown>
   admitPacket: (value: unknown) => Promise<unknown>
@@ -115,6 +117,8 @@ export const unavailableProductSpecRendererBridge: ProductSpecRendererBridge = {
   create: unavailable,
   proposeEdit: unavailable,
   confirmEdit: unavailable,
+  proposeEvidenceAttachment: unavailable,
+  confirmEvidenceAttachment: unavailable,
   proposePlan: unavailable,
   acceptPlan: unavailable,
   admitPacket: unavailable,

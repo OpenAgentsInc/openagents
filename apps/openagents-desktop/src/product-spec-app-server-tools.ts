@@ -1,5 +1,6 @@
 import {
   decodeProductSpecEditProposalRequest,
+  decodeProductSpecEvidenceAttachmentProposalRequest,
   decodeProductSpecEvidenceRequest,
   decodeProductSpecPacketBlockRequest,
   decodeProductSpecPlanProposalRequest,
@@ -44,6 +45,12 @@ export const ProductSpecDynamicTools = [{
   tools: [
     fn("get_run", "Read one exact host-owned ProductSpec run projection.", ["runRef"], { runRef: ref }),
     fn("propose_edit", "Propose Markdown for the next ProductSpec revision; the owner must confirm it.",
+      ["workContextRef", "expectedCurrent", "proposedMarkdown"], {
+        workContextRef: ref,
+        expectedCurrent: identity,
+        proposedMarkdown: { type: "string", minLength: 1, maxLength: 1_000_000 },
+      }),
+    fn("propose_evidence_attachment", "Propose an evidence-attachment-only ProductSpec edit. This cannot change canonical intent or publish until the owner confirms the exact diff.",
       ["workContextRef", "expectedCurrent", "proposedMarkdown"], {
         workContextRef: ref,
         expectedCurrent: identity,
@@ -118,6 +125,10 @@ export const handleProductSpecDynamicTool = (
       return invoke(decodeProductSpecEditProposalRequest(args), value => value.workContextRef !== authority.workContextRef
         ? { ok: false, reason: "invalid_request", message: "The ProductSpec work context is not selected." }
         : authority.service.proposeEdit(value))
+    case "propose_evidence_attachment":
+      return invoke(decodeProductSpecEvidenceAttachmentProposalRequest(args), value => value.workContextRef !== authority.workContextRef
+        ? { ok: false, reason: "invalid_request", message: "The ProductSpec work context is not selected." }
+        : authority.service.proposeEvidenceAttachment(value))
     case "propose_plan":
       return invoke(decodeProductSpecPlanProposalRequest(args), value => value.workContextRef !== authority.workContextRef
         ? { ok: false, reason: "invalid_request", message: "The ProductSpec work context is not selected." }

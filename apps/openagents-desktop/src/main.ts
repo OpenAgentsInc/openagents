@@ -278,6 +278,8 @@ import {
   ProductSpecCreateChannel,
   ProductSpecEditConfirmChannel,
   ProductSpecEditProposeChannel,
+  ProductSpecEvidenceAttachmentConfirmChannel,
+  ProductSpecEvidenceAttachmentProposeChannel,
   ProductSpecEvidenceRecordChannel,
   ProductSpecEvidenceVerifyChannel,
   ProductSpecOpenChannel,
@@ -292,6 +294,8 @@ import {
   decodeProductSpecCreateRequest,
   decodeProductSpecEditConfirmRequest,
   decodeProductSpecEditProposalRequest,
+  decodeProductSpecEvidenceAttachmentConfirmRequest,
+  decodeProductSpecEvidenceAttachmentProposalRequest,
   decodeProductSpecEvidenceRequest,
   decodeProductSpecOpenRequest,
   decodeProductSpecOwnerDispositionRequest,
@@ -1358,6 +1362,20 @@ ipcMain.handle(ProductSpecEditConfirmChannel, (event, raw: unknown) => {
   return request === null
     ? productSpecUnavailable("The ProductSpec edit confirmation is invalid.")
     : withProductSpecWorkroom(event, authority => authority.service.confirmEdit(request))
+})
+ipcMain.handle(ProductSpecEvidenceAttachmentProposeChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecEvidenceAttachmentProposalRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec evidence-attachment proposal is invalid.")
+    : withProductSpecWorkroom(event, authority => request.workContextRef !== authority.workContextRef
+      ? productSpecUnavailable("The ProductSpec work context is not the selected coding session.")
+      : authority.service.proposeEvidenceAttachment(request))
+})
+ipcMain.handle(ProductSpecEvidenceAttachmentConfirmChannel, (event, raw: unknown) => {
+  const request = decodeProductSpecEvidenceAttachmentConfirmRequest(raw)
+  return request === null
+    ? productSpecUnavailable("The ProductSpec evidence-attachment confirmation is invalid.")
+    : withProductSpecWorkroom(event, authority => authority.service.confirmEvidenceAttachment(request))
 })
 ipcMain.handle(ProductSpecPlanProposeChannel, (event, raw: unknown) => {
   const request = decodeProductSpecPlanProposalRequest(raw)

@@ -87,6 +87,15 @@ build plus Electron teardown receipt.
 - `src/fleet-control.ts` — main-process adapter for the existing local Pylon
   `intent.submit` command. It resolves the loopback control token locally and
   returns only `accepted | rejected | unavailable` status.
+- `src/product-spec-workroom.ts` — host-owned ProductSpec plan/run authority.
+  In addition to revisioned intent edits, it exposes a distinct
+  evidence-attachment proposal path backed by `@openagentsinc/product-spec`:
+  an agent may propose exact Markdown, but only a fixed owner-confirmation IPC
+  can apply it. Confirmation rechecks the reviewed document digest, preserves
+  `spec_revision` and the canonical intent digest, changes the exact document
+  digest, and retains any prior run and receipts as `revision_mismatch` history.
+  There is deliberately no app-server confirmation tool, so private or
+  unreviewed receipt material cannot auto-publish through the agent path.
 - `src/renderer/` — the application, 100% Effect Native:
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.

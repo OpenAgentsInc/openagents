@@ -325,6 +325,15 @@ accepted `AC-*` plan/run are PSEL-3.
 - do not send `REFUTED`, `INCONCLUSIVE`, stale, or infrastructure-failed
   observations through the Desktop loop's current pass-only verification path.
 
+Desktop now implements that bounded maintenance path (#8805). Codex app-server
+tools can create a typed proposal only. A separate schema-decoded owner
+confirmation invokes the package planner/apply primitives, rechecks the exact
+reviewed bytes immediately before write, and retains an accepted historical
+run (including its receipts) as `revision_mismatch`. Generic edits still
+require a revision bump and their existing packet-supersession review. The
+path does not discover or auto-publish Assurance receipts; the owner reviews
+the exact attachment diff before any bytes change.
+
 ### PSEL-4 — reconcile learning
 
 - when a typed diff only changes classified evidence attachments, maintain

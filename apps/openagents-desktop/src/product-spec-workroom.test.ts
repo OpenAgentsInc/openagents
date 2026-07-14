@@ -57,6 +57,19 @@ cut:
 \`\`\`
 `
 
+const withPublicEvidenceAttachment = (markdown: string): string => `${markdown.replace(
+  'updated_at: "2026-07-13T00:00:00Z"',
+  'updated_at: "2026-07-13T12:30:00Z"',
+)}
+## Related Artifacts
+
+\`\`\`productspec-related-artifacts
+- type: github_issue
+  url: "https://github.com/OpenAgentsInc/openagents/issues/8805"
+  title: "Owner-reviewed evidence attachment path"
+\`\`\`
+`
+
 const harness = () => {
   const root = mkdtempSync(join(tmpdir(), "oa-product-spec-"))
   roots.push(root)
@@ -503,5 +516,97 @@ describe("ProductSpec workroom authority", () => {
     const snapshots = readdirSync(`${stateRoot}/snapshots`)
     expect(snapshots).toHaveLength(1)
     expect(existsSync(`${stateRoot}/snapshots/${proposed.value.next.digest.slice("sha256:".length)}.product-spec.md`)).toBe(true)
+  })
+
+  test("owner-confirms an exact evidence-only edit while retaining the old run as stale history", () => {
+    const { service } = harness()
+    const current = openFixture(service)
+    const planned = service.proposePlan(validPlan(current.identity))
+    if (!planned.ok) throw new Error("plan did not propose")
+    const accepted = service.acceptPlan({ planRef: planned.value.planRef, expectedSpec: current.identity })
+    if (!accepted.ok) throw new Error("plan did not accept")
+    const admitted = service.admitPacket({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      leaseRef: "lease.evidence.attachment",
+      executorRef: "agent.root",
+      executionMode: "owner-present",
+      expectedSpec: current.identity,
+    })
+    if (!admitted.ok) throw new Error("packet did not admit")
+    const evidenced = service.recordEvidence({
+      runRef: accepted.value.runRef,
+      packetRef: "work.packet.authority",
+      leaseRef: "lease.evidence.attachment",
+      evidenceRef: "evidence.pre.attachment",
+      evidenceKind: "test_run",
+      expectedSpec: current.identity,
+    })
+    if (!evidenced.ok) throw new Error("evidence did not record")
+    const receiptRef = evidenced.value.plan.packets[0]?.evidenceReceipts[0]?.receiptRef
+
+    const proposal = service.proposeEvidenceAttachment({
+      workContextRef: "work.context.fixture",
+      expectedCurrent: current.identity,
+      proposedMarkdown: withPublicEvidenceAttachment(current.sourceMarkdown),
+    })
+    expect(proposal).toMatchObject({
+      ok: true,
+      value: {
+        kind: "evidence_attachment_only",
+        before: { documentDigest: current.identity.digest, revision: 1 },
+        after: { revision: 1 },
+        state: "proposed",
+      },
+    })
+    if (!proposal.ok) return
+    expect(proposal.value.after.documentDigest).not.toBe(proposal.value.before.documentDigest)
+    expect(proposal.value.after.intentDigest).toBe(proposal.value.before.intentDigest)
+    expect(openFixture(service).identity).toEqual(current.identity)
+
+    const confirmed = service.confirmEvidenceAttachment({
+      proposalRef: proposal.value.proposalRef,
+      expectedCurrent: current.identity,
+    })
+    expect(confirmed).toMatchObject({
+      ok: true,
+      value: {
+        projection: { state: "ready", identity: { revision: 1, digest: proposal.value.after.documentDigest } },
+        historicalRun: { runRef: accepted.value.runRef, plan: { state: "revision_mismatch" } },
+        reconciled: false,
+      },
+    })
+    if (!confirmed.ok || confirmed.value.historicalRun === null) return
+    expect(confirmed.value.historicalRun.plan.packets[0]?.evidenceReceipts[0]?.receiptRef).toBe(receiptRef)
+    expect(service.run(accepted.value.runRef)).toMatchObject({
+      ok: true,
+      value: { plan: { state: "revision_mismatch" } },
+    })
+    expect(service.confirmEvidenceAttachment({
+      proposalRef: proposal.value.proposalRef,
+      expectedCurrent: current.identity,
+    })).toMatchObject({ ok: true, reconciled: true, value: { reconciled: true } })
+  })
+
+  test("evidence attachments fail closed on intent drift and exact-byte races", () => {
+    const { workspaceRoot, service } = harness()
+    const current = openFixture(service)
+    expect(service.proposeEvidenceAttachment({
+      workContextRef: "work.context.fixture",
+      expectedCurrent: current.identity,
+      proposedMarkdown: current.sourceMarkdown.replace("immutable digest", "different intent"),
+    })).toMatchObject({ ok: false, reason: "revision_not_incremented" })
+
+    const proposal = service.proposeEvidenceAttachment({
+      workContextRef: "work.context.fixture",
+      expectedCurrent: current.identity,
+      proposedMarkdown: withPublicEvidenceAttachment(current.sourceMarkdown),
+    })
+    if (!proposal.ok) throw new Error("evidence edit did not propose")
+    writeFileSync(join(workspaceRoot, "specs", "fixture.product-spec.md"), `${current.sourceMarkdown}\n`)
+    expect(service.confirmEvidenceAttachment({
+      proposalRef: proposal.value.proposalRef,
+      expectedCurrent: current.identity,
+    })).toMatchObject({ ok: false, reason: "proposal_stale" })
   })
 })

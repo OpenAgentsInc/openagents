@@ -6,6 +6,8 @@ export const ProductSpecPlanProposeChannel = "openagents:product-spec:plan-propo
 export const ProductSpecPlanAcceptChannel = "openagents:product-spec:plan-accept" as const
 export const ProductSpecEditProposeChannel = "openagents:product-spec:edit-propose" as const
 export const ProductSpecEditConfirmChannel = "openagents:product-spec:edit-confirm" as const
+export const ProductSpecEvidenceAttachmentProposeChannel = "openagents:product-spec:evidence-attachment-propose" as const
+export const ProductSpecEvidenceAttachmentConfirmChannel = "openagents:product-spec:evidence-attachment-confirm" as const
 export const ProductSpecPacketAdmitChannel = "openagents:product-spec:packet-admit" as const
 export const ProductSpecPacketBlockChannel = "openagents:product-spec:packet-block" as const
 export const ProductSpecPacketDispositionChannel = "openagents:product-spec:packet-disposition" as const
@@ -209,6 +211,34 @@ export const ProductSpecEditConfirmationSchema = Schema.Struct({
 })
 export type ProductSpecEditConfirmation = typeof ProductSpecEditConfirmationSchema.Type
 
+const ProductSpecEvidenceAttachmentIdentitySchema = Schema.Struct({
+  documentDigest: DigestSchema,
+  intentDigest: DigestSchema,
+  revision: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+})
+
+export const ProductSpecEvidenceAttachmentProposalSchema = Schema.Struct({
+  proposalRef: RefSchema,
+  kind: Schema.Literal("evidence_attachment_only"),
+  workContextRef: RefSchema,
+  relativePath: RelativeSpecPathSchema,
+  before: ProductSpecEvidenceAttachmentIdentitySchema,
+  after: ProductSpecEvidenceAttachmentIdentitySchema,
+  diff: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_100_000)),
+  proposedAt: TimestampSchema,
+  state: Schema.Literals(["proposed", "confirmed"]),
+  confirmedAt: Schema.optional(TimestampSchema),
+})
+export type ProductSpecEvidenceAttachmentProposal = typeof ProductSpecEvidenceAttachmentProposalSchema.Type
+
+export const ProductSpecEvidenceAttachmentConfirmationSchema = Schema.Struct({
+  proposal: ProductSpecEvidenceAttachmentProposalSchema,
+  projection: ProductSpecProjectionSchema,
+  historicalRun: Schema.NullOr(ProductSpecRunSchema),
+  reconciled: Schema.Boolean,
+})
+export type ProductSpecEvidenceAttachmentConfirmation = typeof ProductSpecEvidenceAttachmentConfirmationSchema.Type
+
 export const ProductSpecOperationErrorSchema = Schema.Struct({
   ok: Schema.Literal(false),
   reason: Schema.Literals([
@@ -283,6 +313,19 @@ export const ProductSpecEditConfirmRequestSchema = Schema.Struct({
   criterionDisposition: Schema.Literal("supersede_affected_packets"),
 })
 export type ProductSpecEditConfirmRequest = typeof ProductSpecEditConfirmRequestSchema.Type
+
+export const ProductSpecEvidenceAttachmentProposalRequestSchema = Schema.Struct({
+  workContextRef: RefSchema,
+  expectedCurrent: ProductSpecIdentitySchema,
+  proposedMarkdown: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_000_000)),
+})
+export type ProductSpecEvidenceAttachmentProposalRequest = typeof ProductSpecEvidenceAttachmentProposalRequestSchema.Type
+
+export const ProductSpecEvidenceAttachmentConfirmRequestSchema = Schema.Struct({
+  proposalRef: RefSchema,
+  expectedCurrent: ProductSpecIdentitySchema,
+})
+export type ProductSpecEvidenceAttachmentConfirmRequest = typeof ProductSpecEvidenceAttachmentConfirmRequestSchema.Type
 
 export const ProductSpecPacketAdmitRequestSchema = Schema.Struct({
   runRef: RefSchema,
@@ -363,6 +406,8 @@ export const ProductSpecPlanResultSchema = operationResult(ProductSpecPlanSchema
 export const ProductSpecRunResultSchema = operationResult(ProductSpecRunSchema)
 export const ProductSpecEditProposalResultSchema = operationResult(ProductSpecEditProposalSchema)
 export const ProductSpecEditConfirmationResultSchema = operationResult(ProductSpecEditConfirmationSchema)
+export const ProductSpecEvidenceAttachmentProposalResultSchema = operationResult(ProductSpecEvidenceAttachmentProposalSchema)
+export const ProductSpecEvidenceAttachmentConfirmationResultSchema = operationResult(ProductSpecEvidenceAttachmentConfirmationSchema)
 
 const decode = <A>(schema: any, value: unknown): A | null => {
   try {
@@ -378,6 +423,8 @@ export const decodeProductSpecPlanProposalRequest = (value: unknown) => decode<P
 export const decodeProductSpecPlanAcceptRequest = (value: unknown) => decode<ProductSpecPlanAcceptRequest>(ProductSpecPlanAcceptRequestSchema, value)
 export const decodeProductSpecEditProposalRequest = (value: unknown) => decode<ProductSpecEditProposalRequest>(ProductSpecEditProposalRequestSchema, value)
 export const decodeProductSpecEditConfirmRequest = (value: unknown) => decode<ProductSpecEditConfirmRequest>(ProductSpecEditConfirmRequestSchema, value)
+export const decodeProductSpecEvidenceAttachmentProposalRequest = (value: unknown) => decode<ProductSpecEvidenceAttachmentProposalRequest>(ProductSpecEvidenceAttachmentProposalRequestSchema, value)
+export const decodeProductSpecEvidenceAttachmentConfirmRequest = (value: unknown) => decode<ProductSpecEvidenceAttachmentConfirmRequest>(ProductSpecEvidenceAttachmentConfirmRequestSchema, value)
 export const decodeProductSpecPacketAdmitRequest = (value: unknown) => decode<ProductSpecPacketAdmitRequest>(ProductSpecPacketAdmitRequestSchema, value)
 export const decodeProductSpecPacketBlockRequest = (value: unknown) => decode<ProductSpecPacketBlockRequest>(ProductSpecPacketBlockRequestSchema, value)
 export const decodeProductSpecPacketDispositionRequest = (value: unknown) => decode<ProductSpecPacketDispositionRequest>(ProductSpecPacketDispositionRequestSchema, value)
@@ -391,3 +438,5 @@ export const decodeProductSpecPlanResult = (value: unknown) => decode(ProductSpe
 export const decodeProductSpecRunResult = (value: unknown) => decode(ProductSpecRunResultSchema, value)
 export const decodeProductSpecEditProposalResult = (value: unknown) => decode(ProductSpecEditProposalResultSchema, value)
 export const decodeProductSpecEditConfirmationResult = (value: unknown) => decode(ProductSpecEditConfirmationResultSchema, value)
+export const decodeProductSpecEvidenceAttachmentProposalResult = (value: unknown) => decode(ProductSpecEvidenceAttachmentProposalResultSchema, value)
+export const decodeProductSpecEvidenceAttachmentConfirmationResult = (value: unknown) => decode(ProductSpecEvidenceAttachmentConfirmationResultSchema, value)

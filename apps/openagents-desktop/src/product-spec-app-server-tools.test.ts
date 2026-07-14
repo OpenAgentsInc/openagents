@@ -15,11 +15,12 @@ const call = (tool: string, args: unknown) => ({
 describe("ProductSpec Codex app-server tools", () => {
   test("exposes proposal/report tools but no authority-bearing approval operation", () => {
     const tools = ProductSpecDynamicTools[0].tools.map(tool => tool.name)
-    expect(tools).toEqual(["get_run", "propose_edit", "propose_plan", "report_blocked", "record_evidence"])
+    expect(tools).toEqual(["get_run", "propose_edit", "propose_evidence_attachment", "propose_plan", "report_blocked", "record_evidence"])
     expect(tools).not.toContain("accept_plan")
     expect(tools).not.toContain("admit_packet")
     expect(tools).not.toContain("verify_evidence")
     expect(tools).not.toContain("owner_disposition")
+    expect(tools).not.toContain("confirm_evidence_attachment")
   })
 
   test("fails with explicit incompatible_workflow when no admitted work context exists", () => {
@@ -55,5 +56,28 @@ describe("ProductSpec Codex app-server tools", () => {
       workContextRef: "work.context.1",
       service,
     })).toMatchObject({ success: false })
+  })
+
+  test("agents can only propose evidence attachments for later owner review", () => {
+    const requested: unknown[] = []
+    const service = {
+      proposeEvidenceAttachment: (value: unknown) => {
+        requested.push(value)
+        return { ok: false, reason: "revision_not_incremented", message: "intent changed" }
+      },
+    } as unknown as ProductSpecWorkroom
+    const expectedCurrent = {
+      specRef: "product.spec.aaaaaaaaaaaaaaaaaaaaaaaa",
+      relativePath: "specs/fixture.product-spec.md",
+      revision: 1,
+      digest: `sha256:${"a".repeat(64)}`,
+    }
+    const result = handleProductSpecDynamicTool(call("propose_evidence_attachment", {
+      workContextRef: "work.context.1",
+      expectedCurrent,
+      proposedMarkdown: "review me",
+    }), { workContextRef: "work.context.1", service })
+    expect(requested).toEqual([{ workContextRef: "work.context.1", expectedCurrent, proposedMarkdown: "review me" }])
+    expect(result).toMatchObject({ success: false })
   })
 })
