@@ -1,14 +1,6 @@
-import { openAgentsNativeWindTokens } from "@openagentsinc/ui/react"
+import { khalaMobileNativeWindTokens } from "./nativewind-tokens.cjs"
 
-const khalaMobileBackground = "#02060d"
-
-export const khalaMobileTokens = {
-  ...openAgentsNativeWindTokens,
-  colors: {
-    ...openAgentsNativeWindTokens.colors,
-    bg: khalaMobileBackground,
-  },
-} as const
+export const khalaMobileTokens = khalaMobileNativeWindTokens
 
 export const khalaMobileTheme = {
   background: khalaMobileTokens.colors.bg,

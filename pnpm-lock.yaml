@@ -1230,9 +1230,6 @@ importers:
       '@openagentsinc/khala-sync-db-collection':
         specifier: workspace:*
         version: link:../../packages/khala-sync-db-collection
-      '@openagentsinc/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       '@react-navigation/drawer':
         specifier: ^7.6.2
         version: 7.12.8(4590a17cb8a7ee457fbc313689f03a96)

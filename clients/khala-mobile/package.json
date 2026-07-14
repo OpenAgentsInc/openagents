@@ -39,7 +39,6 @@
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-sync-db-collection": "workspace:*",
-    "@openagentsinc/ui": "workspace:*",
     "@react-navigation/drawer": "^7.6.2",
     "@react-navigation/native": "^7.3.1",
     "@react-navigation/native-stack": "^7.2.0",

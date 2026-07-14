@@ -10,16 +10,13 @@
 > fixes until cutover. Do not import this app package into the new app.
 
 Expo React Native companion for Khala. This was the TS-8 destination app: one
-codebase for iOS and Android, NativeWind over the shared OpenAgents token
+codebase for iOS and Android, NativeWind over a frozen local token snapshot
 export, Khala Sync read models through `@openagentsinc/khala-sync-db-collection`,
 and self-hosted OTA through OpenAgents Updates. NativeWind 4 currently requires
 Tailwind 3 plus a CommonJS-readable Tailwind config at Metro build time, so this
-mobile package pins a local Tailwind 3 compiler and reads the TS-9 parity-tested
-`@openagentsinc/ui/nativewind-tokens.cjs` bridge. The React/Tailwind web
-surfaces keep Tailwind 4. Mobile deliberately overrides only the shared
-`bg` token from pure black to `#02060d`, matching the Arcade/StarCraft
-direction's tinted void while leaving the web brand surfaces' black canvas
-unchanged.
+mobile package pins a local Tailwind 3 compiler. Its historical token values
+are frozen under `src/theme/nativewind-tokens.cjs`; the deprecated client no
+longer constrains or imports the active `@openagentsinc/ui` package.
 
 Metro also carries a local resolver shim for this monorepo's TypeScript
 packages: shared packages use NodeNext `.js` import specifiers while source

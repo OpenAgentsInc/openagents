@@ -27,7 +27,7 @@ export type BackgroundGradientProps = Readonly<{
  * interactive feedback.
  *
  * Recolored per the harvest issue: Arcade's `cyan`/`rgb(0,248,248)` stops ->
- * `accent`/`accentSoft` (`packages/ui/src/react/nativewind-tokens.cjs` via
+ * `accent`/`accentSoft` (the frozen local token snapshot via
  * `../../theme/tokens`). Duration comes from `MOTION_AMBIENT` instead of a
  * hardcoded 2000ms literal.
  *

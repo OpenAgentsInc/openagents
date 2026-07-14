@@ -18,7 +18,7 @@ import { Scaler } from "./scaler"
  *
  * Recolored per the harvest issue: `colors.palette.cyan400` -> `accent`
  * (`#4fd0ff`), background fill `almostBlack` -> `surfaceRaised` (both from
- * `packages/ui/src/react/nativewind-tokens.cjs` via `../../theme/tokens`).
+ * the frozen local token snapshot via `../../theme/tokens`).
  *
  * Arcade bridged its `visible`/`highlighted` transitions into Skia's own
  * reactive value system via `useSharedValueEffect`. The Skia version pinned

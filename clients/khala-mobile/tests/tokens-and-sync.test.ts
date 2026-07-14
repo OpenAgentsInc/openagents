@@ -1,8 +1,6 @@
 import { describe, expect, test } from "vite-plus/test"
 import { createRequire } from "node:module"
 
-import { openAgentsNativeWindTokens } from "@openagentsinc/ui/react"
-
 import { createMobileKhalaSyncPreviewState } from "../src/sync/khala-sync-mobile"
 import { khalaMobileTokens } from "../src/theme/tokens"
 
@@ -18,9 +16,8 @@ const tailwindConfig = require("../tailwind.config.cjs") as {
 }
 
 describe("Khala mobile tokens and TS-3 read models", () => {
-  test("uses the shared NativeWind token export", () => {
-    expect(khalaMobileTokens.colors.accent).toBe(openAgentsNativeWindTokens.colors.accent)
-    expect(openAgentsNativeWindTokens.colors.bg).toBe("#000")
+  test("uses the frozen package-local NativeWind token snapshot", () => {
+    expect(khalaMobileTokens.colors.accent).toBe("#4fd0ff")
     expect(khalaMobileTokens.colors.bg).toBe("#02060d")
     expect(tailwindConfig.theme.extend.colors.bg).toBe(khalaMobileTokens.colors.bg)
     expect(tailwindConfig.theme.extend.borderRadius.xl).toBe("8px")

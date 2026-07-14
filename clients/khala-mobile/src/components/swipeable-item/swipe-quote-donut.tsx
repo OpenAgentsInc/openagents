@@ -25,7 +25,7 @@ export type SwipeQuoteDonutProps = Readonly<{
  *
  * Reskinned per the harvest issue: `accent` (`#4fd0ff`) stroke over a
  * `surfaceMuted` track (both from
- * `packages/ui/src/react/nativewind-tokens.cjs` via `../../theme/tokens`) —
+ * the frozen local token snapshot via `../../theme/tokens`) —
  * Arcade's original drew a translucent-white ring with no visible track at
  * all, so this port adds one for a clearer "how far until it completes"
  * affordance.

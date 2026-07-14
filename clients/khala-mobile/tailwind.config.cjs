@@ -1,12 +1,4 @@
-const { openAgentsNativeWindTokens } = require("@openagentsinc/ui/nativewind-tokens.cjs")
-
-const khalaMobileNativeWindTokens = {
-  ...openAgentsNativeWindTokens,
-  colors: {
-    ...openAgentsNativeWindTokens.colors,
-    bg: "#02060d"
-  }
-}
+const { khalaMobileNativeWindTokens } = require("./src/theme/nativewind-tokens.cjs")
 
 module.exports = {
   content: [

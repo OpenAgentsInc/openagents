@@ -12,7 +12,7 @@ import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from "@expo-google-fo
  * owner's mandate is arcade's font, size, and structure everywhere except
  * its literal StarCraft color palette (kept as OpenAgents' own blue/dark
  * tokens, see `theme/tokens.ts`). Space Grotesk is arcade's real primary
- * font (not a fallback CSS stack — `@openagentsinc/ui`'s shared NativeWind
+ * font (not a fallback CSS stack — the package-local frozen NativeWind
  * `font-sans` token is a web font-stack string that silently falls back to
  * the OS default on native, which is why this app's typography previously
  * didn't actually match arcade at all despite looking like it should).
