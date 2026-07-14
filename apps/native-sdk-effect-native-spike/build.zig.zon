@@ -1,0 +1,13 @@
+.{
+    .name = .native_sdk_effect_native_spike,
+    .fingerprint = 0x296144af5a707070,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .native_sdk = .{
+            .url = "https://github.com/vercel-labs/native/archive/f7aa92af6dcece250feba852af4d22e7f5429312.tar.gz",
+            .hash = "native_sdk-0.1.0-hzDzQn8FgwG4nOXYCOWFvSMV3kYA7R7gMwKYyVHrmY21",
+        },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "frontend", "app.zon", "README.md" },
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@openagentsinc/native-sdk-effect-native-spike",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A bounded Native SDK host and Effect Native renderer-adoption spike.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev:frontend": "vp dev --host 127.0.0.1",
+    "build:frontend": "vp build",
+    "build:native": "zig build",
+    "test:native": "zig build test",
+    "test": "vp test --run frontend/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run build:frontend && pnpm run test:native && pnpm run build:native"
+  },
+  "dependencies": {
+    "@effect-native/core": "workspace:*",
+    "@effect-native/render-dom": "workspace:*",
+    "@effect-native/tokens": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "0.2.4"
+  }
+}

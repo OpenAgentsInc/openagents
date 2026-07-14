@@ -1,17 +1,19 @@
 # Vercel Native SDK, Effect Native, and OpenAgents Desktop audit
 
 - Date: 2026-07-14
-- Snapshot: OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)
+- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; bounded spike based on OpenAgents `4b5340f73aeceac2dbe0ab901d9f7ad96ada0c66`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)
 - Class: architecture and dependency audit
-- Status: recommendation; no implementation, migration, or release authority
-- Dispatch: no; any experiment needs a bounded issue and claim after the
-  current Desktop release path is protected
+- Status: recommendation with bounded hybrid implementation receipt; no
+  migration or release authority
+- Dispatch: no; the authorized hybrid spike is complete, and any native
+  renderer or product migration still needs a bounded issue and claim
 - Owner: OpenAgents Desktop and Effect Native architecture
 - Final disposition: retain until Native SDK is adopted, rejected, or superseded by a later renderer/host decision
-- Decision: retain Electron as the shipping OpenAgents Desktop host; treat
-  Native SDK as a promising pre-1.0 renderer/platform reference and permit
-  only a disposable Effect Native renderer spike against a small catalog
-  slice
+- Decision: retain Electron as the shipping OpenAgents Desktop host; keep the
+  completed hybrid spike as evidence that the two runtimes compose; treat
+  Native SDK's component catalog as renderer implementation material, not a
+  second Effect Native authoring API; require the next proof to be a real
+  native lowering rather than another WebView shell
 
 ## Executive decision
 
@@ -55,9 +57,142 @@ That architecture is viable enough to prototype. It is not production-viable
 enough to displace Electron today. The rational near-term action is to learn
 from Native SDK's deterministic rendering, accessibility snapshots, automation,
 source provenance, explicit capability policy, and headless `NullPlatform`,
-while shipping the existing Electron + Effect Native design. A future spike
-should prove a small `@effect-native/render-native-sdk` adapter, not begin an
-OpenAgents Desktop rewrite.
+while shipping the existing Electron + Effect Native design. The bounded
+hybrid spike recorded below proves that Native SDK and a real Effect Native
+program can share one window. It does **not** prove a native Effect Native
+renderer. A future spike should prove a small
+`@effect-native/render-native-sdk` adapter, not begin an OpenAgents Desktop
+rewrite.
+
+## Implemented hybrid spike receipt
+
+The follow-up implementation lives at
+[`apps/native-sdk-effect-native-spike`](../../apps/native-sdk-effect-native-spike/README.md).
+It was created with the pinned Native SDK CLI, not hand-scaffolded:
+
+```text
+native init apps/native-sdk-effect-native-spike --template zig-core --full
+```
+
+The generated starter was then converted into a deliberately bounded hybrid:
+
+```mermaid
+flowchart LR
+  NS["Native SDK macOS window"] --> Canvas["Retained Metal canvas"]
+  Canvas --> Chrome["Native toolbar, rail, cards, badges, switch, status"]
+  Canvas --> Anchor["Semantic WebView pane anchor"]
+  Anchor --> WV["WKWebView child surface"]
+  WV --> EN["Effect Native ViewProgram + typed intents"]
+  EN --> DOM["@effect-native/render-dom"]
+```
+
+Native SDK owns the window, Metal-backed retained canvas, opinionated native
+components, layout, accessibility snapshot, child-WebView bounds, and reload
+token. Inside the WebView, real Effect v4 owns a `SubscriptionRef`, typed
+`defineIntent` definitions, an `IntentRegistry`, a `ViewProgram`, and the
+shared Effect Native catalog rendered by `@effect-native/render-dom`. The two
+counters intentionally remain separate: one demonstrates Native SDK's typed
+Zig `Model`/`Msg`/`update`; the other demonstrates the actual Effect Native
+intent loop. There is no false claim that Native SDK's TypeScript subset ran
+Effect.
+
+The app exact-pins the audited Native SDK commit and archive hash in
+`build.zig.zon`; it does not depend on the machine-specific
+`projects/repos/native` path. The `native init --full` scaffold emitted a
+GitHub Actions workflow, which was removed because OpenAgents forbids GitHub
+Actions. Local and repository verification remain the authority.
+
+### Spike verification
+
+The following passed on macOS with Zig 0.16.0, pnpm 11.10.0, and the pinned
+Native SDK 0.5.1 source:
+
+```text
+pnpm run typecheck             -> exit 0
+vp test --run frontend/src     -> 1 file, 3 tests passed
+vp build                       -> exit 0; 199 modules transformed
+zig build test                 -> exit 0; 4 native tests passed
+zig build                      -> exit 0
+native validate app.zon        -> manifest.valid
+native check . --strict        -> web layer included; manifest valid
+```
+
+The native tests prove typed native control dispatch, stable widget identity,
+the WebView anchor and reload token, the expected Native SDK component
+descriptors, and retained-canvas layout. The Effect Native tests prove decoded
+intent dispatch and state updates, catalog emission, and the rule that Native
+SDK-specific fields such as `gpu_backend` and `style_tokens` never enter the
+Effect Native view tree.
+
+A headed `-Dautomation=true` smoke with the Vite Plus frontend produced:
+
+```text
+automation protocol            6
+dispatch errors                0
+native canvas                  nonblank, Metal, 1120x720 @2x
+retained widgets / semantics   30 / 30
+child WebView                  816x660, anchored at (304,60)
+first native frame             64.5 ms (150 ms budget passed)
+frontend URL                   http://127.0.0.1:5173/
+```
+
+The composited window showed the Native SDK controls and the live Effect
+Native catalog together. In development the app consumes
+`NATIVE_SDK_FRONTEND_URL`, which `native dev` manages; a packaged build is the
+proof surface for `zero://app` assets. The renderer bridge, native catalog
+lowering, packaging/signing, accessibility acceptance, and Electron host
+parity remain unproven.
+
+This receipt changes one conclusion from hypothetical to observed: Option A,
+the hybrid WebView shell, works. It does not satisfy NS-1 or NS-2 below and
+does not change the shipping-host decision.
+
+## How to harness Native SDK's opinionated components
+
+Native SDK 0.5.1 exposes 32 built-in retained-canvas components with house
+defaults for neutral surfaces, Geist typography, borders, focus states, color,
+radius, shadow, blur, and motion. Its higher-value contribution is broader
+than pixels: it has explicit structural identity, controlled input and
+selection, virtual-list anchoring, keyboard models, native context menus,
+semantic roles, deterministic snapshots, and source provenance.
+
+Effect Native should harness that work at four levels:
+
+| Level | Examples | Effect Native policy |
+| --- | --- | --- |
+| Direct renderer lowerings | Stack, Text, Button, Card, Badge, Divider, TextField, Toggle, Slider | lower a canonical Effect Native node to one Native SDK primitive and prove props, events, identity, semantics, and tokens |
+| Owned renderer composites | List/virtual list, Table, SplitPane, Select/Combobox, Modal/Sheet/Drawer, ContextMenu | keep the Effect Native public contract; implement the composition with Native SDK's behavior and test it against Effect Native conformance |
+| Typed `Host` drivers | chart, WebView, future specialist native surfaces | expose bounded serializable props/events and scoped resource ownership; do not add general Native SDK escape hatches |
+| Retained existing implementations | CodeEditor, terminal, other unsupported specialists | keep DOM/RN/current host drivers until a real native implementation clears its own acceptance gate |
+
+The spike makes this mapping executable in
+[`native-sdk-component-adoption.ts`](../../apps/native-sdk-effect-native-spike/frontend/src/native-sdk-component-adoption.ts):
+9 direct candidates, 6 composites, 2 host-only candidates, and one explicitly
+unsupported specialist. It is a research matrix, not a parity claim.
+
+The key architectural opinion is: **adopt Native SDK's component
+implementations and behavioral rigor behind Effect Native; do not adopt its
+component API as a second product vocabulary.** In practice:
+
+- Effect Native tags, intents, tokens, accessibility props, and catalog
+  versions stay canonical and renderer-independent.
+- Native SDK widget options and `.native` attributes are private lowering
+  details. Product code never imports them.
+- Native SDK's component fixtures, keyboard behavior, identity rules,
+  accessibility snapshots, virtual-list mechanics, and deterministic
+  automation become implementation references and conformance oracles.
+- A Native SDK composite may improve Effect Native's contract only through a
+  deliberate cross-renderer catalog evolution, not by leaking a Zig-only prop.
+- Unsupported tags fail loudly or use a registered typed `Host`; they never
+  silently downgrade.
+- Upstream code stays a pinned Apache-2.0 dependency or a studied reference.
+  If OpenAgents needs divergence, prefer a narrow upstream patch over copying
+  a second component library into Effect Native.
+
+This route captures the best part of Native SDK's current setup—its coherent,
+opinionated component behavior—while preserving the reason Effect Native
+exists: one application and component sentence across web, React Native,
+native, and canvas renderers.
 
 ## Direct answers
 
@@ -82,15 +217,18 @@ native chrome remain available as composable surfaces around the canvas.
 
 ### Could OpenAgents use it?
 
-Yes, in three bounded ways:
+Yes, in four bounded ways:
 
-1. **Reference implementation now.** Borrow its testing, deterministic
+1. **Hybrid composition now.** The completed spike proves Native SDK native
+   chrome and components can coexist with the real Effect Native DOM renderer
+   in one window without changing the shipping app.
+2. **Reference implementation now.** Borrow its testing, deterministic
    automation, accessibility-audit, capability-manifest, source-provenance,
-   and canvas lifecycle ideas into Effect Native.
-2. **Small standalone native utility later.** A status, diagnostics, or focused
+   component behavior, and canvas lifecycle ideas into Effect Native.
+3. **Small standalone native utility later.** A status, diagnostics, or focused
    utility application with modest service needs could be a better first
    production candidate than the full coding workroom.
-3. **Effect Native renderer experiment.** Implement a small Native SDK-backed
+4. **Effect Native renderer experiment.** Implement a small Native SDK-backed
    renderer for the existing Effect Native `View` contract, with the current
    application runtime outside Native SDK's restricted TypeScript core.
 
@@ -175,6 +313,10 @@ OpenAgents sources inspected:
 - [one-UI substrate and EN-5/EN-6 plan](../effect-native/2026-07-08-effect-native-one-ui-substrate-analysis.md)
 - [SwiftUI renderer audit](../effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md)
 - [current component-demand register](../effect-native/DEMAND_REGISTER.md)
+- [bounded hybrid spike](../../apps/native-sdk-effect-native-spike/README.md)
+- [Native SDK host and native component proof](../../apps/native-sdk-effect-native-spike/src/main.zig)
+- [Effect Native program proof](../../apps/native-sdk-effect-native-spike/frontend/src/program.ts)
+- [component-adoption matrix](../../apps/native-sdk-effect-native-spike/frontend/src/native-sdk-component-adoption.ts)
 
 The upstream Native SDK repository had 270 commits from 2026-05-08 through the
 audited 2026-07-13 release, 268 authored by one contributor and one each by two
@@ -512,9 +654,10 @@ Costs:
 - the result gains little from Native SDK's retained native UI;
 - it replaces a mature Electron security/release boundary with a younger one.
 
-Verdict: technically straightforward, strategically weak. Use only as a shell
-portability experiment, not as evidence that Effect Native has a native
-renderer.
+Verdict after implementation: technically proven on macOS and still
+strategically weak as a migration destination. Keep the completed app as a
+shell-portability and component-composition fixture, not as evidence that
+Effect Native has a native renderer.
 
 ### Option B: run Effect in Node and Native SDK as an out-of-process renderer
 
@@ -776,8 +919,10 @@ excellent tests but are not the final user-facing proof.
 
 ## Bounded proof plan
 
-This plan is deliberately non-dispatching. If owner direction and a claimed
-issue authorize a spike, use these phases and stop gates.
+This plan is deliberately non-dispatching. The completed hybrid app is an
+Option A precursor and does not clear any native-renderer phase. If owner
+direction and a claimed issue authorize the next spike, use these phases and
+stop gates.
 
 ### NS-0: pin and contract
 
@@ -910,12 +1055,15 @@ and capability program. Continue upstreaming the hardened Electron platform
 adapter and use the current boundary oracles as the shipping contract.
 
 Record Native SDK as a serious candidate for a future native/canvas renderer,
-not as a new application framework for OpenAgents. If capacity and owner
-priority permit, authorize one disposable `@effect-native/render-native-sdk`
-spike after the release lane is protected. Run Effect in Node, use Native SDK
-for renderer/platform work, generate a versioned bounded bridge, and stop after
-a small catalog and one product-shaped read-only screen until the measurements
-justify more.
+not as a new application framework for OpenAgents. Preserve the completed
+hybrid spike as proof that Native SDK native components and the real Effect
+Native program can compose. Do not spend the next experiment repeating that
+WebView result. If capacity and owner priority permit after the release lane is
+protected, authorize one disposable
+`@effect-native/render-native-sdk` **native-lowering** spike. Run Effect in
+Node, use Native SDK for renderer/platform work, generate a versioned bounded
+bridge, and stop after a small catalog and one product-shaped read-only screen
+until the measurements justify more.
 
 The strategic answer is therefore:
 
@@ -923,6 +1071,9 @@ The strategic answer is therefore:
 - **OpenAgents host replacement today:** no;
 - **Effect Native renderer target:** yes, technically viable through an
   out-of-process renderer bridge;
+- **Native SDK component reuse:** yes, behind Effect Native lowerings,
+  composites, conformance tests, and typed `Host` boundaries—not as a second
+  public component API;
 - **compile Effect into Native SDK TypeScript:** no;
 - **rewrite product screens in `.native`:** no;
 - **best immediate return:** borrow its deterministic automation,

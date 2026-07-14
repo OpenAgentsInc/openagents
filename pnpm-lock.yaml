@@ -263,6 +263,31 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  apps/native-sdk-effect-native-spike:
+    dependencies:
+      '@effect-native/core':
+        specifier: workspace:*
+        version: link:../openagents.com/packages/effect-native-core
+      '@effect-native/render-dom':
+        specifier: workspace:*
+        version: link:../openagents.com/packages/effect-native-render-dom
+      '@effect-native/tokens':
+        specifier: workspace:*
+        version: link:../openagents.com/packages/effect-native-tokens
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite:
+        specifier: npm:@voidzero-dev/vite-plus-core@0.2.4
+        version: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)'
+      vite-plus:
+        specifier: 0.2.4
+        version: 0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
+
   apps/nostr-relay:
     dependencies:
       nostr-effect:
