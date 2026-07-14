@@ -38,10 +38,12 @@ const boot = (): void => {
       (envelope) => {
         const action = envelope.intent;
         const ref = action._tag === "NewChatRequested"
-          ? IntentRef("SpikeNewChatRequested")
+          ? IntentRef("DesktopNewChat")
           : action._tag === "WorkspaceSelected"
-            ? IntentRef("SpikeWorkspaceSelected", StaticPayload(action.workspace))
-            : IntentRef("SpikeSessionSelected", StaticPayload(action.sessionRef));
+            ? action.workspace === "settings"
+              ? IntentRef("DesktopSettingsToggled")
+              : IntentRef("DesktopWorkspaceSelected", StaticPayload(action.workspace))
+            : IntentRef("DesktopChatSelected", StaticPayload(action.sessionRef));
         void Effect.runPromise(runtime.registry.dispatch(resolveIntentRef(ref, null)));
       },
     );

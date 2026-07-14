@@ -6,6 +6,7 @@ import { it } from "./effect-test.ts";
 import { bridgePayloadLimit, decodeNativeIntent, projectNativeState } from "./native-bridge.ts";
 import { adoptionCounts, nativeSdkComponentAdoption } from "./native-sdk-component-adoption.ts";
 import { fixtureSessions, initialSpikeState, makeSpikeRuntime, spikeView } from "./program.ts";
+import { assertNativeProductionCommandBindings, nativeProductionCommandBindings } from "./production-command-parity.ts";
 import { persistSpikeState, restoreSpikeState, spikeStorageKey, spikeStorageNamespace, type SpikeStorage } from "./state-storage.ts";
 
 const memoryStorage = (): SpikeStorage & { readonly values: Map<string, string> } => {
@@ -21,8 +22,8 @@ describe("Native SDK Effect Native parity spike", () => {
   it.effect("runs the MVP composer through a real typed Effect intent loop", () =>
     Effect.gen(function* () {
       const runtime = yield* makeSpikeRuntime();
-      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeInputChanged", StaticPayload("Ship the parity slice")), null));
-      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeMessageSubmitted"), null));
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("DesktopInputChanged", StaticPayload("Ship the parity slice")), null));
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted"), null));
       const state = yield* SubscriptionRef.get(runtime.state);
       const events = yield* runtime.registry.events;
 
@@ -37,10 +38,10 @@ describe("Native SDK Effect Native parity spike", () => {
   it.effect("keeps blank submit a no-op and new chat deterministic", () =>
     Effect.gen(function* () {
       const runtime = yield* makeSpikeRuntime();
-      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeMessageSubmitted", StaticPayload("   ")), null));
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("   ")), null));
       let state = yield* SubscriptionRef.get(runtime.state);
       expect(state.messages).toHaveLength(2);
-      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("SpikeNewChatRequested"), null));
+      yield* runtime.registry.dispatch(resolveIntentRef(IntentRef("DesktopNewChat"), null));
       state = yield* SubscriptionRef.get(runtime.state);
       expect(state.selectedSessionRef).toBeNull();
       expect(state.messages).toEqual([]);
@@ -62,9 +63,19 @@ describe("Native SDK Effect Native parity spike", () => {
   });
 
   test("decodes only the bounded versioned native intent protocol", () => {
-    expect(decodeNativeIntent({ protocol: 1, sequence: 4, intent: { _tag: "SessionSelected", sessionRef: fixtureSessions[1].ref } }).sequence).toBe(4);
-    expect(() => decodeNativeIntent({ protocol: 2, sequence: 4, intent: { _tag: "NewChatRequested" } })).toThrow();
-    expect(() => decodeNativeIntent({ protocol: 1, sequence: 4, intent: { _tag: "ArbitraryCommand" } })).toThrow();
+    expect(decodeNativeIntent({ protocol: 1, sequence: 4, intent: { _tag: "SessionSelected", sessionRef: fixtureSessions[1].ref, commandId: null } }).sequence).toBe(4);
+    expect(() => decodeNativeIntent({ protocol: 2, sequence: 4, intent: { _tag: "NewChatRequested", commandId: "chat.new" } })).toThrow();
+    expect(() => decodeNativeIntent({ protocol: 1, sequence: 4, intent: { _tag: "NewChatRequested", commandId: "settings.open" } })).toThrow();
+  });
+
+  test("consumes the real Desktop canonical command identities", () => {
+    expect(assertNativeProductionCommandBindings()).toBeUndefined();
+    expect(nativeProductionCommandBindings.map((binding) => binding.commandId)).toEqual([
+      "chat.new",
+      "chat.open",
+      "workspace.home",
+      "settings.open",
+    ]);
   });
 
   test("keeps the native mirror projection small and non-authoritative", () => {

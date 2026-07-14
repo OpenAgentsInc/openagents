@@ -8,7 +8,7 @@
         "junit",
         "normalized_receipt"
       ],
-      "content_digest": "sha256:25209fd3a332745f2b05619c8b2cca61a0eecb6797ed54d081b651a083bcf588",
+      "content_digest": "sha256:21e14f443e4e5b5cd2ab30441db94bc45f9721b149ce0a77d45b3d6deaac5648",
       "techniques": [
         "criterion_contract_with_sensitivity"
       ],

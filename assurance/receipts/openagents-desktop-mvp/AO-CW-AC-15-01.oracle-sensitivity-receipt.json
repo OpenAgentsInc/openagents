@@ -3,16 +3,16 @@
   "admission_digest": "sha256:c37581d434a07fa8ae80a458ea076c73235be86079f31b6aa47ea3fd92118927",
   "authority": "evidence_only",
   "candidate_observation": "CONFIRMED",
-  "candidate_receipt_ref": "assurance.receipt.80e7ca549eff99b8dc7ea2d49fe178ac4bb1f3fd59ce62af4d7b580d1aeceb22",
+  "candidate_receipt_ref": "assurance.receipt.35ce949f4141eca07c2215ba91a29721a317bd7eb12f5478f7cf9670ca498e08",
   "diagnostic_refs": [],
   "inconclusive_mutant_refs": [],
   "killed_mutant_refs": [
     "AO-CW-AC-15-01.missing_required_anchor"
   ],
-  "manifest_digest": "sha256:ffaba2a5aef3cab0d2372e064518a7e201a5567a8e18d204093a84602ded93d4",
+  "manifest_digest": "sha256:0d18b663a069e597a645d83bf7d5c8904a16f56003d02728f7c5b12c4561558d",
   "mutant_results": [
     {
-      "assurance_receipt_ref": "assurance.receipt.b04d1ffd80898f372891a19e93798c69f0b51cb9838f2458273fff53565d2a64",
+      "assurance_receipt_ref": "assurance.receipt.2c77eda9927ea666e5e4a366cf6923554bc7050a9f7f3a2d4c3fc553e308c04d",
       "mutant_ref": "AO-CW-AC-15-01.missing_required_anchor",
       "observation": "killed",
       "operator": "replace_exact"
@@ -23,7 +23,7 @@
   "oracle_ref": "AO-CW-AC-15-01.criterion_contract",
   "oracle_sensitivity_receipt_format_version": "0.1",
   "receipt_kind": "oracle_sensitivity_receipt.v1",
-  "receipt_ref": "oracle.sensitivity.8966d06f6ecde0520a7a552f4e2d03c7720a391df20262abcec7ed85b26681b2",
+  "receipt_ref": "oracle.sensitivity.dba24546fc0c5b279d3e30fb4d8c33c9f9b86f153a177aa2eff6b7e5f96dd8a3",
   "sensitivity_observation": "CONFIRMED",
   "surviving_mutant_refs": []
 }

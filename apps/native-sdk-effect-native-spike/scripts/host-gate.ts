@@ -1,7 +1,7 @@
 import { Schema } from "@effect-native/core/effect";
 
-export const nativeSdkHostGateFormat = "openagents.native-sdk.host-gate.v2" as const;
-export const nativeSdkTargetRef = "openagents.desktop.native-sdk.spike" as const;
+export const nativeSdkHostGateFormat = "openagents.native-sdk.host-gate.v3" as const;
+export const nativeSdkTargetRef = "openagents.desktop.native-sdk.mvp" as const;
 export const nativeSdkCommit = "f7aa92af6dcece250feba852af4d22e7f5429312" as const;
 export const nativeSdkAutomationProtocol = 6 as const;
 export const nativeSdkHostGateSteps = [
@@ -39,9 +39,30 @@ export const NativeSdkHostGateSchema = Schema.Struct({
     frontendDigest: DigestSchema,
     sourceDigest: DigestSchema,
   }),
+  assurance: Schema.NullOr(Schema.Struct({
+    manifestDigest: DigestSchema,
+    environmentDigest: DigestSchema,
+    adapterLockDigest: DigestSchema,
+    targetDescriptorDigest: DigestSchema,
+    targetSourceDigest: DigestSchema,
+  })),
   processes: Schema.Struct({
-    initial: Schema.Struct({ pid: PositiveIntegerSchema, publisherPid: PositiveIntegerSchema, stopped: Schema.Literal(true) }),
-    restarted: Schema.Struct({ pid: PositiveIntegerSchema, publisherPid: PositiveIntegerSchema, stopped: Schema.Literal(true) }),
+    initial: Schema.Struct({
+      pid: PositiveIntegerSchema,
+      publisherPid: PositiveIntegerSchema,
+      stopped: Schema.Literal(true),
+      exitCode: Schema.NullOr(Schema.Number),
+      signal: Schema.NullOr(Schema.String),
+      forcedKill: Schema.Boolean,
+    }),
+    restarted: Schema.Struct({
+      pid: PositiveIntegerSchema,
+      publisherPid: PositiveIntegerSchema,
+      stopped: Schema.Literal(true),
+      exitCode: Schema.NullOr(Schema.Number),
+      signal: Schema.NullOr(Schema.String),
+      forcedKill: Schema.Boolean,
+    }),
   }),
   steps: Schema.Array(Schema.Struct({
     id: Schema.String,
@@ -80,11 +101,21 @@ export const decodeNativeSdkHostGate = (candidate: unknown): NativeSdkHostGate =
   if (gate.steps.some((step) => step.evidence.some((name) => !evidenceNames.has(name)))) {
     throw new Error("native_host_gate_step_evidence_unbound");
   }
+  if (gate.steps.some((step) => step.evidence.length === 0)) {
+    throw new Error("native_host_gate_step_evidence_empty");
+  }
   const digests = [
     gate.inputs.commandDigest,
     gate.inputs.binaryDigest,
     gate.inputs.frontendDigest,
     gate.inputs.sourceDigest,
+    ...(gate.assurance === null ? [] : [
+      gate.assurance.manifestDigest,
+      gate.assurance.environmentDigest,
+      gate.assurance.adapterLockDigest,
+      gate.assurance.targetDescriptorDigest,
+      gate.assurance.targetSourceDigest,
+    ]),
     ...gate.evidence.map((entry) => entry.digest),
   ];
   if (!digests.every((digest) => digestPattern.test(digest))) throw new Error("native_host_gate_digest_invalid");
@@ -96,6 +127,8 @@ export const decodeNativeSdkHostGate = (candidate: unknown): NativeSdkHostGate =
     gate.processes.initial.pid !== gate.processes.initial.publisherPid ||
     gate.processes.restarted.pid !== gate.processes.restarted.publisherPid ||
     gate.processes.initial.pid === gate.processes.restarted.pid ||
+    gate.processes.initial.forcedKill ||
+    gate.processes.restarted.forcedKill ||
     gate.evidence.some((entry) => !Number.isSafeInteger(entry.bytes) || entry.bytes <= 0)
   ) {
     throw new Error("native_host_gate_process_or_size_invalid");

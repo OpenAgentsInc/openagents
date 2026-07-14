@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "eeabd1c2e3d6f54e1b664b7124b51a87aceb710f7016345b26d747f00549ab4f",
+  "sourceTreeSha256": "30ad4c100fe265f088b53112b53dc98eb6ad225236d55ef109481a10cd5ec33a",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1469,7 +1469,7 @@
       "owner": "OpenAgents Desktop and Effect Native architecture",
       "disposition": "retain-historical",
       "dispatch": false,
-      "sha256": "ea17d4bc82e97596bf4baf7863abdcc0ebd250a9e508d050d080d84bb7ac50c1",
+      "sha256": "e4a32954e9073f54a0be10e7f04f40c490b4fb340431d88beea23684526de8a1",
       "status": "retain until Native SDK is adopted, rejected, or superseded by a later renderer/host decision",
       "snapshot": "analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `412640adbe2979926c64c7aaf29721677638d4ec` (`effect-native/v39`)",
       "reviewedAt": "2026-07-12",

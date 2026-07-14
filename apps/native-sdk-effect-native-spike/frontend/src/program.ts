@@ -41,19 +41,21 @@ export interface SpikeState {
   readonly revision: number;
 }
 
-export const SpikeInputChanged = defineIntent("SpikeInputChanged", Schema.String);
-export const SpikeMessageSubmitted = defineIntent("SpikeMessageSubmitted", Schema.NullOr(Schema.String));
-export const SpikeTurnStopped = defineIntent("SpikeTurnStopped", Schema.Null);
-export const SpikeNewChatRequested = defineIntent("SpikeNewChatRequested", Schema.Null);
-export const SpikeWorkspaceSelected = defineIntent("SpikeWorkspaceSelected", Schema.Literals(["chat", "home", "settings"]));
-export const SpikeSessionSelected = defineIntent("SpikeSessionSelected", Schema.String);
+export const DesktopInputChanged = defineIntent("DesktopInputChanged", Schema.String);
+export const DesktopNoteSubmitted = defineIntent("DesktopNoteSubmitted", Schema.NullOr(Schema.String));
+export const DesktopTurnInterrupted = defineIntent("DesktopTurnInterrupted", Schema.Null);
+export const DesktopNewChat = defineIntent("DesktopNewChat", Schema.Null);
+export const DesktopWorkspaceSelected = defineIntent("DesktopWorkspaceSelected", Schema.Literals(["chat", "home"]));
+export const DesktopSettingsToggled = defineIntent("DesktopSettingsToggled", Schema.Null);
+export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String);
 export const spikeIntents = [
-  SpikeInputChanged,
-  SpikeMessageSubmitted,
-  SpikeTurnStopped,
-  SpikeNewChatRequested,
-  SpikeWorkspaceSelected,
-  SpikeSessionSelected,
+  DesktopInputChanged,
+  DesktopNoteSubmitted,
+  DesktopTurnInterrupted,
+  DesktopNewChat,
+  DesktopWorkspaceSelected,
+  DesktopSettingsToggled,
+  DesktopChatSelected,
 ] as const;
 
 const initialMessages: ReadonlyArray<SpikeMessage> = [
@@ -113,8 +115,8 @@ const composer = (state: SpikeState): View => Card({
     multiline: true,
     placeholder: state.pending ? "Turn running…" : "Message",
     clearOnSubmit: true,
-    onChange: IntentRef("SpikeInputChanged", ComponentValueBinding()),
-    onSubmit: IntentRef("SpikeMessageSubmitted", ComponentValueBinding()),
+    onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
+    onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
     style: { width: "full", minHeight: "2xs" },
     a11y: { label: "Message" },
   }),
@@ -126,8 +128,8 @@ const composer = (state: SpikeState): View => Card({
       icon: state.pending ? "Stop" : "ArrowUp",
       accessibilityLabel: state.pending ? "Stop turn" : "Send message",
       onPress: state.pending
-        ? IntentRef("SpikeTurnStopped")
-        : IntentRef("SpikeMessageSubmitted"),
+        ? IntentRef("DesktopTurnInterrupted")
+        : IntentRef("DesktopNoteSubmitted"),
       style: state.input.trim() === "" || state.pending
         ? { backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" }
         : { backgroundColor: "accent", color: "textInverse", borderRadius: "full" },
@@ -189,8 +191,8 @@ const nextRevision = (state: SpikeState): number => state.revision + 1;
 export const makeSpikeRuntime = (restoredState: SpikeState = initialSpikeState()) => Effect.gen(function* () {
   const state = yield* SubscriptionRef.make(restoredState);
   const registry = yield* makeIntentRegistry(spikeIntents, {
-    SpikeInputChanged: (value: string) => SubscriptionRef.update(state, (current) => ({ ...current, input: value.slice(0, 4_000) })),
-    SpikeMessageSubmitted: (value: string | null) => SubscriptionRef.update(state, (current) => {
+    DesktopInputChanged: (value: string) => SubscriptionRef.update(state, (current) => ({ ...current, input: value.slice(0, 4_000) })),
+    DesktopNoteSubmitted: (value: string | null) => SubscriptionRef.update(state, (current) => {
       const text = (value ?? "").trim() || current.input.trim();
       if (text === "") return current;
       return {
@@ -206,10 +208,10 @@ export const makeSpikeRuntime = (restoredState: SpikeState = initialSpikeState()
         }],
       };
     }),
-    SpikeTurnStopped: () => SubscriptionRef.update(state, (current) => current.pending
+    DesktopTurnInterrupted: () => SubscriptionRef.update(state, (current) => current.pending
       ? { ...current, pending: false, revision: nextRevision(current) }
       : current),
-    SpikeNewChatRequested: () => SubscriptionRef.update(state, (current): SpikeState => ({
+    DesktopNewChat: () => SubscriptionRef.update(state, (current): SpikeState => ({
       ...current,
       workspace: "chat" as const,
       selectedSessionRef: null,
@@ -218,12 +220,17 @@ export const makeSpikeRuntime = (restoredState: SpikeState = initialSpikeState()
       pending: false,
       revision: nextRevision(current),
     })),
-    SpikeWorkspaceSelected: (workspace: Workspace) => SubscriptionRef.update(state, (current): SpikeState => ({
+    DesktopWorkspaceSelected: (workspace: "chat" | "home") => SubscriptionRef.update(state, (current): SpikeState => ({
       ...current,
       workspace,
       revision: nextRevision(current),
     })),
-    SpikeSessionSelected: (sessionRef: string) => SubscriptionRef.update(state, (current): SpikeState => {
+    DesktopSettingsToggled: () => SubscriptionRef.update(state, (current): SpikeState => ({
+      ...current,
+      workspace: "settings",
+      revision: nextRevision(current),
+    })),
+    DesktopChatSelected: (sessionRef: string) => SubscriptionRef.update(state, (current): SpikeState => {
       if (!fixtureSessions.some((session) => session.ref === sessionRef)) return current;
       return {
         ...current,

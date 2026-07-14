@@ -29,7 +29,10 @@ describe("MVP assurance execution targets", () => {
     const electronPaths = new Set(writablePaths(electronMvpAssuranceTarget));
     const nativePaths = writablePaths(nativeSdkMvpAssuranceTarget);
     expect(nativePaths.every((path) => !electronPaths.has(path))).toBe(true);
-    expect(JSON.stringify(nativeSdkMvpAssuranceTarget)).not.toContain("openagents-desktop/src");
+    expect(nativeSdkMvpAssuranceTarget.criterion.testPath).not.toContain("openagents-desktop/src");
+    expect(nativeSdkMvpAssuranceTarget.targetSourcePaths.filter((path) => path.includes("openagents-desktop/src"))).toEqual([
+      "apps/openagents-desktop/src/desktop-command-contract.ts",
+    ]);
     expect(JSON.stringify(nativeSdkMvpAssuranceTarget)).not.toContain("rc9");
     expect(nativeSdkMvpAssuranceTarget.fullGate.smokeField).toBe("native_sdk_smoke");
   });
@@ -39,9 +42,12 @@ describe("MVP assurance execution targets", () => {
       mvpAssuranceTargetDescriptorDigest(nativeSdkMvpAssuranceTarget),
     );
     const sourceDigest = mvpAssuranceTargetSourceDigest(root, electronMvpAssuranceTarget);
+    const nativeSourceDigest = mvpAssuranceTargetSourceDigest(root, nativeSdkMvpAssuranceTarget);
     const firstPath = electronMvpAssuranceTarget.targetSourcePaths[0]!;
     const current = readFileSync(resolve(root, firstPath), "utf8");
     expect(sourceDigest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(nativeSourceDigest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(nativeSourceDigest).not.toBe(sourceDigest);
     expect(current.length).toBeGreaterThan(0);
   });
 });

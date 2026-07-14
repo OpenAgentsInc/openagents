@@ -11,6 +11,16 @@ import { sha256Digest } from "./tooling.ts"
 export const OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF = "openagents.vite_plus_test.v1" as const
 export const OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION = "1.1.0" as const
 
+export type VitePlusTestAdapterIdentity = Readonly<{
+  adapterRef: string
+  adapterVersion: string
+}>
+
+const defaultVitePlusTestAdapterIdentity: VitePlusTestAdapterIdentity = {
+  adapterRef: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF,
+  adapterVersion: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION,
+}
+
 export type NodeRuntimeObservation = Readonly<{
   os: string
   architecture: string
@@ -101,7 +111,7 @@ export const assertVitePlusRuntimeFidelity = (
   }
 }
 
-export const executeVitePlusTestUnit = (input: Readonly<{
+export type VitePlusTestAdapterInput = Readonly<{
   workspaceRoot: string
   runRoot: string
   manifest: AssuranceManifest
@@ -112,9 +122,14 @@ export const executeVitePlusTestUnit = (input: Readonly<{
   reviewerRef: string
   sourceDigest: string
   vitePlusExecutable?: string
-}>): VitePlusTestAdapterResult => {
-  if (input.unit.adapter_ref !== OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF) {
-    throw new VitePlusTestAdapterError("adapter_ref_mismatch", "Execution unit is not locked to openagents.vite_plus_test.v1.")
+}>
+
+export const executeVitePlusTestUnitWithIdentity = (
+  input: VitePlusTestAdapterInput,
+  identity: VitePlusTestAdapterIdentity,
+): VitePlusTestAdapterResult => {
+  if (input.unit.adapter_ref !== identity.adapterRef) {
+    throw new VitePlusTestAdapterError("adapter_ref_mismatch", `Execution unit is not locked to ${identity.adapterRef}.`)
   }
   if (input.unit.environment_ref !== input.environment.profile_id) {
     throw new VitePlusTestAdapterError("environment_ref_mismatch", "Execution unit and Environment Profile differ.")
@@ -201,8 +216,8 @@ export const executeVitePlusTestUnit = (input: Readonly<{
     entry.obligation_id === input.unit.obligation_id)?.criterion_refs ?? []
   const commandDigest = sha256Digest(JSON.stringify({
     argv: input.unit.argv,
-    adapter: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_REF,
-    adapter_version: OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION,
+    adapter: identity.adapterRef,
+    adapter_version: identity.adapterVersion,
     node_version: process.versions.node,
     vite_plus_entrypoint_digest: sha256Digest(vitePlusEntrypointBytes),
     dependency_lock_digest: input.environment.dependency_lock.digest,
@@ -256,3 +271,6 @@ export const executeVitePlusTestUnit = (input: Readonly<{
     exitCode: result.status,
   }
 }
+
+export const executeVitePlusTestUnit = (input: VitePlusTestAdapterInput): VitePlusTestAdapterResult =>
+  executeVitePlusTestUnitWithIdentity(input, defaultVitePlusTestAdapterIdentity)

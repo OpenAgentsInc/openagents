@@ -19,8 +19,8 @@
   ],
   "environment_ref": "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
   "execution_unit_ref": "unit.ao-cw-ac-18-01.candidate",
-  "manifest_digest": "sha256:ffaba2a5aef3cab0d2372e064518a7e201a5567a8e18d204093a84602ded93d4",
-  "native_report_digest": "sha256:7b5748a142ba190c3a0833c9143a7d4e2345261c9496c47112b1c0c245dcb9b9",
+  "manifest_digest": "sha256:0d18b663a069e597a645d83bf7d5c8904a16f56003d02728f7c5b12c4561558d",
+  "native_report_digest": "sha256:7f04bf547ae31251adf0797b3465610b9b062a6408e2c5d5e9e78d854773768d",
   "native_report_ref": "var/assurance/openagents-desktop-mvp/AO-CW-AC-18-01/candidate.junit.xml",
   "obligation_id": "AO-CW-AC-18-01",
   "producer_ref": "runner.openagents.local.20260713",
@@ -29,7 +29,7 @@
     "classification": "reviewed_public_safe",
     "contains_raw_output": false
   },
-  "receipt_ref": "assurance.receipt.25d0061d6ddee5f71de974c72fd40d2892a0e737cf44b4a5cc41618f10c760ad",
+  "receipt_ref": "assurance.receipt.6903d68f4930c9f861b72683f407383610de8c07ffaeace3d2dd37aa6d01162d",
   "reviewer_ref": "reviewer.codex.assurance.20260713",
   "source_digest": "sha256:ed3d9b06863642b4239867e7b992a9276045f4070ac27a87a739d554f16365fd"
 }

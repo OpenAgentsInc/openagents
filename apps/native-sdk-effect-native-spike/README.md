@@ -19,6 +19,10 @@ and then adapted into a product-shaped hybrid architecture proof:
   sequence/acknowledged native intent. The 120 ms pull is deliberately visible:
   Native SDK 0.5.1 can target bridge responses to child WebViews but its window
   event emitter targets only the primary WebView.
+- Native rail actions carry the real Desktop canonical command IDs and dispatch
+  the matching production Effect intent names. The mapping imports and checks
+  `apps/openagents-desktop/src/desktop-command-contract.ts`; it is not a copied
+  fixture registry.
 - `frontend/src/native-sdk-component-adoption.ts` records which Native SDK
   components are plausible direct lowerings, owned composites, or bounded
   `Host` drivers. Effect Native remains the public authoring contract.
@@ -36,7 +40,7 @@ From this directory:
 pnpm verify
 ```
 
-That runs TypeScript checking, nine Effect Native intent/contract tests, the
+That runs TypeScript checking, ten Effect Native intent/contract tests, the
 Vite frontend build, six Native SDK Zig tests, the native binary build, and a
 headed production-asset host gate. The host gate:
 
@@ -51,8 +55,9 @@ headed production-asset host gate. The host gate:
 - reloads the Effect WebView, restarts the native process, and proves the
   Effect-owned fixture state is restored before creating a new chat;
 - attests distinct initial/restart PIDs, exact Node/Zig/Native SDK identities,
-  and command, binary, frontend, source, and evidence digests in a
-  schema-decoded `openagents.native-sdk.host-gate.v2` artifact;
+  actual exit/signal/forced-kill state, and command, binary, frontend, source,
+  and evidence digests in a
+  schema-decoded `openagents.native-sdk.host-gate.v3` artifact;
 - leaves private evidence under
   `var/native-sdk-effect-native-spike/host-smoke/` and prints
   `[native-sdk-effect-native-spike smoke] OK` only after all nine steps.
@@ -88,6 +93,16 @@ The repeatable headed smoke is:
 pnpm run build:frontend
 pnpm run smoke
 ```
+
+The full AssuranceSpec diagnostic lane is:
+
+```sh
+pnpm --dir ../../packages/assurance-spec run assure:mvp --target=native-sdk
+```
+
+It executes the 36 Native-owned criterion candidate/falsifier units and this
+headed gate, writes a private gap report, and fails without publishing while
+any full MVP criterion lacks target-specific integration evidence.
 
 The script drives the file protocol directly and therefore does not need a
 machine-global Native SDK CLI. Native SDK's deterministic screenshot covers

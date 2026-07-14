@@ -2,6 +2,7 @@ import { Schema } from "@effect-native/core/effect";
 
 import type { SpikeState } from "./program.ts";
 import { fixtureSessions } from "./program.ts";
+import { assertNativeProductionCommandBindings } from "./production-command-parity.ts";
 
 export const bridgePayloadLimit = 8 * 1024;
 
@@ -9,14 +10,20 @@ const NativeIntentSchema = Schema.Struct({
   protocol: Schema.Literal(1),
   sequence: Schema.Number,
   intent: Schema.Union([
-    Schema.Struct({ _tag: Schema.Literal("NewChatRequested") }),
-    Schema.Struct({ _tag: Schema.Literal("WorkspaceSelected"), workspace: Schema.Literals(["chat", "home", "settings"]) }),
-    Schema.Struct({ _tag: Schema.Literal("SessionSelected"), sessionRef: Schema.String }),
+    Schema.Struct({ _tag: Schema.Literal("NewChatRequested"), commandId: Schema.Literal("chat.new") }),
+    Schema.Struct({ _tag: Schema.Literal("WorkspaceSelected"), workspace: Schema.Literal("chat"), commandId: Schema.Literal("chat.open") }),
+    Schema.Struct({ _tag: Schema.Literal("WorkspaceSelected"), workspace: Schema.Literal("home"), commandId: Schema.Literal("workspace.home") }),
+    Schema.Struct({ _tag: Schema.Literal("WorkspaceSelected"), workspace: Schema.Literal("settings"), commandId: Schema.Literal("settings.open") }),
+    Schema.Struct({ _tag: Schema.Literal("SessionSelected"), sessionRef: Schema.String, commandId: Schema.Null }),
   ]),
 });
 
 export type NativeIntentEnvelope = typeof NativeIntentSchema.Type;
-export const decodeNativeIntent = Schema.decodeUnknownSync(NativeIntentSchema);
+const decodeNativeIntentSchema = Schema.decodeUnknownSync(NativeIntentSchema);
+export const decodeNativeIntent = (candidate: unknown): NativeIntentEnvelope => {
+  assertNativeProductionCommandBindings();
+  return decodeNativeIntentSchema(candidate, { onExcessProperty: "error" });
+};
 
 export interface NativeProjection {
   readonly protocol: 1;

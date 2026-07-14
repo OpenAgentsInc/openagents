@@ -125,6 +125,19 @@ application-enforced 8 KiB JSON limit. Unknown workspaces, sessions, versions,
 oversized messages, stale projections, and out-of-range acknowledgements fail
 closed. `js_window_api` stays disabled.
 
+The latest parity increment removes another fixture-only seam: native New
+chat, Chat, Workspace, and Settings actions now carry the exact production
+Desktop command IDs (`chat.new`, `chat.open`, `workspace.home`, and
+`settings.open`). The Effect program uses the matching real Desktop intent
+names (`DesktopNewChat`, `DesktopWorkspaceSelected`,
+`DesktopSettingsToggled`, `DesktopChatSelected`, `DesktopNoteSubmitted`, and
+`DesktopTurnInterrupted`). A source import of the canonical Desktop command
+registry checks the mapping at module load and in tests; wrong command/intent
+pairs fail decoding. This is meaningful command-contract reuse, but it is only
+a partial `CW-AC-12` anchor because the fixture still lacks durable host
+dispatch, idempotency, steer/queue/question/approval/review flows, and the real
+sidecar services.
+
 One upstream boundary became observable during this pass: Native SDK 0.5.1's
 macOS bridge response path can target a child WebView by label, but
 `emitWindowEvent` evaluates JavaScript only in the primary window WebView. The
@@ -148,8 +161,8 @@ Native SDK 0.5.1 source:
 
 ```text
 pnpm run typecheck             -> exit 0
-vp test --run frontend/src     -> 2 files, 9 tests passed
-vp build                       -> exit 0; 200 modules transformed
+vp test --run frontend/src     -> 2 files, 10 tests passed
+vp build                       -> exit 0; 202 modules transformed
 zig build test                 -> exit 0; 6 native tests passed
 zig build                      -> exit 0
 native validate app.zon        -> manifest.valid
@@ -192,11 +205,13 @@ The passing run had zero dispatch errors, a nonblank 1200×800 Metal surface,
 and a 3.7 MiB deterministic native-canvas PNG. The continuation also captured
 a 2536×1736 macOS window PNG containing the composited native rail and live
 Effect Native transcript/composer. Its private, schema-decoded
-`openagents.native-sdk.host-gate.v2` JSON binds a run nonce, exact
-initial/restart PIDs, protocol 6, macOS ARM64, Node 24.13.1, Zig 0.16.0, the
-exact Native SDK commit, command, binary, frontend-bundle, source-set, and every
-evidence digest. The artifact plus snapshots, accessibility text, both PNGs,
-and bounded native log live under
+`openagents.native-sdk.host-gate.v3` JSON binds a run nonce, exact
+initial/restart PIDs and termination results, protocol 6, macOS ARM64, Node
+24.13.1, Zig 0.16.0, the exact Native SDK commit, command, binary,
+frontend-bundle, source-set, and every evidence digest. In assurance mode it
+also binds the manifest, Environment Profile, adapter lock, target descriptor,
+and target source digests. The artifact plus snapshots, accessibility text,
+both PNGs, teardown record, and bounded native log live under
 `var/native-sdk-effect-native-spike/host-smoke/`; those are ignored runtime
 artifacts, not committed Assurance Receipts.
 
@@ -224,28 +239,42 @@ below and does not change the shipping-host decision.
 
 ## MVP AssuranceSpec integration audit
 
-The current authoritative MVP command is:
+The harness now has two exact execution targets:
 
 ```text
-pnpm --dir packages/assurance-spec run assure:mvp
+pnpm --dir packages/assurance-spec run assure:mvp                     # Electron
+pnpm --dir packages/assurance-spec run assure:mvp --target=native-sdk # Native diagnostic
 ```
 
-It cannot truthfully be pointed at this Native app. The current admitted chain
-is an Electron RC9 chain, not a host-neutral workroom contract:
+The second form is intentionally a **complete diagnostic execution**, not a
+passing or published Native chain. It compiles a separately named in-memory
+AssuranceSpec revision, Environment Profile, two-adapter lock, review,
+admission, manifest, and 36 Native-only execution units. It then runs the full
+headed Native gate once, produces a private gap report, and publishes none of
+the staged spec/review/admission/manifest/receipt/index bytes unless every
+criterion pair and the target gate succeed.
 
-| Layer | Current binding | Why a Native relabel would be false |
-| --- | --- | --- |
-| 36 candidate/falsifier units | every unit runs `apps/openagents-desktop/src/mvp-assurance-criteria.test.ts` | that file searches Electron tests and RC9 Markdown anchors |
-| environment | `ENV-OA-DESKTOP-MVP-VITE-PLUS-1`, framework `Effect Native / Electron` | it admits Vite Plus/JUnit and the historical Electron release receipt, not Zig/Native SDK/automation |
-| full host gate | `pnpm --dir apps/openagents-desktop run verify` | the runner requires literal `[openagents-desktop smoke] OK` |
-| full-gate receipt | `electron_smoke: "passed"` plus Electron source digests | it has no target/driver identity that could bind the Native binary |
-| companion evidence | signed/notarized installed RC9 candidate and completion audit | an Electron RC cannot prove Native install/update/rollback/uninstall |
-| QA Swarm | target `openagents.desktop.current` at `apps/openagents-desktop` | the coordinator rejects any other target today |
+The lane is disjoint from Electron:
 
-The criterion tests themselves say their string anchors complement rather than
-replace the complete Desktop suite and installed journey. Reusing them while
-changing only the final command would produce a green label with no Native
-criterion evidence. This audit therefore rejects that shortcut.
+| Layer | Native binding |
+| --- | --- |
+| target | `openagents.desktop.native-sdk.mvp` |
+| criterion catalog | `apps/native-sdk-effect-native-spike/assurance/mvp-assurance-criteria.test.ts` |
+| environment | `ENV-OA-DESKTOP-NATIVE-SDK-MACOS-1`; device harness, macOS ARM64, Node 24.13.1, Zig 0.16.0, Native SDK 0.5.1 |
+| criterion adapter | `openagents.native_sdk_assurance.v1` over the shared exact Vite Plus/JUnit mechanism |
+| target adapter | `openagents.native_sdk_host_gate.v1` over one headed host run |
+| gate | `GATE-MVP-FULL-ASSURANCE-NATIVE-SDK` |
+| public namespace | `assurance/openagents-desktop-native-sdk-mvp.*` and `assurance/receipts/openagents-desktop-native-sdk-mvp/` |
+| private namespace | `var/assurance/openagents-desktop-native-sdk-mvp/` |
+
+The first full diagnostic run executed all 36 criterion units. All 18
+missing-anchor falsifiers were `REFUTED` as expected; all 18 candidates were
+also `REFUTED` because the target-specific integration anchors are still
+absent. The overall criterion gate therefore remains `INCONCLUSIVE`, with
+`confirmed_candidates: 0`, `total_obligations: 18`, and publication
+`withheld`. In the same run the separately normalized headed host gate was
+`ready` and green. This is the desired false-green behavior: a healthy shell
+cannot erase missing workroom evidence.
 
 ### Two pre-existing integrity failures found and repaired
 
@@ -263,12 +292,13 @@ that are independent of Native SDK:
    so a different Node earlier on `PATH` cannot execute the oracle, and binds
    Node, adapter version, entrypoint, and lock digests into command identity.
 
-The committed session records freshness rather than admission, and the current
-receipt schema still needs a normalized environment-observation digest. The
-Native v2 private host artifact supplies the underlying Node, Zig, Native SDK,
-platform, architecture, binary, frontend, command, process, and evidence
-observations; a Native Assurance adapter must carry those into normalized
-receipts before any criterion can be current.
+The committed Electron session records freshness rather than admission. The
+Native target still needs its own committed session pin when its admitted
+public document exists; the failed diagnostic correctly does not publish that
+document. The Native host adapter now normalizes the observed runtime and exact
+target bindings, but the generic v0.1 obligation receipt schema still lacks an
+explicit observed-environment digest and the Evidence Index still names its
+aggregate field `full_desktop_gate`.
 
 The runner also now stages all spec, review, admission, manifest, receipt, and
 index bytes in memory. A failed full host gate leaves the last admitted public
@@ -287,33 +317,39 @@ and Git operations, durable provider-turn recovery, update staging, privacy
 diagnostics, or signed/notarized lifecycle. None of `CW-AC-01…18` is fully
 confirmed end-to-end by the fixture.
 
-A real Native lane needs a separately reviewed and admitted chain, for example:
+A passing Native lane uses these stable identities:
 
 ```text
-target              openagents.desktop.native-sdk.spike
+target              openagents.desktop.native-sdk.mvp
 environment         ENV-OA-DESKTOP-NATIVE-SDK-MACOS-1
-adapter             openagents.native_sdk_assurance.v1
+criterion adapter   openagents.native_sdk_assurance.v1
+host-gate adapter   openagents.native_sdk_host_gate.v1
 manifest namespace  assurance/openagents-desktop-native-sdk-mvp.*
 run namespace       var/assurance/openagents-desktop-native-sdk-mvp/
 ```
 
-The historical Electron artifacts remain separately named. The runner now has
-typed `electron` and `native-sdk` target descriptors binding target ref,
-repository path, criterion catalog, environment, adapter, exact verify argv,
-host-gate schema, source set, output namespace, and companion evidence. No-arg
-execution remains Electron-compatible; unknown or extra target arguments fail
-before writes. `--target=native-sdk` deliberately fails before writes until its
-separate reviewed admission, criterion catalog, and adapter exist. Every Native
-unit requires a Native-owned integration or release anchor; missing proof
-remains `INCONCLUSIVE`.
+The historical Electron artifacts remain separately named. No-arg execution
+remains Electron-compatible; unknown or extra target arguments fail before
+writes. Every Native unit requires Native integration or release anchors;
+shared Node/Effect kernels may support but cannot complete a candidate.
 
-The headed gate now decodes its typed v2 artifact rather than trusting the
-success marker: incomplete steps, malformed digests, PID reuse or mismatch,
-missing composited/canvas/reload/restart evidence, wrong runtime, or wrong SDK
-identity fails the gate. The next Assurance adapter must additionally bind the
-manifest, Environment Profile, adapter lock, typecheck/test/build summary, and
-freshness policy when normalizing it. Timeout, crash, permission refusal,
-missing evidence, or stale output remains `INCONCLUSIVE`, never green.
+The v3 producer artifact is manifest-aware. A headed assurance run passes five
+exact digests into the native process: manifest, Environment Profile, adapter
+lock, target descriptor, and target source set. Each of the nine ordered steps
+now names nonempty exact evidence, both process generations record actual exit
+code/signal and whether SIGKILL was required, and a forced kill fails the gate.
+The separately owned verifier does not import the app decoder. It rejects
+excess fields, malformed/traversal evidence names, rehashes every evidence
+file, binary, frontend bundle, and source input, probes both publisher PIDs,
+checks the exact Node/Zig/SDK/platform identity, and only then emits a
+public-safe target receipt. Missing, stale, crashed, mismatched, or malformed
+state remains `INCONCLUSIVE` with no receipt.
+
+Admission and evidence acceptance remain distinct. The owner's direction
+authorizes construction and execution of this exact proof design, not advance
+acceptance of future observations. Even after all candidates become green, a
+separately bound post-run review is required before Native receipt disposition
+can become `accepted` and a final Evidence Index can publish.
 
 ### Native automation blockers for parallel assurance
 
@@ -332,14 +368,16 @@ Four upstream behaviors matter before admission:
   current `(view, role, accessibleName, occurrence)` and resolve the id just
   before each action, as the new smoke does.
 
-The completed steps are owned-runner freshness, outer/child runtime fidelity,
-target descriptors, typed v2 host evidence, and macOS composited capture. The
-next honest sequence is: add the namespaced Native environment and adapter;
-normalize this host gate into a target-bound receipt; add browser/semantic
-evidence; create the Native criterion catalog red/`INCONCLUSIVE`; port real
-Effect and host services criterion by criterion; then obtain fresh review,
-admission, signed lifecycle evidence, and only then run all 36 Native-bound
-units plus the full Native gate.
+Completed steps now include owned-runner freshness, outer/child runtime
+fidelity, disjoint target descriptors, a red Native criterion catalog, the
+namespaced environment/two-adapter design, all 36 executable units, typed v3
+host evidence, independent artifact rehashing, target-bound host normalization,
+and macOS composited capture. The next honest sequence is to mount the real
+shared Desktop Effect Native renderer, add a bundled Node 24 sidecar around the
+Electron-neutral services, replace each empty Native criterion anchor with an
+integration observation and falsifier, add browser/semantic evidence, and
+finish with signed install/update/rollback/uninstall evidence plus post-run
+review.
 
 ## How to harness Native SDK's opinionated components
 
@@ -517,10 +555,13 @@ OpenAgents sources inspected:
 - [bounded hybrid spike](../../apps/native-sdk-effect-native-spike/README.md)
 - [Native SDK host and native component proof](../../apps/native-sdk-effect-native-spike/src/main.zig)
 - [Effect Native program proof](../../apps/native-sdk-effect-native-spike/frontend/src/program.ts)
+- [production Desktop command mapping](../../apps/native-sdk-effect-native-spike/frontend/src/production-command-parity.ts)
+- [Native MVP criterion catalog](../../apps/native-sdk-effect-native-spike/assurance/mvp-assurance-criteria.test.ts)
 - [bounded reload/restart state storage](../../apps/native-sdk-effect-native-spike/frontend/src/state-storage.ts)
 - [component-adoption matrix](../../apps/native-sdk-effect-native-spike/frontend/src/native-sdk-component-adoption.ts)
 - [headed production host gate](../../apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts)
 - [current admitted MVP assurance runner](../../packages/assurance-spec/scripts/run-mvp-assurance.ts)
+- [Native criterion and host-gate verifier](../../packages/assurance-spec/src/native-sdk-assurance-adapter.ts)
 - [current MVP criterion anchors](../../apps/openagents-desktop/src/mvp-assurance-criteria.test.ts)
 
 The upstream Native SDK repository had 270 commits from 2026-05-08 through the

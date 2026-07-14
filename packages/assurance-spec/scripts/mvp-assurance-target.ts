@@ -23,7 +23,7 @@ export type MvpAssuranceTargetDescriptor = Readonly<{
     receiptRoot: string;
     runRoot: string;
   }>;
-  criterion: Readonly<{ testPath: string; environmentRef: string; adapterRef: string; adapterSourcePath: string }>;
+  criterion: Readonly<{ testPath: string; environmentRef: string; adapterRef: string; adapterSourcePaths: ReadonlyArray<string> }>;
   fullGate: Readonly<{
     argv: readonly [string, ...string[]];
     successMarker: string;
@@ -65,7 +65,7 @@ export const electronMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
     testPath: "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts",
     environmentRef: "ENV-OA-DESKTOP-MVP-VITE-PLUS-1",
     adapterRef: "openagents.vite_plus_test.v1",
-    adapterSourcePath: "packages/assurance-spec/src/vite-plus-test-adapter.ts",
+    adapterSourcePaths: ["packages/assurance-spec/src/vite-plus-test-adapter.ts"],
   },
   fullGate: {
     argv: ["pnpm", "--dir", "apps/openagents-desktop", "run", "verify"],
@@ -92,16 +92,16 @@ export const electronMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
 
 export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
   name: "native-sdk",
-  targetRef: "openagents.desktop.native-sdk.spike",
+  targetRef: "openagents.desktop.native-sdk.mvp",
   repositoryPath: "apps/native-sdk-effect-native-spike",
   productSpecPath: "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
   assuranceSpec: {
     path: "docs/mvp/openagents-codex-workroom-mvp.native-sdk.assurance-spec.md",
     id: "assurance.openagents.desktop.codex.workroom.mvp.native-sdk",
-    revision: 1,
+    revision: 2,
     gateRef: "GATE-MVP-FULL-ASSURANCE-NATIVE-SDK",
-    reviewId: "review.openagents.desktop.native-sdk.mvp.assurance.1",
-    admissionRef: "admission.openagents.desktop.native-sdk.mvp.assurance.1",
+    reviewId: "review.openagents.desktop.native-sdk.mvp.assurance.2",
+    admissionRef: "admission.openagents.desktop.native-sdk.mvp.assurance.2",
   },
   paths: {
     proposalFixture: "packages/assurance-spec/conformance/valid/mvp-proposal.assurance-spec.md",
@@ -116,16 +116,19 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
     runRoot: "var/assurance/openagents-desktop-native-sdk-mvp",
   },
   criterion: {
-    testPath: "apps/native-sdk-effect-native-spike/frontend/src/mvp-assurance-criteria.test.ts",
+    testPath: "apps/native-sdk-effect-native-spike/assurance/mvp-assurance-criteria.test.ts",
     environmentRef: "ENV-OA-DESKTOP-NATIVE-SDK-MACOS-1",
     adapterRef: "openagents.native_sdk_assurance.v1",
-    adapterSourcePath: "packages/assurance-spec/src/native-sdk-assurance-adapter.ts",
+    adapterSourcePaths: [
+      "packages/assurance-spec/src/vite-plus-test-adapter.ts",
+      "packages/assurance-spec/src/native-sdk-assurance-adapter.ts",
+    ],
   },
   fullGate: {
     argv: ["pnpm", "--dir", "apps/native-sdk-effect-native-spike", "run", "verify"],
     successMarker: "[native-sdk-effect-native-spike smoke] OK",
     smokeField: "native_sdk_smoke",
-    hostGateFormat: "openagents.native-sdk.host-gate.v2",
+    hostGateFormat: "openagents.native-sdk.host-gate.v3",
     sourcePaths: [
       "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
       "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
@@ -137,15 +140,17 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
   dependencyLockPath: "pnpm-lock.yaml",
   companionEvidenceRefs: ["assurance/openagents-desktop-native-sdk-mvp.full-native-gate-receipt.json"],
   targetSourcePaths: [
-    "apps/native-sdk-effect-native-spike/frontend/src/mvp-assurance-criteria.test.ts",
+    "apps/native-sdk-effect-native-spike/assurance/mvp-assurance-criteria.test.ts",
     "apps/native-sdk-effect-native-spike/frontend/src/program.ts",
     "apps/native-sdk-effect-native-spike/frontend/src/native-bridge.ts",
+    "apps/native-sdk-effect-native-spike/frontend/src/production-command-parity.ts",
     "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
     "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
     "apps/native-sdk-effect-native-spike/src/main.zig",
     "apps/native-sdk-effect-native-spike/src/tests.zig",
     "apps/native-sdk-effect-native-spike/build.zig.zon",
     "apps/native-sdk-effect-native-spike/package.json",
+    "apps/openagents-desktop/src/desktop-command-contract.ts",
   ],
 };
 

@@ -316,13 +316,13 @@ fn intentDetail(model: *const Model, output: []u8) ![]const u8 {
     const sequence = model.outbound_sequence;
     return switch (model.outbound_intent) {
         .none => error.NoIntent,
-        .new_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"NewChatRequested\"}}}}", .{sequence}),
-        .workspace_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"chat\"}}}}", .{sequence}),
-        .workspace_home => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"home\"}}}}", .{sequence}),
-        .workspace_settings => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"settings\"}}}}", .{sequence}),
-        .session_parity => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.parity\"}}}}", .{sequence}),
-        .session_renderer => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.renderer\"}}}}", .{sequence}),
-        .session_audit => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.audit\"}}}}", .{sequence}),
+        .new_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"NewChatRequested\",\"commandId\":\"chat.new\"}}}}", .{sequence}),
+        .workspace_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"chat\",\"commandId\":\"chat.open\"}}}}", .{sequence}),
+        .workspace_home => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"home\",\"commandId\":\"workspace.home\"}}}}", .{sequence}),
+        .workspace_settings => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"settings\",\"commandId\":\"settings.open\"}}}}", .{sequence}),
+        .session_parity => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.parity\",\"commandId\":null}}}}", .{sequence}),
+        .session_renderer => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.renderer\",\"commandId\":null}}}}", .{sequence}),
+        .session_audit => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"SessionSelected\",\"sessionRef\":\"session.audit\",\"commandId\":null}}}}", .{sequence}),
     };
 }
 

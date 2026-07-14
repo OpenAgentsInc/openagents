@@ -17,7 +17,6 @@ import {
   nativeSdkAutomationProtocol,
   nativeSdkCommit,
   nativeSdkHostGateFormat,
-  nativeSdkHostGateSteps,
   nativeSdkTargetRef,
 } from "./host-gate.ts";
 
@@ -32,20 +31,32 @@ const accessibilityPath = path.join(automationDir, "accessibility.txt");
 const screenshotPath = path.join(automationDir, "screenshot-native-shell.png");
 const expectedNodeVersion = "24.13.1";
 const expectedZigVersion = "0.16.0";
+const assuranceEnvironmentKeys = {
+  manifestDigest: "OPENAGENTS_ASSURANCE_MANIFEST_DIGEST",
+  environmentDigest: "OPENAGENTS_ASSURANCE_ENVIRONMENT_DIGEST",
+  adapterLockDigest: "OPENAGENTS_ASSURANCE_ADAPTER_LOCK_DIGEST",
+  targetDescriptorDigest: "OPENAGENTS_ASSURANCE_TARGET_DESCRIPTOR_DIGEST",
+  targetSourceDigest: "OPENAGENTS_ASSURANCE_TARGET_SOURCE_DIGEST",
+} as const;
 const sourcePaths = [
   "apps/native-sdk-effect-native-spike/app.zon",
   "apps/native-sdk-effect-native-spike/build.zig",
   "apps/native-sdk-effect-native-spike/build.zig.zon",
   "apps/native-sdk-effect-native-spike/package.json",
+  "apps/native-sdk-effect-native-spike/vite.config.ts",
+  "apps/native-sdk-effect-native-spike/frontend/index.html",
   "apps/native-sdk-effect-native-spike/src/main.zig",
   "apps/native-sdk-effect-native-spike/src/tests.zig",
   "apps/native-sdk-effect-native-spike/frontend/src/main.ts",
   "apps/native-sdk-effect-native-spike/frontend/src/native-bridge.ts",
+  "apps/native-sdk-effect-native-spike/frontend/src/native-sdk-component-adoption.ts",
+  "apps/native-sdk-effect-native-spike/frontend/src/production-command-parity.ts",
   "apps/native-sdk-effect-native-spike/frontend/src/program.ts",
   "apps/native-sdk-effect-native-spike/frontend/src/state-storage.ts",
   "apps/native-sdk-effect-native-spike/frontend/src/style.css",
   "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
   "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
+  "apps/openagents-desktop/src/desktop-command-contract.ts",
 ] as const;
 
 const sleep = (milliseconds: number): Promise<void> =>
@@ -53,6 +64,15 @@ const sleep = (milliseconds: number): Promise<void> =>
 
 const sha256 = (bytes: Buffer | string): string =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+
+const assuranceBinding = (): Readonly<Record<keyof typeof assuranceEnvironmentKeys, string>> | null => {
+  const entries = Object.entries(assuranceEnvironmentKeys).map(([field, key]) => [field, process.env[key]?.trim()] as const);
+  if (entries.every(([, value]) => value === undefined || value === "")) return null;
+  if (entries.some(([, value]) => value === undefined || value === "")) {
+    throw new Error("Native host gate assurance binding must be supplied completely or omitted.");
+  }
+  return Object.fromEntries(entries) as Record<keyof typeof assuranceEnvironmentKeys, string>;
+};
 
 const filesUnder = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
   const absolute = path.join(directory, entry.name);
@@ -164,8 +184,12 @@ const launch = (logs: string[]): ChildProcessWithoutNullStreams => {
   return child;
 };
 
-const stop = async (child: ChildProcessWithoutNullStreams): Promise<void> => {
-  if (child.exitCode !== null) return;
+type ProcessTermination = Readonly<{ exitCode: number | null; signal: string | null; forcedKill: boolean }>;
+
+const stop = async (child: ChildProcessWithoutNullStreams): Promise<ProcessTermination> => {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { exitCode: child.exitCode, signal: child.signalCode, forcedKill: false };
+  }
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
   child.kill("SIGTERM");
   const clean = await Promise.race([exited.then(() => true), sleep(5_000).then(() => false)]);
@@ -173,6 +197,7 @@ const stop = async (child: ChildProcessWithoutNullStreams): Promise<void> => {
     child.kill("SIGKILL");
     await exited;
   }
+  return { exitCode: child.exitCode, signal: child.signalCode, forcedKill: !clean };
 };
 
 const compositedWindowCapture = async (child: ChildProcessWithoutNullStreams, outputPath: string): Promise<void> => {
@@ -218,8 +243,13 @@ mkdirSync(evidenceDir, { recursive: true, mode: 0o700 });
 
 const logs: string[] = [];
 const runNonce = randomUUID();
-let initialProcess: { pid: number; publisherPid: number; stopped: true } | null = null;
-let restartedProcess: { pid: number; publisherPid: number; stopped: true } | null = null;
+const assurance = assuranceBinding();
+type ProcessIdentity = Readonly<{ pid: number; publisherPid: number }>;
+type ProcessAttestation = ProcessIdentity & ProcessTermination & Readonly<{ stopped: true }>;
+let initialIdentity: ProcessIdentity | null = null;
+let restartedIdentity: ProcessIdentity | null = null;
+let initialProcess: ProcessAttestation | null = null;
+let restartedProcess: ProcessAttestation | null = null;
 let child: ChildProcessWithoutNullStreams | null = null;
 try {
   child = launch(logs);
@@ -230,7 +260,7 @@ try {
     value.includes('name="Effect state synchronized"')
   );
   if (child.pid === undefined) throw new Error("Initial Native SDK process has no PID");
-  initialProcess = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid), stopped: true };
+  initialIdentity = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid) };
   let revision = projectionRevision(snapshot);
   copySnapshot("01-initial", snapshot);
   copyFileSync(accessibilityPath, path.join(evidenceDir, "01-initial.accessibility.txt"));
@@ -287,7 +317,7 @@ try {
   revision += 1;
   copySnapshot("04-renderer-reload", snapshot);
 
-  await stop(child);
+  initialProcess = { ...initialIdentity, ...(await stop(child)), stopped: true };
   child = null;
   rmSync(automationDir, { recursive: true, force: true });
   commandSequence = 0;
@@ -300,7 +330,7 @@ try {
     value.includes('name="Effect state synchronized"')
   );
   if (child.pid === undefined) throw new Error("Restarted Native SDK process has no PID");
-  restartedProcess = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid), stopped: true };
+  restartedIdentity = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid) };
   revision = projectionRevision(snapshot);
   copySnapshot("05-process-restart", snapshot);
 
@@ -311,9 +341,15 @@ try {
   );
   copySnapshot("06-new-chat", snapshot);
 
-  await stop(child);
+  restartedProcess = { ...restartedIdentity, ...(await stop(child)), stopped: true };
   child = null;
   if (initialProcess === null || restartedProcess === null) throw new Error("Native host process attestations are incomplete");
+  if (initialProcess.forcedKill || restartedProcess.forcedKill) throw new Error("Native host process required forced termination");
+  writeFileSync(path.join(evidenceDir, "07-clean-teardown.json"), `${JSON.stringify({
+    initial: initialProcess,
+    restarted: restartedProcess,
+    publishersLive: [processIsLive(initialProcess.publisherPid), processIsLive(restartedProcess.publisherPid)],
+  })}\n`, { mode: 0o600 });
 
   const evidence = readdirSync(evidenceDir).sort().map((name) => {
     const bytes = readFileSync(path.join(evidenceDir, name));
@@ -342,8 +378,19 @@ try {
       frontendDigest: fileSetDigest(filesUnder(path.join(packageRoot, "frontend/dist")), packageRoot),
       sourceDigest: fileSetDigest(sourcePaths.map((entry) => path.join(repositoryRoot, entry)), repositoryRoot),
     },
+    assurance,
     processes: { initial: initialProcess, restarted: restartedProcess },
-    steps: nativeSdkHostGateSteps.map((id) => ({ id, result: "passed", evidence: id === "composited-window-capture" ? ["01-composited-window.png"] : [] })),
+    steps: [
+      { id: "initial-projection", result: "passed", evidence: ["01-initial.snapshot.txt", "01-initial.accessibility.txt"] },
+      { id: "composited-window-capture", result: "passed", evidence: ["01-composited-window.png"] },
+      { id: "session-selection", result: "passed", evidence: ["02-session-selected.snapshot.txt"] },
+      { id: "workspace-round-trip", result: "passed", evidence: ["03-workspace-round-trip.snapshot.txt"] },
+      { id: "native-canvas-screenshot", result: "passed", evidence: ["03-native-shell.png"] },
+      { id: "renderer-reload-restored", result: "passed", evidence: ["04-renderer-reload.snapshot.txt"] },
+      { id: "process-restart-restored", result: "passed", evidence: ["05-process-restart.snapshot.txt"] },
+      { id: "new-chat-after-restart", result: "passed", evidence: ["06-new-chat.snapshot.txt"] },
+      { id: "clean-teardown", result: "passed", evidence: ["07-clean-teardown.json"] },
+    ],
     evidence,
   });
   writeFileSync(path.join(evidenceDir, "host-gate.json"), `${JSON.stringify(hostGate, null, 2)}\n`, { mode: 0o600 });

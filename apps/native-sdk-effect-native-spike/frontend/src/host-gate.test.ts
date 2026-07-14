@@ -19,11 +19,12 @@ const validGate = () => ({
   result: "passed",
   runtime: { os: "darwin", architecture: "arm64", node: "24.13.1", zig: "0.16.0", nativeSdkCommit },
   inputs: { commandDigest: digest, binaryDigest: digest, frontendDigest: digest, sourceDigest: digest },
+  assurance: null,
   processes: {
-    initial: { pid: 101, publisherPid: 101, stopped: true },
-    restarted: { pid: 102, publisherPid: 102, stopped: true },
+    initial: { pid: 101, publisherPid: 101, stopped: true, exitCode: 0, signal: null, forcedKill: false },
+    restarted: { pid: 102, publisherPid: 102, stopped: true, exitCode: 0, signal: null, forcedKill: false },
   },
-  steps: nativeSdkHostGateSteps.map((id) => ({ id, result: "passed", evidence: [] })),
+  steps: nativeSdkHostGateSteps.map((id) => ({ id, result: "passed", evidence: ["01-composited-window.png"] })),
   evidence: [
     "01-composited-window.png",
     "03-native-shell.png",
