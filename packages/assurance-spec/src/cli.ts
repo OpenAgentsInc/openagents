@@ -10,7 +10,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  */
 import { resolve, relative } from "node:path"
 
-import type { Effect } from "effect"
+import { Effect } from "effect"
 
 import {
   ASSURANCE_SPEC_EXTENSION,
@@ -27,19 +27,24 @@ import {
   ingestAgentRun,
   inventoryRepository,
   parseAssuranceSpec,
+  prepareSemanticPlannerInput,
   proposeAssuranceSpec,
   readOwnedRunnerConfig,
   runAssuranceSpecMcpServer,
   runOwnedRunnerVerification,
+  runSemanticPlannerProposal,
   runTool,
   validateAssuranceSpec,
+  fixtureSemanticPlanner,
   type AssuranceToolError,
+  type ProductSpecSubject,
   type ToolFailure,
 } from "./index.ts"
 
 const usage = (): never => {
   console.error("usage:")
   console.error("  assurance-spec propose <file.product-spec.md> [--repo <dir>] [--out <file.assurance-spec.md>] [--inventory-out <file.json>] [--id <id>] [--title <title>] [--author <author>] [--force] [--json]")
+  console.error("  assurance-spec observer propose <file.product-spec.md> --accepted-subject <pin.json> --planner fixture [--repo <dir>] [--out <file.assurance-spec.md>] [--id <id>] [--title <title>] [--author <author>] [--force] [--json]")
   console.error("  assurance-spec validate <file.assurance-spec.md> [...] [--json]")
   console.error("  assurance-spec coverage <file.assurance-spec.md> [--json]")
   console.error("  assurance-spec session begin <file.assurance-spec.md> [--root <dir>] [--json]")
@@ -87,6 +92,7 @@ const positional = (args: ReadonlyArray<string>, count: number): ReadonlyArray<s
   const found: string[] = []
   const flagsWithValues = new Set([
     "--repo", "--out", "--inventory-out", "--id", "--title", "--author",
+    "--accepted-subject", "--planner",
     "--root", "--against", "--spec-digest", "--subject-digest",
     "--criterion", "--status", "--technique", "--claim",
   ])
@@ -163,6 +169,75 @@ const propose = async (args: ReadonlyArray<string>): Promise<void> => {
   console.log(`proposed ${output}`)
   console.log(`  ${result.adequacy.coverage.obligations} obligations · ${result.adequacy.coverage.needs_design} need design · ${result.adequacy.coverage.ready} ready`)
   console.log(`  repository ${result.document.environments.repository_inventory.state} · structural valid · design ready ${result.adequacy.design_ready ? "yes" : "no"} · execution authorized no`)
+}
+
+/** Provider-free CLI exercise of the same injected semantic planner boundary. */
+const observerPropose = async (args: ReadonlyArray<string>): Promise<void> => {
+  const input = args[0]
+  const acceptedSubjectPath = flagValue(args, "--accepted-subject")
+  const plannerName = flagValue(args, "--planner")
+  if (input === undefined || input.startsWith("--") || acceptedSubjectPath === undefined || plannerName === undefined) usage()
+  if (plannerName !== "fixture") {
+    console.error(`unsupported semantic planner: ${plannerName}; CLI supports only the deterministic fixture planner`)
+    process.exit(2)
+  }
+  const json = jsonFlag(args)
+  const inputAbsolute = resolve(input)
+  const subjectFile = Runtime.file(resolve(acceptedSubjectPath!))
+  if (!(await Runtime.file(inputAbsolute).exists()) || !(await subjectFile.exists())) {
+    console.error("ProductSpec and accepted-subject pin must both exist.")
+    process.exit(1)
+  }
+  let acceptedSubject: unknown
+  try {
+    acceptedSubject = JSON.parse(await subjectFile.text())
+  } catch {
+    console.error("invalid_semantic_planner_input: accepted-subject pin is not valid JSON")
+    process.exit(1)
+  }
+  const repoFlag = flagValue(args, "--repo")
+  const repositoryRoot = repoFlag === undefined ? undefined : resolve(repoFlag)
+  const prepared = prepareSemanticPlannerInput({
+    acceptedSubject: acceptedSubject as ProductSpecSubject,
+    productSpecPath: relative(repositoryRoot ?? process.cwd(), inputAbsolute).replaceAll("\\", "/"),
+    productSpecMarkdown: await Runtime.file(inputAbsolute).text(),
+    ...(repositoryRoot === undefined ? {} : { repositoryInventory: inventoryRepository(repositoryRoot) }),
+  })
+  if (!prepared.ok) {
+    if (json) printJson({ ok: false, diagnostics: prepared.diagnostics })
+    else for (const entry of prepared.diagnostics) console.error(`${entry.code}: ${entry.message}`)
+    process.exit(1)
+  }
+  const result = Effect.runSync(runSemanticPlannerProposal(prepared.input, fixtureSemanticPlanner, {
+    author: flagValue(args, "--author") ?? "Observer deterministic fixture planner",
+    ...(flagValue(args, "--id") === undefined ? {} : { assuranceSpecId: flagValue(args, "--id")! }),
+    ...(flagValue(args, "--title") === undefined ? {} : { title: flagValue(args, "--title")! }),
+  }))
+  if (!result.ok) {
+    if (json) printJson({ ok: false, diagnostics: result.diagnostics })
+    else for (const entry of result.diagnostics) console.error(`${entry.code}: ${entry.message}`)
+    process.exit(1)
+  }
+  const output = resolve(flagValue(args, "--out") ?? defaultOutput(input))
+  if (await Runtime.file(output).exists() && !args.includes("--force")) {
+    console.error(`refusing to overwrite existing file: ${output}`)
+    process.exit(1)
+  }
+  await Runtime.write(output, result.markdown)
+  if (json) {
+    printJson({
+      ok: true,
+      output,
+      planner_input_digest: result.plannerInput.input_digest,
+      lifecycle_state: result.document.frontmatter.lifecycle_state,
+      execution_authorized: false,
+      adequacy: result.adequacy,
+    })
+  } else {
+    console.log(`proposed ${output}`)
+    console.log(`  semantic planner fixture · input ${result.plannerInput.input_digest}`)
+    console.log(`  lifecycle proposed · ${result.adequacy.coverage.needs_design} need design · execution authorized no`)
+  }
 }
 
 const validate = async (args: ReadonlyArray<string>): Promise<void> => {
@@ -454,6 +529,11 @@ const ownedRunner = (args: ReadonlyArray<string>): void => {
 
 const [command, ...args] = process.argv.slice(2)
 if (command === "propose") await propose(args)
+else if (command === "observer") {
+  const [subcommand, ...rest] = args
+  if (subcommand === "propose") await observerPropose(rest)
+  else usage()
+}
 else if (command === "validate") await validate(args)
 else if (command === "coverage") await coverage(args)
 else if (command === "session") {

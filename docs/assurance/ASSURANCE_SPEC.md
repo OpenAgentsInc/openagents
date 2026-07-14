@@ -82,9 +82,11 @@ executable ProductSpec + optional committed-repository inventory
 This mapping is deterministic because it makes no semantic proof choices. It
 does not infer a technique, environment, oracle, falsifier, evidence policy,
 gate, or authority from prose, filenames, scripts, or repository layout.
-Repository candidates remain unbound context. A model may later propose richer
-design, but that output remains reviewable proposal material, never compiler
-output or admitted policy.
+Repository candidates remain unbound context. Observer's implemented typed
+semantic-planner boundary may accept richer output from an injected planner,
+but it checks exact subject/input binding and complete criterion disposition
+before producing reviewable proposal material. That output is never admitted
+policy or execution authority.
 
 ## 1. Why this is a companion rather than a ProductSpec section
 

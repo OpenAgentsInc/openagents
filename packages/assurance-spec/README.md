@@ -16,6 +16,15 @@ criterion, exact source-claim snapshots, and explicit `needs_design`
 diagnostics for every unresolved proof-design field. Optional repository
 inventory is pinned to committed Git `HEAD`.
 
+Observer's semantic-planning boundary is also available as an injected Effect
+program. The caller supplies an explicit accepted ProductSpec identity pin;
+the request builder checks its path, revision, document digest, and ordered
+criterion ids against the exact Markdown. A provider-neutral planner returns a
+typed disposition for every criterion. Deterministic compilation rejects
+missing, duplicate, stale, drifted, malformed, self-verifying, or label-only
+seam designs, and copies claim snapshots/digests only from the checked request.
+The result is always `proposed`: review annotation and admission are separate.
+
 It does **not** use a model, infer semantics from filenames, map tests to
 criteria, choose tools or environments, run tests, admit proof design, create
 evidence, verify results, authorize release, or change public promises.
@@ -36,10 +45,24 @@ bun packages/assurance-spec/src/cli.ts validate \
 
 bun packages/assurance-spec/src/cli.ts coverage \
   docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md
+
+# Provider-free boundary smoke. accepted-subject.json is an explicit identity
+# pin, not an identity derived or accepted by this command.
+bun packages/assurance-spec/src/cli.ts observer propose \
+  docs/mvp/openagents-codex-workroom-mvp.product-spec.md \
+  --accepted-subject accepted-subject.json \
+  --planner fixture \
+  --out /tmp/observer-proposal.assurance-spec.md
 ```
 
 `propose` succeeds when it creates a structurally valid proposal even if every
 obligation still needs design. `coverage` reports adequacy separately.
+`observer propose --planner fixture` exercises the same injected planner
+request/response compiler used by agents and intentionally leaves every
+criterion `needs_design`; it grants no review, admission, or execution
+authority. Library callers inject their provider implementation through
+`runSemanticPlannerProposal`; model calls do not occur inside parsing or
+compilation.
 
 ### Agent tooling (AT-1)
 
@@ -159,6 +182,9 @@ out of scope, and a valid bound review grants no authority.
 ```ts
 import {
   bindAssuranceReviewAnnotation,
+  compileSemanticPlannerProposal,
+  prepareSemanticPlannerInput,
+  runSemanticPlannerProposal,
   ingestAgentRun,
   inventoryRepository,
   proposeAssuranceSpec,
@@ -169,6 +195,14 @@ import {
 
 `proposeAssuranceSpec` is pure. Filesystem and Git access remain isolated in
 `inventoryRepository` and the CLI.
+
+`prepareSemanticPlannerInput` runtime-decodes the accepted subject and optional
+inventory, checks the subject against exact ProductSpec bytes, freezes source
+snapshots/digests, and emits a digest-bound typed request.
+`runSemanticPlannerProposal` accepts an injected provider-neutral Effect
+planner. `compileSemanticPlannerProposal` runtime-decodes and deterministically
+compiles its output only after exact input, subject, and complete-disposition
+checks. Extra planner fields cannot overwrite frozen source claims.
 
 A future UI should decode this document and project its structural and
 adequacy states. It must not maintain a hardcoded parallel assurance plan or

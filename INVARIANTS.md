@@ -116,6 +116,29 @@ More specific invariant ledgers apply inside imported apps and packages.
   observed input and output usage within its declared cap. The orchestrator is
   evidence-only: it cannot admit, accept, merge, deploy, or promote a promise.
 
+## Observer Semantic Planning
+
+- `packages/assurance-spec/src/semantic-planner.ts` owns the provider-neutral
+  semantic-planner request, response, and deterministic proposal compiler.
+  Planning starts only from an explicit accepted ProductSpec identity pin; the
+  exact repository-relative path, revision, document digest, and ordered
+  criterion set must match the supplied ProductSpec bytes.
+- Planner output disposes every exact criterion once. Unknown, duplicate, or
+  missing criterion ids, changed input/subject bindings, malformed designed
+  proof, self-verification, and label-only seams fail closed. A planner cannot
+  supply or rewrite source-claim snapshots or digests; the compiler copies
+  those only from the checked request. Weak proof may remain an explicit
+  `needs_design` disposition but may not masquerade as designed.
+- Semantic planner implementations are injected Effect programs. Model and
+  provider calls remain outside request parsing and deterministic compilation.
+  The provider-free fixture planner deliberately returns only `needs_design`.
+- Every compiled semantic result is an AssuranceSpec with lifecycle
+  `proposed`. It cannot self-admit, execute, verify, release, or change a public
+  promise. Review annotation and admission of an exact later revision/digest
+  remain separate boundaries. Enforced by
+  `packages/assurance-spec/test/semantic-planner.test.ts` and the Observer CLI
+  assertion in `packages/assurance-spec/test/cli.test.ts`.
+
 ## Product Surface Ownership
 
 - `apps/openagents.com/` owns the `openagents.com` product surface and retains

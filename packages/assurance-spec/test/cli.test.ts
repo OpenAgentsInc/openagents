@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { appendFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 
 import { MVP_SPEC, MVP_SUBJECT, makeFixtureRoot, repoRoot } from "./fixture.ts"
@@ -84,6 +84,55 @@ describe("CLI exit-code discipline (0 success / 1 failure / 2 usage / 3 stale se
 })
 
 describe("CLI read commands", () => {
+  test("observer fixture planner requires and checks an explicit accepted-subject pin", () => {
+    const root = makeFixtureRoot()
+    const pinPath = join(root, "accepted-subject.json")
+    const outPath = join(root, "observer.assurance-spec.md")
+    writeFileSync(pinPath, `${JSON.stringify({
+      profile: "openagents_executable_v0.1_exact_document",
+      path: MVP_SUBJECT,
+      spec_format_version: "0.1",
+      spec_revision: 6,
+      document_digest: "sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+      criterion_refs: Array.from({ length: 18 }, (_, index) => `CW-AC-${String(index + 1).padStart(2, "0")}`),
+    }, null, 2)}\n`)
+    const result = run([
+      "observer", "propose", MVP_SUBJECT,
+      "--accepted-subject", pinPath,
+      "--planner", "fixture",
+      "--out", outPath,
+      "--json",
+    ], root)
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      lifecycle_state: "proposed",
+      execution_authorized: false,
+      adequacy: { coverage: { criteria: 18, ready: 0, needs_design: 18 } },
+    })
+    const repeated = run([
+      "observer", "propose", MVP_SUBJECT,
+      "--accepted-subject", pinPath,
+      "--planner", "fixture",
+      "--out", outPath,
+      "--force",
+      "--json",
+    ], root)
+    expect(repeated.exitCode).toBe(0)
+
+    const pin = JSON.parse(readFileSync(pinPath, "utf8"))
+    writeFileSync(pinPath, `${JSON.stringify({ ...pin, spec_revision: 7 }, null, 2)}\n`)
+    const stale = run([
+      "observer", "propose", MVP_SUBJECT,
+      "--accepted-subject", pinPath,
+      "--planner", "fixture",
+      "--out", outPath,
+      "--force",
+    ], root)
+    expect(stale.exitCode).toBe(1)
+    expect(stale.stderr).toContain("semantic_planner_subject_drift")
+  })
+
   test("obligations lists and filters; obligation prints unresolved fields", () => {
     const all = run(["obligations", MVP_SPEC, "--json"])
     expect(all.exitCode).toBe(0)

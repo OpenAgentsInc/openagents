@@ -143,7 +143,7 @@ release prerequisite, or change a public promise.
 | AssuranceSpec design | Implemented protocol and tooling in this directory and `packages/assurance-spec`; design remains separate from execution, verdict, release, and public-claim authority |
 | MVP AssuranceSpec | Revision 2 reviewed and admitted; 18/18 candidates `CONFIRMED`, 18/18 falsifiers `REFUTED`, 18 sensitivity receipts, and the full Desktop gate green |
 | Proposal schema/parser/serializer/validation | Implemented with conformance corpus, custom-section preservation, review annotations, and schema/parser parity tests |
-| ProductSpec-to-AssuranceSpec proposal | Implemented deterministic coverage skeleton; semantic proof planning remains separately reviewed and is never inferred by the deterministic tool |
+| ProductSpec-to-AssuranceSpec proposal | Implemented deterministic coverage skeleton plus a typed, injected Observer semantic-planner boundary; every result remains a separately reviewed `proposed` AssuranceSpec and the deterministic tool never infers proof semantics |
 | Environment Profile and adapter lock | Implemented and digest-bound in the admitted MVP manifest |
 | Deterministic Assurance Manifest compiler | Implemented with golden-byte and binding tests |
 | Native Bun test adapter and normalized receipt | Implemented; native output remains private and reviewed projections are digest-bound |

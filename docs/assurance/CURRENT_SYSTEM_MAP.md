@@ -147,7 +147,13 @@ they support and what they do not prove.
 QA Runner and QA Swarm should not become the AssuranceSpec parser or semantic
 planner.
 
-- The semantic planner proposes a human-reviewable Assurance Spec.
+- The semantic planner proposes a human-reviewable Assurance Spec through the
+  typed boundary in `packages/assurance-spec/src/semantic-planner.ts`. An
+  explicit accepted-subject pin must match the exact ProductSpec bytes, and
+  planner output must dispose every exact criterion once. Provider/model calls
+  are injected outside deterministic parsing and compilation. The committed
+  fixture planner intentionally returns `needs_design`; it is a boundary smoke,
+  not proof design.
 - External review policy admits an exact revision/digest.
 - Observer compiles a deterministic manifest.
 - QA Runner/native adapters execute exact units.
@@ -171,6 +177,11 @@ AssuranceSpec admission, review, acceptance, release, or promise authority.
 
 Exploration that cannot be distilled remains `INCONCLUSIVE`. A green run cannot
 admit its own plan, accept its own evidence, deploy, or promote a promise.
+
+Semantic planner compilation likewise stops at `proposed`. It copies source
+claim snapshots and digests from the checked request rather than planner prose,
+rejects stale/missing/duplicate ids and drifted bindings, and cannot review,
+admit, execute, verify, release, or change a public promise.
 
 OpenAgents Desktop now also has a real-Codex `mvp-proof` driver. It is a useful
 future execution adapter and receipt source, not AssuranceSpec authority. Its
