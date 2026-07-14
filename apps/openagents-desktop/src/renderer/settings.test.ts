@@ -1092,13 +1092,13 @@ describe.skip("retired out-of-scope MCP server view rendering", () => {
     expect(nodeByKey(httpForm, "settings-mcp-field-command")).toBeUndefined()
   })
 
-  test("the transport RadioGroup reflects the draft and offers stdio + http", () => {
-    const radio = nodeByKey(settingsView(initialSettingsState()), "settings-mcp-field-transport") as {
+  test("the transport SegmentedControl reflects the draft and offers stdio + http", () => {
+    const segmented = nodeByKey(settingsView(initialSettingsState()), "settings-mcp-field-transport") as {
       value?: string
-      options?: ReadonlyArray<{ value: string }>
+      options?: ReadonlyArray<{ id: string }>
     }
-    expect(radio?.value).toBe("stdio")
-    expect(radio?.options?.map((o) => o.value)).toEqual(["stdio", "http"])
+    expect(segmented?.value).toBe("stdio")
+    expect(segmented?.options?.map((o) => o.id)).toEqual(["stdio", "http"])
   })
 })
 

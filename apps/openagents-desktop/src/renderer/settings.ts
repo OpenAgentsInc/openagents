@@ -13,7 +13,7 @@ import {
   ComponentValueBinding,
   Divider,
   IntentRef,
-  RadioGroup,
+  SegmentedControl,
   Spacer,
   Stack,
   StaticPayload,
@@ -1349,15 +1349,21 @@ const mcpAddForm = (mcp: McpSettingsState): ReadonlyArray<View> => {
       onChange: IntentRef("DesktopMcpNameChanged", ComponentValueBinding()),
       a11y: { label: "MCP server name" },
     }),
-    RadioGroup({
+    Text({
+      key: "settings-mcp-field-transport-label",
+      content: "Transport",
+      variant: "label",
+      color: "textMuted",
+    }),
+    // Connection-mode switch (harmonization #8712 Phase 3, item 15):
+    // stdio vs http is a single-choice INPUT control, exactly SegmentedControl's
+    // contract — not an ad hoc button row and not a peer-panel Tabs selector.
+    SegmentedControl({
       key: "settings-mcp-field-transport",
-      name: "mcp-transport",
       value: draft.transport,
-      orientation: "horizontal",
-      label: "Transport",
       options: [
-        { value: "stdio", label: "stdio" },
-        { value: "http", label: "http" },
+        { id: "stdio", label: "stdio" },
+        { id: "http", label: "http" },
       ],
       onChange: IntentRef("DesktopMcpTransportChanged", ComponentValueBinding()),
       a11y: { label: "MCP server transport" },
@@ -1573,8 +1579,12 @@ export const settingsView = (settings: SettingsState): View => {
             Button({
               key: "settings-back",
               label: "Back",
+              // Ghost variant already resolves to a transparent border and the
+              // "md" control step already resolves to the same 13px/radius-4
+              // metrics this used to hand-spell via `style` (harmonization
+              // #8712 Phase 3, item 15) — the recipe was a zero-visual-change
+              // duplicate of the matrix default.
               variant: "ghost",
-              style: { borderWidth: 0, borderRadius: "md", typeScale: "label" },
               onPress: IntentRef("DesktopSettingsToggled"),
               a11y: { label: "Back to chat" },
             }),

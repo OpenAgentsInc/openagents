@@ -146,8 +146,13 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
       reason: "pylon_runtime_unavailable",
     })
     const view = fleetWorkspaceView(state)
-    expect(nodeByKey(view, "fleet-unavailable")?._tag).toBe("Text")
-    expect(nodeByKey(view, "fleet-unavailable-reason")?.content).toBe("pylon_runtime_unavailable")
+    // Empty/failure block (harmonization #8712 Phase 3, item 15): the honest
+    // unavailable state is a typed EmptyMessage, not a hand-rolled Text pair.
+    expect(nodeByKey(view, "fleet-unavailable")?._tag).toBe("EmptyMessage")
+    expect(nodeByKey(view, "fleet-unavailable")?.title).toBe(
+      "Fleet accounts are unavailable. No account evidence was read.",
+    )
+    expect(nodeByKey(view, "fleet-unavailable")?.description).toBe("pylon_runtime_unavailable")
     expect(nodeByKey(view, "fleet-accounts-table")).toBeUndefined()
     expect(collectNodes(view).filter((node) => node._tag === "Icon" && node.color === "success")).toHaveLength(0)
   })
@@ -215,7 +220,8 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
       cockpitAuthority: "stale",
       cockpitCards: [],
     })
-    expect(nodeByKey(view, "fleet-cockpit-empty")?.content).toBe("Run authority stale; controls withheld.")
+    expect(nodeByKey(view, "fleet-cockpit-empty")?._tag).toBe("EmptyMessage")
+    expect(nodeByKey(view, "fleet-cockpit-empty")?.title).toBe("Run authority stale; controls withheld.")
   })
 
   test("dots are a vertical flow of chips in the deterministic sort order (no horizontal strip)", () => {

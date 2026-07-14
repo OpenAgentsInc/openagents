@@ -14,6 +14,8 @@
 import {
   Badge,
   Button,
+  Card,
+  EmptyMessage,
   Icon,
   IntentRef,
   Spacer,
@@ -843,26 +845,22 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
   }
   if (fleet.phase === "unavailable") {
     return [...authorityRows,
-      Text({
+      // Hand-rolled empty/failure block -> EmptyMessage (harmonization
+      // #8712 Phase 3, item 15): the desktop fleet pane is one of the named
+      // demanding screens for this component.
+      EmptyMessage({
         key: "fleet-unavailable",
-        content: "Fleet accounts are unavailable. No account evidence was read.",
-        variant: "body",
-        color: "warning",
+        icon: { name: "WifiOff", tone: "warning" },
+        title: "Fleet accounts are unavailable. No account evidence was read.",
+        ...(fleet.reason === null ? {} : { description: fleet.reason }),
       }),
-      ...(fleet.reason === null ? [] : [Text({
-        key: "fleet-unavailable-reason",
-        content: fleet.reason,
-        variant: "caption",
-        color: "textMuted",
-      })]),
     ]
   }
   if (fleet.accounts.length === 0) {
-    return [...authorityRows, ...fleetCockpitSection(fleet), Text({
+    return [...authorityRows, ...fleetCockpitSection(fleet), EmptyMessage({
       key: "fleet-empty",
-      content: "No provider accounts connected yet. Connect one in Settings.",
-      variant: "body",
-      color: "textMuted",
+      icon: { name: "Users", tone: "secondary" },
+      title: "No provider accounts connected yet. Connect one in Settings.",
     })]
   }
   return [
@@ -880,42 +878,51 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
 
 const fleetCockpitSection = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
   if (fleet.cockpitCards.length === 0) {
-    return [Text({ key: "fleet-cockpit-empty", content: fleet.cockpitAuthority === "live" ? "No active or recent canonical runs." : `Run authority ${fleet.cockpitAuthority}; controls withheld.`, variant: "body", color: "textMuted" })]
+    return [EmptyMessage({
+      key: "fleet-cockpit-empty",
+      icon: { name: "Activity", tone: "secondary" },
+      title: fleet.cockpitAuthority === "live" ? "No active or recent canonical runs." : `Run authority ${fleet.cockpitAuthority}; controls withheld.`,
+    })]
   }
   return [
     Text({ key: "fleet-cockpit-title", content: "Authoritative work", variant: "label", color: "textMuted" }),
-    ...fleet.cockpitCards.map(card => Stack(
-      { key: `fleet-cockpit-${card.runRef}`, direction: "column", gap: "1", style: { width: "full", backgroundColor: "surfaceRaised", borderRadius: "md", padding: "2" } },
+    // Panel-styled Stack -> Card (harmonization #8712 Phase 3, item 15): the
+    // padding/radius/surface trio now rides Card's own props instead of a
+    // per-call-site style recipe.
+    ...fleet.cockpitCards.map(card => Card(
+      { key: `fleet-cockpit-${card.runRef}`, padding: "2", radius: "md", style: { width: "full", backgroundColor: "surfaceRaised" } },
       [
-        Stack({ key: `fleet-cockpit-${card.runRef}-head`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-          Text({ key: `fleet-cockpit-${card.runRef}-title`, content: card.title, variant: "body", color: "textPrimary" }),
-          Badge({ key: `fleet-cockpit-${card.runRef}-provider`, label: card.provider, tone: "neutral", a11y: { label: `Provider ${card.provider}` } }),
-          Badge({ key: `fleet-cockpit-${card.runRef}-status`, label: card.status, tone: card.status === "running" ? "success" : card.status === "failed" ? "warn" : "neutral", a11y: { label: `Run ${card.status}` } }),
-          Spacer({ key: `fleet-cockpit-${card.runRef}-fill`, flex: true }),
-          Button({ key: `fleet-cockpit-${card.runRef}-open`, label: "Open", variant: "ghost", onPress: IntentRef("DesktopChatSelected", StaticPayload(card.threadRef)), a11y: { label: `Open conversation ${card.title}` } }),
+        Stack({ key: `fleet-cockpit-${card.runRef}-body`, direction: "column", gap: "1" }, [
+          Stack({ key: `fleet-cockpit-${card.runRef}-head`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+            Text({ key: `fleet-cockpit-${card.runRef}-title`, content: card.title, variant: "body", color: "textPrimary" }),
+            Badge({ key: `fleet-cockpit-${card.runRef}-provider`, label: card.provider, tone: "neutral", a11y: { label: `Provider ${card.provider}` } }),
+            Badge({ key: `fleet-cockpit-${card.runRef}-status`, label: card.status, tone: card.status === "running" ? "success" : card.status === "failed" ? "warn" : "neutral", a11y: { label: `Run ${card.status}` } }),
+            Spacer({ key: `fleet-cockpit-${card.runRef}-fill`, flex: true }),
+            Button({ key: `fleet-cockpit-${card.runRef}-open`, label: "Open", variant: "ghost", onPress: IntentRef("DesktopChatSelected", StaticPayload(card.threadRef)), a11y: { label: `Open conversation ${card.title}` } }),
+          ]),
+          Text({ key: `fleet-cockpit-${card.runRef}-refs`, content: [card.workContextRef, card.repositoryRef, ...card.agentRefs, ...card.receiptRefs].filter((value): value is string => value !== null).join(" · "), variant: "caption", color: "textMuted" }),
+          ...(card.attention.length === 0 ? [] : [
+            Text({ key: `fleet-cockpit-${card.runRef}-attention`, content: `${card.attention.length} item${card.attention.length === 1 ? "" : "s"} ${card.attention.length === 1 ? "needs" : "need"} attention`, variant: "label", color: "warning" }),
+            ...card.attention.map(attention => Stack({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}`, direction: "row", gap: "2", align: "center" }, [
+              Text({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-title`, content: attention.title, variant: "body", color: "textPrimary" }),
+              Spacer({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-fill`, flex: true }),
+              ...attention.actions.map(action => Button({
+                key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-${action}`,
+                label: action === "approve" ? "Approve" : "Deny",
+                variant: action === "approve" ? "primary" : "secondary",
+                onPress: IntentRef("FleetAttentionDecisionRequested", StaticPayload({ action, interactionRef: attention.interactionRef, runRef: card.runRef })),
+                a11y: { label: `${action} ${attention.title}` },
+              })),
+            ])),
+          ]),
+          ...(card.actions.length === 0 ? [] : [Stack({ key: `fleet-cockpit-${card.runRef}-controls`, direction: "row", gap: "2", align: "center" }, card.actions.map(action => Button({
+            key: `fleet-cockpit-${card.runRef}-${action}`,
+            label: action[0]!.toUpperCase() + action.slice(1),
+            variant: action === "resume" ? "primary" : action === "close" ? "ghost" : "secondary",
+            onPress: IntentRef("FleetRunControlRequested", StaticPayload({ action, runRef: card.runRef })),
+            a11y: { label: `${action} ${card.title}` },
+          })))]),
         ]),
-        Text({ key: `fleet-cockpit-${card.runRef}-refs`, content: [card.workContextRef, card.repositoryRef, ...card.agentRefs, ...card.receiptRefs].filter((value): value is string => value !== null).join(" · "), variant: "caption", color: "textMuted" }),
-        ...(card.attention.length === 0 ? [] : [
-          Text({ key: `fleet-cockpit-${card.runRef}-attention`, content: `${card.attention.length} item${card.attention.length === 1 ? "" : "s"} ${card.attention.length === 1 ? "needs" : "need"} attention`, variant: "label", color: "warning" }),
-          ...card.attention.map(attention => Stack({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}`, direction: "row", gap: "2", align: "center" }, [
-            Text({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-title`, content: attention.title, variant: "body", color: "textPrimary" }),
-            Spacer({ key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-fill`, flex: true }),
-            ...attention.actions.map(action => Button({
-              key: `fleet-cockpit-${card.runRef}-${attention.interactionRef}-${action}`,
-              label: action === "approve" ? "Approve" : "Deny",
-              variant: action === "approve" ? "primary" : "secondary",
-              onPress: IntentRef("FleetAttentionDecisionRequested", StaticPayload({ action, interactionRef: attention.interactionRef, runRef: card.runRef })),
-              a11y: { label: `${action} ${attention.title}` },
-            })),
-          ])),
-        ]),
-        ...(card.actions.length === 0 ? [] : [Stack({ key: `fleet-cockpit-${card.runRef}-controls`, direction: "row", gap: "2", align: "center" }, card.actions.map(action => Button({
-          key: `fleet-cockpit-${card.runRef}-${action}`,
-          label: action[0]!.toUpperCase() + action.slice(1),
-          variant: action === "resume" ? "primary" : action === "close" ? "ghost" : "secondary",
-          onPress: IntentRef("FleetRunControlRequested", StaticPayload({ action, runRef: card.runRef })),
-          a11y: { label: `${action} ${card.title}` },
-        })))]),
       ],
     )),
   ]
