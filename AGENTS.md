@@ -611,6 +611,26 @@ asset smoke, `pylonRef`, `assignmentRef`, `durableRequestId`, closeout refs, and
 before/after counter values. Keep raw tokens, private prompts, wallet material,
 and local Codex auth out of reports.
 
+### Harness MCP pilot (FEED-1 #8783, opt-in)
+
+Supervised Codex sessions can be handed a READ-ONLY OpenAgents toolkit over
+MCP. Off by default; enable per session by setting
+`OPENAGENTS_PYLON_CODEX_HARNESS_MCP_PILOT=1` in the codex_agent_task
+environment (the same env the readiness probe sees). When enabled, the
+executor starts a loopback-only (`127.0.0.1`) MCP HTTP server for that session
+(`apps/pylon/src/harness-mcp-server.ts`), mints a per-session scoped bearer
+credential (scopes `operator_read`/`workspace_read` from
+`@openagentsinc/environment-auth`; DPoP upgrade tracked against ENV-2 #8780),
+and injects the server URL plus credential env var into the Codex thread's MCP
+config via SDK `--config` overrides (`mcp_servers.openagents`). Toolkit:
+`pylon.assignment.context` (assignmentRef, public-safe objective, pinned
+verify command), `pylon.fleet.status`, and `pylon.receipt.lookup` — no
+mutating tools. Every tool output passes the shared
+`@openagentsinc/mcp-contract` unsafe-material rules plus khala-tools public
+text redaction; secret-shaped fields are omitted, and the session token never
+appears in closeouts, receipts, or public projections. The server lives and
+dies with its Codex thread. With the flag unset there is zero behavior change.
+
 ## Deploying & Releasing
 
 - **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**

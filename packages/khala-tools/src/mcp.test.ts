@@ -81,6 +81,48 @@ describe("Khala MCP client and server", () => {
     })])
   })
 
+  test("status_read tools map to operator_read and stay read-only-hinted (FEED-1 #8783)", async () => {
+    const statusDefinition: KhalaToolDefinition = {
+      ...echoDefinition,
+      authority: "status_read",
+      internalId: "khala.test.status",
+      name: "status_projection",
+    }
+    const registry = makeKhalaToolRegistry([
+      {
+        definition: statusDefinition,
+        execute: () => Effect.succeed(khalaToolOk({ modelText: "ok" })),
+      },
+    ])
+
+    // Not visible under the default public policy (public_read + workspace_read).
+    const defaultResponse = await handleKhalaMcpRequest(
+      { id: "status-default", jsonrpc: "2.0", method: "tools/list" },
+      { registry },
+    )
+    expect(defaultResponse.result?.tools).toEqual([])
+
+    // Visible under an operator_read policy, annotated read-only.
+    const operatorResponse = await handleKhalaMcpRequest(
+      { id: "status-operator", jsonrpc: "2.0", method: "tools/list" },
+      {
+        policy: { allowedAuthorities: ["operator_read"], denyHighRisk: true },
+        registry,
+      },
+    )
+    const tools = operatorResponse.result?.tools as Array<{
+      name: string
+      annotations: { khalaAuthority: string; readOnlyHint: boolean }
+    }>
+    expect(tools).toEqual([expect.objectContaining({
+      annotations: expect.objectContaining({
+        khalaAuthority: "status_read",
+        readOnlyHint: true,
+      }),
+      name: "status_projection",
+    })])
+  })
+
   test("calls registered built-ins through MCP JSON-RPC", async () => {
     const registry = makeKhalaToolRegistry([
       {

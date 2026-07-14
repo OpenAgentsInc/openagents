@@ -68,6 +68,15 @@ import {
   runClaudeSecondPassReview,
   type ClaudeSecondPassReviewOptions,
 } from "./claude-second-pass-reviewer.js"
+import {
+  codexHarnessMcpConfigOverrides,
+  HARNESS_MCP_SESSION_TOKEN_ENV,
+  HARNESS_MCP_SERVER_URL_ENV,
+  startHarnessMcpServer,
+  type HarnessMcpServer,
+  type HarnessMcpThreadStatus,
+} from "./harness-mcp-server.js"
+import type { OpenAgentsMcpReceipt } from "@openagentsinc/mcp-contract"
 
 /**
  * The local Codex executor gate (issue #4789, epic #4793, promise
@@ -102,6 +111,14 @@ export type CodexAgentRuntimeSandboxMode = CodexAgentSandboxMode | "danger-full-
 
 export const CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE = "danger-full-access" as const
 export const CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY = "never" as const
+/**
+ * FEED-1 (#8783) opt-in pilot flag. When this env var is "1", the
+ * codex_agent_task lane starts a per-session loopback OpenAgents MCP server
+ * (read-only assignment/fleet/receipt toolkit) and injects its address plus a
+ * session-scoped credential into the Codex thread's MCP config. Unset means
+ * zero behavior change.
+ */
+export const CODEX_AGENT_HARNESS_MCP_PILOT_ENV = "OPENAGENTS_PYLON_CODEX_HARNESS_MCP_PILOT"
 // Non-serializable process-local capability. The authenticated local
 // run-no-spend composition passes this exact symbol; assignment wire/config
 // data cannot forge the owner-local own-capacity posture.
@@ -134,6 +151,13 @@ export type CodexAgentRunInput = {
   env?: Record<string, string | undefined>
   eventChunkReporter?: CodexEventChunkReporter
   eventReporter?: CodexTurnReporter
+  /**
+   * FEED-1 (#8783) opt-in pilot: when set, the session-scoped OpenAgents
+   * harness MCP server is registered in the Codex thread's MCP config via
+   * `--config` overrides. The credential itself travels only through the
+   * session env var named here, never through serialized config.
+   */
+  harnessMcp?: { url: string; tokenEnvVar: string }
   networkAccessEnabled: boolean
   progressTokenEstimates?: boolean
   sandboxMode: CodexAgentRuntimeSandboxMode
@@ -990,7 +1014,10 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     input.account,
   )
   const sdk = (await import(CODEX_AGENT_SDK_PACKAGE)) as {
-    Codex: new (options?: { env?: Record<string, string | undefined> }) => {
+    Codex: new (options?: {
+      env?: Record<string, string | undefined>
+      config?: Record<string, unknown>
+    }) => {
       startThread: (options: Record<string, unknown>) => {
         runStreamed: (
           prompt: string,
@@ -1081,7 +1108,12 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   }
 
   try {
-    const codex = new sdk.Codex({ env })
+    const codex = new sdk.Codex({
+      env,
+      ...(input.harnessMcp === undefined
+        ? {}
+        : { config: codexHarnessMcpConfigOverrides(input.harnessMcp) }),
+    })
     const thread = codex.startThread({
       workingDirectory: input.cwd,
       sandboxMode: input.sandboxMode,
@@ -1771,6 +1803,98 @@ export async function executeCodexAgentAssignment(
     )
   }
 
+  // FEED-1 (#8783) opt-in pilot: serve OpenAgents-owned read-only context
+  // (assignment context, fleet/thread status, receipt lookup) to the wrapped
+  // Codex session over a per-session loopback MCP server. Off by default;
+  // when the flag is unset nothing below changes any existing behavior.
+  const harnessMcpPilotEnabled = env[CODEX_AGENT_HARNESS_MCP_PILOT_ENV] === "1"
+  let harnessMcp: HarnessMcpServer | null = null
+  const harnessThreadStatus: {
+    phase: string
+    tokensSoFar?: number
+    tokenCountKind?: "exact" | "estimated"
+    updatedAtIso: string
+  } = { phase: "running", updatedAtIso: now.toISOString() }
+  if (harnessMcpPilotEnabled) {
+    const sessionReceipts = new Map<string, OpenAgentsMcpReceipt>()
+    const workspaceReceiptRef = stableRef(
+      "receipt.pylon.codex_agent_task.workspace_materialized",
+      lease.leaseRef,
+    )
+    sessionReceipts.set(workspaceReceiptRef, {
+      artifactRefs: [],
+      authorityClass: "workspace_read",
+      generatedAt: now.toISOString(),
+      kind: "read",
+      receiptRef: workspaceReceiptRef,
+      sourceRefs: [runRef, lease.leaseRef],
+      status: "recorded",
+      summary: "Bounded assignment workspace materialized for this session.",
+      targetRef: materialized.workspaceRef,
+    })
+    if (dependencies.receiptRef !== undefined) {
+      sessionReceipts.set(dependencies.receiptRef, {
+        artifactRefs: [],
+        authorityClass: "workspace_write",
+        generatedAt: now.toISOString(),
+        kind: "mutation",
+        receiptRef: dependencies.receiptRef,
+        sourceRefs: [runRef],
+        status: "applied",
+        summary: "Workspace dependencies prepared before the supervised session.",
+        targetRef: materialized.workspaceRef,
+      })
+    }
+    try {
+      harnessMcp = startHarnessMcpServer({
+        session: {
+          assignment: {
+            assignmentRef: lease.assignmentRef,
+            leaseRef: lease.leaseRef,
+            objectivePublicSummary: task.objectiveSummary ?? "",
+            runRef,
+            verifyCommand: materialized.verificationArgs,
+            workflow: "codex_agent_task",
+            workspaceRef: materialized.workspaceRef,
+          },
+          fleetStatus: (): ReadonlyArray<HarnessMcpThreadStatus> => [{
+            phase: harnessThreadStatus.phase,
+            threadRef: runRef,
+            updatedAtIso: harnessThreadStatus.updatedAtIso,
+            workflow: "codex_agent_task",
+            ...(harnessThreadStatus.tokensSoFar === undefined
+              ? {}
+              : { tokensSoFar: harnessThreadStatus.tokensSoFar }),
+            ...(harnessThreadStatus.tokenCountKind === undefined
+              ? {}
+              : { tokenCountKind: harnessThreadStatus.tokenCountKind }),
+          }],
+          lookupReceipt: receiptRef => sessionReceipts.get(receiptRef) ?? null,
+          sessionRef: runRef,
+        },
+      })
+    } catch {
+      await releaseCodexAgentWorkspace({ materialized, now })
+      return refusalRecord({
+        lease,
+        runRef,
+        blockerRefs: ["blocker.assignment.codex_agent_harness_mcp_start_failed"],
+        resultRef: "result.public.pylon.codex_agent_task.harness_mcp_start_failed",
+        summaryRef: "summary.public.pylon.codex_agent_task.harness_mcp_start_failed",
+        message: "Local Codex thread refused because the opted-in session harness MCP server could not be started.",
+      })
+    }
+  }
+  const harnessOnProgress = harnessMcp === null
+    ? options.onProgress
+    : async (progress: CodexAgentRuntimeProgress) => {
+      harnessThreadStatus.phase = progress.phase
+      if (progress.tokensSoFar !== undefined) harnessThreadStatus.tokensSoFar = progress.tokensSoFar
+      if (progress.tokenCountKind !== undefined) harnessThreadStatus.tokenCountKind = progress.tokenCountKind
+      harnessThreadStatus.updatedAtIso = new Date().toISOString()
+      await options.onProgress?.(progress)
+    }
+
   const runner = options.codexAgentRunner ?? runWithCodexSdk
   const eventReporter =
     options.codexTurnReporter ??
@@ -1803,9 +1927,16 @@ export async function executeCodexAgentAssignment(
       ...(options.abortSignal === undefined ? {} : { abortSignal: options.abortSignal }),
       cwd: materialized.workspace,
       account: options.account,
-      env: guardedEnv,
+      env: harnessMcp === null ? guardedEnv : {
+        ...guardedEnv,
+        [HARNESS_MCP_SESSION_TOKEN_ENV]: harnessMcp.credential.token,
+        [HARNESS_MCP_SERVER_URL_ENV]: harnessMcp.url,
+      },
       ...(eventChunkReporter === undefined ? {} : { eventChunkReporter }),
       ...(eventReporter === undefined ? {} : { eventReporter }),
+      ...(harnessMcp === null ? {} : {
+        harnessMcp: { tokenEnvVar: HARNESS_MCP_SESSION_TOKEN_ENV, url: harnessMcp.url },
+      }),
       instructions: materialized.instructions,
       leaseRef: lease.leaseRef,
       networkAccessEnabled: ownerLocalOwnCapacityNoSpend,
@@ -1817,10 +1948,11 @@ export async function executeCodexAgentAssignment(
         : boundedSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs,
       ...(config.model === undefined ? {} : { model: config.model }),
-      ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+      ...(harnessOnProgress === undefined ? {} : { onProgress: harnessOnProgress }),
       workspaceRef: materialized.workspaceRef,
     })
   } catch (error) {
+    harnessMcp?.stop()
     await releaseCodexAgentWorkspace({ materialized, now })
     const timedOut = /\b(timed?\s*out|timeout)\b/i.test(error instanceof Error ? error.message : String(error))
     const failure = classifyCodexAccountFailure(error)
@@ -1855,6 +1987,8 @@ export async function executeCodexAgentAssignment(
         : `Local Codex thread refused with ${failure.reason}: ${failure.publicMessage || "no public error message available"}.`,
     })
 	  }
+  // The session-scoped harness MCP server never outlives its Codex thread.
+  harnessMcp?.stop()
 
   const postProviderCredentialPolicy = await enforceCodexScmCredentialPolicy({
     account: options.account,

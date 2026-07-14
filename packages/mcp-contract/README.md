@@ -30,10 +30,17 @@ server, Verse MCP resource endpoint, remote bridge, external MCP client
 connector, OAuth flow, spend authority, deployment authority, admin authority,
 or workspace-write authority.
 
-Runtime server/client work starts in the next epic with a read-only local Pylon
-MCP server. Those tools should import this package rather than defining new
-authority, descriptor, receipt, error, progress, elicitation, naming, or output
-safety shapes.
+Runtime server/client work has started: the first read-only local Pylon MCP
+server is the FEED-1 harness MCP server (openagents #8783,
+`apps/pylon/src/harness-mcp-server.ts`), which serves assignment context,
+fleet/thread status, and receipt lookups to supervised harness sessions over a
+per-session loopback HTTP transport. It imports this package's authority
+classes, receipt schema, and unsafe-material redaction rules, and it runs on
+the khala-tools MCP registry/JSON-RPC path rather than a new registry. The
+contract package itself still exposes no runtime transport
+(`runtimeTransportExposed: false`); new runtime tools should keep importing
+this package rather than defining new authority, descriptor, receipt, error,
+progress, elicitation, naming, or output safety shapes.
 
 ## Authority And Grants
 

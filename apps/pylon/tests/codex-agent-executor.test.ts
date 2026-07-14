@@ -20,6 +20,10 @@ import {
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
 import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
+import {
+  HARNESS_MCP_SERVER_URL_ENV,
+  HARNESS_MCP_SESSION_TOKEN_ENV,
+} from "../src/harness-mcp-server"
 import type {
   CodexEventChunkReport,
   CodexTurnReport,
@@ -2051,5 +2055,95 @@ describe("shared node_modules cache across codex worktrees", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+// FEED-1 (openagents #8783): opt-in harness MCP pilot on the codex_agent_task
+// lane. Flag off => zero behavior change. Flag on => the runner receives a
+// session-scoped loopback MCP server address plus credential, and a
+// harness-side fixture MCP client can list tools and fetch assignment context
+// while the thread is live.
+describe("codex agent harness MCP pilot (FEED-1 #8783)", () => {
+  test("pilot flag off: no harness MCP server, config, or env injection", async () => {
+    await withState(async (state) => {
+      let capturedInput: Parameters<CodexAgentRunner>[0] | null = null
+      const capturingRunner: CodexAgentRunner = async (input) => {
+        capturedInput = input
+        return fixingRunner(input)
+      }
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentRunner: capturingRunner,
+        codexAgentProbe: readyProbe,
+      })
+      expect(record?.status).toBe("accepted")
+      const input = capturedInput as Parameters<CodexAgentRunner>[0] | null
+      expect(input).not.toBeNull()
+      expect(input?.harnessMcp).toBeUndefined()
+      expect(input?.env?.[HARNESS_MCP_SESSION_TOKEN_ENV]).toBeUndefined()
+      expect(input?.env?.[HARNESS_MCP_SERVER_URL_ENV]).toBeUndefined()
+    })
+  })
+
+  test("pilot flag on: harness-side MCP client lists tools and fetches assignment context during the run", async () => {
+    await withState(async (state) => {
+      let listedToolNames: string[] = []
+      let contextAssignmentRef = ""
+      let contextVerifyCommand: unknown = null
+      let capturedHarnessMcp: { url: string; tokenEnvVar: string } | undefined
+      let unauthorizedStatus = 0
+      const probingRunner: CodexAgentRunner = async (input) => {
+        capturedHarnessMcp = input.harnessMcp
+        const url = input.harnessMcp?.url ?? ""
+        const token = input.env?.[input.harnessMcp?.tokenEnvVar ?? ""] ?? ""
+        const call = async (method: string, params?: Record<string, unknown>, auth = true) => {
+          const response = await fetch(url, {
+            body: JSON.stringify({ id: "pilot.1", jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) }),
+            headers: {
+              "content-type": "application/json",
+              ...(auth ? { authorization: `Bearer ${token}` } : {}),
+            },
+            method: "POST",
+          })
+          return { body: await response.json() as Record<string, unknown>, status: response.status }
+        }
+        const listed = await call("tools/list")
+        listedToolNames = ((listed.body.result as { tools: ReadonlyArray<{ name: string }> }).tools ?? [])
+          .map(tool => tool.name)
+        const context = await call("tools/call", {
+          arguments: {},
+          name: "pylon.assignment.context",
+        })
+        const text = (context.body.result as { content: ReadonlyArray<{ text: string }> })
+          .content[0]?.text ?? "{}"
+        const payload = JSON.parse(text) as { assignmentRef?: string; verifyCommand?: unknown }
+        contextAssignmentRef = payload.assignmentRef ?? ""
+        contextVerifyCommand = payload.verifyCommand ?? null
+        unauthorizedStatus = (await call("tools/list", undefined, false)).status
+        return fixingRunner(input)
+      }
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentRunner: probingRunner,
+        codexAgentProbe: {
+          ...readyProbe,
+          env: { ...readyProbe.env, OPENAGENTS_PYLON_CODEX_HARNESS_MCP_PILOT: "1" },
+        },
+      })
+      expect(record?.status).toBe("accepted")
+      expect(capturedHarnessMcp?.tokenEnvVar).toBe(HARNESS_MCP_SESSION_TOKEN_ENV)
+      expect(capturedHarnessMcp?.url).toStartWith("http://127.0.0.1:")
+      expect(listedToolNames.sort()).toEqual([
+        "pylon.assignment.context",
+        "pylon.fleet.status",
+        "pylon.receipt.lookup",
+      ])
+      expect(contextAssignmentRef).toBe(lease.assignmentRef)
+      expect(contextVerifyCommand).toEqual(["bun", "test", "sum.test.ts"])
+      expect(unauthorizedStatus).toBe(401)
+      // The session credential never leaks into the public closeout record.
+      expect(JSON.stringify(record)).not.toContain("oahm_")
+      // The server is stopped once the thread completes.
+      const url = capturedHarnessMcp?.url ?? ""
+      await expect(fetch(url, { method: "POST" })).rejects.toThrow()
+    })
   })
 })

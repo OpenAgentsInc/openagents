@@ -170,6 +170,10 @@ export const KhalaToolAuthority = S.Literals([
   "process_stdin",
   "interaction",
   "session_state",
+  // Read-only projections of OpenAgents-owned session/fleet/receipt status
+  // served to supervised harness sessions (FEED-1, openagents #8783). Maps to
+  // the `operator_read` MCP authority class and never mutates state.
+  "status_read",
   "network",
   "browser",
   "external_directory",

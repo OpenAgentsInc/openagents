@@ -281,7 +281,9 @@ export function listKhalaMcpToolDefinitions(
       annotations: {
         khalaAuthority: definition.authority,
         policyScoped: true,
-        readOnlyHint: definition.authority === "read" || definition.authority === "search",
+        readOnlyHint: definition.authority === "read" ||
+          definition.authority === "search" ||
+          definition.authority === "status_read",
         sourceLabel: "khala-built-in",
       },
       description: definition.description,
@@ -442,6 +444,8 @@ function khalaAuthorityToMcpAuthority(authority: KhalaToolDefinition["authority"
     case "read":
     case "search":
       return "workspace_read"
+    case "status_read":
+      return "operator_read"
     case "network":
       return "public_read"
     case "edit":
