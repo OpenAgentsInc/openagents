@@ -436,7 +436,10 @@ describe('public product promises document', () => {
     expect(decoded.version).toBe(PublicProductPromisesVersion)
     expect(khalaCodeStates).toEqual({
       'khala_code.architect_coder_judge.v1': 'planned',
-      'khala_code.bundled_fleet_skill.v1': 'planned',
+      // 2026-07-14.1 owner-directed supersession withdrawal (the canonical
+      // .agents/skills/khala-fleet skill was removed; OpenAgents Desktop
+      // supersedes the Khala Code bundling claim).
+      'khala_code.bundled_fleet_skill.v1': 'withdrawn',
       'khala_code.desktop_codex_wrapper.v1': 'withdrawn',
       'khala_code.forum_hotbar.v1': 'withdrawn',
       'khala_code.free_paid_plans.v1': 'planned',
@@ -474,11 +477,15 @@ describe('public product promises document', () => {
       }),
       {},
     )
+    // 2026-07-14.1 owner-directed supersession withdrawal pass: seven
+    // promises (six autopilot.* desktop-surface promises plus
+    // khala_code.bundled_fleet_skill.v1) flip to withdrawn; green 34 -> 33
+    // (autopilot.agent_world_scene.v1 was the one green), planned 78 -> 72.
     expect(stateCounts).toEqual({
-      green: 34,
-      planned: 78,
+      green: 33,
+      planned: 72,
       red: 6,
-      withdrawn: 7,
+      withdrawn: 14,
       yellow: 20,
     })
   })
@@ -862,7 +869,7 @@ describe('public product promises document', () => {
     expect(existsSync(repoFile('NEEDS_OWNER.md'))).toBe(true)
   })
 
-  test('withdraws the legacy desktop app while keeping builtin compute planned', () => {
+  test('withdraws the legacy desktop app and the superseded builtin compute promise', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -893,32 +900,28 @@ describe('public product promises document', () => {
     expect(desktop?.unsafeCopy).toContain('revive its legacy app')
 
     expect(builtinCompute).toMatchObject({
-      // 2026-07-04.8 owner-directed revenue-refocus demotion
-      state: 'planned',
+      // 2026-07-14.1 owner-directed supersession withdrawal (apps/autopilot-desktop
+      // removed; OpenAgents Desktop supersedes it).
+      state: 'withdrawn',
       blockerRefs: [
-        'blocker.product_promises.builtin_compute_agent_signed_recut_missing',
-        'blocker.product_promises.builtin_compute_agent_live_from_install_smoke_missing',
-        'blocker.product_promises.openagents_compute_metering_live_smoke_missing',
-        'blocker.product_promises.builtin_compute_agent_owner_review_green_pending',
+        'blocker.product_promises.legacy_product_app_withdrawn',
       ],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.ts',
         'apps/openagents.com/workers/api/src/builtin-compute-agent-metering-smoke.test.ts',
         'docs/launch/vertex-fleet/autopilot.builtin_compute_agent.v1.md',
         'docs/launch/JUNE19_ROADMAP.md',
+        'docs/promises/2026-07-14-owner-supersession-removals.md',
+        'promise:openagents.desktop_app.v1',
       ]),
     })
+    expect(builtinCompute?.claim).toContain('Withdrawn on 2026-07-14:')
     expect(builtinCompute?.safeCopy).toContain(
-      'not green/default-on production',
+      'promise:openagents.desktop_app.v1',
     )
-    expect(builtinCompute?.safeCopy).toContain(
-      'not a from-install built-in-compute Go online session',
-    )
-    expect(builtinCompute?.verification).toContain(
-      'The AO6 DMG evidence is relevant installer proof for the desktop GUI only',
-    )
+    expect(builtinCompute?.verification).toContain('registry still serves')
     expect(builtinCompute?.unsafeCopy).toContain(
-      'Do not claim the already-published rc.2 installer includes this built-in agent',
+      'Do not use autopilot.builtin_compute_agent.v1 as current product copy',
     )
 
     const currentCopy = [
@@ -1247,9 +1250,12 @@ describe('public product promises document', () => {
     // The 2026-06-29.5 owner-signed transition flips exactly two scoped
     // promises green: metrics.khala_model_family_mix_public.v1 (#7016) and
     // autopilot.agent_world_scene.v1 (#7030). Green is now exactly 34.
+    // The 2026-07-14.1 owner-directed supersession pass withdraws
+    // autopilot.agent_world_scene.v1 (apps/autopilot-desktop removed;
+    // OpenAgents Desktop supersedes it), so green is now exactly 33.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(34)
+    ).toBe(33)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -1262,8 +1268,9 @@ describe('public product promises document', () => {
       promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
     expect(agentCharacterCreationPromise).toBeDefined()
-    // 2026-07-04.8 owner-directed revenue-refocus demotion
-    expect(agentCharacterCreationPromise?.state).toBe('planned')
+    // 2026-07-14.1 owner-directed supersession withdrawal
+    // (apps/autopilot-desktop removed; OpenAgents Desktop supersedes it).
+    expect(agentCharacterCreationPromise?.state).toBe('withdrawn')
     expect(agentCharacterCreationPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/6861',
@@ -1282,18 +1289,16 @@ describe('public product promises document', () => {
       ]),
     )
     expect(agentCharacterCreationPromise?.blockerRefs).toEqual([
-      'blocker.product_promises.agent_character_creation_live_new_user_receipt_missing',
-      'blocker.product_promises.agent_character_creation_permissioned_forum_intro_receipt_missing',
-      'blocker.product_promises.agent_character_creation_green_owner_review_pending',
+      'blocker.product_promises.legacy_product_app_withdrawn',
     ])
     expect(agentCharacterCreationPromise?.safeCopy).toContain(
-      'source-level Autopilot Desktop evidence',
+      'promise:openagents.desktop_app.v1',
     )
     expect(agentCharacterCreationPromise?.verification).toContain(
-      'postForumIntroduction posts one idempotent, rate-capped Forum introduction',
+      'registry still serves',
     )
-    expect(agentCharacterCreationPromise?.safeCopy).toContain(
-      'not a green/default-on live-production claim',
+    expect(agentCharacterCreationPromise?.claim).toContain(
+      'Withdrawn on 2026-07-14:',
     )
     const hostedGeminiPromise = decoded.promises.find(
       promise => promise.promiseId === 'api.hosted_gemini.v1',
@@ -1389,8 +1394,8 @@ describe('public product promises document', () => {
     const repeatedAgentCharacterCreationPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
-    // 2026-07-04.8 owner-directed revenue-refocus demotion
-    expect(repeatedAgentCharacterCreationPromise?.state).toBe('planned')
+    // 2026-07-14.1 owner-directed supersession withdrawal
+    expect(repeatedAgentCharacterCreationPromise?.state).toBe('withdrawn')
     expect(repeatedAgentCharacterCreationPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/6861',
@@ -1406,15 +1411,13 @@ describe('public product promises document', () => {
       ]),
     )
     expect(repeatedAgentCharacterCreationPromise?.blockerRefs).toEqual([
-      'blocker.product_promises.agent_character_creation_live_new_user_receipt_missing',
-      'blocker.product_promises.agent_character_creation_permissioned_forum_intro_receipt_missing',
-      'blocker.product_promises.agent_character_creation_green_owner_review_pending',
+      'blocker.product_promises.legacy_product_app_withdrawn',
     ])
     expect(repeatedAgentCharacterCreationPromise?.safeCopy).toContain(
-      'This is not a green/default-on live-production claim',
+      'superseded by owner direction on 2026-07-14',
     )
     expect(repeatedAgentCharacterCreationPromise?.unsafeCopy).toContain(
-      'Do not say character-creation onboarding is green',
+      'Do not use autopilot.agent_character_creation.v1 as current product copy',
     )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
@@ -2216,10 +2219,11 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           audience: expect.arrayContaining(['user', 'agent', 'operator']),
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.local_apple_fm_signed_installer_recut_missing',
-            'blocker.product_promises.local_apple_fm_signed_from_install_supervised_smoke_missing',
-          ]),
+          // 2026-07-14.1 owner-directed supersession withdrawal replaces the
+          // live blockers with the single withdrawn blocker.
+          blockerRefs: [
+            'blocker.product_promises.legacy_product_app_withdrawn',
+          ],
           evidenceRefs: expect.arrayContaining([
             'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
             'docs/apple-fm/2026-06-15-local-autopilot-admitted-mac-runbook.md',
@@ -2246,7 +2250,8 @@ describe('public product promises document', () => {
             'clients/khala-code-desktop/tests/apple-fm-sidecar.test.ts',
           ]),
           promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
-          state: 'planned',
+          // 2026-07-14.1 owner-directed supersession withdrawal
+          state: 'withdrawn',
         }),
       ]),
     )
@@ -2284,15 +2289,15 @@ describe('public product promises document', () => {
     expect(localAppleFmPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.local_apple_fm_helper_supervision_missing',
     )
-    expect(localAppleFmPromise?.verification).toContain(
-      'helper supervision policy',
+    // 2026-07-14.1 owner-directed supersession withdrawal: copy is rewritten
+    // to the withdrawn shape.
+    expect(localAppleFmPromise?.state).toBe('withdrawn')
+    expect(localAppleFmPromise?.claim).toContain('Withdrawn on 2026-07-14:')
+    expect(localAppleFmPromise?.safeCopy).toContain(
+      'promise:openagents.desktop_app.v1',
     )
     expect(localAppleFmPromise?.verification).toContain(
-      'supervised from-install smoke',
-    )
-    expect(localAppleFmPromise?.safeCopy).toContain('Khala Desktop')
-    expect(localAppleFmPromise?.verification).toContain(
-      'source-level packaging/readiness',
+      'registry still serves',
     )
     const mondayTrainingPromise = decoded.promises.find(
       promise =>
@@ -2441,7 +2446,12 @@ describe('public product promises document', () => {
     expect(largestSalesForce?.verification).toContain('#7027 dated audit')
   })
 
-  test('applies owner-signed agent-world scene green transition for issue 7030', () => {
+  test('withdraws the agent-world scene and visualization promises under the 2026-07-14 supersession', () => {
+    // 2026-07-14.1 owner-directed supersession withdrawal: the
+    // apps/autopilot-desktop tree that carried these surfaces was removed
+    // (OpenAgents Desktop supersedes it). The historical #7030 owner-signed
+    // green transition for autopilot.agent_world_scene.v1 remains recorded in
+    // the registry notes; the promise itself is now withdrawn.
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -2449,98 +2459,35 @@ describe('public product promises document', () => {
       decoded.promises.map(promise => [promise.promiseId, promise]),
     )
 
-    const scene = byId.get('autopilot.agent_world_scene.v1')
-    expect(scene).toMatchObject({
-      state: 'green',
-      blockerRefs: [],
-      evidenceRefs: expect.arrayContaining([
-        'https://github.com/OpenAgentsInc/openagents/issues/7030',
-        'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
-        'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
-        'apps/autopilot-desktop/src/ui/update.ts',
-        'apps/autopilot-desktop/src/ui/view.ts',
-        'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
-        'apps/autopilot-desktop/tests/verse-toggle.test.ts',
-      ]),
-    })
-    expect(scene?.blockerRefs).not.toContain(
-      'blocker.product_promises.agent_world_scene_not_default_on',
-    )
-    expect(scene?.blockerRefs).not.toContain(
-      'blocker.product_promises.agent_world_scene_owner_review_green_pending',
-    )
-    expect(scene?.safeCopy).toContain(
-      'The owner-signed green transition is applied',
-    )
-    expect(scene?.safeCopy).not.toContain(
-      'This is NOT a green/default-on production claim',
-    )
-    expect(scene?.safeCopy).not.toContain('yellow, source-level receipt')
-    expect(scene?.unsafeCopy).toContain('production-default-on for all users')
-    expect(scene?.verification).toContain(
-      'chatWorldBuildFlags defaults CHAT_WORLD_SCENE and CHAT_WORLD_PAYMENTS on',
-    )
-    expect(scene?.verification).toContain('owner-signed #7030 transition')
-    expect(scene?.verification).not.toContain('Green still requires')
-    expect(scene?.authorityBoundary).toContain('grants no runtime mutation')
-
-    const payments = byId.get('autopilot.bitcoin_payment_visualization.v1')
-    expect(payments).toMatchObject({
-      // 2026-07-04.8 owner-directed revenue-refocus demotion
-      state: 'planned',
-      blockerRefs: [
-        'blocker.product_promises.payment_visualization_owner_review_green_pending',
-      ],
-      evidenceRefs: expect.arrayContaining([
-        'https://github.com/OpenAgentsInc/openagents/issues/7030',
-        'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
-        'apps/autopilot-desktop/src/shared/chat-world-visualization.ts',
-        'apps/autopilot-desktop/tests/chat-world-visualization.test.ts',
-        'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
-        'https://openagents.com/api/public/activity-timeline?limit=8',
-      ]),
-    })
-    expect(payments?.blockerRefs).not.toContain(
-      'blocker.product_promises.payment_visualization_flag_default_off',
-    )
-    expect(payments?.safeCopy).toContain(
-      'This is NOT a green/default-on production claim',
-    )
-    expect(payments?.safeCopy).toContain('realBitcoinMoved:true')
-    expect(payments?.unsafeCopy).toContain(
-      'production-default-on for all users',
-    )
-    expect(payments?.verification).toContain(
-      'PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}',
-    )
-    expect(payments?.authorityBoundary).toContain('grants no payment authority')
-
-    const growth = byId.get('autopilot.pylon_growth_visualization.v1')
-    expect(growth).toMatchObject({
-      // 2026-07-04.8 owner-directed revenue-refocus demotion
-      state: 'planned',
-      blockerRefs: [
-        'blocker.product_promises.pylon_growth_owner_review_green_pending',
-      ],
-      evidenceRefs: expect.arrayContaining([
-        'https://github.com/OpenAgentsInc/openagents/issues/7030',
-        'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
-        'apps/autopilot-desktop/src/ui/pylon-network-visualization.ts',
-        'apps/autopilot-desktop/tests/pylon-network-visualization.test.ts',
-        'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
-      ]),
-    })
-    expect(growth?.blockerRefs).not.toContain(
-      'blocker.product_promises.pylon_growth_flag_default_off',
-    )
-    expect(growth?.safeCopy).toContain(
-      'This is NOT a green/default-on production claim',
-    )
-    expect(growth?.unsafeCopy).toContain('production-default-on for all users')
-    expect(growth?.verification).toContain(
-      'CHAT_WORLD_SCENE defaults on under the Verse launch default',
-    )
-    expect(growth?.authorityBoundary).toContain('grants no earning')
+    for (const promiseId of [
+      'autopilot.agent_world_scene.v1',
+      'autopilot.bitcoin_payment_visualization.v1',
+      'autopilot.pylon_growth_visualization.v1',
+    ]) {
+      const promise = byId.get(promiseId)
+      expect(promise).toMatchObject({
+        state: 'withdrawn',
+        blockerRefs: [
+          'blocker.product_promises.legacy_product_app_withdrawn',
+        ],
+        evidenceRefs: expect.arrayContaining([
+          'https://github.com/OpenAgentsInc/openagents/issues/7030',
+          'apps/autopilot-desktop/src/shared/chat-world-flags.ts',
+          'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
+          'docs/promises/2026-07-14-owner-supersession-removals.md',
+          'promise:openagents.desktop_app.v1',
+        ]),
+      })
+      expect(promise?.claim).toContain('Withdrawn on 2026-07-14:')
+      expect(promise?.safeCopy).toContain(
+        'superseded by owner direction on 2026-07-14',
+      )
+      expect(promise?.unsafeCopy).toContain(
+        `Do not use ${promiseId} as current product copy`,
+      )
+      expect(promise?.verification).toContain('registry still serves')
+      expect(promise?.authorityBoundary).toContain('withdrawn app/product')
+    }
   })
 
   test('weekend pylon promise assault attaches evidence without flipping any state', () => {

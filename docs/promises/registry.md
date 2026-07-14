@@ -1,5 +1,33 @@
 # Promise Registry
 
+> Registry `2026-07-14.1` is the owner-directed supersession withdrawal pass.
+> Owner statement (verbatim, 2026-07-14): "khala-code-desktop must itself be
+> deprecated and all relevant promises removed (OpenAgents desktop supercedes
+> it). ditto for apps/autopilot-desktop. sarah get rid of that too etc - i
+> dont give a shit wut u do just get that shit cleared out". Seven promises
+> whose surfaces are superseded by OpenAgents Desktop flip to `withdrawn` with
+> successor `promise:openagents.desktop_app.v1`:
+> `autopilot.agent_character_creation.v1`, `autopilot.agent_world_scene.v1`
+> (the one green flip down), `autopilot.bitcoin_payment_visualization.v1`,
+> `autopilot.builtin_compute_agent.v1`,
+> `autopilot.local_apple_fm_tool_chat.v1`,
+> `autopilot.pylon_growth_visualization.v1`, and
+> `khala_code.bundled_fleet_skill.v1`. Green moves 34 -> 33; registry shape is
+> 145 total, 72 planned, 20 yellow, 14 withdrawn, 6 red. Withdrawals are
+> downgrades and need no `promise_transition` receipt per the
+> `mobile.autopilot_remote_control.v1` precedent. In the same change
+> `apps/autopilot-desktop`, `packages/sarah-take-scoreboard`, and
+> `.agents/skills/khala-fleet` were deleted (git history at the pre-removal
+> commit is the archive); `clients/khala-code-desktop` remains a frozen
+> retained tree only because live pylon/QA-harness code imports it;
+> `packages/autopilot-ui` remains because the live openagents.com web app
+> imports it; and the FleetRun authority gains the neutral canonical path
+> `/api/fleet-runs` while `/api/sarah/fleet-runs` stays a served compatibility
+> alias for shipped clients. Stable IDs, historical evidence refs, and
+> public-safe receipt/read routes remain dereferenceable (deleted paths via
+> git history). Full record:
+> [`2026-07-14-owner-supersession-removals.md`](2026-07-14-owner-supersession-removals.md).
+
 > Registry `2026-07-12.1` is the LG-4 operator route-anchor binding pass. It
 > binds the existing admin-bearer outreach template-approval route
 > (`POST /api/operator/business/outreach/template-approvals`) and

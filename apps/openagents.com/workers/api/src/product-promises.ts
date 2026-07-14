@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-12.1'
+export const PublicProductPromisesVersion = '2026-07-14.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 const tassadarPsionicBackroomArchiveRef =
@@ -157,6 +157,29 @@ const retiredAppPromiseSuccessors: Readonly<Record<string, string>> = {
   'mobile.autopilot_remote_control.v1': 'promise:openagents.mobile_app.v1',
 }
 
+// Owner-directed supersession withdrawals, 2026-07-14. Owner statement
+// (verbatim): "khala-code-desktop must itself be deprecated and all relevant
+// promises removed (OpenAgents desktop supercedes it). ditto for
+// apps/autopilot-desktop. sarah get rid of that too etc - i dont give a shit
+// wut u do just get that shit cleared out". The apps/autopilot-desktop tree,
+// packages/sarah-take-scoreboard, and .agents/skills/khala-fleet were removed
+// in the same change; deleted evidence paths remain recoverable from git
+// history at the pre-removal main commit recorded in
+// docs/promises/2026-07-14-owner-supersession-removals.md.
+const ownerSupersededPromiseSuccessors20260714: Readonly<Record<string, string>> = {
+  'autopilot.agent_character_creation.v1':
+    'promise:openagents.desktop_app.v1',
+  'autopilot.agent_world_scene.v1': 'promise:openagents.desktop_app.v1',
+  'autopilot.bitcoin_payment_visualization.v1':
+    'promise:openagents.desktop_app.v1',
+  'autopilot.builtin_compute_agent.v1': 'promise:openagents.desktop_app.v1',
+  'autopilot.local_apple_fm_tool_chat.v1':
+    'promise:openagents.desktop_app.v1',
+  'autopilot.pylon_growth_visualization.v1':
+    'promise:openagents.desktop_app.v1',
+  'khala_code.bundled_fleet_skill.v1': 'promise:openagents.desktop_app.v1',
+}
+
 const khalaCodeCapabilityDisposition: Readonly<
   Record<
     string,
@@ -178,16 +201,10 @@ const khalaCodeCapabilityDisposition: Readonly<
     unsafeCopy:
       'Do not claim the architect/coder/judge workflow is available in Sarah or OpenAgents Desktop, and do not treat the legacy preset as cross-device fleet proof.',
   },
-  'khala_code.bundled_fleet_skill.v1': {
-    claim:
-      'Legacy-ID carry-forward: the canonical khala-fleet skill may be packaged as guidance for Sarah/OpenAgents Desktop without becoming runtime or dispatch authority.',
-    safeCopy:
-      'The canonical repository skill and its tests remain real. Packaging it through the deprecated Khala Code app is no longer a shipping claim; porting/discovery in OpenAgents Desktop is planned under #8574 and must preserve user-owned files, managed markers, and the canonical runbook authority.',
-    state: 'planned',
-    successor: 'promise:openagents.desktop_app.v1',
-    unsafeCopy:
-      'Do not claim outside users receive the skill through OpenAgents Desktop today or that skill text grants dispatch, spend, merge, or settlement authority.',
-  },
+  // khala_code.bundled_fleet_skill.v1 moved to
+  // ownerSupersededPromiseSuccessors20260714 on 2026-07-14: the canonical
+  // .agents/skills/khala-fleet/SKILL.md was removed at owner direction, so the
+  // capability carry-forward no longer applies.
   'khala_code.free_paid_plans.v1': {
     claim:
       'Legacy-ID carry-forward: a future unified OpenAgents app policy may distinguish a disclosed data-contributing tier from a paid private-data tier.',
@@ -341,6 +358,7 @@ export const publicProductPromisesDocument = () => {
         'apps/pylon/docs/launch-gates-no-overclaim.md',
       ],
       caveats: [
+        'Registry 2026-07-14.1 is the owner-directed supersession withdrawal pass ("khala-code-desktop must itself be deprecated and all relevant promises removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop. sarah get rid of that too etc", 2026-07-14). It withdraws seven promises whose surfaces are superseded by OpenAgents Desktop — autopilot.agent_character_creation.v1, autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1, autopilot.builtin_compute_agent.v1, autopilot.local_apple_fm_tool_chat.v1, autopilot.pylon_growth_visualization.v1, and khala_code.bundled_fleet_skill.v1 — moving green 34 -> 33 (agent_world_scene was green; withdrawal is a downgrade and needs no transition receipt per the mobile.autopilot_remote_control.v1 precedent). The apps/autopilot-desktop tree, packages/sarah-take-scoreboard, and the canonical .agents/skills/khala-fleet skill were deleted in the same change; clients/khala-code-desktop stays a frozen retained tree only because live pylon/QA-harness code still imports it, and packages/autopilot-ui stays because the live openagents.com web app imports it. The FleetRun authority gains the neutral canonical path /api/fleet-runs while /api/sarah/fleet-runs remains a served compatibility alias for shipped desktop/mobile binaries. Deleted evidence paths dereference through git history at the pre-removal commit recorded in docs/promises/2026-07-14-owner-supersession-removals.md.',
         'Registry 2026-07-12.1 is the LG-4 operator route-anchor binding pass. It binds the existing admin-bearer outreach template-approval route and approval-gated outreach-send route to planned autopilot.lead_gen.v1 as route-level operator approval/send evidence only. The promise stays planned and green stays exactly 34; all four Lead Gen blockers remain. These route refs prove the route anchors for recording an operator approval receipt and a send receipt, but they are not a live customer run, not a real LG-4 send-approval receipt, not customer-result proof, not self-serve availability, and not Apollo/contact-reveal/payment/payout/settlement authority.',
         'Registry 2026-07-10.2 is the Portal route-evidence binding pass. It binds the live auth-gated Portal admin/client engagement and content-decision routes to planned autopilot.lead_gen.v1 as route-level client-engagement and approval evidence only. Client `portal_content_decision:*` receipts are distinct from operator LG-4 send-approval receipts and do not authorize sends. The promise stays planned and green stays exactly 34; these route refs are not live-customer-run, send, customer-result, self-serve availability, contact-reveal, payment, payout, settlement, or publishing proof.',
         'Registry 2026-07-10.1 is the Pylon FleetRun closeout route-evidence binding pass. It binds the live owner-scoped FleetRun execution/steering read/write routes to pylon.v0_3_multi_earning_node.v1 as closeout-route evidence only, so blocker.product_promises.pylon_fleetrun_closeout_receipts_missing points at the route surface that can append execution evidence and settle steering completions/outcomes. The promise stays planned and green stays exactly 34; these route refs are not payment, settlement, public availability, or broad multi-earning proof.',
@@ -5454,6 +5472,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-14.1 is the owner-directed supersession withdrawal pass ("khala-code-desktop must itself be deprecated and all relevant promises removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop. sarah get rid of that too etc", 2026-07-14) — green moves 34 -> 33. Seven promises whose surfaces are superseded by OpenAgents Desktop flip to withdrawn with successor promise:openagents.desktop_app.v1: autopilot.agent_character_creation.v1, autopilot.agent_world_scene.v1 (the one green flip down), autopilot.bitcoin_payment_visualization.v1, autopilot.builtin_compute_agent.v1, autopilot.local_apple_fm_tool_chat.v1, autopilot.pylon_growth_visualization.v1, and khala_code.bundled_fleet_skill.v1. Withdrawals are downgrades and need no transition receipt per the mobile.autopilot_remote_control.v1 precedent. In the same change apps/autopilot-desktop, packages/sarah-take-scoreboard, and .agents/skills/khala-fleet were deleted (recoverable from git history at the pre-removal commit recorded in docs/promises/2026-07-14-owner-supersession-removals.md); clients/khala-code-desktop remains a frozen retained tree only because live pylon/QA-harness code imports it; packages/autopilot-ui remains because the live openagents.com web app imports it; and the FleetRun authority gains the neutral canonical path /api/fleet-runs while /api/sarah/fleet-runs stays a served compatibility alias for shipped clients. No promise is deleted from the registry; historical IDs, evidence refs, and receipt routes stay dereferenceable or explicitly tombstoned.',
       'Registry 2026-07-12.1 is the LG-4 operator route-anchor binding pass and flips NO promise state — green stays exactly 34. It binds route:/api/operator/business/outreach/template-approvals and route:/api/operator/business/pipeline/{pipelineRef}/outreach-sends to planned autopilot.lead_gen.v1 as route-level operator approval/send evidence only. The promise stays planned and all four Lead Gen blockers remain. These route refs prove the route anchors for recording an operator approval receipt and capped send receipt, but they are not a live customer run, not a real LG-4 send-approval receipt, not customer-result proof, not self-serve availability, and not Apollo/contact-reveal/payment/payout/settlement authority.',
       'Registry 2026-07-10.2 is the Portal route-evidence binding pass and flips NO promise state — green stays exactly 34. It binds route:/api/portal/admin/engagements, route:/api/portal/content/{itemId}/decision, and route:/api/portal/engagement to planned autopilot.lead_gen.v1 as auth-gated client-engagement and approval-route evidence only. Client `portal_content_decision:*` receipts are distinct from operator LG-4 send-approval receipts and do not authorize sends. The live-customer-run, send-approval, customer-result, and owner-signoff blockers remain. These route refs are not send authority, contact reveal, publishing automation, payment, payout, settlement, self-serve availability, or customer-result proof.',
       'Registry 2026-07-10.1 is the Pylon FleetRun closeout route-evidence binding pass and flips NO promise state — green stays exactly 34. It binds route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/events, route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering, route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/completions, and route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes to planned pylon.v0_3_multi_earning_node.v1 as closeout-route evidence only, so blocker.product_promises.pylon_fleetrun_closeout_receipts_missing has explicit route anchors for execution evidence, steering completions, and outcomes. These route refs are not payment, settlement, public availability, or broad multi-earning proof.',
@@ -5631,6 +5650,32 @@ export const publicProductPromisesDocument = () => {
           `Do not use ${promise.promiseId} as current product copy, revive its legacy app or release lane, or treat preserved evidence APIs as availability. Route new app claims to ${retiredSuccessor}.`,
         verification:
           `Compatibility check: the registry still serves ${promise.promiseId} as withdrawn, retains its historical evidence/receipt refs, and points consumers to ${retiredSuccessor}; active install/release copy and routes must not advertise the legacy app.`,
+      }
+    }
+
+    const ownerSupersededSuccessor =
+      ownerSupersededPromiseSuccessors20260714[promise.promiseId]
+    if (ownerSupersededSuccessor !== undefined) {
+      return {
+        ...promise,
+        authorityBoundary:
+          'A withdrawn app/product record grants no install, release, update, credential, dispatch, approval, spend, payout, settlement, or public-availability authority. Historical IDs, receipts, and evidence routes remain stable for integrity only.',
+        blockerRefs: [
+          'blocker.product_promises.legacy_product_app_withdrawn',
+        ],
+        claim: `Withdrawn on 2026-07-14: ${promise.claim}`,
+        evidenceRefs: [
+          ...promise.evidenceRefs,
+          'docs/promises/2026-07-14-owner-supersession-removals.md',
+          ownerSupersededSuccessor,
+        ],
+        safeCopy:
+          `This stable promise ID is historical. The legacy surface behind it was superseded by owner direction on 2026-07-14 (OpenAgents Desktop supersedes the deprecated desktop clients); its implementation tree was removed from the working tree and stays recoverable from git history per docs/promises/2026-07-14-owner-supersession-removals.md. Route current app direction to ${ownerSupersededSuccessor}.`,
+        state: 'withdrawn' as const,
+        unsafeCopy:
+          `Do not use ${promise.promiseId} as current product copy, revive its removed implementation tree or release lane, or treat preserved evidence refs as availability. Route new app claims to ${ownerSupersededSuccessor}.`,
+        verification:
+          `Compatibility check: the registry still serves ${promise.promiseId} as withdrawn, retains its historical evidence refs (deleted paths dereference through git history at the pre-removal commit recorded in docs/promises/2026-07-14-owner-supersession-removals.md), and points consumers to ${ownerSupersededSuccessor}; active install/release copy and routes must not advertise the removed surface.`,
       }
     }
 

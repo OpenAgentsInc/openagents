@@ -82,6 +82,11 @@ Product Promises Forum.
 - [`2026-07-09-khala-code-app-retirement-and-openagents-successors.md`](2026-07-09-khala-code-app-retirement-and-openagents-successors.md):
   withdrawal/successor map for the legacy app shells, greenfield app promises,
   and compatibility/evidence-route preservation law.
+- [`2026-07-14-owner-supersession-removals.md`](2026-07-14-owner-supersession-removals.md):
+  owner-directed supersession withdrawal pass (registry `2026-07-14.1`):
+  seven withdrawn promises, the removed `apps/autopilot-desktop` /
+  `packages/sarah-take-scoreboard` / `.agents/skills/khala-fleet` surfaces,
+  the retained-tree blockers, and the git-history recovery commit.
 - [`checks-and-gates.md`](checks-and-gates.md): state model, verification
   gates, copy gates, redaction gates, settlement gates, and release gates.
 - [`reporting-and-rci.md`](reporting-and-rci.md): Forum-first report intake and
