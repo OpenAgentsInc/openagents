@@ -15,6 +15,12 @@
       "disposition": "retain-contract",
       "dispatch": false
     },
+    "docs/sol/2026-07-14-blume-docs-site-integration-audit.md": {
+      "class": "historical-analysis",
+      "owner": "OpenAgents docs architecture",
+      "disposition": "retain-historical",
+      "dispatch": false
+    },
     "docs/sol/2026-07-14-node-pnpm-vite-plus-vp0-baseline.md": {
       "class": "receipt",
       "owner": "Sol runtime and toolchain conversion",

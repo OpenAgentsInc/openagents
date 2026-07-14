@@ -66,6 +66,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-14-blume-docs-site-integration-audit.md`](./2026-07-14-blume-docs-site-integration-audit.md)
+  — pinned Blume suitability, destination-toolchain compatibility,
+  public-content, and
+  same-origin `/docs` hosting analysis; implementation requires a new bounded
+  post-VP-4 issue and claim.
 - [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
   — durable process/data/authority topology plus a dated delivery baseline.
 - [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
