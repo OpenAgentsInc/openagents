@@ -22,7 +22,8 @@ import {
   BUSINESS_SOURCE_REF_DIRECT,
   decodeBusinessSourceRef,
 } from './business-source-attribution'
-import { isSafeReferralSourceRef } from './referral-source-capture'
+const isSafeReferralSourceRef = (value: string): boolean =>
+  /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,190}$/.test(value)
 
 // `/business` — the page restructured in the lander-family
 // system (site-speed lane): same server-rendered shell, shared navigation

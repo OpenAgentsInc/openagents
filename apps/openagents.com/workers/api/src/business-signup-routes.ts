@@ -25,17 +25,35 @@ import {
 } from './json-boundary'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import {
-  capturePendingReferralBySourceRef,
-  isSafeReferralSourceRef,
-} from './referral-source-capture'
-import {
   compactRandomId,
   currentDate,
   currentIsoTimestamp,
   isoTimestampAfter,
 } from './runtime-primitives'
-import { linkPendingReferralToBusinessSignup } from './site-referral-attribution-consumption'
-import { PENDING_REFERRAL_MAX_AGE_SECONDS } from './site-referrals'
+
+const retiredSiteReferralRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,190}$/
+const isSafeReferralSourceRef = (value: string): boolean =>
+  retiredSiteReferralRefPattern.test(value)
+const PENDING_REFERRAL_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
+
+// VP1 keeps the business intake fields and historical DB columns readable, but
+// Sites referral capture/consumption is retired and can no longer mutate them.
+const capturePendingReferralBySourceRef = async (
+  _db: D1Database,
+  _runtime: BusinessSignupRuntime,
+  _input: unknown,
+): Promise<
+  | { _tag: 'unavailable'; reason: string }
+  | { _tag: 'captured'; attribution: { id: string } }
+> => ({ _tag: 'unavailable', reason: 'sites_retired' })
+const linkPendingReferralToBusinessSignup = async (
+  _db: D1Database,
+  _runtime: BusinessSignupRuntime,
+  _input: unknown,
+): Promise<
+  | { _tag: 'unavailable' }
+  | { _tag: 'consumed' | 'already_verified'; attributionId: string }
+> => ({ _tag: 'unavailable' })
 
 const maxSignupBodyBytes = 16_384
 const emailPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/

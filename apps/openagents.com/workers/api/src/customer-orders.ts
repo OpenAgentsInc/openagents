@@ -20,11 +20,7 @@ import {
   PublicClaimStateProjection,
   publicClaimStateProjection,
 } from './public-claim-state'
-// KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
-// mirroring database is a passthrough for non-scoped statements and
-// degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
 import { businessDomainDatabaseForEnv } from './business-domain-store'
-import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
   makeSupervisionLongtailMirrorForEnv,
@@ -36,13 +32,11 @@ type CustomerOrderEnv = IdentityDbEnv &
     OPENAGENTS_DB: D1Database
   }>
 
-// KS-8.14 (#8359): this file writes both site_* content tables and the
-// business-domain software_orders / order_* tables. Compose the business
-// funnel mirror OVER the sites proxy so each domain's scoped writes
-// read-back mirror to its own Postgres twin; non-scoped statements pass
-// through both layers, and both degrade to raw D1 with no KHALA_SYNC_DB.
+// Sites is retired in VP1. Customer orders retain their business-domain store
+// and historical Site columns/reads without depending on the removed Sites
+// content mutation proxy.
 const openAgentsDatabase = (env: CustomerOrderEnv): D1Database =>
-  businessDomainDatabaseForEnv(env, { d1: sitesContentDatabaseForEnv(env) })
+  businessDomainDatabaseForEnv(env, { d1: env.OPENAGENTS_DB })
 
 export type CustomerOrderRuntime = Readonly<{
   makeAdjutantAdjustmentId: () => string

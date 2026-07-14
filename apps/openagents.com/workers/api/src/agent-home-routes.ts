@@ -303,26 +303,6 @@ const readForumHomeNotificationSummary = async (
   }
 }
 
-const AgentSiteScope = S.Literals([
-  'sites:builder-session:create',
-  'sites:deploy:request',
-  'sites:preview:request',
-  'sites:project:create',
-  'sites:version:save',
-])
-type AgentSiteScope = typeof AgentSiteScope.Type
-
-const AgentSiteGrant = S.Struct({
-  expiresAt: S.NullOr(S.String),
-  grantId: S.optionalKey(S.String),
-  ownerUserId: S.optionalKey(S.String),
-  scopes: S.Array(AgentSiteScope),
-  siteId: S.optionalKey(S.String),
-  status: S.Literals(['active', 'revoked']),
-})
-
-const decodeAgentSiteGrant = S.decodeUnknownOption(AgentSiteGrant)
-
 const customerOrderGrantsFromSession = (
   session: ProgrammaticAgentSession,
 ): ReadonlyArray<typeof CustomerOrderAgentGrant.Type> => {
@@ -338,23 +318,8 @@ const customerOrderGrantsFromSession = (
     : []
 }
 
-const agentSiteGrantsFromSession = (
-  session: ProgrammaticAgentSession,
-): ReadonlyArray<typeof AgentSiteGrant.Type> => {
-  const metadata = parseJsonRecord(session.credential.profileMetadataJson)
-  const grants = metadata?.agentSiteGrants
-
-  return Array.isArray(grants)
-    ? grants.flatMap(grant => {
-        const decoded = Option.getOrUndefined(decodeAgentSiteGrant(grant))
-
-        return decoded === undefined ? [] : [decoded]
-      })
-    : []
-}
-
 const grantIsLive = (
-  grant: typeof CustomerOrderAgentGrant.Type | typeof AgentSiteGrant.Type,
+  grant: typeof CustomerOrderAgentGrant.Type,
   nowIso: string,
 ): boolean =>
   grant.status === 'active' &&
@@ -363,11 +328,6 @@ const grantIsLive = (
 const sortedScopes = (
   grants: ReadonlyArray<typeof CustomerOrderAgentGrant.Type>,
 ): ReadonlyArray<CustomerOrderAgentScope> =>
-  Array.from(new Set(grants.flatMap(grant => grant.scopes))).sort()
-
-const sortedSiteScopes = (
-  grants: ReadonlyArray<typeof AgentSiteGrant.Type>,
-): ReadonlyArray<AgentSiteScope> =>
   Array.from(new Set(grants.flatMap(grant => grant.scopes))).sort()
 
 export const buildProgrammaticAgentHome = (
@@ -382,13 +342,9 @@ export const buildProgrammaticAgentHome = (
   },
 ) => {
   const customerOrderGrants = customerOrderGrantsFromSession(session)
-  const agentSiteGrants = agentSiteGrantsFromSession(session)
   const agentRateLimitRecoveryGrants =
     agentRateLimitRecoveryGrantsFromSession(session)
   const liveCustomerOrderGrants = customerOrderGrants.filter(grant =>
-    grantIsLive(grant, nowIso),
-  )
-  const liveAgentSiteGrants = agentSiteGrants.filter(grant =>
     grantIsLive(grant, nowIso),
   )
   const liveAgentRateLimitRecoveryGrants = agentRateLimitRecoveryGrants.filter(
@@ -397,16 +353,12 @@ export const buildProgrammaticAgentHome = (
       (grant.expiresAt === null || grant.expiresAt > nowIso),
   )
   const liveCustomerOrderScopes = sortedScopes(liveCustomerOrderGrants)
-  const liveAgentSiteScopes = sortedSiteScopes(liveAgentSiteGrants)
   const canReadCustomerOrders =
     liveCustomerOrderScopes.includes('customer_orders.read') ||
     liveCustomerOrderScopes.includes('customer_orders.write')
   const canWriteCustomerOrders = liveCustomerOrderScopes.includes(
     'customer_orders.write',
   )
-  const canSubmitFeedback =
-    liveCustomerOrderScopes.includes('customer_orders.feedback') ||
-    canWriteCustomerOrders
   const canRecoverPublicProposalRateLimit =
     activeAgentRateLimitRecoveryGrant(
       session,
@@ -444,14 +396,6 @@ export const buildProgrammaticAgentHome = (
         scopes: grant.scopes,
         status: grant.status,
       })),
-      agentSiteGrants: liveAgentSiteGrants.map(grant => ({
-        expiresAt: grant.expiresAt,
-        grantId: grant.grantId,
-        ownerUserId: grant.ownerUserId,
-        scopes: grant.scopes,
-        siteId: grant.siteId,
-        status: grant.status,
-      })),
       agentRateLimitRecoveryGrants: liveAgentRateLimitRecoveryGrants.map(
         grant => ({
           expiresAt: grant.expiresAt,
@@ -463,7 +407,6 @@ export const buildProgrammaticAgentHome = (
         }),
       ),
       liveScopes: {
-        agentSites: liveAgentSiteScopes,
         customerOrders: liveCustomerOrderScopes,
         forum: [
           'forum.bookmark',
@@ -738,44 +681,6 @@ export const buildProgrammaticAgentHome = (
         method: 'POST',
         href: 'https://openagents.com/api/customer-orders',
         status: canWriteCustomerOrders ? 'available_scoped' : 'not_granted',
-      },
-      {
-        id: 'site_feedback_submit',
-        method: 'POST',
-        href: 'https://openagents.com/api/customer-orders/{orderId}/site-feedback',
-        status: canSubmitFeedback ? 'available_scoped' : 'not_granted',
-      },
-      {
-        id: 'agent_site_project_create',
-        method: 'POST',
-        href: 'https://openagents.com/api/agent/sites',
-        status: liveAgentSiteScopes.includes('sites:project:create')
-          ? 'available_scoped'
-          : 'not_granted',
-      },
-      {
-        id: 'agent_site_preview_request',
-        method: 'POST',
-        href: 'https://openagents.com/api/agent/sites/{siteId}/previews',
-        status: liveAgentSiteScopes.includes('sites:preview:request')
-          ? 'available_scoped'
-          : 'not_granted',
-      },
-      {
-        id: 'agent_site_version_save',
-        method: 'POST',
-        href: 'https://openagents.com/api/agent/sites/{siteId}/versions',
-        status: liveAgentSiteScopes.includes('sites:version:save')
-          ? 'available_scoped'
-          : 'not_granted',
-      },
-      {
-        id: 'agent_site_deploy_request',
-        method: 'POST',
-        href: 'https://openagents.com/api/agent/sites/{siteId}/deploy-requests',
-        status: liveAgentSiteScopes.includes('sites:deploy:request')
-          ? 'available_scoped_request_only'
-          : 'not_granted',
       },
     ],
     plannedOrGated: [],
