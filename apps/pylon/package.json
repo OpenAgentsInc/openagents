@@ -66,8 +66,9 @@
     "smoke:mixed-harness-fleet-run": "bun scripts/mixed-harness-fleet-run-smoke.ts",
     "smoke:codex-agent-task": "bun scripts/codex-agent-task-smoke.ts",
     "build:apple-fm-bridge": "bash swift/foundation-bridge/build.sh",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun run check:supervisor-store && bun test --max-concurrency=1",
+    "typecheck": "tsc -p tsconfig.json --noEmit && node scripts/typecheck-tests.mjs",
+    "typecheck:tests:update-baseline": "node scripts/typecheck-tests.mjs --update-baseline",
+    "test": "node --test scripts/typecheck-tests.test.mjs && bun run check:supervisor-store && bun test --max-concurrency=1",
     "check:supervisor-store": "bun scripts/check-supervisor-store-bypass.mjs",
     "release:gate": "bash scripts/release-gate.sh",
     "build:rc-binaries": "bash scripts/build-rc-binaries.sh"
