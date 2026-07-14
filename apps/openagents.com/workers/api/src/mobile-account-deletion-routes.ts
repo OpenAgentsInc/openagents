@@ -3,7 +3,7 @@
 // App Review 5.1.1(v) requires an in-app account deletion path. This route is
 // intentionally mobile-bearer-only: it reuses the same OpenAuth bearer boundary
 // as `/api/mobile/session`, deletes owner-scoped Khala Sync data, removes local
-// GitHub/session/push/credit state, records a short-lived deletion receipt for
+// GitHub/session/push state, records a short-lived deletion receipt for
 // safe retries with the same bearer, then revokes that bearer.
 
 import type { StorageAdapter } from '@openauthjs/openauth/storage/storage'
@@ -27,9 +27,7 @@ import {
 } from './auth/mobile-session'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalString, readJsonObject } from './json-boundary'
-import { agentRefForUser } from './inference/usd-credit-bridge'
 import type { IdentityDb } from './identity-db'
-import { readAgentBalance, runLedgerStatements } from './payments-ledger'
 import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -50,7 +48,6 @@ export class MobileAccountDeletionSyncError extends S.TaggedErrorClass<MobileAcc
 ) {}
 
 export type MobileAccountDeletionD1Outcome = Readonly<{
-  forfeitedBalanceMsat: number
   githubConnectionsDisconnected: number
   githubWriteGrantsRevoked: number
   pushDeviceTokensRemoved: number
@@ -66,8 +63,7 @@ export type KhalaSyncAccountDeletionOutcome = Readonly<{
 export type MobileAccountDeletionDependencies<Bindings, User = unknown> = Readonly<{
   authStorage: (env: Bindings) => MobileAccessRevocationStore
   db: (env: Bindings) => D1Database
-  /** CFG-4 (#8519): the Postgres-authoritative credits ledger — the
-   * `agent_balances` forfeiture read + zeroing run here, never on D1. */
+  /** Postgres handle retained for the non-payment push-device registry. */
   ledgerDb: (env: Bindings) => PaymentsLedgerDb
   /** CFG-4 Domain 2 (#8519): the Postgres-authoritative identity handle —
    * the `users`/`auth_identities` disable runs here, never on D1. */
@@ -118,36 +114,20 @@ export const deleteMobileAccountD1Data = async (
   identityDb: IdentityDb,
   input: Readonly<{ nowIso: string; userId: string }>,
 ): Promise<MobileAccountDeletionD1Outcome> => {
-  const accountRef = agentRefForUser(input.userId)
-  const balance = await readAgentBalance(ledgerDb, accountRef)
-  const forfeitedBalanceMsat = balance?.balanceMsat ?? 0
-
-  // CFG-4 (#8519) NON-ATOMIC SEAM: the credits forfeiture (`agent_balances`,
-  // Postgres), the push-token removal (`push_device_tokens`, Postgres since
-  // the Domain 4 hard cut), the GitHub anonymization (D1), and — since the
+  // CFG-4 (#8519) NON-ATOMIC SEAM: the push-token removal
+  // (`push_device_tokens`, Postgres since the Domain 4 hard cut), the GitHub
+  // anonymization (D1), and — since the
   // Domain 2 hard cut — the `users`/`auth_identities` disable (Postgres
   // identity handle) can no longer share one atomic batch. Every side is an
   // idempotent zero-out/UPDATE/DELETE, and the mobile deletion receipt (the thing
   // that makes a retry a no-op) is only recorded by the route AFTER all
   // sides succeed, so a crash in between heals on retry: the caller re-runs
-  // the whole deletion with the same bearer. The credits zeroing runs
-  // FIRST, while the caller's session is guaranteed still verifiable; the
-  // identity disable runs LAST because it is what marks the user deleted.
-  await runLedgerStatements(ledgerDb, [
-    {
-      params: [input.nowIso, accountRef],
-      sql: `UPDATE agent_balances
-            SET balance_msat = 0,
-                held_msat = 0,
-                usd_credit_msat = 0,
-                updated_at = ?
-          WHERE actor_ref = ?`,
-    },
-  ])
+  // the whole deletion with the same bearer. Identity disable runs LAST
+  // because it is what marks the user deleted.
 
   // CFG-4 Domain 4 (#8519): the push registry moved to Postgres, so this
   // DELETE runs on the ledger handle (same khala_sync database as the
-  // credits/identity handles). RETURNING gives the removed-row count.
+  // identity handles). RETURNING gives the removed-row count.
   const pushRows = await ledgerDb.query(
     `DELETE FROM push_device_tokens WHERE user_id = ? RETURNING user_id`,
     [input.userId],
@@ -198,7 +178,6 @@ export const deleteMobileAccountD1Data = async (
   )
 
   return {
-    forfeitedBalanceMsat,
     githubConnectionsDisconnected: resultChanges(results[1]!),
     githubWriteGrantsRevoked: resultChanges(results[0]!),
     pushDeviceTokensRemoved: pushRows.length,
@@ -403,9 +382,6 @@ export const handleMobileAccountDeletionRequest = <Bindings, User>(
     return noStoreJsonResponse(
       {
         cleanup: {
-          credits: {
-            forfeitedBalanceMsat: d1Outcome.forfeitedBalanceMsat,
-          },
           github: {
             connectionsDisconnected: d1Outcome.githubConnectionsDisconnected,
             writeGrantsRevoked: d1Outcome.githubWriteGrantsRevoked,
