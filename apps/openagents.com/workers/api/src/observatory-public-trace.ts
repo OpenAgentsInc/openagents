@@ -241,36 +241,66 @@ const productSpecUrl =
   'https://github.com/OpenAgentsInc/openagents/blob/main/docs/mvp/openagents-codex-workroom-mvp.product-spec.md'
 const assuranceSpecUrl =
   'https://github.com/OpenAgentsInc/openagents/blob/main/docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md'
+const evidenceIndexUrl =
+  'https://github.com/OpenAgentsInc/openagents/blob/main/assurance/openagents-desktop-mvp.evidence-index.json'
 
-/** Reviewed static snapshot. It deliberately reports the current proof gaps. */
+const candidateReceiptRefs = [
+  'assurance.receipt.c7d0aa02dea8b6d9126bd94fb0aada527b8ec43376b4a4236d5ee86974fc6c4e',
+  'assurance.receipt.284fb0d2eb37800acee0b51620c2e369aaaaae0bc09d0048646ce00c886af2c1',
+  'assurance.receipt.f5140c692c5ebf49042f46e5102ae616df7919447272c174236de3f556bf9b2a',
+  'assurance.receipt.ad9412c3ca6a944387abeb257e7abf8ef8e222b77ed0ab674e6c837c050ee8e8',
+  'assurance.receipt.360b84f2cc5219ac1f5847573ae42f7560d9c2ba52ae70456d13ec8e3715705e',
+  'assurance.receipt.b7efdd67389093c2a5c581afb6f0590c00b7ac8050f021044cdc19c3cbb95c9e',
+  'assurance.receipt.8a5c1cbd228fc5deb95c24e0353d3fd779a0a6ce62f91735f1efc29187d1ea38',
+  'assurance.receipt.2682001a7d1833aa3b9e1fbfde9792cac7743bfb9b98a5d8adf076698866c37e',
+  'assurance.receipt.91c37d948cf14953645783c01ac486dcd8c38115bd4893abb15d76f3b239764a',
+  'assurance.receipt.d9113a79acf44d7d74e2a6ba0b83ec72dd0fd79f01121ceff9cbfe00d27fb81e',
+  'assurance.receipt.1ff256914e82ec269038fb9eedf436cf23706bb702702664e270ed38e8b61702',
+  'assurance.receipt.eca1784e51ed56b50791006336a9aceef192b38e6067489515efd759c688b1db',
+  'assurance.receipt.5cd22951116bed310be4d29325258f0fafa87934ee95367c99d4327438f19242',
+  'assurance.receipt.89b0e0251a3d538c97cbb424c2fbdc6078ddf293ae788c3608b8990e755e3ece',
+  'assurance.receipt.9a381993568732e6d0068ddfc34362ce4a5ecb45d8209cbbbcfeeb6ddd226cd0',
+  'assurance.receipt.51d92c28ec5a0620e3d280695731623e643f74fec8ec25ef17f18c6fe75a1342',
+  'assurance.receipt.9b3ffcf9c16cd0d1e185ef06858e620ef8b21305ebe33f0db2cb06e98dda1254',
+  'assurance.receipt.5f16c8ef6a5573a8b7061f90700f798171ac29403e13a3f05b6c12686837824c',
+] as const
+
+/** Reviewed static projection of the committed full-MVP Evidence Index. */
 export const openAgentsDesktopMvpPublicTrace =
   parseObservatoryPublicTraceProjection({
     assuranceProtocol: 'AssuranceSpec',
     criteria: criterionTitles.map((title, index) => {
       const criterionRef = `CW-AC-${String(index + 1).padStart(2, '0')}`
+      const obligationRef = `AO-${criterionRef}-01`
+      const receiptRef = candidateReceiptRefs[index]
+      if (receiptRef === undefined) {
+        throw new ObservatoryProjectionUnsafe(
+          `No reviewed receipt ref exists for ${criterionRef}.`,
+        )
+      }
       return {
         accepted: {
-          dispositionRefs: [],
-          note: 'No acceptance disposition has been recorded.',
-          state: 'pending',
+          dispositionRefs: [receiptRef],
+          note: 'Independent review recorded an accepted evidence disposition.',
+          state: 'accepted',
         },
         criterionRef,
         executable: {
-          adapterRefs: [],
-          falsifierRefs: [],
-          note: 'The proposal is not yet an admitted executable proof design.',
-          oracleRefs: [],
-          state: 'blocked',
+          adapterRefs: ['openagents.bun_test.v1'],
+          falsifierRefs: [`${obligationRef}.missing_required_anchor`],
+          note: 'The admitted manifest binds a candidate oracle and deterministic falsifier.',
+          oracleRefs: [`${obligationRef}.criterion_contract`],
+          state: 'executable',
         },
         mapped: {
-          note: 'A proposal row exists, but no obligation set is admitted.',
-          obligationRefs: [],
-          state: 'missing',
+          note: 'The admitted AssuranceSpec maps this criterion to one exact obligation.',
+          obligationRefs: [obligationRef],
+          state: 'mapped',
         },
         observed: {
-          note: 'No admitted obligation has run for this criterion.',
-          receiptRefs: [],
-          state: 'not_run',
+          note: 'The candidate was confirmed and its paired falsifier was rejected.',
+          receiptRefs: [receiptRef],
+          state: 'CONFIRMED',
         },
         relatedArtifacts: [
           {
@@ -280,19 +310,24 @@ export const openAgentsDesktopMvpPublicTrace =
           },
           {
             kind: 'assurance_spec',
-            label: 'AssuranceSpec proposal',
+            label: 'Admitted AssuranceSpec',
             url: assuranceSpecUrl,
+          },
+          {
+            kind: 'evidence',
+            label: 'Reviewed Evidence Index',
+            url: evidenceIndexUrl,
           },
         ],
         title,
       }
     }),
-    generatedAt: '2026-07-13T18:45:00.000Z',
+    generatedAt: '2026-07-14T01:30:00.000Z',
     productSpecRef: 'docs/mvp/openagents-codex-workroom-mvp.product-spec.md',
     projectLabel: 'OpenAgents Desktop Codex Workroom MVP',
     projectRef: 'openagents-desktop-codex-workroom-mvp',
     projectionDigest:
-      'sha256:5f4f12c8cb0857f1e135b9ae8e2e59215d74fd24348cd0c7fbd29b8bc0160b56',
+      'sha256:836da81944eb217cecf59c864c9552413047384aec6dd69a49f431ab7b47caeb',
     projectionRef: 'trace.openagents-desktop-codex-workroom-mvp.v1',
     publicOptIn: {
       optInRef: 'opt-in.observatory.openagents-desktop-mvp.v1',
@@ -301,7 +336,7 @@ export const openAgentsDesktopMvpPublicTrace =
     publicationReview: {
       reviewRef: 'review.observatory.openagents-desktop-mvp.v1',
       reviewedProjectionDigest:
-        'sha256:5f4f12c8cb0857f1e135b9ae8e2e59215d74fd24348cd0c7fbd29b8bc0160b56',
+        'sha256:836da81944eb217cecf59c864c9552413047384aec6dd69a49f431ab7b47caeb',
       state: 'approved',
     },
     schema: 'openagents.observatory.public_trace.v1',

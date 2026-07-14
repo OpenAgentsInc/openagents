@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import {
   ObservatoryProjectionUnsafe,
@@ -15,10 +17,10 @@ describe('Observatory public trace projection', () => {
     )
     expect(projection.criteria).toHaveLength(18)
     expect(projection.criteria[0]).toMatchObject({
-      accepted: { state: 'pending' },
-      executable: { state: 'blocked' },
-      mapped: { state: 'missing' },
-      observed: { state: 'not_run' },
+      accepted: { state: 'accepted' },
+      executable: { state: 'executable' },
+      mapped: { state: 'mapped' },
+      observed: { state: 'CONFIRMED' },
     })
 
     const keys = JSON.stringify(projection)
@@ -98,9 +100,37 @@ describe('Observatory public trace projection', () => {
 
   test('Related Artifacts remain location metadata, not criterion verdicts', () => {
     const [criterion] = openAgentsDesktopMvpPublicTrace.criteria
-    expect(criterion?.relatedArtifacts).toHaveLength(2)
-    expect(criterion?.mapped.state).toBe('missing')
-    expect(criterion?.observed.state).toBe('not_run')
-    expect(criterion?.accepted.state).toBe('pending')
+    expect(criterion?.relatedArtifacts).toHaveLength(3)
+    expect(criterion?.mapped.state).toBe('mapped')
+    expect(criterion?.observed.state).toBe('CONFIRMED')
+    expect(criterion?.accepted.state).toBe('accepted')
+  })
+
+  test('binds every public criterion row to the committed reviewed Evidence Index', () => {
+    const repositoryRoot = resolve(import.meta.dirname, '../../../../../')
+    const index = JSON.parse(
+      readFileSync(
+        resolve(
+          repositoryRoot,
+          'assurance/openagents-desktop-mvp.evidence-index.json',
+        ),
+        'utf8',
+      ),
+    ) as {
+      receipts: Array<{
+        candidate: { ref: string }
+        criterion_refs: Array<string>
+        obligation_id: string
+      }>
+    }
+    expect(index.receipts).toHaveLength(18)
+    for (const [position, row] of index.receipts.entries()) {
+      expect(openAgentsDesktopMvpPublicTrace.criteria[position]).toMatchObject({
+        accepted: { dispositionRefs: [row.candidate.ref], state: 'accepted' },
+        criterionRef: row.criterion_refs[0],
+        mapped: { obligationRefs: [row.obligation_id], state: 'mapped' },
+        observed: { receiptRefs: [row.candidate.ref], state: 'CONFIRMED' },
+      })
+    }
   })
 })
