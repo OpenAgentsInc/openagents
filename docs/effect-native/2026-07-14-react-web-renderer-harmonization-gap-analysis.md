@@ -2,7 +2,7 @@
 
 - Date: 2026-07-14
 - OpenAgents snapshot: `53c33ff8cfa1f8b2ce5f2c2b7adaf7461e44cf2e`
-- Effect Native snapshot: `086378e03b2546d39a85b6b74ac1269e8587b23b`
+- Effect Native snapshot: `ec04d1a066d6f3ed0c67735ba451cfc90a343aa8`
   (`effect-native/v39`)
 - T3 Code reference: `c1ec1915fc16f3dc1ec5d47d9a97f6210a574526`
 - Class: source-grounded architecture gap analysis
@@ -38,7 +38,7 @@ migrating.**
 
 The first executable rung remains intact, and the R2 projection foundation now
 exists upstream at Effect Native commit
-`086378e03b2546d39a85b6b74ac1269e8587b23b` and is consumed by OpenAgents
+`ec04d1a066d6f3ed0c67735ba451cfc90a343aa8` and is consumed by OpenAgents
 Desktop:
 
 - `@effect-native/render-dom/react` is an optional-peer subpath with
@@ -48,6 +48,9 @@ Desktop:
   scoped node set has declared React lowerings;
 - React mode opens the Effect stream once outside React effects and exposes a
   referentially stable, monotonic snapshot through `useSyncExternalStore`;
+- that same Scope-owned adapter is now value-generic (while defaulting to
+  `View`), so the scoped Desktop React shell can consume its authoritative
+  Effect state directly without adding a React-owned store;
 - the initial React kernel lowers Stack, Text, Button, Card, Spacer, and Divider
   to ordinary semantic elements with stable keys, closed a11y projection,
   canonical styles, and exact existing intent dispatch;

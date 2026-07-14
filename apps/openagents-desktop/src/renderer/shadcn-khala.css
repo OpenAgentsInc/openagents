@@ -1,0 +1,90 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/oxanium";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+@source "../components/ui";
+@source "./react-primitive-adapters.tsx";
+
+@theme inline {
+  --font-sans: "Oxanium Variable", sans-serif;
+  --font-heading: "Geist Variable", sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-input: var(--input);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+}
+
+:root {
+  /* shadcn base-vega zinc/blue lifted into the one dark Khala theme. The
+     preset owns component structure and fonts; Effect Native owns semantics. */
+  --background: var(--en-color-background);
+  --foreground: var(--en-color-textPrimary);
+  --card: var(--en-color-surface);
+  --card-foreground: var(--en-color-textPrimary);
+  --popover: var(--en-color-surfaceOverlay);
+  --popover-foreground: var(--en-color-textPrimary);
+  --primary: var(--en-color-accent);
+  --primary-foreground: var(--en-color-textInverse);
+  --secondary: var(--en-color-surfaceRaised);
+  --secondary-foreground: var(--en-color-textPrimary);
+  --muted: var(--en-color-surfaceRaised);
+  --muted-foreground: var(--en-color-textMuted);
+  --accent: var(--en-color-stateHover);
+  --accent-foreground: var(--en-color-textPrimary);
+  --destructive: var(--en-color-danger);
+  --border: var(--en-color-borderSubtle);
+  --input: var(--en-color-borderStrong);
+  --ring: var(--en-color-focus);
+  --chart-1: var(--en-color-syntaxFunction);
+  --chart-2: var(--en-color-info);
+  --chart-3: var(--en-color-accent);
+  --chart-4: var(--en-color-syntaxKeyword);
+  --chart-5: var(--en-color-success);
+  --radius: var(--en-radius-md);
+  --sidebar: var(--en-color-surface);
+  --sidebar-foreground: var(--en-color-textPrimary);
+  --sidebar-primary: var(--en-color-accent);
+  --sidebar-primary-foreground: var(--en-color-textInverse);
+  --sidebar-accent: var(--en-color-stateHover);
+  --sidebar-accent-foreground: var(--en-color-textPrimary);
+  --sidebar-border: var(--en-color-borderSubtle);
+  --sidebar-ring: var(--en-color-focus);
+}

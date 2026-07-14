@@ -59,7 +59,7 @@ Registry version `2026-07-13.5` of the Desktop registry added three contracts:
 | --- | --- |
 | `openagents_desktop.microinteraction.owner_review_register.v1` | The register: every future owner micro-interaction do/don't rule lands as its own versioned contract here. Its oracle fails if a registered rule is removed, downgraded, or undocumented. |
 | `openagents_desktop.microinteraction.icon_slot_no_raw_text.v1` | Icon slots (dock items, icon-only action controls, status glyphs) render closed-catalog glyphs, never long raw text; dock labels are bounded single-line micro-copy. |
-| `openagents_desktop.typography.approved_fonts_only.v1` | Only the approved font stack (the app.css system stack plus generic `monospace` for code) may be declared anywhere under `apps/openagents-desktop/src`. |
+| `openagents_desktop.typography.approved_fonts_only.v1` | Only the owner-selected preset stacks (Oxanium body/UI, Geist headings, system body fallbacks, and generic `monospace` for code) may be declared anywhere under `apps/openagents-desktop/src`. |
 
 All three are enforced by
 `apps/openagents-desktop/tests/owner-ux-rules.test.ts`, which runs in the

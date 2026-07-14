@@ -69,24 +69,29 @@ const sourceFiles = (dir: string): ReadonlyArray<string> => {
 // ---------------------------------------------------------------------------
 // openagents_desktop.typography.approved_fonts_only.v1
 //
-// The app's ONE approved rendered font stack is the host system stack declared
-// on html/body in src/renderer/app.css. The generic `monospace` family is the
+// The app's approved rendered type system is the owner-selected shadcn preset:
+// Oxanium for body/UI copy and Geist for headings, with the host system stack
+// as the resilient body fallback. The generic `monospace` family remains the
 // approved code-surface fallback (the shared @effect-native/render-dom
 // CodeBlock lowering uses it). Nothing else may be declared anywhere in the
 // desktop app's sources or styles.
 // ---------------------------------------------------------------------------
 
 const approvedFontFamilies: ReadonlySet<string> = new Set([
+  "Oxanium Variable",
+  "Geist Variable",
   "-apple-system",
   "BlinkMacSystemFont",
   "SF Pro Text",
-  "Helvetica Neue",
   "sans-serif",
   "monospace",
 ])
 
 const approvedBaseStackDeclaration =
-  'font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;'
+  'font-family: "Oxanium Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;'
+
+const approvedHeadingStackDeclaration =
+  'font-family: "Geist Variable", "Oxanium Variable", sans-serif;'
 
 const splitFamilies = (value: string): ReadonlyArray<string> =>
   value
@@ -130,9 +135,11 @@ describe("openagents_desktop.typography.approved_fonts_only.v1", () => {
     expect(offenders).toEqual([])
   })
 
-  test("the approved base stack itself is still declared on the host stylesheet", () => {
+  test("the approved body and heading stacks remain declared on their host stylesheets", () => {
     const css = readFileSync(path.join(srcDir, "renderer", "app.css"), "utf8")
+    const workbenchCss = readFileSync(path.join(srcDir, "renderer", "react-workbench.css"), "utf8")
     expect(css).toContain(approvedBaseStackDeclaration)
+    expect(workbenchCss).toContain(approvedHeadingStackDeclaration)
   })
 
   test("falsifier: a rogue font-family declaration is rejected", () => {
@@ -150,6 +157,9 @@ describe("openagents_desktop.typography.approved_fonts_only.v1", () => {
     ).toEqual(['bad.css: font shorthand "16px Arial" must be exactly "inherit"'])
     // And the approved stack passes untouched.
     expect(fontDeclarationOffenders("app.css", `html { ${approvedBaseStackDeclaration} }`)).toEqual([])
+    expect(
+      fontDeclarationOffenders("react-workbench.css", `.heading { ${approvedHeadingStackDeclaration} }`),
+    ).toEqual([])
   })
 })
 

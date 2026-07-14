@@ -1,0 +1,296 @@
+/* MVP-02B React workbench shell. Renderer-private selectors consume the same
+   Effect Native token sheet as the compatibility renderer. */
+.oa-react-workbench {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  width: 100%;
+  min-width: 760px;
+  min-height: 520px;
+  overflow: hidden;
+  background: var(--en-color-background);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-session-rail {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-3) var(--en-spacing-2);
+  overflow: hidden;
+  border-right: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surface);
+}
+
+html[data-desktop-platform="darwin"] .oa-react-session-rail {
+  padding-top: calc(var(--en-control-lg-height) + var(--en-spacing-3));
+}
+
+.oa-react-rail-titlebar,
+.oa-react-conversation-meta,
+.oa-react-workspace-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-rail-titlebar strong,
+.oa-react-conversation-heading h1,
+.oa-react-workspaces h2 {
+  margin: 0;
+  font-family: "Geist Variable", "Oxanium Variable", sans-serif;
+  font-size: var(--en-type-heading-fontSize);
+  line-height: var(--en-type-heading-lineHeight);
+}
+
+.oa-react-rail-close,
+.oa-react-mobile-session-trigger {
+  display: none;
+}
+
+.oa-react-new-session,
+.oa-react-load-more,
+.oa-react-workspace-actions button,
+.oa-react-mobile-session-trigger {
+  min-height: var(--en-control-md-height);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+  cursor: pointer;
+}
+
+.oa-react-new-session {
+  width: 100%;
+  color: var(--en-color-textInverse);
+  border-color: var(--en-color-accent);
+  background: var(--en-color-accent);
+  font-weight: 600;
+}
+
+.oa-react-search {
+  display: grid;
+  gap: var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+}
+
+.oa-react-search input {
+  width: 100%;
+  height: var(--en-control-md-height);
+  padding: 0 var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  outline: none;
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-search input:focus-visible,
+.oa-react-workbench button:focus-visible {
+  outline: 2px solid var(--en-color-focus);
+  outline-offset: 2px;
+}
+
+.oa-react-session-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.oa-react-session-list > p {
+  padding: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+  font-size: 13px;
+}
+
+.oa-react-session-row,
+.oa-react-workspace-row > button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 2px;
+  padding: var(--en-spacing-2);
+  border: 0;
+  border-radius: var(--en-radius-md);
+  background: transparent;
+  color: var(--en-color-textPrimary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-session-row:hover,
+.oa-react-workspace-row > button:hover {
+  background: var(--en-color-stateHover);
+}
+
+.oa-react-session-row[data-selected="true"] {
+  background: var(--en-color-stateSelected);
+}
+
+.oa-react-session-row span,
+.oa-react-workspace-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-session-row small,
+.oa-react-workspace-row small,
+.oa-react-conversation-meta {
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.oa-react-workspaces {
+  display: grid;
+  max-height: 34%;
+  gap: var(--en-spacing-1);
+  padding-top: var(--en-spacing-2);
+  overflow-y: auto;
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-react-workspaces h2 {
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.oa-react-workspace-row {
+  min-width: 0;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-react-workspace-actions {
+  justify-content: flex-start;
+  padding: 0 var(--en-spacing-2) var(--en-spacing-2);
+}
+
+.oa-react-workspace-actions button {
+  min-height: 24px;
+  padding: 0 var(--en-spacing-1\.5);
+  font-size: 11px;
+}
+
+.oa-react-conversation {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--en-color-background);
+}
+
+.oa-react-conversation-header {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  padding: var(--en-spacing-2) var(--en-spacing-4);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  -webkit-app-region: drag;
+}
+
+.oa-react-conversation-heading {
+  min-width: 0;
+}
+
+.oa-react-conversation-heading h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-conversation-meta {
+  justify-content: flex-start;
+  margin-top: 2px;
+}
+
+.oa-react-conversation-meta [data-lifecycle="running"] {
+  color: var(--en-color-accent);
+}
+
+.oa-react-conversation-meta [data-lifecycle="needs-attention"] {
+  color: var(--en-color-danger);
+}
+
+.oa-react-conversation-placeholder {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  overflow: auto;
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-composer-placeholder {
+  margin: var(--en-spacing-3) auto var(--en-spacing-4);
+  width: min(720px, calc(100% - var(--en-spacing-6)));
+  min-height: 48px;
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+  color: var(--en-color-textFaint);
+  background: var(--en-color-surface);
+}
+
+.oa-react-rail-scrim {
+  display: none;
+}
+
+@media (max-width: 979px) {
+  .oa-react-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oa-react-mobile-session-trigger {
+    position: fixed;
+    z-index: 2;
+    top: var(--en-spacing-3);
+    left: var(--en-spacing-3);
+    display: block;
+    padding: 0 var(--en-spacing-2);
+  }
+
+  .oa-react-session-rail {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(320px, calc(100vw - 48px));
+    transform: translateX(-102%);
+    transition: transform var(--en-motion-enter) var(--en-ease-enter);
+  }
+
+  .oa-react-session-rail[data-open="true"] {
+    transform: translateX(0);
+  }
+
+  .oa-react-rail-close {
+    display: inline-flex;
+    border: 0;
+    background: transparent;
+    color: var(--en-color-textMuted);
+    cursor: pointer;
+  }
+
+  .oa-react-rail-scrim {
+    position: fixed;
+    z-index: 2;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: var(--en-color-scrim);
+  }
+
+  .oa-react-conversation-header {
+    padding-left: 96px;
+  }
+}

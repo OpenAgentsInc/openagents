@@ -5,8 +5,8 @@
  * EN-only renderer discipline regresses: sandbox/contextIsolation posture in
  * the main process, a bridge-only preload with no ipcRenderer/MessagePort,
  * no Electron or Node authority inside the renderer, and no starter/parallel
- * application architecture. React/Base UI/Tailwind are permitted only as the
- * host implementation below Effect Native's View/state/intent boundary.
+ * application architecture. React/shadcn/Base UI/Tailwind are permitted only
+ * as the host implementation below Effect Native's state/intent boundary.
  */
 import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync } from "node:fs"
@@ -261,7 +261,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     const sharedOrSibling =
       /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/
     const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx"])
-    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?)$/
+    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|#components\/ui\/[a-z-]+)$/
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)
       specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!))
@@ -314,11 +314,28 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
         "vite",
       ]),
     )
-    const banned = [/^zod$/, /@orpc\//, /@tanstack\//, /^shadcn$/, /radix/, /^zustand$/, /^@effect\/atom-react$/]
+    expect(manifest.dependencies?.shadcn).toBeUndefined()
+    expect(manifest.devDependencies?.shadcn).toMatch(/^\^4\./)
+    expect(manifest.dependencies?.["@base-ui/react"]).toMatch(/^\^1\./)
+    const banned = [/^zod$/, /@orpc\//, /@tanstack\//, /radix/, /^zustand$/, /^@effect\/atom-react$/]
     for (const name of dependencyNames) {
       for (const pattern of banned) {
         expect(name).not.toMatch(pattern)
       }
+    }
+  })
+
+  test("generated shadcn sources remain renderer-only components without host or domain authority", () => {
+    const componentDir = path.join(appRoot, "src/components/ui")
+    const allowedImport = /^(react|@base-ui\/react(?:\/[a-z-]+)?|class-variance-authority|#lib\/utils)$/
+    for (const name of readdirSync(componentDir).filter(value => value.endsWith(".tsx"))) {
+      const source = stripComments(read(`src/components/ui/${name}`))
+      const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map(match => match[1]!)
+      for (const specifier of imports) expect(specifier, `${name}: ${specifier}`).toMatch(allowedImport)
+      expect(source).not.toContain("@effect-native")
+      expect(source).not.toContain("electron")
+      expect(source).not.toContain("node:")
+      expect(source).not.toContain("openagentsDesktop")
     }
   })
 

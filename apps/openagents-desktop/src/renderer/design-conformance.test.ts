@@ -168,6 +168,27 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     }
   })
 
+  test("the shadcn Vega zinc preset extends Khala instead of defining another palette", () => {
+    const css = readFileSync(path.join(rendererDir, "shadcn-khala.css"), "utf8")
+    const config = JSON.parse(readFileSync(path.resolve(rendererDir, "../../components.json"), "utf8")) as {
+      style: string
+      iconLibrary: string
+      menuAccent: string
+      menuColor: string
+    }
+    expect(config).toMatchObject({
+      style: "base-vega",
+      iconLibrary: "lucide",
+      menuAccent: "subtle",
+      menuColor: "default-translucent",
+    })
+    expect(css).toContain('"Oxanium Variable"')
+    expect(css).toContain('"Geist Variable"')
+    expect(css).toContain("--background: var(--en-color-background)")
+    expect(css).toContain("--primary: var(--en-color-accent)")
+    expect(css).not.toMatch(/oklch\(|#[0-9a-f]{3,8}\b/i)
+  })
+
   test("owner design directive is registered against this executable oracle", () => {
     const contractId = "openagents_desktop.design.apps_sdk_starcraft_harmonization.v1"
     const ownerStatement = "ALL styles harmonized with apps-sdk-ui while preserving our starcraft design"

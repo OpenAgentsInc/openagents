@@ -21,6 +21,7 @@ import { makeStubCodeEditorDriver } from "@effect-native/render-dom"
 import { makeReactDomRenderer } from "@effect-native/render-dom/react"
 import { projectFleetCockpitCard, type FleetAuthority } from "../fleet-cockpit.ts"
 import "./app.css"
+import { mountReactWorkbench } from "./react-primitive-adapters.tsx"
 
 import {
   unavailableCodexSettingsBridge,
@@ -1636,14 +1637,22 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     for (const [name, value] of Object.entries(preferencesRootAttributes(preferences))) {
       document.documentElement.setAttribute(name, value)
     }
-    const renderer = makeReactDomRenderer({
-      // The complete Desktop catalog stays on the one explicit compatibility
-      // backend until the scoped React lowerings land in the following packets.
-      backend: "compatibility",
-      theme: themeForPreferences(preferences),
-      hostDrivers: [makeStubCodeEditorDriver()],
-    })
-    yield* renderer.mount(root, program.viewStream, report)
+    const theme = themeForPreferences(preferences)
+    const reactShellRequested = new URLSearchParams(window.location.search).get("renderer") === "react-shell"
+    document.documentElement.dataset.desktopRenderer = reactShellRequested ? "react-shell" : "compatibility"
+    if (reactShellRequested) {
+      // MVP-02B trial path: ordinary React components subscribe directly to
+      // the authoritative Effect state. The complete default cutover waits
+      // for the timeline/composer/review packets and the integrated proof.
+      yield* mountReactWorkbench(root, SubscriptionRef.changes(state), report, { theme })
+    } else {
+      const renderer = makeReactDomRenderer({
+        backend: "compatibility",
+        theme,
+        hostDrivers: [makeStubCodeEditorDriver()],
+      })
+      yield* renderer.mount(root, program.viewStream, report)
+    }
     // Startup-timing instrumentation (measure-constantly discipline; see
     // scripts/startup-bench.ts + docs/fable/2026-07-11-desktop-startup-speed-audit.md).
     // A plain renderer-local global — NEVER a preload/IPC channel — that the

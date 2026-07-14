@@ -86,7 +86,8 @@ in:
   - one React 19 root for the OpenAgents Desktop renderer
   - renderer-private React component lowerings for the exact Effect Native nodes used by the core Codex workbench
   - Tailwind CSS 4 utilities compiled from canonical Effect Native token values and semantic state variables
-  - reviewed Base UI primitives, or an equivalently accessible React primitive, behind typed renderer-owned menu, dialog, popover, tooltip, and command-palette lowerings
+  - owner-selected shadcn preset `b3Zg9L0M8A` (`base-vega`, zinc/blue, Oxanium body, Geist headings, small radius, Lucide) as the preferred renderer-private React source-component layer, lifted into the Khala theme
+  - reviewed Base UI primitives supplied by that preset, or an equivalently accessible React primitive, behind typed renderer-owned menu, dialog, popover, tooltip, and command-palette lowerings
   - a familiar desktop shell with session rail, conversation header, typed timeline, composer, command palette, blocker and approval surfaces, read-only review drawer, status, and settings entry
   - local-first new chat, session search, session switch, resume, archive, and delete flows already authorized by the Phase 1 contracts
   - metadata-first session rendering before transcript hydration, stable selection, and restart restoration
@@ -104,7 +105,8 @@ out:
   - mobile, web, React Native, server rendering, or hydration completion as a condition for this Desktop phase
   - completion of every Effect Native DOM catalog lowering or removal of the direct-DOM compatibility backend
   - adoption of TanStack Router, Zustand, Effect Atom React, Lexical, xterm, a diff editor, or a virtualizer without a measured need in the scoped journey
-  - a new visual brand, token system, icon system, or component library that competes with the OpenAgents and Effect Native design contracts
+  - adoption of the Vercel AI SDK (`ai` or `@ai-sdk/*`) for the Desktop MVP; model streaming, tools, session continuation, and runtime events remain owned by the existing Codex Runtime Gateway and compatible app-server path
+  - a new visual brand, token system, icon system, or component library that competes with the OpenAgents and Effect Native design contracts; the selected shadcn source components are permitted only as a Khala-themed renderer extension
 cut:
   - a second durable thread, turn, command, approval, repository, or session store owned by React
   - React Query, Zustand, Context, hooks, URL state, or component-local state becoming domain or persistence authority
@@ -172,15 +174,27 @@ mechanics are memory-only and reset with the keyed renderer lifecycle.
 
 Tailwind is a build-time styling tool, not the design source of truth. Its
 theme maps to canonical `--en-*` variables and OpenAgents semantic state
-tokens. Base UI may implement difficult browser primitives behind typed
-Effect Native nodes; it does not enter the view schema, application state, or
-portable modules. Non-converted surfaces continue through the existing
-compatibility backend until separately migrated.
+tokens. The owner-selected shadcn preset supplies source-owned React component
+recipes and is preferred whenever an installed component meets the need. Its
+zinc/blue semantics are lifted into the one dark Khala theme: Oxanium, Geist,
+small-radius geometry, Lucide, subtle menu behavior, and component composition
+remain, while color roles alias Effect Native rather than forming another
+palette. Base UI may implement difficult browser primitives behind those
+renderer-private components; neither layer enters application state or portable
+modules. Non-converted surfaces continue through the existing compatibility
+backend until separately migrated.
 
 The Phase 1 Runtime Gateway, app-server custody, persistence, WorkContext,
 command registry, restart reconciliation, renderer boundary, and public-safety
 rules remain unchanged. This ProductSpec narrows presentation and interaction
 work; it does not reopen Phase 1 acceptance or relabel its evidence.
+
+The Vercel AI SDK is deliberately not part of this MVP architecture. React is
+the presentation host, not a new model/runtime client. Introducing an AI SDK
+here would create a second streaming, tool-call, and session abstraction beside
+the already accepted Codex Runtime Gateway. Any later AI SDK evaluation must be
+a separate provider-neutral capability decision with its own authority and
+migration analysis; it is not implied by adopting React.
 
 ## Design Direction
 
@@ -236,6 +250,7 @@ work; it does not reopen Phase 1 acceptance or relabel its evidence.
 | Concern | Authority | React responsibility |
 | --- | --- | --- |
 | Codex process and protocol | host-owned Runtime Gateway and compatible app-server | none |
+| model streaming and tool execution | host-owned Runtime Gateway and compatible app-server; no Vercel AI SDK in this MVP | render the typed timeline and controls only |
 | threads, turns, approvals, commands, WorkContext, recovery | existing Effect services and durable stores | render typed projections only |
 | view structure and portable intent keys | Effect Native schema-backed view program | lower nodes to ordinary React elements |
 | subscription snapshot | Effect-owned projection adapter | consume with one React-safe subscription |
@@ -260,6 +275,8 @@ work; it does not reopen Phase 1 acceptance or relabel its evidence.
 5. Keep React, Base UI, Tailwind, DOM APIs, and browser-only libraries inside
    declared renderer or Desktop-host modules. Portable Effect Native modules
    remain React-free `.ts` and do not gain `ReactNode` or `className` fields.
+   Generated shadcn source stays in the declared Desktop component directory;
+   prefer it over bespoke DOM when it already provides the required control.
 6. Sanitize Markdown, links, and any rendered code through the existing
    bounded content policy. React does not receive credentials, raw provider
    payloads, absolute roots, or general host authority.
@@ -286,7 +303,11 @@ The read-only implementation reference is T3 Code at workspace path
 Tailwind CSS 4, and Base UI desktop workbench. OpenAgents studies its component
 composition and browser interaction mechanics; the reference is not a runtime
 dependency, design authority, state authority, or source-copy license for this
-phase.
+phase. The pinned reference declares neither `ai` nor `@ai-sdk/*`; its Codex
+path is built around Effect client-runtime/contracts and a generated
+`effect-codex-app-server` package. That is evidence that the React presentation
+choice is independent of a Vercel AI SDK choice, not a mandate to copy T3's
+runtime architecture.
 
 The most relevant files are:
 

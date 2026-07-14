@@ -13,7 +13,8 @@ supporting audits, and evidence boundaries separate and easy to read.
    — the proposed Phase 2 ProductSpec for the React-backed basic Codex
    workbench. It defines the focused shell, session, timeline, composer,
    decision, read-only review, accessibility, performance, React/Effect Native
-   ownership, reference-code, and installed-journey boundary. It depends on
+   ownership, the owner-selected shadcn/Kahla component extension,
+   reference-code, and installed-journey boundary. It depends on
    the closed Phase 1 product but creates a new intent and proof chain; it is
    not admitted work or release authority.
 2. [`openagents-codex-workroom-mvp.product-spec.md`](./openagents-codex-workroom-mvp.product-spec.md)

@@ -995,17 +995,28 @@ More specific invariant ledgers apply inside imported apps and packages.
   transcript, so a successful selection cannot leave stale chat content visible.
 - Desktop's application, component, state, projection, and typed-intent model
   remain Effect Native. React 19 owns the renderer root, lifecycle, synchronous
-  snapshot consumption, and declared ordinary-element lowerings only through
-  the shared `@effect-native/render-dom/react` renderer. One authoritative
+  snapshot consumption, and declared ordinary-element lowerings through the
+  shared `@effect-native/render-dom/react` renderer. The bounded Desktop MVP
+  transition may also define ordinary renderer-private React workbench
+  components only in `renderer/react-primitive-adapters.tsx`; they consume the
+  same Effect-owned `DesktopShellState` snapshot and existing intent keys and
+  may retain only ephemeral focus/overlay mechanics. They do not define a
+  second domain store, runtime client, command identity, persistence path,
+  token system, or Vercel AI SDK/model-stream authority. One authoritative
   surface selects exactly one whole-surface backend for its lifetime: declared
   React lowerings or the proven direct catalog compatibility backend, never
   both. The Effect-owned stream opens once outside React effects; Strict Mode
   replay may reattach React listeners but cannot duplicate the host
   subscription, command effect, or terminal outcome. Unmount closes the
   selected backend, subscription, root, and token stylesheet. Tailwind and any
-  future Base UI adoption are renderer-private implementation tools and derive
-  from canonical `--en-*` variables, with Tailwind defaults disabled rather
-  than becoming a second theme. Portable renderer modules remain
+  Base UI adoption are renderer-private implementation tools. The owner-picked
+  shadcn preset `b3Zg9L0M8A` (`base-vega`, zinc/blue, Oxanium/Geist, small
+  radius, Lucide) is the preferred source-component layer when it supplies an
+  appropriate control. Generated components stay under Desktop `src/components/ui`,
+  while `shadcn-khala.css` maps every semantic palette role onto canonical
+  `--en-*` variables; the preset may not install a parallel light/dark palette.
+  Tailwind defaults remain disabled rather than becoming a second theme.
+  Portable renderer modules remain
   `.ts`, React-free, and free of `className`/`ReactNode`; no Zustand, Effect
   Atom React, TanStack router, Zod, arbitrary JSX component, or second theme/
   icon system may become application authority. The Electron renderer remains

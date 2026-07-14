@@ -1,4 +1,5 @@
 @import "tailwindcss" source(none);
+@import "./shadcn-khala.css";
 
 @theme inline {
   /* Disable Tailwind's independent default scales. Renderer-private utilities
@@ -58,7 +59,7 @@ body {
   overflow: hidden;
   background: var(--en-color-background);
   color: var(--en-color-textPrimary);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-family: "Oxanium Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-feature-settings: "kern" 1, "liga" 1, "tnum" 1;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

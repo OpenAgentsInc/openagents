@@ -1,6 +1,4 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
-import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react"
 /**
  * Build (#8574): bundles the Electron main process, the sandboxed CommonJS
  * preload, and the Effect Native renderer into `dist/`. Runtime bundles host
@@ -15,6 +13,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { build as viteBuild } from "vite"
 import { projectAssuranceSpecDocument } from "../src/assurance-spec-document.ts"
+import { desktopRendererPlugins, desktopRendererResolve } from "../vite.config.ts"
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 // Minification is on by default; set OA_DESKTOP_BUILD_MINIFY=0 for an A/B
@@ -125,38 +124,48 @@ export const buildDesktop = async (): Promise<string> => {
   // Desktop now uses the same renderer toolchain shape as T3 Code: React 19,
   // Vite, and Tailwind CSS 4. Effect Native remains the application contract;
   // React is the DOM renderer beneath that typed View/intent boundary.
-  await viteBuild({
-    configFile: false,
-    root: appRoot,
-    plugins: [react(), tailwindcss()],
-    resolve: {
+  // Vite 8 chooses its JSX dev/prod lowering from the host process environment
+  // when resolving a programmatic build. Force production lowering so React
+  // does not emit jsxDEV fileName metadata (and therefore local source paths)
+  // into the signed renderer artifact. Restore the caller's environment after.
+  const previousNodeEnv = process.env.NODE_ENV
+  process.env.NODE_ENV = "production"
+  try {
+    await viteBuild({
+      configFile: false,
+      mode: "production",
+      root: appRoot,
+      plugins: desktopRendererPlugins(),
       // Workspace renderer sources have their own optional peer resolution;
       // force the app's one React/React DOM pair into the bundle.
-      dedupe: ["react", "react-dom"],
-    },
-    define: {
-      // The sandboxed renderer has no Node `process`. Select React's
-      // production bundles at build time instead of injecting a process shim.
-      "process.env.NODE_ENV": JSON.stringify("production"),
-      // Dogfood the exact checked-in proposal through the same browser-safe
-      // parser used by future editor-opened `.assurance-spec.md` files. The
-      // renderer component still owns no filesystem authority.
-      __OPENAGENTS_MVP_ASSURANCE_SPEC_SNAPSHOT__: JSON.stringify(JSON.stringify(mvpAssuranceSpecProjection)),
-    },
-    build: {
-      outDir: path.join(dist, "renderer"),
-      emptyOutDir: false,
-      minify: BUILD_MINIFY,
-      reportCompressedSize: false,
-      lib: {
-        entry: path.join(appRoot, "src/renderer/boot.ts"),
-        name: "OpenAgentsDesktopRenderer",
-        formats: ["iife"],
-        fileName: () => "boot.js",
-        cssFileName: "app",
+      resolve: desktopRendererResolve,
+      define: {
+        // The sandboxed renderer has no Node `process`. Select React's
+        // production bundles at build time instead of injecting a process shim.
+        "process.env.NODE_ENV": JSON.stringify("production"),
+        // Dogfood the exact checked-in proposal through the same browser-safe
+        // parser used by future editor-opened `.assurance-spec.md` files. The
+        // renderer component still owns no filesystem authority.
+        __OPENAGENTS_MVP_ASSURANCE_SPEC_SNAPSHOT__: JSON.stringify(JSON.stringify(mvpAssuranceSpecProjection)),
       },
-    },
-  })
+      build: {
+        outDir: path.join(dist, "renderer"),
+        emptyOutDir: false,
+        minify: BUILD_MINIFY,
+        reportCompressedSize: false,
+        lib: {
+          entry: path.join(appRoot, "src/renderer/boot.ts"),
+          name: "OpenAgentsDesktopRenderer",
+          formats: ["iife"],
+          fileName: () => "boot.js",
+          cssFileName: "app",
+        },
+      },
+    })
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = previousNodeEnv
+  }
 
   await cp(path.join(appRoot, "index.html"), path.join(dist, "renderer/index.html"))
   // Product-owned built-in skills are signed application resources, not
