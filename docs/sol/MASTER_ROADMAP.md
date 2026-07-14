@@ -110,12 +110,14 @@ is deployed from `main` and presents mapped, executable, observed, and accepted
 as four independent criterion facts. It reads only reviewed public-safe refs
 and grants no merge, deploy, spend, settlement, or promise authority.
 
-The sole remaining program action is publishing
-`@openagentsinc/assurance-spec` to npm and proving `bunx` from the registry.
-The package is publication-ready, but this Mac has no npm credentials and both
-browser profiles were signed out. That is an owner authentication action under
-#8767, not an engineering or product-expansion queue. #8770 closes after that
-registry receipt; all other children are completed.
+The sole remaining program action is publishing the prerequisite
+`@openagentsinc/product-spec` package and then
+`@openagentsinc/assurance-spec` to npm, followed by a clean-registry `bunx`
+proof. Both packages are publication-ready, but npm currently rejects this
+Mac's configured token and the browser is signed out. That is an owner
+authentication action under #8767, not an engineering or product-expansion
+queue. #8770 closes after the two-package registry receipt; all other children
+are completed.
 
 ## Owner decisions
 
@@ -605,9 +607,11 @@ At this snapshot:
 4. The owner-authorized AssuranceSpec successor proof run passed all 18
    candidate/falsifier/sensitivity rows, the full Desktop gate, mutation
    sensitivity, immutable workroom bridge, and deployed Observatory projection.
-5. The owned-runner starter kit passes a clean offline checkout. #8767 remains
-   open only for owner-authenticated npm publication and the registry `bunx`
-   receipt; #8770 closes after that receipt.
+5. The owned-runner starter kit passes a clean offline checkout, and the
+   OpenAgents monorepo now adopts it with a current committed MVP session pin.
+   #8767 remains open only for owner-authenticated publication of ProductSpec
+   followed by AssuranceSpec and the clean-registry `bunx` receipt; #8770
+   closes after that receipt.
 6. RC9 remains unpublished. Conditional public-language, telemetry, release,
    concurrency, registry, and product-successor gates remain unchanged.
 

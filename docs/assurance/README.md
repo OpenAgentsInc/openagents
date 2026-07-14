@@ -140,19 +140,19 @@ release prerequisite, or change a public promise.
 | Layer | Status |
 | --- | --- |
 | ProductSpec subject | Real: MVP revision 6 is validator-managed and has stable `CW-AC-*` IDs |
-| Upstream ProductSpec Evidence Loop | Real upstream at parser `0.19.0`; not yet implemented locally |
+| Upstream ProductSpec Evidence Loop | Local parser/validator is pinned to upstream `0.19.0`, including structured AC/EVAL/SM, `applies_to`, Related Artifacts, and document/intent digests; portable publication for the legacy r6 subject still requires the explicit ID migration |
 | Desktop ProductSpec workroom loop | Real: accepted plans, packets, leases, evidence receipts, verifier/producer ref checks, and owner dispositions |
-| AssuranceSpec design | Proposed in this directory |
-| MVP AssuranceSpec | Generated proposal; structurally valid, 18/18 obligations need design, not admitted |
-| Proposal schema/parser/serializer/validation | Implemented bounded profile in `packages/assurance-spec`; full conformance/custom-section support remains planned |
-| ProductSpec-to-AssuranceSpec proposal | Implemented; deterministic coverage skeleton only, with no semantic proof inference |
-| Environment Profile and adapter lock | Not implemented |
-| Deterministic Assurance Manifest compiler | Not implemented |
-| Native Bun test adapter and normalized receipt | Not implemented |
-| Typed Assurance Receipt resolver/registration in the Desktop workroom | Not implemented |
-| ProductSpec Related Artifact publication | Not implemented; portable item-level links also require explicit ID migration |
-| QA Swarm manifest consumption | Not implemented |
-| Hosted Observatory | Not implemented |
+| AssuranceSpec design | Implemented protocol and tooling in this directory and `packages/assurance-spec`; design remains separate from execution, verdict, release, and public-claim authority |
+| MVP AssuranceSpec | Revision 2 reviewed and admitted; 18/18 candidates `CONFIRMED`, 18/18 falsifiers `REFUTED`, 18 sensitivity receipts, and the full Desktop gate green |
+| Proposal schema/parser/serializer/validation | Implemented with conformance corpus, custom-section preservation, review annotations, and schema/parser parity tests |
+| ProductSpec-to-AssuranceSpec proposal | Implemented deterministic coverage skeleton; semantic proof planning remains separately reviewed and is never inferred by the deterministic tool |
+| Environment Profile and adapter lock | Implemented and digest-bound in the admitted MVP manifest |
+| Deterministic Assurance Manifest compiler | Implemented with golden-byte and binding tests |
+| Native Bun test adapter and normalized receipt | Implemented; native output remains private and reviewed projections are digest-bound |
+| Typed Assurance Receipt resolver/registration in the Desktop workroom | Implemented through the immutable bridge and exercised by `AO-CW-AC-04-01` |
+| ProductSpec Related Artifact publication | Parser and evidence-only edit path implemented; portable item-level publication for the live legacy r6 identity waits for PSEL-3 rebinding |
+| QA Swarm manifest consumption | Outside the accepted Desktop MVP; any future adapter remains a separately admitted execution lane |
+| Hosted Observatory | Deployed read-only criterion-first projection at `/observer/traces/openagents-desktop-codex-workroom-mvp` |
 
 ## Naming
 

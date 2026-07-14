@@ -303,11 +303,14 @@ grant itself an exception. A downstream adopter may invoke the same command on
 infrastructure it owns, but the starter kit ships no hosted workflow.
 
 The committed kit and exact public tarballs now pass an offline clean-checkout
-proof. npm publication still has deliberately **not** happened: it is an
-owner-authenticated registry mutation, and this machine has no npm session.
-The packager resolves `workspace:` and `catalog:` protocols to concrete public
-versions, publishes ProductSpec before AssuranceSpec, and records exact
-tarball digests so readiness is testable without claiming publication.
+proof. The OpenAgents monorepo itself adopts the owned runner through
+`assurance/owned-runner.json` and a current committed MVP session pin. npm
+publication still has deliberately **not** happened: it is an owner-
+authenticated registry mutation, and npm currently rejects this machine's
+configured token. The packager resolves `workspace:` and `catalog:` protocols
+to concrete public versions, publishes ProductSpec before AssuranceSpec, and
+records exact tarball digests so readiness is testable without claiming
+publication.
 
 ## 6. Sequencing against the AS ladder
 
