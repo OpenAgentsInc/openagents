@@ -308,7 +308,7 @@ Docker bases, `AGENTS.md`, and invariant ledgers.
 
 Implementation evidence: the
 [`VP-0 baseline receipt`](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md)
-records the deterministic 37,673-match inventory, exact destination pins,
+records the deterministic 37,675-match inventory, exact destination pins,
 clean-source measurements, red parity prerequisites, claim ledger, and
 temporary no-growth gate. It changes no runtime authority.
 

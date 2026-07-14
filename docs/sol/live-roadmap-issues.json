@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-14T07:03:40.447Z",
+  "generatedAt": "2026-07-14T07:33:54.000Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -58,19 +58,6 @@
       "state": "OPEN",
       "title": "epic(toolchain): full Node + pnpm + Vite Plus cutover — T3 topology, payments removed",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/8777"
-    },
-    {
-      "labels": [
-        "priority:P0",
-        "area:runtime",
-        "area:build",
-        "type:proof",
-        "roadmap:sol"
-      ],
-      "number": 8794,
-      "state": "OPEN",
-      "title": "toolchain(VP-0): freeze Bun/payment growth, inventory the cutover, and pin the destination stack",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/8794"
     },
     {
       "labels": [

@@ -23,7 +23,7 @@ single historical exception, and fails on any new or duplicated authority.
 Applied migrations are stronger: all 407 are hash-locked, so removal or byte
 change fails even when the aggregate inventory shrinks.
 
-The baseline contains 8,915 classified entries and 37,673 exact matches. There
+The baseline contains 8,915 classified entries and 37,675 exact matches. There
 are zero unclassified entries. The generated evidence is
 [`node-vp-cutover-inventory.v1.json`](./evidence/node-vp-cutover-inventory.v1.json).
 It stores paths, categories, phases, dispositions, counts, and normalized-line

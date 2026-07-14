@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-14
-- Revision: 113
+- Revision: 114
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: active bounded Node/pnpm/Vite Plus cutover under #8777; the
   AssuranceSpec distribution program remains complete and no product-expansion
@@ -602,7 +602,6 @@ the currently unclaimed worker lease.
 | [#8773](https://github.com/OpenAgentsInc/openagents/issues/8773) | VP-3/4 invariant lint; folded TC-2 leaf |
 | [#8774](https://github.com/OpenAgentsInc/openagents/issues/8774) | VP-4b staged hook/gate gradient; folded TC-3 leaf |
 | [#8777](https://github.com/OpenAgentsInc/openagents/issues/8777) | Sole full-cutover epic |
-| [#8794](https://github.com/OpenAgentsInc/openagents/issues/8794) | VP-0 freeze, inventory, baselines, and pins |
 | [#8795](https://github.com/OpenAgentsInc/openagents/issues/8795) | VP-1 payment withdrawal, reconciliation, and deletion |
 | [#8796](https://github.com/OpenAgentsInc/openagents/issues/8796) | VP-2 Node-native retained runtime and CLIs |
 | [#8797](https://github.com/OpenAgentsInc/openagents/issues/8797) | VP-3 Effect TSGo and Vite Plus parity |
@@ -637,9 +636,9 @@ At this snapshot:
    `0.1.1` are public on npm in dependency order; #8767 and #8770 are closed.
 6. RC9 remains unpublished. Conditional public-language, telemetry, release,
    concurrency, registry, and product-successor gates remain unchanged.
-7. Full cutover is active under epic #8777. Claim VP-0 #8794 first; after its
-   [freeze/ledger receipt](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md),
-   VP-1 #8795 and VP-2 #8796 may proceed on disjoint claims.
+7. Full cutover is active under epic #8777. VP-0 #8794 is closed with its
+   [freeze/ledger receipt](./2026-07-14-node-pnpm-vite-plus-vp0-baseline.md).
+   VP-1 #8795 and VP-2 #8796 may now proceed on disjoint claims.
    Then execute VP-3 #8797, atomic VP-4 #8798 (including #8772–#8774), VP-5
    #8799, and VP-6 #8800 in order.
 

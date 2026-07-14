@@ -30,8 +30,8 @@ dispatch authority.
 ## Live issues represented by an owning plan
 
 The [`Node, pnpm, and Vite Plus full-conversion plan`](../2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
-owns epic #8777; phases #8794, #8795, #8796, #8797, #8798, #8799, and #8800;
-and folded implementation leaves #8772, #8773, and #8774. The completed TC-4
+owns epic #8777; phases #8795, #8796, #8797, #8798, #8799, and #8800; and
+folded implementation leaves #8772, #8773, and #8774. The completed VP-0, TC-4,
 and TC-5 pilots are closed evidence and therefore are not in the live projection.
 
 ## Closed proof and implementation sources
@@ -40,6 +40,7 @@ These are immutable checked-in issue-body/acceptance sources for closed work.
 They are evidence, not ready leaves.
 
 - [`ProductSpec-native Codex Workroom MVP closure`](../../mvp/2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md) — #8756
+- [`Node/pnpm/Vite Plus VP-0 baseline`](../2026-07-14-node-pnpm-vite-plus-vp0-baseline.md) — #8794
 - [`CUT-26 RC5 installed-artifact closure`](../2026-07-12-cut-26-rc5-installed-artifact-closure.md) — #8706
 - [`Desktop local-turn restart recovery`](../2026-07-13-desktop-local-turn-restart-recovery-receipt.md) — #8744
 - [`PORT-00 portable-session contract freeze`](../2026-07-12-port-00-portable-session-contract-freeze-receipt.md) — #8745
