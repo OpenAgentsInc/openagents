@@ -20,7 +20,6 @@
   "dependencies": {
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/khala-fleet-intents": "workspace:*",
-    "@openagentsinc/khala-code-desktop": "workspace:*",
     "@openagentsinc/pylon": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
     "effect": "catalog:"

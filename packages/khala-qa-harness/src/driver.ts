@@ -7,11 +7,11 @@ import type {
 } from "./scenario.js"
 import type {
   KhalaCodeQaMetricsSnapshot,
-} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+} from "./legacy-contracts/qa-metrics.js"
 import type { KhalaCodeQaShutdownOracle } from "./memory-oracle.js"
 export type {
   KhalaCodeQaMetricsSnapshot,
-} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+} from "./legacy-contracts/qa-metrics.js"
 
 export type KhalaCodeQaBootOptions = {
   readonly backend: KhalaCodeQaBackendTier

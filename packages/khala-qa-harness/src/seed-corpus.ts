@@ -1,23 +1,22 @@
-import { KHALA_CODE_HOTBAR_SLOTS } from "../../../clients/khala-code-desktop/src/ui/sidebar.js"
-import { KHALA_CODE_CODEX_APPROVAL_ACTIONS } from "../../../clients/khala-code-desktop/src/shared/codex-approval-decisions.js"
+import { KHALA_CODE_CODEX_APPROVAL_ACTIONS } from "./legacy-contracts/codex-approval-decisions.js"
 import {
   KHALA_CODE_CODEX_THREAD_ITEM_FIXTURES,
   KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_SOURCE,
   KHALA_CODE_CODEX_THREAD_ITEM_FIXTURE_VARIANTS,
   type KhalaCodeCodexThreadItemFixture,
-} from "../../../clients/khala-code-desktop/src/bun/codex-thread-item-fixtures.js"
+} from "./legacy-contracts/codex-thread-item-fixtures.js"
 import {
   KHALA_CODE_DESKTOP_SLASH_COMMANDS,
   khalaCodeDesktopSlashCommandsWithAvailability,
   type KhalaCodeDesktopSlashCommand,
-} from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
-import { defaultKhalaCodeModelRoleRegistry } from "../../../clients/khala-code-desktop/src/shared/model-roles.js"
+} from "./legacy-contracts/codex-slash-commands.js"
+import { defaultKhalaCodeModelRoleRegistry } from "./legacy-contracts/model-roles.js"
 import {
   evaluateKhalaCodeQaMetricBudgets,
   khalaCodeQaMetricBudgets,
   khalaCodeQaMetricDefinitions,
   type KhalaCodeQaMetricSample,
-} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+} from "./legacy-contracts/qa-metrics.js"
 
 import {
   KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
@@ -60,6 +59,18 @@ export type SeedCorpusGroup =
   | "error_states"
   | "distilled_regressions"
   | "thread_items"
+
+const KHALA_CODE_HOTBAR_SLOTS = [
+  { value: "chat" },
+  { value: "fleet" },
+  { value: "forum" },
+  { value: "inbox" },
+  { value: "settings" },
+  { value: "editor" },
+  { value: "home" },
+  { value: "review" },
+  { value: "terminal" },
+] as const
 
 type ScenarioGroupEntry = Readonly<{
   group: SeedCorpusGroup

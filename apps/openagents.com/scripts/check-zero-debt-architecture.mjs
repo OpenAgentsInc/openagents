@@ -20,7 +20,6 @@ const sourceFiles = ['workers/api/src', 'packages', 'apps/web/src']
   .filter(path => !path.includes('workers/api/src/test/'))
 
 const khalaArchitectureScanFiles = [
-  '../../clients/khala-code-desktop',
   '../../packages/khala-tools',
 ]
   .flatMap(listFiles)
@@ -1904,7 +1903,7 @@ publicProjectionSurfaces.forEach(surface => {
 console.log('')
 
 console.log(
-  'Khala architecture report-only scan (clients/khala-code-desktop + packages/khala-tools):',
+  'Khala architecture report-only scan (packages/khala-tools):',
 )
 reportOnlyArchitectureChecks.forEach(check => {
   const count = totalCount(check.details)

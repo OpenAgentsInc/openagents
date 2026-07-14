@@ -119,8 +119,8 @@ This is a Bun, Effect, and Effect Schema monorepo. Important current paths:
   cross-device projection, mutation, replay, and convergence paths;
 - `packages/cloud-contract` plus the bounded Cloud Rust crates — managed Agent
   Computer contracts and systems infrastructure;
-- `clients/khala-mobile`, `clients/khala-ios/Khala`, and
-  `clients/khala-code-desktop` — frozen parity and extraction sources;
+- `clients/khala-mobile` and `clients/khala-ios/Khala` — frozen parity and
+  extraction sources (the superseded Khala Code desktop client was removed);
 - `docs/sol` — canonical roadmap and implementation analysis;
 - `docs/teardowns` — desktop product teardowns and adaptation lessons;
 - `docs/promises` — product-promise records and evidence gates;

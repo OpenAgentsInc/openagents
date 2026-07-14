@@ -4,6 +4,7 @@ import { readdir, readFile, mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, resolve } from "node:path"
 
 import {
+  BehaviorContractSchemaVersion,
   buildBehaviorContractReceipts,
   checkBehaviorContractCoverageFromFiles,
   validateBehaviorContractRegistry,
@@ -29,8 +30,13 @@ import {
   type KhalaCodeQaMetricName,
   type KhalaCodeQaMetricSample,
   type KhalaCodeQaMetricsSnapshot,
-} from "../clients/khala-code-desktop/src/shared/qa-metrics.js"
-import { khalaCodeUxContractRegistry } from "../clients/khala-code-desktop/src/contracts/ux-contracts.js"
+} from "../packages/khala-qa-harness/src/legacy-contracts/qa-metrics.js"
+
+const khalaCodeUxContractRegistry = {
+  contracts: [],
+  schemaVersion: BehaviorContractSchemaVersion,
+  version: "retired-with-khala-code-desktop-2026-07-14",
+} as const
 
 export const QA_NIGHTLY_MATRIX_SCHEMA =
   "openagents.khala_code.qa_nightly_matrix.v1"
@@ -47,14 +53,9 @@ const khalaCodeQaSeedScenariosById = new Map(
 export type QaNightlyStepId =
   | "harness-suite"
   | "behavior-contracts"
-  | "real-bridge-smoke"
   | "desktop-verify"
-  | "visual-part2-ui"
-  | "visual-cockpit"
-  | "visual-composer"
   | "monkey-night"
   | "model-based"
-  | "property-tier"
   | "mobile-signed-in-thread-smoke"
   | "mobile-android-emulator-smoke"
 
@@ -454,14 +455,9 @@ export type QaNightlyReportHistoryEntry = Readonly<{
 const QA_NIGHTLY_STEP_IDS = new Set<QaNightlyStepId>([
   "harness-suite",
   "behavior-contracts",
-  "real-bridge-smoke",
   "desktop-verify",
-  "visual-part2-ui",
-  "visual-cockpit",
-  "visual-composer",
   "monkey-night",
   "model-based",
-  "property-tier",
   "mobile-signed-in-thread-smoke",
   "mobile-android-emulator-smoke",
 ])
@@ -1075,34 +1071,10 @@ export const buildQaNightlySteps = (input: Readonly<{
       label: "Behavior-contract registry suite",
     },
     {
-      command: ["bun", "run", "--cwd", "packages/khala-qa-harness", "smoke:real-bridge"],
-      cwd: ".",
-      id: "real-bridge-smoke",
-      label: "Real HTTP/bearer/SSE seed-corpus smoke",
-    },
-    {
-      command: ["bun", "run", "--cwd", "clients/khala-code-desktop", "verify"],
+      command: ["bun", "run", "--cwd", "apps/openagents-desktop", "verify"],
       cwd: ".",
       id: "desktop-verify",
-      label: "Khala Code Desktop verify",
-    },
-    {
-      command: ["bun", "run", "--cwd", "clients/khala-code-desktop", "smoke:part2-ui"],
-      cwd: ".",
-      id: "visual-part2-ui",
-      label: "Part 2 UI visual smoke",
-    },
-    {
-      command: ["bun", "run", "--cwd", "clients/khala-code-desktop", "smoke:cockpit-visual"],
-      cwd: ".",
-      id: "visual-cockpit",
-      label: "Fleet cockpit visual smoke",
-    },
-    {
-      command: ["bun", "run", "--cwd", "clients/khala-code-desktop", "smoke:composer-visual"],
-      cwd: ".",
-      id: "visual-composer",
-      label: "Composer visual smoke",
+      label: "OpenAgents Desktop verify",
     },
     {
       command: [
@@ -1129,18 +1101,6 @@ export const buildQaNightlySteps = (input: Readonly<{
       cwd: "packages/khala-qa-harness",
       id: "model-based",
       label: "Model-based tier",
-    },
-    {
-      command: [
-        "bun",
-        "test",
-        "tests/composer-draft-model.property.test.ts",
-        "tests/codex-thread-item-projector.property.test.ts",
-        "tests/transcript-render.property.test.ts",
-      ],
-      cwd: "clients/khala-code-desktop",
-      id: "property-tier",
-      label: "Property tier",
     },
   ]
   // Opt-in mobile step (macOS runner only). The Khala Mobile SignedInThreadSmoke

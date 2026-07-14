@@ -9,16 +9,16 @@ import {
 } from "./qa-visual-smoke-gate"
 
 describe("Khala visual smoke gate scoping", () => {
-  test("selects only Khala desktop and shared UI changes", () => {
+  test("selects only OpenAgents Desktop and shared UI changes", () => {
     expect(
       selectKhalaVisualSmokeGateFiles([
         "docs/qa/khala-code-visual-smoke-gate.md",
-        "clients/khala-code-desktop/src/ui/main.ts",
+        "apps/openagents-desktop/src/renderer.ts",
         "packages/ui/src/ai-elements/command-composer.ts",
         "apps/openagents.com/apps/web/src/page/home.ts",
       ]),
     ).toEqual([
-      "clients/khala-code-desktop/src/ui/main.ts",
+      "apps/openagents-desktop/src/renderer.ts",
       "packages/ui/src/ai-elements/command-composer.ts",
     ])
   })
@@ -38,11 +38,9 @@ describe("Khala visual smoke gate scoping", () => {
     ).toEqual({ run: true, visualFiles: [] })
   })
 
-  test("runs the three required fixture visual smokes in order", () => {
+  test("runs the active desktop verification", () => {
     expect(khalaVisualSmokeGateSteps().map(step => step.command.join(" "))).toEqual([
-      "bun run --cwd clients/khala-code-desktop smoke:part2-ui",
-      "bun run --cwd clients/khala-code-desktop smoke:cockpit-visual",
-      "bun run --cwd clients/khala-code-desktop smoke:composer-visual",
+      "bun run --cwd apps/openagents-desktop verify",
     ])
   })
 })
@@ -67,7 +65,7 @@ describe("Khala visual smoke gate verdict", () => {
   test("invokes every smoke when a desktop UI change is clean", async () => {
     const commands: Array<string> = []
     const verdict = await runKhalaVisualSmokeGate({
-      changedFiles: ["clients/khala-code-desktop/src/ui/styles.css"],
+      changedFiles: ["apps/openagents-desktop/src/styles.css"],
       env: { OA_KHALA_VISUAL_SMOKE_GATE_MODE: "enforce" },
       root: process.cwd(),
       runCommand: async input => {
@@ -84,7 +82,7 @@ describe("Khala visual smoke gate verdict", () => {
   test("catches the 2026-07-02 stale-smoke regression for landed UI changes", async () => {
     const commands: Array<string> = []
     const verdict = await runKhalaVisualSmokeGate({
-      changedFiles: ["clients/khala-code-desktop/src/ui/main.ts"],
+      changedFiles: ["apps/openagents-desktop/src/renderer.ts"],
       env: { OA_KHALA_VISUAL_SMOKE_GATE_MODE: "enforce" },
       root: process.cwd(),
       runCommand: async input => {
@@ -93,10 +91,10 @@ describe("Khala visual smoke gate verdict", () => {
       },
     })
 
-    expect(commands).toEqual(["bun run --cwd clients/khala-code-desktop smoke:part2-ui"])
+    expect(commands).toEqual(["bun run --cwd apps/openagents-desktop verify"])
     expect(verdict.status).toBe("failed")
     expect(verdict.exitCode).toBe(1)
-    expect(verdict.visualFiles).toEqual(["clients/khala-code-desktop/src/ui/main.ts"])
+    expect(verdict.visualFiles).toEqual(["apps/openagents-desktop/src/renderer.ts"])
   })
 
   test("keeps failures warning-only before the flip date", async () => {

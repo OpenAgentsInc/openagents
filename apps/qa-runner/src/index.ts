@@ -59,33 +59,6 @@ export {
 // Backends — the isolation abstraction; localBackend is the OSS default.
 export { localBackend, type Backend, type BackendSession, type LocalBackendOptions } from "./backend";
 export {
-  khalaDesktopBackend,
-  khalaCodePackagedFixtureNativeScenario,
-  isKhalaDesktopBackendSession,
-  resolveKhalaCodePackagedAppPath,
-  resolveKhalaCodePackagedAppProcessName,
-  resolveKhalaCodePackagedExecutablePath,
-  runKhalaDesktopHarnessScenario,
-  runKhalaDesktopHeadedNativeSmoke,
-  KhalaDesktopBackendBootError,
-  type KhalaDesktopBackendOptions,
-  type KhalaDesktopBackendSession,
-  type KhalaDesktopBackendTier,
-  type KhalaPackagedNativeSmokeOptions,
-  type KhalaPackagedNativeSmokeOutcome,
-  type KhalaPackagedNativeSmokeSelectors,
-} from "./khala-desktop-backend";
-export {
-  KHALA_FLAGSHIP_DEMO_REPORT_SCHEMA,
-  decodeKhalaFlagshipDemoReport,
-  renderKhalaFlagshipRegressionSource,
-  runKhalaCodeFlagshipDemo,
-  type KhalaFlagshipDemoOptions,
-  type KhalaFlagshipDemoOutcome,
-  type KhalaFlagshipDemoReport,
-  type KhalaFlagshipSeededBugSpec,
-} from "./khala-flagship-demo";
-export {
   KHALA_MOBILE_NIGHTLY_ROW_SCHEMA,
   assertKhalaMobileNightlyPublicSafe,
   buildKhalaMobileNightlyFailureDigest,

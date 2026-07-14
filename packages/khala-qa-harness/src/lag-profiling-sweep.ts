@@ -11,7 +11,7 @@ import {
   type KhalaCodeQaMetricSample,
   type KhalaCodeQaMetricUnit,
   type KhalaCodeQaMetricsSnapshot,
-} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+} from "./legacy-contracts/qa-metrics.js"
 import type { KhalaCodeQaDriver } from "./driver.js"
 
 export const KHALA_CODE_LAG_PROFILING_SWEEP_SCHEMA =

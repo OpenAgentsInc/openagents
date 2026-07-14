@@ -718,12 +718,12 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   `openagents-supersession-prune-2026-07-14/` in the backroom repo). The
   affected promises are withdrawn in registry pass `2026-07-14.1`
   (`docs/promises/2026-07-14-owner-supersession-removals.md`).
-  `clients/khala-code-desktop` is deprecated and slated for removal under the
-  same decision, but its deletion is blocked while live code imports it
-  (`apps/pylon` fleet smoke scripts, `packages/khala-qa-harness`,
-  `packages/harness-conformance`, `scripts/qa-nightly-matrix.ts`); it stays a
-  frozen tree — no new features, UI, branding, or releases — until those
-  dependents are migrated in a bounded follow-up. `packages/autopilot-ui`
+  `clients/khala-code-desktop` was deleted after its live Pylon/QA dependents
+  were migrated in #8793. Recover its final source with
+  `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`; QA-owned fixture
+  contracts now live under `packages/khala-qa-harness/src/legacy-contracts`,
+  while harness-neutral chat events use `packages/agent-runtime-schema`.
+  `packages/autopilot-ui`
   stays: the live `apps/openagents.com/apps/web` app imports it. The FleetRun
   authority's neutral canonical path is `/api/fleet-runs`;
   `/api/sarah/fleet-runs` remains a served compatibility alias for shipped

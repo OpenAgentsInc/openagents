@@ -334,7 +334,7 @@ describe("typed work planner", () => {
       planRef: "plan.t9_4",
       repo,
       baseCommit: "0123456789abcdef0123456789abcdef01234567",
-      verify: "bun test clients/khala-code-desktop/tests/claude-plan-fanout.test.ts",
+      verify: "bun run --cwd apps/openagents-desktop verify",
       nodes: [
         {
           ref: "root",

@@ -4,10 +4,10 @@ import { Effect } from "effect"
 import {
   KHALA_CODE_CODEX_PARITY_REFERENCE_COMMIT,
   KHALA_CODE_CODEX_PARITY_REQUIRED_THREAD_ITEM_TYPES,
-} from "../../../clients/khala-code-desktop/src/bun/codex-parity-contract.js"
+} from "./legacy-contracts/codex-parity-fixture.js"
 import {
   KHALA_CODE_DESKTOP_SLASH_COMMANDS,
-} from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
+} from "./legacy-contracts/codex-slash-commands.js"
 
 import {
   decodeKhalaCodeQaScenario,

@@ -7,7 +7,7 @@ import {
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRpcBridgeFailure as DesktopBridgeFailure,
   type KhalaCodeDesktopRpcMethodName,
-} from "../../../clients/khala-code-desktop/src/shared/rpc.js"
+} from "./legacy-contracts/rpc.js"
 import { Schema as S } from "effect"
 
 export type KhalaCodeRpcMethodName = KhalaCodeDesktopRpcMethodName

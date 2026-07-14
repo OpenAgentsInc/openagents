@@ -1,9 +1,7 @@
 /**
  * Desktop chat-runtime event -> `khala.chat_turn_event.v1` projection.
  *
- * The codex and claude chat runtimes
- * (`clients/khala-code-desktop/src/bun/codex-app-server-chat-runtime.ts`,
- * `claude-app-sdk-chat-runtime.ts`) both emit the desktop-specialized
+ * The archived codex and claude fixtures emitted a desktop-specialized
  * `KhalaCodeDesktopChatTurnEvent` union. MH-1's job (analysis §5 prerequisite)
  * is to prove those events map onto the shared, versioned, harness-neutral
  * `khala.chat_turn_event.v1` contract in `@openagentsinc/agent-runtime-schema`,
@@ -20,7 +18,7 @@
 import type {
   KhalaCodeDesktopChatTurnEvent,
   KhalaCodeDesktopMessage,
-} from "@openagentsinc/khala-code-desktop/src/shared/rpc.ts"
+} from "./chat-turn-contract.ts"
 import type {
   KhalaChatTurnEventMessage,
   KhalaChatTurnEventV1,

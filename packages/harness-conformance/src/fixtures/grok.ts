@@ -9,8 +9,8 @@
  * classes the Grok lane maps into).
  */
 import { Schema as S } from "effect"
-import { KhalaCodeDesktopChatTurnEventSchema } from "@openagentsinc/khala-code-desktop/src/shared/rpc.ts"
-import type { KhalaCodeDesktopChatTurnEvent } from "@openagentsinc/khala-code-desktop/src/shared/rpc.ts"
+import { KhalaCodeDesktopChatTurnEventSchema } from "../chat-turn-contract.ts"
+import type { KhalaCodeDesktopChatTurnEvent } from "../chat-turn-contract.ts"
 import { classifyQuotaSignal } from "@openagentsinc/pylon-core/custody/account-quota"
 import { classifySessionError } from "@openagentsinc/pylon/src/session-error-class.ts"
 import type { KhalaChatTurnEventV1 } from "@openagentsinc/agent-runtime-schema"

@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import {
   evaluateKhalaCodeQaMetricBudget,
   type KhalaCodeQaMetricsSnapshot,
-} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+} from "./legacy-contracts/qa-metrics.js"
 
 import { collectKhalaCodeQaCoverageLedger, type KhalaCodeQaCoverageLedger } from "./coverage-ledger.js"
 import type { KhalaCodeQaDriver, KhalaCodeQaObservation } from "./driver.js"

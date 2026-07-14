@@ -19,14 +19,9 @@ describe("qa nightly matrix plan", () => {
     expect(steps.map(step => step.id)).toEqual([
       "harness-suite",
       "behavior-contracts",
-      "real-bridge-smoke",
       "desktop-verify",
-      "visual-part2-ui",
-      "visual-cockpit",
-      "visual-composer",
       "monkey-night",
       "model-based",
-      "property-tier",
     ])
     expect(steps.find(step => step.id === "monkey-night")?.label).toContain(
       String(QA_NIGHTLY_DEFAULT_RUNS * QA_NIGHTLY_DEFAULT_STEPS),
@@ -96,14 +91,9 @@ describe("qa nightly matrix report", () => {
       expect(calls).toEqual([
         "harness-suite",
         "behavior-contracts",
-        "real-bridge-smoke",
         "desktop-verify",
-        "visual-part2-ui",
-        "visual-cockpit",
-        "visual-composer",
         "monkey-night",
         "model-based",
-        "property-tier",
       ])
 
       const json = await readFile(join(root, report.reportJsonPath), "utf8")
@@ -124,7 +114,7 @@ describe("qa nightly matrix report", () => {
         "qa_flake_quarantine_ledger",
       )
       expect(await readFile(join(root, report.behaviorContractReceiptPath), "utf8")).toContain(
-        "openagents.behavior_contract_receipt.v1",
+        "openagents.khala_code.behavior_contract_receipts.v1",
       )
       const statusSurface = JSON.parse(await readFile(join(root, report.statusSurfaceJsonPath), "utf8"))
       const statusMarkdown = await readFile(join(root, report.statusSurfaceMarkdownPath), "utf8")
@@ -135,7 +125,7 @@ describe("qa nightly matrix report", () => {
         basis: "behavior_contract_receipts",
         status: "pass",
       })
-      expect(statusSurface.behaviorContracts.receiptCount).toBeGreaterThan(0)
+      expect(statusSurface.behaviorContracts.receiptCount).toBe(0)
       expect(statusSurface.coverage.counts.rpcMethods.total).toBeGreaterThan(0)
       expect(statusSurface.perfTrends.steps[0]).toMatchObject({
         latestDurationMs: 7,
@@ -249,58 +239,6 @@ describe("qa nightly matrix report", () => {
       expect(filed).toEqual([
         "[Bug]: Khala Code QA nightly failed khala-code-qa-nightly-2026-07-02t123000.000z",
       ])
-    } finally {
-      await rm(root, { force: true, recursive: true })
-    }
-  })
-
-  test("files a behavior-contract deviation issue when nightly receipts fail and opt-in is armed", async () => {
-    const root = await mkdtemp(join(tmpdir(), "qa-nightly-contract-deviation-"))
-    const filed: string[] = []
-    const commandRunner: QaNightlyCommandRunner = async step => ({
-      durationMs: 3,
-      exitCode: step.id === "desktop-verify" ? 1 : 0,
-      stderr: step.id === "desktop-verify" ? "contract oracle failure" : "",
-      stdout: "",
-    })
-    const issueFiler: QaNightlyIssueFiler = async input => {
-      filed.push(input.title)
-      const body = await readFile(input.bodyPath, "utf8")
-      if (input.title.includes("behavior contract deviated")) {
-        expect(body).toContain("### Failing checks")
-        expect(body).toContain("khala_code.chat.sidebar_spinner_streaming_only.v1")
-        expect(body).toContain("Behavior-contract receipts")
-      }
-      return {
-        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10003",
-        status: "filed",
-      }
-    }
-
-    try {
-      const report = await runQaNightlyMatrix({
-        artifactRoot: join(root, "artifacts"),
-        commandRunner,
-        env: {
-          OA_QA_NIGHTLY_FILE_CONTRACT_DEVIATION_ISSUE: "1",
-        },
-        issueFiler,
-        now: () => "2026-07-02T14:00:00.000Z",
-        root,
-      })
-      const statusSurface = JSON.parse(await readFile(join(root, report.statusSurfaceJsonPath), "utf8"))
-
-      expect(report.behaviorContractRun.status).toBe("fail")
-      expect(report.behaviorContractDeviationIssueStatus).toEqual({
-        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10003",
-        status: "filed",
-      })
-      expect(statusSurface.behaviorContracts.failedContractIds).toContain(
-        "khala_code.chat.sidebar_spinner_streaming_only.v1",
-      )
-      expect(filed).toContain(
-        "[Bug]: Khala Code behavior contract deviated khala_code.chat.sidebar_spinner_streaming_only.v1",
-      )
     } finally {
       await rm(root, { force: true, recursive: true })
     }

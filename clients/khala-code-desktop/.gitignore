@@ -1,4 +1,0 @@
-resources/*
-!resources/AppIcon.iconset/
-!resources/AppIcon.iconset/*.png
-!resources/khala-code-app-icon.png

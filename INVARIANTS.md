@@ -167,9 +167,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   dispatching into a known bad account lane.
   Fleet-run supervisor ticks are serialized per Pylon/run handle so startup
   status reads and the background loop cannot over-dispatch past the target
-  concurrency. Regression coverage lives in
-  `clients/khala-code-desktop/tests/fleet-run-supervisor.test.ts` and
-  `clients/khala-code-desktop/tests/khala-fleet-tools.test.ts`.
+  concurrency. Regression coverage lives in Pylon's `src/orchestration`
+  manager, supervisor, owned-runner, and standing-executor tests; deleted
+  desktop adapters are recoverable at `c7044f5a28` only.
   Hybrid FleetRun placement is work-unit authority, not run-wide inference:
   each plan unit may carry the shared typed target, quota, marginal-cost,
   data-posture, repository, and task constraints. The one supervisor evaluates
@@ -253,9 +253,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   CUT-26 lockout routes above are unaffected: `updates.openagents.com` keeps
   answering the legacy `autopilot-desktop`/legacy-feed routes with the typed
   `410` lockout document — the route tombstones outlive the source tree.
-  `clients/khala-code-desktop` remains present (frozen) only because live
-  pylon/QA-harness code imports it; see
-  `docs/promises/2026-07-14-owner-supersession-removals.md`.
+  `clients/khala-code-desktop` was deleted in #8793 after its Pylon and QA
+  dependents migrated. No executable package, import, smoke, or QA matrix may
+  depend on that path again; `scripts/khala-code-desktop-removal.test.ts`
+  enforces the bounded absence oracle. Historical evidence resolves through
+  git at `c7044f5a28` and the backroom supersession intake.
 - (CUT-26, #8706) OpenAgents Desktop releases publish ONLY through the
   scripted flow (`apps/openagents-desktop/scripts/publish-release.ts`) into
   the `openagents-desktop-release.json` descriptor + signed

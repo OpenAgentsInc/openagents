@@ -16,7 +16,7 @@ import {
   loadKhalaCodeLagProfilingSnapshotInputs,
   writeKhalaCodeLagProfilingSweepReport,
 } from "./index.js"
-import { khalaCodeQaMetricBudgets } from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+import { khalaCodeQaMetricBudgets } from "./legacy-contracts/qa-metrics.js"
 
 describe("Khala Code lag profiling sweep", () => {
   test("ranks p95 budget offenders while preserving every budget row", () => {

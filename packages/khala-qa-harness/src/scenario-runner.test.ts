@@ -22,7 +22,7 @@ import {
   khalaCodeQaMetricBudgets,
   khalaCodeQaMetricDefinitions,
   khalaCodeQaMetricUnitFor,
-} from "../../../clients/khala-code-desktop/src/shared/qa-metrics.js"
+} from "./legacy-contracts/qa-metrics.js"
 
 const fixtureScenario = {
   backend: "fixture",

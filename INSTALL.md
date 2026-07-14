@@ -26,9 +26,10 @@ Native/Expo) and OpenAgents Desktop (`apps/openagents-desktop`, Effect Native +
 Electron) are greenfield builds tracked by #8597 and #8574. They are not yet
 installable and must not be represented as released.
 
-Do not install or distribute `clients/khala-mobile`, `clients/khala-ios/Khala`,
-or `clients/khala-code-desktop` as current products. They are frozen migration,
-contract, native-module, and service-extraction references.
+Do not install or distribute `clients/khala-mobile` or
+`clients/khala-ios/Khala` as current products. They are frozen migration,
+contract, native-module, and service-extraction references. The superseded
+`clients/khala-code-desktop` app was removed in #8793; use OpenAgents Desktop.
 
 **Connect coding capacity from the terminal**
 

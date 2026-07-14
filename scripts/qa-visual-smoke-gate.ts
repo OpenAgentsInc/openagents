@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Scoped Khala Code visual-smoke gate for desktop/UI-touching main pushes.
+// Scoped OpenAgents Desktop gate for desktop/UI-touching main pushes.
 
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
@@ -11,13 +11,13 @@ export const KHALA_VISUAL_SMOKE_GATE_HARD_FAIL_DATE = "2026-07-09"
 export const KHALA_VISUAL_SMOKE_GATE_DEFAULT_TIMEOUT_MS = 295_000
 
 export const KHALA_VISUAL_SMOKE_GATE_PREFIXES = [
-  "clients/khala-code-desktop/",
+  "apps/openagents-desktop/",
   "packages/ui/",
 ] as const
 
 export type KhalaVisualSmokeGateMode = "warning-only" | "hard-fail"
 export type KhalaVisualSmokeGateStatus = "skipped" | "passed" | "failed" | "incomplete"
-export type KhalaVisualSmokeGateStepId = "part2-ui" | "cockpit-visual" | "composer-visual"
+export type KhalaVisualSmokeGateStepId = "desktop-verify"
 
 export type KhalaVisualSmokeGateStep = Readonly<{
   command: ReadonlyArray<string>
@@ -83,19 +83,9 @@ const todayIsoDate = (
 
 export const khalaVisualSmokeGateSteps = (): ReadonlyArray<KhalaVisualSmokeGateStep> => [
   {
-    command: ["bun", "run", "--cwd", "clients/khala-code-desktop", "smoke:part2-ui"],
-    id: "part2-ui",
-    label: "Part 2 UI fixture visual smoke",
-  },
-  {
-    command: ["bun", "run", "--cwd", "clients/khala-code-desktop", "smoke:cockpit-visual"],
-    id: "cockpit-visual",
-    label: "Fleet cockpit fixture visual smoke",
-  },
-  {
-    command: ["bun", "run", "--cwd", "clients/khala-code-desktop", "smoke:composer-visual"],
-    id: "composer-visual",
-    label: "Composer fixture visual smoke",
+    command: ["bun", "run", "--cwd", "apps/openagents-desktop", "verify"],
+    id: "desktop-verify",
+    label: "OpenAgents Desktop verification",
   },
 ]
 
@@ -148,14 +138,14 @@ export const collectKhalaVisualSmokeGateChangedFiles = (
       }
       return uniqueSorted(splitLines(git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", localSha])))
     } catch {
-      return ["clients/khala-code-desktop/__pre_push_diff_failed_run_conservatively__"]
+      return ["apps/openagents-desktop/__pre_push_diff_failed_run_conservatively__"]
     }
   }
 
   try {
     git(root, ["fetch", "origin", "main", "--quiet"])
   } catch {
-    return ["clients/khala-code-desktop/__fetch_failed_run_conservatively__"]
+    return ["apps/openagents-desktop/__fetch_failed_run_conservatively__"]
   }
 
   const changed: Array<string> = []
@@ -163,7 +153,7 @@ export const collectKhalaVisualSmokeGateChangedFiles = (
     try {
       changed.push(...splitLines(git(root, ["diff", "--name-only", range])))
     } catch {
-      changed.push("clients/khala-code-desktop/__diff_failed_run_conservatively__")
+      changed.push("apps/openagents-desktop/__diff_failed_run_conservatively__")
     }
   }
 
@@ -197,7 +187,7 @@ export const runKhalaVisualSmokeGate = async (
       exitCode: 0,
       hardFailDate: KHALA_VISUAL_SMOKE_GATE_HARD_FAIL_DATE,
       mode,
-      reason: "no Khala desktop or shared UI changes vs the pushed main range",
+      reason: "no OpenAgents Desktop or shared UI changes vs the pushed main range",
       schema: KHALA_VISUAL_SMOKE_GATE_SCHEMA,
       status: "skipped",
       steps: [],
