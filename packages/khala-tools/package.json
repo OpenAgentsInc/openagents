@@ -15,7 +15,9 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck:tsgo": "tsgo -p tsconfig.json --noEmit",
+    "typecheck:tsgo:patch": "effect-tsgo patch"
   },
   "dependencies": {
     "@huggingface/transformers": "3.7.5",
@@ -28,6 +30,8 @@
   },
   "devDependencies": {
     "bun-types": "^1.0.0",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "@effect/tsgo": "0.13.2",
+    "@typescript/native-preview": "7.0.0-dev.20260604.1"
   }
 }
