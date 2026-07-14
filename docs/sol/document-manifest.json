@@ -1684,6 +1684,7 @@
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever indexed membership, path, or classification changes",
       "inboundLinks": [
+        "README.md",
         "docs/fable/README.md",
         "docs/sol/2026-07-12-clean-agent-reading-receipt.md",
         "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
@@ -1692,7 +1693,7 @@
         "docs/sol/IMPLEMENTATION_ROADMAP.md",
         "docs/sol/MASTER_ROADMAP.md"
       ],
-      "inboundSourceCount": 7,
+      "inboundSourceCount": 8,
       "issueLinks": []
     },
     {
@@ -2876,8 +2877,10 @@
       "snapshot": "2026-07-14",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
-      "inboundLinks": [],
-      "inboundSourceCount": 0,
+      "inboundLinks": [
+        "README.md"
+      ],
+      "inboundSourceCount": 1,
       "issueLinks": []
     }
   ]
