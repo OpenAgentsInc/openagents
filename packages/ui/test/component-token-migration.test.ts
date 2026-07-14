@@ -19,9 +19,8 @@ const componentCssFiles = [
   here('../src/ai-elements/prompt-input.css'),
   here('../src/ai-elements/command-composer.css'),
   here('../src/ai-elements/shimmer.css'),
-  // @openagentsinc/autopilot-ui
-  here('../../autopilot-ui/src/view.css'),
-  here('../../autopilot-ui/src/domain-styles.css'),
+  // @openagentsinc/autopilot-ui was deleted (openagents#8813 Lane C: its only
+  // external dependent, apps/web, no longer imports it).
 ]
 
 const read = (file: string) => readFileSync(file, 'utf8')
@@ -98,8 +97,6 @@ describe('component CSS is migrated onto the central --oa-* tokens', () => {
       here('../src/workroom.ts'),
       here('../src/workroom-styles.ts'),
       here('../src/ai-elements/prompt-input.ts'),
-      here('../../autopilot-ui/src/view.ts'),
-      here('../../autopilot-ui/src/domain-styles.ts'),
     ]
 
     expect(existsSync(here(`../src/${legacyModule}.ts`))).toBe(false)
