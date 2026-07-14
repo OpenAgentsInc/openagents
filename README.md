@@ -1,140 +1,140 @@
 # OpenAgents
 
-OpenAgents is reliable software for doing coding work and managing fleets of
-agents from Desktop and mobile without forking identity, state, authority, or
-receipts.
+## The Agent IDE
 
-The immediate priority is a daily-driver coding and fleet loop: start or resume
-work, supervise named Codex and Claude capacity, steer and approve bounded
-actions, continue the same authoritative conversation across devices, and
-receive independently checkable outcomes. Product claims remain gated by
-receipts rather than roadmap prose.
+**OpenAgents is The Agent IDE: the integrated development environment for
+building software with agents.** It is the place where developers start work,
+direct agents, inspect what they are doing, resolve blockers, review repository
+effects, and return to durable sessions.
 
-The canonical implementation roadmap is
-[`docs/sol/MASTER_ROADMAP.md`](docs/sol/MASTER_ROADMAP.md). It owns product
-scope, sequencing, issue state, dependency gates, and acceptance criteria.
+An agent engine can reason, call tools, and change code. That execution loop is
+necessary, but it is not the whole product. OpenAgents owns the working
+environment around the loop: conversations, project context, agent and
+subagent topology, controls, history, review, recovery, and evidence.
 
-## Product direction
+> The model is a worker. OpenAgents is where the work lives.
 
-There are two active product clients over one authority loop:
+## What makes it an Agent IDE
 
-| Surface | Product role | Implementation home |
-| --- | --- | --- |
-| **OpenAgents Desktop** | Full coding workbench and fleet cockpit: conversations, projects, files, Git, terminal, runtimes, approvals, diagnostics, and receipts | [`apps/openagents-desktop`](apps/openagents-desktop/README.md) |
-| **OpenAgents mobile** | Compact coding and fleet control: cross-device continuation, remote workrooms, review, safe writeback, approvals, and handoff | `apps/openagents-mobile` |
+A conventional IDE integrates an editor, language tools, a debugger, source
+control, and a runtime. The Agent IDE integrates the corresponding objects of
+agent work:
 
-`apps/openagents.com` remains the supported public, authentication, API,
-Khala Sync, Forum, product-promise, payout, and operational surface. It is not
-a third active client or a broad product-expansion lane during the current
-Desktop/mobile program.
+| Development concern | OpenAgents responsibility                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------ |
+| Intent and context  | Durable conversations, repository grants, and explicit work state                          |
+| Execution           | Typed agent turns, tools, plans, usage, and terminal outcomes                              |
+| Multi-agent work    | Complete parent/child topology, causal activity, and independent transcripts               |
+| Supervision         | Stop, steer, queue, question, approval, refusal, and honest blocker states                 |
+| Review              | Bounded files, Git status and diffs, and evidence beside the conversation                  |
+| Continuity          | Findable history, exact retry reconciliation, reload and restart recovery, and diagnostics |
 
-Earlier Khala Code clients are frozen extraction sources, not foundations to
-rename in place. Useful capabilities are ported into the active apps over the
-shared contracts, and superseded product surfaces are retired. The mobile
-identity is locked to the product name `OpenAgents`, iOS bundle identifier and
-Android application ID `com.openagents.app`, and the existing OpenAgents icon.
-The Desktop host is Electron.
+Conversation is the default surface; repository context, the agent graph,
+review, and diagnostics open around the work when needed. This is not a code
+editor with a chat panel, and it is not another model provider. Many tools put
+an agent inside an IDE; OpenAgents makes the agents, their work, and their
+evidence the IDE.
 
-## Priority zero: reliable Desktop/mobile coding and fleet control
+## One product, Desktop first
 
-```text
-typed user intent
-  -> policy and approval boundary
-  -> authoritative conversation, FleetRun, or workroom command
-  -> Pylon owner-local execution or managed Agent Computer
-  -> Codex / Claude execution
-  -> evidence, durable outcome, and receipt
-  -> Khala Sync
-  -> the same refs, versions, and state on Desktop and mobile
-```
+The OpenAgents product identity spans Desktop and mobile. Desktop is The Agent
+IDE today; mobile is the retained compact companion. The accepted first product
+shape is deliberately narrower:
 
-The repository already contains a hardened Electron/Effect Native Desktop
-shell, a React Native/Expo mobile shell, native credential custody, host-owned
-Khala Sync SQLite stores, canonical confirmed conversation continuity, a
-tokenless Runtime Gateway, typed FleetRun and control authority, isolated
-provider accounts, and receipt/evidence contracts.
+| App                    | Current role                                                                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **OpenAgents Desktop** | The primary local-first Agent IDE: a signed workroom around the user's ordinary logged-in Codex session, usable without an OpenAgents account                                  |
+| **OpenAgents mobile**  | The retained companion built on the same product identity and typed application model; physical distribution and broader remote-coding claims remain separately evidence-gated |
 
-The shortest path is to project and mutate that existing authority through
-Khala Sync. The active work is to bind real streamed provider execution into
-the canonical conversation, complete the Desktop workbench and visible fleet
-cockpit, bring remote-workroom coding and fleet control to mobile, prove
-interruption and restart recovery, and pass physical-device, packaging, and
-owner-dogfood gates.
+Codex is the first engine. Codex owns its model, agent, and tool loop;
+OpenAgents owns the durable product around it. The current Desktop MVP keeps
+its visible path intentionally small—New Chat, Chat, Project Home, and
+Settings—while making sessions, typed activity, child agents, bounded
+repository review, controls, recovery, updates, and diagnostics coherent.
 
-The current implementation ledger, cross-device reliability gates R0–R7, and
-Desktop D0–D6 dependency graph live in the
-[`Sol master roadmap`](docs/sol/MASTER_ROADMAP.md). Supporting current-state
-evidence lives in [`docs/terra/CURRENT_STATE.md`](docs/terra/CURRENT_STATE.md)
-and [`docs/terra/MOBILE_PARITY.md`](docs/terra/MOBILE_PARITY.md).
+ProductSpec and AssuranceSpec remain underlying authoring and verification
+tooling. They are not user-facing destinations in the MVP. Fleet, broad
+provider parity, managed targets, portable host movement, and full mobile
+coding are closed `not planned`; retained architecture does not restore their
+product status without a new bounded owner decision and issue.
 
-## Authority and engine room
+The exact current scope and proof boundary live in the
+[`MVP package`](docs/mvp/README.md) and
+[`Sol master roadmap`](docs/sol/MASTER_ROADMAP.md). An accepted or signed
+release candidate is not the same as a published release; public availability
+and capability language remain gated by the
+[`promise registry`](docs/promises/README.md).
 
-- **Khala** provides persona-neutral inference, routing, durable streams, and
-  cross-device Sync.
-- **Pylon** owns connected provider accounts and owner-local execution. Each
-  account lives in an isolated home; automatic work never falls back to an
-  ambient default provider home.
-- **Agent Computers** provide optional managed execution in isolated
-  Firecracker microVMs. Cloud capacity is additive to the local path.
-- **Blueprint** makes plans, work state, evidence, and memory legible without
-  copying raw private worker events into public or renderer-visible state.
-- **Receipts** are completion truth: usage, lifecycle state, verification, and
-  closeout must reconcile before a claim turns green.
+## Open at the control points
 
-Typed services retain authority. A model may propose an intent, but owner
-scope, budget, account choice, approval, payment, mutation, and public claim
-state are enforced outside the model. Local caches and optimistic UI never
-become execution authority, and a transport timeout is not success.
+OpenAgents is designed so that a frontier model can be useful without becoming
+the owner of the application, the user's identity, private knowledge, tools,
+or history. The current product is Codex-first, while the architectural rule is
+that workers remain behind an inspectable, typed OpenAgents boundary.
 
-## Why Effect Native
+- **Local-first authority:** useful Desktop work does not require an
+  OpenAgents account or hosted control plane.
+- **Inspectable execution:** typed commands, agent identity, causal activity,
+  explicit failure states, and bounded evidence replace assistant theater.
+- **Durable user-owned work:** provider identifiers and local paths do not
+  become product identity, and a transport timeout never becomes success.
+- **Replaceable workers:** models, runtimes, tools, and compute can evolve
+  without taking the workroom or its history with them.
+- **Evidence before claims:** code, tests, packaged artifacts, live journeys,
+  owner acceptance, publication, and public promises remain distinct proof
+  rungs.
 
-The active clients use one typed Effect Native component and intent system
-with thin swappable renderers. React Native, Expo, Electron, DOM, Monaco,
-terminal, canvas, and native modules are hosts or foreign surfaces rather than
-separate application architectures.
+The longer argument for this boundary is in
+[`The Case Against Anthropic`](docs/sol/the-case-against-anthropic.md). The
+point is institutional rather than model-specific: intelligence should be
+plural, execution inspectable, history portable, and private knowledge under
+the user's control.
 
-That is more than UI reuse: a run, approval, refusal, command outcome, or
-receipt must mean the same thing on Desktop and mobile. Shared gaps are fixed
-upstream in Effect Native instead of with local one-off primitives.
+## Product first, broader mission around it
 
-See [`docs/effect-native/README.md`](docs/effect-native/README.md) and the
-current [`Effect Native product laws`](docs/sol/MASTER_ROADMAP.md#implementation-laws).
+“OpenAgents” names both the product and the larger project. The distinction is
+useful:
+
+| Layer        | Meaning                                                                                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Product**  | The Agent IDE: OpenAgents Desktop today and the retained OpenAgents mobile companion                                                                                                   |
+| **Platform** | The typed runtime, workspace capabilities, Effect Native, receipts, and broader retained Sync, Pylon, and Agent Computer substrate; not all of it is required by the current local MVP |
+| **Network**  | The longer-term open topology in which agents, tools, compute, and contributors can be discovered and combined without one model vendor owning the system                              |
+| **Lab**      | Research, evaluation, and open-model work that improves the available workers while keeping the Agent IDE neutral among them                                                           |
+
+The platform, network, and lab explain how the product can grow. They do not
+replace the simple user-facing answer: **OpenAgents is the Agent IDE.**
 
 ## Working in this repository
 
-This is a Bun, Effect, and Effect Schema monorepo. Important current paths:
+This is a Node.js, pnpm, Vite Plus, Effect, and Effect Schema monorepo. The
+current toolchain is pinned in [`package.json`](package.json).
 
-- `apps/openagents-desktop` — Electron host, tokenless Runtime Gateway,
-  coding workbench, and fleet cockpit;
-- `apps/openagents-mobile` — React Native/Expo host for mobile coding,
-  continuity, and fleet control;
-- `apps/openagents.com` — public web host, authentication and Worker
-  authority, Sync service, APIs, payments, receipts, Forum, and public
-  projections;
-- `apps/pylon` — account custody, local execution, presence, assignments, and
-  contributor node;
-- `packages/khala-fleet-intents` and related fleet packages — typed run,
-  worker, policy, control, and projection contracts;
-- `packages/khala-sync-client` and `packages/khala-sync-server` — shared
-  cross-device projection, mutation, replay, and convergence paths;
-- `packages/cloud-contract` plus the bounded Cloud Rust crates — managed Agent
-  Computer contracts and systems infrastructure;
-- `clients/khala-mobile` and `clients/khala-ios/Khala` — frozen parity and
-  extraction sources (the superseded Khala Code desktop client was removed);
-- `docs/sol` — canonical roadmap and implementation analysis;
-- `docs/teardowns` — desktop product teardowns and adaptation lessons;
-- `docs/promises` — product-promise records and evidence gates;
-- `docs/transcripts` — preserved historical transcript archive.
+- [`apps/openagents-desktop`](apps/openagents-desktop/README.md) — Electron
+  host, tokenless Runtime Gateway, and the primary Agent IDE;
+- [`apps/openagents-mobile`](apps/openagents-mobile/README.md) — React
+  Native/Expo host for the compact OpenAgents client;
+- [`apps/openagents.com`](apps/openagents.com/README.md) — public, auth, API,
+  Sync, promise, receipt, health, legal, and operations surfaces;
+- [`apps/pylon`](apps/pylon) — account custody and owner-local execution;
+- [`packages`](packages) — shared schemas, runtime, Sync, UI, evidence, and
+  infrastructure contracts;
+- [`docs/mvp`](docs/mvp/README.md) — exact first-product definition and
+  release-candidate evidence;
+- [`docs/sol`](docs/sol/README.md) — canonical product direction, roadmap,
+  decisions, and implementation evidence;
+- [`docs/effect-native`](docs/effect-native/README.md) — the shared typed
+  application and renderer architecture.
 
-Install dependencies and run scoped checks for the area being changed:
+Use Node `24.13.1` and pnpm `11.10.0`, then run checks scoped to the area being
+changed:
 
 ```sh
-bun install --frozen-lockfile
-bun run test:openagents-desktop
-bun run test:openagents-mobile
-bun run test:openagents.com
-bun run test:pylon
-bun run test:khala-cli
+pnpm install --frozen-lockfile
+pnpm run test:openagents-desktop
+pnpm run test:openagents-mobile
+pnpm run test:openagents.com
+pnpm run check:fast
 ```
 
 Read [`AGENTS.md`](AGENTS.md) before working, and read
