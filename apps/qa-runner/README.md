@@ -1,5 +1,8 @@
 # @openagentsinc/qa-runner
 
+The current OpenAgents Desktop Assurance Manifest orchestration contract is
+documented in [`../../docs/qa/openagents-desktop-assurance-swarm.md`](../../docs/qa/openagents-desktop-assurance-swarm.md).
+
 OSS, local-first, runtime-agnostic autonomous-QA runner — the substrate + the
 headline demo for the **Khala autonomous-QA example flow** (epic #6174).
 

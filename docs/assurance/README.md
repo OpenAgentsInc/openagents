@@ -149,7 +149,7 @@ release prerequisite, or change a public promise.
 | Native Bun test adapter and normalized receipt | Implemented; native output remains private and reviewed projections are digest-bound |
 | Typed Assurance Receipt resolver/registration in the Desktop workroom | Implemented through the immutable bridge and exercised by `AO-CW-AC-04-01` |
 | ProductSpec Related Artifact publication | Parser, package planner/apply primitives, Desktop proposal-only agent tool, and separate owner-confirmation path implemented; portable item-level publication for the live legacy r6 identity waits for PSEL-3 rebinding |
-| QA Swarm manifest consumption | Outside the accepted Desktop MVP; any future adapter remains a separately admitted execution lane |
+| QA Swarm manifest consumption | Evidence-only six-lane orchestration is implemented for the current Desktop target; real/spend/native execution remains explicitly armed, and its receipts require separate review/admission |
 | Hosted Observatory | Deployed read-only criterion-first projection at `/observer/traces/openagents-desktop-codex-workroom-mvp` |
 
 ## Naming

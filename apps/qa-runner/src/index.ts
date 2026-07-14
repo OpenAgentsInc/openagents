@@ -56,6 +56,8 @@ export {
   type BrainStep,
 } from "./brain";
 
+export * from "./assurance-swarm";
+
 // Backends — the isolation abstraction; localBackend is the OSS default.
 export { localBackend, type Backend, type BackendSession, type LocalBackendOptions } from "./backend";
 export {

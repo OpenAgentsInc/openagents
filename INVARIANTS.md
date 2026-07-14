@@ -82,6 +82,27 @@ More specific invariant ledgers apply inside imported apps and packages.
   `running`, with a hard client-side poll bound. Unknown, invalid, private, and
   unavailable runs retain the same non-disclosing unavailable shell.
 
+## QA Swarm Assurance Execution
+
+- The current Desktop swarm target is exactly `apps/openagents-desktop` under
+  `openagents.desktop.current`; deleted Khala client paths are never execution
+  targets or evidence authority.
+- `apps/qa-runner/src/assurance-swarm.ts` partitions every exact Assurance
+  Manifest unit once across the six typed scripted-browser, seeded-monkey,
+  LLM-explorer, performance, terminal, and macOS-native lanes. Each lane has an
+  independent action, duration, and model-token budget. Observed adapter output
+  emits independently digestible normalized Assurance Receipts. Those receipts bind the exact
+  ProductSpec, AssuranceSpec, admission, Manifest, environment, locked adapter,
+  execution unit, command, source, native report, and artifact commitment.
+- Real execution, provider spend, and native control require explicit arming.
+  Unsupported, missing, failed, or unarmed adapters remain `INCONCLUSIVE` with
+  no fabricated native report, artifact commitment, or Assurance Receipt; they
+  may not be inferred from configured jobs or artifact slots. A lane adapter
+  must equal every assigned Manifest unit's locked adapter. Non-model lanes
+  report exact zero provider usage; an executed model lane must report exact
+  observed input and output usage within its declared cap. The orchestrator is
+  evidence-only: it cannot admit, accept, merge, deploy, or promote a promise.
+
 ## Product Surface Ownership
 
 - `apps/openagents.com/` owns the `openagents.com` product surface and retains

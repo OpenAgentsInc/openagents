@@ -155,6 +155,20 @@ planner.
 - A distilled finding becomes durable only through a reviewed oracle or
   AssuranceSpec revision.
 
+The current QA Runner now has an evidence-only Manifest orchestrator for
+`apps/openagents-desktop`. It partitions every exact unit once across six typed,
+independently budgeted lanes: scripted browser, seeded monkey, LLM explorer,
+performance, terminal, and macOS native. Adapters are injected from the existing
+runner backends. Missing support, missing arming, execution failure, budget
+overflow, and non-exact provider usage produce `INCONCLUSIVE`; they never become
+silent skips. Those no-run states carry blockers but no invented report,
+artifact commitment, or Assurance Receipt. Each unit with observed adapter
+output produces the existing normalized Assurance Receipt plus an independently
+digestible lane wrapper carrying exact budgets, arming, provider usage, and
+artifact commitments. The lane adapter must match the exact Manifest unit
+adapter. This is execution evidence, not
+AssuranceSpec admission, review, acceptance, release, or promise authority.
+
 Exploration that cannot be distilled remains `INCONCLUSIVE`. A green run cannot
 admit its own plan, accept its own evidence, deploy, or promote a promise.
 

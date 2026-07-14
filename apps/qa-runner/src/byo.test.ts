@@ -43,9 +43,18 @@ describe("qa swarm run (fixture hosted-run composition)", () => {
     expect(existsSync(join(dir, child!, "qa-swarm-projection.json"))).toBe(true);
     const projection = JSON.parse(
       readFileSync(join(dir, child!, "qa-swarm-projection.json"), "utf8"),
-    ) as { schemaVersion: string; verdict: string };
+    ) as {
+      schemaVersion: string;
+      verdict: string;
+      blockerRefs: string[];
+      evidenceAdmission: { admittedReceiptRefs: string[] };
+      boardGraph: { links: Array<{ status: string }> };
+    };
     expect(projection.schemaVersion).toBe("openagents.qa_swarm.run_projection.v1");
-    expect(projection.verdict).toBe("warning");
+    expect(projection.verdict).toBe("inconclusive");
+    expect(projection.blockerRefs.length).toBeGreaterThan(0);
+    expect(projection.evidenceAdmission.admittedReceiptRefs).toEqual([]);
+    expect(projection.boardGraph.links.every(link => link.status !== "evidence_backed")).toBe(true);
   });
 });
 afterEach(() => {

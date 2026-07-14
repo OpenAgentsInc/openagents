@@ -546,6 +546,7 @@
         "qa": "./dist/qa.js",
       },
       "dependencies": {
+        "@openagentsinc/assurance-spec": "workspace:*",
         "@openagentsinc/atif": "workspace:*",
         "@openagentsinc/khala-qa-harness": "workspace:*",
         "@openagentsinc/qa-swarm-contract": "workspace:*",

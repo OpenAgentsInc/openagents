@@ -6,7 +6,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./browser": "./src/browser.ts"
+    "./browser": "./src/browser.ts",
+    "./execution": "./src/execution.ts"
   },
   "bin": {
     "assurance-spec": "./src/cli.ts"
