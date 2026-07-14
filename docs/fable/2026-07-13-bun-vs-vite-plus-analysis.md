@@ -434,3 +434,27 @@ the interim; two toolstacks coexist during the pilots; requires discipline
 Per docs/fable convention: this is decision input. No migration is approved
 or scheduled by this document; TC-5 and the revisit triggers own the next
 decision point.
+
+---
+
+**Status 2026-07-14 (BUN-1 landed — #8779).** The Bun-API containment seam
+from Option C is now in place. `@openagentsinc/sqlite-runtime`
+(`packages/sqlite-runtime/`) is the dual-runtime SQLite seam modeled on T3
+Code's `Sqlite.ts`/`NodeSqliteClient.ts`: runtime detection via
+`process.versions.bun`, a `bun:sqlite` client under Bun and a `node:sqlite`
+client under Node behind one synchronous `SqliteDatabase` contract
+(signature-compatible with khala-sync-client's `SqlDriver`), with Effect
+wrappers for open/scoped ownership. One shared conformance suite runs under
+`bun test` (Bun client) and under real `node --test` (Node client — no
+mocked runtime). The pilot store is khala-sync-client's
+`sqlite-store.ts` (KS-5.1), which no longer imports `bun:sqlite` at all;
+its full suite stays green with zero wire/behavior change. The perimeter is
+now enforced by `bun run scan:bun-api-perimeter`
+(`scripts/bun-api-perimeter-scan.ts`): 214 production source files with
+`bun:*` imports or `Bun.*` usage are grandfathered in
+`scripts/bun-api-perimeter-allowlist.ts` as a checked-in burn-down list, the
+seam's Bun client is the first named-perimeter entry, and any NEW
+un-allowlisted usage fails the scan (wired into the root test sweep as
+`test:bun-api-perimeter`; merges into `oxlint-plugin-openagents` when #8773
+lands). The third revisit trigger above is now measurable: the burn-down
+count is the "load-bearing surface small enough" metric.

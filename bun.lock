@@ -185,7 +185,7 @@
     },
     "apps/openagents-desktop": {
       "name": "@openagentsinc/openagents-desktop",
-      "version": "0.1.0-rc.6",
+      "version": "0.1.0-rc.9",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.172",
         "@effect-native/core": "workspace:*",
@@ -815,7 +815,7 @@
     },
     "packages/assurance-spec": {
       "name": "@openagentsinc/assurance-spec",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "assurance-spec": "./src/cli.ts",
       },
@@ -1081,6 +1081,7 @@
       "dependencies": {
         "@openagentsinc/composer-state": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
+        "@openagentsinc/sqlite-runtime": "workspace:*",
         "@sqlite.org/sqlite-wasm": "3.53.0-build1",
         "effect": "catalog:",
       },
@@ -1278,6 +1279,17 @@
       "bin": {
         "score-take": "./src/cli.ts",
       },
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/sqlite-runtime": {
+      "name": "@openagentsinc/sqlite-runtime",
+      "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -2201,6 +2213,8 @@
     "@openagentsinc/reactor-contracts": ["@openagentsinc/reactor-contracts@workspace:packages/reactor-contracts"],
 
     "@openagentsinc/sarah-take-scoreboard": ["@openagentsinc/sarah-take-scoreboard@workspace:packages/sarah-take-scoreboard"],
+
+    "@openagentsinc/sqlite-runtime": ["@openagentsinc/sqlite-runtime@workspace:packages/sqlite-runtime"],
 
     "@openagentsinc/sync-client": ["@openagentsinc/sync-client@workspace:apps/openagents.com/packages/sync-client"],
 
@@ -5309,6 +5323,8 @@
     "@openagentsinc/reactor-contracts/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/sarah-take-scoreboard/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
+
+    "@openagentsinc/sqlite-runtime/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/sync-client/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
