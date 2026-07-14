@@ -7,6 +7,7 @@ import {
   unauthorized,
 } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
+import { moneySurfaceRetiredResponse } from './money-surface-retirement'
 import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import {
@@ -28,10 +29,6 @@ import {
   TassadarRunSettlementUnsafe,
   buildTassadarRunSettlement,
 } from './tassadar-run-settlement'
-import {
-  readTassadarRealSettlementGate,
-  resolveTassadarSettlementAdapter,
-} from './tassadar-run-settlement-gate'
 import {
   Cs336A5AlignmentEvidenceRequest,
   admitCs336A5AlignmentEvidence,
@@ -112,11 +109,33 @@ import {
   TrainingWindowBootstrapGrantRequest,
   decideTrainingWindowBootstrapGrant,
 } from './training-window-bootstrap'
-import {
-  TreasuryPaymentAuthorityError,
-  type TreasuryPaymentAuthorityShape,
-  type TreasuryPaymentAuthorityWalletReadiness,
-} from './treasury-payment-authority'
+
+type TreasuryPaymentAuthorityWalletReadiness = 'ready' | 'stale' | 'absent'
+type TreasuryPaymentAuthorityShape = Readonly<{
+  createPayoutIntent: (
+    input: unknown,
+  ) => Effect.Effect<unknown, TreasuryPaymentAuthorityError>
+  dispatchPayout: (input: unknown) => Effect.Effect<
+    { attempt: { status: string } },
+    TreasuryPaymentAuthorityError
+  >
+  reconcilePayout: (input: unknown) => Effect.Effect<
+    { event: { status: string } },
+    TreasuryPaymentAuthorityError
+  >
+}>
+class TreasuryPaymentAuthorityError extends Error {
+  readonly reason: string = 'money_surface_retired'
+}
+
+const readTassadarRealSettlementGate = (_env: unknown): never => {
+  throw new TreasuryPaymentAuthorityError('money_surface_retired')
+}
+
+const resolveTassadarSettlementAdapter = (_input: unknown) => ({
+  adapterKind: 'simulation' as const,
+  realAuthorized: false,
+})
 
 type HttpResponse = globalThis.Response
 
@@ -658,6 +677,15 @@ export const dispatchRealRunSettlementCore = <Bindings>(
   }>,
 ): Effect.Effect<void, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
+    // VP1 has no settlement authority. Keep the exported symbol temporarily so
+    // dependent wiring can be removed in sequence, but make invocation fail
+    // closed before consulting a ledger, wallet, destination, or adapter.
+    return yield* new TrainingAuthorityStoreError({
+      kind: 'conflict',
+      reason: 'money_surface_retired',
+    })
+
+    /* c8 ignore start -- unreachable pre-VP1 implementation retained for history */
     const { contributorRef, ledger, settlement } = input
     const {
       env,
@@ -699,7 +727,7 @@ export const dispatchRealRunSettlementCore = <Bindings>(
 
     if (
       privatePayoutDestination === undefined ||
-      privatePayoutDestination.trim() === ''
+      privatePayoutDestination!.trim() === ''
     ) {
       return yield* new TrainingAuthorityStoreError({
         kind: 'conflict',
@@ -710,7 +738,7 @@ export const dispatchRealRunSettlementCore = <Bindings>(
     const authority = makeAuthority(env, {
       adapterKind: 'spark_treasury',
       ledgerStore: ledger,
-      privatePayoutDestination,
+      privatePayoutDestination: privatePayoutDestination!,
       providerRef: settlement.reconciliationEvent.providerRef,
     })
 
@@ -773,6 +801,7 @@ export const dispatchRealRunSettlementCore = <Bindings>(
       try: () =>
         ledger.createPaymentAuthorityReceipt(settlement.settlementReceipt),
     })
+    /* c8 ignore stop */
   })
 
 const dispatchRealRunSettlement = <Bindings extends TrainingRunWindowRouteEnv>(
@@ -835,6 +864,11 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
   trainingRunRef: string,
 ): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
+    // Stable typed retirement contract. Authentication and body parsing are not
+    // consulted because no caller can reach a payment mutation in VP1.
+    return moneySurfaceRetiredResponse()
+
+    /* c8 ignore start -- unreachable pre-VP1 implementation retained for history */
     yield* requireAdmin(dependencies, request, env)
     const body = yield* decodeBody(request, TassadarRunSettlementRequest)
     const nowIso = routeNowIso(dependencies)
@@ -895,7 +929,7 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
     // is what drives the builder, so the simulation path is byte-for-byte
     // unchanged. The real branch is only reachable when the gate is enabled AND
     // the recipient/run are allowlisted AND the amount is under the gate cap.
-    const contributorRef = lease.pylonRef.trim()
+    const contributorRef = lease!.pylonRef.trim()
     const settlementDecision = resolveTassadarSettlementAdapter({
       amountSats: body.amountSats,
       contributorRef,
@@ -914,16 +948,16 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
             }),
       try: () =>
         buildTassadarRunSettlement({
-          challenge,
-          lease,
+          challenge: challenge!,
+          lease: lease!,
           nowIso,
           // The resolved (gated) adapter kind overrides the request. Anything
           // not authorized by the gate builds the simulation chain.
           request: { ...body, adapterKind: settlementDecision.adapterKind },
-          run,
+          run: run!,
         }),
     })
-    const ledger = makePayoutLedgerStore(env)
+    const ledger = makePayoutLedgerStore!(env)
 
     if (settlementDecision.realAuthorized) {
       // REAL Bitcoin branch (openagents #5232). Receipt-first: dispatch the
@@ -958,7 +992,7 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
     const linked = appendTrainingRunReceiptRefs({
       nowIso,
       receiptRefs: [settlement.settlementReceiptRef],
-      run,
+      run: run!,
     })
     const storedRun = yield* Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
@@ -981,7 +1015,7 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
         amountSats: settlement.amountSats,
         contributorRef: settlement.contributorRef,
         settlementReceiptRef: settlement.settlementReceiptRef,
-        verificationChallengeRef: challenge.challengeRef,
+        verificationChallengeRef: challenge!.challengeRef,
       },
       summary: publicTrainingRunSummary({
         challenges,
@@ -994,6 +1028,7 @@ const routeRunSettlementReceipt = <Bindings extends TrainingRunWindowRouteEnv>(
         windows,
       }),
     })
+    /* c8 ignore stop */
   })
 
 const routeBootstrapGrant = <Bindings extends TrainingRunWindowRouteEnv>(
