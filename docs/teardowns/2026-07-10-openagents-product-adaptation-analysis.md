@@ -15,6 +15,7 @@ Evidence base:
 - [OpenCode Effect architecture teardown](./2026-07-10-opencode-effect-architecture-teardown.md)
 - [Executor architecture teardown](./2026-07-12-executor-architecture-teardown.md)
 - [T3 Code teardown](./2026-07-13-t3-code-teardown.md)
+- [Crabbox teardown](./2026-07-13-crabbox-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -1718,6 +1719,95 @@ Its evidence changes this document's decisions in the following ways.
    already records as the R1 amendment: local-first by default, account as
    an opt-in upgrade. OpenAgents' version additionally carries receipts and
    durable cross-device truth through Khala Sync, which T3 does not attempt.
+
+Per the standing rule, none of these items is authority here: each lives or
+dies by its owning roadmap gate, issue, or contract when promoted.
+
+## Crabbox addendum (2026-07-13)
+
+The [Crabbox teardown](./2026-07-13-crabbox-teardown.md) adds the reference
+set's first subject on the execution-infrastructure seam *under* the agent
+products: a Go CLI plus optional Cloudflare Durable Object or Node/PostgreSQL
+coordinator that leases runners across 77 provider adapters, syncs the
+working-tree diff over a direct SSH data plane, runs commands, records durable
+run evidence, and releases — with no agent engine, no UI ambition, and an
+explicitly documented non-sandbox trust model. It overlaps OpenAgents' own
+remote-execution surfaces (`crates/oa-codex-control`, the GCE capacity-lease
+contracts, Pylon no-spend assignments) more directly than any prior subject.
+
+Its evidence changes this document's decisions in the following ways.
+
+1. **The lease/evidence seam is now a validated standalone market layer —
+   and the settlement half is still unclaimed.** Crabbox shipped honest
+   lease lifecycle semantics (`expiresAt = min(ttl, idle)`,
+   reserved-versus-estimated cost, heartbeat-touch, fail-closed cleanup that
+   never marks a machine gone while it may exist) and durable run evidence
+   in ten weeks at ~1.1k stars. It stops exactly where the OpenAgents thesis
+   begins: its signed run receipt prints `trust=self-signed`, carries no
+   countersignature, containment class, or settlement fields. Strengthens
+   the receipts differentiation line; sequencing pressure on the
+   Cloud-crate receipt lanes (`resource_usage_receipt.v1` and the closeout
+   contracts), no scope change.
+2. **Evidence verbs answer the runbook's own recorded gaps.** Crabbox's
+   early `run_` handle plus `attach`/`events`/`logs`/`results`/`history`
+   over durable phase-tagged events is the exact ergonomics the Khala→Pylon
+   delegation runbook lists as missing (silent `assignment run-no-spend`,
+   no live progress, raw D1 queries as proof reads). Adopt as a typed
+   assignment-evidence command family; owning lane: the Pylon/Khala
+   delegation CLI and its closeout contracts.
+3. **The credential-destination provenance lattice is a new idea worth
+   importing.** Crabbox types the trust class of every configuration source
+   (trusted file / repository / environment / flag) and refuses to let
+   repo-sourced config select destinations for higher-trust credentials —
+   and names that cross-trust routing an in-scope vulnerability class.
+   OpenAgents types the *grant* (broker-only, per-turn, fail-closed) but not
+   the *config-source trust class* that selects destinations. Composes with,
+   never replaces, the broker-only invariant; owning surfaces: Pylon config
+   loading, Desktop settings ingestion, `docs/cloud/INVARIANTS.md`.
+4. **The coordinator-as-credential-holder is the custody posture to
+   refuse, now with a well-built incumbent.** Crabbox's coordinator owns
+   raw provider keys for five clouds in runtime secret env; its data plane
+   bypasses the broker and runners stay credential-free, but control-plane
+   compromise mints and destroys infrastructure. This is a second named
+   incumbent (after T3's inverse authority posture) confirming the
+   broker-redeemed-grant invariant as differentiation, not overhead. Reject
+   explicitly; owning contract: the capability-broker invariants in
+   `docs/cloud/INVARIANTS.md`.
+5. **Ownership-proof lifecycle discipline gains market corroboration.**
+   "Labels, names, and IDs alone are not ownership proof"; adoption never
+   silently retargets a bound claim; sweeps touch only exact retained
+   resources; cleanup fails closed on inventory failure; `cleanup` refuses
+   to run beside a coordinator. This matches and extends the
+   oa-codex-control "never leak a running instance" / idempotent-verified-
+   release rules — promote the ownership-proof rule to an explicit tested
+   invariant in the placement/cleanup contracts.
+6. **Failure capsules are a cheap evidence artifact the fleet lacks.** A
+   portable, replayable bundle capturing a failing run (`capsule
+   from-actions` / `capsule replay`) makes failures reproducible objects
+   instead of prose. Natural post-parity leaf on the assignment-evidence
+   lane (item 2), receipted like any artifact.
+7. **Release-gate separation gains a second precedent, including a blocked
+   release.** Verification from protected-default code, credential-free
+   candidate builds, pinned signer policy, byte-equal release notes,
+   separately authorized publication — and a real `v0.37.0` tag
+   publication-blocked over an ad-hoc re-signing trust defect. Strengthens
+   the DMG-1 notarize/staple/fail-closed lane and the signed component
+   ledger: a missing or broken trust chain blocks the release, full stop.
+8. **Honest non-sandbox postures are becoming the market norm; containment
+   truth stays unclaimed.** Crabbox states in `SECURITY.md` that isolation
+   is a provider attribute and single-user trust is the boundary — more
+   honest than T3's silent default-YOLO, but its evidence still never
+   records which isolation class produced a result. Execution profiles,
+   fail-closed negotiation, and effective-containment receipts remain the
+   OpenAgents seam; no incumbent has claimed it.
+9. **A credits-gateway competitor is forming on the compute side.**
+   Crabbox's marketplace skeleton ([vision]: quote/status APIs shipped;
+   ledger, capture, settlement explicitly not) is an OpenRouter-shaped
+   gateway for sandbox capacity — adjacent to the OpenAgents compute-market
+   thesis. Watch item for the market lanes; OpenAgents' version keeps
+   adversarial tenancy, usage-truth pre-spend, and settlement receipts in
+   the design from the start rather than growing them out of a
+   trusted-team model.
 
 Per the standing rule, none of these items is authority here: each lives or
 dies by its owning roadmap gate, issue, or contract when promoted.
