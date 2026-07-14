@@ -1,16 +1,59 @@
+import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
+
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
 import { parseJsonStringArray } from './json-boundary'
 import {
-  assertNexusPylonPublicSafe,
-  NEXUS_PYLON_PUBLIC_RECEIPT_STALENESS,
-  type NexusPylonPublicReceiptDetail,
-} from './nexus-pylon-visibility'
+  liveAtReadStaleness,
+  type PublicProjectionStalenessContract,
+} from './public-projection-staleness'
 import {
   publicScannerSafeRef,
   publicScannerSafeRefs,
 } from './public-ref-scanner-safety'
 
 type NullableString = string | null
+
+type ArtanisAdminCloseoutReceiptDetail = Readonly<{
+  schemaVersion: 'openagents.nexus_pylon.public_receipt.v1'
+  apiUrl: string
+  assignmentRef: string | null
+  audience: 'public'
+  caveatRefs: ReadonlyArray<string>
+  generatedAt: string
+  movementMode: 'simulation'
+  payoutAttemptRef: null
+  payoutIntentRef: null
+  publicProjection: unknown
+  realBitcoinMoved: false
+  receiptKind: string
+  receiptPageUrl: string
+  receiptRef: string
+  staleness: PublicProjectionStalenessContract
+  payoutMovement: Readonly<{
+    dispatchAccepted: boolean
+    terminalResultObserved: boolean
+    terminalSettlementClaimAllowed: false
+  }>
+  settlement: Readonly<{
+    buyerPaymentEvidencePresent: false
+    liveWalletSpendAllowed: false
+    providerRef: string
+    settlementMutationAllowed: false
+    settlementRefs: ReadonlyArray<string>
+    state: string
+    stateLabel: string
+    updatedAtDisplay: string
+    walletReadinessStateLabel: string
+  }>
+  status: string
+}>
+
+const closeoutReceiptStaleness = liveAtReadStaleness([
+  'artanis_admin_assignment_recorded',
+  'artanis_admin_closeout_recorded',
+])
+const privateMaterialPattern =
+  /(access[_-]?token|bearer|cookie|invoice|macaroon|mnemonic|payment[_-]?(hash|preimage)|private[_-]?key|provider[_-]?(credential|secret|token)|raw[_-]?(payment|payload|payout)|secret|wallet[_-]?(mnemonic|secret|seed)|webhook[_-]?secret)/i
 
 type ArtanisAdminCloseoutReceiptRow = Readonly<{
   accepted_work_refs_json: string
@@ -233,11 +276,11 @@ export const artanisAdminCloseoutReceiptDetail = (
     nowIso: string
     record: ArtanisAdminCloseoutReceiptRecord
   }>,
-): NexusPylonPublicReceiptDetail => {
+): ArtanisAdminCloseoutReceiptDetail => {
   const receiptRef = artanisAdminCloseoutReceiptRef(input.record.assignmentRef)
   const expectation = expectationRef(input.record)
   const status = closeoutStatus(input.record)
-  const detail: NexusPylonPublicReceiptDetail = {
+  const detail: ArtanisAdminCloseoutReceiptDetail = {
     schemaVersion: 'openagents.nexus_pylon.public_receipt.v1',
     apiUrl: `${input.appUrl}/api/public/nexus-pylon/receipts/${encodeURIComponent(
       receiptRef,
@@ -326,7 +369,7 @@ export const artanisAdminCloseoutReceiptDetail = (
       receiptRef,
     )}`,
     receiptRef,
-    staleness: NEXUS_PYLON_PUBLIC_RECEIPT_STALENESS,
+    staleness: closeoutReceiptStaleness,
     payoutMovement: {
       dispatchAccepted: input.record.decisionState === 'dispatched',
       terminalResultObserved: input.record.verdictOutcome !== null,
@@ -359,7 +402,13 @@ export const artanisAdminCloseoutReceiptDetail = (
     status,
   }
 
-  assertNexusPylonPublicSafe('Artanis admin closeout public receipt', detail)
+  const serialized = JSON.stringify(detail)
+  if (
+    containsProviderSecretMaterial(serialized) ||
+    privateMaterialPattern.test(serialized)
+  ) {
+    throw new Error('Artanis admin closeout public receipt is not public-safe.')
+  }
 
   return detail
 }

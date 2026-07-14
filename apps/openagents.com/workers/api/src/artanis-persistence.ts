@@ -46,14 +46,6 @@ import {
   artanisForumPublicationProjectionHasPrivateMaterial,
   projectArtanisForumPublicationQueue,
 } from './artanis-forum-publication'
-import {
-  ARTANIS_NEXUS_PYLON_ADMIN_NO_LIVE_AUTHORITY,
-  ArtanisNexusPylonAdminAdapterRecord,
-  ArtanisNexusPylonFleetSnapshotRecord,
-  type ArtanisNexusPylonDispatchRecord,
-  artanisNexusPylonProjectionHasPrivateMaterial,
-  projectArtanisNexusPylonAdminAdapter,
-} from './artanis-nexus-pylon-adapters'
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
 
 export const ArtanisPersistenceRecordKind = S.Literals([
@@ -62,7 +54,6 @@ export const ArtanisPersistenceRecordKind = S.Literals([
   'health_snapshot',
   'loop_record',
   'loop_tick',
-  'nexus_pylon_adapter_dispatch',
   'runtime_snapshot',
   'work_routing_proposal',
 ])
@@ -124,7 +115,6 @@ type PersistableArtanisRecord =
   | ArtanisHealthSnapshotRecord
   | ArtanisLoopRecord
   | ArtanisLoopTickRecord
-  | ArtanisNexusPylonDispatchRecord
   | ArtanisRuntimeRecord
   | ArtanisWorkRoutingProposalRecord
 
@@ -183,10 +173,6 @@ const tableSpecs = {
   loop_tick: {
     kind: 'loop_tick',
     tableName: 'artanis_loop_ticks',
-  },
-  nexus_pylon_adapter_dispatch: {
-    kind: 'nexus_pylon_adapter_dispatch',
-    tableName: 'artanis_nexus_pylon_adapter_dispatches',
   },
   runtime_snapshot: {
     kind: 'runtime_snapshot',
@@ -835,70 +821,6 @@ export const saveArtanisForumPublicationIntent = (
       recordRef: record.intentRef,
       scopeRef: record.targetForumRef,
       state: record.deliveryState,
-      updatedAtIso: record.updatedAtIso,
-    })
-  })
-
-export const saveArtanisNexusPylonAdapterDispatch = (
-  db: ArtanisDatabase,
-  record: ArtanisNexusPylonDispatchRecord,
-  nowIso: string,
-): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
-  Effect.gen(function* () {
-    const projection = projectArtanisNexusPylonAdminAdapter(
-      new ArtanisNexusPylonAdminAdapterRecord({
-        agentId: 'agent_artanis',
-        authority: ARTANIS_NEXUS_PYLON_ADMIN_NO_LIVE_AUTHORITY,
-        caveatRefs: record.caveatRefs,
-        createdAtIso: record.createdAtIso,
-        dispatchRecords: [record],
-        fleetSnapshots: [
-          new ArtanisNexusPylonFleetSnapshotRecord({
-            blockerRefs: ['blocker.public.fleet_snapshot_not_persisted'],
-            caveatRefs: ['caveat.public.fleet_snapshot_not_in_receipt'],
-            createdAtIso: record.createdAtIso,
-            fleetState: 'unavailable',
-            hostedNexusRelayRef: null,
-            nexusAcceptedWorkBitcoinPaidRef: null,
-            pylonRefs: [],
-            pylonsOnlineNow: 0,
-            pylonsSeen24h: 0,
-            pylonSessionsOnlineNow: 0,
-            sellablePylonsOnlineNow: 0,
-            snapshotRef:
-              'snapshot.public.artanis.nexus_pylon.dispatch_receipt_context',
-            sourceRefs: ['nexus.public.stats', 'pylon.public.stats'],
-            staleAfterIso: record.updatedAtIso,
-            surfaces: ['job_assignments', 'run_status'],
-            trainingAcceptedContributors: 0,
-            trainingAssignedContributors: 0,
-            trainingModelProgressContributors: 0,
-            updatedAtIso: record.updatedAtIso,
-          }),
-        ],
-        ledgerRef: 'ledger.public.artanis.persistence.nexus_pylon_adapters',
-        sourceRefs: record.sourceRefs,
-        updatedAtIso: record.updatedAtIso,
-      }),
-      'public_artanis',
-      nowIso,
-    )
-    yield* ensurePublicSafeProjection(
-      artanisNexusPylonProjectionHasPrivateMaterial(projection),
-      'Artanis Nexus/Pylon adapter dispatch',
-    )
-
-    return yield* persistPayload(db, tableSpecs.nexus_pylon_adapter_dispatch, {
-      active: record.state === 'approved',
-      agentId: 'agent_artanis',
-      createdAtIso: record.createdAtIso,
-      idempotencyKey: record.idempotencyKey,
-      parentRef: record.proposalRef,
-      publicProjection: projection,
-      record,
-      recordRef: record.dispatchRef,
-      scopeRef: record.jobKind,
-      state: record.state,
       updatedAtIso: record.updatedAtIso,
     })
   })
