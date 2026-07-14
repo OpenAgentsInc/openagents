@@ -13,6 +13,8 @@ import {
   desktopShellIntents,
   desktopShellView,
   desktopConversationShortcutTargets,
+  desktopSidebarHistoryDisclosure,
+  desktopSidebarHistoryLabel,
   delegateTranscriptForAgent,
   formatRelativeTimestamp,
   formatShellTimestamp,
@@ -345,7 +347,9 @@ describe("desktopShellView (state -> component tree)", () => {
     const dockItems = ((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[0]?.items ?? []) as Array<AnyNode>
     expect(dockItems.at(-1)?.id).toBe("shell-settings-toggle")
     expect(navItemById(view, "workspace-home")?.icon).toBe("Home")
-    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · all time")
+    // #8789: before hydration settles the header claims scanning, never a
+    // scope ("all time") the projection has not yet earned.
+    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · scanning…")
     expect(navItemById(view, "sidebar-thread-test-thread")?.label).toBe("New chat")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
     expect(navItemById(view, "sidebar-thread-test-thread")?.meta).toBeDefined()
@@ -2869,5 +2873,152 @@ describe("theme parity (one OpenAgents blue theme, many hosts)", () => {
     expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#182640")
     expect(openagentsDesktopTheme.motion.durationFastMs).toBe(150)
     expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, icon: 16 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// rc.10 owner incident batch (#8788 search does not filter, #8789 untrue
+// "ALL TIME" header). Contracts:
+//   openagents_desktop.history.session_search_filters.v1
+//   openagents_desktop.history.sidebar_header_truthful_scope.v1
+// ---------------------------------------------------------------------------
+describe("truthful sidebar header with counted disclosure (#8789)", () => {
+  const historyRoot = (index: number, title = `Session ${index}`) => ({
+    threadRef: `hist-${index}`, parentThreadRef: null, title, status: "completed" as const,
+    createdAt: "2026-07-10T00:00:00Z", updatedAt: `2026-07-${String(1 + (index % 9)).padStart(2, "0")}T00:00:00.000Z`,
+    depth: 0, descendantCount: 0, model: null, role: null, nickname: null, agentPath: null,
+    sourceVersion: null, reasoning: null, source: "codex" as const,
+  })
+  const bigCatalog = { roots: Array.from({ length: 45 }, (_, index) => historyRoot(index)), agents: [] }
+  const hydratedState = (over: Partial<DesktopShellState["history"]> = {}): DesktopShellState => ({
+    ...baseState,
+    history: { ...baseState.history, hydrated: true, catalog: bigCatalog, ...over },
+  })
+
+  test("registry enforces the truthful-scope and search contracts", () => {
+    for (const contractId of [
+      "openagents_desktop.composer.focused_on_open.v1",
+      "openagents_desktop.history.session_search_filters.v1",
+      "openagents_desktop.history.sidebar_header_truthful_scope.v1",
+    ]) {
+      expect(openAgentsDesktopUxContractRegistry.contracts.find(
+        (contract) => contract.contractId === contractId,
+      )?.state).toBe("enforced")
+    }
+  })
+
+  test("before hydration settles the header says scanning — never a scope claim", () => {
+    expect(desktopSidebarHistoryLabel(baseState)).toBe("Coding history · scanning…")
+  })
+
+  test(">page-size catalog: counted disclosure, explicit paging, no silent truncation", () => {
+    // 1 local thread + 45 catalog roots; the first page shows 40 of them.
+    const state = hydratedState()
+    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 41, total: 46 })
+    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · 41 of 46")
+    const view = desktopShellView(state)
+    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · 41 of 46")
+    // Explicit paging affordance names the remainder — nothing is silently cut.
+    expect(navItemById(view, "sidebar-history-load-more")?.label).toBe("Load 5 more")
+    expect((nodeByKey(view, "sidebar-navigation")?.a11y as { label?: string })?.label).toBe("41 of 46 sessions")
+  })
+
+  test("once every catalogued session is disclosed the header claims exactly that — all N", () => {
+    const state = hydratedState({ visibleRootCount: 45 })
+    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 46, total: 46 })
+    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · all 46")
+    expect(navItemById(desktopShellView(state), "sidebar-history-load-more")).toBeUndefined()
+  })
+
+  test("the header never counts a session twice when a local thread is also catalogued", () => {
+    const overlapping = { ...baseState.history, hydrated: true, catalog: { roots: [historyRoot(0)], agents: [] } }
+    const state: DesktopShellState = {
+      ...baseState,
+      threads: [{ ...testThread, id: "hist-0" }],
+      history: overlapping,
+    }
+    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 1, total: 1 })
+    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · all 1")
+  })
+
+  test("large counts render with thousands separators — the owner's 1,543 case", () => {
+    const state = hydratedState({ catalog: { roots: Array.from({ length: 1_543 }, (_, index) => historyRoot(index)), agents: [] }, visibleRootCount: 4 })
+    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · 5 of 1,544")
+  })
+})
+
+describe("session search filters the list (#8788)", () => {
+  const historyRoot = (index: number, title = `Session ${index}`) => ({
+    threadRef: `hist-${index}`, parentThreadRef: null, title, status: "completed" as const,
+    createdAt: "2026-07-10T00:00:00Z", updatedAt: "2026-07-10T00:00:00.000Z",
+    depth: 0, descendantCount: 0, model: null, role: null, nickname: null, agentPath: null,
+    sourceVersion: null, reasoning: null, source: "codex" as const,
+  })
+  // "ASSURANCE" sits at index 44 — beyond the sidebar's 40-row first page.
+  const catalog = { roots: [...Array.from({ length: 44 }, (_, index) => historyRoot(index)), historyRoot(44, "ASSURANCE spec review")], agents: [] }
+  const initial: DesktopShellState = { ...baseState, history: { ...baseState.history, hydrated: true, catalog } }
+
+  test("typing a title prefix filters instantly over the full catalog; no-match is explicit; clearing restores", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const state = yield* SubscriptionRef.make(initial)
+      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow))
+      // Owner-verbatim reproduction: the first few letters of a visible title.
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistorySearchChanged", StaticPayload("Ass"))))
+      const filtered = yield* SubscriptionRef.get(state)
+      expect(filtered.history.searchResults.map(result => result.threadRef)).toEqual(["hist-44"])
+      expect(filtered.history.searchPending).toBe(false) // no host search wired -> settled
+      const filteredView = desktopShellView(filtered)
+      expect((nodeByKey(filteredView, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Search · 1 result")
+      expect(navItemById(filteredView, "sidebar-search-hist-44")?.label).toBe("ASSURANCE spec review")
+      expect(navItemById(filteredView, "sidebar-thread-hist-0")).toBeUndefined()
+      // No match: the state is explicit, never a silent empty list.
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistorySearchChanged", StaticPayload("zz-nothing"))))
+      const noMatch = yield* SubscriptionRef.get(state)
+      expect(noMatch.history.searchResults).toEqual([])
+      expect(nodeByKey(desktopShellView(noMatch), "sidebar-search-empty")).toMatchObject({ content: "No sessions match." })
+      // Clearing restores the full session list.
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistorySearchChanged", StaticPayload(""))))
+      const cleared = yield* SubscriptionRef.get(state)
+      expect(cleared.history.searchResults).toEqual([])
+      const clearedView = desktopShellView(cleared)
+      expect(navItemById(clearedView, "sidebar-thread-hist-0")).toBeDefined()
+      expect(nodeByKey(clearedView, "sidebar-search-empty")).toBeUndefined()
+    }))
+  })
+
+  test("while the host index is in flight the empty state says Searching… — and host results merge in", async () => {
+    let resolveSearch: (value: unknown) => void = () => {}
+    const searchHost = {
+      catalog: async () => null,
+      page: async () => null,
+      search: () => new Promise<any>(resolve => { resolveSearch = resolve }),
+    }
+    const pendingInitial: DesktopShellState = { ...initial, history: { ...initial.history, catalog: { roots: [historyRoot(0, "Quiet title")], agents: [] } } }
+    const state = await Effect.runPromise(SubscriptionRef.make(pendingInitial))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, undefined, undefined, undefined, undefined, undefined, searchHost)))
+    const dispatched = Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistorySearchChanged", StaticPayload("kernel")))))
+    // The query matches no title instantly; while the host is searching the
+    // surface must NOT claim "No sessions match."
+    const deadline = Date.now() + 2_000
+    let pending = await Effect.runPromise(SubscriptionRef.get(state))
+    while (Date.now() < deadline && pending.history.searchPending !== true) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+      pending = await Effect.runPromise(SubscriptionRef.get(state))
+    }
+    expect(pending.history.searchPending).toBe(true)
+    const pendingView = desktopShellView(pending)
+    expect(nodeByKey(pendingView, "sidebar-search-pending")).toMatchObject({ content: "Searching…" })
+    expect(nodeByKey(pendingView, "sidebar-search-empty")).toBeUndefined()
+    resolveSearch({
+      query: "kernel",
+      results: [{ threadRef: "hist-0", rootThreadRef: "hist-0", source: "codex", title: "Quiet title", matchKind: "content", matchItemRef: "hist-0:3", matchSequence: 3, snippet: "…kernel…", updatedAt: "2026-07-10T00:00:00.000Z", score: 500_000.2 }],
+      indexedSessions: 1,
+      truncated: false,
+    })
+    await dispatched
+    const settled = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(settled.history.searchPending).toBe(false)
+    expect(settled.history.searchResults.map(result => result.threadRef)).toEqual(["hist-0"])
+    expect(nodeByKey(desktopShellView(settled), "sidebar-search-empty")).toBeUndefined()
   })
 })

@@ -3465,5 +3465,150 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         verification:
           "Desktop typecheck, the three oracle suites in the normal sweep, and the built-host smoke settings capture (docs/receipts/2026-07-14-harness-maintenance/) showing the rendered harness rows.",
       },
+      {
+        contractId: "openagents_desktop.composer.focused_on_open.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat composer / window open",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-incident", statedBy: "owner", statedOn: "2026-07-14" },
+        statement:
+          "the text input should be focused immediately on open. so i can start typing right away.",
+        authorityBoundary:
+          "On window open — fresh launch and macOS re-activate with an existing window — keyboard focus lands in the message composer at SHELL-INTERACTABLE (the moment the shell mounts under the branded boot frame, composing with window_first_no_blank_frame.v1's boot ordering), so the first keystroke enters the composer with zero clicks. Background history hydration must never steal that focus; conversely the automatic settle passes (post-hydration, window re-activate) claim only UNOWNED focus (document.activeElement at body/root) and never move focus the user placed elsewhere. When the restored workspace renders no composer (a loaded history page), nothing is force-focused.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/composer-focus.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "github:OpenAgentsInc/openagents#8787",
+        ],
+        oracles: [
+          {
+            id: "composer_focus.dom_focus_and_no_steal",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/composer-focus.test.ts",
+            description:
+              "DOM-level: the focuser lands document.activeElement on the composer at mount (and across late commits), a keystroke at the active element routes to the composer, the settle pass claims unowned focus, and it NEVER steals focus the user placed in another input.",
+          },
+          {
+            id: "composer_focus.built_electron_first_keystroke",
+            kind: "script",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "Built-Electron smoke steps composer-focused-on-open and first-keystroke-lands-in-composer: before ANY pointer event, document.activeElement is the composer at shell-mount and still after hydration settles, then a real Chromium keyboard event sent from the main process appears as typed text in the composer.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, src/renderer/composer-focus.test.ts in the normal sweep, and the built-host smoke's composer-focused-on-open + first-keystroke-lands-in-composer steps.",
+      },
+      {
+        contractId: "openagents_desktop.history.session_search_filters.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "sidebar session search",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-incident", statedBy: "owner", statedOn: "2026-07-14" },
+        statement:
+          "The search doesn't seem to fucking work at all. One of the chats is titled Assurance, but when I start typing in the first few letters there, it does not show it.",
+        authorityBoundary:
+          "Typing in the sidebar session search filters the list with case-insensitive substring matching over session titles and workspace labels — bounded deterministic field matching over the owner-local corpus (the semantic-routing invariant's bounded-field exception), never keyword intent routing. The search operates over the FULL loss-accounted catalog store (every root, including beyond the sidebar's current page), not just rendered rows: instant title matches come straight from the hydrated catalog cache, and the host content index (itself now byte-bounded per session, so a multi-GB rollout can no longer crash or starve it) merges in when it settles. While the host response is in flight the empty state says 'Searching…'; 'No sessions match.' renders only once settled; clearing the query restores the full list. The index remains a rebuildable cache, never catalog/page authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/history-workspace.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/history-search.ts",
+          "apps/openagents-desktop/src/merged-history.ts",
+          "github:OpenAgentsInc/openagents#8788",
+        ],
+        oracles: [
+          {
+            id: "session_search.filters_full_catalog",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Through the real intent registry on a 45-root fixture catalog: a title prefix ('Ass') filters to the matching session even though it sits beyond the 40-row first page; the no-match state is explicit; clearing restores the full list; a deferred host response shows 'Searching…' (never a false no-match) and merges content results when it settles.",
+          },
+          {
+            id: "session_search.instant_and_merge_helpers",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/history-workspace.test.ts",
+            description:
+              "historyImmediateSearchResults prefix-matches the full catalog case-insensitively including beyond-page roots; mergeHistorySearchResults dedupes by threadRef, keeps host content matches, ranks by score, and degrades to instant matches on a null host response.",
+          },
+          {
+            id: "session_search.workspace_label_and_bounded_index",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/history-catalog-scale.test.ts",
+            description:
+              "The host index carries the session's workspace label (cwd basename) as a searchable title-tier field, and its per-session content read is item- and byte-bounded rather than a whole-file read.",
+          },
+          {
+            id: "session_search.built_electron_filter_journey",
+            kind: "script",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "Built-Electron smoke types a title prefix into the sidebar search and asserts the fixture session row appears, then a no-match query shows the explicit empty state and clearing restores the full list — with a pixel receipt of the filtered sidebar.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, the shell/history-workspace/history-catalog-scale suites, and the built-host smoke's session-search steps with screenshot receipts.",
+      },
+      {
+        contractId: "openagents_desktop.history.sidebar_header_truthful_scope.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "sidebar coding-history header / catalog scope",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-incident", statedBy: "owner", statedOn: "2026-07-14" },
+        statement:
+          "That says coding history all time, but it only has five chats, so that's definitely not all time.",
+        authorityBoundary:
+          "The sidebar header's scope claim must match the projection's real semantics: 'Coding history · scanning…' before hydration settles, a counted disclosure 'Coding history · N of M' while the loss-accounted catalog is paged (M counts every catalogued session for this surface, deduplicated against local threads; explicit 'Load K more' paging reaches the remainder per the episode-248 loss-accounted v2 contract — recent-first bounded disclosure, no age ceiling, no silent truncation), and 'Coding history · all N' only when every catalogued session is shown. A label is never allowed to claim more than the projection delivers. The root cause this contract pins closed: the catalog graph build read whole rollout files to derive titles, ENOMEMed on a real 4.5 GB rollout, and silently collapsed the 'all time' surface to the 24-hour recent list; catalog title scans, page reads, and search-index content reads are now byte-bounded/streaming so an oversized session degrades to a fallback title instead of taking down the catalog. Scope wording only — no marketing copy changed.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/codex-history.ts",
+          "apps/openagents-desktop/src/merged-history.ts",
+          "apps/openagents-desktop/tests/history-catalog-scale.test.ts",
+          "docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md",
+          "github:OpenAgentsInc/openagents#8789",
+          "github:OpenAgentsInc/openagents#8674",
+        ],
+        oracles: [
+          {
+            id: "history_header.counted_disclosure_truth",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "On a >page-size multi-root fixture: the header reads 'scanning…' pre-hydration, 'N of M' with an explicit 'Load K more' row while paged, 'all N' only at full disclosure, never double-counts local threads that are also catalogued, and formats the owner's 1,543-scale counts with separators.",
+          },
+          {
+            id: "history_header.catalog_survives_oversized_rollouts",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/history-catalog-scale.test.ts",
+            description:
+              "A >page-size multi-workspace store catalogues every root (children excluded, never lost) with no silent truncation; a session whose authored title lies beyond the bounded head scan degrades to the fallback title while the rest of the catalog survives; the streaming page read keeps whole-conversation totals and loss accounting while returning only the requested window.",
+          },
+          {
+            id: "history_header.built_electron_header",
+            kind: "script",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "Built-Electron smoke asserts the sidebar header states the fixture catalog's true counted scope ('Coding history · all 1') — the untrue 'all time' claim fails the smoke.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, shell + history-catalog-scale suites, the built-host smoke header assertion, and the real-store diagnosis receipt (1,289 roots from 1,582 sessions in ~1.9 s where the pre-fix build ENOMEMed).",
+      },
     ],
   };

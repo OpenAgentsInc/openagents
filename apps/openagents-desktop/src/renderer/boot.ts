@@ -72,6 +72,7 @@ import {
   withThreads,
 } from "./shell.ts"
 import { makeCommandNoticeController } from "./command-notice.ts"
+import { makeComposerFocuser, makeComposerFocusSettler } from "./composer-focus.ts"
 import { withVoiceHostState } from "./voice-mode.ts"
 import { executeVoiceAction, makeVoiceFinalLedger } from "./voice-actions.ts"
 import { historyRestoreFetchPlan, restorableHistoryThreadRef } from "./history-restore.ts"
@@ -1295,30 +1296,22 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }, 0)
     }
     })
-    const focusComposer = (): void => {
-      // Focus must land AFTER the chat view mounts. A New-chat dispatch can
-      // clear a loaded history page, which swaps the whole center view and
-      // (re)mounts the composer on a LATER render commit than the intent
-      // completion — and a re-parented input loses focus even when it was
-      // focused earlier. So retry across commits until the input exists AND
-      // holds focus (owner contract: "when i do new chat, clicking button
-      // or command N, auto focus the input").
-      let attempts = 0
-      const tryFocus = (): void => {
-        // EP250 OpenCode restyle made the composer a multiline textarea; accept
-        // either the textarea or a legacy input so focus still lands.
-        const input = root.querySelector<HTMLTextAreaElement | HTMLInputElement>(
-          '[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input',
-        )
-        if (input !== null && !input.disabled) {
-          input.focus()
-          if (root.ownerDocument.activeElement === input) return
-        }
-        attempts += 1
-        if (attempts < 20) window.setTimeout(tryFocus, 16)
-      }
-      window.setTimeout(tryFocus, 0)
-    }
+    // Focus must land AFTER the chat view mounts. A New-chat dispatch can
+    // clear a loaded history page, which swaps the whole center view and
+    // (re)mounts the composer on a LATER render commit than the intent
+    // completion — and a re-parented input loses focus even when it was
+    // focused earlier. So retry across commits until the input exists AND
+    // holds focus (owner contract: "when i do new chat, clicking button
+    // or command N, auto focus the input"). #8787 moved the retry logic into
+    // composer-focus.ts so open-time focus shares one tested implementation.
+    const focusComposer = makeComposerFocuser({ root })
+    // #8787: the guarded settle pass claims UNOWNED focus for the composer
+    // (post-hydration, macOS re-activate) and never steals owned focus.
+    const settleComposerFocus = makeComposerFocusSettler({ root })
+    // macOS re-activate with an existing window (#8787): when the window
+    // regains OS focus and nothing owns keyboard focus, the composer takes it
+    // so the first keystroke lands without a click.
+    window.addEventListener("focus", () => settleComposerFocus())
     const report: IntentReporter = (ref, runtimeValue) => {
       const shouldFocus = ref.name === "DesktopNewChat" || ref.name === "DesktopNoteSubmitted"
       // Selection-driven history loads land bottom-anchored (EP250: "show
@@ -1683,10 +1676,20 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     void Effect.runPromise(
       registry.dispatch(resolveIntentRef(IntentRef("DesktopDiagnosticsRefreshRequested", StaticPayload(null)))),
     )
+    // #8787 (owner verbatim: "the text input should be focused immediately on
+    // open. so i can start typing right away."): keyboard focus lands in the
+    // composer at SHELL-INTERACTABLE — right here, before background history
+    // hydration — so the first keystroke goes into the message input with
+    // zero clicks.
+    focusComposer()
     // 2026-07-13 startup incident: the shell above is already mounted and
     // interactable; the coding-history/catalog/threads hydration streams in
     // afterwards (see hydrateAfterMount).
     yield* hydrateAfterMount
+    // #8787: late hydration can re-parent the center view and drop focus on
+    // the floor. Re-claim it for the composer ONLY when focus is unowned —
+    // a user selection made while hydration streamed keeps focus.
+    settleComposerFocus()
   })
 
 const boot = (): void => {

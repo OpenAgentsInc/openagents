@@ -6,8 +6,10 @@
  * additive: a session from either source projects its own whole-conversation
  * completeness equation, untouched.
  */
+import path from "node:path"
+
 import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "./codex-history-contract.ts"
-import { buildCodexHistoryGraph, readCodexHistoryCatalog, readCodexHistoryPage, type CodexHistoryGraph } from "./codex-history.ts"
+import { buildCodexHistoryGraph, readCodexHistoryCatalog, readCodexHistoryHeadItems, readCodexHistoryPage, type CodexHistoryGraph } from "./codex-history.ts"
 import { buildClaudeHistoryGraph, isClaudeThreadRef, readClaudeHistoryCatalog, readClaudeHistoryPage, type ClaudeHistoryGraph } from "./claude-history.ts"
 import { searchHistoryDocuments, type HistorySearchDocument } from "./history-search.ts"
 
@@ -57,13 +59,23 @@ export const buildHistorySearchDocuments = (
   const catalog = readMergedHistoryCatalog(codexRoot, claudeRoot, graphs)
   const roots = catalog.roots
   const contentBudget = roots.slice(0, CONTENT_SESSION_BUDGET)
+  // Codex file/cwd lookups for the bounded HEAD read (#8788/#8789: indexing
+  // content through the whole-file page reader crashed or crawled on multi-GB
+  // rollouts) and the searchable workspace label.
+  const codexEntries = new Map((graphs.codex?.entries ?? []).map(entry => [entry.id, entry]))
   const documents = roots.map((root, index) => {
     const indexed = index < contentBudget.length
-    const page = indexed ? readMergedHistoryPage({ codexRoot, claudeRoot, threadRef: root.threadRef, offset: 0, limit: CONTENT_ITEM_CAP }, graphs) : null
-    const items = page === null ? [] : page.items
+    const codexEntry = root.source === "codex" ? codexEntries.get(root.threadRef) : undefined
+    const rawItems = !indexed
+      ? []
+      : codexEntry !== undefined
+        ? readCodexHistoryHeadItems(codexEntry.file, root.threadRef, CONTENT_ITEM_CAP)
+        : readMergedHistoryPage({ codexRoot, claudeRoot, threadRef: root.threadRef, offset: 0, limit: CONTENT_ITEM_CAP }, graphs)?.items ?? []
+    const items = rawItems
       .filter(item => item.summary.trim() !== "" && !item.summary.startsWith("[REDACTED:"))
       .map(item => ({ itemRef: item.itemRef, sequence: item.sequence, text: item.summary }))
-    return { threadRef: root.threadRef, rootThreadRef: root.threadRef, source: root.source, title: root.title, updatedAt: root.updatedAt, items }
+    const cwd = codexEntry?.cwd ?? null
+    return { threadRef: root.threadRef, rootThreadRef: root.threadRef, source: root.source, title: root.title, updatedAt: root.updatedAt, workspaceLabel: cwd === null ? null : path.basename(cwd), items }
   })
   return { documents, indexedSessions: contentBudget.length, truncated: roots.length > contentBudget.length }
 }

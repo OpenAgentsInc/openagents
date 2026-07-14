@@ -3162,7 +3162,81 @@ const smokeCodexHistoryDetails = `(async () => {
   }
   const sidebar = document.querySelector('[data-en-key="sidebar-history-list"] > [data-en-role="section-label"]')
   const detail = document.querySelector('[data-en-key="history-workspace-split"]')
-  return { ok: sidebar?.textContent === "Coding history · all time" && detail !== null }
+  // #8789: the header states the projection's REAL scope with a counted
+  // disclosure. The smoke fixture catalog holds exactly one root session, all
+  // of it shown — so the truthful header reads "all 1", never "all time".
+  return { ok: sidebar?.textContent === "Coding history · all 1" && detail !== null, header: sidebar?.textContent ?? null }
+})()`
+
+// #8787 (owner verbatim: "the text input should be focused immediately on
+// open. so i can start typing right away."): at shell-interactable the
+// composer already holds keyboard focus, and it STILL holds it after the
+// background history hydration settles (90bce8d89b boot order) — hydration
+// must never steal open-time focus. No pointer event happens before this step.
+const smokeComposerFocusedOnOpen = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const composer = () => document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && (composer() === null || document.activeElement !== composer())) await wait(50)
+  const focusedAtMount = composer() !== null && document.activeElement === composer()
+  const marks = () => globalThis.__oaStartupMarks || {}
+  const hydrateDeadline = Date.now() + 30000
+  while (Date.now() < hydrateDeadline && typeof marks().historyHydrated !== "number") await wait(50)
+  await wait(200)
+  const focusedAfterHydration = document.activeElement === composer()
+  return { ok: focusedAtMount && focusedAfterHydration, focusedAtMount, focusedAfterHydration }
+})()`
+
+// #8787 second oracle: a real Chromium keyboard event (sent from the main
+// process, no prior pointer event) lands in the composer as typed text.
+const smokeFirstKeystrokeLandsInComposer = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const composer = document.querySelector('[data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
+  if (composer === null) return { ok: false, reason: "composer input never mounted" }
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && composer.value !== "k") await wait(50)
+  const typed = composer.value
+  // Leave a pristine composer for the later steps.
+  composer.value = ""
+  composer.dispatchEvent(new Event("input", { bubbles: true }))
+  return { ok: typed === "k", typed }
+})()`
+
+// #8788 (owner verbatim: "The search doesn't seem to fucking work at all.
+// One of the chats is titled Assurance, but when I start typing in the first
+// few letters there, it does not show it."): typing a prefix of a visible
+// session title into the sidebar search filters the list to that session.
+const smokeSessionSearchFilters = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const field = document.querySelector('[data-en-key="history-search-field"] input, [data-en-key="history-search-field"] textarea')
+  if (field === null) return { ok: false, reason: "session search field never mounted" }
+  field.focus()
+  field.value = "cut-02 verif"
+  field.dispatchEvent(new Event("input", { bubbles: true }))
+  const deadline = Date.now() + 15000
+  const row = () => document.querySelector('[data-en-key="sidebar-search-smoke-root"]')
+  while (Date.now() < deadline && row() === null) await wait(50)
+  return { ok: row() !== null, matched: row()?.textContent ?? null }
+})()`
+
+// #8788 continued: a no-match query shows the explicit empty state (after the
+// bounded index settles — never a false "no match" while searching), and
+// clearing the query restores the full session list.
+const smokeSessionSearchNoMatchAndClear = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const field = document.querySelector('[data-en-key="history-search-field"] input, [data-en-key="history-search-field"] textarea')
+  if (field === null) return { ok: false, reason: "session search field never mounted" }
+  const type = (value) => { field.value = value; field.dispatchEvent(new Event("input", { bubbles: true })) }
+  type("zz-no-such-session-zz")
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="sidebar-search-empty"]') === null) await wait(50)
+  const emptyState = document.querySelector('[data-en-key="sidebar-search-empty"]') !== null
+  const noRows = document.querySelector('[data-en-key="sidebar-search-smoke-root"]') === null
+  type("")
+  while (Date.now() < deadline && document.querySelector('[data-en-key^="sidebar-thread-"]') === null) await wait(50)
+  const restored = document.querySelector('[data-en-key^="sidebar-thread-"]') !== null &&
+    document.querySelector('[data-en-key="sidebar-search-empty"]') === null
+  return { ok: emptyState && noRows && restored, emptyState, noRows, restored }
 })()`
 
 const smokeWaitForHostCommandPalette = `(async () => {
@@ -4524,6 +4598,14 @@ const runSmoke = (window: BrowserWindow): void => {
           return
         }
         await step("shell-mounted", smokeWaitForShell)
+        // #8787: BEFORE any pointer event, the composer holds keyboard focus
+        // (at shell-interactable AND after hydration), and a real Chromium
+        // keystroke from the main process lands in it as typed text.
+        await step("composer-focused-on-open", smokeComposerFocusedOnOpen)
+        window.webContents.sendInputEvent({ type: "keyDown", keyCode: "K" })
+        window.webContents.sendInputEvent({ type: "char", keyCode: "k" })
+        window.webContents.sendInputEvent({ type: "keyUp", keyCode: "K" })
+        await step("first-keystroke-lands-in-composer", smokeFirstKeystrokeLandsInComposer)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await step("workspace-tree-refresh-watch-bridge", smokeWorkspaceTreeBridge)
         await step("workspace-files-relative-ui", smokeWorkspaceFilesUi)
@@ -4570,6 +4652,12 @@ const runSmoke = (window: BrowserWindow): void => {
         // empty transcript (the on-camera regression).
         await step("new-chat-from-history-empty-transcript", smokeNewChatFromHistory)
         await captureShot(window, "06-new-chat-empty")
+        // #8788: sidebar session search actually filters — title-prefix match
+        // shows the fixture session; no-match shows the explicit empty state;
+        // clearing restores the full list.
+        await step("session-search-filters-title-prefix", smokeSessionSearchFilters)
+        await captureShot(window, "13-session-search-filtered")
+        await step("session-search-no-match-and-clear-restores", smokeSessionSearchNoMatchAndClear)
         await step("mvp-visible-surface-allowlist", smokeMvpSurfaceAllowlist)
         // Release the codex availability gate: the popover assertions above
         // ran against the deterministic disabled/"verifying" chip; from here

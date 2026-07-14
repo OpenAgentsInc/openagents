@@ -564,6 +564,50 @@ is the CLI parity surface over the same engine).
 Contract:
 `openagents_desktop.settings.harness_maintenance_one_click.v1`.
 
+### Composer focused on open
+
+On window open — fresh launch and macOS re-activate with an existing window —
+keyboard focus lands in the message composer at shell-interactable, so the
+first keystroke types into it with zero clicks.
+
+- Background history hydration never steals open-time focus.
+- Automatic settle passes claim only unowned focus (body/root); focus the
+  user placed elsewhere is never moved.
+
+Contract:
+`openagents_desktop.composer.focused_on_open.v1`.
+
+### Sidebar session search actually filters
+
+Typing in the sidebar session search filters over the FULL loss-accounted
+catalog store — every root, including beyond the current sidebar page — with
+case-insensitive substring matching on titles and workspace labels.
+
+- Instant title matches come from the hydrated catalog; the byte-bounded host
+  content index merges in when it settles.
+- While the host index is in flight the empty state says "Searching…";
+  "No sessions match." renders only once settled; clearing restores the list.
+- The index remains a rebuildable cache, never catalog/page authority.
+
+Contract:
+`openagents_desktop.history.session_search_filters.v1`.
+
+### Truthful sidebar history header
+
+The coding-history header states the projection's real scope: "scanning…"
+before hydration settles, a counted "N of M" disclosure with explicit "Load K
+more" paging while the catalog is paged, and "all N" only when every
+catalogued session is shown. A label never claims more than the projection
+delivers.
+
+- Catalog title scans, page reads, and search-index content reads are
+  byte-bounded/streaming: an oversized (multi-GB) rollout degrades to a
+  fallback title instead of silently collapsing the catalog to the recent
+  list.
+
+Contract:
+`openagents_desktop.history.sidebar_header_truthful_scope.v1`.
+
 ## Desktop safety boundary
 
 The normal desktop test sweep also mechanically enforces these host boundaries:

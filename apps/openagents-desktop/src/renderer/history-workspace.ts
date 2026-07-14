@@ -2,6 +2,7 @@ import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, S
 import { Schema } from "@effect-native/core/effect"
 import type { CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage, CodexHistorySearchResult, CodexHistorySource } from "../codex-history-contract.ts"
 import type { DesktopThread } from "../chat-contract.ts"
+import { searchHistoryDocuments } from "../history-search.ts"
 import { chatMarkdownBody } from "./markdown.ts"
 import { humanizeToolInvocation } from "./tool-cards.ts"
 
@@ -31,6 +32,12 @@ export type HistoryWorkspaceState = Readonly<{
   searchQuery: string
   searchResults: ReadonlyArray<CodexHistorySearchResult>
   searchTruncated: boolean
+  /**
+   * True while the host content-index response for `searchQuery` is still in
+   * flight (#8788). Instant catalog-title matches already show; the empty
+   * state must say "Searching…" rather than claim "No sessions match."
+   */
+  searchPending?: boolean
   /** App-local threads are the H1 resume-picker candidates. Keeping this list
    * separate from provider history prevents an imported rollout from being
    * mistaken for a resumable local SDK thread. */
@@ -73,6 +80,41 @@ export const historySourceBadgeLabel = (source: CodexHistorySource): string => s
 
 /** Whether the search surface is active (non-blank query). */
 export const historySearchActive = (state: HistoryWorkspaceState): boolean => state.searchQuery.trim() !== ""
+
+/**
+ * INSTANT title matches over the already-hydrated FULL catalog (#8788, owner
+ * verbatim: "The search doesn't seem to fucking work at all. One of the chats
+ * is titled Assurance, but when I start typing in the first few letters
+ * there, it does not show it."). The catalog store is the loss-accounted
+ * whole-archive projection — NOT just the currently rendered rows — so every
+ * root (including beyond the sidebar's current page) is filterable the moment
+ * a query is typed, before (and independent of) the host content-index
+ * response. Deterministic bounded substring matching, never intent routing.
+ */
+export const historyImmediateSearchResults = (catalog: CodexHistoryCatalog, query: string, limit = 40): ReadonlyArray<CodexHistorySearchResult> =>
+  searchHistoryDocuments(
+    catalog.roots.map(root => ({ threadRef: root.threadRef, rootThreadRef: root.threadRef, source: root.source, title: root.title, updatedAt: root.updatedAt, items: [] })),
+    query,
+    limit,
+  )
+
+/**
+ * Merge the host content-index response over the instant catalog matches.
+ * Host results carry content matches and workspace labels, so they win per
+ * threadRef; instant title matches the host missed (e.g. an index built
+ * against a staler catalog) stay visible. Ranked by score, bounded.
+ */
+export const mergeHistorySearchResults = (
+  host: ReadonlyArray<CodexHistorySearchResult> | null,
+  immediate: ReadonlyArray<CodexHistorySearchResult>,
+  limit = 40,
+): ReadonlyArray<CodexHistorySearchResult> => {
+  if (host === null) return immediate
+  const seen = new Set(host.map(result => result.threadRef))
+  return [...host, ...immediate.filter(result => !seen.has(result.threadRef))]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(1, limit))
+}
 
 /**
  * The matching item to open a search result on — a content result windows on

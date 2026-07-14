@@ -23,6 +23,8 @@ export type HistorySearchDocument = Readonly<{
   source: CodexHistorySource
   title: string
   updatedAt: string
+  /** Human workspace label (cwd basename) — a bounded searchable field (#8788). */
+  workspaceLabel?: string | null
   /** Bounded content projection for this session; empty until indexed. */
   items: ReadonlyArray<HistorySearchItem>
 }>
@@ -63,8 +65,13 @@ export const searchHistoryDocuments = (
   for (const doc of docs) {
     const title = doc.title
     const recency = recencyScore(doc.updatedAt)
-    if (normalize(title).includes(needle)) {
-      results.push({ threadRef: doc.threadRef, rootThreadRef: doc.rootThreadRef, source: doc.source, title: title.slice(0, 160), matchKind: "title", matchItemRef: null, matchSequence: null, snippet: title.slice(0, 240), updatedAt: doc.updatedAt, score: TITLE_MATCH_WEIGHT + recency })
+    // Title-tier fields (#8788): the session title and the human workspace
+    // label. Both are bounded owner-local fields — deterministic substring
+    // filtering, never intent routing.
+    const workspaceLabel = doc.workspaceLabel ?? null
+    if (normalize(title).includes(needle) || (workspaceLabel !== null && normalize(workspaceLabel).includes(needle))) {
+      const snippet = normalize(title).includes(needle) ? title.slice(0, 240) : `${title} — ${workspaceLabel}`.slice(0, 240)
+      results.push({ threadRef: doc.threadRef, rootThreadRef: doc.rootThreadRef, source: doc.source, title: title.slice(0, 160), matchKind: "title", matchItemRef: null, matchSequence: null, snippet, updatedAt: doc.updatedAt, score: TITLE_MATCH_WEIGHT + recency })
       continue
     }
     let matched: HistorySearchItem | null = null

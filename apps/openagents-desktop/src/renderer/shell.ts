@@ -153,7 +153,7 @@ import {
   type WorkspaceEditorRecoverySnapshot,
   type WorkspaceEditorState,
 } from "./workspace-editor.ts"
-import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyItemPageOffset, historyItemPageSize, historySearchActive, historySearchField, historySearchResultSidebarItems, historySourceBadgeLabel, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
+import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyImmediateSearchResults, historyItemPageOffset, historyItemPageSize, historySearchActive, historySearchField, historySearchResultSidebarItems, historySourceBadgeLabel, historyTailOffset, historyWorkspaceIntents, historyWorkspaceView, mergeHistorySearchResults, mergeHistoryWindowDown, mergeHistoryWindowUp, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage, CodexHistorySearchResponse } from "../codex-history-contract.ts"
 import {
   emptyDesktopCodingCatalogProjection,
@@ -2216,19 +2216,24 @@ export const makeDesktopShellHandlers = (
   HistoryInspectorToggled: () => SubscriptionRef.update(state, current => { const railCollapsed=!current.history.railCollapsed;const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:current.history.selectedItemRef,railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:current.history.expandedThreadRefs});return { ...current, history: { ...current.history, railCollapsed } } }),
   HistoryAgentExpandedToggled: (id) => SubscriptionRef.update(state,current=>{const expandedThreadRefs=current.history.expandedThreadRefs.includes(id)?current.history.expandedThreadRefs.filter(ref=>ref!==id):[...current.history.expandedThreadRefs,id];const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:current.history.selectedItemRef,railCollapsed:current.history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs});return {...current,history:{...current.history,expandedThreadRefs}}}),
   HistoryCatalogMoreRequested: () => SubscriptionRef.update(state,current=>({...current,history:{...current.history,visibleRootCount:Math.min(current.history.catalog.roots.length,current.history.visibleRootCount+historyCatalogPageSize)}})),
-  // Free-text session search (#8712 H4). The query drives the bounded local
-  // index cache; results replace the catalog list until cleared. Blank query
-  // clears. Never mutates the loss-accounted catalog/page truth.
+  // Free-text session search (#8712 H4, #8788). The query drives the bounded
+  // local index cache; results replace the catalog list until cleared. Blank
+  // query clears. Never mutates the loss-accounted catalog/page truth.
+  // #8788 (rc.10 owner incident): instant title matches come straight from
+  // the hydrated FULL catalog store (every root, not just rendered rows), so
+  // typing a visible title's prefix filters immediately; the host
+  // content-index response then merges in, and while it is in flight the
+  // surface says "Searching…" instead of falsely claiming no matches.
   HistorySearchChanged: (query) => Effect.gen(function* () {
-    yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: query } }))
-    if (query.trim() === "") { yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchResults: [], searchTruncated: false } })); return }
+    if (query.trim() === "") { yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: query, searchResults: [], searchTruncated: false, searchPending: false } })); return }
+    yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: query, searchResults: mergeHistorySearchResults(null, historyImmediateSearchResults(current.history.catalog, query)), searchPending: historyHost.search !== undefined } }))
     if (historyHost.search === undefined) return
     const response = yield* Effect.promise(() => historyHost.search!(query, 40))
     yield* SubscriptionRef.update(state, current => current.history.searchQuery === query
-      ? { ...current, history: { ...current.history, searchResults: response?.results ?? [], searchTruncated: response?.truncated ?? false } }
+      ? { ...current, history: { ...current.history, searchResults: mergeHistorySearchResults(response?.results ?? null, historyImmediateSearchResults(current.history.catalog, query)), searchTruncated: response?.truncated ?? false, searchPending: false } }
       : current)
   }),
-  HistorySearchCleared: () => SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: "", searchResults: [], searchTruncated: false } })),
+  HistorySearchCleared: () => SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: "", searchResults: [], searchTruncated: false, searchPending: false } })),
   // H1: the picker contains app-local threads only. Selecting one reuses its
   // exact thread id, so the next turn reaches fable-local's existing
   // per-thread SDK resume map. No provider-history row is mutated or cloned.
@@ -2976,7 +2981,38 @@ export const desktopConversationShortcutTargets = (state: DesktopShellState): Re
   ]
 }
 
+/**
+ * Counted disclosure for the sidebar session list (#8789, owner verbatim:
+ * "That says coding history all time, but it only has five chats, so that's
+ * definitely not all time."). `shown` counts the rows the projection actually
+ * renders (local threads + the paged catalog slice, deduplicated); `total`
+ * counts every session the loss-accounted catalog holds for this surface. A
+ * label is never allowed to claim more than the projection delivers.
+ */
+export const desktopSidebarHistoryDisclosure = (state: DesktopShellState): Readonly<{ shown: number; total: number }> => {
+  const local = visibleCodexThreads(state)
+  const localIds = new Set(local.map(thread => thread.id))
+  const codexRoots = state.history.catalog.roots.filter(thread => thread.source === "codex")
+  const shownHistory = codexRoots.slice(0, state.history.visibleRootCount).filter(thread => !localIds.has(thread.threadRef)).length
+  const totalHistory = codexRoots.filter(thread => !localIds.has(thread.threadRef)).length
+  return { shown: local.length + shownHistory, total: local.length + totalHistory }
+}
+
+/**
+ * The header states the projection's REAL scope: an explicit scanning state
+ * before hydration settles, a counted "N of M" bounded disclosure while the
+ * catalog is paged, and "all N" only when every catalogued session is shown.
+ */
+export const desktopSidebarHistoryLabel = (state: DesktopShellState): string => {
+  if (state.history.hydrated !== true) return "Coding history · scanning…"
+  const { shown, total } = desktopSidebarHistoryDisclosure(state)
+  return shown >= total
+    ? `Coding history · all ${total.toLocaleString("en-US")}`
+    : `Coding history · ${shown.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}`
+}
+
 const shellSidebar = (state: DesktopShellState): View => {
+  const disclosure = desktopSidebarHistoryDisclosure(state)
   const visibleHistoryCount = state.history.catalog.roots.filter(thread => thread.source === "codex").length
   const visibleSearchCount = state.history.searchResults.filter(result => result.source === "codex").length
   return Stack(
@@ -3006,13 +3042,16 @@ const shellSidebar = (state: DesktopShellState): View => {
           ]},
           historySearchActive(state.history)
             ? {id:"sidebar-history-list",label:`Search · ${visibleSearchCount} result${visibleSearchCount===1?"":"s"}${state.history.searchTruncated?" (bounded)":""}`,items:historySearchResultSidebarItems(state.history)}
-            : {id:"sidebar-history-list",label:"Coding history · all time",items:sidebarConversationItems(state)},
+            : {id:"sidebar-history-list",label:desktopSidebarHistoryLabel(state),items:sidebarConversationItems(state)},
         ],
-        a11y:{role:"list",label:`${Math.min(state.history.visibleRootCount,visibleHistoryCount)} of ${visibleHistoryCount} sessions`},
+        a11y:{role:"list",label:`${disclosure.shown.toLocaleString("en-US")} of ${disclosure.total.toLocaleString("en-US")} sessions`},
         style:{flex:1,minHeight:0,width:"full"},
       }),
       historySearchField(state.history),
-      ...(historySearchActive(state.history) && state.history.searchResults.length === 0 ? [Text({ key: "sidebar-search-empty", content: "No sessions match.", variant: "caption", color: "textMuted" })] : []),
+      // #8788: while the host index response is pending the empty state says
+      // "Searching…" — "No sessions match." is only honest once settled.
+      ...(historySearchActive(state.history) && state.history.searchResults.length === 0 && state.history.searchPending === true ? [Text({ key: "sidebar-search-pending", content: "Searching…", variant: "caption", color: "textMuted" })] : []),
+      ...(historySearchActive(state.history) && state.history.searchResults.length === 0 && state.history.searchPending !== true ? [Text({ key: "sidebar-search-empty", content: "No sessions match.", variant: "caption", color: "textMuted" })] : []),
       // 2026-07-13 startup incident: while the post-mount history scan is
       // still running, say so — "no history found" is only honest once the
       // scan has actually settled.

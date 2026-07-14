@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { View } from "@effect-native/core"
-import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
+import { emptyHistoryWorkspaceState, historyAgentTraversalTarget, historyImmediateSearchResults, historyItemPageOffset, historyItemPageSize, historyPositionCaption, historySearchActive, historySearchField, historySearchOpenAnchor, historySearchResultSidebarItems, historyShouldFetchNewer, historyShouldFetchOlder, historySourceBadgeLabel, historyTailOffset, historyWorkspaceView, isHistoryAgentTraversalShortcut, mergeHistorySearchResults, mergeHistoryWindowDown, mergeHistoryWindowUp, projectHistoryEntries, projectHistoryTimelineEvents, visibleHistoryAgents, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistorySearchResult } from "../codex-history-contract.ts"
 import { historyRestoreFetchPlan } from "./history-restore.ts"
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
@@ -361,5 +361,42 @@ describe("history workspace search UI", () => {
     const field = historySearchField({ ...emptyHistoryWorkspaceState(), searchQuery: "photon" }) as any
     expect(field._tag).toBe("TextField")
     expect(field.value).toBe("photon")
+  })
+})
+
+// --- #8788 rc.10 owner incident: search must actually filter ----------------
+describe("instant catalog search + host merge (#8788)", () => {
+  const root = (index: number, title: string) => ({
+    threadRef: `hist-${index}`, parentThreadRef: null, title, status: "completed" as const,
+    createdAt: "2026-07-10T00:00:00Z", updatedAt: `2026-07-10T0${index % 10}:00:00.000Z`,
+    depth: 0, descendantCount: 0, model: null, role: null, nickname: null, agentPath: null,
+    sourceVersion: null, reasoning: null, source: "codex" as const,
+  })
+  const catalog = { roots: [...Array.from({ length: 44 }, (_, index) => root(index, `Session ${index}`)), root(44, "ASSURANCE spec review")], agents: [] }
+
+  test("prefix-filters titles over the FULL catalog — including items beyond the sidebar's current page", () => {
+    // Root #44 sits beyond the 40-row first page; the instant filter still
+    // finds it because it queries the catalog store, not the rendered rows.
+    const results = historyImmediateSearchResults(catalog, "Ass")
+    expect(results.map(result => result.threadRef)).toEqual(["hist-44"])
+    expect(results[0]).toMatchObject({ matchKind: "title", title: "ASSURANCE spec review" })
+    // Case-insensitive substring, deterministic.
+    expect(historyImmediateSearchResults(catalog, "assurance")[0]?.threadRef).toBe("hist-44")
+    expect(historyImmediateSearchResults(catalog, "no-such-session")).toEqual([])
+  })
+
+  test("host results merge over instant matches: dedupe by threadRef, ranked, bounded", () => {
+    const immediate = historyImmediateSearchResults(catalog, "Ass")
+    const hostResult: CodexHistorySearchResult = {
+      threadRef: "hist-44", rootThreadRef: "hist-44", source: "codex", title: "ASSURANCE spec review",
+      matchKind: "content", matchItemRef: "hist-44:7", matchSequence: 7, snippet: "…assurance…",
+      updatedAt: "2026-07-10T04:00:00.000Z", score: 500_000.5,
+    }
+    const merged = mergeHistorySearchResults([hostResult], immediate)
+    // One row per thread: the host's richer result replaces the instant one.
+    expect(merged.filter(result => result.threadRef === "hist-44")).toHaveLength(1)
+    expect(merged[0]).toMatchObject({ threadRef: "hist-44", matchKind: "content" })
+    // A null host response (index unavailable) keeps the instant matches.
+    expect(mergeHistorySearchResults(null, immediate)).toEqual(immediate)
   })
 })

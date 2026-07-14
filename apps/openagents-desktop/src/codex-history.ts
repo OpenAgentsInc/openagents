@@ -211,7 +211,7 @@ export const findRecentCodexThread = (input: Readonly<{ sessionsRoot: string; id
 // Provider-native historical projection (#8674). This deliberately coexists
 // with the legacy local chat adapter above until all chat mutation call sites
 // are moved off that adapter. It has no 24-hour or tail window.
-type SessionIndexEntry = Readonly<{ file: string; id: string; parentId: string | null; createdAt: string; updatedAt: string; model: string | null; role: string | null; nickname:string|null; agentPath:string|null; sourceVersion:string|null; reasoning:string|null }>
+type SessionIndexEntry = Readonly<{ file: string; id: string; parentId: string | null; createdAt: string; updatedAt: string; model: string | null; role: string | null; nickname:string|null; agentPath:string|null; sourceVersion:string|null; reasoning:string|null; cwd:string|null }>
 
 const safeText = (value: unknown, limit = 20_000): string => typeof value === "string" ? value.slice(0, limit) : typeof value === "number" || typeof value === "boolean" ? String(value) : value === null || value === undefined ? "" : (()=>{try{return JSON.stringify(value).slice(0,limit)}catch{return ""}})()
 const redactionPatterns = [
@@ -227,6 +227,58 @@ export const redactCodexHistoryText = (value: string): Readonly<{ text: string; 
 }
 
 const historyText = (file: string): string => file.endsWith(".zst") ? Buffer.from(Bun.zstdDecompressSync(readFileSync(file))).toString("utf8") : readFileSync(file,"utf8")
+
+/**
+ * Stream complete JSONL lines from a rollout WITHOUT materializing the file
+ * (2026-07-14 rc.10 incident, #8789: a real ~/.codex held a 4.5 GB rollout;
+ * `readFileSync` ENOMEMed inside the catalog title scan, the whole graph
+ * build threw, and the sidebar silently fell back to the 24-hour list under
+ * an "all time" header). Reads fixed 8 MB chunks, carries the partial
+ * trailing line as BYTES (multibyte characters never split across chunk
+ * boundaries), and hands each complete non-empty line to `onLine` — return
+ * `false` to stop early. `byteCap` bounds how far into the file the scan may
+ * reach. A pathological line longer than `maxLineBytes` is flushed as one
+ * (unparseable) line so memory stays bounded and the row still projects as an
+ * accounted gap rather than crashing the process.
+ */
+const streamChunkBytes = 8 * 1024 * 1024
+const maxLineBytes = 64 * 1024 * 1024
+const streamRolloutLines = (file: string, onLine: (line: string) => boolean, byteCap?: number): void => {
+  if (file.endsWith(".zst")) {
+    // Archived .zst rollouts decompress whole-buffer today (they are written
+    // compacted and orders of magnitude smaller than live rollouts); the cap
+    // still bounds how much decoded text the scan walks.
+    const text = historyText(file)
+    const bounded = byteCap === undefined ? text : text.slice(0, byteCap)
+    for (const line of bounded.split("\n")) { if (line !== "" && !onLine(line)) return }
+    return
+  }
+  const size = statSync(file).size
+  const cap = byteCap === undefined ? size : Math.min(size, byteCap)
+  const descriptor = openSync(file, "r")
+  try {
+    const chunk = Buffer.alloc(Math.min(streamChunkBytes, Math.max(1, cap)))
+    let position = 0
+    let carry: Buffer = Buffer.alloc(0)
+    while (position < cap) {
+      const bytes = readSync(descriptor, chunk, 0, Math.min(chunk.length, cap - position), position)
+      if (bytes <= 0) break
+      position += bytes
+      const merged = carry.length === 0 ? chunk.subarray(0, bytes) : Buffer.concat([carry, chunk.subarray(0, bytes)])
+      const lastNewline = merged.lastIndexOf(0x0a)
+      if (lastNewline < 0) {
+        carry = maxLineBytes < merged.length ? Buffer.alloc(0) : Buffer.from(merged)
+        if (carry.length === 0 && !onLine("[unparseable oversized line]")) return
+        continue
+      }
+      const text = merged.subarray(0, lastNewline).toString("utf8")
+      carry = Buffer.from(merged.subarray(lastNewline + 1))
+      for (const line of text.split("\n")) { if (line !== "" && !onLine(line)) return }
+    }
+    // The final partial line is a complete record only at end-of-file.
+    if (carry.length > 0 && position >= size) onLine(carry.toString("utf8"))
+  } finally { closeSync(descriptor) }
+}
 const historyFiles = (sessionsRoot: string): string[] => {
   const active = filesUnder(sessionsRoot,true); const archived = filesUnder(path.join(path.dirname(sessionsRoot),"archived_sessions"),true)
   const seen = new Set<string>(); return [...active,...archived].filter(file => { const name=path.basename(file).replace(/\.zst$/u,""); if(seen.has(name))return false;seen.add(name);return true })
@@ -252,7 +304,7 @@ const indexAllSessions = (sessionsRoot: string): SessionIndexEntry[] => historyF
   const source = object(payload.source); const subagent = source === null ? null : object(source.subagent); const spawn = subagent === null ? null : object(subagent.thread_spawn)
   const parentId = string(payload.parent_thread_id) ?? string(payload.parentThreadId) ?? string(payload.parent_session_id) ?? (spawn === null ? null : string(spawn.parent_thread_id))
   const createdAt = iso(envelope.timestamp) ?? statSync(file).birthtime.toISOString()
-  return [{ file, id, parentId, createdAt, updatedAt: statSync(file).mtime.toISOString(), model: string(payload.model), role: string(payload.agent_role) ?? string(payload.agent_type) ?? (spawn === null ? null : string(spawn.agent_role)), nickname:string(payload.agent_nickname)??(spawn===null?null:string(spawn.agent_nickname)),agentPath:string(payload.agent_path)??(spawn===null?null:string(spawn.agent_path)),sourceVersion:string(payload.multi_agent_version)??string(payload.history_mode),reasoning:string(payload.reasoning_effort) }]
+  return [{ file, id, parentId, createdAt, updatedAt: statSync(file).mtime.toISOString(), model: string(payload.model), role: string(payload.agent_role) ?? string(payload.agent_type) ?? (spawn === null ? null : string(spawn.agent_role)), nickname:string(payload.agent_nickname)??(spawn===null?null:string(spawn.agent_nickname)),agentPath:string(payload.agent_path)??(spawn===null?null:string(spawn.agent_path)),sourceVersion:string(payload.multi_agent_version)??string(payload.history_mode),reasoning:string(payload.reasoning_effort),cwd:string(payload.cwd) }]
 })
 
 const titleIndex = (sessionsRoot: string): ReadonlyMap<string, string> => {
@@ -266,18 +318,29 @@ const titleIndex = (sessionsRoot: string): ReadonlyMap<string, string> => {
   } catch { return new Map() }
 }
 
+/**
+ * Bounded head scan for a display title (#8789). The authored first user
+ * message sits near the head of a rollout; scanning past this cap buys no
+ * titles and previously (via a whole-file `readFileSync`) crashed the entire
+ * catalog on multi-GB rollouts. Beyond-cap sessions fall back to the honest
+ * "Untitled Codex chat" label instead of taking the catalog down with them.
+ */
+const titleScanByteCap = 8 * 1024 * 1024
 const firstAuthoredTitle = (entry: SessionIndexEntry): string | null => {
-  for (const line of historyText(entry.file).split("\n")) {
-    if (line === "") continue
-    try {
-      const envelope = object(JSON.parse(line)); const payload = envelope === null ? null : object(envelope.payload)
-      if (envelope?.type !== "response_item" || payload === null || string(payload.type) !== "message") continue
-      const role = string(payload.role)
-      const text = contentText(payload.content)
-      if (role === "user" && text !== "" && codexUserRecordKind(role, text) === "authored") return titleFor(text)
-    } catch { /* malformed records cannot become display titles */ }
-  }
-  return null
+  let title: string | null = null
+  try {
+    streamRolloutLines(entry.file, line => {
+      try {
+        const envelope = object(JSON.parse(line)); const payload = envelope === null ? null : object(envelope.payload)
+        if (envelope?.type !== "response_item" || payload === null || string(payload.type) !== "message") return true
+        const role = string(payload.role)
+        const text = contentText(payload.content)
+        if (role === "user" && text !== "" && codexUserRecordKind(role, text) === "authored") { title = titleFor(text); return false }
+      } catch { /* malformed records cannot become display titles */ }
+      return true
+    }, titleScanByteCap)
+  } catch { /* an unreadable file cannot cost the rest of the catalog */ }
+  return title
 }
 
 const inferredStatus = (file: string): CodexHistoryAgent["status"] => {
@@ -406,9 +469,48 @@ const isSubagentLaunchItem = (item: CodexHistoryItem): boolean => {
 
 export const readCodexHistoryPage = (input: Readonly<{ sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>, graph = buildCodexHistoryGraph(input.sessionsRoot)): CodexHistoryPage | null => {
   const entry = graph.entries.find(item => item.id === input.threadRef); if (!entry) return null
-  const rows = historyText(entry.file).split("\n").filter(line => line !== "").map(line => { try { return JSON.parse(line) } catch { return null } })
-  const offset = Math.max(0, Math.min(input.offset ?? 0, rows.length)); const limit = Math.max(1, Math.min(input.limit ?? 200, 500)); const entriesById=new Map(graph.entries.map(item=>[item.id,item])); const agentsById=new Map(graph.agents.map(item=>[item.threadRef,item])); const previewById=new Map<string,CodexHistoryAgentPreview>(); const items=rows.slice(offset,offset+limit).map((row,index)=>{const item=projectRow(row,entry.id,offset+index);if(item.kind!=="collaboration"||!isSubagentLaunchItem(item))return item;const agentRef=item.fields.find(field=>field.label==="agent")?.value;if(!agentRef)return item;const childEntry=entriesById.get(agentRef);const childAgent=agentsById.get(agentRef);if(childEntry===undefined||childAgent===undefined)return {...item,fields:[...item.fields,{label:"history",value:"Child history not recorded"}]};let relatedAgent=previewById.get(agentRef);if(relatedAgent===undefined){relatedAgent=childPreview(childEntry,childAgent);previewById.set(agentRef,relatedAgent)}return {...item,relatedAgent}})
+  // ONE streaming pass (bounded memory, #8789): whole-conversation accounting
+  // and totals still walk EVERY line — only the requested window's parsed rows
+  // are retained, so a multi-GB rollout no longer ENOMEMs the reader.
+  const requestedOffset = Math.max(0, input.offset ?? 0); const limit = Math.max(1, Math.min(input.limit ?? 200, 500))
+  const windowRows: unknown[] = []
+  let total = 0; let gaps = 0; let redactions = 0
+  try {
+    streamRolloutLines(entry.file, line => {
+      let parsed: unknown = null
+      try { parsed = JSON.parse(line) } catch { parsed = null }
+      const accounting = projectionAccounting(parsed)
+      if (accounting.gap) gaps++
+      if (accounting.redaction) redactions++
+      if (total >= requestedOffset && windowRows.length < limit) windowRows.push(parsed)
+      total++
+      return true
+    })
+  } catch { return null }
+  const offset = Math.min(requestedOffset, total)
+  const entriesById=new Map(graph.entries.map(item=>[item.id,item])); const agentsById=new Map(graph.agents.map(item=>[item.threadRef,item])); const previewById=new Map<string,CodexHistoryAgentPreview>(); const items=windowRows.map((row,index)=>{const item=projectRow(row,entry.id,offset+index);if(item.kind!=="collaboration"||!isSubagentLaunchItem(item))return item;const agentRef=item.fields.find(field=>field.label==="agent")?.value;if(!agentRef)return item;const childEntry=entriesById.get(agentRef);const childAgent=agentsById.get(agentRef);if(childEntry===undefined||childAgent===undefined)return {...item,fields:[...item.fields,{label:"history",value:"Child history not recorded"}]};let relatedAgent=previewById.get(agentRef);if(relatedAgent===undefined){relatedAgent=childPreview(childEntry,childAgent);previewById.set(agentRef,relatedAgent)}return {...item,relatedAgent}})
   const root = (() => { let current = entry; const byId = new Map(graph.entries.map(item => [item.id,item])); const seen = new Set<string>(); while (current.parentId && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; current = parent } return current.id })()
-  const accounting=rows.reduce((total,row)=>{const next=projectionAccounting(row);return {gaps:total.gaps+(next.gap?1:0),redactions:total.redactions+(next.redaction?1:0)}},{gaps:0,redactions:0})
-  return { rootThreadRef: root, selectedThreadRef: entry.id, agents: graph.agents.filter(agent => { let id: string | null = agent.threadRef; const byId = new Map(graph.entries.map(item => [item.id,item])); while (id) { if (id === root) return true; id = byId.get(id)?.parentId ?? null } return false }), items, offset, limit, totalItems: rows.length, hasPrevious: offset > 0, hasNext: offset + limit < rows.length, completeness: { source: rows.length, rendered: rows.length - accounting.gaps - accounting.redactions, redactions:accounting.redactions, gaps:accounting.gaps, complete: true } }
+  return { rootThreadRef: root, selectedThreadRef: entry.id, agents: graph.agents.filter(agent => { let id: string | null = agent.threadRef; const byId = new Map(graph.entries.map(item => [item.id,item])); while (id) { if (id === root) return true; id = byId.get(id)?.parentId ?? null } return false }), items, offset, limit, totalItems: total, hasPrevious: offset > 0, hasNext: offset + limit < total, completeness: { source: total, rendered: total - gaps - redactions, redactions, gaps, complete: true } }
+}
+
+/**
+ * Bounded HEAD projection for the free-text search-index CACHE (#8788). The
+ * loss-accounted paging authority stays `readCodexHistoryPage`; this exists so
+ * building the content index over the most-recent sessions never streams a
+ * whole multi-GB rollout just to index its first `maxItems` rows.
+ */
+export const searchIndexByteCap = 16 * 1024 * 1024
+export const readCodexHistoryHeadItems = (file: string, threadRef: string, maxItems: number, byteCap = searchIndexByteCap): CodexHistoryItem[] => {
+  const items: CodexHistoryItem[] = []
+  let sequence = 0
+  try {
+    streamRolloutLines(file, line => {
+      let parsed: unknown = null
+      try { parsed = JSON.parse(line) } catch { parsed = null }
+      items.push(projectRow(parsed, threadRef, sequence))
+      sequence++
+      return items.length < maxItems
+    }, byteCap)
+  } catch { return items }
+  return items
 }
