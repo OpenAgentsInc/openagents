@@ -1,14 +1,29 @@
 {
+  "adapter_ref": "openagents.mutation.v1",
+  "admission_digest": "sha256:4db81a5ebc6288f3be85d3c427883517afd27dfa2b9e92c254b3f86e0bf1debd",
+  "authority": "evidence_only",
   "candidate_observation": "CONFIRMED",
-  "candidate_receipt_ref": "assurance.receipt.51d92c28ec5a0620e3d280695731623e643f74fec8ec25ef17f18c6fe75a1342",
+  "candidate_receipt_ref": "assurance.receipt.112d8f6062ed6d6bebb10ee3b9ddd24842da1b08d82ba8cf2c190c8dd10126d2",
   "diagnostic_refs": [],
-  "falsifier_observation": "REFUTED",
-  "falsifier_receipt_ref": "assurance.receipt.d6e8e9b37a14daefc46f51a2fbc214255ea9000510d83c0c3a73d22adc19c894",
-  "falsifier_ref": "AO-CW-AC-16-01.missing_required_anchor",
+  "inconclusive_mutant_refs": [],
+  "killed_mutant_refs": [
+    "AO-CW-AC-16-01.missing_required_anchor"
+  ],
+  "manifest_digest": "sha256:6a2f7fe9e6284ad90b5a040cedc946c72f46c8e511497780b6abe58e2538d366",
+  "mutant_results": [
+    {
+      "assurance_receipt_ref": "assurance.receipt.20a36e8fe63a406bb90d703d442d4d89f9b2eb9d7bdd0080d50b10fc4e286e7d",
+      "mutant_ref": "AO-CW-AC-16-01.missing_required_anchor",
+      "observation": "killed",
+      "operator": "replace_exact"
+    }
+  ],
+  "mutation_set_digest": "sha256:8cc89556df5da58fe1f45d136618010d6710b16c549728c1fc359cb5ad6ea193",
   "obligation_id": "AO-CW-AC-16-01",
   "oracle_ref": "AO-CW-AC-16-01.criterion_contract",
   "oracle_sensitivity_receipt_format_version": "0.1",
-  "receipt_ref": "oracle.sensitivity.d05afecd63ee229c7a7a3e43273c5a7de68640655484ddce5f422ce0103bcc95",
+  "receipt_kind": "oracle_sensitivity_receipt.v1",
+  "receipt_ref": "oracle.sensitivity.b55b9f21951180c946a96f0cc763699a89229d1d217be214b2df49ff3e9b2362",
   "sensitivity_observation": "CONFIRMED",
   "surviving_mutant_refs": []
 }

@@ -43,12 +43,13 @@ read.
     — the exact owner acceptance, close-rule disposition, and boundaries that
     permit #8756 to close without implying publication or broader rollout.
 
-The Product Spec declares intent. Current upstream ProductSpec can also index
-external evidence with Related Artifacts, but the local package has not yet
-implemented that `0.19.0` feature. Runtime policy, behavior contracts, Eval
-Suites, tests, reviewed artifacts, and receipts provide evidence; owner and
-release policies decide what it permits; the promise registry alone authorizes
-public claims.
+The Product Spec declares intent. The local package implements the pinned
+upstream ProductSpec `0.19.0` structured acceptance-criterion, Eval, success-
+metric, `applies_to`, and Related Artifact constructs while retaining the
+explicit legacy profile used by this revision-6 subject. Runtime policy,
+behavior contracts, Eval Suites, tests, reviewed artifacts, and receipts
+provide evidence; owner and release policies decide what it permits; the
+promise registry alone authorizes public claims.
 
 ## ProductSpec location and validation
 
@@ -81,13 +82,15 @@ build which oracle is adequate, which falsifier it must reject, which
 environment/proof rung counts, whether a full criterion is assured, whether a
 release may proceed, or whether a public promise is green.
 
-The current host verification receipt has only `passed` and treats
-`evidenceRef` as opaque. A future Assurance integration therefore needs a typed
-resolver that validates a current `CONFIRMED` Assurance Receipt and issues an
-immutable RefSchema-safe handle before `evidenceKind: receipt` registration.
-It must separately enforce Assurance producer/reviewer policy and must not
-convert `REFUTED`, `INCONCLUSIVE`, stale, flaky, or infrastructure-failed
-observations into workroom `verified`.
+The generic host verification receipt still has only `passed` and treats
+`evidenceRef` as opaque. The shipped Assurance receipt bridge adds the stricter
+path: it validates a current `CONFIRMED` normalized Assurance Receipt, enforces
+distinct producer/reviewer refs and exact packet/criterion bindings, and issues
+an immutable RefSchema-safe handle before `evidenceKind: receipt`
+registration. The real `AO-CW-AC-04-01` traversal exercises that bridge. It
+does not convert `REFUTED`, `INCONCLUSIVE`, stale, flaky, or infrastructure-
+failed observations into workroom `verified`, and neither bridge success nor
+workroom verification grants release or public-claim authority.
 
 ## Admitted AssuranceSpec dogfood
 

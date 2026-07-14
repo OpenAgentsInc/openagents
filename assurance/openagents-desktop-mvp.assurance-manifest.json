@@ -1,5 +1,5 @@
 {
-  "adapter_lock_digest": "sha256:86a07914a1ad753e0818ef0ecf6a602d23c7af4f82a132ca18d8086ce4fa1a91",
+  "adapter_lock_digest": "sha256:5dc053e14c6f10f3f6deefb9fb04624e97f5f129051e9fec5dab20a498d68971",
   "admission": {
     "digest": "sha256:4db81a5ebc6288f3be85d3c427883517afd27dfa2b9e92c254b3f86e0bf1debd",
     "ref": "admission.openagents.desktop.mvp.assurance.2",
