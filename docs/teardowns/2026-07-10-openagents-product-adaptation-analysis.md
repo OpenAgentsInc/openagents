@@ -14,6 +14,7 @@ Evidence base:
 - [OpenCode V2 architecture teardown](./2026-07-10-opencode-v2-architecture-teardown.md)
 - [OpenCode Effect architecture teardown](./2026-07-10-opencode-effect-architecture-teardown.md)
 - [Executor architecture teardown](./2026-07-12-executor-architecture-teardown.md)
+- [T3 Code teardown](./2026-07-13-t3-code-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -1623,3 +1624,100 @@ invoke bridge, no duplicated TypeScript/JavaScript security protocol, and no
 model verdict as acceptance authority. As with every teardown, these are design
 inputs; current schemas, invariants, roadmap gates, issues, tests, and receipts
 remain authoritative.
+
+## T3 Code addendum (2026-07-13)
+
+The [T3 Code teardown](./2026-07-13-t3-code-teardown.md) adds something the
+reference set previously lacked: a shipping, well-distributed product occupying
+almost exactly the OpenAgents P0 supervision lane — a local Effect server
+wrapping Codex, Claude Code, Cursor, Grok, and OpenCode in parallel worktrees,
+projected to web, desktop, and mobile clients, with remote access and phone
+notifications, and substantially built by the agents it hosts.
+
+Its evidence changes this document's decisions in the following ways.
+
+1. **The harness-supervision control plane is now a contested, fast market —
+   and the authority half is still unclaimed.** T3 shipped worktree-parallel
+   multi-harness supervision, diff review, one-click PR flows, and mobile
+   Live Activities in roughly five months at ~9.6k stars. Cursor, OpenCode,
+   and T3 now all ship the supervision surface; none of the three ships
+   authority manifests, effective-containment receipts, delivery receipts,
+   host-portable sessions, or economic participation. This strengthens the
+   differentiation section and raises the urgency of Desktop D1/D5 and the
+   #8640-class live burn: the supervision features are converging table
+   stakes, so OpenAgents wins on the trust half or not at all. No scope
+   change; sequencing pressure only.
+2. **A third independent Effect 4 beta whole-app adoption.** OpenCode V2
+   pins `4.0.0-beta.83`, Executor `beta.59`, T3 Code `beta.78` (patched, with
+   tsgo typechecking and a custom oxlint plugin enforcing Effect hygiene);
+   OpenAgents pins `beta.70`. The Effect Native bet gains market
+   confirmation, and the framework-risk warning in the Effect audit gains
+   force: four serious products on four different betas of a pre-1.0
+   framework is a compatibility archipelago. Keep the upgrade regression
+   gates; do not adopt T3's patch-the-framework habit without an upstream PR
+   attached.
+3. **The event-sourced core is now triply convergent.** T3 independently
+   reinvented the OpenCode V2 shape — typed commands validated by invariants,
+   a decider, durable events carrying `commandId`/`causationEventId`/
+   `correlationId`, SQLite projections, and queue-backed reactors emitting
+   typed completion receipts that tests await instead of polling. That last
+   pattern (receipts as deterministic test signals at the runtime seam) is a
+   direct ergonomic reference for OpenAgents oracles. T3 also shows the
+   omissions that matter: no durable admission before scheduling, no
+   steer/queue delivery semantics, no replay-to-live marker. Adapt-now A–C
+   stand unchanged; T3 is corroborating evidence, not a new requirement.
+4. **The environment/endpoint vocabulary sharpens the portable-sessions
+   pathway.** T3's `ExecutionEnvironment` / `KnownEnvironment` /
+   `AccessEndpoint` / `AdvertisedEndpoint` model — with access and launch as
+   deliberately separate concerns, Tailscale as a pluggable endpoint
+   provider, and desktop-managed SSH reduced to a launch-plus-forward helper
+   — is cleaner language than "remote server" and matches the workspace's
+   existing Tailnet posture. But T3 threads are environment-local by design
+   ("a local clone and a remote clone are different projects"), so
+   host-to-host session movement with preserved identity, authority, and
+   receipts remains unclaimed by every audited product. The Rev 30/31
+   portable-session packets stand, now with sharper naming to borrow.
+5. **DPoP-scoped local-server access supersedes the shared-password
+   critique.** The OpenCode teardowns flagged a shared Basic password as the
+   local-server credential weakness; T3 demonstrates the fix in shipping
+   code: per-client capability scopes (`orchestration:read`,
+   `terminal:operate`, …), RFC 8693-shaped token exchange from a bootstrap
+   token, pairing links, and DPoP proof-of-possession binding. Pylon/Runtime
+   Gateway socket exposure and Khala Sync device grants should adopt this
+   pattern rather than inventing a parallel one. Bounded leaf under the
+   existing R-gate/device-grant contracts.
+6. **The authority inversion is the posture to refuse, now with a named
+   incumbent.** T3 guards *access to the environment* with serious
+   cryptography while defaulting *execution* to `approvalPolicy: never` +
+   `sandboxMode: danger-full-access`, shipping no containment of its own and
+   delegating everything to the wrapped harnesses. This is the
+   market-leading open competitor normalizing default-YOLO. Reject
+   explicitly, alongside Cursor's computer-use-by-default: OpenAgents
+   execution profiles stay deny-by-default, owner-local danger mode stays
+   explicit and visually persistent, and effective containment stays a
+   receipt, not an assumption.
+7. **Mobile ambient supervision gains a second incumbent proof.** T3's iOS
+   Live Activities (lock-screen agent status fed by an APNs relay) joins
+   Cursor's Remote Control as evidence that phone-side ambient agent status
+   and steering is a differentiating surface. The OpenAgents mobile lane
+   should treat lock-screen/notification presence for running fleet work as
+   a natural post-parity leaf over existing Khala Sync projections — typed
+   status, never completion authority.
+8. **The agent-operated factory is public now.** 1,929 commits in five
+   months, 277 agent-prefixed, a checked-in `.plans/` corpus, vendored
+   framework source that agents are instructed to read, vouch-gated
+   community PRs, and 3-hourly nightlies: T3 is the most complete public
+   example of the software-factory operating model OpenAgents runs
+   internally. This validates the Khala fleet direction and adds a concrete
+   reference for agent-repo ergonomics (vendored reference source, plan
+   corpora, machine-checked task-completion gates).
+9. **A thin relay is compatible with local-first — if it stays thin.** T3's
+   hosted layer (Clerk identity, `cloudflared` tunnels, APNs push; no
+   execution, no session custody; direct ws/wss and SSH remain account-free)
+   is structurally similar to the two-tier identity model this document
+   already records as the R1 amendment: local-first by default, account as
+   an opt-in upgrade. OpenAgents' version additionally carries receipts and
+   durable cross-device truth through Khala Sync, which T3 does not attempt.
+
+Per the standing rule, none of these items is authority here: each lives or
+dies by its owning roadmap gate, issue, or contract when promoted.
