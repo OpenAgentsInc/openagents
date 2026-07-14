@@ -80,15 +80,15 @@ import {
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import {
+  type ForumContextLinkBody,
   decodeCreateForumReplyBody,
   decodeCreateForumTopicBody,
-  type ForumContextLinkBody,
   invalidForumReplyParentPostReference,
 } from './forum-topic-reply-route-contract'
 import {
   type ForumWorkRequestAcceptanceRecord,
-  type ForumWorkRequestOfferRecord,
   type ForumWorkRequestOfferProviderBond,
+  type ForumWorkRequestOfferRecord,
   type ForumWorkRequestResultRecord,
   listForumWorkRequestOffers,
   readForumWorkRequestAcceptanceByWorkRequestId,
@@ -138,24 +138,21 @@ import {
   redirectResponse,
   serverError,
 } from './http/responses'
-import {
-  type LaborEscrowRecord,
-  readLaborEscrowById,
-} from './labor-escrow'
-import { PaymentsLedgerUnavailableError } from './payments-ledger-db'
+import { type LaborEscrowRecord, readLaborEscrowById } from './labor-escrow'
 import {
   countActiveOrangeChecks,
   orangeCheckBadgeProjection,
   readActiveOrangeCheckByActorRef,
 } from './orange-check-entitlements'
+import { PaymentsLedgerUnavailableError } from './payments-ledger-db'
 import { liveAtReadStaleness } from './public-projection-staleness'
+import type { PylonApiStore } from './pylon-api'
 import {
   currentEpochMillis,
   currentIsoTimestamp,
   epochMillisToIsoTimestamp,
   randomUuid,
 } from './runtime-primitives'
-import type { PylonApiStore } from './pylon-api'
 
 const forumLaunchStatusStaleness = liveAtReadStaleness([
   'forum_paid_action_receipt_recorded',
@@ -730,7 +727,6 @@ const contextLinksFromBody = (
   ]
 }
 
-
 const actorRefForForumActor = (actor: ForumWriterActorInput): string =>
   actor._tag === 'Agent'
     ? `agent:${actor.session.user.id}`
@@ -764,7 +760,6 @@ const forumParticipationGrantForActor = (
     status: 'active',
     teamId: null,
   }) as unknown as ForumWriterGrant
-
 
 const forumWriteGrantForActor = (
   actor: ForumWriterActorInput,
@@ -1067,7 +1062,6 @@ const enforceForumWritePolicy = (
       : forumWritePolicyDenialResponse(decision)
   })
 
-
 const ingestProductPromisesUnsupportedRequest = (
   dependencies: ForumRouteDependencies,
   input: Readonly<{
@@ -1097,7 +1091,10 @@ const ingestProductPromisesUnsupportedRequest = (
         topicId: input.topicId,
       }) ?? Promise.resolve(),
     catch: () => undefined,
-  }).pipe(Effect.catch(() => Effect.void), Effect.asVoid)
+  }).pipe(
+    Effect.catch(() => Effect.void),
+    Effect.asVoid,
+  )
 }
 
 const createTopicResponse = (
@@ -1113,10 +1110,7 @@ const createTopicResponse = (
       return badRequest('Idempotency-Key header is required')
     }
 
-    const body = yield* decodeJsonBody(
-      request,
-      decodeCreateForumTopicBody,
-    )
+    const body = yield* decodeJsonBody(request, decodeCreateForumTopicBody)
     const existingTopic = yield* readForumTopicByIdempotencyKey(
       db,
       idempotencyKey,
@@ -1274,10 +1268,7 @@ const createReplyResponse = (
       return badRequest('Idempotency-Key header is required')
     }
 
-    const body = yield* decodeJsonBody(
-      request,
-      decodeCreateForumReplyBody,
-    )
+    const body = yield* decodeJsonBody(request, decodeCreateForumReplyBody)
     const existingPost = yield* readForumPostByIdempotencyKey(
       db,
       idempotencyKey,
@@ -1334,7 +1325,11 @@ const createReplyResponse = (
     const quotePostId = body.quotePostId ?? null
 
     if (quotePostId !== null) {
-      const quoted = yield* readForumPostDetail(db, requireForumLedgerDb(dependencies), quotePostId)
+      const quoted = yield* readForumPostDetail(
+        db,
+        dependencies.ledgerDb,
+        quotePostId,
+      )
 
       if (quoted === null) {
         return notFound()
@@ -1352,10 +1347,7 @@ const createReplyResponse = (
     const requestedParentPostId = body.parentPostId ?? null
 
     if (requestedParentPostId !== null) {
-      const parentRef = yield* readForumPostThreadRef(
-        db,
-        requestedParentPostId,
-      )
+      const parentRef = yield* readForumPostThreadRef(db, requestedParentPostId)
       const parentDenialReason = invalidForumReplyParentPostReference(
         parentRef,
         topic.topicId,
@@ -1938,7 +1930,8 @@ const forumWorkRequestStatusEnvelope = (
 ) => {
   const escrow = input.escrow ?? null
   const receiptRefs: string[] = []
-  if (input.acceptance !== null) receiptRefs.push(input.acceptance.reserveReceiptRef)
+  if (input.acceptance !== null)
+    receiptRefs.push(input.acceptance.reserveReceiptRef)
   if (escrow?.releaseReceiptRef) receiptRefs.push(escrow.releaseReceiptRef)
   if (escrow?.refundReceiptRef) receiptRefs.push(escrow.refundReceiptRef)
   return {
@@ -1994,8 +1987,7 @@ const readForumWorkRequestStatusResponse = (
                 operation: 'forumWorkRequests.readEscrowForStatus',
                 reason: error instanceof Error ? error.message : String(error),
               }),
-            try: () =>
-              readLaborEscrowById(ledgerDb, acceptance.escrowId),
+            try: () => readLaborEscrowById(ledgerDb, acceptance.escrowId),
           }).pipe(Effect.orElseSucceed(() => null)),
       acceptance === null
         ? Effect.succeed(null)
@@ -2240,8 +2232,7 @@ const submitForumWorkRequestOfferResponse = (
       {
         amountSats: body.amountSats,
         capabilityRefs:
-          body.capabilityRefs === undefined ||
-          body.capabilityRefs.length === 0
+          body.capabilityRefs === undefined || body.capabilityRefs.length === 0
             ? workRequest.requiredCapabilityRefs
             : body.capabilityRefs,
         offerId: makeId(),
@@ -2605,7 +2596,11 @@ const writerForForumResponse = (
     })
   })
 
-const readPostControlTarget = (db: D1Database, ledgerDb: import('./payments-ledger-db').PaymentsLedgerDb, postId: string) =>
+const readPostControlTarget = (
+  db: D1Database,
+  ledgerDb: import('./payments-ledger-db').PaymentsLedgerDb | undefined,
+  postId: string,
+) =>
   Effect.gen(function* () {
     const postDetail = yield* readForumPostDetail(db, ledgerDb, postId)
 
@@ -2669,7 +2664,11 @@ const editPostResponse = (
       request,
       S.decodeUnknownSync(EditForumPostBody),
     )
-    const target = yield* readPostControlTarget(db, requireForumLedgerDb(dependencies), postId)
+    const target = yield* readPostControlTarget(
+      db,
+      dependencies.ledgerDb,
+      postId,
+    )
 
     if (target === null) {
       return notFound()
@@ -2710,10 +2709,7 @@ const editPostResponse = (
         return badRequest('parentPostId must not reference the edited post')
       }
 
-      const parentRef = yield* readForumPostThreadRef(
-        db,
-        requestedParentPostId,
-      )
+      const parentRef = yield* readForumPostThreadRef(db, requestedParentPostId)
       const parentDenialReason = invalidForumReplyParentPostReference(
         parentRef,
         target.topic.topicId,
@@ -2877,7 +2873,11 @@ const tombstonePostResponse = (
       S.decodeUnknownSync(TombstoneForumPostBody),
       {},
     )
-    const target = yield* readPostControlTarget(db, requireForumLedgerDb(dependencies), postId)
+    const target = yield* readPostControlTarget(
+      db,
+      dependencies.ledgerDb,
+      postId,
+    )
 
     if (target === null) {
       return notFound()
@@ -3118,7 +3118,6 @@ const moderationActionResponse = (
     )
   }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
 
-
 const creatorEarningsResponse = (
   db: D1Database,
   actorRef: string,
@@ -3185,7 +3184,11 @@ const agentProfileResponse = (
   profileRef: string,
   dependencies: ForumRouteDependencies = {},
 ) =>
-  readForumAgentPublicProfile(db, requireForumIdentityDb(dependencies), profileRef).pipe(
+  readForumAgentPublicProfile(
+    db,
+    requireForumIdentityDb(dependencies),
+    profileRef,
+  ).pipe(
     Effect.flatMap(profile =>
       profile === null
         ? Effect.succeed(notFound())
@@ -3207,7 +3210,11 @@ const agentProfileResponse = (
     Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
   )
 
-const profileTipSummary = (db: D1Database, ledgerDb: import('./payments-ledger-db').PaymentsLedgerDb, actorRef: string) =>
+const profileTipSummary = (
+  db: D1Database,
+  ledgerDb: import('./payments-ledger-db').PaymentsLedgerDb,
+  actorRef: string,
+) =>
   Effect.all([
     readForumTipRecipientReadinessForActor(db, actorRef).pipe(
       Effect.map(readiness => readiness.tippingAvailable),
@@ -3240,7 +3247,11 @@ const agentProfilePageResponse = (
   profileRef: string,
   dependencies: ForumRouteDependencies = {},
 ) =>
-  readForumAgentPublicProfile(db, requireForumIdentityDb(dependencies), profileRef).pipe(
+  readForumAgentPublicProfile(
+    db,
+    requireForumIdentityDb(dependencies),
+    profileRef,
+  ).pipe(
     Effect.flatMap(profile =>
       profile === null
         ? Effect.succeed(notFound())
@@ -3250,7 +3261,11 @@ const agentProfilePageResponse = (
               profile.actor.actorRef,
               dependencies.entitlementsNonGateReads,
             ),
-            profileTipSummary(db, requireForumLedgerDb(dependencies), profile.actor.actorRef),
+            profileTipSummary(
+              db,
+              requireForumLedgerDb(dependencies),
+              profile.actor.actorRef,
+            ),
           ]).pipe(
             Effect.map(([entitlement, tips]) =>
               htmlResponse(
@@ -3271,7 +3286,11 @@ const agentProfileRedirectResponse = (
   profileRef: string,
   dependencies: ForumRouteDependencies = {},
 ) =>
-  readForumAgentPublicProfile(db, requireForumIdentityDb(dependencies), profileRef).pipe(
+  readForumAgentPublicProfile(
+    db,
+    requireForumIdentityDb(dependencies),
+    profileRef,
+  ).pipe(
     Effect.map(profile =>
       profile === null ? notFound() : redirectResponse(profile.publicUrl),
     ),
@@ -3768,7 +3787,11 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? readForumWorkRequestStatusResponse(db, requireForumLedgerDb(requestDependencies), workRequestId)
+        ? readForumWorkRequestStatusResponse(
+            db,
+            requireForumLedgerDb(requestDependencies),
+            workRequestId,
+          )
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
@@ -4194,7 +4217,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       ).pipe(
         Effect.flatMap(() =>
           publicListResponse(
-            readForumPostList(db, requireForumLedgerDb(requestDependencies), {
+            readForumPostList(db, requestDependencies.ledgerDb, {
               cursor,
               cursorRef,
               forumRef,
@@ -4252,7 +4275,6 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
-
     const actorFollowMatch = /^\/api\/forum\/actors\/([^/]+)\/follows$/.exec(
       url.pathname,
     )
@@ -4291,7 +4313,6 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
       return creatorEarningsResponse(db, actorRef, limit, requestDependencies)
     }
-
 
     const actorProfileMatch = /^\/api\/forum\/actors\/([^/]+)\/profile$/.exec(
       url.pathname,
@@ -4396,7 +4417,11 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId).pipe(
+      return readForumTopicDetail(
+        db,
+        requestDependencies.ledgerDb,
+        topicId,
+      ).pipe(
         Effect.flatMap(detail =>
           detail === null
             ? Effect.succeed(notFound())
@@ -4429,7 +4454,11 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId).pipe(
+      return readForumTopicDetail(
+        db,
+        requestDependencies.ledgerDb,
+        topicId,
+      ).pipe(
         Effect.flatMap(detail =>
           detail === null
             ? Effect.succeed(notFound())
@@ -4464,7 +4493,11 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId).pipe(
+      return readForumTopicDetail(
+        db,
+        requestDependencies.ledgerDb,
+        topicId,
+      ).pipe(
         Effect.flatMap(detail => {
           if (detail === null) {
             return Effect.succeed(notFound())
@@ -4516,7 +4549,9 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       return postSortDirection instanceof Response
         ? Effect.succeed(postSortDirection)
         : publicReadResponse(
-            readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId, { postSortDirection }),
+            readForumTopicDetail(db, requestDependencies.ledgerDb, topicId, {
+              postSortDirection,
+            }),
           )
     }
 
@@ -4551,7 +4586,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumPostDetail(db, requireForumLedgerDb(requestDependencies), postId).pipe(
+      return readForumPostDetail(db, requestDependencies.ledgerDb, postId).pipe(
         Effect.flatMap(detail =>
           detail === null
             ? Effect.succeed(notFound())
@@ -4592,7 +4627,11 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readPostControlTarget(db, requireForumLedgerDb(requestDependencies), postId).pipe(
+      return readPostControlTarget(
+        db,
+        requestDependencies.ledgerDb,
+        postId,
+      ).pipe(
         Effect.flatMap(target =>
           target === null || target.postDetail.post.state === 'tombstoned'
             ? Effect.succeed(notFound())
@@ -4623,7 +4662,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
       return request.method === 'GET'
         ? publicReadResponse(
-            readForumPostDetail(db, requireForumLedgerDb(requestDependencies), postId).pipe(
+            readForumPostDetail(db, requestDependencies.ledgerDb, postId).pipe(
               Effect.flatMap(detail =>
                 detail === null
                   ? Effect.succeed(null)

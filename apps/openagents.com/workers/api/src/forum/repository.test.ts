@@ -480,9 +480,7 @@ class ForumRepositoryStatement implements D1PreparedStatement {
         payout_target_approval_ref:
           this.values[8] === null ? null : String(this.values[8]),
         provider_class: this.values[2] as
-          | 'external_lightning'
-          | 'hosted_mdk'
-          | 'mdk_agent_wallet',
+          'external_lightning' | 'hosted_mdk' | 'mdk_agent_wallet',
         public_projection_json: String(this.values[15]),
         readiness_refs_json: String(this.values[9]),
         receive_capability_ref: String(this.values[4]),
@@ -712,11 +710,7 @@ class ForumRepositoryStatement implements D1PreparedStatement {
         report_id: this.values[7] === null ? null : String(this.values[7]),
         target_id: String(this.values[5]),
         target_kind: this.values[4] as
-          | 'forum'
-          | 'topic'
-          | 'post'
-          | 'report'
-          | 'user',
+          'forum' | 'topic' | 'post' | 'report' | 'user',
       })
 
       return Promise.resolve({ success: true } as D1Result<T>)
@@ -1160,8 +1154,7 @@ const readyTipRecipientWalletInput = (
   overrides: Partial<Parameters<typeof upsertForumTipRecipientWallet>[1]> = {},
 ): Parameters<typeof upsertForumTipRecipientWallet>[1] => ({
   actorRef: actor.actorRef,
-  bolt12Offer:
-    'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+  bolt12Offer: 'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
   caveatRefs: ['caveat.public.forum_tip_recipient.claim_required'],
   claimPolicyRefs: ['policy.public.forum_tip_recipient.agent_claimed'],
   custodyPolicyRefs: ['policy.public.forum_tip_recipient.self_custody'],
@@ -1266,6 +1259,12 @@ describe('Forum repository foundation', () => {
     const postDetail = await Effect.runPromise(
       readForumPostDetail(forumRepositoryDb(store), ledgerDb, reply.postId),
     )
+    const retiredPaymentsTopicDetail = await Effect.runPromise(
+      readForumTopicDetail(forumRepositoryDb(store), undefined, topic.topicId),
+    )
+    const retiredPaymentsPostDetail = await Effect.runPromise(
+      readForumPostDetail(forumRepositoryDb(store), undefined, reply.postId),
+    )
 
     expect(topicList?.topics).toHaveLength(1)
     expect(topicList?.topics[0]).toMatchObject({
@@ -1288,6 +1287,23 @@ describe('Forum repository foundation', () => {
           state: 'missing',
           tippingAvailable: false,
         },
+      },
+    })
+    expect(retiredPaymentsTopicDetail?.posts.map(post => post.postId)).toEqual([
+      firstPost.postId,
+      reply.postId,
+    ])
+    expect(retiredPaymentsTopicDetail?.posts[0]?.tipStats).toMatchObject({
+      tipCount: 0,
+      totalPaidSats: 0,
+      totalSettledSats: 0,
+    })
+    expect(retiredPaymentsPostDetail?.post).toMatchObject({
+      postId: reply.postId,
+      tipStats: {
+        tipCount: 0,
+        totalPaidSats: 0,
+        totalSettledSats: 0,
       },
     })
   })
@@ -1333,9 +1349,9 @@ describe('Forum repository foundation', () => {
     expect(topicDetail?.posts.map(post => post.postId)).toStrictEqual([
       reply.postId,
     ])
-    expect(
-      topicDetail?.posts.some(post => post.state === 'tombstoned'),
-    ).toBe(false)
+    expect(topicDetail?.posts.some(post => post.state === 'tombstoned')).toBe(
+      false,
+    )
     // No surviving post carries a null body (which would force the broken
     // `content.forum.post.<id>` placeholder on the client).
     expect(topicDetail?.posts.some(post => post.bodyText === null)).toBe(false)
@@ -1433,7 +1449,11 @@ describe('Forum repository foundation', () => {
       ),
     )
     const topicDetail = await Effect.runPromise(
-      readForumTopicDetail(forumRepositoryDb(store), ledgerDb, firstPost.topicId),
+      readForumTopicDetail(
+        forumRepositoryDb(store),
+        ledgerDb,
+        firstPost.topicId,
+      ),
     )
     const postDetail = await Effect.runPromise(
       readForumPostDetail(forumRepositoryDb(store), ledgerDb, firstPost.postId),
@@ -1468,8 +1488,7 @@ describe('Forum repository foundation', () => {
     expect(ready).toMatchObject({
       blockerRef: null,
       directPayment: {
-        bolt12Offer:
-          'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
+        bolt12Offer: 'lno1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3j',
         kind: 'bolt12_offer',
         settlementAuthority: 'recipient_wallet_direct',
       },
@@ -1763,7 +1782,11 @@ describe('Forum repository foundation', () => {
     store.posts[postIndex] = { ...postRow, state: 'hidden' }
     await expect(
       Effect.runPromise(
-        readForumPostDetail(forumRepositoryDb(store), ledgerDb, firstPost.postId),
+        readForumPostDetail(
+          forumRepositoryDb(store),
+          ledgerDb,
+          firstPost.postId,
+        ),
       ),
     ).rejects.toMatchObject({
       _tag: 'ForumReadAccessDenied',

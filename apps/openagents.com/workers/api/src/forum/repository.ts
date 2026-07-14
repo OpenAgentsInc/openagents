@@ -1,6 +1,6 @@
-import type { IdentityDb } from '../identity-db'
 import { Effect, Schema as S } from 'effect'
 
+import type { IdentityDb } from '../identity-db'
 import { parseJsonRecord, parseJsonStringArray } from '../json-boundary'
 import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import {
@@ -9,9 +9,9 @@ import {
 } from '../public-projection-staleness'
 import { currentIsoTimestamp, randomUuid } from '../runtime-primitives'
 import {
+  type TreasuryDatabase,
   mirrorTreasuryRows,
   treasuryAuthorityDb,
-  type TreasuryDatabase,
 } from '../treasury-domain-store'
 import {
   type ForumTipRecipientWalletRecord,
@@ -24,7 +24,6 @@ import {
 import {
   type ForumActorSummary,
   ForumActorSummary as ForumActorSummarySchema,
-  ForumAuthorProfileRail as ForumAuthorProfileRailSchema,
   type ForumAgentNotification,
   type ForumAgentNotificationReadWriteResponse,
   ForumAgentNotificationReadWriteResponse as ForumAgentNotificationReadWriteResponseSchema,
@@ -36,6 +35,7 @@ import {
   ForumAgentProfileActivityItem as ForumAgentProfileActivityItemSchema,
   type ForumAgentPublicProfile,
   ForumAgentPublicProfileResponse as ForumAgentPublicProfileResponseSchema,
+  ForumAuthorProfileRail as ForumAuthorProfileRailSchema,
   type ForumBoardIndexResponse,
   ForumBoardIndexResponse as ForumBoardIndexResponseSchema,
   type ForumCategorySummary,
@@ -241,11 +241,7 @@ export type ForumReportInput = Readonly<{
 }>
 
 type ForumPostRevisionPostState =
-  | 'visible'
-  | 'edited'
-  | 'tombstoned'
-  | 'held_for_review'
-  | 'hidden'
+  'visible' | 'edited' | 'tombstoned' | 'held_for_review' | 'hidden'
 
 export type ForumPostRevisionInput = Readonly<{
   actionKind: 'edit' | 'tombstone'
@@ -699,9 +695,7 @@ export class ForumReadAccessDenied extends S.TaggedErrorClass<ForumReadAccessDen
 ) {}
 
 export type ForumRepositoryError =
-  | ForumReadAccessDenied
-  | ForumStorageError
-  | ForumValidationError
+  ForumReadAccessDenied | ForumStorageError | ForumValidationError
 
 export type ForumTipRecipientWalletInput = Readonly<{
   actorRef: string
@@ -1075,7 +1069,9 @@ const authorProfileRail = (actor: ForumActorSummary) =>
     slug: actor.slug,
   })
 
-const descriptionTextFromRef = (descriptionRef: string | null): string | null => {
+const descriptionTextFromRef = (
+  descriptionRef: string | null,
+): string | null => {
   if (descriptionRef === null) {
     return null
   }
@@ -1105,9 +1101,7 @@ const agentOwnerHandoff = {
   ownerUserRef: null,
 }
 
-const agentOwnerHandoffForClaim = (
-  claim: AgentProfileOwnerClaimRow | null,
-) =>
+const agentOwnerHandoffForClaim = (claim: AgentProfileOwnerClaimRow | null) =>
   claim === null
     ? agentOwnerHandoff
     : {
@@ -1904,7 +1898,7 @@ const normalizeAgentProfileRef = (profileRef: string): string =>
     ? profileRef.slice('agent:'.length)
     : profileRef.startsWith('agent_profile:')
       ? profileRef.slice('agent_profile:'.length)
-    : profileRef
+      : profileRef
 
 const readForumAgentProfileActivity = (
   db: D1Database,
@@ -2057,20 +2051,22 @@ export const readForumAgentPublicProfile = (
     // candidate user id from D1 first, then the active-agent gate + display
     // fields read from the identity handle (id match preferred, matching
     // the old `users.id = ? OR agent_profiles.slug = ?` shape).
-    const row = yield* d1Effect('forum.readAgentPublicProfile.agent', async () => {
-      const slugProfile = await db
-        .prepare(
-          `SELECT user_id, slug FROM agent_profiles WHERE slug = ? LIMIT 1`,
-        )
-        .bind(normalized)
-        .first<Readonly<{ user_id: string; slug: string | null }>>()
-      const candidateIds = [
-        normalized,
-        ...(slugProfile === null ? [] : [slugProfile.user_id]),
-      ]
-      const placeholders = candidateIds.map(() => '?').join(', ')
-      const userRows = await identityDb.query(
-        `SELECT id AS user_id,
+    const row = yield* d1Effect(
+      'forum.readAgentPublicProfile.agent',
+      async () => {
+        const slugProfile = await db
+          .prepare(
+            `SELECT user_id, slug FROM agent_profiles WHERE slug = ? LIMIT 1`,
+          )
+          .bind(normalized)
+          .first<Readonly<{ user_id: string; slug: string | null }>>()
+        const candidateIds = [
+          normalized,
+          ...(slugProfile === null ? [] : [slugProfile.user_id]),
+        ]
+        const placeholders = candidateIds.map(() => '?').join(', ')
+        const userRows = await identityDb.query(
+          `SELECT id AS user_id,
                 display_name,
                 avatar_url,
                 created_at,
@@ -2080,45 +2076,47 @@ export const readForumAgentPublicProfile = (
             AND status = 'active'
             AND deleted_at IS NULL
             AND id IN (${placeholders})`,
-        candidateIds,
-      )
-      const byId = new Map(userRows.map(user => [String(user.user_id), user]))
-      const chosen =
-        byId.get(normalized) ??
-        (slugProfile === null ? undefined : byId.get(slugProfile.user_id))
-      if (chosen === undefined) return null
-      const chosenId = String(chosen.user_id)
-      const slug =
-        slugProfile !== null && slugProfile.user_id === chosenId
-          ? slugProfile.slug
-          : ((
-              await db
-                .prepare(
-                  `SELECT slug FROM agent_profiles WHERE user_id = ? LIMIT 1`,
-                )
-                .bind(chosenId)
-                .first<Readonly<{ slug: string | null }>>()
-            )?.slug ?? null)
-      // The old INNER JOIN required an agent_profiles row; a user with no
-      // profile row is not a registered forum agent.
-      const hasProfile =
-        (slugProfile !== null && slugProfile.user_id === chosenId) ||
-        (await db
-          .prepare(
-            `SELECT user_id FROM agent_profiles WHERE user_id = ? LIMIT 1`,
-          )
-          .bind(chosenId)
-          .first<Readonly<{ user_id: string }>>()) !== null
-      if (!hasProfile) return null
-      return {
-        avatar_url: chosen.avatar_url === null ? null : String(chosen.avatar_url),
-        created_at: String(chosen.created_at),
-        display_name: String(chosen.display_name),
-        slug,
-        updated_at: String(chosen.updated_at),
-        user_id: chosenId,
-      } as AgentProfileRow
-    })
+          candidateIds,
+        )
+        const byId = new Map(userRows.map(user => [String(user.user_id), user]))
+        const chosen =
+          byId.get(normalized) ??
+          (slugProfile === null ? undefined : byId.get(slugProfile.user_id))
+        if (chosen === undefined) return null
+        const chosenId = String(chosen.user_id)
+        const slug =
+          slugProfile !== null && slugProfile.user_id === chosenId
+            ? slugProfile.slug
+            : ((
+                await db
+                  .prepare(
+                    `SELECT slug FROM agent_profiles WHERE user_id = ? LIMIT 1`,
+                  )
+                  .bind(chosenId)
+                  .first<Readonly<{ slug: string | null }>>()
+              )?.slug ?? null)
+        // The old INNER JOIN required an agent_profiles row; a user with no
+        // profile row is not a registered forum agent.
+        const hasProfile =
+          (slugProfile !== null && slugProfile.user_id === chosenId) ||
+          (await db
+            .prepare(
+              `SELECT user_id FROM agent_profiles WHERE user_id = ? LIMIT 1`,
+            )
+            .bind(chosenId)
+            .first<Readonly<{ user_id: string }>>()) !== null
+        if (!hasProfile) return null
+        return {
+          avatar_url:
+            chosen.avatar_url === null ? null : String(chosen.avatar_url),
+          created_at: String(chosen.created_at),
+          display_name: String(chosen.display_name),
+          slug,
+          updated_at: String(chosen.updated_at),
+          user_id: chosenId,
+        } as AgentProfileRow
+      },
+    )
 
     if (row !== null) {
       const actorRef = `agent:${row.user_id}`
@@ -2778,8 +2776,10 @@ export const readForumTopicList = (
 
 export const readForumTopicDetail = (
   db: D1Database,
-  // CFG-4 (#8519): credited tip totals read the Postgres payments ledger.
-  ledgerDb: PaymentsLedgerDb,
+  // The Forum remains readable after the VP-1 payments retirement. When the
+  // ledger is absent, posts keep their schema-safe zero/missing projections
+  // and no retired wallet or tip tables are queried.
+  ledgerDb: PaymentsLedgerDb | undefined,
   topicRef: string,
   options: Readonly<{
     limit?: number
@@ -2847,33 +2847,40 @@ export const readForumTopicDetail = (
     const topicPostsWithoutTipReadiness = (posts.results ?? [])
       .map(postFromRow)
       .map(post => postWithSubject(post, topic.title))
-    const topicTipRecipientWalletRecords =
-      yield* readForumTipRecipientWalletRecords(
-        db,
-        topicPostsWithoutTipReadiness.map(post => post.author.actorRef),
-      )
-    const topicPostTipRecipientReadiness = yield* Effect.all(
-      topicPostsWithoutTipReadiness.map(post => {
-        const record = topicTipRecipientWalletRecords.get(post.author.actorRef)
-        return record === undefined
-          ? Effect.succeed(
-              missingForumTipRecipientReadiness(post.author.actorRef),
+    const topicPosts =
+      ledgerDb === undefined
+        ? topicPostsWithoutTipReadiness
+        : yield* Effect.gen(function* () {
+            const walletRecords = yield* readForumTipRecipientWalletRecords(
+              db,
+              topicPostsWithoutTipReadiness.map(post => post.author.actorRef),
             )
-          : projectTipRecipientReadiness(record)
-      }),
-    )
-    const topicPosts = topicPostsWithoutTipReadiness.map((post, index) =>
-      postWithTipRecipientReadiness(
-        post,
-        topicPostTipRecipientReadiness[index] ??
-          missingForumTipRecipientReadiness(post.author.actorRef),
-      ),
-    )
-    const tipStats = yield* readForumPostTipStats(
-      db,
-      ledgerDb,
-      topicPosts.map(post => post.postId),
-    )
+            const readiness = yield* Effect.all(
+              topicPostsWithoutTipReadiness.map(post => {
+                const record = walletRecords.get(post.author.actorRef)
+                return record === undefined
+                  ? Effect.succeed(
+                      missingForumTipRecipientReadiness(post.author.actorRef),
+                    )
+                  : projectTipRecipientReadiness(record)
+              }),
+            )
+            return topicPostsWithoutTipReadiness.map((post, index) =>
+              postWithTipRecipientReadiness(
+                post,
+                readiness[index] ??
+                  missingForumTipRecipientReadiness(post.author.actorRef),
+              ),
+            )
+          })
+    const tipStats =
+      ledgerDb === undefined
+        ? new Map<string, ForumPostTipStats>()
+        : yield* readForumPostTipStats(
+            db,
+            ledgerDb,
+            topicPosts.map(post => post.postId),
+          )
     const lastPost = yield* readPublicLastPostSummary(db, {
       latestPostId: topic.latestPostId,
       latestTopicId: topic.topicId,
@@ -2921,8 +2928,7 @@ export const readForumTopicDetail = (
 
 export const readForumPostDetail = (
   db: D1Database,
-  // CFG-4 (#8519): credited tip totals read the Postgres payments ledger.
-  ledgerDb: PaymentsLedgerDb,
+  ledgerDb: PaymentsLedgerDb | undefined,
   postId: string,
 ): Effect.Effect<
   ForumPostDetailResponse | null,
@@ -2951,12 +2957,17 @@ export const readForumPostDetail = (
       return null
     }
 
-    const tipRecipientReadiness = yield* readForumTipRecipientReadinessForActor(
-      db,
-      post.author.actorRef,
-    )
-
-    const tipStats = yield* readForumPostTipStats(db, ledgerDb, [post.postId])
+    const tipRecipientReadiness =
+      ledgerDb === undefined
+        ? missingForumTipRecipientReadiness(post.author.actorRef)
+        : yield* readForumTipRecipientReadinessForActor(
+            db,
+            post.author.actorRef,
+          )
+    const tipStats =
+      ledgerDb === undefined
+        ? new Map<string, ForumPostTipStats>()
+        : yield* readForumPostTipStats(db, ledgerDb, [post.postId])
     const projectedPost = postWithSubject(post, topic.title)
 
     return decodeForumPostDetailResponse({
@@ -2970,8 +2981,7 @@ export const readForumPostDetail = (
 
 export const readForumPostList = (
   db: D1Database,
-  // CFG-4 (#8519): credited tip totals read the Postgres payments ledger.
-  ledgerDb: PaymentsLedgerDb,
+  ledgerDb: PaymentsLedgerDb | undefined,
   input: Readonly<{
     cursor?: ForumPostListCursor | null
     cursorRef?: string | null
@@ -3085,45 +3095,50 @@ export const readForumPostList = (
             postId: lastVisibleRow.id,
           })
     const postsWithoutTipReadiness = visibleRows.map(postFromRow)
-    const postListTipRecipientWalletRecords =
-      yield* readForumTipRecipientWalletRecords(
-        db,
-        postsWithoutTipReadiness.map(post => post.author.actorRef),
-      )
-    const postTipRecipientReadiness = yield* Effect.all(
-      postsWithoutTipReadiness.map(post => {
-        const record = postListTipRecipientWalletRecords.get(
-          post.author.actorRef,
-        )
-        return (
-          record === undefined
-            ? Effect.succeed(
-                missingForumTipRecipientReadiness(post.author.actorRef),
-              )
-            : projectTipRecipientReadiness(record)
-        ).pipe(
-          // A malformed wallet for a single author must not fail the whole
-          // post list; degrade that author to "not ready" instead.
-          Effect.catchTag('ForumValidationError', () =>
-            Effect.succeed(
-              missingForumTipRecipientReadiness(post.author.actorRef),
-            ),
-          ),
-        )
-      }),
-    )
-    const posts = postsWithoutTipReadiness.map((post, index) =>
-      postWithTipRecipientReadiness(
-        post,
-        postTipRecipientReadiness[index] ??
-          missingForumTipRecipientReadiness(post.author.actorRef),
-      ),
-    )
-    const tipStats = yield* readForumPostTipStats(
-      db,
-      ledgerDb,
-      posts.map(post => post.postId),
-    )
+    const posts =
+      ledgerDb === undefined
+        ? postsWithoutTipReadiness
+        : yield* Effect.gen(function* () {
+            const walletRecords = yield* readForumTipRecipientWalletRecords(
+              db,
+              postsWithoutTipReadiness.map(post => post.author.actorRef),
+            )
+            const readiness = yield* Effect.all(
+              postsWithoutTipReadiness.map(post => {
+                const record = walletRecords.get(post.author.actorRef)
+                return (
+                  record === undefined
+                    ? Effect.succeed(
+                        missingForumTipRecipientReadiness(post.author.actorRef),
+                      )
+                    : projectTipRecipientReadiness(record)
+                ).pipe(
+                  // A malformed wallet for a single author must not fail the
+                  // whole post list; degrade that author to "not ready".
+                  Effect.catchTag('ForumValidationError', () =>
+                    Effect.succeed(
+                      missingForumTipRecipientReadiness(post.author.actorRef),
+                    ),
+                  ),
+                )
+              }),
+            )
+            return postsWithoutTipReadiness.map((post, index) =>
+              postWithTipRecipientReadiness(
+                post,
+                readiness[index] ??
+                  missingForumTipRecipientReadiness(post.author.actorRef),
+              ),
+            )
+          })
+    const tipStats =
+      ledgerDb === undefined
+        ? new Map<string, ForumPostTipStats>()
+        : yield* readForumPostTipStats(
+            db,
+            ledgerDb,
+            posts.map(post => post.postId),
+          )
     const topics = uniqueBy(
       visibleRows.map(topicFromPostListRow),
       topic => topic.topicId,
