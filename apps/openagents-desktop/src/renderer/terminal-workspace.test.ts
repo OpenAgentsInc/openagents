@@ -157,7 +157,7 @@ describe("terminalWorkspaceView (state -> component tree)", () => {
   test("empty state shows the honest empty copy and a New terminal control", () => {
     const view = terminalWorkspaceView(emptyTerminalWorkspaceState())
     expect(nodeByKey(view, "terminal-title")?.content).toBe("Terminal")
-    expect(nodeByKey(view, "terminal-empty")?._tag).toBe("Text")
+    expect(nodeByKey(view, "terminal-empty")?._tag).toBe("EmptyMessage")
     expect(nodeByKey(view, "terminal-new")?._tag).toBe("Button")
     expect(nodeByKey(view, "terminal-output-code")).toBeUndefined()
   })

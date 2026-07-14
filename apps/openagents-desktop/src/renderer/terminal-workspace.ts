@@ -18,6 +18,7 @@ import {
   Button,
   CodeBlock,
   ComponentValueBinding,
+  EmptyMessage,
   IntentRef,
   Spacer,
   Stack,
@@ -377,7 +378,8 @@ const sessionTab = (state: TerminalWorkspaceState, session: TerminalRendererSess
   Button({
     key: `terminal-tab-${session.sessionRef}`,
     label: `${session.cwdLabel} · ${session.status}`,
-    variant: session.sessionRef === state.activeRef ? "secondary" : "ghost",
+    variant: "ghost",
+    selected: session.sessionRef === state.activeRef,
     onPress: IntentRef("TerminalSelected", StaticPayload(session.sessionRef)),
     a11y: { label: `Select terminal ${session.sessionRef} (${session.status})` },
   })
@@ -506,11 +508,10 @@ export const terminalWorkspaceView = (state: TerminalWorkspaceState): View => {
         ? []
         : [Text({ key: "terminal-notice", content: state.notice, variant: "caption", color: "warning" })]),
       ...(session === null
-        ? [Text({
+        ? [EmptyMessage({
             key: "terminal-empty",
-            content: "No terminal open. Open one to run build, test, and dev-server commands in this workspace.",
-            variant: "body",
-            color: "textMuted",
+            icon: { name: "Terminal", tone: "secondary" },
+            title: "No terminal open. Open one to run build, test, and dev-server commands in this workspace.",
           })]
         : [
             ...(session.recovered
