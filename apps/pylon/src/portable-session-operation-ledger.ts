@@ -1,11 +1,15 @@
 import { createHash } from "node:crypto"
 import type { Database } from "bun:sqlite"
 import { Effect, Schema } from "effect"
-import {
-  PortableAgentGraphSchema,
-  PortableCheckpointSchema,
-  PortableSessionExecutionBindingSchema,
-} from "@openagentsinc/portable-session-contract"
+import { PylonPortableCheckpointBundleSchema } from "@openagentsinc/portable-session-contract"
+import type { PylonPortableCheckpointBundle } from "@openagentsinc/portable-session-contract"
+
+// The bundle wire shape lives in the runtime-neutral contract package so
+// non-Bun consumers (the Khala Sync server provisioner, the Worker typecheck
+// graph) never import this Bun-typed module for its types. Re-exported here
+// so existing Pylon-side importers keep their import paths.
+export { PylonPortableCheckpointBundleSchema } from "@openagentsinc/portable-session-contract"
+export type { PylonPortableCheckpointBundle } from "@openagentsinc/portable-session-contract"
 
 export const PYLON_PORTABLE_OPERATION_LEDGER_VERSION =
   "openagents.pylon.portable_operation_ledger.v1" as const
@@ -39,21 +43,6 @@ const PylonPortableOperationOutcomeSchema = Schema.Struct({
   graphDigest: Schema.optionalKey(Schema.String),
   cleanupReceiptRef: Schema.optionalKey(Schema.String),
 })
-
-const PylonPortableThreadCursorSchema = Schema.Struct({
-  threadRef: Schema.String,
-  transcriptRef: Schema.String,
-  activityCursor: Schema.Number,
-  eventCursor: Schema.Number,
-})
-
-export const PylonPortableCheckpointBundleSchema = Schema.Struct({
-  checkpoint: PortableCheckpointSchema,
-  executionBinding: PortableSessionExecutionBindingSchema,
-  graph: PortableAgentGraphSchema,
-  threadCursors: Schema.Array(PylonPortableThreadCursorSchema),
-})
-export type PylonPortableCheckpointBundle = typeof PylonPortableCheckpointBundleSchema.Type
 
 export type PylonPortableSessionFence = Readonly<{
   schema: typeof PYLON_PORTABLE_OPERATION_LEDGER_VERSION

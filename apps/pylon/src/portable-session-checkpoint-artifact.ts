@@ -3,8 +3,23 @@ import { chmod, lstat, mkdir, readFile, readlink, rename, rm, writeFile } from "
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
+import type { PylonPortableCheckpointBundle } from "@openagentsinc/portable-session-contract"
 
-import type { PylonPortableCheckpointBundle } from "./portable-session-operation-ledger.js"
+// The artifact resolver/store contract types live in the runtime-neutral
+// contract package so non-Bun consumers (the Khala Sync server provisioner,
+// the Worker typecheck graph) never import this Bun-typed module for its
+// types. Re-exported here so existing Pylon-side importers keep their paths.
+export type {
+  PortableCheckpointArtifact,
+  PortableCheckpointArtifactResolver,
+  PortableCheckpointArtifactResolverInput,
+  PortableCheckpointArtifactStore,
+} from "@openagentsinc/portable-session-contract"
+import type {
+  PortableCheckpointArtifact,
+  PortableCheckpointArtifactResolver,
+  PortableCheckpointArtifactResolverInput,
+} from "@openagentsinc/portable-session-contract"
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u
 const FORBIDDEN_PATH = /(?:^|\/)(?:\.env(?:\.(?!example$)[^/]*)?|auth\.json|credentials(?:\.json)?|id_(?:rsa|dsa|ecdsa|ed25519)|\.npmrc|\.pypirc)$/iu
@@ -21,33 +36,6 @@ export class PylonPortableCheckpointArtifactError extends Error {
     super(message)
   }
 }
-
-export type PortableCheckpointArtifactResolverInput = Readonly<{
-  ownerRef: string
-  targetRef: string
-  sessionRef: string
-  attachmentRef: string
-  generation: number
-  checkpointRef: string
-  bundle: PylonPortableCheckpointBundle
-}>
-
-export type PortableCheckpointArtifact = Readonly<{
-  artifactRef: string
-  digest: `sha256:${string}`
-  bytes: Uint8Array
-}>
-
-export type PortableCheckpointArtifactResolver = Readonly<{
-  resolve: (input: PortableCheckpointArtifactResolverInput) => Promise<PortableCheckpointArtifact>
-}>
-
-export type PortableCheckpointArtifactStore = PortableCheckpointArtifactResolver & Readonly<{
-  registerArtifact: (input: Readonly<{
-    bundle: PylonPortableCheckpointBundle
-    artifact: PortableCheckpointArtifact
-  }>) => Promise<void>
-}>
 
 type Source = Readonly<{
   bundle: PylonPortableCheckpointBundle

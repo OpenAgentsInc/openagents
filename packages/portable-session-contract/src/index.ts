@@ -214,6 +214,69 @@ export const PortableCheckpointSchema = S.Struct({
 })
 export type PortableCheckpoint = typeof PortableCheckpointSchema.Type
 
+/**
+ * One per-thread transcript/activity cursor inside a portable checkpoint
+ * bundle. Runtime-neutral wire shape shared by the Pylon operation ledger
+ * (producer) and the Khala Sync server's managed provisioner (consumer);
+ * moved here from `apps/pylon/src/portable-session-operation-ledger.ts` so
+ * runtime-neutral consumers do not import Bun-typed Pylon modules.
+ */
+export const PylonPortableThreadCursorSchema = S.Struct({
+  threadRef: S.String,
+  transcriptRef: S.String,
+  activityCursor: S.Number,
+  eventCursor: S.Number,
+})
+export type PylonPortableThreadCursor =
+  typeof PylonPortableThreadCursorSchema.Type
+
+/**
+ * The complete portable checkpoint bundle: the checkpoint record, its
+ * execution binding, the agent graph, and per-thread cursors. Produced by
+ * the Pylon operation ledger, consumed by portable-session destinations and
+ * the managed agent-computer provisioner.
+ */
+export const PylonPortableCheckpointBundleSchema = S.Struct({
+  checkpoint: PortableCheckpointSchema,
+  executionBinding: PortableSessionExecutionBindingSchema,
+  graph: PortableAgentGraphSchema,
+  threadCursors: S.Array(PylonPortableThreadCursorSchema),
+})
+export type PylonPortableCheckpointBundle =
+  typeof PylonPortableCheckpointBundleSchema.Type
+
+/** Input to a checkpoint artifact resolver: the exact source binding whose post-image is exported. */
+export type PortableCheckpointArtifactResolverInput = Readonly<{
+  ownerRef: string
+  targetRef: string
+  sessionRef: string
+  attachmentRef: string
+  generation: number
+  checkpointRef: string
+  bundle: PylonPortableCheckpointBundle
+}>
+
+export type PortableCheckpointArtifact = Readonly<{
+  artifactRef: string
+  digest: `sha256:${string}`
+  bytes: Uint8Array
+}>
+
+export type PortableCheckpointArtifactResolver = Readonly<{
+  resolve: (
+    input: PortableCheckpointArtifactResolverInput,
+  ) => Promise<PortableCheckpointArtifact>
+}>
+
+export type PortableCheckpointArtifactStore =
+  & PortableCheckpointArtifactResolver
+  & Readonly<{
+    registerArtifact: (input: Readonly<{
+      bundle: PylonPortableCheckpointBundle
+      artifact: PortableCheckpointArtifact
+    }>) => Promise<void>
+  }>
+
 export const PortableCapabilityKind = S.Literals([
   "provider",
   "scm_read",
