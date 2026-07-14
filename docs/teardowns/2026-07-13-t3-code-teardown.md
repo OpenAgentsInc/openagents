@@ -773,13 +773,13 @@ and a preview compiler. OpenAgents takes the contract, not the coupling.
    startup, and resource-finalization gates; patching the framework is a
    last resort with an upstream PR attached.
 
-### Proposed follow-on issue sequence (item 1 opened and landed; items 2–10 remain drafts)
+### Follow-on issue sequence (status ledger)
 
-The toolchain lanes above are filed (#8772–#8777). Item 1 below (ENV-1) is
-opened and implemented as
-[#8778](https://github.com/OpenAgentsInc/openagents/issues/8778); items 2–10
-remain drafted as an ordered issue sequence for owner review and are
-deliberately NOT opened yet.
+The toolchain lanes above are filed (#8772–#8777). Sequence status
+(2026-07-13, late): ENV-1 is landed (#8778); ENV-2, GIT-1, SIG-1, FEED-1,
+NPX-1, MAINT-1, and DMG-1 are opened (#8780–#8786) with implementation
+dispatched in collision-aware order; EVT-1 remains a draft; LIVE-1 is
+deprioritized to the end at owner direction.
 
 1. **remote(ENV-1): adopt the ExecutionEnvironment/AccessEndpoint vocabulary
    in the portable-sessions pathway.** **Opened and implemented as
@@ -797,7 +797,8 @@ deliberately NOT opened yet.
    `projects/repos/t3code/docs/architecture/remote.md`. Dependencies: none;
    vocabulary-first, unblocks ENV-2.
 2. **auth(ENV-2): DPoP-bound, scope-limited capability tokens for local
-   runtime sockets and Khala Sync device grants.** Replace the
+   runtime sockets and Khala Sync device grants.** **Opened as [#8780](https://github.com/OpenAgentsInc/openagents/issues/8780); implementation dispatched.**
+   Replace the
    password/env-token local-server pattern with per-client capability
    tokens carrying explicit scopes, RFC 8693-style token exchange, and DPoP
    proof-of-possession, so a leaked token is useless without the client
@@ -806,7 +807,8 @@ deliberately NOT opened yet.
    `projects/repos/t3code/docs/cloud/environment-auth.md` and
    `apps/server/src/auth/dpop.ts`. Dependencies: ENV-1 for the endpoint
    vocabulary the scopes attach to.
-3. **desktop(GIT-1): hidden-ref turn checkpoints.** Capture workspace
+3. **desktop(GIT-1): hidden-ref turn checkpoints.** **Opened as [#8781](https://github.com/OpenAgentsInc/openagents/issues/8781); implementation dispatched.**
+   Capture workspace
    checkpoints as hidden Git refs at turn boundaries via a reactor, with
    typed revert through the event model and no user-visible commits — the
    cheap, honest middle ground between nothing and Claude Code's full
@@ -815,7 +817,8 @@ deliberately NOT opened yet.
    `projects/repos/t3code/apps/server/src/checkpointing/CheckpointStore.ts`.
    Dependencies: none.
 4. **runtime(SIG-1): typed completion receipts for async pipelines as test
-   oracles.** Add a DrainableWorker/RuntimeReceiptBus-style seam so every
+   oracles.** **Opened as [#8782](https://github.com/OpenAgentsInc/openagents/issues/8782); implementation dispatched.**
+   Add a DrainableWorker/RuntimeReceiptBus-style seam so every
    async pipeline emits a typed milestone signal tests can await instead of
    polling — the deterministic-verification ergonomics OpenAgents' oracles
    need at the runtime seam. Owning surfaces: Runtime Gateway and the
@@ -824,30 +827,25 @@ deliberately NOT opened yet.
    `docs/architecture/overview.md` in the pinned clone. Dependencies: none;
    strengthens the oracles the later lanes rely on.
 5. **mcp(FEED-1): serve owned capabilities to wrapped harnesses over
-   MCP.** Build an OpenAgents MCP server that hands receipts, policy
+   MCP.** **Opened as [#8783](https://github.com/OpenAgentsInc/openagents/issues/8783); implementation dispatched.**
+   Build an OpenAgents MCP server that hands receipts, policy
    queries, fleet context, and preview tools to the Codex/Claude sessions
    we supervise, through the harnesses' native MCP support rather than
    forks, gated by provider-scoped bearer credentials. T3 reference:
    `projects/repos/t3code/apps/server/src/mcp/McpHttpServer.ts`.
    Dependencies: ENV-2 for the credential shape.
-6. **mobile(LIVE-1): lock-screen agent presence (Live Activities) for fleet
-   status.** Ship running-agent presence to the lock screen as typed status
-   projections only — never completion authority — following the second
-   incumbent signal (after Cursor Remote Control) that ambient mobile
-   supervision is a differentiating surface. Owning surfaces:
-   `apps/openagents-mobile` over Khala Sync projections. T3 reference:
-   `apps/mobile/src/widgets/AgentActivity.tsx` plus the relay APNs
-   pipeline. Dependencies: Khala Sync projection classes.
-7. **onboarding(NPX-1): zero-install front door — one npx-shaped command
+6. **onboarding(NPX-1): zero-install front door — one npx-shaped command
    boots the local runtime, migrates its store, prints a pairing URL with a
-   fragment token.** Give the local-first tier the entry point the night
+   fragment token.** **Opened as [#8784](https://github.com/OpenAgentsInc/openagents/issues/8784); implementation dispatched.**
+   Give the local-first tier the entry point the night
    addendum records: fully usable before any account exists, pairing gate
    on by default, auth staying an upgrade rather than a gate. Owning
    surfaces: the khala CLI / Pylon bootstrap. T3 reference: the observed
    `npx t3@latest` flow (night addendum). Dependencies: ENV-2 recommended
    so the pairing token is a scoped capability from day one.
-8. **fleet(MAINT-1): one-click provider install/update with ledger pinning
-   and provenance receipts.** Make harness install/update a typed
+7. **fleet(MAINT-1): one-click provider install/update with ledger pinning
+   and provenance receipts.** **Opened as [#8785](https://github.com/OpenAgentsInc/openagents/issues/8785); implementation dispatched.**
+   Make harness install/update a typed
    per-harness maintenance action (detect installed version, resolve
    channel, execute update, re-probe capability) surfaced as one click in
    Desktop Settings, with the two additions T3 does not show: version
@@ -855,8 +853,9 @@ deliberately NOT opened yet.
    receipt for the binary just swapped under the fleet. T3 reference: the
    driver maintenance resolvers in `apps/server/src/provider/Drivers/`.
    Dependencies: the component ledger; SIG-1-style receipts.
-9. **release(DMG-1): Gatekeeper release oracles — notarize+staple the DMG,
-   fail closed.** Mechanize the night-addendum rule: notarize the DMG
+8. **release(DMG-1): Gatekeeper release oracles — notarize+staple the DMG,
+   fail closed.** **Opened as [#8786](https://github.com/OpenAgentsInc/openagents/issues/8786); implementation dispatched.**
+   Mechanize the night-addendum rule: notarize the DMG
    (covering the nested app), staple the ticket to both artifacts, and gate
    publish on `codesign --verify --deep --strict` (app), `spctl -a -t open`
    on the image, `spctl -a -t exec` on the app, and `xcrun stapler
@@ -868,7 +867,7 @@ deliberately NOT opened yet.
    `scripts/release-preflight.ts`, `scripts/publish-release.ts` (CUT-26
    lane). Dependencies: none; the T3 DMG failure is live evidence of the
    cost.
-10. **protocol(EVT-1): version-negotiation audit of the provider-runtime
+9. **protocol(EVT-1): version-negotiation audit of the provider-runtime
     event vocabulary.** Compare the OpenAgents harness-adapter event union
     against T3's versioned `ProviderRuntimeEventV2`
     (`packages/contracts/src/providerRuntime.ts`) and add explicit
@@ -876,6 +875,16 @@ deliberately NOT opened yet.
     generated and version-negotiated where theirs is hand-written. Owning
     surfaces: the harness-adapter seam and its contract fixtures.
     Dependencies: none.
+10. **mobile(LIVE-1): lock-screen agent presence (Live Activities) for fleet
+   status.** **Deprioritized to the end of the sequence (owner direction
+  2026-07-13: not needed for a while); remains a draft.**
+   Ship running-agent presence to the lock screen as typed status
+   projections only — never completion authority — following the second
+   incumbent signal (after Cursor Remote Control) that ambient mobile
+   supervision is a differentiating surface. Owning surfaces:
+   `apps/openagents-mobile` over Khala Sync projections. T3 reference:
+   `apps/mobile/src/widgets/AgentActivity.tsx` plus the relay APNs
+   pipeline. Dependencies: Khala Sync projection classes.
 
 ## 18. Final assessment
 
