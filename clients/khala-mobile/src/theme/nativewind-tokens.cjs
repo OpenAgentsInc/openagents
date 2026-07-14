@@ -1,8 +1,8 @@
 // Frozen token snapshot for the deprecated Khala mobile client.
 //
 // This package is migration source only. Keeping its historical visual values
-// local prevents the frozen client from constraining the active
-// `@openagentsinc/ui` package while parity extraction finishes.
+// local preserves the deprecated client's parity evidence after the legacy
+// `@openagentsinc/ui` package was retired.
 const khalaMobileNativeWindTokens = {
   colors: {
     bg: "#02060d",

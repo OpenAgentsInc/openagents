@@ -15,8 +15,8 @@ export, Khala Sync read models through `@openagentsinc/khala-sync-db-collection`
 and self-hosted OTA through OpenAgents Updates. NativeWind 4 currently requires
 Tailwind 3 plus a CommonJS-readable Tailwind config at Metro build time, so this
 mobile package pins a local Tailwind 3 compiler. Its historical token values
-are frozen under `src/theme/nativewind-tokens.cjs`; the deprecated client no
-longer constrains or imports the active `@openagentsinc/ui` package.
+are frozen under `src/theme/nativewind-tokens.cjs`; the deprecated client does
+not depend on the retired `@openagentsinc/ui` package.
 
 Metro also carries a local resolver shim for this monorepo's TypeScript
 packages: shared packages use NodeNext `.js` import specifiers while source
