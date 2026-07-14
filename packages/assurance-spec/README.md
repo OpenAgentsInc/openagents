@@ -176,3 +176,32 @@ turn `proposed`, `needs_design`, or `not run` into pass state.
 
 The architecture and authority boundaries live in
 [`../../docs/assurance/ASSURANCE_SPEC.md`](../../docs/assurance/ASSURANCE_SPEC.md).
+
+## Starter kit and owned-runner gate
+
+`starter-kit/` is a one-commit adoption example: ProductSpec, proposed
+AssuranceSpec, the short agent contract, and a typed
+`assurance/owned-runner.json`. Run it locally or on OpenAgents-owned compute:
+
+```sh
+assurance-spec owned-runner assurance/owned-runner.json --root . --json
+```
+
+Structural validation and stale committed session pins block. The three
+ledgers remain informational; the runner never computes or gates on a blended
+percentage. Its schema requires `github_hosted_ci: false`. No GitHub Actions
+workflow is shipped because the OpenAgents repository forbids hosted CI.
+
+Distribution readiness is independently reproducible:
+
+```sh
+bun run --cwd packages/assurance-spec pack:public -- --out /tmp/assurance-pack
+bun run --cwd packages/assurance-spec verify:distribution
+```
+
+The packager rewrites monorepo-only dependency protocols to concrete versions,
+packs ProductSpec before AssuranceSpec, records SHA-256 tarball receipts, then
+the verifier installs the exact tarballs offline in a clean temporary checkout
+and runs the starter gate. This proves packaging, not npm publication. Live npm
+publication remains a separately authenticated owner action and must preserve
+the recorded package order.

@@ -27,7 +27,9 @@ import {
   inventoryRepository,
   parseAssuranceSpec,
   proposeAssuranceSpec,
+  readOwnedRunnerConfig,
   runAssuranceSpecMcpServer,
+  runOwnedRunnerVerification,
   runTool,
   validateAssuranceSpec,
   type AssuranceToolError,
@@ -49,6 +51,7 @@ const usage = (): never => {
   console.error("  assurance-spec checklist <file.assurance-spec.md> [--criterion <id>] [--root <dir>] [--json]")
   console.error("  assurance-spec claim <file.assurance-spec.md> [--claim <text>] [--root <dir>] [--json]")
   console.error("  assurance-spec agent-run ingest <file.agent-run.json> [--root <dir>] [--json]")
+  console.error("  assurance-spec owned-runner <assurance/owned-runner.json> [--root <dir>] [--json]")
   console.error("  assurance-spec mcp [--root <dir>]")
   console.error("")
   console.error("exit codes: 0 success · 1 operation failure · 2 usage error · 3 stale session")
@@ -419,6 +422,31 @@ const agentRunIngest = (args: ReadonlyArray<string>): void => {
   for (const gap of evidence.gaps) console.log(`  gap ${gap.code}: ${gap.message}`)
 }
 
+const ownedRunner = (args: ReadonlyArray<string>): void => {
+  const [path] = positional(args, 1)
+  if (path === undefined) usage()
+  const json = jsonFlag(args)
+  const root = resolve(flagValue(args, "--root") ?? process.cwd())
+  try {
+    const receipt = runOwnedRunnerVerification(root, readOwnedRunnerConfig(root, path))
+    if (json) printJson(receipt)
+    else {
+      console.log(`owned runner ${receipt.blocking_verdict} · ${receipt.specs.length} AssuranceSpecs`)
+      for (const spec of receipt.specs) {
+        console.log(`  ${spec.path} structural=${spec.structurally_valid} traceable=${spec.traceability?.traceable_criteria ?? "-"}/${spec.traceability?.total_criteria ?? "-"} executed=${spec.execution?.executed_obligations ?? "-"}/${spec.execution?.total_obligations ?? "-"}`)
+      }
+      console.log("  ledgers are informational and never a threshold gate")
+      console.log("  execution authority: OpenAgents-owned runner; GitHub-hosted CI: disabled")
+    }
+    if (receipt.blocking_verdict === "fail") process.exit(1)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (json) printJson({ ok: false, code: "invalid_owned_runner_config", message })
+    else console.error(`invalid_owned_runner_config: ${message}`)
+    process.exit(1)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
@@ -445,5 +473,6 @@ else if (command === "agent-run") {
   if (subcommand === "ingest") agentRunIngest(rest)
   else usage()
 }
+else if (command === "owned-runner") ownedRunner(args)
 else if (command === "mcp") runAssuranceSpecMcpServer(flagValue(args, "--root"))
 else usage()

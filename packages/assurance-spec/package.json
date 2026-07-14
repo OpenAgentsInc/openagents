@@ -14,6 +14,7 @@
   "files": [
     "src",
     "skills",
+    "starter-kit",
     "README.md"
   ],
   "publishConfig": {
@@ -22,7 +23,9 @@
   "scripts": {
     "assure:mvp": "bun scripts/run-mvp-assurance.ts",
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pack:public": "bun scripts/pack-public.ts",
+    "verify:distribution": "bun scripts/verify-distribution.ts"
   },
   "dependencies": {
     "@openagentsinc/product-spec": "workspace:*",

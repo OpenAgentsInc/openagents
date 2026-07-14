@@ -260,7 +260,7 @@ What a third-party repo (or one of our sibling repos — `effect-native`,
 docs/product-specs/<name>.product-spec.md        intent (ProductSpec, upstream conventions)
 assurance/<name>.assurance-spec.md               proof design
 assurance/environments/<env>.assurance-environment.json   (when profiles exist)
-.github/workflows/assurance.yml                  validate + coverage in CI
+assurance/owned-runner.json                      validate + informational ledgers
 AGENTS.md / CLAUDE.md                            one stanza, below
 ```
 
@@ -284,25 +284,30 @@ rounding up — `not_run` is a normal, honest state. Validate with
 Never edit oracles, falsifiers, or `lifecycle_state` to make work pass.
 ```
 
-CI (composite action later; plain workflow first):
+Owned-runner gate (local and OpenAgents-owned infrastructure use the same
+command):
 
-```yaml
-# .github/workflows/assurance.yml
-- run: bunx @openagentsinc/assurance-spec validate assurance/*.assurance-spec.md
-- run: bunx @openagentsinc/assurance-spec ledgers assurance/*.assurance-spec.md --json
+```sh
+bunx @openagentsinc/assurance-spec owned-runner assurance/owned-runner.json --root . --json
 ```
 
-`validate` failing blocks; `ledgers` output is posted as evidence, never as a
-gate — coverage counts are information, and gating on "ready percentage" would
-be exactly the rounded-up number Law 7 forbids. A digest-staleness check
-(`session check --against` a committed pin, exit 3) is the third CI step once
-repos start committing session pins beside long-running branches.
+The typed configuration fixes `github_hosted_ci: false`,
+`validation_blocks: true`, and `ledgers_are_informational: true`. Validation or
+a stale committed session pin blocks; ledger counts remain information and
+never become a threshold. Gating on a "ready percentage" would be exactly the
+rounded-up number Law 7 forbids.
 
-Prerequisite honesty: this section assumes npm publication of
-`@openagentsinc/assurance-spec`, which has deliberately **not** happened
-(GAP_ANALYSIS.md §7 — wait out the first dogfood revision). Until then the
-starter kit works only for repos inside this monorepo via workspace refs, and
-that is fine: our own sibling repos are the right first adopters anyway.
+This replaces the earlier proposed `.github/workflows/assurance.yml`. The root
+OpenAgents invariant prohibits GitHub-hosted Actions; AssuranceSpec cannot
+grant itself an exception. A downstream adopter may invoke the same command on
+infrastructure it owns, but the starter kit ships no hosted workflow.
+
+The committed kit and exact public tarballs now pass an offline clean-checkout
+proof. npm publication still has deliberately **not** happened: it is an
+owner-authenticated registry mutation, and this machine has no npm session.
+The packager resolves `workspace:` and `catalog:` protocols to concrete public
+versions, publishes ProductSpec before AssuranceSpec, and records exact
+tarball digests so readiness is testable without claiming publication.
 
 ## 6. Sequencing against the AS ladder
 
@@ -316,7 +321,7 @@ them into pretending. Mapping:
 | **AT-3** | Dual-digest sessions: `intent_digest` in pins, `evidence_index_changed` classification in `check_assurance_session`. | PSEL-0 (structured items + intent digest in `packages/product-spec`). | PSEL-0/AS-1 |
 | **AT-4** | `assurancespec-work` skill + Desktop builtin installation; `get_environments` reads real Environment Profiles. | First admitted spec + `ENV-OA-LOCAL-BUN-1` profile (AS-MVP-2/3). | AS-2 |
 | **AT-5** | `check_completion_claim` and `ledgers` consume real receipts; obligation×environment ledger shows actual `CONFIRMED`/`REFUTED`/`INCONCLUSIVE`; staleness/freshness axes go live. | Compiler + first adapter + receipt bridge (AS-2/AS-3, AS-MVP-4…7). | AS-3 |
-| **AT-6** | Public starter kit + npm + composite GitHub Action + installable skills for third-party repos. | Post-dogfood format stability. | AS-5 |
+| **AT-6** | Public starter kit + typed OpenAgents-owned runner gate + concrete tarball/clean-checkout proof + installable skills. npm publication is the remaining owner-authenticated registry step; GitHub-hosted Actions are prohibited. | Post-dogfood format stability. | AS-5 |
 
 **The first shippable slice is AT-1**, and its definition of done is concrete:
 `assurance-spec mcp --root .` running against this repo lets an agent pin a
