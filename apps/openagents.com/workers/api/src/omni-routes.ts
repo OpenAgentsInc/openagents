@@ -23,16 +23,6 @@ type OmniDetailRouteHandler = (
 type OmniRouteDependencies = Readonly<{
   handleAutopilotFleetApi: OmniSessionRouteHandler
   handleAutopilotTokenLeaderboardsApi: OmniSessionRouteHandler
-  handleBillingCheckoutApi: OmniSessionRouteHandler
-  handleBillingInferenceCreditApi: OmniSessionRouteHandler
-  handleBillingAutoTopUpPolicyApi: OmniSessionRouteHandler
-  handleBillingAutoTopUpRunApi: OmniSessionRouteHandler
-  handleBillingCouponRedeemApi: OmniSessionRouteHandler
-  handleBillingSummaryApi: OmniSessionRouteHandler
-  handleBillingStripeCheckoutReturnApi: OmniSimpleRouteHandler
-  handleBillingStripeSetupIntentApi: OmniSessionRouteHandler
-  handleBillingStripeSetupIntentSaveApi: OmniSessionRouteHandler
-  handleBillingStripeWebhookApi: OmniSimpleRouteHandler
   handleEmailResendWebhookApi: OmniSimpleRouteHandler
   handleOmniAgentRunDetailApi: OmniDetailRouteHandler
   handleOmniAgentRunEventsApi: OmniDetailRouteHandler
@@ -46,14 +36,6 @@ type OmniRouteDependencies = Readonly<{
     runId: string,
   ) => RouteEffect
   handleOmniOperatorAgentRunsApi: (request: Request, env: OpenAgentsWorkerEnv) => RouteEffect
-  handleOmniOperatorBillingCreditsApi: (
-    request: Request,
-    env: OpenAgentsWorkerEnv,
-  ) => RouteEffect
-  handleOmniOperatorInferenceCreditApi: (
-    request: Request,
-    env: OpenAgentsWorkerEnv,
-  ) => RouteEffect
   handleOmniOperatorDeploymentsApi: (request: Request, env: OpenAgentsWorkerEnv) => RouteEffect
   handleOmniOperatorFleetApi: (request: Request, env: OpenAgentsWorkerEnv) => RouteEffect
   handleOmniOperatorTeamChatMessagesApi: (
@@ -83,59 +65,6 @@ export const makeOmniRoutes = (dependencies: OmniRouteDependencies) => ({
       )
     }
 
-    if (url.pathname === '/api/billing/summary') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingSummaryApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/coupons/redeem') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingCouponRedeemApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/checkout') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingCheckoutApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/inference-credit') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingInferenceCreditApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/auto-top-up-policy') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingAutoTopUpPolicyApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/auto-top-up/run') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingAutoTopUpRunApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/stripe/setup-intents') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingStripeSetupIntentApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/stripe/setup-intents/save') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingStripeSetupIntentSaveApi(request, env, ctx),
-      )
-    }
-
-    if (url.pathname === '/api/billing/stripe/webhook') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingStripeWebhookApi(request, env),
-      )
-    }
 
     if (url.pathname === '/api/webhooks/resend') {
       return routeEffectOrResponse(
@@ -143,11 +72,6 @@ export const makeOmniRoutes = (dependencies: OmniRouteDependencies) => ({
       )
     }
 
-    if (url.pathname === '/api/billing/stripe/checkout-return') {
-      return routeEffectOrResponse(
-        dependencies.handleBillingStripeCheckoutReturnApi(request, env),
-      )
-    }
 
     if (url.pathname === '/api/omni/operator/fleet') {
       return routeEffectOrResponse(
@@ -161,17 +85,6 @@ export const makeOmniRoutes = (dependencies: OmniRouteDependencies) => ({
       )
     }
 
-    if (url.pathname === '/api/omni/operator/billing/credits') {
-      return routeEffectOrResponse(
-        dependencies.handleOmniOperatorBillingCreditsApi(request, env),
-      )
-    }
-
-    if (url.pathname === '/api/omni/operator/billing/inference-credit') {
-      return routeEffectOrResponse(
-        dependencies.handleOmniOperatorInferenceCreditApi(request, env),
-      )
-    }
 
     if (url.pathname === '/api/omni/operator/agent-runs') {
       return routeEffectOrResponse(
