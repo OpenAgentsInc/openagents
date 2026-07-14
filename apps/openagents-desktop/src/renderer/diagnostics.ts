@@ -271,7 +271,7 @@ export const diagnosticsView = (state: DiagnosticsState): View => {
     radius: "lg",
     style: {
       width: "full",
-      maxWidth: 840,
+      maxWidth: "2xl",
       alignSelf: "center",
       backgroundColor: "surfaceRaised",
       borderColor: "borderSubtle",

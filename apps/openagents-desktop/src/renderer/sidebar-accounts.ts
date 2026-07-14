@@ -110,7 +110,7 @@ const sidebarAccountMeter = (fleet: FleetWorkspaceState, account: FleetAccount):
       label: `${account.ref}: ${bar.detail}`,
       style: {
         width: "full",
-        height: 4,
+        height: "4xs",
         borderRadius: "full",
         backgroundColor: "stateSelected",
       },
@@ -128,7 +128,7 @@ const sidebarAccountMeter = (fleet: FleetWorkspaceState, account: FleetAccount):
         label: `${account.ref}: ${bar.reason}`,
         style: {
           width: "full",
-          height: 4,
+          height: "4xs",
           borderRadius: "full",
           backgroundColor: "borderSubtle",
           opacity: 0.45,

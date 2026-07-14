@@ -231,7 +231,7 @@ const selectedObligationDetail = (
   const repository = projection.document.repositoryInventory
   const missing = missingObligationDesignFields(obligation)
   return Stack({ key: "assurance-obligation-detail", direction: "column", gap: "3", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
-    Stack({ key: "assurance-obligation-detail-scroll", direction: "column", gap: "3", style: { flex: 1, minWidth: 0, minHeight: 0, maxWidth: 840 } }, [
+    Stack({ key: "assurance-obligation-detail-scroll", direction: "column", gap: "3", style: { flex: 1, minWidth: 0, minHeight: 0, maxWidth: "2xl" } }, [
       Stack({ key: "assurance-obligation-identity", direction: "row", gap: "2", align: "center", style: { width: "full", minWidth: 0 } }, [
         Badge({ key: "assurance-selected-criterion", label: obligation.criterion_refs.join(", "), tone: "info" }),
         Text({ key: "assurance-selected-obligation", content: obligation.id, variant: "caption", color: "textFaint" }),
@@ -342,14 +342,14 @@ export const assuranceSpecDocumentView = (
       panes: [
         {
           id: "assurance-obligations",
-          min: 240,
-          max: 400,
-          size: 320,
+          min: "sm",
+          max: "lg",
+          size: "md",
           content: obligationNavigator(projection, obligation.id),
         },
         {
           id: "assurance-detail",
-          min: 360,
+          min: "md",
           content: selectedObligationDetail(projection, obligation),
         },
       ],

@@ -552,7 +552,7 @@ export const productSpecWorkspaceView = (
       : projection.state === "invalid" ? [Stack({ key: "product-spec-invalid", direction: "column", gap: "1", style: { width: "full" } }, [
         Badge({ key: "product-spec-invalid-badge", label: "Not executable", tone: "danger" }),
         Text({ key: "product-spec-invalid-path", content: projection.relativePath, variant: "caption", color: "textMuted" }),
-        TextField({ key: "product-spec-invalid-source", value: projection.sourceMarkdown, multiline: true, disabled: true, a11y: { label: "Invalid ProductSpec source" }, style: { width: "full", minHeight: 240 } }),
+        TextField({ key: "product-spec-invalid-source", value: projection.sourceMarkdown, multiline: true, disabled: true, a11y: { label: "Invalid ProductSpec source" }, style: { width: "full", minHeight: "sm" } }),
         ...projection.errors.map((issue, index) => Text({ key: `product-spec-error-${index}`, content: `${issue.path === undefined ? "" : `${issue.path} · `}${issue.code}: ${issue.message}`, variant: "body", color: "danger" })),
         ...projection.warnings.map((issue, index) => Text({ key: `product-spec-warning-${index}`, content: `${issue.path === undefined ? "" : `${issue.path} · `}${issue.code}: ${issue.message}`, variant: "caption", color: "warning" })),
       ])]
@@ -564,7 +564,7 @@ export const productSpecWorkspaceView = (
           ]),
           Text({ key: "product-spec-spec-ref", content: `Spec: ${projection.identity.specRef}`, variant: "caption", color: "textMuted" }),
           Text({ key: "product-spec-digest", content: projection.identity.digest, variant: "caption", color: "textMuted" }),
-          TextField({ key: "product-spec-edit-draft", value: workspace.editDraft, multiline: true, disabled: busy || runNeedsDisposition, a11y: { label: "ProductSpec revision draft" }, onChange: IntentRef("ProductSpecEditDraftChanged", ComponentValueBinding()), style: { width: "full", minHeight: 240 } }),
+          TextField({ key: "product-spec-edit-draft", value: workspace.editDraft, multiline: true, disabled: busy || runNeedsDisposition, a11y: { label: "ProductSpec revision draft" }, onChange: IntentRef("ProductSpecEditDraftChanged", ComponentValueBinding()), style: { width: "full", minHeight: "sm" } }),
           ...(runNeedsDisposition ? [Stack({ key: "product-spec-run-reconciliation", direction: "column", gap: "2", style: { width: "full", padding: "3", backgroundColor: "surfaceRaised", borderRadius: "md" } }, [
             Text({ key: "product-spec-edit-run-lock", content: workspace.run!.plan.state === "revision_mismatch" ? "ProductSpec identity changed. New dispatch is stopped until this old plan is explicitly superseded or cancelled." : "Finish, supersede, or cancel the accepted run before revising this ProductSpec.", variant: "body", color: "warning" }),
             Text({ key: "product-spec-run-reconciliation-identity", content: `Old identity: revision ${workspace.run!.spec.revision} · ${workspace.run!.spec.digest}`, variant: "caption", color: "textMuted" }),

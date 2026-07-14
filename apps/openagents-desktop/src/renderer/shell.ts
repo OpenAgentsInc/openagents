@@ -2266,7 +2266,7 @@ const text = (
 ): TextView => Text({ key, content, variant, color })
 
 /** The comfortable desktop reading measure shared by conversation + composer. */
-const columnWidth = 840
+const columnWidth = "2xl" as const
 
 /**
  * Real v29 chat rows: sender label and timestamp are typed message data — the
@@ -3203,14 +3203,14 @@ const workspaceFiles = (state: DesktopShellState): View =>
     panes: [
       {
         id: "workspace-files-browser",
-        min: 320,
-        max: 560,
-        size: 400,
+        min: "md",
+        max: "xl",
+        size: "lg",
         content: workspaceBrowserView(state.workspaceBrowser),
       },
       {
         id: "workspace-files-editor",
-        min: 360,
+        min: "md",
         content: workspaceEditorView(state.workspaceEditor, {
           attachToChat: IntentRef("DesktopEditorFileAttached"),
         }),
@@ -3235,7 +3235,7 @@ const workspaceReview = (state: DesktopShellState): View => {
 // 840px reading measure, title-scale section headings.
 const settingsPanelStyle = {
   width: "full" as const,
-  maxWidth: 840,
+  maxWidth: "2xl" as const,
   alignSelf: "center" as const,
   backgroundColor: "surfaceRaised" as const,
   borderColor: "borderSubtle" as const,
@@ -3621,8 +3621,8 @@ const composerImageThumbnail = (attachment: ComposerImageAttachment): View =>
         key: `composer-image-preview-${attachment.id}`,
         source: composerImageDataUrl(attachment),
         alt: attachment.name,
-        width: 56,
-        height: 56,
+        width: "3xs",
+        height: "3xs",
         fit: "cover",
         style: { borderRadius: "sm" },
       }),
@@ -3885,7 +3885,7 @@ const shellComposer = (state: DesktopShellState): View => {
         // Generous multiline input (OpenCode min-h-[52px] editor). 64px min
         // height gives a comfortable ~3-line composer; the textarea soft-wraps
         // and scrolls internally past that.
-        style: { width: "full", minHeight: 64 },
+        style: { width: "full", minHeight: "2xs" },
       }),
       // BOTTOM ACTION BAR inside the same container: [+ attach] [Fable|Codex]
       // …spacer… [circular send / stop].
@@ -3929,7 +3929,7 @@ const commandPalette = (state: DesktopShellState): View => {
       radius: "xl",
       style: {
         width: "full",
-        maxWidth: 420,
+        maxWidth: "lg",
         backgroundColor: "surfaceOverlay",
         borderColor: "borderSubtle",
         borderWidth: 1,
@@ -3977,11 +3977,12 @@ const commandPalette = (state: DesktopShellState): View => {
                     : IntentRef(command.intentName, StaticPayload(command.payload)),
                   a11y: { label: chord === null ? command.label : `${command.label} (${chord})` },
                 }),
-                ...(chord === null ? [] : [Text({
+                ...(chord === null ? [] : [Badge({
                   key: `desktop-command-chord-${command.id}`,
-                  content: chord,
-                  variant: "caption",
-                  color: "textFaint",
+                  label: chord,
+                  tone: "neutral",
+                  variant: "outline",
+                  size: "sm",
                 })]),
               ],
             )
@@ -4137,13 +4138,13 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
     panes: [
       {
         id: "chat-center",
-        min: 360,
+        min: "md",
         content: Stack(
           { key: "chat-center-column", direction: "column", gap: "3", style: { flex: 1, minWidth: 0, minHeight: 0 } },
           [transcript, shellComposer(state)],
         ),
       },
-      { id: "chat-context-pane", min: 280, max: 480, size: state.chatContextWidth, content: rightRail },
+      { id: "chat-context-pane", min: "md", max: "lg", size: state.chatContextWidth, content: rightRail },
     ],
   })]
 }

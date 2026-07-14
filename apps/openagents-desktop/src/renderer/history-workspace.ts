@@ -522,6 +522,7 @@ const proseRow = (item: CodexHistoryItem): View =>
           [IconButton({
             key: `history-item-details-${item.itemRef}`,
             icon: "InfoCircle",
+            size: "sm",
             accessibilityLabel: `Show item details, ${item.label} message, source item ${item.sequence + 1}`,
             onPress: IntentRef("HistoryItemSelected", StaticPayload(item.itemRef)),
           })],
@@ -617,5 +618,5 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
         : []),
     ]),
   ])
-  return SplitPane({ key: "history-workspace-split", orientation: "row", style: { flex: 1, minWidth: 0, minHeight: 0 }, onCollapseToggle: IntentRef("HistoryInspectorToggled"), panes: [{ id: "history-center", min: 360, content: center }, { id: "history-inspector", min: 280, max: 480, size: 336, collapsed: state.railCollapsed, content: inspector(state) }] })
+  return SplitPane({ key: "history-workspace-split", orientation: "row", style: { flex: 1, minWidth: 0, minHeight: 0 }, onCollapseToggle: IntentRef("HistoryInspectorToggled"), panes: [{ id: "history-center", min: "md", content: center }, { id: "history-inspector", min: "md", max: "lg", size: "md", collapsed: state.railCollapsed, content: inspector(state) }] })
 }

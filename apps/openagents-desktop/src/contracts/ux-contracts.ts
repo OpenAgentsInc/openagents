@@ -6,8 +6,40 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-14.4",
+    version: "2026-07-14.5",
     contracts: [
+      {
+        contractId: "openagents_desktop.design.apps_sdk_starcraft_harmonization.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "desktop design system",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-14" },
+        statement:
+          "ALL styles harmonized with apps-sdk-ui while preserving our starcraft design",
+        authorityBoundary:
+          "OpenAgents Desktop composes the Effect Native catalog's typed components, variants, and shared token scales for component appearance while app.css is restricted to Electron host physics: viewport geometry, containment, scrolling, overlays, responsive adaptation, and reduced-motion policy. The only desktop theme is the dark khalaTheme with Protoss blue (#3b82f6) as primary. This contract grants no new runtime, filesystem, provider, payment, or network authority and does not authorize one-off component recipes outside the typed catalog.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/app.css",
+          "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+          "apps/openagents-desktop/src/renderer/theme.ts",
+          "docs/fable/2026-07-14-desktop-ui-harmonization-screenshot-receipt.md",
+          "github:OpenAgentsInc/openagents#8811",
+        ],
+        oracles: [
+          {
+            id: "desktop_design.catalog_and_host_physics_boundary",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            description:
+              "Proves renderer source has no raw colors or non-token sizing recipes, app.css stays within the bounded host-physics vocabulary, typed catalog components own component appearance, and the dark khalaTheme retains the canonical Protoss-blue primary.",
+          },
+        ],
+        verification:
+          "Desktop design-conformance and full test sweeps, typecheck, production build, built-Electron smoke, and screenshot receipts enforce the catalog/host boundary without widening product authority.",
+      },
       {
         contractId: "openagents_desktop.mvp.assurance_surface_congruence.v1",
         state: "enforced",

@@ -1557,7 +1557,7 @@ export const settingsView = (settings: SettingsState): View => {
       radius: "lg",
       style: {
         width: "full",
-        maxWidth: 840,
+        maxWidth: "2xl",
         alignSelf: "center",
         backgroundColor: "surfaceRaised",
         borderColor: "borderSubtle",

@@ -1,15 +1,10 @@
 /*
- * Desktop host stylesheet (#8574, EP250 #8712 chrome pass).
+ * OpenAgents Desktop host physics.
  *
- * The application is entirely Effect Native: every color, radius, spacing,
- * type, motion, and elevation value in this file resolves through the
- * `--en-*` custom properties the DOM renderer lowers from
- * `@effect-native/tokens` khalaTheme. This file carries ONLY host-level
- * layout physics and the chrome behaviors the closed catalog cannot yet
- * express (hover reveals, keyframe motion, scroll wells) — never a second
- * palette, never Tailwind class strings. Conformance is enforced by
- * design-conformance.test.ts (no raw color literals outside the tokens
- * module).
+ * Component appearance belongs to Effect Native's typed catalog and the
+ * render-dom component-token tier. This sheet is intentionally limited to
+ * Electron viewport geometry, split-pane/scroll containment, overlay
+ * placement, responsive host adaptation, and motion-accessibility overrides.
  */
 
 :root {
@@ -22,12 +17,10 @@
 
 html,
 body {
-  margin: 0;
-  min-width: 0;
   height: 100%;
+  min-width: 0;
+  margin: 0;
   overflow: hidden;
-  /* Pre-boot frame color comes from the BrowserWindow backgroundColor
-     (khala background); once the renderer stylesheet lands these vars win. */
   background: var(--en-color-background);
   color: var(--en-color-textPrimary);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -36,9 +29,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* The typed Effect Native BackgroundGradient owns the backdrop scene. */
 body::before,
-body::after { content: none; }
+body::after {
+  content: none;
+}
 
 button,
 input,
@@ -64,10 +58,6 @@ textarea {
   border-radius: 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* Core app frame                                                      */
-/* ------------------------------------------------------------------ */
-
 [data-en-key="shell-root"] {
   width: 100% !important;
   max-width: none;
@@ -85,10 +75,6 @@ textarea {
   overflow: hidden;
 }
 
-/* macOS integrated chrome: the native gray titlebar is hidden. This spacer
-   gives the traffic lights one control-sized row over the existing blue
-   sidebar and doubles as the window drag handle. It is deliberately absent
-   on other platforms, where the host still owns its normal frame. */
 html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   content: "";
   display: block;
@@ -97,36 +83,12 @@ html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   -webkit-app-region: drag;
 }
 
-[data-en-key="sidebar-brand"] {
-  margin: 0;
-  padding: 0;
-  line-height: var(--en-type-title-lineHeight) !important;
-  font-size: var(--en-type-label-fontSize) !important;
-  font-weight: 600 !important;
-  letter-spacing: -0.02em;
-}
-
-[data-en-key="sidebar-brand-row"] {
-  min-height: 24px;
-  padding-top: var(--en-spacing-2);
-  align-items: center !important;
-}
-
-[data-en-key="sidebar-brand-icon"] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-}
-
-[data-en-key="sidebar-navigation"] {
+[data-en-key="sidebar-navigation"],
+[data-en-key="sidebar-history-list"] {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: hidden !important;
 }
 
-/* Workspace dock: icon-only nav items on the shared control lattice
-   (controlLg 32px). Rest/hover/selected fills come from the renderer's
-   alpha-overlay state engine; the dock only sizes and hides labels. */
 [data-en-key="sidebar-workspace-dock"] {
   display: flex;
   flex: 0 0 auto;
@@ -135,15 +97,14 @@ html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   margin: 0 0 var(--en-spacing-1);
 }
 
+/* Horizontal dock is an icon strip; labels remain accessible through each
+   item's aria-label. This is host navigation geometry, not button chrome. */
 [data-en-key="sidebar-workspace-dock"] > button {
-  display: inline-flex !important;
   flex: 0 0 var(--en-control-lg-height);
-  align-items: center;
   justify-content: center;
   width: var(--en-control-lg-height) !important;
   height: var(--en-control-lg-height) !important;
   padding: 0;
-  border-radius: var(--en-radius-lg) !important;
 }
 
 [data-en-key="sidebar-workspace-dock"] > button [data-en-role="label"] {
@@ -154,23 +115,12 @@ html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   clip-path: inset(50%);
 }
 
-/* History list rows: quiet 24px text rows; hover/selected ride the
-   renderer's stateHover/stateSelected engine, with the 2px accent inset
-   marking the selected thread. */
-[data-en-key^="sidebar-thread-"][data-en-tag="Button"] {
-  justify-content: flex-start;
+[data-en-key^="sidebar-thread-"] {
   flex: 0 0 auto;
-  min-height: 24px;
-  padding: var(--en-spacing-0\.5) var(--en-spacing-1) !important;
-  border: 0 !important;
-  border-radius: var(--en-radius-md) !important;
-  font-size: var(--en-type-label-fontSize);
-  text-align: left !important;
-  min-width: 0;
   width: 100%;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 [data-en-key^="sidebar-thread-"] > [data-en-role="label"] {
@@ -180,192 +130,89 @@ html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   white-space: nowrap;
 }
 
-[data-en-key^="sidebar-thread-"][data-en-active="true"] {
-  box-shadow: inset 2px 0 var(--en-color-accent);
+[data-en-key^="sidebar-thread-"] > [data-en-role="meta"] {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 [data-en-key="sidebar-history-list"] {
-  display: flex;
   flex: 1 1 0;
-  flex-direction: column;
   width: 100%;
   min-height: 0;
-  overflow-x: hidden !important;
   overflow-y: auto !important;
   scrollbar-gutter: stable;
-  margin: 0;
-  padding: 0;
-}
-
-[data-en-key^="sidebar-thread-"] > [data-en-role="meta"] {
-  margin-left: auto;
-  flex: 0 0 auto;
-  padding: var(--en-spacing-0\.5) 0;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  color: var(--en-color-textFaint) !important;
-  font-size: var(--en-type-caption-fontSize) !important;
-  text-align: right !important;
 }
 
 [data-en-key="shell-main"] {
   position: relative;
+  width: 0;
   min-width: 0;
   min-height: 0;
-  width: 0;
   overflow: hidden;
 }
 
-/* Settings is a bounded workspace, not a page that expands beneath the
-   hidden body viewport. It owns the vertical scroll well so every account,
-   extension, update, shortcut, and diagnostics control stays reachable. */
 [data-en-key="desktop-settings-stack"] {
   flex: 1 1 0 !important;
+  width: 100%;
   height: 0 !important;
   min-height: 0 !important;
+  align-items: center;
+  padding: var(--en-spacing-4) var(--en-spacing-6) var(--en-spacing-8);
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  /* UX-4 (#8790) design pass: settings panels read as one centered column
-     with breathing room instead of edge-to-edge stacked cards. */
-  align-items: center;
-  padding: var(--en-spacing-4) var(--en-spacing-6) var(--en-spacing-8);
 }
-
-/* ------------------------------------------------------------------ */
-/* Transient command notice: a compact warn TOAST floated at the top-  */
-/* center of the main pane with overlay elevation — never the old raw  */
-/* full-width top-edge banner. Auto-dismiss + immediate × dismiss are  */
-/* owned by the typed command-notice controller / intent; this recipe  */
-/* only positions and elevates the render-dom Toast card.              */
-/* ------------------------------------------------------------------ */
 
 [data-en-key="desktop-command-notice"] {
   position: absolute;
   top: var(--en-spacing-3);
   left: 50%;
-  transform: translateX(-50%);
   z-index: 60;
-  max-width: min(90%, 32rem);
-  box-shadow: var(--en-elevation-overlay-shadow), var(--en-elevation-hairline);
-  border-radius: var(--en-radius-md);
+  width: min(90%, var(--en-dimension-lg));
+  transform: translateX(-50%);
+  box-shadow: var(--en-elevation-overlay-shadow);
   animation: oa-overlay-enter var(--en-motion-fast) var(--en-ease-basic);
 }
 
-[data-en-key="desktop-command-notice"] > [role] {
-  display: flex;
-  align-items: center;
-  gap: var(--en-spacing-2);
-}
-
-[data-en-key="desktop-command-notice"] [data-en-role="title"] {
-  flex: 1;
-}
-
-[data-en-key="desktop-command-notice"] [data-en-role="dismiss"] {
-  background: transparent;
-  border: 0;
-  padding: 0 var(--en-spacing-1);
-  cursor: pointer;
-  color: var(--en-color-textMuted);
-  line-height: 1;
-}
-
-/* ------------------------------------------------------------------ */
-/* Command palette: the floating-overlay recipe — surfaceOverlay panel,
-   overlay shadow + hairline ring, 350ms strong-ease-out enter.         */
-/* ------------------------------------------------------------------ */
-
 [data-en-key="desktop-command-palette"] {
-  box-shadow: var(--en-elevation-overlay-shadow), var(--en-elevation-hairline);
-  animation: oa-overlay-enter var(--en-motion-enter) var(--en-ease-enter);
-  transform-origin: top center;
   margin: var(--en-spacing-3) auto 0;
+  transform-origin: top center;
+  box-shadow: var(--en-elevation-overlay-shadow);
+  animation: oa-overlay-enter var(--en-motion-enter) var(--en-ease-enter);
 }
 
-[data-en-key^="desktop-command-row-"] > button {
-  justify-content: flex-start;
-  text-align: left !important;
-  min-height: var(--en-control-md-height);
-  padding: var(--en-spacing-1\.5) var(--en-spacing-2) !important;
-}
-
-/* UX-4 (#8790) design pass: chord captions render as quiet keycaps and the
-   family dividers stay hairline-subtle inside the panel gutter. */
-[data-en-key^="desktop-command-chord-"] {
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-sm);
-  background: var(--en-color-surfaceRaised);
-  padding: 0 var(--en-spacing-1);
-  white-space: nowrap;
-  flex: none;
-}
-
-[data-en-key^="desktop-command-group-"] {
-  margin: var(--en-spacing-1) var(--en-spacing-2) !important;
-  opacity: 0.7;
-}
-
-/* UX-4 (#8790) design pass: keyboard-shortcut rows read as a settings list —
-   left-aligned full-width rows on the shared control height. (Command ids
-   always carry a dot, which excludes the save/remove/draft edit controls.) */
+[data-en-key^="desktop-command-row-"] > button,
 button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
-  width: 100%;
   justify-content: flex-start;
   text-align: left !important;
-  min-height: var(--en-control-md-height);
 }
 
 @keyframes oa-overlay-enter {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-/* ------------------------------------------------------------------ */
-/* Files workspace (UX-4 #8790 design pass): the grant-boundary badge   */
-/* reads as a quiet fact, not scaffolding, and the empty/unavailable    */
-/* states sit centered on the raised-panel recipe instead of raw text   */
-/* at the top edge.                                                     */
-/* ------------------------------------------------------------------ */
-
-[data-en-key="workspace-browser-boundary"] {
-  opacity: 0.8;
-  flex: none;
-}
-
-/* The heading and search rows wrap instead of clipping their controls when
-   the browser pane sits at its narrow split-pane width. */
 [data-en-key="workspace-browser-heading"],
-[data-en-key="workspace-browser-search-controls"] {
+[data-en-key="workspace-browser-search-controls"],
+[data-en-key="assurance-spec-title-line"] {
   flex-wrap: wrap;
-  row-gap: var(--en-spacing-1);
 }
 
 [data-en-key="workspace-browser-idle"],
-[data-en-key="workspace-browser-loading"] {
-  align-self: center;
-  max-width: 32rem;
-  margin-top: var(--en-spacing-8);
-  text-align: center;
-}
-
+[data-en-key="workspace-browser-loading"],
 [data-en-key="workspace-browser-unavailable"] {
   align-self: center;
-  align-items: center;
-  text-align: center;
-  max-width: 28rem;
+  max-width: var(--en-dimension-lg);
   margin-top: var(--en-spacing-8);
-  padding: var(--en-spacing-4);
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-lg);
-  background: var(--en-color-surfaceRaised);
+  text-align: center;
 }
-
-/* ------------------------------------------------------------------ */
-/* History workspace                                                    */
-/* ------------------------------------------------------------------ */
 
 [data-en-key="history-workspace-split"],
 [data-en-key="history-workspace-split"] > [data-en-pane],
@@ -375,8 +222,13 @@ button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
   max-width: 100%;
 }
 
-[data-en-key="history-workspace-split"] {
+[data-en-key="history-workspace-split"],
+[data-en-key="history-workspace-split"] > [data-en-pane] {
   overflow: hidden;
+}
+
+[data-en-key="history-center"] {
+  position: relative;
 }
 
 [data-en-key="history-agents-drawer"][data-en-variant="icon"] {
@@ -384,311 +236,33 @@ button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
   top: var(--en-spacing-1);
   right: var(--en-spacing-1\.5);
   z-index: 2;
-  width: var(--en-control-lg-height) !important;
-  height: var(--en-control-lg-height) !important;
-  border-radius: var(--en-radius-lg) !important;
-}
-
-/* Message details is an inline glyph, not toolbar chrome. The shared
-   IconButton deliberately defaults to a 44px circle; this scoped history
-   affordance keeps its semantic button/focus target while removing that
-   fill, border, radius, and oversized footprint. */
-[data-en-key^="history-item-details-"][data-en-variant="icon"] {
-  width: 24px !important;
-  height: 24px !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: var(--en-color-textFaint) !important;
-}
-
-[data-en-key^="history-item-details-"][data-en-variant="icon"]:hover,
-[data-en-key^="history-item-details-"][data-en-variant="icon"]:active {
-  background: transparent !important;
-}
-
-[data-en-key="history-center"] {
-  position: relative;
-}
-
-[data-en-key="history-workspace-split"] > [data-en-pane] {
-  overflow: hidden;
 }
 
 [data-en-key^="history-timeline-page-"] {
   flex: 1 1 0 !important;
   height: 0 !important;
   min-height: 0 !important;
+  margin: 0;
+  padding: 0;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
-  margin: 0;
-  padding: 0;
 }
 
 [data-en-key^="history-item-"][data-en-event] {
-  display: grid !important;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 3px 9px !important;
+  min-width: 0;
   max-width: 100%;
-  padding: var(--en-spacing-2) var(--en-spacing-2\.5);
-  border-bottom: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-lg);
-  white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
-  transition: background-color var(--en-motion-fast) var(--en-ease-basic);
+  white-space: normal;
 }
 
-[data-en-key^="history-item-"][data-en-event]:hover {
-  background: var(--en-color-stateHover);
-}
-
-[data-en-key^="history-item-"][data-en-event][aria-selected="true"] {
-  background: var(--en-color-stateSelected);
-  box-shadow: inset 2px 0 var(--en-color-accent);
-}
-
-[data-en-key^="history-item-"] > [data-en-role="status-dot"] {
-  grid-column: 1;
-}
-
-[data-en-key^="history-item-"] > [data-en-role="event-icon"] {
-  display: inline-flex;
-  grid-column: 1;
-  width: 16px;
-  height: 16px;
-  align-items: center;
-  justify-content: center;
-  color: var(--en-color-textFaint);
-}
-
-[data-en-key^="history-item-"] > [data-en-role="event-icon"] svg {
-  width: 14px;
-  height: 14px;
-}
-
-[data-en-key^="history-item-"][data-en-variant="tool"] {
-  margin: 3px var(--en-spacing-1\.5);
-  border: 1px solid var(--en-color-borderSubtle);
-  background: var(--en-color-stateHover);
-}
-
-[data-en-key^="history-item-"][data-en-variant="tool"] > [data-en-role="event-icon"] {
-  color: var(--en-color-accent);
-}
-
-[data-en-key^="history-item-"][data-en-variant="agent"] {
-  margin: 5px var(--en-spacing-2);
-  padding: var(--en-spacing-2\.5) var(--en-spacing-3);
-  border: 1px solid var(--en-color-borderStrong);
-  border-radius: var(--en-radius-xl);
-  background: var(--en-color-stateSelected);
-}
-
-[data-en-key^="history-item-"][data-en-variant="agent"]:hover {
-  border-color: var(--en-color-borderStrong);
-  background: var(--en-color-stateActive);
-}
-
-[data-en-key^="history-item-"][data-en-variant="agent"] > [data-en-role="event-icon"] {
-  color: var(--en-color-success);
-}
-
-[data-en-key^="history-item-"][data-en-variant="agent"] > [data-en-role="detail"] {
-  color: var(--en-color-textPrimary);
-}
-
-[data-en-key^="history-item-"][data-en-variant="reasoning"] > [data-en-role="detail"] {
-  color: var(--en-color-textMuted);
-}
-
-[data-en-key^="history-item-"][data-en-variant="metadata"] {
-  min-height: 30px;
-  margin: 2px var(--en-spacing-2);
-  padding: var(--en-spacing-1\.5) var(--en-spacing-2);
-  border: 1px solid transparent;
-  border-radius: var(--en-radius-lg);
-  background: transparent;
-  color: var(--en-color-textMuted);
-}
-
-[data-en-key^="history-item-"][data-en-variant="metadata"]:hover,
-[data-en-key^="history-item-"][data-en-variant="metadata"][aria-selected="true"] {
-  border-color: var(--en-color-borderSubtle);
-  background: var(--en-color-stateHover) !important;
-  box-shadow: none;
-}
-
-[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="event-icon"] {
-  color: var(--en-color-textFaint);
-}
-
-[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="label"] {
-  color: var(--en-color-textMuted);
-  font-size: var(--en-type-caption-fontSize);
-  font-weight: 500;
-}
-
-[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="time"] {
-  color: var(--en-color-textFaint) !important;
-  font-size: var(--en-type-caption-fontSize);
-}
-
-[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="detail"] {
-  padding: var(--en-spacing-1\.5) 0 var(--en-spacing-0\.5);
-  color: var(--en-color-textMuted) !important;
-  font-size: var(--en-type-caption-fontSize);
-  line-height: 1.45;
-  white-space: pre-wrap;
-}
-
-[data-en-key^="history-item-"][data-en-variant="error"] {
-  border-left: 2px solid var(--en-color-danger);
-}
-
-[data-en-key^="history-item-"] > [data-en-role="label"] {
-  grid-column: 2;
-  min-width: 0;
-  color: var(--en-color-textPrimary);
-  font-size: var(--en-type-label-fontSize);
-  font-weight: 500;
-}
-
-[data-en-key^="history-item-"] > [data-en-role="time"] {
-  grid-column: 3;
-  font-size: var(--en-type-caption-fontSize);
-  color: var(--en-color-textFaint);
-  white-space: nowrap;
-}
-
-[data-en-key^="history-item-"] > [data-en-role="detail"] {
-  grid-column: 2 / 4;
-  min-width: 0;
-  font-size: var(--en-type-label-fontSize);
-  line-height: 1.4;
-}
-
-[data-en-key="history-agent-list"] {
+[data-en-key="history-agent-list"],
+[data-en-key="history-item-inspector"],
+[data-en-key="history-agent-tree-region"] {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-}
-
-[data-en-key="history-agent-tree"] {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* Inspector rail: same quiet list-row recipe as the left sidebar. */
-[data-en-key="history-agent-title"] {
-  margin: 0;
-  padding: var(--en-spacing-3) var(--en-spacing-2) var(--en-spacing-1);
-  color: var(--en-color-textFaint) !important;
-  font-size: var(--en-type-caption-fontSize) !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-[data-en-key^="history-agent-"][data-en-tag="Button"] {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  min-height: 30px;
-  align-items: center;
-  gap: var(--en-spacing-2);
-  padding-block: var(--en-spacing-1);
-  padding-right: var(--en-spacing-2);
-  border: 0;
-  border-radius: var(--en-radius-md);
-  background: transparent;
-  color: var(--en-color-textMuted);
-  font-size: var(--en-type-label-fontSize);
-  font-weight: 500;
-  text-align: left;
-  transition: background-color var(--en-motion-fast) var(--en-ease-basic), color var(--en-motion-fast) var(--en-ease-basic);
-}
-
-[data-en-key^="history-agent-"][data-en-tag="Button"]:hover {
-  background: var(--en-color-stateHover);
-  color: var(--en-color-textPrimary);
-}
-
-[data-en-key^="history-agent-"][data-en-active="true"] {
-  color: var(--en-color-textPrimary);
-  background: var(--en-color-stateSelected) !important;
-  box-shadow: inset 2px 0 var(--en-color-accent);
-}
-
-[data-en-key^="history-agent-"] > [data-en-role="label"] {
-  order: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-[data-en-key^="history-agent-"] > [data-en-icon] {
-  order: 2;
-  display: inline-flex;
-  width: 14px;
-  height: 14px;
-  margin-left: auto;
-  flex: 0 0 14px;
-  align-items: center;
-  justify-content: center;
-  color: var(--en-color-textFaint);
-}
-
-[data-en-key^="history-agent-"] > [data-en-icon] svg {
-  width: 13px;
-  height: 13px;
-}
-
-[data-en-key^="history-agent-"] > [data-en-icon="Check"] {
-  color: var(--en-color-success);
-}
-
-[data-en-key^="history-agent-"] > [data-en-icon="X"] {
-  color: var(--en-color-danger);
-}
-
-[data-en-key^="history-agent-"] > [data-en-icon="Play"] {
-  color: var(--en-color-accent);
-}
-
-[data-en-key^="history-agent-"] > [data-en-icon="Pause"] {
-  color: var(--en-color-warning);
-}
-
-[data-en-key="history-item-inspector"],
-[data-en-key="history-agent-tree-region"] {
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-[data-en-key="history-item-title"] {
-  margin: 0;
-  font-size: var(--en-type-label-fontSize) !important;
-  font-weight: 600 !important;
-  line-height: 1.4 !important;
-}
-
-[data-en-key="history-item-summary"],
-[data-en-key^="history-item-field-value-"],
-[data-en-key="history-item-back"] {
-  font-size: var(--en-type-label-fontSize) !important;
-  line-height: 1.45 !important;
-}
-
-[data-en-key="history-item-source"],
-[data-en-key^="history-item-field-label-"] {
-  font-size: var(--en-type-caption-fontSize) !important;
 }
 
 [data-en-key="history-item-fields"] {
@@ -696,169 +270,31 @@ button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
   table-layout: fixed;
 }
 
-[data-en-key="history-item-fields"] th:first-child,
-[data-en-key="history-item-fields"] td:first-child {
-  width: 34%;
-}
-
 [data-en-key="history-item-fields"] td {
   overflow-wrap: anywhere;
   vertical-align: top;
 }
 
-/* ------------------------------------------------------------------ */
-/* Status chips + control buttons on the pill recipe                    */
-/* ------------------------------------------------------------------ */
-
-[data-en-key="shell-surface"],
-[data-en-key="shell-status"],
-[data-en-key="shell-host"],
-[data-en-key="shell-ping-count"],
-[data-en-key="fleet-authority-status"] {
-  align-items: center;
-  min-height: 30px;
-  padding: 0 var(--en-spacing-2\.5);
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-full);
-  background: var(--en-color-stateHover);
-  font-size: var(--en-type-caption-fontSize);
-  font-weight: 600;
+[data-en-key="shell-transcript"],
+[data-en-key="fleet-desk"],
+[data-en-key="shell-composer"] {
+  width: min(100%, var(--en-dimension-2xl)) !important;
+  align-self: center;
 }
-
-[data-en-key="shell-host"],
-[data-en-key="shell-ping-count"] {
-  color: var(--en-color-textFaint) !important;
-  font-variant-numeric: tabular-nums;
-}
-
-[data-en-key="shell-fleet-toggle"],
-[data-en-key="shell-ping"] {
-  min-height: var(--en-control-md-height);
-  padding: 0 var(--en-control-md-gutter) !important;
-  border: 1px solid transparent !important;
-  border-radius: var(--en-radius-full) !important;
-  font-size: var(--en-type-label-fontSize);
-  font-weight: 500;
-}
-
-/* The initial chat state gets its own breath. */
-[data-en-key="shell-welcome"] {
-  padding: clamp(26px, 6vh, 76px) var(--en-spacing-6) var(--en-spacing-4);
-}
-
-[data-en-key="shell-welcome-title"] {
-  max-width: 19ch;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-
-[data-en-key="shell-welcome-body"] {
-  max-width: 58ch;
-  text-wrap: pretty;
-}
-
-[data-en-key="workspace-home-panel"] {
-  padding: clamp(26px, 6vh, 76px) var(--en-spacing-6) var(--en-spacing-4);
-}
-
-[data-en-key^="workspace-home-thread-"] {
-  text-align: left;
-}
-
-/* ------------------------------------------------------------------ */
-/* Conversation: no enclosing card — whitespace is the hierarchy.
-   Rhythm (card reconciliation): 12px part gap (typed transcript gap),
-   user turns get 24px headroom, grouped members stack at 4px.          */
-/* ------------------------------------------------------------------ */
 
 [data-en-key="shell-transcript"] {
-  width: min(100%, 840px) !important;
-  align-self: center;
   padding: var(--en-spacing-2\.5) var(--en-spacing-6) var(--en-spacing-4) !important;
   scrollbar-color: var(--en-color-borderStrong) transparent;
 }
 
-[data-en-key="shell-transcript"] [data-en-message] {
-  gap: var(--en-spacing-1) !important;
-}
-
-/* 24px turn headroom above each user message (the 24/12/4 rhythm). */
 [data-en-key="shell-transcript"] [data-en-message][data-en-role="user"] {
   margin-top: var(--en-spacing-3);
-}
-
-[data-en-key="shell-transcript"] [data-en-role="meta"] {
-  gap: var(--en-spacing-2) !important;
-}
-
-[data-en-key="shell-transcript"] [data-en-role="sender"] {
-  color: var(--en-color-textFaint) !important;
-  font-size: var(--en-type-caption-fontSize) !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.09em !important;
-}
-
-[data-en-key="shell-transcript"] [data-en-role="timestamp"] {
-  color: var(--en-color-textFaint) !important;
-  font-size: var(--en-type-caption-fontSize) !important;
-}
-
-[data-en-key="shell-transcript"] [data-en-role="body"] {
-  color: var(--en-color-textPrimary);
-  font-size: var(--en-type-body-fontSize);
-  line-height: var(--en-type-body-lineHeight);
 }
 
 [data-en-key="shell-transcript"] [data-en-role="assistant"] [data-en-role="body"] {
   max-width: 64ch;
 }
 
-/* User bubble (OpenCode reconciliation): surface fill, radius xl, no
-   heavy border — the one bounded bubble in the transcript. */
-[data-en-key="shell-transcript"] [data-en-role="user"] [data-en-role="body"] {
-  padding: var(--en-spacing-2) var(--en-spacing-3) !important;
-  border: 1px solid var(--en-color-borderSubtle) !important;
-  border-radius: var(--en-radius-xl) !important;
-  background: var(--en-color-surface) !important;
-}
-
-[data-en-key="shell-transcript"] [data-en-role="system"] {
-  padding: var(--en-spacing-2) var(--en-spacing-3);
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-xl);
-  background: var(--en-color-stateHover);
-}
-
-[data-en-key="shell-transcript"] [data-en-role="system"] [data-en-role="body"] {
-  color: var(--en-color-textMuted) !important;
-  font-size: var(--en-type-label-fontSize);
-  line-height: 1.45;
-}
-
-/* Running-tool title shimmer: 1200ms opacity wave (RN-safe mechanism —
-   the OpenCode timing, never per-character background-clip). */
-[data-en-key^="tool-title-running-"] {
-  animation: oa-running-shimmer 1200ms linear infinite;
-}
-
-@keyframes oa-running-shimmer {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-/* Hover-revealed affordances (150ms): details toggles surface on row
-   hover or keyboard focus; they never reserve visual weight at rest.
-
-   The RESTING opacity:0 is keyed on the affordance ITSELF — it deliberately
-   does NOT require the [data-en-message] ancestor. Visibility is therefore a
-   pure function of pointer/focus, never of DOM position or re-render timing: a
-   momentary detach during reconciliation (or any unrelated re-commit) cannot
-   expose the affordance, because the resting rule keeps matching. Only the
-   REVEAL depends on the ancestor's :hover / :focus-within. Paired with the
-   render-dom commit-idempotency fix (persisted, never-re-parented keyed
-   content), the opacity transition can only ever run on a genuine
-   pointer/focus change — never on a keystroke elsewhere. */
-/* !important deliberately: the renderer sets inline opacity on buttons. */
 [data-en-key^="note-details-"],
 [data-en-key^="tool-details-"] {
   opacity: 0 !important;
@@ -872,213 +308,52 @@ button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
   opacity: 1 !important;
 }
 
-/* Bounded raw-output wells: 240px cap with a scroll region. */
 [data-en-key^="tool-raw-well-"] {
   overflow-y: auto;
 }
 
-/* ------------------------------------------------------------------ */
-/* Disabled-control reason popover (owner contract EP250): the catalog
-   Tooltip bubble on the shared overlay recipe — surfaceOverlay fill,
-   overlay shadow + hairline ring, caption text, positioned above the
-   control, 150ms fade. Hover/focus only; never a standing caption.     */
-/* ------------------------------------------------------------------ */
-
-[data-en-role="tooltip"] {
-  bottom: calc(100% + var(--en-spacing-1));
-  left: 0;
-  z-index: 40;
-  min-width: max-content;
-  max-width: 300px;
-  background: var(--en-color-surfaceOverlay) !important;
-  color: var(--en-color-textPrimary) !important;
-  font-size: var(--en-type-caption-fontSize);
-  line-height: var(--en-type-caption-lineHeight);
-  border-radius: var(--en-radius-md) !important;
-  box-shadow: var(--en-elevation-overlay-shadow), var(--en-elevation-hairline);
-  animation: oa-overlay-enter var(--en-motion-fast) var(--en-ease-basic);
-}
-
-[data-en-placement^="bottom"][data-en-role="tooltip"] {
-  bottom: auto;
-  top: calc(100% + var(--en-spacing-1));
-}
-
-/* ------------------------------------------------------------------ */
-/* Fleet desk + workspace                                               */
-/* ------------------------------------------------------------------ */
-
-[data-en-key="fleet-desk"] {
-  width: min(100%, 840px) !important;
-  align-self: center;
-  padding: var(--en-spacing-5) !important;
-}
-
-[data-en-key="fleet-desk-copy"] {
-  max-width: 66ch;
-}
-
-[data-en-key="fleet-objective"] {
-  margin-top: var(--en-spacing-1);
-  padding: 0 var(--en-spacing-3);
-  border: 1px solid var(--en-color-border);
-  border-radius: var(--en-radius-xl);
-  background: var(--en-color-background);
-}
-
-[data-en-key="fleet-objective"] input {
-  min-height: var(--en-control-xl-height);
-  color: var(--en-color-textPrimary) !important;
-  font-size: var(--en-type-body-fontSize);
-}
-
-[data-en-key="fleet-objective"] input::placeholder,
-[data-en-key="shell-input"] input::placeholder {
-  color: var(--en-color-textFaint);
-  opacity: 1;
-}
-
-/* Compact connected-account disclosure pinned beneath the chat list. The
-   shared Accordion owns semantics/state; this is only its desktop recipe. */
-[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-trigger"] {
-  width: 100%;
-  padding: var(--en-spacing-1) 0;
-  border: 0;
-  background: transparent;
-  color: var(--en-color-textFaint);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--en-type-label-fontSize);
-  text-align: left;
-}
-
-[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-trigger"]::after {
-  content: "›";
-  float: right;
-  transform: rotate(0deg);
-  transition: transform var(--en-motion-fast) var(--en-ease-basic);
-}
-
-[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-trigger"][aria-expanded="true"]::after {
-  transform: rotate(90deg);
-}
-
-[data-en-key="sidebar-accounts-disclosure"] [data-en-role="accordion-content"]:not([hidden]) {
-  display: flex;
-  flex-direction: column;
-  gap: var(--en-spacing-1);
-}
-
-[data-en-key="fleet-desk-actions"] {
-  margin-top: var(--en-spacing-0\.5);
-}
-
-[data-en-key="fleet-stage-request"],
-[data-en-key="shell-note"] {
-  min-height: var(--en-control-lg-height);
-  padding: 0 var(--en-control-lg-gutter) !important;
-  border: 1px solid transparent !important;
-  border-radius: var(--en-radius-full) !important;
-  font-size: var(--en-type-label-fontSize);
-  font-weight: 600;
-}
-
-/* Fleet accounts table: caption/600/muted header row, hairline row
-   separators, state-overlay row hover. */
-[data-en-key="fleet-accounts-table"] {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-[data-en-key="fleet-accounts-table"] th {
-  padding: var(--en-spacing-1\.5) var(--en-spacing-2);
-  border-bottom: 1px solid var(--en-color-border);
-  color: var(--en-color-textMuted);
-  font-size: var(--en-type-caption-fontSize);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-align: left;
-  text-transform: uppercase;
-}
-
-[data-en-key="fleet-accounts-table"] td {
-  padding: var(--en-spacing-1\.5) var(--en-spacing-2);
-  border-bottom: 1px solid var(--en-color-borderSubtle);
-  vertical-align: middle;
-}
-
-[data-en-key="fleet-accounts-table"] tbody tr {
-  transition: background-color var(--en-motion-fast) var(--en-ease-basic);
-}
-
-[data-en-key="fleet-accounts-table"] tbody tr:hover {
-  background: var(--en-color-stateHover);
-}
-
-/* ------------------------------------------------------------------ */
-/* Composer: one floating capsule on the shared radius scale.           */
-/* ------------------------------------------------------------------ */
-
-/* OpenCode prompt-input shape (EP250): one rounded container holding the
-   multiline input on top and the action bar below. */
 [data-en-key="shell-composer"] {
-  width: min(100%, 840px) !important;
-  align-self: center;
   margin: 0 0 var(--en-spacing-1\.5) !important;
-  padding: var(--en-spacing-3) var(--en-spacing-3) var(--en-spacing-2) !important;
 }
 
-/* Bottom action bar: attach + harness toggle + spacer + circular send. */
-[data-en-key="shell-composer-bar"] {
-  min-height: var(--en-control-xl-height);
-}
-
-/* Multiline input (textarea): fills the top of the container, no manual
-   resize handle, transparent so the container fill shows through. */
 [data-en-key="shell-input"] textarea {
-  color: var(--en-color-textPrimary) !important;
-  font-size: var(--en-type-body-fontSize);
-  line-height: var(--en-type-body-lineHeight);
   resize: none;
-  padding: var(--en-spacing-1) var(--en-spacing-1) var(--en-spacing-2);
 }
 
-/* Harness chips: fixed control-lattice height inside the recessed track. */
-[data-en-key^="shell-harness-"][data-en-tag="Button"] {
-  min-height: var(--en-control-sm-height);
-  padding: 0 var(--en-control-sm-gutter) !important;
-}
-
-/* The composer is already the visible input affordance; do not draw a
-   second rectangular focus ring inside its rounded capsule. */
 [data-en-key="shell-input"] textarea:focus,
 [data-en-key="shell-input"] textarea:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }
 
-/* ------------------------------------------------------------------ */
-/* AssuranceSpec document viewer                                      */
-/* ------------------------------------------------------------------ */
-
-[data-en-key="assurance-spec-document"] {
+[data-en-key="assurance-spec-document"],
+[data-en-key="assurance-spec-workbench"] {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-[data-en-key="assurance-spec-file-header"] {
-  flex: 0 0 auto;
-  padding-right: var(--en-spacing-5) !important;
-  padding-left: var(--en-spacing-5) !important;
+[data-en-key="assurance-spec-workbench"] {
+  flex: 1 1 0 !important;
+  height: 0 !important;
 }
 
-[data-en-key="assurance-spec-title"] {
+[data-en-key="assurance-spec-workbench"] > [data-en-pane] {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
+[data-en-key="assurance-obligation-list"],
+[data-en-key="assurance-obligation-detail-scroll"] {
+  height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+[data-en-key="assurance-obligation-detail-scroll"] {
+  margin: 0 auto;
+}
+
+[data-en-key="assurance-spec-title"],
 [data-en-key="assurance-spec-file-name"] {
   min-width: 0;
   overflow: hidden;
@@ -1086,220 +361,54 @@ button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
   white-space: nowrap;
 }
 
-[data-en-key="assurance-spec-authority-notice"] {
-  border: 1px solid var(--en-color-borderSubtle);
-}
-
-[data-en-key="assurance-summary-strip"] {
-  overflow: hidden;
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-lg);
-  background: var(--en-color-surfaceRaised);
-}
-
-[data-en-key^="assurance-summary-"]:not([data-en-key="assurance-summary-strip"]) {
-  border-right: 1px solid var(--en-color-borderSubtle);
-}
-
-[data-en-key="assurance-summary-needs-design"] {
-  border-right: 0 !important;
-}
-
-[data-en-key="assurance-spec-workbench"] {
-  flex: 1 1 0 !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  overflow: hidden;
-}
-
-[data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-obligations"] {
-  padding: var(--en-spacing-3) var(--en-spacing-2) var(--en-spacing-3) var(--en-spacing-4);
-  background: var(--en-color-surface);
-  overflow: hidden;
-}
-
-[data-en-key="assurance-spec-workbench"] > [data-en-role="divider"] {
-  width: 1px !important;
-  background: var(--en-color-borderSubtle) !important;
-}
-
-[data-en-key="assurance-obligation-list"] {
-  height: 0;
-  padding-right: var(--en-spacing-1);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-[data-en-key^="assurance-obligation-"][data-en-tag="Button"] {
-  position: relative;
-  flex: 0 0 auto;
-  justify-content: flex-start;
-  min-height: var(--en-control-xl-height);
-  padding: 0 var(--en-spacing-2) !important;
-  border: 0 !important;
-  overflow: hidden;
-  text-align: left !important;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-[data-en-key^="assurance-obligation-selected-"][data-en-tag="Button"] {
-  box-shadow: inset 2px 0 var(--en-color-accent);
-}
-
-[data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-detail"] {
-  padding: var(--en-spacing-4) var(--en-spacing-5);
-  overflow: hidden;
-}
-
-[data-en-key="assurance-obligation-detail-scroll"] {
-  height: 0;
-  margin: 0 auto;
-  padding-right: var(--en-spacing-2);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-[data-en-key="assurance-source-claim"] {
-  padding: var(--en-spacing-3);
-  border-left: 2px solid var(--en-color-accent);
-  border-radius: var(--en-radius-sm);
-  background: var(--en-color-surfaceRaised);
-}
-
-[data-en-key="assurance-proof-design-table"] {
-  table-layout: fixed;
-  border-collapse: separate !important;
-  border-spacing: 0;
-  overflow: hidden;
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-lg);
-}
-
-[data-en-key="assurance-proof-design-table"] th {
-  padding: var(--en-spacing-2);
-  border-bottom: 1px solid var(--en-color-borderSubtle);
-  color: var(--en-color-textFaint);
-  font-size: var(--en-type-caption-fontSize);
-  font-weight: 600;
-}
-
-[data-en-key="assurance-proof-design-table"] td {
-  padding: var(--en-spacing-2);
-  border-bottom: 1px solid var(--en-color-borderSubtle);
-  vertical-align: middle;
-}
-
-[data-en-key="assurance-proof-design-table"] tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-[data-en-key^="assurance-subject-"][data-en-key$="-label"],
-[data-en-key^="assurance-risk-policy-"][data-en-key$="-label"],
-[data-en-key^="assurance-environment-policy-"][data-en-key$="-label"],
-[data-en-key^="assurance-gate-policy-"][data-en-key$="-label"],
-[data-en-key^="assurance-repository-policy-"][data-en-key$="-label"] {
-  flex: 0 0 var(--en-dimension-xs);
-}
-
 @media (max-width: 980px) {
-  [data-en-key="assurance-spec-file-header"] {
-    padding-right: var(--en-spacing-3) !important;
-    padding-left: var(--en-spacing-3) !important;
-  }
-
   [data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-obligations"] {
-    width: 240px !important;
+    width: var(--en-dimension-sm) !important;
   }
 
-  [data-en-key="assurance-spec-workbench"] > [data-en-pane="assurance-detail"] {
-    padding-right: var(--en-spacing-3);
-    padding-left: var(--en-spacing-3);
+  [data-en-key="history-workspace-split"] {
+    position: relative;
   }
 
-  [data-en-key="assurance-spec-title-line"] {
-    flex-wrap: wrap;
+  [data-en-key="history-workspace-split"] [data-en-pane="history-inspector"]:not([data-en-collapsed="true"]) {
+    position: absolute;
+    z-index: 20;
+    inset: 0 0 0 auto;
+    width: min(88%, var(--en-dimension-md)) !important;
+    overflow: auto;
+    background: var(--en-color-surfaceOverlay);
+    box-shadow: var(--en-elevation-overlay-shadow);
+  }
+
+  [data-en-key="history-workspace-split"] [data-en-role="divider"] {
+    display: none;
   }
 }
 
 @media (max-width: 760px) {
-  #openagents-desktop-root {
-    padding: 0;
-  }
-
   [data-en-key="shell-sidebar"] {
     display: none !important;
-  }
-
-  [data-en-key="shell-host"],
-  [data-en-key="shell-ping-count"],
-  [data-en-key="shell-status"] {
-    display: none !important;
-  }
-
-  [data-en-key="shell-welcome"] {
-    padding: var(--en-spacing-8) var(--en-spacing-3\.5) var(--en-spacing-3);
   }
 
   [data-en-key="shell-transcript"] {
     padding: var(--en-spacing-2) var(--en-spacing-3) var(--en-spacing-4) !important;
   }
-
-  [data-en-key="fleet-desk"] {
-    padding: var(--en-spacing-4) !important;
-  }
-}
-
-/* History keeps a real center pane at narrow desktop widths. The typed
-   inspector pane becomes a side drawer controlled by the Agents button; it
-   never silently squeezes or truncates the agent tree. */
-@media (max-width: 980px) {
-  [data-en-key="history-workspace-split"] { position: relative; overflow: hidden; }
-  [data-en-key="history-workspace-split"] [data-en-pane="history-inspector"]:not([data-en-collapsed="true"]) {
-    position: absolute;
-    z-index: 20;
-    inset: 0 0 0 auto;
-    width: min(88%, 360px) !important;
-    padding: var(--en-spacing-3\.5);
-    overflow: auto;
-    border-left: 1px solid var(--en-color-borderSubtle);
-    background: var(--en-color-surfaceOverlay);
-    box-shadow: var(--en-elevation-overlay-shadow), var(--en-elevation-hairline);
-  }
-  [data-en-key="history-workspace-split"] [data-en-role="divider"] { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root:not([data-en-reduce-motion="false"]) *,
+  :root:not([data-en-reduce-motion="false"]) *::before,
+  :root:not([data-en-reduce-motion="false"]) *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
 }
 
-/* Explicit user reduced-motion override (CUT-24 #8704). The reduced-motion
-   preference resolves to a root data attribute (see desktop-preferences-effects):
-   `always` sets data-en-reduce-motion="true" (force reduced motion regardless of
-   the OS setting), `never` sets "false" (force full motion, winning over the OS
-   media query above), and `system` leaves the attribute off to defer to the OS.
-   The "true" block mirrors the media query so an in-app toggle works even when
-   the OS setting is unset. */
 :root[data-en-reduce-motion="true"] *,
 :root[data-en-reduce-motion="true"] *::before,
 :root[data-en-reduce-motion="true"] *::after {
   scroll-behavior: auto !important;
   transition-duration: 0.01ms !important;
   animation-duration: 0.01ms !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root[data-en-reduce-motion="false"] *,
-  :root[data-en-reduce-motion="false"] *::before,
-  :root[data-en-reduce-motion="false"] *::after {
-    scroll-behavior: auto;
-    transition-duration: revert !important;
-    animation-duration: revert !important;
-  }
 }

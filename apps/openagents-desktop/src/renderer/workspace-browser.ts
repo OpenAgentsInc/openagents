@@ -677,7 +677,7 @@ const treeView = (state: WorkspaceBrowserState): View => {
     }) as KeyedView)
   }
   return Stack(
-    { key: "workspace-browser-tree", direction: "column", gap: "1", style: { minWidth: 240, maxWidth: 360, flex: 1, minHeight: 0 } },
+    { key: "workspace-browser-tree", direction: "column", gap: "1", style: { minWidth: "sm", maxWidth: "md", flex: 1, minHeight: 0 } },
     [
       Text({ key: "workspace-browser-tree-title", content: "Workspace", variant: "caption", color: "textMuted" }),
       List({ key: "workspace-browser-tree-list", virtualize: true, estimatedItemSize: 36, a11y: { role: "tree", label: "Workspace files" }, style: { flex: 1, minHeight: 0 } }, items),

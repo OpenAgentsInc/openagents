@@ -78,7 +78,27 @@ export const colorTokens = [
 export const radiusTokens = ["none", "sm", "md", "lg", "xl", "full"] as const
 export const typeScaleTokens = ["caption", "body", "label", "title", "heading"] as const
 export const breakpointTokens = ["sm", "md", "lg", "xl"] as const
-export const dimensionTokens = ["xs", "sm", "md", "lg", "xl", "full"] as const
+/**
+ * Shared bounded-layout lattice.
+ *
+ * The compact steps cover host chrome that cannot be expressed as spacing
+ * (meter tracks, attachment thumbnails, and minimum composer height). 2xl
+ * is the shared long-form reading measure used by Desktop surfaces. Keeping
+ * these values in the closed lattice prevents applications from growing
+ * per-call-site numeric dimension allowlists.
+ */
+export const dimensionTokens = [
+  "4xs",
+  "3xs",
+  "2xs",
+  "xs",
+  "sm",
+  "md",
+  "lg",
+  "xl",
+  "2xl",
+  "full"
+] as const
 /**
  * The shared control size lattice: one metric system for every control.
  * `2xs`/`xs` serve dense application chrome (toolbars, inline chips, status
@@ -974,11 +994,15 @@ export const defaultTheme = ThemeSchema.make({
     xl: 1280
   },
   dimension: {
+    "4xs": 4,
+    "3xs": 56,
+    "2xs": 64,
     xs: 160,
     sm: 240,
     md: 320,
     lg: 480,
     xl: 640,
+    "2xl": 840,
     full: "100%"
   },
   motion: {

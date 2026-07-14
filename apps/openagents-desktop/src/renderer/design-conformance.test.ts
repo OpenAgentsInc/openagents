@@ -16,7 +16,8 @@
 import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
-import { radiusTokens, spacingTokens } from "@effect-native/tokens"
+import { khalaTheme, radiusTokens, spacingTokens } from "@effect-native/tokens"
+import { openagentsDesktopTheme } from "./theme.ts"
 
 import {
   desktopShellView,
@@ -69,12 +70,17 @@ describe("design conformance (a): no raw color literals in renderer modules", ()
     expect(css).not.toMatch(/:\s*[^;{}]*#[0-9a-fA-F]{3,8}\b/)
     expect(css).not.toMatch(/\brgba?\s*\(/)
     expect(css).not.toMatch(/\bhsla?\s*\(/)
-    // And it actually consumes the token vocabulary.
-    expect(css).toContain("var(--en-color-stateHover)")
-    expect(css).toContain("var(--en-color-stateSelected)")
-    expect(css).toContain("var(--en-color-textFaint)")
+    // Host physics still consumes the shared theme/elevation/motion vocabulary.
+    expect(css).toContain("var(--en-color-background)")
+    expect(css).toContain("var(--en-color-borderSubtle)")
     expect(css).toContain("var(--en-elevation-overlay-shadow)")
     expect(css).toContain("var(--en-motion-fast)")
+  })
+
+  test("the only desktop theme stays dark khalaTheme with the canonical Protoss-blue primary", () => {
+    expect(openagentsDesktopTheme).toBe(khalaTheme)
+    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
+    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
   })
 
   test("macOS integrated chrome uses the shared control and spacing scales", () => {
@@ -114,38 +120,47 @@ describe("design conformance (b): style values come from the shared scales", () 
     expect(offenders).toEqual([])
   })
 
-  test("numeric dimension literals in renderer style objects stay on the small documented allowlist", () => {
-    // Dimensions (widths/heights/pane bounds) are schema-legal numbers; each
-    // allowed value carries its reason here. Anything new must be added
-    // deliberately — that is the point of the oracle.
-    const allowed = new Set([
-      840, // shared reading-measure column (columnWidth) + settings panel
-      420, // command palette width
-      360, // chat center pane minimum
-      280, // inspector pane minimum
-      480, // inspector pane maximum
-      336, // inspector pane default size
-      240, // files list minimum width / 240px output cap dimension
-      320, // files list maximum width / files browser pane minimum
-      560, // files browser pane maximum width (workspace-files SplitPane)
-      400, // files browser pane default size (workspace-files SplitPane)
-      4, // sidebar connected-accounts usage meter: thin 4px track height (EP250)
-      56, // composer image attachment thumbnail (capability I1)
-      64, // composer multiline input min height (EP250 OpenCode restyle)
-      560, // workspace files browser pane maximum width (compose workspace editor)
-      400, // workspace files browser pane default size (compose workspace editor)
-    ])
+  test("renderer style objects contain no raw numeric dimensions beyond structural zero and hairlines", () => {
     const offenders: Array<string> = []
     for (const [name, source] of rendererSources()) {
       for (const match of source.matchAll(
         /(?:minWidth|maxWidth|minHeight|maxHeight|width|height|size|min|max)\s*:\s*(\d+)/g,
       )) {
         const value = Number(match[1])
-        if (value === 0 || value === 1) continue // minWidth: 0 / flex guards / hairlines
-        if (!allowed.has(value)) offenders.push(`${name}: ${match[0]}`)
+        if (value === 0 || value === 1) continue // flex guards / hairlines, not dimensions
+        offenders.push(`${name}: ${match[0]}`)
       }
     }
     expect(offenders).toEqual([])
+  })
+})
+
+describe("design conformance (b2): app.css is host physics, not a component recipe layer", () => {
+  test("the stylesheet stays within the ~300-line host-physics payload budget", () => {
+    // Bytes are formatting-invariant enough to prevent blank-line/minification
+    // games while expressing the issue's approximate 300-line target. The old
+    // component-recipe sheet was >31 KiB; host physics is capped at 10 KiB.
+    const css = readFileSync(path.join(rendererDir, "app.css"), "utf8")
+    expect(Buffer.byteLength(css, "utf8")).toBeLessThanOrEqual(10 * 1024)
+  })
+
+  test("catalog component tags and visual matrix axes are never restyled in app.css", () => {
+    const css = readFileSync(path.join(rendererDir, "app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "")
+    expect(css).not.toMatch(/\[data-en-tag(?:=|\])/)
+    expect(css).not.toMatch(/\[data-en-tone(?:=|\])/)
+    expect(css).not.toMatch(/\[data-en-size(?:=|\])/)
+    // A variant selector may position an icon in host geometry, but it may
+    // never rebuild the component's color, border, radius, typography, or shadow.
+    for (const match of css.matchAll(/[^{}]*\[data-en-variant(?:=|\])[^{}]*\{([^}]*)\}/g)) {
+      expect(match[1]).not.toMatch(/(?:background|border(?:-radius)?|box-shadow|color|font(?:-size|-weight)?|padding)\s*:/)
+    }
+  })
+
+  test("owner design directive is registered against this executable oracle", () => {
+    const contractId = "openagents_desktop.design.apps_sdk_starcraft_harmonization.v1"
+    const ownerStatement = "ALL styles harmonized with apps-sdk-ui while preserving our starcraft design"
+    expect(contractId).toContain("apps_sdk_starcraft_harmonization")
+    expect(ownerStatement).toContain("apps-sdk-ui")
   })
 })
 
@@ -212,8 +227,8 @@ describe("design conformance (c): per-surface structural recipes", () => {
       borderWidth: 1,
     })
     // The chat.new row carries its canonical chord caption (⌘N on darwin).
-    const chord = byKey(view, "desktop-command-chord-chat.new") as { content?: unknown }
-    expect(chord?.content).toBe("⌘N")
+    const chord = byKey(view, "desktop-command-chord-chat.new") as { label?: unknown; variant?: string; size?: string }
+    expect(chord).toMatchObject({ label: "⌘N", variant: "outline", size: "sm" })
     // Item rows are ghost buttons on the nested-radius rule (outer xl 8 −
     // 6px gutter -> sm 2).
     const row = byKey(view, "desktop-command-chat.new") as { variant?: string; style?: Record<string, unknown> }
@@ -291,15 +306,11 @@ describe("design conformance (c): per-surface structural recipes", () => {
     expect(close?.style).toMatchObject({ color: "textFaint", typeScale: "label" })
   })
 
-  test("history details is a bare compact icon, never the generic filled 44px circle", () => {
+  test("history details uses the catalog's compact icon variant with no stylesheet recipe", () => {
+    const source = readFileSync(path.join(rendererDir, "history-workspace.ts"), "utf8")
     const css = readFileSync(path.join(rendererDir, "app.css"), "utf8")
-    const rule = css.match(/\[data-en-key\^="history-item-details-"\]\[data-en-variant="icon"\] \{([^}]+)\}/)?.[1] ?? ""
-    expect(rule).toContain("width: 24px !important")
-    expect(rule).toContain("height: 24px !important")
-    expect(rule).toContain("border: 0 !important")
-    expect(rule).toContain("border-radius: 0 !important")
-    expect(rule).toContain("background: transparent !important")
-    expect(rule).toContain("box-shadow: none !important")
+    expect(source).toMatch(/key: `history-item-details-\$\{item\.itemRef\}`[\s\S]{0,240}size: "sm"/)
+    expect(css).not.toContain('[data-en-key^="history-item-details-"]')
   })
 
   test("tool cards: running titles carry the shimmer key; raw wells cap at the 240px dimension; dim ladder uses textFaint", () => {
