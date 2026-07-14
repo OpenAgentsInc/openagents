@@ -530,13 +530,13 @@ describe("overlay rebase — model-based properties (SPEC §8)", () => {
   const SEEDS = 50
   const STEPS = 40
 
-  test(`random interleavings converge with zero optimistic residue and a confirmed-only durable store (${SEEDS} seeds)`, { timeout: 30_000 }, () => {
+  test(`random interleavings converge with zero optimistic residue and a confirmed-only durable store (${SEEDS} seeds)`, () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-sync-overlay-prop-"))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
     for (let seed = 1; seed <= SEEDS; seed++) {
       runSession(seed, STEPS, join(dir, `seed-${seed}.sqlite`))
     }
-  })
+  }, 30_000)
 
   test("rebase determinism: the same sequence yields the same view after every step", () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-sync-overlay-det-"))
