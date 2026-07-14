@@ -103,21 +103,26 @@ receipt lookups remain ordinary `404` reads rather than retirement responses,
 and billing, Sites, `/treasury`, Stripe callback, Forum MDK callback, and Site
 MDK callback requests all return the exact typed `410` contract.
 
-The matching source cutover deletes the MDK sidecar, Treasury, and tips-buffer
-service trees; removes their Cloud Run secret mounts, Worker bindings,
-Durable Object implementations, runtime configuration, and dependencies; and
-retains only the applied Wrangler creation/deletion migrations. Treasury,
-tips-buffer, and Artanis spend routes, callback ingress, scheduled money
-reconciliation, scheduled paid-work dispatch, run-credit metering, and
-out-of-credit mutation were removed. Former public/API ingress is intercepted
-before authentication or handler construction by the typed
-`openagents.money_surface_retired.v1` response.
+The completed source cutover changes 460 files relative to the VP-2 staging
+point, with 217,412 deletions and 1,868 insertions. It deletes the MDK sidecar,
+Treasury, tips-buffer, Stripe/credit/checkout, L402, payout, settlement, paid
+Forum labor, inference-credit/free-tier, and full OpenAgents Sites product
+graphs. Cloud Run secret mounts, Worker bindings, Durable Objects, runtime
+configuration, dependencies, jobs, routes, UI, tests, OpenAPI, and capability
+claims are gone. Applied migrations, redacted historical receipt GETs, the
+typed retirement response, and recovery documentation remain. Former
+public/API ingress is intercepted before authentication or handler
+construction by `openagents.money_surface_retired.v1`.
 
 Pylon no longer contains wallet, Spark, tips, labor-market payment, NIP-90
 provider-market, or multi-earning authority. Its retained operator projection
 is inventory-only and explicitly reports payment retired with paid-capacity
-fallback denied. Billing and Sites UI/discovery were withdrawn, and the
-ProductSpec/OpenAPI/capability/promise surfaces now agree with the runtime.
+fallback denied. Inference admits BYOK or explicit organization no-meter work;
+removing the credit ledger never converts paid capacity into free capacity.
+Forum retains social/work-request and historical evidence reads but no escrow
+reserve/release or other payment mutation. Billing and Sites UI/discovery were
+withdrawn, and the ProductSpec/OpenAPI/capability/promise surfaces now agree
+with the runtime.
 
 The repository fast policy includes a static VP-1 guard. It rejects restored
 service trees, runtime classes/bindings, payment secret mounts, production
@@ -125,8 +130,10 @@ billing/Treasury routing vars, missing discovery filters, restored money
 schedulers, restored scheduled paid dispatch, run metering, or removal of the
 paid-capacity retirement reason. Applied migrations, typed 410 compatibility,
 redacted receipts, and owner recovery documentation are explicit exceptions.
-The post-VP-1 cutover inventory is re-frozen at `8,269` entries and `35,114`
-matches, down from the pre-phase `8,710` entries and `35,944` matches.
+After the VP-1 source closeout and VP-2 Node seam, the cutover inventory is
+re-frozen at `7,344` entries and `31,566` matches, down from the pre-phase
+`8,710` entries and `35,944` matches. The remaining classified matches are
+owned by VP-3 through VP-6 or are explicit no-spend/historical exceptions.
 
 ## Reconciliation interpretation
 
@@ -149,14 +156,13 @@ approval for any real send.
 ## Closeout gates
 
 The typed retirement contract, no-paid-to-free rule, money cron/checkout/
-payout/wallet/settlement deletion, zero live service authority, UI and
-discovery withdrawal, dependency/deployment deletion, immutable archive, and
-read-only historical evidence gates are complete. Focused Worker contract
-tests, Pylon operator/catalog tests, Worker dry-run build, web/Start
-typechecks, infrastructure formatting, and the static retirement guard pass.
-The Worker typecheck has only the pre-existing VP-0 baseline diagnostics for
-Cloudflare `ExecutionContext.tracing`, one Artanis nullable-string fixture, and
-sqlite-runtime's Bun `readonly` option; VP-1 introduces no new diagnostic.
+payout/wallet/settlement deletion, full Sites deletion, zero live service
+authority, UI and discovery withdrawal, dependency/deployment deletion,
+immutable archive, and read-only historical evidence gates are complete. The
+Worker/API, web, and Start TypeScript checks pass. The VP-1 guard passes four
+contract tests and reports zero violations. The refreshed cutover inventory
+passes its no-growth check. VP-2's stock-Node suite passes 19 tests, including
+the compiled retained Live Hub and seven staged public CLI artifacts.
 
 The preserved mnemonic and access token are not bound to a live service or
 supported route. They remain recovery-only until the owner either performs the
