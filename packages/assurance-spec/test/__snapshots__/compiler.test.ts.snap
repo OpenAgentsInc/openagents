@@ -20,7 +20,7 @@ exports[`AS-L2 deterministic compiler identical admitted inputs produce byte-ide
   },
   "do_not_edit": true,
   "environment": {
-    "digest": "sha256:cb035abc0833f81bb334ed8d5862c7c8ea8d60d5e1fa6cfa579acfc753a7c894",
+    "digest": "sha256:e3f09440a98dabf60b5ddde08fef3d3510557b8877dbb783b0984098115621c1",
     "profile_id": "ENV-OA-LOCAL-BUN-1",
     "revision": 1
   },
