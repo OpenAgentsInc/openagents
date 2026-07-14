@@ -21,6 +21,7 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(deployScript).toContain(
       'pnpm --filter @openagentsinc/api-worker deploy',
     )
+    expect(deployScript).toContain('cd "$REPO_ROOT"')
     expect(deployScript).not.toContain('--deps.never-bundle')
   })
 

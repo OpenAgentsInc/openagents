@@ -50,6 +50,7 @@ fi
 
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$(cd "$API_DIR/../.." && pwd)"   # apps/openagents.com
+REPO_ROOT="$(cd "$API_DIR/../../../.." && pwd)"
 
 cd "$APP_DIR"
 echo "==> Building web assets (apps/web/dist)"
@@ -74,8 +75,8 @@ fi
 # stage a portable production node_modules tree into the Cloud Build context.
 RUNTIME_DEPLOY_DIR="$(mktemp -d)"
 trap 'rm -rf "$RUNTIME_DEPLOY_DIR"' EXIT
-CI=true pnpm --filter @openagentsinc/api-worker deploy "$RUNTIME_DEPLOY_DIR" \
-  --prod --legacy >/dev/null
+(cd "$REPO_ROOT" && CI=true pnpm --filter @openagentsinc/api-worker deploy \
+  "$RUNTIME_DEPLOY_DIR" --prod --legacy >/dev/null)
 mv "$RUNTIME_DEPLOY_DIR/node_modules" dist-cloudrun/node_modules
 node scripts/cloudrun/assert-self-contained-bundle.mjs dist-cloudrun
 cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
