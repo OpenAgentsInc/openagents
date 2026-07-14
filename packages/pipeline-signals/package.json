@@ -1,5 +1,5 @@
 {
-  "name": "@openagentsinc/world-client",
+  "name": "@openagentsinc/pipeline-signals",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -19,8 +19,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openagentsinc/pipeline-signals": "workspace:*",
-    "@openagentsinc/world-contract": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

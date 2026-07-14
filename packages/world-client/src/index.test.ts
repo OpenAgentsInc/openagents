@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { Effect, Fiber } from "effect"
+import { Effect, Exit, Fiber, Scope } from "effect"
+import { awaitPipelineSignal, makePipelineSignalBus } from "@openagentsinc/pipeline-signals"
 
 import {
   WORLD_DELTA_SCHEMA_VERSION,
@@ -21,10 +22,13 @@ import {
   createStubWorldClientTransport,
   createWorldClient,
   makeEmptyClientWorld,
+  isWorldTransportCommandPending,
+  isWorldTransportSocketCreated,
   makeStubWorldDelta,
   makeStubWorldReadModel,
   projectWorldMinimapReadout,
   type WorldClientTransport,
+  type WorldTransportMilestone,
 } from "./index.js"
 
 const regionRef = "region.run.1"
@@ -237,13 +241,23 @@ const browserCommand = (commandRef = "command.browser.1"): WorldCommandEnvelope 
     payload: { pylonRef: "pylon.alpha" },
   })
 
-const waitForFakeSocket = async (): Promise<FakeBrowserWebSocket> => {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const socket = FakeBrowserWebSocket.sockets[0]
-    if (socket !== undefined) return socket
-    await Bun.sleep(1)
+// Deterministic transport milestone signals (openagents issue #8782): tests
+// subscribe before triggering transport work and await typed milestones on
+// the pipeline-signal bus instead of sleeping or polling socket internals.
+const openTransportSignals = () => {
+  const scope = Effect.runSync(Scope.make())
+  const { bus, subscription } = Effect.runSync(
+    Effect.gen(function* () {
+      const bus = yield* makePipelineSignalBus<WorldTransportMilestone>()
+      const subscription = yield* bus.subscribe.pipe(Effect.provideService(Scope.Scope, scope))
+      return { bus, subscription }
+    }),
+  )
+  return {
+    bus,
+    subscription,
+    close: () => Effect.runPromise(Scope.close(scope, Exit.void)),
   }
-  throw new Error("fake WebSocket was not created")
 }
 
 const browserConnectResponse = () =>
@@ -502,42 +516,53 @@ describe("world-client", () => {
 
   test("browser transport keeps WebSocket cleanup in the retained Effect scope", async () => {
     resetFakeSockets()
+    const signals = openTransportSignals()
     const transport = createBrowserWorldTransport({
       worldUrl: "https://world.test",
       actorRef: "actor.alice",
       fetchFn: fakeBrowserConnectFetch,
       webSocketCtor: FakeBrowserWebSocket,
+      signalBus: signals.bus,
     })
     const connect = Effect.runPromise(transport.connect({}))
-    const socket = await waitForFakeSocket()
+    await Effect.runPromise(awaitPipelineSignal(signals.subscription, isWorldTransportSocketCreated))
+    const socket = FakeBrowserWebSocket.sockets[0]!
     socket.open()
     await connect
 
     const pendingCommand = Effect.runPromise(transport.command(browserCommand()))
-    await Bun.sleep(1)
+    const pending = await Effect.runPromise(
+      awaitPipelineSignal(signals.subscription, isWorldTransportCommandPending),
+    )
+    expect(pending.commandRef).toBe("command.browser.1")
     await Effect.runPromise(transport.disconnect())
 
     await expect(pendingCommand).rejects.toBeInstanceOf(WorldClientError)
     expect(socket.sent).toContain(JSON.stringify({ frameKind: "hydrate" }))
     expect(socket.closeCount).toBe(1)
+    await signals.close()
   })
 
   test("browser transport closes a not-yet-open socket when connect is interrupted", async () => {
     resetFakeSockets()
+    const signals = openTransportSignals()
     const transport = createBrowserWorldTransport({
       worldUrl: "https://world.test",
       actorRef: "actor.alice",
       fetchFn: fakeBrowserConnectFetch,
       webSocketCtor: FakeBrowserWebSocket,
+      signalBus: signals.bus,
     })
     const fiber = Effect.runFork(transport.connect({}))
-    const socket = await waitForFakeSocket()
+    await Effect.runPromise(awaitPipelineSignal(signals.subscription, isWorldTransportSocketCreated))
+    const socket = FakeBrowserWebSocket.sockets[0]!
 
     await Effect.runPromise(Fiber.interrupt(fiber))
 
     expect(socket.closeCount).toBe(1)
     expect(socket.listeners.get("open")?.size ?? 0).toBe(0)
     expect(socket.listeners.get("error")?.size ?? 0).toBe(0)
+    await signals.close()
   })
 
   test("stub read-model fixtures hydrate pylon, payment, and inference proof rows", () => {

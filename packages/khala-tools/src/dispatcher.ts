@@ -5,6 +5,8 @@ import {
   type AgentDefinitionCompiledToolRuntimePolicy,
   type AgentDefinitionToolAuthorityDecision,
 } from "@openagentsinc/agent-runtime-schema"
+import type { PipelineSignalBus } from "@openagentsinc/pipeline-signals"
+import type { KhalaDispatchMilestone } from "./dispatch-signals.js"
 import { redactKhalaPublicText } from "./redaction.js"
 import { makeKhalaToolRuntimeService, type KhalaToolRuntimeServiceShape } from "./runtime.js"
 import type {
@@ -81,6 +83,13 @@ export type KhalaToolDispatcherOptions = Readonly<{
   hooks?: KhalaToolDispatchHooks
   maxModelOutputBytes?: number
   maxPublicSummaryBytes?: number
+  /**
+   * Optional pipeline-signal bus. When present, the dispatcher publishes
+   * deterministic milestone signals (turn call budget, bounded-output
+   * finalization, dispatch settlement) that tests and orchestration await
+   * instead of polling. These are NOT user-facing evidence receipts.
+   */
+  signalBus?: PipelineSignalBus<KhalaDispatchMilestone>
   telemetryTags?: KhalaToolTelemetryTags
   turnAccounting?: KhalaToolTurnAccounting
 }>
@@ -193,6 +202,19 @@ function dispatchKhalaTool(
         tool: undefined,
       })
 
+    if (accounting !== undefined && options.turnAccounting !== undefined) {
+      yield* publishMilestone(options, {
+        kind: "khala.dispatch.turn_call_recorded",
+        invocationId: input.invocation.id,
+        toolName: input.invocation.name,
+        turnId: options.turnAccounting.turnId,
+        toolCallCount: accounting.count,
+        ...(options.turnAccounting.maxToolCalls === undefined
+          ? {}
+          : { maxToolCalls: options.turnAccounting.maxToolCalls }),
+      })
+    }
+
     if (accounting !== undefined && options.turnAccounting?.maxToolCalls !== undefined) {
       if (accounting.count > options.turnAccounting.maxToolCalls) {
         yield* emitToolEvent({
@@ -206,6 +228,14 @@ function dispatchKhalaTool(
             phase: "validate",
           },
           telemetryTags,
+        })
+        yield* publishMilestone(options, {
+          kind: "khala.dispatch.turn_budget_exhausted",
+          invocationId: input.invocation.id,
+          toolName: input.invocation.name,
+          turnId: options.turnAccounting.turnId,
+          toolCallCount: accounting.count,
+          maxToolCalls: options.turnAccounting.maxToolCalls,
         })
         return yield* fail(
           "tool_call_limit_exceeded",
@@ -592,6 +622,13 @@ function finalize(input: Readonly<{
       telemetryTags: input.telemetryTags,
       tool: input.tool,
     }) ?? Effect.void)
+    yield* publishMilestone(input.options, {
+      kind: "khala.dispatch.settled",
+      invocationId: input.input.invocation.id,
+      toolName: input.definition?.name ?? input.input.invocation.name,
+      phase: input.phase,
+      status: input.result.status,
+    })
     return {
       ...(input.options.turnAccounting === undefined ? {} : { accounting: input.options.turnAccounting.snapshot() }),
       events: input.events,
@@ -599,6 +636,15 @@ function finalize(input: Readonly<{
       telemetryTags: input.telemetryTags,
     }
   })
+}
+
+function publishMilestone(
+  options: KhalaToolDispatcherOptions,
+  milestone: KhalaDispatchMilestone,
+): Effect.Effect<void, never> {
+  return options.signalBus === undefined
+    ? Effect.void
+    : options.signalBus.publish(milestone).pipe(Effect.asVoid)
 }
 
 function emitToolEvent(input: Readonly<{
@@ -678,6 +724,14 @@ function enforceOutputBounds(
         } satisfies KhalaToolArtifact),
       ),
     )
+    yield* publishMilestone(options, {
+      kind: "khala.dispatch.output_bounded",
+      invocationId: input.invocation.id,
+      toolName: definition.name,
+      artifactRef: artifact.artifactRef,
+      modelOutputBytes: modelBytes,
+      maxModelOutputBytes,
+    })
     const bounded = boundUtf8(modelText, maxModelOutputBytes)
     return {
       ...result,

@@ -203,3 +203,18 @@ treated as private local state. Visible text and DOM outputs are bounded for
 model context; truncated visible text spills to a private artifact, raw DOM is
 always stored as a private `text/html` artifact, and screenshots are returned as
 private image artifacts. Public summaries contain only action/result metadata.
+
+## Dispatch milestone signals (pipeline signals)
+
+The dispatcher can publish deterministic milestone signals on a typed
+`@openagentsinc/pipeline-signals` bus (`signalBus` dispatcher option):
+`khala.dispatch.turn_call_recorded`, `khala.dispatch.turn_budget_exhausted`
+(turn call budgets), `khala.dispatch.output_bounded` (bounded-output
+finalization to a private artifact), and `khala.dispatch.settled`.
+`makeQueuedKhalaToolDispatcher` runs dispatches on the shared
+`DrainableWorker`, so orchestration and tests `enqueue` invocations, await
+`drain`, and await typed milestones instead of sleeping or polling.
+
+These milestones are pipeline signals — test/orchestration synchronization
+events — NOT the user-facing evidence receipts vocabulary used by
+Blueprint/Cloud.

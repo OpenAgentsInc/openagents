@@ -315,3 +315,12 @@ const unsubscribe = overlay.subscribe((scope) => rerender(scope))
    no-op on the end state (stale entry versions are skipped, an equal
    cursor is a legal redelivery), and reconnect resumes from the durable
    `(scope, cursor)` — never from connection state.
+
+## Live-conversation drain-await (`settled`)
+
+`openKhalaConversationLive` subscriptions expose `settled()`: a drain-await
+that resolves when no source signal is pending and no delivery is in flight
+(or the subscription is closed). It extends the pump's existing coalescing
+drain loop with the same drain contract as
+`@openagentsinc/pipeline-signals`' `DrainableWorker`, so tests await pump
+quiescence deterministically instead of flushing timers.

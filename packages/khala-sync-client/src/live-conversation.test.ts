@@ -22,10 +22,6 @@ import {
 
 const threadRef = "thread.live.fixture"
 
-const flush = async (): Promise<void> => {
-  await new Promise(resolve => setTimeout(resolve, 0))
-}
-
 const status = (
   phase: KhalaSyncConversationStatus["phase"],
   cursor: number | null,
@@ -163,7 +159,7 @@ describe("cursor-aware live conversation subscription", () => {
       threadRef,
       afterCursor: 3,
     }, update => { updates.push(update) })
-    await flush()
+    await subscription.settled()
 
     expect(updates).toHaveLength(1)
     expect(Schema.decodeUnknownSync(KhalaConversationLiveEnvelopeSchema)(updates[0]!.envelope)).toEqual(updates[0]!.envelope)
@@ -203,7 +199,7 @@ describe("cursor-aware live conversation subscription", () => {
       threadRef,
       afterCursor: 4,
     }, update => { updates.push(update) })
-    await flush()
+    await subscription.settled()
 
     expect(updates[0]!.envelope).toMatchObject({
       cursor: 9,
@@ -228,15 +224,15 @@ describe("cursor-aware live conversation subscription", () => {
       generation: 1,
       threadRef,
     }, update => { updates.push(update) })
-    await flush()
+    await subscription.settled()
     h.change({
       status: status("live", 5),
       messages: [message("message.1", 1), message("message.2", 5)],
       timeline: timeline(5),
     })
-    await flush()
+    await subscription.settled()
     h.change({ status: status("must_refetch", null), timeline: null, kind: "state" })
-    await flush()
+    await subscription.settled()
 
     expect(updates.map(update => update.envelope.delivery)).toEqual([
       "provisional",
@@ -257,6 +253,8 @@ describe("cursor-aware live conversation subscription", () => {
     const updates: Array<KhalaConversationLiveUpdate> = []
     let release!: () => void
     const blocked = new Promise<void>(resolve => { release = resolve })
+    let firstDeliveryStarted!: () => void
+    const firstDelivery = new Promise<void>(resolve => { firstDeliveryStarted = resolve })
     let first = true
     let clock = 100
     const subscription = await openKhalaConversationLive({
@@ -271,10 +269,13 @@ describe("cursor-aware live conversation subscription", () => {
       updates.push(update)
       if (first) {
         first = false
+        firstDeliveryStarted()
         await blocked
       }
     })
-    await flush()
+    // The consumer is deliberately blocked mid-delivery, so the pump cannot
+    // settle yet; await the listener's own first-delivery signal instead.
+    await firstDelivery
 
     for (let cursor = 5; cursor <= 25; cursor += 1) {
       clock += 1
@@ -282,8 +283,7 @@ describe("cursor-aware live conversation subscription", () => {
     }
     clock += 25
     release()
-    await flush()
-    await flush()
+    await subscription.settled()
 
     expect(updates).toHaveLength(2)
     expect(updates[1]!.envelope.cursor).toBe(25)
@@ -310,7 +310,7 @@ describe("cursor-aware live conversation subscription", () => {
       threadRef,
       afterCursor: 10,
     }, update => { updates.push(update) })
-    await flush()
+    await subscription.settled()
 
     expect(updates[0]!.envelope).toMatchObject({
       cursor: 4,
@@ -322,7 +322,7 @@ describe("cursor-aware live conversation subscription", () => {
     await subscription.close()
     await subscription.close()
     h.change({ status: status("live", 5), timeline: timeline(5) })
-    await flush()
+    await subscription.settled()
     expect(updates).toHaveLength(1)
     expect(h.counts()).toEqual({ closeCount: 1, listeners: 0, openCount: 1 })
   })
@@ -341,7 +341,7 @@ describe("cursor-aware live conversation subscription", () => {
       threadRef,
       signal: controller.signal,
     }, update => { updates.push(update) })
-    await flush()
+    await subscription.settled()
 
     expect(subscription.closed()).toBe(true)
     expect(updates).toEqual([])

@@ -1,18 +1,25 @@
 import { describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Effect, PubSub } from "effect"
 import {
   compileAgentDefinitionToolRuntimePolicy,
   decodeAgentDefinition,
   type AgentDefinitionToolset,
 } from "@openagentsinc/agent-runtime-schema"
+import { awaitPipelineSignal } from "@openagentsinc/pipeline-signals"
 import {
   createKhalaToolTurnAccounting,
   executeKhalaTool,
+  isKhalaDispatchOutputBounded,
+  isKhalaDispatchSettled,
+  isKhalaDispatchTurnBudgetExhausted,
   khalaToolOk,
   makeDeterministicKhalaToolRuntimeService,
+  makeKhalaDispatchSignalBus,
   makeKhalaToolDispatcher,
   makeKhalaToolRegistry,
   makeKhalaToolServices,
+  makeQueuedKhalaToolDispatcher,
+  type KhalaDispatchMilestone,
   type KhalaToolDefinition,
   type KhalaToolEvent,
 } from "./index.js"
@@ -399,5 +406,190 @@ describe("KhalaToolDispatcher", () => {
     expect(result.modelOutput.text).toContain("[tool output truncated by dispatcher")
     expect(result.artifacts).toHaveLength(1)
     expect(result.privateDataRefs).toEqual([result.artifacts[0]?.artifactRef])
+  })
+})
+
+// Deterministic dispatch milestone signals (openagents issue #8782). These
+// are pipeline signals for tests/orchestration — NOT user-facing evidence
+// receipts. No test below sleeps or polls: completion is awaited via
+// `drain` and typed milestone signals.
+describe("KhalaToolDispatcher milestone signals", () => {
+  const echoRegistry = () =>
+    makeKhalaToolRegistry([
+      {
+        definition: echoDefinition,
+        execute: input => Effect.succeed(khalaToolOk({ modelText: String(input.text) })),
+      },
+    ])
+
+  test("queued dispatcher drains enqueued dispatches and settles each with a typed milestone", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const signalBus = yield* makeKhalaDispatchSignalBus
+          const subscription = yield* signalBus.subscribe
+          const dispatcher = yield* makeQueuedKhalaToolDispatcher({ signalBus })
+          const registry = echoRegistry()
+          const services = makeKhalaToolServices()
+
+          expect(
+            yield* dispatcher.enqueue({
+              invocation: { arguments: { text: "one" }, id: "call_q1", name: "echo", sessionId: "session_1" },
+              registry,
+              services,
+            }),
+          ).toBe(true)
+          expect(
+            yield* dispatcher.enqueue({
+              invocation: { arguments: { text: "two" }, id: "call_q2", name: "echo", sessionId: "session_1" },
+              registry,
+              services,
+            }),
+          ).toBe(true)
+
+          yield* dispatcher.drain
+
+          const first = yield* awaitPipelineSignal(subscription, isKhalaDispatchSettled)
+          const second = yield* awaitPipelineSignal(subscription, isKhalaDispatchSettled)
+          expect([first, second]).toEqual([
+            {
+              kind: "khala.dispatch.settled",
+              invocationId: "call_q1",
+              toolName: "echo",
+              phase: "completed",
+              status: "ok",
+            },
+            {
+              kind: "khala.dispatch.settled",
+              invocationId: "call_q2",
+              toolName: "echo",
+              phase: "completed",
+              status: "ok",
+            },
+          ])
+        }),
+      ),
+    )
+  })
+
+  test("failure-path dispatches settle with a failed milestone instead of hanging drain", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const signalBus = yield* makeKhalaDispatchSignalBus
+          const subscription = yield* signalBus.subscribe
+          const dispatcher = yield* makeQueuedKhalaToolDispatcher({ signalBus })
+
+          yield* dispatcher.enqueue({
+            invocation: { arguments: {}, id: "call_missing", name: "missing", sessionId: "session_1" },
+            registry: makeKhalaToolRegistry(),
+            services: makeKhalaToolServices(),
+          })
+          yield* dispatcher.drain
+
+          const settled = yield* awaitPipelineSignal(subscription, isKhalaDispatchSettled)
+          expect(settled).toEqual({
+            kind: "khala.dispatch.settled",
+            invocationId: "call_missing",
+            toolName: "missing",
+            phase: "resolve",
+            status: "failed",
+          })
+        }),
+      ),
+    )
+  })
+
+  test("turn call budget milestones record each call and mark exhaustion", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const signalBus = yield* makeKhalaDispatchSignalBus
+          const subscription = yield* signalBus.subscribe
+          const dispatcher = makeKhalaToolDispatcher({
+            signalBus,
+            turnAccounting: createKhalaToolTurnAccounting({ maxToolCalls: 1, turnId: "turn_signals" }),
+          })
+          const registry = echoRegistry()
+          const services = makeKhalaToolServices()
+
+          yield* dispatcher.dispatch({
+            invocation: { arguments: { text: "first" }, id: "call_1", name: "echo", sessionId: "session_1" },
+            registry,
+            services,
+          })
+          yield* dispatcher.dispatch({
+            invocation: { arguments: { text: "second" }, id: "call_2", name: "echo", sessionId: "session_1" },
+            registry,
+            services,
+          })
+
+          const recorded = yield* awaitPipelineSignal(
+            subscription,
+            (signal): signal is KhalaDispatchMilestone & { kind: "khala.dispatch.turn_call_recorded" } =>
+              signal.kind === "khala.dispatch.turn_call_recorded",
+          )
+          expect(recorded).toEqual({
+            kind: "khala.dispatch.turn_call_recorded",
+            invocationId: "call_1",
+            toolName: "echo",
+            turnId: "turn_signals",
+            toolCallCount: 1,
+            maxToolCalls: 1,
+          })
+
+          const exhausted = yield* awaitPipelineSignal(subscription, isKhalaDispatchTurnBudgetExhausted)
+          expect(exhausted).toEqual({
+            kind: "khala.dispatch.turn_budget_exhausted",
+            invocationId: "call_2",
+            toolName: "echo",
+            turnId: "turn_signals",
+            toolCallCount: 2,
+            maxToolCalls: 1,
+          })
+
+          // The refused dispatch still settles deterministically.
+          const settled = yield* awaitPipelineSignal(
+            subscription,
+            (signal): signal is KhalaDispatchMilestone & { kind: "khala.dispatch.settled" } =>
+              isKhalaDispatchSettled(signal) && signal.invocationId === "call_2",
+          )
+          expect(settled.status).toBe("failed")
+          expect(settled.phase).toBe("validate")
+        }),
+      ),
+    )
+  })
+
+  test("bounded-output finalization publishes the artifact milestone", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const signalBus = yield* makeKhalaDispatchSignalBus
+          const subscription = yield* signalBus.subscribe
+          const dispatcher = makeKhalaToolDispatcher({ maxModelOutputBytes: 8, signalBus })
+
+          const dispatched = yield* dispatcher.dispatch({
+            invocation: { arguments: { text: "abcdefghijklmnopqrstuvwxyz" }, id: "call_big", name: "echo", sessionId: "session_1" },
+            registry: echoRegistry(),
+            services: makeKhalaToolServices(),
+          })
+
+          const bounded = yield* awaitPipelineSignal(subscription, isKhalaDispatchOutputBounded)
+          expect(bounded).toEqual({
+            kind: "khala.dispatch.output_bounded",
+            invocationId: "call_big",
+            toolName: "echo",
+            artifactRef: dispatched.result.artifacts[0]!.artifactRef,
+            modelOutputBytes: 26,
+            maxModelOutputBytes: 8,
+          })
+
+          // Settlement follows bounded-output finalization in signal order.
+          const settled = yield* PubSub.take(subscription)
+          expect(settled).toMatchObject({ kind: "khala.dispatch.settled", status: "ok", phase: "completed" })
+        }),
+      ),
+    )
   })
 })

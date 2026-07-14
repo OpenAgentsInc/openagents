@@ -1711,6 +1711,21 @@ export {
   type KhalaToolTurnAccountingSnapshot,
 } from "./dispatcher.js"
 export {
+  isKhalaDispatchOutputBounded,
+  isKhalaDispatchSettled,
+  isKhalaDispatchTurnBudgetExhausted,
+  KhalaDispatchMilestoneSchema,
+  KhalaDispatchOutputBoundedSchema,
+  KhalaDispatchSettledSchema,
+  KhalaDispatchTurnBudgetExhaustedSchema,
+  KhalaDispatchTurnCallRecordedSchema,
+  makeKhalaDispatchSignalBus,
+  makeQueuedKhalaToolDispatcher,
+  type KhalaDispatchMilestone,
+  type KhalaDispatchSignalBus,
+  type QueuedKhalaToolDispatcher,
+} from "./dispatch-signals.js"
+export {
   browserClickToolDefinition,
   browserNavigateToolDefinition,
   browserReadDomToolDefinition,

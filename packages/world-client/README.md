@@ -34,3 +34,14 @@ interest.
 
 Tests use fake Effect transports so reconnect, stale cursor, command ack, delta,
 and diagnostics behavior stays deterministic without Cloudflare credentials.
+
+## Transport milestone signals (pipeline signals)
+
+`createBrowserWorldTransport` accepts an optional `signalBus`
+(`@openagentsinc/pipeline-signals`) publishing typed transport milestones:
+`world.transport.socket_created` when the WebSocket is constructed and
+`world.transport.command_pending` when a command has been sent and registered
+for acknowledgement. Tests await these signals instead of sleeping or polling
+socket internals. These are pipeline signals — deterministic
+test/orchestration synchronization events — NOT the user-facing evidence
+receipts carried in `WorldDelta.receipt`.

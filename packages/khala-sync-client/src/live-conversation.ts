@@ -113,6 +113,14 @@ export type KhalaConversationLiveSubscription = Readonly<{
   close: () => Promise<void>
   closed: () => boolean
   metrics: () => KhalaConversationLiveMetrics
+  /**
+   * Drain-await for the delivery pump (openagents issue #8782): resolves when
+   * no source signal is pending and no delivery is in flight (or the
+   * subscription is closed). Deterministic test/orchestration synchronization
+   * — the same contract as the shared `DrainableWorker.drain` in
+   * `@openagentsinc/pipeline-signals` — so callers never sleep or poll.
+   */
+  settled: () => Promise<void>
 }>
 
 export type KhalaConversationLiveMetrics = Readonly<{
@@ -176,6 +184,15 @@ export const openKhalaConversationLive = async (
   let maxPendingSnapshots: 0 | 1 = 0
   let lastDeliveryLatencyMs: number | null = null
   let unsubscribe = (): void => undefined
+  let settledResolvers: Array<() => void> = []
+
+  const isSettled = (): boolean => closed || (!draining && !pending)
+  const notifySettled = (): void => {
+    if (!isSettled() || settledResolvers.length === 0) return
+    const resolvers = settledResolvers
+    settledResolvers = []
+    for (const resolve of resolvers) resolve()
+  }
 
   const snapshot = async (): Promise<KhalaConversationLiveSnapshot> => {
     const status = options.conversation.threadStatus(options.threadRef)
@@ -316,6 +333,7 @@ export const openKhalaConversationLive = async (
     } finally {
       draining = false
       if (pending && !closed) void drain()
+      else notifySettled()
     }
   }
 
@@ -340,6 +358,7 @@ export const openKhalaConversationLive = async (
     if (closed) return
     closed = true
     pending = false
+    notifySettled()
     options.signal?.removeEventListener("abort", abort)
     unsubscribe()
     await Effect.runPromise(options.conversation.closeThread(options.threadRef))
@@ -352,6 +371,12 @@ export const openKhalaConversationLive = async (
   return {
     close,
     closed: () => closed,
+    settled: () =>
+      isSettled()
+        ? Promise.resolve()
+        : new Promise<void>(resolve => {
+            settledResolvers.push(resolve)
+          }),
     metrics: () => ({
       sourceSignals,
       deliveredUpdates,

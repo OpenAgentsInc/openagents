@@ -1,4 +1,5 @@
-import { Data, Effect, Exit, Schedule, Scope } from "effect"
+import { Data, Effect, Exit, Schedule, Schema as S, Scope } from "effect"
+import type { PipelineSignalBus } from "@openagentsinc/pipeline-signals"
 
 import {
   WORLD_DELTA_SCHEMA_VERSION,
@@ -103,6 +104,38 @@ type BrowserWebSocketLike = Readonly<{
 
 type BrowserWebSocketCtor = new (url: string) => BrowserWebSocketLike
 
+/**
+ * Deterministic transport milestone signals (openagents issue #8782).
+ *
+ * These are pipeline signals — test/orchestration synchronization events on a
+ * typed Effect PubSub — NOT the user-facing evidence "receipts" carried in
+ * `WorldDelta.receipt`. Tests await these instead of sleeping or polling
+ * transport internals.
+ */
+export const WorldTransportSocketCreatedSchema = S.Struct({
+  kind: S.Literal("world.transport.socket_created"),
+  socketUrl: S.String,
+})
+export const WorldTransportCommandPendingSchema = S.Struct({
+  kind: S.Literal("world.transport.command_pending"),
+  commandRef: S.String,
+})
+export const WorldTransportMilestoneSchema = S.Union([
+  WorldTransportSocketCreatedSchema,
+  WorldTransportCommandPendingSchema,
+])
+export type WorldTransportMilestone = typeof WorldTransportMilestoneSchema.Type
+
+export const isWorldTransportSocketCreated = (
+  signal: WorldTransportMilestone,
+): signal is typeof WorldTransportSocketCreatedSchema.Type =>
+  signal.kind === "world.transport.socket_created"
+
+export const isWorldTransportCommandPending = (
+  signal: WorldTransportMilestone,
+): signal is typeof WorldTransportCommandPendingSchema.Type =>
+  signal.kind === "world.transport.command_pending"
+
 export type BrowserWorldTransportInput = Readonly<{
   worldUrl: string
   actorRef: string
@@ -111,6 +144,11 @@ export type BrowserWorldTransportInput = Readonly<{
   webSocketCtor?: BrowserWebSocketCtor
   onDelta?: (delta: WorldDelta, frame: WorldTransportFrame) => void
   onDiagnostic?: (diagnostic: WorldDiagnostic, frame: WorldTransportFrame) => void
+  /**
+   * Optional pipeline-signal bus publishing `WorldTransportMilestone`
+   * signals. NOT user-facing evidence receipts.
+   */
+  signalBus?: PipelineSignalBus<WorldTransportMilestone>
 }>
 
 export const WorldClientRetrySchedules = {
@@ -297,6 +335,9 @@ export const createBrowserWorldTransport = (
       }
       next.addEventListener("open", onOpen, { once: true })
       next.addEventListener("error", onError, { once: true })
+      if (input.signalBus !== undefined) {
+        yield* input.signalBus.publish({ kind: "world.transport.socket_created", socketUrl })
+      }
 
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
@@ -425,6 +466,10 @@ export const createBrowserWorldTransport = (
               reject: error => reject(error),
             })
             socket.send(JSON.stringify(command))
+            input.signalBus?.publishUnsafe({
+              kind: "world.transport.command_pending",
+              commandRef: command.commandRef,
+            })
           }),
         catch: error => error instanceof WorldClientError
           ? error
