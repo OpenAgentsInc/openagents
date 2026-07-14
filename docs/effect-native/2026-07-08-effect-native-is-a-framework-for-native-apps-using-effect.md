@@ -167,22 +167,32 @@ The UI is the last bullet, not the first — because Effect Native is an
 
 ## 7. Honest caveats
 
-- **`platform-native` does not exist yet.** The platform-adapter *pattern* is
-  proven (browser/node/bun), and RN gives us the native painting engine, but
-  the native host Layers + the native reactive-state→view binding are net-new
-  work. This is the hard, valuable core.
-- **The reactive→view bindings that ship today are for React/Solid/Vue**, not
-  a native renderer. Effect Native writes the native one (and the DOM one that
-  doesn't drag React along).
+> **Implementation status (2026-07-14):** the July 8 caveats are reconciled
+> below. The owned framework has since shipped a v39 Schema catalog,
+> React-free direct DOM renderer, React-backed React Native renderer,
+> `ViewProgram`, host-driver, token/style, mobile, and Electron host paths. A
+> fully native Swift/Compose `platform-native` target remains future work. The
+> remaining web-specific gap is first-class React DOM/SSR integration under
+> the same contract; see the
+> [React web renderer harmonization analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md).
+
+- **A fully native `platform-native` does not exist yet.** The platform-adapter
+  pattern is proven and the React Native/Expo and Electron/DOM host paths now
+  ship, but pure Swift/Compose host Layers and native
+  reactive-state→view/process bindings remain net-new work.
+- **The Effect→View binding now exists; first-class React DOM does not.**
+  `ViewProgram` maps typed state into a renderer-neutral View stream consumed
+  by the direct DOM and React Native renderers. A concurrency-safe synchronous
+  View source plus React DOM SSR/hydration surface is the remaining web gap,
+  not permission to move application state into hooks.
 - **v4 is beta.** We pin `effect-smol@4.0.0-beta.94` and track it; the core
   programming model (Effect/Layer/Schema/Stream) is stable per the v4 migration
   notes, but the `unstable/*` surface (including reactivity) can move — expect
   it and pin hard.
-- **Ambition vs. shipping.** This framing is the *what it is*, not a mandate
-  to build all of it before the MVP/Sarah/sales. Greenfield-first and
-  migrate-on-touch still govern: build the app-foundation + UI layers where new
-  surfaces need them, prove them small (EN-0), and let the product pull the
-  rest.
+- **Ambition vs. shipping.** This framing is the *what it is*, not authority
+  to expand closed product scope. Build renderer and host capabilities only
+  when a retained Desktop, mobile, or web surface pulls them, and require a
+  bounded cross-renderer receipt rather than speculative framework breadth.
 
 ## 8. The corrected description (use this)
 

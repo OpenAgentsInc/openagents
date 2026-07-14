@@ -7,6 +7,16 @@ React Native / three-effect comparisons. Grounded in deep reads of Tailwind
 CSS v4, NativeWind v5, and Meta's StyleX (`projects/repos/{tailwindcss,
 nativewind,stylex}`) on 2026-07-08.
 
+> **Implementation reconciliation (2026-07-14):** the typed-object/token
+> contract shipped, but the current direct DOM renderer emits atomic rules at
+> runtime and writes theme variables to global `:root`; the original
+> build-time extraction wording below remains a target, not current status.
+> The [React web renderer harmonization analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md)
+> keeps `@effect-native/tokens` and typed styles canonical, requires
+> surface/portal-scoped variables and server-extractable CSS, and permits
+> Tailwind only as renderer/host build tooling fed from those tokens—never as
+> `className` in the portable View contract.
+
 The short version: **Effect Native should style with a StyleX-like typed
 *object* model — not Tailwind class strings, and not per-platform native
 CSS.** Author styles once as typed values; carry Tailwind's *design tokens*

@@ -1564,6 +1564,23 @@ privilege separation. [source]
 All four are [inferred] adaptations from the source. They do not replace the
 Effect Native dossier, Sol roadmap, typed contracts, or executable guarantees.
 
+#### React renderer reconciliation (2026-07-14)
+
+“Refuse the implementation split” does **not** mean “refuse React.” T3's
+React/Vite renderer, Base UI primitives, TanStack integration, virtualization,
+Lexical, xterm, and diff tooling are valuable implementation evidence. The
+split to refuse is React becoming a second application/component/state/token
+authority beside Effect Native.
+
+The source-grounded
+[Effect Native + React web renderer gap analysis](../effect-native/2026-07-14-react-web-renderer-harmonization-gap-analysis.md)
+therefore recommends the same layering that Effect Native already ships on
+mobile: retain the Schema `View`, Effect state/services, typed intents, and
+tokens; lower them to React elements inside the DOM renderer; and admit
+specialist libraries only through renderer-private implementations or closed
+typed hosts. Today's React route shell around an imperative direct-DOM island
+is migration glue, not that destination. [inferred]
+
 ### Frontend evidence limitations
 
 This addendum inspected source and dependency manifests at the pinned commit.

@@ -116,6 +116,15 @@ than in-place rewrites. The binding app decision is
   the 2026-07-09 Sarah-first greenfield/route-retirement decision linked above.
   *Read the framework doc first, then the current Sol decision before app work.*
 
+- **[Effect Native + React web renderer harmonization gap analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md)**
+  — the current source-grounded answer to whether web React replaces, wraps,
+  or renders Effect Native. **Decision: keep Effect Native as the application,
+  View, state, token, and intent contract; make React a first-class internal
+  implementation of the DOM renderer; keep today's imperative DOM-in-React
+  wrapper only as migration glue.** Defines the state boundary, SSR/hydration,
+  styling, React-library/typed-host, lifecycle, conformance, and convergence
+  gaps without reopening closed web product scope.
+
 - **[Foldkit vs Effect Native](./2026-07-08-foldkit-vs-effect-native.md)**
   — Foldkit is our Elm/MVU Effect framework with a *fixed DOM renderer* and
   a *whole-app* mandate; Effect Native is a *renderer-agnostic component
@@ -132,8 +141,11 @@ than in-place rewrites. The binding app decision is
   (Fabric/Yoga/JSI) **and** the *React programming model*. They separate
   cleanly (RN's own out-of-tree seam proves it). **Use** RN as Effect
   Native's mobile *renderer* (adapter #1 — reuse the shipping primitives,
-  Yoga layout, host components); **leave** React as the authoring model
-  (no JSX screens, no hooks/component-local state, no callbacks-in-view).
+  Yoga layout, host components); **leave** React as the *portable application
+  authoring and state-authority model* (no JSX in View trees, no callbacks in
+  Schema data, no React-owned domain state). React elements and hooks are
+  legitimate inside renderer and host implementations; the shipping RN
+  renderer already uses them.
   Native Swift/Compose is a per-component escape, never a from-scratch
   Fabric replacement.
 

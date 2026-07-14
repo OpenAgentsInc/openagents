@@ -13,8 +13,9 @@ catalog version bump → vendor pin → convert-and-delete.**
 
 See `apps/openagents.com/packages/effect-native-vendor.json`:
 
-- commit / catalog: tracked there (v29 as of 2026-07-10)
-- Freshness: `bun apps/openagents.com/scripts/check-effect-native-vendor-freshness.ts`
+- commit / catalog: tracked there (`412640adbe2979926c64c7aaf29721677638d4ec`,
+  `effect-native/v39` as of 2026-07-14)
+- Freshness: `pnpm --dir apps/openagents.com run check:effect-native-vendor`
 
 ## Open demand rows
 

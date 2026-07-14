@@ -2,7 +2,7 @@
 
 A Node 24 and pnpm workspace for the OpenAgents application stack.
 
-- Web: Foldkit, Vite, Effect
+- Web: TanStack Start/React host, Effect Native DOM surfaces, Vite
 - API: Cloudflare Workers, Durable Objects, D1, R2, Queues
 - Auth: OpenAuth target
 - Sync: owned OpenAgents Sync packages

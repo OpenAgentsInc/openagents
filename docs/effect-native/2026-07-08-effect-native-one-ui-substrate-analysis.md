@@ -3,6 +3,18 @@
 Date: 2026-07-08
 Status: **OWNER DECISION (2026-07-08) — pivot now.**
 
+> **2026-07-14 renderer reconciliation:** the one-component-set decision
+> remains binding, but implementation evidence has refined “DOM (no React
+> required)” and the early `render-react` shim idea. The catalog is now v39,
+> the direct DOM and React Native renderers are each more than 6,000 lines,
+> mobile already proves React can live below the Effect Native contract, and
+> retained TanStack Start pages currently host opaque client-only DOM islands.
+> The [React web renderer harmonization gap analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md)
+> recommends a first-class React-backed DOM implementation under the same
+> typed View/intents/tokens, with the old wrapper used only during migration.
+> This is not a return to JSX-authored product screens or a second state/design
+> system, and it does not reopen closed broad web conversion scope.
+
 > **Scope note (2026-07-08):** Effect Native is **a framework for building
 > native applications using Effect** (the React Native sentence, Effect for
 > React) — see

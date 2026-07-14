@@ -7,6 +7,17 @@ the Foldkit comparison. Grounded in a deep read of the real
 `facebook/react-native` monorepo (`projects/repos/react-native`) on
 2026-07-08.
 
+> **Implementation reconciliation (2026-07-14):** this document's “leave
+> React” wording applies to the portable application authoring model and
+> domain/state authority, not to renderer implementation. The current
+> `@effect-native/render-rn` legitimately injects React/React Native, lowers
+> the typed `View` to React elements, and subscribes through a hook-backed
+> `createEffectNativeSurface`; app ViewPrograms remain React-free. The same
+> layering is now recommended for DOM in the
+> [React web renderer harmonization gap analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md):
+> React may render Effect Native, but JSX, callbacks, class strings, and
+> React-owned domain state do not enter the Effect Native contract.
+
 > **Framing note (2026-07-08):** the deepest version of this comparison —
 > "Effect is to Effect Native what React is to React Native," i.e. Effect
 > Native is a `platform-native` host adapter for Effect the way React Native
@@ -215,9 +226,12 @@ Effect Native decision exists to protect.
 2. Do we render through the full RN framework (Metro/Expo runtime, as today)
    or, longer term, drive Fabric more directly — and is that ever worth the
    cost over just using RN-the-framework as the backend?
-3. Web renderer: thin direct-DOM vs. react-native-web (reuse RN's component
-   API on web, but drag React along) vs. host-inside-Foldkit (the Foldkit
-   comparison's Option A). Decide at EN-1 with landing + Sarah as the test.
+3. Web renderer: this historical open question is reconciled by the
+   2026-07-14 React web renderer analysis. Keep the DOM target and Effect
+   Native contract, use a React-backed implementation for first-class
+   TanStack/SSR composition, and retain the direct renderer only during
+   migration or if measured low-dependency host constraints justify its
+   permanent conformance cost. Do not prefer `react-native-web`.
 4. Yoga everywhere: do we adopt Yoga/Flexbox as Effect Native's *canonical*
    layout model across all renderers (so web and native lay out identically),
    or let each renderer use its platform-native layout under the same tokens?

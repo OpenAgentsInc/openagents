@@ -1651,8 +1651,10 @@ Its evidence changes this document's decisions in the following ways.
 2. **A third independent Effect 4 beta whole-app adoption.** OpenCode V2
    pins `4.0.0-beta.83`, Executor `beta.59`, T3 Code `beta.78` (patched, with
    tsgo typechecking and a custom oxlint plugin enforcing Effect hygiene);
-   OpenAgents pins `beta.70`. The Effect Native bet gains market
-   confirmation, and the framework-risk warning in the Effect audit gains
+   the original 2026-07-13 addendum observed OpenAgents at `beta.70`, while
+   the 2026-07-14 Effect Native v39 vendor pins `beta.94`. The Effect Native
+   bet gains market confirmation, and the framework-risk warning in the
+   Effect audit gains
    force: four serious products on four different betas of a pre-1.0
    framework is a compatibility archipelago. Keep the upgrade regression
    gates; do not adopt T3's patch-the-framework habit without an upstream PR
@@ -1736,7 +1738,12 @@ Its evidence changes this document's decisions in the following ways.
     leaves two design systems and two implementations of the most complex
     surfaces. OpenAgents should retain one typed component/token/intent
     contract with web, React Native, native, and canvas renderers—not adopt
-    T3's independent Tailwind DOM and Uniwind/native trees.
+    T3's independent Tailwind DOM and Uniwind/native trees. This does not ban
+    React below that contract: the
+    [React web renderer harmonization analysis](../effect-native/2026-07-14-react-web-renderer-harmonization-gap-analysis.md)
+    recommends React as an internal DOM renderer, with Base UI and specialist
+    libraries confined to reviewed lowerings/typed hosts rather than a second
+    app grammar.
 12. **Conversation rendering is infrastructure.** T3's virtualized and
     end-anchored Legend List feed, visible-content preservation, bounded
     Markdown highlight cache, sanitized rich text, worker-backed diff parsing,

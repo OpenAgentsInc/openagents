@@ -1,11 +1,21 @@
 # EN-4 (#8573): web absorption burn-down — route inventory
 
-Under epic EN #8566, lane EN-4 #8573. This is the **first-slice** inventory +
-burn-down table for converting every `apps/openagents.com` web route onto the
-Effect Native DOM renderer, following the EN-1 `/stage1` pattern
-(`docs/fable/2026-07-08-en-1-stage1-effect-native-receipt.md`). It is
-maintained across sessions — update the status column and re-order as routes
-convert, do not replace this file wholesale.
+> **RETIRED / HISTORICAL AS OF 2026-07-14.** The former Foldkit `apps/web`
+> application was deleted in #8813 and `apps/start` now owns the retained web
+> documents and production build. The conversion sequencing, live-app split,
+> TODO rows, and recommendations below record the July 9 state; they are not a
+> current work queue. Current Sol policy closes broad route conversion,
+> landing, Forum expansion, portal, CRM, sales, and outbound product work unless
+> separately reauthorized. For the remaining renderer seam, use the
+> [React web renderer harmonization gap analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md).
+
+The historical content begins below. Under epic EN #8566, lane EN-4 #8573,
+this was the **first-slice** inventory + burn-down table for converting every
+`apps/openagents.com` web route onto the Effect Native DOM renderer, following
+the EN-1 `/stage1` pattern
+(`docs/fable/2026-07-08-en-1-stage1-effect-native-receipt.md`). Retain it as a
+point-in-time sizing record; do not update its statuses or dispatch work from
+it.
 
 ## Architecture context (read this before converting anything)
 
@@ -179,6 +189,11 @@ until a serving-cutover plan exists (see Architecture context above).
    row in this table once real work starts there.
 
 ## Vendored effect-native freshness (2026-07-09)
+
+> **Current snapshot (2026-07-14):** the vendor manifest now pins all four
+> packages at `412640adbe2979926c64c7aaf29721677638d4ec`, catalog
+> `effect-native/v39`. The v5→v19 paragraph below is retained as the historical
+> state of this burn-down, not the current pin.
 
 The four vendored `@effect-native/*` packages under
 `apps/openagents.com/packages/` are a snapshot of the public
