@@ -63,8 +63,10 @@ export interface Statement<
 export class Database {
   private readonly db: DatabaseSync
 
-  constructor(filename: string, _options?: { create?: boolean }) {
-    this.db = new DatabaseSync(filename)
+  constructor(filename: string, options?: { create?: boolean; readonly?: boolean }) {
+    this.db = options?.readonly === true
+      ? new DatabaseSync(filename, { readOnly: true })
+      : new DatabaseSync(filename)
   }
 
   exec(sql: string): void {
