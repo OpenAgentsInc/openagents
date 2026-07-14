@@ -11,8 +11,10 @@ conformance reference only — never a runtime dependency. The vendored fixtures
 in `fixtures/conformance/` (MIT, attributed) pin the exact upstream
 compatibility target: parser `0.19.0` at commit `9ef2654` (PSEL-0/PSEL-1,
 #8757). The `UPSTREAM_COMPATIBILITY` export states exactly which upstream
-semantics the package supports; upstream Decision Traces, the dependency graph
-resolver, and the MCP evidence checklist are explicitly out of scope. The
+semantics the package supports. The package also implements the upstream
+Decision Trace v0.1 JSON companion with an Effect Schema decoder and stable
+diagnostics; the dependency graph resolver and MCP evidence checklist remain
+out of scope. The
 adopted boundary and migration plan are in
 `docs/assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`.
 
@@ -61,12 +63,13 @@ Per `docs/assurance/ASSURANCE_SPEC.md` §4:
 ## Usage
 
 ```ts
-import { validateProductSpec, parseProductSpec, stripToolMetadata } from "@openagentsinc/product-spec"
+import { parseDecisionTrace, validateProductSpec, parseProductSpec, stripToolMetadata } from "@openagentsinc/product-spec"
 
 const result = validateProductSpec(markdown)
 if (result.valid) console.log(result.document.frontmatter.title)
 
 const upstream = validateProductSpec(markdown, { profile: "upstream" })
+const trace = parseDecisionTrace(decisionTraceJson)
 ```
 
 CLI:
@@ -75,6 +78,7 @@ CLI:
 bun packages/product-spec/src/cli.ts validate specs/web/my-feature.product-spec.md
 bun packages/product-spec/src/cli.ts validate --specs-root specs
 bun packages/product-spec/src/cli.ts validate --profile upstream <file>
+bun packages/product-spec/src/cli.ts validate-trace <file.decision-trace.json>
 bun packages/product-spec/src/cli.ts digest <file>
 bun packages/product-spec/src/cli.ts init specs/<area>/<name>.product-spec.md --title "My Feature"
 ```
@@ -83,6 +87,12 @@ bun packages/product-spec/src/cli.ts init specs/<area>/<name>.product-spec.md --
 `custom-receipts`, `custom-promise-links`) and a flat `tool_metadata` slot.
 `stripToolMetadata` is the public-safe export helper — `tool_metadata` never
 leaves the repo in a shared artifact.
+
+Decision Trace validation follows the pinned upstream v0.1 schema exactly:
+portable subjects, events, decisions, drift/source/result records, and links.
+`validateDecisionTrace` returns stable error codes without throwing;
+`parseDecisionTrace` returns the typed decoded trace or throws
+`DecisionTraceValidationError` with the same diagnostics.
 
 ## Boundaries
 

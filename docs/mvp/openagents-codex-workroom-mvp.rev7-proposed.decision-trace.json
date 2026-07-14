@@ -1,0 +1,53 @@
+{
+  "decision_trace_format_version": "0.1",
+  "trace_id": "openagents-codex-workroom-mvp-rev7",
+  "title": "OpenAgents Codex Workroom MVP Revision 7 Decision Trace",
+  "created_at": "2026-07-14T00:00:00Z",
+  "updated_at": "2026-07-14T00:00:00Z",
+  "subject": {
+    "type": "product_spec",
+    "id": "openagents-codex-workroom-mvp",
+    "title": "OpenAgents Codex Workroom MVP",
+    "product_spec_path": "./openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+    "product_spec_revision": 7
+  },
+  "events": [
+    {
+      "event_id": "portable-id-migration",
+      "event_type": "spec_revision",
+      "occurred_at": "2026-07-14T00:00:00Z",
+      "summary": "Proposed revision 7 maps the legacy CW-AC and semantic metric identities to portable AC and SM identities without rewriting historical workroom evidence.",
+      "source": {
+        "product_spec_revision": 6,
+        "links": [
+          {
+            "type": "product_spec",
+            "url": "./openagents-codex-workroom-mvp.product-spec.md",
+            "title": "Admitted revision 6 ProductSpec"
+          },
+          {
+            "type": "other",
+            "url": "./openagents-codex-workroom-mvp.id-map.json",
+            "title": "Reviewed revision 6 to revision 7 identity map"
+          }
+        ]
+      },
+      "decision": {
+        "outcome": "update_spec",
+        "rationale": "Portable item identities and Related Artifacts enable ProductSpec Evidence Loop interoperability; adoption remains owner-gated and old runs retain their original identity.",
+        "approved_by": ["OpenAgents owner proposal review"]
+      },
+      "result": {
+        "new_product_spec_revision": 7,
+        "linked_artifacts": [
+          {
+            "type": "product_spec",
+            "url": "./openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+            "title": "Proposed revision 7 ProductSpec"
+          }
+        ],
+        "learning": "Portable identity migration must supersede rather than relabel historical packet, run, and evidence records."
+      }
+    }
+  ]
+}

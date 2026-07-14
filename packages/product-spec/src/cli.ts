@@ -6,7 +6,7 @@
 //   bun packages/product-spec/src/cli.ts validate --specs-root <dir> [--profile ...]
 //   bun packages/product-spec/src/cli.ts digest <file...>
 //   bun packages/product-spec/src/cli.ts init <file> [--title "..."] [--type prd|hypothesis]
-import { readdirSync, statSync } from "node:fs"
+import { readFileSync, readdirSync, statSync } from "node:fs"
 import { basename, join } from "node:path"
 
 import {
@@ -15,6 +15,7 @@ import {
   computeProductSpecDocumentDigest,
   computeProductSpecIntentDigest,
   starterProductSpec,
+  validateDecisionTrace,
   validateProductSpec,
 } from "./index.ts"
 import type { ArtifactType, ProductSpecProfile } from "./index.ts"
@@ -61,6 +62,40 @@ const validateFiles = async (
 
 const main = async () => {
   const [command, ...rest] = process.argv.slice(2)
+
+  if (command === "validate-trace") {
+    if (rest.length === 0) {
+      console.error("usage: product-spec validate-trace <file...>")
+      process.exit(2)
+    }
+    let failures = 0
+    for (const path of rest) {
+      let input: string
+      try {
+        input = readFileSync(path, "utf8")
+      } catch (error) {
+        failures += 1
+        console.error(`FAIL ${path}`)
+        console.error(`  error unreadable_decision_trace: ${error instanceof Error ? error.message : String(error)}`)
+        continue
+      }
+      const result = validateDecisionTrace(input)
+      if (result.valid) {
+        console.log(`ok ${path}`)
+      } else {
+        failures += 1
+        console.error(`FAIL ${path}`)
+        for (const issue of result.errors) {
+          console.error(`  error ${issue.code}: ${issue.message}`)
+        }
+      }
+    }
+    if (failures > 0) {
+      console.error(`${failures} invalid Decision Trace file(s).`)
+      process.exit(1)
+    }
+    return
+  }
 
   if (command === "validate") {
     const args = [...rest]
@@ -138,7 +173,7 @@ const main = async () => {
     return
   }
 
-  console.error("usage: product-spec <validate|digest|init> ...")
+  console.error("usage: product-spec <validate|validate-trace|digest|init> ...")
   process.exit(2)
 }
 

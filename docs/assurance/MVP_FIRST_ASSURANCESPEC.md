@@ -451,7 +451,14 @@ ledger or laundering a non-confirming result.
 
 ### PSEL-MVP-1 — upstream Evidence Loop catch-up and reconciliation
 
-This is the next gate, not a hidden prerequisite for the r6 internal dogfood:
+Status update (2026-07-14): the parser/validator, Related Artifact, dual-digest,
+typed evidence-edit, proposed revision-7/ID-map, and portable Decision Trace
+deliverables below are implemented. Revision-7 adoption, Assurance rebinding,
+new-identity workroom execution, and current-evidence publication remain
+owner-gated. The list is retained as the complete gate contract rather than a
+claim that every operational step has happened.
+
+This is not a hidden prerequisite for the r6 internal dogfood:
 
 - vendor current upstream ProductSpec `0.19.0` conformance fixtures;
 - implement structured AC/EVAL/SM and Related Artifact parser, serializer,

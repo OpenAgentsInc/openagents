@@ -1,0 +1,25 @@
+{
+  "decision_trace_format_version": "0.1",
+  "trace_id": "minimal-trace",
+  "title": "Minimal Decision Trace",
+  "created_at": "2026-07-14T00:00:00Z",
+  "updated_at": "2026-07-14T00:00:00Z",
+  "subject": {
+    "type": "product_spec",
+    "id": "minimal-product-spec",
+    "product_spec_path": "./minimal.product-spec.md",
+    "product_spec_revision": 1
+  },
+  "events": [
+    {
+      "event_id": "initial-learning",
+      "event_type": "outcome_review",
+      "occurred_at": "2026-07-14T00:00:00Z",
+      "summary": "The first outcome review recorded a portable learning.",
+      "decision": {
+        "outcome": "record_learning",
+        "rationale": "The learning is consequential and should remain durable."
+      }
+    }
+  ]
+}

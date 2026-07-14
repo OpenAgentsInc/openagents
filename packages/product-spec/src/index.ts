@@ -21,6 +21,8 @@ import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { Schema as S } from "effect"
 
+export * from "./decision-trace.ts"
+
 export const SPEC_FORMAT_VERSION = "0.1" as const
 export const PRODUCT_SPEC_EXTENSION = ".product-spec.md" as const
 
@@ -49,7 +51,6 @@ export const UPSTREAM_COMPATIBILITY = {
     "markdown serialization round trips",
   ],
   unsupported: [
-    "Decision Trace JSON validation",
     "ProductSpec dependency graph resolution",
     "MCP evidence checklist / session behavior",
   ],

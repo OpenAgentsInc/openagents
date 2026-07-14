@@ -224,9 +224,12 @@ waits for the compiler: [`AGENT_TOOLING.md`](./AGENT_TOOLING.md).
 plans, work packets, leases, evidence envelopes, independent-verification refs,
 owner packet disposition (`apps/openagents-desktop/src/product-spec-workroom*`).
 It is work-state authority, not assurance-state authority (Law 14). Separately,
-`packages/product-spec` is behind upstream 0.19.0/0.20.0: no structured
-AC/EVAL/SM items, no Related Artifacts, no Evidence Loop checklist. The MVP
-ProductSpec's `CW-AC-*` profile is not valid upstream.
+`packages/product-spec` now implements the pinned upstream structured
+AC/EVAL/SM, Related Artifact, dual-digest/evidence-edit, and Decision Trace
+v0.1 surfaces. The upstream dependency graph and MCP Evidence Loop checklist
+remain unsupported. The admitted MVP ProductSpec's `CW-AC-*` profile is still
+not valid upstream; the portable revision 7 plus Decision Trace are proposed,
+not silently adopted.
 
 **Us — designed.** PRODUCTSPEC_EVIDENCE_LOOP.md adopts upstream's Related
 Artifacts as the portable attachment layer (PSEL-0…PSEL-4) rather than building
@@ -243,13 +246,13 @@ reconciliation record, and worked examples (`examples/evidence-loop/`).
 ProductSpec stores no evidence itself and never claims a link is a verdict —
 the same boundary as our Law 13.
 
-**Gap and action.** Two distinct gaps. (a) **Parity debt:** our
-`packages/product-spec` cannot express what upstream 0.20 documents expect —
-PSEL-0 is the unlock for Related Artifacts, the intent digest, and portable
-interop, and it blocks more than it appears to. (b) **Our extension:** the
+**Gap and action.** The former document-format parity debt is closed for the
+pinned profile; adoption of the portable MVP revision remains owner-gated.
+The remaining direct parity debt is agent ergonomics (dependency graph and MCP
+Evidence Loop checklist/session behavior). **Our extension:** the
 receipt pipeline (normalized receipts → workroom bridge → Related Artifact
-publication) is designed-only; its first honest slice is AS-MVP's
-`AO-CW-AC-04-01` path, not a general system.
+publication) has a narrow implemented `AO-CW-AC-04-01` dogfood path, not a
+general automatic publication system.
 
 ### 5.1 Agent Run (upstream v0.21.0/v0.22.0, verified 2026-07-13)
 

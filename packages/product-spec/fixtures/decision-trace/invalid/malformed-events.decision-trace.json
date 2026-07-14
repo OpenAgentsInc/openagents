@@ -1,0 +1,24 @@
+{
+  "decision_trace_format_version": "0.1",
+  "trace_id": "malformed-events",
+  "title": "Malformed Events",
+  "created_at": "2026-07-14T00:00:00Z",
+  "updated_at": "2026-07-14T00:00:00Z",
+  "subject": { "type": "other", "id": "subject" },
+  "events": [
+    {
+      "event_id": "same-event",
+      "event_type": "scope_drift",
+      "occurred_at": "2026-07-14T00:00:00Z",
+      "summary": "The decision is malformed.",
+      "decision": { "outcome": "invented", "rationale": "" }
+    },
+    {
+      "event_id": "same-event",
+      "event_type": "outcome_review",
+      "occurred_at": "2026-07-14T00:00:00Z",
+      "summary": "The event id is duplicated.",
+      "decision": { "outcome": "no_action", "rationale": "The duplicate must fail." }
+    }
+  ]
+}

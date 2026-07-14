@@ -229,24 +229,29 @@ bootstrap: it keeps exact-byte binding, adds no Related Artifacts, and makes no
 upstream Evidence Loop interoperability claim. PSEL-2/3 performs the later
 portable migration and rerun.
 
-## OpenAgents implementation gap
+## OpenAgents implementation status (reconciled 2026-07-14)
 
-`@openagentsinc/product-spec` was built from an earlier upstream snapshot. It
-does not currently parse or validate:
+`@openagentsinc/product-spec` now implements the pinned upstream `0.19.0`
+ProductSpec constructs that this plan originally listed as gaps:
 
-- structured `productspec-acceptance-criteria` items;
-- upstream-standard `AC-*` criterion identity;
-- current `SM-*` success-metric identity and fields;
-- current `productspec-ai-evals` case/check shape and `EVAL-*` identity;
-- current `applies_to` frontmatter semantics;
-- `productspec-related-artifacts`;
-- Related Artifact dangling-ID errors and unusual-target warnings;
-- the upstream Evidence Loop checklist or MCP session behavior.
+- structured AC/EVAL/SM items and portable identities;
+- `applies_to` and Related Artifacts, including dangling-ID errors and
+  unusual-target warnings;
+- exact document and canonical intent digests plus the typed evidence-only
+  attachment edit path;
+- portable Decision Trace v0.1 validation and `validate-trace` CLI support.
 
-The current MVP ProductSpec is valid under our local extension but not under
+The dependency-graph resolver and upstream MCP evidence-checklist/session
+behavior remain explicitly unsupported. Those agent ergonomics are separate
+from portable document and Decision Trace conformance.
+
+The admitted revision-6 MVP ProductSpec is valid under our local extension but not under
 upstream `0.19.0`: it uses Markdown `CW-AC-*` criteria and semantic success
 metric IDs with OpenAgents-only fields. We must not call its Related Artifact
-links portable until this gap is reconciled.
+links portable. The separately proposed revision 7, ID map, and portable
+Decision Trace companion perform that reconciliation without rewriting the
+admitted revision-6 artifact or its historical evidence; adoption remains a
+separate owner-gated act.
 
 ## Adoption sequence
 

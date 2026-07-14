@@ -1,22 +1,26 @@
 import { describe, expect, test } from "bun:test"
+import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
 import {
   OPENAGENTS_CUSTOM_SECTIONS,
+  DECISION_TRACE_ERROR_CODES,
   PRODUCT_SPEC_EXTENSION,
   UPSTREAM_COMPATIBILITY,
   applyProductSpecEvidenceAttachmentEdit,
   computeProductSpecDocumentDigest,
   computeProductSpecIntentDigest,
   parseProductSpec,
+  parseDecisionTrace,
   planProductSpecEvidenceAttachmentEdit,
   productSpecIntentProjection,
   serializeProductSpec,
   starterProductSpec,
   stripToolMetadata,
   validateExecutableProductSpec,
+  validateDecisionTrace,
   validateProductSpec,
 } from "../src/index.ts"
 
@@ -49,7 +53,7 @@ describe("upstream 0.19.0 conformance corpus", () => {
   test("the compatibility target is pinned, not chased", () => {
     expect(UPSTREAM_COMPATIBILITY.version).toBe("0.19.0")
     expect(UPSTREAM_COMPATIBILITY.commit).toBe("9ef2654bdd01aef3985fef6ed5a9ab66365999e1")
-    expect(UPSTREAM_COMPATIBILITY.unsupported).toContain("Decision Trace JSON validation")
+    expect(UPSTREAM_COMPATIBILITY.unsupported).not.toContain("Decision Trace JSON validation")
   })
 
   const validFixtures = [
@@ -95,6 +99,65 @@ describe("upstream 0.19.0 conformance corpus", () => {
         expect(result.errors.map((error) => error.code)).toContain(expectedCode)
       })
     }
+  }
+})
+
+describe("Decision Trace v0.1", () => {
+  const traceFixture = (name: string): string => readFileSync(
+    join(packageRoot, "fixtures", "decision-trace", name),
+    "utf8",
+  )
+
+  test("decodes and round-trips the pinned portable shape", () => {
+    const trace = parseDecisionTrace(traceFixture("valid/minimal.decision-trace.json"))
+    expect(trace.decision_trace_format_version).toBe("0.1")
+    expect(trace.events[0]?.decision.outcome).toBe("record_learning")
+    expect(parseDecisionTrace(JSON.stringify(trace))).toEqual(trace)
+  })
+
+  test("missing top-level fields have stable diagnostics", () => {
+    const result = validateDecisionTrace(traceFixture("invalid/missing-title.decision-trace.json"))
+    expect(result.valid).toBe(false)
+    if (!result.valid) expect(result.errors.map((error) => error.code)).toContain("missing_decision_trace_field")
+  })
+
+  test("malformed events and duplicate ids have stable diagnostics", () => {
+    const result = validateDecisionTrace(traceFixture("invalid/malformed-events.decision-trace.json"))
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.errors.map((error) => error.code)).toContain("invalid_decision_trace_decision")
+      expect(result.errors.map((error) => error.code)).toContain("duplicate_decision_trace_event_id")
+    }
+  })
+
+  test("the exported diagnostic registry covers emitted fixture codes", () => {
+    for (const fixture of ["invalid/missing-title.decision-trace.json", "invalid/malformed-events.decision-trace.json"]) {
+      const result = validateDecisionTrace(traceFixture(fixture))
+      if (!result.valid) {
+        for (const error of result.errors) expect(DECISION_TRACE_ERROR_CODES).toContain(error.code as never)
+      }
+    }
+  })
+
+  test("validate-trace CLI distinguishes success, validation failure, and usage", () => {
+    const cli = join(packageRoot, "src", "cli.ts")
+    const run = (...args: string[]) => spawnSync(process.execPath, [cli, "validate-trace", ...args], {
+      encoding: "utf8",
+    })
+    expect(run(traceFixturePath("valid/minimal.decision-trace.json")).status).toBe(0)
+    expect(run(traceFixturePath("invalid/missing-title.decision-trace.json")).status).toBe(1)
+    expect(run().status).toBe(2)
+  })
+
+  test("the proposed MVP companion is portable and validator-clean", () => {
+    const path = join(repoRoot, "docs", "mvp", "openagents-codex-workroom-mvp.rev7-proposed.decision-trace.json")
+    const trace = parseDecisionTrace(readFileSync(path, "utf8"))
+    expect(trace.subject.product_spec_revision).toBe(7)
+    expect(trace.events[0]?.result?.new_product_spec_revision).toBe(7)
+  })
+
+  function traceFixturePath(name: string): string {
+    return join(packageRoot, "fixtures", "decision-trace", name)
   }
 })
 

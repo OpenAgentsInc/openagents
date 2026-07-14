@@ -146,6 +146,12 @@ package (#8758):
   — the machine-readable old→new ID map, digest-pinned to both revisions.
   `bun test packages/product-spec` enforces that the map, revision 6, and
   revision 7 agree exactly.
+- [`openagents-codex-workroom-mvp.rev7-proposed.decision-trace.json`](./openagents-codex-workroom-mvp.rev7-proposed.decision-trace.json)
+  — the portable Decision Trace v0.1 companion for the proposed identity
+  migration. It records the update-spec decision and preserves revision-6
+  packets, runs, and evidence as historical records rather than relabeling
+  them. `product-spec validate-trace` gates its shape; adoption remains
+  owner-gated with revision 7.
 
 ## Proposed AssuranceSpec revision 4 (2026-07-14 exact MVP assurance coverage)
 
