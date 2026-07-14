@@ -3552,8 +3552,7 @@ const smokeSettingsHarnessMaintenance = `(async () => {
   }
 })()`
 
-// UX-4 (#8790) pixel receipts: dock-routed navigation probes for the
-// retained ProductSpec / AssuranceSpec screens and the return-to-chat hop.
+// UX-4 (#8790) pixel receipt for the return-to-chat hop.
 const smokeBackToChat = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const chat = document.querySelector('[data-en-key="workspace-chat"]')
@@ -3564,33 +3563,6 @@ const smokeBackToChat = `(async () => {
     await wait(50)
   }
   return { ok: document.querySelector('[data-en-key="shell-transcript"]') !== null }
-})()`
-
-const smokeOpenProductSpec = `(async () => {
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const item = document.querySelector('[data-en-key="workspace-product-spec"]')
-  if (item === null) return { ok: false, reason: "ProductSpec dock item missing" }
-  item.click()
-  const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="product-spec-workspace"]') === null) {
-    await wait(50)
-  }
-  return { ok: document.querySelector('[data-en-key="product-spec-workspace"]') !== null }
-})()`
-
-const smokeOpenAssuranceSpec = `(async () => {
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const item = document.querySelector('[data-en-key="workspace-assurance-spec"]')
-  if (item === null) return { ok: false, reason: "AssuranceSpec dock item missing" }
-  item.click()
-  const deadline = Date.now() + 10000
-  const present = () =>
-    document.querySelector('[data-en-key="assurance-spec-document"]') !== null ||
-    document.querySelector('[data-en-key="assurance-spec-invalid"]') !== null
-  while (Date.now() < deadline && !present()) {
-    await wait(50)
-  }
-  return { ok: present(), valid: document.querySelector('[data-en-key="assurance-spec-document"]') !== null }
 })()`
 
 const smokeMvpSurfaceAllowlist = `(() => {
@@ -3604,6 +3576,11 @@ const smokeMvpSurfaceAllowlist = `(() => {
     "shell-voice-toggle",
     // UX-4 (#8790): swept dock affordances and Git mutation controls.
     "workspace-files",
+    "workspace-product-spec",
+    "workspace-assurance-spec",
+    "product-spec-workspace",
+    "assurance-spec-document",
+    "assurance-spec-invalid",
     "shell-command-palette-toggle",
     "git-commit",
     "git-push",
@@ -3614,7 +3591,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
   // UX-4 (#8790): the rendered dock is EXACTLY the MVP allowlist, in order.
   const dockIds = Array.from(document.querySelectorAll('[data-en-key="sidebar-workspace-dock"] > button[data-en-key]'))
     .map((item) => item.getAttribute("data-en-key"))
-  const expectedDock = ["workspace-new-chat", "workspace-chat", "workspace-product-spec", "workspace-assurance-spec", "workspace-home", "shell-settings-toggle"]
+  const expectedDock = ["workspace-new-chat", "workspace-chat", "workspace-home", "shell-settings-toggle"]
   const dockExact = JSON.stringify(dockIds) === JSON.stringify(expectedDock)
   const codex = document.querySelector('[data-en-key="shell-codex-engine"]')
   return { ok: present.length === 0 && dockExact && codex?.textContent === "Codex", present, dockIds, dockExact, codex: codex?.textContent ?? null }
@@ -4805,11 +4782,6 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
         await step("coding-catalog-host-persistence", smokeCodingCatalog)
         await captureShot(window, "10-coding-catalog")
-        // UX-4 (#8790) pixel receipts for the retained dock destinations.
-        await step("product-spec-workspace-opens", smokeOpenProductSpec)
-        await captureShot(window, "14-product-spec")
-        await step("assurance-spec-workspace-opens", smokeOpenAssuranceSpec)
-        await captureShot(window, "15-assurance-spec")
         await step("workspaces-back-to-chat", smokeBackToChat)
         tracePass = 1
         window.webContents.reload()

@@ -11,7 +11,6 @@ import {
   makeAssuranceSpecWorkspaceHandlers,
   mvpAssuranceSpecRelativePath,
 } from "./assurance-spec-workspace.ts"
-import { desktopShellView, initialDesktopShellState } from "./shell.ts"
 
 type AnyNode = Readonly<Record<string, unknown>>
 
@@ -95,26 +94,6 @@ describe("AssuranceSpec document support", () => {
     const view = assuranceSpecWorkspaceView(workspace)
     expect(byKey(view, "assurance-spec-invalid-badge")).toMatchObject({ label: "Invalid AssuranceSpec", tone: "danger" })
     expect(byKey(view, "assurance-summary-strip")).toBeUndefined()
-  })
-
-  test("is reachable as a selected editor-style workspace in the Desktop shell", () => {
-    const assuranceSpec = assuranceSpecWorkspaceStateFromSource(source, mvpAssuranceSpecRelativePath)
-    const view = desktopShellView({
-      ...initialDesktopShellState("electron/darwin", "18:00"),
-      workspace: "assurance-spec",
-      assuranceSpec,
-    })
-    const nav = byKey(view, "sidebar-navigation") as AnyNode
-    const items = (nav.sections as ReadonlyArray<{ items?: ReadonlyArray<AnyNode> }>)
-      .flatMap(section => section.items ?? [])
-    expect(items.find(item => item.id === "workspace-assurance-spec")).toMatchObject({
-      selected: true,
-      label: "AssuranceSpec",
-      // UX-4 (#8790): Check, not Compare — the owner read the compare glyph
-      // as a git surface during the rc.10 sidebar review.
-      icon: "Check",
-    })
-    expect(byKey(view, "assurance-spec-document")).toBeDefined()
   })
 
   test("registers the owner-authored visualization behavior contract", () => {

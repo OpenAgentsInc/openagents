@@ -9,12 +9,10 @@
  * a pass to remove everything from the sidebar and all UI that's not
  * specifically called for in our MVP spec."
  *
- * Authority: the admitted ProductSpec
- * `docs/mvp/openagents-codex-workroom-mvp.product-spec.md` (Scope +
- * User Experience + CW-AC criteria), the Sol MASTER_ROADMAP MVP section, the
- * owner-directed AssuranceSpec document surface
- * (`openagents_desktop.assurance_spec.document_visualization.v1`), and the
- * owner-issued MAINT-1 Settings harness-maintenance control (#8785).
+ * Authority: the admitted MVP scope, the Sol MASTER_ROADMAP MVP section, the
+ * owner-issued MAINT-1 Settings harness-maintenance control (#8785), and the
+ * 2026-07-14 owner direction that ProductSpec and AssuranceSpec remain
+ * implementation tooling rather than user-facing Desktop destinations.
  *
  * This module is not a static wish list: `desktopMvpSurfaceViolations` walks
  * the ACTUAL rendered shell view tree and reports every dock item or screen
@@ -38,14 +36,6 @@ export const mvpDockSurfaces = [
     authority: "ProductSpec Scope + CW-AC-10/CW-AC-11: session navigation and the typed causal timeline",
   },
   {
-    id: "workspace-product-spec",
-    authority: "ProductSpec Scope + CW-AC-04..09: the ProductSpec workroom and criterion board",
-  },
-  {
-    id: "workspace-assurance-spec",
-    authority: "owner-directed contract openagents_desktop.assurance_spec.document_visualization.v1 (2026-07-13)",
-  },
-  {
     id: "workspace-home",
     authority: "CW-AC-03: explicit repository grant and stable coding-session home",
   },
@@ -63,6 +53,10 @@ export const mvpAllowedDockItemIds: ReadonlyArray<string> = mvpDockSurfaces.map(
  * identities) or must not render at all.
  */
 export const mvpRemovedDockItemIds: ReadonlyArray<string> = [
+  // ProductSpec and AssuranceSpec remain internal authoring/verification
+  // tooling for the MVP; neither is a user-facing destination.
+  "workspace-product-spec",
+  "workspace-assurance-spec",
   // The spec places bounded file/Git review "beside the conversation"
   // (ProductSpec Scope; CW-AC-14) — not as a top-level sidebar destination.
   "workspace-files",
@@ -81,6 +75,10 @@ export const mvpRemovedDockItemIds: ReadonlyArray<string> = [
  * authoring are outside the MVP cut).
  */
 export const forbiddenVisibleSurfaceKeys: ReadonlyArray<string> = [
+  // Spec authoring/verification screens are not user-facing MVP surfaces.
+  "product-spec-workspace",
+  "assurance-spec-document",
+  "assurance-spec-invalid",
   // Fleet (ProductSpec Scope out: "Fleet, multi-account dispatch, markets…")
   "workspace-fleet-panel",
   "fleet-desk",

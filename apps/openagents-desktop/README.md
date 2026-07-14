@@ -96,6 +96,8 @@ build plus Electron teardown receipt.
   digest, and retains any prior run and receipts as `revision_mismatch` history.
   There is deliberately no app-server confirmation tool, so private or
   unreviewed receipt material cannot auto-publish through the agent path.
+  This remains internal MVP tooling: Desktop exposes no ProductSpec or
+  AssuranceSpec navigation item, route, or user-facing screen.
 - `src/renderer/` — the application, 100% Effect Native:
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.

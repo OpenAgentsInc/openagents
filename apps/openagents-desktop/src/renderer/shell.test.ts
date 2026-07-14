@@ -368,7 +368,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
-  test("MVP dock exposes only workroom surfaces plus the owner-directed AssuranceSpec viewer", () => {
+  test("MVP dock excludes internal ProductSpec and AssuranceSpec tooling", () => {
     // UX-4 (#8790, owner verbatim 2026-07-14): "remove everything from the
     // sidebar and all UI that's not specifically called for in our MVP spec."
     // The dock is exactly the allowlist in ./mvp-visible-surfaces.ts; Files
@@ -381,8 +381,6 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(dock?.items.map(item => item.id)).toEqual([
       "workspace-new-chat",
       "workspace-chat",
-      "workspace-product-spec",
-      "workspace-assurance-spec",
       "workspace-home",
       "shell-settings-toggle",
     ])
@@ -390,6 +388,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((navItemById(view, "workspace-new-chat")?.onSelect as { name?: string })?.name).toBe("DesktopNewChat")
     expect(navItemById(view, "workspace-fleet")).toBeUndefined()
     expect(navItemById(view, "workspace-files")).toBeUndefined()
+    expect(navItemById(view, "workspace-product-spec")).toBeUndefined()
+    expect(navItemById(view, "workspace-assurance-spec")).toBeUndefined()
     expect(navItemById(view, "shell-command-palette-toggle")).toBeUndefined()
   })
 

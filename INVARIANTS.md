@@ -909,14 +909,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   reasoning-effort, image-attachment, plugin, MCP, or voice selector. Internal
   post-MVP provider/media substrates do not authorize visible affordances and
   may never silently substitute another provider for Codex.
-- The MVP visible-surface allowlist is the exact ProductSpec Scope and User
-  Experience: chat/session navigation, repository grant/session home,
-  ProductSpec workroom, bounded files/review, typed question/approval/plan
-  controls, Open in Codex, commands, update/rollback, diagnostics, and keyboard
-  settings. Fleet, OpenAgents/Pylon account controls, Terminal, Inbox, MCP,
-  plugins, provider/model/reasoning selection, attachments, and voice are
-  absent from dock, sidebar, composer, Settings, command palette, and native
-  Commands menu.
+- The MVP visible-surface allowlist is the exact owner-approved User
+  Experience: chat/session navigation, repository grant/session home, bounded
+  files/review, typed question/approval/plan controls, Open in Codex, commands,
+  update/rollback, diagnostics, and keyboard settings. ProductSpec and
+  AssuranceSpec remain internal authoring/verification tooling and have no
+  user-facing route, screen, dock item, command, or native-menu destination.
+  Fleet, OpenAgents/Pylon account controls, Terminal, Inbox, MCP, plugins,
+  provider/model/reasoning selection, attachments, and voice are absent from
+  dock, sidebar, composer, Settings, command palette, and native Commands menu.
 - AUDIO-0 #8733 is a planned, not-yet-live exception for the future Mic path.
   When AUDIO-4 #8737 lands, native capture/playback may run only in the signed
   process-opaque `crates/oa-desktop-audio` Rust helper authorized by the

@@ -112,23 +112,6 @@ import {
   type GitGithubBridge,
   type GitPanelState,
 } from "./git-panel.ts"
-import {
-  emptyProductSpecWorkspaceState,
-  makeProductSpecWorkspaceHandlers,
-  productSpecPacketPrompt,
-  productSpecWorkspaceIntents,
-  productSpecWorkspaceView,
-  unavailableProductSpecRendererBridge,
-  type ProductSpecRendererBridge,
-  type ProductSpecWorkspaceState,
-} from "./product-spec-workspace.ts"
-import {
-  assuranceSpecWorkspaceIntents,
-  assuranceSpecWorkspaceView,
-  initialAssuranceSpecWorkspaceState,
-  makeAssuranceSpecWorkspaceHandlers,
-  type AssuranceSpecWorkspaceState,
-} from "./assurance-spec-workspace.ts"
 import { idleVoiceModeState, voiceActive, voiceIndicatorText, withVoiceHostState, type VoiceModeState } from "./voice-mode.ts"
 import type { DesktopVoiceState } from "../voice-host.ts"
 import type { GitDiffResult } from "../git-github-contract.ts"
@@ -242,7 +225,7 @@ export type QuestionCardInteraction = Readonly<{
   answers: ReadonlyArray<QuestionAnswer> | null
 }>
 
-export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "product-spec", "assurance-spec", "review", "terminal", "inbox", "settings"] as const
+export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
 export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 export const codingSessionFilters = ["active", "recovery", "archived"] as const
 export type CodingSessionFilter = (typeof codingSessionFilters)[number]
@@ -391,10 +374,6 @@ export type DesktopShellState = Readonly<{
   terminal: TerminalWorkspaceState
   /** Typed Git/GitHub review panel (see ./git-panel.ts). */
   git: GitPanelState
-  /** ProductSpec intent, planning, packet, evidence, and verification projection. */
-  productSpec: ProductSpecWorkspaceState
-  /** Read-only visualization of one parsed AssuranceSpec document. */
-  assuranceSpec: AssuranceSpecWorkspaceState
   update: DesktopUpdateProjection
 }>
 
@@ -474,8 +453,6 @@ export const initialDesktopShellState = (
   fleet: emptyFleetWorkspaceState(),
   terminal: emptyTerminalWorkspaceState(),
   git: emptyGitPanelState(),
-  productSpec: emptyProductSpecWorkspaceState(),
-  assuranceSpec: initialAssuranceSpecWorkspaceState(),
   update: emptyDesktopUpdateProjection(),
 })
 
@@ -730,8 +707,6 @@ export const desktopShellIntents = [
   ...fleetWorkspaceIntents,
   ...terminalWorkspaceIntents,
   ...gitPanelIntents,
-  ...productSpecWorkspaceIntents,
-  ...assuranceSpecWorkspaceIntents,
   ...workspaceBrowserIntents,
   ...workspaceEditorIntents,
 ] as const
@@ -1405,7 +1380,6 @@ export const makeDesktopShellHandlers = (
   noticeController: CommandNoticeController = makeCommandNoticeController(state),
   diagnosticsBridge: DiagnosticsBridge = unavailableDiagnosticsBridge,
   voiceHost: DesktopVoiceRendererHost = { command: async () => null },
-  productSpecBridge: ProductSpecRendererBridge = unavailableProductSpecRendererBridge,
   codexHandoffHost: CodexHandoffRendererHost = {
     open: async () => ({
       state: "refused",
@@ -1449,60 +1423,6 @@ export const makeDesktopShellHandlers = (
       },
       workspace: "chat" as const,
     })))
-  const productSpecHandlers = makeProductSpecWorkspaceHandlers(
-    state,
-    productSpecBridge,
-    () => globalThis.crypto.randomUUID(),
-    async (run, packet) => {
-      await Effect.runPromise(Effect.gen(function* () {
-        let current = yield* SubscriptionRef.get(state)
-        if (current.activeThreadId === null) {
-          const thread = yield* Effect.promise(chat.newThread)
-          if (thread === null) {
-            yield* SubscriptionRef.update(state, value => ({
-              ...value,
-              commandNotice: "The packet was admitted, but a Codex conversation could not be created.",
-            }))
-            return
-          }
-          yield* SubscriptionRef.update(state, value => withNewChat(value, thread))
-          current = yield* SubscriptionRef.get(state)
-        }
-        const prompt = productSpecPacketPrompt(run, packet)
-        yield* SubscriptionRef.update(state, value => ({
-          ...withInput(value, prompt),
-          workspace: "chat" as const,
-          selectedHarness: "codex" as const,
-        }))
-        current = yield* SubscriptionRef.get(state)
-        if (!current.harnessLanes.codex.available) {
-          yield* SubscriptionRef.update(state, value => ({
-            ...value,
-            commandNotice: "The packet is admitted and ready in the composer, but verified Codex capacity is unavailable.",
-          }))
-          return
-        }
-        yield* SubscriptionRef.set(state, withNote(current, prompt, now()))
-        const result = yield* Effect.promise(() => chat.sendMessage({
-          id: current.activeThreadId!,
-          message: prompt,
-          harness: "codex",
-          ...(providerTargetForSubmission(current) === null ? {} : { target: providerTargetForSubmission(current)! }),
-          permissionMode: "owner_full",
-          reasoningEffort: current.codexReasoningEffort,
-          model: current.codexModel,
-          onUpdate: thread => {
-            Effect.runFork(SubscriptionRef.update(state, next =>
-              next.activeThreadId === thread.id
-                ? { ...withChatSelected(next, thread), pending: true }
-                : next))
-          },
-        }))
-        yield* SubscriptionRef.update(state, value => withTurnResult(value, result, now()))
-      }))
-    },
-  )
-  const assuranceSpecHandlers = makeAssuranceSpecWorkspaceHandlers(state)
   const recoverWorkspaceEditor = Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.workspaceEditor.tabs.length > 0) return
@@ -1610,8 +1530,6 @@ export const makeDesktopShellHandlers = (
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
   ...makeTerminalWorkspaceHandlers(state, terminalBridge),
   ...gitPanelHandlers,
-  ...productSpecHandlers,
-  ...assuranceSpecHandlers,
   ...workspaceBrowserHandlers,
   ...workspaceEditorHandlers,
   WorkspaceBrowserEntrySelected: (pathRef) => Effect.gen(function* () {
@@ -3047,11 +2965,6 @@ const shellSidebar = (state: DesktopShellState): View => {
             {id:"workspace-new-chat",label:"New chat",icon:"ChatCompose",accessibilityLabel:"New chat",onSelect:IntentRef("DesktopNewChat")},
             // Session navigation + typed timeline — ProductSpec Scope/CW-AC-10/11.
             {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
-            // ProductSpec workroom — ProductSpec Scope/CW-AC-04..09.
-            {id:"workspace-product-spec",label:"ProductSpec",icon:"Code",selected:state.workspace==="product-spec",accessibilityLabel:"ProductSpec workroom",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("product-spec"))},
-            // AssuranceSpec document — owner-directed contract
-            // openagents_desktop.assurance_spec.document_visualization.v1.
-            {id:"workspace-assurance-spec",label:"AssuranceSpec",icon:"Check",selected:state.workspace==="assurance-spec",accessibilityLabel:"AssuranceSpec document",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("assurance-spec"))},
             // Repository grant + session home — CW-AC-03.
             {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
             // Settings — CW-AC-01/02 session truth, CW-AC-18 update/rollback,
@@ -3551,8 +3464,8 @@ const codexHandoffControl = (state: DesktopShellState): View | null => {
     style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", color: "textMuted" },
     a11y: {
       label: state.pending
-        ? "Stop and reconcile this ProductSpec work packet, then open it in Codex"
-        : "Open this ProductSpec work packet in Codex",
+        ? "Stop and reconcile this work packet, then open it in Codex"
+        : "Open this work packet in Codex",
     },
   })
 }
@@ -4311,7 +4224,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "product-spec" ? [productSpecWorkspaceView(state.productSpec, state.codingCatalog.sessions.find(session => session.sessionRef === state.codingCatalog.selectedSessionRef)?.workContextRef ?? null)] : state.workspace === "assurance-spec" ? [assuranceSpecWorkspaceView(state.assuranceSpec)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
         ],
       ),
     ],

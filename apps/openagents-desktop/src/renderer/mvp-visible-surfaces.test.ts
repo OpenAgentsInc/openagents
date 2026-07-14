@@ -66,8 +66,6 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     expect(mvpAllowedDockItemIds).toEqual([
       "workspace-new-chat",
       "workspace-chat",
-      "workspace-product-spec",
-      "workspace-assurance-spec",
       "workspace-home",
       "shell-settings-toggle",
     ])
@@ -82,7 +80,7 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     expect(collectRenderedDockItemIds(desktopShellView(baseState))).toEqual([...mvpAllowedDockItemIds])
   })
 
-  const reachableWorkspaces = ["chat", "home", "files", "product-spec", "assurance-spec", "review", "settings"] as const
+  const reachableWorkspaces = ["chat", "home", "files", "review", "settings"] as const
 
   for (const workspace of reachableWorkspaces) {
     test(`workspace "${workspace}" renders zero visible-surface violations`, () => {
@@ -136,6 +134,16 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     children.push({ _tag: "Stack", key: "fleet-desk", children: [] })
     const violations = desktopMvpSurfaceViolations(planted)
     expect(violations.some(violation => violation.includes("fleet-desk"))).toBe(true)
+  })
+
+  test("FALSIFIER: a planted spec screen fails the oracle", () => {
+    const planted = clone(desktopShellView(baseState))
+    const root = findNode(planted, "shell-root")
+    expect(root).not.toBeNull()
+    const children = root!.children as Array<unknown>
+    children.push({ _tag: "Stack", key: "product-spec-workspace", children: [] })
+    const violations = desktopMvpSurfaceViolations(planted)
+    expect(violations.some(violation => violation.includes("product-spec-workspace"))).toBe(true)
   })
 
   test("FALSIFIER: losing an allowlisted dock item fails the oracle (no silent shrink)", () => {

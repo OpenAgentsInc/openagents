@@ -50,22 +50,6 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     oracleRefs: ["apps/openagents-desktop/src/renderer/runtime-conversation.test.ts", "apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts"],
   },
   {
-    surfaceId: "workspace-product-spec",
-    interaction: "Create or open a validator-clean ProductSpec and expose exact validation failures",
-    criterionRefs: ["CW-AC-04", "CW-AC-05", "CW-AC-06", "CW-AC-07", "CW-AC-08", "CW-AC-09"],
-    assuranceItemRefs: ["AO-CW-AC-04-01", "AO-CW-AC-05-01", "AO-CW-AC-06-01", "AO-CW-AC-07-01", "AO-CW-AC-08-01", "AO-CW-AC-09-01"],
-    contractRefs: ["openagents_desktop.mvp.visible_surface_allowlist.v1"],
-    oracleRefs: ["apps/openagents-desktop/src/renderer/product-spec-workspace.test.ts", "apps/openagents-desktop/src/mvp-assurance-criteria.test.ts"],
-  },
-  {
-    surfaceId: "workspace-assurance-spec",
-    interaction: "Inspect source-driven assurance obligations without execution or verification authority",
-    criterionRefs: ["CW-AC-04", "CW-AC-07"],
-    assuranceItemRefs: ["AO-CW-AC-04-01", "AO-CW-AC-07-01"],
-    contractRefs: ["openagents_desktop.assurance_spec.document_visualization.v1"],
-    oracleRefs: ["apps/openagents-desktop/src/renderer/assurance-spec-workspace.test.ts"],
-  },
-  {
     surfaceId: "workspace-home",
     interaction: "Grant one repository and retain stable work-context identity",
     criterionRefs: ["CW-AC-03"],
@@ -112,5 +96,5 @@ export const renderMvpAssuranceCoverageMarkdown = (): string => {
   const rows = mvpAssuranceCoverageMatrix.map(item =>
     `| \`${item.surfaceId}\` | ${item.interaction} | ${item.criterionRefs.map(ref => `\`${ref}\``).join(", ")} | ${item.assuranceItemRefs.map(ref => `\`${ref}\``).join(", ")} | ${item.contractRefs.map(ref => `\`${ref}\``).join(", ")} | ${item.oracleRefs.map(ref => `\`${ref}\``).join("<br>")} |`,
   )
-  return `# OpenAgents Desktop MVP assurance coverage matrix\n\nThis is the human-readable projection of the checked-in UX-5 congruence oracle. The authority is \`mvpDockSurfaces\`; every expected-working surface interaction maps to ProductSpec intent, an AssuranceSpec item, an enforced behavior contract, and an executable oracle. Coverage outside that allowlist and missing coverage both fail the normal Desktop sweep.\n\n| Surface | Expected-working interaction | ProductSpec criteria | Assurance items | Behavior contracts | Executable oracles |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n\nThe matrix is intentionally minimal: Files and read-only review remain command-reachable supporting views under \`CW-AC-12\`/\`CW-AC-14\`, but UX-4 removed them from the visible dock; Fleet, Terminal, Inbox, account linking, provider selection, MCP/plugins, and Git mutation are outside the MVP and must not acquire assurance rows.\n`
+  return `# OpenAgents Desktop MVP assurance coverage matrix\n\nThis is the human-readable projection of the checked-in UX-5 congruence oracle. The authority is \`mvpDockSurfaces\`; every expected-working surface interaction maps to ProductSpec intent, an AssuranceSpec item, an enforced behavior contract, and an executable oracle. Coverage outside that allowlist and missing coverage both fail the normal Desktop sweep.\n\n| Surface | Expected-working interaction | ProductSpec criteria | Assurance items | Behavior contracts | Executable oracles |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}\n\nThe matrix is intentionally minimal: Files and read-only review remain command-reachable supporting views under \`CW-AC-12\`/\`CW-AC-14\`, but UX-4 removed them from the visible dock; ProductSpec and AssuranceSpec are internal tooling with no user-facing route; Fleet, Terminal, Inbox, account linking, provider selection, MCP/plugins, and Git mutation are outside the MVP and must not acquire assurance rows.\n`
 }
