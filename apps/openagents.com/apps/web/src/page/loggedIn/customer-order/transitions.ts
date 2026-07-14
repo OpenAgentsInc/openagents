@@ -95,7 +95,6 @@ import {
   Model,
   SubmitCustomerSiteFeedbackResponse,
 } from '../model'
-import { siteElementContextDraft } from '../site-element-context'
 import { type UpdateReturn } from '../transition'
 
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
@@ -823,7 +822,7 @@ export const updateCustomerOrder = (
       SelectedCustomerSiteElementContext: ({ context }) => [
         evo(model, {
           customerSiteElementContext: () => context,
-          customerSiteFeedbackDraft: () => siteElementContextDraft(context),
+          customerSiteFeedbackDraft: () => '',
         }),
         [],
         Option.none(),

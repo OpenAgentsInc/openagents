@@ -85,7 +85,6 @@ import {
   SucceededLoadWorkroomSurface,
   SucceededWorkroomLifecycleDecision,
 } from './page/workroom'
-import { SiteElementContext } from './site-element-context'
 
 export {
   FailedLoadWorkroomLifecycle,
@@ -578,11 +577,10 @@ export const UpdatedCustomerSiteBuilderPromptDraft = m(
     value: S.String,
   },
 )
+const HistoricalSiteElementContext = S.Record(S.String, S.Unknown)
 export const SelectedCustomerSiteElementContext = m(
   'SelectedCustomerSiteElementContext',
-  {
-    context: SiteElementContext,
-  },
+  { context: HistoricalSiteElementContext },
 )
 export const SubmittedCustomerSiteFeedback = m(
   'SubmittedCustomerSiteFeedback',

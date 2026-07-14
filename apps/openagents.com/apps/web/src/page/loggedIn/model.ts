@@ -43,7 +43,6 @@ import {
   OverviewTab as WorkroomOverviewTab,
   init as initWorkroom,
 } from './page/workroom'
-import { SiteElementContext } from './site-element-context'
 import { ThreadRouteIdle, ThreadRouteState } from './thread-route'
 
 export {
@@ -7127,7 +7126,7 @@ export const Model = ts('LoggedIn', {
   customerFulfillmentArtifacts: CustomerFulfillmentArtifactsState,
   customerSiteFeedback: CustomerSiteFeedbackState,
   customerSiteFeedbackDraft: S.String,
-  customerSiteElementContext: S.NullOr(SiteElementContext),
+  customerSiteElementContext: S.NullOr(S.Record(S.String, S.Unknown)),
   customerSiteFeedbackSubmit: CustomerSiteFeedbackSubmitState,
   customerSiteRevisions: CustomerSiteRevisionsState,
   customerSiteBuilderEvents: CustomerSiteBuilderEventsState,
