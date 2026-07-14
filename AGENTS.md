@@ -692,14 +692,35 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   IPC/application state with the narrow, mechanically checked Effect Schema/
   Effect Native boundary before adding product capability. Freeze the full
   platform/protocol/data/update/OAuth identity set in `NEEDS_OWNER.md` before
-  the first packaged build. `clients/khala-mobile`,
-  `clients/khala-ios/Khala`, and
-  `clients/khala-code-desktop` are deprecated, frozen migration, contract,
+  the first packaged build. `clients/khala-mobile` and
+  `clients/khala-ios/Khala` are deprecated, frozen migration, contract,
   native-module, and service-extraction sources: no new product features, UI,
   branding work, or releases. Do not import their app packages into the new
   apps or resurrect the deleted Electrobun `clients/openagents-desktop` stub.
-  Extract reusable typed services/contracts to shared packages; remove the old
-  clients only after parity, migration, and release proof.
+  Extract reusable typed services/contracts to shared packages; remove those
+  mobile clients only after parity, migration, and release proof.
+- **Supersession removals (owner decision, 2026-07-14):** the owner directed
+  ("khala-code-desktop must itself be deprecated and all relevant promises
+  removed (OpenAgents desktop supercedes it). ditto for apps/autopilot-desktop.
+  sarah get rid of that too etc") that OpenAgents Desktop supersedes the legacy
+  desktop clients outright — this supersedes the earlier
+  parity/migration/release-proof retention clause for the named surfaces.
+  `apps/autopilot-desktop`, `packages/sarah-take-scoreboard`, and
+  `.agents/skills/khala-fleet` are deleted (recover via
+  `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`; archive intake
+  `openagents-supersession-prune-2026-07-14/` in the backroom repo). The
+  affected promises are withdrawn in registry pass `2026-07-14.1`
+  (`docs/promises/2026-07-14-owner-supersession-removals.md`).
+  `clients/khala-code-desktop` is deprecated and slated for removal under the
+  same decision, but its deletion is blocked while live code imports it
+  (`apps/pylon` fleet smoke scripts, `packages/khala-qa-harness`,
+  `packages/harness-conformance`, `scripts/qa-nightly-matrix.ts`); it stays a
+  frozen tree — no new features, UI, branding, or releases — until those
+  dependents are migrated in a bounded follow-up. `packages/autopilot-ui`
+  stays: the live `apps/openagents.com/apps/web` app imports it. The FleetRun
+  authority's neutral canonical path is `/api/fleet-runs`;
+  `/api/sarah/fleet-runs` remains a served compatibility alias for shipped
+  desktop/mobile binaries (do not 410 it).
 - Keep new TypeScript implementation work on Bun, Effect, and Effect Schema.
   **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
   React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
@@ -897,6 +918,12 @@ and is included in the ProductSpec test sweep; do not create a mirror under
   (`/api/sarah/fleet-runs` FleetRun intake authority, CRM handoff/checkout
   operator routes, internal-neutral inference lane caps) remain in place —
   their client surface is gone; any change there is a separate decision.
+  Since 2026-07-14 the FleetRun authority's neutral canonical path is
+  `/api/fleet-runs` (same handler); `/api/sarah/fleet-runs` stays a served
+  compatibility alias because shipped desktop/mobile binaries pin it. The CRM
+  handoff/checkout routes stay under their current names: live CRM machinery
+  (`crm-reply-routes.ts`, `crm-command.ts`, `crm-mcp.ts`) consumes them, so a
+  rename is its own bounded issue.
 - The GPU render node `sarah-avatar-gpu-1` (hydralisk-avatar + hydralisk-tts)
   serves nothing and is stopped.
 - Historical: #8594 (path mount), private `OpenAgentsInc/sarah` (pre-SM-6),

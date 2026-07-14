@@ -231,6 +231,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   closed). Publishing new legacy releases remains refused independently
   (`assertDesktopReleaseProductPublishable`), and the deprecated clients
   receive no new features — including no remote kill-switch capability.
+- (2026-07-14 owner supersession) The `apps/autopilot-desktop` source tree
+  itself was deleted at owner direction ("OpenAgents desktop supercedes it");
+  recover via `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`. The
+  CUT-26 lockout routes above are unaffected: `updates.openagents.com` keeps
+  answering the legacy `autopilot-desktop`/legacy-feed routes with the typed
+  `410` lockout document — the route tombstones outlive the source tree.
+  `clients/khala-code-desktop` remains present (frozen) only because live
+  pylon/QA-harness code imports it; see
+  `docs/promises/2026-07-14-owner-supersession-removals.md`.
 - (CUT-26, #8706) OpenAgents Desktop releases publish ONLY through the
   scripted flow (`apps/openagents-desktop/scripts/publish-release.ts`) into
   the `openagents-desktop-release.json` descriptor + signed

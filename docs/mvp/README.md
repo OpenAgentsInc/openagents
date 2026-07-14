@@ -147,6 +147,20 @@ package (#8758):
   `bun test packages/product-spec` enforces that the map, revision 6, and
   revision 7 agree exactly.
 
+## Proposed AssuranceSpec revision 3 (2026-07-14 owner supersession)
+
+- [`openagents-codex-workroom-mvp.rev3-proposed.assurance-spec.md`](./openagents-codex-workroom-mvp.rev3-proposed.assurance-spec.md)
+  — proposed `assurance_revision: 3`, reconciling the assurance environment
+  with the 2026-07-14 owner-directed supersession removals
+  (`apps/autopilot-desktop`, `packages/sarah-take-scoreboard`,
+  `.agents/skills/khala-fleet` deleted; sweep command of record no longer
+  names `test:sarah-take-scoreboard`). The admitted revision-2 document, its
+  evidence index, and its receipts remain byte-stable historical proof;
+  admitting revision 3 (including regenerating the repository inventory
+  against the post-removal head) is a subsequent owner/gate act. See
+  `docs/promises/2026-07-14-owner-supersession-removals.md` and
+  `docs/refactor/2026-07-14-mvp-prune-ledger.md` (Part 2).
+
 **Adoption is owner-gated and has not happened.** The live executable subject
 of this package, the checked-in AssuranceSpec proposal, and the MVP-01
 (#8756) dogfood remain bound to revision 6 (`CW-AC-*`, digest

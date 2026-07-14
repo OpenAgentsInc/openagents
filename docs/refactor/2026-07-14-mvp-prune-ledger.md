@@ -93,3 +93,70 @@ git show 1d7991fef7:<path> > <path>
 
 No backroom intake was created by this sweep (nothing qualified for the
 move-to-backroom tier).
+
+## Part 2 — owner-directed supersession removals (2026-07-14)
+
+Owner statement (verbatim, 2026-07-14):
+
+> khala-code-desktop must itself be deprecated and all relevant promises
+> removed (OpenAgents desktop supercedes it). ditto for
+> apps/autopilot-desktop. sarah get rid of that too etc - i dont give a shit
+> wut u do just get that shit cleared out
+
+This statement is the new bounded owner decision Part 1 said the blocked
+candidates needed. It explicitly supersedes the "remove only after parity,
+migration, and release proof" retention clause for the named surfaces.
+
+- Pre-removal recovery commit (origin/main immediately before this change):
+  `c7044f5a2870110b331c5a7288caceb85488290a`. Restore any removed path with
+  `git show c7044f5a28:<path>`.
+- Backroom intake: `openagents-supersession-prune-2026-07-14/` in
+  `OpenAgentsInc/backroom` (registry/contract/charter docs worth archaeology;
+  bulk code recovery relies on git history at the commit above).
+- Promise transitions: registry pass `2026-07-14.1` withdraws seven promises
+  with successor `promise:openagents.desktop_app.v1` (green 34 -> 33); full
+  record in `docs/promises/2026-07-14-owner-supersession-removals.md`.
+  Withdrawals are downgrades — no `promise_transition` receipt required per
+  the `mobile.autopilot_remote_control.v1` precedent.
+- AssuranceSpec: proposed revision 3 created as
+  `docs/mvp/openagents-codex-workroom-mvp.rev3-proposed.assurance-spec.md`
+  (sweep command of record re-pinned without `test:sarah-take-scoreboard`;
+  admitted rev-2 bytes, evidence index, and receipts untouched because they
+  are digest-pinned admitted proof; admission of rev 3 is an owner/gate act).
+
+### Part 2 disposition table
+
+| Path / surface | Disposition | Reason | Restoration pointer |
+| --- | --- | --- | --- |
+| `apps/autopilot-desktop/` | **deleted** | Owner-named ("ditto for apps/autopilot-desktop"); OpenAgents Desktop supersedes it. No external package imported it; root scripts/workspace entry and perimeter-allowlist entries removed; CUT-26 `410` lockout routes in `apps/oa-updates` retained as the serving tombstone; promises withdrawn in `2026-07-14.1`. | `git show c7044f5a28 -- apps/autopilot-desktop`; charter/docs in backroom intake |
+| `packages/sarah-take-scoreboard/` | **deleted** | Owner-named sarah cleanup; clean leaf (no runtime importers — only root scripts, the perimeter allowlist, docs, and the admitted-spec inventory named it). Root script + allowlist entries removed; proposed AssuranceSpec rev 3 re-pins the sweep. | `git show c7044f5a28 -- packages/sarah-take-scoreboard`; README+src in backroom intake |
+| `.agents/skills/khala-fleet/` | **deleted** | Owner named it (via khala-code-desktop bundling) and Part 1's two blockers are cleared by this decision: the frozen client's byte-pin test was reduced to embedded-copy checks with a dated note, and `khala_code.bundled_fleet_skill.v1` is withdrawn with the evidence path tombstoned to git history. No live fleet-dispatch runtime reads the skill dir. | `git show c7044f5a28:.agents/skills/khala-fleet/SKILL.md`; copy in backroom intake |
+| `clients/khala-code-desktop/` | **retained (deprecation stands; removal blocked)** | Owner ordered removal, but live code imports the tree: `apps/pylon/scripts/fleet-run-{live,sustained}-smoke.ts` (dynamic import of `src/bun/khala-fleet-tools.ts`; pylon is an active concurrent lane and live fleet production), `packages/khala-qa-harness` (9 files), `packages/harness-conformance` (4 files), `scripts/qa-nightly-matrix.ts`. Deleting it breaks live fleet smoke + QA lanes. Deprecation/frozen status recorded in `AGENTS.md`; physical removal needs a bounded dependent-migration issue. One edit made: the khala-fleet byte-pin test. | tree still on `main` |
+| `packages/autopilot-ui/` | **retained** | Not autopilot-desktop-only: `apps/openagents.com/apps/web/package.json` depends on it and `apps/web/src/styles.css` `@import`s its stylesheet; token-parity tests in `packages/ui` and `packages/autopilot-control-protocol` read its source. Removing it breaks the live web build, so the owner's "etc" does not reach it. | tree still on `main` |
+| `/api/sarah/fleet-runs` (FleetRun authority route) | **aliased (neutral canonical path added)** | Shipped OpenAgents desktop/mobile binaries hardcode `GET /api/sarah/fleet-runs` (`packages/khala-sync-client`), so the path cannot 410 without breaking fielded clients. `/api/fleet-runs` added as the neutral canonical path on the identical handler; the client helper now targets it for future builds; both paths tested. sarah_* DB tables/schema refs are durable authority vocabulary — renaming them is its own bounded issue. | `apps/openagents.com/workers/api/src/sarah-fleet-run-routes.ts` |
+| `/api/operator/business/sarah-checkout-links` + `crm-sarah-handoff` store | **retained, ledger-noted** | Live CRM machinery consumes the handoff store (`crm-reply-routes.ts`, `crm-command.ts`, `crm-mcp.ts`) and D1 migration 0311 backs it. A rename/removal cascades through production CRM paths — deferred to its own bounded issue. | current `main` |
+| Sarah-named promise IDs | **none exist** | No promiseId contains "sarah"; the FleetRun/CRM Sarah references in live promise/registry text describe retained authority surfaces. `khala_code.bundled_fleet_skill.v1` (the one promise whose evidence was a removed sarah-adjacent surface) is withdrawn. | — |
+
+### Verification (Part 2)
+
+- `bun test apps/openagents.com/workers/api/src/product-promises.test.ts` — pass.
+- `bun run test:assurance-spec` — pass (compiler snapshot updated for the
+  post-removal `bun.lock` dependency-lock digest).
+- `bun packages/product-spec/src/cli.ts validate --specs-root specs` — pass.
+- `bun run test:khala-code-desktop` — pass after the byte-pin edit.
+- `bun run test:behavior-contracts`, `test:qa-pre-push-smoke`,
+  `test:qa-nightly-matrix`, `test:harness-conformance`, `test:autopilot-ui`,
+  khala-sync-client + FleetRun route/alias tests — pass.
+- Pre-existing reds at the base commit (NOT introduced here, verified against
+  pristine HEAD): `test:bun-api-perimeter` (unallowlisted `Bun.serve` in
+  `apps/pylon/src/harness-mcp-server.ts` from FEED-1 `c7044f5a28`),
+  `test:khala-qa-harness` (10 failures), the `worker-exact-routes` manifest
+  order test (`/observer` + `/observer/traces/...` registered in `index.ts` by
+  the Observatory change without approved-list entries; not part of
+  `check:deploy`), and `typecheck:khala-code-desktop` (9 errors in
+  `apps/pylon/src/orchestration/work-planner.ts`, `packages/pylon-core`,
+  `apps/openagents.com/packages/effect-native-render-dom`, and
+  `clients/khala-code-desktop/src/bun/claude-harness-status.ts` — byte-identical
+  on a pristine HEAD worktree with its own fresh install). All belong to the
+  pylon/QA/observatory/render-dom lanes; every other root typecheck lane passes
+  post-removal.

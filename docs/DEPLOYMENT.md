@@ -47,7 +47,7 @@ change, update its linked runbook **and** fix the pointer here.
 | **Pylon RC binaries / OTA** | signed standalone binaries → auto-update feed | `apps/oa-updates/docs/release-signing-runbook.md` | `bash apps/pylon/scripts/build-rc-binaries.sh <version>` (ed25519-signed) → publish to `updates.openagents.com` | — |
 | **OpenAgents Desktop** | Greenfield Effect Native application on Electron at `apps/openagents-desktop` (#8574 / CUT-26 #8706); identity `OpenAgents` / `com.openagents.desktop`, strict fuses, hardened-runtime entitlements | `apps/oa-updates/docs/release-signing-runbook.md` (ed25519 + Developer ID) + the update contract in `apps/openagents-desktop/src/update-contract.ts` | preflight `bun apps/openagents-desktop/scripts/release-preflight.ts --channel <stable\|rc> --latest-released <v> [--dmg <dmg> --app <app>]` (fail-closed oracles: clean origin/main, monotonic version, no legacy-UI/updater remnants, signing-credentials refusal, and — against built artifacts — the #8786 Gatekeeper set: `codesign --deep --strict` on the app, `spctl -a -t open --context context:primary-signature` on the image, `spctl -a -t exec` on the app, `stapler validate` on both, acceptance required as Notarized Developer ID) → package+sign+notarize `bun run --cwd apps/openagents-desktop make:mac` (REFUSES when the owner-held Developer ID identity or `ASC_API_*` notary credentials are absent — no unsigned fallback; `OA_ALLOW_UNSIGNED_DEV=1` is the only escape valve and renames output `-UNSIGNED-DEV`, which preflight/publish refuse unconditionally; `postMake` notarizes the DMG ITSELF — the ticket covers the nested app — staples both `.app` and `.dmg`, then fails the make closed on the same Gatekeeper oracles) → stage the signed release `bun apps/openagents-desktop/scripts/publish-release.ts --channel <c> --version <v> --artifact <dmg\|zip>` (ed25519-signed `update_manifest.v1` + descriptor into `apps/oa-updates/openagents-desktop-dist/`; key ONLY via `OPENAGENTS_RELEASE_SIGNING_PRIVATE_JWK_D`+`_KID` or `OPENAGENTS_RELEASE_SECRETS_PATH`; enforces version monotonicity + channel rules and self-verifies through the client seam) → upload the artifact to the printed `gs://openagentsgemini-oa-updates/...` URL → deploy the feed `OA_OPENAGENTS_DESKTOP_RELEASE_DIST=/app/openagents-desktop-dist bash apps/oa-updates/scripts/deploy-cloudrun.sh` (served at `/desktop/openagents/<channel>/manifest.json` + `manifest.sig.json` + `release.json`). Post-update safety (#8786): applying an update is NOT success — the update state machine holds in `awaiting_launch_receipt` with the previous version staged until the new build writes its `openagents.desktop.launch_receipt.v1` first-launch marker within a bounded 10-minute window, else automatic rollback + typed diagnostic (`src/update-contract.ts` `evaluateLaunchReceipt`, `src/update-rollback.ts`; from the 2026-07-13 ChatGPT dead-update incident). Clean-machine install/update/rollback acceptance remains the release gate (owner-gated, `NEEDS_OWNER.md`) | tag namespace to be frozen at first published release (owner sign-off; see `NEEDS_OWNER.md`) |
 | **OpenAgents mobile (iOS TestFlight + Android + OTA)** | Greenfield Effect Native application on React Native/Expo at `apps/openagents-mobile`; name `OpenAgents`, iOS + Android ID `com.openagents.app` (ASC app id `6748620735`), pinned Khala Code icon (#8597) | `docs/deploy/openagents-mobile-production-release.md` (local native builds, manual App Store signing, Android production-signing boundary, owned OTA, verification, rollback) | clean `origin/main` → mobile tests/typecheck → bump the native build identity → clean Expo prebuild → local Xcode archive/manual-sign/TestFlight upload or production-signed Gradle AAB → verify store receipt. JavaScript-only OTA: `apps/oa-updates/scripts/publish-ota.sh` on **`openagents-production`**, then exact fingerprint/manifest/asset checks. **Never `eas build`/`eas submit`/`eas update`.** **Upload gate:** attach simulator/device pixel and intent proof for changed UI before TestFlight/Play handoff. | — |
-| **Legacy Electrobun/mobile apps** | `apps/autopilot-desktop`, `clients/khala-code-desktop`, `clients/khala-mobile`, `clients/khala-ios/Khala`, and retired `AutopilotRemoteControl` | Historical package-local docs only | **DEPRECATED/FROZEN: DO NOT RELEASE.** They are parity/extraction/migration evidence, not product destinations. Additionally, the CUT-26 **legacy desktop lockout** (`apps/oa-updates/src/legacy-desktop-lockout.ts`, armed by default) makes every legacy desktop feed/OTA route on `updates.openagents.com` answer a typed `410` `openagents.desktop.legacy_lockout.v1` document — the deprecated desktop clients cannot fetch updates or installs from our infrastructure; archival read-only serving requires the explicit `OA_LEGACY_DESKTOP_LOCKOUT=disarmed-historical-read-only`. | legacy tags only; no new tags |
+| **Legacy Electrobun/mobile apps** | `clients/khala-code-desktop`, `clients/khala-mobile`, `clients/khala-ios/Khala`, retired `AutopilotRemoteControl`, and the REMOVED `apps/autopilot-desktop` (deleted at owner direction 2026-07-14 — OpenAgents Desktop supersedes it; recover via `git show c7044f5a2870110b331c5a7288caceb85488290a:apps/autopilot-desktop/...`) | Historical package-local docs only | **DEPRECATED/FROZEN: DO NOT RELEASE.** They are parity/extraction/migration evidence, not product destinations. Additionally, the CUT-26 **legacy desktop lockout** (`apps/oa-updates/src/legacy-desktop-lockout.ts`, armed by default) makes every legacy desktop feed/OTA route on `updates.openagents.com` answer a typed `410` `openagents.desktop.legacy_lockout.v1` document — the deprecated desktop clients cannot fetch updates or installs from our infrastructure; archival read-only serving requires the explicit `OA_LEGACY_DESKTOP_LOCKOUT=disarmed-historical-read-only`. | legacy tags only; no new tags |
 | **oa-updates (Cloud Run)** | the `updates.openagents.com` feed service | `apps/oa-updates/scripts/deploy-cloudrun.sh` + the signing runbook | `bash apps/oa-updates/scripts/deploy-cloudrun.sh` (project `openagentsgemini`, `us-central1`) | — |
 | **Effect Native gallery (Cloud Run)** | the Effect Native **component gallery** — static build of the public `OpenAgentsInc/effect-native` repo's `bun run gallery:build` output on a dedicated public Cloud Run service (`effect-native-gallery`, `us-central1`; #8570 under epic #8566). nginx rewrites extensionless story deep links (`/stories/<id>`) to `index.html` per the gallery static-host contract. | `apps/effect-native-gallery/README.md` | `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config apps/effect-native-gallery/scripts/deploy-cloudrun.sh` → smoke `curl -fsS https://effect-native-gallery-ezxz4mgdsq-uc.a.run.app/stories/button-primary` | — |
 | **oa-queue-worker (Cloud Run)** | **The single queue execution model** (CFG-7 #8522, CFG-16 #8532): there are no Cloudflare Queues anymore — the 8 CF queues were deleted post-cutover (#8532). Producers `INSERT` into the Postgres `oa_infra_jobs` table (oa-infra JobQueue, `FOR UPDATE SKIP LOCKED`); this **separate** Cloud Run pump leases per topic and delivers each job over HTTPS to the monolith's admin-bearer `POST /api/internal/queue/deliver` (2xx→ack, else nack→retry→dead-letter). The pump is kept as a deliberate bulkhead (queue processing isolated from the request-serving monolith; matches the audit's "Postgres job queue worked by Cloud Run workers"; avoids autoscale-multiplied lease pollers) — NOT collapsed in-process (CFG-16 decision). | `apps/oa-queue-worker/README.md` + `apps/oa-queue-worker/scripts/deploy-cloudrun.sh` | prod: `bun run --cwd apps/oa-queue-worker deploy` (service `oa-queue-worker`, `min-instances=1`, `OA_QUEUE_DELIVERY_URL=https://openagents.com`; secrets `oa-queue-worker-database-url` / `oa-queue-worker-delivery-token`); staging: same script with `OA_QUEUE_WORKER_SERVICE=oa-queue-worker-staging OA_QUEUE_WORKER_DB_SECRET=oa-queue-worker-staging-database-url OA_QUEUE_WORKER_TOKEN_SECRET=oa-queue-worker-staging-delivery-token OA_QUEUE_DELIVERY_URL=https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app` (post-cutover: the old `openagents-staging.openagents.workers.dev` target was the now-deleted frozen Worker). Jobs table ships with `packages/oa-infra/migrations/` (`bun packages/oa-infra/scripts/migrate.ts --database-url <direct-url>`). **Known gap (CFG-16):** the `event-ledger-ingest` topic dispatch still fails on Cloud Run — `EVENT_LEDGER_OWNER` is a typed-unavailable DO stub with no oa-infra Mutex/advisory-lock replacement wired yet (see #8532); event-ledger jobs delivered to Cloud Run 500→nack→dead-letter until that lands. | — |
@@ -277,38 +277,21 @@ Effect-clock expiry tests plus two-client live smoke.
 
 ## Historical: Autopilot Desktop Verse smoke is not a current release lane
 
-> Autopilot Desktop is a deprecated Electrobun application and must not receive
-> new releases. The commands below are retained only to explain historical test
-> ownership while references are extracted or removed. OpenAgents Desktop gets
-> a new Electron release lane under #8574.
+> Autopilot Desktop (`apps/autopilot-desktop`) was REMOVED at owner direction
+> 2026-07-14 — OpenAgents Desktop supersedes it (see
+> `docs/promises/2026-07-14-owner-supersession-removals.md`). The tree and its
+> root scripts (`verify:autopilot-desktop:{training,deploy,if-changed}`,
+> `smoke:verse-launch`) no longer exist; recover any path with
+> `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`.
 
-The interactive Verse / mouselook desktop UI smoke
-(`apps/autopilot-desktop/scripts/verse-launch-smoke.ts`, run via
-`bun run --cwd apps/autopilot-desktop smoke:verse-launch` and inside
-`verify:deploy`) historically belonged to the Autopilot Desktop package lane,
-never the `openagents.com` Worker/web deploy gate. It launches an Electrobun build + a
-headless Chrome (CDP) and validates desktop UI; it does **not** validate the
-Worker/web change.
-
-- It is **removed from `check:deploy`** (the Worker deploy + pre-push gate). The
-  Worker gate still runs the real checks: typecheck:web/api, the web + worker
-  test suites, and the contract-drift / architecture / effect-topology /
-  public-projection guards. Putting the desktop smoke on that critical path
-  previously hung / OOM'd in headless/CI and SIGKILLed the whole deploy
-  (`DEPLOY_EXIT=137`) before `wrangler deploy` ran (issue #6234).
-- If maintaining historical evidence, run the smoke only as a bounded
-  standalone diagnostic from the deprecated package with
-  `bun run --cwd apps/autopilot-desktop verify:deploy` (full desktop lane) or
-  `bun run --cwd apps/autopilot-desktop smoke:verse-launch` (smoke only).
-- To gate only when desktop files changed, use
-  `bun run verify:autopilot-desktop:if-changed` (root). Force with
-  `OA_FORCE_DESKTOP_VERIFY=1`.
-- It is **hard-bounded**: `smoke:verse-launch` runs through
-  `scripts/run-bounded.ts` with a wall-clock timeout (default 480s, override
-  with `OA_VERSE_SMOKE_TIMEOUT_MS`). On timeout it SIGTERM→SIGKILLs the whole
-  child process group (Electrobun + Chrome) and exits non-zero (124) — fail
-  fast and loud, never an unbounded hang. Use
-  `smoke:verse-launch:unbounded` only for local debugging.
+Historical context (retained so old receipts stay legible): the interactive
+Verse / mouselook desktop UI smoke belonged to the Autopilot Desktop package
+lane, never the `openagents.com` Worker/web deploy gate. It was **removed from
+`check:deploy`** long before the tree deletion because it hung / OOM'd in
+headless/CI and SIGKILLed the whole deploy (`DEPLOY_EXIT=137`) before deploy
+ran (issue #6234). The deploy gate still runs the real checks: typecheck
+web/api, the web + worker test suites, and the contract-drift / architecture /
+effect-topology / public-projection guards.
 
 ## Owned Visibility Freshness Smoke
 
