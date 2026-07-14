@@ -40,8 +40,6 @@ import {
   PublicAgentRoute,
   PylonRoute,
   ShareRoute,
-  SiteCheckoutDemoReturnRoute,
-  SiteCheckoutDemoRoute,
   StatsRoute,
   TassadarReplayRoute,
   TassadarRoute,
@@ -314,39 +312,6 @@ describe('startup route policy', () => {
       _tag: 'LoggedInStartupRoute',
       redirect: Option.none(),
       route: tassadarReplayRoute,
-    })
-  })
-
-  test('keeps Site checkout demo pages public for every auth state', () => {
-    const checkoutRoute = SiteCheckoutDemoRoute()
-    const returnRoute = SiteCheckoutDemoReturnRoute({
-      returnAction: 'success',
-    })
-
-    expect(startupRouteForLoggedOut(checkoutRoute)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: checkoutRoute,
-    })
-    expect(startupRouteForLoggedIn(checkoutRoute, completeAuth)).toEqual({
-      _tag: 'LoggedInStartupRoute',
-      redirect: Option.none(),
-      route: checkoutRoute,
-    })
-    expect(startupRouteForLoggedIn(checkoutRoute, incompleteAuth)).toEqual({
-      _tag: 'LoggedInStartupRoute',
-      redirect: Option.none(),
-      route: checkoutRoute,
-    })
-    expect(startupRouteForLoggedOut(returnRoute)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: returnRoute,
-    })
-    expect(startupRouteForLoggedIn(returnRoute, completeAuth)).toEqual({
-      _tag: 'LoggedInStartupRoute',
-      redirect: Option.none(),
-      route: returnRoute,
     })
   })
 
@@ -657,7 +622,6 @@ describe('startup route policy', () => {
         ShareRoute({ shareId: '123e4567-e89b-42d3-a456-426614174000' }),
       ),
     ).toBe(false)
-    expect(routeRequiresAuthBootstrap(SiteCheckoutDemoRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(KhalaChatRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
@@ -667,11 +631,6 @@ describe('startup route policy', () => {
       ),
     ).toBe(false)
     expect(routeRequiresAuthBootstrap(StatsRoute())).toBe(false)
-    expect(
-      routeRequiresAuthBootstrap(
-        SiteCheckoutDemoReturnRoute({ returnAction: 'status' }),
-      ),
-    ).toBe(false)
   })
 
   test('fetches auth bootstrap for product routes', () => {

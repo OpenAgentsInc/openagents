@@ -32,7 +32,6 @@ import {
   MulletRoute,
   OrderRoute,
   PrivacyRoute,
-  SiteCheckoutDemoRoute,
   StatsRoute,
   TassadarRoute,
   TeamProjectChatRoute,
@@ -194,9 +193,6 @@ describe('browser product policy', () => {
         }),
       ),
     ).toBe('workroom.chat.project')
-    expect(browserRouteProductIntent(SiteCheckoutDemoRoute())).toBe(
-      'public.sites.demo-checkout',
-    )
     expect(browserRouteProductIntent(MulletRoute())).toBe('mullet.runner')
     expect(browserRouteProductIntent(StatsRoute())).toBe('public.stats')
     expect(browserRouteProductIntent(KhalaRoute())).toBe('public.khala')

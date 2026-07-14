@@ -45,8 +45,6 @@ import {
   qaSwarmRouter,
   runRouter,
   settingsRouter,
-  siteCheckoutDemoReturnRouter,
-  siteCheckoutDemoRouter,
   statsRouter,
   tassadarReplayRouter,
   tassadarRouter,
@@ -67,7 +65,6 @@ import * as Activity from '../activity'
 import * as ArtanisAccounts from '../artanisAccounts'
 import * as Forum from '../forum'
 import type { PublicHeaderViewer } from '../publicHeader'
-import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import * as ArtanisDashboard from './artanis-dashboard/view'
 import { ClickedLogout, ClickedNewChat, Message } from './message'
 import { type Model, type SidebarModel, teamRouteRef } from './model'
@@ -122,9 +119,6 @@ const currentHref = (model: Model): string =>
       ForumForum: ({ forumRef }) => forumForumRouter({ forumRef }),
       ForumTopic: ({ topicId }) => forumTopicRouter({ topicId }),
       ForumReceipt: ({ receiptRef }) => forumReceiptRouter({ receiptRef }),
-      SiteCheckoutDemo: () => siteCheckoutDemoRouter(),
-      SiteCheckoutDemoReturn: ({ returnAction }) =>
-        siteCheckoutDemoReturnRouter({ returnAction }),
       Business: () => businessRouter(),
       BusinessKpi: ({ engagementRef }) => businessKpiRouter({ engagementRef }),
       Activity: () => activityRouter(),
@@ -191,9 +185,6 @@ const routeKey = (model: Model): string =>
       ForumForum: ({ forumRef }) => `ForumForum:${forumRef}`,
       ForumTopic: ({ topicId }) => `ForumTopic:${topicId}`,
       ForumReceipt: ({ receiptRef }) => `ForumReceipt:${receiptRef}`,
-      SiteCheckoutDemo: () => 'SiteCheckoutDemo',
-      SiteCheckoutDemoReturn: ({ returnAction }) =>
-        `SiteCheckoutDemoReturn:${returnAction}`,
       Business: () => 'Business',
       BusinessKpi: ({ engagementRef }) => `BusinessKpi:${engagementRef}`,
       Activity: () => 'Activity',
@@ -536,20 +527,6 @@ const routeView = (model: Model): Html => {
           ForumReceipt: route =>
             Ui.workroomScrollableRoute<Message>([
               Forum.view(route, loggedInPublicHeaderAuthState(model)),
-            ]),
-          SiteCheckoutDemo: route =>
-            Ui.workroomScrollableRoute<Message>([
-              SiteCheckoutDemo.view(
-                route,
-                loggedInPublicHeaderAuthState(model),
-              ),
-            ]),
-          SiteCheckoutDemoReturn: route =>
-            Ui.workroomScrollableRoute<Message>([
-              SiteCheckoutDemo.view(
-                route,
-                loggedInPublicHeaderAuthState(model),
-              ),
             ]),
           Business: () =>
             Ui.workroomScrollableRoute<Message>([

@@ -233,9 +233,6 @@ describe('docs and blog routes', () => {
         'href',
         '/docs/forum',
       ),
-      Scene.expect(
-        Scene.role('link', { name: 'Autopilot Sites docs' }),
-      ).toHaveAttr('href', '/docs/autopilot-sites'),
     )
   })
 
@@ -419,25 +416,6 @@ describe('docs and blog routes', () => {
       ),
     )
 
-    Scene.scene(
-      { update, view },
-      Scene.with(
-        LoggedOut.init(BlogPostRoute({ slug: 'introducing-autopilot-sites' })),
-      ),
-      Scene.expect(
-        Scene.role('heading', {
-          name: 'Introducing Autopilot Sites',
-        }),
-      ).toExist(),
-      Scene.expect(Scene.text('Software handoff')).toExist(),
-      Scene.expect(Scene.text('Beta loop')).toExist(),
-      Scene.expect(
-        Scene.role('link', { name: 'Read the Sites docs' }),
-      ).toHaveAttr('href', '/docs/autopilot-sites'),
-      Scene.expect(
-        Scene.role('link', { name: 'Read the handoff docs' }),
-      ).toHaveAttr('href', '/docs/software-handoff'),
-    )
   })
 
   test('renders public agent goal projections without private payload data', () => {

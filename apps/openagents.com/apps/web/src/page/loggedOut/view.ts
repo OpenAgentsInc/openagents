@@ -27,7 +27,6 @@ import * as QaSwarm from '../qa-swarm'
 import type { PublicHeaderViewer } from '../publicHeader'
 import { viewerAvatarMenu } from '../publicHeader'
 import * as Run from '../run'
-import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import * as Terms from '../terms'
 import * as Trace from '../trace'
 import * as TraceCompare from '../trace-compare'
@@ -271,10 +270,6 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               ForumForum: route => Forum.view(route, { _tag: 'LoggedOut' }),
               ForumTopic: route => Forum.view(route, { _tag: 'LoggedOut' }),
               ForumReceipt: route => Forum.view(route, { _tag: 'LoggedOut' }),
-              SiteCheckoutDemo: route =>
-                SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
-              SiteCheckoutDemoReturn: route =>
-                SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
               BusinessKpi: route =>
                 BusinessKpi.view(route, { _tag: 'LoggedOut' }),

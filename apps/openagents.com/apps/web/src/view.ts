@@ -35,7 +35,6 @@ import type {
 import * as PylonCodexAssignmentStatus from './page/pylonCodexAssignmentStatus'
 import * as QaSwarm from './page/qa-swarm'
 import * as Run from './page/run'
-import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
 import * as Terms from './page/terms'
 import * as Trace from './page/trace'
 import * as TraceCompare from './page/trace-compare'
@@ -383,10 +382,6 @@ const title = (model: Model): string => {
     case 'ForumTopic':
     case 'ForumReceipt':
       return Forum.title(model.route)
-    case 'SiteCheckoutDemo':
-      return 'Demo checkout - OpenAgents'
-    case 'SiteCheckoutDemoReturn':
-      return SiteCheckoutDemo.title(model.route)
     case 'Blog':
       return 'Blog - OpenAgents'
     case 'BlogPost':
@@ -600,8 +595,6 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     model.route._tag !== 'ForumReceipt'
   ) {
     if (
-      model.route._tag !== 'SiteCheckoutDemo' &&
-      model.route._tag !== 'SiteCheckoutDemoReturn' &&
       model.route._tag !== 'NewLanding' &&
       model.route._tag !== 'Blog' &&
       model.route._tag !== 'BlogPost' &&
@@ -738,13 +731,6 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     model.route._tag === 'ForumReceipt'
   ) {
     return Forum.view<Message>(model.route, authState)
-  }
-
-  if (
-    model.route._tag === 'SiteCheckoutDemo' ||
-    model.route._tag === 'SiteCheckoutDemoReturn'
-  ) {
-    return SiteCheckoutDemo.view<Message>(model.route, authState)
   }
 
   // /autopilot + /autopilot/{vertical} are rendered through the loggedOut

@@ -58,10 +58,6 @@ export const ForumRoute = r('Forum')
 export const ForumForumRoute = r('ForumForum', { forumRef: S.String })
 export const ForumTopicRoute = r('ForumTopic', { topicId: S.String })
 export const ForumReceiptRoute = r('ForumReceipt', { receiptRef: S.String })
-export const SiteCheckoutDemoRoute = r('SiteCheckoutDemo')
-export const SiteCheckoutDemoReturnRoute = r('SiteCheckoutDemoReturn', {
-  returnAction: S.String,
-})
 export const BusinessRoute = r('Business')
 export const BusinessKpiRoute = r('BusinessKpi', { engagementRef: S.String })
 export const ActivityRoute = r('Activity')
@@ -175,9 +171,6 @@ export type ForumRoute = typeof ForumRoute.Type
 export type ForumForumRoute = typeof ForumForumRoute.Type
 export type ForumTopicRoute = typeof ForumTopicRoute.Type
 export type ForumReceiptRoute = typeof ForumReceiptRoute.Type
-export type SiteCheckoutDemoRoute = typeof SiteCheckoutDemoRoute.Type
-export type SiteCheckoutDemoReturnRoute =
-  typeof SiteCheckoutDemoReturnRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
 export type BusinessKpiRoute = typeof BusinessKpiRoute.Type
 export type ActivityRoute = typeof ActivityRoute.Type
@@ -249,8 +242,6 @@ export const LoggedOutRoute = S.Union([
   ForumForumRoute,
   ForumTopicRoute,
   ForumReceiptRoute,
-  SiteCheckoutDemoRoute,
-  SiteCheckoutDemoReturnRoute,
   BusinessRoute,
   BusinessKpiRoute,
   AutopilotRoute,
@@ -310,8 +301,6 @@ export const LoggedInRoute = S.Union([
   ForumForumRoute,
   ForumTopicRoute,
   ForumReceiptRoute,
-  SiteCheckoutDemoRoute,
-  SiteCheckoutDemoReturnRoute,
   BusinessRoute,
   BusinessKpiRoute,
   ActivityRoute,
@@ -375,8 +364,6 @@ export const AppRoute = S.Union([
   ForumForumRoute,
   ForumTopicRoute,
   ForumReceiptRoute,
-  SiteCheckoutDemoRoute,
-  SiteCheckoutDemoReturnRoute,
   BusinessRoute,
   BusinessKpiRoute,
   ActivityRoute,
@@ -585,17 +572,6 @@ export const forumReceiptRouter = pipe(
   slash(literal('receipts')),
   slash(string('receiptRef')),
   Route.mapTo(ForumReceiptRoute),
-)
-export const siteCheckoutDemoRouter = pipe(
-  literal('sites'),
-  slash(literal('demo-checkout')),
-  Route.mapTo(SiteCheckoutDemoRoute),
-)
-export const siteCheckoutDemoReturnRouter = pipe(
-  literal('sites'),
-  slash(literal('demo-checkout')),
-  slash(string('returnAction')),
-  Route.mapTo(SiteCheckoutDemoReturnRoute),
 )
 export const businessRouter = pipe(
   literal('business'),
@@ -930,8 +906,6 @@ const orderedParserRouters = [
   publicTrainingRunRouter,
   publicTrainingRunsRouter,
   docsPageRouter,
-  siteCheckoutDemoReturnRouter,
-  siteCheckoutDemoRouter,
   businessKpiRouter,
   businessRouter,
   activityRouter,

@@ -47,8 +47,6 @@ import {
   type RouteSpec,
   RunRoute,
   ShareRoute,
-  SiteCheckoutDemoReturnRoute,
-  SiteCheckoutDemoRoute,
   StatsRoute,
   TassadarReplayRoute,
   TassadarRoute,
@@ -266,21 +264,6 @@ describe('app route parser', () => {
     )
   })
 
-  test('accepts public Site checkout demo routes', () => {
-    expect(urlToAppRoute(appUrl('/sites/demo-checkout'))).toEqual(
-      SiteCheckoutDemoRoute(),
-    )
-    expect(urlToAppRoute(appUrl('/sites/demo-checkout/success'))).toEqual(
-      SiteCheckoutDemoReturnRoute({ returnAction: 'success' }),
-    )
-    expect(urlToAppRoute(appUrl('/sites/demo-checkout/cancel'))).toEqual(
-      SiteCheckoutDemoReturnRoute({ returnAction: 'cancel' }),
-    )
-    expect(urlToAppRoute(appUrl('/sites/demo-checkout/status'))).toEqual(
-      SiteCheckoutDemoReturnRoute({ returnAction: 'status' }),
-    )
-  })
-
   test('accepts the demo route namespace', () => {
     expect(urlToAppRoute(appUrl('/demo'))).toEqual(DemoRoute())
     expect(urlToAppRoute(appUrl('/demo/order'))).toEqual(DemoOrderRoute())
@@ -378,8 +361,6 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/forum/f/void', 'ForumForum'],
   ['/forum/t/topic1', 'ForumTopic'],
   ['/forum/receipts/rcpt1', 'ForumReceipt'],
-  ['/sites/demo-checkout', 'SiteCheckoutDemo'],
-  ['/sites/demo-checkout/success', 'SiteCheckoutDemoReturn'],
   ['/business', 'Business'],
   ['/activity', 'Activity'],
   ['/run', 'Run'],
