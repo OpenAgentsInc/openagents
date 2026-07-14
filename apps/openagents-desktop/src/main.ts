@@ -458,6 +458,12 @@ const localTurnRestartProbe = process.env.OPENAGENTS_DESKTOP_LOCAL_TURN_RESTART_
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
+// Automated smoke/benchmark/proof drivers must never steal the operator's
+// screen. Headed presentation is one explicit, manual-only opt-in for the
+// narrow cases that genuinely need a visible native-window observation.
+const hiddenAutomationMode = (
+  smokeMode || startupTraceMode || liveProofDriverMode || mvpProofDriverMode
+) && process.env.OPENAGENTS_DESKTOP_HEADED !== "1"
 // Capture before any host lifecycle can change process state. This is the
 // default top-level coding workspace today; the runtime-facing getter is the
 // seam a future persisted directory setting/picker will replace.
@@ -515,6 +521,7 @@ let desktopCommandBindings: DesktopCommandBindingStore | null = null
 const focusDesktopCommandWindow = (): void => {
   const window = desktopCommandWindow ?? BrowserWindow.getAllWindows()[0] ?? null
   if (window === null || window.isDestroyed()) return
+  if (hiddenAutomationMode) return
   if (window.isMinimized()) window.restore()
   window.show()
   window.focus()
@@ -2879,7 +2886,7 @@ const createWindow = (): BrowserWindow => {
     // of the pre-boot frame). Recorded before show() so the mark reflects the
     // compositor-ready moment, not post-show work.
     recordMainMark("windowReadyToShow")
-    window.show()
+    if (!hiddenAutomationMode) window.show()
   })
   void window.loadURL(desktopRendererEntry)
   return window
@@ -4627,6 +4634,11 @@ const runStartupMarks = (
 }
 
 const runSmoke = (window: BrowserWindow): void => {
+  const assertHeadlessPresentation = (): void => {
+    if (hiddenAutomationMode && window.isVisible()) {
+      throw new Error("headless smoke unexpectedly exposed the desktop window")
+    }
+  }
   const finish = (code: 0 | 1): void => {
     workspaceSearchRegistry.dispose()
     terminalHost.dispose()
@@ -4649,6 +4661,7 @@ const runSmoke = (window: BrowserWindow): void => {
   window.webContents.on("did-finish-load", () => {
     void (async () => {
       const step = async (name: string, script: string): Promise<void> => {
+        assertHeadlessPresentation()
         const result: unknown = await window.webContents.executeJavaScript(script, true)
         const ok =
           result === true ||
@@ -4656,6 +4669,7 @@ const runSmoke = (window: BrowserWindow): void => {
         if (!ok) {
           throw new Error(`${name} failed: ${JSON.stringify(result)}`)
         }
+        assertHeadlessPresentation()
         console.log(`[openagents-desktop smoke] ${name} OK`, JSON.stringify(result))
       }
       try {
@@ -4851,7 +4865,10 @@ void app.whenReady().then(async () => {
   // macOS does not use BrowserWindow's icon for the active Dock tile in a
   // development Electron process. Set both native surfaces to the same mobile
   // PNG so the running desktop application has one product identity.
-  if (process.platform === "darwin") app.dock?.setIcon(desktopIconPath)
+  if (process.platform === "darwin") {
+    if (hiddenAutomationMode) app.dock?.hide()
+    else app.dock?.setIcon(desktopIconPath)
+  }
   if (app.isPackaged) app.setAsDefaultProtocolClient("openagents")
   desktopCommandBindings = openDesktopCommandBindingStore(
     path.join(app.getPath("userData"), "commands", "bindings.json"),

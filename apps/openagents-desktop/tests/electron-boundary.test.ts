@@ -170,6 +170,18 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("smokeMode")
   })
 
+  test("automated smoke stays hidden unless headed presentation is explicit", () => {
+    const manifest = JSON.parse(read("package.json")) as { scripts?: Record<string, string> }
+    expect(main).toContain("const hiddenAutomationMode = (")
+    expect(main).toContain('process.env.OPENAGENTS_DESKTOP_HEADED !== "1"')
+    expect(main).toContain("if (!hiddenAutomationMode) window.show()")
+    expect(main).toContain("if (hiddenAutomationMode) return")
+    expect(main).toContain("if (hiddenAutomationMode) app.dock?.hide()")
+    expect(main).toContain("headless smoke unexpectedly exposed the desktop window")
+    expect(manifest.scripts?.["smoke"]).not.toContain("DESKTOP_HEADED")
+    expect(manifest.scripts?.["smoke:headed"]).toContain("OPENAGENTS_DESKTOP_HEADED=1")
+  })
+
   test("Khala Sync database identity and path remain in Electron main", () => {
     const preload = stripComments(read("src/preload.cts"))
     const renderer = stripComments(read("src/renderer/boot.ts"))

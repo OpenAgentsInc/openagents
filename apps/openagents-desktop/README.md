@@ -61,6 +61,12 @@ child, never ambient `~/.codex` history or a default provider home. Set
 `OPENAGENTS_DESKTOP_CODEX_SESSIONS` only for a separately identified real-
 history acceptance run; that evidence is not the deterministic CI gate.
 
+Automated smoke, startup-benchmark, live-proof, and MVP-proof runs keep their
+Electron window hidden and hide the macOS Dock tile, including during
+second-instance/deep-link steps, so they never take over the operator's screen.
+Use `pnpm --dir apps/openagents-desktop run smoke:headed` only when a manual
+proof explicitly needs the native window to be visible.
+
 Tests cover: pure `state -> View` component trees, pure transitions, the
 intent loop through the real registry, theme parity with the shared surface,
 the mechanical Electron/EN boundary oracle, source-coupled service topology
