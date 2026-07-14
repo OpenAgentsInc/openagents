@@ -260,7 +260,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   test("renderer imports only EN, scoped React host libraries, and sibling modules", () => {
     const sharedOrSibling =
       /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/
-    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx"])
+    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx", "react-timeline.tsx"])
     const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|#components\/ui\/[a-z-]+)$/
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)
@@ -275,7 +275,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   })
 
   test("portable Effect Native state, recipes, projections, and intents stay React-free", () => {
-    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx"])
+    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx", "react-timeline.tsx"])
     for (const { name, source } of rendererSources) {
       if (reactHostFiles.has(name)) continue
       expect(name).not.toMatch(/\.tsx$/)

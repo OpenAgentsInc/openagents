@@ -232,6 +232,216 @@ html[data-desktop-platform="darwin"] .oa-react-session-rail {
   color: var(--en-color-textMuted);
 }
 
+.oa-react-timeline-region {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.oa-react-timeline-scroll {
+  height: 100%;
+  min-width: 0;
+  padding: var(--en-spacing-5) max(var(--en-spacing-4), calc((100% - 760px) / 2));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-behavior: auto;
+}
+
+.oa-react-timeline-item {
+  position: relative;
+  width: min(720px, 100%);
+  margin: 0 auto var(--en-spacing-4);
+  padding: 0 var(--en-spacing-3) var(--en-spacing-3);
+  border-left: 2px solid transparent;
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-timeline-item > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+  margin-bottom: var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.oa-react-timeline-item > header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-timeline-item[data-tone="user"] {
+  width: fit-content;
+  max-width: min(680px, 88%);
+  margin-right: max(var(--en-spacing-3), calc((100% - 720px) / 2));
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-react-timeline-item[data-tone="reasoning"] {
+  border-left-color: var(--en-color-accent);
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-timeline-item[data-tone="tool"] {
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+}
+
+.oa-react-timeline-item[data-tone="gap"],
+.oa-react-timeline-item[data-tone="redacted"],
+.oa-react-timeline-item[data-tone="danger"] {
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderStrong);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+  color: var(--en-color-danger);
+}
+
+.oa-react-timeline-item[data-tone="muted"] {
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-timeline-item > p,
+.oa-react-markdown p,
+.oa-react-tool-result p {
+  margin: 0;
+  line-height: var(--en-type-body-lineHeight);
+  white-space: pre-wrap;
+}
+
+.oa-react-markdown {
+  display: grid;
+  gap: var(--en-spacing-2);
+  overflow-wrap: anywhere;
+}
+
+.oa-react-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--en-spacing-2) 0 0;
+  font-family: "Geist Variable", "Oxanium Variable", sans-serif;
+  line-height: var(--en-type-heading-lineHeight);
+}
+
+.oa-react-markdown :is(ul, ol) {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin: 0;
+  padding-left: var(--en-spacing-5);
+}
+
+.oa-react-markdown blockquote {
+  margin: 0;
+  padding-left: var(--en-spacing-3);
+  border-left: 2px solid var(--en-color-borderStrong);
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-markdown code,
+.oa-react-tool-result code {
+  border-radius: var(--en-radius-sm);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-markdown pre {
+  max-width: 100%;
+  margin: 0;
+  padding: var(--en-spacing-3);
+  overflow: auto;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-react-markdown pre code {
+  background: transparent;
+  white-space: pre;
+}
+
+.oa-react-tool-result {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin-top: var(--en-spacing-2);
+  padding-top: var(--en-spacing-2);
+  border-top: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-plan-steps,
+.oa-react-usage {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin: var(--en-spacing-2) 0 0;
+  padding-left: var(--en-spacing-5);
+}
+
+.oa-react-plan-steps li,
+.oa-react-usage div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-usage {
+  padding-left: 0;
+}
+
+.oa-react-usage dt,
+.oa-react-usage dd {
+  margin: 0;
+}
+
+.oa-react-item-details {
+  margin-top: var(--en-spacing-2);
+  opacity: 0;
+  transition: opacity var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-timeline-item:hover .oa-react-item-details,
+.oa-react-item-details:focus-visible {
+  opacity: 1;
+}
+
+.oa-react-timeline-loading,
+.oa-react-timeline-position,
+.oa-react-timeline-empty {
+  color: var(--en-color-textFaint);
+  text-align: center;
+}
+
+.oa-react-timeline-empty {
+  display: grid;
+  place-items: center;
+}
+
+.oa-react-new-activity {
+  position: absolute;
+  right: var(--en-spacing-4);
+  bottom: var(--en-spacing-3);
+  box-shadow: var(--en-elevation-overlay-shadow);
+}
+
+.oa-react-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .oa-react-composer-placeholder {
   margin: var(--en-spacing-3) auto var(--en-spacing-4);
   width: min(720px, calc(100% - var(--en-spacing-6)));

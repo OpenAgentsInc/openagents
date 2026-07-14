@@ -153,3 +153,52 @@ families remain resilient body fallbacks, and generic monospace remains the
 code fallback. Its recursive source oracle rejects any other family or font
 shorthand. The shadcn palette remains a semantic alias layer over Khala's
 canonical Effect Native variables rather than an independent zinc/blue theme.
+
+## MVP-02C — Typed React conversation timeline (#8820)
+
+Status: implemented on the scoped `?renderer=react-shell` path. The complete
+app remains on the compatibility default until MVP-02F.
+
+Delivered:
+
+- ordinary React timeline and item components over the existing bounded
+  `CodexHistoryItem` and local `DesktopNoteEntry` projections, with no provider
+  event parser or React-owned transcript array;
+- stable authoritative item-ref keys, sequence ordering, duplicate collapse,
+  and assistant segments that remain separated by display-bearing non-text
+  records;
+- in-place tool invocation/result correlation at the invocation key;
+- distinct text, reasoning, plan, tool, approval, usage, metadata, context,
+  error, gap, redaction, lifecycle, terminal, and local-question treatments;
+- exactly one newest authoritative terminal disposition when a recovered
+  prefix contains superseded terminal lifecycle records;
+- the existing bounded Markdown parser lowered to safe React text, headings,
+  emphasis, lists, quotes, and code, with links remaining inert visible text
+  and no HTML injection surface;
+- per-item error containment that reports an unavailable presentation item
+  without fabricating completion or dropping sibling rows;
+- a pre-mutation `getSnapshotBeforeUpdate` anchor receipt plus pre-paint
+  correction for variable-height prepends and offscreen height changes;
+- manual-reader position preservation, bounded live-edge following, a shadcn
+  new-activity affordance, top/bottom typed pagination intents, atomic session
+  replacement, and bounded live-region summaries; and
+- a 500-item maximum-page projection/render/update/teardown corpus. It passed
+  without a virtualizer, retained exactly 500 keyed rows through an in-place
+  stream update, and removed every row on unmount, so no virtualization
+  dependency was added.
+
+The React module receives only the same bounded/redacted typed projection the
+compatibility renderer already receives. Effect services, Runtime Gateway,
+history completeness, persistence, terminal truth, and intent identities are
+unchanged; Vercel AI SDK remains absent.
+
+Verification:
+
+- Desktop typecheck — passed;
+- focused timeline, shell, renderer-boundary, design-conformance, and release
+  preflight suites — 74 tests passed;
+- production build — `boot.js` 898.23 kB and `app.css` 171.84 kB;
+- full Desktop suite — 136 files passed, 1,333 tests passed, 39 skipped; and
+- ProductSpec validation passed under OpenAgents and upstream profiles, its
+  repository suite passed 102 tests, and built Electron compatibility smoke
+  passed with zero active lifecycle owners after teardown.

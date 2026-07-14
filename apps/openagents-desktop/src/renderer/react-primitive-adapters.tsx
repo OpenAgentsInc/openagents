@@ -25,6 +25,7 @@ import { ScrollArea } from "#components/ui/scroll-area"
 import { Separator } from "#components/ui/separator"
 import type { DesktopShellState } from "./shell.ts"
 import { formatRelativeTimestamp } from "./shell.ts"
+import { ConversationTimeline } from "./react-timeline.tsx"
 import "./react-workbench.css"
 
 export type ReactSessionRow = Readonly<{
@@ -246,9 +247,7 @@ export const WorkbenchShell = ({ state, report }: {
     {railOpen ? <button className="oa-react-rail-scrim" aria-label="Close sessions" onClick={() => setRailOpen(false)} /> : null}
     <main className="oa-react-conversation">
       <ConversationHeader state={state} />
-      <section className="oa-react-conversation-placeholder" aria-label="Conversation">
-        <p>Conversation rendering continues in the next transition packet.</p>
-      </section>
+      <ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} report={report} />
       <div className="oa-react-composer-placeholder" aria-label="Composer unavailable">
         Composer controls continue in the next transition packet.
       </div>
