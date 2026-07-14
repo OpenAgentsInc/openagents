@@ -35,8 +35,10 @@ Filed as #8499 (this scaffold), #8500 (credits console), #8501 (ops views).
   `createHttpKhalaSyncTransport`, through that proxy — a real bootstrap +
   real live WebSocket tail against production Khala Sync, not a mock.
 - **Theme**: Protoss-blue, no light mode — Tailwind `@theme` tokens sourced
-  from `@openagentsinc/design-tokens/theme.css` (`src/styles.css`), same
-  `--color-khala-*` naming convention as
+  from `src/effect-native-theme.css` (`src/styles.css`), a static
+  `--en-color-*` mirror of `@effect-native/tokens`' `khalaTheme.color`
+  (openagents#8813 Lane A; parity-tested in `src/effect-native-theme.test.ts`),
+  same `--color-khala-*` naming convention as
   `apps/openagents.com/apps/start/src/styles.css` so the small
   `components/ui/*` primitives (copied from that app) resolve unchanged.
 

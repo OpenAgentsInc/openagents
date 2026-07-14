@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@openagentsinc/runtime-platform": "workspace:*",
-    "@openagentsinc/design-tokens": "workspace:*",
+    "@effect-native/tokens": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",

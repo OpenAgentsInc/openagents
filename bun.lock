@@ -31,7 +31,7 @@
       "name": "@openagentsinc/aiur",
       "version": "0.1.0",
       "dependencies": {
-        "@openagentsinc/design-tokens": "workspace:*",
+        "@effect-native/tokens": "workspace:*",
         "@openagentsinc/effect-start": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/khala-sync-client": "workspace:*",

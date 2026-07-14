@@ -1,15 +1,15 @@
 @import 'tailwindcss';
-@import '@openagentsinc/design-tokens/theme.css';
+@import './effect-native-theme.css';
 
 /*
  * Protoss-blue theme (owner decision 2026-07-04: one UI ecosystem, no light
- * mode). Tailwind's @theme layer maps onto the shared `--oa-color-khala-*`
- * custom properties from @openagentsinc/design-tokens rather than
- * hand-rolled hex values, so Aiur stays visually consistent with the rest
- * of the OpenAgents surface by construction. Variable names mirror
- * apps/openagents.com/apps/start/src/styles.css so the shared
- * `components/ui/*` primitives (copied from that app) resolve the same
- * utility classes unchanged.
+ * mode). Tailwind's @theme layer maps onto the shared `--en-color-*` custom
+ * properties mirroring @effect-native/tokens' khalaTheme (openagents#8813
+ * Lane A) rather than hand-rolled hex values, so Aiur stays visually
+ * consistent with the rest of the OpenAgents surface by construction.
+ * Variable names mirror apps/openagents.com/apps/start/src/styles.css so the
+ * shared `components/ui/*` primitives (copied from that app) resolve the
+ * same utility classes unchanged.
  */
 @theme {
   --font-sans:
@@ -19,21 +19,21 @@
     'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', Menlo, Monaco,
     Consolas, 'Liberation Mono', monospace;
 
-  --color-khala-void: var(--oa-color-khala-void);
-  --color-khala-surface: var(--oa-color-khala-surface);
-  --color-khala-surface-muted: var(--oa-color-khala-surface-muted);
-  --color-khala-surface-raised: var(--oa-color-khala-surface-raised);
-  --color-khala-border: var(--oa-color-khala-border);
-  --color-khala-border-strong: var(--oa-color-khala-border-strong);
-  --color-khala-energy: var(--oa-color-khala-energy-blue);
-  --color-khala-energy-cyan: var(--oa-color-khala-energy-cyan);
-  --color-khala-energy-soft: var(--oa-color-khala-energy-soft);
-  --color-khala-text: var(--oa-color-khala-text-primary);
-  --color-khala-text-muted: var(--oa-color-khala-text-muted);
-  --color-khala-text-faint: var(--oa-color-khala-text-faint);
-  --color-khala-success: var(--oa-color-khala-success);
-  --color-khala-warning: var(--oa-color-khala-warning);
-  --color-khala-danger: var(--oa-color-khala-danger);
+  --color-khala-void: var(--en-color-background);
+  --color-khala-surface: var(--en-color-surface);
+  --color-khala-surface-muted: var(--en-color-surface);
+  --color-khala-surface-raised: var(--en-color-surfaceRaised);
+  --color-khala-border: var(--en-color-border);
+  --color-khala-border-strong: var(--en-color-borderStrong);
+  --color-khala-energy: var(--en-color-accent);
+  --color-khala-energy-cyan: var(--en-color-info);
+  --color-khala-energy-soft: var(--en-color-accentHover);
+  --color-khala-text: var(--en-color-textPrimary);
+  --color-khala-text-muted: var(--en-color-textMuted);
+  --color-khala-text-faint: var(--en-color-textFaint);
+  --color-khala-success: var(--en-color-success);
+  --color-khala-warning: var(--en-color-warning);
+  --color-khala-danger: var(--en-color-danger);
 
   --radius: 0.25rem;
   --color-background: var(--color-khala-void);
