@@ -73,6 +73,12 @@ describe("openagents-desktop build", () => {
     const renderer = readFileSync(path.join(dist, "renderer/boot.js"), "utf8")
     expect(renderer).not.toMatch(/require\(\s*"electron"\s*\)/)
     expect(renderer).toContain("openagents-desktop-root")
+    expect(renderer).toContain("data-en-react-surface")
+    expect(renderer).not.toContain("process.env.NODE_ENV")
+    expect(renderer).not.toContain("19.2.7")
+
+    const rendererCss = readFileSync(path.join(dist, "renderer/app.css"), "utf8")
+    expect(rendererCss).toContain("--color-background:var(--en-color-background)")
 
     const fingerprint = (icon: Buffer) => createHash("sha256").update(icon).digest("hex")
     const mobileIcon = readFileSync(path.join(appRoot, "..", "openagents-mobile", "assets", "images", "icon.png"))

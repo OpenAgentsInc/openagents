@@ -993,6 +993,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   numbering never restarts at a source boundary. Selecting a runtime/app-local
   row always unmounts any provider-history page before projecting that row's
   transcript, so a successful selection cannot leave stale chat content visible.
+- Desktop's application, component, state, projection, and typed-intent model
+  remain Effect Native. React 19 owns the renderer root and lifecycle only
+  through the shared `@effect-native/render-dom/react` renderer; the initial
+  surface may retain the proven direct catalog lowering as a compatibility
+  backend while native React component lowerings reach parity. Tailwind and any future Base UI
+  adoption are renderer-private implementation tools. Portable renderer modules remain
+  `.ts`, React-free, and free of `className`/`ReactNode`; no Zustand, Effect
+  Atom React, TanStack router, Zod, arbitrary JSX component, or second theme/
+  icon system may become application authority. The Electron renderer remains
+  tokenless and Node-free. This boundary and `.tsx` scanner coverage are
+  enforced by `apps/openagents-desktop/tests/electron-boundary.test.ts` and
+  `apps/openagents-desktop/src/renderer/design-conformance.test.ts`.
 - The MVP sidebar never projects connected provider accounts or usage. Any
   retained account/Fleet state is non-visible post-MVP substrate only.
 - Desktop chat context rails are genuinely pointer-resizable from 280–480px.

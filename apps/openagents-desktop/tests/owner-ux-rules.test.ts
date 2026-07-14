@@ -59,8 +59,9 @@ const sourceFiles = (dir: string): ReadonlyArray<string> => {
       found.push(...sourceFiles(full))
       continue
     }
-    if (name.endsWith(".test.ts")) continue
-    if (name.endsWith(".ts") || name.endsWith(".cts") || name.endsWith(".css")) found.push(full)
+    if (/\.test\.tsx?$/.test(name)) continue
+    if (name.endsWith(".ts") || name.endsWith(".tsx") || name.endsWith(".cts") || name.endsWith(".css"))
+      found.push(full)
   }
   return found
 }

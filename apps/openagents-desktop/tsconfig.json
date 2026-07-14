@@ -7,9 +7,10 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node", "vite-plus-matchers"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client", "vite-plus-matchers"],
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["src/**/*.ts", "src/**/*.cts", "scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.cts", "scripts/**/*.ts", "tests/**/*.ts"]
 }

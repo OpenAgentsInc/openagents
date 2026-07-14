@@ -19,8 +19,15 @@ on mobile before broad workbench parity. That target is roadmap intent; only
 `GUARANTEES.md` and its oracles describe behavior enforced today.
 
 This package now includes a neutral desktop chat workspace: a hardened
-Electron app whose renderer is 100% Effect Native (the shared vendored catalog
-at `apps/openagents.com/packages/effect-native-*`). It projects recent local
+Electron app whose application model is 100% Effect Native (the shared
+vendored catalog at `apps/openagents.com/packages/effect-native-*`) and whose
+renderer root and lifecycle are owned by React 19. The first cut retains the
+proven direct catalog lowering inside that shared React surface while native
+React component lowerings move across the renderer boundary. The renderer uses the T3 Code toolchain shape—
+Vite and Tailwind CSS 4—without adopting a second router, store, schema system,
+theme, icon set, or JSX application tree. Base UI remains the next renderer-
+private primitive seam rather than an unused dependency in this cut.
+It projects recent local
 Codex chats read-only, renders assistant and owner transcript roles, clears the
 composer after a submitted turn, provides New Chat and a closed command
 palette, supports a user-selected workspace with bounded read/edit/save plus
@@ -104,16 +111,25 @@ build plus Electron teardown receipt.
   unreviewed receipt material cannot auto-publish through the agent path.
   This remains internal MVP tooling: Desktop exposes no ProductSpec or
   AssuranceSpec navigation item, route, or user-facing screen.
-- `src/renderer/` — the application, 100% Effect Native:
+- `src/renderer/` — the application is Effect Native; React is its DOM target:
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.
   - `theme.ts` — the one Protoss-blue theme via `@effect-native/tokens`,
     token-identical to the shared OpenAgents theme values.
   - `boot.ts` — `SubscriptionRef` + `makeViewProgramFromState` +
-    `makeIntentRegistry` + `makeDomRenderer().mount(...)`, the same
-    consumer pattern shared by the OpenAgents Effect Native surfaces.
+    `makeIntentRegistry` + the React-owned Effect Native DOM surface.
 - `scripts/build.ts` — Vite Plus bundles main (ESM), preload (CJS, sandboxed),
-  and renderer into `dist/`.
+  and workers; Vite + the React and Tailwind plugins emit the fixed signed
+  renderer assets `index.html`, `boot.js`, and `app.css`.
+
+The deliberate omissions from T3's stack are architectural: Desktop does not
+need TanStack Router because navigation is already typed application state,
+and it does not need Zustand or Effect Atom React because `SubscriptionRef`
+and the Effect Native `ViewProgram` remain the single state/projection owner.
+Base UI, Lexical, LegendList, Pierre, and xterm are deferred until their
+corresponding catalog component or typed Host driver actually uses them. The system/SF Pro
+font contract, closed OpenAI Apps SDK icon catalog, khala theme, boot frame,
+and tokenless Electron boundary remain unchanged.
 
 Target evolution preserves this boundary rather than widening the preload one
 feature at a time. The renderer consumes one closed schema-decoded projection/

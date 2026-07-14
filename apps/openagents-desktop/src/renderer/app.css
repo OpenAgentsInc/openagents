@@ -1,10 +1,39 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--en-color-background);
+  --color-foreground: var(--en-color-textPrimary);
+  --color-muted: var(--en-color-surfaceRaised);
+  --color-muted-foreground: var(--en-color-textMuted);
+  --color-card: var(--en-color-surface);
+  --color-card-foreground: var(--en-color-textPrimary);
+  --color-border: var(--en-color-borderSubtle);
+  --color-primary: var(--en-color-accent);
+  --color-primary-foreground: var(--en-color-textInverse);
+  --color-destructive: var(--en-color-danger);
+  --color-ring: var(--en-color-focus);
+  --radius-sm: var(--en-radius-sm);
+  --radius-md: var(--en-radius-md);
+  --radius-lg: var(--en-radius-lg);
+}
+
+@layer base {
+  /* A real Tailwind-compiled renderer boundary, sourced entirely from EN
+     semantic variables. Portable View nodes never carry these classes. */
+  [data-en-react-surface="hybrid"] {
+    @apply bg-background text-foreground;
+  }
+}
+
 /*
  * OpenAgents Desktop host physics.
  *
  * Component appearance belongs to Effect Native's typed catalog and the
- * render-dom component-token tier. This sheet is intentionally limited to
- * Electron viewport geometry, split-pane/scroll containment, overlay
- * placement, responsive host adaptation, and motion-accessibility overrides.
+ * React DOM component-token tier. Tailwind exposes those same EN variables to
+ * renderer-private component adapters; it does not introduce another theme or
+ * application state model. The remaining rules are Electron viewport
+ * geometry, split-pane/scroll containment, overlay placement, responsive host
+ * adaptation, and motion-accessibility overrides.
  */
 
 :root {

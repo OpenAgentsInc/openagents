@@ -5,7 +5,8 @@
  * EN-only renderer discipline regresses: sandbox/contextIsolation posture in
  * the main process, a bridge-only preload with no ipcRenderer/MessagePort,
  * no Electron or Node authority inside the renderer, and no starter/parallel
- * UI architectures (React, shadcn, Zod, oRPC, TanStack) in the app at all.
+ * application architecture. React/Base UI/Tailwind are permitted only as the
+ * host implementation below Effect Native's View/state/intent boundary.
  */
 import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync } from "node:fs"
@@ -242,19 +243,44 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
 describe("Effect Native renderer boundary (no parallel UI architecture)", () => {
   const rendererDir = path.join(appRoot, "src/renderer")
   const rendererSources = readdirSync(rendererDir)
-    .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+    .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
     .map((name) => ({
       name,
       source: stripComments(readFileSync(path.join(rendererDir, name), "utf8")),
     }))
 
-  test("renderer imports only the shared EN catalog and sibling modules", () => {
-    const allowed = /^(@effect-native\/(core|core\/effect|render-dom|tokens)|(\.\.\/|\.\/)[a-z-]+\.ts)$/
+  test("Desktop mounts the shared React-owned Effect Native surface", () => {
+    const boot = read("src/renderer/boot.ts")
+    expect(boot).toContain('from "@effect-native/render-dom/react"')
+    expect(boot).toContain("makeReactDomRenderer({")
+    expect(boot).not.toContain("makeDomRenderer({")
+  })
+
+  test("renderer imports only EN, scoped React host libraries, and sibling modules", () => {
+    const sharedOrSibling =
+      /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/
+    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx"])
+    const reactHostImport = /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?)$/
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)
+      specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!))
       for (const specifier of specifiers) {
-        expect(specifier).toMatch(allowed)
+        expect(
+          sharedOrSibling.test(specifier) || (reactHostFiles.has(name) && reactHostImport.test(specifier)),
+          `${name} imports disallowed renderer dependency ${specifier}`,
+        ).toBe(true)
       }
+    }
+  })
+
+  test("portable Effect Native state, recipes, projections, and intents stay React-free", () => {
+    const reactHostFiles = new Set(["boot.ts", "react-primitive-adapters.tsx"])
+    for (const { name, source } of rendererSources) {
+      if (reactHostFiles.has(name)) continue
+      expect(name).not.toMatch(/\.tsx$/)
+      expect(source).not.toMatch(/from\s+"(?:react|react-dom|@base-ui\/react)/)
+      expect(source).not.toContain("className=")
+      expect(source).not.toContain("ReactNode")
     }
   })
 
@@ -266,7 +292,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     }
   })
 
-  test("no starter application semantics return (shadcn/React/Zod/oRPC/TanStack)", () => {
+  test("React stack is renderer-only; no parallel router, store, schema, or starter kit returns", () => {
     const manifest = JSON.parse(read("package.json")) as {
       dependencies?: Record<string, string>
       devDependencies?: Record<string, string>
@@ -275,7 +301,17 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
       ...Object.keys(manifest.dependencies ?? {}),
       ...Object.keys(manifest.devDependencies ?? {}),
     ]
-    const banned = [/^react(-dom)?$/, /^zod$/, /@orpc\//, /@tanstack\//, /^shadcn$/, /radix/, /tailwind/]
+    expect(dependencyNames).toEqual(
+      expect.arrayContaining([
+        "react",
+        "react-dom",
+        "@tailwindcss/vite",
+        "tailwindcss",
+        "@vitejs/plugin-react",
+        "vite",
+      ]),
+    )
+    const banned = [/^zod$/, /@orpc\//, /@tanstack\//, /^shadcn$/, /radix/, /^zustand$/, /^@effect\/atom-react$/]
     for (const name of dependencyNames) {
       for (const pattern of banned) {
         expect(name).not.toMatch(pattern)

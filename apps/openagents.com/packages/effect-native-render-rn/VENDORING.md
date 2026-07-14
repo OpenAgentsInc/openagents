@@ -21,7 +21,7 @@ so swapping to the real published dependency later is a package.json-only change
 ## Provenance
 
 - Upstream repo: `OpenAgentsInc/effect-native`
-- Upstream commit: `412640adbe2979926c64c7aaf29721677638d4ec` (catalog `v39`)
+- Upstream commit: `d82ef135a43420883bacf9580f5b644b40787b23` (catalog `v39`)
 - Vendored: 2026-07-14 (bumped from `6db0a67b`, catalog `v30`; earlier
   `f8251374` `v30`, `e0c57cb` `v29`, `eb9685b` `v25`, `1aa6e364` `v19`,
   `e32b97e` `v5`)

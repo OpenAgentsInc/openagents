@@ -1,9 +1,11 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
+import tailwindcss from "@tailwindcss/vite"
+import react from "@vitejs/plugin-react"
 /**
  * Build (#8574): bundles the Electron main process, the sandboxed CommonJS
- * preload, and the Effect Native renderer into `dist/` with Runtime. Plain
- * TypeScript in, three artifacts out — no Vite/Forge pipeline in this exit
- * (packaging/signing is a later #8574 exit; see UPSTREAM.md).
+ * preload, and the Effect Native renderer into `dist/`. Runtime bundles host
+ * code; Vite, React, and Tailwind CSS build the sandboxed renderer while
+ * preserving the fixed signed asset names consumed by Electron.
  */
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
@@ -11,6 +13,7 @@ import { chmodSync, readFileSync, writeFileSync } from "node:fs"
 import { cp, copyFile, mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { build as viteBuild } from "vite"
 import { projectAssuranceSpecDocument } from "../src/assurance-spec-document.ts"
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
@@ -119,25 +122,43 @@ export const buildDesktop = async (): Promise<string> => {
   // artifact needs the explicit .cjs extension.
   await rename(path.join(dist, "preload.js"), path.join(dist, "preload.cjs"))
 
-  assertSuccess(
-    "renderer",
-    await Runtime.build({
-      entrypoints: [path.join(appRoot, "src/renderer/boot.ts")],
-      outdir: path.join(dist, "renderer"),
-      target: "browser",
-      format: "iife",
-      minify: BUILD_MINIFY,
+  // Desktop now uses the same renderer toolchain shape as T3 Code: React 19,
+  // Vite, and Tailwind CSS 4. Effect Native remains the application contract;
+  // React is the DOM renderer beneath that typed View/intent boundary.
+  await viteBuild({
+    configFile: false,
+    root: appRoot,
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      // Workspace renderer sources have their own optional peer resolution;
+      // force the app's one React/React DOM pair into the bundle.
+      dedupe: ["react", "react-dom"],
+    },
+    define: {
+      // The sandboxed renderer has no Node `process`. Select React's
+      // production bundles at build time instead of injecting a process shim.
+      "process.env.NODE_ENV": JSON.stringify("production"),
       // Dogfood the exact checked-in proposal through the same browser-safe
       // parser used by future editor-opened `.assurance-spec.md` files. The
       // renderer component still owns no filesystem authority.
-      define: {
-        __OPENAGENTS_MVP_ASSURANCE_SPEC_SNAPSHOT__: JSON.stringify(JSON.stringify(mvpAssuranceSpecProjection)),
+      __OPENAGENTS_MVP_ASSURANCE_SPEC_SNAPSHOT__: JSON.stringify(JSON.stringify(mvpAssuranceSpecProjection)),
+    },
+    build: {
+      outDir: path.join(dist, "renderer"),
+      emptyOutDir: false,
+      minify: BUILD_MINIFY,
+      reportCompressedSize: false,
+      lib: {
+        entry: path.join(appRoot, "src/renderer/boot.ts"),
+        name: "OpenAgentsDesktopRenderer",
+        formats: ["iife"],
+        fileName: () => "boot.js",
+        cssFileName: "app",
       },
-    }),
-  )
+    },
+  })
 
   await cp(path.join(appRoot, "index.html"), path.join(dist, "renderer/index.html"))
-  await cp(path.join(appRoot, "src/renderer/app.css"), path.join(dist, "renderer/app.css"))
   // Product-owned built-in skills are signed application resources, not
   // ambient user/plugin content. Keep the checked-in manifest and immutable
   // asset together so packaging and release preflight can prove visibility.

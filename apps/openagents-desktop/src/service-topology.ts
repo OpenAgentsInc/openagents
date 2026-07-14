@@ -735,7 +735,7 @@ export const desktopServiceTopology = [
     sourceEvidence: [{
       module: "apps/openagents-desktop/src/renderer/boot.ts",
       compositionModule: "apps/openagents-desktop/src/renderer/boot.ts",
-      constructions: ["mountDesktopShell", "makeDomRenderer", "Scope.make"],
+        constructions: ["mountDesktopShell", "makeReactDomRenderer", "Scope.make"],
     }],
     dependsOn: ["preload-bridge"],
     authority: ["view_projection"],

@@ -40,11 +40,11 @@ const colorAllowlist = new Set(["theme.ts"])
 
 const rendererSources = (): ReadonlyArray<readonly [string, string]> =>
   readdirSync(rendererDir)
-    .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
+    .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
     .map((name) => [name, readFileSync(path.join(rendererDir, name), "utf8")] as const)
 
 describe("design conformance (a): no raw color literals in renderer modules", () => {
-  test("renderer .ts modules carry no hex/rgb/hsl color literals outside the theme module", () => {
+  test("renderer .ts/.tsx modules carry no hex/rgb/hsl color literals outside the theme module", () => {
     const offenders: Array<string> = []
     for (const [name, source] of rendererSources()) {
       if (colorAllowlist.has(name)) continue
@@ -135,13 +135,14 @@ describe("design conformance (b): style values come from the shared scales", () 
   })
 })
 
-describe("design conformance (b2): app.css is host physics, not a component recipe layer", () => {
-  test("the stylesheet stays within the ~300-line host-physics payload budget", () => {
+describe("design conformance (b2): app.css is a token bridge and host physics, not a component recipe layer", () => {
+  test("the stylesheet stays within the bounded token-bridge/host-physics payload budget", () => {
     // Bytes are formatting-invariant enough to prevent blank-line/minification
     // games while expressing the issue's approximate 300-line target. The old
-    // component-recipe sheet was >31 KiB; host physics is capped at 10 KiB.
+    // component-recipe sheet was >31 KiB; the Tailwind token projection plus
+    // host physics stays capped at 11 KiB.
     const css = readFileSync(path.join(rendererDir, "app.css"), "utf8")
-    expect(Buffer.byteLength(css, "utf8")).toBeLessThanOrEqual(10 * 1024)
+    expect(Buffer.byteLength(css, "utf8")).toBeLessThanOrEqual(11 * 1024)
   })
 
   test("catalog component tags and visual matrix axes are never restyled in app.css", () => {

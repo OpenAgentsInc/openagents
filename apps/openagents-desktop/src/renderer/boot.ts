@@ -1,8 +1,8 @@
 /**
  * Renderer entrypoint (#8574): boots the OpenAgents Desktop shell as one
  * Effect Native program — SubscriptionRef state, `makeViewProgramFromState`,
- * a typed intent registry, and the DOM renderer from the shared vendored
- * catalog. It follows the standard Effect Native consumer pattern.
+ * a typed intent registry, and the React DOM renderer from the shared vendored
+ * catalog. React owns the host tree; Effect Native owns the application.
  *
  * Boundary: this file runs sandboxed (contextIsolation on, nodeIntegration
  * off). The only host input is the frozen `openagentsDesktop` bridge object
@@ -17,8 +17,10 @@ import {
   type IntentReporter,
 } from "@effect-native/core"
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
-import { makeDomRenderer, makeStubCodeEditorDriver } from "@effect-native/render-dom"
+import { makeStubCodeEditorDriver } from "@effect-native/render-dom"
+import { makeReactDomRenderer } from "@effect-native/render-dom/react"
 import { projectFleetCockpitCard, type FleetAuthority } from "../fleet-cockpit.ts"
+import "./app.css"
 
 import {
   unavailableCodexSettingsBridge,
@@ -1634,7 +1636,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     for (const [name, value] of Object.entries(preferencesRootAttributes(preferences))) {
       document.documentElement.setAttribute(name, value)
     }
-    const renderer = makeDomRenderer({
+    const renderer = makeReactDomRenderer({
       theme: themeForPreferences(preferences),
       hostDrivers: [makeStubCodeEditorDriver()],
     })

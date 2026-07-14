@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./react": "./src/react.ts"
   },
   "scripts": {
     "typecheck": "tsc -b"
@@ -15,8 +16,24 @@
     "@effect-native/tokens": "workspace:*",
     "effect": "4.0.0-beta.94"
   },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "19.2.3"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
   "effectNativeVendor": {
     "repo": "OpenAgentsInc/effect-native",
-    "commit": "412640adbe2979926c64c7aaf29721677638d4ec"
+    "commit": "d82ef135a43420883bacf9580f5b644b40787b23"
   }
 }

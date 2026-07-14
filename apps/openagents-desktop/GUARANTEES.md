@@ -480,11 +480,11 @@ never of composer input, global state, or re-render timing.
   depend on any ancestor, so a momentary DOM detach during reconciliation
   cannot expose it. Only the reveal to `opacity: 1` depends on the row's
   `:hover` / `:focus-within`.
-- The shared Effect Native DOM renderer commit is **idempotent**: re-committing
-  an unchanged keyed subtree performs zero DOM moves of persisted content.
-  Transcript message wrappers are persisted and reconciled in place, and
-  children are inserted/moved/removed by diff rather than unconditionally
-  re-appended. Detaching and re-attaching a node restarts its CSS
+- The shared React-backed Effect Native DOM renderer commit is **idempotent**:
+  re-committing an unchanged keyed subtree performs zero DOM moves of
+  persisted content. React owns reconciliation, while Effect Native keys and
+  catalog attributes preserve transcript message wrappers in place. Detaching
+  and re-attaching a node restarts its CSS
   transition/animation, so an unrelated re-render (a keystroke elsewhere) can no
   longer replay a hover-reveal transition, a running-tool title shimmer, or a
   disabled-reason popover animation.
@@ -650,6 +650,11 @@ The normal desktop test sweep also mechanically enforces these host boundaries:
 
 - Electron renderer sandboxing is enabled with context isolation on, Node
   integration off, webviews off, and web security on.
+- Effect Native remains the only application/component/state/intent grammar.
+  React 19, Vite, Tailwind, and any later Base UI adapters are renderer implementation details;
+  portable shell/projection modules cannot import them or carry JSX,
+  `ReactNode`, callbacks, or Tailwind class strings. Zustand, TanStack Router,
+  Effect Atom React, and a second schema/theme/icon authority remain absent.
 - Permission requests, navigation, new windows, and webview attachment are
   denied by default.
 - The renderer receives fixed, validated capabilities through the preload

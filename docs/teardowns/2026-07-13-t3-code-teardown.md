@@ -1581,6 +1581,36 @@ specialist libraries only through renderer-private implementations or closed
 typed hosts. Today's React route shell around an imperative direct-DOM island
 is migration glue, not that destination. [inferred]
 
+#### OpenAgents Desktop implementation disposition (2026-07-14)
+
+The first Desktop convergence now applies that recommendation rather than
+copying T3's whole client architecture:
+
+| T3 layer | OpenAgents Desktop disposition | Reason |
+| --- | --- | --- |
+| React 19 / React DOM | adopted as the Effect Native renderer root and lifecycle host | the first surface retains the proven direct catalog lowering internally; React still cannot own the View grammar |
+| Vite + React plugin | adopted for the renderer bundle | main/preload/workers remain on the existing host build and the signed asset names remain fixed |
+| Tailwind CSS 4 | adopted as a renderer compiler with `--en-*` semantic aliases | no Tailwind class enters the portable View schema and no second theme is created |
+| Base UI | deferred to reviewed renderer-private primitive adapters | do not add it until a catalog primitive genuinely delegates; never expose `ReactNode` or callbacks in core |
+| Effect Atom React / Zustand | not adopted | `SubscriptionRef`, `ViewProgram`, typed intents, and existing persistence already have one owner |
+| TanStack Router | not adopted | Desktop navigation is typed application state, not a browser URL hierarchy |
+| Lexical / LegendList / Pierre / xterm | deferred until a catalog node or typed Host genuinely delegates to each library | dependencies must follow a real lifecycle-owned integration, not stack mimicry |
+| DM Sans / JetBrains Mono / Lucide | rejected | Desktop's enforced system-font, khala-token, and closed Apps SDK icon contracts remain authoritative |
+
+The Electron host still serves only `index.html`, `boot.js`, and `app.css`
+under the existing restrictive CSP. The pure `shell.ts` application and its
+workspace projections remain React-free; the renderer-host boundary test now
+allows React/Base UI only in named host files and scans `.tsx` so the exception
+cannot become an unreviewed second UI layer. Tailwind's semantic theme roles
+map to canonical Effect Native variables rather than duplicating T3's color,
+radius, typography, noise, glass, or gradient defaults. [source] [inferred]
+
+This is the practical meaning of “adapt the implementation ecosystem, refuse
+the implementation split”: React can host and progressively reconcile Effect
+Native Views, but it cannot become an alternative product model. The initial
+hybrid is the R1 bridge from the gap analysis, not a claim that the R2–R6
+native React lowering, SSR, or specialist-library work is complete.
+
 ### Frontend evidence limitations
 
 This addendum inspected source and dependency manifests at the pinned commit.

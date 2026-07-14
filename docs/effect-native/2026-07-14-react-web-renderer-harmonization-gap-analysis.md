@@ -2,11 +2,11 @@
 
 - Date: 2026-07-14
 - OpenAgents snapshot: `53c33ff8cfa1f8b2ce5f2c2b7adaf7461e44cf2e`
-- Effect Native snapshot: `412640adbe2979926c64c7aaf29721677638d4ec`
+- Effect Native snapshot: `d82ef135a43420883bacf9580f5b644b40787b23`
   (`effect-native/v39`)
 - T3 Code reference: `c1ec1915fc16f3dc1ec5d47d9a97f6210a574526`
 - Class: source-grounded architecture gap analysis
-- Status: recommendation, not implementation or route-conversion authority
+- Status: recommendation plus Desktop R1 implementation; not broad route-conversion authority
 
 ## Executive decision
 
@@ -34,6 +34,37 @@ In one sentence: **keep Effect Native above React; put React underneath the
 Effect Native DOM contract; wrap the old direct-DOM renderer only while
 migrating.**
 
+## Implementation status — Desktop R1 landed 2026-07-14
+
+The first executable rung now exists upstream at Effect Native commit
+`d82ef135a43420883bacf9580f5b644b40787b23` and is consumed by OpenAgents
+Desktop:
+
+- `@effect-native/render-dom/react` is an optional-peer subpath with
+  `EffectNativeReactDomSurface` and `makeReactDomRenderer`;
+- React owns the root and lifecycle, while the existing direct renderer remains
+  the compatibility catalog lowering inside that surface;
+- the mount adapter waits until the nested renderer's first View commit, so
+  Desktop does not remove its boot frame or begin background hydration early;
+- Scope close idempotently unmounts React and the nested renderer;
+- Desktop now bundles the renderer with Vite, the React plugin, and Tailwind
+  CSS 4, with semantic Tailwind roles mapped to canonical `--en-*` variables;
+- React/React DOM are deduped to one app-owned `19.2.3` pair and production
+  mode is selected at build time without injecting Node's `process` into the
+  sandbox;
+- the Electron boundary continues to forbid Node, tokens, generic host
+  authority, React application state, JSX in portable modules, Tailwind class
+  strings in Views, and parallel router/store/schema/theme/icon systems; and
+- the full 1,350-test Desktop suite, built Electron reload smoke, and startup
+  benchmark pass. The measured median was 694 ms to `shellMounted`, under the
+  existing 2,500 ms budget.
+
+This is **R1**, not the final R2–R6 destination. React does not yet lower each
+catalog node natively, Base UI is not yet wired, and there is no SSR/hydration,
+Lexical, LegendList, Pierre, or xterm migration in this change. Keeping those
+dependencies out until a real catalog/Host implementation exists avoids
+turning a stack audit into unused supply-chain surface.
+
 This does not authorize broad web product work. The Sol roadmap still closes
 broad route conversion, landing, Forum expansion, portal, CRM, sales, and
 outbound product work unless separately reauthorized. This document defines
@@ -48,15 +79,16 @@ implementation is already a substantial multi-renderer framework:
 | --- | --- | --- | --- |
 | `@effect-native/core` | 7,323-line React-free package; 79 Schema-backed component tags; typed keys, accessibility, interactions, bindings, styles, hosts, intents, and `ViewProgram` | no dependency | Keep it as the portable authority |
 | `@effect-native/tokens` | 1,140-line semantic token, theme, spacing, type, control, motion, breakpoint, and matrix system | no dependency | Project it into every renderer; do not replace it with Tailwind strings |
-| `@effect-native/render-dom` | 6,594-line direct DOM renderer with runtime atomic CSS, custom reconciliation, focus/scroll restoration, overlays, collections, and host lifecycle | no | It has become a browser renderer and a home-grown reconciler |
+| `@effect-native/render-dom` | Direct DOM renderer plus optional `./react` R1 host; React owns root/lifecycle while direct catalog lowering remains the compatibility backend | optional peer at `./react` | R1 removes route-local host boilerplate but does not yet deliver native React component lowering |
 | `@effect-native/render-rn` | 6,331-line lowering from the same `View` union to React Native elements, plus a hook-backed surface | yes, internally | This already proves React can render Effect Native without becoming its authoring model |
 | OpenAgents web | TanStack Start/Router, React 19, React DOM, Tailwind 4; retained Effect Native routes mount the direct DOM renderer from `useEffect` | React owns the route shell only | Effect Native content is an opaque client-only island |
-| OpenAgents Desktop | Electron plus the direct DOM Effect Native renderer; no React dependency | no | Preserve during the pilot; any later React dependency must pass Desktop gates and update its boundary tests |
+| OpenAgents Desktop | Electron plus the shared React-owned Effect Native DOM surface; Vite/React/Tailwind renderer build; Effect Native application/state/intents unchanged | renderer host only | R1 passed package tests, built smoke/reload, security boundary, and startup budgets |
 | OpenAgents mobile | Expo/React Native host plus `createEffectNativeSurface`; screen programs stay in Effect Native | yes, as renderer/host | This is the working architectural precedent |
 
-The current vendor manifest pins core, tokens, direct DOM, and React Native at
-one upstream commit and catalog version. There is no React DOM renderer
-package or entry point.
+The current vendor manifest pins core, tokens, direct DOM/React host, and React
+Native at one upstream commit and catalog version. The React host is a subpath
+of the DOM renderer, so no second vendored package or catalog version was
+introduced.
 
 ### Current web path
 
@@ -718,10 +750,11 @@ wrapping the existing renderer forever would throw away most of React's value.
 
 ## Evidence limitations
 
-This analysis inspected source, tests, package manifests, current decisions,
-and the pinned T3 reference. It did not implement a React DOM renderer, run an
-SSR prototype, benchmark React in Electron, execute axe/VoiceOver/NVDA, or
-profile a representative long transcript. The proposed destination is strongly
-supported by the existing RN renderer and current web host, but the choice to
-replace the direct DOM implementation remains conditional on the executable
-gates above.
+The original analysis inspected source, tests, package manifests, current
+decisions, and the pinned T3 reference. The follow-on R1 implementation added
+and tested a React-owned host, ran the complete Desktop unit/contract suite,
+real built Electron smoke/reload, and a deterministic startup benchmark. It
+still did not implement native React catalog lowering, SSR/hydration, Base UI,
+axe/VoiceOver/NVDA, or specialist workbench libraries, nor did it profile a
+representative long transcript. The decision to replace the compatibility
+direct-DOM lowering remains conditional on the R2–R6 executable gates above.

@@ -7,7 +7,7 @@
  * - `fontScale` and `density` produce a SCALED copy of the fixed `khalaTheme`
  *   (type-scale tokens for font; spacing + control tokens for density). The
  *   renderer emits every scaled token as a `--en-*` CSS variable, so passing
- *   the scaled theme to `makeDomRenderer` / `setTheme` genuinely resizes the
+ *   the scaled theme to the Effect Native DOM renderer / `setTheme` genuinely resizes the
  *   whole app through the existing token pipeline. The one Protoss-blue COLOR
  *   identity is untouched (uniform-blue policy) — only sizing scales.
  * - `reducedMotion` produces a root data attribute the app CSS honors

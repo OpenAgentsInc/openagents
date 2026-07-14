@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { readFileSync } from 'node:fs'
 
 import {
   checkVendorConsistency,
@@ -20,6 +21,31 @@ describe('effect-native vendor guard', () => {
     expect(manifest.catalogVersion).toMatch(/^effect-native\/v\d+$/)
     expect(Array.isArray(manifest.vendoredPackages)).toBe(true)
     expect(manifest.vendoredPackages.length).toBeGreaterThan(0)
+  })
+
+  test('the pinned DOM renderer carries the React-owned R1 subpath atomically', () => {
+    const packageJson = JSON.parse(
+      readFileSync(
+        new URL('../packages/effect-native-render-dom/package.json', import.meta.url),
+        'utf8',
+      ),
+    ) as {
+      exports?: Record<string, string>
+      peerDependencies?: Record<string, string>
+    }
+    const source = readFileSync(
+      new URL('../packages/effect-native-render-dom/src/react.ts', import.meta.url),
+      'utf8',
+    )
+
+    expect(packageJson.exports?.['./react']).toBe('./src/react.ts')
+    expect(packageJson.peerDependencies).toMatchObject({
+      react: '^19.0.0',
+      'react-dom': '^19.0.0',
+    })
+    expect(source).toContain('makeReactDomRenderer')
+    expect(source).toContain('Deferred.await(ready)')
+    expect(source).toContain('data-en-react-surface')
   })
 
   test('catalog-version extractor follows the alias hop and direct assignment', () => {
