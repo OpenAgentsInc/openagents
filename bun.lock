@@ -495,6 +495,7 @@
         "@openagentsinc/oa-infra": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
+        "@openagentsinc/qa-swarm-contract": "workspace:*",
         "@openagentsinc/reactor-contracts": "workspace:*",
         "@openagentsinc/runtime-platform": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",

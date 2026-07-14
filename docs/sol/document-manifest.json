@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "fe86e10658baadf0227c422f22b875193bb741c1453cdb3447d1c95cab3fd424",
+  "sourceTreeSha256": "6a9df1e1b604285692e9c8edcfb33ae021296def24f81ef6123150e93437d315",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1339,7 +1339,7 @@
       "owner": "Sol runtime and toolchain conversion",
       "disposition": "retain-evidence",
       "dispatch": false,
-      "sha256": "6b7c10db7eeb771bf2f0bd802d179cbd4b1ba112b65e8801ee075d230714d4cc",
+      "sha256": "fc8295e445a74328f723933762e1f8e45a923c60de88653bd89204131b716a51",
       "status": "VP-1 implementation complete; owner wallet recovery remains an",
       "snapshot": "2026-07-14",
       "reviewedAt": "2026-07-12",

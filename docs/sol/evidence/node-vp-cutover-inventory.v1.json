@@ -18,25 +18,25 @@
     }
   },
   "summary": {
-    "entries": 7344,
-    "matches": 31566,
+    "entries": 7354,
+    "matches": 31576,
     "phaseCounts": {
       "VP-1": 18280,
-      "VP-2": 5141,
-      "VP-3": 4693,
-      "VP-4": 1700,
-      "VP-5": 271,
+      "VP-2": 5142,
+      "VP-3": 4700,
+      "VP-4": 1702,
+      "VP-5": 272,
       "VP-6": 477,
-      "historical": 1004
+      "historical": 1003
     },
     "categoryCounts": {
       "bun-api": 382,
-      "bun-command": 7239,
+      "bun-command": 7240,
       "bun-manifest": 8,
-      "bun-module": 1743,
-      "bun-package-authority": 67,
-      "bun-test": 1253,
-      "direct-tool": 2611,
+      "bun-module": 1746,
+      "bun-package-authority": 68,
+      "bun-test": 1256,
+      "direct-tool": 2612,
       "historical-transcript-archive": 1,
       "hook-surface": 1,
       "migration-history": 407,
@@ -47,7 +47,7 @@
       "money-rail-dependency": 132,
       "money-secret-binding": 80,
       "money-spark-authority": 3,
-      "release-surface": 65,
+      "release-surface": 66,
       "runtime-image": 15
     }
   },
@@ -36681,6 +36681,16 @@
       }
     },
     {
+      "path": "apps/openagents.com/workers/api/src/qa-swarm-projection-routes.test.ts",
+      "category": "direct-tool",
+      "phase": "VP-3",
+      "disposition": "prove-test-parity",
+      "matches": 1,
+      "signatures": {
+        "604d91750c373f47e7e549bb7921a8f57670cc36b64c7404fc8c6ae80fbbe0bf": 1
+      }
+    },
+    {
       "path": "apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts",
       "category": "direct-tool",
       "phase": "VP-3",
@@ -49333,6 +49343,7 @@
         "0952ac326cbdb89cc6bb1315dfe938f82a482bf6a6a70c163c529527fd2a27b4": 1,
         "224c1b5cd8172e88f06502bfca501142d422ffc55b7d1a747977d888aea6347f": 1,
         "2ee0411e11f81accb02c8729a972d9dc3f0d38569080f4677beb114015fab7cb": 1,
+        "3b8503a01231831cdbec8912fa19c5630c3b8c4bbba40753835ffe954f11735f": 1,
         "3dfd1a75e23b2df50bb035da67390f31cacfe0cc1dae7b18c1dd8d073ecfd67d": 1,
         "408bbdc1b5d3b2f372432fc40f6f0f61a47d73e2c582566b295bfe0e3ea04ab3": 1,
         "41dfc54f7ddec221bef6aaa222dd25bb1359b070244ed558e17a89bb8529eaa2": 1,
@@ -49347,8 +49358,7 @@
         "9a4cf8cbbe648427aacdd6fbbd34c8b363ec8456daa91c6aa9e08193888817e6": 1,
         "9ad803b3bb9e2f7b173f0fc576d6eb267cdceeea148d93846fbd5b3be74bb2af": 1,
         "9dbe61d4a6c2472d3da8c98e5de06f626e7b3b0dfd53cf8c3724725b5d7fca77": 1,
-        "ac1def2932f8dc1f4290dbf683d5e66130b7e73bcbb599b1f8cf0508b9924272": 1,
-        "b02e59b38759b4409305310e0282914f0172e2d1ab811cb2e0fb9cdb1f954f61": 1
+        "ac1def2932f8dc1f4290dbf683d5e66130b7e73bcbb599b1f8cf0508b9924272": 1
       }
     },
     {
@@ -49488,6 +49498,26 @@
       "matches": 1,
       "signatures": {
         "6c19c0e7927c08e869b55573734c9f13bb6efe0c7264fd239b8e9d03c5442d63": 1
+      }
+    },
+    {
+      "path": "apps/qa-runner/src/assurance-swarm.test.ts",
+      "category": "bun-module",
+      "phase": "VP-3",
+      "disposition": "migrate-test-runtime",
+      "matches": 1,
+      "signatures": {
+        "4866e929774290e8ebb4104666d120361e5aa99ba066af11912a4687ae9ec6e0": 1
+      }
+    },
+    {
+      "path": "apps/qa-runner/src/assurance-swarm.test.ts",
+      "category": "bun-test",
+      "phase": "VP-3",
+      "disposition": "migrate-test-runtime",
+      "matches": 1,
+      "signatures": {
+        "1c5b5a32577085a8d4786c9d15331df2d94f304eb2587bb220c754916a53d2ec": 1
       }
     },
     {
@@ -49929,6 +49959,26 @@
       }
     },
     {
+      "path": "apps/qa-runner/src/discovery-regression-lifecycle.test.ts",
+      "category": "bun-module",
+      "phase": "VP-3",
+      "disposition": "migrate-test-runtime",
+      "matches": 1,
+      "signatures": {
+        "4866e929774290e8ebb4104666d120361e5aa99ba066af11912a4687ae9ec6e0": 1
+      }
+    },
+    {
+      "path": "apps/qa-runner/src/discovery-regression-lifecycle.test.ts",
+      "category": "bun-test",
+      "phase": "VP-3",
+      "disposition": "migrate-test-runtime",
+      "matches": 1,
+      "signatures": {
+        "1c5b5a32577085a8d4786c9d15331df2d94f304eb2587bb220c754916a53d2ec": 1
+      }
+    },
+    {
       "path": "apps/qa-runner/src/distiller.test.ts",
       "category": "bun-command",
       "phase": "VP-3",
@@ -50306,6 +50356,16 @@
       "matches": 1,
       "signatures": {
         "cdc7d54c9f4244278c9a71e3e6ff24e264f6340103c9ac7bef94c5abc6bbeaa8": 1
+      }
+    },
+    {
+      "path": "apps/qa-runner/src/publish-swarm.ts",
+      "category": "release-surface",
+      "phase": "VP-5",
+      "disposition": "stabilize-release-path",
+      "matches": 1,
+      "signatures": {
+        "26cf70be73582473d39d77e74aea6d4faae0712e264be39fd45e9708a0d2dc10": 1
       }
     },
     {
@@ -63003,6 +63063,16 @@
       }
     },
     {
+      "path": "docs/qa/openagents-desktop-assurance-swarm.md",
+      "category": "bun-command",
+      "phase": "VP-2",
+      "disposition": "port-retained-runtime",
+      "matches": 1,
+      "signatures": {
+        "64011027d0f3520ea3d7959b603a219048f8ad4f11a89e2965ad679d543ca2ed": 1
+      }
+    },
+    {
       "path": "docs/qa/qa-swarm-khala-code-standing-engagement.md",
       "category": "bun-command",
       "phase": "VP-2",
@@ -70378,16 +70448,6 @@
         "e11d276f189c8e7ed22cbcbce44c2eb8afde13edc6d8ea4c0602af12c0fdcb7f": 1,
         "ef17aac6aa051fe89afbe3690ecc03430cb899f0d8f8bbd4e98871d207824b1f": 2,
         "f09f15e20231d43a6800b42101a2a771e5f050d9044e951fe677c842a83c8f1f": 1
-      }
-    },
-    {
-      "path": "docs/sol/2026-07-14-node-pnpm-vite-plus-vp1-reconciliation-decommission-receipt.md",
-      "category": "bun-command",
-      "phase": "historical",
-      "disposition": "retain-read-only",
-      "matches": 1,
-      "signatures": {
-        "28543b01574cb587ad2275ece07ba13b17d2f317fc71ac36f426c8a3db599a7d": 1
       }
     },
     {
@@ -86199,6 +86259,46 @@
       }
     },
     {
+      "path": "packages/qa-swarm-contract/package.json",
+      "category": "bun-command",
+      "phase": "VP-4",
+      "disposition": "replace-tooling-runtime",
+      "matches": 1,
+      "signatures": {
+        "e817c522c2e5986cd900036f1ce848fc5faa4e0762349f2a251e140980d05408": 1
+      }
+    },
+    {
+      "path": "packages/qa-swarm-contract/package.json",
+      "category": "bun-package-authority",
+      "phase": "VP-4",
+      "disposition": "replace-workspace-authority",
+      "matches": 1,
+      "signatures": {
+        "65a2317b871c6cb40b5436fdc5b817fabd2c68f4f2cc5772ef9233cfecc6b037": 1
+      }
+    },
+    {
+      "path": "packages/qa-swarm-contract/src/index.test.ts",
+      "category": "bun-module",
+      "phase": "VP-3",
+      "disposition": "migrate-test-runtime",
+      "matches": 1,
+      "signatures": {
+        "4866e929774290e8ebb4104666d120361e5aa99ba066af11912a4687ae9ec6e0": 1
+      }
+    },
+    {
+      "path": "packages/qa-swarm-contract/src/index.test.ts",
+      "category": "bun-test",
+      "phase": "VP-3",
+      "disposition": "migrate-test-runtime",
+      "matches": 1,
+      "signatures": {
+        "1c5b5a32577085a8d4786c9d15331df2d94f304eb2587bb220c754916a53d2ec": 1
+      }
+    },
+    {
       "path": "packages/reactor-contracts/package.json",
       "category": "bun-command",
       "phase": "VP-4",
@@ -88800,6 +88900,6 @@
       }
     }
   ],
-  "sourceCommit": "2ecc1429b1",
+  "sourceCommit": "2f18bb6d58",
   "policy": "Burn-down only: a current signature count may decrease or disappear; a new path/category/signature or increased multiplicity fails."
 }

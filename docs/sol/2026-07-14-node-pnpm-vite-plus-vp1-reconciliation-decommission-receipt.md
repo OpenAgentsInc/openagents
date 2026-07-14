@@ -131,7 +131,7 @@ schedulers, restored scheduled paid dispatch, run metering, or removal of the
 paid-capacity retirement reason. Applied migrations, typed 410 compatibility,
 redacted receipts, and owner recovery documentation are explicit exceptions.
 After the VP-1 source closeout and VP-2 Node seam, the cutover inventory is
-re-frozen at `7,344` entries and `31,566` matches, down from the pre-phase
+re-frozen at `7,354` entries and `31,576` matches, down from the pre-phase
 `8,710` entries and `35,944` matches. The remaining classified matches are
 owned by VP-3 through VP-6 or are explicit no-spend/historical exceptions.
 
