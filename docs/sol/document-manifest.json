@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "c5b7e8a8690ed6a28a54312e461815dd6b3c428fb43d5adb74b586273d45d0a6",
+  "sourceTreeSha256": "c5005c6061a9bff9991d6b0256bb264a2ce40198db15df43cac191c13c12c3be",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1469,9 +1469,9 @@
       "owner": "OpenAgents Desktop and Effect Native architecture",
       "disposition": "retain-historical",
       "dispatch": false,
-      "sha256": "9fddf47db2fea78daf8665fed59afbe26223fb4bc78fea2a058668312ad294a3",
+      "sha256": "99b620e498229a0e9848780958a2445be88d9f542faf858ae4d8dec14161d8e3",
       "status": "retain until Native SDK is adopted, rejected, or superseded by a later renderer/host decision",
-      "snapshot": "analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; assurance/real-command continuation integrated after React/Tailwind renderer-host cutover `a75d1ceaef739107711f88a6cdf666085c66151b` and reverified after the finalized React projection boundary `e7ff7c457b7556121503927805084c1b0839e13b`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)",
+      "snapshot": "analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; real Desktop center-pane and command parity `8163cfd56371d0c1d52315cb2d12e644fbd97069`; current exact-Node sidecar increment based on that published commit; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [

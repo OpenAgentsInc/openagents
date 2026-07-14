@@ -11,7 +11,7 @@ describe("MVP assurance runner conversion contract", () => {
     expect(electronMvpAssuranceTarget.criterion.environmentRef).toBe("ENV-OA-DESKTOP-MVP-VITE-PLUS-1")
     expect(electronMvpAssuranceTarget.criterion.adapterRef).toBe("openagents.vite_plus_test.v1")
     expect(electronMvpAssuranceTarget.fullGate.argv).toEqual(["pnpm", "--dir", "apps/openagents-desktop", "run", "verify"])
-    expect(nativeSdkMvpAssuranceTarget.fullGate.hostGateFormat).toBe("openagents.native-sdk.host-gate.v3")
+    expect(nativeSdkMvpAssuranceTarget.fullGate.hostGateFormat).toBe("openagents.native-sdk.host-gate.v4")
     expect(source).not.toContain("ENV-OA-DESKTOP-MVP-BUN")
     expect(source).not.toContain("openagents.bun_test")
     expect(source).toContain("OPENAGENTS_VITE_PLUS_TEST_ADAPTER_VERSION")

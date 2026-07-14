@@ -1,7 +1,7 @@
 # Vercel Native SDK, Effect Native, and OpenAgents Desktop audit
 
 - Date: 2026-07-14
-- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; assurance/real-command continuation integrated after React/Tailwind renderer-host cutover `a75d1ceaef739107711f88a6cdf666085c66151b` and reverified after the finalized React projection boundary `e7ff7c457b7556121503927805084c1b0839e13b`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)
+- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; real Desktop center-pane and command parity `8163cfd56371d0c1d52315cb2d12e644fbd97069`; current exact-Node sidecar increment based on that published commit; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)
 - Class: architecture and dependency audit
 - Status: recommendation with a bounded real-Desktop hybrid implementation
   receipt; no migration or release authority
@@ -12,7 +12,8 @@
 - Final disposition: retain until Native SDK is adopted, rejected, or superseded by a later renderer/host decision
 - Decision: retain Electron as the shipping OpenAgents Desktop host; keep the
   completed hybrid spike as evidence that Native SDK can host the production
-  Desktop center pane and command contracts; treat
+  Desktop center pane, command contracts, and an exact Node 24 production
+  runtime-gateway bootstrap; treat
   Native SDK's component catalog as renderer implementation material, not a
   second Effect Native authoring API; require the next renderer proof to be a
   real native lowering rather than another WebView shell; require targeted
@@ -91,6 +92,9 @@ flowchart LR
   React --> EN["Production Desktop center pane"]
   EN --> Program["Real Desktop state + intents + handlers"]
   Program --> DOM["React-owned Effect Native DOM renderer"]
+  Canvas --> FX["Native SDK supervised spawn effect"]
+  FX --> Node["Exact Node 24.13.1 one-shot sidecar"]
+  Node --> Gateway["Production Desktop runtime gateway v11"]
   Chrome --> Pull["sequence + acknowledged intent"]
   Pull --> Program
   Program --> Projection["versioned bounded projection"]
@@ -122,6 +126,22 @@ parallel reproduction:
   is invoked;
 - real Desktop blank-submit, submit, new-chat, workspace, and thread-selection
   behavior against that bounded host adapter.
+
+The newest host-service increment also bundles
+[`native-sidecar-entry.ts`](../../apps/openagents-desktop/src/native-sidecar-entry.ts)
+to one plain Node 24 ESM artifact. Native SDK starts it with `fx.spawn` in
+collect mode, supplies a closed 64 KiB bootstrap frame over stdin, and accepts
+only an exact-version receipt. The sidecar imports and executes the production
+Electron-neutral `createDesktopRuntimeGateway`, requires its real
+`runtime.bootstrap` result at protocol v11, then exits. The retained rail shows
+only bounded readiness facts: gateway protocol, exact Node version, generation,
+and sidecar PID. No Node path, application root, credentials, or raw stderr
+crosses the WebView boundary.
+
+This is intentionally a **one-shot bootstrap**, not yet the persistent service
+transport. It proves Native SDK can supervise the exact JavaScript runtime and
+production gateway code needed by the next slice; it does not yet route chat,
+history, workspace, Git, or provider requests through that gateway.
 
 Effect remains the product authority. A native click only records a bounded
 intent and shows a synchronization state. The native model's selected row,
@@ -196,8 +216,10 @@ Native SDK 0.5.1 source:
 ```text
 pnpm run typecheck             -> exit 0
 vp test --run frontend/src     -> 2 files, 12 tests passed
+vp test native-sidecar contract -> 1 file, 3 tests passed
+vp pack native-sidecar-entry.ts -> 55.67 kB plain Node 24 ESM bundle
 vp build                       -> exit 0; 290 modules transformed
-zig build test                 -> exit 0; 9 native tests passed
+zig build test                 -> exit 0; 11 native tests passed
 zig build                      -> exit 0
 native validate app.zon        -> manifest.valid
 native check . --strict        -> web layer included; manifest valid
@@ -208,8 +230,9 @@ The native tests prove that a native click does not directly mutate selection,
 valid higher-revision projections update the mirror, stale/malformed/oversized
 projections fail closed, the macOS menu and ⌘N shortcut share the canonical
 command, exact applied-command evidence is validated, the WebView stays
-anchored, expected Native SDK component descriptors remain present, and the
-product shell lays out. The TypeScript tests exercise the real Desktop
+anchored, the exact Node sidecar request and production gateway receipt are
+generation-fenced, expected Native SDK component descriptors remain present,
+and the product shell lays out. The TypeScript tests exercise the real Desktop
 composer and handlers, portable pane composition, production deferred-command
 decode/resolve path, strict bridge intent decoding, bounded projection and
 storage, the three-session ceiling, and the component-adoption matrix.
@@ -219,19 +242,21 @@ composition. The parity increment then added
 [`scripts/run-host-smoke.ts`](../../apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts)
 to `pnpm verify`. The new gate builds with automation, launches the actual
 binary on the bundled `zero://app` asset source, binds snapshots to the exact
-child PID and protocol 6, resolves each short-lived widget id from current
-semantic role/name, and produces this nine-step private record:
+child PID and protocol 7, resolves each short-lived widget id from current
+semantic role/name, and produces this ten-step private record:
 
 ```text
 1  initial production Desktop center-pane projection
-2  macOS composited capture -> native rail + real Desktop center-pane pixels
-3  native session click -> higher-revision Effect-confirmed selection
-4  native workspace round trip -> higher-revision Desktop projections
-5  deterministic retained-canvas screenshot
-6  React-owned Effect renderer teardown/remount -> state retained
-7  native process restart -> bounded rail state restored under a distinct PID
-8  Native File menu chat.new -> production decode/resolve/dispatch evidence
-9  clean teardown of both attested process generations
+2  exact Node 24 sidecar -> production Desktop runtime.gateway v11 bootstrap;
+   restart -> distinct sidecar PID and generation, both one-shot PIDs dead
+3  macOS composited capture -> native rail + real Desktop center-pane pixels
+4  native session click -> higher-revision Effect-confirmed selection
+5  native workspace round trip -> higher-revision Desktop projections
+6  deterministic retained-canvas screenshot
+7  React-owned Effect renderer teardown/remount -> state retained
+8  native process restart -> bounded rail state restored under a distinct PID
+9  Native File menu chat.new -> production decode/resolve/dispatch evidence
+10 clean teardown of both attested process generations
 ```
 
 The passing run had zero dispatch errors, a nonblank 1200×800 Metal surface,
@@ -240,10 +265,11 @@ The passing run had zero dispatch errors, a nonblank 1200×800 Metal surface,
 and a deterministic native-canvas PNG. The continuation also captured a
 2536×1736 macOS window PNG containing the composited native rail and real
 Desktop transcript/composer. Its private, schema-decoded
-`openagents.native-sdk.host-gate.v3` JSON binds a run nonce, exact
-initial/restart PIDs and termination results, protocol 6, macOS ARM64, Node
-24.13.1, Zig 0.16.0, the exact Native SDK commit, command, binary,
-frontend-bundle, source-set, and every evidence digest. In assurance mode it
+`openagents.native-sdk.host-gate.v4` JSON binds a run nonce, exact
+initial/restart PIDs and termination results, exact sidecar PIDs/generations
+and dead-process checks, protocol 7, macOS ARM64, Node 24.13.1, Desktop gateway
+protocol 11, Zig 0.16.0, the exact Native SDK commit, command, binary, sidecar
+bundle, frontend bundle, source set, and every evidence digest. In assurance mode it
 also binds the manifest, Environment Profile, adapter lock, target descriptor,
 and target source digests. The artifact plus snapshots, accessibility text,
 both PNGs, teardown record, and bounded native log live under
@@ -268,7 +294,8 @@ still covers only the retained GPU surface, so the two artifacts remain
 separate: deterministic native render evidence and composited-pixel evidence.
 Neither extracts child-WebView DOM semantics. Native catalog lowering,
 packaging/signing, accessibility acceptance, provider execution, host-service
-parity, and full Electron lifecycle parity remain unproven.
+parity beyond gateway bootstrap, and full Electron lifecycle parity remain
+unproven.
 
 This receipt changes three conclusions from hypothetical to observed: Option
 A can host the real Desktop center pane without duplicating that pane; Effect
@@ -317,6 +344,11 @@ absent. The overall criterion gate therefore remains `INCONCLUSIVE`, with
 `withheld`. In the same run the separately normalized headed host gate was
 `ready` and green. This is the desired false-green behavior: a healthy shell
 cannot erase missing workroom evidence.
+
+The diagnostic was rerun after the sidecar increment under exact Node 24.13.1.
+The upgraded v4 headed gate, sidecar bundle rehash, two Native host processes,
+and two sidecar generations were again `ready`; the criterion result remained
+`0/18`, all 18 gaps remained explicit, and publication remained `withheld`.
 
 ### Two pre-existing integrity failures found and repaired
 
@@ -414,14 +446,47 @@ Four upstream behaviors matter before admission:
 
 Completed steps now include owned-runner freshness, outer/child runtime
 fidelity, disjoint target descriptors, a red Native criterion catalog, the
-namespaced environment/two-adapter design, all 36 executable units, typed v3
+namespaced environment/two-adapter design, all 36 executable units, typed v4
 host evidence, independent artifact rehashing, target-bound host normalization,
 macOS composited capture, the real shared Desktop center pane, and production
-`chat.new` decode/resolve/dispatch. The next honest sequence is to add a
-bundled Node 24 sidecar around Electron-neutral services, replace each empty
-Native criterion anchor with an integration observation and falsifier, add
-browser/semantic evidence for the real child pane, and finish with signed
-install/update/rollback/uninstall evidence plus post-run review.
+`chat.new` decode/resolve/dispatch.
+
+### Exact Node sidecar increment and next criterion
+
+The first Node increment is now implemented and observed. `vp pack` produces a
+single plain ESM sidecar for target `node24`; the Native SDK host launches it
+through its built-in supervised spawn effect, with a closed stdin frame and
+collect-mode stdout. The sidecar refuses every Node version except 24.13.1,
+imports the production Electron-neutral Desktop runtime gateway, executes
+`runtime.bootstrap`, schema-validates the protocol-v11 response, emits one
+bounded receipt, and exits. The headed run proves two distinct sidecar PIDs and
+generations across the native-process restart, proves neither PID remains
+live, and lets the independent Assurance adapter recompute the sidecar bundle
+digest from disk.
+
+This closes the architectural question “can the Native host execute the real
+Desktop service boundary under the exact admitted JavaScript runtime?” It does
+**not** close an MVP criterion. The implementation is deliberately one-shot;
+it has no persistent request queue, repository grant, selected work context,
+Codex session, or content projection. The Native criterion result therefore
+remains honestly `0/18`, and publication remains withheld.
+
+The first whole criterion to target is **CW-AC-03**. Its shortest honest path
+is a persistent, generation-fenced Node sidecar that composes the existing
+`desktop-coding-catalog`, `desktop-workspace-admission`, Sync store, and bounded
+coding-catalog contract behind a host-private Native directory picker. The
+acceptance oracle must prove the same opaque `workContextRef` and product
+`sessionRef` through a distinct native PID while changing ambient process,
+port, hostname, and provider-thread values; a fresh profile and second repo
+must yield different refs; a non-repository must refuse without mutation; and
+no response may contain an absolute root or ambient identity. Only after that
+selected-work-context authority exists should CW-AC-17 admit transcript/repo
+projections and CW-AC-10 connect real metadata-first, age-unbounded history.
+
+After CW-AC-03, the honest sequence is to replace each remaining empty Native
+criterion anchor with a complete target integration observation and
+falsifier, add browser/semantic evidence for the real child pane, and finish
+with signed install/update/rollback/uninstall evidence plus post-run review.
 
 ## How to harness Native SDK's opinionated components
 
@@ -792,6 +857,10 @@ release story is incomplete:
 - Linux has an install tree, no AppImage/deb/rpm tooling;
 - iOS and Android are experimental generated hosts with manual production
   signing;
+- the pinned packager's ordinary asset path reads each file under a 16 MiB
+  ceiling and does not provide an executable-helper placement contract; the
+  official macOS ARM64 Node 24.13.1 archive is about 51 MiB, so Node cannot be
+  honestly placed in `frontend/dist` or treated as a normal asset;
 - the `updates` manifest fields reserve a feed URL, public key, and
   check-on-start flag, but the runtime does not provide a silent or complete
   update installer.
@@ -801,6 +870,17 @@ unpacks required runtime executables/workers, includes the native audio helper,
 applies fuses, signs/notarizes, and makes macOS artifacts. A migration would
 have to reproduce that exact payload and acceptance lane before it could be a
 release simplification.
+
+For a future Native sidecar release, the bounded macOS packaging shape is a
+wrapper around `native package`: place the independently verified Node binary
+under `Contents/Helpers/openagents-node/bin/node`, place the minified sidecar
+and manifest under `Contents/Resources/openagents-sidecar/`, preserve execute
+mode, sign the nested Node executable first, sign the outer app second, then
+run strict deep verification before notarization. The better upstream answer
+is a streamed `helpers`/`extra_resources` manifest API with digest checks,
+execute-bit preservation, and pre-sign placement. Until one of those paths is
+implemented and release-tested, the current smoke's explicit local Node path
+is development assurance plumbing, not packaging evidence.
 
 ## The current OpenAgents architecture
 
@@ -985,7 +1065,11 @@ Advantages:
 Costs:
 
 - Node must be bundled and lifecycle-managed after Electron no longer supplies
-  it;
+  it; the current one-shot gateway bootstrap proves the runtime seam but not a
+  persistent supervisor;
+- Native SDK's current 16 MiB ordinary-asset ceiling and lack of executable
+  helper placement require a macOS `Contents/Helpers` packaging wrapper or an
+  upstream resources API before the official Node runtime can ship safely;
 - every frame crosses a process boundary unless diffing/coalescing is good;
 - protocol versioning, backpressure, crash recovery, focus/IME ordering, asset
   transfer, and shutdown become new correctness work;

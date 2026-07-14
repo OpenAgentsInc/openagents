@@ -2,3 +2,4 @@ zig-out/
 .zig-cache/
 zig-pkg/
 frontend/dist/
+sidecar/dist/

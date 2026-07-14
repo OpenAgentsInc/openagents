@@ -95,6 +95,68 @@ test "applied production command metadata is exact" {
     ));
 }
 
+test "exact Node sidecar bootstrap uses the Native SDK effects channel" {
+    var model = main.initialModel();
+    model.sidecar_node_path = "/opt/openagents/node";
+    model.sidecar_entry_path = "/opt/openagents/native-sidecar.mjs";
+    model.sidecar_nonce = "proof.native_1";
+    model.sidecar_generation = 3;
+    var fx = main.Effects.init(testing.allocator);
+    defer fx.deinit();
+    fx.executor = .fake;
+
+    main.initEffects(&model, &fx);
+
+    try testing.expectEqual(main.SidecarPhase.starting, model.sidecar_phase);
+    try testing.expectEqual(@as(usize, 1), fx.pendingSpawnCount());
+    const request = fx.pendingSpawnAt(0).?;
+    try testing.expectEqual(main.sidecar_effect_key, request.key);
+    try testing.expectEqual(native_sdk.EffectOutputMode.collect, request.output);
+    try testing.expectEqualStrings("/opt/openagents/node", request.argv[0]);
+    try testing.expectEqualStrings("/opt/openagents/native-sidecar.mjs", request.argv[1]);
+    try testing.expectEqualStrings(
+        "{\"protocol\":\"openagents.desktop.native-sidecar.v1\",\"generation\":3,\"nonce\":\"proof.native_1\"}",
+        request.stdin,
+    );
+}
+
+test "sidecar bootstrap receipt is generation-fenced and fails closed" {
+    const receipt =
+        \\{"protocol":"openagents.desktop.native-sidecar.v1","generation":2,"nonce":"proof.native_2","pid":4242,"nodeVersion":"24.13.1","gatewayProtocolVersion":11,"requestId":"native-sidecar.bootstrap","response":{"kind":"query_result","requestId":"native-sidecar.bootstrap","result":{"kind":"runtime.bootstrap","protocolVersion":11,"lifecycle":"ready","sessionPhase":"unavailable","identityTier":"local_unavailable","capabilities":[]}}}
+    ;
+    const parsed = try main.parseSidecarBootstrapReceipt(receipt, 2, "proof.native_2");
+    try testing.expectEqual(@as(u64, 2), parsed.generation);
+    try testing.expectEqual(@as(u32, 4242), parsed.pid);
+    try testing.expectEqual(@as(u8, 11), parsed.gateway_protocol);
+    try testing.expectError(error.InvalidSidecarReceipt, main.parseSidecarBootstrapReceipt(receipt, 1, "proof.native_2"));
+    const excess = try std.fmt.allocPrint(testing.allocator, "{s},\"ambientPath\":\"/private/repository\"}}", .{receipt[0 .. receipt.len - 1]});
+    defer testing.allocator.free(excess);
+    try testing.expectError(error.InvalidSidecarReceipt, main.parseSidecarBootstrapReceipt(excess, 2, "proof.native_2"));
+    const duplicate = try std.fmt.allocPrint(testing.allocator, "{s},\"generation\":2}}", .{receipt[0 .. receipt.len - 1]});
+    defer testing.allocator.free(duplicate);
+    try testing.expectError(error.InvalidSidecarReceipt, main.parseSidecarBootstrapReceipt(duplicate, 2, "proof.native_2"));
+
+    var model = main.initialModel();
+    model.sidecar_nonce = "proof.native_2";
+    model.sidecar_generation = 2;
+    main.update(&model, .{ .sidecar_bootstrap_finished = .{
+        .key = main.sidecar_effect_key,
+        .code = 0,
+        .reason = .exited,
+        .output = receipt,
+    } });
+    try testing.expectEqual(main.SidecarPhase.ready, model.sidecar_phase);
+    try testing.expectEqual(@as(u32, 4242), model.sidecar_pid);
+
+    main.update(&model, .{ .sidecar_bootstrap_finished = .{
+        .key = main.sidecar_effect_key,
+        .code = 1,
+        .reason = .exited,
+        .stderr_tail = "refused",
+    } });
+    try testing.expectEqual(main.SidecarPhase.unavailable, model.sidecar_phase);
+}
+
 test "web pane stays anchored to the full-height Effect Native surface" {
     var model = main.initialModel();
     var output: [1]main.SpikeApp.WebViewPane = undefined;

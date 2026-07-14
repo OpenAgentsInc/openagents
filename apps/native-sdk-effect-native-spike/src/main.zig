@@ -22,6 +22,11 @@ pub const bridge_command = "openagents.spike.projection.v1";
 pub const reload_command = "openagents.spike.reload-effect";
 pub const chat_new_command = "chat.new";
 pub const bridge_payload_limit: usize = 8 * 1024;
+pub const sidecar_frame_limit: usize = 64 * 1024;
+pub const sidecar_protocol = "openagents.desktop.native-sidecar.v1";
+pub const sidecar_node_version = "24.13.1";
+pub const sidecar_gateway_protocol: u8 = 11;
+pub const sidecar_effect_key: u64 = 0x4f_41_4e_53;
 
 const window_width: f32 = 1200;
 const window_height: f32 = 800;
@@ -80,6 +85,7 @@ pub const app_menus = [_]native_sdk.Menu{.{ .title = "File", .items = &file_menu
 
 pub const Workspace = enum { chat, home, settings };
 pub const Session = enum { none, parity, renderer, audit };
+pub const SidecarPhase = enum { unconfigured, starting, ready, unavailable };
 pub const OutboundIntent = enum {
     none,
     new_chat,
@@ -118,10 +124,30 @@ pub const Model = struct {
     reload_token: u64 = 0,
     gpu_frames_seen: bool = false,
     last_applied_command_sequence: u64 = 0,
+    sidecar_phase: SidecarPhase = .unconfigured,
+    sidecar_node_path: []const u8 = "",
+    sidecar_entry_path: []const u8 = "",
+    sidecar_nonce: []const u8 = "native.local",
+    sidecar_generation: u64 = 1,
+    sidecar_pid: u32 = 0,
+    sidecar_gateway_protocol: u8 = 0,
 
     pub fn status(self: *const Model) []const u8 {
         if (self.status_len == 0) return "Waiting for Effect projection";
         return self.status_storage[0..self.status_len];
+    }
+
+    pub fn sidecarStatus(self: *const Model, arena: std.mem.Allocator) []const u8 {
+        return switch (self.sidecar_phase) {
+            .unconfigured => "Desktop runtime gateway unavailable · exact Node sidecar not configured",
+            .starting => "Desktop runtime gateway · starting exact Node 24 sidecar…",
+            .unavailable => "Desktop runtime gateway unavailable · sidecar bootstrap refused",
+            .ready => std.fmt.allocPrint(
+                arena,
+                "Desktop runtime gateway v{d} · Node {s} · generation {d} · sidecar pid {d}",
+                .{ self.sidecar_gateway_protocol, sidecar_node_version, self.sidecar_generation, self.sidecar_pid },
+            ) catch "Desktop runtime gateway ready",
+        };
     }
 };
 
@@ -137,6 +163,7 @@ pub const Msg = union(enum) {
     sync_projection: Projection,
     reload_effect_surface,
     frame_presented,
+    sidecar_bootstrap_finished: native_sdk.EffectExit,
 };
 
 fn recordIntent(model: *Model, intent: OutboundIntent) void {
@@ -171,6 +198,7 @@ pub fn update(model: *Model, msg: Msg) void {
             recordIntent(model, .reload_effect);
         },
         .frame_presented => model.gpu_frames_seen = true,
+        .sidecar_bootstrap_finished => |result| applySidecarBootstrapResult(model, result),
     }
 }
 
@@ -217,6 +245,7 @@ fn nativeRail(ui: *AppUi, model: *const Model) AppUi.Node {
             ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, ui.fmt("Applied chat.new → DesktopNewChat · native_menu · sequence {d}", .{model.last_applied_command_sequence}))
         else
             ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "Native menu command not applied"),
+        ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, model.sidecarStatus(ui.arena)),
         listItem(ui, "Settings", model.workspace == .settings, .request_workspace_settings),
         ui.statusBar(.{}, model.status()),
     });
@@ -246,7 +275,8 @@ pub fn options() SpikeApp.Options {
         .name = "native-sdk-effect-native-spike",
         .scene = shell_scene,
         .canvas_label = canvas_label,
-        .update = update,
+        .update_fx = updateWithEffects,
+        .init_fx = initEffects,
         .view = view,
         .on_command = command,
         .web_panes = panes,
@@ -256,6 +286,37 @@ pub fn options() SpikeApp.Options {
             canvas.accentOverrides(canvas.Color.rgb8(58, 123, 255)),
         ),
     };
+}
+
+pub const Effects = SpikeApp.Effects;
+
+pub fn initEffects(model: *Model, fx: *Effects) void {
+    if (model.sidecar_node_path.len == 0 or model.sidecar_entry_path.len == 0) {
+        model.sidecar_phase = .unconfigured;
+        return;
+    }
+    var request_buffer: [512]u8 = undefined;
+    const request = std.fmt.bufPrint(
+        &request_buffer,
+        "{{\"protocol\":\"{s}\",\"generation\":{d},\"nonce\":\"{s}\"}}",
+        .{ sidecar_protocol, model.sidecar_generation, model.sidecar_nonce },
+    ) catch {
+        model.sidecar_phase = .unavailable;
+        return;
+    };
+    model.sidecar_phase = .starting;
+    fx.spawn(.{
+        .key = sidecar_effect_key,
+        .argv = &.{ model.sidecar_node_path, model.sidecar_entry_path },
+        .stdin = request,
+        .output = .collect,
+        .on_exit = Effects.exitMsg(.sidecar_bootstrap_finished),
+    });
+}
+
+pub fn updateWithEffects(model: *Model, msg: Msg, fx: *Effects) void {
+    _ = fx;
+    update(model, msg);
 }
 
 pub fn validRunNamespace(value: []const u8) bool {
@@ -353,6 +414,76 @@ pub fn parseProjection(payload: []const u8) !Projection {
             !std.mem.eql(u8, stringField(payload, "source") orelse return error.InvalidProjection, "native_menu")) return error.InvalidProjection;
     }
     return .{ .revision = revision, .workspace = workspace, .session = session, .message_count = message_count, .pending = pending, .status = status, .last_applied_command_sequence = last_applied_command_sequence };
+}
+
+pub const SidecarBootstrapReceipt = struct {
+    generation: u64,
+    pid: u32,
+    gateway_protocol: u8,
+};
+
+const SidecarBootstrapResultWire = struct {
+    kind: []const u8,
+    protocolVersion: u8,
+    lifecycle: []const u8,
+    sessionPhase: []const u8,
+    identityTier: []const u8,
+    capabilities: []const std.json.Value,
+};
+
+const SidecarGatewayResponseWire = struct {
+    kind: []const u8,
+    requestId: []const u8,
+    result: SidecarBootstrapResultWire,
+};
+
+const SidecarBootstrapReceiptWire = struct {
+    protocol: []const u8,
+    generation: u64,
+    nonce: []const u8,
+    pid: u32,
+    nodeVersion: []const u8,
+    gatewayProtocolVersion: u8,
+    requestId: []const u8,
+    response: SidecarGatewayResponseWire,
+};
+
+pub fn parseSidecarBootstrapReceipt(payload: []const u8, expected_generation: u64, expected_nonce: []const u8) !SidecarBootstrapReceipt {
+    if (payload.len == 0 or payload.len > sidecar_frame_limit) return error.InvalidSidecarReceipt;
+    var parsed = std.json.parseFromSlice(SidecarBootstrapReceiptWire, std.heap.page_allocator, payload, .{}) catch return error.InvalidSidecarReceipt;
+    defer parsed.deinit();
+    const receipt = parsed.value;
+    if (!std.mem.eql(u8, receipt.protocol, sidecar_protocol) or
+        receipt.generation != expected_generation or
+        !std.mem.eql(u8, receipt.nonce, expected_nonce) or
+        receipt.pid == 0 or
+        !std.mem.eql(u8, receipt.nodeVersion, sidecar_node_version) or
+        receipt.gatewayProtocolVersion != sidecar_gateway_protocol or
+        !std.mem.eql(u8, receipt.requestId, "native-sidecar.bootstrap") or
+        !std.mem.eql(u8, receipt.response.kind, "query_result") or
+        !std.mem.eql(u8, receipt.response.requestId, "native-sidecar.bootstrap") or
+        !std.mem.eql(u8, receipt.response.result.kind, "runtime.bootstrap") or
+        receipt.response.result.protocolVersion != sidecar_gateway_protocol or
+        !std.mem.eql(u8, receipt.response.result.lifecycle, "ready")) return error.InvalidSidecarReceipt;
+    return .{ .generation = receipt.generation, .pid = receipt.pid, .gateway_protocol = receipt.gatewayProtocolVersion };
+}
+
+fn applySidecarBootstrapResult(model: *Model, result: native_sdk.EffectExit) void {
+    if (result.reason != .exited or result.code != 0 or result.output_truncated or result.stderr_truncated) {
+        model.sidecar_phase = .unavailable;
+        return;
+    }
+    const receipt = parseSidecarBootstrapReceipt(
+        std.mem.trim(u8, result.output, " \t\r\n"),
+        model.sidecar_generation,
+        model.sidecar_nonce,
+    ) catch {
+        model.sidecar_phase = .unavailable;
+        return;
+    };
+    model.sidecar_pid = receipt.pid;
+    model.sidecar_gateway_protocol = receipt.gateway_protocol;
+    model.sidecar_phase = .ready;
 }
 
 fn intentDetail(model: *const Model, output: []u8) ![]const u8 {
@@ -475,6 +606,14 @@ pub fn main(init: std.process.Init) !void {
     var frontend_url_buffer: [2048]u8 = undefined;
     const frontend_base_url = init.environ_map.get("NATIVE_SDK_FRONTEND_URL") orelse effect_native_base_url;
     const run_namespace = init.environ_map.get("NATIVE_SDK_ASSURANCE_RUN_NONCE");
+    model.sidecar_node_path = init.environ_map.get("OPENAGENTS_NATIVE_NODE_PATH") orelse "";
+    model.sidecar_entry_path = init.environ_map.get("OPENAGENTS_NATIVE_SIDECAR_PATH") orelse "";
+    model.sidecar_nonce = run_namespace orelse "native.local";
+    if (!validRunNamespace(model.sidecar_nonce)) return error.InvalidSidecarNonce;
+    if (init.environ_map.get("NATIVE_SDK_SIDECAR_GENERATION")) |raw_generation| {
+        model.sidecar_generation = try std.fmt.parseUnsigned(u64, raw_generation, 10);
+        if (model.sidecar_generation == 0) return error.InvalidSidecarGeneration;
+    }
     model.frontend_url = if (run_namespace) |namespace|
         if (validRunNamespace(namespace))
             try std.fmt.bufPrint(&frontend_url_buffer, "{s}#surface=effect-native&assurance-run={s}", .{ frontend_base_url, namespace })

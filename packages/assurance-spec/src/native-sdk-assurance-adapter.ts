@@ -16,11 +16,12 @@ export const OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_REF = "openagents.native_sd
 export const OPENAGENTS_NATIVE_SDK_ASSURANCE_ADAPTER_VERSION = "0.1.0" as const
 export const OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_REF = "openagents.native_sdk_host_gate.v1" as const
 export const OPENAGENTS_NATIVE_SDK_HOST_GATE_ADAPTER_VERSION = "0.1.0" as const
-export const OPENAGENTS_NATIVE_SDK_HOST_GATE_FORMAT = "openagents.native-sdk.host-gate.v3" as const
+export const OPENAGENTS_NATIVE_SDK_HOST_GATE_FORMAT = "openagents.native-sdk.host-gate.v4" as const
 export const OPENAGENTS_NATIVE_SDK_TARGET_REF = "openagents.desktop.native-sdk.mvp" as const
 
 export const nativeSdkHostGateExpectedSteps = [
   "initial-projection",
+  "runtime-sidecar-bootstrap",
   "composited-window-capture",
   "session-selection",
   "workspace-round-trip",
@@ -53,7 +54,7 @@ export const NativeSdkAssuranceHostGateSchema = S.Struct({
   formatVersion: S.Literal(OPENAGENTS_NATIVE_SDK_HOST_GATE_FORMAT),
   targetRef: S.Literal(OPENAGENTS_NATIVE_SDK_TARGET_REF),
   runNonce: S.String,
-  automationProtocol: S.Literal(6),
+  automationProtocol: S.Literal(7),
   frontendAuthority: S.Literal("effect-native"),
   result: S.Literal("passed"),
   runtime: S.Struct({
@@ -66,11 +67,16 @@ export const NativeSdkAssuranceHostGateSchema = S.Struct({
   inputs: S.Struct({
     commandDigest: Digest,
     binaryDigest: Digest,
+    sidecarBundleDigest: Digest,
     frontendDigest: Digest,
     sourceDigest: Digest,
   }),
   assurance: AssuranceBinding,
   processes: S.Struct({ initial: Process, restarted: Process }),
+  sidecars: S.Struct({
+    initial: S.Struct({ pid: S.Number, generation: S.Literal(1), liveAfterBootstrap: S.Literal(false) }),
+    restarted: S.Struct({ pid: S.Number, generation: S.Literal(2), liveAfterBootstrap: S.Literal(false) }),
+  }),
   steps: S.Array(S.Struct({
     id: S.String,
     result: S.Literal("passed"),
@@ -111,6 +117,9 @@ export const nativeSdkHostGateSourcePaths = [
   "apps/native-sdk-effect-native-spike/frontend/src/style.css",
   "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
   "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
+  "apps/openagents-desktop/src/native-sidecar-contract.ts",
+  "apps/openagents-desktop/src/native-sidecar-contract.test.ts",
+  "apps/openagents-desktop/src/native-sidecar-entry.ts",
   "apps/openagents-desktop/src/desktop-command-contract.ts",
   "apps/openagents-desktop/package.json",
   "apps/openagents-desktop/src/chat-contract.ts",
@@ -136,6 +145,7 @@ export type NativeSdkHostGateReceipt = Readonly<{
   native_report_digest: string
   command_digest: string
   binary_digest: string
+  sidecar_bundle_digest: string
   frontend_digest: string
   source_digest: string
   evidence_digest: string
@@ -192,6 +202,7 @@ const processIsLive = (pid: number): boolean => {
 
 export const observeNativeSdkHostGateInputs = (workspaceRootInput: string): Readonly<{
   binaryDigest: string
+  sidecarBundleDigest: string
   frontendDigest: string
   sourceDigest: string
 }> => {
@@ -199,6 +210,7 @@ export const observeNativeSdkHostGateInputs = (workspaceRootInput: string): Read
   const packageRoot = resolve(workspaceRoot, "apps/native-sdk-effect-native-spike")
   return {
     binaryDigest: sha256Bytes(readFileSync(resolve(packageRoot, "zig-out/bin/native-sdk-effect-native-spike"))),
+    sidecarBundleDigest: sha256Bytes(readFileSync(resolve(packageRoot, "sidecar/dist/native-sidecar-entry.mjs"))),
     frontendDigest: fileSetDigest(filesUnder(resolve(packageRoot, "frontend/dist")), packageRoot),
     sourceDigest: fileSetDigest(
       nativeSdkHostGateSourcePaths.map((path) => resolve(workspaceRoot, path)),
@@ -284,6 +296,7 @@ export const decodeAndBindNativeSdkHostGate = (
   const allDigests = [
     gate.inputs.commandDigest,
     gate.inputs.binaryDigest,
+    gate.inputs.sidecarBundleDigest,
     gate.inputs.frontendDigest,
     gate.inputs.sourceDigest,
     ...Object.values(gate.assurance),
@@ -297,11 +310,16 @@ export const decodeAndBindNativeSdkHostGate = (
     !Number.isSafeInteger(initial.pid) || initial.pid <= 0 || initial.pid !== initial.publisherPid ||
     !Number.isSafeInteger(restarted.pid) || restarted.pid <= 0 || restarted.pid !== restarted.publisherPid ||
     initial.pid === restarted.pid || initial.forcedKill || restarted.forcedKill ||
+    gate.sidecars.initial.pid === gate.sidecars.restarted.pid ||
+    gate.sidecars.initial.pid === initial.pid || gate.sidecars.restarted.pid === restarted.pid ||
     gate.evidence.some((entry) => !Number.isSafeInteger(entry.bytes) || entry.bytes <= 0)
   ) {
     fail("host_gate_process_or_size_invalid", "Native host process generations or evidence sizes are invalid.")
   }
-  if (processIsLive(initial.publisherPid) || processIsLive(restarted.publisherPid)) {
+  if (
+    processIsLive(initial.publisherPid) || processIsLive(restarted.publisherPid) ||
+    processIsLive(gate.sidecars.initial.pid) || processIsLive(gate.sidecars.restarted.pid)
+  ) {
     fail("host_gate_publisher_live", "A reported Native SDK host publisher remains live after the gate.")
   }
   let observed: ReturnType<typeof observeNativeSdkHostGateInputs>
@@ -312,6 +330,7 @@ export const decodeAndBindNativeSdkHostGate = (
   }
   if (
     observed.binaryDigest !== gate.inputs.binaryDigest ||
+    observed.sidecarBundleDigest !== gate.inputs.sidecarBundleDigest ||
     observed.frontendDigest !== gate.inputs.frontendDigest ||
     observed.sourceDigest !== gate.inputs.sourceDigest
   ) {
@@ -342,6 +361,7 @@ export const normalizeNativeSdkHostGate = (
       native_report_digest: sha256Digest(bytes),
       command_digest: gate.inputs.commandDigest,
       binary_digest: gate.inputs.binaryDigest,
+      sidecar_bundle_digest: gate.inputs.sidecarBundleDigest,
       frontend_digest: gate.inputs.frontendDigest,
       source_digest: gate.inputs.sourceDigest,
       evidence_digest: canonicalArtifact(gate.evidence).digest,

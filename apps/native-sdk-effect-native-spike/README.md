@@ -34,6 +34,11 @@ and then adapted into a product-shaped hybrid architecture proof:
 - `frontend/src/native-sdk-component-adoption.ts` records which Native SDK
   components are plausible direct lowerings, owned composites, or bounded
   `Host` drivers. Effect Native remains the public authoring contract.
+- Native SDK's own supervised spawn effect starts a plain ESM sidecar under
+  exact Node 24.13.1. The sidecar imports the Electron-neutral production
+  Desktop runtime gateway, executes and validates `runtime.bootstrap` at
+  protocol v11, emits one bounded receipt, and exits. This proves the service
+  seam only; chat still uses the deterministic fixture host.
 
 The thread data and `ChatHost` response are deterministic fixtures and send no
 provider request. The proof does **not** compile Effect through Native SDK's
@@ -50,12 +55,16 @@ pnpm verify
 ```
 
 That runs TypeScript checking, twelve Desktop/Effect Native integration and
-contract tests, the Vite frontend build, nine Native SDK Zig tests, the native
-binary build, and a headed production-asset host gate. The host gate:
+contract tests, a production sidecar bundle, the Vite frontend build, eleven
+Native SDK Zig tests, the native binary build, and a headed production-asset
+host gate. The host gate:
 
 - refuses to share Native SDK's hard-coded automation directory with a live
   publisher;
-- binds every observation to the exact spawned process id and protocol 6;
+- binds every observation to the exact spawned process id and protocol 7;
+- starts the minified sidecar under exact Node 24.13.1, requires the production
+  Desktop runtime gateway v11 bootstrap, then proves distinct sidecar PIDs and
+  generations across restart and proves both one-shot processes are dead;
 - resolves fresh widget ids from roles and accessible names before acting;
 - drives session and workspace intents through the native canvas and waits for
   higher-revision Effect projections;
@@ -66,12 +75,12 @@ binary build, and a headed production-asset host gate. The host gate:
 - invokes Native File → New Chat after restart and requires exact production
   decode/resolve/dispatch evidence with no selected fixture session;
 - attests distinct initial/restart PIDs, exact Node/Zig/Native SDK identities,
-  actual exit/signal/forced-kill state, and command, binary, frontend, source,
-  and evidence digests in a
-  schema-decoded `openagents.native-sdk.host-gate.v3` artifact;
+  actual exit/signal/forced-kill state, and command, binary, sidecar bundle,
+  frontend, source, and evidence digests in a
+  schema-decoded `openagents.native-sdk.host-gate.v4` artifact;
 - leaves private evidence under
   `var/native-sdk-effect-native-spike/host-smoke/` and prints
-  `[native-sdk-effect-native-spike smoke] OK` only after all nine steps.
+  `[native-sdk-effect-native-spike smoke] OK` only after all ten steps.
 
 The wrapper now installs Native SDK's production asset source explicitly, so
 the built binary loads a marked
@@ -117,6 +126,14 @@ pnpm --dir ../../packages/assurance-spec run assure:mvp --target=native-sdk
 It executes the 36 Native-owned criterion candidate/falsifier units and this
 headed gate, writes a private gap report, and fails without publishing while
 any full MVP criterion lacks target-specific integration evidence.
+
+The gateway bootstrap is intentionally not counted as criterion evidence.
+There is no persistent request protocol, repository grant, selected work
+context, provider turn, or release lifecycle yet, so all 18 Native criterion
+candidates remain red. The next whole target is CW-AC-03: connect the existing
+Desktop coding catalog through a host-private Native directory grant and prove
+opaque `workContextRef`/`sessionRef` stability across process restart and
+ambient-identity falsifiers.
 
 The script drives the file protocol directly and therefore does not need a
 machine-global Native SDK CLI. Native SDK's deterministic screenshot covers

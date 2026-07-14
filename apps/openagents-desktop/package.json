@@ -5,16 +5,17 @@
   "description": "OpenAgents — Effect Native application on an Electron host (#8574).",
   "license": "MIT",
   "type": "module",
+  "main": "dist/main.js",
   "imports": {
     "#components/*": "./src/components/*.tsx",
     "#hooks/*": "./src/hooks/*.ts",
     "#lib/*": "./src/lib/*.ts"
   },
-  "main": "dist/main.js",
   "exports": {
     "./renderer-portable": "./src/renderer/portable.ts",
     "./renderer.css": "./src/renderer/app.css",
     "./desktop-command-contract": "./src/desktop-command-contract.ts",
+    "./native-sidecar": "./src/native-sidecar-contract.ts",
     "./renderer-command-registry": "./src/renderer/command-registry.ts"
   },
   "scripts": {

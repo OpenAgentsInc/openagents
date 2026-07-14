@@ -23,6 +23,7 @@ import {
 const packageRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(packageRoot, "../..");
 const binary = path.join(packageRoot, "zig-out/bin/native-sdk-effect-native-spike");
+const sidecarBundle = path.join(packageRoot, "sidecar/dist/native-sidecar-entry.mjs");
 const automationDir = path.join(packageRoot, ".zig-cache/native-sdk-automation");
 const evidenceDir = process.env.NATIVE_SDK_HOST_SMOKE_DIR?.trim() ||
   path.join(repositoryRoot, "var/native-sdk-effect-native-spike/host-smoke");
@@ -56,6 +57,9 @@ const sourcePaths = [
   "apps/native-sdk-effect-native-spike/frontend/src/style.css",
   "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
   "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
+  "apps/openagents-desktop/src/native-sidecar-contract.ts",
+  "apps/openagents-desktop/src/native-sidecar-contract.test.ts",
+  "apps/openagents-desktop/src/native-sidecar-entry.ts",
   "apps/openagents-desktop/src/desktop-command-contract.ts",
   "apps/openagents-desktop/package.json",
   "apps/openagents-desktop/src/chat-contract.ts",
@@ -180,10 +184,25 @@ const projectionRevision = (snapshot: string): number => {
   return Number(value);
 };
 
-const launch = (logs: string[], runNonce: string): ChildProcessWithoutNullStreams => {
+const sidecarIdentity = (snapshot: string, generation: number): Readonly<{ pid: number; generation: number }> => {
+  const match = snapshot.match(new RegExp(
+    `name="Desktop runtime gateway v11 · Node 24\\.13\\.1 · generation ${generation} · sidecar pid (\\d+)"`,
+    "u",
+  ));
+  if (match?.[1] === undefined) throw new Error(`Native snapshot omitted sidecar generation ${generation}`);
+  return { pid: Number(match[1]), generation };
+};
+
+const launch = (logs: string[], runNonce: string, sidecarGeneration: number): ChildProcessWithoutNullStreams => {
   const child = spawn(binary, [], {
     cwd: packageRoot,
-    env: { ...process.env, NATIVE_SDK_ASSURANCE_RUN_NONCE: runNonce },
+    env: {
+      ...process.env,
+      NATIVE_SDK_ASSURANCE_RUN_NONCE: runNonce,
+      NATIVE_SDK_SIDECAR_GENERATION: String(sidecarGeneration),
+      OPENAGENTS_NATIVE_NODE_PATH: process.execPath,
+      OPENAGENTS_NATIVE_SIDECAR_PATH: sidecarBundle,
+    },
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdout.on("data", (chunk: Buffer) => logs.push(chunk.toString("utf8")));
@@ -215,8 +234,9 @@ const compositedWindowCapture = async (child: ChildProcessWithoutNullStreams, ou
     const query = spawnSync("swift", ["-e", [
       "import CoreGraphics",
       `let target = Int32(${child.pid})`,
-      "let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []",
+      "let rows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []",
       "for row in rows where (row[kCGWindowOwnerPID as String] as? Int32) == target {",
+      "  guard (row[kCGWindowName as String] as? String) == \"OpenAgents Native parity spike\" else { continue }",
       "  if let number = row[kCGWindowNumber as String] as? Int { print(number); break }",
       "}",
     ].join("\n")], { encoding: "utf8" });
@@ -237,6 +257,7 @@ const copySnapshot = (name: string, snapshot: string): void => {
 };
 
 if (!existsSync(binary)) throw new Error(`Automation-enabled Native SDK binary is missing: ${binary}`);
+if (!existsSync(sidecarBundle)) throw new Error(`Bundled Desktop runtime sidecar is missing: ${sidecarBundle}`);
 if (process.platform !== "darwin" || process.arch !== "arm64" || process.versions.node !== expectedNodeVersion) {
   throw new Error(`Native host gate runtime mismatch: expected darwin/arm64/Node ${expectedNodeVersion}, observed ${process.platform}/${process.arch}/Node ${process.versions.node}`);
 }
@@ -258,17 +279,23 @@ let initialIdentity: ProcessIdentity | null = null;
 let restartedIdentity: ProcessIdentity | null = null;
 let initialProcess: ProcessAttestation | null = null;
 let restartedProcess: ProcessAttestation | null = null;
+let initialSidecar: Readonly<{ pid: number; generation: number; liveAfterBootstrap: false }> | null = null;
+let restartedSidecar: Readonly<{ pid: number; generation: number; liveAfterBootstrap: false }> | null = null;
 let child: ChildProcessWithoutNullStreams | null = null;
 try {
-  child = launch(logs, runNonce);
+  child = launch(logs, runNonce, 1);
   let snapshot = await waitForSnapshot(child, "initial Effect projection", (value) =>
     value.includes("dispatch_errors=0") &&
     value.includes("gpu_nonblank=true") &&
     value.includes(`url="zero://app/index.html#surface=effect-native&assurance-run=${runNonce}"`) &&
-    value.includes('name="Production Desktop shell synchronized"')
+    value.includes('name="Production Desktop shell synchronized"') &&
+    value.includes('name="Desktop runtime gateway v11 · Node 24.13.1 · generation 1 · sidecar pid ')
   );
   if (child.pid === undefined) throw new Error("Initial Native SDK process has no PID");
   initialIdentity = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid) };
+  const initialSidecarIdentity = sidecarIdentity(snapshot, 1);
+  if (processIsLive(initialSidecarIdentity.pid)) throw new Error("One-shot Native bootstrap sidecar remained live after receipt");
+  initialSidecar = { ...initialSidecarIdentity, liveAfterBootstrap: false };
   let revision = projectionRevision(snapshot);
   copySnapshot("01-initial", snapshot);
   copyFileSync(accessibilityPath, path.join(evidenceDir, "01-initial.accessibility.txt"));
@@ -330,15 +357,20 @@ try {
   rmSync(automationDir, { recursive: true, force: true });
   commandSequence = 0;
 
-  child = launch(logs, runNonce);
+  child = launch(logs, runNonce, 2);
   snapshot = await waitForSnapshot(child, "Effect state after native process restart", (value) =>
     value.includes("dispatch_errors=0") &&
     /name="Renderer boundary".*state=\[[^\]]*selected/u.test(value) &&
     projectionRevision(value) > revision &&
-    value.includes('name="Production Desktop shell synchronized"')
+    value.includes('name="Production Desktop shell synchronized"') &&
+    value.includes('name="Desktop runtime gateway v11 · Node 24.13.1 · generation 2 · sidecar pid ')
   );
   if (child.pid === undefined) throw new Error("Restarted Native SDK process has no PID");
   restartedIdentity = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid) };
+  const restartedSidecarIdentity = sidecarIdentity(snapshot, 2);
+  if (processIsLive(restartedSidecarIdentity.pid)) throw new Error("Restarted one-shot Native bootstrap sidecar remained live after receipt");
+  restartedSidecar = { ...restartedSidecarIdentity, liveAfterBootstrap: false };
+  if (initialSidecar.pid === restartedSidecar.pid) throw new Error("Native sidecar process identity did not advance across restart");
   revision = projectionRevision(snapshot);
   copySnapshot("05-process-restart", snapshot);
 
@@ -352,9 +384,15 @@ try {
 
   restartedProcess = { ...restartedIdentity, ...(await stop(child)), stopped: true };
   child = null;
-  if (initialProcess === null || restartedProcess === null) throw new Error("Native host process attestations are incomplete");
+  if (initialProcess === null || restartedProcess === null || initialSidecar === null || restartedSidecar === null) {
+    throw new Error("Native host or sidecar process attestations are incomplete");
+  }
   if (initialProcess.forcedKill || restartedProcess.forcedKill) throw new Error("Native host process required forced termination");
-  writeFileSync(path.join(evidenceDir, "07-clean-teardown.json"), `${JSON.stringify({
+  writeFileSync(path.join(evidenceDir, "07-sidecar-restart.json"), `${JSON.stringify({
+    initial: initialSidecar,
+    restarted: restartedSidecar,
+  })}\n`, { mode: 0o600 });
+  writeFileSync(path.join(evidenceDir, "08-clean-teardown.json"), `${JSON.stringify({
     initial: initialProcess,
     restarted: restartedProcess,
     publishersLive: [processIsLive(initialProcess.publisherPid), processIsLive(restartedProcess.publisherPid)],
@@ -380,17 +418,23 @@ try {
     },
     inputs: {
       commandDigest: sha256(JSON.stringify({
-        build: ["zig", "build", "-Dautomation=true"],
+        build: [
+          ["vp", "pack", "../openagents-desktop/src/native-sidecar-entry.ts", "--platform", "node", "--target", "node24"],
+          ["zig", "build", "-Dautomation=true"],
+        ],
         execute: ["node", "--import", "tsx", "scripts/run-host-smoke.ts"],
       })),
       binaryDigest: sha256(readFileSync(binary)),
+      sidecarBundleDigest: sha256(readFileSync(sidecarBundle)),
       frontendDigest: fileSetDigest(filesUnder(path.join(packageRoot, "frontend/dist")), packageRoot),
       sourceDigest: fileSetDigest(sourcePaths.map((entry) => path.join(repositoryRoot, entry)), repositoryRoot),
     },
     assurance,
     processes: { initial: initialProcess, restarted: restartedProcess },
+    sidecars: { initial: initialSidecar, restarted: restartedSidecar },
     steps: [
       { id: "initial-projection", result: "passed", evidence: ["01-initial.snapshot.txt", "01-initial.accessibility.txt"] },
+      { id: "runtime-sidecar-bootstrap", result: "passed", evidence: ["01-initial.snapshot.txt", "05-process-restart.snapshot.txt", "07-sidecar-restart.json"] },
       { id: "composited-window-capture", result: "passed", evidence: ["01-composited-window.png"] },
       { id: "session-selection", result: "passed", evidence: ["02-session-selected.snapshot.txt"] },
       { id: "workspace-round-trip", result: "passed", evidence: ["03-workspace-round-trip.snapshot.txt"] },
@@ -398,7 +442,7 @@ try {
       { id: "renderer-reload-restored", result: "passed", evidence: ["04-renderer-reload.snapshot.txt"] },
       { id: "process-restart-restored", result: "passed", evidence: ["05-process-restart.snapshot.txt"] },
       { id: "new-chat-after-restart", result: "passed", evidence: ["06-new-chat.snapshot.txt"] },
-      { id: "clean-teardown", result: "passed", evidence: ["07-clean-teardown.json"] },
+      { id: "clean-teardown", result: "passed", evidence: ["08-clean-teardown.json"] },
     ],
     evidence,
   });

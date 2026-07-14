@@ -1,11 +1,12 @@
 import { Schema } from "@effect-native/core/effect";
 
-export const nativeSdkHostGateFormat = "openagents.native-sdk.host-gate.v3" as const;
+export const nativeSdkHostGateFormat = "openagents.native-sdk.host-gate.v4" as const;
 export const nativeSdkTargetRef = "openagents.desktop.native-sdk.mvp" as const;
 export const nativeSdkCommit = "f7aa92af6dcece250feba852af4d22e7f5429312" as const;
-export const nativeSdkAutomationProtocol = 6 as const;
+export const nativeSdkAutomationProtocol = 7 as const;
 export const nativeSdkHostGateSteps = [
   "initial-projection",
+  "runtime-sidecar-bootstrap",
   "composited-window-capture",
   "session-selection",
   "workspace-round-trip",
@@ -36,6 +37,7 @@ export const NativeSdkHostGateSchema = Schema.Struct({
   inputs: Schema.Struct({
     commandDigest: DigestSchema,
     binaryDigest: DigestSchema,
+    sidecarBundleDigest: DigestSchema,
     frontendDigest: DigestSchema,
     sourceDigest: DigestSchema,
   }),
@@ -62,6 +64,18 @@ export const NativeSdkHostGateSchema = Schema.Struct({
       exitCode: Schema.NullOr(Schema.Number),
       signal: Schema.NullOr(Schema.String),
       forcedKill: Schema.Boolean,
+    }),
+  }),
+  sidecars: Schema.Struct({
+    initial: Schema.Struct({
+      pid: PositiveIntegerSchema,
+      generation: Schema.Literal(1),
+      liveAfterBootstrap: Schema.Literal(false),
+    }),
+    restarted: Schema.Struct({
+      pid: PositiveIntegerSchema,
+      generation: Schema.Literal(2),
+      liveAfterBootstrap: Schema.Literal(false),
     }),
   }),
   steps: Schema.Array(Schema.Struct({
@@ -107,6 +121,7 @@ export const decodeNativeSdkHostGate = (candidate: unknown): NativeSdkHostGate =
   const digests = [
     gate.inputs.commandDigest,
     gate.inputs.binaryDigest,
+    gate.inputs.sidecarBundleDigest,
     gate.inputs.frontendDigest,
     gate.inputs.sourceDigest,
     ...(gate.assurance === null ? [] : [
@@ -127,6 +142,9 @@ export const decodeNativeSdkHostGate = (candidate: unknown): NativeSdkHostGate =
     gate.processes.initial.pid !== gate.processes.initial.publisherPid ||
     gate.processes.restarted.pid !== gate.processes.restarted.publisherPid ||
     gate.processes.initial.pid === gate.processes.restarted.pid ||
+    gate.sidecars.initial.pid === gate.sidecars.restarted.pid ||
+    gate.sidecars.initial.pid === gate.processes.initial.pid ||
+    gate.sidecars.restarted.pid === gate.processes.restarted.pid ||
     gate.processes.initial.forcedKill ||
     gate.processes.restarted.forcedKill ||
     gate.evidence.some((entry) => !Number.isSafeInteger(entry.bytes) || entry.bytes <= 0)

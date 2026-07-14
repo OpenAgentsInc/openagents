@@ -30,10 +30,13 @@ const fixture = () => {
   const packageRoot = resolve(workspaceRoot, "apps/native-sdk-effect-native-spike")
   const binaryPath = resolve(packageRoot, "zig-out/bin/native-sdk-effect-native-spike")
   const frontendPath = resolve(packageRoot, "frontend/dist/assets/main.js")
+  const sidecarPath = resolve(packageRoot, "sidecar/dist/native-sidecar-entry.mjs")
   mkdirSync(dirname(binaryPath), { recursive: true })
   mkdirSync(dirname(frontendPath), { recursive: true })
+  mkdirSync(dirname(sidecarPath), { recursive: true })
   writeFileSync(binaryPath, "native-binary")
   writeFileSync(frontendPath, "frontend-bundle")
+  writeFileSync(sidecarPath, "sidecar-bundle")
   const evidenceRoot = resolve(workspaceRoot, "var/assurance/native/host-smoke")
   mkdirSync(evidenceRoot, { recursive: true })
   const evidenceNames = [
@@ -60,10 +63,10 @@ const fixture = () => {
     nativeReportRef: "var/assurance/native/host-smoke/host-gate.json",
   }
   const gate = {
-    formatVersion: "openagents.native-sdk.host-gate.v3",
+    formatVersion: "openagents.native-sdk.host-gate.v4",
     targetRef: "openagents.desktop.native-sdk.mvp",
     runNonce: "01234567-89ab-4def-8123-456789abcdef",
-    automationProtocol: 6,
+    automationProtocol: 7,
     frontendAuthority: "effect-native",
     result: "passed",
     runtime: {
@@ -84,6 +87,10 @@ const fixture = () => {
     processes: {
       initial: { pid: 9_007_199_254_740_001, publisherPid: 9_007_199_254_740_001, stopped: true, exitCode: null, signal: "SIGTERM", forcedKill: false },
       restarted: { pid: 9_007_199_254_740_002, publisherPid: 9_007_199_254_740_002, stopped: true, exitCode: null, signal: "SIGTERM", forcedKill: false },
+    },
+    sidecars: {
+      initial: { pid: 9_007_199_254_739_991, generation: 1, liveAfterBootstrap: false },
+      restarted: { pid: 9_007_199_254_739_992, generation: 2, liveAfterBootstrap: false },
     },
     steps: nativeSdkHostGateExpectedSteps.map((id) => ({ id, result: "passed", evidence: [evidenceNames[0]!] })),
     evidence,
