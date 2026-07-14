@@ -14,7 +14,6 @@ import {
 } from './adjutant-assignments'
 import { CustomerOrderStatus } from './customer-orders'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { parseJsonRecord } from './json-boundary'
 import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
@@ -1943,12 +1942,6 @@ const foldoverState = (
   }
 
   return activeState
-}
-
-const safeMetadataFlag = (metadataJson: string, key: string): boolean => {
-  const parsed = parseJsonRecord(metadataJson)
-
-  return parsed?.[key] === true
 }
 
 const foldableForState = (state: FoldoverInventoryState): boolean =>

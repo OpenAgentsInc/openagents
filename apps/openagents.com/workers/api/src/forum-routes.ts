@@ -14,7 +14,6 @@ import {
   type ForumOperatorActor,
   ForumParticipationWriteResponse,
   type ForumPostRevisionRow,
-  ForumPublicProjectionUnsafe,
   ForumReadAccessDenied,
   type ForumReportRow,
   ForumStorageError,
@@ -77,7 +76,6 @@ import {
   updateForumTopicModerationState,
   updateForumTopicPinState,
   updateForumTopicTitle,
-  upsertForumTipRecipientWallet,
   watchForumTarget,
 } from './forum'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
@@ -93,22 +91,17 @@ import {
   type ForumWorkRequestOfferProviderBond,
   type ForumWorkRequestResultRecord,
   listForumWorkRequestOffers,
-  markForumWorkRequestSettled,
-  readForumWorkRequestAcceptanceByIdempotencyKey,
   readForumWorkRequestAcceptanceByWorkRequestId,
   readForumWorkRequestOfferByQuoteRef,
   readForumWorkRequestResultByQuoteRef,
-  recordForumWorkRequestAcceptance,
   recordForumWorkRequestOffer,
   recordForumWorkRequestResult,
 } from './forum-work-request-negotiation'
 import {
-  decodeAcceptForumWorkRequestOfferBody,
   decodeCreateForumWorkRequestBody,
   decodeForumWorkRequestLifecycleBody,
   decodeRelayNativeForumWorkRequestBody,
   decodeRelayNativeForumWorkRequestOfferBody,
-  decodeReleaseForumWorkRequestBody,
   decodeSubmitForumWorkRequestOfferBody,
   decodeSubmitForumWorkRequestResultBody,
   workRequestMatchesInput,
@@ -147,15 +140,11 @@ import {
 } from './http/responses'
 import {
   type LaborEscrowRecord,
-  type ReserveLaborEscrowInput,
   readLaborEscrowById,
-  releaseLaborEscrow,
-  reserveLaborEscrow,
 } from './labor-escrow'
 import { PaymentsLedgerUnavailableError } from './payments-ledger-db'
 import {
   countActiveOrangeChecks,
-  grantOrangeCheckEntitlement,
   orangeCheckBadgeProjection,
   readActiveOrangeCheckByActorRef,
 } from './orange-check-entitlements'
@@ -172,18 +161,10 @@ const forumLaunchStatusStaleness = liveAtReadStaleness([
   'forum_paid_action_receipt_recorded',
   'forum_tip_settlement_claim_recorded',
 ])
-const forumReceiptStaleness = liveAtReadStaleness([
-  'forum_paid_action_receipt_recorded',
-  'forum_tip_settlement_claim_recorded',
-])
 
 const ProductPromisesForumSlug = 'product-promises'
 const productPromisesUnsupportedRequestSourceRef = (topicId: string): string =>
   `forum.topic:${topicId}`
-
-type ForumWorkRequestEscrowReserveResult =
-  | Readonly<{ ok: true; escrow: LaborEscrowRecord; reserveReceiptRef: string }>
-  | Readonly<{ ok: false; availableMsat?: number; reason: string }>
 
 type ForumRouteDependencies = Readonly<{
   /**
@@ -192,7 +173,6 @@ type ForumRouteDependencies = Readonly<{
    * receipts, direct tips, settlement claims, recipient wallets). When
    * absent the money paths run on the plain D1Database exactly as before.
    */
-  treasuryDb?: import('./treasury-domain-store').TreasuryDatabase
   /**
    * CFG-4 (#8519): the Postgres-only credits/escrow authority
    * (pay_ins/pay_in_legs/agent_balances/labor_escrows/labor_escrow_receipts).
@@ -205,7 +185,6 @@ type ForumRouteDependencies = Readonly<{
    * authority. REQUIRED for the agent-profile paths — no D1 fallback.
    */
   identityDb?: import('./identity-db').IdentityDb
-  tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
   // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the orange
   // check entitlement grant; absent => byte-identical D1-only behavior.
   entitlementsMirror?:
@@ -227,10 +206,6 @@ type ForumRouteDependencies = Readonly<{
   productPromisesUnsupportedRequestIngest?: (
     input: ForumProductPromisesUnsupportedRequestIngestInput,
   ) => Promise<void>
-  forumWorkRequestEscrowReserver?: (
-    input: ReserveLaborEscrowInput,
-    db: D1Database,
-  ) => Promise<ForumWorkRequestEscrowReserveResult>
   forumWorkRequestRelayPublisher?: ForumWorkRequestRelayPublisher
   forumWorkRequestRelayUrl?: string
   makeId?: () => string
@@ -262,11 +237,6 @@ export type ForumProductPromisesUnsupportedRequestIngestInput = Readonly<{
   title: string
   topicId: string
 }>
-
-type ForumAgentWriterActor = Extract<
-  ForumWriterActorInput,
-  Readonly<{ _tag: 'Agent' }>
->
 
 const EditForumPostBody = S.Struct({
   bodyText: S.Trim.check(
@@ -314,13 +284,9 @@ const ForumModerationActionBody = S.Struct({
   reason: S.optionalKey(ForumModerationReason),
 })
 
-const ForumPublicSafeRef = S.Trim.check(S.isNonEmpty(), S.isMaxLength(220))
-const ForumPublicSafeRefs = S.optionalKey(S.Array(ForumPublicSafeRef))
-const ForumBolt12Offer = S.Trim.check(S.isNonEmpty(), S.isMaxLength(4096))
 // Static Lightning Address (LNURL-pay) the recipient publishes, e.g. one
 // hosted by their Spark wallet's LSP. A public payment destination like
 // bolt12Offer, preferred for agent payout readiness after #5181.
-const ForumLightningAddress = S.Trim.check(S.isNonEmpty(), S.isMaxLength(512))
 // Native Spark address (`spark1…` bech32m) the recipient publishes as a public
 // tip destination. A Spark sender pays it Spark→Spark (0-fee, registration-free,
 // offline-receive) with no Lightning Address / LSP registration (#5345). Shape
@@ -644,18 +610,6 @@ const slugify = (value: string, fallback: string): string => {
   return slug.length >= 3 ? slug : fallback
 }
 
-const refIdSegment = (value: string, fallback: string): string => {
-  const segment = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_.-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 120)
-
-  return segment.length >= 3 ? segment : fallback
-}
-
 const defaultPublicProjection = (artifactRef: string) => ({
   classificationCaveatRef: 'classification.public_forum_projection',
   customerSafe: true,
@@ -678,42 +632,6 @@ const workRequestPublicProjection = (
     forumWorkRequestEventRef(jobEventId),
   ],
 })
-
-const workRequestAcceptanceEventRef = (
-  workRequestId: string,
-  quoteRef: string,
-): string =>
-  `acceptance.public.forum_work_request.${refIdSegment(
-    workRequestId,
-    'request',
-  )}.${refIdSegment(quoteRef, 'quote')}`
-
-const workRequestReserveReceiptRef = (
-  workRequestId: string,
-  quoteRef: string,
-): string =>
-  `receipt.labor_escrow.reserve.${refIdSegment(
-    workRequestId,
-    'request',
-  )}.${refIdSegment(quoteRef, 'quote')}`
-
-const workRequestReleaseReceiptRef = (
-  workRequestId: string,
-  quoteRef: string,
-): string =>
-  `receipt.labor_escrow.release.${refIdSegment(
-    workRequestId,
-    'request',
-  )}.${refIdSegment(quoteRef, 'quote')}`
-
-const workRequestAcceptanceRef = (
-  workRequestId: string,
-  quoteRef: string,
-): string =>
-  `acceptance.public.forum_lbr.${refIdSegment(
-    workRequestId,
-    'request',
-  )}.${refIdSegment(quoteRef, 'quote')}`
 
 const ForumReportReasonRefs: Record<ForumReportReason, string> = {
   off_topic: 'forum.report.reason.off_topic',
@@ -947,36 +865,6 @@ const actorForRequest = (
       failureKind: 'missing_credentials',
       reason: 'Forum writes require an authenticated actor.',
     })
-  })
-
-const agentForRequest = (
-  request: Request,
-  dependencies: ForumRouteDependencies,
-): Effect.Effect<ForumAgentWriterActor, ForumWriterAuthFailure> =>
-  Effect.gen(function* () {
-    const bearerToken = readBearerToken(request)
-
-    if (dependencies.agentStore === undefined) {
-      return yield* new ForumWriterAuthFailure({
-        failureKind: 'under_scoped',
-        reason: 'Forum agent auth is not configured.',
-      })
-    }
-
-    const actor = yield* authenticateForumAgentToken(
-      dependencies.agentStore,
-      bearerToken,
-      dependencies.nowIso ?? currentIsoTimestamp,
-    )
-
-    if (actor._tag !== 'Agent') {
-      return yield* new ForumWriterAuthFailure({
-        failureKind: 'under_scoped',
-        reason: 'Forum tip wallet claims require a registered agent token.',
-      })
-    }
-
-    return actor
   })
 
 const moderatorForRequest = (
@@ -2444,349 +2332,6 @@ const ingestRelayNativeForumWorkRequestOfferResponse = (
 // non-fatal: the DB acceptance + escrow reserve are already committed, so a
 // relay miss returns a public-safe failure slug rather than failing the
 // acceptance. Only public refs cross the boundary.
-const publishForumWorkRequestAcceptanceToRelay = (
-  input: Readonly<{
-    acceptanceRef: string
-    escrowReceiptRef: string
-    jobEventId: string
-    providerPubkey: string | null
-    quoteRef: string
-    relayUrl: string
-    workRequestId: string
-  }>,
-  dependencies: ForumRouteDependencies,
-): Effect.Effect<
-  Readonly<{
-    accepted: boolean
-    acceptanceEventId: string | null
-    relayRef: string | null
-    reason?: string
-  }>,
-  never
-> =>
-  Effect.gen(function* () {
-    const publisher = dependencies.forumWorkRequestRelayPublisher
-
-    if (publisher?.publishAcceptance === undefined) {
-      return {
-        accepted: false,
-        acceptanceEventId: null,
-        reason: 'relay_publisher_unconfigured',
-        relayRef: null,
-      }
-    }
-
-    if (input.providerPubkey === null) {
-      return {
-        accepted: false,
-        acceptanceEventId: null,
-        reason: 'provider_pubkey_missing',
-        relayRef: null,
-      }
-    }
-
-    const providerPubkey = input.providerPubkey
-
-    const receipt = yield* Effect.tryPromise({
-      catch: error =>
-        new ForumStorageError({
-          operation: 'forumWorkRequests.publishAcceptanceRelay',
-          reason: error instanceof Error ? error.message : String(error),
-        }),
-      try: () =>
-        publisher.publishAcceptance!({
-          acceptanceRef: input.acceptanceRef,
-          escrowReceiptRef: input.escrowReceiptRef,
-          jobEventId: input.jobEventId,
-          providerPubkey,
-          quoteRef: input.quoteRef,
-          relayUrl: input.relayUrl,
-          workRequestId: input.workRequestId,
-        }),
-    })
-
-    return {
-      accepted: receipt.accepted,
-      acceptanceEventId: receipt.acceptanceEventId,
-      relayRef: receipt.relayRef,
-    }
-  }).pipe(
-    Effect.catch(() =>
-      Effect.succeed({
-        accepted: false,
-        acceptanceEventId: null,
-        reason: 'relay_publish_failed',
-        relayRef: null,
-      }),
-    ),
-  )
-
-const reserveForumWorkRequestAcceptanceEscrow = (
-  db: D1Database,
-  input: ReserveLaborEscrowInput,
-  dependencies: ForumRouteDependencies,
-): Effect.Effect<ForumWorkRequestEscrowReserveResult, ForumStorageError> =>
-  Effect.tryPromise({
-    catch: error =>
-      new ForumStorageError({
-        operation: 'forumWorkRequests.reserveAcceptanceEscrow',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
-    try: async () => {
-      if (dependencies.forumWorkRequestEscrowReserver !== undefined) {
-        return dependencies.forumWorkRequestEscrowReserver(input, db)
-      }
-
-      try {
-        const result = await reserveLaborEscrow(
-          requireForumLedgerDb(dependencies),
-          input,
-        )
-
-        if (result.kind === 'ok') {
-          return {
-            escrow: result.escrow,
-            ok: true,
-            reserveReceiptRef: result.escrow.reserveReceiptRef,
-          }
-        }
-
-        return result.availableMsat === undefined
-          ? { ok: false, reason: result.reason }
-          : {
-              availableMsat: result.availableMsat,
-              ok: false,
-              reason: result.reason,
-            }
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error)
-
-        if (
-          reason.includes('UNIQUE') ||
-          reason.includes('labor_escrows.work_request_id')
-        ) {
-          return { ok: false, reason: 'quote_already_accepted' }
-        }
-
-        throw error
-      }
-    },
-  })
-
-const acceptForumWorkRequestOfferResponse = (
-  request: Request,
-  db: D1Database,
-  workRequestId: string,
-  dependencies: ForumRouteDependencies,
-) =>
-  Effect.gen(function* () {
-    const idempotencyKey = idempotencyKeyFromRequest(request)
-
-    if (idempotencyKey === undefined) {
-      return badRequest('Idempotency-Key header is required')
-    }
-
-    const body = yield* decodeJsonBody(
-      request,
-      decodeAcceptForumWorkRequestOfferBody,
-    )
-    const workRequest = yield* readForumWorkRequestById(db, workRequestId)
-
-    if (workRequest === null) {
-      return notFound()
-    }
-
-    const actor = yield* actorForRequest(request, dependencies)
-    const actorRef = actorRefForForumActor(actor)
-
-    if (actorRef !== workRequest.requesterActorRef) {
-      return forbidden('only the requester can accept a work quote')
-    }
-
-    const existingByKey = yield* readForumWorkRequestAcceptanceByIdempotencyKey(
-      db,
-      idempotencyKey,
-    )
-
-    if (existingByKey !== null) {
-      if (
-        existingByKey.workRequestId !== workRequestId ||
-        existingByKey.quoteRef !== body.quoteRef
-      ) {
-        return idempotencyConflictResponse()
-      }
-
-      const [offer, offers, relayLink] = yield* Effect.all([
-        readForumWorkRequestOfferByQuoteRef(db, workRequestId, body.quoteRef),
-        listForumWorkRequestOffers(db, workRequestId),
-        readForumWorkRequestRelayLinkByWorkRequestId(db, workRequestId),
-      ])
-
-      if (offer === null) {
-        return serverError()
-      }
-
-      return noStoreJsonResponse({
-        ...forumWorkRequestStatusEnvelope({
-          acceptance: existingByKey,
-          offers,
-          relayLink,
-          workRequest,
-        }),
-        acceptedOffer: offer,
-        idempotent: true,
-      })
-    }
-
-    const [offer, existingByRequest] = yield* Effect.all([
-      readForumWorkRequestOfferByQuoteRef(db, workRequestId, body.quoteRef),
-      readForumWorkRequestAcceptanceByWorkRequestId(db, workRequestId),
-    ])
-
-    if (offer === null) {
-      return notFound()
-    }
-
-    if (existingByRequest !== null) {
-      return noStoreJsonResponse(
-        {
-          acceptedQuoteRef: existingByRequest.quoteRef,
-          error: 'quote_already_accepted',
-          reason: 'This work request already has an accepted quote.',
-        },
-        { status: 409 },
-      )
-    }
-
-    if (
-      workRequest.state !== 'open' &&
-      workRequest.state !== 'quote_received'
-    ) {
-      return noStoreJsonResponse(
-        {
-          error: 'work_request_not_accepting_quotes',
-          reason: `Work request is ${workRequest.state}.`,
-        },
-        { status: 409 },
-      )
-    }
-
-    if (offer.state !== 'offered') {
-      return noStoreJsonResponse(
-        {
-          error: 'quote_not_acceptable',
-          reason: `Quote is ${offer.state}.`,
-        },
-        { status: 409 },
-      )
-    }
-
-    if (offer.amountMsats > workRequest.budgetMsats) {
-      return noStoreJsonResponse(
-        {
-          error: 'quote_exceeds_budget',
-          reason: 'Quote amount exceeds the work request budget.',
-        },
-        { status: 409 },
-      )
-    }
-
-    const makeId = dependencies.makeId ?? randomUuid
-    const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
-    const acceptanceId = makeId()
-    const escrowId = makeId()
-    const reserveReceiptId = makeId()
-    const reserveReceiptRef = workRequestReserveReceiptRef(
-      workRequestId,
-      body.quoteRef,
-    )
-    const acceptanceEventRef = workRequestAcceptanceEventRef(
-      workRequestId,
-      body.quoteRef,
-    )
-    const reserve = yield* reserveForumWorkRequestAcceptanceEscrow(
-      db,
-      {
-        amountMsat: offer.amountMsats,
-        escrowId,
-        fundingSource: { kind: 'ledger_balance' },
-        idempotencyKey,
-        jobEventId: workRequest.jobEventId,
-        nowIso,
-        requesterActorRef: workRequest.requesterActorRef,
-        reserveReceiptId,
-        reserveReceiptRef,
-        workRequestId,
-      },
-      dependencies,
-    )
-
-    if (!reserve.ok) {
-      return noStoreJsonResponse(
-        {
-          availableMsat: reserve.availableMsat,
-          error: 'labor_escrow_refused',
-          reason: reserve.reason,
-        },
-        { status: 409 },
-      )
-    }
-
-    const acceptance = yield* recordForumWorkRequestAcceptance(db, {
-      acceptanceEventRef,
-      acceptanceId,
-      amountMsats: offer.amountMsats,
-      escrowId,
-      idempotencyKey,
-      nowIso,
-      offerId: offer.offerId,
-      providerActorRef: offer.providerActorRef,
-      quoteRef: offer.quoteRef,
-      requesterActorRef: workRequest.requesterActorRef,
-      reserveReceiptRef: reserve.reserveReceiptRef,
-      workRequestId,
-    })
-    const acceptanceRelay = yield* publishForumWorkRequestAcceptanceToRelay(
-      {
-        acceptanceRef: workRequestAcceptanceRef(workRequestId, offer.quoteRef),
-        escrowReceiptRef: reserve.reserveReceiptRef,
-        jobEventId: workRequest.jobEventId,
-        providerPubkey: offer.providerPubkey,
-        quoteRef: offer.quoteRef,
-        relayUrl: workRequest.relayUrl,
-        workRequestId,
-      },
-      dependencies,
-    )
-    const [updated, offers, relayLink] = yield* Effect.all([
-      readForumWorkRequestById(db, workRequestId),
-      listForumWorkRequestOffers(db, workRequestId),
-      readForumWorkRequestRelayLinkByWorkRequestId(db, workRequestId),
-    ])
-
-    if (updated === null) {
-      return serverError()
-    }
-
-    return noStoreJsonResponse(
-      {
-        ...forumWorkRequestStatusEnvelope({
-          acceptance,
-          offers,
-          relayLink,
-          workRequest: updated,
-        }),
-        acceptanceRelay,
-        acceptedOffer: offer,
-        idempotent: false,
-      },
-      { status: 201 },
-    )
-  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
-
-// Bridge (c): the provider publishes its kind-6934 result on the relay, then
-// records the delivered result here against the accepted offer. Registered-
-// agent bearer auth; idempotent on quoteRef; public refs only.
 const submitForumWorkRequestResultResponse = (
   request: Request,
   db: D1Database,
@@ -2849,170 +2394,6 @@ const submitForumWorkRequestResultResponse = (
     )
 
     return noStoreJsonResponse({ idempotent: false, result }, { status: 201 })
-  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
-
-const releaseForumWorkRequestEscrow = (
-  db: D1Database,
-  input: import('./labor-escrow').ReleaseLaborEscrowInput,
-  dependencies: ForumRouteDependencies,
-): Effect.Effect<
-  | Readonly<{ ok: true; escrow: LaborEscrowRecord; idempotent: boolean }>
-  | Readonly<{ ok: false; reason: string; currentState?: string }>,
-  ForumStorageError
-> =>
-  Effect.tryPromise({
-    catch: error =>
-      new ForumStorageError({
-        operation: 'forumWorkRequests.releaseAcceptanceEscrow',
-        reason: error instanceof Error ? error.message : String(error),
-      }),
-    try: async () => {
-      const result = await releaseLaborEscrow(
-        requireForumLedgerDb(dependencies),
-        input,
-      )
-
-      if (result.kind === 'ok') {
-        return {
-          escrow: result.escrow,
-          idempotent: result.idempotent,
-          ok: true as const,
-        }
-      }
-
-      return result.currentState === undefined
-        ? { ok: false as const, reason: result.reason }
-        : { currentState: result.currentState, ok: false as const, reason: result.reason }
-    },
-  })
-
-// Bridge (d): a validator-pass release that moves the reserved escrow to the
-// provider balance exactly once and records a public release receipt ref.
-// Only the requester (release authority) may trigger it; release requires the
-// recorded result and a public verification verdict ref as acceptance
-// evidence. Idempotent: a second call after release returns the released
-// escrow without moving funds again.
-const releaseForumWorkRequestEscrowResponse = (
-  request: Request,
-  db: D1Database,
-  workRequestId: string,
-  dependencies: ForumRouteDependencies,
-) =>
-  Effect.gen(function* () {
-    const body = yield* decodeJsonBody(
-      request,
-      decodeReleaseForumWorkRequestBody,
-    )
-    const workRequest = yield* readForumWorkRequestById(db, workRequestId)
-
-    if (workRequest === null) {
-      return notFound()
-    }
-
-    const actor = yield* actorForRequest(request, dependencies)
-    const actorRef = actorRefForForumActor(actor)
-
-    if (actorRef !== workRequest.requesterActorRef) {
-      return forbidden('only the requester can release a work escrow')
-    }
-
-    const [acceptance, result] = yield* Effect.all([
-      readForumWorkRequestAcceptanceByWorkRequestId(db, workRequestId),
-      readForumWorkRequestResultByQuoteRef(db, workRequestId, body.quoteRef),
-    ])
-
-    if (acceptance === null || acceptance.quoteRef !== body.quoteRef) {
-      return noStoreJsonResponse(
-        {
-          error: 'release_requires_accepted_offer',
-          reason: 'Escrow release requires the accepted quote.',
-        },
-        { status: 409 },
-      )
-    }
-
-    if (result === null) {
-      return noStoreJsonResponse(
-        {
-          error: 'release_requires_recorded_result',
-          reason: 'Record the delivered result before releasing escrow.',
-        },
-        { status: 409 },
-      )
-    }
-
-    const escrowBefore = yield* Effect.tryPromise({
-      catch: error =>
-        new ForumStorageError({
-          operation: 'forumWorkRequests.readEscrowForRelease',
-          reason: error instanceof Error ? error.message : String(error),
-        }),
-      try: () =>
-        readLaborEscrowById(requireForumLedgerDb(dependencies), acceptance.escrowId),
-    })
-
-    if (escrowBefore === null) {
-      return serverError()
-    }
-
-    const makeId = dependencies.makeId ?? randomUuid
-    const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
-    const release = yield* releaseForumWorkRequestEscrow(
-      db,
-      {
-        acceptanceEventRef: body.verificationVerdictRef,
-        authority: {
-          actorRef: workRequest.requesterActorRef,
-          kind: 'requester_acceptance',
-        },
-        escrowId: acceptance.escrowId,
-        nowIso,
-        providerActorRef: acceptance.providerActorRef,
-        releaseReceiptId: makeId(),
-        releaseReceiptRef: workRequestReleaseReceiptRef(
-          workRequestId,
-          body.quoteRef,
-        ),
-      },
-      dependencies,
-    )
-
-    if (!release.ok) {
-      // Exactly-once: a prior release already moved the funds. Surface the
-      // already-released escrow as an idempotent success rather than refusing.
-      if (
-        release.reason === 'escrow_not_reserved' &&
-        escrowBefore.state === 'released_to_provider'
-      ) {
-        yield* markForumWorkRequestSettled(db, workRequestId, nowIso)
-        return noStoreJsonResponse({
-          escrow: escrowBefore,
-          idempotent: true,
-          released: true,
-          result,
-        })
-      }
-
-      return noStoreJsonResponse(
-        {
-          currentState: release.currentState,
-          error: 'labor_escrow_release_refused',
-          reason: release.reason,
-        },
-        { status: 409 },
-      )
-    }
-
-    // Escrow moved to the provider — advance the request to terminal `settled`
-    // so the public projection and lifecycle reflect the closed-out job.
-    yield* markForumWorkRequestSettled(db, workRequestId, nowIso)
-
-    return noStoreJsonResponse({
-      escrow: release.escrow,
-      idempotent: release.idempotent,
-      released: true,
-      result,
-    })
   }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
 
 const createForumWorkRequestLifecycleResponse = (
@@ -4451,46 +3832,6 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
       return request.method === 'POST'
         ? submitForumWorkRequestResultResponse(
-            request,
-            db,
-            workRequestId,
-            requestDependencies,
-          )
-        : Effect.succeed(methodNotAllowed(['POST']))
-    }
-
-    const workRequestReleaseMatch =
-      /^\/api\/forum\/work-requests\/([^/]+)\/release$/.exec(url.pathname)
-
-    if (workRequestReleaseMatch !== null) {
-      const workRequestId = decodePathSegment(workRequestReleaseMatch[1])
-
-      if (workRequestId === undefined) {
-        return Effect.succeed(badRequest('workRequestId is malformed'))
-      }
-
-      return request.method === 'POST'
-        ? releaseForumWorkRequestEscrowResponse(
-            request,
-            db,
-            workRequestId,
-            requestDependencies,
-          )
-        : Effect.succeed(methodNotAllowed(['POST']))
-    }
-
-    const workRequestAcceptanceMatch =
-      /^\/api\/forum\/work-requests\/([^/]+)\/acceptances$/.exec(url.pathname)
-
-    if (workRequestAcceptanceMatch !== null) {
-      const workRequestId = decodePathSegment(workRequestAcceptanceMatch[1])
-
-      if (workRequestId === undefined) {
-        return Effect.succeed(badRequest('workRequestId is malformed'))
-      }
-
-      return request.method === 'POST'
-        ? acceptForumWorkRequestOfferResponse(
             request,
             db,
             workRequestId,

@@ -1914,9 +1914,6 @@ const operatorAdjutantDb = (store: OperatorAdjutantDbStore): D1Database => ({
 type TestAutopilotPreflight = Parameters<
   typeof makeOperatorAdjutantRoutes<TestSession, TestEnv>
 >[0]['buildOperatorAutopilotPreflightPayload']
-type TestTaskPacketRefValidator = Parameters<
-  typeof makeOperatorAdjutantRoutes<TestSession, TestEnv>
->[0]['validateAdjutantTaskPacketRef']
 type TestAutopilotLaunch = Parameters<
   typeof makeOperatorAdjutantRoutes<TestSession, TestEnv>
 >[0]['launchUserAutopilotMission']
@@ -1986,8 +1983,6 @@ const defaultAutopilotPreflight: TestAutopilotPreflight = async () => ({
   status: 'ok',
   targetUser: null,
 })
-const defaultTaskPacketRefValidator: TestTaskPacketRefValidator = async () =>
-  true
 const defaultAutopilotLaunch: TestAutopilotLaunch = async () => ({
   launch: {
     payload: {
@@ -2019,7 +2014,7 @@ const defaultAutopilotContinuation: TestAutopilotContinuation = async () => ({
 const makeRoutes = (
   session: TestSession | null,
   autopilotPreflight: TestAutopilotPreflight = defaultAutopilotPreflight,
-  validateAdjutantTaskPacketRef: TestTaskPacketRefValidator = defaultTaskPacketRefValidator,
+  _retiredTaskPacketRefValidator?: unknown,
   launchUserAutopilotMission: TestAutopilotLaunch = defaultAutopilotLaunch,
   continueUserAutopilotRun: TestAutopilotContinuation = defaultAutopilotContinuation,
   hasAdminApiToken = false,
@@ -2044,7 +2039,6 @@ const makeRoutes = (
     },
     requireAdminApiToken: () => Promise.resolve(hasAdminApiToken),
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
-    validateAdjutantTaskPacketRef,
   })
 
 const runRoute = (
@@ -2052,7 +2046,7 @@ const runRoute = (
   store: OperatorAdjutantDbStore,
   request: Request,
   autopilotPreflight?: TestAutopilotPreflight,
-  validateAdjutantTaskPacketRef?: TestTaskPacketRefValidator,
+  retiredTaskPacketRefValidator?: unknown,
   launchUserAutopilotMission?: TestAutopilotLaunch,
   continueUserAutopilotRun?: TestAutopilotContinuation,
   hasAdminApiToken?: boolean,
@@ -2061,7 +2055,7 @@ const runRoute = (
   const route = makeRoutes(
     session,
     autopilotPreflight,
-    validateAdjutantTaskPacketRef,
+    retiredTaskPacketRefValidator,
     launchUserAutopilotMission,
     continueUserAutopilotRun,
     hasAdminApiToken,
@@ -2132,7 +2126,7 @@ const runRouteWithEnvAndLaunch = (
   const route = makeRoutes(
     session,
     defaultAutopilotPreflight,
-    defaultTaskPacketRefValidator,
+    undefined,
     launchUserAutopilotMission,
     undefined,
     undefined,
@@ -3185,297 +3179,6 @@ describe('operator Adjutant assignment API routes', () => {
           }),
         ],
       }),
-    })
-  })
-
-  test('generates a safe task packet and records its pushed commit ref', async () => {
-    const store = new OperatorAdjutantDbStore()
-    const assignmentId = await createDeploymentAssignment(store)
-    const validatedRefs: Array<Parameters<TestTaskPacketRefValidator>[0]> = []
-    store.assignments = store.assignments.map(assignment => ({
-      ...assignment,
-      commit_sha: null,
-      task_spec_path: null,
-    }))
-    const response = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/adjutant/assignments/${assignmentId}/task-packet`,
-        {
-          body: JSON.stringify({
-            commitSha: 'a0badf52',
-            operatorNotes: 'Focus on the public OTEC Site release.',
-            taskSpecPath: 'docs/autopilot-tasks/adjutant-otec.md',
-          }),
-          method: 'POST',
-        },
-      ),
-      undefined,
-      async input => {
-        validatedRefs.push(input)
-
-        return true
-      },
-    )
-
-    expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
-      assignment: expect.objectContaining({
-        commitSha: 'a0badf52',
-        id: assignmentId,
-        taskSpecPath: 'docs/autopilot-tasks/adjutant-otec.md',
-      }),
-      packet: {
-        commitSha: 'a0badf52',
-        markdown: expect.stringContaining(
-          'targetUrl: https://sites.openagents.com/otec',
-        ),
-        path: 'docs/autopilot-tasks/adjutant-otec.md',
-      },
-      taskPacketFreshness: expect.objectContaining({
-        researchBriefId: null,
-        status: 'current',
-        taskSpecPath: 'docs/autopilot-tasks/adjutant-otec.md',
-      }),
-    })
-    expect(validatedRefs).toEqual([
-      {
-        commitSha: 'a0badf52',
-        path: 'docs/autopilot-tasks/adjutant-otec.md',
-        repositoryName: 'autopilot-omega',
-        repositoryOwner: 'OpenAgentsInc',
-      },
-    ])
-    const assignment = store.assignments[0]
-
-    expect(assignment?.commit_sha).toBe('a0badf52')
-    expect(assignment?.task_spec_path).toBe(
-      'docs/autopilot-tasks/adjutant-otec.md',
-    )
-  })
-
-  test('validates task packet refs with the operator GitHub identity token when present', async () => {
-    const store = new OperatorAdjutantDbStore()
-    const assignmentId = await createDeploymentAssignment(store)
-    const validatedRefs: Array<Parameters<TestTaskPacketRefValidator>[0]> = []
-    store.assignments = store.assignments.map(assignment => ({
-      ...assignment,
-      commit_sha: null,
-      task_spec_path: null,
-    }))
-
-    const response = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/adjutant/assignments/${assignmentId}/task-packet`,
-        {
-          body: JSON.stringify({
-            commitSha: 'a0badf52',
-            taskSpecPath: 'docs/autopilot-tasks/adjutant-otec.md',
-          }),
-          method: 'POST',
-        },
-      ),
-      undefined,
-      async input => {
-        validatedRefs.push(input)
-
-        return true
-      },
-      undefined,
-      undefined,
-      undefined,
-      {
-        AUTH_KV: {
-          get: ((key: string) =>
-            Promise.resolve(
-              key === 'github-identity:token:github:operator'
-                ? 'github-identity-token'
-                : null,
-            )) as AuthKvStore['get'],
-          put: () => Promise.resolve(),
-          delete: () => Promise.resolve(),
-          listPrefix: () => Promise.resolve([]),
-        },
-      },
-    )
-
-    expect(response.status).toBe(200)
-    expect(validatedRefs).toEqual([
-      {
-        commitSha: 'a0badf52',
-        githubAccessToken: 'github-identity-token',
-        path: 'docs/autopilot-tasks/adjutant-otec.md',
-        repositoryName: 'autopilot-omega',
-        repositoryOwner: 'OpenAgentsInc',
-      },
-    ])
-  })
-
-  test('generates the canonical OTEC task packet with approved research brief context', async () => {
-    const store = new OperatorAdjutantDbStore()
-    const assignmentId = await createDeploymentAssignment(store)
-    attachApprovedOtecResearch(store, assignmentId)
-    const response = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/adjutant/assignments/${assignmentId}/task-packet`,
-        {
-          body: JSON.stringify({
-            commitSha: 'a0badf52',
-            taskSpecPath: 'docs/autopilot-tasks/adjutant-otec.md',
-          }),
-          method: 'POST',
-        },
-      ),
-    )
-
-    expect(response.status).toBe(200)
-    const payload = (await response.json()) as {
-      packet: { markdown: string; path: string }
-    }
-
-    expect(payload.packet.path).toBe('docs/autopilot-tasks/adjutant-otec.md')
-    expect(payload.packet.markdown).toContain('## Approved Research Brief')
-    expect(payload.packet.markdown).toContain(
-      '- researchBriefId: adjutant_research_brief_otec',
-    )
-    expect(payload.packet.markdown).toContain(
-      'OTEC uses warm surface water and cold deep seawater temperature differences',
-    )
-    expect(payload.packet.markdown).toContain(
-      'SWAC overview: https://example.com/swac',
-    )
-    expect(JSON.stringify(payload)).not.toContain('exa-test-secret')
-  })
-
-  test('keeps a stale task packet current with an operator reason', async () => {
-    const store = new OperatorAdjutantDbStore()
-    const assignmentId = await createDeploymentAssignment(store)
-    attachApprovedOtecResearch(store, assignmentId)
-
-    const keep = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/adjutant/assignments/${assignmentId}/task-packet/keep-current`,
-        {
-          body: JSON.stringify({
-            customerSafeSummary:
-              'The current task packet already includes the approved public research context needed for this pass.',
-            reason:
-              'Operator reviewed the approved brief and confirmed the current packet is sufficient.',
-          }),
-          method: 'POST',
-        },
-      ),
-    )
-
-    expect(keep.status).toBe(200)
-    await expect(keep.json()).resolves.toEqual({
-      taskPacketFreshness: expect.objectContaining({
-        latestApprovedResearchBriefId: 'adjutant_research_brief_otec',
-        researchBriefId: 'adjutant_research_brief_otec',
-        status: 'kept_current',
-        taskSpecPath: 'docs/autopilot-tasks/adjutant-otec.md',
-      }),
-    })
-    expect(store.taskPacketFreshness).toContainEqual(
-      expect.objectContaining({
-        actor_user_id: 'github:operator',
-        assignment_id: assignmentId,
-        status: 'kept_current',
-      }),
-    )
-    expect(store.events).toContainEqual(
-      expect.objectContaining({
-        assignment_id: assignmentId,
-        event_type: 'adjutant.task_packet_kept_current',
-      }),
-    )
-  })
-
-  test('rejects task packets missing from the pushed commit ref', async () => {
-    const store = new OperatorAdjutantDbStore()
-    const assignmentId = await createDeploymentAssignment(store)
-    store.assignments = store.assignments.map(assignment => ({
-      ...assignment,
-      commit_sha: null,
-      task_spec_path: null,
-    }))
-    const response = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/adjutant/assignments/${assignmentId}/task-packet`,
-        {
-          body: JSON.stringify({
-            commitSha: 'a0badf52',
-            taskSpecPath: 'docs/autopilot-tasks/adjutant-missing.md',
-          }),
-          method: 'POST',
-        },
-      ),
-      undefined,
-      async () => false,
-    )
-
-    expect(response.status).toBe(409)
-    await expect(response.json()).resolves.toEqual({
-      commitSha: 'a0badf52',
-      error: 'task_packet_ref_missing',
-      path: 'docs/autopilot-tasks/adjutant-missing.md',
-      reason: 'Task packet was not found at the pushed commit SHA.',
-    })
-    expect(store.assignments[0]?.commit_sha).toBeNull()
-    expect(store.assignments[0]?.task_spec_path).toBeNull()
-  })
-
-  test('rejects invalid task packet paths and commit SHAs', async () => {
-    const store = new OperatorAdjutantDbStore()
-    const assignmentId = await createDeploymentAssignment(store)
-    const invalidPath = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/adjutant/assignments/${assignmentId}/task-packet`,
-        {
-          body: JSON.stringify({
-            commitSha: 'a0badf52',
-            taskSpecPath: '../secrets.md',
-          }),
-          method: 'POST',
-        },
-      ),
-    )
-    const invalidSha = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/adjutant/assignments/${assignmentId}/task-packet`,
-        {
-          body: JSON.stringify({
-            commitSha: 'not-a-sha',
-            taskSpecPath: 'docs/autopilot-tasks/adjutant-otec.md',
-          }),
-          method: 'POST',
-        },
-      ),
-    )
-
-    expect(invalidPath.status).toBe(400)
-    await expect(invalidPath.json()).resolves.toEqual({
-      error: 'task_packet_validation_error',
-      reason:
-        'Task packet path must be a Markdown file directly under docs/autopilot-tasks/.',
-    })
-    expect(invalidSha.status).toBe(400)
-    await expect(invalidSha.json()).resolves.toEqual({
-      error: 'task_packet_validation_error',
-      reason: 'Task packet commit SHA must be a 7 to 40 character hex SHA.',
     })
   })
 

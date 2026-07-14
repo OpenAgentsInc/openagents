@@ -13426,7 +13426,6 @@ const routeRequest = makeWorkerRouteRequest({
       },
       publicIdentityClaimStore: makeAgentOwnerClaimStoreForEnv(env),
       pylonApiStore: makePylonApiStoreForEnv(env),
-      pylonSparkPayoutTargetStore: makePylonSparkPayoutTargetStoreForEnv(env),
       resolveModeratorActor: async request => {
         const session = await requireBrowserSession(request, env, ctx)
 
