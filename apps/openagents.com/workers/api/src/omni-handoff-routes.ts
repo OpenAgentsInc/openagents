@@ -48,7 +48,10 @@ export type OmniHandoffRoutesDependencies<Bindings> = Readonly<{
   // `mirror: env => makeSupervisionLongtailMirrorForEnv(env, { db: dependencies.db(env) })`
   // alongside `db`; undefined stays a safe no-op.
   mirror?: (env: Bindings) => SupervisionLongtailMirror | undefined
-  requireOperator: (request: Request, env: Bindings) => Promise<boolean>
+  // Effect-typed on purpose: the Promise adaptation lives at the composition
+  // root (index.ts wiring), per the route-dependency Effect.promise ratchet in
+  // scripts/check-zero-debt-architecture.mjs.
+  requireOperator: (request: Request, env: Bindings) => Effect.Effect<boolean>
   nowIso?: () => string
 }>
 
@@ -232,7 +235,7 @@ const requireOperatorAuth = <Bindings extends OmniHandoffRouteEnv>(
   env: Bindings,
 ): Effect.Effect<void, OmniHandoffRequestError> =>
   Effect.flatMap(
-    Effect.promise(() => dependencies.requireOperator(request, env)),
+    dependencies.requireOperator(request, env),
     isOperator =>
       isOperator
         ? Effect.void

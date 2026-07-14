@@ -9725,7 +9725,8 @@ const omniBundleRoutes = makeOmniBundleRoutes<WorkerBindings>({
 const omniHandoffRoutes = makeOmniHandoffRoutes<WorkerBindings>({
   db: env => openAgentsDatabase(env),
   mirror: env => makeSupervisionLongtailMirrorForEnv(env),
-  requireOperator: (request, env) => requireAdminApiToken(request, env),
+  requireOperator: (request, env) =>
+    Effect.promise(() => requireAdminApiToken(request, env).catch(() => false)),
 })
 
 const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({

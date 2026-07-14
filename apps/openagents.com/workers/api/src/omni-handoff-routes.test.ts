@@ -184,7 +184,7 @@ const makeRoutes = (
 ): ReturnType<typeof makeOmniHandoffRoutes<TestEnv>> => {
   const dependencies: OmniHandoffRoutesDependencies<TestEnv> = {
     db: () => handoffDb(store),
-    requireOperator: () => Promise.resolve(operatorAllowed),
+    requireOperator: () => Effect.sync(() => operatorAllowed),
   }
 
   return makeOmniHandoffRoutes<TestEnv>(dependencies)
