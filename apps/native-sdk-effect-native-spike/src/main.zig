@@ -16,9 +16,11 @@ const geometry = native_sdk.geometry;
 pub const canvas_label = "native-shell";
 pub const webview_label = "effect-native-surface";
 pub const pane_anchor = "effect-native-pane";
-pub const effect_native_url = "zero://app/index.html";
+pub const effect_native_base_url = "zero://app/index.html";
+pub const effect_native_url = effect_native_base_url ++ "#surface=effect-native";
 pub const bridge_command = "openagents.spike.projection.v1";
 pub const reload_command = "openagents.spike.reload-effect";
+pub const chat_new_command = "chat.new";
 pub const bridge_payload_limit: usize = 8 * 1024;
 
 const window_width: f32 = 1200;
@@ -68,11 +70,21 @@ pub const shell_windows = [_]native_sdk.ShellWindow{.{
 
 pub const shell_scene: native_sdk.ShellConfig = .{ .windows = &shell_windows };
 
+pub const file_menu_items = [_]native_sdk.MenuItem{.{
+    .label = "New Chat",
+    .command = chat_new_command,
+    .key = "n",
+    .modifiers = .{ .command = true },
+}};
+pub const app_menus = [_]native_sdk.Menu{.{ .title = "File", .items = &file_menu_items }};
+
 pub const Workspace = enum { chat, home, settings };
 pub const Session = enum { none, parity, renderer, audit };
 pub const OutboundIntent = enum {
     none,
     new_chat,
+    new_chat_menu,
+    reload_effect,
     workspace_chat,
     workspace_home,
     workspace_settings,
@@ -88,6 +100,7 @@ pub const Projection = struct {
     message_count: u32,
     pending: bool,
     status: []const u8,
+    last_applied_command_sequence: u64,
 };
 
 pub const Model = struct {
@@ -104,6 +117,7 @@ pub const Model = struct {
     awaiting_projection: bool = true,
     reload_token: u64 = 0,
     gpu_frames_seen: bool = false,
+    last_applied_command_sequence: u64 = 0,
 
     pub fn status(self: *const Model) []const u8 {
         if (self.status_len == 0) return "Waiting for Effect projection";
@@ -113,6 +127,7 @@ pub const Model = struct {
 
 pub const Msg = union(enum) {
     request_new_chat,
+    request_new_chat_menu,
     request_workspace_chat,
     request_workspace_home,
     request_workspace_settings,
@@ -133,6 +148,7 @@ fn recordIntent(model: *Model, intent: OutboundIntent) void {
 pub fn update(model: *Model, msg: Msg) void {
     switch (msg) {
         .request_new_chat => recordIntent(model, .new_chat),
+        .request_new_chat_menu => recordIntent(model, .new_chat_menu),
         .request_workspace_chat => recordIntent(model, .workspace_chat),
         .request_workspace_home => recordIntent(model, .workspace_home),
         .request_workspace_settings => recordIntent(model, .workspace_settings),
@@ -146,13 +162,13 @@ pub fn update(model: *Model, msg: Msg) void {
             model.session = projection.session;
             model.message_count = projection.message_count;
             model.pending = projection.pending;
+            model.last_applied_command_sequence = projection.last_applied_command_sequence;
             model.status_len = @min(projection.status.len, model.status_storage.len);
             @memcpy(model.status_storage[0..model.status_len], projection.status[0..model.status_len]);
             model.awaiting_projection = false;
         },
         .reload_effect_surface => {
-            model.reload_token += 1;
-            model.awaiting_projection = true;
+            recordIntent(model, .reload_effect);
         },
         .frame_presented => model.gpu_frames_seen = true,
     }
@@ -197,6 +213,10 @@ fn nativeRail(ui: *AppUi, model: *const Model) AppUi.Node {
             ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "Synchronizing Effect state…")
         else
             ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, ui.fmt("{d} messages · revision {d}", .{ model.message_count, model.projection_revision })),
+        if (model.last_applied_command_sequence > 0)
+            ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, ui.fmt("Applied chat.new → DesktopNewChat · native_menu · sequence {d}", .{model.last_applied_command_sequence}))
+        else
+            ui.text(.{ .size = .sm, .style_tokens = .{ .foreground = .text_muted } }, "Native menu command not applied"),
         listItem(ui, "Settings", model.workspace == .settings, .request_workspace_settings),
         ui.statusBar(.{}, model.status()),
     });
@@ -228,6 +248,7 @@ pub fn options() SpikeApp.Options {
         .canvas_label = canvas_label,
         .update = update,
         .view = view,
+        .on_command = command,
         .web_panes = panes,
         .on_frame = onFrame,
         .tokens = canvas.DesignTokens.themeWithOverrides(
@@ -237,8 +258,21 @@ pub fn options() SpikeApp.Options {
     };
 }
 
+pub fn validRunNamespace(value: []const u8) bool {
+    if (value.len == 0 or value.len > 80) return false;
+    for (value) |character| {
+        if (!std.ascii.isAlphanumeric(character) and character != '.' and character != '_' and character != '-') return false;
+    }
+    return true;
+}
+
 pub fn initialModel() Model {
     return .{};
+}
+
+pub fn command(name: []const u8) ?Msg {
+    if (std.mem.eql(u8, name, chat_new_command)) return .request_new_chat_menu;
+    return null;
 }
 
 fn parseWorkspace(value: []const u8) ?Workspace {
@@ -309,7 +343,16 @@ pub fn parseProjection(payload: []const u8) !Projection {
     const session = parseSession(payload) orelse return error.InvalidProjection;
     const status = stringField(payload, "status") orelse return error.InvalidProjection;
     if (status.len > 96) return error.InvalidProjection;
-    return .{ .revision = revision, .workspace = workspace, .session = session, .message_count = message_count, .pending = pending, .status = status };
+    const applied_raw = fieldValue(payload, "lastAppliedCommand") orelse return error.InvalidProjection;
+    var last_applied_command_sequence: u64 = 0;
+    if (!std.mem.eql(u8, applied_raw, "null")) {
+        last_applied_command_sequence = unsignedField(u64, payload, "sequence") orelse return error.InvalidProjection;
+        if (last_applied_command_sequence == 0 or
+            !std.mem.eql(u8, stringField(payload, "commandId") orelse return error.InvalidProjection, chat_new_command) or
+            !std.mem.eql(u8, stringField(payload, "intentName") orelse return error.InvalidProjection, "DesktopNewChat") or
+            !std.mem.eql(u8, stringField(payload, "source") orelse return error.InvalidProjection, "native_menu")) return error.InvalidProjection;
+    }
+    return .{ .revision = revision, .workspace = workspace, .session = session, .message_count = message_count, .pending = pending, .status = status, .last_applied_command_sequence = last_applied_command_sequence };
 }
 
 fn intentDetail(model: *const Model, output: []u8) ![]const u8 {
@@ -317,6 +360,8 @@ fn intentDetail(model: *const Model, output: []u8) ![]const u8 {
     return switch (model.outbound_intent) {
         .none => error.NoIntent,
         .new_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"NewChatRequested\",\"commandId\":\"chat.new\"}}}}", .{sequence}),
+        .new_chat_menu => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"DeferredCommand\",\"command\":{{\"schema\":\"openagents.desktop.deferred_command.v1\",\"requestRef\":\"command.native-sdk.menu.{d}\",\"commandId\":\"chat.new\",\"arguments\":{{\"kind\":\"none\"}},\"source\":\"native_menu\",\"delivery\":\"dispatch\"}}}}}}", .{ sequence, sequence }),
+        .reload_effect => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"RendererReloadRequested\",\"commandId\":\"openagents.spike.reload-effect\"}}}}", .{sequence}),
         .workspace_chat => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"chat\",\"commandId\":\"chat.open\"}}}}", .{sequence}),
         .workspace_home => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"home\",\"commandId\":\"workspace.home\"}}}}", .{sequence}),
         .workspace_settings => std.fmt.bufPrint(output, "{{\"protocol\":1,\"sequence\":{d},\"intent\":{{\"_tag\":\"WorkspaceSelected\",\"workspace\":\"settings\",\"commandId\":\"settings.open\"}}}}", .{sequence}),
@@ -380,8 +425,8 @@ const HybridHost = struct {
     fn event(context: *anyopaque, runtime: *native_sdk.Runtime, value: native_sdk.Event) anyerror!void {
         const self: *@This() = @ptrCast(@alignCast(context));
         switch (value) {
-            .command => |command| if (std.mem.eql(u8, command.name, reload_command)) {
-                try self.ui.dispatch(runtime, if (command.window_id == 0) 1 else command.window_id, .reload_effect_surface);
+            .command => |platform_command| if (std.mem.eql(u8, platform_command.name, reload_command)) {
+                try self.ui.dispatch(runtime, if (platform_command.window_id == 0) 1 else platform_command.window_id, .reload_effect_surface);
                 return;
             },
             else => {},
@@ -404,7 +449,15 @@ const HybridHost = struct {
         const runtime = self.runtime orelse return error.RuntimeUnavailable;
         const projection = try parseProjection(invocation.request.payload);
         const acknowledged = unsignedField(u64, invocation.request.payload, "acknowledgedNativeSequence") orelse return error.InvalidProjection;
-        if (acknowledged > self.ui.model.outbound_sequence) return error.InvalidProjection;
+        if (acknowledged > self.ui.model.outbound_sequence) {
+            // A restarted Native process has no pending intent but the
+            // persisted child may carry the prior process's acknowledged
+            // sequence fence. Adopt it exactly once before any local command
+            // so subsequent commands remain globally monotonic.
+            if (self.ui.model.outbound_sequence == 0 and self.ui.model.outbound_intent == .none) {
+                self.ui.model.outbound_sequence = acknowledged;
+            } else return error.InvalidProjection;
+        }
         if (projection.revision > self.ui.model.projection_revision) {
             try self.ui.dispatch(runtime, invocation.source.window_id, .{ .sync_projection = projection });
         }
@@ -419,9 +472,16 @@ const HybridHost = struct {
 
 pub fn main(init: std.process.Init) !void {
     var model = initialModel();
-    if (init.environ_map.get("NATIVE_SDK_FRONTEND_URL")) |url| if (url.len > 0) {
-        model.frontend_url = url;
-    };
+    var frontend_url_buffer: [2048]u8 = undefined;
+    const frontend_base_url = init.environ_map.get("NATIVE_SDK_FRONTEND_URL") orelse effect_native_base_url;
+    const run_namespace = init.environ_map.get("NATIVE_SDK_ASSURANCE_RUN_NONCE");
+    model.frontend_url = if (run_namespace) |namespace|
+        if (validRunNamespace(namespace))
+            try std.fmt.bufPrint(&frontend_url_buffer, "{s}#surface=effect-native&assurance-run={s}", .{ frontend_base_url, namespace })
+        else
+            return error.InvalidRunNamespace
+    else
+        try std.fmt.bufPrint(&frontend_url_buffer, "{s}#surface=effect-native", .{frontend_base_url});
     const app_state = try std.heap.page_allocator.create(SpikeApp);
     defer std.heap.page_allocator.destroy(app_state);
     app_state.* = SpikeApp.init(std.heap.page_allocator, model, options());
@@ -440,6 +500,7 @@ pub fn main(init: std.process.Init) !void {
         .security = .{
             .navigation = .{ .allowed_origins = &.{ "zero://app", "http://127.0.0.1:5173" } },
         },
+        .menus = &app_menus,
     }, init);
 }
 

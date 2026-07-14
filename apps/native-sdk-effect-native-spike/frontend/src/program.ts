@@ -1,246 +1,160 @@
+import { makeIntentRegistry, makeViewProgramFromState, Stack, type View } from "@effect-native/core"
+import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import {
-  Badge,
-  Card,
-  ComponentValueBinding,
-  defineIntent,
-  IconButton,
-  IntentRef,
-  makeIntentRegistry,
-  makeViewProgramFromState,
-  Spacer,
-  Stack,
-  Text,
-  TextField,
-  Transcript,
-  type TranscriptMessage,
-  type View,
-} from "@effect-native/core";
-import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect";
+  desktopShellIntents,
+  desktopShellMainView,
+  initialDesktopShellState,
+  makeDesktopShellHandlers,
+  withThreads,
+  type ChatHost,
+  type DesktopShellState,
+  type DesktopThread,
+} from "@openagentsinc/openagents-desktop/renderer-portable"
 
 export const fixtureSessions = [
   { ref: "session.parity", title: "Native parity pass" },
   { ref: "session.renderer", title: "Renderer boundary" },
   { ref: "session.audit", title: "SDK adoption audit" },
-] as const;
+] as const
 
-export type Workspace = "chat" | "home" | "settings";
+export type FixtureSessionRef = (typeof fixtureSessions)[number]["ref"]
+export type NativeWorkspace = "chat" | "home" | "settings"
 
-export interface SpikeMessage {
-  readonly key: string;
-  readonly role: "user" | "assistant" | "system";
-  readonly text: string;
-  readonly timestamp: string;
-}
+export type NativeStartupState = Readonly<{
+  revision: number
+  acknowledgedNativeSequence: number
+  workspace: NativeWorkspace
+  selectedSessionRef: FixtureSessionRef | null
+}>
 
-export interface SpikeState {
-  readonly workspace: Workspace;
-  readonly selectedSessionRef: string | null;
-  readonly input: string;
-  readonly messages: ReadonlyArray<SpikeMessage>;
-  readonly pending: boolean;
-  readonly revision: number;
-}
-
-export const DesktopInputChanged = defineIntent("DesktopInputChanged", Schema.String);
-export const DesktopNoteSubmitted = defineIntent("DesktopNoteSubmitted", Schema.NullOr(Schema.String));
-export const DesktopTurnInterrupted = defineIntent("DesktopTurnInterrupted", Schema.Null);
-export const DesktopNewChat = defineIntent("DesktopNewChat", Schema.Null);
-export const DesktopWorkspaceSelected = defineIntent("DesktopWorkspaceSelected", Schema.Literals(["chat", "home"]));
-export const DesktopSettingsToggled = defineIntent("DesktopSettingsToggled", Schema.Null);
-export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String);
-export const spikeIntents = [
-  DesktopInputChanged,
-  DesktopNoteSubmitted,
-  DesktopTurnInterrupted,
-  DesktopNewChat,
-  DesktopWorkspaceSelected,
-  DesktopSettingsToggled,
-  DesktopChatSelected,
-] as const;
-
-const initialMessages: ReadonlyArray<SpikeMessage> = [
+const initialNotes = [
   {
     key: "fixture-user",
-    role: "user",
-    text: "Bring the Native SDK spike one step closer to the real desktop app.",
-    timestamp: "10:42 AM",
+    role: "user" as const,
+    text: "Bring the Native SDK host one step closer to the real desktop app.",
+    timestamp: "10:42",
   },
   {
     key: "fixture-assistant",
-    role: "assistant",
-    text: "I’ll prove the session rail, transcript, composer, and a bounded Effect-authoritative bridge.",
-    timestamp: "10:42 AM",
+    role: "assistant" as const,
+    text: "This center pane is now the production Desktop Effect Native view and intent program.",
+    timestamp: "10:42",
   },
-];
+]
 
-export const initialSpikeState = (): SpikeState => ({
-  workspace: "chat",
-  selectedSessionRef: fixtureSessions[0].ref,
-  input: "",
-  messages: initialMessages,
-  pending: false,
-  revision: 1,
-});
-
-const transcriptMessage = (message: SpikeMessage): TranscriptMessage => ({
-  key: message.key,
-  role: message.role,
-  ...(message.role === "assistant" ? {} : { senderLabel: message.role === "user" ? "YOU" : "SYSTEM" }),
-  timestamp: message.timestamp,
-  body: [Text({
-    key: `${message.key}-body`,
-    content: message.text,
-    variant: "body",
-    color: message.role === "system" ? "textMuted" : "textPrimary",
-  })],
-});
-
-const composer = (state: SpikeState): View => Card({
-  key: "spike-composer",
-  padding: "2",
-  radius: "xl",
-  style: {
-    width: "full",
-    maxWidth: "2xl",
-    alignSelf: "center",
-    borderColor: "border",
-    borderWidth: 1,
-    marginBottom: "4",
-    surface: "glass",
+export const fixtureThreads: ReadonlyArray<DesktopThread> = [
+  {
+    id: fixtureSessions[0].ref,
+    title: fixtureSessions[0].title,
+    updatedAt: "2026-07-14T15:03:00.000Z",
+    notes: initialNotes,
   },
-}, [
-  TextField({
-    key: "spike-input",
-    value: state.input,
-    multiline: true,
-    placeholder: state.pending ? "Turn running…" : "Message",
-    clearOnSubmit: true,
-    onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
-    onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
-    style: { width: "full", minHeight: "2xs" },
-    a11y: { label: "Message" },
-  }),
-  Stack({ key: "spike-composer-bar", direction: "row", gap: "1", align: "center", style: { width: "full" } }, [
-    Text({ key: "spike-engine", content: "Codex", variant: "label", color: "textMuted" }),
-    Spacer({ key: "spike-composer-fill", flex: true }),
-    IconButton({
-      key: state.pending ? "spike-stop" : "spike-send",
-      icon: state.pending ? "Stop" : "ArrowUp",
-      accessibilityLabel: state.pending ? "Stop turn" : "Send message",
-      onPress: state.pending
-        ? IntentRef("DesktopTurnInterrupted")
-        : IntentRef("DesktopNoteSubmitted"),
-      style: state.input.trim() === "" || state.pending
-        ? { backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" }
-        : { backgroundColor: "accent", color: "textInverse", borderRadius: "full" },
-    }),
-  ]),
-]);
+  {
+    id: fixtureSessions[1].ref,
+    title: fixtureSessions[1].title,
+    updatedAt: "2026-07-14T15:02:00.000Z",
+    notes: [],
+  },
+  {
+    id: fixtureSessions[2].ref,
+    title: fixtureSessions[2].title,
+    updatedAt: "2026-07-14T15:01:00.000Z",
+    notes: [],
+  },
+]
 
-const chatView = (state: SpikeState): View => Stack({
-  key: "spike-chat",
-  direction: "column",
-  gap: "3",
-  padding: "4",
-  style: { width: "full", minHeight: 0, flex: 1 },
-}, [
-  Stack({ key: "spike-chat-header", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-    Stack({ key: "spike-chat-heading", direction: "column", gap: "0.5" }, [
-      Text({
-        key: "spike-chat-title",
-        content: fixtureSessions.find((session) => session.ref === state.selectedSessionRef)?.title ?? "New chat",
-        variant: "title",
-        color: "textPrimary",
-        weight: "semibold",
-      }),
-      Text({ key: "spike-chat-status", content: state.pending ? "Codex is working" : "Local fixture · no provider call", variant: "caption", color: "textMuted" }),
-    ]),
-    Spacer({ key: "spike-chat-header-fill", flex: true }),
-    Badge({ key: "spike-proof-badge", label: "HYBRID FIXTURE", tone: "info", variant: "soft", size: "sm" }),
-  ]),
-  Transcript({
-    key: "spike-transcript",
-    pinToEnd: true,
-    messages: state.messages.map(transcriptMessage),
-    style: { width: "full", maxWidth: "2xl", alignSelf: "center", flex: 1, minHeight: 0, paddingLeft: "4", paddingRight: "4", gap: "3" },
-  }),
-  composer(state),
-]);
+const fixtureSessionRefs = new Set(fixtureSessions.map((session) => session.ref))
 
-const secondaryView = (state: SpikeState): View => Stack({
-  key: `spike-${state.workspace}`,
-  direction: "column",
-  gap: "2",
-  padding: "6",
-  style: { width: "full", minHeight: 0, flex: 1 },
-}, [
-  Text({ key: "spike-secondary-title", content: state.workspace === "home" ? "Workspace" : "Settings", variant: "heading", color: "textPrimary", weight: "bold" }),
-  Text({
-    key: "spike-secondary-copy",
-    content: "This parity pass only implements the real app’s bounded MVP chat surface. Other workspaces remain explicit fixtures.",
-    variant: "body",
-    color: "textMuted",
-  }),
-]);
+export const isFixtureSessionRef = (value: string | null): value is FixtureSessionRef =>
+  value !== null && fixtureSessionRefs.has(value as FixtureSessionRef)
 
-export const spikeView = (state: SpikeState): View =>
-  state.workspace === "chat" ? chatView(state) : secondaryView(state);
+export const initialSpikeState = (
+  startup: NativeStartupState = { revision: 1, acknowledgedNativeSequence: 0, workspace: "chat", selectedSessionRef: fixtureSessions[0].ref },
+): DesktopShellState => {
+  const base = initialDesktopShellState("native-sdk/darwin", "10:42")
+  const selected = startup.selectedSessionRef === null
+    ? base
+    : { ...base, activeThreadId: startup.selectedSessionRef }
+  const withFixtureThreads = withThreads(selected, fixtureThreads)
+  return {
+    ...withFixtureThreads,
+    workspace: startup.workspace,
+    harnessLanes: {
+      fable: { available: false, reason: "Fable is unavailable in the Native SDK parity fixture" },
+      codex: { available: true, reason: null },
+    },
+    ...(startup.selectedSessionRef === null
+      ? { activeThreadId: null, notes: [] }
+      : {}),
+  }
+}
 
-const nextRevision = (state: SpikeState): number => state.revision + 1;
-
-export const makeSpikeRuntime = (restoredState: SpikeState = initialSpikeState()) => Effect.gen(function* () {
-  const state = yield* SubscriptionRef.make(restoredState);
-  const registry = yield* makeIntentRegistry(spikeIntents, {
-    DesktopInputChanged: (value: string) => SubscriptionRef.update(state, (current) => ({ ...current, input: value.slice(0, 4_000) })),
-    DesktopNoteSubmitted: (value: string | null) => SubscriptionRef.update(state, (current) => {
-      const text = (value ?? "").trim() || current.input.trim();
-      if (text === "") return current;
-      return {
+const makeFixtureChatHost = (): ChatHost => {
+  const threads = new Map(fixtureThreads.map((thread) => [thread.id, thread] as const))
+  let nextThread = 0
+  let nextMessage = 0
+  return {
+    listThreads: async () => [...threads.values()],
+    newThread: async () => {
+      const id = `native.fixture.new.${++nextThread}`
+      const thread: DesktopThread = {
+        id,
+        title: "New chat",
+        updatedAt: `2026-07-14T16:${String(nextThread).padStart(2, "0")}:00.000Z`,
+        notes: [],
+      }
+      threads.set(id, thread)
+      return thread
+    },
+    openThread: async (id) => threads.get(id) ?? null,
+    sendMessage: async ({ id, message }) => {
+      const current = threads.get(id)
+      if (current === undefined) return { ok: false, error: "The Native fixture thread is unavailable." }
+      const sequence = ++nextMessage
+      const thread: DesktopThread = {
         ...current,
-        input: "",
-        pending: true,
-        revision: nextRevision(current),
-        messages: [...current.messages, {
-          key: `fixture-user-${current.revision + 1}`,
-          role: "user" as const,
-          text: text.slice(0, 4_000),
-          timestamp: "now",
-        }],
-      };
-    }),
-    DesktopTurnInterrupted: () => SubscriptionRef.update(state, (current) => current.pending
-      ? { ...current, pending: false, revision: nextRevision(current) }
-      : current),
-    DesktopNewChat: () => SubscriptionRef.update(state, (current): SpikeState => ({
-      ...current,
-      workspace: "chat" as const,
-      selectedSessionRef: null,
-      input: "",
-      messages: [],
-      pending: false,
-      revision: nextRevision(current),
-    })),
-    DesktopWorkspaceSelected: (workspace: "chat" | "home") => SubscriptionRef.update(state, (current): SpikeState => ({
-      ...current,
-      workspace,
-      revision: nextRevision(current),
-    })),
-    DesktopSettingsToggled: () => SubscriptionRef.update(state, (current): SpikeState => ({
-      ...current,
-      workspace: "settings",
-      revision: nextRevision(current),
-    })),
-    DesktopChatSelected: (sessionRef: string) => SubscriptionRef.update(state, (current): SpikeState => {
-      if (!fixtureSessions.some((session) => session.ref === sessionRef)) return current;
-      return {
-        ...current,
-        workspace: "chat" as const,
-        selectedSessionRef: sessionRef,
-        messages: sessionRef === fixtureSessions[0].ref ? initialMessages : [],
-        pending: false,
-        revision: nextRevision(current),
-      };
-    }),
-  });
-  return { state, registry, program: makeViewProgramFromState(state, spikeView) };
-});
+        updatedAt: `2026-07-14T17:${String(sequence).padStart(2, "0")}:00.000Z`,
+        notes: [
+          ...current.notes,
+          { key: `native-user-${sequence}`, role: "user", text: message, timestamp: "now" },
+          {
+            key: `native-assistant-${sequence}`,
+            role: "assistant",
+            text: "Fixture response from the bounded Native host adapter; no provider was called.",
+            timestamp: "now",
+          },
+        ],
+      }
+      threads.set(id, thread)
+      return { ok: true, thread }
+    },
+    interruptActive: async () => false,
+  }
+}
+
+/** Host-only sizing wrapper; product content remains the exact Desktop pane. */
+export const spikeView = (state: DesktopShellState): View => Stack({
+  key: "native-desktop-center",
+  direction: "column",
+  style: { width: "full", height: "full", minHeight: 0 },
+}, [desktopShellMainView(state)])
+export type SpikeState = DesktopShellState
+
+export const makeSpikeRuntime = (restoredState: DesktopShellState = initialSpikeState()) =>
+  Effect.gen(function* () {
+    const state = yield* SubscriptionRef.make(restoredState)
+    const registry = yield* makeIntentRegistry(
+      desktopShellIntents,
+      makeDesktopShellHandlers(
+        state,
+        () => "10:42",
+        undefined,
+        makeFixtureChatHost(),
+      ),
+    )
+    return {
+      state,
+      registry,
+      program: makeViewProgramFromState(state, spikeView),
+    }
+  })

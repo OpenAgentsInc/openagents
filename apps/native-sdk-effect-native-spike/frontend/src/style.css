@@ -9,7 +9,7 @@
 
 html,
 body,
-#effect-native-root {
+#openagents-desktop-root {
   width: 100%;
   height: 100%;
   min-height: 100%;
@@ -19,9 +19,31 @@ body,
 
 body { background: #0b0d12; }
 
-#effect-native-root { min-width: 0; }
+#openagents-desktop-root { min-width: 0; }
 
-#effect-native-root:empty::before {
+#openagents-desktop-root > [data-en-react-surface="hybrid"],
+#openagents-desktop-root > [data-en-react-surface="hybrid"] > [data-effect-native-surface="dom"] {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Electron's shell-main is a flex sibling of its 232px sidebar and therefore
+   carries width:0 as a flex-sizing guard. In this host the native rail lives
+   outside the WebView, so the bounded host wrapper restores the pane box. */
+[data-en-key="native-desktop-center"] {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-en-key="native-desktop-center"] > [data-en-key="shell-main"] {
+  width: 100%;
+  height: 100%;
+}
+
+#openagents-desktop-root:empty::before {
   display: grid;
   height: 100%;
   place-items: center;

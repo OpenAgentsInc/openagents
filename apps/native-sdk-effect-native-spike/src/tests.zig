@@ -37,7 +37,7 @@ test "native selection waits for an Effect projection" {
 
 test "bounded projection updates the native mirror and rejects stale state" {
     const payload =
-        \\{"protocol":1,"revision":7,"workspace":"chat","selectedSessionRef":"session.renderer","messageCount":3,"pending":true,"status":"Codex is working"}
+        \\{"protocol":1,"revision":7,"workspace":"chat","selectedSessionRef":"session.renderer","messageCount":3,"pending":true,"status":"Codex is working","lastAppliedCommand":null}
     ;
     const projection = try main.parseProjection(payload);
     var model = main.initialModel();
@@ -49,7 +49,7 @@ test "bounded projection updates the native mirror and rejects stale state" {
     try testing.expect(model.pending);
     try testing.expectEqualStrings("Codex is working", model.status());
 
-    const stale = main.Projection{ .revision = 6, .workspace = .settings, .session = .audit, .message_count = 0, .pending = false, .status = "stale" };
+    const stale = main.Projection{ .revision = 6, .workspace = .settings, .session = .audit, .message_count = 0, .pending = false, .status = "stale", .last_applied_command_sequence = 0 };
     main.update(&model, .{ .sync_projection = stale });
     try testing.expectEqual(main.Workspace.chat, model.workspace);
     try testing.expectEqual(@as(u64, 7), model.projection_revision);
@@ -57,14 +57,42 @@ test "bounded projection updates the native mirror and rejects stale state" {
 
 test "projection protocol fails closed" {
     try testing.expectError(error.InvalidProtocol, main.parseProjection(
-        \\{"protocol":2,"revision":1,"workspace":"chat","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"bad"}
+        \\{"protocol":2,"revision":1,"workspace":"chat","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"bad","lastAppliedCommand":null}
     ));
     try testing.expectError(error.InvalidProjection, main.parseProjection(
-        \\{"protocol":1,"revision":1,"workspace":"fleet","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"bad"}
+        \\{"protocol":1,"revision":1,"workspace":"fleet","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"bad","lastAppliedCommand":null}
     ));
     var oversized: [main.bridge_payload_limit + 1]u8 = undefined;
     @memset(&oversized, 'x');
     try testing.expectError(error.PayloadTooLarge, main.parseProjection(&oversized));
+}
+
+test "native New Chat menu and shortcut share the canonical command" {
+    try testing.expectEqual(main.Msg.request_new_chat_menu, main.command("chat.new").?);
+    try testing.expect(main.command("shell.exec") == null);
+    try testing.expectEqual(@as(usize, 1), main.app_menus.len);
+    try testing.expectEqual(@as(usize, 1), main.file_menu_items.len);
+    try testing.expectEqualStrings("New Chat", main.file_menu_items[0].label);
+    try testing.expectEqualStrings("chat.new", main.file_menu_items[0].command);
+    try testing.expectEqualStrings("n", main.file_menu_items[0].key);
+    try testing.expect(main.file_menu_items[0].modifiers.command);
+}
+
+test "headed storage namespaces are bounded before entering the child URL" {
+    try testing.expect(main.validRunNamespace("18d940df-9c48-480a-b66b-c086c67442a6"));
+    try testing.expect(main.validRunNamespace("proof.42_native"));
+    try testing.expect(!main.validRunNamespace("../../shared"));
+    try testing.expect(!main.validRunNamespace(""));
+}
+
+test "applied production command metadata is exact" {
+    const projection = try main.parseProjection(
+        \\{"protocol":1,"revision":8,"workspace":"chat","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"Production Desktop shell synchronized","lastAppliedCommand":{"sequence":4,"commandId":"chat.new","intentName":"DesktopNewChat","source":"native_menu"}}
+    );
+    try testing.expectEqual(@as(u64, 4), projection.last_applied_command_sequence);
+    try testing.expectError(error.InvalidProjection, main.parseProjection(
+        \\{"protocol":1,"revision":8,"workspace":"chat","selectedSessionRef":null,"messageCount":0,"pending":false,"status":"bad","lastAppliedCommand":{"sequence":4,"commandId":"chat.create","intentName":"DesktopNewChat","source":"native_menu"}}
+    ));
 }
 
 test "web pane stays anchored to the full-height Effect Native surface" {
@@ -76,7 +104,10 @@ test "web pane stays anchored to the full-height Effect Native surface" {
     try testing.expectEqualStrings(main.effect_native_url, output[0].url);
     main.update(&model, .reload_effect_surface);
     _ = main.panes(&model, &output);
-    try testing.expectEqual(@as(u64, 1), output[0].reload_token);
+    try testing.expectEqual(@as(u64, 0), output[0].reload_token);
+    try testing.expectEqualStrings(main.effect_native_url, output[0].url);
+    try testing.expectEqual(main.OutboundIntent.reload_effect, model.outbound_intent);
+    try testing.expectEqual(@as(u64, 1), model.outbound_sequence);
     try testing.expect(model.awaiting_projection);
 }
 

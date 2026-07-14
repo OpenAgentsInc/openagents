@@ -57,6 +57,13 @@ const sourcePaths = [
   "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
   "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
   "apps/openagents-desktop/src/desktop-command-contract.ts",
+  "apps/openagents-desktop/package.json",
+  "apps/openagents-desktop/src/chat-contract.ts",
+  "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+  "apps/openagents-desktop/src/renderer/app.css",
+  "apps/openagents-desktop/src/renderer/command-registry.ts",
+  "apps/openagents-desktop/src/renderer/portable.ts",
+  "apps/openagents-desktop/src/renderer/shell.ts",
 ] as const;
 
 const sleep = (milliseconds: number): Promise<void> =>
@@ -173,10 +180,10 @@ const projectionRevision = (snapshot: string): number => {
   return Number(value);
 };
 
-const launch = (logs: string[]): ChildProcessWithoutNullStreams => {
+const launch = (logs: string[], runNonce: string): ChildProcessWithoutNullStreams => {
   const child = spawn(binary, [], {
     cwd: packageRoot,
-    env: process.env,
+    env: { ...process.env, NATIVE_SDK_ASSURANCE_RUN_NONCE: runNonce },
     stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdout.on("data", (chunk: Buffer) => logs.push(chunk.toString("utf8")));
@@ -220,7 +227,8 @@ const compositedWindowCapture = async (child: ChildProcessWithoutNullStreams, ou
   if (!/^\d+$/u.test(windowId)) throw new Error("Could not resolve the Native SDK macOS window id");
   const capture = spawnSync("screencapture", ["-x", `-l${windowId}`, outputPath], { encoding: "utf8" });
   if (capture.status !== 0 || !existsSync(outputPath) || statSync(outputPath).size < 10_000) {
-    throw new Error(`Composited Native SDK window capture failed: ${capture.stderr.trim()}`);
+    const detail = capture.error?.message ?? capture.stderr?.trim() ?? "no diagnostic output";
+    throw new Error(`Composited Native SDK window capture failed: ${detail}`);
   }
 };
 
@@ -252,12 +260,12 @@ let initialProcess: ProcessAttestation | null = null;
 let restartedProcess: ProcessAttestation | null = null;
 let child: ChildProcessWithoutNullStreams | null = null;
 try {
-  child = launch(logs);
+  child = launch(logs, runNonce);
   let snapshot = await waitForSnapshot(child, "initial Effect projection", (value) =>
     value.includes("dispatch_errors=0") &&
     value.includes("gpu_nonblank=true") &&
-    value.includes('url="zero://app/index.html"') &&
-    value.includes('name="Effect state synchronized"')
+    value.includes(`url="zero://app/index.html#surface=effect-native&assurance-run=${runNonce}"`) &&
+    value.includes('name="Production Desktop shell synchronized"')
   );
   if (child.pid === undefined) throw new Error("Initial Native SDK process has no PID");
   initialIdentity = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid) };
@@ -277,7 +285,7 @@ try {
   snapshot = await waitForSnapshot(child, "Effect-confirmed session selection", (value) =>
     /name="Renderer boundary".*state=\[[^\]]*selected/u.test(value) &&
     value.includes(`name="0 messages · revision ${revision + 1}"`) &&
-    value.includes('name="Effect state synchronized"')
+    value.includes('name="Production Desktop shell synchronized"')
   );
   revision += 1;
   copySnapshot("02-session-selected", snapshot);
@@ -312,7 +320,7 @@ try {
   snapshot = await waitForSnapshot(child, "Effect state after WebView reload", (value) =>
     /name="Renderer boundary".*state=\[[^\]]*selected/u.test(value) &&
     value.includes(`name="0 messages · revision ${revision + 1}"`) &&
-    value.includes('name="Effect state synchronized"')
+    value.includes('name="Production Desktop shell synchronized"')
   );
   revision += 1;
   copySnapshot("04-renderer-reload", snapshot);
@@ -322,21 +330,22 @@ try {
   rmSync(automationDir, { recursive: true, force: true });
   commandSequence = 0;
 
-  child = launch(logs);
+  child = launch(logs, runNonce);
   snapshot = await waitForSnapshot(child, "Effect state after native process restart", (value) =>
     value.includes("dispatch_errors=0") &&
     /name="Renderer boundary".*state=\[[^\]]*selected/u.test(value) &&
     projectionRevision(value) > revision &&
-    value.includes('name="Effect state synchronized"')
+    value.includes('name="Production Desktop shell synchronized"')
   );
   if (child.pid === undefined) throw new Error("Restarted Native SDK process has no PID");
   restartedIdentity = { pid: child.pid, publisherPid: requiredPublisherPid(snapshot, child.pid) };
   revision = projectionRevision(snapshot);
   copySnapshot("05-process-restart", snapshot);
 
-  await queueCommand(`widget-click native-shell ${widgetId(snapshot, "button", "New chat")}`, child);
-  snapshot = await waitForSnapshot(child, "Effect-confirmed new chat after restart", (value) =>
+  await queueCommand("menu-command chat.new", child);
+  snapshot = await waitForSnapshot(child, "production-resolved native New Chat command after restart", (value) =>
     value.includes(`name="0 messages · revision ${revision + 1}"`) &&
+    /name="Applied chat\.new → DesktopNewChat · native_menu · sequence [1-9]\d*"/u.test(value) &&
     !/name="(?:Native parity pass|Renderer boundary|SDK adoption audit)".*state=\[[^\]]*selected/u.test(value)
   );
   copySnapshot("06-new-chat", snapshot);

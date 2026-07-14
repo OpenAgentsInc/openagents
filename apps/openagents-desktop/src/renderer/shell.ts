@@ -4202,6 +4202,44 @@ const commandBindingSettings = (state: DesktopShellState): View => {
   )
 }
 
+/**
+ * The browser-safe product center pane without host-owned navigation chrome.
+ *
+ * Electron composes this with `shellSidebar` below. Alternative hosts can
+ * retain a platform-native rail while running the exact same Effect state,
+ * intents, handlers, and product content without rendering two sidebars.
+ */
+export const desktopShellMainView = (state: DesktopShellState): View =>
+  Stack(
+    {
+      key: "shell-main",
+      direction: "column",
+      gap: "3",
+      style: { flex: 1, minWidth: 0, minHeight: 0 },
+    },
+    [
+      // Transient command notice: a compact, floated warn toast (elevation
+      // + top-center anchor via the [data-en-key="desktop-command-notice"]
+      // app.css recipe), NOT the old raw full-width top-edge caption banner.
+      // Auto-clear + cancel-prior-timer is owned by the Effect-scheduled
+      // command-notice controller; the × / click here dispatches the typed
+      // immediate-dismiss intent. role=status + aria-live=polite are added
+      // by the render-dom Toast recipe.
+      ...(state.commandNotice === null ? [] : [Toast({
+        key: "desktop-command-notice",
+        notification: {
+          id: "desktop-command-notice",
+          tone: "warn",
+          title: state.commandNotice,
+        },
+        onDismiss: IntentRef("DesktopCommandNoticeDismissed"),
+      })]),
+      ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
+      ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
+      ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
+    ],
+  )
+
 export const desktopShellView = (state: DesktopShellState): View =>
   BackgroundGradient(
     {
@@ -4220,35 +4258,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
     },
     [
       shellSidebar(state),
-      Stack(
-        {
-          key: "shell-main",
-          direction: "column",
-          gap: "3",
-          style: { flex: 1, minWidth: 0, minHeight: 0 },
-        },
-        [
-          // Transient command notice: a compact, floated warn toast (elevation
-          // + top-center anchor via the [data-en-key="desktop-command-notice"]
-          // app.css recipe), NOT the old raw full-width top-edge caption banner.
-          // Auto-clear + cancel-prior-timer is owned by the Effect-scheduled
-          // command-notice controller; the × / click here dispatches the typed
-          // immediate-dismiss intent. role=status + aria-live=polite are added
-          // by the render-dom Toast recipe.
-          ...(state.commandNotice === null ? [] : [Toast({
-            key: "desktop-command-notice",
-            notification: {
-              id: "desktop-command-notice",
-              tone: "warn",
-              title: state.commandNotice,
-            },
-            onDismiss: IntentRef("DesktopCommandNoticeDismissed"),
-          })]),
-          ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
-          ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : [projectHome(state)]),
-        ],
-      ),
+      desktopShellMainView(state),
     ],
   )],
   )

@@ -109,7 +109,7 @@ export const workspaceAdmissionFromSnapshot = (
   const grants = [resolved.repository.grant, resolved.worktree.grant, resolved.session.grant]
   if (grants.some(grant => grant.state !== "granted")) return null
   const grantRefs = grants.map(grant => grant.state === "granted" ? grant.grantRef : null)
-  const grantRef = grantRefs[0]
+  const grantRef = grantRefs[0] ?? null
   if (grantRef === null || grantRefs.some(value => value !== grantRef)) return null
   return {
     grantRef,

@@ -112,6 +112,13 @@ export const nativeSdkHostGateSourcePaths = [
   "apps/native-sdk-effect-native-spike/scripts/host-gate.ts",
   "apps/native-sdk-effect-native-spike/scripts/run-host-smoke.ts",
   "apps/openagents-desktop/src/desktop-command-contract.ts",
+  "apps/openagents-desktop/package.json",
+  "apps/openagents-desktop/src/chat-contract.ts",
+  "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+  "apps/openagents-desktop/src/renderer/app.css",
+  "apps/openagents-desktop/src/renderer/command-registry.ts",
+  "apps/openagents-desktop/src/renderer/portable.ts",
+  "apps/openagents-desktop/src/renderer/shell.ts",
 ] as const
 
 export type NativeSdkHostGateReceipt = Readonly<{

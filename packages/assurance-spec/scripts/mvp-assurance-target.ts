@@ -135,6 +135,9 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
       "apps/native-sdk-effect-native-spike/src/main.zig",
       "apps/native-sdk-effect-native-spike/frontend/src/program.ts",
       "apps/native-sdk-effect-native-spike/package.json",
+      "apps/openagents-desktop/src/renderer/portable.ts",
+      "apps/openagents-desktop/src/renderer/shell.ts",
+      "apps/openagents-desktop/package.json",
     ],
   },
   dependencyLockPath: "pnpm-lock.yaml",
@@ -151,6 +154,13 @@ export const nativeSdkMvpAssuranceTarget: MvpAssuranceTargetDescriptor = {
     "apps/native-sdk-effect-native-spike/build.zig.zon",
     "apps/native-sdk-effect-native-spike/package.json",
     "apps/openagents-desktop/src/desktop-command-contract.ts",
+    "apps/openagents-desktop/package.json",
+    "apps/openagents-desktop/src/chat-contract.ts",
+    "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+    "apps/openagents-desktop/src/renderer/app.css",
+    "apps/openagents-desktop/src/renderer/command-registry.ts",
+    "apps/openagents-desktop/src/renderer/portable.ts",
+    "apps/openagents-desktop/src/renderer/shell.ts",
   ],
 };
 

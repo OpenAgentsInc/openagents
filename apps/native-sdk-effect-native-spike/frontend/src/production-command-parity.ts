@@ -1,7 +1,10 @@
 import {
+  decodeDesktopDeferredCommand,
   desktopCanonicalCommandRegistry,
+  type DesktopDeferredCommand,
   type DesktopCommandId,
-} from "../../../openagents-desktop/src/desktop-command-contract.ts"
+} from "@openagentsinc/openagents-desktop/desktop-command-contract"
+import { resolveDesktopDeferredCommandIntent } from "@openagentsinc/openagents-desktop/renderer-command-registry"
 
 export type NativeProductionCommandAction = "new_chat" | "workspace_chat" | "workspace_home" | "settings"
 
@@ -37,6 +40,26 @@ export const productionCommandIdForAction = (action: NativeProductionCommandActi
   const binding = nativeProductionCommandBindings.find((candidate) => candidate.action === action)
   if (binding === undefined) throw new Error(`native_production_command_unknown:${action}`)
   return binding.commandId
+}
+
+export type ResolvedNativeDeferredCommand = Readonly<{
+  command: DesktopDeferredCommand
+  intentName: string
+  payload: null | string
+}>
+
+/** Decode and resolve through the production Desktop command contracts. */
+export const resolveNativeDeferredCommand = (candidate: unknown): ResolvedNativeDeferredCommand => {
+  const command = decodeDesktopDeferredCommand(candidate, { onExcessProperty: "error" })
+  const resolved = resolveDesktopDeferredCommandIntent(command, {
+    sessionReady: true,
+    workspaceReady: true,
+    verifiedOwner: true,
+  })
+  if (resolved.state !== "ready") {
+    throw new Error(`native_deferred_command_rejected:${resolved.reason}`)
+  }
+  return { command, intentName: resolved.intentName, payload: resolved.payload }
 }
 
 assertNativeProductionCommandBindings()

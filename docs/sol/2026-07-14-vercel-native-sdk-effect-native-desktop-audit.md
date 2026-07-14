@@ -1,20 +1,23 @@
 # Vercel Native SDK, Effect Native, and OpenAgents Desktop audit
 
 - Date: 2026-07-14
-- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; assurance/real-command continuation integrated after React/Tailwind renderer-host cutover `a75d1ceaef739107711f88a6cdf666085c66151b`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)
+- Snapshot: analysis at OpenAgents `843668fd3784ca0901dfd835af5c860a1c6504dc`; initial parity pass `9c65c7a81d080cd877e402cfca0fcab2e6f22969`; typed headed-gate continuation based on `7d5a8720ae8c4b63fd08f98a4bfc22c0fec862e5`; assurance/real-command continuation integrated after React/Tailwind renderer-host cutover `a75d1ceaef739107711f88a6cdf666085c66151b` and reverified after the finalized React projection boundary `e7ff7c457b7556121503927805084c1b0839e13b`; Native SDK `f7aa92af6dcece250feba852af4d22e7f5429312` (`v0.5.1`); vendored Effect Native `d82ef135a43420883bacf9580f5b644b40787b23` (`effect-native/v39`)
 - Class: architecture and dependency audit
-- Status: recommendation with bounded hybrid implementation receipt; no
-  migration or release authority
-- Dispatch: no; the authorized hybrid spike is complete, and any native
-  renderer or product migration still needs a bounded issue and claim
+- Status: recommendation with a bounded real-Desktop hybrid implementation
+  receipt; no migration or release authority
+- Dispatch: no; the authorized hybrid and real-center-pane parity increment
+  are complete, and any native renderer or product migration still needs a
+  bounded issue and claim
 - Owner: OpenAgents Desktop and Effect Native architecture
 - Final disposition: retain until Native SDK is adopted, rejected, or superseded by a later renderer/host decision
 - Decision: retain Electron as the shipping OpenAgents Desktop host; keep the
-  completed hybrid spike as evidence that the two runtimes compose; treat
+  completed hybrid spike as evidence that Native SDK can host the production
+  Desktop center pane and command contracts; treat
   Native SDK's component catalog as renderer implementation material, not a
-  second Effect Native authoring API; require the next proof to be a real
-  native lowering rather than another WebView shell; require targeted child-
-  WebView event delivery before treating hybrid native controls as production
+  second Effect Native authoring API; require the next renderer proof to be a
+  real native lowering rather than another WebView shell; require targeted
+  child-WebView event delivery before treating hybrid native controls as
+  production
 
 ## Executive decision
 
@@ -59,9 +62,9 @@ enough to displace Electron today. The rational near-term action is to learn
 from Native SDK's deterministic rendering, accessibility snapshots, automation,
 source provenance, explicit capability policy, and headless `NullPlatform`,
 while shipping the existing Electron + Effect Native design. The bounded
-hybrid spike recorded below proves that Native SDK and a real Effect Native
-program can share one window. It does **not** prove a native Effect Native
-renderer. A future spike should prove a small
+hybrid spike recorded below proves that Native SDK and the actual OpenAgents
+Desktop center-pane program can share one window. It does **not** prove a
+native Effect Native renderer. A future spike should prove a small
 `@effect-native/render-native-sdk` adapter, not begin an OpenAgents Desktop
 rewrite.
 
@@ -84,32 +87,41 @@ flowchart LR
   Canvas --> Chrome["Native 232px session rail"]
   Canvas --> Anchor["Semantic WebView pane anchor"]
   Anchor --> WV["WKWebView child surface"]
-  WV --> EN["Effect Native ViewProgram + typed intents"]
-  EN --> DOM["@effect-native/render-dom"]
+  WV --> React["React 19 + Tailwind host"]
+  React --> EN["Production Desktop center pane"]
+  EN --> Program["Real Desktop state + intents + handlers"]
+  Program --> DOM["React-owned Effect Native DOM renderer"]
   Chrome --> Pull["sequence + acknowledged intent"]
-  Pull --> EN
-  EN --> Projection["versioned Effect projection"]
+  Pull --> Program
+  Program --> Projection["versioned bounded projection"]
   Projection --> Chrome
 ```
 
 Native SDK owns the window, Metal-backed retained canvas, opinionated native
 list/focus components, layout, accessibility snapshot, child-WebView bounds,
-and deterministic automation. Inside the WebView, real Effect v4 owns a
-`SubscriptionRef`, typed `defineIntent` definitions, an `IntentRegistry`, a
-`ViewProgram`, and the
-shared Effect Native catalog rendered by `@effect-native/render-dom`.
+and deterministic automation. Inside the WebView, React 19 and the
+React-owned Effect Native DOM renderer mount the exported production Desktop
+center pane. The app imports the real `DesktopShellState`,
+`desktopShellIntents`, `makeDesktopShellHandlers`, and
+`desktopShellMainView`; Effect v4 owns the `SubscriptionRef`, intent registry,
+view stream, and lifecycle. The only application substitute is a bounded
+in-memory `ChatHost` with privacy-safe thread data and no provider execution.
 
-The current screen deliberately mirrors the real Desktop MVP shape rather than
-a counter demo:
+The current screen is now the real Desktop MVP center pane rather than a
+parallel reproduction:
 
 - hidden-inset 1200×800 window and full-height 232px native session rail;
 - New chat, Chat, Workspace, three recent fixture sessions, and Settings in
   retained Native SDK controls;
-- Effect Native `Transcript`, multiline `TextField`, fixed Codex label, and
-  icon-only send/stop control using the shared Khala theme;
-- deterministic privacy-safe messages and no provider call;
-- typed blank-submit no-op, nonblank append/clear/pending behavior, new-chat
-  reset, workspace selection, and session selection.
+- the production Desktop transcript, composer, workspace panes, tokens, React
+  host, CSS, Effect Native views, and typed intent handlers in the child pane;
+- a host-only sizing wrapper that deliberately omits the production Desktop
+  sidebar because the Native retained rail owns that region;
+- deterministic privacy-safe messages and a bounded in-memory `ChatHost`, so
+  no provider, credential, workspace, process, Git, or session-custody service
+  is invoked;
+- real Desktop blank-submit, submit, new-chat, workspace, and thread-selection
+  behavior against that bounded host adapter.
 
 Effect remains the product authority. A native click only records a bounded
 intent and shows a synchronization state. The native model's selected row,
@@ -125,20 +137,36 @@ application-enforced 8 KiB JSON limit. Unknown workspaces, sessions, versions,
 oversized messages, stale projections, and out-of-range acknowledgements fail
 closed. `js_window_api` stays disabled.
 
-The latest parity increment removes another fixture-only seam: native New
-chat, Chat, Workspace, and Settings actions now carry the exact production
-Desktop command IDs (`chat.new`, `chat.open`, `workspace.home`, and
-`settings.open`). The Effect program uses the matching real Desktop intent
-names (`DesktopNewChat`, `DesktopWorkspaceSelected`,
-`DesktopSettingsToggled`, `DesktopChatSelected`, `DesktopNoteSubmitted`, and
-`DesktopTurnInterrupted`). A source import of the canonical Desktop command
-registry checks the mapping at module load and in tests; wrong command/intent
-pairs fail decoding. This is meaningful command-contract reuse, but it is only
-a partial `CW-AC-12` anchor because the fixture still lacks durable host
-dispatch, idempotency, steer/queue/question/approval/review flows, and the real
-sidecar services.
+The latest parity increment removes two fixture-only seams. Native New chat,
+Chat, Workspace, and Settings actions carry the exact production Desktop
+command IDs (`chat.new`, `chat.open`, `workspace.home`, and `settings.open`)
+into the actual Desktop intent registry. More importantly, the macOS File →
+New Chat command and ⌘N shortcut produce a complete
+`openagents.desktop.deferred_command.v1` value. The browser-safe seam imports
+the production strict decoder and `resolveDesktopDeferredCommandIntent`, then
+dispatches the resolved `DesktopNewChat` intent. Wrong arguments, duplicate
+delivery, excess properties, unknown commands, and non-menu substitutions fail
+closed. The native rail renders the exact post-dispatch evidence
+`chat.new → DesktopNewChat · native_menu · sequence N` only after the real
+handler returns a higher-revision projection. Direct rail navigation remains
+a bounded host adapter; for example Settings selects the production
+`DesktopWorkspaceSelected("settings")` intent rather than claiming that every
+rail click traverses Electron's host-command delivery path. This is meaningful
+command-contract reuse, but it is only a partial `CW-AC-12` anchor because the
+fixture still lacks durable host dispatch, provider/session custody,
+idempotency, steer/queue/question/approval/review flows, and the real sidecar
+services.
 
-One upstream boundary became observable during this pass: Native SDK 0.5.1's
+The production Desktop seam is deliberately small and reusable. Electron still
+calls `desktopShellView`, which composes `shellSidebar` with
+`desktopShellMainView`; the Native host imports only
+`desktopShellMainView` through `renderer-portable`. A focused regression test
+proves Electron still emits one sidebar and one main pane while the portable
+view emits no sidebar. This keeps one product implementation without making
+the Native rail a second copy of Desktop's center content.
+
+Two upstream lifecycle/transport boundaries became observable during this
+pass. Native SDK 0.5.1's
 macOS bridge response path can target a child WebView by label, but
 `emitWindowEvent` evaluates JavaScript only in the primary window WebView. The
 Effect renderer is a declared child WebView, so native-to-Effect events do not
@@ -146,7 +174,13 @@ arrive there. The spike consequently uses a 120 ms Effect-initiated
 projection/pull with acknowledged native sequence. That is acceptable for a
 research fixture and not an endorsed production transport. A native renderer
 or production hybrid needs targeted child-WebView events, a primary-WebView
-topology, or the proposed sidecar renderer protocol.
+topology, or the proposed sidecar renderer protocol. Its same-URL child-WebView
+reload token was also unreliable once the React-owned production pane became
+substantially heavier. The bounded gate therefore sends an exact host lifecycle
+intent over the existing bridge, closes the Effect renderer `Scope`, mounts a
+new React/Effect renderer `Scope` over the same state, and requires a higher
+revision. This proves renderer teardown/remount, not WKWebView document reload;
+document-level child-WebView reload remains an upstream gap.
 
 The app exact-pins the audited Native SDK commit and archive hash in
 `build.zig.zon`; it does not depend on the machine-specific
@@ -161,9 +195,9 @@ Native SDK 0.5.1 source:
 
 ```text
 pnpm run typecheck             -> exit 0
-vp test --run frontend/src     -> 2 files, 10 tests passed
-vp build                       -> exit 0; 202 modules transformed
-zig build test                 -> exit 0; 6 native tests passed
+vp test --run frontend/src     -> 2 files, 12 tests passed
+vp build                       -> exit 0; 290 modules transformed
+zig build test                 -> exit 0; 9 native tests passed
 zig build                      -> exit 0
 native validate app.zon        -> manifest.valid
 native check . --strict        -> web layer included; manifest valid
@@ -172,12 +206,13 @@ pnpm run smoke                 -> production-asset headed host gate passed
 
 The native tests prove that a native click does not directly mutate selection,
 valid higher-revision projections update the mirror, stale/malformed/oversized
-projections fail closed, the WebView stays anchored, expected Native SDK
-component descriptors remain present, and the product shell lays out. The
-Effect Native tests prove composer submit and blank/new-chat semantics,
-Transcript/TextField/IconButton catalog emission, strict bridge intent decoding,
-bounded projection size, the three-session ceiling, explicit component
-adoption matrix, and bounded reload/restart state encoding.
+projections fail closed, the macOS menu and ⌘N shortcut share the canonical
+command, exact applied-command evidence is validated, the WebView stays
+anchored, expected Native SDK component descriptors remain present, and the
+product shell lays out. The TypeScript tests exercise the real Desktop
+composer and handlers, portable pane composition, production deferred-command
+decode/resolve path, strict bridge intent decoding, bounded projection and
+storage, the three-session ceiling, and the component-adoption matrix.
 
 A first manual `native dev -Dautomation=true` smoke proved the development
 composition. The parity increment then added
@@ -188,23 +223,23 @@ child PID and protocol 6, resolves each short-lived widget id from current
 semantic role/name, and produces this nine-step private record:
 
 ```text
-1  initial production Effect projection
-2  macOS composited capture -> native rail + live Effect Native pixels
+1  initial production Desktop center-pane projection
+2  macOS composited capture -> native rail + real Desktop center-pane pixels
 3  native session click -> higher-revision Effect-confirmed selection
-4  native workspace round trip -> higher-revision Effect projections
+4  native workspace round trip -> higher-revision Desktop projections
 5  deterministic retained-canvas screenshot
-6  Effect WebView reload -> state restored
-7  native process restart -> state restored under a distinct PID
-8  New chat after restart -> no selected fixture session
+6  React-owned Effect renderer teardown/remount -> state retained
+7  native process restart -> bounded rail state restored under a distinct PID
+8  Native File menu chat.new -> production decode/resolve/dispatch evidence
 9  clean teardown of both attested process generations
 ```
 
 The passing run had zero dispatch errors, a nonblank 1200×800 Metal surface,
-17 retained widgets / 17 semantics, a 19.4 ms first native frame inside the
+18 retained widgets / 18 semantics, a 19.4 ms first native frame inside the
 150 ms SDK budget, a named 968×800 child WebView, an accessibility projection,
-and a 3.7 MiB deterministic native-canvas PNG. The continuation also captured
-a 2536×1736 macOS window PNG containing the composited native rail and live
-Effect Native transcript/composer. Its private, schema-decoded
+and a deterministic native-canvas PNG. The continuation also captured a
+2536×1736 macOS window PNG containing the composited native rail and real
+Desktop transcript/composer. Its private, schema-decoded
 `openagents.native-sdk.host-gate.v3` JSON binds a run nonce, exact
 initial/restart PIDs and termination results, protocol 6, macOS ARM64, Node
 24.13.1, Zig 0.16.0, the exact Native SDK commit, command, binary,
@@ -219,23 +254,30 @@ The run found and fixed a real production-path defect: the hybrid wrapper had
 not installed `native_sdk.frontend.productionSource`, so a direct built binary
 could paint the native shell but could not resolve `zero://app` and was only
 functional when `native dev` injected a Vite URL. The wrapper now supplies the
-production asset source and environment-aware development source, and rejects
-bridge projections from every WebView label except `effect-native-surface`.
+production asset source and environment-aware development source. That source
+also creates a primary asset WebView in addition to the named child; without an
+explicit surface marker both documents booted and raced the same bounded
+storage key. The child URL is now marked and given a bounded run-nonce storage
+namespace, the frontend refuses to boot product state in the primary WebView,
+and the host rejects bridge projections from every WebView label except
+`effect-native-surface`.
 
-The composited live window and new macOS capture show the Native SDK controls
-and the live Effect Native catalog together. Native SDK's deterministic PNG
+The composited live window and macOS capture show the Native SDK controls and
+the real Desktop center pane together. Native SDK's deterministic PNG
 still covers only the retained GPU surface, so the two artifacts remain
 separate: deterministic native render evidence and composited-pixel evidence.
 Neither extracts child-WebView DOM semantics. Native catalog lowering,
-packaging/signing, accessibility acceptance, provider execution, and Electron
-host parity remain unproven.
+packaging/signing, accessibility acceptance, provider execution, host-service
+parity, and full Electron lifecycle parity remain unproven.
 
-This receipt changes two conclusions from hypothetical to observed: Option A,
-the hybrid WebView shell works, and Effect can remain authoritative while a
-Native SDK component mirrors and initiates a real session-selection intent. It
-also turns targeted child-WebView event delivery from a theoretical concern
-into a measured integration gap. The receipt does not satisfy NS-1 or NS-2
-below and does not change the shipping-host decision.
+This receipt changes three conclusions from hypothetical to observed: Option
+A can host the real Desktop center pane without duplicating that pane; Effect
+can remain authoritative while Native SDK components mirror and initiate real
+Desktop intents; and a Native menu command can traverse the production strict
+decoder/resolver. It also turns targeted child-WebView event delivery and
+same-URL document reload from theoretical concerns into measured integration
+gaps. The receipt does not satisfy NS-1 or NS-2 below and does not change the
+shipping-host decision.
 
 ## MVP AssuranceSpec integration audit
 
@@ -309,13 +351,15 @@ timing-sensitive Electron smoke retry during this continuation.
 ### Honest Native target boundary
 
 The new headed gate is a useful **host-smoke substrate**, not a passing MVP
-AssuranceSpec. It confirms production asset loading, live native controls,
-bounded native→Effect actions, monotonic Effect projections, native canvas
-evidence, reload, restart, and teardown. It does not confirm ordinary logged-in
-Codex custody, ProductSpec/work packets, real child agents, granted repository
-and Git operations, durable provider-turn recovery, update staging, privacy
-diagnostics, or signed/notarized lifecycle. None of `CW-AC-01…18` is fully
-confirmed end-to-end by the fixture.
+AssuranceSpec. It confirms production asset loading, the real Desktop center
+pane and intent program, live native controls, bounded native→Effect actions,
+one production-decoded native menu command, monotonic Effect projections,
+native canvas evidence, renderer remount, process restart, and teardown. It
+does not confirm ordinary logged-in Codex custody, ProductSpec/work packets,
+real child agents, granted repository and Git operations, durable provider-turn
+recovery, update staging, privacy diagnostics, or signed/notarized lifecycle.
+None of `CW-AC-01…18` is fully confirmed end-to-end by the fixture; the native
+menu path remains only partial evidence for `CW-AC-12`.
 
 A passing Native lane uses these stable identities:
 
@@ -372,12 +416,12 @@ Completed steps now include owned-runner freshness, outer/child runtime
 fidelity, disjoint target descriptors, a red Native criterion catalog, the
 namespaced environment/two-adapter design, all 36 executable units, typed v3
 host evidence, independent artifact rehashing, target-bound host normalization,
-and macOS composited capture. The next honest sequence is to mount the real
-shared Desktop Effect Native renderer, add a bundled Node 24 sidecar around the
-Electron-neutral services, replace each empty Native criterion anchor with an
-integration observation and falsifier, add browser/semantic evidence, and
-finish with signed install/update/rollback/uninstall evidence plus post-run
-review.
+macOS composited capture, the real shared Desktop center pane, and production
+`chat.new` decode/resolve/dispatch. The next honest sequence is to add a
+bundled Node 24 sidecar around Electron-neutral services, replace each empty
+Native criterion anchor with an integration observation and falsifier, add
+browser/semantic evidence for the real child pane, and finish with signed
+install/update/rollback/uninstall evidence plus post-run review.
 
 ## How to harness Native SDK's opinionated components
 
@@ -405,9 +449,9 @@ unsupported specialist. It is a research matrix, not a parity claim.
 The parity pass also exercises one useful subset in context: Native SDK's
 retained `list_item`, selected/focus state, dark Geist theme, blue accent,
 hidden-inset chrome, semantic snapshot, stable widget identity, and automation
-form the session rail around the unchanged Effect Native transcript/composer.
-This is the right reuse direction—opinionated native behavior behind a narrow
-renderer/host boundary—not a reason to expose Native SDK props to product code.
+form the session rail around the production Desktop center pane. This is the
+right reuse direction—opinionated native behavior behind a narrow renderer/
+host boundary—not a reason to expose Native SDK props to product code.
 
 The key architectural opinion is: **adopt Native SDK's component
 implementations and behavioral rigor behind Effect Native; do not adopt its

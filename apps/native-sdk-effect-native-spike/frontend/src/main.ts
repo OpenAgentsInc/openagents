@@ -1,56 +1,92 @@
 import { IntentRef, resolveIntentRef, StaticPayload, type IntentReporter } from "@effect-native/core";
-import { Effect, Exit, Scope, Stream, SubscriptionRef } from "@effect-native/core/effect";
-import { makeDomRenderer } from "@effect-native/render-dom";
+import { Effect, Exit, Scope, SubscriptionRef } from "@effect-native/core/effect";
+import { makeStubCodeEditorDriver } from "@effect-native/render-dom";
+import { makeReactDomRenderer } from "@effect-native/render-dom/react";
 import { khalaTheme } from "@effect-native/tokens";
+import "@openagentsinc/openagents-desktop/renderer.css";
 
-import { startNativeBridgeSync } from "./native-bridge.ts";
-import { makeSpikeRuntime } from "./program.ts";
+import { resolveNativeDispatch, startNativeBridgeSync } from "./native-bridge.ts";
+import { initialSpikeState, makeSpikeRuntime } from "./program.ts";
 import { persistSpikeState, restoreSpikeState, spikeStorageNamespace } from "./state-storage.ts";
 import "./style.css";
 
 const boot = (): void => {
-  const root = document.getElementById("effect-native-root");
+  const root = document.getElementById("openagents-desktop-root");
   if (!(root instanceof HTMLElement)) return;
 
   const scope = Effect.runSync(Scope.make());
+  let rendererScope = Effect.runSync(Scope.make());
   let disposeNativeIntent = (): void => undefined;
-  window.addEventListener("pagehide", () => {
+  let scopeClosed = false;
+  window.addEventListener("pagehide", (event) => {
+    // WebKit may place the child pane in its back-forward cache while Native
+    // SDK reconciles a reload token. Keep the mounted program alive for that
+    // reversible transition; a non-persisted document exit owns teardown.
+    if (event.persisted || scopeClosed) return;
+    scopeClosed = true;
     disposeNativeIntent();
+    void Effect.runPromise(Scope.close(rendererScope, Exit.void));
     void Effect.runPromise(Scope.close(scope, Exit.void));
-  }, { once: true });
+  });
 
   const mount = Effect.gen(function* () {
     const storageNamespace = spikeStorageNamespace(window.location.href);
-    const runtime = yield* makeSpikeRuntime(restoreSpikeState(window.localStorage, storageNamespace));
-    yield* SubscriptionRef.changes(runtime.state).pipe(
-      Stream.runForEach((state) => Effect.sync(() => {
-        persistSpikeState(window.localStorage, storageNamespace, state);
-      })),
-      Effect.forkScoped,
-    );
+    const restored = restoreSpikeState(window.localStorage, storageNamespace);
+    const runtime = yield* makeSpikeRuntime(initialSpikeState(restored));
+    let acknowledgedNativeSequence = restored.acknowledgedNativeSequence;
+    window.addEventListener("pageshow", (event) => {
+      if (!event.persisted) return;
+      // The pane generation changed even though product state did not. A new
+      // immutable state identity advances the bounded native projection.
+      void Effect.runPromise(SubscriptionRef.update(runtime.state, (current) => ({ ...current })));
+    });
     const report: IntentReporter = (ref, runtimeValue) =>
       Effect.gen(function* () {
         yield* runtime.registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null));
       });
 
+    const renderer = makeReactDomRenderer({
+      theme: khalaTheme,
+      hostDrivers: [makeStubCodeEditorDriver()],
+    });
+    yield* Scope.provide(rendererScope)(renderer.mount(root, runtime.program.viewStream, report));
+    document.documentElement.dataset.effectNativeMounted = "true";
+    // Native receives no authoritative projection until the real React-owned
+    // Desktop pane has completed its first Effect Native mount.
     disposeNativeIntent = startNativeBridgeSync(
       () => Effect.runPromise(SubscriptionRef.get(runtime.state)),
-      (envelope) => {
-        const action = envelope.intent;
-        const ref = action._tag === "NewChatRequested"
-          ? IntentRef("DesktopNewChat")
-          : action._tag === "WorkspaceSelected"
-            ? action.workspace === "settings"
-              ? IntentRef("DesktopSettingsToggled")
-              : IntentRef("DesktopWorkspaceSelected", StaticPayload(action.workspace))
-            : IntentRef("DesktopChatSelected", StaticPayload(action.sessionRef));
-        void Effect.runPromise(runtime.registry.dispatch(resolveIntentRef(ref, null)));
+      async (envelope) => {
+        if (envelope.intent._tag === "RendererReloadRequested") {
+          await Effect.runPromise(Scope.close(rendererScope, Exit.void));
+          rendererScope = Effect.runSync(Scope.make());
+          await Effect.runPromise(Scope.provide(rendererScope)(
+            renderer.mount(root, runtime.program.viewStream, report),
+          ));
+          await Effect.runPromise(SubscriptionRef.update(runtime.state, (current) => ({ ...current })));
+          return null;
+        }
+        const dispatch = resolveNativeDispatch(envelope);
+        const ref = dispatch.payload === null
+          ? IntentRef(dispatch.intentName)
+          : IntentRef(dispatch.intentName, StaticPayload(dispatch.payload));
+        await Effect.runPromise(runtime.registry.dispatch(resolveIntentRef(ref, null)));
+        return dispatch.appliedCommand;
+      },
+      {
+        // One host-generation fence in addition to storage decode's document
+        // bump prevents a just-terminated WebKit process from racing its last
+        // asynchronous localStorage flush during the headed restart proof.
+        initialRevision: restored.revision + 1,
+        initialAcknowledgedSequence: acknowledgedNativeSequence,
+        onProjection: (state, revision) => {
+          persistSpikeState(window.localStorage, storageNamespace, state, revision, acknowledgedNativeSequence);
+        },
+        onAcknowledged: (state, revision, sequence) => {
+          acknowledgedNativeSequence = sequence;
+          persistSpikeState(window.localStorage, storageNamespace, state, revision, acknowledgedNativeSequence);
+        },
       },
     );
-
-    const renderer = makeDomRenderer({ theme: khalaTheme });
-    yield* renderer.mount(root, runtime.program.viewStream, report);
-    document.documentElement.dataset.effectNativeMounted = "true";
   });
 
   void Effect.runPromise(Scope.provide(scope)(mount)).catch((error) => {
@@ -59,5 +95,20 @@ const boot = (): void => {
   });
 };
 
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
-else boot();
+const isNamedEffectNativeSurface = (): boolean => {
+  try {
+    return new URLSearchParams(window.location.hash.slice(1)).get("surface") === "effect-native";
+  } catch {
+    return false;
+  }
+};
+
+// Native SDK's production asset source also creates a primary WebView. Only
+// the explicitly marked child pane may own Desktop state, storage, or bridge
+// polling; otherwise two app instances race the same persisted projection.
+if (isNamedEffectNativeSurface()) {
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
+  else boot();
+} else {
+  document.documentElement.dataset.openagentsSurface = "native-primary-host";
+}

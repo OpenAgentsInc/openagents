@@ -20,10 +20,18 @@
     "@effect-native/core": "workspace:*",
     "@effect-native/render-dom": "workspace:*",
     "@effect-native/tokens": "workspace:*",
-    "effect": "catalog:"
+    "@openagentsinc/openagents-desktop": "workspace:*",
+    "effect": "catalog:",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
     "@types/node": "catalog:",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "tailwindcss": "^4.2.2",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "0.2.4"

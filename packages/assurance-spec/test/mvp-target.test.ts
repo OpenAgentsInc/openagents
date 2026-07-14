@@ -32,6 +32,12 @@ describe("MVP assurance execution targets", () => {
     expect(nativeSdkMvpAssuranceTarget.criterion.testPath).not.toContain("openagents-desktop/src");
     expect(nativeSdkMvpAssuranceTarget.targetSourcePaths.filter((path) => path.includes("openagents-desktop/src"))).toEqual([
       "apps/openagents-desktop/src/desktop-command-contract.ts",
+      "apps/openagents-desktop/src/chat-contract.ts",
+      "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+      "apps/openagents-desktop/src/renderer/app.css",
+      "apps/openagents-desktop/src/renderer/command-registry.ts",
+      "apps/openagents-desktop/src/renderer/portable.ts",
+      "apps/openagents-desktop/src/renderer/shell.ts",
     ]);
     expect(JSON.stringify(nativeSdkMvpAssuranceTarget)).not.toContain("rc9");
     expect(nativeSdkMvpAssuranceTarget.fullGate.smokeField).toBe("native_sdk_smoke");
