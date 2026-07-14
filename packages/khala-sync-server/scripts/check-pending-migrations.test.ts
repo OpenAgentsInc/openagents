@@ -29,6 +29,6 @@ describe("decidePendingKhalaSyncMigrations", () => {
     expect(decision.message).toContain("2 Khala Sync migration(s) PENDING")
     expect(decision.message).toContain("0032_khala_sync_runtime_control_intents_seq.sql")
     expect(decision.message).toContain("0033_something_else.sql")
-    expect(decision.message).toContain("bun run migrate")
+    expect(decision.message).toContain("pnpm run migrate")
   })
 })
