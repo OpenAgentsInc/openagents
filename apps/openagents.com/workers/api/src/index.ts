@@ -845,6 +845,7 @@ import {
   optionalInteger,
   optionalNestedString,
   optionalString,
+  parseJsonUnknown,
   readJsonObject,
   safeJsonRecord,
   stringArrayFromUnknown,
@@ -1165,6 +1166,7 @@ import {
   providerAccountTokenCustodyCipherFromEnv,
   storeConnectedCodexAuthInCustody,
 } from './provider-account-token-custody'
+import { ProviderAccountStorageFailed } from './provider-account-errors'
 import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import {
   ANTHROPIC_CLAUDE_PROVIDER,
@@ -1618,6 +1620,27 @@ class AuthSignInError extends S.TaggedErrorClass<AuthSignInError>()(
   'AuthSignInError',
   {
     reason: S.String,
+  },
+) {}
+
+// Typed expected errors for the agent-computer managed-cloud dispatch lane
+// (8244bd64e9 / f0ff7d6d5f): machine-readable tags that the dispatch runner
+// logs and maps to safe dispatch failures. `message` carries the stable tag
+// consumed by `logWorkerRouteWarning` reason slices.
+class ManagedCloudDispatchError extends S.TaggedErrorClass<ManagedCloudDispatchError>()(
+  'ManagedCloudDispatchError',
+  {
+    message: S.String,
+  },
+) {}
+
+// Typed expected errors for the managed FleetRun unit-dispatch authority lane
+// (8244bd64e9 / a94fa4c470 / c856329aca). Same contract: the message is the
+// stable machine tag; callers map any failure to a safe dispatch error.
+class ManagedFleetAuthorityError extends S.TaggedErrorClass<ManagedFleetAuthorityError>()(
+  'ManagedFleetAuthorityError',
+  {
+    message: S.String,
   },
 ) {}
 
@@ -8562,7 +8585,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           turn.commit,
         )
         if (resolvedCommit === null) {
-          throw new Error('managed_cloud_repository_ref_unresolved')
+          throw new ManagedCloudDispatchError({ message: 'managed_cloud_repository_ref_unresolved' })
         }
         const [accounts, githubConnection] = await Promise.all([
           listProviderAccountsForUser(accountRepository, turn.ownerUserId),
@@ -8575,13 +8598,13 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
             candidate.health === 'healthy',
         )
         if (account === undefined) {
-          throw new Error('managed_cloud_owner_codex_grant_unavailable')
+          throw new ManagedCloudDispatchError({ message: 'managed_cloud_owner_codex_grant_unavailable' })
         }
         if (
           githubConnection === undefined ||
           !hasRequiredGitHubWriteScopes(githubConnection.scopes)
         ) {
-          throw new Error('managed_cloud_github_write_authority_unavailable')
+          throw new ManagedCloudDispatchError({ message: 'managed_cloud_github_write_authority_unavailable' })
         }
         const grant = await issueProviderAccountGrant(accountRepository, {
           providerAccountRef: account.providerAccountRef,
@@ -8592,7 +8615,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           workroomId: turn.workContextRef,
         })
         if (grant === undefined) {
-          throw new Error('managed_cloud_owner_codex_grant_unavailable')
+          throw new ManagedCloudDispatchError({ message: 'managed_cloud_owner_codex_grant_unavailable' })
         }
         return {
           ...turn,
@@ -9080,9 +9103,10 @@ const providerAccountPylonHandlers =
     providerGrantRepository: env => {
       const postgres = postgresIdentityAuthStoreForEnv(env)
       if (postgres === undefined) {
-        throw new Error(
-          'authoritative_postgres_provider_grant_repository_unavailable',
-        )
+        throw new ProviderAccountStorageFailed({
+          operation: 'grant_repository_boot',
+          message: 'authoritative_postgres_provider_grant_repository_unavailable',
+        })
       }
       return makeAuthoritativePostgresProviderGrantRepository(
         makeProviderAccountRepositoryForEnv(env),
@@ -11173,7 +11197,7 @@ const listManagedFleetCapacityForEnv = async (
   const workerEnv = env as OpenAgentsWorkerEnv
   const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
   if (postgresIdentity === undefined) {
-    throw new Error('managed_fleet_identity_authority_unavailable')
+    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_identity_authority_unavailable' })
   }
   const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
     makeProviderAccountRepositoryForEnv(env),
@@ -11224,7 +11248,7 @@ const dispatchManagedFleetUnitForEnv = async (
   const workerEnv = env as OpenAgentsWorkerEnv
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   if (connectionString === undefined || connectionString.trim() === '') {
-    throw new Error('managed_fleet_storage_unavailable')
+    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_storage_unavailable' })
   }
   if (
     !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
@@ -11233,7 +11257,7 @@ const dispatchManagedFleetUnitForEnv = async (
       input.body.workerAccountRef,
     )
   ) {
-    throw new Error('managed_fleet_tuple_invalid')
+    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_invalid' })
   }
   const expectedFingerprint = await sha256Hex(
     JSON.stringify({
@@ -11250,14 +11274,14 @@ const dispatchManagedFleetUnitForEnv = async (
     }),
   )
   if (expectedFingerprint !== input.body.fingerprint) {
-    throw new Error('managed_fleet_tuple_fingerprint_invalid')
+    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_fingerprint_invalid' })
   }
   const expectedAssignmentRef =
     `assignment.pylon.managed_cloud.${(
       await sha256Hex(input.body.fingerprint)
     ).slice(0, 24)}`
   if (input.body.assignmentRef !== expectedAssignmentRef) {
-    throw new Error('managed_fleet_assignment_invalid')
+    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_assignment_invalid' })
   }
 
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
@@ -11294,9 +11318,9 @@ const dispatchManagedFleetUnitForEnv = async (
       workUnitRef: input.body.workUnitRef,
       unitClaimRef: input.body.claimRef,
     })) {
-      throw new Error('managed_fleet_authority_invalid')
+      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_authority_invalid' })
     }
-    const request = JSON.parse(row.request_json) as {
+    const request = parseJsonUnknown(row.request_json) as {
       repository?: {
         owner?: string
         name?: string
@@ -11330,12 +11354,12 @@ const dispatchManagedFleetUnitForEnv = async (
       request.verifier?.kind !== 'command' ||
       request.verifier.command !== input.body.verifierCommand
     ) {
-      throw new Error('managed_fleet_tuple_not_authorized')
+      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_not_authorized' })
     }
 
     const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
     if (postgresIdentity === undefined) {
-      throw new Error('managed_fleet_identity_authority_unavailable')
+      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_identity_authority_unavailable' })
     }
     const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
       makeProviderAccountRepositoryForEnv(env),
@@ -11364,7 +11388,7 @@ const dispatchManagedFleetUnitForEnv = async (
       githubConnection === undefined ||
       !hasRequiredGitHubWriteScopes(githubConnection.scopes)
     ) {
-      throw new Error('managed_fleet_owner_authority_unavailable')
+      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_owner_authority_unavailable' })
     }
     const sessionId = `ccs.fleet.${input.body.fingerprint.slice(0, 24)}`
     const grant = await issueProviderAccountGrant(accountRepository, {
@@ -11375,7 +11399,7 @@ const dispatchManagedFleetUnitForEnv = async (
       userId: input.ownerUserId,
       workroomId: input.body.workUnitRef,
     })
-    if (grant === undefined) throw new Error('managed_fleet_grant_unavailable')
+    if (grant === undefined) throw new ManagedFleetAuthorityError({ message: 'managed_fleet_grant_unavailable' })
 
     minted = await mintCloudRuntimeExecutionToken(client.sql, {
       ownerUserId: input.ownerUserId,
@@ -11457,7 +11481,7 @@ const dispatchManagedFleetUnitForEnv = async (
       session.lifecycleReceiptRefs.length === 0 ||
       session.resourceUsageReceiptRefs.length === 0
     ) {
-      throw new Error('managed_fleet_terminal_receipts_incomplete')
+      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_terminal_receipts_incomplete' })
     }
     const terminalBindingDigest = (
       await sha256Hex(JSON.stringify({
@@ -11539,7 +11563,7 @@ const dispatchManagedFleetUnitForEnv = async (
       stored.session_ref !== sessionId ||
       stored.work_unit_ref !== input.body.workUnitRef
     ) {
-      throw new Error('managed_fleet_terminal_receipt_readback_failed')
+      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_terminal_receipt_readback_failed' })
     }
     const resolvedRefs: Array<{
       kind: string
@@ -11560,7 +11584,7 @@ const dispatchManagedFleetUnitForEnv = async (
       resolvedRefs.some(row => row.receipt_ref !== terminalReceiptRef) ||
       new Set(resolvedRefs.map(row => row.kind)).size !== 3
     ) {
-      throw new Error('managed_fleet_advertised_ref_readback_failed')
+      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_advertised_ref_readback_failed' })
     }
     return {
       schema: 'openagents.pylon.managed_cloud_fleet_dispatch.result.v1',

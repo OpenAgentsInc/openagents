@@ -22,6 +22,7 @@ import {
 } from './json-boundary'
 import { logWorkerRouteError, observedPromise } from './observability'
 import { postgresIdentityAuthStoreForEnv } from './identity-auth-domain-store'
+import { ProviderAccountStorageFailed } from './provider-account-errors'
 import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
 import {
   providerAccountRouteErrorMessage,
@@ -91,7 +92,10 @@ const authoritativeProviderGrantRepository = (
 ) => {
   const postgres = postgresIdentityAuthStoreForEnv(env)
   if (postgres === undefined) {
-    throw new Error('authoritative_postgres_provider_grant_repository_unavailable')
+    throw new ProviderAccountStorageFailed({
+      operation: 'grant_repository_boot',
+      message: 'authoritative_postgres_provider_grant_repository_unavailable',
+    })
   }
   return makeAuthoritativePostgresProviderGrantRepository(
     makeD1ProviderAccountRepository(openAgentsDatabase(env)),

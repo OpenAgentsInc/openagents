@@ -463,7 +463,13 @@ export const probeAgentComputerCapacitySnapshot = async (
         },
       },
     )
-    if (!response.ok) throw new Error('agent computer readiness refused')
+    if (!response.ok) {
+      return {
+        available: false,
+        availableSlots: 0,
+        capacityRef: 'capacity.agent_computer.control_plane.unavailable',
+      }
+    }
     const body = await response.json() as Record<string, unknown>
     const available =
       body['contractVersion'] === 'openagents.agent_computer_readiness.v1' &&
@@ -1257,20 +1263,22 @@ export const makeCloudControlCloudCodingAdapter = (
         // terminal state before projecting Sync completion. This also ensures
         // cleanup receipts are validated from the real completed lifecycle.
         if (placement.status === 'provisioning') {
-          const deadline = Date.now() + request.timeoutSeconds * 1_000
-          while (placement.status === 'provisioning' && Date.now() < deadline) {
+          const deadline = currentEpochMillis() + request.timeoutSeconds * 1_000
+          while (placement.status === 'provisioning' && currentEpochMillis() < deadline) {
             yield* Effect.promise(
               () => new Promise<void>(resolve => setTimeout(resolve, 250)),
             )
             const terminalPayload = yield* Effect.tryPromise({
               catch: error =>
-                new CloudCodingAdapterError({
-                  adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
-                  reason:
-                    error instanceof Error
-                      ? error.message
-                      : 'cloud_job_follow_failed',
-                }),
+                error instanceof CloudCodingAdapterError
+                  ? error
+                  : new CloudCodingAdapterError({
+                      adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+                      reason:
+                        error instanceof Error
+                          ? error.message
+                          : 'cloud_job_follow_failed',
+                    }),
               try: async () => {
                 const response = await fetchImpl(
                   `${baseUrl}/v1/codex-runs/${encodeURIComponent(sessionId)}/events?cursor=0`,
@@ -1280,7 +1288,10 @@ export const makeCloudControlCloudCodingAdapter = (
                   },
                 )
                 if (!response.ok) {
-                  throw new Error(`cloud_job_follow_http_${response.status}`)
+                  throw new CloudCodingAdapterError({
+                    adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+                    reason: `cloud_job_follow_http_${response.status}`,
+                  })
                 }
                 return response.json()
               },

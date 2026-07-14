@@ -257,9 +257,10 @@ export const handleOperatorRlmTraces = (
   }
 
   return Effect.gen(function* () {
-    const authorized = yield* Effect.promise(() =>
-      dependencies.requireAdminApiToken(request).catch(() => false),
-    )
+    const authorized = yield* Effect.tryPromise({
+      try: () => dependencies.requireAdminApiToken(request),
+      catch: () => false,
+    }).pipe(Effect.catch(() => Effect.succeed(false)))
     if (!authorized) {
       return unauthorized()
     }

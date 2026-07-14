@@ -6,7 +6,7 @@ import type {
   ProviderAccountRepository,
 } from './provider-account-domain'
 import { toAccountRecord, toGrantRecord } from './provider-account-domain'
-import { ProviderGrantNotIssued } from './provider-account-errors'
+import { ProviderAccountStorageFailed, ProviderGrantNotIssued } from './provider-account-errors'
 
 export type ProviderGrantPostgresQuery = (
   text: string,
@@ -75,7 +75,12 @@ export const makeAuthoritativePostgresProviderGrantRepository = (
       values,
     )
     const row = rows[0]
-    if (row === undefined) throw new Error('postgres_provider_grant_issue_failed')
+    if (row === undefined) {
+      throw new ProviderAccountStorageFailed({
+        operation: 'issue_grant',
+        message: 'postgres_provider_grant_issue_failed',
+      })
+    }
     return toGrantRecord(row as ProviderAccountAuthGrantRow)
   },
   findGrantByRef: async grantRef => {
