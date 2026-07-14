@@ -12,7 +12,7 @@
     "deploy": "bash scripts/deploy-cloudrun.sh stage1",
     "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vp test --root ../../../.. --run --project @openagentsinc/openagents-com-start"
   },
   "dependencies": {
     "@effect-native/core": "workspace:*",

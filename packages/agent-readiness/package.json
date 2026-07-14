@@ -19,7 +19,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run",
+    "test": "vp test --root ../.. --run --project node packages/agent-readiness/src/index.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

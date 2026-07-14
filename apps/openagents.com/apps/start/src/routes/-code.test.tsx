@@ -29,7 +29,7 @@ describe('Start /code route', () => {
     expect(html).toContain('data-ai-tool="read_file"')
     expect(html).toContain('data-ai-diff=""')
     expect(html).toContain('data-ai-code-block="src/greet.ts"')
-    expect(html).toContain('bun test')
+    expect(html).toContain('pnpm exec vp test')
     expect(html).toContain('6 passed')
     expect(html).toContain('data-ai-tool="cargo test"')
   })

@@ -75,7 +75,7 @@ describe('GLM NVFP4 pilot operator path (#6323)', () => {
     expect(missingEnvs).toContain('KHALA_GLM_NVFP4_DECISION_REF')
     expect(missingEnvs).toContain('KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF')
     expect(bundle.ownerArmedCommand).toContain(
-      'bun run --cwd apps/openagents.com/workers/api pilot:glm-nvfp4',
+      'pnpm --dir apps/openagents.com/workers/api run pilot:glm-nvfp4',
     )
     expect(bundle.ownerArmedCommand).toContain(
       '--output-dir .pilot-evidence/glm-nvfp4-6323',

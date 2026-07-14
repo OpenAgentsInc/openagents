@@ -98,7 +98,7 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
     const serialized = JSON.stringify(
       portalPageView({ ...initialPortalPageState, phase: 'logged_out' }),
     )
-    expect(serialized).toContain('"catalogVersion":"effect-native/v30"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v39"')
     expect(serialized).toContain('Log in to view your engagement.')
     expect(serialized).toContain('/login/github?returnTo=%2Fportal')
     expect(serialized).not.toContain('Content calendar')

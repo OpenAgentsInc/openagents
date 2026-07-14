@@ -29,7 +29,7 @@ describe('EN-4 /tassadar Effect Native route', () => {
       tag: 'Stack',
       key: 'tassadar-root',
     })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v30"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v39"')
     expect(serialized).toContain('Copy Agent Instructions')
     expect(serialized).toContain('TassadarCopyAgentInstructions')
     expect(serialized).toContain(

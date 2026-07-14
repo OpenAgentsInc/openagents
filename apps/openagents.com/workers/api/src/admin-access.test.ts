@@ -111,7 +111,7 @@ describe('OpenAgents admin access policy', () => {
     ).toBe(true)
   })
 
-  test('serves the Vite app shell for product routes instead of Worker-rendered HTML', async () => {
+  test('serves the Start app shell for retained product routes instead of Worker-rendered HTML', async () => {
     const appShell = '<!doctype html><div id="root">foldkit app</div>'
     const env = {
       ASSETS: {
@@ -125,12 +125,9 @@ describe('OpenAgents admin access policy', () => {
 
     for (const path of [
       '/',
-      '/teams/openagents-core-team/chat',
-      '/teams/openagents-core-team/files',
-      '/teams/openagents-core-team/files/file_1',
-      '/files/file_personal_1',
-      '/dashboard',
-      '/settings',
+      '/forum',
+      '/portal',
+      '/stats',
       '/share/123e4567-e89b-42d3-a456-426614174000',
       '/t/123e4567-e89b-42d3-a456-426614174000',
     ]) {
