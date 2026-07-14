@@ -27,6 +27,6 @@
   "vars": {
     "OPENAGENTS_FORGE_ENV": "production",
     "OPENAGENTS_FORGE_ISSUE": "https://github.com/OpenAgentsInc/openagents/issues/6759",
-    "OPENAGENTS_FORGE_UI_PACKAGE": "@openagentsinc/ui",
+    "OPENAGENTS_FORGE_UI_PACKAGE": "@effect-native/tokens",
   },
 }

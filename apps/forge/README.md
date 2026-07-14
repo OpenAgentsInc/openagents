@@ -25,10 +25,10 @@ keeps the landing copy as the app brand header and owns static routes for:
 - `/refs` — canonical Forge refs for `tenant.openagents` /
   `repo.openagents.openagents`, starting with `refs/heads/main`.
 
-The shell imports shared `@openagentsinc/ui` tokens so the Forge surface starts
-from the OpenAgents visual system while keeping its navigation, route model, and
-deploy path separate. It deliberately does not expand the old
-`openagents.com` logged-in Forge page.
+The shell imports the shared `@effect-native/tokens` khala theme so the Forge
+surface starts from the OpenAgents Effect Native/khala visual system while
+keeping its navigation, route model, and deploy path separate. It deliberately
+does not expand the old `openagents.com` logged-in Forge page.
 
 `/shell.json` exposes public-safe route metadata and live API contract shape for
 the `/api/forge/*` control-plane. The SU-7 dogfood lane is rendered from the same

@@ -1,10 +1,12 @@
 import { Effect, Schema } from "effect"
 
-import {
-  autopilotCoreDarkCssVars,
-  autopilotCoreDarkTokens,
-  oaTokens,
-} from "@openagentsinc/ui/tokens"
+import { khalaTheme } from "@effect-native/tokens"
+
+// No monospace font-family token exists in @effect-native/tokens (Theme only
+// carries fontSize/lineHeight/fontWeight per type scale step, not a family
+// stack), so Forge keeps its own fallback stack directly.
+const forgeFontMonoStack =
+  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace'
 
 export const FORGE_UI_WORKER_VERSION = "forge-ui.2026-06-28.6769"
 export const OPENAGENTS_FORGE_TENANT_REF = "tenant.openagents"
@@ -16,7 +18,7 @@ export const ForgeMount = Schema.Struct({
   host: Schema.Literal("forge.openagents.com"),
   basePath: Schema.Literal("/"),
   runtime: Schema.Literal("cloudflare-worker"),
-  uiPackage: Schema.Literal("@openagentsinc/ui"),
+  uiPackage: Schema.Literal("@effect-native/tokens"),
 })
 
 export type ForgeMount = typeof ForgeMount.Type
@@ -26,7 +28,7 @@ export const defaultForgeMount: ForgeMount = {
   host: "forge.openagents.com",
   basePath: "/",
   runtime: "cloudflare-worker",
-  uiPackage: "@openagentsinc/ui",
+  uiPackage: "@effect-native/tokens",
 }
 
 export const forgeLandingCopy = {
@@ -444,15 +446,24 @@ const cssDeclarations = (input: Record<string, string>): string =>
     .join("\n")
 
 const sharedTokenCss = cssDeclarations({
-  ...autopilotCoreDarkCssVars(autopilotCoreDarkTokens),
-  "--forge-accent": oaTokens.color.accent,
-  "--forge-accent-soft": oaTokens.color.accentSoft,
-  "--forge-surface": oaTokens.color.componentSurface,
-  "--forge-border": oaTokens.color.componentBorderStrong,
-  "--forge-text-bright": oaTokens.color.textBright,
-  "--forge-text-muted": oaTokens.color.textMuted,
+  "--bg": khalaTheme.color.background,
+  "--bg-secondary": khalaTheme.color.surface,
+  "--text": khalaTheme.color.textPrimary,
+  "--text-secondary": khalaTheme.color.textMuted,
+  "--outline": khalaTheme.color.border,
+  "--primary": khalaTheme.color.accent,
+  "--success": khalaTheme.color.success,
+  "--warning": khalaTheme.color.warning,
+  "--danger": khalaTheme.color.danger,
+  "--info": khalaTheme.color.info,
+  "--forge-accent": khalaTheme.color.accent,
+  "--forge-accent-soft": khalaTheme.color.accentHover,
+  "--forge-surface": khalaTheme.color.surface,
+  "--forge-border": khalaTheme.color.borderStrong,
+  "--forge-text-bright": khalaTheme.color.textPrimary,
+  "--forge-text-muted": khalaTheme.color.textMuted,
   "--forge-radius": "8px",
-  "--forge-font-mono": oaTokens.font.mono,
+  "--forge-font-mono": forgeFontMonoStack,
   "--forge-energy": "#5ea1ff",
   "--forge-cyan": "#63e6ff",
   "--forge-green": "#49f28d",

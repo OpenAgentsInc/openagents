@@ -73,7 +73,7 @@
       "name": "@openagentsinc/forge",
       "version": "0.1.0",
       "dependencies": {
-        "@openagentsinc/ui": "workspace:*",
+        "@effect-native/tokens": "workspace:*",
         "effect": "catalog:",
       },
       "devDependencies": {

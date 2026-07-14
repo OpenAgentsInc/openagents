@@ -25,7 +25,7 @@ describe("Forge UI Worker", () => {
     expect(html).toContain(forgeLandingCopy.tagline)
     expect(html).toContain('data-forge-app="shell"')
     expect(html).toContain('data-forge-route="overview"')
-    expect(html).toContain('data-shared-ui-package="@openagentsinc/ui"')
+    expect(html).toContain('data-shared-ui-package="@effect-native/tokens"')
     expect(html).toContain("--forge-energy")
   })
 

@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openagentsinc/ui": "workspace:*",
+    "@effect-native/tokens": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
