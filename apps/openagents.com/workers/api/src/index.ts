@@ -1299,6 +1299,7 @@ import {
   randomUuid,
 } from './runtime-primitives'
 import {
+  FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
 } from './sarah-fleet-run-routes'
@@ -14269,6 +14270,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     path: SARAH_FLEET_RUNS_PATH,
+    handler: (request, env, ctx) =>
+      sarahFleetRunRoutes
+        .handle(request, env, ctx)
+        .pipe(Effect.map(materializeHttpResult)),
+  },
+  // 2026-07-14 owner supersession decision: neutral canonical path for the
+  // FleetRun authority route. The `/api/sarah/fleet-runs` entry above stays a
+  // served compatibility alias (identical handler) because shipped
+  // desktop/mobile binaries hardcode it — do not 410 or redirect it.
+  {
+    path: FLEET_RUNS_PATH,
     handler: (request, env, ctx) =>
       sarahFleetRunRoutes
         .handle(request, env, ctx)

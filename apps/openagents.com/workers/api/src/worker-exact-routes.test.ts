@@ -103,6 +103,10 @@ const approvedExactRoutePaths = [
   '/logout',
   '/api/auth/session',
   '/api/sarah/fleet-runs',
+  // 2026-07-14 owner supersession decision: neutral canonical FleetRun
+  // authority path; '/api/sarah/fleet-runs' above stays a served
+  // compatibility alias for shipped desktop/mobile binaries.
+  '/api/fleet-runs',
   '/api/mobile/auth/session',
   '/api/desktop/audio/grant',
   '/api/mobile/session',

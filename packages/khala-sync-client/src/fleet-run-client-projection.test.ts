@@ -6,7 +6,10 @@ describe("fetchFleetRunClientProjection", () => {
     const result = await fetchFleetRunClientProjection({
       baseUrl: "https://openagents.com",
       accessToken: "host-owned",
-      fetchImpl: async (_input, init) => {
+      fetchImpl: async (input, init) => {
+        // 2026-07-14: new builds call the neutral canonical path; the server
+        // keeps /api/sarah/fleet-runs as a served alias for shipped binaries.
+        expect(String(input)).toBe("https://openagents.com/api/fleet-runs")
         expect(new Headers(init?.headers).get("authorization")).toBe("Bearer host-owned")
         return Response.json({
           ok: true,

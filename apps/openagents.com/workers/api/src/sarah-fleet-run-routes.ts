@@ -22,6 +22,13 @@ import type {
 } from './khala-sync-push-routes'
 import { defaultMakeKhalaSyncSqlClient } from './khala-sync-push-routes'
 
+// 2026-07-14 (owner supersession decision): the owner directed removal of the
+// remaining Sarah-named surfaces. `/api/fleet-runs` is the neutral canonical
+// path for the FleetRun authority route; `/api/sarah/fleet-runs` remains a
+// served compatibility alias because shipped OpenAgents desktop/mobile
+// binaries hardcode it. Both paths serve the identical handler. Do NOT 410 or
+// redirect the legacy path while fielded clients depend on it.
+export const FLEET_RUNS_PATH = '/api/fleet-runs'
 export const SARAH_FLEET_RUNS_PATH = '/api/sarah/fleet-runs'
 export const SARAH_FLEET_RUNS_ROUTE_REF = 'route.sarah.fleet_runs.authority.v1'
 export const SARAH_FLEET_RUN_REQUEST_MAX_BYTES = 32 * 1024

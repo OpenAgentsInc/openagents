@@ -15,6 +15,7 @@ import { describe, expect, test } from 'vitest'
 
 import { materializeHttpResult } from './http/responses'
 import {
+  FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
   SARAH_FLEET_RUN_REQUEST_MAX_BYTES,
   SARAH_FLEET_RUNS_PATH,
@@ -280,12 +281,13 @@ const makeHarness = (
   return { calls, run }
 }
 
-const post = (
+const postAt = (
+  path: string,
   body: unknown,
   userId?: string,
   query = '',
 ): Request =>
-  new Request(`https://openagents.com${SARAH_FLEET_RUNS_PATH}${query}`, {
+  new Request(`https://openagents.com${path}${query}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -293,6 +295,12 @@ const post = (
     },
     body: JSON.stringify(body),
   })
+
+const post = (
+  body: unknown,
+  userId?: string,
+  query = '',
+): Request => postAt(SARAH_FLEET_RUNS_PATH, body, userId, query)
 
 const observe = (runRef: string, userId: string, extraQuery = ''): Request =>
   new Request(
@@ -566,6 +574,56 @@ describe('Sarah FleetRun authenticated route', () => {
     expect(text).toContain('storage_unavailable')
     expect(text).not.toContain('private-host')
     expect(text).not.toContain('private-password')
+  })
+
+  // 2026-07-14 owner supersession decision: `/api/fleet-runs` is the neutral
+  // canonical path; `/api/sarah/fleet-runs` stays a served compatibility
+  // alias for shipped desktop/mobile binaries. Both must serve identically.
+  test('neutral canonical path serves identically to the legacy alias', async () => {
+    expect(FLEET_RUNS_PATH).toBe('/api/fleet-runs')
+    const harness = makeHarness()
+    const created = await harness.run(
+      postAt(FLEET_RUNS_PATH, fleetRequest('neutral-path-1'), 'user-operator'),
+    )
+    expect(created.status).toBe(200)
+    const createdBody = (await created.json()) as {
+      duplicate: boolean
+      routeRef: string
+      run: { runRef: string }
+    }
+    expect(createdBody.duplicate).toBe(false)
+    expect(createdBody.routeRef).toBe(SARAH_FLEET_RUNS_ROUTE_REF)
+
+    // The legacy alias replays the same idempotent request as a duplicate:
+    // both paths hit the identical handler and authority.
+    const replayViaLegacy = await harness.run(
+      postAt(
+        SARAH_FLEET_RUNS_PATH,
+        fleetRequest('neutral-path-1'),
+        'user-operator',
+      ),
+    )
+    expect(replayViaLegacy.status).toBe(200)
+    const replayBody = (await replayViaLegacy.json()) as {
+      duplicate: boolean
+      run: { runRef: string }
+    }
+    expect(replayBody.duplicate).toBe(true)
+    expect(replayBody.run.runRef).toBe(createdBody.run.runRef)
+
+    const listed = await harness.run(
+      new Request(`https://openagents.com${FLEET_RUNS_PATH}`, {
+        headers: { 'x-test-user': 'user-operator' },
+      }),
+    )
+    expect(listed.status).toBe(200)
+    expect(await listed.json()).toMatchObject({
+      ok: true,
+      fleet: {
+        schema: 'openagents.fleet_run_client_projection.v1',
+        runs: [{ runRef: createdBody.run.runRef }],
+      },
+    })
   })
 
   test('rejects unsupported methods without authenticating or opening storage', async () => {

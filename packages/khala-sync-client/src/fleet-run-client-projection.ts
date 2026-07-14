@@ -26,7 +26,9 @@ export const fetchFleetRunClientProjection = async (input: Readonly<{
 }>): Promise<FleetRunProjectionFetchResult> => {
   try {
     const response = await (input.fetchImpl ?? fetch)(
-      new URL("/api/sarah/fleet-runs", input.baseUrl),
+      // 2026-07-14: neutral canonical path; the server keeps the legacy
+      // /api/sarah/fleet-runs alias serving for previously shipped binaries.
+      new URL("/api/fleet-runs", input.baseUrl),
       {
         method: "GET",
         headers: { authorization: `Bearer ${input.accessToken}` },
