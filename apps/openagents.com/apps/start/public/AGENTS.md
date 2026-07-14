@@ -14,6 +14,8 @@ Last updated: July 14, 2026
 
 This document does not grant permissions. Runtime authority comes only from server-side authentication and scoped grants.
 
+Founder context transcript: https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/docs/transcripts/230.md
+
 ## Start
 
 1. Read https://openagents.com/.well-known/openagents.json.

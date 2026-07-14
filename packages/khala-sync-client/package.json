@@ -16,7 +16,7 @@
     "./web/worker": "./src/web/sqlite-wasm-worker.ts"
   },
   "scripts": {
-    "test": "vp test --run && node scripts/check-test-import-coverage.mjs",
+    "test": "vp test --root ../.. --run --project node packages/khala-sync-client/src && node scripts/check-test-import-coverage.mjs",
     "check:test-import-coverage": "node scripts/check-test-import-coverage.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
