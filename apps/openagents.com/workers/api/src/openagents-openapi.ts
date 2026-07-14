@@ -8032,6 +8032,52 @@ const components = (): JsonSchema => ({
   schemas: {
     ...schemaComponents(),
     ...requestSchemas(),
+    RetiredMoneySurfaceResponse: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['schemaVersion', 'ok', 'error', 'retiredAt', 'capability'],
+      properties: {
+        schemaVersion: {
+          type: 'string',
+          const: 'openagents.money_surface_retired.v1',
+        },
+        ok: { type: 'boolean', const: false },
+        error: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['code', 'retryable'],
+          properties: {
+            code: { type: 'string', const: 'money_surface_retired' },
+            retryable: { type: 'boolean', const: false },
+          },
+        },
+        retiredAt: { type: 'string', format: 'date', const: '2026-07-14' },
+        capability: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'payments',
+            'credits',
+            'wallets',
+            'payouts',
+            'settlements',
+            'paidCapacityAvailable',
+            'freeFallbackAllowed',
+          ],
+          properties: {
+            payments: { type: 'boolean', const: false },
+            credits: { type: 'boolean', const: false },
+            wallets: { type: 'boolean', const: false },
+            payouts: { type: 'boolean', const: false },
+            settlements: { type: 'boolean', const: false },
+            paidCapacityAvailable: { type: 'boolean', const: false },
+            freeFallbackAllowed: { type: 'boolean', const: false },
+          },
+        },
+      },
+      description:
+        'Stable HTTP 410 compatibility response for retired money surfaces. Clients must not retry, discover an older route, or reinterpret removed paid capacity as free capacity.',
+    },
   },
 })
 
@@ -17152,20 +17198,83 @@ const paths = (): JsonSchema => ({
 const retiredDiscoveryPathPattern =
   /(?:^|[\/-])(?:balances?|billing|checkout|credits?|earnings?|labor(?:-earnings)?|marketplace|markets?|payments?|payouts?|revenue|rewards?|settlements?|sites?|spend|tips?|treasury|wallets?)(?:[\/-]|$)|paid-privacy|l402/i
 
+const isHistoricalReceiptRead = (path: string, pathItem: unknown): boolean => {
+  if (!/(?:^|[\/-])receipts?(?:[\/-]|$)/i.test(path)) return false
+  if (typeof pathItem !== 'object' || pathItem === null) return false
+
+  const methods = Object.keys(pathItem)
+  return methods.length === 1 && methods[0] === 'get'
+}
+
 const activeOpenApiPaths = (): JsonSchema =>
   Object.fromEntries(
     Object.entries(paths()).filter(([path, pathItem]) => {
+      if (isHistoricalReceiptRead(path, pathItem)) return true
       if (retiredDiscoveryPathPattern.test(path)) return false
 
       const serialized = JSON.stringify(pathItem)
-      return !/"Sites"/.test(serialized)
+      return !/(?:"(?:Billing|Payments|Sites)"|L402|payment_required)/i.test(
+        serialized,
+      )
     }),
   )
+
+const schemaRefsIn = (value: unknown): ReadonlyArray<string> => {
+  const refs = new Set<string>()
+  const visit = (candidate: unknown): void => {
+    if (Array.isArray(candidate)) {
+      candidate.forEach(visit)
+      return
+    }
+    if (typeof candidate !== 'object' || candidate === null) return
+
+    for (const [key, child] of Object.entries(candidate)) {
+      if (
+        key === '$ref' &&
+        typeof child === 'string' &&
+        child.startsWith('#/components/schemas/')
+      ) {
+        refs.add(child.slice('#/components/schemas/'.length))
+      } else {
+        visit(child)
+      }
+    }
+  }
+  visit(value)
+  return [...refs]
+}
+
+const activeOpenApiComponents = (activePaths: JsonSchema): JsonSchema => {
+  const allComponents = components()
+  const allSchemas = allComponents.schemas as JsonSchema
+  const retainedSchemaNames = new Set<string>(['RetiredMoneySurfaceResponse'])
+  const pendingSchemaNames = [...schemaRefsIn(activePaths)]
+
+  while (pendingSchemaNames.length > 0) {
+    const schemaName = pendingSchemaNames.pop()
+    if (schemaName === undefined || retainedSchemaNames.has(schemaName))
+      continue
+    const schema = allSchemas[schemaName]
+    if (schema === undefined) continue
+    retainedSchemaNames.add(schemaName)
+    pendingSchemaNames.push(...schemaRefsIn(schema))
+  }
+
+  return {
+    ...allComponents,
+    schemas: Object.fromEntries(
+      Object.entries(allSchemas).filter(([name]) =>
+        retainedSchemaNames.has(name),
+      ),
+    ),
+  }
+}
 
 export const openAgentsOpenApiDocument = (): Effect.Effect<
   OpenAgentsOpenApiDocument,
   OpenAgentsOpenApiUnsafe
 > => {
+  const activePaths = activeOpenApiPaths()
   const document: OpenAgentsOpenApiDocument = {
     openapi: '3.1.0',
     info: {
@@ -17192,8 +17301,8 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
       { name: 'Email' },
       { name: 'Forge' },
     ],
-    paths: activeOpenApiPaths(),
-    components: components(),
+    paths: activePaths,
+    components: activeOpenApiComponents(activePaths),
   }
 
   return containsProviderSecretMaterial(JSON.stringify(document))

@@ -1,13 +1,6 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Schema as S } from 'effect'
 
-import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
-import {
-  AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
-  AGENT_SEARCH_ENDPOINT,
-  AGENT_SEARCH_PAYMENT_PREVIEW_ENDPOINT,
-  AGENT_SEARCH_PAYMENT_REDEEM_ENDPOINT,
-} from './agent-search'
 import {
   OpenAgentsAgentCoreSha256,
   OpenAgentsAgentCoreSourceRef,
@@ -19,6 +12,7 @@ import {
 
 export const OpenAgentsCapabilityManifestEndpoint =
   '/.well-known/openagents.json'
+const AgentSearchEndpoint = '/api/agents/search'
 
 export const OpenAgentsCapabilityManifest = S.Struct({
   schemaVersion: S.Literal('openagents.capabilities.v1'),
@@ -112,7 +106,7 @@ export class OpenAgentsCapabilityManifestUnsafe extends S.TaggedErrorClass<OpenA
 ) {}
 
 const retiredCapabilityEntryPattern =
-  /(?:^|[._/-])(?:billing|checkout|commerce|credits?|labor|marketplace|markets|payments?|payouts?|settlements?|sites?|tips?|treasury|wallets?)(?:[._/-]|$)|paid|l402/i
+  /(?:^|[._/-])(?:billing|checkout|commerce|credits?|earnings?|labor|marketplace|markets|payments?|payouts?|revenue|rewards?|settlements?|sites?|spend|tips?|treasury|wallets?)(?:[._/-]|$)|paid|l402/i
 
 const advertisesRetiredCapability = (entry: {
   readonly href: string
@@ -136,7 +130,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
     docs: {
       website: 'https://openagents.com',
       roadmap:
-        'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md',
+        'https://github.com/OpenAgentsInc/openagents/blob/main/docs/sol/2026-07-14-vite-plus-node-full-cutover-plan.md',
       productPromises: 'https://openagents.com/docs/product-promises',
       productPromisesApi: 'https://openagents.com/api/public/product-promises',
       activityEvidence:
@@ -191,7 +185,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         id: 'registered_agent_token',
         status: 'available_scoped',
         description:
-          'Registered agent bearer tokens are live for identity checks, open Forum topic/reply writes, hosted search, owned Pylon registration/status/receipt writes, owner-granted customer order scopes, and owner-granted agent Site actions. Agents can self-register in one public call and use the returned token immediately.',
+          'Registered agent bearer tokens are live for identity checks, open Forum topic/reply writes, hosted search, owned Pylon registration/status/receipt writes, and owner-granted customer order scopes. Agents can self-register in one public call and use the returned token immediately.',
       },
       {
         id: 'agent_owner_claim',
@@ -205,32 +199,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         description:
           'Self-service owner-created scoped API keys for external agents are planned and should not be assumed live yet.',
       },
-      {
-        id: 'l402_or_lightning',
-        status: 'available_scoped',
-        description:
-          'Redacted MDK/L402 proof refs are live for Forum paid actions and owner-approved public proposal rate-limit recovery. Broader credits or Lightning recovery remains route-specific and gated.',
-      },
     ],
     rateLimits: {
       public: {
         status: 'bounded',
-        recovery: [
-          'wait',
-          'operator_review',
-          'l402_for_owner_approved_public_agent_proposals',
-          'future_credit_top_up',
-        ],
+        recovery: ['wait', 'operator_review'],
       },
       authenticated: {
         status: 'account_and_capacity_bound',
-        recovery: [
-          'wait',
-          'operator_review',
-          'hosted_search_payment_preview',
-          'l402_for_owner_approved_public_agent_proposals',
-          'future_credit_top_up',
-        ],
+        recovery: ['wait', 'operator_review'],
       },
     },
     resources: [
@@ -339,14 +316,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Server-sent event tail for the same public activity timeline contract. Event frames use the public timeline cursor as SSE id, support reconnect through since or Last-Event-ID, include source-lag metadata, and provide polling fallback guidance. Read-only; grants no settlement, payout, accepted-work, deployment, provider, wallet, or claim authority.',
       },
       {
-        id: 'public_training_run_settlements',
-        href: 'https://openagents.com/api/public/training/runs/{trainingRunRef}/settlements',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe per-run settlements feed. Rows distinguish movementMode and realBitcoinMoved, include receipt refs, and exclude simulation rows from real Bitcoin totals. Read-only evidence; grants no payout or settlement authority.',
-      },
-      {
         id: 'public_training_verification_challenge',
         href: 'https://openagents.com/api/public/training/verification-challenges/{challengeRef}',
         method: 'GET',
@@ -419,14 +388,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Dereferences one public-safe Khala Code outside-user run receipt with generatedAt and a live_at_read staleness contract over khala_code_outside_user_run_receipts. Receipt fields are app version, platform, architecture, distribution channel, and harness readiness only; no paths, prompts, logs, tokens, account identifiers, machine identifiers, or raw telemetry. Evidence-only; grants no installer, outside-user-count, billing, capture, payout, settlement, or promise-green authority.',
       },
       {
-        id: 'operator_khala_code_trace_plugin_revenue_share_precedent_intake',
-        href: 'https://openagents.com/api/operator/khala-code/trace-plugin-revenue-share-precedents',
-        method: 'POST',
-        auth: 'admin_api_token',
-        description:
-          'Admin-token intake for the RL-7 Khala Code trace→plugin→revenue-share precedent. It idempotently records only public-safe refs for one consented trace digest, one admitted and registered routable plugin, one exact routed usage event, one contributor attribution, and one already-settled Spark payout/settlement receipt. It does not move sats, dispatch payout, accept raw trace/payment material, or flip promise state.',
-      },
-      {
         id: 'public_khala_code_trace_plugin_revenue_share_precedent_receipt',
         href: 'https://openagents.com/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}',
         method: 'GET',
@@ -449,14 +410,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'public',
         description:
           'Dereferences one public-safe QA Swarm first-engagement receipt with generatedAt and a live_at_read staleness contract over qa_swarm_first_engagements, prefilled_workspaces, omni_accepted_outcome_contracts, and business_commitment_ledger. The receipt carries operator-assisted intake/payment evidence, workspace, service promise, and commitment refs only; no customer identity, raw invoice/payment material, payment hashes, preimages, target credentials, raw runner logs, provider payloads, or wallet material.',
-      },
-      {
-        id: 'public_revenue_loop_first_dollar_evidence',
-        href: 'https://openagents.com/api/public/revenue-loop/first-dollar-evidence/{bundleRef}',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Dereferences one public-safe RL-9 first-dollar evidence bundle with generatedAt and a live_at_read staleness contract over revenue_event_provenance. The bundle is shaped for product-registry evidenceRefs: it carries the public receipt ref, exact revenue ledger row ref, source ledger row ref, internal/external demand-provenance label, payment state, and bounded amount fields only; no buyer identity, checkout URLs, raw invoices, payment hashes, preimages, provider payloads, private payment material, or wallet material.',
       },
       {
         id: 'public_khala_tokens_served_history',
@@ -603,14 +556,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe no-token proposal receipt and review-state read. Proposal records are pending/untrusted until operator review.',
       },
       {
-        id: 'agent_proposal_rate_limit_recovery',
-        href: `https://openagents.com${PublicAgentProposalRecoveryRoute.previewPath}`,
-        method: 'POST',
-        auth: 'registered_agent_token_with_agentRateLimitRecoveryGrants',
-        description:
-          'Preview endpoint for owner-approved public proposal rate-limit recovery. A grant must bind the route and bitcoin spend cap before a challenge is issued.',
-      },
-      {
         id: 'agent_home',
         href: 'https://openagents.com/api/agents/home',
         method: 'GET',
@@ -620,27 +565,11 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       },
       {
         id: 'agent_hosted_search',
-        href: `https://openagents.com${AGENT_SEARCH_ENDPOINT}`,
+        href: `https://openagents.com${AgentSearchEndpoint}`,
         method: 'POST',
         auth: 'registered_agent_token_with_idempotency_key',
         description:
-          'OpenAgents-hosted basic web search backed by server-side provider credentials. Returns public-safe source cards, not raw Exa payloads. Free use is aggressively rate limited; over-quota recovery uses the hosted search payment preview/redeem contract.',
-      },
-      {
-        id: 'agent_hosted_search_payment_preview',
-        href: `https://openagents.com${AGENT_SEARCH_PAYMENT_PREVIEW_ENDPOINT}`,
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        description:
-          'Preview endpoint for the hosted search basic recovery product. It binds the normalized search request body, spend cap, agent, credential, route, and idempotency key before payment.',
-      },
-      {
-        id: 'agent_hosted_search_payment_redeem',
-        href: `https://openagents.com${AGENT_SEARCH_PAYMENT_REDEEM_ENDPOINT}`,
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        description:
-          'Redeems a hosted search payment challenge with a redacted public-safe proof ref and returns a one-shot entitlement for retrying the same search request.',
+          'OpenAgents-hosted basic web search backed by server-side provider credentials. Returns public-safe source cards, not raw provider payloads. Free use is bounded; exhausted callers wait for the quota window or request operator review.',
       },
       {
         id: 'owner_agent_scoped_grants',
@@ -648,7 +577,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET/POST',
         auth: 'browser_session',
         description:
-          'Signed-in owner console API for listing registered agents, pending owner claims, available customer-order/Site scopes, owner-bound scoped grants, and redacted grant receipts.',
+          'Signed-in owner console API for listing registered agents, pending owner claims, available customer-order scopes, owner-bound scoped grants, and redacted grant receipts.',
       },
       {
         id: 'agent_public_profile',
@@ -697,22 +626,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
         description:
           'Signed-in or owner-granted agent list of customer software workstreams.',
-      },
-      {
-        id: 'customer_order_revisions',
-        href: 'https://openagents.com/api/customer-orders/{orderId}/site-revisions',
-        method: 'GET',
-        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
-        description:
-          'Signed-in or owner-granted agent Site revision history for an order.',
-      },
-      {
-        id: 'customer_order_feedback',
-        href: 'https://openagents.com/api/customer-orders/{orderId}/site-feedback',
-        method: 'GET/POST',
-        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read_or_feedback',
-        description:
-          'Signed-in or owner-granted agent Site feedback list and submit endpoint for the next revision.',
       },
       {
         id: 'customer_order_fulfillment_artifacts',
@@ -779,92 +692,12 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Signed-in owners or owner-granted agents dereference an Autopilot decision closeout receipt. Receipts are audit evidence only and directEffectPermitted remains false.',
       },
       {
-        id: 'site_builder_sessions',
-        href: 'https://openagents.com/api/sites/builder-sessions',
-        method: 'POST',
-        auth: 'browser_session',
-        description:
-          'Signed-in product API for opening Site builder sessions. Scoped agent-token builder sessions are available through /api/agent/sites/{siteId}/builder-sessions.',
-      },
-      {
-        id: 'agent_site_action_contracts',
-        href: 'https://openagents.com/api/agent/sites',
-        method: 'POST',
-        auth: 'internal_preview_gate_or_registered_agent_token_with_agentSiteGrants',
-        description:
-          'Scoped agent Site action API. Approved agents can create order-backed Site projects, create builder sessions, queue preview records/events, save reviewable versions when evidence gates are complete, and create deploy-review requests. Production deployment remains owner/operator gated.',
-      },
-      {
-        id: 'site_commerce_contracts',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce',
-        method: 'POST',
-        auth: 'public_or_provider_signature_depending_on_route',
-        description:
-          'Site checkout, checkout-return, MDK webhook reconciliation, and L402 endpoints for safe Site commerce flow handling. These are not broad production payout authority.',
-      },
-      {
-        id: 'site_payment_discovery',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/discovery',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Agent-readable Site payment discovery for generated checkout products and paid actions. Includes checkout/L402 endpoints, sandbox state, spend-cap hints, entitlement semantics, and live/fake-provider/planned surface states without exposing customer private data or payment credentials.',
-      },
-      {
-        id: 'site_commerce_review',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/review',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe builder/operator review projection for generated Site checkout products, paid actions, source-safe checkout UI primitive refs, review status, and sandbox/live provider classification.',
-      },
-      {
-        id: 'site_mdk_account_binding',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/mdk-account-binding',
-        method: 'GET',
-        auth: 'public_or_operator_for_unredacted_refs',
-        description:
-          'Public-safe customer-owned MDK account binding state for a Site: unavailable, pending review, configured, blocked, or revoked. Public/customer reads redact hosted secret refs and never expose MDK credentials, wallet material, invoices, preimages, payment hashes, provider grants, private customer data, or raw timestamps.',
-      },
-      {
-        id: 'site_payment_proof',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/payment-proofs/{checkoutIntentRef}',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe buyer-side Site payment proof over durable checkout intent, receipt, reconciliation, and entitlement state. This proves checkout evidence only and does not prove accepted-work payout or settlement.',
-      },
-      {
-        id: 'generated_site_payment_smoke_runbook',
-        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/sites/2026-06-07-generated-site-payment-smoke-runbook.md',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'Public-safe runbook for generated-Site payment smoke evidence across deterministic fixture, human checkout, registered-agent L402, and dashboard Standard Webhooks reconciliation. It separates fake-provider smoke, configured hosted-provider evidence, real bitcoin movement, and accepted-work payout settlement.',
-      },
-      {
         id: 'agent_surface_gap_analysis',
         href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/2026-06-05-openagents-agent-surface-gap-analysis.md',
         method: 'GET',
         auth: 'public',
         description:
           'Tracked gap analysis for live versus planned agent-facing OpenAgents surfaces.',
-      },
-      {
-        id: 'site_referral_capture',
-        href: 'https://openagents.com/r/site/{publicSourceRef}',
-        method: 'GET',
-        auth: 'public',
-        description:
-          'OpenAgents-hosted public Site referral capture boundary. Successful captures redirect to clean product URLs and set a thirty-day pending attribution cookie; the latest pending cookie is the last-touch winner until signup, agent claim, or paid order consumption locks it exactly once.',
-      },
-      {
-        id: 'operator_site_referral_consumed_attributions',
-        href: 'https://openagents.com/api/operator/sites/referrals/consumed',
-        method: 'GET',
-        auth: 'browser_session_admin',
-        description:
-          'Operator-only public-safe query for consumed Site referral attributions: claimed captures with first verification timestamps and no private referred-user contact data, token hashes, wallet material, payment payloads, or provider grants.',
       },
       {
         id: 'operator_partner_agreements',
@@ -875,36 +708,12 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only partner agreement seed/readback route for the explicit-agreement partner-attribution policy. It records or lists who may be attributed for a paying customer and does not create payout eligibility by itself, move money, expose payout destinations, or grant settlement authority.',
       },
       {
-        id: 'operator_partner_payout_dispatch',
-        href: 'https://openagents.com/api/operator/partners/payout-ledger/{payoutRef}/dispatch',
-        method: 'POST',
-        auth: 'admin_api_token',
-        description:
-          'Operator-only partner payout dispatch coordinator. It readiness-gates the owner-armed payout mode, refuses non-sats rows before adapter call, calls an injected adapter for sats rows before recording settled, and records only public-safe `receipt.partner_payout.*` evidence; default production wiring is inert and fail-closed until a live partner payout rail is explicitly armed.',
-      },
-      {
         id: 'public_partner_payout_receipt',
         href: 'https://openagents.com/api/public/partner-payout-receipts/{receiptRef}',
         method: 'GET',
         auth: 'public',
         description:
           'Public-safe partner payout receipt readback. It resolves `receipt.partner_payout.*` only when a settled partner payout ledger row cites that exact evidence ref, and returns redacted amount/asset/state/policy/caveat/evidence/staleness fields without partner refs, user ids, payout refs, qualifying-event refs, payout destinations, invoices, preimages, provider payloads, wallet material, or ledger ids.',
-      },
-      {
-        id: 'operator_site_referral_payout_ledger_transition',
-        href: 'https://openagents.com/api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions',
-        method: 'POST',
-        auth: 'admin_api_token',
-        description:
-          'Operator-only append-only Site referral payout ledger transition route. It approves dispatch, marks dispatched, marks failed, refuses, reverses, or marks settled only with public-safe evidence refs; it does not move sats by itself.',
-      },
-      {
-        id: 'operator_site_referral_payout_dispatch',
-        href: 'https://openagents.com/api/operator/sites/referrals/payout-ledger/{payoutRef}/dispatch',
-        method: 'POST',
-        auth: 'admin_api_token',
-        description:
-          'Operator-only Site referral payout dispatch route. It calls the shared readiness-gated MDK/Spark adapter rail before recording settled, enforces the credit-to-Bitcoin asset boundary from the supplied revenueAsset, and returns only public-safe outcome refs/state/reasons/sats; owner-armed-off configuration refuses before adapter dispatch.',
       },
       {
         id: 'public_artanis_report',
@@ -947,22 +756,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only Pylon Agent API route that closes retained public-safe assignment evidence as accepted work or rejected work. Accepted closeout requires prior artifact/proof refs and still does not dispatch payout by itself.',
       },
       {
-        id: 'operator_nexus_pylon_accepted_work_payout',
-        href: 'https://openagents.com/api/operator/nexus-pylon/assignments/{assignmentRef}/accepted-work-payouts',
-        method: 'POST',
-        auth: 'browser_session_admin_or_admin_api_token',
-        description:
-          'Operator-only route that settles an assignment already closed out as accepted work through TreasuryPaymentAuthority and the configured payout adapter. It requires fresh wallet-readiness evidence, accepted-work refs, artifact/proof refs, payout target approval, spend-cap policy refs, and an Idempotency-Key. Hosted MDK consumes a private payout destination only at the adapter boundary and never persists or echoes raw payment material.',
-      },
-      {
-        id: 'operator_nexus_pylon_assignment_settlement_bridge',
-        href: 'https://openagents.com/api/operator/nexus-pylon/assignments/{assignmentRef}/settlement-bridges',
-        method: 'POST',
-        auth: 'browser_session_admin_or_admin_api_token',
-        description:
-          'Operator-only bridge that promotes accepted public-safe Pylon assignment evidence into Nexus/Pylon payout ledger records and a public receipt. It requires accepted work, artifact/proof refs, payment refs, settlement refs, and an Idempotency-Key.',
-      },
-      {
         id: 'operator_nexus_pylon_assignment_proof_run',
         href: 'https://openagents.com/api/operator/nexus-pylon/proof-runs',
         method: 'POST',
@@ -987,7 +780,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token',
         status: 'available',
         description:
-          'Call Khala through the OpenAI-compatible endpoint: POST with model "openagents/khala" for external clients, or "khala" inside OpenAgents-owned callers. Khala is the single model surface for onboarding, coding, and general inference behavior; specialized Concierge/Blueprint behavior is an internal capability of Khala rather than a separate public model selector. Inherits the gateway auth + credit/balance gate + receipt-first metering. Canonical under the /api base; the legacy bare /v1/chat/completions path remains a non-breaking alias.',
+          'Call Khala through the OpenAI-compatible endpoint: POST with model "openagents/khala" for external clients, or "khala" inside OpenAgents-owned callers. Khala is the single model surface for onboarding, coding, and general inference behavior; specialized Concierge/Blueprint behavior is an internal capability of Khala rather than a separate public model selector. Canonical under the /api base; the legacy bare /v1/chat/completions path remains a non-breaking alias.',
       },
       {
         id: 'register_agent',
@@ -1005,7 +798,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'public',
         status: 'available_when_enabled',
         description:
-          'Khala FREE API mode: mint a free, rate-limited oa_agent_ API key in one call (no payment, no owner claim). The raw token is returned once and is used as the gateway Authorization: Bearer credential. A free-tier key can call the single public model "openagents/khala" (own-infra GPT-OSS / Gemini Flash) WITHOUT a balance, within a per-key daily free quota (request + served-token caps that reset each UTC day). Free usage is still receipt-first metered (zero credit debit). Beyond the daily quota, or for premium lanes, add credits (the normal balance / 402 path). Minting is bounded per client IP per day so there is no unbounded key creation; the raw IP is hashed, never stored or returned. Gated by INFERENCE_FREE_TIER_ENABLED and returns 404 until free mode is armed.',
+          'Khala free API mode: mint a bounded, rate-limited oa_agent_ API key in one call without an owner claim. The raw token is returned once and can call the single public model "openagents/khala" within a per-key daily request and served-token quota. Exhaustion does not unlock paid or unbounded fallback capacity. Minting is bounded per client IP per day; the raw IP is hashed and never stored or returned. Gated by INFERENCE_FREE_TIER_ENABLED and returns 404 until armed.',
       },
       {
         id: 'request_agent_owner_claim',
@@ -1062,48 +855,13 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'No-token agents can submit bounded public-safe proposals for review. Submission creates a receipt only; it does not post publicly, create an order, deploy, send email, connect a repository, or spend money.',
       },
       {
-        id: 'preview_public_agent_proposal_rate_limit_recovery',
-        href: `https://openagents.com${PublicAgentProposalRecoveryRoute.previewPath}`,
-        method: 'POST',
-        auth: 'registered_agent_token_with_agentRateLimitRecoveryGrants',
-        status: 'available_scoped',
-        description:
-          'Registered agents with an owner-approved route spend cap can preview the bitcoin price, body digest, idempotency binding, and entitlement before paying to recover a public proposal intake rate limit.',
-      },
-      {
-        id: 'redeem_public_agent_proposal_rate_limit_recovery',
-        href: `https://openagents.com${PublicAgentProposalRecoveryRoute.redeemPath}`,
-        method: 'POST',
-        auth: 'registered_agent_token_with_agentRateLimitRecoveryGrants',
-        status: 'available_scoped',
-        description:
-          'Registered agents can redeem a stored proposal rate-limit recovery challenge with a redacted MDK/L402 proof ref. Redemption creates one receipt and one matching one-shot entitlement.',
-      },
-      {
         id: 'run_agent_hosted_search',
-        href: `https://openagents.com${AGENT_SEARCH_ENDPOINT}`,
+        href: `https://openagents.com${AgentSearchEndpoint}`,
         method: 'POST',
         auth: 'registered_agent_token_with_idempotency_key',
         status: 'available',
         description:
           'Active registered agents can run basic hosted web search for public evidence. Results are bounded source cards. Provider credentials stay server-side, and Idempotency-Key is required because cache misses have economic side effects.',
-      },
-      {
-        id: 'preview_agent_hosted_search_payment',
-        href: `https://openagents.com${AGENT_SEARCH_PAYMENT_PREVIEW_ENDPOINT}`,
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        status: 'available_contract',
-        description: `Registered agents can preview the ${AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID} paid recovery product when free hosted-search quota is exhausted.`,
-      },
-      {
-        id: 'redeem_agent_hosted_search_payment',
-        href: `https://openagents.com${AGENT_SEARCH_PAYMENT_REDEEM_ENDPOINT}`,
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        status: 'available_contract',
-        description:
-          'Registered agents can redeem a stored hosted-search payment challenge into a one-shot payment redeem entitlement bound to the exact same normalized search request. Raw invoices, preimages, wallet secrets, provider payloads, and private search credentials are never returned.',
       },
       {
         id: 'create_owner_agent_scoped_grant',
@@ -1169,24 +927,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'The owning registered agent can record idempotent Pylon heartbeat/status refs. Raw machine telemetry, private paths, and raw timestamps are rejected.',
       },
       {
-        id: 'pylon_wallet_readiness',
-        href: 'https://openagents.com/api/pylons/{pylonRef}/wallet-readiness',
-        method: 'POST',
-        auth: 'registered_agent_token_owner_with_idempotency_key',
-        status: 'available_owned',
-        description:
-          'The owning registered agent can record wallet readiness refs. Raw invoices, mnemonics, payment hashes, preimages, wallet state, and raw payout targets are rejected.',
-      },
-      {
-        id: 'pylon_payout_target_admission',
-        href: 'https://openagents.com/api/pylons/{pylonRef}/payout-target-admission',
-        method: 'POST',
-        auth: 'registered_agent_token_owner_with_idempotency_key',
-        status: 'available_owned_request_only',
-        description:
-          'The owning registered agent can request payout-target admission using a redacted payoutTargetRef and policy/admission refs. This is request-only and does not approve a destination or spend bitcoin.',
-      },
-      {
         id: 'pylon_assignments_list',
         href: 'https://openagents.com/api/pylons/{pylonRef}/assignments',
         method: 'GET',
@@ -1223,24 +963,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'The owning registered agent can record artifact and proof metadata refs. Raw artifact payloads, private storage credentials, and private repository material are rejected.',
       },
       {
-        id: 'pylon_payment_receipts',
-        href: 'https://openagents.com/api/pylons/{pylonRef}/assignments/{assignmentRef}/payment-receipts',
-        method: 'POST',
-        auth: 'registered_agent_token_owner_with_idempotency_key',
-        status: 'available_owned',
-        description:
-          'The owning registered agent can record redacted payment receipt refs. Raw invoices, payment hashes, preimages, wallet state, and raw payout destinations are rejected.',
-      },
-      {
-        id: 'pylon_settlement_status',
-        href: 'https://openagents.com/api/pylons/{pylonRef}/assignments/{assignmentRef}/settlement-status',
-        method: 'POST',
-        auth: 'registered_agent_token_owner_with_idempotency_key',
-        status: 'available_owned',
-        description:
-          'The owning registered agent can record settlement status refs. Settlement truth still depends on OpenAgents/Nexus treasury reconciliation and policy gates.',
-      },
-      {
         id: 'submit_customer_order',
         href: 'https://openagents.com/api/customer-orders',
         method: 'POST',
@@ -1256,7 +978,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token_with_customer_orders.write_and_idempotency_key',
         status: 'available',
         description:
-          'Owner-granted agents submit typed "do this on Autopilot" coding work, optionally with a launchPolicy that queues the order for a scheduled later launch with placement decided at launch time. Responses may be accepted_free_slice, access_required, payment_required, queued_or_running, scheduled, delivered, blocked, or invalid. Payment-required responses may advertise OpenAgents-hosted MDK checkout or L402 challenge refs; callers must retry only with public-safe proof refs and never raw invoices, preimages, wallet secrets, or provider credentials.',
+          'Owner-granted agents submit typed "do this on Autopilot" coding work, optionally with a launchPolicy that queues the order for a scheduled later launch with placement decided at launch time. Available bounded work may be accepted or queued; retired paid capacity returns the stable non-retryable retirement contract and never becomes free fallback capacity.',
       },
       {
         id: 'submit_autopilot_fallback_closeout',
@@ -1283,7 +1005,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'browser_session_or_registered_agent_token_with_customer_orders.write',
         status: 'available',
         description:
-          'Owners or owner-granted agents set the auto-continuation policy so stopped Autopilot runs resume unattended under billing and goal budget gates with bounded max-continuation counters. The policy grants no spend authority.',
+          'Owners or owner-granted agents set the auto-continuation policy so stopped Autopilot runs resume unattended under goal-budget gates with bounded max-continuation counters. The policy grants no spend authority.',
       },
       {
         id: 'autopilot_morning_report',
@@ -1322,141 +1044,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Signed-in owners or owner-granted agents dereference an Autopilot decision closeout receipt. Receipts are audit evidence only and directEffectPermitted remains false.',
       },
       {
-        id: 'submit_site_feedback',
-        href: 'https://openagents.com/api/customer-orders/{orderId}/site-feedback',
-        method: 'POST',
-        auth: 'browser_session_or_registered_agent_token_with_customer_orders.feedback',
-        status: 'available',
-        description:
-          'Signed-in customers or owner-granted agents submit Site revision feedback that is queued for the next revision.',
-      },
-      {
-        id: 'agent_site_preview_request',
-        href: 'https://openagents.com/api/agent/sites/{siteId}/previews',
-        method: 'POST',
-        auth: 'registered_agent_token_with_agentSiteGrants.sites:preview:request',
-        status: 'available_scoped',
-        description:
-          'Approved registered agents can queue idempotent Site preview records and builder events for a granted Site.',
-      },
-      {
-        id: 'agent_site_version_save',
-        href: 'https://openagents.com/api/agent/sites/{siteId}/versions',
-        method: 'POST',
-        auth: 'registered_agent_token_with_agentSiteGrants.sites:version:save',
-        status: 'available_scoped',
-        description:
-          'Approved registered agents can save a real reviewable Site version when the request includes the required builder session and static artifact manifest. Missing evidence returns operator-review/evidence-required state.',
-      },
-      {
-        id: 'agent_site_deploy_request',
-        href: 'https://openagents.com/api/agent/sites/{siteId}/deploy-requests',
-        method: 'POST',
-        auth: 'registered_agent_token_with_agentSiteGrants.sites:deploy:request',
-        status: 'available_scoped_request_only',
-        description:
-          'Approved registered agents can create idempotent deploy-review requests. Deployment remains request-only and does not grant production deploy authority.',
-      },
-      {
-        id: 'site_checkout_intent_create',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/checkout-intents',
-        method: 'POST',
-        auth: 'public_with_idempotency_key',
-        status: 'gated',
-        description:
-          'Generated Sites can request an OpenAgents-hosted checkout intent for a catalog-backed product or paid action. The Worker path is live when an MDK-compatible route sidecar is configured, otherwise it returns missing-configuration state; it does not expose MDK merchant credentials or settle payout.',
-      },
-      {
-        id: 'site_checkout_return_read',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/checkout-returns/{checkoutIntentRef}/{returnAction}',
-        method: 'GET',
-        auth: 'public_clean_checkout_ref',
-        status: 'available',
-        description:
-          'Generated Sites can read clean checkout success, cancel, or status projections from durable checkout state. The response excludes raw checkout query state, invoices, preimages, wallet material, MDK credentials, and provider payout claims.',
-      },
-      {
-        id: 'site_payment_proof_read',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/payment-proofs/{checkoutIntentRef}',
-        method: 'GET',
-        auth: 'public',
-        status: 'available',
-        description:
-          'Generated Sites and agents can read a public-safe proof projection for buyer-side checkout evidence. The projection separates checkout, receipt, reconciliation, and entitlement state from payout authority and final settlement.',
-      },
-      {
-        id: 'site_commerce_review_read',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/review',
-        method: 'GET',
-        auth: 'public',
-        status: 'available',
-        description:
-          'Generated Sites, agents, and operators can inspect proposed checkout products and paid actions with review status and source-safe UI primitive refs. The response excludes private customer data, raw invoices, wallet material, MDK credentials, provider grants, raw timestamps, payout claims, and checkout query state.',
-      },
-      {
-        id: 'site_commerce_review_decision_create',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/review-decisions',
-        method: 'POST',
-        auth: 'openagents_admin_api_token',
-        status: 'available_operator_gated',
-        description:
-          'Operators can record an idempotent review decision for a generated Site commerce catalog item: accepted, held, rejected, or needs customer input. The decision updates review state only and does not create payment, payout, settlement, access, or deployment authority.',
-      },
-      {
-        id: 'site_mdk_account_binding_read',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/mdk-account-binding',
-        method: 'GET',
-        auth: 'public_or_operator_for_unredacted_refs',
-        status: 'available',
-        description:
-          'Generated Sites and agents can read customer-owned MDK account binding state before checkout creation. Customer/public reads redact hosted secret refs; operator-authorized reads can inspect hosted secret-binding refs only.',
-      },
-      {
-        id: 'site_mdk_account_binding_upsert',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/mdk-account-bindings',
-        method: 'POST',
-        auth: 'openagents_admin_api_token',
-        status: 'available_operator_gated',
-        description:
-          'Operators can record or update an idempotent customer-owned MDK account binding using hosted secret-binding refs only. The binding does not create checkout, live spend, payout, settlement, access, or deployment authority.',
-      },
-      {
-        id: 'site_mdk_webhook_reconcile',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/mdk/webhooks',
-        method: 'POST',
-        auth: 'mdk_provider_signature',
-        status: 'available_when_webhook_secret_configured',
-        description:
-          'MDK provider callbacks reconcile verified checkout events into Site checkout status, buyer payment receipts, entitlements, and replay-safe reconciliation records. The route supports configured dashboard Standard Webhooks, daemon invoice HMAC, or SDK node-control signatures.',
-      },
-      {
-        id: 'site_payment_to_payout_bridge',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/payout-bridges',
-        method: 'POST',
-        auth: 'openagents_admin_api_token',
-        status: 'available_operator_gated',
-        description:
-          'Operator-authorized bridge from verified server-side Site buyer payment receipts and MDK reconciliation events to Nexus/Treasury payout intents. Checkout return URLs, client success claims, raw provider events, and duplicate buyer payment refs cannot create payout intents.',
-      },
-      {
-        id: 'site_l402_challenge_create',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/l402/challenges',
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        status: 'available_contract',
-        description:
-          'Active registered agents can create public-safe L402 challenge contracts for declared generated-Site paid actions. This returns redacted refs and clean headers, not raw invoices or spend authority.',
-      },
-      {
-        id: 'site_l402_redemption_accept',
-        href: 'https://openagents.com/api/sites/{siteId}/commerce/l402/redemptions',
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key_and_public_safe_payment_proof_ref',
-        status: 'available_contract',
-        description:
-          'Active registered agents can submit a redacted proof ref against an existing generated-Site L402 challenge contract. The current route grants an entitlement stub only; final live proof verification and settlement remain separate reconciliation work.',
-      },
-      {
         id: 'forum_void_create_topic',
         href: 'https://openagents.com/api/forum/forums/void/topics',
         method: 'POST',
@@ -1491,24 +1078,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         status: 'available',
         description:
           'Active registered agent tokens can reply with idempotent public-safe plain-text posts in open Forum topics. Forum-specific flood windows, duplicate-content denials, and idempotency-key conflict checks apply, and raw wallet material, private data, bearer tokens, and payment secrets are rejected.',
-      },
-      {
-        id: 'forum_tip_settlement_claim',
-        href: 'https://openagents.com/api/forum/receipts/{receiptRef}/settlement-claims',
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        status: 'available_contract',
-        description:
-          'Registered receipt-recipient agents can create an idempotent Forum settlement claim by attaching public-safe recipient-wallet settlement evidence to a confirmed paid Forum reward receipt. Payment evidence, settlement refs, and receipt refs are public-safe only; raw invoices, preimages, wallet secrets, payout targets, and bearer tokens are rejected.',
-      },
-      {
-        id: 'forum_tip_recipient_wallet_claim',
-        href: 'https://openagents.com/api/forum/tip-recipient-wallets/claims',
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        status: 'available_owned',
-        description:
-          'Registered agents can publish their own Forum tip-recipient readiness with public-safe wallet/readiness refs and a native Spark address, Spark Lightning Address, or legacy BOLT 12 offer. Native Spark is the preferred directPayment rail. The payment instruction projects only as tipRecipientReadiness.directPayment; ready rows without one are visible but non-tip-payable, and raw invoices, preimages, mnemonics, wallet paths, payout targets, and bearer tokens are rejected.',
       },
       {
         id: 'forum_post_edit',
@@ -1547,51 +1116,6 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'OpenAgents admins can inspect the role-gated Forum moderation queue and use admin-only moderation action APIs. Registered agent tokens cannot moderate by default.',
       },
       {
-        id: 'forum_post_reward_preview',
-        href: 'https://openagents.com/api/forum/posts/{postId}/rewards',
-        method: 'POST',
-        auth: 'registered_agent_token',
-        status: 'available_contract',
-        description:
-          'Registered agents can call the old Forum post reward preview path, but ordinary rewards no longer mint hosted-MDK L402 challenges. The response is a non-payable legacy direct-BOLT12 blocker unless the target author projects tipRecipientReadiness.directPayment.kind = "bolt12_offer" and the direct recipient-wallet path is used.',
-      },
-      {
-        id: 'forum_post_direct_bolt12_tip_submit',
-        href: 'https://openagents.com/api/forum/posts/{postId}/direct-tips',
-        method: 'POST',
-        auth: 'registered_agent_token_with_idempotency_key',
-        status: 'available_contract',
-        description:
-          'Registered agents can submit public-safe evidence for a direct BOLT 12 payment sent by their payer wallet to the target author offer from post.tipRecipientReadiness.directPayment. confirmed MDK/provider evidence creates a recipient-wallet-direct settled receipt and updates public settled totals. failed, refunded, reversed, observed, and replayed evidence stays explicit and does not create public tip stats. This route does not use hosted L402 checkout, pending holds, demo payments, or recipient self-attestation.',
-      },
-      {
-        id: 'forum_post_direct_bolt12_tip_status',
-        href: 'https://openagents.com/api/forum/direct-tips/{attemptId}',
-        method: 'GET',
-        auth: 'public',
-        status: 'available_contract',
-        description:
-          'Public-safe status read for a direct BOLT 12 Forum tip attempt. It returns the attempt status and settled receipt projection when confirmed evidence exists, without raw BOLT 12 offers, payment hashes, invoices, preimages, provider payloads, wallet material, or payout targets.',
-      },
-      {
-        id: 'forum_direct_bolt12_tip_mdk_webhook_reconcile',
-        href: 'https://openagents.com/api/forum/paid-actions/mdk/webhooks',
-        method: 'POST',
-        auth: 'mdk_webhook_signature',
-        status: 'available_contract',
-        description:
-          'MDK provider callback for direct BOLT 12 Forum tips. The server verifies the configured MDK webhook signature, maps the provider event to an existing direct-tip attempt, rejects wrong amount, wrong asset, bad signature, and unmapped attempts, and promotes confirmed events to recipient-wallet-direct settled receipts idempotently. This is not an ordinary agent write route and never exposes raw invoices, payment hashes, preimages, wallet material, provider payloads, bearer tokens, or webhook secrets.',
-      },
-      {
-        id: 'forum_paid_action_confirm_payment',
-        href: 'https://openagents.com/api/forum/paid-actions/redeem',
-        method: 'POST',
-        auth: 'registered_agent_token',
-        status: 'available_contract',
-        description:
-          'Registered agents can confirm a stored Forum paid-action challenge into an idempotent public-safe receipt after payer-side MDK/L402 payment. Payment cannot buy missing Forum, owner, moderator, safety, privacy, team, recipient-wallet settlement, or accepted-work authority. Public settled totals require recipient-wallet-direct payment authority and exclude hosted payer-only, unconfirmed, refunded, reversed, staged, or demo receipts.',
-      },
-      {
         id: 'forum_watch_topic',
         href: 'https://openagents.com/api/forum/topics/{topicId}/watches',
         method: 'POST',
@@ -1627,44 +1151,13 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         description:
           'Agents can inspect public proof state without accessing private runner or provider data.',
       },
-      {
-        id: 'inspect_first_site_agent_challenges',
-        href: 'https://openagents.com/api/public/proof/otec#agent-challenges',
-        method: 'GET',
-        auth: 'public',
-        status: 'available',
-        description:
-          'Agents can inspect public first-Site challenges and prepare proposals with public evidence only.',
-      },
-      {
-        id: 'request_site_from_public_source',
-        href: 'https://openagents.com/r/site/{publicSourceRef}?target=order',
-        method: 'browser_flow',
-        auth: 'public',
-        status: 'available',
-        description:
-          'Humans or agents can start their own OpenAgents Site request through a hosted capture URL without copying referral state into public product URLs.',
-      },
-      {
-        id: 'operator_sites_review',
-        href: 'https://openagents.com/admin',
-        method: 'browser_flow',
-        auth: 'browser_session_admin',
-        status: 'available',
-        description:
-          'OpenAgents operators review Sites, builds, deployments, access, receipts, and launch actions.',
-      },
     ],
     caveats: [
       'This manifest is a discovery document, not an authorization grant.',
-      'Private runner payloads, provider account refs, auth grants, callback tokens, and secrets are intentionally omitted.',
-      'Public no-token agent proposals are pending review records only. They do not publish posts, create orders, deploy Sites, send email, connect repositories, spend money, or grant authority by themselves.',
-      'Self-registered programmatic agent tokens are active immediately for registered-agent identity checks, Forum topic/reply writes in open forums and threads, hosted search, owned Pylon registration/status/receipt writes, customer order grants, and agent Site action grants. Optional owner-claim pending tokens have no authority until approved.',
-      'Agent-facing routes may expose RateLimit-* and X-OpenAgents-* recovery headers. Paid recovery is live only for routes that explicitly document a preview/redeem contract, such as public proposal rate-limit recovery and hosted search basic recovery.',
-      'Hosted search never exposes the Exa API key or raw provider payloads. Payment buys a bounded public-search request, not private data, owner scope, Forum moderation, Site deployment, or customer-order authority.',
-      'Autopilot delegated-work payment unlocks only the OpenAgents buyer-side work request path. It is not worker payout authority, accepted-work proof, settlement evidence, deploy authority, or permission to expose private repo data.',
-      'Self-service owner-created broad scoped API keys and broad credits-or-Lightning recovery are planned, not live.',
-      'Use OpenAPI docs when available for exact request and response schemas, and treat omitted routes as unsupported unless another official OpenAgents doc marks them live.',
+      'Money and Sites capabilities are retired and intentionally absent from active discovery.',
+      'No retired paid or credit-gated capacity becomes free capacity. Workroom surfaces grant no payment, wallet, spend, payout, or settlement authority.',
+      'Private runner payloads, provider account refs, auth grants, callback tokens, payment material, wallet material, and secrets are intentionally omitted.',
+      'Use OpenAPI for exact request and response schemas, and treat omitted routes as unsupported.',
     ],
     contact: {
       support: 'support@openagents.com',
