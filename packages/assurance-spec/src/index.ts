@@ -1,5 +1,6 @@
 export * from "./admission.ts"
 export * from "./artifact.ts"
+export * from "./bun-test-adapter.ts"
 export * from "./environment.ts"
 export * from "./graph.ts"
 export * from "./handlers.ts"
