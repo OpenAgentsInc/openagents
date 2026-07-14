@@ -115,6 +115,8 @@ billing/Treasury routing vars, missing discovery filters, restored money
 schedulers, restored scheduled paid dispatch, run metering, or removal of the
 paid-capacity retirement reason. Applied migrations, typed 410 compatibility,
 redacted receipts, and owner recovery documentation are explicit exceptions.
+The post-VP-1 cutover inventory is re-frozen at `8,269` entries and `35,114`
+matches, down from the pre-phase `8,710` entries and `35,944` matches.
 
 ## Reconciliation interpretation
 
