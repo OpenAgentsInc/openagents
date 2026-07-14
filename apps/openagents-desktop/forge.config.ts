@@ -98,7 +98,7 @@ const config: ForgeConfig = {
       // beside the renderer on the signed, unpacked filesystem.
       unpackDir: "dist/{renderer,workers}",
     },
-    // Forge's npm-oriented dependency walker cannot resolve Bun workspace
+    // Forge's npm-oriented dependency walker does not own pnpm workspace
     // links. Ignore the workspace node_modules tree entirely: the application
     // bundle already contains ordinary dependencies, and packageAfterCopy
     // materializes only the provider packages/native executables that must
@@ -145,7 +145,7 @@ const config: ForgeConfig = {
       writeFileSync(path.join(destinationDirectory, "manifest.json"), JSON.stringify({ protocolVersion: 1, helperVersion: "0.1.0", architecture, sha256 }) + "\n", { mode: 0o644 })
     },
     packageAfterCopy: async (_forgeConfig, buildPath, _electronVersion, platform, arch) => {
-      // Bun bundles every app dependency except the provider packages whose
+      // The application build bundles every dependency except provider packages whose
       // native payloads must remain relative to their package. Replace the
       // copied workspace node_modules with that explicit runtime allowlist.
       await rm(path.join(buildPath, "node_modules"), { recursive: true, force: true })
