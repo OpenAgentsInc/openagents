@@ -228,6 +228,10 @@ html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   overflow-y: auto !important;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  /* UX-4 (#8790) design pass: settings panels read as one centered column
+     with breathing room instead of edge-to-edge stacked cards. */
+  align-items: center;
+  padding: var(--en-spacing-4) var(--en-spacing-6) var(--en-spacing-8);
 }
 
 /* ------------------------------------------------------------------ */
@@ -288,9 +292,75 @@ html[data-desktop-platform="darwin"] [data-en-key="shell-sidebar"]::before {
   padding: var(--en-spacing-1\.5) var(--en-spacing-2) !important;
 }
 
+/* UX-4 (#8790) design pass: chord captions render as quiet keycaps and the
+   family dividers stay hairline-subtle inside the panel gutter. */
+[data-en-key^="desktop-command-chord-"] {
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-sm);
+  background: var(--en-color-surfaceRaised);
+  padding: 0 var(--en-spacing-1);
+  white-space: nowrap;
+  flex: none;
+}
+
+[data-en-key^="desktop-command-group-"] {
+  margin: var(--en-spacing-1) var(--en-spacing-2) !important;
+  opacity: 0.7;
+}
+
+/* UX-4 (#8790) design pass: keyboard-shortcut rows read as a settings list —
+   left-aligned full-width rows on the shared control height. (Command ids
+   always carry a dot, which excludes the save/remove/draft edit controls.) */
+button[data-en-key^="desktop-command-binding-"][data-en-key*="."] {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left !important;
+  min-height: var(--en-control-md-height);
+}
+
 @keyframes oa-overlay-enter {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Files workspace (UX-4 #8790 design pass): the grant-boundary badge   */
+/* reads as a quiet fact, not scaffolding, and the empty/unavailable    */
+/* states sit centered on the raised-panel recipe instead of raw text   */
+/* at the top edge.                                                     */
+/* ------------------------------------------------------------------ */
+
+[data-en-key="workspace-browser-boundary"] {
+  opacity: 0.8;
+  flex: none;
+}
+
+/* The heading and search rows wrap instead of clipping their controls when
+   the browser pane sits at its narrow split-pane width. */
+[data-en-key="workspace-browser-heading"],
+[data-en-key="workspace-browser-search-controls"] {
+  flex-wrap: wrap;
+  row-gap: var(--en-spacing-1);
+}
+
+[data-en-key="workspace-browser-idle"],
+[data-en-key="workspace-browser-loading"] {
+  align-self: center;
+  max-width: 32rem;
+  margin-top: var(--en-spacing-8);
+  text-align: center;
+}
+
+[data-en-key="workspace-browser-unavailable"] {
+  align-self: center;
+  align-items: center;
+  text-align: center;
+  max-width: 28rem;
+  margin-top: var(--en-spacing-8);
+  padding: var(--en-spacing-4);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+  background: var(--en-color-surfaceRaised);
 }
 
 /* ------------------------------------------------------------------ */

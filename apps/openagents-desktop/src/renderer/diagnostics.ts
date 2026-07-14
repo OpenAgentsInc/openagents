@@ -263,7 +263,21 @@ export const diagnosticsView = (state: DiagnosticsState): View => {
             index === 0 ? [rowView(row, state.busy)] : [Divider({ key: `diagnostics-divider-${row.domain}` }), rowView(row, state.busy)],
           )
 
-  return Card({ key: "diagnostics-screen", padding: "3" }, [
+  // UX-4 (#8790) design pass: diagnostics shares the settings panel chrome —
+  // raised surface, hairline edge, centered 840px reading measure.
+  return Card({
+    key: "diagnostics-screen",
+    padding: "4",
+    radius: "lg",
+    style: {
+      width: "full",
+      maxWidth: 840,
+      alignSelf: "center",
+      backgroundColor: "surfaceRaised",
+      borderColor: "borderSubtle",
+      borderWidth: 1,
+    },
+  }, [
     Stack({ key: "diagnostics-stack", direction: "column", gap: "3" }, [
       header,
       Text({

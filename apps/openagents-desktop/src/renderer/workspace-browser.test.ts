@@ -224,36 +224,28 @@ describe("workspace browser Effect Native view", () => {
     expect(nodeByKey(result, "workspace-browser-search-more")?.label).toBe("More results")
   })
 
-  test("create and rename use inline standard controls", () => {
+  test("UX-4 (#8790): no filesystem mutation affordance renders — create/rename/delete/reveal stay substrate-only", () => {
+    // The MVP spec grants a bounded file tree for review (CW-AC-14), not
+    // grant-scoped file management. Even with an active editor/confirm state,
+    // the view renders no mutation control.
     const create = workspaceBrowserView(withWorkspaceBrowserEditor(readyState(), {
       kind: "create_file",
       parentRef: "",
       value: "notes.md",
     }))
-    expect(nodeByKey(create, "workspace-browser-editor-name")?._tag).toBe("TextField")
-    expect(nodeByKey(create, "workspace-browser-editor-submit")?.label).toBe("Create")
-    expect(nodeByKey(create, "workspace-browser-editor-cancel")?.label).toBe("Cancel")
+    expect(nodeByKey(create, "workspace-browser-editor-name")).toBeUndefined()
+    expect(nodeByKey(create, "workspace-browser-editor-submit")).toBeUndefined()
+    expect(nodeByKey(create, "workspace-browser-new-file")).toBeUndefined()
+    expect(nodeByKey(create, "workspace-browser-new-folder")).toBeUndefined()
 
-    const rename = workspaceBrowserView(withWorkspaceBrowserEditor(readyState(), {
-      kind: "rename",
-      pathRef: "README.md",
-      expectedRevisionRef: "revision-README.md",
-      value: "GUIDE.md",
-    }))
-    expect(nodeByKey(rename, "workspace-browser-editor-submit")?.label).toBe("Rename")
-  })
-
-  test("destructive action is inline, reversible before confirmation, and reveal is semantic", () => {
-    const selected = { ...readyState(), selectedRef: "README.md" }
-    const first = workspaceBrowserView(selected)
-    expect(nodeByKey(first, "workspace-browser-delete")?.label).toBe("Delete")
-    expect(nodeByKey(first, "workspace-browser-reveal")?.label).toBe("Reveal")
-    expect(nodeByKey(first, "workspace-browser-delete-cancel")).toBeUndefined()
-
-    const confirming = workspaceBrowserView({ ...selected, deleteConfirmRef: "README.md" })
-    expect(nodeByKey(confirming, "workspace-browser-delete")?.label).toBe("Confirm delete")
-    expect(nodeByKey(confirming, "workspace-browser-delete-cancel")?.label).toBe("Keep")
-    expect(nodeByKey(confirming, "workspace-browser-delete-warning")?.content).toBe("This cannot be undone.")
+    const confirming = workspaceBrowserView({ ...readyState(), selectedRef: "README.md", deleteConfirmRef: "README.md" })
+    expect(nodeByKey(confirming, "workspace-browser-delete")).toBeUndefined()
+    expect(nodeByKey(confirming, "workspace-browser-delete-cancel")).toBeUndefined()
+    expect(nodeByKey(confirming, "workspace-browser-delete-warning")).toBeUndefined()
+    expect(nodeByKey(confirming, "workspace-browser-reveal")).toBeUndefined()
+    expect(nodeByKey(confirming, "workspace-browser-rename")).toBeUndefined()
+    // The read-only selection fact remains.
+    expect(nodeByKey(confirming, "workspace-browser-selection-path")?.content).toBe("README.md")
   })
 
   test("large hierarchies disclose their render bound", () => {

@@ -608,6 +608,42 @@ delivers.
 Contract:
 `openagents_desktop.history.sidebar_header_truthful_scope.v1`.
 
+### The MVP visible surface is mechanically enforced against the rendered shell
+
+Owner statement (rc.10 review, 2026-07-14, verbatim): "This menu, when I click
+the settings button, looks horrible. This folder thing looks horrible. I
+thought we made a pass removing all screens that are not specifically called
+for in the MVP. You need to clean all this up and make a pass to remove
+everything from the sidebar and all UI that's not specifically called for in
+our MVP spec."
+
+- The sidebar dock renders EXACTLY the cited allowlist, in order: New chat,
+  Chat, ProductSpec, AssuranceSpec, Project home, Settings. Each entry carries
+  its ProductSpec/owner-directive citation in
+  `src/renderer/mvp-visible-surfaces.ts`.
+- Files and the command palette have no dock icon. They stay reachable only
+  through their closed CW-AC-12 command identities (⌘K palette, native
+  Commands menu, deep link) because the spec places file/Git review "beside
+  the conversation" and calls for no dock affordances.
+- The review workspace is the CW-AC-14 READ-ONLY boundary: branch/status
+  truth, per-file status, exact diff review, and composer attachment. No
+  commit, push, stage/unstage, discard, branch switch/create, or issue/PR
+  authoring control renders. The Files browser renders no file
+  create/rename/delete/reveal control. The typed substrate intents remain
+  host-side capability and authorize no visible affordance.
+- Enforcement is against the ACTUAL rendered view tree, not a static list:
+  `desktopMvpSurfaceViolations` walks `desktopShellView` output for every
+  reachable workspace state, fails on any non-allowlisted dock item, any
+  silent allowlist loss, and any forbidden surface key — and its falsifier
+  tests prove a planted non-MVP surface is rejected. The built-Electron smoke
+  asserts the same exact dock composition and mutation-affordance absence.
+
+Contracts:
+`openagents_desktop.mvp.visible_surface_allowlist.v1`,
+`openagents_desktop.mvp.visible_surface_sweep.v1`
+(oracles: `src/renderer/mvp-visible-surfaces.test.ts`, shell/settings/command
+suites, built-host smoke).
+
 ## Desktop safety boundary
 
 The normal desktop test sweep also mechanically enforces these host boundaries:

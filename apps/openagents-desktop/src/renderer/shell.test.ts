@@ -342,7 +342,9 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "sidebar-navigation")?._tag).toBe("NavRail")
     expect(navItemById(view, "workspace-chat")).toMatchObject({icon:"Chats",accessibilityLabel:"Chat"})
-    expect(navItemById(view, "shell-command-palette-toggle")).toMatchObject({icon:"Menu",accessibilityLabel:"Open command palette"})
+    // UX-4 (#8790): the palette keeps only its ⌘K / native-menu entry points —
+    // no dock icon renders for it.
+    expect(navItemById(view, "shell-command-palette-toggle")).toBeUndefined()
     expect(navItemById(view, "shell-settings-toggle")).toMatchObject({icon:"Settings",accessibilityLabel:"Open Settings"})
     const dockItems = ((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[0]?.items ?? []) as Array<AnyNode>
     expect(dockItems.at(-1)?.id).toBe("shell-settings-toggle")
@@ -367,6 +369,10 @@ describe("desktopShellView (state -> component tree)", () => {
   })
 
   test("MVP dock exposes only workroom surfaces plus the owner-directed AssuranceSpec viewer", () => {
+    // UX-4 (#8790, owner verbatim 2026-07-14): "remove everything from the
+    // sidebar and all UI that's not specifically called for in our MVP spec."
+    // The dock is exactly the allowlist in ./mvp-visible-surfaces.ts; Files
+    // and the palette keep their CW-AC-12 command identities but no dock icon.
     const view = desktopShellView(baseState)
     const nav = nodeByKey(view, "sidebar-navigation")
     const dock = (nav?.sections as Array<{ id: string; items: Array<AnyNode> }>)[0]
@@ -375,16 +381,16 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(dock?.items.map(item => item.id)).toEqual([
       "workspace-new-chat",
       "workspace-chat",
-      "workspace-files",
       "workspace-product-spec",
       "workspace-assurance-spec",
       "workspace-home",
-      "shell-command-palette-toggle",
       "shell-settings-toggle",
     ])
     expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New chat" })
     expect((navItemById(view, "workspace-new-chat")?.onSelect as { name?: string })?.name).toBe("DesktopNewChat")
     expect(navItemById(view, "workspace-fleet")).toBeUndefined()
+    expect(navItemById(view, "workspace-files")).toBeUndefined()
+    expect(navItemById(view, "shell-command-palette-toggle")).toBeUndefined()
   })
 
   test.skip("retired out-of-scope sidebar provider accounts box", () => {

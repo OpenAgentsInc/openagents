@@ -1,20 +1,23 @@
 /**
- * Git / GitHub review panel (EP250 capability E2–E5, #8712).
+ * Git review panel (EP250 capability E2–E5, #8712; UX-4 #8790 MVP boundary).
  *
  * A typed surface over ./git-github-contract.ts, mounted inside the review
  * workspace beside the existing diff viewer. Pure Effect Native data — state,
  * typed intents, and a `state -> View` projection over the shared catalog;
  * every host response is Effect-Schema decoded (via decodeGitGithubResult) and
  * never trusted raw. Styling rides the shared tokens only (no raw colors/px —
- * the design-conformance oracle enforces it). The audit
- * (docs/fable/2026-07-11-daily-coding-capability-audit.md §4E, §6.3) ranks
- * commit/push/issue/PR flows as a daily habit with zero typed UI today; this is
- * that UI.
+ * the design-conformance oracle enforces it).
  *
- * Honesty: a commit shows its real SHA receipt; a push shows the pushed ref;
- * an issue/PR create shows the returned url. Disabled controls carry a
- * hover-only reason (Tooltip) — Push without an upstream, gh actions when gh is
- * missing — never a fabricated success.
+ * UX-4 (#8790, owner verbatim 2026-07-14: "remove … all UI that's not
+ * specifically called for in our MVP spec"): the VISIBLE panel is the MVP
+ * read-only review boundary of CW-AC-14 — branch/status truth, per-file
+ * status, exact diff review, and composer attachment. Commit, push, stage/
+ * unstage, discard, branch switching/creation, and issue/PR authoring render
+ * no affordance (ProductSpec Scope keeps "destructive Git, commit, push, pull
+ * request, or merge" outside the MVP; CW-AC-14 forbids exposing Git mutation
+ * authority). Their typed intents/handlers remain internal post-MVP substrate
+ * and authorize no visible surface — the mvp-visible-surfaces oracle enforces
+ * this against the rendered tree.
  */
 import {
   Badge,
@@ -26,9 +29,6 @@ import {
   Stack,
   StaticPayload,
   Text,
-  TextField,
-  Tooltip,
-  ComponentValueBinding,
   defineIntent,
   type View,
 } from "@effect-native/core"
@@ -463,12 +463,6 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
 // View
 // ---------------------------------------------------------------------------
 
-/** Disabled controls carry a hover-only reason, matching the shell pattern. */
-const withReason = (key: string, disabled: boolean, reason: string | null, control: View): View =>
-  disabled && reason !== null && reason !== ""
-    ? Tooltip({ key: `${key}-reason`, content: reason, placement: { side: "top", align: "start" } }, [control])
-    : control
-
 const statusTone = (status: GitFileEntry["status"]): "success" | "warn" | "danger" | "neutral" =>
   status === "added" ? "success"
     : status === "deleted" ? "danger"
@@ -487,6 +481,9 @@ const changeRow = (entry: GitFileEntry, staged: boolean): View =>
       }),
       Text({ key: `git-change-path-${staged ? "s" : "u"}-${entry.path}`, content: entry.path, variant: "caption", color: "textPrimary" }),
       Spacer({ key: `git-change-fill-${staged ? "s" : "u"}-${entry.path}`, flex: true }),
+      // UX-4 (#8790): read-only review boundary — Review is the only per-file
+      // affordance. Stage/Unstage, Discard, commit, push, branch, and issue/PR
+      // authoring are Git mutation authority outside the MVP cut (CW-AC-14).
       ...(entry.status === "untracked" ? [] : [Button({
         key: `git-review-${staged ? "s" : "u"}-${entry.path}`,
         label: "Review",
@@ -494,20 +491,6 @@ const changeRow = (entry: GitFileEntry, staged: boolean): View =>
         onPress: IntentRef("GitPanelDiffRequested", StaticPayload({ path: entry.path, source: staged ? "staged" : "unstaged" })),
         a11y: { label: `Review ${staged ? "staged" : "unstaged"} diff for ${entry.path}` },
       })]),
-      ...(!staged && entry.status !== "untracked" && entry.status !== "unmerged" ? [Button({
-        key: `git-discard-${entry.path}`,
-        label: "Discard…",
-        variant: "ghost",
-        onPress: IntentRef("GitPanelDiscardRequested", StaticPayload(entry.path)),
-        a11y: { label: `Discard unstaged changes in ${entry.path}` },
-      })] : []),
-      Button({
-        key: `git-stage-toggle-${staged ? "s" : "u"}-${entry.path}`,
-        label: staged ? "Unstage" : "Stage",
-        variant: "ghost",
-        onPress: IntentRef("GitPanelStageToggled", StaticPayload(entry.path)),
-        a11y: { label: `${staged ? "Unstage" : "Stage"} ${entry.path}` },
-      }),
     ],
   )
 
@@ -580,16 +563,8 @@ const diffRows = (content: string): ReadonlyArray<{ kind: "context" | "add" | "r
 
 const reviewSection = (git: GitPanelState): ReadonlyArray<View> => {
   const diff = git.diff
-  const confirmation = git.discardConfirmPath === null ? [] : [Stack(
-    { key: "git-discard-confirmation", direction: "row", gap: "2", align: "center", style: { width: "full" } },
-    [
-      Text({ key: "git-discard-warning", content: `Discard unstaged changes in ${git.discardConfirmPath}? This cannot be undone.`, variant: "body", color: "warning" }),
-      Button({ key: "git-discard-confirm", label: "Discard changes", variant: "primary", onPress: IntentRef("GitPanelDiscardConfirmed"), style: { color: "danger" } }),
-      Button({ key: "git-discard-cancel", label: "Cancel", variant: "ghost", onPress: IntentRef("GitPanelDiscardCancelled") }),
-    ],
-  )]
-  if (diff === null) return confirmation
-  return [...confirmation, Stack(
+  if (diff === null) return []
+  return [Stack(
     { key: "git-review-diff", direction: "column", gap: "2", style: { width: "full", minWidth: 0 } },
     [
       Stack({ key: "git-review-heading", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
@@ -611,192 +586,6 @@ const reviewSection = (git: GitPanelState): ReadonlyArray<View> => {
   )]
 }
 
-const commitBox = (git: GitPanelState): View => {
-  const staged = git.status?.staged.length ?? 0
-  const messageEmpty = git.commitMessage.trim() === ""
-  const disabled = git.committing || staged === 0 || messageEmpty
-  const reason = staged === 0 ? "Stage changes to commit" : messageEmpty ? "Enter a commit message" : null
-  return Stack({ key: "git-commit-box", direction: "column", gap: "2", style: { width: "full", minWidth: 0 } }, [
-    TextField({
-      key: "git-commit-message",
-      value: git.commitMessage,
-      placeholder: "Commit message",
-      disabled: git.committing,
-      a11y: { label: "Commit message" },
-      onChange: IntentRef("GitPanelCommitMessageChanged", ComponentValueBinding()),
-      onSubmit: IntentRef("GitPanelCommitRequested"),
-      style: { width: "full" },
-    }),
-    Stack({ key: "git-commit-row", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-      withReason(
-        "git-commit",
-        disabled,
-        reason,
-        Button({
-          key: "git-commit",
-          label: git.committing ? "Committing…" : "Commit",
-          variant: "primary",
-          disabled,
-          onPress: IntentRef("GitPanelCommitRequested"),
-          a11y: { label: reason ?? "Create a commit from the staged changes" },
-        }),
-      ),
-      Spacer({ key: "git-commit-fill", flex: true }),
-      pushControl(git),
-    ]),
-  ])
-}
-
-const pushControl = (git: GitPanelState): View => {
-  const noUpstream = git.status !== null && git.status.upstream === null && !git.status.detached
-  const detached = git.status?.detached ?? false
-  const disabled = git.pushing || noUpstream || detached
-  const reason = detached
-    ? "A detached HEAD has no branch to push"
-    : noUpstream
-      ? "This branch has no upstream yet"
-      : null
-  return withReason(
-    "git-push",
-    disabled,
-    reason,
-    Button({
-      key: "git-push",
-      label: git.pushing ? "Pushing…" : "Push",
-      variant: "secondary",
-      disabled,
-      onPress: IntentRef("GitPanelPushRequested"),
-      a11y: { label: reason ?? "Push the current branch to its upstream" },
-    }),
-  )
-}
-
-const receiptRow = (git: GitPanelState): ReadonlyArray<View> => {
-  const out: View[] = []
-  if (git.receipt !== null) {
-    out.push(Stack({ key: "git-receipt", direction: "row", gap: "2", align: "center", style: { width: "full", minWidth: 0 } }, [
-      Icon({ key: "git-receipt-icon", name: "Check", size: "sm", color: "success", label: "Success" }),
-      Text({ key: "git-receipt-headline", content: git.receipt.headline, variant: "caption", color: "success" }),
-      Text({ key: "git-receipt-detail", content: git.receipt.detail, variant: "caption", color: "textMuted" }),
-    ]))
-  }
-  if (git.actionError !== null) {
-    out.push(Text({ key: "git-action-error", content: git.actionError, variant: "caption", color: "warning" }))
-  }
-  return out
-}
-
-const branchSwitcher = (git: GitPanelState): View =>
-  Stack({ key: "git-branches", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } }, [
-    Text({ key: "git-branches-title", content: "Branches", variant: "label", color: "textMuted" }),
-    Stack({ key: "git-branches-list", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } },
-      git.branches.slice(0, 40).map((branch) => Button({
-        key: `git-branch-${branch.name}`,
-        label: branch.current ? `● ${branch.name}` : branch.name,
-        variant: branch.current ? "secondary" : "ghost",
-        disabled: branch.current,
-        onPress: IntentRef("GitPanelBranchCheckoutRequested", StaticPayload(branch.name)),
-        a11y: { label: branch.current ? `On branch ${branch.name}` : `Switch to branch ${branch.name}` },
-      })),
-    ),
-    Stack({ key: "git-branch-create-row", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-      TextField({
-        key: "git-new-branch",
-        value: git.newBranchName,
-        placeholder: "New branch name",
-        a11y: { label: "New branch name" },
-        onChange: IntentRef("GitPanelNewBranchNameChanged", ComponentValueBinding()),
-        onSubmit: IntentRef("GitPanelBranchCreateRequested"),
-        style: { flex: 1 },
-      }),
-      withReason(
-        "git-branch-create",
-        git.newBranchName.trim() === "",
-        git.newBranchName.trim() === "" ? "Enter a branch name" : null,
-        Button({
-          key: "git-branch-create",
-          label: "Create",
-          variant: "ghost",
-          disabled: git.newBranchName.trim() === "",
-          onPress: IntentRef("GitPanelBranchCreateRequested"),
-          a11y: { label: "Create and switch to a new branch" },
-        }),
-      ),
-    ]),
-  ])
-
-const issuePrSection = (git: GitPanelState): View => {
-  const ghDisabled = git.ghAvailable === false
-  const ghReason = git.ghReason
-  const createButton = (kind: "issue" | "pr", label: string): View =>
-    withReason(
-      `git-create-${kind}`,
-      ghDisabled,
-      ghReason,
-      Button({
-        key: `git-create-${kind}`,
-        label,
-        variant: git.create === kind ? "secondary" : "ghost",
-        disabled: ghDisabled,
-        onPress: IntentRef("GitPanelCreateFormChanged", StaticPayload(git.create === kind ? "none" : kind)),
-        a11y: { label: ghReason ?? `Create a new ${kind === "issue" ? "issue" : "pull request"}` },
-      }),
-    )
-  const issueRows = git.issues.slice(0, 20).map((issue) =>
-    Text({ key: `git-issue-${issue.number}`, content: `#${issue.number} · ${issue.state} · ${issue.title}`, variant: "caption", color: "textPrimary" }))
-  const prRows = git.prs.slice(0, 20).map((pr) =>
-    Text({ key: `git-pr-${pr.number}`, content: `#${pr.number} · ${pr.state} · ${pr.title}`, variant: "caption", color: "textPrimary" }))
-  const createForm: ReadonlyArray<View> = git.create === "none"
-    ? []
-    : [Stack({ key: "git-create-form", direction: "column", gap: "2", style: { width: "full", minWidth: 0 } }, [
-        TextField({
-          key: "git-create-title",
-          value: git.createTitle,
-          placeholder: git.create === "issue" ? "Issue title" : "Pull request title",
-          a11y: { label: git.create === "issue" ? "Issue title" : "Pull request title" },
-          onChange: IntentRef("GitPanelCreateTitleChanged", ComponentValueBinding()),
-          style: { width: "full" },
-        }),
-        TextField({
-          key: "git-create-body",
-          value: git.createBody,
-          placeholder: "Body (optional)",
-          a11y: { label: "Body" },
-          onChange: IntentRef("GitPanelCreateBodyChanged", ComponentValueBinding()),
-          style: { width: "full" },
-        }),
-        withReason(
-          "git-create-submit",
-          git.createTitle.trim() === "",
-          git.createTitle.trim() === "" ? "Enter a title" : null,
-          Button({
-            key: "git-create-submit",
-            label: git.create === "issue" ? "Create issue" : "Create pull request",
-            variant: "primary",
-            disabled: git.createTitle.trim() === "",
-            onPress: IntentRef("GitPanelCreateSubmitted"),
-            a11y: { label: git.create === "issue" ? "Create the issue" : "Create the pull request" },
-          }),
-        ),
-      ])]
-  return Stack({ key: "git-issues-prs", direction: "column", gap: "2", style: { width: "full", minWidth: 0 } }, [
-    Stack({ key: "git-issues-prs-heading", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-      Text({ key: "git-issues-prs-title", content: "Issues & PRs", variant: "label", color: "textMuted" }),
-      Spacer({ key: "git-issues-prs-fill", flex: true }),
-      Button({ key: "git-load-issues", label: git.issuesLoaded ? "Reload issues" : "Load issues", variant: "ghost", onPress: IntentRef("GitPanelIssuesRequested"), a11y: { label: "Load open issues" } }),
-      Button({ key: "git-load-prs", label: git.prsLoaded ? "Reload PRs" : "Load PRs", variant: "ghost", onPress: IntentRef("GitPanelPrsRequested"), a11y: { label: "Load open pull requests" } }),
-      createButton("issue", "New issue"),
-      createButton("pr", "New PR"),
-    ]),
-    ...(ghDisabled && ghReason !== null
-      ? [Text({ key: "git-gh-reason", content: ghReason, variant: "caption", color: "warning" })]
-      : []),
-    ...createForm,
-    ...(issueRows.length > 0 ? [Stack({ key: "git-issue-list", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } }, issueRows)] : []),
-    ...(prRows.length > 0 ? [Stack({ key: "git-pr-list", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } }, prRows)] : []),
-  ])
-}
-
 export const gitPanelView = (git: GitPanelState): View => {
   const body: View[] = [statusHeader(git)]
   if (git.phase === "unavailable") {
@@ -807,13 +596,12 @@ export const gitPanelView = (git: GitPanelState): View => {
       color: "warning",
     }))
   } else {
+    // UX-4 (#8790): the read-only CW-AC-14 review boundary — status, exact
+    // diff review, composer attachment. No commit/push/stage/branch/issue/PR
+    // affordance renders in the MVP workroom.
     body.push(...changesSection(git))
     body.push(...reviewSection(git))
-    body.push(commitBox(git))
-    body.push(...receiptRow(git))
-    body.push(branchSwitcher(git))
   }
-  body.push(issuePrSection(git))
   return Stack(
     { key: "git-panel", direction: "column", gap: "3", style: { width: "full", minWidth: 0, paddingTop: "2" } },
     body,

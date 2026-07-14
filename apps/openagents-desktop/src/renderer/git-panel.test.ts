@@ -1,12 +1,15 @@
 /**
- * Git/GitHub panel unit tests (EP250 E2–E5, #8712): pure `state -> View`
- * (status header, commit box, disabled-reason popovers) plus the typed intent
- * loop driven headlessly through the real registry with a fake typed bridge
- * (stage toggle, commit SHA receipt, push receipt, gh-unavailable reason,
- * issue create url receipt).
+ * Git panel unit tests (EP250 E2–E5, #8712; UX-4 #8790 read-only boundary):
+ * pure `state -> View` (status header, per-file rows, diff review) plus the
+ * typed intent loop driven headlessly through the real registry with a fake
+ * typed bridge. UX-4 (#8790, owner verbatim: "remove … all UI that's not
+ * specifically called for in our MVP spec"): the VIEW must render no commit/
+ * push/stage/discard/branch/issue/PR affordance (CW-AC-14 forbids exposing
+ * Git mutation authority); the substrate intents stay internal and are
+ * exercised here by direct dispatch, never through a rendered control.
  */
 import { describe, expect, test } from "bun:test"
-import { resolveIntentRef, type View } from "@effect-native/core"
+import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
@@ -91,22 +94,44 @@ describe("git panel view", () => {
     expect(nodeByKey(view, "git-refresh")).toBeDefined()
   })
 
-  test("commit box, push button, branch switcher, and issues/PRs section all render", () => {
-    const view = gitPanelView(readyState())
-    expect(nodeByKey(view, "git-commit-message")).toBeDefined()
-    expect(nodeByKey(view, "git-commit")).toBeDefined()
-    expect(nodeByKey(view, "git-push")).toBeDefined()
-    expect(nodeByKey(view, "git-branches")).toBeDefined()
-    expect(nodeByKey(view, "git-issues-prs")).toBeDefined()
+  test("UX-4 (#8790): no Git mutation affordance renders — the CW-AC-14 read-only review boundary", () => {
+    const view = gitPanelView(readyState({
+      commitMessage: "msg",
+      branches: [{ name: "main", current: true, upstream: "origin/main" }],
+      ghAvailable: false,
+      ghReason: "The GitHub CLI (gh) is not installed.",
+      receipt: { kind: "commit", headline: "Committed 0000000", detail: "feat: x" },
+      discardConfirmPath: "b.txt",
+    }))
+    for (const forbidden of [
+      "git-commit-message",
+      "git-commit",
+      "git-push",
+      "git-branches",
+      "git-branch-create",
+      "git-new-branch",
+      "git-issues-prs",
+      "git-create-issue",
+      "git-create-pr",
+      "git-receipt",
+      "git-discard-confirmation",
+      "git-discard-b.txt",
+      "git-stage-toggle-s-a.txt",
+      "git-stage-toggle-u-b.txt",
+      "git-stage-toggle-u-c.txt",
+    ]) {
+      expect(nodeByKey(view, forbidden)).toBeUndefined()
+    }
   })
 
-  test("changed files render staged and unstaged rows with stage toggles", () => {
+  test("changed files render staged and unstaged rows with Review as the only per-file affordance", () => {
     const view = gitPanelView(readyState())
-    expect(nodeByKey(view, "git-stage-toggle-s-a.txt")).toBeDefined() // staged Unstage
-    expect(nodeByKey(view, "git-stage-toggle-u-b.txt")).toBeDefined() // unstaged Stage
-    expect(nodeByKey(view, "git-stage-toggle-u-c.txt")).toBeDefined() // untracked Stage
+    expect(nodeByKey(view, "git-change-staged-a.txt")).toBeDefined()
+    expect(nodeByKey(view, "git-change-unstaged-b.txt")).toBeDefined()
+    expect(nodeByKey(view, "git-change-unstaged-c.txt")).toBeDefined()
+    expect(nodeByKey(view, "git-review-s-a.txt")).toBeDefined()
     expect(nodeByKey(view, "git-review-u-b.txt")).toBeDefined()
-    expect(nodeByKey(view, "git-discard-b.txt")).toBeDefined()
+    // Untracked files have no diff to review and carry no control at all.
     expect(nodeByKey(view, "git-review-u-c.txt")).toBeUndefined()
   })
 
@@ -117,43 +142,11 @@ describe("git panel view", () => {
     expect(nodeByKey(view, "git-review-close")).toBeDefined()
   })
 
-  test("commit is disabled with a hover reason when nothing is staged", () => {
-    const state = readyState({ status: readyStatus({ staged: [] }) as GitPanelState["status"], commitMessage: "msg" })
-    const view = gitPanelView(state)
-    const tooltip = nodeByKey(view, "git-commit-reason") as { _tag?: string; content?: string }
-    expect(tooltip?._tag).toBe("Tooltip")
-    expect(tooltip?.content).toBe("Stage changes to commit")
-  })
+  // UX-4 (#8790): the commit/push/branch/issue/PR disabled-reason and receipt
+  // renderings were removed with their affordances — the read-only boundary
+  // test above pins their absence.
 
-  test("commit is disabled with a hover reason when the message is empty", () => {
-    const view = gitPanelView(readyState({ commitMessage: "" }))
-    const tooltip = nodeByKey(view, "git-commit-reason") as { _tag?: string; content?: string }
-    expect(tooltip?.content).toBe("Enter a commit message")
-  })
-
-  test("push is disabled with a hover reason when there is no upstream", () => {
-    const state = readyState({ status: readyStatus({ upstream: null }) as GitPanelState["status"] })
-    const view = gitPanelView(state)
-    const tooltip = nodeByKey(view, "git-push-reason") as { _tag?: string; content?: string }
-    expect(tooltip?._tag).toBe("Tooltip")
-    expect(tooltip?.content).toBe("This branch has no upstream yet")
-  })
-
-  test("gh Create affordances are disabled with the gate reason when gh is unavailable", () => {
-    const view = gitPanelView(readyState({ ghAvailable: false, ghReason: "The GitHub CLI (gh) is not installed." }))
-    const tooltip = nodeByKey(view, "git-create-issue-reason") as { _tag?: string; content?: string }
-    expect(tooltip?._tag).toBe("Tooltip")
-    expect(tooltip?.content).toBe("The GitHub CLI (gh) is not installed.")
-    // The reason is also stated once, in-flow, beneath the section heading.
-    expect((nodeByKey(view, "git-gh-reason") as { content?: string }).content).toBe("The GitHub CLI (gh) is not installed.")
-  })
-
-  test("a commit receipt renders its SHA headline once landed", () => {
-    const view = gitPanelView(readyState({ receipt: { kind: "commit", headline: "Committed 0000000", detail: "feat: x" } }))
-    expect((nodeByKey(view, "git-receipt-headline") as { content?: string }).content).toBe("Committed 0000000")
-  })
-
-  test("the unavailable phase explains itself and hides commit/push", () => {
+  test("the unavailable phase explains itself", () => {
     const view = gitPanelView({ ...emptyGitPanelState(), phase: "unavailable", reason: "Not a Git repository." })
     expect((nodeByKey(view, "git-unavailable") as { content?: string }).content).toBe("Not a Git repository.")
     expect(nodeByKey(view, "git-commit")).toBeUndefined()
@@ -196,6 +189,13 @@ const pressIntent = (view: View, key: string) => {
   return resolveIntentRef(node.onPress, null)
 }
 
+/**
+ * UX-4 (#8790): mutation intents no longer have rendered controls — the
+ * substrate handlers are exercised by direct typed dispatch instead.
+ */
+const directIntent = (name: string, payload?: Parameters<typeof StaticPayload>[0]) =>
+  resolveIntentRef(payload === undefined ? IntentRef(name) : IntentRef(name, StaticPayload(payload)), null)
+
 describe("git panel intent loop", () => {
   test("refresh loads status + branches through the bridge", async () => {
     await Effect.runPromise(Effect.gen(function* () {
@@ -222,13 +222,12 @@ describe("git panel intent loop", () => {
         status: () => readyStatus(),
         branchList: () => ({ ok: true, op: "branchList", current: "main", branches: [], truncated: false }),
       })
-      const { state, registry } = yield* harness(bridge, readyState())
-      const view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      // b.txt is unstaged → toggling it calls stage.
-      yield* registry.dispatch(pressIntent(view, "git-stage-toggle-u-b.txt"))
+      const { registry } = yield* harness(bridge, readyState())
+      // b.txt is unstaged → toggling it calls stage (direct dispatch: UX-4
+      // removed the rendered control; the substrate intent remains).
+      yield* registry.dispatch(directIntent("GitPanelStageToggled", "b.txt"))
       // a.txt is staged → toggling it calls unstage.
-      const view2 = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view2, "git-stage-toggle-s-a.txt"))
+      yield* registry.dispatch(directIntent("GitPanelStageToggled", "a.txt"))
       const ops = calls.map((call) => call["op"])
       expect(ops).toContain("stage")
       expect(ops).toContain("unstage")
@@ -243,8 +242,7 @@ describe("git panel intent loop", () => {
         branchList: () => ({ ok: true, op: "branchList", current: "main", branches: [], truncated: false }),
       })
       const { state, registry } = yield* harness(bridge, readyState({ commitMessage: "feat: x" }))
-      const view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view, "git-commit"))
+      yield* registry.dispatch(directIntent("GitPanelCommitRequested"))
       const git = (yield* SubscriptionRef.get(state)).git
       expect(git.commitMessage).toBe("")
       expect(git.receipt?.kind).toBe("commit")
@@ -258,8 +256,7 @@ describe("git panel intent loop", () => {
         commit: () => gitGithubError("commit", "blocked_by_hook", "A pre-commit hook blocked this commit."),
       })
       const { state, registry } = yield* harness(bridge, readyState({ commitMessage: "feat: x" }))
-      const view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view, "git-commit"))
+      yield* registry.dispatch(directIntent("GitPanelCommitRequested"))
       const git = (yield* SubscriptionRef.get(state)).git
       expect(git.receipt).toBeNull()
       expect(git.actionError).toBe("A pre-commit hook blocked this commit.")
@@ -274,8 +271,7 @@ describe("git panel intent loop", () => {
         branchList: () => ({ ok: true, op: "branchList", current: "main", branches: [], truncated: false }),
       })
       const { state, registry } = yield* harness(bridge, readyState())
-      const view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view, "git-push"))
+      yield* registry.dispatch(directIntent("GitPanelPushRequested"))
       const git = (yield* SubscriptionRef.get(state)).git
       expect(git.receipt?.kind).toBe("push")
       expect(git.receipt?.headline).toBe("Pushed main")
@@ -288,8 +284,7 @@ describe("git panel intent loop", () => {
         issueList: () => gitGithubError("issueList", "gh_unavailable", "The GitHub CLI (gh) is not installed."),
       })
       const { state, registry } = yield* harness(bridge, readyState())
-      const view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view, "git-load-issues"))
+      yield* registry.dispatch(directIntent("GitPanelIssuesRequested"))
       const git = (yield* SubscriptionRef.get(state)).git
       expect(git.ghAvailable).toBe(false)
       expect(git.ghReason).toBe("The GitHub CLI (gh) is not installed.")
@@ -302,8 +297,7 @@ describe("git panel intent loop", () => {
         issueCreate: () => ({ ok: true, op: "issueCreate", number: 8712, url: "https://github.com/o/r/issues/8712" }),
       })
       const { state, registry } = yield* harness(bridge, readyState({ create: "issue", createTitle: "A bug" }))
-      const view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view, "git-create-submit"))
+      yield* registry.dispatch(directIntent("GitPanelCreateSubmitted"))
       const git = (yield* SubscriptionRef.get(state)).git
       expect(git.receipt?.kind).toBe("issue")
       expect(git.receipt?.headline).toBe("Created issue #8712")
@@ -322,8 +316,7 @@ describe("git panel intent loop", () => {
       })
       const branches = [{ name: "feature/x", current: false, upstream: null }, { name: "main", current: true, upstream: "origin/main" }]
       const { state, registry } = yield* harness(bridge, readyState({ branches, currentBranch: "main" }))
-      const view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view, "git-branch-feature/x"))
+      yield* registry.dispatch(directIntent("GitPanelBranchCheckoutRequested", "feature/x"))
       expect(checkedOut).toEqual(["feature/x"])
       expect((yield* SubscriptionRef.get(state)).git.currentBranch).toBe("feature/x")
     }))
@@ -382,11 +375,11 @@ describe("git panel intent loop", () => {
         branchList: () => ({ ok: true, op: "branchList", current: "main", branches: [], truncated: false }),
       })
       const { state, registry } = yield* harness(bridge, readyState())
-      let view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      yield* registry.dispatch(pressIntent(view, "git-discard-b.txt"))
-      view = gitPanelView((yield* SubscriptionRef.get(state)).git)
-      expect(nodeByKey(view, "git-discard-confirmation")).toBeDefined()
-      yield* registry.dispatch(pressIntent(view, "git-discard-confirm"))
+      yield* registry.dispatch(directIntent("GitPanelDiscardRequested", "b.txt"))
+      // The confirmation state is tracked but renders no affordance (UX-4).
+      expect((yield* SubscriptionRef.get(state)).git.discardConfirmPath).toBe("b.txt")
+      expect(nodeByKey(gitPanelView((yield* SubscriptionRef.get(state)).git), "git-discard-confirmation")).toBeUndefined()
+      yield* registry.dispatch(directIntent("GitPanelDiscardConfirmed"))
       expect(calls[0]).toEqual({
         op: "discard",
         repositoryRef: "workspace.repository.test",

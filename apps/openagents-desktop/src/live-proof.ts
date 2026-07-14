@@ -195,6 +195,20 @@ const clickScript = (key: string): string => `(() => {
   return { clicked: true }
 })()`
 
+// UX-4 (#8790): the palette lost its dock icon — open it with its canonical
+// ⌘K chord exactly like a keyboard user.
+const openPaletteScript = `(() => {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "k",
+    metaKey: navigator.platform.toLowerCase().includes("mac"),
+    ctrlKey: !navigator.platform.toLowerCase().includes("mac"),
+    bubbles: true,
+    cancelable: true,
+  }))
+  return { clicked: true }
+})()`
+
 const probeFleetScript = `(() => {
   const table = document.querySelector('[data-en-key="fleet-accounts-table"]')
   const unavailable = document.querySelector('[data-en-key="fleet-unavailable"]')
@@ -822,10 +836,18 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
   // the file's CURRENT bytes (non-destructive round trip); the destructive
   // stale-revision conflict proof lives in the headless temp-dir oracle.
   const stepFileSave = async (): Promise<void> => {
-    const clicked = asRec(await evalIn(clickScript("workspace-files")))
-    if (clicked["clicked"] !== true) {
+    // UX-4 (#8790): Files has no dock icon — route through its closed
+    // palette command identity.
+    await evalIn(openPaletteScript)
+    const filesCommand = await pollUntil(
+      clickKeyScript("desktop-command-workspace.files"),
+      (value) => value["clicked"] === true,
+      8_000,
+      150,
+    )
+    if (!filesCommand.ok) {
       await capture("file-save-failed")
-      record("file-save", false, { reason: "Files dock button never mounted" })
+      record("file-save", false, { reason: "Open Files palette command never mounted" })
       return
     }
     const filesReady = await pollUntil(probeFilesWorkspaceScript, (value) => value["settled"] === true, 15_000, 200)
@@ -865,12 +887,9 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
   // review has no dock button) and prove a real dirty-file status renders with
   // a loadable diff. A clean workspace has nothing to review and journals so.
   const stepGitReview = async (): Promise<void> => {
-    const toggled = asRec(await evalIn(clickScript("shell-command-palette-toggle")))
-    if (toggled["clicked"] !== true) {
-      await capture("git-review-failed")
-      record("git-review", false, { reason: "command palette toggle never mounted" })
-      return
-    }
+    // UX-4 (#8790): the palette opens by its canonical chord; there is no
+    // dock toggle.
+    await evalIn(openPaletteScript)
     const paletteReady = await pollUntil(
       clickKeyScript("desktop-command-workspace.review"),
       (value) => value["clicked"] === true,

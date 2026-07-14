@@ -588,40 +588,13 @@ const operationNotice = (operation: DesktopWorkspaceOperationResult | null): Vie
   })]
 }
 
-const editorView = (editor: WorkspaceBrowserEditor | null): View[] => editor === null ? [] : [
-  Stack(
-    { key: "workspace-browser-editor", direction: "row", gap: "2", align: "center", style: { width: "full" } },
-    [
-      TextField({
-        key: "workspace-browser-editor-name",
-        value: editor.value,
-        label: editor.kind === "rename" ? "Rename entry" : editor.kind === "create_directory" ? "New folder name" : "New file name",
-        placeholder: editor.kind === "create_directory" ? "folder-name" : "filename.ts",
-        onChange: IntentRef("WorkspaceBrowserEditorChanged", ComponentValueBinding()),
-        onSubmit: IntentRef("WorkspaceBrowserEditorSubmitted"),
-        a11y: { label: editor.kind === "rename" ? "New workspace entry name" : "Workspace entry name" },
-        style: { flex: 1, minWidth: 0 },
-      }),
-      Button({
-        key: "workspace-browser-editor-submit",
-        label: editor.kind === "rename" ? "Rename" : "Create",
-        variant: "primary",
-        disabled: editor.value.trim() === "",
-        onPress: IntentRef("WorkspaceBrowserEditorSubmitted"),
-        a11y: { label: editor.kind === "rename" ? "Rename workspace entry" : "Create workspace entry" },
-      }),
-      Button({
-        key: "workspace-browser-editor-cancel",
-        label: "Cancel",
-        variant: "ghost",
-        onPress: IntentRef("WorkspaceBrowserEditorCancelled"),
-        a11y: { label: "Cancel workspace entry change" },
-      }),
-    ],
-  ),
-]
+// UX-4 (#8790): the inline create/rename name form rendered no more — file
+// creation and renaming are filesystem mutation affordances not called for by
+// the MVP spec (CW-AC-14 grants a bounded file tree for review, not
+// grant-scoped file management). The typed intents/handlers remain internal
+// substrate and authorize no visible control.
 
-const treeRow = (state: WorkspaceBrowserState, row: WorkspaceBrowserRow): View => {
+const treeRow =(state: WorkspaceBrowserState, row: WorkspaceBrowserRow): View => {
   const { entry, depth } = row
   const expanded = state.expandedRefs.includes(entry.pathRef)
   const loading = state.loadingRefs.includes(entry.pathRef)
@@ -745,20 +718,17 @@ const searchResultsView = (state: WorkspaceBrowserState): View => {
   )
 }
 
+/**
+ * UX-4 (#8790): the selection footer keeps only the read-only path fact.
+ * Reveal/Rename/Delete were filesystem mutation affordances not called for by
+ * the MVP spec; their typed intents remain internal substrate only.
+ */
 const selectionActions = (state: WorkspaceBrowserState): View[] => {
   const entry = selectedEntry(state)
   if (entry === null) return []
-  const deleting = state.deleteConfirmRef === entry.pathRef
   return [
     Divider({ key: "workspace-browser-selection-divider" }),
     Text({ key: "workspace-browser-selection-path", content: entry.pathRef, variant: "caption", color: "textPrimary" }),
-    Stack({ key: "workspace-browser-selection-actions", direction: "row", gap: "2", align: "center" }, [
-      Button({ key: "workspace-browser-reveal", label: "Reveal", variant: "ghost", onPress: IntentRef("WorkspaceBrowserRevealRequested", StaticPayload(entry.pathRef)), a11y: { label: `Reveal ${entry.pathRef} in the system file browser` } }),
-      Button({ key: "workspace-browser-rename", label: "Rename", variant: "ghost", onPress: IntentRef("WorkspaceBrowserRenameStarted", StaticPayload({ pathRef: entry.pathRef, name: entry.name, expectedRevisionRef: entry.revisionRef })), a11y: { label: `Rename ${entry.pathRef}` } }),
-      Button({ key: "workspace-browser-delete", label: deleting ? "Confirm delete" : "Delete", variant: deleting ? "primary" : "ghost", onPress: IntentRef(deleting ? "WorkspaceBrowserDeleteConfirmed" : "WorkspaceBrowserDeleteRequested", StaticPayload({ pathRef: entry.pathRef, expectedRevisionRef: entry.revisionRef })), a11y: { label: deleting ? `Confirm deletion of ${entry.pathRef}` : `Delete ${entry.pathRef}` } }),
-      ...(deleting ? [Button({ key: "workspace-browser-delete-cancel", label: "Keep", variant: "secondary", onPress: IntentRef("WorkspaceBrowserDeleteCancelled"), a11y: { label: `Cancel deletion of ${entry.pathRef}` } })] : []),
-    ]),
-    ...(deleting ? [Text({ key: "workspace-browser-delete-warning", content: entry.kind === "directory" ? "Only an empty folder can be deleted. This cannot be undone." : "This cannot be undone.", variant: "caption", color: "warning" })] : []),
   ]
 }
 
@@ -769,7 +739,8 @@ export const workspaceBrowserView = (state: WorkspaceBrowserState): View => {
     { key: "workspace-browser", direction: "column", gap: "3", style: { width: "full", minWidth: 0, flex: 1, minHeight: 0 } },
     [
       Stack({ key: "workspace-browser-heading", direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
-        Text({ key: "workspace-browser-title", content: "Files", variant: "heading", color: "textPrimary" }),
+        // UX-4 (#8790) design pass: title scale, matching the other panels.
+        Text({ key: "workspace-browser-title", content: "Files", variant: "title", color: "textPrimary" }),
         Badge({ key: "workspace-browser-boundary", label: "Relative workspace access", tone: "neutral", a11y: { label: "Workspace access is grant scoped and relative" } }),
         Spacer({ key: "workspace-browser-heading-space", size: "1" }),
         Button({ key: "workspace-browser-refresh", label: "Refresh", variant: "ghost", disabled: state.phase === "loading", onPress: IntentRef("WorkspaceBrowserRefreshRequested"), a11y: { label: "Refresh workspace files" } }),
@@ -789,11 +760,6 @@ export const workspaceBrowserView = (state: WorkspaceBrowserState): View => {
               Button({ key: "workspace-browser-mode-content", label: "Content", variant: state.searchMode === "content" ? "secondary" : "ghost", onPress: IntentRef("WorkspaceBrowserSearchModeSelected", StaticPayload("content")), a11y: { label: "Search workspace file content", selected: state.searchMode === "content" } }),
               Button({ key: "workspace-browser-search-submit", label: state.searchState === "searching" ? "Cancel" : "Search", variant: "primary", disabled: state.searchState !== "searching" && state.query.trim() === "", onPress: IntentRef(state.searchState === "searching" ? "WorkspaceBrowserSearchCancelled" : "WorkspaceBrowserSearchRequested"), a11y: { label: state.searchState === "searching" ? "Cancel workspace search" : "Search workspace" } }),
             ]),
-            Stack({ key: "workspace-browser-create-actions", direction: "row", gap: "2", align: "center" }, [
-              Button({ key: "workspace-browser-new-file", label: "New file", variant: "ghost", onPress: IntentRef("WorkspaceBrowserCreateStarted", StaticPayload({ parentRef, kind: "file" })), a11y: { label: `Create a new file in ${parentRef || "workspace root"}` } }),
-              Button({ key: "workspace-browser-new-folder", label: "New folder", variant: "ghost", onPress: IntentRef("WorkspaceBrowserCreateStarted", StaticPayload({ parentRef, kind: "directory" })), a11y: { label: `Create a new folder in ${parentRef || "workspace root"}` } }),
-            ]),
-            ...editorView(state.editor),
             ...operationNotice(state.operation),
             Stack({ key: "workspace-browser-layout", direction: "row", gap: "3", style: { width: "full", flex: 1, minHeight: 0 } }, [
               treeView(state),

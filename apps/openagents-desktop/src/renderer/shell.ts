@@ -22,6 +22,7 @@ import {
   Button,
   Card,
   ComponentValueBinding,
+  Divider,
   IconButton,
   Image,
   IntentRef,
@@ -3027,17 +3028,34 @@ const shellSidebar = (state: DesktopShellState): View => {
         key:"sidebar-navigation",
         activeId:state.history.pendingThreadRef!==null?`sidebar-thread-${state.history.pendingThreadRef}`:state.history.page!==null?`sidebar-thread-${state.history.page.rootThreadRef}`:state.activeThreadId!==null?`sidebar-thread-${state.activeThreadId}`:`workspace-${state.workspace}`,
         sections:[
+          // UX-4 (#8790, owner verbatim 2026-07-14): "make a pass to remove
+          // everything from the sidebar and all UI that's not specifically
+          // called for in our MVP spec." Every dock item below carries its MVP
+          // authority; the machine-checkable list lives in
+          // ./mvp-visible-surfaces.ts and is enforced by its composition
+          // oracle against this exact rendered NavRail.
+          // Removed from the dock (surfaces stay reachable through the closed
+          // command registry per CW-AC-12, never through a dock icon):
+          //   - workspace-files — the spec places file/Git review "beside the
+          //     conversation" (ProductSpec Scope; CW-AC-14), not as a
+          //     top-level sidebar destination.
+          //   - shell-command-palette-toggle — the palette remains a CW-AC-12
+          //     entry point via ⌘K and the native Commands menu; no dock icon
+          //     is called for.
           {id:"sidebar-workspace-dock",layout:"row",items:[
+            // Session create — ProductSpec Scope: "new, resume, fork, archive, delete".
             {id:"workspace-new-chat",label:"New chat",icon:"ChatCompose",accessibilityLabel:"New chat",onSelect:IntentRef("DesktopNewChat")},
+            // Session navigation + typed timeline — ProductSpec Scope/CW-AC-10/11.
             {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
-            {id:"workspace-files",label:"Files",icon:"Folder",selected:state.workspace==="files",accessibilityLabel:"Files",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("files"))},
+            // ProductSpec workroom — ProductSpec Scope/CW-AC-04..09.
             {id:"workspace-product-spec",label:"ProductSpec",icon:"Code",selected:state.workspace==="product-spec",accessibilityLabel:"ProductSpec workroom",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("product-spec"))},
-            {id:"workspace-assurance-spec",label:"AssuranceSpec",icon:"Compare",selected:state.workspace==="assurance-spec",accessibilityLabel:"AssuranceSpec document",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("assurance-spec"))},
+            // AssuranceSpec document — owner-directed contract
+            // openagents_desktop.assurance_spec.document_visualization.v1.
+            {id:"workspace-assurance-spec",label:"AssuranceSpec",icon:"Check",selected:state.workspace==="assurance-spec",accessibilityLabel:"AssuranceSpec document",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("assurance-spec"))},
+            // Repository grant + session home — CW-AC-03.
             {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
-            {id:"shell-command-palette-toggle",label:"Commands",icon:"Menu",accessibilityLabel:"Open command palette",onSelect:IntentRef("DesktopCommandPaletteToggled")},
-            // Keep Settings last: the dock wraps before it overflows, so the
-            // visible rightmost control is always the Settings gear rather
-            // than the adjacent Command-K affordance.
+            // Settings — CW-AC-01/02 session truth, CW-AC-18 update/rollback,
+            // CW-AC-17 diagnostics, CW-AC-12 keyboard bindings, MAINT-1 #8785.
             {id:"shell-settings-toggle",label:"Settings",icon:"Settings",selected:state.workspace==="settings",accessibilityLabel:state.workspace==="settings"?"Close Settings":"Open Settings",onSelect:IntentRef("DesktopSettingsToggled")},
           ]},
           historySearchActive(state.history)
@@ -3283,8 +3301,20 @@ const workspaceReview = (state: DesktopShellState): View => {
   )
 }
 
+// UX-4 (#8790) design pass: every Settings panel shares the settings-screen
+// chrome — 16px padding, raised surface, hairline edge, one centered
+// 840px reading measure, title-scale section headings.
+const settingsPanelStyle = {
+  width: "full" as const,
+  maxWidth: 840,
+  alignSelf: "center" as const,
+  backgroundColor: "surfaceRaised" as const,
+  borderColor: "borderSubtle" as const,
+  borderWidth: 1,
+}
+
 const desktopUpdateSettings = (update: DesktopUpdateProjection): View => Card(
-  { key: "desktop-update-settings", padding: "3", radius: "lg", style: { width: "full", borderColor: "borderSubtle", borderWidth: 1 } },
+  { key: "desktop-update-settings", padding: "4", radius: "lg", style: settingsPanelStyle },
   [Stack({ key: "desktop-update-settings-content", direction: "column", gap: "2" }, [
     Text({ key: "desktop-update-title", content: "Desktop updates", variant: "title", color: "textPrimary" }),
     Text({
@@ -3973,7 +4003,9 @@ const commandPalette = (state: DesktopShellState): View => {
     },
     [
       Stack({ key: "desktop-command-palette-heading", direction: "row", gap: "2", align: "center" }, [
-        Text({ key: "desktop-command-palette-title", content: "Commands", variant: "title", color: "textPrimary" }),
+        // UX-4 (#8790) design pass: a quiet label-scale header — the command
+        // rows are the content, not the panel title.
+        Text({ key: "desktop-command-palette-title", content: "Commands", variant: "label", color: "textMuted" }),
         Spacer({ key: "desktop-command-palette-heading-fill", flex: true }),
         Button({
           key: "desktop-command-palette-close",
@@ -3984,30 +4016,44 @@ const commandPalette = (state: DesktopShellState): View => {
           a11y: { label: "Close command palette" },
         }),
       ]),
-      ...desktopCommandRegistry.flatMap((command) => {
-        const chord = formatCommandChord(command.chords, darwin)
-        return [Stack(
-          { key: `desktop-command-row-${command.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } },
-          [
-            Button({
-              key: `desktop-command-${command.id}`,
-              label: command.label,
-              variant: "ghost",
-              style: { borderWidth: 0, borderRadius: "sm", typeScale: "label", color: "textPrimary", flex: 1 },
-              onPress: command.payload === null
-                ? IntentRef(command.intentName)
-                : IntentRef(command.intentName, StaticPayload(command.payload)),
-              a11y: { label: chord === null ? command.label : `${command.label} (${chord})` },
-            }),
-            ...(chord === null ? [] : [Text({
-              key: `desktop-command-chord-${command.id}`,
-              content: chord,
-              variant: "caption",
-              color: "textFaint",
-            })]),
-          ],
-        )]
-      }),
+      // UX-4 (#8790) design pass: rows cluster by command family (chat,
+      // session interactions, window, workspace, app) with hairline dividers
+      // between clusters — structure without new copy. Chord captions render
+      // as keycaps via the host stylesheet recipe.
+      ...(() => {
+        const family = (id: string): string => id.split(".")[0] ?? id
+        const families: string[] = []
+        for (const command of desktopCommandRegistry) {
+          if (!families.includes(family(command.id))) families.push(family(command.id))
+        }
+        return families.flatMap((name, groupIndex) => [
+          ...(groupIndex === 0 ? [] : [Divider({ key: `desktop-command-group-${name}` })]),
+          ...desktopCommandRegistry.filter(command => family(command.id) === name).map((command) => {
+            const chord = formatCommandChord(command.chords, darwin)
+            return Stack(
+              { key: `desktop-command-row-${command.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } },
+              [
+                Button({
+                  key: `desktop-command-${command.id}`,
+                  label: command.label,
+                  variant: "ghost",
+                  style: { borderWidth: 0, borderRadius: "sm", typeScale: "label", color: "textPrimary", flex: 1 },
+                  onPress: command.payload === null
+                    ? IntentRef(command.intentName)
+                    : IntentRef(command.intentName, StaticPayload(command.payload)),
+                  a11y: { label: chord === null ? command.label : `${command.label} (${chord})` },
+                }),
+                ...(chord === null ? [] : [Text({
+                  key: `desktop-command-chord-${command.id}`,
+                  content: chord,
+                  variant: "caption",
+                  color: "textFaint",
+                })]),
+              ],
+            )
+          }),
+        ])
+      })(),
     ],
   )
 }
@@ -4172,10 +4218,14 @@ const commandBindingSettings = (state: DesktopShellState): View => {
   const selected = state.commandBindingSelectedId === null
     ? null
     : state.commandBindings?.rows.find(value => value.commandId === state.commandBindingSelectedId) ?? null
-  return Stack(
-    { key: "desktop-command-bindings", direction: "column", gap: "2", padding: "3", style: { width: "full" } },
+  // UX-4 (#8790) design pass: the shortcuts editor shares the settings panel
+  // chrome instead of floating as an unbounded raw stack.
+  return Card(
+    { key: "desktop-command-bindings", padding: "4", radius: "lg", style: settingsPanelStyle },
+    [Stack(
+    { key: "desktop-command-bindings-content", direction: "column", gap: "2", style: { width: "full" } },
     [
-      Text({ key: "desktop-command-bindings-title", content: "Keyboard shortcuts", variant: "heading", color: "textPrimary" }),
+      Text({ key: "desktop-command-bindings-title", content: "Keyboard shortcuts", variant: "title", color: "textPrimary" }),
       Text({
         key: "desktop-command-bindings-copy",
         content: "Select a command, enter one shortcut, and save. Conflicts disable that shortcut until you change or remove it.",
@@ -4213,6 +4263,7 @@ const commandBindingSettings = (state: DesktopShellState): View => {
       })) ?? []),
       Button({ key: "desktop-command-bindings-reset", label: "Reset all shortcuts", variant: "ghost", onPress: IntentRef("DesktopCommandBindingsReset") }),
     ],
+  )],
   )
 }
 

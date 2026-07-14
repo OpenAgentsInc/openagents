@@ -110,7 +110,9 @@ describe("AssuranceSpec document support", () => {
     expect(items.find(item => item.id === "workspace-assurance-spec")).toMatchObject({
       selected: true,
       label: "AssuranceSpec",
-      icon: "Compare",
+      // UX-4 (#8790): Check, not Compare — the owner read the compare glyph
+      // as a git surface during the rc.10 sidebar review.
+      icon: "Check",
     })
     expect(byKey(view, "assurance-spec-document")).toBeDefined()
   })

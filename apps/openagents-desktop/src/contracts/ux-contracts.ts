@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-14.2",
+    version: "2026-07-14.3",
     contracts: [
       {
         contractId: "openagents_desktop.mvp.visible_surface_allowlist.v1",
@@ -19,14 +19,16 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "remove from the interface everything not in the MVP spec.",
         authorityBoundary:
-          "The ProductSpec Scope and User Experience sections, plus the owner's subsequent explicit AssuranceSpec document-format visualization direction and the owner-issued MAINT-1 harness-maintenance surface (#8785: per-harness version/channel truth with a one-click binary update in Settings), are the visible-surface allowlist. Desktop exposes local Codex chat/session navigation, repository grant and session home, ProductSpec workroom, the read-only AssuranceSpec document inspector, bounded files and review, questions/approvals/plans, Open in Codex, commands, update/rollback, harness maintenance, diagnostics, and keyboard settings. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
+          "The ProductSpec Scope and User Experience sections, plus the owner's subsequent explicit AssuranceSpec document-format visualization direction and the owner-issued MAINT-1 harness-maintenance surface (#8785: per-harness version/channel truth with a one-click binary update in Settings), are the visible-surface allowlist. UX-4 (#8790) reconciles the rendered composition to it: the sidebar dock is exactly New chat, Chat, ProductSpec, AssuranceSpec, Project home, and Settings (the machine-checkable list with per-item spec citations lives in apps/openagents-desktop/src/renderer/mvp-visible-surfaces.ts). Bounded files and read-only Git review stay reachable through their closed CW-AC-12 command identities (palette, native Commands menu, ⌘K, deep link), not through dock icons, because the spec places file/Git review beside the conversation. The review surface renders no Git mutation affordance (no commit, push, stage/unstage, discard, branch switch/create, or issue/PR authoring), and the Files browser renders no file create/rename/delete/reveal affordance (CW-AC-14 forbids exposing filesystem or Git mutation authority). Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, image attachment, and voice controls remain absent from dock, sidebar, composer, Settings, command palette, and native Commands menu. Internal post-MVP substrates do not authorize visible affordances.",
         evidenceRefs: [
           "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
           "apps/openagents-desktop/src/desktop-command-contract.ts",
+          "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.ts",
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/settings.ts",
           "apps/openagents-desktop/src/main.ts",
           "github:OpenAgentsInc/openagents#8756",
+          "github:OpenAgentsInc/openagents#8790",
         ],
         oracles: [
           {
@@ -36,6 +38,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
               "Proves the dock contains the MVP affordances plus the explicitly owner-directed AssuranceSpec document inspector, while the shell rejects Fleet, accounts, provider/model/reasoning selection, attachments, and voice.",
+          },
+          {
+            id: "mvp_surface.rendered_composition",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.test.ts",
+            description:
+              "Walks the ACTUAL rendered shell tree for every reachable workspace state, requires the dock to equal the cited allowlist exactly (no additions, no silent losses), forbids every non-MVP surface key, and proves the oracle rejects a planted non-MVP surface.",
           },
           {
             id: "mvp_surface.settings_allowlist",
@@ -53,9 +63,59 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             description:
               "Proves Fleet, Terminal, and Inbox are absent from schema-decoded palette, deep-link, shortcut, and native-menu command authority.",
           },
+          {
+            id: "mvp_surface.read_only_review_boundary",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/git-panel.test.ts",
+            description:
+              "Proves the review workspace renders no commit/push/stage/discard/branch/issue/PR affordance even when the substrate state carries them.",
+          },
         ],
         verification:
-          "Desktop typecheck, shell/settings/command suites, build, and built-host smoke enforce the ProductSpec-visible allowlist.",
+          "Desktop typecheck, shell/settings/command/composition suites, build, and built-host smoke enforce the ProductSpec-visible allowlist against the actual rendered dock and screens.",
+      },
+      {
+        contractId: "openagents_desktop.mvp.visible_surface_sweep.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "MVP visible workroom surface",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-14" },
+        statement:
+          "This menu, when I click the settings button, looks horrible. This folder thing looks horrible. I thought we made a pass removing all screens that are not specifically called for in the MVP. You need to clean all this up and make a pass to remove everything from the sidebar and all UI that's not specifically called for in our MVP spec.",
+        authorityBoundary:
+          "UX-4 (#8790): the sidebar dock composition is mechanically enforced against the rendered view tree by the mvp-visible-surfaces oracle — Files and the command palette lose their dock icons (their CW-AC-12 command identities remain the entry points), the Git review panel and Files browser drop every mutation affordance to the CW-AC-14 read-only boundary, and the retained Settings, palette, and Files surfaces are design-passed on the shared tokens (one centered settings column on the raised-panel recipe, family-grouped palette rows with keycap chords, quiet grant-boundary presentation). No copy changed; styling, layout, and composition only. Removal is conservative: a swept surface returns only with an explicit spec citation.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.ts",
+          "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.test.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/git-panel.ts",
+          "apps/openagents-desktop/src/renderer/workspace-browser.ts",
+          "apps/openagents-desktop/src/renderer/app.css",
+          "github:OpenAgentsInc/openagents#8790",
+        ],
+        oracles: [
+          {
+            id: "mvp_sweep.composition_oracle_with_falsifier",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/mvp-visible-surfaces.test.ts",
+            description:
+              "Renders every reachable workspace through desktopShellView, asserts zero visible-surface violations, and proves planted non-MVP dock items, removed affordances, forbidden screen keys, and silent allowlist shrink each FAIL the oracle.",
+          },
+          {
+            id: "mvp_sweep.built_host_smoke",
+            kind: "visual-smoke",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke journey asserts the exact rendered dock ids, the absence of the swept dock icons and Git mutation controls, and captures the pixel receipts for the cleaned sidebar and each retained screen.",
+          },
+        ],
+        verification:
+          "Desktop typecheck, the composition suite with falsifiers, design conformance, build, and built-host smoke.",
       },
       {
         contractId: "openagents_desktop.assurance_spec.document_visualization.v1",

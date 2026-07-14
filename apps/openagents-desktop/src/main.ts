@@ -3008,9 +3008,11 @@ const smokeWorkspaceTreeBridge = `(async () => {
 const smokeWorkspaceFilesUi = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const codingCatalog = await globalThis.openagentsDesktop?.codingCatalog?.snapshot?.()
-  const files = document.querySelector('[data-en-key="workspace-files"]')
-  if (files === null) return { ok: false, reason: "Files dock item missing" }
-  files.click()
+  // UX-4 (#8790): Files has NO dock icon — the workspace is reached through
+  // its closed CW-AC-12 command identity (enqueued by the smoke host before
+  // this probe runs).
+  const filesDockItem = document.querySelector('[data-en-key="workspace-files"]')
+  if (filesDockItem !== null) return { ok: false, reason: "swept Files dock icon rendered" }
   const deadline = Date.now() + 10000
   while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-browser-tree-list"]') === null) {
     await wait(50)
@@ -3054,11 +3056,15 @@ const smokeWorkspaceFilesUi = `(async () => {
     } catch {}
   }
   const leakedRoot = document.body.textContent?.includes("tests/fixtures/codex-smoke") === true
+  // UX-4 (#8790): the browser renders no filesystem mutation affordance.
+  const mutationAffordance = ["workspace-browser-new-file", "workspace-browser-new-folder", "workspace-browser-rename", "workspace-browser-delete", "workspace-browser-reveal"]
+    .find((key) => document.querySelector('[data-en-key="' + key + '"]') !== null) ?? null
   const chat = document.querySelector('[data-en-key="workspace-chat"]')
-  chat?.click()
   return {
     ok: browser !== null && tree !== null && search !== null && boundary !== null &&
-      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot && chat !== null,
+      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot && chat !== null &&
+      mutationAffordance === null,
+    mutationAffordance,
     relativeBoundary: boundary?.textContent,
     legacyEditor: legacyEditor !== null,
     editorHost: editor !== null,
@@ -3079,11 +3085,24 @@ const smokeWorkspaceEditorRecovery = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const codingCatalog = await globalThis.openagentsDesktop?.codingCatalog?.snapshot?.()
   const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-files"]') === null) {
+  // UX-4 (#8790): no Files dock icon — after the reload mounts, re-enter the
+  // Files workspace exactly like a keyboard user: canonical ⌘K palette chord,
+  // then the closed "Open Files" command row (CW-AC-12 identity).
+  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-chat"]') === null) {
     await wait(50)
   }
-  const files = document.querySelector('[data-en-key="workspace-files"]')
-  files?.click()
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "k",
+    metaKey: ${JSON.stringify(process.platform === "darwin")},
+    ctrlKey: ${JSON.stringify(process.platform !== "darwin")},
+    bubbles: true,
+    cancelable: true,
+  }))
+  while (Date.now() < deadline && document.querySelector('[data-en-key="desktop-command-workspace.files"]') === null) {
+    await wait(50)
+  }
+  document.querySelector('[data-en-key="desktop-command-workspace.files"]')?.click()
   while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea') === null) {
     await wait(50)
   }
@@ -3303,11 +3322,13 @@ const smokeOpenGitReview = `(async () => {
   }
   const panel = q("git-panel")
   const header = q("git-status-header")
-  const commitBox = q("git-commit-message")
-  const commitButton = q("git-commit")
-  const pushButton = q("git-push")
-  const branches = q("git-branches")
-  const issues = q("git-issues-prs")
+  // UX-4 (#8790): the CW-AC-14 read-only review boundary — NO Git mutation
+  // affordance may render (commit, push, stage/unstage, discard, branches,
+  // issue/PR authoring).
+  const mutationAffordance = ["git-commit-message", "git-commit", "git-push", "git-branches", "git-issues-prs"]
+    .find((key) => q(key) !== null)
+    ?? (document.querySelector('[data-en-key^="git-stage-toggle-"]') !== null ? "git-stage-toggle" : null)
+    ?? (document.querySelector('[data-en-key^="git-discard-"]') !== null ? "git-discard" : null)
   const statusResolved = resolved()
   const branch = branchText().slice(0, 80)
   const review = document.querySelector('[data-en-key^="git-review-u-"]')
@@ -3316,25 +3337,27 @@ const smokeOpenGitReview = `(async () => {
     await wait(50)
   }
   const diff = q("git-review-diff-view")
-  const discard = document.querySelector('[data-en-key^="git-discard-"]:not([data-en-key="git-discard-confirm"]):not([data-en-key="git-discard-cancel"])')
-  discard?.click()
-  await wait(50)
-  const discardConfirmation = q("git-discard-confirmation")
-  q("git-discard-cancel")?.click()
+  return {
+    ok: panel !== null && header !== null && mutationAffordance === null && statusResolved &&
+      review !== null && diff !== null,
+    branch,
+    statusResolved,
+    mutationAffordance,
+    diff: diff !== null,
+  }
+})()`
+
+// Attach the reviewed diff to the composer (the CW-AC-14 review -> composer
+// seam) — runs AFTER the panel pixel receipt so the shot shows the panel.
+const smokeGitReviewAttach = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const q = (key) => document.querySelector('[data-en-key="' + key + '"]')
+  const deadline = Date.now() + 10000
   q("git-review-attach")?.click()
   while (Date.now() < deadline && q("shell-composer-review-context") === null) await wait(50)
   const composerContext = q("shell-composer-review-context")
   q("shell-composer-review-remove")?.click()
-  return {
-    ok: panel !== null && header !== null && commitBox !== null && commitButton !== null &&
-      pushButton !== null && branches !== null && issues !== null && statusResolved &&
-      review !== null && diff !== null && discard !== null && discardConfirmation !== null && composerContext !== null,
-    branch,
-    statusResolved,
-    diff: diff !== null,
-    discardConfirmation: discardConfirmation !== null,
-    composerContext: composerContext !== null,
-  }
+  return { ok: composerContext !== null, composerContext: composerContext !== null }
 })()`
 
 // Workspace-bounded PTY terminal (CUT-20, #8700): the terminal workspace mounts
@@ -3511,6 +3534,47 @@ const smokeSettingsHarnessMaintenance = `(async () => {
   }
 })()`
 
+// UX-4 (#8790) pixel receipts: dock-routed navigation probes for the
+// retained ProductSpec / AssuranceSpec screens and the return-to-chat hop.
+const smokeBackToChat = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const chat = document.querySelector('[data-en-key="workspace-chat"]')
+  if (chat === null) return { ok: false, reason: "Chat dock item missing" }
+  chat.click()
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-transcript"]') === null) {
+    await wait(50)
+  }
+  return { ok: document.querySelector('[data-en-key="shell-transcript"]') !== null }
+})()`
+
+const smokeOpenProductSpec = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const item = document.querySelector('[data-en-key="workspace-product-spec"]')
+  if (item === null) return { ok: false, reason: "ProductSpec dock item missing" }
+  item.click()
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="product-spec-workspace"]') === null) {
+    await wait(50)
+  }
+  return { ok: document.querySelector('[data-en-key="product-spec-workspace"]') !== null }
+})()`
+
+const smokeOpenAssuranceSpec = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const item = document.querySelector('[data-en-key="workspace-assurance-spec"]')
+  if (item === null) return { ok: false, reason: "AssuranceSpec dock item missing" }
+  item.click()
+  const deadline = Date.now() + 10000
+  const present = () =>
+    document.querySelector('[data-en-key="assurance-spec-document"]') !== null ||
+    document.querySelector('[data-en-key="assurance-spec-invalid"]') !== null
+  while (Date.now() < deadline && !present()) {
+    await wait(50)
+  }
+  return { ok: present(), valid: document.querySelector('[data-en-key="assurance-spec-document"]') !== null }
+})()`
+
 const smokeMvpSurfaceAllowlist = `(() => {
   const forbidden = [
     "workspace-fleet",
@@ -3520,10 +3584,22 @@ const smokeMvpSurfaceAllowlist = `(() => {
     "shell-model-select",
     "shell-reasoning-select",
     "shell-voice-toggle",
+    // UX-4 (#8790): swept dock affordances and Git mutation controls.
+    "workspace-files",
+    "shell-command-palette-toggle",
+    "git-commit",
+    "git-push",
+    "git-branches",
+    "git-issues-prs",
   ]
   const present = forbidden.filter((key) => document.querySelector('[data-en-key="' + key + '"]') !== null)
+  // UX-4 (#8790): the rendered dock is EXACTLY the MVP allowlist, in order.
+  const dockIds = Array.from(document.querySelectorAll('[data-en-key="sidebar-workspace-dock"] > button[data-en-key]'))
+    .map((item) => item.getAttribute("data-en-key"))
+  const expectedDock = ["workspace-new-chat", "workspace-chat", "workspace-product-spec", "workspace-assurance-spec", "workspace-home", "shell-settings-toggle"]
+  const dockExact = JSON.stringify(dockIds) === JSON.stringify(expectedDock)
   const codex = document.querySelector('[data-en-key="shell-codex-engine"]')
-  return { ok: present.length === 0 && codex?.textContent === "Codex", present, codex: codex?.textContent ?? null }
+  return { ok: present.length === 0 && dockExact && codex?.textContent === "Codex", present, dockIds, dockExact, codex: codex?.textContent ?? null }
 })()`
 
 // Behavior contract openagents_desktop.settings.mcp_servers.v1 (I2, EP250
@@ -4608,7 +4684,18 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("first-keystroke-lands-in-composer", smokeFirstKeystrokeLandsInComposer)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await step("workspace-tree-refresh-watch-bridge", smokeWorkspaceTreeBridge)
+        // UX-4 (#8790): Files lost its dock icon — route through the closed
+        // canonical command identity, exactly like a palette/native-menu user.
+        const filesCommand = desktopCanonicalCommandRegistry.find(command => command.id === "workspace.files")
+        if (filesCommand === undefined) throw new Error("canonical workspace.files command missing")
+        desktopCommandHost.enqueue(deferredDesktopCommand(
+          filesCommand,
+          "native_menu",
+          "command.desktop.smoke.workspace-files",
+        ))
         await step("workspace-files-relative-ui", smokeWorkspaceFilesUi)
+        await captureShot(window, "05-files-workspace")
+        await step("files-back-to-chat", smokeBackToChat)
         await step("lifecycle-correlation", smokeLifecycleCorrelation)
         if (!desktopCorrelationJournal.complete("correlation.desktop.smoke")) {
           throw new Error(`lifecycle-correlation journal incomplete: ${desktopCorrelationJournal.stages("correlation.desktop.smoke").join(",")}`)
@@ -4695,10 +4782,17 @@ const runSmoke = (window: BrowserWindow): void => {
         ))
         await step("git-review-panel-real-status", smokeOpenGitReview)
         await captureShot(window, "12-git-review-panel")
+        await step("git-review-attach-to-composer", smokeGitReviewAttach)
         // Cmd+N from the review workspace: fresh transcript + focused composer.
         await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
         await step("coding-catalog-host-persistence", smokeCodingCatalog)
         await captureShot(window, "10-coding-catalog")
+        // UX-4 (#8790) pixel receipts for the retained dock destinations.
+        await step("product-spec-workspace-opens", smokeOpenProductSpec)
+        await captureShot(window, "14-product-spec")
+        await step("assurance-spec-workspace-opens", smokeOpenAssuranceSpec)
+        await captureShot(window, "15-assurance-spec")
+        await step("workspaces-back-to-chat", smokeBackToChat)
         tracePass = 1
         window.webContents.reload()
       } catch (error) {
